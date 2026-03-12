@@ -804,7 +804,8 @@ export default {
     startChatCta: '点击{link}开始和 Blue 对话吧',
   },
   settings: {
-    llmApiKeyRequired: '请先配置 API Key，再打开 LLM Provider 页面。',
+    llmApiKeyRequired: '请先配置大语言模型提供商。',
+    llmProviderSetupLink: '配置大语言模型提供商',
     title: '设置',
     saved: '已保存',
     saveFailed: '保存配置失败',
@@ -3911,14 +3912,14 @@ export default {
     // 动作类型
     handlers: {
       command: 'Shell 命令',
-      commandDesc: '执行 Shell 命令或脚本',
+      commandDesc: '执行受允许的 Shell 命令',
       http: 'HTTP 请求',
       httpDesc: '发送 HTTP 请求到指定 URL',
     },
     // 命令动作字段
     commandInput: '命令',
-    commandPlaceholder: '例如：/usr/bin/backup.sh 或 docker restart myapp',
-    commandHint: '要执行的 Shell 命令。建议使用完整路径以确保可靠性。',
+    commandPlaceholder: '例如：uptime、date 或 curl https://example.com',
+    commandHint: '当前允许的基础命令：echo、date、uptime、df、free、ps、curl、wget。',
     workdir: '工作目录',
     workdirPlaceholder: '例如：/home/user/scripts',
     timeout: '超时时间',

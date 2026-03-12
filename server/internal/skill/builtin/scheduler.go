@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // CronServiceInterface defines the interface for cron service used by the scheduler skill.
@@ -203,7 +204,7 @@ func (s *Scheduler) Execute(ctx context.Context, input map[string]any) (*skill.R
 
 	switch action {
 	case "create":
-		return s.createJob(svc, input)
+		return s.createJob(ctx, svc, input)
 	case "list":
 		return s.listJobs(svc)
 	case "get":
@@ -223,7 +224,7 @@ func (s *Scheduler) Execute(ctx context.Context, input map[string]any) (*skill.R
 	return skill.NewErrorResult(fmt.Errorf("unknown action: %s", action)), nil
 }
 
-func (s *Scheduler) createJob(svc CronServiceInterface, input map[string]any) (*skill.Result, error) {
+func (s *Scheduler) createJob(ctx context.Context, svc CronServiceInterface, input map[string]any) (*skill.Result, error) {
 	name := input["name"].(string)
 	schedule := input["schedule"].(string)
 	command := input["command"].(string)
@@ -235,6 +236,12 @@ func (s *Scheduler) createJob(svc CronServiceInterface, input map[string]any) (*
 
 	payload := map[string]interface{}{
 		"command": command,
+	}
+	if userID := strings.TrimSpace(tools.GetUserID(ctx)); userID != "" {
+		payload["user_id"] = userID
+	}
+	if conversationID := strings.TrimSpace(tools.GetSessionID(ctx)); conversationID != "" {
+		payload["conversation_id"] = conversationID
 	}
 
 	job, err := svc.Create(name, description, schedule, "command", payload)

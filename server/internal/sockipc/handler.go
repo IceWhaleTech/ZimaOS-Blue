@@ -3,7 +3,9 @@ package sockipc
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"go.uber.org/zap"
 )
 
@@ -12,6 +14,16 @@ type MediaGenerator func(ctx context.Context, category, model, prompt string, pa
 
 // MediaStatusQuerier returns task status fields. Returns nil map if not found.
 type MediaStatusQuerier func(ctx context.Context, taskID string) (map[string]string, error)
+
+func withIPCUserID(ctx context.Context, req *Request) context.Context {
+	if req == nil {
+		return ctx
+	}
+	if userID := strings.TrimSpace(req.Params["__blue_user_id"]); userID != "" {
+		return tools.WithUserID(ctx, userID)
+	}
+	return ctx
+}
 
 // RegisterMediaHandlers wires up the standard media IPC commands.
 func RegisterMediaHandlers(srv *Server, generate MediaGenerator, queryStatus MediaStatusQuerier, log *zap.Logger) {
@@ -22,6 +34,7 @@ func RegisterMediaHandlers(srv *Server, generate MediaGenerator, queryStatus Med
 
 	// media.generate — requires prompt
 	srv.Handle("media.generate", func(ctx context.Context, req *Request) *Response {
+		ctx = withIPCUserID(ctx, req)
 		prompt := req.Params["prompt"]
 		if prompt == "" {
 			return ErrResponse("missing prompt")
@@ -51,6 +64,7 @@ func RegisterMediaHandlers(srv *Server, generate MediaGenerator, queryStatus Med
 
 	// media.status — requires task_id
 	srv.Handle("media.status", func(ctx context.Context, req *Request) *Response {
+		ctx = withIPCUserID(ctx, req)
 		taskID := req.Params["task_id"]
 		if taskID == "" {
 			return ErrResponse("missing task_id")

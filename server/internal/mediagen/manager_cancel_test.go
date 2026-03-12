@@ -7,6 +7,7 @@ import (
 	"time"
 
 	basetask "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 type blockingTestProvider struct {
@@ -170,5 +171,26 @@ func TestManager_CancelTask_PreventsPollOverwrite(t *testing.T) {
 	}
 	if got.Status != TaskStatusCancelled {
 		t.Fatalf("status=%q, want %q", got.Status, TaskStatusCancelled)
+	}
+}
+
+func TestManager_WaitForTask_UsesContextUserScope(t *testing.T) {
+	m := NewManager(nil, nil, "")
+	task := &MediaTask{
+		BaseTask: basetask.BaseTask{ID: "scoped-task", Status: TaskStatusSucceeded, CreatedAt: time.Now()},
+		UserID:   "user-a",
+		Type:     MediaTypeImage,
+	}
+	m.tasks.Store(task.ID, task)
+
+	ctx, cancel := context.WithDeadline(tools.WithUserID(context.Background(), "user-b"), time.Now().Add(-time.Second))
+	defer cancel()
+
+	got, err := m.WaitForTask(ctx, task.ID)
+	if got != nil {
+		t.Fatalf("got task = %#v, want nil for cross-user lookup", got)
+	}
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("err = %v, want ErrTimeout", err)
 	}
 }

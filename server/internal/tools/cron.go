@@ -167,7 +167,7 @@ func (t *CronTool) executeCreate(ctx context.Context, args map[string]interface{
 	if name == "" || schedule == "" || handler == "" {
 		return nil, errors.New("name, schedule, and handler are required")
 	}
-	payload := asMap(firstCompatRawValue(args, "payload"))
+	payload := enrichCronPayloadWithContext(ctx, asMap(firstCompatRawValue(args, "payload")))
 	job, err := t.service.CreateJob(ctx, name, firstCompatString(args, "description"), schedule, handler, payload)
 	if err != nil {
 		return nil, err
@@ -207,6 +207,7 @@ func (t *CronTool) executeUpdate(ctx context.Context, args map[string]interface{
 	if payload == nil {
 		payload = job.Payload
 	}
+	payload = enrichCronPayloadWithContext(ctx, payload)
 	if err := t.service.UpdateJob(ctx, id, name, description, schedule, payload); err != nil {
 		return nil, err
 	}
@@ -357,4 +358,25 @@ func RegisterCronTool(registry *Registry, service CronService) {
 		return
 	}
 	registry.Register(NewCronTool(service))
+}
+
+func enrichCronPayloadWithContext(ctx context.Context, payload map[string]interface{}) map[string]interface{} {
+	if payload == nil {
+		payload = map[string]interface{}{}
+	}
+	out := make(map[string]interface{}, len(payload)+2)
+	for key, value := range payload {
+		out[key] = value
+	}
+	if strings.TrimSpace(firstCompatString(out, "user_id", "userId", "owner_id", "ownerId", "notify_user_id", "notifyUserId")) == "" {
+		if userID := strings.TrimSpace(GetUserID(ctx)); userID != "" {
+			out["user_id"] = userID
+		}
+	}
+	if strings.TrimSpace(firstCompatString(out, "conversation_id", "conversationId", "session_id", "sessionId")) == "" {
+		if conversationID := strings.TrimSpace(GetSessionID(ctx)); conversationID != "" {
+			out["conversation_id"] = conversationID
+		}
+	}
+	return out
 }

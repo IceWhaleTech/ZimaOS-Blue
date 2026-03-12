@@ -1137,7 +1137,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Executarea comenzii a fost blocată deoarece aprobarea directorului a expirat. Aprobă directorul și încearcă din nou.',
+    execDirectoryApprovalTimeout:
+      'Executarea comenzii a fost blocată deoarece aprobarea directorului a expirat. Aprobă directorul și încearcă din nou.',
     streamProgress: {
       requestAccepted: 'Solicitare primită, se pregătește răspunsul...',
       generating: 'Se generează răspunsul...',
@@ -1452,7 +1453,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: 'Date chat',
-    chatDataDescription: 'Importă, exportă și curăță istoricul chatului și datele asociate dintr-un singur loc.',
+    chatDataDescription:
+      'Importă, exportă și curăță istoricul chatului și datele asociate dintr-un singur loc.',
     manageData: 'Gestionează datele',
     cleanupPreviewFailed: 'Previzualizarea curățării a eșuat',
     cleanupFailed: 'Curățarea datelor a eșuat',
@@ -1474,18 +1476,49 @@ export default {
     importPasswordPlaceholder: 'Introdu parola folosită la export',
     confirmPasswordPlaceholder: 'Reintrodu parola',
     formatEncryptedDesc: 'Format binar complet criptat. Securitate mai ridicată.',
-    formatJsonDesc: 'Format lizibil pentru oameni. Parola este folosită pentru verificarea importului.',
+    formatJsonDesc:
+      'Format lizibil pentru oameni. Parola este folosită pentru verificarea importului.',
     retentionSaved: 'Setările de păstrare au fost salvate',
     title: 'Date utilizator',
     tabs: {
       ...enUS.userdata.tabs,
+      export: 'Exportare',
+      import: 'Importare',
+      cleanup: 'Curățare',
+      retention: 'Monitorizare',
       title: 'File',
     },
+    export: 'Exportă datele utilizatorului',
+    exportDescription:
+      'Exportă istoricul chatului și setările într-un fișier. Fișierul va fi protejat cu o parolă.',
+    import: 'Importă datele utilizatorului',
+    importDescription:
+      'Importă date exportate anterior. Vei avea nevoie de parola folosită la export.',
+    password: 'Parolă',
+    passwordMismatch: 'Parolele nu se potrivesc',
+    exportButton: 'Exportă datele',
+    importButton: 'Importă datele',
+    exporting: 'Se exportă...',
+    importing: 'Se importă...',
+    exportSuccess: 'Datele au fost exportate cu succes',
+    importSuccess: 'Au fost importate {conversations} conversații și {messages} mesaje',
     retention: {
       ...enUS.userdata.retention,
-      title: 'Păstrare',
+      title: 'Păstrarea datelor de securitate',
+      description:
+        'Configurați cât timp sunt păstrate datele de monitorizare de securitate (sesiuni, evenimente, alerte) înainte de curățarea automată.',
+      storageInfo: 'Volum curent',
+      sessions: 'Sesiuni',
+      events: 'Evenimente',
+      alerts: 'Alerte',
+      policy: 'Politică de păstrare',
+      sessionsRetention: 'Păstrare sesiuni',
+      eventsRetention: 'Păstrare evenimente',
+      alertsRetention: 'Păstrare alerte',
+      days: 'zile',
       totalRecords: 'Total înregistrări de monitorizare',
-      policyHint: 'Fiecare tip de date acceptă între 1 și 365 de zile. O păstrare mai scurtă reduce stocarea, iar una mai lungă ajută la audit și depanare.',
+      policyHint:
+        'Fiecare tip de date acceptă între 1 și 365 de zile. O păstrare mai scurtă reduce stocarea, iar una mai lungă ajută la audit și depanare.',
       daysRange: 'Interval permis: 1-365 de zile',
       sessionsHint: 'Ciclul de viață al sesiunilor agentului și metadatele de execuție.',
       eventsHint: 'Apeluri de instrumente, urme de execuție și evenimente de audit.',
@@ -1493,14 +1526,16 @@ export default {
       sessionsSuggested: 'Sugerat: 14-30 de zile pentru operațiuni curente',
       eventsSuggested: 'Sugerat: 7-14 zile pentru un volum echilibrat de audit',
       alertsSuggested: 'Sugerat: 30-90 de zile pentru revizuirea incidentelor',
-      saveHint: 'Noile ferestre de păstrare se vor aplica următoarelor curățări automate și manuale.',
+      saveHint:
+        'Noile ferestre de păstrare se vor aplica următoarelor curățări automate și manuale.',
     },
     cleanup: {
       ...enUS.userdata.cleanup,
       title: 'Curățare date',
       description: 'Șterge permanent datele selectate. Această acțiune nu poate fi anulată.',
       warning: 'Acțiune distructivă',
-      warningDetail: 'Datele șterse nu pot fi recuperate. Exportă mai întâi datele dacă ai nevoie de o copie de rezervă.',
+      warningDetail:
+        'Datele șterse nu pot fi recuperate. Exportă mai întâi datele dacă ai nevoie de o copie de rezervă.',
       selectData: 'Selectează datele de șters',
       chatHistory: 'Istoric chat',
       chatHistoryDesc: 'Toate conversațiile și mesajele',
@@ -1519,15 +1554,18 @@ export default {
       willReset: 'Va fi resetat',
       willClear: 'Va fi golit',
       authorizationStep: 'Necesită autorizare',
-      authorizationHint: 'Revizuiește datele care vor fi șterse. Acest pas servește drept confirmare a autorizării.',
+      authorizationHint:
+        'Revizuiește datele care vor fi șterse. Acest pas servește drept confirmare a autorizării.',
       proceedToConfirm: 'Continuă la confirmare',
       confirmStep: 'Confirmare finală',
       confirmHint: 'Introdu parola pentru a confirma această acțiune distructivă.',
-      confirmHintPreview: 'Tastează „{confirmText}” mai jos pentru a confirma această acțiune distructivă.',
+      confirmHintPreview:
+        'Tastează „{confirmText}” mai jos pentru a confirma această acțiune distructivă.',
       confirmText: 'CONFIRMĂ ȘTERGEREA',
       typeToConfirm: 'Tastează pentru a confirma',
       typeToConfirmPlaceholder: 'Tastează „{confirmText}” pentru a confirma',
-      productionHint: 'În mediile de producție pot fi necesare acreditări suplimentare (MFA, aprobare de administrator).',
+      productionHint:
+        'În mediile de producție pot fi necesare acreditări suplimentare (MFA, aprobare de administrator).',
       enterPassword: 'Introdu parola',
       passwordPlaceholder: 'Introdu parola pentru a confirma',
       confirmDelete: 'Confirmă ștergerea',
@@ -1589,12 +1627,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Conținut nou memorat',
       memorySavedMessage: 'Memorie extrasă din conversație',
       manageMemory: 'Gestionează memoria',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -1712,7 +1751,8 @@ export default {
   sandbox: { ...enUS.sandbox },
   home: {
     ...enUS.home,
-    description: 'Un runtime stabil, de încredere și neutru pentru asistenții tăi AI și automatizări',
+    description:
+      'Un runtime stabil, de încredere și neutru pentru asistenții tăi AI și automatizări',
   },
   brand: { ...enUS.brand },
   speech: {

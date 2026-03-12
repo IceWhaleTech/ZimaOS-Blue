@@ -1431,7 +1431,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Kommando körning blockerades eftersom kataloggodkännandet tog för lång tid. Godkänn katalogen och försök igen.',
+    execDirectoryApprovalTimeout:
+      'Kommando körning blockerades eftersom kataloggodkännandet tog för lång tid. Godkänn katalogen och försök igen.',
     streamProgress: {
       requestAccepted: 'Begäran mottagen, förbereder svar...',
       generating: 'Genererar svar...',
@@ -1816,7 +1817,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: 'Chattdata',
-    chatDataDescription: 'Importera, exportera och rensa chatthistorik och relaterade data från ett ställe.',
+    chatDataDescription:
+      'Importera, exportera och rensa chatthistorik och relaterade data från ett ställe.',
     manageData: 'Hantera data',
     cleanupPreviewFailed: 'Det gick inte att förhandsvisa rensning',
     cleanupFailed: 'Det gick inte att rensa data',
@@ -1848,11 +1850,19 @@ export default {
     importButton: 'Importera data',
     exportSuccess: 'Data exporterad',
     importSuccess: '{conversations} konversationer och {messages} meddelanden importerade',
+    exportDescription:
+      'Exportera din chatthistorik och dina inställningar till en fil. Filen skyddas med ett lösenord.',
+    importDescription:
+      'Importera tidigare exporterade data. Du behöver lösenordet som användes vid exporten.',
+    passwordMismatch: 'Lösenorden matchar inte',
+    exporting: 'Exporterar...',
+    importing: 'Importerar...',
     retention: {
       title: 'Datalagring',
       description: 'Konfigurera hur länge data sparas före automatisk rensning',
       totalRecords: 'Totalt antal övervakningsposter',
-      policyHint: 'Varje datatyp stödjer 1 till 365 dagar. Kortare lagring minskar utrymmet, medan längre lagring hjälper vid revision och felsökning.',
+      policyHint:
+        'Varje datatyp stödjer 1 till 365 dagar. Kortare lagring minskar utrymmet, medan längre lagring hjälper vid revision och felsökning.',
       daysRange: 'Tillåtet intervall: 1-365 dagar',
       sessionsHint: 'Livscykel för agent-sessioner och runtime-metadata.',
       eventsHint: 'Verktygsanrop, körspår och revisionshändelser.',
@@ -1882,7 +1892,8 @@ export default {
       totalMemories: 'Totalt antal minnen',
       backend: 'Backend',
       exportSection: 'Exportera minnen',
-      exportDesc: 'Ladda ner alla minnen som en Markdown-fil för säkerhetskopiering eller redigering.',
+      exportDesc:
+        'Ladda ner alla minnen som en Markdown-fil för säkerhetskopiering eller redigering.',
       exportButton: 'Exportera som Markdown',
       exportSuccess: 'Minnen exporterade',
       exportFailed: 'Det gick inte att exportera minnen',
@@ -1936,12 +1947,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Nytt innehåll sparat i minnet',
       memorySavedMessage: 'Minne extraherat från konversationen',
       manageMemory: 'Hantera minne',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -2058,7 +2070,8 @@ export default {
   sandbox: { ...enUS.sandbox },
   home: {
     ...enUS.home,
-    description: 'En stabil, pålitlig och neutral runtime för dina AI-assistenter och automatiseringar',
+    description:
+      'En stabil, pålitlig och neutral runtime för dina AI-assistenter och automatiseringar',
   },
   brand: { ...enUS.brand },
   speech: {

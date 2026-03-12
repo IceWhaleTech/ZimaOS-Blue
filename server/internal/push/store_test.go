@@ -52,6 +52,34 @@ func TestStoreCreateAndGet(t *testing.T) {
 	}
 }
 
+func TestStoreGetScopedByOwner(t *testing.T) {
+	db := testDB(t)
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := store.Create(ctx, &PushNotification{ID: "rem-scope", OwnerID: "user-1", Message: "Scoped", FireAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.Get(ctx, "rem-scope", "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.OwnerID != "user-1" {
+		t.Fatalf("got = %#v, want owner user-1", got)
+	}
+
+	other, err := store.Get(ctx, "rem-scope", "user-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other != nil {
+		t.Fatalf("other owner should not see record: %#v", other)
+	}
+}
+
 func TestStoreListByOwner(t *testing.T) {
 	db := testDB(t)
 	store, err := NewStore(db)

@@ -94,6 +94,40 @@ func TestStore_GetMessages_StableWhenCreatedAtEqual(t *testing.T) {
 	}
 }
 
+func TestStore_GetRecentMessages_ReturnsLatestInChronologicalOrder(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewStore(filepath.Join(t.TempDir(), "chat.db"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(ctx, "recent-order")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	for i := 1; i <= 5; i++ {
+		if _, err := store.AddMessage(ctx, conv.ID, Message{
+			Role:    "user",
+			Content: fmt.Sprintf("m%d", i),
+		}); err != nil {
+			t.Fatalf("AddMessage(%d): %v", i, err)
+		}
+	}
+
+	recent, err := store.GetRecentMessages(ctx, conv.ID, 3)
+	if err != nil {
+		t.Fatalf("GetRecentMessages: %v", err)
+	}
+	if len(recent) != 3 {
+		t.Fatalf("GetRecentMessages len = %d, want 3", len(recent))
+	}
+	if recent[0].Content != "m3" || recent[1].Content != "m4" || recent[2].Content != "m5" {
+		t.Fatalf("recent = %#v, want [m3 m4 m5]", contentsOf(recent))
+	}
+}
+
 func TestStore_ListConversations_StableWhenUpdatedAtEqual(t *testing.T) {
 	ctx := context.Background()
 	store, err := NewStore(filepath.Join(t.TempDir(), "chat.db"))

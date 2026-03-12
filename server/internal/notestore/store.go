@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -44,6 +45,13 @@ func NewStore(db *sql.DB) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+func resolveOwnerScope(ownerID []string, fallback string) string {
+	if len(ownerID) > 0 {
+		return strings.TrimSpace(ownerID[0])
+	}
+	return strings.TrimSpace(fallback)
+}
+
 // Create inserts a new note.
 func (s *Store) Create(ctx context.Context, n *Note) error {
 	tagsJSON, _ := json.Marshal(n.Tags)
@@ -55,12 +63,20 @@ func (s *Store) Create(ctx context.Context, n *Note) error {
 }
 
 // Get retrieves a note by ID.
-func (s *Store) Get(ctx context.Context, id string) (*Note, error) {
+func (s *Store) Get(ctx context.Context, id string, ownerID ...string) (*Note, error) {
 	var n Note
 	var tagsJSON string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, owner_id, title, content, tags, created_at, updated_at FROM notes WHERE id = ?`, id).
-		Scan(&n.ID, &n.OwnerID, &n.Title, &n.Content, &tagsJSON, &n.Created, &n.Updated)
+	scopedOwnerID := resolveOwnerScope(ownerID, "")
+	var err error
+	if scopedOwnerID != "" {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT id, owner_id, title, content, tags, created_at, updated_at FROM notes WHERE id = ? AND owner_id = ?`, id, scopedOwnerID).
+			Scan(&n.ID, &n.OwnerID, &n.Title, &n.Content, &tagsJSON, &n.Created, &n.Updated)
+	} else {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT id, owner_id, title, content, tags, created_at, updated_at FROM notes WHERE id = ?`, id).
+			Scan(&n.ID, &n.OwnerID, &n.Title, &n.Content, &tagsJSON, &n.Created, &n.Updated)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -69,18 +85,54 @@ func (s *Store) Get(ctx context.Context, id string) (*Note, error) {
 }
 
 // Update modifies an existing note.
-func (s *Store) Update(ctx context.Context, n *Note) error {
+func (s *Store) Update(ctx context.Context, n *Note, ownerID ...string) error {
 	tagsJSON, _ := json.Marshal(n.Tags)
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = ? WHERE id = ?`,
-		n.Title, n.Content, string(tagsJSON), n.Updated, n.ID)
-	return err
+	scopedOwnerID := resolveOwnerScope(ownerID, n.OwnerID)
+	var (
+		res sql.Result
+		err error
+	)
+	if scopedOwnerID != "" {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = ? WHERE id = ? AND owner_id = ?`,
+			n.Title, n.Content, string(tagsJSON), n.Updated, n.ID, scopedOwnerID)
+	} else {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = ? WHERE id = ?`,
+			n.Title, n.Content, string(tagsJSON), n.Updated, n.ID)
+	}
+	if err != nil {
+		return err
+	}
+	if scopedOwnerID != "" {
+		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
+			return sql.ErrNoRows
+		}
+	}
+	return nil
 }
 
 // Delete removes a note by ID.
-func (s *Store) Delete(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM notes WHERE id = ?`, id)
-	return err
+func (s *Store) Delete(ctx context.Context, id string, ownerID ...string) error {
+	scopedOwnerID := resolveOwnerScope(ownerID, "")
+	var (
+		res sql.Result
+		err error
+	)
+	if scopedOwnerID != "" {
+		res, err = s.db.ExecContext(ctx, `DELETE FROM notes WHERE id = ? AND owner_id = ?`, id, scopedOwnerID)
+	} else {
+		res, err = s.db.ExecContext(ctx, `DELETE FROM notes WHERE id = ?`, id)
+	}
+	if err != nil {
+		return err
+	}
+	if scopedOwnerID != "" {
+		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
+			return sql.ErrNoRows
+		}
+	}
+	return nil
 }
 
 // ListByOwner returns all notes for an owner.

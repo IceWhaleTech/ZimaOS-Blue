@@ -307,7 +307,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: '디렉터리 승인 시간이 초과되어 명령 실행이 차단되었습니다. 디렉터리를 승인한 뒤 다시 시도해 주세요.',
+    execDirectoryApprovalTimeout:
+      '디렉터리 승인 시간이 초과되어 명령 실행이 차단되었습니다. 디렉터리를 승인한 뒤 다시 시도해 주세요.',
     streamProgress: {
       requestAccepted: '요청을 받았습니다. 응답을 준비하는 중...',
       generating: '응답 생성 중...',
@@ -2445,12 +2446,13 @@ export default {
       },
       alertDescription: '이것은 데모용 알림입니다.',
     },
-  
+
     toasts: {
       memorySavedTitle: '새 콘텐츠를 기억했어요',
       memorySavedMessage: '대화에서 메모리를 추출했어요',
       manageMemory: '메모리 관리',
-    },},
+    },
+  },
   automation: {
     ...enUS.automation,
     title: '자동화',
@@ -3529,7 +3531,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: '채팅 데이터',
-    chatDataDescription: '한 곳에서 채팅 기록과 관련 데이터를 가져오기, 내보내기, 정리할 수 있습니다.',
+    chatDataDescription:
+      '한 곳에서 채팅 기록과 관련 데이터를 가져오기, 내보내기, 정리할 수 있습니다.',
     manageData: '데이터 관리',
     cleanupPreviewFailed: '정리 미리보기에 실패했습니다',
     cleanupFailed: '데이터 정리에 실패했습니다',
@@ -3562,10 +3565,40 @@ export default {
     typeToConfirm: '확인하려면 "{text}"을(를) 입력하세요',
     dataExported: '데이터가 내보내졌습니다',
     exportFailed: '데이터 내보내기 실패',
+    export: '사용자 데이터 내보내기',
+    import: '사용자 데이터 가져오기',
+    importDescription: '이전에 내보낸 데이터를 가져옵니다. 내보낼 때 사용한 비밀번호가 필요합니다.',
+    password: '비밀번호',
+    passwordMismatch: '비밀번호가 일치하지 않습니다',
+    exportButton: '데이터 내보내기',
+    importButton: '데이터 가져오기',
+    exporting: '내보내는 중...',
+    importing: '가져오는 중...',
+    exportSuccess: '데이터를 성공적으로 내보냈습니다',
+    importSuccess: '{conversations}개의 대화와 {messages}개의 메시지를 가져왔습니다',
+    tabs: {
+      export: '내보내기',
+      import: '가져오기',
+      cleanup: '정리',
+      retention: '모니터링',
+    },
     retention: {
       ...enUS.userdata.retention,
+      title: '보안 데이터 보존',
+      description:
+        '자동 정리 전에 보안 모니터링 데이터(세션, 이벤트, 알림)를 보존하는 기간을 설정합니다.',
+      storageInfo: '현재 저장 사용량',
+      sessions: '세션',
+      events: '이벤트',
+      alerts: '알림',
+      policy: '보존 정책',
+      sessionsRetention: '세션 보존',
+      eventsRetention: '이벤트 보존',
+      alertsRetention: '알림 보존',
+      days: '일',
       totalRecords: '전체 모니터링 레코드',
-      policyHint: '각 데이터 유형은 1~365일을 지원합니다. 보존 기간이 짧을수록 저장 공간이 줄고, 길수록 감사와 문제 해결에 유리합니다.',
+      policyHint:
+        '각 데이터 유형은 1~365일을 지원합니다. 보존 기간이 짧을수록 저장 공간이 줄고, 길수록 감사와 문제 해결에 유리합니다.',
       daysRange: '허용 범위: 1-365일',
       sessionsHint: 'Agent 세션 수명 주기와 런타임 메타데이터.',
       eventsHint: '도구 호출, 실행 추적, 감사 이벤트.',
@@ -3580,7 +3613,8 @@ export default {
       title: '데이터 정리',
       description: '선택한 데이터를 영구적으로 삭제합니다. 이 작업은 되돌릴 수 없습니다.',
       warning: '위험 작업',
-      warningDetail: '삭제된 데이터는 복구할 수 없습니다. 백업이 필요하면 먼저 데이터를 내보내세요.',
+      warningDetail:
+        '삭제된 데이터는 복구할 수 없습니다. 백업이 필요하면 먼저 데이터를 내보내세요.',
       selectData: '삭제할 데이터 선택',
       chatHistory: '채팅 기록',
       chatHistoryDesc: '모든 대화와 메시지',
@@ -3613,7 +3647,7 @@ export default {
       confirmDelete: '삭제 확인',
       deleting: '삭제 중...',
     },
-  
+
     memory: {
       ...enUS.userdata.memory,
       title: '메모리 관리',
@@ -3636,7 +3670,7 @@ export default {
       modeAppendDesc: '가져온 메모리를 기존 메모리에 추가합니다',
       modeReplaceDesc: '가져오기 전에 기존 메모리를 모두 삭제합니다',
     },
-},
+  },
   mermaid: {
     ...enUS.mermaid,
     loading: '다이어그램 로딩 중...',

@@ -15,7 +15,36 @@ func newPPTService(manager *mediagen.Manager, storage *mediagen.MediaStorage, re
 	if manager == nil || storage == nil {
 		return nil
 	}
-	return pptServiceAdapter{service: ppt.NewService(manager, storage, pptReviewerAdapter{tool: reviewer})}
+	return pptServiceAdapter{service: ppt.NewService(pptGeneratorAdapter{manager: manager}, storage, pptReviewerAdapter{tool: reviewer})}
+}
+
+type pptGeneratorAdapter struct {
+	manager *mediagen.Manager
+}
+
+func (a pptGeneratorAdapter) HasImageProviders() bool {
+	return a.manager != nil && a.manager.HasImageProviders()
+}
+
+func (a pptGeneratorAdapter) Models() []mediagen.MediaModelInfo {
+	if a.manager == nil {
+		return nil
+	}
+	return a.manager.Models()
+}
+
+func (a pptGeneratorAdapter) CreateTask(ctx context.Context, req *mediagen.MediaRequest, messageID, category, source string) (*mediagen.MediaTask, error) {
+	if a.manager == nil {
+		return nil, errors.New("ppt slide-asset generator is not available")
+	}
+	return a.manager.CreateTask(ctx, req, messageID, category, source)
+}
+
+func (a pptGeneratorAdapter) WaitForTask(ctx context.Context, taskID string) (*mediagen.MediaTask, error) {
+	if a.manager == nil {
+		return nil, errors.New("ppt slide-asset generator is not available")
+	}
+	return a.manager.WaitForTask(ctx, taskID)
 }
 
 type pptServiceAdapter struct {

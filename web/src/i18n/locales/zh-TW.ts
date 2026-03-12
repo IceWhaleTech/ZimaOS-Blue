@@ -767,7 +767,8 @@ export default {
   },
   settings: {
     ...enUS.settings,
-    llmApiKeyRequired: '請先設定 API Key，再開啟 LLM Provider 頁面。',
+    llmApiKeyRequired: '請先配置大型語言模型供應商。',
+    llmProviderSetupLink: '配置大型語言模型供應商',
     agentReflection: {
       ...enUS.settings.agentReflection,
       title: '自動反思',

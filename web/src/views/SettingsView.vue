@@ -32,7 +32,18 @@ const localeStore = useLocaleStore()
 const themeStore = useThemeStore()
 const { isTauri, setCloseBehavior } = useTauri()
 
-const saveStatus = ref<string | null>(null)
+interface SaveStatusAction {
+  label: string
+  handler: () => void
+}
+
+interface SaveStatusToast {
+  message: string
+  action?: SaveStatusAction
+}
+
+const saveStatus = ref<SaveStatusToast | null>(null)
+let saveStatusTimer: ReturnType<typeof setTimeout> | null = null
 
 function themeStyleLabel(style: { id: string; labelKey: string }): string {
   return te(style.labelKey) ? t(style.labelKey) : style.id
@@ -84,11 +95,28 @@ const backupsLoading = ref(false)
 const backupCreating = ref(false)
 const backupRestoring = ref<string | null>(null)
 
-function showSaveStatus(message: string) {
-  saveStatus.value = message
-  setTimeout(() => {
+function clearSaveStatus() {
+  if (saveStatusTimer) {
+    clearTimeout(saveStatusTimer)
+    saveStatusTimer = null
+  }
+  saveStatus.value = null
+}
+
+function showSaveStatus(message: string, action?: SaveStatusAction) {
+  if (saveStatusTimer) {
+    clearTimeout(saveStatusTimer)
+  }
+  saveStatus.value = { message, action }
+  saveStatusTimer = setTimeout(() => {
     saveStatus.value = null
-  }, 2000)
+    saveStatusTimer = null
+  }, action ? 6000 : 2000)
+}
+
+function openLlmTabFromToast() {
+  activeTab.value = 'llm'
+  clearSaveStatus()
 }
 
 async function handleLocaleChange(locale: string) {
@@ -358,7 +386,13 @@ async function switchTab(tab: TabType) {
   if (tab === 'llm') {
     const allowed = await canOpenLLMTab()
     if (!allowed) {
-      showSaveStatus(t('settings.llmApiKeyRequired', '请先配置 API Key，再打开 LLM Provider 页面'))
+      showSaveStatus(
+        t('settings.llmApiKeyRequired', '请先配置大语言模型提供商。'),
+        {
+          label: t('settings.llmProviderSetupLink', '配置大语言模型提供商'),
+          handler: openLlmTabFromToast,
+        },
+      )
       activeTab.value = 'general'
       const rawCurrentTab = route.query.tab
       const currentTab = Array.isArray(rawCurrentTab) ? rawCurrentTab[0] : rawCurrentTab
@@ -463,6 +497,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  clearSaveStatus()
   stopSmallModelPoll()
 })
 </script>
@@ -475,9 +510,17 @@ onUnmounted(() => {
     <Transition name="notification">
       <div
         v-if="saveStatus"
-        class="fixed top-20 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-xl z-[9999]"
+        class="fixed top-20 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-xl z-[9999] flex items-center gap-2"
       >
-        {{ saveStatus }}
+        <span>{{ saveStatus.message }}</span>
+        <button
+          v-if="saveStatus.action"
+          type="button"
+          class="underline underline-offset-2 hover:text-green-100 transition-colors cursor-pointer"
+          @click="saveStatus.action.handler"
+        >
+          {{ saveStatus.action.label }}
+        </button>
       </div>
     </Transition>
 
@@ -1144,30 +1187,18 @@ onUnmounted(() => {
     <!-- User Data Tab -->
     <div v-if="activeTab === 'userdata'" class="space-y-6">
       <!-- Memory Management -->
-      <MemoryManager @status-change="showSaveStatus" />
+      <MemoryManager
+        class="mx-auto w-full max-w-6xl"
+        :memory-recall-mode="settingsStore.memoryRecallMode"
+        @status-change="showSaveStatus"
+        @memory-recall-mode-change="handleMemoryRecallModeChange"
+      />
 
-      <!-- Memory Recall Mode -->
-      <div class="glass-card p-4">
-        <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('settings.memoryRecallMode.title') }}</label>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">{{ t('settings.memoryRecallMode.description') }}</p>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <button
-            v-for="mode in ['aggressive', 'balanced', 'quality'] as const"
-            :key="mode"
-            class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-left"
-            :class="settingsStore.memoryRecallMode === mode
-              ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white'
-              : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700/60'"
-            @click="handleMemoryRecallModeChange(mode)"
-          >
-            <div class="font-medium">{{ t(`settings.memoryRecallMode.options.${mode}.label`) }}</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t(`settings.memoryRecallMode.options.${mode}.hint`) }}</div>
-          </button>
-        </div>
-      </div>
+      <UserDataExport class="mx-auto w-full max-w-6xl" @status-change="showSaveStatus" />
 
       <!-- Backup -->
       <BackupManager
+        class="mx-auto w-full max-w-6xl"
         :backups="backups"
         :loading="backupsLoading"
         :restoring="backupRestoring !== null"
@@ -1177,7 +1208,6 @@ onUnmounted(() => {
         @download="onBackupDownload"
       />
 
-      <UserDataExport @status-change="showSaveStatus" />
     </div>
 
   </div>

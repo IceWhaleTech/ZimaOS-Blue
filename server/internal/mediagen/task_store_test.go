@@ -52,6 +52,33 @@ func TestTaskStore_CreateAndGet(t *testing.T) {
 	}
 }
 
+func TestTaskStore_GetScopedByUser(t *testing.T) {
+	db := newTestDB(t)
+	store, err := NewTaskStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.Create(&PersistentTask{ID: "task-scope", UserID: "user-a", Status: TaskStatusPending, Type: MediaTypeImage, Category: "t2i"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.Get("task-scope", "user-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.UserID != "user-a" {
+		t.Fatalf("got = %#v, want user-a task", got)
+	}
+
+	if _, err := store.Get("task-scope", "user-b"); err == nil {
+		t.Fatal("expected scoped miss for other user")
+	}
+	if _, err := store.Get("task-scope", ""); err == nil {
+		t.Fatal("expected scoped miss for anonymous/public scope")
+	}
+}
+
 func TestTaskStore_UpdateStatus(t *testing.T) {
 	db := newTestDB(t)
 	store, err := NewTaskStore(db)
@@ -140,23 +167,34 @@ func TestTaskStore_GetByMessageID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, id := range []string{"a1", "a2", "b1"} {
-		msgID := "msg-A"
-		if id == "b1" {
-			msgID = "msg-B"
-		}
-		pt := &PersistentTask{ID: id, MessageID: msgID, Status: TaskStatusPending, Type: MediaTypeImage, Category: "t2i"}
+	for _, tc := range []struct {
+		id, msgID, userID string
+	}{
+		{"a1", "msg-A", "user-a"},
+		{"a2", "msg-A", "user-a"},
+		{"a3", "msg-A", "user-b"},
+		{"b1", "msg-B", "user-b"},
+	} {
+		pt := &PersistentTask{ID: tc.id, UserID: tc.userID, MessageID: tc.msgID, Status: TaskStatusPending, Type: MediaTypeImage, Category: "t2i"}
 		if err := store.Create(pt); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	tasks, err := store.GetByMessageID("msg-A")
+	tasks, err := store.GetByMessageID("msg-A", "user-a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(tasks) != 2 {
 		t.Errorf("GetByMessageID returned %d tasks, want 2", len(tasks))
+	}
+
+	otherTasks, err := store.GetByMessageID("msg-A", "user-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(otherTasks) != 1 || otherTasks[0].ID != "a3" {
+		t.Fatalf("otherTasks = %#v, want only a3", otherTasks)
 	}
 }
 
@@ -192,5 +230,34 @@ func TestPersistentTask_ToMediaTask(t *testing.T) {
 	}
 	if mt.Response != nil && len(mt.Response.Data) != 1 {
 		t.Errorf("Response.Data length = %d, want 1", len(mt.Response.Data))
+	}
+}
+
+func TestTaskStore_GetStatsScopedByUser(t *testing.T) {
+	db := newTestDB(t)
+	store, err := NewTaskStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		id, userID, model string
+	}{
+		{"s1", "user-a", "m1"},
+		{"s2", "user-b", "m2"},
+	} {
+		pt := &PersistentTask{ID: tc.id, UserID: tc.userID, Status: TaskStatusSucceeded, Type: MediaTypeImage, Category: "t2i", Model: tc.model, Response: `{"created":1,"data":[{"url":"http://x"}]}`}
+		if err := store.Create(pt); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.UpdateStatus(tc.id, TaskStatusSucceeded, 1, "", pt.Response); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats, err := store.GetStats("user-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Succeeded != 1 || stats.TotalTasks != 1 {
+		t.Fatalf("stats = %#v, want only one user-a task", stats)
 	}
 }

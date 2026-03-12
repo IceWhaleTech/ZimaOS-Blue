@@ -1135,7 +1135,7 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 			messages = cached
 		} else {
 			var err error
-			messages, err = h.store.GetMessages(ctx, params.ConvID, 50, 0)
+			messages, err = h.store.GetRecentMessages(ctx, params.ConvID, 50)
 			if err != nil {
 				logger.Warn().Err(err).Str("conv_id", params.ConvID).Msg("[context] failed to fetch messages")
 				return ContextStrategyResult{Tier: TierNoHistory}

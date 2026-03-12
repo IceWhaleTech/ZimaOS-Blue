@@ -2,11 +2,19 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { memoryApi, type MemorySearchResult, type MemoryStats } from '@/api/memory'
+import type { MemoryRecallMode } from '@/stores/settings'
 
 const { t } = useI18n()
 
+const props = withDefaults(defineProps<{
+  memoryRecallMode?: MemoryRecallMode
+}>(), {
+  memoryRecallMode: 'balanced',
+})
+
 const emit = defineEmits<{
   (e: 'status-change', message: string): void
+  (e: 'memory-recall-mode-change', mode: MemoryRecallMode): void
 }>()
 
 const searchResults = ref<MemorySearchResult[]>([])
@@ -96,6 +104,11 @@ function clearSearch() {
 function resetComposer() {
   addContent.value = ''
   addTags.value = ''
+}
+
+function handleMemoryRecallModeSelect(mode: MemoryRecallMode) {
+  if (mode === props.memoryRecallMode) return
+  emit('memory-recall-mode-change', mode)
 }
 
 async function addMemory() {
@@ -289,9 +302,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden">
-    <div class="px-6 py-5 border-b border-gray-200 dark:border-gray-700">
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('memory.title') }}</h2>
           <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ t('memory.description') }}</p>
@@ -299,14 +312,14 @@ onBeforeUnmount(() => {
         <div class="flex flex-wrap items-center gap-2">
           <button
             data-testid="memory-toggle-composer"
-            class="px-4 py-2 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
+            class="px-3.5 py-1.5 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
             @click="showComposer = !showComposer"
           >
             {{ t('memory.add') }}
           </button>
           <button
             data-testid="memory-open-export-import"
-            class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors"
+            class="px-3.5 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors"
             @click="showExportImportModal = true"
           >
             {{ t('userdata.memory.title') }}
@@ -314,20 +327,20 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-4 py-3">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
+        <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-3 py-2.5">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('memory.totalMemories') }}</div>
-          <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ displayCount }}</div>
+          <div class="text-base font-semibold text-gray-900 dark:text-white">{{ displayCount }}</div>
         </div>
-        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-4 py-3">
+        <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-3 py-2.5">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('memory.totalSize') }}</div>
-          <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ totalSizeText }}</div>
+          <div class="text-base font-semibold text-gray-900 dark:text-white">{{ totalSizeText }}</div>
         </div>
-        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-4 py-3">
+        <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-3 py-2.5">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('memory.oldest') }}</div>
           <div class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ formatDate(stats?.oldest_chunk) }}</div>
         </div>
-        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-4 py-3">
+        <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-3 py-2.5">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('memory.newest') }}</div>
           <div class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ formatDate(stats?.newest_chunk) }}</div>
         </div>
@@ -335,7 +348,7 @@ onBeforeUnmount(() => {
 
       <div
         v-if="operationMessage"
-        class="mt-4 rounded-lg px-3 py-2 text-sm border"
+        class="mt-3 rounded-lg px-3 py-2 text-sm border"
         :class="operationMessage.type === 'success'
           ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300'
           : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300'"
@@ -345,14 +358,34 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="grid grid-cols-1 xl:grid-cols-12 gap-0">
-      <section class="xl:col-span-4 border-b xl:border-b-0 xl:border-r border-gray-200 dark:border-gray-700 p-6 space-y-4 bg-gray-50/70 dark:bg-gray-900/10">
-        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+      <section class="xl:col-span-3 border-b xl:border-b-0 xl:border-r border-gray-200 dark:border-gray-700 p-5 space-y-3 bg-gray-50/70 dark:bg-gray-900/10">
+        <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3.5">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('settings.memoryRecallMode.title') }}</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('settings.memoryRecallMode.description') }}</p>
+          <div class="mt-3 grid grid-cols-1 gap-2">
+            <button
+              v-for="mode in ['aggressive', 'balanced', 'quality'] as const"
+              :key="mode"
+              :data-testid="`memory-recall-mode-${mode}`"
+              class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-left"
+              :class="props.memoryRecallMode === mode
+                ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white'
+                : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700/60'"
+              @click="handleMemoryRecallModeSelect(mode)"
+            >
+              <div class="font-medium">{{ t(`settings.memoryRecallMode.options.${mode}.label`) }}</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t(`settings.memoryRecallMode.options.${mode}.hint`) }}</div>
+            </button>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3.5">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('memory.settingsTitle') }}</h3>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('memory.searchHint') }}</p>
-          <div class="mt-3 space-y-2">
+          <div class="mt-2.5 space-y-2">
             <button
               data-testid="memory-prune"
-              class="w-full px-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors disabled:opacity-50"
+              class="w-full px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors disabled:opacity-50"
               :disabled="loading || !hasMemories"
               @click="pruneMemories"
             >
@@ -360,7 +393,7 @@ onBeforeUnmount(() => {
             </button>
             <button
               data-testid="memory-open-clear"
-              class="w-full px-3 py-2 text-sm rounded-lg bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 transition-colors disabled:opacity-50"
+              class="w-full px-3 py-1.5 text-sm rounded-lg bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 transition-colors disabled:opacity-50"
               :disabled="loading || !hasMemories"
               @click="showClearConfirm = true"
             >
@@ -369,14 +402,14 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div v-if="showComposer" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 space-y-3">
+        <div v-if="showComposer" class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3.5 space-y-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('memory.addTitle') }}</h3>
           <div>
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{{ t('memory.content') }}</label>
             <textarea
               data-testid="memory-add-content"
               v-model="addContent"
-              rows="5"
+              rows="4"
               :placeholder="t('memory.contentPlaceholder')"
               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
             ></textarea>
@@ -407,7 +440,7 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section class="xl:col-span-8 p-6">
+      <section class="xl:col-span-9 p-5">
         <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
           <input
             data-testid="memory-search-input"
@@ -434,7 +467,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <div class="mt-4 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden min-h-[320px]">
+        <div class="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden min-h-[280px]">
           <div v-if="searching" class="p-8 text-center">
             <div class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"></div>
           </div>
@@ -443,8 +476,8 @@ onBeforeUnmount(() => {
             <div class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20">
               {{ searchResults.length }} {{ t('memory.totalMemories') }}
             </div>
-            <div class="max-h-[540px] overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700">
-              <article v-for="memory in searchResults" :key="memory.id" class="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+            <div class="max-h-[480px] overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700">
+              <article v-for="memory in searchResults" :key="memory.id" class="p-3.5 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0 flex-1">
                     <p class="text-sm text-gray-900 dark:text-white whitespace-pre-wrap break-words leading-relaxed">{{ memory.content }}</p>

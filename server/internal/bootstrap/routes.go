@@ -41,6 +41,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/gateway"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/inject"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mcp"
@@ -788,10 +789,49 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// Wire addMessage so DirectGenerate can persist messages into conversations.
 		// This makes media tasks visible from any device (server-side persistence).
+		resolveMediaConversationScope := func(ctx context.Context, conversationID string) (string, error) {
+			if s.MemoryStore == nil {
+				return "", nil
+			}
+			claims, _ := ctx.Value(auth.UserContextKey).(*auth.UserClaims)
+			if claims != nil && claims.Role != "admin" {
+				if _, err := s.MemoryStore.GetConversation(ctx, conversationID, claims.UserID); err != nil {
+					if err == memory.ErrNotFound {
+						return "", echo.NewHTTPError(http.StatusNotFound, "conversation not found")
+					}
+					return "", echo.NewHTTPError(http.StatusInternalServerError, "failed to get conversation")
+				}
+				return claims.UserID, nil
+			}
+			conv, err := s.MemoryStore.GetConversation(ctx, conversationID)
+			if err != nil {
+				if err == memory.ErrNotFound {
+					return "", echo.NewHTTPError(http.StatusNotFound, "conversation not found")
+				}
+				return "", echo.NewHTTPError(http.StatusInternalServerError, "failed to get conversation")
+			}
+			if claims == nil && strings.TrimSpace(conv.UserID) != "" {
+				return "", echo.NewHTTPError(http.StatusNotFound, "conversation not found")
+			}
+			return strings.TrimSpace(conv.UserID), nil
+		}
+		mediaHandler.SetResolveConversationScope(resolveMediaConversationScope)
+
 		mediaHandler.SetAddMessage(func(ctx context.Context, conversationID, role, content string) (string, error) {
+			scopedUserID, err := resolveMediaConversationScope(ctx, conversationID)
+			if err != nil {
+				return "", err
+			}
+			if s.MemoryStore != nil {
+				msg, err := s.MemoryStore.AddMessage(ctx, conversationID, memory.Message{Role: role, Content: content}, scopedUserID)
+				if err != nil {
+					return "", err
+				}
+				return msg.ID, nil
+			}
 			msgID := uuid.New().String()
 			now := time.Now().UTC().Format(time.RFC3339Nano)
-			_, err := deps.DB.ExecContext(ctx,
+			_, err = deps.DB.ExecContext(ctx,
 				`INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
 				msgID, conversationID, role, content, now,
 			)
@@ -802,7 +842,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		})
 
 		mediaHandler.SetUpdateTitle(func(ctx context.Context, conversationID, title string) error {
-			_, err := deps.DB.ExecContext(ctx,
+			scopedUserID, err := resolveMediaConversationScope(ctx, conversationID)
+			if err != nil {
+				return err
+			}
+			if s.MemoryStore != nil {
+				return s.MemoryStore.UpdateConversationTitle(ctx, conversationID, title, scopedUserID)
+			}
+			_, err = deps.DB.ExecContext(ctx,
 				`UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?`,
 				title, time.Now().UTC().Format(time.RFC3339Nano), conversationID,
 			)
@@ -810,6 +857,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		})
 
 		mediaGroup := v1.Group("/media")
+		if deps.AuthMiddleware != nil {
+			mediaGroup.Use(deps.AuthMiddleware.OptionalAuthenticate())
+		}
 		mediaHandler.RegisterRoutes(mediaGroup)
 		mediaHandler.RegisterStorageRoutes(e)
 		logger.Info("Media generation routes registered")
@@ -848,7 +898,16 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// Status querier
 		statusQuery := func(ctx context.Context, taskID string) (map[string]string, error) {
-			task, err := mediaManager.GetTask(taskID)
+			lookupUserID := strings.TrimSpace(tools.GetUserID(ctx))
+			var (
+				task *mediagen.MediaTask
+				err  error
+			)
+			if lookupUserID != "" {
+				task, err = mediaManager.GetTask(taskID, lookupUserID)
+			} else {
+				task, err = mediaManager.GetTask(taskID)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -1287,6 +1346,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		// Register command handler for scheduler skill
 		if svc := deps.CronHandler.GetService(); svc != nil {
+			svc.SetMessageInjector(inject.NewMemoryStoreInjector(s.MemoryStore))
+			if deps.SSEBroker != nil {
+				svc.SetEventPublisher(deps.SSEBroker)
+			}
 			tools.RegisterCronTool(s.ToolRegistry, cronToolAdapter{runtime: svc})
 			svc.RegisterCommandHandler(cron.CommandSecurityConfig{
 				Enabled:          true,
@@ -1451,16 +1514,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		} else {
 			deps.Closers = append(deps.Closers, convertService)
 			convertHandler = convertsvc.NewHandler(convertService, func(ctx context.Context, userID, conversationID string) error {
-				conv, err := s.MemoryStore.GetConversation(ctx, conversationID)
+				conv, err := s.MemoryStore.GetConversation(ctx, conversationID, userID)
 				if err != nil {
 					if err == memory.ErrNotFound {
 						return echo.NewHTTPError(http.StatusNotFound, "conversation not found")
 					}
 					return echo.NewHTTPError(http.StatusInternalServerError, "failed to get conversation")
 				}
-				if strings.TrimSpace(userID) != "" && conv.UserID != "" && conv.UserID != userID {
-					return echo.NewHTTPError(http.StatusNotFound, "conversation not found")
-				}
+				_ = conv
 				return nil
 			})
 			if deps.ChatHandler != nil {

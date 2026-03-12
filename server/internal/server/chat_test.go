@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
@@ -448,6 +449,97 @@ func TestDeriveContinuationContext_DoesNotForceWhenAwaitingWithoutDefault(t *tes
 	cc := deriveContinuationContext("好的", msgs)
 	if cc.Hint != "" || cc.ToolQuery != "" {
 		t.Fatalf("expected no continuation context, got hint=%q tool_query=%q", cc.Hint, cc.ToolQuery)
+	}
+}
+
+func TestDeriveContinuationContextFromRecentMessages_RejectsInterveningObjective(t *testing.T) {
+	now := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+	msgs := []memory.Message{
+		{Role: "user", Content: "请帮我评审 zimaspace.com/zimaos 的 UI", CreatedAt: now.Add(-10 * time.Minute)},
+		{Role: "assistant", Content: "- [ ] 访问 zimaspace.com/zimaos 并截取页面快照\n- [ ] 生成 UI 质量报告", CreatedAt: now.Add(-9 * time.Minute)},
+		{Role: "user", Content: "今天天气怎么样", CreatedAt: now.Add(-4 * time.Minute)},
+		{Role: "user", Content: "好的", CreatedAt: now},
+	}
+
+	cc := deriveContinuationContextFromRecentMessages("好的", msgs, now)
+	if cc.Hint != "" || cc.ToolQuery != "" {
+		t.Fatalf("expected stale continuation to be rejected, got hint=%q tool_query=%q", cc.Hint, cc.ToolQuery)
+	}
+}
+
+func TestDeriveContinuationContextFromRecentMessages_RejectsExpiredTask(t *testing.T) {
+	now := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+	msgs := []memory.Message{
+		{Role: "user", Content: "请帮我评审 zimaspace.com/zimaos 的 UI", CreatedAt: now.Add(-(shortAffirmativeContinuationTTL + 5*time.Minute))},
+		{Role: "assistant", Content: "- [ ] 访问 zimaspace.com/zimaos 并截取页面快照\n- [ ] 生成 UI 质量报告", CreatedAt: now.Add(-(shortAffirmativeContinuationTTL + 4*time.Minute))},
+		{Role: "user", Content: "继续", CreatedAt: now},
+	}
+
+	cc := deriveContinuationContextFromRecentMessages("继续", msgs, now)
+	if cc.Hint != "" || cc.ToolQuery != "" {
+		t.Fatalf("expected expired continuation to be rejected, got hint=%q tool_query=%q", cc.Hint, cc.ToolQuery)
+	}
+}
+
+func TestProcessChannelMessage_AffirmativeContinuationDoesNotReviveOldTaskAfterNewUserGoals(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	convID := channelConversationID("feishu", "chat_im_affirmative_ignore_old_task")
+	if _, err := store.CreateConversationWithID(context.Background(), convID, "feishu - user_1"); err != nil {
+		t.Fatalf("CreateConversationWithID: %v", err)
+	}
+	seed := []memory.Message{
+		{Role: "user", Content: "请帮我评审 zimaspace.com/zimaos 的 UI"},
+		{Role: "assistant", Content: "- [ ] 访问 zimaspace.com/zimaos 并截取页面快照\n- [ ] 生成 UI 质量报告"},
+	}
+	for i := 1; i <= 12; i++ {
+		seed = append(seed, memory.Message{Role: "user", Content: fmt.Sprintf("later-user-%02d", i)})
+	}
+	for _, msg := range seed {
+		if _, err := store.AddMessage(context.Background(), convID, msg); err != nil {
+			t.Fatalf("AddMessage: %v", err)
+		}
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-ignore-old-task",
+		responses: []llm.ChatResponse{{
+			ID:      "im-ignore-old-task-round-1",
+			Model:   "gpt-5.3-codex-spark",
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "收到。"},
+		}},
+	}
+	registry.Register(scripted)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+
+	if _, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_affirmative_ignore_old_task",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "好的",
+	}); err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+
+	firstReq, ok := scripted.RequestAt(0)
+	if !ok {
+		t.Fatalf("missing first request capture")
+	}
+	for _, msg := range firstReq.Messages {
+		if msg.Role != llm.RoleSystem {
+			continue
+		}
+		if strings.Contains(msg.Content, "Continuation target: resume the user's original objective: 请帮我评审 zimaspace.com/zimaos 的 UI") {
+			t.Fatalf("expected old UI review objective to be ignored after newer user goals, got %+v", firstReq.Messages)
+		}
 	}
 }
 
@@ -1541,6 +1633,56 @@ func TestChatHandlerListConversations(t *testing.T) {
 
 	if len(resp) != 2 {
 		t.Errorf("expected 2 conversations, got %d", len(resp))
+	}
+}
+
+func TestChatHandlerListConversationsPreviewIncludesLegacyData(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	if _, err := store.CreateConversation(context.Background(), "Legacy Conv"); err != nil {
+		t.Fatalf("CreateConversation legacy: %v", err)
+	}
+	if _, err := store.CreateConversation(context.Background(), "Preview Conv", "preview-user"); err != nil {
+		t.Fatalf("CreateConversation preview: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{
+		UserID: "preview-user",
+		Role:   "user",
+	}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListConversations(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp []map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(resp) != 2 {
+		t.Fatalf("expected 2 conversations, got %d", len(resp))
+	}
+
+	titles := map[string]bool{}
+	for _, conv := range resp {
+		if title, _ := conv["title"].(string); title != "" {
+			titles[title] = true
+		}
+	}
+	if !titles["Legacy Conv"] || !titles["Preview Conv"] {
+		t.Fatalf("expected preview list to include legacy and preview conversations, got %#v", titles)
 	}
 }
 

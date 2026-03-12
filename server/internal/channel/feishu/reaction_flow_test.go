@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -154,6 +155,100 @@ func TestChannel_OnMessageReceive_AddsAndRemovesTypingReaction(t *testing.T) {
 	}
 	if !strings.Contains(addReactionBody, `"emoji_type":"Typing"`) {
 		t.Fatalf("add reaction should use Typing emoji, got body: %s", addReactionBody)
+	}
+}
+
+func TestChannel_OnMessageReceive_DeduplicatesSameMessageID(t *testing.T) {
+	var (
+		mu    sync.Mutex
+		calls []string
+	)
+
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/reactions"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"msg":  "ok",
+				"data": map[string]any{"reaction_id": "reaction-1"},
+			})
+		case r.Method == http.MethodDelete && strings.HasSuffix(r.URL.Path, "/reactions/reaction-1"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"msg":  "ok",
+				"data": map[string]any{},
+			})
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	ch := New(channel.FeishuConfig{
+		Enabled:   true,
+		AppID:     "test-app-id",
+		AppSecret: "test-app-secret",
+	}, zap.NewNop())
+	ch.ctx = context.Background()
+	ch.client = newLarkClient("test-app-id", "test-app-secret")
+	ch.client.baseURL = srv.URL + "/open-apis"
+	ch.client.http = srv.Client()
+	ch.client.token = "test-token"
+	ch.client.tokenExp = time.Now().Add(time.Hour)
+
+	var handled atomic.Int64
+	ch.SetMessageHandler(func(ctx context.Context, msg channel.Message) (string, error) {
+		handled.Add(1)
+		return "", nil
+	})
+
+	payload := json.RawMessage(`{
+		"message": {
+			"message_id": "msg_dedupe_1",
+			"chat_id": "oc_test_chat",
+			"chat_type": "p2p",
+			"message_type": "text",
+			"content": "{\"text\":\"hello\"}",
+			"parent_id": ""
+		},
+		"sender": {
+			"sender_id": {
+				"open_id": "ou_test_user"
+			}
+		}
+	}`)
+
+	ch.onMessageReceive(context.Background(), payload)
+	ch.onMessageReceive(context.Background(), payload)
+
+	deadline := time.After(2 * time.Second)
+	for {
+		if handled.Load() == 1 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("expected exactly one handler invocation, got %d", handled.Load())
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+
+	mu.Lock()
+	got := append([]string(nil), calls...)
+	mu.Unlock()
+	reactionCalls := 0
+	for _, call := range got {
+		if call == "POST /open-apis/im/v1/messages/msg_dedupe_1/reactions" {
+			reactionCalls++
+		}
+	}
+	if reactionCalls != 1 {
+		t.Fatalf("expected one typing reaction request, got %d (%v)", reactionCalls, got)
 	}
 }
 

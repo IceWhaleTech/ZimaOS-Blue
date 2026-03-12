@@ -316,4 +316,36 @@ describe('SettingsView small-model controls', () => {
 
     wrapper.unmount()
   })
+
+  it('shows provider-setup toast action and opens llm tab when clicked', async () => {
+    routeTab = 'proxy'
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    const llmTabButton = wrapper.findAll('button')
+      .find(button => button.text().includes(i18n.global.t('settings.tab.llm')))
+    expect(llmTabButton).toBeTruthy()
+    await llmTabButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('请先配置大语言模型提供商。')
+    expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(false)
+
+    const setupLink = wrapper.findAll('button')
+      .find(button => button.text().includes('配置大语言模型提供商'))
+    expect(setupLink).toBeTruthy()
+    await setupLink!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(true)
+    wrapper.unmount()
+  })
 })

@@ -26,7 +26,7 @@ No external dependencies required. Uses built-in cron scheduler.
 ## Command Usage
 
 ```bash
-blue cron.create name=health_check schedule="*/10 * * * *" command="mgmt system.health" description="Check service health every 10 minutes"
+blue cron.create name=uptime_check schedule="*/10 * * * *" command="uptime" description="Check system uptime every 10 minutes"
 blue cron.list
 blue cron.trigger id=cron_abc123
 blue cron.disable id=cron_abc123
@@ -53,4 +53,6 @@ Cron format examples:
 
 ## Notes
 
+- `command` uses the shell command handler and is validated at creation time.
+- Currently allowed base commands are: `echo`, `date`, `uptime`, `df`, `free`, `ps`, `curl`, `wget`.
 - Use scheduler for recurring execution; for one-time reminders use `reminder`.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -92,6 +93,13 @@ func (s *Store) migrate() error {
 	return err
 }
 
+func resolveOwnerScope(ownerID []string) string {
+	if len(ownerID) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(ownerID[0])
+}
+
 // Create inserts a new push notification.
 func (s *Store) Create(ctx context.Context, r *PushNotification) error {
 	if r.CreatedAt.IsZero() {
@@ -109,12 +117,21 @@ func (s *Store) Create(ctx context.Context, r *PushNotification) error {
 }
 
 // Get retrieves a push notification by ID.
-func (s *Store) Get(ctx context.Context, id string) (*PushNotification, error) {
+func (s *Store) Get(ctx context.Context, id string, ownerID ...string) (*PushNotification, error) {
 	r := &PushNotification{}
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, owner_id, message, fire_at, recurring, session_id, cron_job_id, status, created_at, fired_at
-		 FROM push WHERE id = ?`, id,
-	).Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt)
+	scopedOwnerID := resolveOwnerScope(ownerID)
+	var err error
+	if scopedOwnerID != "" {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT id, owner_id, message, fire_at, recurring, session_id, cron_job_id, status, created_at, fired_at
+			 FROM push WHERE id = ? AND owner_id = ?`, id, scopedOwnerID,
+		).Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt)
+	} else {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT id, owner_id, message, fire_at, recurring, session_id, cron_job_id, status, created_at, fired_at
+			 FROM push WHERE id = ?`, id,
+		).Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt)
+	}
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

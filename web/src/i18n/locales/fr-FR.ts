@@ -185,7 +185,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'L\'exécution de la commande a été bloquée car l\'approbation du répertoire a expiré. Veuillez approuver le répertoire puis réessayer.',
+    execDirectoryApprovalTimeout:
+      "L'exécution de la commande a été bloquée car l'approbation du répertoire a expiré. Veuillez approuver le répertoire puis réessayer.",
     streamProgress: {
       requestAccepted: 'Requête reçue, préparation de la réponse...',
       generating: 'Génération de la réponse...',
@@ -517,7 +518,8 @@ export default {
   home: {
     ...enUS.home,
     welcome: 'Bienvenue sur ZimaOS Blue',
-    description: 'Un runtime stable, fiable et neutre pour vos assistants IA et vos automatisations',
+    description:
+      'Un runtime stable, fiable et neutre pour vos assistants IA et vos automatisations',
     loadingStatus: "Chargement de l'état du système...",
     status: 'Statut',
     version: 'Version',
@@ -2081,7 +2083,7 @@ export default {
         'Configurer la durée de conservation des données de surveillance (sessions, événements, alertes) avant le nettoyage automatique',
       configure: 'Configurer',
       storageInfo: 'Informations de stockage',
-      sessions: 'Sessions',
+      sessions: "Sessions de l'agent",
       events: 'Événements',
       alerts: 'Alertes',
       retentionPolicy: 'Politique de rétention',
@@ -2171,12 +2173,13 @@ export default {
       error: 'Erreur',
       unknown: 'Inconnu',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Nouveau contenu mémorisé',
       memorySavedMessage: 'Mémoire extraite de la conversation',
       manageMemory: 'Gérer la mémoire',
-    },},
+    },
+  },
   channels: {
     ...enUS.channels,
     title: 'Intégrations',
@@ -3223,17 +3226,19 @@ export default {
     importSuccess: '{conversations} conversations et {messages} messages importés',
     importFailed: "Échec de l'importation des données",
     chatDataTitle: 'Données de chat',
-    chatDataDescription: 'Importez, exportez et nettoyez l’historique des chats et les données associées depuis un seul endroit.',
+    chatDataDescription:
+      'Importez, exportez et nettoyez l’historique des chats et les données associées depuis un seul endroit.',
     manageData: 'Gérer les données',
-    cleanupPreviewFailed: 'Échec de l\'aperçu du nettoyage',
-    previewFailed: 'Échec de l\'aperçu des données',
+    cleanupPreviewFailed: "Échec de l'aperçu du nettoyage",
+    previewFailed: "Échec de l'aperçu des données",
     hasSettings: 'Contient des paramètres',
-    previewTitle: 'Aperçu de l\'importation',
+    previewTitle: "Aperçu de l'importation",
     chooseFile: 'Choisir un fichier',
-    importPasswordPlaceholder: 'Saisissez le mot de passe utilisé lors de l\'exportation',
+    importPasswordPlaceholder: "Saisissez le mot de passe utilisé lors de l'exportation",
     confirmPasswordPlaceholder: 'Saisissez à nouveau le mot de passe',
     formatEncryptedDesc: 'Format binaire entièrement chiffré. Sécurité renforcée.',
-    formatJsonDesc: 'Format lisible par l\'humain. Le mot de passe est utilisé pour vérifier l\'importation.',
+    formatJsonDesc:
+      "Format lisible par l'humain. Le mot de passe est utilisé pour vérifier l'importation.",
     retentionSaved: 'Paramètres de rétention enregistrés',
     cleanupSuccess: 'Nettoyage des données terminé',
     cleanupFailed: 'Échec du nettoyage des données',
@@ -3241,7 +3246,7 @@ export default {
       title: 'Rétention des données',
       description: 'Configurer la durée de conservation des données avant le nettoyage automatique',
       storageInfo: 'Informations de stockage',
-      sessions: 'Sessions',
+      sessions: "Sessions de l'agent",
       events: 'Événements',
       alerts: 'Alertes',
       policy: 'Politique de rétention',
@@ -3249,7 +3254,8 @@ export default {
       eventsRetention: 'Rétention des événements',
       alertsRetention: 'Rétention des alertes',
       totalRecords: 'Nombre total d’enregistrements de surveillance',
-      policyHint: 'Chaque type de données prend en charge de 1 à 365 jours. Une rétention plus courte réduit le stockage, tandis qu’une rétention plus longue aide pour les audits et le dépannage.',
+      policyHint:
+        'Chaque type de données prend en charge de 1 à 365 jours. Une rétention plus courte réduit le stockage, tandis qu’une rétention plus longue aide pour les audits et le dépannage.',
       daysRange: 'Plage autorisée : 1-365 jours',
       sessionsHint: 'Cycle de vie des sessions de l’agent et métadonnées d’exécution.',
       eventsHint: 'Appels d’outils, traces d’exécution et événements d’audit.',
@@ -3257,7 +3263,8 @@ export default {
       sessionsSuggested: 'Suggestion : 14-30 jours pour l’exploitation courante',
       eventsSuggested: 'Suggestion : 7-14 jours pour un volume d’audit équilibré',
       alertsSuggested: 'Suggestion : 30-90 jours pour l’analyse d’incident',
-      saveHint: 'Les nouvelles fenêtres de rétention s’appliqueront aux prochains nettoyages automatiques et manuels.',
+      saveHint:
+        'Les nouvelles fenêtres de rétention s’appliqueront aux prochains nettoyages automatiques et manuels.',
 
       days: 'jours',
     },

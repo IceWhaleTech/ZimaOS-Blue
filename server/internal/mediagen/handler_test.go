@@ -2,11 +2,15 @@ package mediagen
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	basetask "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 	"github.com/labstack/echo/v4"
 )
 
@@ -64,5 +68,207 @@ func TestHandlerDirectGenerateNoProviderReturnsActionableError(t *testing.T) {
 	}
 	if body["hint"] == "" {
 		t.Fatal("expected hint in response")
+	}
+}
+
+func TestHandlerGetTaskRejectsCrossUserAccess(t *testing.T) {
+	manager := NewManager(nil, nil, "")
+	manager.tasks.Store("task-user-a", &MediaTask{
+		BaseTask: basetask.BaseTask{ID: "task-user-a", Status: TaskStatusPending, CreatedAt: time.Now()},
+		UserID:   "user-a",
+		Type:     MediaTypeImage,
+	})
+	h := NewHandler(manager, nil, "")
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/tasks/task-user-a", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-b", Role: "user"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/api/v1/media/tasks/:id")
+	c.SetParamNames("id")
+	c.SetParamValues("task-user-a")
+
+	if err := h.GetTask(c); err != nil {
+		t.Fatalf("GetTask returned error: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandlerCancelTaskRejectsCrossUserAccess(t *testing.T) {
+	manager := NewManager(nil, nil, "")
+	manager.tasks.Store("task-user-a", &MediaTask{
+		BaseTask: basetask.BaseTask{ID: "task-user-a", Status: TaskStatusProcessing, CreatedAt: time.Now()},
+		UserID:   "user-a",
+		Type:     MediaTypeImage,
+	})
+	h := NewHandler(manager, nil, "")
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/media/tasks/task-user-a/cancel", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-b", Role: "user"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/api/v1/media/tasks/:id/cancel")
+	c.SetParamNames("id")
+	c.SetParamValues("task-user-a")
+
+	if err := h.CancelTask(c); err != nil {
+		t.Fatalf("CancelTask returned error: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404, body=%s", rec.Code, rec.Body.String())
+	}
+
+	task, err := manager.GetTask("task-user-a", "user-a")
+	if err != nil {
+		t.Fatalf("owner lookup failed: %v", err)
+	}
+	if task.Status != TaskStatusProcessing {
+		t.Fatalf("status = %q, want %q", task.Status, TaskStatusProcessing)
+	}
+}
+
+func TestHandlerRetryTaskRejectsCrossUserAccess(t *testing.T) {
+	manager := NewManager(nil, nil, "")
+	manager.tasks.Store("task-user-a", &MediaTask{
+		BaseTask: basetask.BaseTask{ID: "task-user-a", Status: TaskStatusFailed, CreatedAt: time.Now()},
+		UserID:   "user-a",
+		Type:     MediaTypeImage,
+		Model:    "fake-model",
+		Request: &MediaRequest{
+			Type:   MediaTypeImage,
+			Model:  "fake-model",
+			Prompt: "draw cat",
+		},
+	})
+	h := NewHandler(manager, nil, "")
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/media/tasks/task-user-a/retry", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-b", Role: "user"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/api/v1/media/tasks/:id/retry")
+	c.SetParamNames("id")
+	c.SetParamValues("task-user-a")
+
+	if err := h.RetryTask(c); err != nil {
+		t.Fatalf("RetryTask returned error: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandlerGetTaskByMessageScopesToUser(t *testing.T) {
+	db := newTestDB(t)
+	store, err := NewTaskStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		id, userID string
+	}{
+		{id: "task-a", userID: "user-a"},
+		{id: "task-b", userID: "user-b"},
+	} {
+		if err := store.Create(&PersistentTask{
+			ID:        tc.id,
+			UserID:    tc.userID,
+			MessageID: "msg-1",
+			Status:    TaskStatusPending,
+			Type:      MediaTypeImage,
+			Category:  "t2i",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	manager := NewManager(nil, nil, "")
+	manager.taskStore = store
+	h := NewHandler(manager, nil, "")
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/tasks/by-message/msg-1", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-b", Role: "user"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/api/v1/media/tasks/by-message/:message_id")
+	c.SetParamNames("message_id")
+	c.SetParamValues("msg-1")
+
+	if err := h.GetTaskByMessage(c); err != nil {
+		t.Fatalf("GetTaskByMessage returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Tasks []MediaTask `json:"tasks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(body.Tasks) != 1 || body.Tasks[0].ID != "task-b" {
+		t.Fatalf("tasks = %#v, want only task-b", body.Tasks)
+	}
+}
+
+func TestHandlerGetMediaStatsScopesToUser(t *testing.T) {
+	db := newTestDB(t)
+	store, err := NewTaskStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		id, userID string
+	}{
+		{id: "s-a", userID: "user-a"},
+		{id: "s-b", userID: "user-b"},
+	} {
+		pt := &PersistentTask{
+			ID:       tc.id,
+			UserID:   tc.userID,
+			Status:   TaskStatusSucceeded,
+			Type:     MediaTypeImage,
+			Category: "t2i",
+			Model:    "m1",
+			Response: `{"created":1,"data":[{"url":"http://x"}]}`,
+		}
+		if err := store.Create(pt); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.UpdateStatus(tc.id, TaskStatusSucceeded, 1, "", pt.Response); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	manager := NewManager(nil, nil, "")
+	manager.taskStore = store
+	h := NewHandler(manager, nil, "")
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/stats", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-b", Role: "user"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.GetMediaStats(c); err != nil {
+		t.Fatalf("GetMediaStats returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var stats MediaStats
+	if err := json.Unmarshal(rec.Body.Bytes(), &stats); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if stats.TotalTasks != 1 || stats.Succeeded != 1 {
+		t.Fatalf("stats = %#v, want one succeeded task for user-b", stats)
 	}
 }

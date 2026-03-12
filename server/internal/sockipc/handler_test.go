@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"go.uber.org/zap"
 )
 
@@ -146,5 +147,45 @@ func TestHandlerDefaultCategory(t *testing.T) {
 	sendRecv(t, conn, &Request{Cmd: "media.generate", Params: map[string]string{"prompt": "test"}})
 	if gotCategory != "t2i" {
 		t.Errorf("default category = %q, want t2i", gotCategory)
+	}
+}
+
+func TestHandlerMediaGeneratePropagatesBlueUserID(t *testing.T) {
+	var gotUserID string
+	gen := func(ctx context.Context, category, model, prompt string, params map[string]string) (string, error) {
+		gotUserID = tools.GetUserID(ctx)
+		return "task-1", nil
+	}
+	conn, cleanup := setupMediaServer(t, gen, nil)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "media.generate", Params: map[string]string{"prompt": "test", "__blue_user_id": "user-123"}})
+	if resp.Status != "ok" {
+		t.Fatalf("status = %q, error = %q", resp.Status, resp.Error)
+	}
+	if gotUserID != "user-123" {
+		t.Fatalf("user_id = %q, want user-123", gotUserID)
+	}
+}
+
+func TestHandlerMediaStatusPropagatesBlueUserID(t *testing.T) {
+	var gotUserID string
+	query := func(ctx context.Context, taskID string) (map[string]string, error) {
+		gotUserID = tools.GetUserID(ctx)
+		return map[string]string{
+			"task_id":     taskID,
+			"task_status": "succeeded",
+			"progress":    "1.0",
+		}, nil
+	}
+	conn, cleanup := setupMediaServer(t, nil, query)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "media.status", Params: map[string]string{"task_id": "task-123", "__blue_user_id": "user-123"}})
+	if resp.Status != "ok" {
+		t.Fatalf("status = %q, error = %q", resp.Status, resp.Error)
+	}
+	if gotUserID != "user-123" {
+		t.Fatalf("user_id = %q, want user-123", gotUserID)
 	}
 }

@@ -68,6 +68,7 @@ type MediaResponse struct {
 type MediaTask struct {
 	task.BaseTask
 
+	UserID    string         `json:"user_id,omitempty"`
 	MessageID string         `json:"message_id,omitempty"`
 	Type      MediaType      `json:"type"`
 	Category  string         `json:"category,omitempty"`

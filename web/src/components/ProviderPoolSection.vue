@@ -1450,7 +1450,7 @@ onMounted(() => {
                   <h3 class="font-medium text-gray-900 dark:text-white text-sm">{{ getProviderName(provider) }}</h3>
                   <span
                     v-if="provider.beta"
-                    class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 uppercase tracking-wide"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 uppercase tracking-wide"
                   >
                     {{ tr('providerPool.beta', 'Beta') }}
                   </span>
@@ -1569,7 +1569,7 @@ onMounted(() => {
                   <h2 class="font-bold text-gray-900 dark:text-white">{{ getProviderName(store.selectedProvider) }}</h2>
                   <span
                     v-if="store.selectedProvider.beta"
-                    class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 uppercase tracking-wide"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 uppercase tracking-wide"
                   >
                     {{ tr('providerPool.beta', 'Beta') }}
                   </span>

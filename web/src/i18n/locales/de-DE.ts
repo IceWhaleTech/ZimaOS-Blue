@@ -186,7 +186,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Die Befehlsausführung wurde blockiert, weil die Verzeichnisfreigabe abgelaufen ist. Bitte das Verzeichnis freigeben und erneut versuchen.',
+    execDirectoryApprovalTimeout:
+      'Die Befehlsausführung wurde blockiert, weil die Verzeichnisfreigabe abgelaufen ist. Bitte das Verzeichnis freigeben und erneut versuchen.',
     streamProgress: {
       requestAccepted: 'Anfrage erhalten, Antwort wird vorbereitet...',
       generating: 'Antwort wird generiert...',
@@ -514,7 +515,8 @@ export default {
   home: {
     ...enUS.home,
     welcome: 'Willkommen bei ZimaOS Blue',
-    description: 'Eine stabile, vertrauenswürdige und neutrale Runtime für Ihre KI-Assistenten und Automatisierungen',
+    description:
+      'Eine stabile, vertrauenswürdige und neutrale Runtime für Ihre KI-Assistenten und Automatisierungen',
     loadingStatus: 'Systemstatus wird geladen...',
     status: 'Status',
     version: 'Version',
@@ -525,7 +527,8 @@ export default {
   },
   settings: {
     ...enUS.settings,
-    llmApiKeyRequired: 'Bitte konfigurieren Sie einen API-Schlüssel, bevor Sie die LLM-Provider-Seite öffnen.',
+    llmApiKeyRequired:
+      'Bitte konfigurieren Sie einen API-Schlüssel, bevor Sie die LLM-Provider-Seite öffnen.',
     agentReflection: {
       ...enUS.settings.agentReflection,
       title: 'Automatische Reflexion',
@@ -2074,16 +2077,16 @@ export default {
     settings: {
       title: 'Aufbewahrung von Sicherheitsdaten',
       description:
-        'Konfigurieren, wie lange Sicherheitsüberwachungsdaten (Sitzungen, Ereignisse, Alerts) vor der automatischen Bereinigung aufbewahrt werden',
+        'Konfigurieren, wie lange Sicherheitsüberwachungsdaten (Sitzungen, Ereignisse, Warnungen) vor der automatischen Bereinigung aufbewahrt werden',
       configure: 'Konfigurieren',
       storageInfo: 'Speicherinformationen',
       sessions: 'Sitzungen',
       events: 'Ereignisse',
-      alerts: 'Alerts',
+      alerts: 'Warnungen',
       retentionPolicy: 'Aufbewahrungsrichtlinie',
       sessionsRetention: 'Sitzungsaufbewahrung',
       eventsRetention: 'Ereignisaufbewahrung',
-      alertsRetention: 'Alert-Aufbewahrung',
+      alertsRetention: 'Warnungsaufbewahrung',
       days: 'Tage',
       cleanupNow: 'Jetzt bereinigen',
       cleanupConfirm:
@@ -2167,12 +2170,13 @@ export default {
       error: 'Fehler',
       unknown: 'Unbekannt',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Neuer Inhalt gespeichert',
       memorySavedMessage: 'Erinnerung aus dem Gespräch extrahiert',
       manageMemory: 'Erinnerung verwalten',
-    },},
+    },
+  },
   channels: {
     ...enUS.channels,
     title: 'Integrationen',
@@ -3342,7 +3346,8 @@ export default {
     importFailed: 'Datenimport fehlgeschlagen',
     previewFailed: 'Datenvorschau fehlgeschlagen',
     chatDataTitle: 'Chat-Daten',
-    chatDataDescription: 'Importieren, exportieren und bereinigen Sie den Chatverlauf und zugehörige Daten an einem Ort.',
+    chatDataDescription:
+      'Importieren, exportieren und bereinigen Sie den Chatverlauf und zugehörige Daten an einem Ort.',
     manageData: 'Daten verwalten',
     retentionSaved: 'Aufbewahrungseinstellungen gespeichert',
     cleanupSuccess: 'Datenbereinigung erfolgreich abgeschlossen',
@@ -3361,7 +3366,8 @@ export default {
       eventsRetention: 'Ereignisaufbewahrung',
       alertsRetention: 'Warnungsaufbewahrung',
       totalRecords: 'Gesamte Überwachungsdatensätze',
-      policyHint: 'Jeder Datentyp unterstützt 1 bis 365 Tage. Kürzere Aufbewahrung spart Speicher, längere unterstützt Audits und Fehlersuche.',
+      policyHint:
+        'Jeder Datentyp unterstützt 1 bis 365 Tage. Kürzere Aufbewahrung spart Speicher, längere unterstützt Audits und Fehlersuche.',
       daysRange: 'Zulässiger Bereich: 1-365 Tage',
       sessionsHint: 'Lebenszyklus von Agent-Sitzungen und Laufzeitmetadaten.',
       eventsHint: 'Tool-Aufrufe, Ausführungsspuren und Audit-Ereignisse.',
@@ -3369,7 +3375,8 @@ export default {
       sessionsSuggested: 'Empfohlen: 14-30 Tage für den Routinebetrieb',
       eventsSuggested: 'Empfohlen: 7-14 Tage für ausgewogenes Audit-Volumen',
       alertsSuggested: 'Empfohlen: 30-90 Tage für die Vorfallanalyse',
-      saveHint: 'Neue Aufbewahrungsfenster gelten für kommende automatische und manuelle Bereinigungen.',
+      saveHint:
+        'Neue Aufbewahrungsfenster gelten für kommende automatische und manuelle Bereinigungen.',
 
       days: 'Tage',
     },

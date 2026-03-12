@@ -4,16 +4,23 @@ package cron
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/inject"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 )
+
+// EventPublisher pushes real-time events to connected clients.
+type EventPublisher interface {
+	Publish(userID string, eventType string, data any)
+}
 
 // JobStatus represents the status of a cron job.
 type JobStatus string
@@ -96,6 +103,8 @@ type Service struct {
 	jobs       map[string]*Job
 	executions map[string][]*JobExecution
 	handlers   map[string]JobHandler
+	injector   inject.MessageInjector
+	publisher  EventPublisher
 	mu         sync.RWMutex
 
 	// Semaphore for limiting concurrent jobs
@@ -103,6 +112,20 @@ type Service struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+}
+
+// SetMessageInjector wires the conversation message injector.
+func (s *Service) SetMessageInjector(inj inject.MessageInjector) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.injector = inj
+}
+
+// SetEventPublisher wires the SSE event publisher.
+func (s *Service) SetEventPublisher(pub EventPublisher) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.publisher = pub
 }
 
 // NewService creates a new cron service.
@@ -486,6 +509,7 @@ func (s *Service) executeJob(id string) {
 
 	if err != nil {
 		exec.Status = "failed"
+		exec.Result = result
 		exec.Error = err.Error()
 		job.FailCount++
 		s.logger.Error("job execution failed",
@@ -508,7 +532,11 @@ func (s *Service) executeJob(id string) {
 	if !entry.Next.IsZero() {
 		job.NextRunAt = &entry.Next
 	}
+	notifyJob := cloneJob(job)
+	notifyExec := cloneJobExecution(exec)
 	s.mu.Unlock()
+
+	s.notifyConversation(notifyJob, notifyExec)
 }
 
 // GetExecutions returns executions for a job.
@@ -534,6 +562,192 @@ func (s *Service) GetExecutions(jobID string, limit int) ([]*JobExecution, error
 	}
 
 	return result, nil
+}
+
+func cloneJob(job *Job) *Job {
+	if job == nil {
+		return nil
+	}
+	copy := *job
+	if job.Payload != nil {
+		copy.Payload = cloneInterfaceMap(job.Payload)
+	}
+	if job.Metadata != nil {
+		copy.Metadata = cloneInterfaceMap(job.Metadata)
+	}
+	return &copy
+}
+
+func cloneJobExecution(exec *JobExecution) *JobExecution {
+	if exec == nil {
+		return nil
+	}
+	copy := *exec
+	return &copy
+}
+
+func cloneInterfaceMap(src map[string]interface{}) map[string]interface{} {
+	if len(src) == 0 {
+		return nil
+	}
+	copy := make(map[string]interface{}, len(src))
+	for k, v := range src {
+		copy[k] = v
+	}
+	return copy
+}
+
+func (s *Service) notifyConversation(job *Job, exec *JobExecution) {
+	if job == nil || exec == nil {
+		return
+	}
+	conversationID := payloadString(job.Payload, "conversation_id", "conversationId", "session_id", "sessionId")
+	if conversationID == "" {
+		return
+	}
+
+	s.mu.RLock()
+	injector := s.injector
+	publisher := s.publisher
+	s.mu.RUnlock()
+	if injector == nil {
+		return
+	}
+
+	content, err := buildExecutionNotificationContent(job, exec)
+	if err != nil {
+		s.logger.Warn("failed to build cron execution notification",
+			zap.String("job_id", job.ID),
+			zap.String("exec_id", exec.ID),
+			zap.Error(err))
+		return
+	}
+
+	ownerID := payloadString(job.Payload, "user_id", "userId", "owner_id", "ownerId", "notify_user_id", "notifyUserId")
+	notifyCtx := context.WithoutCancel(s.ctx)
+	if _, err := injector.InjectMessage(notifyCtx, ownerID, conversationID, content); err != nil {
+		s.logger.Warn("failed to inject cron execution notification",
+			zap.String("job_id", job.ID),
+			zap.String("exec_id", exec.ID),
+			zap.String("conversation_id", conversationID),
+			zap.Error(err))
+		return
+	}
+
+	if publisher != nil && ownerID != "" {
+		publisher.Publish(ownerID, "conversation_updated", map[string]any{
+			"id": conversationID,
+		})
+	}
+}
+
+func buildExecutionNotificationContent(job *Job, exec *JobExecution) (string, error) {
+	status := "success"
+	message := fmt.Sprintf("Scheduled task %q completed.", strings.TrimSpace(job.Name))
+	if exec.Status == "failed" {
+		status = "error"
+		message = fmt.Sprintf("Scheduled task %q failed.", strings.TrimSpace(job.Name))
+	}
+
+	details := make([]map[string]interface{}, 0, 8)
+	appendDetail := func(label string, value interface{}, multiline bool) {
+		if value == nil {
+			return
+		}
+		switch typed := value.(type) {
+		case string:
+			if strings.TrimSpace(typed) == "" {
+				return
+			}
+		}
+		detail := map[string]interface{}{"label": label, "value": value}
+		if multiline {
+			detail["multiline"] = true
+		}
+		details = append(details, detail)
+	}
+
+	appendDetail("job", job.Name, false)
+	appendDetail("job_id", job.ID, false)
+	appendDetail("execution_id", exec.ID, false)
+	appendDetail("handler", job.Handler, false)
+	appendDetail("schedule", job.Schedule, false)
+	appendDetail("started_at", exec.StartedAt.Format(time.RFC3339), false)
+	if exec.EndedAt != nil {
+		appendDetail("ended_at", exec.EndedAt.Format(time.RFC3339), false)
+	}
+	if exec.Duration > 0 {
+		appendDetail("duration", exec.Duration.String(), false)
+	}
+	if exec.Error != "" {
+		appendDetail("error", exec.Error, true)
+	}
+	if resultValue := normalizeExecutionResult(exec.Result); resultValue != nil {
+		appendDetail("result", resultValue, true)
+	}
+
+	card := map[string]interface{}{
+		"type":    "result",
+		"id":      "cron-exec-" + strings.TrimSpace(exec.ID),
+		"title":   "Scheduled Task",
+		"status":  status,
+		"message": message,
+	}
+	if len(details) > 0 {
+		card["details"] = details
+	}
+
+	cardJSON, err := json.Marshal(card)
+	if err != nil {
+		return "", err
+	}
+	return "```typeless\n" + string(cardJSON) + "\n```", nil
+}
+
+func normalizeExecutionResult(result interface{}) interface{} {
+	if result == nil {
+		return nil
+	}
+	switch typed := result.(type) {
+	case string:
+		if strings.TrimSpace(typed) == "" {
+			return nil
+		}
+		return typed
+	case []byte:
+		if strings.TrimSpace(string(typed)) == "" {
+			return nil
+		}
+		return string(typed)
+	default:
+		return result
+	}
+}
+
+func payloadString(payload map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if payload == nil {
+			continue
+		}
+		if raw, ok := payload[key]; ok {
+			switch typed := raw.(type) {
+			case string:
+				if value := strings.TrimSpace(typed); value != "" {
+					return value
+				}
+			case []byte:
+				if value := strings.TrimSpace(string(typed)); value != "" {
+					return value
+				}
+			default:
+				value := strings.TrimSpace(fmt.Sprintf("%v", typed))
+				if value != "" && value != "<nil>" {
+					return value
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // normalizeSchedule converts a 5-field cron expression to 6-field format.

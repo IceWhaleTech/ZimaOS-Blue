@@ -2914,7 +2914,7 @@ export default {
     format: 'Formato di esportazione',
     formatJson: 'JSON',
     formatEncrypted: 'Crittografato',
-    password: 'Password',
+    password: 'Password di accesso',
     passwordPlaceholder: 'Inserisci password (min. 6 caratteri)',
     confirmPassword: 'Conferma password',
     passwordMismatch: 'Le password non corrispondono',

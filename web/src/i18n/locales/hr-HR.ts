@@ -1227,6 +1227,8 @@ export default {
     formatEncryptedDesc: 'Potpuno šifrirani binarni format. Veća sigurnost.',
     formatJsonDesc: 'Format čitljiv ljudima. Lozinka se koristi za provjeru uvoza.',
     retentionSaved: 'Postavke zadržavanja su spremljene',
+    exportDescription: 'Izvezite svoju povijest razgovora i postavke u datoteku. Datoteka će biti zaštićena lozinkom.',
+    importDescription: 'Uvezite prethodno izvezene podatke. Trebat će vam lozinka korištena pri izvozu.',
     tabs: {
       ...enUS.userdata.tabs,
       export: 'Izvoz',
@@ -1264,6 +1266,11 @@ export default {
       saveHint: 'Novi prozori zadržavanja primjenjuju se na nadolazeća automatska i ručna čišćenja.',
 
       days: 'dana',
+      storageInfo: 'Trenutna količina',
+      policy: 'Pravila zadržavanja',
+      sessionsRetention: 'Zapisi sesija',
+      eventsRetention: 'Zapisi događaja',
+      alertsRetention: 'Zapisi upozorenja',
     },
     cleanup: {
       ...enUS.userdata.cleanup,

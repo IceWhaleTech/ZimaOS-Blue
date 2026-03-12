@@ -1775,8 +1775,8 @@ export default {
     ...enUS.userdata,
     tabs: {
       ...enUS.userdata.tabs,
-      export: 'Export',
-      import: 'Import',
+      export: 'Exportovat',
+      import: 'Importovat',
       cleanup: 'Vyčištění',
       retention: 'Uchovávání',
     },
@@ -1838,6 +1838,9 @@ export default {
       saveHint: 'Nová retenční okna se použijí při příštím automatickém i ručním čištění.',
 
       days: 'dní',
+      sessionsRetention: 'Záznamy relací',
+      eventsRetention: 'Záznamy událostí',
+      alertsRetention: 'Záznamy upozornění',
     },
     cleanup: {
       ...enUS.userdata.cleanup,

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
@@ -27,24 +28,28 @@ func NewTaskStore(db *sql.DB) (*TaskStore, error) {
 func (s *TaskStore) migrate() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS media_tasks (
-			id          TEXT PRIMARY KEY,
-			message_id  TEXT NOT NULL DEFAULT '',
-			status      TEXT NOT NULL DEFAULT 'pending',
-			type        TEXT NOT NULL DEFAULT '',
-			category    TEXT NOT NULL DEFAULT '',
-			provider    TEXT NOT NULL DEFAULT '',
-			model       TEXT NOT NULL DEFAULT '',
-			upstream_id TEXT NOT NULL DEFAULT '',
-			request     TEXT NOT NULL DEFAULT '{}',
-			response    TEXT NOT NULL DEFAULT '',
-			error       TEXT NOT NULL DEFAULT '',
-			progress    REAL NOT NULL DEFAULT 0,
-			source      TEXT NOT NULL DEFAULT 'web',
-			created_at  TEXT NOT NULL,
-			updated_at  TEXT NOT NULL,
+			id           TEXT PRIMARY KEY,
+			user_id      TEXT NOT NULL DEFAULT '',
+			message_id   TEXT NOT NULL DEFAULT '',
+			status       TEXT NOT NULL DEFAULT 'pending',
+			type         TEXT NOT NULL DEFAULT '',
+			category     TEXT NOT NULL DEFAULT '',
+			provider     TEXT NOT NULL DEFAULT '',
+			model        TEXT NOT NULL DEFAULT '',
+			upstream_id  TEXT NOT NULL DEFAULT '',
+			request      TEXT NOT NULL DEFAULT '{}',
+			response     TEXT NOT NULL DEFAULT '',
+			error        TEXT NOT NULL DEFAULT '',
+			progress     REAL NOT NULL DEFAULT 0,
+			source       TEXT NOT NULL DEFAULT 'web',
+			created_at   TEXT NOT NULL,
+			updated_at   TEXT NOT NULL,
 			completed_at TEXT
 		)`)
 	if err != nil {
+		return err
+	}
+	if err := ensureMediaTaskColumns(s.db); err != nil {
 		return err
 	}
 	// Index for recovery: find non-terminal tasks
@@ -52,13 +57,43 @@ func (s *TaskStore) migrate() error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_media_tasks_message ON media_tasks(message_id)`)
+	if _, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_media_tasks_message ON media_tasks(message_id)`); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_media_tasks_user ON media_tasks(user_id)`)
 	return err
+}
+
+func ensureMediaTaskColumns(db *sql.DB) error {
+	existing := map[string]struct{}{}
+	rows, err := db.Query(`PRAGMA table_info(media_tasks)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull int
+		var dfltValue interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return err
+		}
+		existing[name] = struct{}{}
+	}
+	if _, ok := existing["user_id"]; !ok {
+		if _, err := db.Exec(`ALTER TABLE media_tasks ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // PersistentTask is the DB-serializable form of a media task.
 type PersistentTask struct {
 	ID          string     `json:"id"`
+	UserID      string     `json:"user_id,omitempty"`
 	MessageID   string     `json:"message_id"`
 	Status      TaskStatus `json:"status"`
 	Type        MediaType  `json:"type"`
@@ -76,16 +111,34 @@ type PersistentTask struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
+func normalizeMediaTaskScope(userID []string) (string, bool) {
+	if len(userID) == 0 {
+		return "", false
+	}
+	return strings.TrimSpace(userID[0]), true
+}
+
+func mediaTaskScopeClause(userID []string, column string) (string, []any) {
+	scopedUserID, scoped := normalizeMediaTaskScope(userID)
+	if !scoped {
+		return "", nil
+	}
+	if scopedUserID == "" {
+		return fmt.Sprintf(" AND %s = ''", column), nil
+	}
+	return fmt.Sprintf(" AND %s = ?", column), []any{scopedUserID}
+}
+
 // Create inserts a new task.
 func (s *TaskStore) Create(t *PersistentTask) error {
 	now := timeutil.NowTime().UTC()
 	t.CreatedAt = now
 	t.UpdatedAt = now
 	_, err := s.db.Exec(`
-		INSERT INTO media_tasks (id, message_id, status, type, category, provider, model,
+		INSERT INTO media_tasks (id, user_id, message_id, status, type, category, provider, model,
 			upstream_id, request, response, error, progress, source, created_at, updated_at, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.MessageID, string(t.Status), string(t.Type), t.Category, t.Provider, t.Model,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.UserID, t.MessageID, string(t.Status), string(t.Type), t.Category, t.Provider, t.Model,
 		t.UpstreamID, t.Request, t.Response, t.Error, t.Progress, t.Source,
 		task.TimeToSQL(t.CreatedAt), task.TimeToSQL(t.UpdatedAt), task.NullTimeToSQL(t.CompletedAt),
 	)
@@ -122,18 +175,26 @@ func (s *TaskStore) UpdateMessageID(taskID, messageID string) error {
 }
 
 // Get retrieves a single task by ID.
-func (s *TaskStore) Get(id string) (*PersistentTask, error) {
-	row := s.db.QueryRow(`SELECT id, message_id, status, type, category, provider, model,
+func (s *TaskStore) Get(id string, userID ...string) (*PersistentTask, error) {
+	clause, args := mediaTaskScopeClause(userID, "user_id")
+	query := `SELECT id, user_id, message_id, status, type, category, provider, model,
 		upstream_id, request, response, error, progress, source, created_at, updated_at, completed_at
-		FROM media_tasks WHERE id=?`, id)
+		FROM media_tasks WHERE id=?` + clause
+	queryArgs := []any{id}
+	queryArgs = append(queryArgs, args...)
+	row := s.db.QueryRow(query, queryArgs...)
 	return scanTask(row)
 }
 
 // GetByMessageID retrieves tasks associated with a message.
-func (s *TaskStore) GetByMessageID(messageID string) ([]*PersistentTask, error) {
-	rows, err := s.db.Query(`SELECT id, message_id, status, type, category, provider, model,
+func (s *TaskStore) GetByMessageID(messageID string, userID ...string) ([]*PersistentTask, error) {
+	clause, args := mediaTaskScopeClause(userID, "user_id")
+	query := `SELECT id, user_id, message_id, status, type, category, provider, model,
 		upstream_id, request, response, error, progress, source, created_at, updated_at, completed_at
-		FROM media_tasks WHERE message_id=? ORDER BY created_at DESC`, messageID)
+		FROM media_tasks WHERE message_id=?` + clause + ` ORDER BY created_at DESC`
+	queryArgs := []any{messageID}
+	queryArgs = append(queryArgs, args...)
+	rows, err := s.db.Query(query, queryArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +204,7 @@ func (s *TaskStore) GetByMessageID(messageID string) ([]*PersistentTask, error) 
 
 // ListPending returns all non-terminal tasks (for power-failure recovery).
 func (s *TaskStore) ListPending() ([]*PersistentTask, error) {
-	rows, err := s.db.Query(`SELECT id, message_id, status, type, category, provider, model,
+	rows, err := s.db.Query(`SELECT id, user_id, message_id, status, type, category, provider, model,
 		upstream_id, request, response, error, progress, source, created_at, updated_at, completed_at
 		FROM media_tasks WHERE status IN ('pending', 'processing') ORDER BY created_at ASC`)
 	if err != nil {
@@ -157,7 +218,7 @@ func scanTask(row *sql.Row) (*PersistentTask, error) {
 	t := &PersistentTask{}
 	var createdAt, updatedAt string
 	var completedAt sql.NullString
-	err := row.Scan(&t.ID, &t.MessageID, &t.Status, &t.Type, &t.Category, &t.Provider, &t.Model,
+	err := row.Scan(&t.ID, &t.UserID, &t.MessageID, &t.Status, &t.Type, &t.Category, &t.Provider, &t.Model,
 		&t.UpstreamID, &t.Request, &t.Response, &t.Error, &t.Progress, &t.Source,
 		&createdAt, &updatedAt, &completedAt)
 	if err != nil {
@@ -175,7 +236,7 @@ func scanTasks(rows *sql.Rows) ([]*PersistentTask, error) {
 		t := &PersistentTask{}
 		var createdAt, updatedAt string
 		var completedAt sql.NullString
-		err := rows.Scan(&t.ID, &t.MessageID, &t.Status, &t.Type, &t.Category, &t.Provider, &t.Model,
+		err := rows.Scan(&t.ID, &t.UserID, &t.MessageID, &t.Status, &t.Type, &t.Category, &t.Provider, &t.Model,
 			&t.UpstreamID, &t.Request, &t.Response, &t.Error, &t.Progress, &t.Source,
 			&createdAt, &updatedAt, &completedAt)
 		if err != nil {
@@ -200,6 +261,7 @@ func (t *PersistentTask) ToMediaTask() *MediaTask {
 			CreatedAt:   t.CreatedAt,
 			CompletedAt: t.CompletedAt,
 		},
+		UserID:     t.UserID,
 		Type:       t.Type,
 		Provider:   t.Provider,
 		Model:      t.Model,
@@ -225,19 +287,19 @@ func (t *PersistentTask) ToMediaTask() *MediaTask {
 
 // MediaStats holds aggregated media generation statistics.
 type MediaStats struct {
-	TotalTasks       int64              `json:"total_tasks"`
-	Succeeded        int64              `json:"succeeded"`
-	Failed           int64              `json:"failed"`
-	TotalCostUSD     float64            `json:"total_cost_usd"`
-	CostByModel      map[string]float64 `json:"cost_by_model,omitempty"`
-	TasksByType      map[string]int64   `json:"tasks_by_type,omitempty"`
-	TasksByCategory  map[string]int64   `json:"tasks_by_category,omitempty"`
-	TasksByProvider  map[string]int64   `json:"tasks_by_provider,omitempty"`
-	CostByProvider   map[string]float64 `json:"cost_by_provider,omitempty"`
+	TotalTasks      int64              `json:"total_tasks"`
+	Succeeded       int64              `json:"succeeded"`
+	Failed          int64              `json:"failed"`
+	TotalCostUSD    float64            `json:"total_cost_usd"`
+	CostByModel     map[string]float64 `json:"cost_by_model,omitempty"`
+	TasksByType     map[string]int64   `json:"tasks_by_type,omitempty"`
+	TasksByCategory map[string]int64   `json:"tasks_by_category,omitempty"`
+	TasksByProvider map[string]int64   `json:"tasks_by_provider,omitempty"`
+	CostByProvider  map[string]float64 `json:"cost_by_provider,omitempty"`
 }
 
 // GetStats aggregates media generation statistics from the task store.
-func (s *TaskStore) GetStats() (*MediaStats, error) {
+func (s *TaskStore) GetStats(userID ...string) (*MediaStats, error) {
 	stats := &MediaStats{
 		CostByModel:     make(map[string]float64),
 		TasksByType:     make(map[string]int64),
@@ -246,15 +308,22 @@ func (s *TaskStore) GetStats() (*MediaStats, error) {
 		CostByProvider:  make(map[string]float64),
 	}
 
+	clause, args := mediaTaskScopeClause(userID, "user_id")
+	queryRowWithScope := func(base string, dest *int64) {
+		row := s.db.QueryRow(base+clause, args...)
+		_ = row.Scan(dest)
+	}
+	queryWithScope := func(base string) (*sql.Rows, error) {
+		return s.db.Query(base+clause, args...)
+	}
+
 	// Count by status
-	row := s.db.QueryRow(`SELECT COUNT(*) FROM media_tasks WHERE status='succeeded'`)
-	_ = row.Scan(&stats.Succeeded)
-	row = s.db.QueryRow(`SELECT COUNT(*) FROM media_tasks WHERE status='failed'`)
-	_ = row.Scan(&stats.Failed)
+	queryRowWithScope(`SELECT COUNT(*) FROM media_tasks WHERE status='succeeded'`, &stats.Succeeded)
+	queryRowWithScope(`SELECT COUNT(*) FROM media_tasks WHERE status='failed'`, &stats.Failed)
 	stats.TotalTasks = stats.Succeeded + stats.Failed
 
 	// Count by type
-	rows, err := s.db.Query(`SELECT type, COUNT(*) FROM media_tasks WHERE status='succeeded' GROUP BY type`)
+	rows, err := queryWithScope(`SELECT type, COUNT(*) FROM media_tasks WHERE status='succeeded' GROUP BY type`)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -267,7 +336,7 @@ func (s *TaskStore) GetStats() (*MediaStats, error) {
 	}
 
 	// Count by category
-	rows3, err := s.db.Query(`SELECT category, COUNT(*) FROM media_tasks WHERE status='succeeded' AND category != '' GROUP BY category`)
+	rows3, err := queryWithScope(`SELECT category, COUNT(*) FROM media_tasks WHERE status='succeeded' AND category != '' GROUP BY category`)
 	if err == nil {
 		defer rows3.Close()
 		for rows3.Next() {
@@ -280,7 +349,7 @@ func (s *TaskStore) GetStats() (*MediaStats, error) {
 	}
 
 	// Count by provider
-	rows4, err := s.db.Query(`SELECT provider, COUNT(*) FROM media_tasks WHERE status='succeeded' AND provider != '' GROUP BY provider`)
+	rows4, err := queryWithScope(`SELECT provider, COUNT(*) FROM media_tasks WHERE status='succeeded' AND provider != '' GROUP BY provider`)
 	if err == nil {
 		defer rows4.Close()
 		for rows4.Next() {
@@ -293,7 +362,7 @@ func (s *TaskStore) GetStats() (*MediaStats, error) {
 	}
 
 	// Calculate cost from succeeded tasks
-	rows2, err := s.db.Query(`SELECT model, provider, response, type FROM media_tasks WHERE status='succeeded' AND response != ''`)
+	rows2, err := queryWithScope(`SELECT model, provider, response, type FROM media_tasks WHERE status='succeeded' AND response != ''`)
 	if err == nil {
 		defer rows2.Close()
 		for rows2.Next() {
@@ -326,6 +395,7 @@ func (s *TaskStore) GetStats() (*MediaStats, error) {
 func FromMediaTask(mt *MediaTask) *PersistentTask {
 	t := &PersistentTask{
 		ID:          mt.ID,
+		UserID:      mt.UserID,
 		MessageID:   mt.MessageID,
 		Status:      mt.Status,
 		Type:        mt.Type,

@@ -1437,7 +1437,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Wykonanie polecenia zostało zablokowane, ponieważ upłynął limit czasu zatwierdzenia katalogu. Zatwierdź katalog i spróbuj ponownie.',
+    execDirectoryApprovalTimeout:
+      'Wykonanie polecenia zostało zablokowane, ponieważ upłynął limit czasu zatwierdzenia katalogu. Zatwierdź katalog i spróbuj ponownie.',
     streamProgress: {
       requestAccepted: 'Otrzymano żądanie, przygotowuję odpowiedź...',
       generating: 'Generowanie odpowiedzi...',
@@ -1822,7 +1823,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: 'Dane czatu',
-    chatDataDescription: 'Importuj, eksportuj i czyść historię czatu oraz powiązane dane z jednego miejsca.',
+    chatDataDescription:
+      'Importuj, eksportuj i czyść historię czatu oraz powiązane dane z jednego miejsca.',
     manageData: 'Zarządzaj danymi',
     cleanupPreviewFailed: 'Podgląd czyszczenia nie powiódł się',
     cleanupFailed: 'Nie udało się wyczyścić danych',
@@ -1848,7 +1850,7 @@ export default {
     retentionSaved: 'Ustawienia retencji zapisane',
     tabs: {
       export: 'Eksport',
-      import: 'Import',
+      import: 'Importuj',
       cleanup: 'Czyszczenie',
       retention: 'Przechowywanie',
     },
@@ -1859,11 +1861,19 @@ export default {
     importButton: 'Importuj dane',
     exportSuccess: 'Dane wyeksportowane',
     importSuccess: 'Zaimportowano {conversations} rozmów i {messages} wiadomości',
+    exportDescription:
+      'Wyeksportuj historię czatu i ustawienia do pliku. Plik będzie chroniony hasłem.',
+    importDescription:
+      'Importuj wcześniej wyeksportowane dane. Będzie potrzebne hasło użyte podczas eksportu.',
+    passwordMismatch: 'Hasła nie są zgodne',
+    exporting: 'Eksportowanie...',
+    importing: 'Importowanie...',
     retention: {
       title: 'Przechowywanie danych',
       description: 'Skonfiguruj, jak długo dane są przechowywane przed automatycznym czyszczeniem',
       totalRecords: 'Łączna liczba rekordów monitoringu',
-      policyHint: 'Każdy typ danych obsługuje od 1 do 365 dni. Krótsza retencja zmniejsza zużycie miejsca, a dłuższa pomaga w audycie i diagnozowaniu problemów.',
+      policyHint:
+        'Każdy typ danych obsługuje od 1 do 365 dni. Krótsza retencja zmniejsza zużycie miejsca, a dłuższa pomaga w audycie i diagnozowaniu problemów.',
       daysRange: 'Dozwolony zakres: 1-365 dni',
       sessionsHint: 'Cykl życia sesji agenta i metadane środowiska wykonawczego.',
       eventsHint: 'Wywołania narzędzi, ślady wykonania i zdarzenia audytowe.',
@@ -1871,7 +1881,8 @@ export default {
       sessionsSuggested: 'Sugerowane: 14-30 dni dla rutynowej pracy',
       eventsSuggested: 'Sugerowane: 7-14 dni dla zrównoważonego wolumenu audytu',
       alertsSuggested: 'Sugerowane: 30-90 dni do przeglądu incydentów',
-      saveHint: 'Nowe okna retencji będą stosowane przy kolejnych automatycznych i ręcznych czyszczeniach.',
+      saveHint:
+        'Nowe okna retencji będą stosowane przy kolejnych automatycznych i ręcznych czyszczeniach.',
 
       days: 'dni',
     },
@@ -1948,12 +1959,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Zapamiętano nową treść',
       memorySavedMessage: 'Wyodrębniono pamięć z rozmowy',
       manageMemory: 'Zarządzaj pamięcią',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -2070,7 +2082,8 @@ export default {
   sandbox: { ...enUS.sandbox },
   home: {
     ...enUS.home,
-    description: 'Stabilne, godne zaufania i neutralne środowisko runtime dla Twoich asystentów AI i automatyzacji',
+    description:
+      'Stabilne, godne zaufania i neutralne środowisko runtime dla Twoich asystentów AI i automatyzacji',
   },
   brand: { ...enUS.brand },
   speech: {

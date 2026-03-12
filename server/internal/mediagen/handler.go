@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
 
@@ -18,13 +20,17 @@ type AddMessageFunc func(ctx context.Context, conversationID, role, content stri
 // UpdateTitleFunc is a function that updates a conversation's title.
 type UpdateTitleFunc func(ctx context.Context, conversationID, title string) error
 
+// ResolveConversationScopeFunc validates a conversation and returns the owning user scope.
+type ResolveConversationScopeFunc func(ctx context.Context, conversationID string) (userID string, err error)
+
 // Handler provides HTTP endpoints for media generation.
 type Handler struct {
-	manager     *Manager
-	storage     *MediaStorage
-	addMessage  AddMessageFunc
-	updateTitle UpdateTitleFunc
-	locale      string
+	manager                  *Manager
+	storage                  *MediaStorage
+	addMessage               AddMessageFunc
+	updateTitle              UpdateTitleFunc
+	resolveConversationScope ResolveConversationScopeFunc
+	locale                   string
 }
 
 // NewHandler creates a new media generation handler.
@@ -40,6 +46,33 @@ func (h *Handler) SetAddMessage(fn AddMessageFunc) {
 // SetUpdateTitle sets the function for updating conversation titles.
 func (h *Handler) SetUpdateTitle(fn UpdateTitleFunc) {
 	h.updateTitle = fn
+}
+
+// SetResolveConversationScope sets the function for validating a conversation and resolving its owner scope.
+func (h *Handler) SetResolveConversationScope(fn ResolveConversationScopeFunc) {
+	h.resolveConversationScope = fn
+}
+
+func mediaScopeArgs(c echo.Context) []string {
+	if claims := auth.GetUserFromContext(c); claims != nil {
+		if claims.Role == "admin" {
+			return nil
+		}
+		return []string{strings.TrimSpace(claims.UserID)}
+	}
+	return []string{""}
+}
+
+func mediaScopedContext(c echo.Context, fallbackUserID string) context.Context {
+	ctx := c.Request().Context()
+	if claims := auth.GetUserFromContext(c); claims != nil && strings.TrimSpace(claims.UserID) != "" && claims.Role != "admin" {
+		return ctx
+	}
+	fallbackUserID = strings.TrimSpace(fallbackUserID)
+	if fallbackUserID == "" {
+		return ctx
+	}
+	return tools.WithUserID(ctx, fallbackUserID)
 }
 
 func writeMediaRequestError(c echo.Context, err error) error {
@@ -171,7 +204,7 @@ func (h *Handler) GenerateVideo(c echo.Context) error {
 
 // GetTask handles GET /tasks/:id.
 func (h *Handler) GetTask(c echo.Context) error {
-	task, err := h.manager.GetTask(c.Param("id"))
+	task, err := h.manager.GetTask(c.Param("id"), mediaScopeArgs(c)...)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
@@ -184,7 +217,7 @@ func (h *Handler) StreamTask(c echo.Context) error {
 	taskID := c.Param("id")
 
 	// Verify task exists
-	if _, err := h.manager.GetTask(taskID); err != nil {
+	if _, err := h.manager.GetTask(taskID, mediaScopeArgs(c)...); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
@@ -208,7 +241,7 @@ func (h *Handler) StreamTask(c echo.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			task, err := h.manager.GetTask(taskID)
+			task, err := h.manager.GetTask(taskID, mediaScopeArgs(c)...)
 			if err != nil {
 				writeSSE(w, "error", map[string]string{"error": err.Error()})
 				return nil
@@ -331,7 +364,7 @@ func (h *Handler) streamGeneration(c echo.Context, req *MediaRequest) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			current, err := h.manager.GetTask(task.ID)
+			current, err := h.manager.GetTask(task.ID, mediaScopeArgs(c)...)
 			if err != nil {
 				writeSSE(w, "error", map[string]string{"error": err.Error()})
 				return nil
@@ -390,7 +423,7 @@ func (h *Handler) GetMediaStats(c echo.Context) error {
 			TasksByType: map[string]int64{},
 		})
 	}
-	stats, err := h.manager.taskStore.GetStats()
+	stats, err := h.manager.taskStore.GetStats(mediaScopeArgs(c)...)
 	if err != nil {
 		return writeMediaRequestError(c, err)
 	}
@@ -608,6 +641,17 @@ func (h *Handler) DirectGenerate(c echo.Context) error {
 		source = "web"
 	}
 
+	resolvedConversationUserID := ""
+	scopedCtx := c.Request().Context()
+	if req.ConversationID != "" && h.resolveConversationScope != nil {
+		var err error
+		resolvedConversationUserID, err = h.resolveConversationScope(scopedCtx, req.ConversationID)
+		if err != nil {
+			return err
+		}
+		scopedCtx = mediaScopedContext(c, resolvedConversationUserID)
+	}
+
 	// Set conversation title early — before task creation so it works even if generation fails.
 	if req.ConversationID != "" && h.updateTitle != nil {
 		locale := h.locale
@@ -621,11 +665,11 @@ func (h *Handler) DirectGenerate(c echo.Context) error {
 			promptSnippet = string(runes[:20]) + "..."
 		}
 		title := categoryLabel + ": " + promptSnippet
-		_ = h.updateTitle(c.Request().Context(), req.ConversationID, title)
+		_ = h.updateTitle(scopedCtx, req.ConversationID, title)
 	}
 
 	// Create persistent task and start async generation
-	task, err := h.manager.CreateTask(c.Request().Context(), mediaReq, req.MessageID, string(req.Category), source)
+	task, err := h.manager.CreateTask(scopedCtx, mediaReq, req.MessageID, string(req.Category), source)
 	if err != nil {
 		return writeMediaRequestError(c, err)
 	}
@@ -634,7 +678,7 @@ func (h *Handler) DirectGenerate(c echo.Context) error {
 	// This makes media tasks visible from any device — the assistant message contains the task_id marker.
 	var userMsgID, assistantMsgID string
 	if req.ConversationID != "" && h.addMessage != nil {
-		ctx := c.Request().Context()
+		ctx := scopedCtx
 
 		// Build user message: prompt + reference images (saved to local storage)
 		userContent := req.Prompt
@@ -726,7 +770,7 @@ func (h *Handler) GetTaskByMessage(c echo.Context) error {
 	if messageID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message_id is required"})
 	}
-	tasks, err := h.manager.GetTasksByMessage(messageID)
+	tasks, err := h.manager.GetTasksByMessage(messageID, mediaScopeArgs(c)...)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -742,7 +786,7 @@ func (h *Handler) RetryTask(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "task id is required"})
 	}
 
-	oldTask, err := h.manager.GetTask(taskID)
+	oldTask, err := h.manager.GetTask(taskID, mediaScopeArgs(c)...)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
 	}
@@ -758,7 +802,7 @@ func (h *Handler) RetryTask(c echo.Context) error {
 		oldTask.Request.Model = oldTask.Model
 	}
 
-	newTask, err := h.manager.CreateTask(c.Request().Context(), oldTask.Request, oldTask.MessageID, oldTask.Category, oldTask.Source)
+	newTask, err := h.manager.CreateTask(mediaScopedContext(c, oldTask.UserID), oldTask.Request, oldTask.MessageID, oldTask.Category, oldTask.Source)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -777,7 +821,7 @@ func (h *Handler) CancelTask(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "task id is required"})
 	}
 
-	if h.manager.CancelTask(taskID) {
+	if h.manager.CancelTask(taskID, mediaScopeArgs(c)...) {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success": true,
 			"task_id": taskID,

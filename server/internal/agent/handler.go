@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"database/sql"
 	"net/http"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
@@ -34,6 +35,14 @@ func getUserID(c echo.Context) string {
 		return claims.UserID
 	}
 	return ""
+}
+
+func (h *Handler) getScopedTask(c echo.Context, id string) (*Task, error) {
+	userID := getUserID(c)
+	if userID != "" {
+		return h.store.Get(c.Request().Context(), id, userID)
+	}
+	return h.store.Get(c.Request().Context(), id)
 }
 
 // CreateTask handles POST /api/v1/agent/tasks
@@ -70,7 +79,7 @@ func (h *Handler) ListTasks(c echo.Context) error {
 
 // GetTask handles GET /api/v1/agent/tasks/:id
 func (h *Handler) GetTask(c echo.Context) error {
-	task, err := h.store.Get(c.Request().Context(), c.Param("id"))
+	task, err := h.getScopedTask(c, c.Param("id"))
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
 	}
@@ -80,8 +89,11 @@ func (h *Handler) GetTask(c echo.Context) error {
 // CancelTask handles POST /api/v1/agent/tasks/:id/cancel
 func (h *Handler) CancelTask(c echo.Context) error {
 	id := c.Param("id")
+	if _, err := h.getScopedTask(c, id); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found or not running"})
+	}
 	if h.runner.Cancel(id) {
-		_ = h.store.SetStatus(c.Request().Context(), id, TaskStatusCancelled, "cancelled by user")
+		_ = h.store.SetStatus(c.Request().Context(), id, TaskStatusCancelled, "cancelled by user", getUserID(c))
 		return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
 	}
 	return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found or not running"})
@@ -89,7 +101,10 @@ func (h *Handler) CancelTask(c echo.Context) error {
 
 // DeleteTask handles DELETE /api/v1/agent/tasks/:id
 func (h *Handler) DeleteTask(c echo.Context) error {
-	if err := h.store.Delete(c.Request().Context(), c.Param("id")); err != nil {
+	if err := h.store.Delete(c.Request().Context(), c.Param("id"), getUserID(c)); err != nil {
+		if err == sql.ErrNoRows {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 	return c.NoContent(http.StatusNoContent)
@@ -105,6 +120,9 @@ func (h *Handler) SendMessage(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message is required"})
 	}
 	id := c.Param("id")
+	if _, err := h.getScopedTask(c, id); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found or not running"})
+	}
 	if h.runner.EnqueueMessage(id, req.Message) {
 		return c.JSON(http.StatusOK, map[string]string{"status": "queued"})
 	}
@@ -121,6 +139,9 @@ func (h *Handler) SubmitAnswer(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "answers array is required"})
 	}
 	id := c.Param("id")
+	if _, err := h.getScopedTask(c, id); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "no pending question for this task"})
+	}
 	if h.runner.SubmitAnswers(id, req.Answers) {
 		return c.JSON(http.StatusOK, map[string]string{"status": "answered"})
 	}

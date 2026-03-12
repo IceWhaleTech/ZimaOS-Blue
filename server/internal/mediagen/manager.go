@@ -2,6 +2,7 @@ package mediagen
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,8 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	basetask "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/google/uuid"
 )
 
@@ -70,6 +73,46 @@ func NewManager(storage *MediaStorage, configStore MediaConfigStore, locale stri
 		configStore: configStore,
 		locale:      locale,
 	}
+}
+
+func extractMediaTaskUserID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if claims, ok := ctx.Value(auth.UserContextKey).(*auth.UserClaims); ok && claims != nil {
+		return strings.TrimSpace(claims.UserID)
+	}
+	return strings.TrimSpace(tools.GetUserID(ctx))
+}
+
+func mediaScopeFromContext(ctx context.Context) []string {
+	if ctx == nil {
+		return nil
+	}
+	if claims, ok := ctx.Value(auth.UserContextKey).(*auth.UserClaims); ok && claims != nil {
+		if claims.Role == "admin" {
+			return nil
+		}
+		return []string{strings.TrimSpace(claims.UserID)}
+	}
+	if userID := strings.TrimSpace(tools.GetUserID(ctx)); userID != "" {
+		return []string{userID}
+	}
+	return nil
+}
+
+func taskVisibleToScope(task *MediaTask, userID []string) bool {
+	if task == nil {
+		return false
+	}
+	scopedUserID, scoped := normalizeMediaTaskScope(userID)
+	if !scoped {
+		return true
+	}
+	if scopedUserID == "" {
+		return strings.TrimSpace(task.UserID) == ""
+	}
+	return strings.TrimSpace(task.UserID) == scopedUserID
 }
 
 func (m *Manager) registerConfiguredProviderLocked(c *MediaProviderConfig) {
@@ -362,6 +405,9 @@ func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, 
 	task.Model = req.Model
 	task.Type = req.Type
 	task.CreatedAt = timeutil.NowTime()
+	if task.UserID == "" {
+		task.UserID = extractMediaTaskUserID(ctx)
+	}
 
 	m.tasks.Store(task.ID, task)
 
@@ -388,23 +434,35 @@ func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, 
 }
 
 // GetTask returns the current state of a task.
-func (m *Manager) GetTask(taskID string) (*MediaTask, error) {
+func (m *Manager) GetTask(taskID string, userID ...string) (*MediaTask, error) {
 	v, ok := m.tasks.Load(taskID)
 	if ok {
-		return v.(*MediaTask), nil
+		task := v.(*MediaTask)
+		if taskVisibleToScope(task, userID) {
+			return task, nil
+		}
+		return nil, ErrTaskNotFound
 	}
 	// Fall back to persistent store
 	if m.taskStore != nil {
-		pt, err := m.taskStore.Get(taskID)
-		if err == nil {
+		pt, err := m.taskStore.Get(taskID, userID...)
+		if err == nil && pt != nil {
 			return pt.ToMediaTask(), nil
+		}
+		if err != nil && err != sql.ErrNoRows {
+			return nil, err
 		}
 	}
 	return nil, ErrTaskNotFound
 }
 
 // WaitForTask blocks until the task completes or context is cancelled.
-func (m *Manager) WaitForTask(ctx context.Context, taskID string) (*MediaTask, error) {
+func (m *Manager) WaitForTask(ctx context.Context, taskID string, userID ...string) (*MediaTask, error) {
+	scopeArgs := userID
+	if len(scopeArgs) == 0 {
+		scopeArgs = mediaScopeFromContext(ctx)
+	}
+
 	// Exponential backoff: 500ms → 1s → 2s → 4s → ... capped at 5s
 	interval := 500 * time.Millisecond
 	const maxInterval = 5 * time.Second
@@ -415,14 +473,14 @@ func (m *Manager) WaitForTask(ctx context.Context, taskID string) (*MediaTask, e
 		case <-ctx.Done():
 			timer.Stop()
 			// Return last known task state (not an error)
-			if task, err := m.GetTask(taskID); err == nil {
+			if task, err := m.GetTask(taskID, scopeArgs...); err == nil {
 				return task, nil
 			}
 			return nil, ErrTimeout
 		case <-timer.C:
 		}
 
-		task, err := m.GetTask(taskID)
+		task, err := m.GetTask(taskID, scopeArgs...)
 		if err != nil {
 			return nil, err
 		}
@@ -684,12 +742,15 @@ func (m *Manager) updateTaskError(taskID, errMsg string) {
 }
 
 // CancelTask cancels a pending or processing task. Returns true if the task was cancelled.
-func (m *Manager) CancelTask(taskID string) bool {
+func (m *Manager) CancelTask(taskID string, userID ...string) bool {
 	v, ok := m.tasks.Load(taskID)
 	if !ok {
 		return false
 	}
 	task := v.(*MediaTask)
+	if !taskVisibleToScope(task, userID) {
+		return false
+	}
 	if task.Status != TaskStatusPending && task.Status != TaskStatusProcessing {
 		return false
 	}
@@ -782,8 +843,11 @@ func (m *Manager) publishTaskEvent(task *MediaTask) {
 	if task.Response != nil {
 		evt["response"] = task.Response
 	}
-	// Broadcast to "default" user — ZimaOS is single-user
-	m.eventPub.Publish("default", "media_task_update", evt)
+	userID := strings.TrimSpace(task.UserID)
+	if userID == "" {
+		userID = "default"
+	}
+	m.eventPub.Publish(userID, "media_task_update", evt)
 }
 
 // DefaultModelForCategory returns the first available model ID for a given category,
@@ -827,6 +891,7 @@ func (m *Manager) CreateTask(ctx context.Context, req *MediaRequest, messageID, 
 	now := timeutil.NowTime()
 	task := &MediaTask{
 		BaseTask:  basetask.BaseTask{ID: taskID, Status: TaskStatusPending, CreatedAt: now},
+		UserID:    extractMediaTaskUserID(ctx),
 		MessageID: messageID,
 		Type:      req.Type,
 		Category:  category,
@@ -902,11 +967,11 @@ func (m *Manager) executeTask(task *MediaTask, provider MediaProvider) {
 }
 
 // GetTasksByMessage returns all tasks associated with a message ID.
-func (m *Manager) GetTasksByMessage(messageID string) ([]*MediaTask, error) {
+func (m *Manager) GetTasksByMessage(messageID string, userID ...string) ([]*MediaTask, error) {
 	if m.taskStore == nil {
 		return nil, nil
 	}
-	pts, err := m.taskStore.GetByMessageID(messageID)
+	pts, err := m.taskStore.GetByMessageID(messageID, userID...)
 	if err != nil {
 		return nil, err
 	}

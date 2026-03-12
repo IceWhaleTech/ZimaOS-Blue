@@ -114,8 +114,17 @@ func validatePayloadForHandler(handler string, payload map[string]interface{}) e
 	switch handler {
 	case "command":
 		cmdStr, _ := payload["command"].(string)
-		if strings.TrimSpace(cmdStr) == "" {
+		cmdStr = strings.TrimSpace(cmdStr)
+		if cmdStr == "" {
 			return fmt.Errorf("command not specified in payload")
+		}
+		if err := validateCommand(cmdStr); err != nil {
+			return fmt.Errorf("invalid command payload: %w", err)
+		}
+
+		workDir, _ := payload["workdir"].(string)
+		if workDir != "" && strings.Contains(workDir, "..") {
+			return fmt.Errorf("security validation failed: workdir contains path traversal")
 		}
 	case "http":
 		url, _ := payload["url"].(string)

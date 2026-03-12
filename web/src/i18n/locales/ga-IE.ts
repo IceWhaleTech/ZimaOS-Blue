@@ -1545,6 +1545,10 @@ export default {
     cleanupPreviewFailed: 'Theip ar réamhamharc glantacháin',
     tabs: {
       ...enUS.userdata.tabs,
+      export: 'Easpórtáil',
+      import: 'Iompórtáil',
+      cleanup: 'Glanadh',
+      retention: 'Coinneáil',
     },
     retention: {
       ...enUS.userdata.retention,

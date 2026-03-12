@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // ============================================================
@@ -13,7 +15,8 @@ import (
 // --- Mock CronService ---
 
 type mockCronService struct {
-	jobs map[string]CronJobInfo
+	jobs              map[string]CronJobInfo
+	lastCreatePayload map[string]interface{}
 }
 
 func newMockCronService() *mockCronService {
@@ -26,6 +29,7 @@ func (m *mockCronService) Create(name, description, schedule, handler string, pa
 
 func (m *mockCronService) CreateForOwner(ownerID, name, description, schedule, handler string, payload map[string]interface{}) (CronJobInfo, error) {
 	id := fmt.Sprintf("job-%d", len(m.jobs)+1)
+	m.lastCreatePayload = payload
 	job := CronJobInfo{
 		ID: id, Name: name, Description: description,
 		Schedule: schedule, Handler: handler, Enabled: true, Status: "active",
@@ -273,7 +277,8 @@ func TestScheduler(t *testing.T) {
 	})
 
 	t.Run("create_and_list", func(t *testing.T) {
-		result, err := sched.Execute(context.Background(), map[string]any{
+		ctx := tools.WithSessionID(tools.WithUserID(context.Background(), "user-42"), "conv-42")
+		result, err := sched.Execute(ctx, map[string]any{
 			"action":   "create",
 			"name":     "test-job",
 			"schedule": "*/5 * * * *",
@@ -284,6 +289,12 @@ func TestScheduler(t *testing.T) {
 		}
 		if !result.Success {
 			t.Error("expected success")
+		}
+		if got := mock.lastCreatePayload["user_id"]; got != "user-42" {
+			t.Fatalf("payload user_id = %v, want user-42", got)
+		}
+		if got := mock.lastCreatePayload["conversation_id"]; got != "conv-42" {
+			t.Fatalf("payload conversation_id = %v, want conv-42", got)
 		}
 
 		// List

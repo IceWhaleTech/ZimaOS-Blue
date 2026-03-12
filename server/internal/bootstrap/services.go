@@ -242,10 +242,18 @@ type sessionListAdapter struct {
 	store *memory.Store
 }
 
+func sessionScopedUserID(ctx context.Context, requestedUserID string) string {
+	if ctxUserID := strings.TrimSpace(tools.GetUserID(ctx)); ctxUserID != "" {
+		return ctxUserID
+	}
+	return strings.TrimSpace(requestedUserID)
+}
+
 func (a sessionListAdapter) ListSessions(ctx context.Context, limit, offset int, userID string) ([]tools.SessionSummary, error) {
 	if a.store == nil {
 		return nil, nil
 	}
+	userID = sessionScopedUserID(ctx, userID)
 	var (
 		convs []memory.Conversation
 		err   error
@@ -276,8 +284,11 @@ func (a sessionListAdapter) GetSession(ctx context.Context, sessionID string) (*
 	if a.store == nil {
 		return nil, nil
 	}
-	conv, err := a.store.GetConversation(ctx, sessionID)
+	conv, err := a.store.GetConversation(ctx, sessionID, sessionScopedUserID(ctx, ""))
 	if err != nil {
+		if err == memory.ErrNotFound {
+			return nil, nil
+		}
 		return nil, err
 	}
 	if conv == nil {
@@ -297,7 +308,7 @@ func (a sessionListAdapter) GetSessionMessages(ctx context.Context, sessionID st
 	if a.store == nil {
 		return nil, nil
 	}
-	messages, err := a.store.GetMessages(ctx, sessionID, limit, offset)
+	messages, err := a.store.GetMessages(ctx, sessionID, limit, offset, sessionScopedUserID(ctx, ""))
 	if err != nil {
 		return nil, err
 	}
@@ -321,6 +332,7 @@ func (a sessionListAdapter) CreateSession(ctx context.Context, title, userID str
 	if a.store == nil {
 		return nil, nil
 	}
+	userID = sessionScopedUserID(ctx, userID)
 	var (
 		conv *memory.Conversation
 		err  error
@@ -334,10 +346,10 @@ func (a sessionListAdapter) CreateSession(ctx context.Context, title, userID str
 		return nil, err
 	}
 	if pinned {
-		if err := a.store.PinConversation(ctx, conv.ID); err != nil {
+		if err := a.store.PinConversation(ctx, conv.ID, userID); err != nil {
 			return nil, err
 		}
-		conv, err = a.store.GetConversation(ctx, conv.ID)
+		conv, err = a.store.GetConversation(ctx, conv.ID, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -356,6 +368,7 @@ func (a sessionListAdapter) AppendSessionMessage(ctx context.Context, sessionID 
 	if a.store == nil {
 		return nil, nil
 	}
+	userID := sessionScopedUserID(ctx, "")
 	created, err := a.store.AddMessage(ctx, sessionID, memory.Message{
 		Role:       msg.Role,
 		Content:    msg.Content,
@@ -363,7 +376,7 @@ func (a sessionListAdapter) AppendSessionMessage(ctx context.Context, sessionID 
 		ToolName:   msg.ToolName,
 		Provider:   msg.Provider,
 		Model:      msg.Model,
-	})
+	}, userID)
 	if err != nil {
 		return nil, err
 	}

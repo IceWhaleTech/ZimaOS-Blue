@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -67,11 +68,26 @@ func (s *Store) Create(ctx context.Context, task *Task) error {
 	return err
 }
 
+func normalizeTaskScope(userID []string) string {
+	if len(userID) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(userID[0])
+}
+
 // Get retrieves a task by ID.
-func (s *Store) Get(ctx context.Context, id string) (*Task, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, error, created_at, updated_at
-		 FROM agent_tasks WHERE id = ?`, id)
+func (s *Store) Get(ctx context.Context, id string, userID ...string) (*Task, error) {
+	scopedUserID := normalizeTaskScope(userID)
+	var row *sql.Row
+	if scopedUserID != "" {
+		row = s.db.QueryRowContext(ctx,
+			`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, error, created_at, updated_at
+			 FROM agent_tasks WHERE id = ? AND user_id = ?`, id, scopedUserID)
+	} else {
+		row = s.db.QueryRowContext(ctx,
+			`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, error, created_at, updated_at
+			 FROM agent_tasks WHERE id = ?`, id)
+	}
 	return scanTask(row)
 }
 
@@ -100,22 +116,63 @@ func (s *Store) ListByUser(ctx context.Context, userID string, limit int) ([]*Ta
 }
 
 // Update updates a task's mutable fields.
-func (s *Store) Update(ctx context.Context, task *Task) error {
+func (s *Store) Update(ctx context.Context, task *Task, userID ...string) error {
 	task.UpdatedAt = timeutil.NowTime()
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE agent_tasks SET goal=?, plan=?, status=?, runtime_state=?, runtime_audit=?, success_criteria=?, fallback_plan=?, current_step=?, progress=?, result=?, error=?, updated_at=?
-		 WHERE id=?`,
-		task.Goal, MarshalPlan(task.Plan), string(task.Status),
-		string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
-		task.CurrentStep, task.Progress, task.Result, task.Error,
-		task.UpdatedAt, task.ID,
+	scopedUserID := normalizeTaskScope(userID)
+	var (
+		res sql.Result
+		err error
 	)
+	if scopedUserID != "" {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE agent_tasks SET goal=?, plan=?, status=?, runtime_state=?, runtime_audit=?, success_criteria=?, fallback_plan=?, current_step=?, progress=?, result=?, error=?, updated_at=?
+			 WHERE id=? AND user_id=?`,
+			task.Goal, MarshalPlan(task.Plan), string(task.Status),
+			string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
+			task.CurrentStep, task.Progress, task.Result, task.Error,
+			task.UpdatedAt, task.ID, scopedUserID,
+		)
+	} else {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE agent_tasks SET goal=?, plan=?, status=?, runtime_state=?, runtime_audit=?, success_criteria=?, fallback_plan=?, current_step=?, progress=?, result=?, error=?, updated_at=?
+			 WHERE id=?`,
+			task.Goal, MarshalPlan(task.Plan), string(task.Status),
+			string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
+			task.CurrentStep, task.Progress, task.Result, task.Error,
+			task.UpdatedAt, task.ID,
+		)
+	}
+	if err != nil {
+		return err
+	}
+	if scopedUserID != "" {
+		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
+			return sql.ErrNoRows
+		}
+	}
 	return err
 }
 
 // Delete removes a task.
-func (s *Store) Delete(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM agent_tasks WHERE id=?`, id)
+func (s *Store) Delete(ctx context.Context, id string, userID ...string) error {
+	scopedUserID := normalizeTaskScope(userID)
+	var (
+		res sql.Result
+		err error
+	)
+	if scopedUserID != "" {
+		res, err = s.db.ExecContext(ctx, `DELETE FROM agent_tasks WHERE id=? AND user_id=?`, id, scopedUserID)
+	} else {
+		res, err = s.db.ExecContext(ctx, `DELETE FROM agent_tasks WHERE id=?`, id)
+	}
+	if err != nil {
+		return err
+	}
+	if scopedUserID != "" {
+		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
+			return sql.ErrNoRows
+		}
+	}
 	return err
 }
 
@@ -169,11 +226,30 @@ func (s *Store) CountRunning(ctx context.Context, userID string) (int, error) {
 }
 
 // SetStatus is a convenience method to update just the status.
-func (s *Store) SetStatus(ctx context.Context, id string, status TaskStatus, errMsg string) error {
+func (s *Store) SetStatus(ctx context.Context, id string, status TaskStatus, errMsg string, userID ...string) error {
 	now := timeutil.NowTime()
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE agent_tasks SET status=?, error=?, updated_at=? WHERE id=?`,
-		string(status), errMsg, now, id)
+	scopedUserID := normalizeTaskScope(userID)
+	var (
+		res sql.Result
+		err error
+	)
+	if scopedUserID != "" {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE agent_tasks SET status=?, error=?, updated_at=? WHERE id=? AND user_id=?`,
+			string(status), errMsg, now, id, scopedUserID)
+	} else {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE agent_tasks SET status=?, error=?, updated_at=? WHERE id=?`,
+			string(status), errMsg, now, id)
+	}
+	if err != nil {
+		return err
+	}
+	if scopedUserID != "" {
+		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
+			return sql.ErrNoRows
+		}
+	}
 	return err
 }
 

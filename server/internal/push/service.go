@@ -132,14 +132,11 @@ func (s *Service) List(ctx context.Context, ownerID string) ([]*PushNotification
 
 // Delete removes a push notification and its cron job.
 func (s *Service) Delete(ctx context.Context, ownerID, id string) error {
-	r, err := s.store.Get(ctx, id)
+	r, err := s.store.Get(ctx, id, ownerID)
 	if err != nil {
 		return err
 	}
 	if r == nil {
-		return fmt.Errorf("push notification %s not found", id)
-	}
-	if r.OwnerID != ownerID {
 		return fmt.Errorf("push notification %s not found", id)
 	}
 

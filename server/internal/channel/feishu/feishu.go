@@ -53,12 +53,17 @@ type Channel struct {
 	// Ensure messages channel is only closed once
 	closeOnce sync.Once
 
+	inboundSeenMu      sync.Mutex
+	inboundSeenByMsgID map[string]time.Time
+
 	typingReactionMu      sync.Mutex
 	typingReactionByMsgID map[string]*typingReactionState
 
 	ctx    context.Context
 	cancel context.CancelFunc
 }
+
+const inboundMessageDedupTTL = 10 * time.Minute
 
 // BotCommandHandler handles bot commands.
 type BotCommandHandler func(ctx context.Context, cmd string, args string, chatID string, userID string) (string, error)
@@ -74,6 +79,7 @@ func New(cfg channel.FeishuConfig, logger *zap.Logger) *Channel {
 		messages:              make(chan channel.Message, 100),
 		status:                channel.StatusDisconnected,
 		commandHandlers:       make(map[string]BotCommandHandler),
+		inboundSeenByMsgID:    make(map[string]time.Time),
 		typingReactionByMsgID: make(map[string]*typingReactionState),
 	}
 	c.RegisterCommand("/help", c.handleHelpCommand)
@@ -240,6 +246,10 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 	chatID := msg.ChatID
 	userID := sender.SenderID.OpenID
 	messageID := msg.MessageID
+	if c.markInboundMessageSeen(messageID, time.Now()) {
+		c.logger.Debug("duplicate feishu inbound message skipped", zap.String("message_id", messageID), zap.String("chat_id", chatID))
+		return
+	}
 
 	c.logger.Info("received message", zap.String("chat_id", chatID), zap.String("user_id", userID), zap.String("content", content), zap.String("msg_type", msgType))
 
@@ -314,6 +324,27 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 	} else {
 		c.safeSendMessage(channelMsg, messageID)
 	}
+}
+
+func (c *Channel) markInboundMessageSeen(messageID string, now time.Time) bool {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		return false
+	}
+
+	cutoff := now.Add(-inboundMessageDedupTTL)
+	c.inboundSeenMu.Lock()
+	defer c.inboundSeenMu.Unlock()
+	for id, seenAt := range c.inboundSeenByMsgID {
+		if seenAt.Before(cutoff) {
+			delete(c.inboundSeenByMsgID, id)
+		}
+	}
+	if seenAt, ok := c.inboundSeenByMsgID[messageID]; ok && !seenAt.Before(cutoff) {
+		return true
+	}
+	c.inboundSeenByMsgID[messageID] = now
+	return false
 }
 
 func parseFeishuMessageTimestamp(raw json.RawMessage) (time.Time, bool) {

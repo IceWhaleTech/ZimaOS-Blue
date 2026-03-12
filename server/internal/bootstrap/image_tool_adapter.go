@@ -94,7 +94,16 @@ func newImageTaskLookupAdapter(manager *mediagen.Manager) tools.ImageTaskLookupF
 		return nil
 	}
 	return func(ctx context.Context, taskID string) (*tools.ImageTaskResult, error) {
-		task, err := manager.GetTask(taskID)
+		lookupUserID := strings.TrimSpace(tools.GetUserID(ctx))
+		var (
+			task *mediagen.MediaTask
+			err  error
+		)
+		if lookupUserID != "" {
+			task, err = manager.GetTask(taskID, lookupUserID)
+		} else {
+			task, err = manager.GetTask(taskID)
+		}
 		if err != nil {
 			return nil, err
 		}

@@ -1162,6 +1162,103 @@ func previousUserObjective(messages []llm.Message, currentUserMessage string) st
 	return ""
 }
 
+const shortAffirmativeContinuationRecentLimit = 50
+
+const shortAffirmativeContinuationTTL = 2 * time.Hour
+
+func canResumeFromAssistantContent(content string) bool {
+	lastAssistant := strings.TrimSpace(content)
+	if lastAssistant == "" {
+		return false
+	}
+	awaiting := isAwaitingUserInput(lastAssistant)
+	pendingTodo := hasPendingTodo(lastAssistant)
+	defaultOffer := hasDefaultFallbackOffer(lastAssistant)
+	softConsent := hasSoftConsentContinuationOffer(lastAssistant)
+	return softConsent || (pendingTodo && !awaiting) || (pendingTodo && defaultOffer) || (awaiting && defaultOffer)
+}
+
+func deriveContinuationContextFromRecentMessages(userMessage string, messages []memory.Message, now time.Time) continuationContext {
+	if !isAffirmativeContinuationMessage(userMessage) || len(messages) == 0 {
+		return continuationContext{}
+	}
+
+	currNorm := normalizeAckText(userMessage)
+	currentUserIdx := -1
+	for i := len(messages) - 1; i >= 0; i-- {
+		if !strings.EqualFold(strings.TrimSpace(messages[i].Role), string(llm.RoleUser)) {
+			continue
+		}
+		if currNorm == "" || normalizeAckText(messages[i].Content) == currNorm {
+			currentUserIdx = i
+			break
+		}
+	}
+	if currentUserIdx < 0 {
+		currentUserIdx = len(messages)
+	}
+
+	assistantIdx := -1
+	for i := currentUserIdx - 1; i >= 0; i-- {
+		if !strings.EqualFold(strings.TrimSpace(messages[i].Role), string(llm.RoleAssistant)) {
+			continue
+		}
+		content := strings.TrimSpace(messages[i].Content)
+		if content == "" {
+			continue
+		}
+		if !canResumeFromAssistantContent(content) {
+			return continuationContext{}
+		}
+		assistantIdx = i
+		break
+	}
+	if assistantIdx < 0 {
+		return continuationContext{}
+	}
+
+	assistantAt := messages[assistantIdx].CreatedAt
+	if !assistantAt.IsZero() && now.Sub(assistantAt) > shortAffirmativeContinuationTTL {
+		return continuationContext{}
+	}
+
+	for i := assistantIdx + 1; i < currentUserIdx; i++ {
+		if !strings.EqualFold(strings.TrimSpace(messages[i].Role), string(llm.RoleUser)) {
+			continue
+		}
+		content := strings.TrimSpace(messages[i].Content)
+		if content == "" {
+			continue
+		}
+		if !isAffirmativeContinuationMessage(content) {
+			return continuationContext{}
+		}
+	}
+
+	objective := ""
+	for i := assistantIdx - 1; i >= 0; i-- {
+		if !strings.EqualFold(strings.TrimSpace(messages[i].Role), string(llm.RoleUser)) {
+			continue
+		}
+		content := strings.TrimSpace(messages[i].Content)
+		if content == "" {
+			continue
+		}
+		if !isAffirmativeContinuationMessage(content) {
+			objective = content
+			break
+		}
+	}
+	if objective == "" {
+		return continuationContext{}
+	}
+
+	return continuationContext{
+		Hint:      "Continuation hint: the user just sent a brief affirmative acknowledgment. Continue the existing task chain from prior context instead of resetting. If previous options included a default/recommended path, select it and execute immediately.",
+		ToolQuery: objective,
+	}
+}
+
 // deriveContinuationContext bridges short affirmative replies ("好的"/"ok")
 // to the previous in-progress task chain so routing/tool selection keeps continuity.
 func deriveContinuationContext(userMessage string, messages []llm.Message) continuationContext {
@@ -1172,13 +1269,7 @@ func deriveContinuationContext(userMessage string, messages []llm.Message) conti
 	if lastAssistant == "" {
 		return continuationContext{}
 	}
-
-	awaiting := isAwaitingUserInput(lastAssistant)
-	pendingTodo := hasPendingTodo(lastAssistant)
-	defaultOffer := hasDefaultFallbackOffer(lastAssistant)
-	softConsent := hasSoftConsentContinuationOffer(lastAssistant)
-	canContinue := softConsent || (pendingTodo && !awaiting) || (pendingTodo && defaultOffer) || (awaiting && defaultOffer)
-	if !canContinue {
+	if !canResumeFromAssistantContent(lastAssistant) {
 		return continuationContext{}
 	}
 
@@ -1293,7 +1384,7 @@ func (h *ChatHandler) loadRecentMessagesForIMHistoryLimit(ctx context.Context, c
 	if h == nil || h.store == nil || strings.TrimSpace(convID) == "" {
 		return nil
 	}
-	recent, err := h.store.GetMessages(ctx, convID, 24, 0)
+	recent, err := h.store.GetRecentMessages(ctx, convID, 24)
 	if err != nil {
 		return nil
 	}
@@ -1305,34 +1396,22 @@ func (h *ChatHandler) loadRecentMessagesForIMHistoryLimit(ctx context.Context, c
 // assistant turn, it falls back to recent persisted conversation messages.
 func (h *ChatHandler) deriveContinuationContextWithFallback(ctx context.Context, convID, userMessage string, messages []llm.Message) continuationContext {
 	cc := deriveContinuationContext(userMessage, messages)
-	if cc.Hint != "" || !isAffirmativeContinuationMessage(userMessage) || h.store == nil || strings.TrimSpace(convID) == "" {
+	if !isAffirmativeContinuationMessage(userMessage) || h.store == nil || strings.TrimSpace(convID) == "" {
 		return cc
 	}
 
-	recent, err := h.store.GetMessages(ctx, convID, 20, 0)
+	recent, err := h.store.GetRecentMessages(ctx, convID, shortAffirmativeContinuationRecentLimit)
 	if err != nil || len(recent) == 0 {
 		return cc
 	}
-
-	fallback := make([]llm.Message, 0, len(recent))
-	for _, m := range recent {
-		content := strings.TrimSpace(m.Content)
-		if content == "" {
-			continue
-		}
-		switch strings.ToLower(strings.TrimSpace(m.Role)) {
-		case string(llm.RoleUser):
-			fallback = append(fallback, llm.Message{Role: llm.RoleUser, Content: content})
-		case string(llm.RoleAssistant):
-			fallback = append(fallback, llm.Message{Role: llm.RoleAssistant, Content: content})
-		case string(llm.RoleSystem):
-			fallback = append(fallback, llm.Message{Role: llm.RoleSystem, Content: content})
-		}
+	validated := deriveContinuationContextFromRecentMessages(userMessage, recent, timeutil.NowTime())
+	if validated.Hint != "" {
+		return validated
 	}
-	if len(fallback) == 0 {
-		return cc
+	if cc.Hint != "" {
+		logger.Info().Str("conv_id", convID).Msg("[chat] suppressed stale short affirmative continuation")
 	}
-	return deriveContinuationContext(userMessage, fallback)
+	return continuationContext{}
 }
 
 // extractTodoProgress builds a progress hint from the TODO content.
@@ -5844,7 +5923,7 @@ func (h *ChatHandler) runLocalIRFallback(ctx context.Context, convID, query stri
 		}
 		return "", errNoIRLocalSignal
 	}
-	msgs, err := h.store.GetMessages(ctx, convID, 24, 0)
+	msgs, err := h.store.GetRecentMessages(ctx, convID, 24)
 	if err != nil {
 		if allowGeneric {
 			return "IR-only fallback is active. Local retrieval is temporarily unavailable.", nil
@@ -7415,21 +7494,32 @@ func (h *ChatHandler) getUserID(c echo.Context) string {
 	return ""
 }
 
+func (h *ChatHandler) listFilterUserID(c echo.Context) string {
+	userID := h.getUserID(c)
+	if userID == "preview-user" {
+		return ""
+	}
+	return userID
+}
+
 // checkConversationOwnership verifies the caller owns the conversation (or is admin).
 // Returns the conversation if authorized, or an HTTP error.
 func (h *ChatHandler) checkConversationOwnership(c echo.Context, id string) (*memory.Conversation, error) {
-	conv, err := h.store.GetConversation(c.Request().Context(), id)
+	claims := auth.GetUserFromContext(c)
+	var (
+		conv *memory.Conversation
+		err  error
+	)
+	if claims != nil && claims.Role != "admin" {
+		conv, err = h.store.GetConversation(c.Request().Context(), id, claims.UserID)
+	} else {
+		conv, err = h.store.GetConversation(c.Request().Context(), id)
+	}
 	if err != nil {
 		if err == memory.ErrNotFound {
 			return nil, echo.NewHTTPError(http.StatusNotFound, "conversation not found")
 		}
 		return nil, echo.NewHTTPError(http.StatusInternalServerError, "failed to get conversation")
-	}
-
-	claims := auth.GetUserFromContext(c)
-	// Allow if: admin, owner, or conversation has no owner (legacy data)
-	if claims != nil && claims.Role != "admin" && conv.UserID != "" && conv.UserID != claims.UserID {
-		return nil, echo.NewHTTPError(http.StatusNotFound, "conversation not found")
 	}
 
 	return conv, nil
@@ -11444,7 +11534,7 @@ func (h *ChatHandler) extractMemoryWithMode(convID, source string, mode memoryEx
 	defer cancel()
 
 	// Load recent messages for both threshold estimation and fallback extraction.
-	messages, err := h.store.GetMessages(ctx, convID, 80, 0)
+	messages, err := h.store.GetRecentMessages(ctx, convID, 80)
 	if err != nil || len(messages) < 2 {
 		return false
 	}
@@ -11664,7 +11754,7 @@ func (h *ChatHandler) ListConversations(c echo.Context) error {
 	query := c.QueryParam("q")
 	var convs []memory.Conversation
 	var err error
-	userID := h.getUserID(c)
+	userID := h.listFilterUserID(c)
 
 	if query != "" {
 		// Search conversations by title
@@ -13285,7 +13375,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 		// Resolve the actual last user message from DB so downstream code
 		// (memory recall, tool selection, system prompt) uses real content.
-		histMsgs, err := h.store.GetMessages(c.Request().Context(), convID, 50, 0)
+		histMsgs, err := h.store.GetRecentMessages(c.Request().Context(), convID, 50)
 		if err == nil {
 			for i := len(histMsgs) - 1; i >= 0; i-- {
 				if histMsgs[i].Role == "user" {
@@ -16734,7 +16824,7 @@ func (h *ChatHandler) doWarmupWithToken(convID, token string) {
 		messages = cachedMessages
 	} else {
 		var err error
-		messages, err = h.store.GetMessages(ctx, convID, 50, 0)
+		messages, err = h.store.GetRecentMessages(ctx, convID, 50)
 		if err != nil {
 			logger.Warn().Err(err).Str("conv_id", convID).Msg("[warmup] failed to fetch messages")
 			return

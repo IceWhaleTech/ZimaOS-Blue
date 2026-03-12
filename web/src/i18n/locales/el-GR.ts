@@ -1767,8 +1767,17 @@ export default {
     password: 'Κωδικός πρόσβασης',
     exportButton: 'Εξαγωγή δεδομένων',
     importButton: 'Εισαγωγή δεδομένων',
+    passwordMismatch: 'Οι κωδικοί δεν ταιριάζουν',
+    exporting: 'Εξαγωγή...',
+    importing: 'Εισαγωγή...',
+    exportSuccess: 'Τα δεδομένα εξήχθησαν επιτυχώς',
+    importSuccess: 'Εισήχθησαν {conversations} συνομιλίες και {messages} μηνύματα',
     tabs: {
       ...enUS.userdata.tabs,
+      export: 'Εξαγωγή',
+      import: 'Εισαγωγή',
+      cleanup: 'Εκκαθάριση',
+      retention: 'Διατήρηση',
     },
     retention: {
       ...enUS.userdata.retention,
@@ -1789,6 +1798,11 @@ export default {
       saveHint: 'Τα νέα παράθυρα διατήρησης θα εφαρμοστούν στους επόμενους αυτόματους και χειροκίνητους καθαρισμούς.',
 
       days: 'ημέρες',
+      storageInfo: 'Τρέχων όγκος',
+      policy: 'Κανόνες διατήρησης',
+      sessionsRetention: 'Εγγραφές συνεδριών',
+      eventsRetention: 'Εγγραφές συμβάντων',
+      alertsRetention: 'Εγγραφές ειδοποιήσεων',
     },
     cleanup: {
       ...enUS.userdata.cleanup,

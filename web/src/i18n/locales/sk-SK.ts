@@ -1127,7 +1127,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Spustenie príkazu bolo zablokované, pretože schválenie adresára vypršalo. Schváľte adresár a skúste to znova.',
+    execDirectoryApprovalTimeout:
+      'Spustenie príkazu bolo zablokované, pretože schválenie adresára vypršalo. Schváľte adresár a skúste to znova.',
     streamProgress: {
       requestAccepted: 'Požiadavka prijatá, pripravujem odpoveď...',
       generating: 'Generujem odpoveď...',
@@ -1441,7 +1442,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: 'Údaje chatu',
-    chatDataDescription: 'Importujte, exportujte a vyčistite históriu chatu a súvisiace údaje na jednom mieste.',
+    chatDataDescription:
+      'Importujte, exportujte a vyčistite históriu chatu a súvisiace údaje na jednom mieste.',
     manageData: 'Spravovať údaje',
     cleanupPreviewFailed: 'Náhľad čistenia zlyhal',
     cleanupFailed: 'Čistenie dát zlyhalo',
@@ -1468,13 +1470,43 @@ export default {
     title: 'Údaje používateľa',
     tabs: {
       ...enUS.userdata.tabs,
+      export: 'Exportovať',
+      import: 'Importovať',
+      cleanup: 'Čistenie',
+      retention: 'Monitorovanie',
       title: 'Karty',
     },
+    export: 'Exportovať používateľské údaje',
+    exportDescription:
+      'Exportujte históriu chatu a nastavenia do súboru. Súbor bude chránený heslom.',
+    import: 'Importovať používateľské údaje',
+    importDescription:
+      'Importujte predtým exportované údaje. Budete potrebovať heslo použité pri exporte.',
+    password: 'Heslo',
+    passwordMismatch: 'Heslá sa nezhodujú',
+    exportButton: 'Exportovať údaje',
+    importButton: 'Importovať údaje',
+    exporting: 'Exportuje sa...',
+    importing: 'Importuje sa...',
+    exportSuccess: 'Údaje boli úspešne exportované',
+    importSuccess: 'Importovaných {conversations} konverzácií a {messages} správ',
     retention: {
       ...enUS.userdata.retention,
-      title: 'Uchovávanie',
+      title: 'Uchovávanie bezpečnostných údajov',
+      description:
+        'Nastavte, ako dlho sa údaje bezpečnostného monitorovania (relácie, udalosti, upozornenia) uchovávajú pred automatickým čistením.',
+      storageInfo: 'Aktuálny objem',
+      sessions: 'Relácie',
+      events: 'Udalosti',
+      alerts: 'Upozornenia',
+      policy: 'Zásady uchovávania',
+      sessionsRetention: 'Uchovávanie relácií',
+      eventsRetention: 'Uchovávanie udalostí',
+      alertsRetention: 'Uchovávanie upozornení',
+      days: 'dní',
       totalRecords: 'Celkový počet monitorovacích záznamov',
-      policyHint: 'Každý typ údajov podporuje 1 až 365 dní. Kratšie uchovávanie šetrí úložisko, dlhšie pomáha pri audite a riešení problémov.',
+      policyHint:
+        'Každý typ údajov podporuje 1 až 365 dní. Kratšie uchovávanie šetrí úložisko, dlhšie pomáha pri audite a riešení problémov.',
       daysRange: 'Povolený rozsah: 1-365 dní',
       sessionsHint: 'Životný cyklus relácií agenta a runtime metadáta.',
       eventsHint: 'Volania nástrojov, stopy vykonávania a auditné udalosti.',
@@ -1482,14 +1514,16 @@ export default {
       sessionsSuggested: 'Odporúčané: 14-30 dní pre bežnú prevádzku',
       eventsSuggested: 'Odporúčané: 7-14 dní pre vyvážený objem auditu',
       alertsSuggested: 'Odporúčané: 30-90 dní na revíziu incidentov',
-      saveHint: 'Nové retenčné okná sa použijú pri nasledujúcich automatických aj ručných čisteniach.',
+      saveHint:
+        'Nové retenčné okná sa použijú pri nasledujúcich automatických aj ručných čisteniach.',
     },
     cleanup: {
       ...enUS.userdata.cleanup,
       title: 'Čistenie dát',
       description: 'Natrvalo odstráňte vybrané údaje. Túto akciu nemožno vrátiť späť.',
       warning: 'Deštruktívna akcia',
-      warningDetail: 'Odstránené údaje nemožno obnoviť. Ak potrebujete zálohu, najprv exportujte svoje údaje.',
+      warningDetail:
+        'Odstránené údaje nemožno obnoviť. Ak potrebujete zálohu, najprv exportujte svoje údaje.',
       selectData: 'Vyberte údaje na odstránenie',
       chatHistory: 'História chatu',
       chatHistoryDesc: 'Všetky konverzácie a správy',
@@ -1508,7 +1542,8 @@ export default {
       willReset: 'Bude obnovené',
       willClear: 'Bude vymazané',
       authorizationStep: 'Vyžaduje sa autorizácia',
-      authorizationHint: 'Skontrolujte údaje, ktoré budú odstránené. Tento krok slúži ako potvrdenie autorizácie.',
+      authorizationHint:
+        'Skontrolujte údaje, ktoré budú odstránené. Tento krok slúži ako potvrdenie autorizácie.',
       proceedToConfirm: 'Pokračovať na potvrdenie',
       confirmStep: 'Záverečné potvrdenie',
       confirmHint: 'Zadajte svoje heslo na potvrdenie tejto deštruktívnej akcie.',
@@ -1516,7 +1551,8 @@ export default {
       confirmText: 'POTVRDIŤ VYMAZANIE',
       typeToConfirm: 'Zadajte na potvrdenie',
       typeToConfirmPlaceholder: 'Zadajte „{confirmText}“ na potvrdenie',
-      productionHint: 'V produkčnom prostredí môžu byť potrebné ďalšie poverenia (MFA, schválenie správcom).',
+      productionHint:
+        'V produkčnom prostredí môžu byť potrebné ďalšie poverenia (MFA, schválenie správcom).',
       enterPassword: 'Zadajte heslo',
       passwordPlaceholder: 'Zadajte svoje heslo na potvrdenie',
       confirmDelete: 'Potvrdiť vymazanie',
@@ -1578,12 +1614,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Nový obsah zapamätaný',
       memorySavedMessage: 'Pamäť extrahovaná z konverzácie',
       manageMemory: 'Spravovať pamäť',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -1700,7 +1737,8 @@ export default {
   sandbox: { ...enUS.sandbox },
   home: {
     ...enUS.home,
-    description: 'Stabilný, dôveryhodný a neutrálny runtime pre vašich AI asistentov a automatizácie',
+    description:
+      'Stabilný, dôveryhodný a neutrálny runtime pre vašich AI asistentov a automatizácie',
   },
   brand: { ...enUS.brand },
   speech: {

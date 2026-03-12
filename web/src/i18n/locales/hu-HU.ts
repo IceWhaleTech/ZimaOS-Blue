@@ -1460,6 +1460,10 @@ export default {
       saveHint: 'Az új megőrzési ablakok a következő automatikus és kézi tisztításokra érvényesek.',
 
       days: 'nap',
+      storageInfo: 'Jelenlegi mennyiség',
+      sessionsRetention: 'Munkamenet-rekordok',
+      eventsRetention: 'Eseményrekordok',
+      alertsRetention: 'Riasztási rekordok',
     },
     cleanup: {
       ...enUS.userdata.cleanup,

@@ -152,11 +152,11 @@ function confirmDelete(backup: BackupDisplay) {
 </script>
 
 <template>
-  <div class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('backup.title') }}</h2>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
+        class="px-3.5 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
         @click="showCreateModal = true"
       >
         {{ t('backup.create') }}
@@ -164,7 +164,7 @@ function confirmDelete(backup: BackupDisplay) {
     </div>
 
     <!-- Restore in progress banner -->
-    <div v-if="restoring" class="px-6 py-3 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
+    <div v-if="restoring" class="px-5 py-2.5 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
       <div class="flex items-center gap-3 mb-2">
         <div class="animate-spin h-5 w-5 border-2 border-yellow-600 border-t-transparent rounded-full"></div>
         <span class="text-yellow-800 dark:text-yellow-200">{{ t('backup.restoringWarning') }}</span>
@@ -185,7 +185,7 @@ function confirmDelete(backup: BackupDisplay) {
     </div>
 
     <!-- Creating backup progress banner -->
-    <div v-if="creating && progress" class="px-6 py-3 bg-gray-700 dark:bg-gray-500/20 border-b border-gray-900 dark:border-white dark:border-gray-900 dark:border-white">
+    <div v-if="creating && progress" class="px-5 py-2.5 bg-gray-700 dark:bg-gray-500/20 border-b border-gray-900 dark:border-white dark:border-gray-900 dark:border-white">
       <div class="flex items-center gap-3 mb-2">
         <div class="animate-spin h-5 w-5 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full"></div>
         <span class="text-gray-900 dark:text-white dark:text-white">{{ t('backup.creatingBackup') }}</span>
@@ -203,12 +203,12 @@ function confirmDelete(backup: BackupDisplay) {
       </div>
     </div>
 
-    <div v-if="loading" class="p-6 text-center">
+    <div v-if="loading" class="p-5 text-center">
       <div class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"></div>
       <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('backup.loading') }}</p>
     </div>
 
-    <div v-else-if="displayBackups.length === 0" class="p-6 text-center">
+    <div v-else-if="displayBackups.length === 0" class="p-5 text-center">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
       </svg>
@@ -220,7 +220,7 @@ function confirmDelete(backup: BackupDisplay) {
       <div
         v-for="backup in sortedBackups"
         :key="backup.id"
-        class="px-6 py-4"
+        class="px-5 py-3.5"
       >
         <div class="flex items-start justify-between">
           <div class="flex-1 min-w-0">
@@ -257,9 +257,9 @@ function confirmDelete(backup: BackupDisplay) {
             </p>
           </div>
 
-          <div class="flex items-center gap-2 ml-4">
+          <div class="flex items-center gap-1.5 ml-3">
             <button
-              class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              class="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
               title="Download"
               :disabled="backup.status !== 'completed'"
               @click="emit('download', backup.id)"
@@ -269,7 +269,7 @@ function confirmDelete(backup: BackupDisplay) {
               </svg>
             </button>
             <button
-              class="p-2 text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:text-white dark:hover:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
+              class="p-1.5 text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:text-white dark:hover:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
               title="Restore"
               :disabled="backup.status !== 'completed' || restoring"
               @click="confirmRestore(backup)"
@@ -279,7 +279,7 @@ function confirmDelete(backup: BackupDisplay) {
               </svg>
             </button>
             <button
-              class="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              class="p-1.5 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
               title="Delete"
               @click="confirmDelete(backup)"
             >

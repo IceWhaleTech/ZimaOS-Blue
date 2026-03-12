@@ -730,7 +730,7 @@ export default {
       retentionPolicy: 'Oppbevaringspolitikk',
       sessionsRetention: 'Øktoppbevaring',
       eventsRetention: 'Hendelsesoppbevaring',
-      alertsRetention: 'Varsoppbevaring',
+      alertsRetention: 'Varseloppbevaring',
       days: 'dager',
       cleanupNow: 'Rydd opp nå',
       cleanupConfirm:
@@ -1226,7 +1226,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: 'Chatdata',
-    chatDataDescription: 'Importer, eksporter og rydd opp i chathistorikk og relaterte data fra ett sted.',
+    chatDataDescription:
+      'Importer, eksporter og rydd opp i chathistorikk og relaterte data fra ett sted.',
     manageData: 'Administrer data',
     cleanupPreviewFailed: 'Kunne ikke forhåndsvise opprydding',
     cleanupFailed: 'Kunne ikke rydde data',
@@ -1265,6 +1266,12 @@ export default {
     importing: 'Importerer...',
     exportSuccess: 'Data eksportert',
     importFailed: 'Kunne ikke importere data',
+    exportDescription:
+      'Eksporter chathistorikken og innstillingene dine til en fil. Filen blir beskyttet med et passord.',
+    importDescription:
+      'Importer tidligere eksporterte data. Du trenger passordet som ble brukt under eksporten.',
+    passwordMismatch: 'Passordene samsvarer ikke',
+    importSuccess: 'Importerte {conversations} samtaler og {messages} meldinger',
     retention: {
       ...enUS.userdata.retention,
       title: 'Dataoppbevaring',
@@ -1272,8 +1279,14 @@ export default {
       sessions: 'Økter',
       events: 'Hendelser',
       alerts: 'Varsler',
+      storageInfo: 'Nåværende datamengde',
+      policy: 'Oppbevaringspolitikk',
+      sessionsRetention: 'Øktoppbevaring',
+      eventsRetention: 'Hendelsesoppbevaring',
+      alertsRetention: 'Varseloppbevaring',
       totalRecords: 'Totalt antall overvåkingsposter',
-      policyHint: 'Hver datatype støtter 1 til 365 dager. Kortere oppbevaring reduserer lagring, mens lengre oppbevaring hjelper ved revisjon og feilsøking.',
+      policyHint:
+        'Hver datatype støtter 1 til 365 dager. Kortere oppbevaring reduserer lagring, mens lengre oppbevaring hjelper ved revisjon og feilsøking.',
       daysRange: 'Tillatt område: 1-365 dager',
       sessionsHint: 'Livssyklusen for agentøkter og kjøretidsmetadata.',
       eventsHint: 'Verktøykall, kjøringsspor og revisjonshendelser.',
@@ -1290,7 +1303,8 @@ export default {
       title: 'Dataopprydding',
       description: 'Slett valgte data permanent. Denne handlingen kan ikke angres.',
       warning: 'Destruktiv handling',
-      warningDetail: 'Slettede data kan ikke gjenopprettes. Eksporter dataene dine først hvis du trenger en sikkerhetskopi.',
+      warningDetail:
+        'Slettede data kan ikke gjenopprettes. Eksporter dataene dine først hvis du trenger en sikkerhetskopi.',
       selectData: 'Velg data som skal slettes',
       chatHistory: 'Chathistorikk',
       chatHistoryDesc: 'Alle samtaler og meldinger',
@@ -1309,15 +1323,18 @@ export default {
       willReset: 'Vil bli tilbakestilt',
       willClear: 'Vil bli tømt',
       authorizationStep: 'Godkjenning kreves',
-      authorizationHint: 'Gå gjennom dataene som skal slettes. Dette trinnet fungerer som bekreftelse på godkjenning.',
+      authorizationHint:
+        'Gå gjennom dataene som skal slettes. Dette trinnet fungerer som bekreftelse på godkjenning.',
       proceedToConfirm: 'Fortsett til bekreftelse',
       confirmStep: 'Endelig bekreftelse',
       confirmHint: 'Skriv inn passordet ditt for å bekrefte denne destruktive handlingen.',
-      confirmHintPreview: 'Skriv "{confirmText}" nedenfor for å bekrefte denne destruktive handlingen.',
+      confirmHintPreview:
+        'Skriv "{confirmText}" nedenfor for å bekrefte denne destruktive handlingen.',
       confirmText: 'BEKREFT SLETTING',
       typeToConfirm: 'Skriv for å bekrefte',
       typeToConfirmPlaceholder: 'Skriv "{confirmText}" for å bekrefte',
-      productionHint: 'I produksjonsmiljøer kan det kreves flere legitimasjonsopplysninger (MFA, administratorgodkjenning).',
+      productionHint:
+        'I produksjonsmiljøer kan det kreves flere legitimasjonsopplysninger (MFA, administratorgodkjenning).',
       enterPassword: 'Skriv inn passord',
       passwordPlaceholder: 'Skriv inn passordet ditt for å bekrefte',
       confirmDelete: 'Bekreft sletting',
@@ -1407,12 +1424,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Nytt innhold husket',
       memorySavedMessage: 'Minne hentet ut fra samtalen',
       manageMemory: 'Administrer minne',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -1529,7 +1547,8 @@ export default {
   sandbox: { ...enUS.sandbox },
   home: {
     ...enUS.home,
-    description: 'Et stabilt, pålitelig og nøytralt runtime for AI-assistentene og automatiseringene dine',
+    description:
+      'Et stabilt, pålitelig og nøytralt runtime for AI-assistentene og automatiseringene dine',
   },
   brand: { ...enUS.brand },
   speech: {
@@ -1889,7 +1908,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Kjøring av kommando ble blokkert fordi mappegodkjenningen gikk ut på tid. Godkjenn mappen og prøv igjen.',
+    execDirectoryApprovalTimeout:
+      'Kjøring av kommando ble blokkert fordi mappegodkjenningen gikk ut på tid. Godkjenn mappen og prøv igjen.',
     streamProgress: {
       requestAccepted: 'Forespørsel mottatt, forbereder svar...',
       generating: 'Genererer svar...',

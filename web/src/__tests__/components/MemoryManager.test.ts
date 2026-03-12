@@ -109,6 +109,15 @@ describe('MemoryManager', () => {
     vi.useRealTimers()
   })
 
+  it('emits memory recall mode changes from the embedded controls', async () => {
+    const wrapper = mountManager()
+    await flushPromises()
+
+    await byId(wrapper, 'memory-recall-mode-aggressive').trigger('click')
+
+    expect(wrapper.emitted('memory-recall-mode-change')).toEqual([['aggressive']])
+  })
+
   it('adds memory with normalized tags and emits a status update', async () => {
     vi.mocked(memoryApi.stats)
       .mockResolvedValueOnce(statsPayload())

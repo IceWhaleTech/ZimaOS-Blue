@@ -872,7 +872,8 @@ export default {
     startChatCta: 'Click {link} to start chatting with Blue',
   },
   settings: {
-    llmApiKeyRequired: 'Please configure an API key before opening the LLM Provider page.',
+    llmApiKeyRequired: 'Please configure an LLM provider first.',
+    llmProviderSetupLink: 'Configure LLM provider',
     title: 'Settings',
     saved: 'Saved',
     saveFailed: 'Failed to save configuration',
@@ -4058,14 +4059,14 @@ export default {
     // Handler types
     handlers: {
       command: 'Shell Command',
-      commandDesc: 'Execute a shell command or script',
+      commandDesc: 'Execute an allowed shell command',
       http: 'HTTP Request',
       httpDesc: 'Send an HTTP request to a URL',
     },
     // Command handler fields
     commandInput: 'Command',
-    commandPlaceholder: 'e.g., /usr/bin/backup.sh or docker restart myapp',
-    commandHint: 'The shell command to execute. Use full paths for reliability.',
+    commandPlaceholder: 'e.g., uptime, date, or curl https://example.com',
+    commandHint: 'Allowed base commands: echo, date, uptime, df, free, ps, curl, wget.',
     workdir: 'Working Directory',
     workdirPlaceholder: 'e.g., /home/user/scripts',
     timeout: 'Timeout',

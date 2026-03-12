@@ -166,7 +166,8 @@ func TestCronToolListExecute(t *testing.T) {
 func TestCronToolCreateExecute(t *testing.T) {
 	svc := &stubCronService{handlers: []string{"http"}}
 	tool := NewCronTool(svc)
-	result, err := tool.Execute(context.Background(), map[string]interface{}{
+	ctx := WithSessionID(WithUserID(context.Background(), "user-123"), "conv-123")
+	result, err := tool.Execute(ctx, map[string]interface{}{
 		"name":     "Health Check",
 		"schedule": "0 * * * *",
 		"handler":  "http",
@@ -181,6 +182,16 @@ func TestCronToolCreateExecute(t *testing.T) {
 	}
 	if svc.lastCreateName != "Health Check" || svc.lastCreateHandle != "http" {
 		t.Fatalf("unexpected create args: %#v", svc)
+	}
+	createdJob := svc.jobs["job_1"]
+	if createdJob == nil {
+		t.Fatalf("expected created job to be stored")
+	}
+	if got := createdJob.Payload["user_id"]; got != "user-123" {
+		t.Fatalf("payload user_id = %v, want user-123", got)
+	}
+	if got := createdJob.Payload["conversation_id"]; got != "conv-123" {
+		t.Fatalf("payload conversation_id = %v, want conv-123", got)
 	}
 }
 
@@ -236,6 +247,31 @@ func TestCronToolSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 	if got := svc.lastUpdatePayload["url"]; got != "https://example.com/new" {
 		t.Fatalf("payload url = %v, want https://example.com/new", got)
+	}
+}
+
+func TestCronToolUpdateExecuteAddsContextToPayload(t *testing.T) {
+	svc := &stubCronService{
+		jobs: map[string]*CronJobInfo{
+			"job_1": {ID: "job_1", Name: "Health Check", Description: "old", Schedule: "0 * * * *", Payload: map[string]interface{}{"url": "https://example.com"}},
+		},
+	}
+	tool := NewCronTool(svc)
+	ctx := WithSessionID(WithUserID(context.Background(), "user-1"), "conv-1")
+
+	_, err := tool.Execute(ctx, map[string]interface{}{
+		"action":  "update",
+		"id":      "job_1",
+		"payload": map[string]interface{}{"url": "https://example.com/new"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if got := svc.lastUpdatePayload["user_id"]; got != "user-1" {
+		t.Fatalf("payload user_id = %v, want user-1", got)
+	}
+	if got := svc.lastUpdatePayload["conversation_id"]; got != "conv-1" {
+		t.Fatalf("payload conversation_id = %v, want conv-1", got)
 	}
 }
 

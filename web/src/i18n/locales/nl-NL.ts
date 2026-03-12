@@ -1448,7 +1448,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'De opdrachtuitvoering is geblokkeerd omdat de mapgoedkeuring is verlopen. Keur de map goed en probeer het opnieuw.',
+    execDirectoryApprovalTimeout:
+      'De opdrachtuitvoering is geblokkeerd omdat de mapgoedkeuring is verlopen. Keur de map goed en probeer het opnieuw.',
     streamProgress: {
       requestAccepted: 'Aanvraag ontvangen, antwoord wordt voorbereid...',
       generating: 'Antwoord genereren...',
@@ -1769,7 +1770,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: 'Chatgegevens',
-    chatDataDescription: 'Importeer, exporteer en ruim chatgeschiedenis en gerelateerde gegevens op vanaf een plek.',
+    chatDataDescription:
+      'Importeer, exporteer en ruim chatgeschiedenis en gerelateerde gegevens op vanaf een plek.',
     manageData: 'Gegevens beheren',
     cleanupPreviewFailed: 'Voorbeeld van opschoning mislukt',
     cleanupFailed: 'Opschonen van gegevens mislukt',
@@ -1791,7 +1793,8 @@ export default {
     importPasswordPlaceholder: 'Voer het wachtwoord in dat bij het exporteren is gebruikt',
     confirmPasswordPlaceholder: 'Voer het wachtwoord opnieuw in',
     formatEncryptedDesc: 'Volledig versleuteld binair formaat. Hogere beveiliging.',
-    formatJsonDesc: 'Menselijk leesbaar formaat. Het wachtwoord wordt gebruikt om de import te verifiëren.',
+    formatJsonDesc:
+      'Menselijk leesbaar formaat. Het wachtwoord wordt gebruikt om de import te verifiëren.',
     retentionSaved: 'Retentie-instellingen opgeslagen',
     tabs: {
       ...enUS.userdata.tabs,
@@ -1802,12 +1805,34 @@ export default {
     },
     export: 'Gebruikersgegevens exporteren',
     import: 'Gebruikersgegevens importeren',
+    exportDescription:
+      'Exporteer uw chatgeschiedenis en instellingen naar een bestand. Het bestand wordt met een wachtwoord beveiligd.',
+    importDescription:
+      'Importeer eerder geëxporteerde gegevens. U hebt het wachtwoord nodig dat tijdens het exporteren is gebruikt.',
+    password: 'Wachtwoord',
+    passwordMismatch: 'Wachtwoorden komen niet overeen',
+    exportButton: 'Gegevens exporteren',
+    importButton: 'Gegevens importeren',
+    exporting: 'Bezig met exporteren...',
+    importing: 'Bezig met importeren...',
+    exportSuccess: 'Gegevens succesvol geëxporteerd',
+    importSuccess: '{conversations} gesprekken en {messages} berichten geïmporteerd',
     retention: {
       ...enUS.userdata.retention,
       title: 'Gegevensbewaring',
       description: 'Configureer hoe lang gegevens worden bewaard vóór automatische opschoning',
+      storageInfo: 'Huidige opslagomvang',
+      sessions: 'Sessies',
+      events: 'Gebeurtenissen',
+      alerts: 'Meldingen',
+      policy: 'Bewaringsbeleid',
+      sessionsRetention: 'Sessiebewaring',
+      eventsRetention: 'Gebeurtenisbewaring',
+      alertsRetention: 'Meldingsbewaring',
+      days: 'dagen',
       totalRecords: 'Totaal aantal monitoringsrecords',
-      policyHint: 'Elk datatype ondersteunt 1 tot 365 dagen. Kortere retentie bespaart opslag, terwijl langere retentie helpt bij audits en probleemoplossing.',
+      policyHint:
+        'Elk datatype ondersteunt 1 tot 365 dagen. Kortere retentie bespaart opslag, terwijl langere retentie helpt bij audits en probleemoplossing.',
       daysRange: 'Toegestaan bereik: 1-365 dagen',
       sessionsHint: 'Levenscyclus van agent-sessies en runtime-metadata.',
       eventsHint: 'Toolaanroepen, uitvoeringssporen en auditgebeurtenissen.',
@@ -1815,14 +1840,17 @@ export default {
       sessionsSuggested: 'Aanbevolen: 14-30 dagen voor reguliere werkzaamheden',
       eventsSuggested: 'Aanbevolen: 7-14 dagen voor een gebalanceerd auditvolume',
       alertsSuggested: 'Aanbevolen: 30-90 dagen voor incidentbeoordeling',
-      saveHint: 'Nieuwe retentievensters gelden voor komende automatische en handmatige opschoningen.',
+      saveHint:
+        'Nieuwe retentievensters gelden voor komende automatische en handmatige opschoningen.',
     },
     cleanup: {
       ...enUS.userdata.cleanup,
       title: 'Gegevensopschoning',
-      description: 'Verwijder geselecteerde gegevens permanent. Deze actie kan niet ongedaan worden gemaakt.',
+      description:
+        'Verwijder geselecteerde gegevens permanent. Deze actie kan niet ongedaan worden gemaakt.',
       warning: 'Destructieve actie',
-      warningDetail: 'Verwijderde gegevens kunnen niet worden hersteld. Exporteer eerst uw gegevens als u een back-up nodig hebt.',
+      warningDetail:
+        'Verwijderde gegevens kunnen niet worden hersteld. Exporteer eerst uw gegevens als u een back-up nodig hebt.',
       selectData: 'Selecteer gegevens om te verwijderen',
       chatHistory: 'Chatgeschiedenis',
       chatHistoryDesc: 'Alle gesprekken en berichten',
@@ -1841,7 +1869,8 @@ export default {
       willReset: 'Wordt gereset',
       willClear: 'Wordt gewist',
       authorizationStep: 'Autorisatie vereist',
-      authorizationHint: 'Controleer de gegevens die worden verwijderd. Deze stap geldt als bevestiging van autorisatie.',
+      authorizationHint:
+        'Controleer de gegevens die worden verwijderd. Deze stap geldt als bevestiging van autorisatie.',
       proceedToConfirm: 'Doorgaan naar bevestiging',
       confirmStep: 'Definitieve bevestiging',
       confirmHint: 'Voer uw wachtwoord in om deze destructieve actie te bevestigen.',
@@ -1849,7 +1878,8 @@ export default {
       confirmText: 'BEVESTIG VERWIJDERING',
       typeToConfirm: 'Typ om te bevestigen',
       typeToConfirmPlaceholder: 'Typ "{confirmText}" om te bevestigen',
-      productionHint: 'In productieomgevingen kunnen extra inloggegevens vereist zijn (MFA, goedkeuring door beheerder).',
+      productionHint:
+        'In productieomgevingen kunnen extra inloggegevens vereist zijn (MFA, goedkeuring door beheerder).',
       enterPassword: 'Voer wachtwoord in',
       passwordPlaceholder: 'Voer uw wachtwoord in om te bevestigen',
       confirmDelete: 'Verwijderen bevestigen',
@@ -1905,12 +1935,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Nieuwe inhoud onthouden',
       memorySavedMessage: 'Geheugen uit het gesprek gehaald',
       manageMemory: 'Geheugen beheren',
-    },},
+    },
+  },
   automation: {
     ...enUS.automation,
   },
@@ -2050,7 +2081,8 @@ export default {
   },
   home: {
     ...enUS.home,
-    description: 'Een stabiele, betrouwbare en neutrale runtime voor je AI-assistenten en automatiseringen',
+    description:
+      'Een stabiele, betrouwbare en neutrale runtime voor je AI-assistenten en automatiseringen',
   },
   brand: {
     ...enUS.brand,

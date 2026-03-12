@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -62,6 +63,13 @@ func NewStore(db *sql.DB) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+func resolveOwnerScope(ownerID []string, fallback string) string {
+	if len(ownerID) > 0 {
+		return strings.TrimSpace(ownerID[0])
+	}
+	return strings.TrimSpace(fallback)
+}
+
 // Create inserts a new contact.
 func (s *Store) Create(ctx context.Context, c *Contact) error {
 	emailJSON, _ := json.Marshal(c.Email)
@@ -79,16 +87,28 @@ func (s *Store) Create(ctx context.Context, c *Contact) error {
 }
 
 // Get retrieves a contact by ID.
-func (s *Store) Get(ctx context.Context, id string) (*Contact, error) {
+func (s *Store) Get(ctx context.Context, id string, ownerID ...string) (*Contact, error) {
 	var c Contact
 	var emailJSON, phoneJSON, tagsJSON, customJSON string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, owner_id, first_name, last_name, display_name, email, phone,
-		 address, organization, title, birthday, notes, tags, custom, created_at, updated_at
-		 FROM contacts WHERE id = ?`, id).
-		Scan(&c.ID, &c.OwnerID, &c.FirstName, &c.LastName, &c.DisplayName,
-			&emailJSON, &phoneJSON, &c.Address, &c.Organization, &c.Title,
-			&c.Birthday, &c.Notes, &tagsJSON, &customJSON, &c.Created, &c.Updated)
+	scopedOwnerID := resolveOwnerScope(ownerID, "")
+	var err error
+	if scopedOwnerID != "" {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT id, owner_id, first_name, last_name, display_name, email, phone,
+			 address, organization, title, birthday, notes, tags, custom, created_at, updated_at
+			 FROM contacts WHERE id = ? AND owner_id = ?`, id, scopedOwnerID).
+			Scan(&c.ID, &c.OwnerID, &c.FirstName, &c.LastName, &c.DisplayName,
+				&emailJSON, &phoneJSON, &c.Address, &c.Organization, &c.Title,
+				&c.Birthday, &c.Notes, &tagsJSON, &customJSON, &c.Created, &c.Updated)
+	} else {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT id, owner_id, first_name, last_name, display_name, email, phone,
+			 address, organization, title, birthday, notes, tags, custom, created_at, updated_at
+			 FROM contacts WHERE id = ?`, id).
+			Scan(&c.ID, &c.OwnerID, &c.FirstName, &c.LastName, &c.DisplayName,
+				&emailJSON, &phoneJSON, &c.Address, &c.Organization, &c.Title,
+				&c.Birthday, &c.Notes, &tagsJSON, &customJSON, &c.Created, &c.Updated)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -100,25 +120,65 @@ func (s *Store) Get(ctx context.Context, id string) (*Contact, error) {
 }
 
 // Update modifies an existing contact.
-func (s *Store) Update(ctx context.Context, c *Contact) error {
+func (s *Store) Update(ctx context.Context, c *Contact, ownerID ...string) error {
 	emailJSON, _ := json.Marshal(c.Email)
 	phoneJSON, _ := json.Marshal(c.Phone)
 	tagsJSON, _ := json.Marshal(c.Tags)
 	customJSON, _ := json.Marshal(c.Custom)
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE contacts SET first_name = ?, last_name = ?, display_name = ?, email = ?, phone = ?,
-		 address = ?, organization = ?, title = ?, birthday = ?, notes = ?, tags = ?, custom = ?,
-		 updated_at = ? WHERE id = ?`,
-		c.FirstName, c.LastName, c.DisplayName, string(emailJSON), string(phoneJSON),
-		c.Address, c.Organization, c.Title, c.Birthday, c.Notes,
-		string(tagsJSON), string(customJSON), c.Updated, c.ID)
-	return err
+	scopedOwnerID := resolveOwnerScope(ownerID, c.OwnerID)
+	var (
+		res sql.Result
+		err error
+	)
+	if scopedOwnerID != "" {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE contacts SET first_name = ?, last_name = ?, display_name = ?, email = ?, phone = ?,
+			 address = ?, organization = ?, title = ?, birthday = ?, notes = ?, tags = ?, custom = ?,
+			 updated_at = ? WHERE id = ? AND owner_id = ?`,
+			c.FirstName, c.LastName, c.DisplayName, string(emailJSON), string(phoneJSON),
+			c.Address, c.Organization, c.Title, c.Birthday, c.Notes,
+			string(tagsJSON), string(customJSON), c.Updated, c.ID, scopedOwnerID)
+	} else {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE contacts SET first_name = ?, last_name = ?, display_name = ?, email = ?, phone = ?,
+			 address = ?, organization = ?, title = ?, birthday = ?, notes = ?, tags = ?, custom = ?,
+			 updated_at = ? WHERE id = ?`,
+			c.FirstName, c.LastName, c.DisplayName, string(emailJSON), string(phoneJSON),
+			c.Address, c.Organization, c.Title, c.Birthday, c.Notes,
+			string(tagsJSON), string(customJSON), c.Updated, c.ID)
+	}
+	if err != nil {
+		return err
+	}
+	if scopedOwnerID != "" {
+		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
+			return sql.ErrNoRows
+		}
+	}
+	return nil
 }
 
 // Delete removes a contact by ID.
-func (s *Store) Delete(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM contacts WHERE id = ?`, id)
-	return err
+func (s *Store) Delete(ctx context.Context, id string, ownerID ...string) error {
+	scopedOwnerID := resolveOwnerScope(ownerID, "")
+	var (
+		res sql.Result
+		err error
+	)
+	if scopedOwnerID != "" {
+		res, err = s.db.ExecContext(ctx, `DELETE FROM contacts WHERE id = ? AND owner_id = ?`, id, scopedOwnerID)
+	} else {
+		res, err = s.db.ExecContext(ctx, `DELETE FROM contacts WHERE id = ?`, id)
+	}
+	if err != nil {
+		return err
+	}
+	if scopedOwnerID != "" {
+		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
+			return sql.ErrNoRows
+		}
+	}
+	return nil
 }
 
 // ListByOwner returns all contacts for an owner.

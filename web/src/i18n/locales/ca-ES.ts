@@ -567,7 +567,7 @@ export default {
   },
   settings: {
     ...enUS.settings,
-    llmApiKeyRequired: 'Configura una clau API abans d\'obrir la pàgina de proveïdors LLM.',
+    llmApiKeyRequired: "Configura una clau API abans d'obrir la pàgina de proveïdors LLM.",
     agentReflection: {
       ...enUS.settings.agentReflection,
       title: 'Reflexió automàtica',
@@ -731,7 +731,7 @@ export default {
         'Configurar quant temps es conserven les dades de supervisió (sessions, esdeveniments, alertes) abans de la neteja automàtica',
       configure: 'Configurar',
       storageInfo: "Informació d'emmagatzematge",
-      sessions: 'Sessions',
+      sessions: "Sessions de l'agent",
       events: 'Esdeveniments',
       alerts: 'Alertes',
       retentionPolicy: 'Política de retenció',
@@ -1460,7 +1460,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'L\'execució de l\'ordre s\'ha bloquejat perquè l\'aprovació del directori ha expirat. Aprova el directori i torna-ho a provar.',
+    execDirectoryApprovalTimeout:
+      "L'execució de l'ordre s'ha bloquejat perquè l'aprovació del directori ha expirat. Aprova el directori i torna-ho a provar.",
     streamProgress: {
       requestAccepted: 'Sol·licitud rebuda, preparant resposta...',
       generating: 'Generant resposta...',
@@ -1962,17 +1963,19 @@ export default {
     importSuccess: '{conversations} converses i {messages} missatges importats',
     importFailed: 'Error en importar dades',
     chatDataTitle: 'Dades del xat',
-    chatDataDescription: 'Importa, exporta i neteja l’historial de xat i les dades relacionades des d’un sol lloc.',
+    chatDataDescription:
+      'Importa, exporta i neteja l’historial de xat i les dades relacionades des d’un sol lloc.',
     manageData: 'Gestiona les dades',
-    cleanupPreviewFailed: 'No s\'ha pogut previsualitzar la neteja',
-    previewFailed: 'No s\'ha pogut previsualitzar les dades',
+    cleanupPreviewFailed: "No s'ha pogut previsualitzar la neteja",
+    previewFailed: "No s'ha pogut previsualitzar les dades",
     hasSettings: 'Inclou configuració',
     previewTitle: 'Vista prèvia de la importació',
     chooseFile: 'Tria un fitxer',
-    importPasswordPlaceholder: 'Introduïu la contrasenya utilitzada durant l\'exportació',
+    importPasswordPlaceholder: "Introduïu la contrasenya utilitzada durant l'exportació",
     confirmPasswordPlaceholder: 'Torneu a introduir la contrasenya',
     formatEncryptedDesc: 'Format binari totalment xifrat. Més seguretat.',
-    formatJsonDesc: 'Format llegible per a humans. La contrasenya s\'utilitza per verificar la importació.',
+    formatJsonDesc:
+      "Format llegible per a humans. La contrasenya s'utilitza per verificar la importació.",
     retentionSaved: 'Configuració de retenció desada',
     cleanupSuccess: 'Neteja de dades completada',
     cleanupFailed: 'Error en la neteja de dades',
@@ -1980,7 +1983,7 @@ export default {
       title: 'Retenció de dades',
       description: 'Configurar quant temps es conserven les dades abans de la neteja automàtica',
       storageInfo: "Informació d'emmagatzematge",
-      sessions: 'Sessions',
+      sessions: "Sessions de l'agent",
       events: 'Esdeveniments',
       alerts: 'Alertes',
       policy: 'Política de retenció',
@@ -1988,15 +1991,17 @@ export default {
       eventsRetention: "Retenció d'esdeveniments",
       alertsRetention: "Retenció d'alertes",
       totalRecords: 'Total de registres de monitoratge',
-      policyHint: 'Cada tipus de dada admet d\'1 a 365 dies. Una retenció més curta redueix l\'espai, mentre que una més llarga ajuda en auditories i diagnòstic.',
+      policyHint:
+        "Cada tipus de dada admet d'1 a 365 dies. Una retenció més curta redueix l'espai, mentre que una més llarga ajuda en auditories i diagnòstic.",
       daysRange: 'Interval permès: 1-365 dies',
-      sessionsHint: 'Cicle de vida de les sessions de l\'agent i metadades d\'execució.',
-      eventsHint: 'Crides d\'eines, traces d\'execució i esdeveniments d\'auditoria.',
-      alertsHint: 'Alertes de seguretat, puntuacions de risc i estat d\'acceptació.',
+      sessionsHint: "Cicle de vida de les sessions de l'agent i metadades d'execució.",
+      eventsHint: "Crides d'eines, traces d'execució i esdeveniments d'auditoria.",
+      alertsHint: "Alertes de seguretat, puntuacions de risc i estat d'acceptació.",
       sessionsSuggested: 'Suggerit: 14-30 dies per a operacions rutinàries',
       eventsSuggested: 'Suggerit: 7-14 dies per equilibrar auditoria i emmagatzematge',
-      alertsSuggested: 'Suggerit: 30-90 dies per a revisió d\'incidents',
-      saveHint: 'Les noves finestres de retenció s\'aplicaran a les properes neteges automàtiques i manuals.',
+      alertsSuggested: "Suggerit: 30-90 dies per a revisió d'incidents",
+      saveHint:
+        "Les noves finestres de retenció s'aplicaran a les properes neteges automàtiques i manuals.",
 
       days: 'dies',
     },
@@ -2148,12 +2153,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
-      memorySavedTitle: 'S\'ha recordat contingut nou',
-      memorySavedMessage: 'S\'ha extret memòria de la conversa',
+      memorySavedTitle: "S'ha recordat contingut nou",
+      memorySavedMessage: "S'ha extret memòria de la conversa",
       manageMemory: 'Gestiona la memòria',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -2272,7 +2278,8 @@ export default {
   sandbox: { ...enUS.sandbox },
   home: {
     ...enUS.home,
-    description: "Un runtime estable, fiable i neutral per als teus assistents d'IA i automatitzacions",
+    description:
+      "Un runtime estable, fiable i neutral per als teus assistents d'IA i automatitzacions",
   },
   brand: { ...enUS.brand },
   speech: {
