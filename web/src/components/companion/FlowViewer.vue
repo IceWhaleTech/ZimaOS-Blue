@@ -146,21 +146,39 @@ const nodeTypes = {
     >
       <div class="flex items-center gap-3 text-gray-600 dark:text-gray-400">
         <svg class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          <circle
+            class="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="4"
+          />
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
         </svg>
         <span>{{ t('companion.flow.loading') }}</span>
       </div>
     </div>
 
     <!-- Error state -->
-    <div
-      v-else-if="error"
-      class="absolute inset-0 flex items-center justify-center"
-    >
+    <div v-else-if="error" class="absolute inset-0 flex items-center justify-center">
       <div class="text-center">
-        <svg class="mx-auto h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        <svg
+          class="mx-auto h-12 w-12 text-red-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          />
         </svg>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ error }}</p>
         <button
@@ -173,13 +191,20 @@ const nodeTypes = {
     </div>
 
     <!-- Empty state -->
-    <div
-      v-else-if="!nodes.length"
-      class="absolute inset-0 flex items-center justify-center"
-    >
+    <div v-else-if="!nodes.length" class="absolute inset-0 flex items-center justify-center">
       <div class="text-center">
-        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+        <svg
+          class="mx-auto h-12 w-12 text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+          />
         </svg>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ t('companion.flow.empty') }}</p>
       </div>
@@ -202,15 +227,22 @@ const nodeTypes = {
       <Controls position="top-right" />
       <MiniMap
         position="bottom-right"
-        :node-color="(node: { type?: string }) => {
-          switch (node.type) {
-            case 'message': return '#3b82f6'
-            case 'toolCall': return '#8b5cf6'
-            case 'llmRequest': return '#6366f1'
-            case 'securityCheck': return '#ef4444'
-            default: return '#9ca3af'
+        :node-color="
+          (node: { type?: string }) => {
+            switch (node.type) {
+              case 'message':
+                return '#3b82f6'
+              case 'toolCall':
+                return '#8b5cf6'
+              case 'llmRequest':
+                return '#6366f1'
+              case 'securityCheck':
+                return '#ef4444'
+              default:
+                return '#9ca3af'
+            }
           }
-        }"
+        "
       />
     </VueFlow>
 
@@ -221,8 +253,18 @@ const nodeTypes = {
         :title="t('companion.flow.zoomIn')"
         @click="zoomIn()"
       >
-        <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+        <svg
+          class="w-4 h-4 text-gray-600 dark:text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"
+          />
         </svg>
       </button>
       <button
@@ -230,8 +272,18 @@ const nodeTypes = {
         :title="t('companion.flow.zoomOut')"
         @click="zoomOut()"
       >
-        <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+        <svg
+          class="w-4 h-4 text-gray-600 dark:text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"
+          />
         </svg>
       </button>
       <button
@@ -239,31 +291,51 @@ const nodeTypes = {
         :title="t('companion.flow.fitView')"
         @click="fitView({ padding: 0.2 })"
       >
-        <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        <svg
+          class="w-4 h-4 text-gray-600 dark:text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+          />
         </svg>
       </button>
     </div>
 
     <!-- Legend -->
     <div class="absolute top-4 left-4 bg-white dark:bg-gray-700 rounded-lg shadow-md p-3 z-10">
-      <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">{{ t('companion.flow.legend') }}</div>
+      <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+        {{ t('companion.flow.legend') }}
+      </div>
       <div class="space-y-1.5">
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded bg-gray-700 dark:bg-gray-500" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.message') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{
+            t('companion.flow.nodeTypes.message')
+          }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded bg-purple-500" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.toolCall') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{
+            t('companion.flow.nodeTypes.toolCall')
+          }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded bg-indigo-500" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.llmRequest') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{
+            t('companion.flow.nodeTypes.llmRequest')
+          }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded bg-red-500" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.securityCheck') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{
+            t('companion.flow.nodeTypes.securityCheck')
+          }}</span>
         </div>
       </div>
     </div>

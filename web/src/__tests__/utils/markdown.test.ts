@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { renderMarkdown, renderMarkdownCached, copyCodeToClipboard, markdownToText, parseInline } from '@/utils/markdown'
+import {
+  renderMarkdown,
+  renderMarkdownCached,
+  copyCodeToClipboard,
+  markdownToText,
+  parseInline,
+} from '@/utils/markdown'
 import { i18n } from '@/i18n'
 
 describe('Markdown Renderer', () => {
@@ -273,11 +279,7 @@ const x = 1;
   describe('renderMarkdownCached', () => {
     it('should keep append-only plain text output identical to renderMarkdown', () => {
       const scope = 'markdown-cached-append-plain'
-      const steps = [
-        'Hello',
-        'Hello world',
-        'Hello world and friends',
-      ]
+      const steps = ['Hello', 'Hello world', 'Hello world and friends']
 
       for (const step of steps) {
         expect(renderMarkdownCached(step, scope)).toBe(renderMarkdown(step))
@@ -330,7 +332,9 @@ const x = 1;
     })
 
     it('should keep underscore text literal when underscore emphasis is disabled', () => {
-      expect(parseInline('task_id and message_id', { allowUnderscoreEmphasis: false })).toBe('task_id and message_id')
+      expect(parseInline('task_id and message_id', { allowUnderscoreEmphasis: false })).toBe(
+        'task_id and message_id'
+      )
       expect(parseInline('_italic_', { allowUnderscoreEmphasis: false })).toBe('_italic_')
     })
   })

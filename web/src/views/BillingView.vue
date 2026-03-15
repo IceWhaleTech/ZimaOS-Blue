@@ -3,7 +3,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { billingApi, type BillingGroupBy, type BillingSummaryBreakdown, type BillingSummaryResponse, type BillingLinesResponse } from '@/api/billing'
+import {
+  billingApi,
+  type BillingGroupBy,
+  type BillingSummaryBreakdown,
+  type BillingSummaryResponse,
+  type BillingLinesResponse,
+} from '@/api/billing'
 import ResourceChart from '@/components/ResourceChart.vue'
 import { providerPoolApi, type Provider } from '@/api/providerPool'
 
@@ -105,13 +111,13 @@ const anomalies = computed<BillingAnomaly[]>(() => {
   const minTokens = Math.max(0, Math.round(anomalyMinTokens.value || 0))
   const minRatio = Math.max(1, anomalyMinRatio.value || 1)
   const minLookbackPoints = Math.min(3, lookbackDays)
-  if (buckets.length < minLookbackPoints+1) return []
+  if (buckets.length < minLookbackPoints + 1) return []
 
   const out: BillingAnomaly[] = []
   for (let i = 0; i < buckets.length; i++) {
     const current = buckets[i]
     if (!current) continue
-    const lookback = buckets.slice(Math.max(0, i-lookbackDays), i)
+    const lookback = buckets.slice(Math.max(0, i - lookbackDays), i)
     if (lookback.length < minLookbackPoints) continue
 
     const baseline = lookback.reduce((sum, b) => sum + (b.total_tokens || 0), 0) / lookback.length
@@ -139,7 +145,10 @@ const anomalies = computed<BillingAnomaly[]>(() => {
 onMounted(async () => {
   hydrateStateFromQuery()
   await Promise.all([loadProviders(), loadData()])
-  if (pendingAnomalyDay.value && anomalies.value.some(item => item.day === pendingAnomalyDay.value)) {
+  if (
+    pendingAnomalyDay.value &&
+    anomalies.value.some((item) => item.day === pendingAnomalyDay.value)
+  ) {
     await analyzeAnomaly(pendingAnomalyDay.value)
   }
   await syncStateToQuery()
@@ -147,7 +156,7 @@ onMounted(async () => {
 
 watch(anomalies, (items) => {
   if (!selectedAnomalyDay.value) return
-  if (!items.some(item => item.day === selectedAnomalyDay.value)) {
+  if (!items.some((item) => item.day === selectedAnomalyDay.value)) {
     selectedAnomalyDay.value = ''
     anomalyDrilldownError.value = null
     anomalyProviderBreakdown.value = []
@@ -240,7 +249,8 @@ async function syncStateToQuery() {
   if (pageSize.value !== 20) query.page_size = String(pageSize.value)
   if (anomalyLookbackDays.value !== 7) query.an_lb = String(anomalyLookbackDays.value)
   if (anomalyMinTokens.value !== 50000) query.an_min_tokens = String(anomalyMinTokens.value)
-  if (Math.abs(anomalyMinRatio.value - 2.5) > 0.00001) query.an_min_ratio = String(anomalyMinRatio.value)
+  if (Math.abs(anomalyMinRatio.value - 2.5) > 0.00001)
+    query.an_min_ratio = String(anomalyMinRatio.value)
   if (anomalyLimit.value !== 8) query.an_limit = String(anomalyLimit.value)
   if (selectedAnomalyDay.value) query.an_day = selectedAnomalyDay.value
 
@@ -281,19 +291,24 @@ async function loadData() {
       ...baseQuery,
       group_by: groupBy.value,
     })
-    const daySummaryReq = groupBy.value === 'day'
-      ? summaryReq
-      : billingApi.getSummary({
-        ...baseQuery,
-        group_by: 'day',
-      })
+    const daySummaryReq =
+      groupBy.value === 'day'
+        ? summaryReq
+        : billingApi.getSummary({
+            ...baseQuery,
+            group_by: 'day',
+          })
     const linesReq = billingApi.getLines({
       ...baseQuery,
       page: page.value,
       page_size: pageSize.value,
     })
 
-    const [summaryResp, dayResp, linesResp] = await Promise.all([summaryReq, daySummaryReq, linesReq])
+    const [summaryResp, dayResp, linesResp] = await Promise.all([
+      summaryReq,
+      daySummaryReq,
+      linesReq,
+    ])
 
     const summaryData = summaryResp.data as BillingSummaryResponse & { enabled?: boolean }
     if (summaryData.enabled === false) {
@@ -321,8 +336,8 @@ async function loadData() {
   }
 }
 
-const selectedAnomaly = computed(() =>
-  anomalies.value.find(item => item.day === selectedAnomalyDay.value) || null
+const selectedAnomaly = computed(
+  () => anomalies.value.find((item) => item.day === selectedAnomalyDay.value) || null
 )
 
 function toDayStartRFC3339(day: string): string {
@@ -338,7 +353,10 @@ function toNextDayStartRFC3339(day: string): string {
   return `${year}-${month}-${nextDay}T00:00:00Z`
 }
 
-function topBreakdownByCost(items: BillingSummaryBreakdown[], limit = 5): BillingSummaryBreakdown[] {
+function topBreakdownByCost(
+  items: BillingSummaryBreakdown[],
+  limit = 5
+): BillingSummaryBreakdown[] {
   return items
     .slice()
     .sort((a, b) => (b.estimated_cost || 0) - (a.estimated_cost || 0))
@@ -451,7 +469,10 @@ async function exportCSV() {
   try {
     exporting.value = true
     const response = await billingApi.exportCSV(buildQuery())
-    const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: 'text/csv; charset=utf-8' })
+    const blob =
+      response.data instanceof Blob
+        ? response.data
+        : new Blob([response.data], { type: 'text/csv; charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -504,42 +525,54 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
     <div class="glass-card p-4 mb-6">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
         <div>
-          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('billing.filters.from') }}</label>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+            t('billing.filters.from')
+          }}</label>
           <input
             v-model="fromDate"
             type="date"
             class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-600"
-          >
+          />
         </div>
         <div>
-          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('billing.filters.to') }}</label>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+            t('billing.filters.to')
+          }}</label>
           <input
             v-model="toDate"
             type="date"
             class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-600"
-          >
+          />
         </div>
         <div>
-          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('billing.filters.provider') }}</label>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+            t('billing.filters.provider')
+          }}</label>
           <select
             v-model="providerId"
             class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-600"
           >
             <option value="">{{ t('common.allSources') }}</option>
-            <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }} ({{ p.id }})</option>
+            <option v-for="p in providers" :key="p.id" :value="p.id">
+              {{ p.name }} ({{ p.id }})
+            </option>
           </select>
         </div>
         <div>
-          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('billing.filters.model') }}</label>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+            t('billing.filters.model')
+          }}</label>
           <input
             v-model.trim="modelId"
             type="text"
             placeholder="gpt-5"
             class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-600"
-          >
+          />
         </div>
         <div>
-          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('billing.filters.groupBy') }}</label>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+            t('billing.filters.groupBy')
+          }}</label>
           <select
             v-model="groupBy"
             class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-600"
@@ -550,7 +583,9 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
           </select>
         </div>
         <div>
-          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('billing.filters.pageSize') }}</label>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+            t('billing.filters.pageSize')
+          }}</label>
           <select
             v-model.number="pageSize"
             class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-600"
@@ -578,7 +613,10 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
       </div>
     </div>
 
-    <div v-if="error" class="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm">
+    <div
+      v-if="error"
+      class="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm"
+    >
       {{ error }}
     </div>
 
@@ -589,28 +627,52 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
     <template v-else>
       <div v-if="summary" class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
         <div class="glass-card p-4">
-          <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('billing.totals.estimatedCost') }}</div>
-          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">{{ formatCurrency(summary.totals.estimated_cost) }}</div>
+          <div class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('billing.totals.estimatedCost') }}
+          </div>
+          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">
+            {{ formatCurrency(summary.totals.estimated_cost) }}
+          </div>
         </div>
         <div class="glass-card p-4">
-          <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('billing.totals.requests') }}</div>
-          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">{{ formatInteger(summary.totals.request_count) }}</div>
+          <div class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('billing.totals.requests') }}
+          </div>
+          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">
+            {{ formatInteger(summary.totals.request_count) }}
+          </div>
         </div>
         <div class="glass-card p-4">
-          <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('billing.totals.totalTokens') }}</div>
-          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">{{ formatInteger(summary.totals.total_tokens) }}</div>
+          <div class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('billing.totals.totalTokens') }}
+          </div>
+          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">
+            {{ formatInteger(summary.totals.total_tokens) }}
+          </div>
         </div>
         <div class="glass-card p-4">
-          <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('billing.totals.successRate') }}</div>
-          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">{{ successRate.toFixed(2) }}%</div>
+          <div class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('billing.totals.successRate') }}
+          </div>
+          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">
+            {{ successRate.toFixed(2) }}%
+          </div>
         </div>
         <div class="glass-card p-4">
-          <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('billing.totals.cacheReadTokens') }}</div>
-          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">{{ formatInteger(summary.totals.cache_read_tokens) }}</div>
+          <div class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('billing.totals.cacheReadTokens') }}
+          </div>
+          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">
+            {{ formatInteger(summary.totals.cache_read_tokens) }}
+          </div>
         </div>
         <div class="glass-card p-4">
-          <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('billing.totals.cacheWriteTokens') }}</div>
-          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">{{ formatInteger(summary.totals.cache_write_tokens) }}</div>
+          <div class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('billing.totals.cacheWriteTokens') }}
+          </div>
+          <div class="text-2xl font-semibold text-gray-900 dark:text-white mt-1">
+            {{ formatInteger(summary.totals.cache_write_tokens) }}
+          </div>
         </div>
       </div>
 
@@ -630,12 +692,16 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
       </div>
 
       <div class="glass-card p-4 mb-6">
-        <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-1">{{ t('billing.anomalyTitle') }}</h2>
+        <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-1">
+          {{ t('billing.anomalyTitle') }}
+        </h2>
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">{{ t('billing.anomalyHint') }}</p>
 
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
           <div>
-            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('billing.anomalyControls.lookbackDays') }}</label>
+            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+              t('billing.anomalyControls.lookbackDays')
+            }}</label>
             <select
               v-model.number="anomalyLookbackDays"
               class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-600"
@@ -647,27 +713,33 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
             </select>
           </div>
           <div>
-            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('billing.anomalyControls.minTokens') }}</label>
+            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+              t('billing.anomalyControls.minTokens')
+            }}</label>
             <input
               v-model.number="anomalyMinTokens"
               type="number"
               min="0"
               step="1000"
               class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-600"
-            >
+            />
           </div>
           <div>
-            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('billing.anomalyControls.minRatio') }}</label>
+            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+              t('billing.anomalyControls.minRatio')
+            }}</label>
             <input
               v-model.number="anomalyMinRatio"
               type="number"
               min="1"
               step="0.1"
               class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-600"
-            >
+            />
           </div>
           <div>
-            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('billing.anomalyControls.maxAlerts') }}</label>
+            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+              t('billing.anomalyControls.maxAlerts')
+            }}</label>
             <select
               v-model.number="anomalyLimit"
               class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-600"
@@ -687,7 +759,9 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
-              <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+              <tr
+                class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+              >
                 <th class="py-2 pr-3">{{ t('billing.anomalyTable.day') }}</th>
                 <th class="py-2 pr-3">{{ t('billing.anomalyTable.tokens') }}</th>
                 <th class="py-2 pr-3">{{ t('billing.anomalyTable.baseline') }}</th>
@@ -702,13 +776,17 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
                 v-for="item in anomalies"
                 :key="item.day"
                 class="border-b border-gray-100 dark:border-gray-800 text-gray-900 dark:text-gray-100"
-                :class="selectedAnomalyDay === item.day ? 'bg-orange-50/60 dark:bg-orange-900/10' : ''"
+                :class="
+                  selectedAnomalyDay === item.day ? 'bg-orange-50/60 dark:bg-orange-900/10' : ''
+                "
               >
                 <td class="py-2 pr-3 whitespace-nowrap">{{ item.day }}</td>
                 <td class="py-2 pr-3">{{ formatInteger(item.totalTokens) }}</td>
                 <td class="py-2 pr-3">{{ formatInteger(Math.round(item.baselineTokens)) }}</td>
                 <td class="py-2 pr-3">
-                  <span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
+                  <span
+                    class="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300"
+                  >
                     {{ item.spikeRatio.toFixed(2) }}x
                   </span>
                 </td>
@@ -727,25 +805,42 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
           </table>
         </div>
 
-        <div v-if="selectedAnomalyDay" class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+        <div
+          v-if="selectedAnomalyDay"
+          class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4"
+        >
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">
             {{ t('billing.drilldownTitle') }}: {{ selectedAnomalyDay }}
           </h3>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">{{ t('billing.drilldownHint') }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t('billing.drilldownHint') }}
+          </p>
 
           <div v-if="anomalyDrilldownLoading" class="text-sm text-gray-500 dark:text-gray-400 py-2">
             {{ t('billing.drilldownLoading') }}
           </div>
-          <div v-else-if="anomalyDrilldownError" class="text-sm text-red-600 dark:text-red-300 py-2">
+          <div
+            v-else-if="anomalyDrilldownError"
+            class="text-sm text-red-600 dark:text-red-300 py-2"
+          >
             {{ anomalyDrilldownError }}
           </div>
           <div v-else class="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">{{ t('billing.drilldownProvider') }}</h4>
-              <div v-if="anomalyProviderBreakdown.length === 0" class="text-xs text-gray-500 dark:text-gray-400">{{ t('billing.anomalyNone') }}</div>
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                {{ t('billing.drilldownProvider') }}
+              </h4>
+              <div
+                v-if="anomalyProviderBreakdown.length === 0"
+                class="text-xs text-gray-500 dark:text-gray-400"
+              >
+                {{ t('billing.anomalyNone') }}
+              </div>
               <table v-else class="w-full text-xs">
                 <thead>
-                  <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                  <tr
+                    class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+                  >
                     <th class="py-1 pr-2">{{ t('billing.table.provider') }}</th>
                     <th class="py-1 pr-2">{{ t('billing.table.totalTokens') }}</th>
                     <th class="py-1 pr-2">{{ t('billing.table.estimatedCost') }}</th>
@@ -755,12 +850,20 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in anomalyProviderBreakdown" :key="item.key" class="border-b border-gray-100 dark:border-gray-800">
+                  <tr
+                    v-for="item in anomalyProviderBreakdown"
+                    :key="item.key"
+                    class="border-b border-gray-100 dark:border-gray-800"
+                  >
                     <td class="py-1 pr-2">{{ item.provider_id || item.key }}</td>
                     <td class="py-1 pr-2">{{ formatInteger(item.total_tokens || 0) }}</td>
                     <td class="py-1 pr-2">{{ formatCurrency(item.estimated_cost || 0) }}</td>
-                    <td class="py-1 pr-2">{{ percent(item.total_tokens || 0, selectedAnomaly?.totalTokens || 0) }}</td>
-                    <td class="py-1 pr-2">{{ percent(item.estimated_cost || 0, selectedAnomaly?.estimatedCost || 0) }}</td>
+                    <td class="py-1 pr-2">
+                      {{ percent(item.total_tokens || 0, selectedAnomaly?.totalTokens || 0) }}
+                    </td>
+                    <td class="py-1 pr-2">
+                      {{ percent(item.estimated_cost || 0, selectedAnomaly?.estimatedCost || 0) }}
+                    </td>
                     <td class="py-1 pr-2">
                       <button
                         class="px-2 py-0.5 rounded text-[11px] bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white transition-colors"
@@ -775,11 +878,20 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
             </div>
 
             <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">{{ t('billing.drilldownModel') }}</h4>
-              <div v-if="anomalyModelBreakdown.length === 0" class="text-xs text-gray-500 dark:text-gray-400">{{ t('billing.anomalyNone') }}</div>
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                {{ t('billing.drilldownModel') }}
+              </h4>
+              <div
+                v-if="anomalyModelBreakdown.length === 0"
+                class="text-xs text-gray-500 dark:text-gray-400"
+              >
+                {{ t('billing.anomalyNone') }}
+              </div>
               <table v-else class="w-full text-xs">
                 <thead>
-                  <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                  <tr
+                    class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+                  >
                     <th class="py-1 pr-2">{{ t('billing.table.model') }}</th>
                     <th class="py-1 pr-2">{{ t('billing.table.totalTokens') }}</th>
                     <th class="py-1 pr-2">{{ t('billing.table.estimatedCost') }}</th>
@@ -789,12 +901,20 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in anomalyModelBreakdown" :key="item.key" class="border-b border-gray-100 dark:border-gray-800">
+                  <tr
+                    v-for="item in anomalyModelBreakdown"
+                    :key="item.key"
+                    class="border-b border-gray-100 dark:border-gray-800"
+                  >
                     <td class="py-1 pr-2">{{ item.model_id || item.key }}</td>
                     <td class="py-1 pr-2">{{ formatInteger(item.total_tokens || 0) }}</td>
                     <td class="py-1 pr-2">{{ formatCurrency(item.estimated_cost || 0) }}</td>
-                    <td class="py-1 pr-2">{{ percent(item.total_tokens || 0, selectedAnomaly?.totalTokens || 0) }}</td>
-                    <td class="py-1 pr-2">{{ percent(item.estimated_cost || 0, selectedAnomaly?.estimatedCost || 0) }}</td>
+                    <td class="py-1 pr-2">
+                      {{ percent(item.total_tokens || 0, selectedAnomaly?.totalTokens || 0) }}
+                    </td>
+                    <td class="py-1 pr-2">
+                      {{ percent(item.estimated_cost || 0, selectedAnomaly?.estimatedCost || 0) }}
+                    </td>
                     <td class="py-1 pr-2">
                       <button
                         class="px-2 py-0.5 rounded text-[11px] bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white transition-colors"
@@ -812,11 +932,15 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
       </div>
 
       <div v-if="summary?.breakdown?.length" class="glass-card p-4 mb-6">
-        <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">{{ t('billing.breakdownTitle') }}</h2>
+        <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">
+          {{ t('billing.breakdownTitle') }}
+        </h2>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
-              <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+              <tr
+                class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+              >
                 <th class="py-2 pr-3">{{ t('billing.filters.groupBy') }}</th>
                 <th class="py-2 pr-3">{{ t('billing.totals.requests') }}</th>
                 <th class="py-2 pr-3">{{ t('billing.totals.totalTokens') }}</th>
@@ -840,7 +964,9 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
       </div>
 
       <div class="glass-card p-4">
-        <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">{{ t('billing.linesTitle') }}</h2>
+        <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">
+          {{ t('billing.linesTitle') }}
+        </h2>
 
         <div v-if="loading" class="py-8 text-center text-gray-500 dark:text-gray-400">
           {{ t('common.loading') }}
@@ -851,7 +977,9 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
-              <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+              <tr
+                class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+              >
                 <th class="py-2 pr-3">{{ t('billing.table.timestamp') }}</th>
                 <th class="py-2 pr-3">{{ t('billing.table.provider') }}</th>
                 <th class="py-2 pr-3">{{ t('billing.table.model') }}</th>
@@ -887,12 +1015,18 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
                 <td class="py-2 pr-3">
                   <span
                     class="px-2 py-0.5 rounded-full text-xs"
-                    :class="item.success ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'"
+                    :class="
+                      item.success
+                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                        : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                    "
                   >
                     {{ item.success ? t('audit.success') : t('audit.failure') }}
                   </span>
                 </td>
-                <td class="py-2 pr-3">{{ item.latency_ms > 0 ? `${formatInteger(item.latency_ms)}ms` : '-' }}</td>
+                <td class="py-2 pr-3">
+                  {{ item.latency_ms > 0 ? `${formatInteger(item.latency_ms)}ms` : '-' }}
+                </td>
                 <td class="py-2 pr-3">{{ item.user_id || '-' }}</td>
                 <td class="py-2 pr-3">{{ item.session_id || '-' }}</td>
               </tr>
@@ -902,7 +1036,12 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
 
         <div v-if="(lines?.total ?? 0) > 0" class="flex items-center justify-between mt-4 text-sm">
           <div class="text-gray-500 dark:text-gray-400">
-            {{ t('common.showingEntries', { shown: lines?.items.length || 0, total: lines?.total || 0 }) }}
+            {{
+              t('common.showingEntries', {
+                shown: lines?.items.length || 0,
+                total: lines?.total || 0,
+              })
+            }}
           </div>
           <div class="flex items-center gap-2">
             <button

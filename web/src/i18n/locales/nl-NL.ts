@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Bestandsbronnen',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -567,6 +567,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Netwerktoegang',
+    networkTitle: 'Netwerk en toegang',
+    releaseTrack: 'Versiebeheer',
+    systemVersion: 'Updates en versies',
     llmApiKeyRequired: 'Configureer een API-sleutel voordat je de LLM-providerpagina opent.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -701,8 +705,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Goedgekeurde mappen',
+    approvedDirectoriesDesc: 'Mappen die via "Altijd toestaan" zijn goedgekeurd voor exec/convert.',
+    noApprovedDirectories: 'Geen goedgekeurde mappen',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Goedgekeurde mappen',
       firewall: 'Firewall',
       masking: 'Gegevensmaskering',
     },
@@ -1377,6 +1385,7 @@ export default {
       length: 'Minimaal {n} tekens',
       uppercase: 'Één hoofdletter',
       lowercase: 'Één kleine letter',
+      letter: 'Één letter',
       number: 'Één cijfer',
       special: "Één speciaal teken (!{'@'}#$%...)",
     },
@@ -1448,6 +1457,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    conversations: 'Gesprekken',
     execDirectoryApprovalTimeout:
       'De opdrachtuitvoering is geblokkeerd omdat de mapgoedkeuring is verlopen. Keur de map goed en probeer het opnieuw.',
     streamProgress: {

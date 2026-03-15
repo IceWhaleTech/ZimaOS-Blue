@@ -36,6 +36,15 @@ type requestCaptureProvider struct {
 	mu      sync.Mutex
 }
 
+type contextTooLongThenSuccessProxyHandler struct {
+	mu            sync.Mutex
+	requestModels []string
+	successText   string
+	providerID    string
+	providerName  string
+	failAll       bool
+}
+
 type scriptedChatProvider struct {
 	name       string
 	models     []string
@@ -184,6 +193,68 @@ func (p *requestCaptureProvider) LastRequest() llm.ChatRequest {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.lastReq
+}
+
+func (h *contextTooLongThenSuccessProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Model  string `json:"model"`
+		Stream bool   `json:"stream"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	h.mu.Lock()
+	h.requestModels = append(h.requestModels, strings.TrimSpace(body.Model))
+	h.mu.Unlock()
+
+	providerID := strings.TrimSpace(h.providerID)
+	if providerID == "" {
+		providerID = "p-context"
+	}
+	providerName := strings.TrimSpace(h.providerName)
+	if providerName == "" {
+		providerName = "MockProxy"
+	}
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = providerName
+		rr.ProviderID = providerID
+		rr.Model = strings.TrimSpace(body.Model)
+	}
+
+	if h.failAll || strings.EqualFold(strings.TrimSpace(body.Model), "small-model") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"This model's maximum context length is 4096 tokens. However, your messages resulted in 5000 tokens.","type":"invalid_request_error","code":"context_length_exceeded"}}`))
+		return
+	}
+
+	if body.Stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", fmt.Sprintf(`{"id":"stream-ok","choices":[{"delta":{"content":%q},"finish_reason":"stop"}],"model":%q}`, h.successContent(), strings.TrimSpace(body.Model)))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"resp-ok","model":%q,"choices":[{"message":{"role":"assistant","content":%q},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}`, strings.TrimSpace(body.Model), h.successContent())))
+}
+
+func (h *contextTooLongThenSuccessProxyHandler) successContent() string {
+	if strings.TrimSpace(h.successText) != "" {
+		return h.successText
+	}
+	return "recovered after fallback"
+}
+
+func (h *contextTooLongThenSuccessProxyHandler) RequestModels() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]string, len(h.requestModels))
+	copy(out, h.requestModels)
+	return out
 }
 
 func cloneChatRequestForTest(req llm.ChatRequest) llm.ChatRequest {
@@ -1996,6 +2067,90 @@ func newProviderPoolWithContextWindowModel(t *testing.T, modelID string, context
 	return &providerpool.Pool{Registry: registry, Discovery: discovery}
 }
 
+type contextWindowModelSpec struct {
+	ProviderID    string
+	ModelID       string
+	ContextWindow int
+	InputPrice    float64
+	Priority      int
+}
+
+func newProviderPoolWithContextWindowModels(t *testing.T, specs []contextWindowModelSpec) *providerpool.Pool {
+	t.Helper()
+
+	storage, err := providerpool.NewFileStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("create provider storage: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("create provider registry: %v", err)
+	}
+
+	modelsByProvider := make(map[string][]*providerpool.Model)
+	for _, spec := range specs {
+		priority := spec.Priority
+		if priority == 0 {
+			priority = 50
+		}
+		if _, err := registry.Get(spec.ProviderID); err != nil {
+			if regErr := registry.Register(&providerpool.Provider{
+				ID:       spec.ProviderID,
+				Name:     spec.ProviderID,
+				Type:     providerpool.ProviderTypeCustom,
+				Enabled:  true,
+				Status:   providerpool.ProviderStatusActive,
+				BaseURL:  "https://example.com/v1",
+				Priority: priority,
+			}); regErr != nil {
+				t.Fatalf("register provider %s: %v", spec.ProviderID, regErr)
+			}
+		}
+		modelsByProvider[spec.ProviderID] = append(modelsByProvider[spec.ProviderID], &providerpool.Model{
+			ID:            spec.ModelID,
+			Name:          spec.ModelID,
+			ProviderID:    spec.ProviderID,
+			Enabled:       true,
+			ContextWindow: spec.ContextWindow,
+			InputPrice:    spec.InputPrice,
+		})
+	}
+
+	for providerID, models := range modelsByProvider {
+		if err := storage.SaveModels(providerID, models); err != nil {
+			t.Fatalf("save models for %s: %v", providerID, err)
+		}
+	}
+
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	return &providerpool.Pool{Registry: registry, Discovery: discovery}
+}
+
+func findRepeatCountForBudget(t *testing.T, handler *ChatHandler, smallModel string, fallbackModels []string, base string) string {
+	t.Helper()
+
+	for repeat := 200; repeat <= 4000; repeat += 100 {
+		content := strings.Repeat(base, repeat)
+		messages := []llm.Message{{Role: llm.RoleUser, Content: content}}
+		smallBudget := handler.measurePreparedInputBudget(smallModel, 64, messages)
+		if !smallBudget.Exceeds() {
+			continue
+		}
+		allFit := true
+		for _, modelID := range fallbackModels {
+			if handler.measurePreparedInputBudget(modelID, 64, messages).Exceeds() {
+				allFit = false
+				break
+			}
+		}
+		if allFit {
+			return content
+		}
+	}
+	t.Fatalf("failed to find repeat count for %s -> %v", smallModel, fallbackModels)
+	return ""
+}
+
 func TestChatHandlerSendMessageRejectsEstimatedContextOverflow(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -2077,6 +2232,360 @@ func TestChatHandlerStreamMessageRejectsEstimatedContextOverflow(t *testing.T) {
 	}
 	if exceeded, _ := resp["context_window_exceeded"].(bool); !exceeded {
 		t.Fatalf("context_window_exceeded = %#v, want true", resp["context_window_exceeded"])
+	}
+}
+
+func TestFitPreparedMessagesToBudgetStage1Compaction(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+
+	toolJSON, err := json.Marshal(map[string]interface{}{
+		"query":   "budget fit",
+		"results": []map[string]string{{"title": "Result", "description": strings.Repeat("search evidence ", 300)}},
+	})
+	if err != nil {
+		t.Fatalf("marshal tool payload: %v", err)
+	}
+	messages := []llm.Message{
+		{Role: llm.RoleSystem, Content: "system prompt"},
+		{Role: llm.RoleUser, Content: "Investigate the logs"},
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{{ID: "call-1", Name: "web_search", Arguments: `{"query":"budget fit"}`}}},
+		{Role: llm.RoleTool, ToolCallID: "call-1", ToolName: "web_search", Content: string(toolJSON)},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("analysis ", 120)},
+		{Role: llm.RoleUser, Content: "Give me the concise answer"},
+	}
+
+	for _, window := range []int{1024, 1280, 1536, 1792, 2048, 2304, 2560} {
+		handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+			ProviderID:    "p-context",
+			ModelID:       "stage1-model",
+			ContextWindow: window,
+		}}))
+		plan := handler.fitPreparedMessagesToBudget(context.Background(), preparedBudgetFitParams{
+			ConvID:    "conv-stage1",
+			Model:     "stage1-model",
+			MaxTokens: 64,
+			Messages:  messages,
+		})
+		current := plan.Current()
+		if current == nil || current.Stage != 1 {
+			continue
+		}
+		if current.ContextTrim == nil || current.ContextTrim.Type != "progressive_compaction" {
+			t.Fatalf("context trim = %#v, want progressive_compaction", current.ContextTrim)
+		}
+		if current.Budget.Exceeds() {
+			t.Fatalf("stage1 budget still exceeds: %+v", current.Budget)
+		}
+		if !handler.measurePreparedInputBudget("stage1-model", 64, messages).Exceeds() {
+			t.Fatal("expected original prepared budget to exceed")
+		}
+		return
+	}
+	t.Fatal("expected at least one context window to fit at stage 1")
+}
+
+func TestFitPreparedMessagesToBudgetStage2Summary(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.summaryCache.Put("conv-stage2", &ConversationSummary{
+		Text:         "- Cached summary\n- Keep the latest ask concise",
+		MessageCount: 8,
+	})
+
+	messages := []llm.Message{{Role: llm.RoleSystem, Content: "system prompt"}}
+	for i := 0; i < 4; i++ {
+		messages = append(messages,
+			llm.Message{Role: llm.RoleUser, Content: strings.Repeat(fmt.Sprintf("user-%d background ", i), 120)},
+			llm.Message{Role: llm.RoleAssistant, Content: strings.Repeat(fmt.Sprintf("assistant-%d details ", i), 140)},
+		)
+	}
+	messages = append(messages, llm.Message{Role: llm.RoleUser, Content: "Answer the latest question briefly"})
+
+	for _, window := range []int{1024, 1280, 1536, 1792, 2048, 2304, 2560, 3072, 3584, 4096, 4608, 5120} {
+		handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+			ProviderID:    "p-context",
+			ModelID:       "stage2-model",
+			ContextWindow: window,
+		}}))
+		plan := handler.fitPreparedMessagesToBudget(context.Background(), preparedBudgetFitParams{
+			ConvID:    "conv-stage2",
+			Model:     "stage2-model",
+			MaxTokens: 64,
+			Messages:  messages,
+		})
+		current := plan.Current()
+		if current == nil || current.Stage != 2 {
+			continue
+		}
+		if current.ContextTrim == nil || current.ContextTrim.Type != "progressive_compaction" {
+			t.Fatalf("context trim = %#v, want progressive_compaction", current.ContextTrim)
+		}
+		if current.ContextTrim.Stage != 2 {
+			t.Fatalf("context trim stage = %d, want 2", current.ContextTrim.Stage)
+		}
+		foundSummary := false
+		for _, msg := range current.Messages {
+			if msg.Role == llm.RoleSystem && strings.Contains(msg.Content, "Cached summary") {
+				foundSummary = true
+				break
+			}
+		}
+		if !foundSummary {
+			t.Fatalf("stage2 messages did not include cached summary: %#v", current.Messages)
+		}
+		return
+	}
+	t.Fatal("expected at least one context window to fit at stage 2")
+}
+
+func TestFitPreparedMessagesToBudgetPrefersSameProviderFallback(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+		{ProviderID: "p-explicit", ModelID: "small-model", ContextWindow: 1024, InputPrice: 10, Priority: 20},
+		{ProviderID: "p-explicit", ModelID: "same-provider-large", ContextWindow: 4096, InputPrice: 5, Priority: 20},
+		{ProviderID: "p-other", ModelID: "cross-provider-cheap", ContextWindow: 4096, InputPrice: 0.1, Priority: 100},
+	}))
+
+	content := findRepeatCountForBudget(t, handler, "small-model", []string{"same-provider-large", "cross-provider-cheap"}, "fallback budget ")
+	plan := handler.fitPreparedMessagesToBudget(context.Background(), preparedBudgetFitParams{
+		ConvID:             "conv-fallback-same",
+		Model:              "small-model",
+		MaxTokens:          64,
+		Messages:           []llm.Message{{Role: llm.RoleUser, Content: content}},
+		ExplicitProviderID: "p-explicit",
+		ProviderExplicit:   true,
+	})
+
+	current := plan.Current()
+	if current == nil {
+		t.Fatalf("expected fallback attempt, got failure: %#v", plan.Failure())
+	}
+	if current.Model != "same-provider-large" {
+		t.Fatalf("fallback model = %q, want same-provider-large", current.Model)
+	}
+	if current.ProviderID != "p-explicit" {
+		t.Fatalf("fallback provider = %q, want p-explicit", current.ProviderID)
+	}
+	if current.ContextTrim == nil || current.ContextTrim.FallbackProvider != "p-explicit" {
+		t.Fatalf("context trim = %#v, want same-provider fallback metadata", current.ContextTrim)
+	}
+}
+
+func TestFitPreparedMessagesToBudgetFallsBackAcrossProvidersWhenNeeded(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+		{ProviderID: "p-explicit", ModelID: "small-model", ContextWindow: 1024, InputPrice: 10, Priority: 20},
+		{ProviderID: "p-other", ModelID: "cross-provider-large", ContextWindow: 4096, InputPrice: 1, Priority: 100},
+	}))
+
+	content := findRepeatCountForBudget(t, handler, "small-model", []string{"cross-provider-large"}, "cross provider budget ")
+	plan := handler.fitPreparedMessagesToBudget(context.Background(), preparedBudgetFitParams{
+		ConvID:             "conv-fallback-cross",
+		Model:              "small-model",
+		MaxTokens:          64,
+		Messages:           []llm.Message{{Role: llm.RoleUser, Content: content}},
+		ExplicitProviderID: "p-explicit",
+		ProviderExplicit:   true,
+	})
+
+	current := plan.Current()
+	if current == nil {
+		t.Fatalf("expected cross-provider fallback attempt, got failure: %#v", plan.Failure())
+	}
+	if current.Model != "cross-provider-large" {
+		t.Fatalf("fallback model = %q, want cross-provider-large", current.Model)
+	}
+	if current.ProviderID != "p-other" {
+		t.Fatalf("fallback provider = %q, want p-other", current.ProviderID)
+	}
+	if current.ContextTrim == nil || current.ContextTrim.FallbackProvider != "p-other" {
+		t.Fatalf("context trim = %#v, want cross-provider fallback metadata", current.ContextTrim)
+	}
+}
+
+func TestFitPreparedMessagesToBudgetFailureIncludesMetadata(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "small-model",
+		ContextWindow: 1024,
+	}}))
+
+	content := findRepeatCountForBudget(t, handler, "small-model", nil, "too large ")
+	plan := handler.fitPreparedMessagesToBudget(context.Background(), preparedBudgetFitParams{
+		ConvID:    "conv-failure",
+		Model:     "small-model",
+		MaxTokens: 64,
+		Messages:  []llm.Message{{Role: llm.RoleUser, Content: content}},
+	})
+
+	if current := plan.Current(); current != nil {
+		t.Fatalf("expected failure, got attempt: %#v", current)
+	}
+	failure := plan.Failure()
+	if failure == nil {
+		t.Fatal("expected failure metadata")
+	}
+	if failure.OriginalModel != "small-model" {
+		t.Fatalf("original model = %q, want small-model", failure.OriginalModel)
+	}
+	if !failure.FallbackAttempted {
+		t.Fatal("fallback_attempted = false, want true")
+	}
+	if len(failure.CompressionStagesAttempted) != 3 {
+		t.Fatalf("compression stages = %#v, want 3 entries", failure.CompressionStagesAttempted)
+	}
+	if !failure.Budget.Exceeds() {
+		t.Fatalf("final budget = %+v, want exceeded", failure.Budget)
+	}
+}
+
+func TestStripDuplicateTodoChecklistFromTypelessCards(t *testing.T) {
+	content := "done\n\n```typeless\n" +
+		`{"type":"result","title":"plan_create","details":[{"label":"checklist","value":"- [ ] task one\n- [ ] task two"},{"label":"pending_count","value":"2"}]}` +
+		"\n```"
+	trimmed := stripDuplicateTodoChecklistFromTypelessCards(content, "- [x] task one\n- [ ] task two")
+	if strings.Contains(trimmed, `"label":"checklist"`) {
+		t.Fatalf("expected duplicate checklist detail to be removed, got %q", trimmed)
+	}
+	if !strings.Contains(trimmed, `"label":"pending_count"`) {
+		t.Fatalf("expected non-checklist details to remain, got %q", trimmed)
+	}
+}
+
+func TestTodoAwarePersistedContentPrefersSummaryOverTrackedChecklist(t *testing.T) {
+	got := todoAwarePersistedContent("总结：任务已完成。", "- [ ] task one\n- [ ] task two", true)
+	if got != "总结：任务已完成。" {
+		t.Fatalf("todoAwarePersistedContent() = %q, want summary content", got)
+	}
+}
+
+func TestChatHandlerSendMessageRetriesContextTooLongWithLargerModel(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Retry context too long")
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+		{ProviderID: "p-context", ModelID: "small-model", ContextWindow: 4096, InputPrice: 5, Priority: 20},
+		{ProviderID: "p-context", ModelID: "large-model", ContextWindow: 8192, InputPrice: 8, Priority: 20},
+	}))
+	fakeProxy := &contextTooLongThenSuccessProxyHandler{providerID: "p-context"}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"hello","model":"small-model","max_tokens":64}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp SendMessageResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v body=%s", err, rec.Body.String())
+	}
+	if resp.Model != "large-model" {
+		t.Fatalf("response model = %q, want large-model", resp.Model)
+	}
+	if resp.ContextTrim == nil {
+		t.Fatal("expected context trim metadata")
+	}
+	if resp.ContextTrim.Type != "progressive_compaction" {
+		t.Fatalf("context trim type = %q, want progressive_compaction", resp.ContextTrim.Type)
+	}
+	if resp.ContextTrim.FallbackModel != "large-model" {
+		t.Fatalf("fallback_model = %q, want large-model", resp.ContextTrim.FallbackModel)
+	}
+	if resp.ContextTrim.FallbackProvider != "p-context" {
+		t.Fatalf("fallback_provider = %q, want p-context", resp.ContextTrim.FallbackProvider)
+	}
+	models := fakeProxy.RequestModels()
+	if len(models) < 2 {
+		t.Fatalf("request models = %#v, want at least [small-model ... large-model]", models)
+	}
+	if models[0] != "small-model" {
+		t.Fatalf("first request model = %q, want small-model; models=%#v", models[0], models)
+	}
+	if models[len(models)-1] != "large-model" {
+		t.Fatalf("final request model = %q, want large-model; models=%#v", models[len(models)-1], models)
+	}
+	for i := 0; i < len(models)-1; i++ {
+		if models[i] != "small-model" {
+			t.Fatalf("intermediate request model = %q, want small-model before fallback; models=%#v", models[i], models)
+		}
+	}
+}
+
+func TestChatHandlerSendMessageReturnsBudgetFailureAfterAllUpstreamContextTooLongAttempts(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Retry context too long failure")
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+		{ProviderID: "p-context", ModelID: "small-model", ContextWindow: 4096, InputPrice: 5, Priority: 20},
+		{ProviderID: "p-context", ModelID: "large-model", ContextWindow: 8192, InputPrice: 8, Priority: 20},
+	}))
+	handler.SetProxyBridge(proxybridge.NewBridge(&contextTooLongThenSuccessProxyHandler{
+		providerID: "p-context",
+		failAll:    true,
+	}))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"hello","model":"small-model","max_tokens":64}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v body=%s", err, rec.Body.String())
+	}
+	if exceeded, _ := resp["context_window_exceeded"].(bool); !exceeded {
+		t.Fatalf("context_window_exceeded = %#v, want true", resp["context_window_exceeded"])
+	}
+	if got, _ := resp["original_model"].(string); got != "small-model" {
+		t.Fatalf("original_model = %q, want small-model", got)
+	}
+	if attempted, _ := resp["fallback_attempted"].(bool); !attempted {
+		t.Fatalf("fallback_attempted = %#v, want true", resp["fallback_attempted"])
+	}
+	stages, ok := resp["compression_stages_attempted"].([]interface{})
+	if !ok || len(stages) != 3 {
+		t.Fatalf("compression_stages_attempted = %#v, want 3 entries", resp["compression_stages_attempted"])
+	}
+	if got, _ := resp["model"].(string); got != "large-model" {
+		t.Fatalf("model = %q, want large-model", got)
 	}
 }
 
@@ -4455,10 +4964,12 @@ func TestSmallModelStatsHandlers(t *testing.T) {
 
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	handler.smallModelStats.RecordShortQARoute(true)
+	handler.smallModelStats.RecordImageQARoute(true)
 	handler.smallModelStats.RecordToolDispatchRoute(true)
 	handler.smallModelStats.RecordFallback(fallbackReasonDeepResearchUnavailable)
 	handler.smallModelStats.RecordFallback("timeout")
 	handler.smallModelStats.RecordLatencyWithScene("short_qa", 10*time.Millisecond)
+	handler.smallModelStats.RecordLatencyWithScene("image_qa", 15*time.Millisecond)
 	handler.smallModelStats.RecordLatencyWithScene("tool_dispatch", 30*time.Millisecond)
 	handler.smallModelStats.RecordLatencyWithScene("summary", 20*time.Millisecond)
 	handler.smallModelStats.RecordAutoRollback()
@@ -4482,6 +4993,9 @@ func TestSmallModelStatsHandlers(t *testing.T) {
 	if got := payload["short_qa_route_attempts"]; got != float64(1) {
 		t.Fatalf("short_qa_route_attempts = %v, want 1", got)
 	}
+	if got := payload["image_qa_route_attempts"]; got != float64(1) {
+		t.Fatalf("image_qa_route_attempts = %v, want 1", got)
+	}
 	if got := payload["tool_dispatch_route_attempts"]; got != float64(1) {
 		t.Fatalf("tool_dispatch_route_attempts = %v, want 1", got)
 	}
@@ -4497,14 +5011,17 @@ func TestSmallModelStatsHandlers(t *testing.T) {
 	if got := payload["small_model_timeout_total"]; got != float64(1) {
 		t.Fatalf("small_model_timeout_total = %v, want 1", got)
 	}
-	if got := payload["small_model_latency_samples"]; got != float64(3) {
-		t.Fatalf("small_model_latency_samples = %v, want 3", got)
+	if got := payload["small_model_latency_samples"]; got != float64(4) {
+		t.Fatalf("small_model_latency_samples = %v, want 4", got)
 	}
-	if got := payload["small_model_latency_ms"]; got != float64(20) {
-		t.Fatalf("small_model_latency_ms = %v, want 20", got)
+	if got := payload["small_model_latency_ms"]; got != float64(18.75) {
+		t.Fatalf("small_model_latency_ms = %v, want 18.75", got)
 	}
 	if got := payload["short_qa_latency_ms"]; got != float64(10) {
 		t.Fatalf("short_qa_latency_ms = %v, want 10", got)
+	}
+	if got := payload["image_qa_latency_ms"]; got != float64(15) {
+		t.Fatalf("image_qa_latency_ms = %v, want 15", got)
 	}
 	if got := payload["tool_dispatch_latency_ms"]; got != float64(30) {
 		t.Fatalf("tool_dispatch_latency_ms = %v, want 30", got)
@@ -4536,6 +5053,9 @@ func TestSmallModelStatsHandlers(t *testing.T) {
 	if got := payload2["short_qa_route_attempts"]; got != float64(0) {
 		t.Fatalf("short_qa_route_attempts = %v, want 0", got)
 	}
+	if got := payload2["image_qa_route_attempts"]; got != float64(0) {
+		t.Fatalf("image_qa_route_attempts = %v, want 0", got)
+	}
 	if got := payload2["tool_dispatch_route_attempts"]; got != float64(0) {
 		t.Fatalf("tool_dispatch_route_attempts = %v, want 0", got)
 	}
@@ -4556,6 +5076,45 @@ func TestSmallModelStatsHandlers(t *testing.T) {
 	}
 	if got := payload2["short_qa_latency_samples"]; got != float64(0) {
 		t.Fatalf("short_qa_latency_samples = %v, want 0", got)
+	}
+	if got := payload2["image_qa_latency_samples"]; got != float64(0) {
+		t.Fatalf("image_qa_latency_samples = %v, want 0", got)
+	}
+}
+
+func TestShouldRouteImageQA_SeparatesImageTrafficFromShortQA(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	handler.SetSettingsHandler(settings)
+	handler.smallModel = &smallModelRuntimeMock{respText: "cat"}
+
+	enabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &enabled
+
+	req := SendMessageRequest{
+		Message: "What is in this image?",
+		Attachments: []MessageAttachment{{
+			Type:     "image",
+			MimeType: "image/png",
+			Data:     "ZGF0YQ==",
+		}},
+	}
+
+	if !handler.shouldRouteImageQA(req, req.Message) {
+		t.Fatal("expected image QA route to inherit short QA enablement for image-only requests")
+	}
+	if handler.shouldRouteShortQA(req, req.Message) {
+		t.Fatal("expected short QA route to skip image requests once image QA route is available")
+	}
+
+	disabled := false
+	settings.settings.SmallModelRouteImageQAEnabled = &disabled
+	if handler.shouldRouteImageQA(req, req.Message) {
+		t.Fatal("expected explicit image QA disable to override inherited short QA setting")
 	}
 }
 

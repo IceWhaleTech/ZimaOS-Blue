@@ -28,9 +28,7 @@ export const deepResearchApi = {
       params: status ? { status } : undefined,
     }),
 
-  getJob: (id: string) =>
-    api.get<DeepResearchJob>(`/deep-research/jobs/${id}`),
+  getJob: (id: string) => api.get<DeepResearchJob>(`/deep-research/jobs/${id}`),
 
-  cancelJob: (id: string) =>
-    api.post<{ status: string }>(`/deep-research/jobs/${id}/cancel`),
+  cancelJob: (id: string) => api.post<{ status: string }>(`/deep-research/jobs/${id}/cancel`),
 }

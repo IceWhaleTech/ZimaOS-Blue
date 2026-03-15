@@ -79,7 +79,14 @@ const isVideo = computed(() => {
 const isProviderError = computed(() => {
   if (!task.value?.error) return false
   const e = task.value.error.toLowerCase()
-  return e.includes('404') || e.includes('no provider') || e.includes('not configured') || e.includes('api error') || e.includes('auth') || e.includes('api key')
+  return (
+    e.includes('404') ||
+    e.includes('no provider') ||
+    e.includes('not configured') ||
+    e.includes('api error') ||
+    e.includes('auth') ||
+    e.includes('api key')
+  )
 })
 
 const cancelMessage = computed(() => {
@@ -101,7 +108,9 @@ function calcElapsed(): number {
 
 function startElapsedTimer() {
   elapsedSeconds.value = calcElapsed()
-  elapsedInterval = setInterval(() => { elapsedSeconds.value = calcElapsed() }, 100)
+  elapsedInterval = setInterval(() => {
+    elapsedSeconds.value = calcElapsed()
+  }, 100)
 }
 
 function stopElapsedTimer() {
@@ -118,11 +127,19 @@ function handleTerminal() {
   if (!notified) {
     notified = true
     if (task.value?.status === 'succeeded') {
-      notificationStore.success(t('media.succeeded'), t('media.completedToast'), { titleKey: 'media.succeeded', messageKey: 'media.completedToast' })
+      notificationStore.success(t('media.succeeded'), t('media.completedToast'), {
+        titleKey: 'media.succeeded',
+        messageKey: 'media.completedToast',
+      })
     } else if (task.value?.status === 'failed') {
-      notificationStore.error(t('media.failed'), task.value?.error || t('media.toast.failed'), { titleKey: 'media.failed', messageKey: task.value?.error ? undefined : 'media.toast.failed' })
+      notificationStore.error(t('media.failed'), task.value?.error || t('media.toast.failed'), {
+        titleKey: 'media.failed',
+        messageKey: task.value?.error ? undefined : 'media.toast.failed',
+      })
     } else if (task.value?.status === 'cancelled') {
-      notificationStore.info(t('media.cancelled'), cancelMessage.value, { titleKey: 'media.cancelled' })
+      notificationStore.info(t('media.cancelled'), cancelMessage.value, {
+        titleKey: 'media.cancelled',
+      })
     }
   }
 }
@@ -138,7 +155,11 @@ function onTaskUpdate(data: any) {
   if (!task.value) {
     task.value = { id: data.id, status: data.status, progress: data.progress || 0 } as MediaTask
   } else {
-    task.value = { ...task.value, status: data.status, progress: data.progress || task.value.progress }
+    task.value = {
+      ...task.value,
+      status: data.status,
+      progress: data.progress || task.value.progress,
+    }
   }
   if (data.error) task.value.error = data.error
   if (data.response) task.value.response = data.response
@@ -191,7 +212,10 @@ async function handleRetry() {
     stopTracking()
     startTracking()
   } catch {
-    notificationStore.error(t('media.failed'), t('media.retryFailed'), { titleKey: 'media.failed', messageKey: 'media.retryFailed' })
+    notificationStore.error(t('media.failed'), t('media.retryFailed'), {
+      titleKey: 'media.failed',
+      messageKey: 'media.retryFailed',
+    })
   } finally {
     retrying.value = false
   }
@@ -219,24 +243,54 @@ onMounted(startTracking)
 onUnmounted(stopTracking)
 
 // If taskId prop changes externally, sync activeTaskId and restart tracking
-watch(() => props.taskId, (newId) => {
-  if (newId && newId !== activeTaskId.value) {
-    activeTaskId.value = newId
-    stopTracking()
-    startTracking()
+watch(
+  () => props.taskId,
+  (newId) => {
+    if (newId && newId !== activeTaskId.value) {
+      activeTaskId.value = newId
+      stopTracking()
+      startTracking()
+    }
   }
-})
+)
 </script>
 
 <template>
-  <div class="media-placeholder" :class="task ? `status-${task.status}` : 'status-pending'" role="region" :aria-label="statusLabel">
+  <div
+    class="media-placeholder"
+    :class="task ? `status-${task.status}` : 'status-pending'"
+    role="region"
+    :aria-label="statusLabel"
+  >
     <!-- Loading / Pending / Processing — AI waiting card style -->
-    <div v-if="!task || task.status === 'pending' || task.status === 'processing'" class="mp-card" role="status" aria-live="polite">
+    <div
+      v-if="!task || task.status === 'pending' || task.status === 'processing'"
+      class="mp-card"
+      role="status"
+      aria-live="polite"
+    >
       <div class="mp-card-inner">
         <div class="mp-card-header">
           <svg class="mp-spinner" width="20" height="20" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" opacity="0.15" />
-            <circle cx="12" cy="12" r="10" fill="none" stroke="url(#mpGrad)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="40 23" />
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              opacity="0.15"
+            />
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke="url(#mpGrad)"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-dasharray="40 23"
+            />
             <defs>
               <linearGradient id="mpGrad" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stop-color="#818cf8" />
@@ -245,12 +299,22 @@ watch(() => props.taskId, (newId) => {
             </defs>
           </svg>
           <span class="mp-card-title">{{ statusLabel }}</span>
-          <span v-if="elapsedSeconds >= 0.5" class="mp-card-timer">{{ elapsedSeconds.toFixed(1) }}s</span>
+          <span v-if="elapsedSeconds >= 0.5" class="mp-card-timer"
+            >{{ elapsedSeconds.toFixed(1) }}s</span
+          >
         </div>
         <div v-if="task?.model" class="mp-card-model">{{ task.model }}</div>
         <div v-if="elapsedSeconds > 10" class="mp-card-hint">{{ t('media.processingHint') }}</div>
         <div class="mp-card-bar">
-          <div v-if="progressPercent > 0" class="mp-card-bar-real" :style="{ width: progressPercent + '%' }" role="progressbar" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100" />
+          <div
+            v-if="progressPercent > 0"
+            class="mp-card-bar-real"
+            :style="{ width: progressPercent + '%' }"
+            role="progressbar"
+            :aria-valuenow="progressPercent"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          />
           <div v-else class="mp-card-bar-shimmer" />
         </div>
       </div>
@@ -259,8 +323,21 @@ watch(() => props.taskId, (newId) => {
     <!-- Succeeded -->
     <div v-else-if="task.status === 'succeeded' && resultUrls.length > 0" class="mp-result">
       <template v-for="(url, i) in resultUrls" :key="i">
-        <video v-if="isVideo" :src="url" controls class="mp-media" :aria-label="`Generated video ${i + 1}`" />
-        <img v-else :src="url" class="mp-media mp-media-clickable" loading="lazy" :alt="`Generated image ${i + 1}`" @click="openViewer(url)" />
+        <video
+          v-if="isVideo"
+          :src="url"
+          controls
+          class="mp-media"
+          :aria-label="`Generated video ${i + 1}`"
+        />
+        <img
+          v-else
+          :src="url"
+          class="mp-media mp-media-clickable"
+          loading="lazy"
+          :alt="`Generated image ${i + 1}`"
+          @click="openViewer(url)"
+        />
       </template>
     </div>
 
@@ -270,10 +347,23 @@ watch(() => props.taskId, (newId) => {
         <span class="mp-error-text">{{ task.error || statusLabel }}</span>
         <div v-if="isProviderError" class="mp-error-hint">
           {{ t('media.errorHint') }}
-          <a class="mp-error-link" @click.prevent="router.push({ path: '/settings', query: { tab: 'llm', section: 'media' } })">{{ t('media.goSettings') }}</a>
+          <a
+            class="mp-error-link"
+            @click.prevent="
+              router.push({ path: '/settings', query: { tab: 'llm', section: 'media' } })
+            "
+            >{{ t('media.goSettings') }}</a
+          >
         </div>
       </div>
-      <button class="mp-retry" :disabled="retrying" @click="handleRetry" :aria-label="t('media.retry')">{{ retrying ? '...' : t('media.retry') }}</button>
+      <button
+        class="mp-retry"
+        :disabled="retrying"
+        @click="handleRetry"
+        :aria-label="t('media.retry')"
+      >
+        {{ retrying ? '...' : t('media.retry') }}
+      </button>
     </div>
 
     <!-- Cancelled -->
@@ -281,21 +371,73 @@ watch(() => props.taskId, (newId) => {
       <div class="mp-error-body">
         <span class="mp-cancelled-text">{{ cancelMessage }}</span>
       </div>
-      <button class="mp-retry mp-retry--cancelled" :disabled="retrying" @click="handleRetry" :aria-label="t('media.retry')">{{ retrying ? '...' : t('media.retry') }}</button>
+      <button
+        class="mp-retry mp-retry--cancelled"
+        :disabled="retrying"
+        @click="handleRetry"
+        :aria-label="t('media.retry')"
+      >
+        {{ retrying ? '...' : t('media.retry') }}
+      </button>
     </div>
 
     <!-- Image Viewer Overlay -->
     <Teleport to="body">
-      <div v-if="viewerOpen" class="mp-viewer-overlay" @click.self="closeViewer" role="dialog" aria-modal="true" :aria-label="t('media.fullscreen')">
+      <div
+        v-if="viewerOpen"
+        class="mp-viewer-overlay"
+        @click.self="closeViewer"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('media.fullscreen')"
+      >
         <div class="mp-viewer-toolbar">
           <button class="mp-viewer-btn" @click="downloadImage" :title="t('media.download')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
           </button>
           <button class="mp-viewer-btn" @click="openInNewTab" :title="t('media.openInNewTab')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
           </button>
           <button class="mp-viewer-btn" @click="closeViewer" :title="t('media.exitFullscreen')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
         <img :src="viewerUrl" class="mp-viewer-img" :alt="t('media.fullscreen')" />
@@ -327,7 +469,7 @@ watch(() => props.taskId, (newId) => {
 }
 
 :root.dark .mp-card-inner,
-[data-theme="dark"] .mp-card-inner {
+[data-theme='dark'] .mp-card-inner {
   background:
     linear-gradient(#1e293b, #1e293b) padding-box,
     linear-gradient(135deg, #818cf8, #c084fc, #f472b6) border-box;
@@ -354,7 +496,7 @@ watch(() => props.taskId, (newId) => {
 }
 
 :root.dark .mp-card-title,
-[data-theme="dark"] .mp-card-title {
+[data-theme='dark'] .mp-card-title {
   color: #a5b4fc;
 }
 
@@ -375,7 +517,7 @@ watch(() => props.taskId, (newId) => {
 }
 
 :root.dark .mp-card-model,
-[data-theme="dark"] .mp-card-model {
+[data-theme='dark'] .mp-card-model {
   color: #64748b;
 }
 
@@ -388,7 +530,7 @@ watch(() => props.taskId, (newId) => {
 }
 
 :root.dark .mp-card-hint,
-[data-theme="dark"] .mp-card-hint {
+[data-theme='dark'] .mp-card-hint {
   color: #64748b;
 }
 
@@ -401,7 +543,7 @@ watch(() => props.taskId, (newId) => {
 }
 
 :root.dark .mp-card-bar,
-[data-theme="dark"] .mp-card-bar {
+[data-theme='dark'] .mp-card-bar {
   background: #334155;
 }
 
@@ -421,19 +563,35 @@ watch(() => props.taskId, (newId) => {
 }
 
 @keyframes mp-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes mp-bar-slide {
-  0% { transform: translateX(-100%); }
-  50% { transform: translateX(150%); }
-  100% { transform: translateX(-100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(150%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
 }
 
 @keyframes mp-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .mp-result {

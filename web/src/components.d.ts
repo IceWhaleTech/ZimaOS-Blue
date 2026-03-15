@@ -83,6 +83,7 @@ declare module 'vue' {
     CreateUserModal: typeof import('./components/users/CreateUserModal.vue')['default']
     DashboardCard: typeof import('./components/dashboard/DashboardCard.vue')['default']
     DashboardCustomizer: typeof import('./components/dashboard/DashboardCustomizer.vue')['default']
+    DashboardSparkline: typeof import('./components/dashboard/DashboardSparkline.vue')['default']
     DataMaskingSettings: typeof import('./components/security/DataMaskingSettings.vue')['default']
     DeepResearchTaskDock: typeof import('./components/DeepResearchTaskDock.vue')['default']
     DonutChart: typeof import('./components/DonutChart.vue')['default']
@@ -183,6 +184,7 @@ declare module 'vue' {
     VirtualScroll: typeof import('./components/VirtualScroll.vue')['default']
     VoiceCustomizer: typeof import('./components/tts/VoiceCustomizer.vue')['default']
     VoicePackManager: typeof import('./components/tts/VoicePackManager.vue')['default']
+    VoiceWakeSettingsSection: typeof import('./components/settings/VoiceWakeSettingsSection.vue')['default']
     WebAuthnSettings: typeof import('./components/WebAuthnSettings.vue')['default']
     WorkspaceSettings: typeof import('./components/settings/WorkspaceSettings.vue')['default']
   }

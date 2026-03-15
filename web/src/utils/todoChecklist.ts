@@ -1,8 +1,10 @@
 import type { Message } from '@/api/chat'
 
 const TODO_CHECKLIST_LINE_RE = /^[ \t]*[-*]\s+\[(?: |x|X)\]\s+(.+?)\s*$/
-const TODO_CHECKLIST_BLOCK_RE = /(^|\n)([ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+(?:\n[ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+)*)/m
-const AFFIRMATIVE_CONTINUATION_RE = /^(?:ok(?:ay)?|sure|yes|yeah|yep|continue|go on|继续(?:吧|执行|一下)?|请继续(?:执行)?|接着(?:来|做)?|好的?|好|收到|行|继续工作)$/i
+const TODO_CHECKLIST_BLOCK_RE =
+  /(^|\n)([ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+(?:\n[ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+)*)/m
+const AFFIRMATIVE_CONTINUATION_RE =
+  /^(?:ok(?:ay)?|sure|yes|yeah|yep|continue|go on|继续(?:吧|执行|一下)?|请继续(?:执行)?|接着(?:来|做)?|好的?|好|收到|行|继续工作)$/i
 
 export function extractFirstTodoChecklistBlock(content: string): string | null {
   const match = TODO_CHECKLIST_BLOCK_RE.exec(content)
@@ -33,8 +35,8 @@ export function getTodoChecklistSignature(content: string): string | null {
 
   const items = block
     .split('\n')
-    .map(line => TODO_CHECKLIST_LINE_RE.exec(line)?.[1] ?? '')
-    .map(item => item.replace(/\s+/g, ' ').trim().toLowerCase())
+    .map((line) => TODO_CHECKLIST_LINE_RE.exec(line)?.[1] ?? '')
+    .map((item) => item.replace(/\s+/g, ' ').trim().toLowerCase())
     .filter(Boolean)
 
   return items.length > 0 ? items.join('\u0001') : null
@@ -53,7 +55,7 @@ function isDuplicateTodoChecklistMessage(messages: Message[], message: Message):
   const signature = getTodoChecklistSignature(message.content)
   if (!signature) return false
 
-  const currentIndex = messages.findIndex(candidate => candidate.id === message.id)
+  const currentIndex = messages.findIndex((candidate) => candidate.id === message.id)
   if (currentIndex <= 0) return false
 
   for (let index = currentIndex - 1; index >= 0; index--) {
@@ -76,11 +78,13 @@ function isDuplicateTodoChecklistMessage(messages: Message[], message: Message):
   return false
 }
 
-export function stripDuplicateTodoChecklistForMessage(messages: Message[], message: Message): string {
+export function stripDuplicateTodoChecklistForMessage(
+  messages: Message[],
+  message: Message
+): string {
   if (!isDuplicateTodoChecklistMessage(messages, message)) {
     return message.content
   }
 
   return stripFirstTodoChecklistBlock(message.content)
 }
-

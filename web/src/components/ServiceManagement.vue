@@ -70,14 +70,22 @@ async function toggleAutoStart() {
     error.value = null
     successMessage.value = null
     try {
-      const disableRes = (await serviceApi.disable()) as { data: { success: boolean; message: string } }
+      const disableRes = (await serviceApi.disable()) as {
+        data: { success: boolean; message: string }
+      }
       if (!disableRes.data.success) {
-        error.value = t('service.disableFailed') + (disableRes.data.message ? `: ${disableRes.data.message}` : '')
+        error.value =
+          t('service.disableFailed') +
+          (disableRes.data.message ? `: ${disableRes.data.message}` : '')
         return
       }
-      const uninstallRes = (await serviceApi.uninstall()) as { data: { success: boolean; message: string } }
+      const uninstallRes = (await serviceApi.uninstall()) as {
+        data: { success: boolean; message: string }
+      }
       if (!uninstallRes.data.success) {
-        error.value = t('service.uninstallFailed') + (uninstallRes.data.message ? `: ${uninstallRes.data.message}` : '')
+        error.value =
+          t('service.uninstallFailed') +
+          (uninstallRes.data.message ? `: ${uninstallRes.data.message}` : '')
         return
       }
       successMessage.value = t('service.disableSuccess')
@@ -87,7 +95,9 @@ async function toggleAutoStart() {
     } finally {
       actionLoading.value = null
       if (successMessage.value) {
-        setTimeout(() => { successMessage.value = null }, 3000)
+        setTimeout(() => {
+          successMessage.value = null
+        }, 3000)
       }
     }
   } else {
@@ -98,15 +108,22 @@ async function toggleAutoStart() {
     try {
       // Install if not already installed
       if (!serviceInfo.value?.installed) {
-        const installRes = (await serviceApi.install()) as { data: { success: boolean; message: string } }
+        const installRes = (await serviceApi.install()) as {
+          data: { success: boolean; message: string }
+        }
         if (!installRes.data.success) {
-          error.value = t('service.installFailed') + (installRes.data.message ? `: ${installRes.data.message}` : '')
+          error.value =
+            t('service.installFailed') +
+            (installRes.data.message ? `: ${installRes.data.message}` : '')
           return
         }
       }
-      const enableRes = (await serviceApi.enable()) as { data: { success: boolean; message: string } }
+      const enableRes = (await serviceApi.enable()) as {
+        data: { success: boolean; message: string }
+      }
       if (!enableRes.data.success) {
-        error.value = t('service.enableFailed') + (enableRes.data.message ? `: ${enableRes.data.message}` : '')
+        error.value =
+          t('service.enableFailed') + (enableRes.data.message ? `: ${enableRes.data.message}` : '')
         return
       }
       successMessage.value = t('service.enableSuccess')
@@ -116,7 +133,9 @@ async function toggleAutoStart() {
     } finally {
       actionLoading.value = null
       if (successMessage.value) {
-        setTimeout(() => { successMessage.value = null }, 3000)
+        setTimeout(() => {
+          successMessage.value = null
+        }, 3000)
       }
     }
   }
@@ -165,19 +184,22 @@ async function savePort() {
   try {
     const response = await systemApi.updateConfig({
       server: {
-        port: newPort
-      }
+        port: newPort,
+      },
     })
 
     if (response.data.success) {
       portEditing.value = false
 
       // Store port change info in localStorage for the new page
-      localStorage.setItem('portChangeInfo', JSON.stringify({
-        previousPort: currentPort,
-        newPort: newPort,
-        timestamp: Date.now()
-      }))
+      localStorage.setItem(
+        'portChangeInfo',
+        JSON.stringify({
+          previousPort: currentPort,
+          newPort: newPort,
+          timestamp: Date.now(),
+        })
+      )
 
       // Restart service to apply new port
       await systemApi.restartService()
@@ -189,7 +211,8 @@ async function savePort() {
         window.location.href = currentUrl.toString()
       }, 2000)
     } else {
-      error.value = t('service.portSaveFailed') + (response.data.message ? `: ${response.data.message}` : '')
+      error.value =
+        t('service.portSaveFailed') + (response.data.message ? `: ${response.data.message}` : '')
     }
   } catch (e) {
     error.value = t('service.portSaveFailed') + (e instanceof Error ? `: ${e.message}` : '')
@@ -267,8 +290,8 @@ async function revertPort() {
     // Revert to previous port
     await systemApi.updateConfig({
       server: {
-        port: prevPort
-      }
+        port: prevPort,
+      },
     })
     await systemApi.restartService()
 
@@ -334,7 +357,9 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="flex items-center gap-3">
-          <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white w-10 text-center">
+          <div
+            class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white w-10 text-center"
+          >
             {{ portChangeCountdown }}
           </div>
           <button
@@ -375,10 +400,7 @@ onUnmounted(() => {
                 <div class="font-mono text-lg text-gray-900 dark:text-white">
                   {{ serverConfig?.actual_port || serverConfig?.port || '-' }}
                 </div>
-                <div
-                  v-if="portChanged"
-                  class="text-xs text-yellow-600 dark:text-yellow-400"
-                >
+                <div v-if="portChanged" class="text-xs text-yellow-600 dark:text-yellow-400">
                   {{ t('service.configuredPort') }}: {{ serverConfig?.port }}
                 </div>
               </div>
@@ -453,14 +475,18 @@ onUnmounted(() => {
       <div class="bg-gray-100 dark:bg-gray-700/30 rounded-lg p-4">
         <div class="flex items-center justify-between">
           <div>
-            <div class="font-medium text-gray-900 dark:text-white">{{ t('service.autoStart') }}</div>
+            <div class="font-medium text-gray-900 dark:text-white">
+              {{ t('service.autoStart') }}
+            </div>
             <div class="text-sm text-gray-500 dark:text-gray-400">
               {{ t('service.autoStartDescription') }}
             </div>
           </div>
           <button
             class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:ring-offset-2"
-            :class="autoStartEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+            :class="
+              autoStartEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+            "
             :disabled="actionLoading !== null"
             @click="toggleAutoStart"
           >

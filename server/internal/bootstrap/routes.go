@@ -78,6 +78,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voicewake"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/webpush"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
@@ -566,6 +567,17 @@ type RoutesDeps struct {
 	OnEarlyReady func()
 }
 
+func registerPublicAuthRoutes(v1 *echo.Group, userHandler *user.Handler) {
+	if v1 == nil || userHandler == nil {
+		return
+	}
+
+	v1.POST("/auth/login", userHandler.Login)
+	v1.POST("/auth/logout", userHandler.Logout)
+	v1.POST("/auth/refresh", userHandler.RefreshToken)
+	v1.GET("/auth/password-policy", userHandler.GetPasswordPolicy)
+}
+
 // RegisterAllRoutes registers all API routes on the Echo instance.
 // Returns the authenticated API group for late-binding route registration.
 func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
@@ -588,6 +600,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, s.JWTService, s.UserService)
 	previewHandler.SetDataDir(dataDir)
 	previewHandler.RegisterRoutes(e)
+	if deps.AuthMiddleware != nil {
+		deps.AuthMiddleware.SetPreviewModeChecker(previewModeService)
+	}
 
 	// Set mode service to user handler for preview mode support
 	deps.UserHandler.SetModeService(previewModeService)
@@ -595,6 +610,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// API groups
 	v1 := e.Group("/api/v1")
 	api := e.Group("/api")
+
+	// Public auth routes must exist before OnEarlyReady so the frontend can
+	// fetch password policy and refresh tokens during early startup.
+	registerPublicAuthRoutes(v1, deps.UserHandler)
 
 	// Lightweight health endpoint — registered FIRST so the Tauri health poll
 	// can succeed as soon as the HTTP listener starts, before heavy subsystem init.
@@ -1002,10 +1021,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		return c.JSON(http.StatusOK, s.WorkerPool.Stats())
 	})
-
-	// Public auth routes
-	v1.POST("/auth/login", deps.UserHandler.Login)
-	v1.POST("/auth/logout", deps.UserHandler.Logout)
 
 	// Public config and templates routes (no auth required)
 	configHandler := server.NewConfigHandler(deps.HotReloader)
@@ -1527,7 +1542,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			if deps.ChatHandler != nil {
 				deps.ChatHandler.SetConvertSourceProvider(convertService)
 			}
-			tools.RegisterConvertTool(s.ToolRegistry, convertService, execApprovals)
+			tools.RegisterConvertTool(s.ToolRegistry, convertService, execApprovals, dirStore)
 		}
 
 		// Wire audit store for exec commands (reuses blue.db — write volume is low: 1 row per exec).
@@ -1598,10 +1613,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			})
 		}
 
+		execGroup := v1.Group("/exec")
+
 		// Exec approval REST endpoint (kept for backwards compatibility;
 		// the unified /approval/resolve endpoint also handles exec approvals).
 		if execApprovals != nil {
-			execGroup := v1.Group("/exec")
 			execGroup.GET("/approvals/pending", func(c echo.Context) error {
 				userID := resolveRequestUserID(c)
 				req := execApprovals.GetPending(userID)
@@ -1631,6 +1647,75 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 					return c.JSON(404, map[string]string{"error": "approval not found or expired"})
 				}
 				return c.JSON(200, map[string]string{"status": string(decision)})
+			})
+		}
+
+		// Persistent approved directories management.
+		if dirStore != nil {
+			execGroup.GET("/approvals/directories", func(c echo.Context) error {
+				userID := resolveRequestUserID(c)
+				entries, err := dirStore.List()
+				if err != nil {
+					return c.JSON(500, map[string]string{"error": "failed to load approved directories"})
+				}
+
+				type directoryEntry struct {
+					ID         string `json:"id"`
+					Path       string `json:"path"`
+					AddedAt    string `json:"added_at"`
+					LastUsed   string `json:"last_used"`
+					ApprovedBy string `json:"approved_by,omitempty"`
+				}
+				out := make([]directoryEntry, 0, len(entries))
+				for _, entry := range entries {
+					approvedBy := strings.TrimSpace(entry.ApprovedBy)
+					if approvedBy != "" && userID != "default" && userID != approvedBy {
+						continue
+					}
+					out = append(out, directoryEntry{
+						ID:         entry.ID,
+						Path:       entry.Path,
+						AddedAt:    entry.AddedAt.UTC().Format(time.RFC3339),
+						LastUsed:   entry.LastUsed.UTC().Format(time.RFC3339),
+						ApprovedBy: approvedBy,
+					})
+				}
+
+				return c.JSON(200, map[string]interface{}{
+					"entries": out,
+				})
+			})
+
+			execGroup.DELETE("/approvals/directories/:id", func(c echo.Context) error {
+				id := strings.TrimSpace(c.Param("id"))
+				if id == "" {
+					return c.JSON(400, map[string]string{"error": "directory id is required"})
+				}
+
+				userID := resolveRequestUserID(c)
+				entries, err := dirStore.List()
+				if err != nil {
+					return c.JSON(500, map[string]string{"error": "failed to load approved directories"})
+				}
+				found := false
+				for _, entry := range entries {
+					if entry.ID != id {
+						continue
+					}
+					found = true
+					approvedBy := strings.TrimSpace(entry.ApprovedBy)
+					if approvedBy != "" && userID != "default" && userID != approvedBy {
+						return c.JSON(403, map[string]string{"error": "forbidden"})
+					}
+					break
+				}
+				if !found {
+					return c.JSON(404, map[string]string{"error": "directory approval not found"})
+				}
+				if err := dirStore.Delete(id); err != nil {
+					return c.JSON(500, map[string]string{"error": "failed to revoke directory approval"})
+				}
+				return c.JSON(200, map[string]bool{"deleted": true})
 			})
 		}
 	}
@@ -2772,6 +2857,22 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	settingsHandler.SetChatHandler(deps.ChatHandler)
 	smManager := smallmodel.NewManager(cfg.DataDir)
 	settingsHandler.SetSmallModelManager(smManager)
+	var voiceWakeHandler *voicewake.Handler
+	if deps.ChatHandler != nil {
+		supported := runtime.GOOS == "darwin" && cfg != nil && strings.EqualFold(strings.TrimSpace(cfg.Mode), "embedded")
+		voiceWakeManager := voicewake.NewManager(voicewake.ManagerConfig{
+			Settings:  settingsHandler,
+			Submitter: deps.ChatHandler,
+			Supported: supported,
+		})
+		settingsHandler.SetVoiceWakeManager(voiceWakeManager)
+		voiceWakeHandler = voicewake.NewHandler(voiceWakeManager)
+		go func(done <-chan struct{}) {
+			<-done
+			_ = voiceWakeManager.Close()
+		}(deps.Ctx.Done())
+		_ = voiceWakeManager.Refresh(deps.Ctx)
+	}
 	smallRuntime := smallmodel.NewLlamaCppRuntime(smManager)
 	deps.ChatHandler.SetSmallModelRuntime(smallRuntime)
 	auxiliaryLLM.SetSmallModel(smallRuntime)
@@ -2790,6 +2891,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		deps.ChatHandler.SetCompactorMemoryIntegration(nil, deps.Config.Session.MaxTokens)
 	}
 	settingsHandler.RegisterRoutes(protected)
+	if voiceWakeHandler != nil {
+		voiceWakeHandler.RegisterRoutes(protected.Group("/voice-wake"))
+	}
 	// Also make locale available to provider settings handler
 	providerSettingsHandler.SetSettingsHandler(settingsHandler)
 	// Wire settings into chat handler for runtime smart tool selection toggle

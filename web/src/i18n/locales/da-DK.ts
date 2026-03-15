@@ -61,7 +61,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Filkilder',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -562,6 +562,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Netværksadgang',
+    networkTitle: 'Netværk og adgang',
+    releaseTrack: 'Versionsstyring',
+    systemVersion: 'Opdateringer og versioner',
     llmApiKeyRequired: 'Konfigurer en API-nøgle, før du åbner siden for LLM-udbydere.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -695,8 +699,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Godkendte mapper',
+    approvedDirectoriesDesc: 'Mapper godkendt via "Tillad altid" for exec/convert.',
+    noApprovedDirectories: 'Ingen godkendte mapper',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Godkendte mapper',
       firewall: 'Brandmur',
       masking: 'Datamaskering',
     },
@@ -1287,6 +1295,7 @@ export default {
       length: 'Mindst {n} tegn',
       uppercase: 'Et stort bogstav',
       lowercase: 'Et lille bogstav',
+      letter: 'Et bogstav',
       number: 'Et tal',
       special: "Et specialtegn (!{'@'}#$%...)",
     },
@@ -1358,7 +1367,9 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Kommandoets udførelse blev blokeret, fordi godkendelsen af mappen udløb. Godkend mappen, og prøv igen.',
+    conversations: 'Samtaler',
+    execDirectoryApprovalTimeout:
+      'Kommandoets udførelse blev blokeret, fordi godkendelsen af mappen udløb. Godkend mappen, og prøv igen.',
     streamProgress: {
       requestAccepted: 'Anmodning modtaget, forbereder svar...',
       generating: 'Genererer svar...',
@@ -1711,7 +1722,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: 'Chatdata',
-    chatDataDescription: 'Importer, eksporter og ryd op i chathistorik og relaterede data fra et sted.',
+    chatDataDescription:
+      'Importer, eksporter og ryd op i chathistorik og relaterede data fra et sted.',
     manageData: 'Administrer data',
     cleanupPreviewFailed: 'Kunne ikke forhåndsvise oprydning',
     cleanupFailed: 'Kunne ikke rydde data op',
@@ -1735,8 +1747,10 @@ export default {
     formatEncryptedDesc: 'Fuldt krypteret binært format. Højere sikkerhed.',
     formatJsonDesc: 'Menneskeligt læsbart format. Adgangskoden bruges til importbekræftelse.',
     retentionSaved: 'Opbevaringsindstillinger gemt',
-    exportDescription: 'Eksporter din chathistorik og dine indstillinger til en fil. Filen beskyttes med en adgangskode.',
-    importDescription: 'Importer tidligere eksporterede data. Du skal bruge adgangskoden, der blev brugt ved eksporten.',
+    exportDescription:
+      'Eksporter din chathistorik og dine indstillinger til en fil. Filen beskyttes med en adgangskode.',
+    importDescription:
+      'Importer tidligere eksporterede data. Du skal bruge adgangskoden, der blev brugt ved eksporten.',
     password: 'Adgangskode',
     passwordMismatch: 'Adgangskoderne matcher ikke',
     exportButton: 'Eksporter data',
@@ -1759,7 +1773,8 @@ export default {
       title: 'Dataopbevaring',
       description: 'Konfigurer hvor længe data opbevares før automatisk oprydning',
       totalRecords: 'Samlet antal overvågningsposter',
-      policyHint: 'Hver datatype understøtter 1 til 365 dage. Kortere opbevaring reducerer lagerforbrug, mens længere opbevaring hjælper ved revision og fejlfinding.',
+      policyHint:
+        'Hver datatype understøtter 1 til 365 dage. Kortere opbevaring reducerer lagerforbrug, mens længere opbevaring hjælper ved revision og fejlfinding.',
       daysRange: 'Tilladt interval: 1-365 dage',
       sessionsHint: 'Agent-sessioners livscyklus og runtime-metadata.',
       eventsHint: 'Værktøjskald, eksekveringsspor og revisionshændelser.',
@@ -1784,7 +1799,8 @@ export default {
       title: 'Dataoprydning',
       description: 'Slet valgte data permanent. Denne handling kan ikke fortrydes.',
       warning: 'Destruktiv handling',
-      warningDetail: 'Slettede data kan ikke gendannes. Eksporter dine data først, hvis du har brug for en backup.',
+      warningDetail:
+        'Slettede data kan ikke gendannes. Eksporter dine data først, hvis du har brug for en backup.',
       selectData: 'Vælg data der skal slettes',
       chatHistory: 'Chathistorik',
       chatHistoryDesc: 'Alle samtaler og beskeder',
@@ -1803,15 +1819,18 @@ export default {
       willReset: 'Bliver nulstillet',
       willClear: 'Bliver ryddet',
       authorizationStep: 'Godkendelse krævet',
-      authorizationHint: 'Gennemgå de data, der slettes. Dette trin fungerer som godkendelsesbekræftelse.',
+      authorizationHint:
+        'Gennemgå de data, der slettes. Dette trin fungerer som godkendelsesbekræftelse.',
       proceedToConfirm: 'Fortsæt til bekræftelse',
       confirmStep: 'Endelig bekræftelse',
       confirmHint: 'Indtast din adgangskode for at bekræfte denne destruktive handling.',
-      confirmHintPreview: 'Skriv "{confirmText}" nedenfor for at bekræfte denne destruktive handling.',
+      confirmHintPreview:
+        'Skriv "{confirmText}" nedenfor for at bekræfte denne destruktive handling.',
       confirmText: 'BEKRÆFT SLETNING',
       typeToConfirm: 'Skriv for at bekræfte',
       typeToConfirmPlaceholder: 'Skriv "{confirmText}" for at bekræfte',
-      productionHint: 'I produktionsmiljøer kan yderligere legitimationsoplysninger (MFA, admin-godkendelse) være påkrævet.',
+      productionHint:
+        'I produktionsmiljøer kan yderligere legitimationsoplysninger (MFA, admin-godkendelse) være påkrævet.',
       enterPassword: 'Indtast adgangskode',
       passwordPlaceholder: 'Indtast din adgangskode for at bekræfte',
       confirmDelete: 'Bekræft sletning',
@@ -1886,12 +1905,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Nyt indhold husket',
       memorySavedMessage: 'Hukommelse udtrukket fra samtalen',
       manageMemory: 'Administrer hukommelse',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -2008,7 +2028,8 @@ export default {
   sandbox: { ...enUS.sandbox },
   home: {
     ...enUS.home,
-    description: 'Et stabilt, troværdigt og neutralt runtime-miljø til dine AI-assistenter og automatiseringer',
+    description:
+      'Et stabilt, troværdigt og neutralt runtime-miljø til dine AI-assistenter og automatiseringer',
   },
   brand: { ...enUS.brand },
   speech: {

@@ -1,7 +1,8 @@
 import { onMounted, onUnmounted } from 'vue'
 
 // Detect macOS
-const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0
+const isMac =
+  typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0
 
 export interface KeyboardShortcut {
   key: string
@@ -26,9 +27,7 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[]) {
         // Don't trigger shortcuts when typing in input fields
         const target = event.target as HTMLElement
         const isInputField =
-          target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable
+          target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
         // Allow some shortcuts even in input fields
         const allowInInput = shortcut.ctrl || shortcut.meta

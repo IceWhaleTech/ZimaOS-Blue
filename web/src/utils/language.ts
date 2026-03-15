@@ -77,15 +77,15 @@ export function detectLanguage(text: string): string {
  */
 export function getVoiceForLanguage(lang: string): string {
   const voiceMap: Record<string, string> = {
-    'en': 'en-US-AriaNeural',
-    'zh': 'zh-CN-XiaoxiaoNeural',
-    'ja': 'ja-JP-NanamiNeural',
-    'ko': 'ko-KR-SunHiNeural',
-    'de': 'de-DE-KatjaNeural',
-    'fr': 'fr-FR-DeniseNeural',
-    'es': 'es-ES-ElviraNeural',
-    'ru': 'ru-RU-SvetlanaNeural',
-    'ar': 'ar-SA-ZariyahNeural',
+    en: 'en-US-AriaNeural',
+    zh: 'zh-CN-XiaoxiaoNeural',
+    ja: 'ja-JP-NanamiNeural',
+    ko: 'ko-KR-SunHiNeural',
+    de: 'de-DE-KatjaNeural',
+    fr: 'fr-FR-DeniseNeural',
+    es: 'es-ES-ElviraNeural',
+    ru: 'ru-RU-SvetlanaNeural',
+    ar: 'ar-SA-ZariyahNeural',
   }
   const fallback = voiceMap.en || 'en-US-AriaNeural'
   return voiceMap[lang] ?? fallback

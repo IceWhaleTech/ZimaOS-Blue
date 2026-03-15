@@ -324,7 +324,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: '工作區核心檔案',
-    workspaceGeneratedTab: '目錄樹與生成檔案',
+    workspaceGeneratedTab: '檔案來源',
     workspaceGeneratedTitle: '工作區目錄樹',
     workspaceGeneratedDescription: '展示真實目錄與檔案層級，並在可識別時關聯到來源對話。',
     workspaceGeneratedLoadFailed: '掃描生成檔案來源失敗',
@@ -619,6 +619,7 @@ export default {
     inputPlaceholder: '輸入訊息...（Enter 送出，Shift+Enter 換行）',
     newLine: '換行',
     dragDropHint: '拖放或貼上檔案以附加',
+    conversations: '對話',
     searchConversations: '搜尋對話...',
     noConversationsFound: '未找到對話',
     noConversationsYet: '尚無對話',
@@ -767,6 +768,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: '網路入口',
+    networkTitle: '網路與存取',
+    releaseTrack: '版本管理',
+    systemVersion: '更新與版本',
     llmApiKeyRequired: '請先配置大型語言模型供應商。',
     llmProviderSetupLink: '配置大型語言模型供應商',
     agentReflection: {
@@ -2924,12 +2929,13 @@ export default {
       },
       alertDescription: '這是一個用於示範目的的告警。',
     },
-  
+
     toasts: {
       memorySavedTitle: '已記住新內容',
       memorySavedMessage: '已從對話中擷取記憶',
       manageMemory: '管理記憶',
-    },},
+    },
+  },
   automation: {
     ...enUS.automation,
     title: '自動化',
@@ -3314,6 +3320,9 @@ export default {
   // Statistics (v0.10.3)
   security: {
     ...enUS.security,
+    approvedDirectories: '已核准的目錄',
+    approvedDirectoriesDesc: '透過「一律允許」為 exec/convert 核准的目錄。',
+    noApprovedDirectories: '沒有已核准的目錄',
     firewall: {
       ...enUS.security.firewall,
       title: '提示詞防火牆',
@@ -3361,6 +3370,7 @@ export default {
     },
     tabs: {
       ...enUS.security.tabs,
+      approvals: '已授權目錄',
       overview: '概覽',
       firewall: '防火牆',
       masking: '資料脫敏',

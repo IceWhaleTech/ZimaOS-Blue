@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Origen dels fitxers',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -567,6 +567,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Acces de xarxa',
+    networkTitle: 'Xarxa i accés',
+    releaseTrack: 'Gestió de versions',
+    systemVersion: 'Actualitzacions i versions',
     llmApiKeyRequired: "Configura una clau API abans d'obrir la pàgina de proveïdors LLM.",
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -703,8 +707,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Directoris aprovats',
+    approvedDirectoriesDesc: 'Directoris aprovats mitjançant «Permet sempre» per a exec/convert.',
+    noApprovedDirectories: 'No hi ha cap directori aprovat',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Directoris aprovats',
       firewall: 'Tallafoc',
       masking: 'Emmascarament de dades',
     },
@@ -1389,6 +1397,7 @@ export default {
       length: 'Almenys {n} caràcters',
       uppercase: 'Una lletra majúscula',
       lowercase: 'Una lletra minúscula',
+      letter: 'Una lletra',
       number: 'Un número',
       special: "Un caràcter especial (!{'@'}#$%...)",
     },
@@ -1460,6 +1469,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    conversations: 'Converses',
     execDirectoryApprovalTimeout:
       "L'execució de l'ordre s'ha bloquejat perquè l'aprovació del directori ha expirat. Aprova el directori i torna-ho a provar.",
     streamProgress: {

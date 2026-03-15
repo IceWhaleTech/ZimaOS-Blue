@@ -22,6 +22,9 @@ const (
 type AuthMiddleware struct {
 	jwtService    *JWTService
 	apiKeyService *APIKeyService
+	previewMode   interface {
+		IsPreviewMode(context.Context) (bool, error)
+	}
 }
 
 // NewAuthMiddleware creates a new auth middleware
@@ -30,6 +33,14 @@ func NewAuthMiddleware(jwtSvc *JWTService, apiKeySvc *APIKeyService) *AuthMiddle
 		jwtService:    jwtSvc,
 		apiKeyService: apiKeySvc,
 	}
+}
+
+// SetPreviewModeChecker configures preview mode verification for preview JWTs.
+// When set, tokens for the synthetic preview user are rejected once preview mode is off.
+func (m *AuthMiddleware) SetPreviewModeChecker(checker interface {
+	IsPreviewMode(context.Context) (bool, error)
+}) {
+	m.previewMode = checker
 }
 
 // Authenticate returns a middleware that requires authentication
@@ -110,6 +121,12 @@ func (m *AuthMiddleware) authenticateJWT(c echo.Context) (*UserClaims, bool) {
 	claims, err := m.jwtService.ValidateToken(token)
 	if err != nil {
 		return nil, false
+	}
+	if claims.UserClaims.UserID == "preview-user" && m.previewMode != nil {
+		isPreview, err := m.previewMode.IsPreviewMode(c.Request().Context())
+		if err != nil || !isPreview {
+			return nil, false
+		}
 	}
 
 	return &claims.UserClaims, true

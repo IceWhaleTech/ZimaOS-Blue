@@ -17,9 +17,7 @@ export const useAutoReplyStore = defineStore('autoreply', () => {
   // Getters
   const enabledRules = computed(() => rules.value.filter((r) => r.enabled))
   const disabledRules = computed(() => rules.value.filter((r) => !r.enabled))
-  const sortedRules = computed(() =>
-    [...rules.value].sort((a, b) => b.priority - a.priority)
-  )
+  const sortedRules = computed(() => [...rules.value].sort((a, b) => b.priority - a.priority))
 
   const rulesByTriggerType = computed(() => ({
     keyword: rules.value.filter((r) => r.trigger_type === 'keyword'),
@@ -144,10 +142,7 @@ export const useAutoReplyStore = defineStore('autoreply', () => {
     }
   }
 
-  async function testMessage(
-    message: string,
-    channel?: string
-  ): Promise<TestRuleResponse | null> {
+  async function testMessage(message: string, channel?: string): Promise<TestRuleResponse | null> {
     try {
       const response = await autoReplyApi.test({ message, channel })
       return response.data

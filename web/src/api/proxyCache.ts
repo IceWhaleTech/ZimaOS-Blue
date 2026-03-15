@@ -134,7 +134,10 @@ export const proxyCacheApi = {
     api.put<{ success: boolean; enabled: boolean }>('/proxy/routing/config', config),
   getRoutingRules: () => api.get<{ rules: RoutingRule[] }>('/proxy/routing/rules'),
   updateRoutingRule: (name: string, config: { enabled: boolean }) =>
-    api.put<{ success: boolean; name: string; enabled: boolean }>(`/proxy/routing/rules/${encodeURIComponent(name)}`, config),
+    api.put<{ success: boolean; name: string; enabled: boolean }>(
+      `/proxy/routing/rules/${encodeURIComponent(name)}`,
+      config
+    ),
   getRoutingStats: () => api.get<RoutingStats>('/proxy/routing/stats'),
   getPromptCacheConfig: () => api.get<{ enabled: boolean }>('/proxy/prompt-cache/config'),
   getPromptCacheStats: () => api.get<PromptCacheStats>('/proxy/prompt-cache/stats'),

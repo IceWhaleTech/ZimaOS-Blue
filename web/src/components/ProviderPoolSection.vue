@@ -68,11 +68,14 @@ const availableTabs = computed<ProviderTab[]>(() => {
   const tabs: ProviderTab[] = ['all']
   if (getTabCount('trial') > 0) tabs.push('trial')
   tabs.push('builtin', 'platform')
-  if (getTabCount('other') > 0) tabs.push('other')
   tabs.push('custom')
   if (getTabCount('media') > 0) tabs.push('media')
   return tabs
 })
+
+function visibleTab(tab: ProviderTab): ProviderTab {
+  return tab === 'other' ? 'all' : tab
+}
 const iconInput = ref<HTMLInputElement | null>(null)
 const uploadingIcon = ref(false)
 
@@ -90,7 +93,7 @@ const newProvider = ref({
 })
 const showNewProviderApiKey = ref(false)
 const addingProvider = ref(false)
-const addingStep = ref('')  // '', 'adding', 'probing', 'done'
+const addingStep = ref('') // '', 'adding', 'probing', 'done'
 
 function tr(key: string, fallback = ''): string {
   return te(key) ? t(key) : fallback
@@ -154,7 +157,7 @@ const displayProvider = computed(() => store.selectedProvider)
 // Models for selected provider
 const selectedProviderModels = computed(() => {
   if (!store.selectedProviderId || !store.models) return []
-  return store.models.filter(m => m.provider_id === store.selectedProviderId)
+  return store.models.filter((m) => m.provider_id === store.selectedProviderId)
 })
 
 // Models to display: always provider-level (union of all keys)
@@ -165,14 +168,17 @@ const displayModels = computed(() => {
 const verificationProbeEntries = computed(() => {
   if (!verificationResult.value?.probes) return []
   const probes = verificationResult.value.probes
-  const showResponsesProbes = verificationResult.value.recommended_api_format === 'responses'
-    || verificationResult.value.detected_format === 'responses'
-    || verificationResult.value.responses_only
+  const showResponsesProbes =
+    verificationResult.value.recommended_api_format === 'responses' ||
+    verificationResult.value.detected_format === 'responses' ||
+    verificationResult.value.responses_only
   const preferredOrder = ['models', 'anthropic_messages', 'chat_completions']
   if (showResponsesProbes) {
     preferredOrder.push('responses_v1', 'responses_plain')
   }
-  const entries: Array<[string, { url: string; status_code?: number; reachable: boolean; error?: string }]> = []
+  const entries: Array<
+    [string, { url: string; status_code?: number; reachable: boolean; error?: string }]
+  > = []
 
   for (const key of preferredOrder) {
     const probe = probes[key]
@@ -194,33 +200,37 @@ const verificationProbeEntries = computed(() => {
 let providerSelectionSeq = 0
 
 // Refresh models when provider changes
-watch(() => displayProvider.value, async (provider) => {
-  if (!provider) return
-  const seq = ++providerSelectionSeq
-  const providerId = provider.id
+watch(
+  () => displayProvider.value,
+  async (provider) => {
+    if (!provider) return
+    const seq = ++providerSelectionSeq
+    const providerId = provider.id
 
-  // Fetch provider-level models (backend unions all keys automatically)
-  await store.refreshModels(providerId)
-  if (seq !== providerSelectionSeq) return
+    // Fetch provider-level models (backend unions all keys automatically)
+    await store.refreshModels(providerId)
+    if (seq !== providerSelectionSeq) return
 
-  fetchProviderUsage(providerId)
-  // Fetch OAuth quota lazily when provider is selected
-  if (provider.oauth?.connected) {
-    store.fetchOAuthQuota(providerId)
-  }
-  // Always fetch OAuth accounts list for OAuth-capable providers
-  if (provider.oauth) {
-    fetchOAuthAccounts(providerId)
-  }
-  // Auto-test all API keys when entering provider detail
-  if (provider.api_keys?.length) {
-    for (const key of provider.api_keys) {
-      if (!keyTestResults.value[key.id]) {
-        testConnection(providerId, key.id)
+    fetchProviderUsage(providerId)
+    // Fetch OAuth quota lazily when provider is selected
+    if (provider.oauth?.connected) {
+      store.fetchOAuthQuota(providerId)
+    }
+    // Always fetch OAuth accounts list for OAuth-capable providers
+    if (provider.oauth) {
+      fetchOAuthAccounts(providerId)
+    }
+    // Auto-test all API keys when entering provider detail
+    if (provider.api_keys?.length) {
+      for (const key of provider.api_keys) {
+        if (!keyTestResults.value[key.id]) {
+          testConnection(providerId, key.id)
+        }
       }
     }
-  }
-}, { immediate: true })
+  },
+  { immediate: true }
+)
 
 // Base URL editing
 const editingBaseUrl = ref(false)
@@ -272,10 +282,12 @@ function translateHealthError(error: string): string {
     return t('providerPool.healthErrors.baseUrlNotConfigured')
   }
   if (error === 'network_error') return t('providerPool.healthErrors.networkError') + keyInfo
-  if (error === 'certificate_error') return t('providerPool.healthErrors.certificateError') + keyInfo
+  if (error === 'certificate_error')
+    return t('providerPool.healthErrors.certificateError') + keyInfo
   if (error === 'timeout_error') return t('providerPool.healthErrors.timeoutError') + keyInfo
   if (error === 'connection_error') return t('providerPool.healthErrors.connectionError') + keyInfo
-  if (error === 'endpoint_not_found') return t('providerPool.healthErrors.endpointNotFound') + keyInfo
+  if (error === 'endpoint_not_found')
+    return t('providerPool.healthErrors.endpointNotFound') + keyInfo
   if (error.startsWith('unexpected_status:')) {
     const code = error.split(':')[1]
     return t('providerPool.healthErrors.unexpectedStatus', { code }) + keyInfo
@@ -290,9 +302,8 @@ const filteredProviders = computed(() => {
 
   if (searchQuery.value && providers.length > 0) {
     const query = searchQuery.value.toLowerCase()
-    providers = providers.filter(p =>
-      p.name.toLowerCase().includes(query) ||
-      p.id.toLowerCase().includes(query)
+    providers = providers.filter(
+      (p) => p.name.toLowerCase().includes(query) || p.id.toLowerCase().includes(query)
     )
   }
 
@@ -314,8 +325,8 @@ const currentTabSelectedProvider = computed(() => {
 // Get custom pricing for a specific model in the selected provider
 function getModelCustomPricing(modelId: string) {
   const providerId = store.selectedProviderId
-  return store.customPricing.find(p =>
-    p.model_id === modelId && (!p.provider_id || p.provider_id === providerId)
+  return store.customPricing.find(
+    (p) => p.model_id === modelId && (!p.provider_id || p.provider_id === providerId)
   )
 }
 
@@ -367,11 +378,14 @@ watch(activeTab, () => {
   }
 })
 
-watch(() => displayProvider.value?.id, () => {
-  verificationResult.value = null
-  verificationError.value = ''
-  verificationKeyId.value = ''
-})
+watch(
+  () => displayProvider.value?.id,
+  () => {
+    verificationResult.value = null
+    verificationError.value = ''
+    verificationKeyId.value = ''
+  }
+)
 
 // Methods
 async function loadData() {
@@ -425,7 +439,9 @@ async function testConnection(providerId: string, keyId?: string) {
 async function clearProviderError(providerId: string) {
   try {
     await store.clearProviderError(providerId)
-    notification.success(t('providerPool.errorCleared'), undefined, { titleKey: 'providerPool.errorCleared' })
+    notification.success(t('providerPool.errorCleared'), undefined, {
+      titleKey: 'providerPool.errorCleared',
+    })
   } catch (e) {
     console.error('Failed to clear error:', e)
   }
@@ -438,9 +454,15 @@ async function refreshModels(providerId: string) {
     const probeResult = await store.probeModels(providerId)
     if (probeResult.success) {
       notification.success(
-        t('providerPool.probeComplete', { available: probeResult.available, total: probeResult.total }),
+        t('providerPool.probeComplete', {
+          available: probeResult.available,
+          total: probeResult.total,
+        }),
         undefined,
-        { titleKey: 'providerPool.probeComplete', titleParams: { available: probeResult.available, total: probeResult.total } },
+        {
+          titleKey: 'providerPool.probeComplete',
+          titleParams: { available: probeResult.available, total: probeResult.total },
+        }
       )
       return
     }
@@ -448,11 +470,10 @@ async function refreshModels(providerId: string) {
     // Probe failed (maybe no cached models yet) — fall back to fetch
     const fetchResult = await store.refreshModels(providerId)
     if (!fetchResult.success) {
-      notification.error(
-        t('providerPool.refreshModelsFailed'),
-        fetchResult.error,
-        { duration: 8000, titleKey: 'providerPool.refreshModelsFailed' }
-      )
+      notification.error(t('providerPool.refreshModelsFailed'), fetchResult.error, {
+        duration: 8000,
+        titleKey: 'providerPool.refreshModelsFailed',
+      })
     }
   } finally {
     refreshingModels.value = null
@@ -463,7 +484,10 @@ async function runProviderVerification(apply = false) {
   const provider = displayProvider.value
   if (!provider) return
   if (!provider.base_url) {
-    notification.error(t('providerPool.verifyFailed'), t('providerPool.baseUrlRequired'), { titleKey: 'providerPool.verifyFailed', messageKey: 'providerPool.baseUrlRequired' })
+    notification.error(t('providerPool.verifyFailed'), t('providerPool.baseUrlRequired'), {
+      titleKey: 'providerPool.verifyFailed',
+      messageKey: 'providerPool.baseUrlRequired',
+    })
     return
   }
 
@@ -484,17 +508,26 @@ async function runProviderVerification(apply = false) {
 
     if (apply) {
       if (result.applied) {
-        notification.success(t('providerPool.verifyApplied'), undefined, { titleKey: 'providerPool.verifyApplied' })
+        notification.success(t('providerPool.verifyApplied'), undefined, {
+          titleKey: 'providerPool.verifyApplied',
+        })
       } else {
-        notification.info(t('providerPool.verifyNoChanges'), undefined, { titleKey: 'providerPool.verifyNoChanges' })
+        notification.info(t('providerPool.verifyNoChanges'), undefined, {
+          titleKey: 'providerPool.verifyNoChanges',
+        })
       }
     } else {
-      notification.success(t('providerPool.verifySuccess'), undefined, { titleKey: 'providerPool.verifySuccess' })
+      notification.success(t('providerPool.verifySuccess'), undefined, {
+        titleKey: 'providerPool.verifySuccess',
+      })
     }
   } catch (e: any) {
-    const message = e?.response?.data?.error || (e instanceof Error ? e.message : t('providerPool.verifyFailed'))
+    const message =
+      e?.response?.data?.error || (e instanceof Error ? e.message : t('providerPool.verifyFailed'))
     verificationError.value = message
-    notification.error(t('providerPool.verifyFailed'), message, { titleKey: 'providerPool.verifyFailed' })
+    notification.error(t('providerPool.verifyFailed'), message, {
+      titleKey: 'providerPool.verifyFailed',
+    })
   } finally {
     if (apply) {
       applyingVerification.value = null
@@ -546,8 +579,11 @@ async function addCustomProvider() {
       const fetchTimeoutMs = remainingDiscoveryMs()
       const fetchResult = await Promise.race([
         store.refreshModels(providerId),
-        new Promise<{ success: false; error: string; models: never[] }>(resolve =>
-          setTimeout(() => resolve({ success: false, error: 'timeout', models: [] }), fetchTimeoutMs)
+        new Promise<{ success: false; error: string; models: never[] }>((resolve) =>
+          setTimeout(
+            () => resolve({ success: false, error: 'timeout', models: [] }),
+            fetchTimeoutMs
+          )
         ),
       ])
 
@@ -557,8 +593,26 @@ async function addCustomProvider() {
           const probeResult = await Promise.race([
             // Probe with higher concurrency during add-flow to reduce waiting time.
             store.probeModels(providerId, 10),
-            new Promise<{ success: false; error: string; total: number; available: number; unavailable: number; results: never[] }>(resolve =>
-              setTimeout(() => resolve({ success: false, error: 'timeout', total: 0, available: 0, unavailable: 0, results: [] }), probeTimeoutMs)
+            new Promise<{
+              success: false
+              error: string
+              total: number
+              available: number
+              unavailable: number
+              results: never[]
+            }>((resolve) =>
+              setTimeout(
+                () =>
+                  resolve({
+                    success: false,
+                    error: 'timeout',
+                    total: 0,
+                    available: 0,
+                    unavailable: 0,
+                    results: [],
+                  }),
+                probeTimeoutMs
+              )
             ),
           ])
           if (probeResult.success) {
@@ -583,20 +637,22 @@ async function addCustomProvider() {
       notification.success(
         t('providerPool.providerAdded'),
         t('providerPool.providerAddedWithModels', { count: available }),
-        { titleKey: 'providerPool.providerAdded', messageKey: 'providerPool.providerAddedWithModels', messageParams: { count: available } },
+        {
+          titleKey: 'providerPool.providerAdded',
+          messageKey: 'providerPool.providerAddedWithModels',
+          messageParams: { count: available },
+        }
       )
     } else if (total > 0) {
-      notification.info(
-        t('providerPool.providerAdded'),
-        t('providerPool.noAvailableModels'),
-        { titleKey: 'providerPool.providerAdded', messageKey: 'providerPool.noAvailableModels' },
-      )
+      notification.info(t('providerPool.providerAdded'), t('providerPool.noAvailableModels'), {
+        titleKey: 'providerPool.providerAdded',
+        messageKey: 'providerPool.noAvailableModels',
+      })
     } else {
-      notification.info(
-        t('providerPool.providerAdded'),
-        t('providerPool.noModelsFound'),
-        { titleKey: 'providerPool.providerAdded', messageKey: 'providerPool.noModelsFound' },
-      )
+      notification.info(t('providerPool.providerAdded'), t('providerPool.noModelsFound'), {
+        titleKey: 'providerPool.providerAdded',
+        messageKey: 'providerPool.noModelsFound',
+      })
     }
 
     // Auto-select the new provider
@@ -607,7 +663,9 @@ async function addCustomProvider() {
     newProvider.value = { name: '', base_url: '', api_key: '', priority: 50, location: 'cloud' }
   } catch (e) {
     console.error('Failed to add provider:', e)
-    notification.error(t('providerPool.addFailed'), e instanceof Error ? e.message : '', { titleKey: 'providerPool.addFailed' })
+    notification.error(t('providerPool.addFailed'), e instanceof Error ? e.message : '', {
+      titleKey: 'providerPool.addFailed',
+    })
   } finally {
     addingProvider.value = false
     addingStep.value = ''
@@ -621,11 +679,11 @@ async function handleIDEImportSuccess(providerId: string) {
     return
   }
 
-  const imported = store.providers.find(p => p.id === providerId)
+  const imported = store.providers.find((p) => p.id === providerId)
   if (!imported) {
     return
   }
-  activeTab.value = getProviderTab(imported)
+  activeTab.value = visibleTab(getProviderTab(imported))
   store.selectProvider(providerId)
 }
 
@@ -650,11 +708,7 @@ async function addAPIKey() {
   const providerId = newKey.value.providerId
   try {
     const trimmedApiKey = newKey.value.key.trim()
-    const apiKey = await store.addAPIKey(
-      providerId,
-      trimmedApiKey,
-      newKey.value.label || undefined
-    )
+    const apiKey = await store.addAPIKey(providerId, trimmedApiKey, newKey.value.label || undefined)
     showKeyModal.value = false
 
     // Clear error when adding new API key
@@ -667,14 +721,17 @@ async function addAPIKey() {
     }
 
     // For builtin/platform providers: also probe models in background
-    const provider = store.providers.find(p => p.id === providerId)
+    const provider = store.providers.find((p) => p.id === providerId)
     if (provider && (provider.type === 'builtin' || provider.type === 'platform')) {
-      store.probeModels(providerId).then(result => {
+      store.probeModels(providerId).then((result) => {
         if (result.success && result.available > 0) {
           notification.success(
             t('providerPool.probeComplete', { available: result.available, total: result.total }),
             undefined,
-            { titleKey: 'providerPool.probeComplete', titleParams: { available: result.available, total: result.total } },
+            {
+              titleKey: 'providerPool.probeComplete',
+              titleParams: { available: result.available, total: result.total },
+            }
           )
         }
       })
@@ -698,7 +755,12 @@ async function removeAPIKey(providerId: string, keyId: string) {
 const connectingOAuth = ref<string | null>(null)
 const disconnectingOAuth = ref<string | null>(null)
 const disconnectingAccountId = ref<string | null>(null)
-const deviceFlowState = ref<{ userCode: string; verificationUri: string; deviceCode: string; providerId: string } | null>(null)
+const deviceFlowState = ref<{
+  userCode: string
+  verificationUri: string
+  deviceCode: string
+  providerId: string
+} | null>(null)
 const oauthAccounts = ref<Record<string, import('@/api/providerPool').OAuthAccount[]>>({})
 
 function sanitizeDeviceUserCode(raw: string): string {
@@ -739,15 +801,19 @@ async function fetchProviderUsage(providerId: string) {
 function tierBadgeClass(tier: string): string {
   const t = tier.toUpperCase()
   if (t === 'FREE') return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-  if (t === 'PRO' || t === 'BUSINESS') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
-  if (t === 'ULTRA' || t === 'PREMIUM' || t === 'ENTERPRISE' || t === 'MAX') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
+  if (t === 'PRO' || t === 'BUSINESS')
+    return 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+  if (t === 'ULTRA' || t === 'PREMIUM' || t === 'ENTERPRISE' || t === 'MAX')
+    return 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
   return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
 }
 
 function tierListBadgeClass(tier: string): string {
   const t = tier.toUpperCase()
-  if (t === 'PRO' || t === 'PRO+' || t === 'BUSINESS') return 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-  if (t === 'ULTRA' || t === 'PREMIUM' || t === 'ENTERPRISE' || t === 'MAX') return 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
+  if (t === 'PRO' || t === 'PRO+' || t === 'BUSINESS')
+    return 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+  if (t === 'ULTRA' || t === 'PREMIUM' || t === 'ENTERPRISE' || t === 'MAX')
+    return 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
   return 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
 }
 
@@ -758,7 +824,9 @@ async function startOAuthConnect(providerId: string) {
     if (result.data.auth_url) {
       // Auth code flow — open browser
       window.open(result.data.auth_url, '_blank', 'width=600,height=700')
-      notification.success(t('providerPool.oauth.browserOpened'), undefined, { titleKey: 'providerPool.oauth.browserOpened' })
+      notification.success(t('providerPool.oauth.browserOpened'), undefined, {
+        titleKey: 'providerPool.oauth.browserOpened',
+      })
       // Poll for status
       pollOAuthStatus(providerId)
     } else if (result.data.device_code && result.data.user_code) {
@@ -771,7 +839,11 @@ async function startOAuthConnect(providerId: string) {
       }
     }
   } catch (e: any) {
-    notification.error(e?.response?.data?.error || t('providerPool.oauth.connectFailed'), undefined, { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.connectFailed' })
+    notification.error(
+      e?.response?.data?.error || t('providerPool.oauth.connectFailed'),
+      undefined,
+      { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.connectFailed' }
+    )
   } finally {
     connectingOAuth.value = null
   }
@@ -784,7 +856,9 @@ async function copyDeviceFlowCode() {
     notification.success(t('common.copied'), undefined, { titleKey: 'common.copied' })
   } catch (e) {
     console.error('Failed to copy device flow code:', e)
-    notification.error(t('providerPool.oauth.connectFailed'), undefined, { titleKey: 'providerPool.oauth.connectFailed' })
+    notification.error(t('providerPool.oauth.connectFailed'), undefined, {
+      titleKey: 'providerPool.oauth.connectFailed',
+    })
   }
 }
 
@@ -794,12 +868,18 @@ async function completeDeviceFlow() {
   connectingOAuth.value = providerId
   try {
     await providerPoolApi.completeDeviceFlow(providerId, deviceCode)
-    notification.success(t('providerPool.oauth.connected'), undefined, { titleKey: 'providerPool.oauth.connected' })
+    notification.success(t('providerPool.oauth.connected'), undefined, {
+      titleKey: 'providerPool.oauth.connected',
+    })
     deviceFlowState.value = null
     await store.fetchProviders()
     await fetchOAuthAccounts(providerId)
   } catch (e: any) {
-    notification.error(e?.response?.data?.error || t('providerPool.oauth.connectFailed'), undefined, { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.connectFailed' })
+    notification.error(
+      e?.response?.data?.error || t('providerPool.oauth.connectFailed'),
+      undefined,
+      { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.connectFailed' }
+    )
   } finally {
     connectingOAuth.value = null
   }
@@ -810,12 +890,18 @@ async function disconnectOAuth(providerId: string, accountId?: string) {
   disconnectingAccountId.value = accountId || null
   try {
     await providerPoolApi.disconnectOAuth(providerId, accountId)
-    notification.success(t('providerPool.oauth.disconnected'), undefined, { titleKey: 'providerPool.oauth.disconnected' })
+    notification.success(t('providerPool.oauth.disconnected'), undefined, {
+      titleKey: 'providerPool.oauth.disconnected',
+    })
     await store.fetchProviders()
     // Refresh accounts list
     await fetchOAuthAccounts(providerId)
   } catch (e: any) {
-    notification.error(e?.response?.data?.error || t('providerPool.oauth.disconnectFailed'), undefined, { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.disconnectFailed' })
+    notification.error(
+      e?.response?.data?.error || t('providerPool.oauth.disconnectFailed'),
+      undefined,
+      { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.disconnectFailed' }
+    )
   } finally {
     disconnectingOAuth.value = null
     disconnectingAccountId.value = null
@@ -837,12 +923,16 @@ function pollOAuthStatus(providerId: string, attempts = 0) {
     try {
       const result = await providerPoolApi.getOAuthStatus(providerId)
       if (result.data.connected) {
-        notification.success(t('providerPool.oauth.connected'), undefined, { titleKey: 'providerPool.oauth.connected' })
+        notification.success(t('providerPool.oauth.connected'), undefined, {
+          titleKey: 'providerPool.oauth.connected',
+        })
         await store.fetchProviders()
         await fetchOAuthAccounts(providerId)
         return
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     pollOAuthStatus(providerId, attempts + 1)
   }, 5000)
 }
@@ -890,8 +980,8 @@ async function handleDrop(e: DragEvent, targetProvider: Provider) {
 
   // Get current list and find indices
   const providers = [...filteredProviders.value]
-  const draggedIndex = providers.findIndex(p => p.id === draggedProvider.value!.id)
-  const targetIndex = providers.findIndex(p => p.id === targetProvider.id)
+  const draggedIndex = providers.findIndex((p) => p.id === draggedProvider.value!.id)
+  const targetIndex = providers.findIndex((p) => p.id === targetProvider.id)
 
   if (draggedIndex === -1 || targetIndex === -1) {
     draggedProvider.value = null
@@ -917,7 +1007,7 @@ async function handleDrop(e: DragEvent, targetProvider: Provider) {
   for (let i = 0; i < providers.length; i++) {
     const provider = providers[i]
     if (!provider) continue
-    const newPriority = maxPriority - (i * step)
+    const newPriority = maxPriority - i * step
     if (provider.priority !== newPriority) {
       store.updateProviderPriorityLocal(provider.id, newPriority)
       updates.push({ id: provider.id, priority: newPriority })
@@ -935,18 +1025,24 @@ async function handleDrop(e: DragEvent, targetProvider: Provider) {
 function getStatusColor(status: string, enabled: boolean) {
   if (!enabled) return 'text-gray-500'
   switch (status) {
-    case 'active': return 'text-green-500'
-    case 'error': return 'text-red-500'
-    default: return 'text-green-500' // enabled but not yet tested
+    case 'active':
+      return 'text-green-500'
+    case 'error':
+      return 'text-red-500'
+    default:
+      return 'text-green-500' // enabled but not yet tested
   }
 }
 
 function getStatusIcon(status: string, enabled: boolean) {
   if (!enabled) return '○'
   switch (status) {
-    case 'active': return '●'
-    case 'error': return '⚠'
-    default: return '●' // enabled but not yet tested
+    case 'active':
+      return '●'
+    case 'error':
+      return '⚠'
+    default:
+      return '●' // enabled but not yet tested
   }
 }
 
@@ -975,18 +1071,24 @@ async function handleModelDrop(e: DragEvent, targetModel: Model) {
     return
   }
   const models = [...displayModels.value]
-  const dragIdx = models.findIndex(m => m.id === draggedModel.value!.id)
-  const targetIdx = models.findIndex(m => m.id === targetModel.id)
-  if (dragIdx === -1 || targetIdx === -1) { draggedModel.value = null; return }
+  const dragIdx = models.findIndex((m) => m.id === draggedModel.value!.id)
+  const targetIdx = models.findIndex((m) => m.id === targetModel.id)
+  if (dragIdx === -1 || targetIdx === -1) {
+    draggedModel.value = null
+    return
+  }
   const [moved] = models.splice(dragIdx, 1)
-  if (!moved) { draggedModel.value = null; return }
+  if (!moved) {
+    draggedModel.value = null
+    return
+  }
   models.splice(targetIdx, 0, moved)
   draggedModel.value = null
 
   // Save reordered model IDs as allowed_models (order = priority)
   const provider = displayProvider.value
   if (provider) {
-    const orderedIds = models.map(m => m.id)
+    const orderedIds = models.map((m) => m.id)
     await store.updateProvider(provider.id, { allowed_models: orderedIds })
   }
 }
@@ -996,7 +1098,19 @@ function handleModelDragEnd() {
   dragOverModel.value = null
 }
 
-const capabilityKeys = ['chat', 'completion', 'vision', 'function_call', 'thinking', 'streaming', 'json', 'system_prompt', 'image_generation', 'video_generation', 'audio_generation']
+const capabilityKeys = [
+  'chat',
+  'completion',
+  'vision',
+  'function_call',
+  'thinking',
+  'streaming',
+  'json',
+  'system_prompt',
+  'image_generation',
+  'video_generation',
+  'audio_generation',
+]
 
 const capabilityEmoji: Record<string, string> = {
   chat: '💬',
@@ -1027,11 +1141,13 @@ const capabilityI18nKey: Record<string, string> = {
 }
 
 function capabilityTip(caps: string[]): string {
-  return caps.map(c => {
-    const key = capabilityI18nKey[c]
-    const fallback = c
-    return `${capabilityEmoji[c] || '•'} ${key ? tr(key, fallback) : fallback}`
-  }).join('\n')
+  return caps
+    .map((c) => {
+      const key = capabilityI18nKey[c]
+      const fallback = c
+      return `${capabilityEmoji[c] || '•'} ${key ? tr(key, fallback) : fallback}`
+    })
+    .join('\n')
 }
 
 // Tooltip state for capability hover
@@ -1055,7 +1171,9 @@ function hideCapTip() {
 
 function isMediaModel(model: Model): boolean {
   const caps = model.capabilities || []
-  return caps.some(c => c === 'image_generation' || c === 'video_generation' || c === 'audio_generation')
+  return caps.some(
+    (c) => c === 'image_generation' || c === 'video_generation' || c === 'audio_generation'
+  )
 }
 
 function mediaPricingLabel(model: Model): string {
@@ -1188,13 +1306,13 @@ async function openAllowedModelsModal() {
       allowedModelsForm.value = [...provider.allowed_models]
     } else {
       // No restriction configured - default to all models selected
-      allowedModelsForm.value = allAvailableModels.value.map(m => m.id)
+      allowedModelsForm.value = allAvailableModels.value.map((m) => m.id)
     }
   } catch (e) {
     console.error('Failed to load models:', e)
     allAvailableModels.value = selectedProviderModels.value
     // On error, default to all models selected
-    allowedModelsForm.value = allAvailableModels.value.map(m => m.id)
+    allowedModelsForm.value = allAvailableModels.value.map((m) => m.id)
   } finally {
     loadingAllModels.value = false
   }
@@ -1203,14 +1321,14 @@ async function openAllowedModelsModal() {
 function toggleModelInAllowedList(modelId: string) {
   // Simple toggle: checked = in array, unchecked = not in array
   if (allowedModelsForm.value.includes(modelId)) {
-    allowedModelsForm.value = allowedModelsForm.value.filter(id => id !== modelId)
+    allowedModelsForm.value = allowedModelsForm.value.filter((id) => id !== modelId)
   } else {
     allowedModelsForm.value = [...allowedModelsForm.value, modelId]
   }
 }
 
 function selectAllModels() {
-  allowedModelsForm.value = allAvailableModels.value.map(m => m.id)
+  allowedModelsForm.value = allAvailableModels.value.map((m) => m.id)
 }
 
 function clearAllModels() {
@@ -1284,12 +1402,16 @@ onMounted(() => {
   loadData()
   // If route has section=media (e.g. from "Go to Settings" link), switch to media tab once available
   if (route.query.section === 'media') {
-    const stop = watch(availableTabs, (tabs) => {
-      if (tabs.includes('media')) {
-        activeTab.value = 'media'
-        stop()
-      }
-    }, { immediate: true })
+    const stop = watch(
+      availableTabs,
+      (tabs) => {
+        if (tabs.includes('media')) {
+          activeTab.value = 'media'
+          stop()
+        }
+      },
+      { immediate: true }
+    )
   }
 })
 </script>
@@ -1328,14 +1450,12 @@ onMounted(() => {
           'px-3 py-1.5 rounded-lg transition-colors text-sm',
           activeTab === tab
             ? 'bg-gray-700 dark:bg-gray-500 text-white'
-            : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600'
+            : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600',
         ]"
         @click="activeTab = tab"
       >
         {{ getTabLabel(tab) }}
-        <span class="ml-1 text-xs opacity-70">
-          ({{ getTabCount(tab) }})
-        </span>
+        <span class="ml-1 text-xs opacity-70"> ({{ getTabCount(tab) }}) </span>
       </button>
     </div>
 
@@ -1358,28 +1478,70 @@ onMounted(() => {
         'mb-4 p-3 rounded-lg border',
         store.trialQuota.is_exhausted
           ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-          : 'bg-gray-100 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600'
+          : 'bg-gray-100 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600',
       ]"
     >
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="text-lg">{{ store.trialQuota.is_exhausted ? '⚠️' : '🎁' }}</span>
           <div>
-            <h4 class="font-medium text-sm" :class="store.trialQuota.is_exhausted ? 'text-red-700 dark:text-red-300' : 'text-gray-600 dark:text-gray-400'">
+            <h4
+              class="font-medium text-sm"
+              :class="
+                store.trialQuota.is_exhausted
+                  ? 'text-red-700 dark:text-red-300'
+                  : 'text-gray-600 dark:text-gray-400'
+              "
+            >
               {{ t('providerPool.trialQuota.title') }}
             </h4>
-            <p class="text-xs" :class="store.trialQuota.is_exhausted ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">
-              {{ store.trialQuota.is_exhausted ? t('providerPool.trialQuota.exhausted') : t('providerPool.trialQuota.remaining', { tokens: formatTokens(store.trialQuota.tokens_remaining) }) }}
+            <p
+              class="text-xs"
+              :class="
+                store.trialQuota.is_exhausted
+                  ? 'text-red-600 dark:text-red-400'
+                  : 'text-gray-600 dark:text-gray-400'
+              "
+            >
+              {{
+                store.trialQuota.is_exhausted
+                  ? t('providerPool.trialQuota.exhausted')
+                  : t('providerPool.trialQuota.remaining', {
+                      tokens: formatTokens(store.trialQuota.tokens_remaining),
+                    })
+              }}
             </p>
           </div>
         </div>
-        <div class="text-right text-xs" :class="store.trialQuota.is_exhausted ? 'text-red-500 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">
-          <div :title="store.trialQuota.tokens_remaining.toLocaleString() + ' / ' + store.trialQuota.token_limit.toLocaleString()">{{ t('providerPool.trialQuota.tokensRemaining', { remaining: formatTokens(store.trialQuota.tokens_remaining), limit: formatTokens(store.trialQuota.token_limit) }) }}</div>
+        <div
+          class="text-right text-xs"
+          :class="
+            store.trialQuota.is_exhausted
+              ? 'text-red-500 dark:text-red-400'
+              : 'text-gray-600 dark:text-gray-400'
+          "
+        >
+          <div
+            :title="
+              store.trialQuota.tokens_remaining.toLocaleString() +
+              ' / ' +
+              store.trialQuota.token_limit.toLocaleString()
+            "
+          >
+            {{
+              t('providerPool.trialQuota.tokensRemaining', {
+                remaining: formatTokens(store.trialQuota.tokens_remaining),
+                limit: formatTokens(store.trialQuota.token_limit),
+              })
+            }}
+          </div>
           <div class="mt-1 w-24 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
             <div
               class="h-full rounded-full transition-all"
               :class="store.trialQuota.is_exhausted ? 'bg-red-500' : 'bg-gray-400 dark:bg-gray-500'"
-              :style="{ width: `${Math.max(0, Math.min(100, (store.trialQuota.tokens_remaining / store.trialQuota.token_limit) * 100))}%` }"
+              :style="{
+                width: `${Math.max(0, Math.min(100, (store.trialQuota.tokens_remaining / store.trialQuota.token_limit) * 100))}%`,
+              }"
             ></div>
           </div>
         </div>
@@ -1388,14 +1550,22 @@ onMounted(() => {
 
     <!-- Loading -->
     <div v-if="store.loading" class="text-center py-8">
-      <div class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full mx-auto"></div>
+      <div
+        class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full mx-auto"
+      ></div>
       <p class="text-gray-400 mt-2 text-sm">{{ t('common.loading') }}</p>
     </div>
 
     <!-- Error -->
-    <div v-else-if="store.error" class="bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg p-3 mb-4">
+    <div
+      v-else-if="store.error"
+      class="bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg p-3 mb-4"
+    >
       <p class="text-red-600 dark:text-red-400 text-sm">{{ store.error }}</p>
-      <button class="text-red-500 dark:text-red-300 underline mt-1 text-sm" @click="store.clearError()">
+      <button
+        class="text-red-500 dark:text-red-300 underline mt-1 text-sm"
+        @click="store.clearError()"
+      >
         {{ t('common.dismiss') }}
       </button>
     </div>
@@ -1405,9 +1575,17 @@ onMounted(() => {
       <!-- Provider Cards -->
       <div class="space-y-2 max-h-[360px] overflow-y-auto lg:max-h-[480px]">
         <!-- Drag hint -->
-        <p v-if="filteredProviders.length > 1 && !searchQuery" class="text-xs text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1">
+        <p
+          v-if="filteredProviders.length > 1 && !searchQuery"
+          class="text-xs text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1"
+        >
           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+            />
           </svg>
           {{ t('providerPool.dragToReorder') }}
         </p>
@@ -1420,9 +1598,11 @@ onMounted(() => {
             store.selectedProviderId === provider.id
               ? 'bg-gray-100 dark:bg-gray-700/20 border-gray-300 dark:border-gray-600'
               : 'bg-gray-50 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600',
-            dragOverProvider === provider.id ? 'border-gray-300 dark:border-gray-600 border-dashed bg-gray-100 dark:bg-gray-700/10' : '',
+            dragOverProvider === provider.id
+              ? 'border-gray-300 dark:border-gray-600 border-dashed bg-gray-100 dark:bg-gray-700/10'
+              : '',
             draggedProvider?.id === provider.id ? 'opacity-50' : '',
-            draggedProvider ? 'cursor-grabbing' : 'cursor-pointer'
+            draggedProvider ? 'cursor-grabbing' : 'cursor-pointer',
           ]"
           @click="selectProvider(provider.id)"
           @dragstart="handleDragStart($event, provider)"
@@ -1437,20 +1617,31 @@ onMounted(() => {
               <div
                 :class="[
                   'flex-shrink-0 text-gray-400 dark:text-gray-500 cursor-grab transition-opacity',
-                  draggedProvider ? 'opacity-100' : 'opacity-0'
+                  draggedProvider ? 'opacity-100' : 'opacity-0',
                 ]"
               >
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 8h16M4 16h16"
+                  />
                 </svg>
               </div>
-              <ProviderIcon :provider-id="provider.id" :custom-icon="provider.custom_icon" size="lg" />
+              <ProviderIcon
+                :provider-id="provider.id"
+                :custom-icon="provider.custom_icon"
+                size="lg"
+              />
               <div>
                 <div class="flex items-center gap-1.5">
-                  <h3 class="font-medium text-gray-900 dark:text-white text-sm">{{ getProviderName(provider) }}</h3>
+                  <h3 class="font-medium text-gray-900 dark:text-white text-sm">
+                    {{ getProviderName(provider) }}
+                  </h3>
                   <span
                     v-if="provider.beta"
-                    class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 uppercase tracking-wide"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 tracking-wide"
                   >
                     {{ tr('providerPool.beta', 'Beta') }}
                   </span>
@@ -1461,11 +1652,21 @@ onMounted(() => {
             <div class="flex items-center gap-2">
               <!-- Free tier badge -->
               <span
-                v-if="provider.id === 'nvidia' || provider.id === 'github-copilot' || provider.id === 'google-antigravity' || provider.id === 'google-gemini-cli' || provider.id === 'openrouter-free'"
+                v-if="
+                  provider.id === 'nvidia' ||
+                  provider.id === 'github-copilot' ||
+                  provider.id === 'google-antigravity' ||
+                  provider.id === 'google-gemini-cli' ||
+                  provider.id === 'openrouter-free'
+                "
                 class="text-[10px] px-1.5 py-0.5 rounded"
-                :class="store.oauthQuota[provider.id]?.tier && store.oauthQuota[provider.id].tier !== 'Free' && store.oauthQuota[provider.id].tier !== 'FREE'
-                  ? tierListBadgeClass(store.oauthQuota[provider.id].tier)
-                  : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'"
+                :class="
+                  store.oauthQuota[provider.id]?.tier &&
+                  store.oauthQuota[provider.id].tier !== 'Free' &&
+                  store.oauthQuota[provider.id].tier !== 'FREE'
+                    ? tierListBadgeClass(store.oauthQuota[provider.id].tier)
+                    : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                "
               >
                 {{ store.oauthQuota[provider.id]?.tier || t('providerPool.freeTier') }}
               </span>
@@ -1490,7 +1691,9 @@ onMounted(() => {
                 v-if="provider.location"
                 :class="[
                   'text-[10px] px-1.5 py-0.5 rounded',
-                  provider.location === 'cloud' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                  provider.location === 'cloud'
+                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                    : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
                 ]"
               >
                 {{ provider.location === 'cloud' ? '☁️' : '💻' }}
@@ -1498,7 +1701,11 @@ onMounted(() => {
               <span
                 :class="getStatusColor(provider.status, provider.enabled)"
                 class="text-xs"
-                :title="provider.status === 'error' && provider.last_error ? translateHealthError(provider.last_error) : ''"
+                :title="
+                  provider.status === 'error' && provider.last_error
+                    ? translateHealthError(provider.last_error)
+                    : ''
+                "
               >
                 {{ getStatusIcon(provider.status, provider.enabled) }}
               </span>
@@ -1509,21 +1716,30 @@ onMounted(() => {
                   class="sr-only peer"
                   @change="toggleProvider(provider)"
                 />
-                <div class="w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
+                <div
+                  class="w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
+                ></div>
               </label>
             </div>
           </div>
         </div>
 
-        <div v-if="filteredProviders.length === 0" class="text-center py-6 text-gray-500 dark:text-gray-400 text-sm">
+        <div
+          v-if="filteredProviders.length === 0"
+          class="text-center py-6 text-gray-500 dark:text-gray-400 text-sm"
+        >
           {{ t('providerPool.noProviders') }}
         </div>
       </div>
 
       <!-- Provider Details -->
       <div class="space-y-2 lg:max-h-[480px] lg:overflow-y-auto">
-        <div v-if="store.selectedProvider" class="bg-white dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
-          <div class="flex items-center justify-between mb-4 group/header"
+        <div
+          v-if="store.selectedProvider"
+          class="bg-white dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-700 p-4"
+        >
+          <div
+            class="flex items-center justify-between mb-4 group/header"
             @touchstart="startLongPress('provider-' + store.selectedProvider!.id)"
             @touchend="cancelLongPress()"
             @touchcancel="cancelLongPress()"
@@ -1532,18 +1748,31 @@ onMounted(() => {
               <div class="relative group">
                 <!-- Builtin provider: clickable logo to website -->
                 <a
-                  v-if="(store.selectedProvider.type === 'builtin' || store.selectedProvider.type === 'platform' || store.selectedProvider.type === 'media') && store.selectedProvider.website"
+                  v-if="
+                    (store.selectedProvider.type === 'builtin' ||
+                      store.selectedProvider.type === 'platform' ||
+                      store.selectedProvider.type === 'media') &&
+                    store.selectedProvider.website
+                  "
                   :href="store.selectedProvider.website"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="block cursor-pointer hover:opacity-80 transition-opacity"
                   :title="t('providerPool.visitWebsite')"
                 >
-                  <ProviderIcon :provider-id="store.selectedProvider.id" :custom-icon="store.selectedProvider.custom_icon" size="xl" />
+                  <ProviderIcon
+                    :provider-id="store.selectedProvider.id"
+                    :custom-icon="store.selectedProvider.custom_icon"
+                    size="xl"
+                  />
                 </a>
                 <!-- Non-builtin or no website: regular icon -->
                 <template v-else>
-                  <ProviderIcon :provider-id="store.selectedProvider.id" :custom-icon="store.selectedProvider.custom_icon" size="xl" />
+                  <ProviderIcon
+                    :provider-id="store.selectedProvider.id"
+                    :custom-icon="store.selectedProvider.custom_icon"
+                    size="xl"
+                  />
                 </template>
                 <button
                   v-if="displayProvider.type === 'custom'"
@@ -1551,9 +1780,24 @@ onMounted(() => {
                   :title="t('providerPool.changeIcon')"
                   @click="openIconUpload"
                 >
-                  <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <svg
+                    class="w-4 h-4 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
                   </svg>
                 </button>
                 <input
@@ -1566,28 +1810,50 @@ onMounted(() => {
               </div>
               <div class="cursor-pointer select-none" @click="showModelParams = !showModelParams">
                 <div class="flex items-center gap-1.5">
-                  <h2 class="font-bold text-gray-900 dark:text-white">{{ getProviderName(store.selectedProvider) }}</h2>
+                  <h2 class="font-bold text-gray-900 dark:text-white">
+                    {{ getProviderName(store.selectedProvider) }}
+                  </h2>
                   <span
                     v-if="store.selectedProvider.beta"
-                    class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 uppercase tracking-wide"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 tracking-wide"
                   >
                     {{ tr('providerPool.beta', 'Beta') }}
                   </span>
                 </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ getProviderDescription(store.selectedProvider) }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ getProviderDescription(store.selectedProvider) }}
+                </p>
                 <!-- Inline model params summary -->
-                <div class="flex items-center gap-2 mt-1 text-[10px] text-gray-400 dark:text-gray-500">
-                  <span>{{ t('providerPool.temperature') }}: {{ store.selectedProvider!.model_params?.temperature ?? t('providerPool.default') }}</span>
+                <div
+                  class="flex items-center gap-2 mt-1 text-[10px] text-gray-400 dark:text-gray-500"
+                >
+                  <span
+                    >{{ t('providerPool.temperature') }}:
+                    {{
+                      store.selectedProvider!.model_params?.temperature ?? t('providerPool.default')
+                    }}</span
+                  >
                   <span>·</span>
                   <span>
                     {{ t('providerPool.maxTokens') }}:
-                    {{ store.selectedProvider!.model_params?.max_tokens || store.selectedProvider!.model_params?.detected_max_tokens || t('providerPool.default') }}
+                    {{
+                      store.selectedProvider!.model_params?.max_tokens ||
+                      store.selectedProvider!.model_params?.detected_max_tokens ||
+                      t('providerPool.default')
+                    }}
                   </span>
                   <svg
                     :class="['w-3 h-3 transition-transform', showModelParams ? 'rotate-180' : '']"
-                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    />
                   </svg>
                 </div>
                 <!-- Location Toggle -->
@@ -1598,7 +1864,7 @@ onMounted(() => {
                       'px-1.5 py-0.5 rounded text-[10px] transition-colors',
                       displayProvider.location === 'cloud'
                         ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                        : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500'
+                        : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500',
                     ]"
                     @click="updateProviderLocation(displayProvider!.id, 'cloud')"
                   >
@@ -1609,7 +1875,7 @@ onMounted(() => {
                       'px-1.5 py-0.5 rounded text-[10px] transition-colors',
                       displayProvider.location === 'local'
                         ? 'bg-green-500 text-white'
-                        : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500'
+                        : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500',
                     ]"
                     @click="updateProviderLocation(displayProvider!.id, 'local')"
                   >
@@ -1620,12 +1886,16 @@ onMounted(() => {
             </div>
             <div class="flex gap-1">
               <button
-                v-if="!displayProvider!.is_builtin && displayProvider!.type !== 'trial' && displayProvider!.type !== 'media'"
+                v-if="
+                  !displayProvider!.is_builtin &&
+                  displayProvider!.type !== 'trial' &&
+                  displayProvider!.type !== 'media'
+                "
                 :class="[
                   'px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs transition-opacity',
                   showDeleteFor === 'provider-' + displayProvider!.id
                     ? 'opacity-100'
-                    : 'opacity-0 group-hover/header:opacity-100'
+                    : 'opacity-0 group-hover/header:opacity-100',
                 ]"
                 @click="deleteProvider(displayProvider!.id)"
               >
@@ -1635,17 +1905,28 @@ onMounted(() => {
           </div>
 
           <!-- Collapsible Model Parameters (expanded by clicking provider title) -->
-          <div v-if="showModelParams" class="mb-4 p-3 bg-gray-50 dark:bg-slate-900/30 rounded-lg border border-gray-100 dark:border-slate-700/50">
+          <div
+            v-if="showModelParams"
+            class="mb-4 p-3 bg-gray-50 dark:bg-slate-900/30 rounded-lg border border-gray-100 dark:border-slate-700/50"
+          >
             <div class="flex items-center justify-between mb-2">
-              <h3 class="text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('providerPool.modelParams') }}</h3>
+              <h3 class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                {{ t('providerPool.modelParams') }}
+              </h3>
               <div class="flex gap-1">
                 <button
-                  :disabled="detectingCapabilities === displayProvider!.id || !displayProvider!.base_url"
+                  :disabled="
+                    detectingCapabilities === displayProvider!.id || !displayProvider!.base_url
+                  "
                   class="px-2 py-0.5 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-[10px] disabled:opacity-50"
                   :title="!displayProvider!.base_url ? t('providerPool.baseUrlRequired') : ''"
                   @click="detectCapabilities"
                 >
-                  {{ detectingCapabilities === displayProvider!.id ? t('providerPool.detecting') : t('providerPool.detectCapabilities') }}
+                  {{
+                    detectingCapabilities === displayProvider!.id
+                      ? t('providerPool.detecting')
+                      : t('providerPool.detectCapabilities')
+                  }}
                 </button>
                 <button
                   class="px-2 py-0.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-[10px]"
@@ -1657,13 +1938,17 @@ onMounted(() => {
             </div>
             <div class="grid grid-cols-3 gap-2 text-xs">
               <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.temperature') }}:</span>
+                <span class="text-gray-500 dark:text-gray-400"
+                  >{{ t('providerPool.temperature') }}:</span
+                >
                 <span class="text-gray-900 dark:text-white ml-1">
                   {{ displayProvider!.model_params?.temperature ?? t('providerPool.default') }}
                 </span>
               </div>
               <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.maxTokens') }}:</span>
+                <span class="text-gray-500 dark:text-gray-400"
+                  >{{ t('providerPool.maxTokens') }}:</span
+                >
                 <span
                   v-if="displayProvider!.model_params?.max_tokens"
                   class="text-gray-900 dark:text-white ml-1"
@@ -1684,7 +1969,9 @@ onMounted(() => {
               </div>
               <div v-if="displayProvider!.model_params?.top_p != null">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.topP') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-1">{{ displayProvider!.model_params.top_p }}</span>
+                <span class="text-gray-900 dark:text-white ml-1">{{
+                  displayProvider!.model_params.top_p
+                }}</span>
               </div>
             </div>
           </div>
@@ -1696,7 +1983,9 @@ onMounted(() => {
           >
             <div class="flex items-start gap-2">
               <span class="text-red-500 flex-shrink-0">⚠</span>
-              <p class="text-xs text-red-600 dark:text-red-400 break-all flex-1">{{ translateHealthError(displayProvider!.last_error!) }}</p>
+              <p class="text-xs text-red-600 dark:text-red-400 break-all flex-1">
+                {{ translateHealthError(displayProvider!.last_error!) }}
+              </p>
               <button
                 class="flex-shrink-0 px-2 py-1 text-xs bg-red-100 dark:bg-red-800 hover:bg-red-200 dark:hover:bg-red-700 text-red-600 dark:text-red-300 rounded transition-colors"
                 @click="clearProviderError(displayProvider!.id)"
@@ -1708,18 +1997,21 @@ onMounted(() => {
 
           <!-- Base URL Section (for providers that need configuration) -->
           <div
-            v-if="displayProvider!.type !== 'trial' && (
-              !displayProvider!.base_url ||
-              displayProvider!.id === 'azure-openai' ||
-              displayProvider!.id === 'bedrock' ||
-              displayProvider!.id === 'ollama' ||
-              displayProvider!.type === 'custom' ||
-              displayProvider!.type === 'platform'
-            )"
+            v-if="
+              displayProvider!.type !== 'trial' &&
+              (!displayProvider!.base_url ||
+                displayProvider!.id === 'azure-openai' ||
+                displayProvider!.id === 'bedrock' ||
+                displayProvider!.id === 'ollama' ||
+                displayProvider!.type === 'custom' ||
+                displayProvider!.type === 'platform')
+            "
             class="mb-4"
           >
             <div class="flex items-center justify-between mb-2">
-              <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.baseUrl') }}</h3>
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('providerPool.baseUrl') }}
+              </h3>
               <button
                 v-if="!editingBaseUrl"
                 class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs"
@@ -1732,7 +2024,13 @@ onMounted(() => {
               <input
                 v-model="baseUrlDraft"
                 type="url"
-                :placeholder="displayProvider!.id === 'azure-openai' ? 'https://your-resource.openai.azure.com' : displayProvider!.id === 'bedrock' ? 'https://bedrock-runtime.us-east-1.amazonaws.com' : 'https://api.example.com/v1'"
+                :placeholder="
+                  displayProvider!.id === 'azure-openai'
+                    ? 'https://your-resource.openai.azure.com'
+                    : displayProvider!.id === 'bedrock'
+                      ? 'https://bedrock-runtime.us-east-1.amazonaws.com'
+                      : 'https://api.example.com/v1'
+                "
                 class="flex-1 px-2 py-1 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
               />
               <button
@@ -1749,7 +2047,10 @@ onMounted(() => {
               </button>
             </div>
             <div v-else class="text-xs">
-              <span v-if="displayProvider!.base_url" class="text-gray-600 dark:text-gray-400 font-mono break-all">
+              <span
+                v-if="displayProvider!.base_url"
+                class="text-gray-600 dark:text-gray-400 font-mono break-all"
+              >
                 {{ displayProvider!.base_url }}
               </span>
               <span v-else class="text-amber-500 dark:text-amber-400">
@@ -1765,29 +2066,51 @@ onMounted(() => {
           >
             <div class="flex items-start justify-between gap-2 mb-2">
               <div>
-                <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.verifySection') }}</h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyHint') }}</p>
+                <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('providerPool.verifySection') }}
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('providerPool.verifyHint') }}
+                </p>
               </div>
               <div class="flex gap-1">
                 <button
-                  :disabled="verifyingProvider === displayProvider!.id || applyingVerification === displayProvider!.id || !displayProvider!.base_url"
+                  :disabled="
+                    verifyingProvider === displayProvider!.id ||
+                    applyingVerification === displayProvider!.id ||
+                    !displayProvider!.base_url
+                  "
                   class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs disabled:opacity-50"
                   @click="runProviderVerification(false)"
                 >
-                  {{ verifyingProvider === displayProvider!.id ? t('providerPool.verifyRunning') : t('providerPool.verifyRun') }}
+                  {{
+                    verifyingProvider === displayProvider!.id
+                      ? t('providerPool.verifyRunning')
+                      : t('providerPool.verifyRun')
+                  }}
                 </button>
                 <button
-                  :disabled="verifyingProvider === displayProvider!.id || applyingVerification === displayProvider!.id || !displayProvider!.base_url"
+                  :disabled="
+                    verifyingProvider === displayProvider!.id ||
+                    applyingVerification === displayProvider!.id ||
+                    !displayProvider!.base_url
+                  "
                   class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs disabled:opacity-50"
                   @click="runProviderVerification(true)"
                 >
-                  {{ applyingVerification === displayProvider!.id ? t('providerPool.verifyApplying') : t('providerPool.verifyApply') }}
+                  {{
+                    applyingVerification === displayProvider!.id
+                      ? t('providerPool.verifyApplying')
+                      : t('providerPool.verifyApply')
+                  }}
                 </button>
               </div>
             </div>
 
             <div v-if="displayProvider!.api_keys?.length" class="mb-2">
-              <label class="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.verifyKeyLabel') }}</label>
+              <label class="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.verifyKeyLabel')
+              }}</label>
               <select
                 v-model="verificationKeyId"
                 class="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
@@ -1799,33 +2122,59 @@ onMounted(() => {
               </select>
             </div>
 
-            <div v-if="verificationError" class="text-xs text-red-600 dark:text-red-400 break-all mb-2">
+            <div
+              v-if="verificationError"
+              class="text-xs text-red-600 dark:text-red-400 break-all mb-2"
+            >
               {{ verificationError }}
             </div>
 
             <div v-if="verificationResult" class="space-y-2">
               <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                <div class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700">
-                  <div class="text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyDetectedFormat') }}</div>
-                  <div class="font-mono text-gray-900 dark:text-white">{{ verificationResult.detected_format || '-' }}</div>
+                <div
+                  class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700"
+                >
+                  <div class="text-gray-500 dark:text-gray-400">
+                    {{ t('providerPool.verifyDetectedFormat') }}
+                  </div>
+                  <div class="font-mono text-gray-900 dark:text-white">
+                    {{ verificationResult.detected_format || '-' }}
+                  </div>
                 </div>
-                <div class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700">
-                  <div class="text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyRecommendedFormat') }}</div>
-                  <div class="font-mono text-gray-900 dark:text-white">{{ verificationResult.recommended_api_format || '-' }}</div>
+                <div
+                  class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700"
+                >
+                  <div class="text-gray-500 dark:text-gray-400">
+                    {{ t('providerPool.verifyRecommendedFormat') }}
+                  </div>
+                  <div class="font-mono text-gray-900 dark:text-white">
+                    {{ verificationResult.recommended_api_format || '-' }}
+                  </div>
                 </div>
               </div>
 
               <div class="text-xs">
-                <div class="text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyRecommendedBaseURL') }}</div>
-                <div class="font-mono text-gray-900 dark:text-white break-all">{{ verificationResult.recommended_base_url || '-' }}</div>
+                <div class="text-gray-500 dark:text-gray-400">
+                  {{ t('providerPool.verifyRecommendedBaseURL') }}
+                </div>
+                <div class="font-mono text-gray-900 dark:text-white break-all">
+                  {{ verificationResult.recommended_base_url || '-' }}
+                </div>
               </div>
 
-              <div v-if="verificationResult.chat_error" class="text-xs text-amber-600 dark:text-amber-400 break-all">
+              <div
+                v-if="verificationResult.chat_error"
+                class="text-xs text-amber-600 dark:text-amber-400 break-all"
+              >
                 {{ t('providerPool.verifyChatError') }}: {{ verificationResult.chat_error }}
               </div>
 
               <div>
-                <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.verifyProbes') }}</div>
+                <div
+                  class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1"
+                >
+                  {{ t('providerPool.verifyProbes') }}
+                </div>
                 <div class="space-y-1">
                   <div
                     v-for="[probeKey, probe] in verificationProbeEntries"
@@ -1833,14 +2182,35 @@ onMounted(() => {
                     class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-xs"
                   >
                     <div class="flex items-center justify-between gap-2">
-                      <span class="font-medium text-gray-900 dark:text-white">{{ getVerificationProbeLabel(probeKey) }}</span>
-                      <span class="font-mono text-gray-500 dark:text-gray-400" v-if="probe.status_code">HTTP {{ probe.status_code }}</span>
+                      <span class="font-medium text-gray-900 dark:text-white">{{
+                        getVerificationProbeLabel(probeKey)
+                      }}</span>
+                      <span
+                        class="font-mono text-gray-500 dark:text-gray-400"
+                        v-if="probe.status_code"
+                        >HTTP {{ probe.status_code }}</span
+                      >
                     </div>
-                    <div class="font-mono text-[10px] text-gray-500 dark:text-gray-400 break-all">{{ probe.url }}</div>
-                    <div class="mt-1" :class="probe.reachable ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                      {{ probe.reachable ? t('providerPool.verifyProbeReachable') : t('providerPool.verifyProbeUnreachable') }}
+                    <div class="font-mono text-[10px] text-gray-500 dark:text-gray-400 break-all">
+                      {{ probe.url }}
                     </div>
-                    <div v-if="probe.error" class="text-red-600 dark:text-red-400 break-all">{{ probe.error }}</div>
+                    <div
+                      class="mt-1"
+                      :class="
+                        probe.reachable
+                          ? 'text-green-600 dark:text-green-400'
+                          : 'text-red-600 dark:text-red-400'
+                      "
+                    >
+                      {{
+                        probe.reachable
+                          ? t('providerPool.verifyProbeReachable')
+                          : t('providerPool.verifyProbeUnreachable')
+                      }}
+                    </div>
+                    <div v-if="probe.error" class="text-red-600 dark:text-red-400 break-all">
+                      {{ probe.error }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1850,45 +2220,68 @@ onMounted(() => {
           <!-- OAuth Section (for OAuth-capable providers) — shown before API Keys -->
           <div v-if="store.selectedProvider?.oauth" class="mb-4">
             <div class="flex items-center justify-between mb-2">
-              <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.oauth.title') }}</h3>
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('providerPool.oauth.title') }}
+              </h3>
             </div>
             <div class="space-y-2">
               <!-- Account list -->
               <div
-                v-for="account in (oauthAccounts[store.selectedProvider.id] || [])"
+                v-for="account in oauthAccounts[store.selectedProvider.id] || []"
                 :key="account.id"
                 class="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700"
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-green-500"></span>
-                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ account.email || account.provider_type }}</span>
-                    <span v-if="account.project_id" class="text-xs text-gray-500">({{ account.project_id }})</span>
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{
+                      account.email || account.provider_type
+                    }}</span>
+                    <span v-if="account.project_id" class="text-xs text-gray-500"
+                      >({{ account.project_id }})</span
+                    >
                   </div>
                   <button
                     :disabled="disconnectingAccountId === account.id"
                     class="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs disabled:opacity-50"
                     @click="disconnectOAuth(store.selectedProvider.id, account.id)"
                   >
-                    {{ disconnectingAccountId === account.id ? '...' : t('providerPool.oauth.disconnect') }}
+                    {{
+                      disconnectingAccountId === account.id
+                        ? '...'
+                        : t('providerPool.oauth.disconnect')
+                    }}
                   </button>
                 </div>
               </div>
               <!-- Connect another account (always shown at bottom) -->
-              <div class="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-between">
+              <div
+                class="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-between"
+              >
                 <span class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ (oauthAccounts[store.selectedProvider.id] || []).length ? t('providerPool.oauth.addAccount') : t('providerPool.oauth.notConnected') }}
+                  {{
+                    (oauthAccounts[store.selectedProvider.id] || []).length
+                      ? t('providerPool.oauth.addAccount')
+                      : t('providerPool.oauth.notConnected')
+                  }}
                 </span>
                 <button
                   :disabled="connectingOAuth === store.selectedProvider.id"
                   class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs disabled:opacity-50"
                   @click="startOAuthConnect(store.selectedProvider.id)"
                 >
-                  {{ connectingOAuth === store.selectedProvider.id ? '...' : t('providerPool.oauth.connect') }}
+                  {{
+                    connectingOAuth === store.selectedProvider.id
+                      ? '...'
+                      : t('providerPool.oauth.connect')
+                  }}
                 </button>
               </div>
               <!-- Subscription Tier & Quota (shown once for the provider) -->
-              <div v-if="store.loadingQuota === store.selectedProvider.id" class="text-xs text-gray-400 px-1">
+              <div
+                v-if="store.loadingQuota === store.selectedProvider.id"
+                class="text-xs text-gray-400 px-1"
+              >
                 {{ t('providerPool.oauth.loadingQuota') }}
               </div>
               <template v-else-if="store.oauthQuota[store.selectedProvider.id]">
@@ -1897,25 +2290,51 @@ onMounted(() => {
                     class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                     :class="tierBadgeClass(store.oauthQuota[store.selectedProvider.id].tier)"
                   >
-                    {{ store.oauthQuota[store.selectedProvider.id].tier_name || store.oauthQuota[store.selectedProvider.id].tier }}
+                    {{
+                      store.oauthQuota[store.selectedProvider.id].tier_name ||
+                      store.oauthQuota[store.selectedProvider.id].tier
+                    }}
                   </span>
                 </div>
-                <div v-if="store.oauthQuota[store.selectedProvider.id].error && !store.oauthQuota[store.selectedProvider.id].tier" class="text-xs text-gray-400 px-1">
+                <div
+                  v-if="
+                    store.oauthQuota[store.selectedProvider.id].error &&
+                    !store.oauthQuota[store.selectedProvider.id].tier
+                  "
+                  class="text-xs text-gray-400 px-1"
+                >
                   {{ t('providerPool.oauth.quotaUnavailable') }}
                 </div>
                 <!-- Per-Model Quota Bars -->
-                <div v-if="store.oauthQuota[store.selectedProvider.id].model_quotas?.length" class="space-y-1 px-1">
-                  <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ t('providerPool.oauth.modelQuota') }}</div>
+                <div
+                  v-if="store.oauthQuota[store.selectedProvider.id].model_quotas?.length"
+                  class="space-y-1 px-1"
+                >
+                  <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    {{ t('providerPool.oauth.modelQuota') }}
+                  </div>
                   <div
                     v-for="mq in store.oauthQuota[store.selectedProvider.id].model_quotas"
                     :key="mq.model"
                     class="flex items-center gap-2 text-xs"
                   >
-                    <span class="text-gray-600 dark:text-gray-400 w-36 truncate" :title="mq.model">{{ mq.model }}</span>
-                    <div class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <span
+                      class="text-gray-600 dark:text-gray-400 w-36 truncate"
+                      :title="mq.model"
+                      >{{ mq.model }}</span
+                    >
+                    <div
+                      class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"
+                    >
                       <div
                         class="h-full rounded-full transition-all"
-                        :class="mq.remaining_percent > 20 ? 'bg-green-500' : mq.remaining_percent > 5 ? 'bg-yellow-500' : 'bg-red-500'"
+                        :class="
+                          mq.remaining_percent > 20
+                            ? 'bg-green-500'
+                            : mq.remaining_percent > 5
+                              ? 'bg-yellow-500'
+                              : 'bg-red-500'
+                        "
                         :style="{ width: mq.remaining_percent + '%' }"
                       />
                     </div>
@@ -1927,9 +2346,18 @@ onMounted(() => {
           </div>
 
           <!-- API Keys Section — hidden for pure-OAuth providers with no keys -->
-          <div v-if="!store.selectedProvider?.oauth || store.selectedProvider!.api_keys?.length || store.selectedProvider!.type === 'trial'" class="mb-4">
+          <div
+            v-if="
+              !store.selectedProvider?.oauth ||
+              store.selectedProvider!.api_keys?.length ||
+              store.selectedProvider!.type === 'trial'
+            "
+            class="mb-4"
+          >
             <div class="flex items-center justify-between mb-2">
-              <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.apiKeys') }}</h3>
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('providerPool.apiKeys') }}
+              </h3>
               <div class="flex items-center gap-2">
                 <a
                   v-if="displayProvider!.api_key_url"
@@ -1940,7 +2368,12 @@ onMounted(() => {
                 >
                   {{ t('providerPool.getApiKey') }}
                   <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
                   </svg>
                 </a>
                 <button
@@ -1954,7 +2387,10 @@ onMounted(() => {
             </div>
             <div class="space-y-1">
               <!-- Trial provider: show placeholder -->
-              <div v-if="displayProvider!.type === 'trial'" class="flex items-center justify-between p-2 bg-white dark:bg-slate-900/50 rounded text-xs">
+              <div
+                v-if="displayProvider!.type === 'trial'"
+                class="flex items-center justify-between p-2 bg-white dark:bg-slate-900/50 rounded text-xs"
+              >
                 <div>
                   <span class="text-gray-700 dark:text-white font-mono">••••••••••••••••</span>
                   <span class="ml-2 text-gray-500">({{ t('providerPool.trial.name') }})</span>
@@ -1976,16 +2412,30 @@ onMounted(() => {
                         'text-red-400 hover:text-red-300 transition-opacity flex-shrink-0',
                         showDeleteFor === 'key-' + key.id
                           ? 'opacity-100'
-                          : 'opacity-0 group-hover/key:opacity-100'
+                          : 'opacity-0 group-hover/key:opacity-100',
                       ]"
                       @click.stop="removeAPIKey(displayProvider!.id, key.id)"
                     >
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      <svg
+                        class="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
                       </svg>
                     </button>
-                    <span class="text-gray-700 dark:text-white font-mono truncate">{{ key.key_hash }}</span>
-                    <span v-if="key.label" class="text-gray-500 truncate">({{ formatKeyLabel(key.label) }})</span>
+                    <span class="text-gray-700 dark:text-white font-mono truncate">{{
+                      key.key_hash
+                    }}</span>
+                    <span v-if="key.label" class="text-gray-500 truncate"
+                      >({{ formatKeyLabel(key.label) }})</span
+                    >
                   </div>
                   <div class="flex items-center gap-2 flex-shrink-0">
                     <span v-if="key.usage_count" class="text-gray-500">
@@ -1993,11 +2443,24 @@ onMounted(() => {
                     </span>
                     <!-- Test result indicator -->
                     <span v-if="testingKeyId === key.id" class="text-gray-400">...</span>
-                    <span v-else-if="keyTestResults[key.id]?.healthy === true" class="text-green-500" title="Healthy">✓</span>
-                    <span v-else-if="keyTestResults[key.id]?.healthy === false" class="text-red-400" :title="keyTestResults[key.id]?.error || 'Failed'">✗</span>
+                    <span
+                      v-else-if="keyTestResults[key.id]?.healthy === true"
+                      class="text-green-500"
+                      title="Healthy"
+                      >✓</span
+                    >
+                    <span
+                      v-else-if="keyTestResults[key.id]?.healthy === false"
+                      class="text-red-400"
+                      :title="keyTestResults[key.id]?.error || 'Failed'"
+                      >✗</span
+                    >
                   </div>
                 </div>
-                <div v-if="!displayProvider!.api_keys?.length" class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs">
+                <div
+                  v-if="!displayProvider!.api_keys?.length"
+                  class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs"
+                >
                   {{ t('providerPool.noKeys') }}
                 </div>
               </template>
@@ -2006,70 +2469,116 @@ onMounted(() => {
 
           <!-- Device Flow Modal -->
           <Teleport to="body">
-          <div v-if="deviceFlowState" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">{{ t('providerPool.oauth.deviceFlow') }}</h3>
-              <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">{{ t('providerPool.oauth.deviceFlowInstructions') }}</p>
-              <div class="flex items-center justify-center gap-2 mb-4">
-                <input
-                  :value="deviceFlowState.userCode"
-                  readonly
-                  class="w-full max-w-xs text-center text-2xl font-bold tracking-widest text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded border border-gray-200 dark:border-gray-600 select-all"
-                  @focus="($event.target as HTMLInputElement).select()"
-                  @click="($event.target as HTMLInputElement).select()"
+            <div
+              v-if="deviceFlowState"
+              class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            >
+              <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                  {{ t('providerPool.oauth.deviceFlow') }}
+                </h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  {{ t('providerPool.oauth.deviceFlowInstructions') }}
+                </p>
+                <div class="flex items-center justify-center gap-2 mb-4">
+                  <input
+                    :value="deviceFlowState.userCode"
+                    readonly
+                    class="w-full max-w-xs text-center text-2xl font-bold tracking-widest text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded border border-gray-200 dark:border-gray-600 select-all"
+                    @focus="($event.target as HTMLInputElement).select()"
+                    @click="($event.target as HTMLInputElement).select()"
+                  />
+                  <button
+                    class="px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
+                    @click="copyDeviceFlowCode"
+                  >
+                    {{ t('common.copy') }}
+                  </button>
+                </div>
+                <a
+                  :href="deviceFlowState.verificationUri"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="block w-full text-center px-4 py-2 bg-gray-900 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white rounded mb-3"
                 >
-                <button
-                  class="px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                  @click="copyDeviceFlowCode"
-                >
-                  {{ t('common.copy') }}
-                </button>
-              </div>
-              <a
-                :href="deviceFlowState.verificationUri"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="block w-full text-center px-4 py-2 bg-gray-900 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white rounded mb-3"
-              >
-                {{ t('providerPool.oauth.openGitHub') }}
-              </a>
-              <div class="flex gap-2">
-                <button
-                  class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm disabled:opacity-50"
-                  :disabled="connectingOAuth === deviceFlowState.providerId"
-                  @click="completeDeviceFlow"
-                >
-                  {{ connectingOAuth ? '...' : t('providerPool.oauth.done') }}
-                </button>
-                <button
-                  class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm"
-                  @click="deviceFlowState = null"
-                >
-                  {{ t('common.cancel') }}
-                </button>
+                  {{ t('providerPool.oauth.openGitHub') }}
+                </a>
+                <div class="flex gap-2">
+                  <button
+                    class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm disabled:opacity-50"
+                    :disabled="connectingOAuth === deviceFlowState.providerId"
+                    @click="completeDeviceFlow"
+                  >
+                    {{ connectingOAuth ? '...' : t('providerPool.oauth.done') }}
+                  </button>
+                  <button
+                    class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm"
+                    @click="deviceFlowState = null"
+                  >
+                    {{ t('common.cancel') }}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
           </Teleport>
 
           <!-- Trial Quota Section (only for trial providers) -->
-          <div v-if="displayProvider!.type === 'trial' && store.trialQuota" class="mb-4 p-3 bg-gray-100 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-600">
-            <h3 class="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">{{ t('providerPool.trial.name') }}</h3>
+          <div
+            v-if="displayProvider!.type === 'trial' && store.trialQuota"
+            class="mb-4 p-3 bg-gray-100 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-600"
+          >
+            <h3 class="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">
+              {{ t('providerPool.trial.name') }}
+            </h3>
             <div class="space-y-2">
               <div class="flex items-center justify-between text-xs">
-                <span class="text-gray-700 dark:text-gray-400" :title="(store.trialQuota.token_limit - store.trialQuota.tokens_used).toLocaleString() + ' / ' + store.trialQuota.token_limit.toLocaleString()">{{ t('providerPool.trial.tokensUsed', { remaining: formatTokens(store.trialQuota.token_limit - store.trialQuota.tokens_used), total: formatTokens(store.trialQuota.token_limit) }) }}</span>
-                <div class="relative w-24 h-4 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
+                <span
+                  class="text-gray-700 dark:text-gray-400"
+                  :title="
+                    (store.trialQuota.token_limit - store.trialQuota.tokens_used).toLocaleString() +
+                    ' / ' +
+                    store.trialQuota.token_limit.toLocaleString()
+                  "
+                  >{{
+                    t('providerPool.trial.tokensUsed', {
+                      remaining: formatTokens(
+                        store.trialQuota.token_limit - store.trialQuota.tokens_used
+                      ),
+                      total: formatTokens(store.trialQuota.token_limit),
+                    })
+                  }}</span
+                >
+                <div
+                  class="relative w-24 h-4 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden"
+                >
                   <div
                     class="h-full bg-gray-400 dark:bg-gray-500 transition-all"
-                    :style="{ width: `${Math.max(3, Math.min(100, ((store.trialQuota.token_limit - store.trialQuota.tokens_used) / store.trialQuota.token_limit) * 100))}%` }"
+                    :style="{
+                      width: `${Math.max(3, Math.min(100, ((store.trialQuota.token_limit - store.trialQuota.tokens_used) / store.trialQuota.token_limit) * 100))}%`,
+                    }"
                   />
-                  <span class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-gray-900 dark:text-gray-700 drop-shadow-sm">
-                    {{ Math.round(((store.trialQuota.token_limit - store.trialQuota.tokens_used) / store.trialQuota.token_limit) * 100) }}%
+                  <span
+                    class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-gray-900 dark:text-gray-700 drop-shadow-sm"
+                  >
+                    {{
+                      Math.round(
+                        ((store.trialQuota.token_limit - store.trialQuota.tokens_used) /
+                          store.trialQuota.token_limit) *
+                          100
+                      )
+                    }}%
                   </span>
                 </div>
               </div>
-              <p v-if="store.trialQuota.is_exhausted" class="text-xs text-red-600 dark:text-red-400 mt-2">
-                {{ store.trialQuota.exhausted_reason === 'token_limit' ? t('providerPool.trial.quotaExhaustedTokens') : t('providerPool.trial.quotaExhaustedConversations') }}
+              <p
+                v-if="store.trialQuota.is_exhausted"
+                class="text-xs text-red-600 dark:text-red-400 mt-2"
+              >
+                {{
+                  store.trialQuota.exhausted_reason === 'token_limit'
+                    ? t('providerPool.trial.quotaExhaustedTokens')
+                    : t('providerPool.trial.quotaExhaustedConversations')
+                }}
               </p>
             </div>
           </div>
@@ -2077,7 +2586,9 @@ onMounted(() => {
           <!-- Usage Section -->
           <div v-if="providerUsage && !loadingUsage" class="mb-4">
             <div class="mb-2 flex items-center justify-between gap-2">
-              <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.usage.title') }}</h3>
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('providerPool.usage.title') }}
+              </h3>
               <router-link
                 to="/billing"
                 class="inline-flex items-center rounded-md border border-gray-300 dark:border-gray-600 bg-white/80 dark:bg-slate-800/70 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
@@ -2086,21 +2597,44 @@ onMounted(() => {
               </router-link>
             </div>
             <div class="grid grid-cols-3 gap-2">
-              <div class="p-2 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700 text-center">
-                <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('providerPool.usage.requests') }}</div>
-                <div class="text-sm font-medium text-gray-900 dark:text-white">{{ providerUsage.total_requests.toLocaleString() }}</div>
+              <div
+                class="p-2 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700 text-center"
+              >
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('providerPool.usage.requests') }}
+                </div>
+                <div class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ providerUsage.total_requests.toLocaleString() }}
+                </div>
               </div>
-              <div class="p-2 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700 text-center">
-                <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('providerPool.usage.inputTokens') }}</div>
-                <div class="text-sm font-medium text-gray-900 dark:text-white">{{ formatTokens(providerUsage.total_input_tokens) }}</div>
+              <div
+                class="p-2 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700 text-center"
+              >
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('providerPool.usage.inputTokens') }}
+                </div>
+                <div class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ formatTokens(providerUsage.total_input_tokens) }}
+                </div>
               </div>
-              <div class="p-2 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700 text-center">
-                <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('providerPool.usage.outputTokens') }}</div>
-                <div class="text-sm font-medium text-gray-900 dark:text-white">{{ formatTokens(providerUsage.total_output_tokens) }}</div>
+              <div
+                class="p-2 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700 text-center"
+              >
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('providerPool.usage.outputTokens') }}
+                </div>
+                <div class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ formatTokens(providerUsage.total_output_tokens) }}
+                </div>
               </div>
             </div>
-            <div v-if="providerUsage.total_estimated_cost > 0" class="mt-2 text-xs text-gray-500 dark:text-gray-400 text-right">
-              {{ t('providerPool.usage.estimatedCost') }}: ${{ providerUsage.total_estimated_cost.toFixed(4) }}
+            <div
+              v-if="providerUsage.total_estimated_cost > 0"
+              class="mt-2 text-xs text-gray-500 dark:text-gray-400 text-right"
+            >
+              {{ t('providerPool.usage.estimatedCost') }}: ${{
+                providerUsage.total_estimated_cost.toFixed(4)
+              }}
             </div>
           </div>
           <div v-else-if="loadingUsage" class="mb-4 text-center text-xs text-gray-400 py-2">
@@ -2112,7 +2646,14 @@ onMounted(() => {
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t('providerPool.models') }}
-                <span class="text-gray-500 text-xs ml-1">({{ (selectedKeyId && displayProvider!.type !== 'trial' ? selectedKeyModels : selectedProviderModels).length }})</span>
+                <span class="text-gray-500 text-xs ml-1"
+                  >({{
+                    (selectedKeyId && displayProvider!.type !== 'trial'
+                      ? selectedKeyModels
+                      : selectedProviderModels
+                    ).length
+                  }})</span
+                >
                 <span
                   v-if="displayProvider?.allowed_models?.length"
                   class="text-gray-900 dark:text-gray-300 text-xs ml-1"
@@ -2131,14 +2672,19 @@ onMounted(() => {
             </div>
 
             <!-- Loading state for selected key -->
-            <div v-if="selectedKeyId && fetchingKeyModels[selectedKeyId]" class="text-gray-500 dark:text-gray-400 text-center py-4 text-xs">
+            <div
+              v-if="selectedKeyId && fetchingKeyModels[selectedKeyId]"
+              class="text-gray-500 dark:text-gray-400 text-center py-4 text-xs"
+            >
               {{ t('providerPool.fetchingKeyModels') }}
             </div>
 
             <!-- Model list -->
             <div v-else class="space-y-1 max-h-64 overflow-y-auto">
               <div
-                v-for="model in (selectedKeyId && displayProvider!.type !== 'trial' ? selectedKeyModels : selectedProviderModels)"
+                v-for="model in selectedKeyId && displayProvider!.type !== 'trial'
+                  ? selectedKeyModels
+                  : selectedProviderModels"
                 :key="model.id"
                 class="p-2 bg-white dark:bg-slate-900/50 rounded text-xs group"
                 @mouseenter="model.capabilities?.length && showCapTip($event, model.capabilities)"
@@ -2146,9 +2692,17 @@ onMounted(() => {
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center flex-1 min-w-0 gap-1.5">
-                    <span class="text-gray-400 cursor-grab select-none" title="Drag to reorder">⠿</span>
-                    <span class="text-gray-900 dark:text-white font-medium">{{ model.display_name || model.name }}</span>
-                    <span v-if="model.capabilities?.length" class="text-[10px] leading-none text-gray-400 ml-0.5">✦</span>
+                    <span class="text-gray-400 cursor-grab select-none" title="Drag to reorder"
+                      >⠿</span
+                    >
+                    <span class="text-gray-900 dark:text-white font-medium">{{
+                      model.display_name || model.name
+                    }}</span>
+                    <span
+                      v-if="model.capabilities?.length"
+                      class="text-[10px] leading-none text-gray-400 ml-0.5"
+                      >✦</span
+                    >
                     <span class="text-gray-500 ml-1 truncate">{{ model.id }}</span>
                   </div>
                   <div class="flex items-center gap-2 ml-2">
@@ -2156,16 +2710,36 @@ onMounted(() => {
                       {{ (model.context_window / 1000).toFixed(0) }}K
                     </span>
                     <span
-                      :class="hasCustomPricing(model.id) ? 'text-gray-900 dark:text-gray-300' : 'text-green-500'"
+                      :class="
+                        hasCustomPricing(model.id)
+                          ? 'text-gray-900 dark:text-gray-300'
+                          : 'text-green-500'
+                      "
                       class="whitespace-nowrap cursor-pointer hover:underline"
-                      :title="hasCustomPricing(model.id) ? t('providerPool.customPricing') : t('providerPool.defaultPricing')"
+                      :title="
+                        hasCustomPricing(model.id)
+                          ? t('providerPool.customPricing')
+                          : t('providerPool.defaultPricing')
+                      "
                       @click.stop="openPricingModal(model)"
                     >
                       <template v-if="isMediaModel(model)">
                         {{ mediaPricingLabel(model) }}
                       </template>
                       <template v-else>
-                        ${{ (getModelCustomPricing(model.id)?.input_price ?? model.input_price ?? 0).toFixed(2) }}/${{ (getModelCustomPricing(model.id)?.output_price ?? model.output_price ?? 0).toFixed(2) }}
+                        ${{
+                          (
+                            getModelCustomPricing(model.id)?.input_price ??
+                            model.input_price ??
+                            0
+                          ).toFixed(2)
+                        }}/${{
+                          (
+                            getModelCustomPricing(model.id)?.output_price ??
+                            model.output_price ??
+                            0
+                          ).toFixed(2)
+                        }}
                       </template>
                     </span>
                     <button
@@ -2173,24 +2747,54 @@ onMounted(() => {
                       :title="t('providerPool.editPricing')"
                       @click.stop="openPricingModal(model)"
                     >
-                      <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      <svg
+                        class="w-3 h-3 text-gray-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                        />
                       </svg>
                     </button>
                     <button
                       v-if="hasCustomPricing(model.id)"
                       class="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-opacity"
                       :title="t('providerPool.resetPricing')"
-                      @click.stop="removeCustomPricing(model.id, store.selectedProviderId ?? undefined)"
+                      @click.stop="
+                        removeCustomPricing(model.id, store.selectedProviderId ?? undefined)
+                      "
                     >
-                      <svg class="w-3 h-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      <svg
+                        class="w-3 h-3 text-red-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
                       </svg>
                     </button>
                   </div>
                 </div>
               </div>
-              <div v-if="(selectedKeyId && displayProvider!.type !== 'trial' ? selectedKeyModels : selectedProviderModels).length === 0" class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs">
+              <div
+                v-if="
+                  (selectedKeyId && displayProvider!.type !== 'trial'
+                    ? selectedKeyModels
+                    : selectedProviderModels
+                  ).length === 0
+                "
+                class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs"
+              >
                 {{ t('providerPool.noModels') }}
               </div>
             </div>
@@ -2198,489 +2802,662 @@ onMounted(() => {
           </div>
         </div>
 
-        <div v-else class="bg-white dark:bg-slate-800/30 rounded-lg border border-gray-200 dark:border-slate-700 p-8 text-center">
-          <p class="text-gray-500 dark:text-gray-400 text-sm">{{ t('providerPool.selectProvider') }}</p>
+        <div
+          v-else
+          class="bg-white dark:bg-slate-800/30 rounded-lg border border-gray-200 dark:border-slate-700 p-8 text-center"
+        >
+          <p class="text-gray-500 dark:text-gray-400 text-sm">
+            {{ t('providerPool.selectProvider') }}
+          </p>
         </div>
       </div>
     </div>
 
     <!-- IDE Discovery Modal -->
     <Teleport to="body">
-    <div v-if="showIDEDiscoveryModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white dark:bg-slate-800 rounded-lg w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col">
-        <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-slate-700">
-          <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ t('providerPool.scanIDE') }}</h2>
-          <button
-            class="px-2 py-1 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 rounded text-sm"
-            @click="showIDEDiscoveryModal = false"
+      <div
+        v-if="showIDEDiscoveryModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      >
+        <div
+          class="bg-white dark:bg-slate-800 rounded-lg w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col"
+        >
+          <div
+            class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-slate-700"
           >
-            {{ t('common.cancel') }}
-          </button>
-        </div>
-        <div class="flex-1 overflow-y-auto">
-          <IDEDiscovery @import-success="handleIDEImportSuccess" />
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white">
+              {{ t('providerPool.scanIDE') }}
+            </h2>
+            <button
+              class="px-2 py-1 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 rounded text-sm"
+              @click="showIDEDiscoveryModal = false"
+            >
+              {{ t('common.cancel') }}
+            </button>
+          </div>
+          <div class="flex-1 overflow-y-auto">
+            <IDEDiscovery @import-success="handleIDEImportSuccess" />
+          </div>
         </div>
       </div>
-    </div>
     </Teleport>
 
     <!-- Add Provider Modal -->
     <Teleport to="body">
-    <div v-if="showAddModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.addCustomProvider') }}</h2>
-        <form class="space-y-4" @submit.prevent="addCustomProvider">
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.providerName') }}</label>
-            <input
-              v-model="newProvider.name"
-              type="text"
-              required
-              :disabled="addingProvider"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.baseUrl') }}</label>
-            <input
-              v-model="newProvider.base_url"
-              type="url"
-              required
-              :disabled="addingProvider"
-              placeholder="https://api.example.com/v1"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.apiKeyOptional') }}</label>
-            <div class="relative">
+      <div
+        v-if="showAddModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      >
+        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
+          <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+            {{ t('providerPool.addCustomProvider') }}
+          </h2>
+          <form class="space-y-4" @submit.prevent="addCustomProvider">
+            <div>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.providerName')
+              }}</label>
               <input
-                v-model.trim="newProvider.api_key"
-                :type="showNewProviderApiKey ? 'text' : 'password'"
+                v-model="newProvider.name"
+                type="text"
+                required
                 :disabled="addingProvider"
-                placeholder="sk-..."
-                class="w-full px-3 py-2 pr-10 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
               />
+            </div>
+            <div>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.baseUrl')
+              }}</label>
+              <input
+                v-model="newProvider.base_url"
+                type="url"
+                required
+                :disabled="addingProvider"
+                placeholder="https://api.example.com/v1"
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.apiKeyOptional')
+              }}</label>
+              <div class="relative">
+                <input
+                  v-model.trim="newProvider.api_key"
+                  :type="showNewProviderApiKey ? 'text' : 'password'"
+                  :disabled="addingProvider"
+                  placeholder="sk-..."
+                  class="w-full px-3 py-2 pr-10 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  :disabled="addingProvider"
+                  class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50"
+                  :title="showNewProviderApiKey ? 'Hide API Key' : 'Show API Key'"
+                  @click="showNewProviderApiKey = !showNewProviderApiKey"
+                >
+                  <svg
+                    v-if="showNewProviderApiKey"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 012.132-3.368m3.1-2.329A9.96 9.96 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.036 10.036 0 01-4.293 5.232M15 12a3 3 0 11-4.243-4.243m0 0L3 3m7.757 4.757L21 21"
+                    />
+                  </svg>
+                  <svg
+                    v-else
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M2.458 12C3.732 7.943 7.522 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7s-8.268-2.943-9.542-7z"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.apiKeyHint') }}</p>
+            </div>
+            <div>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.location')
+              }}</label>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  :disabled="addingProvider"
+                  :class="[
+                    'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
+                    newProvider.location === 'cloud'
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400'
+                      : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500',
+                  ]"
+                  @click="newProvider.location = 'cloud'"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                    />
+                  </svg>
+                  {{ t('providerPool.locationCloud') }}
+                </button>
+                <button
+                  type="button"
+                  :disabled="addingProvider"
+                  :class="[
+                    'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
+                    newProvider.location === 'local'
+                      ? 'bg-green-500/20 border-green-500 text-green-500'
+                      : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500',
+                  ]"
+                  @click="newProvider.location = 'local'"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                    />
+                  </svg>
+                  {{ t('providerPool.locationLocal') }}
+                </button>
+              </div>
+              <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.locationHint') }}</p>
+            </div>
+
+            <!-- Progress indicator during add -->
+            <div
+              v-if="addingProvider"
+              class="flex items-center gap-2 p-3 bg-gray-100 dark:bg-slate-700 rounded-lg"
+            >
+              <div
+                class="animate-spin w-4 h-4 border-2 border-gray-900 dark:border-gray-300 border-t-transparent rounded-full flex-shrink-0"
+              ></div>
+              <span class="text-sm text-gray-600 dark:text-gray-300">
+                {{
+                  addingStep === 'adding'
+                    ? t('providerPool.addingProvider')
+                    : addingStep === 'probing'
+                      ? t('providerPool.probingModels')
+                      : ''
+                }}
+              </span>
+            </div>
+
+            <div class="flex justify-end gap-3 mt-6">
               <button
                 type="button"
                 :disabled="addingProvider"
-                class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50"
-                :title="showNewProviderApiKey ? 'Hide API Key' : 'Show API Key'"
-                @click="showNewProviderApiKey = !showNewProviderApiKey"
+                class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg disabled:opacity-50"
+                @click="showNewProviderApiKey = false; showAddModal = false"
               >
-                <svg v-if="showNewProviderApiKey" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 012.132-3.368m3.1-2.329A9.96 9.96 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.036 10.036 0 01-4.293 5.232M15 12a3 3 0 11-4.243-4.243m0 0L3 3m7.757 4.757L21 21" />
-                </svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.522 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7s-8.268-2.943-9.542-7z" />
-                </svg>
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                type="submit"
+                :disabled="addingProvider"
+                class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg disabled:opacity-50"
+              >
+                {{ addingProvider ? t('common.processing') : t('common.add') }}
               </button>
             </div>
-            <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.apiKeyHint') }}</p>
-          </div>
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.location') }}</label>
-            <div class="flex gap-2">
-              <button
-                type="button"
-                :disabled="addingProvider"
-                :class="[
-                  'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
-                  newProvider.location === 'cloud'
-                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400'
-                    : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500'
-                ]"
-                @click="newProvider.location = 'cloud'"
-              >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                </svg>
-                {{ t('providerPool.locationCloud') }}
-              </button>
-              <button
-                type="button"
-                :disabled="addingProvider"
-                :class="[
-                  'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
-                  newProvider.location === 'local'
-                    ? 'bg-green-500/20 border-green-500 text-green-500'
-                    : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500'
-                ]"
-                @click="newProvider.location = 'local'"
-              >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                {{ t('providerPool.locationLocal') }}
-              </button>
-            </div>
-            <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.locationHint') }}</p>
-          </div>
-
-          <!-- Progress indicator during add -->
-          <div v-if="addingProvider" class="flex items-center gap-2 p-3 bg-gray-100 dark:bg-slate-700 rounded-lg">
-            <div class="animate-spin w-4 h-4 border-2 border-gray-900 dark:border-gray-300 border-t-transparent rounded-full flex-shrink-0"></div>
-            <span class="text-sm text-gray-600 dark:text-gray-300">
-              {{ addingStep === 'adding' ? t('providerPool.addingProvider') : addingStep === 'probing' ? t('providerPool.probingModels') : '' }}
-            </span>
-          </div>
-
-          <div class="flex justify-end gap-3 mt-6">
-            <button
-              type="button"
-              :disabled="addingProvider"
-              class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg disabled:opacity-50"
-              @click="showNewProviderApiKey = false; showAddModal = false"
-            >
-              {{ t('common.cancel') }}
-            </button>
-            <button
-              type="submit"
-              :disabled="addingProvider"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg disabled:opacity-50"
-            >
-              {{ addingProvider ? t('common.processing') : t('common.add') }}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
-    </div>
     </Teleport>
 
     <!-- Add API Key Modal -->
     <Teleport to="body">
-    <div v-if="showKeyModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.addApiKey') }}</h2>
-        <form class="space-y-4" @submit.prevent="addAPIKey">
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.apiKey') }}</label>
-            <div class="relative">
+      <div
+        v-if="showKeyModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      >
+        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
+          <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+            {{ t('providerPool.addApiKey') }}
+          </h2>
+          <form class="space-y-4" @submit.prevent="addAPIKey">
+            <div>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.apiKey')
+              }}</label>
+              <div class="relative">
+                <input
+                  v-model.trim="newKey.key"
+                  :type="showNewKeyApiKey ? 'text' : 'password'"
+                  required
+                  placeholder="sk-..."
+                  class="w-full px-3 py-2 pr-10 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                />
+                <button
+                  type="button"
+                  class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  :title="showNewKeyApiKey ? 'Hide API Key' : 'Show API Key'"
+                  @click="showNewKeyApiKey = !showNewKeyApiKey"
+                >
+                  <svg
+                    v-if="showNewKeyApiKey"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 012.132-3.368m3.1-2.329A9.96 9.96 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.036 10.036 0 01-4.293 5.232M15 12a3 3 0 11-4.243-4.243m0 0L3 3m7.757 4.757L21 21"
+                    />
+                  </svg>
+                  <svg
+                    v-else
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M2.458 12C3.732 7.943 7.522 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7s-8.268-2.943-9.542-7z"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1"
+                >{{ t('providerPool.keyLabel') }} ({{ t('common.optional') }})</label
+              >
               <input
-                v-model.trim="newKey.key"
-                :type="showNewKeyApiKey ? 'text' : 'password'"
-                required
-                placeholder="sk-..."
-                class="w-full px-3 py-2 pr-10 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                v-model="newKey.label"
+                type="text"
+                :placeholder="t('providerPool.keyLabelPlaceholder')"
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
               <button
                 type="button"
-                class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                :title="showNewKeyApiKey ? 'Hide API Key' : 'Show API Key'"
-                @click="showNewKeyApiKey = !showNewKeyApiKey"
+                class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
+                @click="showNewKeyApiKey = false; showKeyModal = false"
               >
-                <svg v-if="showNewKeyApiKey" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 012.132-3.368m3.1-2.329A9.96 9.96 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.036 10.036 0 01-4.293 5.232M15 12a3 3 0 11-4.243-4.243m0 0L3 3m7.757 4.757L21 21" />
-                </svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.522 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7s-8.268-2.943-9.542-7z" />
-                </svg>
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                type="submit"
+                class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
+              >
+                {{ t('common.add') }}
               </button>
             </div>
-          </div>
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.keyLabel') }} ({{ t('common.optional') }})</label>
-            <input
-              v-model="newKey.label"
-              type="text"
-              :placeholder="t('providerPool.keyLabelPlaceholder')"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-            />
-          </div>
-          <div class="flex justify-end gap-3 mt-6">
-            <button
-              type="button"
-              class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
-              @click="showNewKeyApiKey = false; showKeyModal = false"
-            >
-              {{ t('common.cancel') }}
-            </button>
-            <button
-              type="submit"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
-            >
-              {{ t('common.add') }}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
-    </div>
     </Teleport>
 
     <!-- Model Pricing Modal -->
     <Teleport to="body">
-    <div v-if="showPricingModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.addModelPricing') }}</h2>
-        <form class="space-y-4" @submit.prevent="saveModelPricing">
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.modelId') }}</label>
-            <input
-              v-model="pricingForm.modelId"
-              type="text"
-              required
-              placeholder="gpt-4, claude-3-opus, etc."
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-            />
-          </div>
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.providerId') }} ({{ t('common.optional') }})</label>
-            <input
-              v-model="pricingForm.providerId"
-              type="text"
-              :placeholder="t('providerPool.modelIdPlaceholder')"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-            />
-          </div>
-          <template v-if="pricingForm.isMedia">
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.pricePerUnit') }}</label>
-                <input
-                  v-model.number="pricingForm.pricePerRequest"
-                  type="number"
-                  step="0.001"
-                  min="0"
-                  required
-                  class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-                />
-              </div>
-              <div>
-                <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.pricingUnitLabel') }}</label>
-                <select
-                  v-model="pricingForm.pricingUnit"
-                  class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-                >
-                  <option value="image">{{ t('providerPool.unitImage') }}</option>
-                  <option value="second">{{ t('providerPool.unitSecond') }}</option>
-                  <option value="video">{{ t('providerPool.unitVideo') }}</option>
-                </select>
-              </div>
-            </div>
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('providerPool.mediaUnitHint') }}</p>
-          </template>
-          <template v-else>
-          <div class="grid grid-cols-3 gap-3">
+      <div
+        v-if="showPricingModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      >
+        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
+          <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+            {{ t('providerPool.addModelPricing') }}
+          </h2>
+          <form class="space-y-4" @submit.prevent="saveModelPricing">
             <div>
-              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.inputPrice') }}</label>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.modelId')
+              }}</label>
               <input
-                v-model.number="pricingForm.inputPrice"
-                type="number"
-                step="0.01"
-                min="0"
+                v-model="pricingForm.modelId"
+                type="text"
                 required
+                placeholder="gpt-4, claude-3-opus, etc."
                 class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div>
-              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.outputPrice') }}</label>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1"
+                >{{ t('providerPool.providerId') }} ({{ t('common.optional') }})</label
+              >
               <input
-                v-model.number="pricingForm.outputPrice"
-                type="number"
-                step="0.01"
-                min="0"
-                required
+                v-model="pricingForm.providerId"
+                type="text"
+                :placeholder="t('providerPool.modelIdPlaceholder')"
                 class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
-            <div>
-              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.cachePrice') }}</label>
-              <input
-                v-model.number="pricingForm.cachePrice"
-                type="number"
-                step="0.01"
-                min="0"
-                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-              />
+            <template v-if="pricingForm.isMedia">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                    t('providerPool.pricePerUnit')
+                  }}</label>
+                  <input
+                    v-model.number="pricingForm.pricePerRequest"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    required
+                    class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                    t('providerPool.pricingUnitLabel')
+                  }}</label>
+                  <select
+                    v-model="pricingForm.pricingUnit"
+                    class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  >
+                    <option value="image">{{ t('providerPool.unitImage') }}</option>
+                    <option value="second">{{ t('providerPool.unitSecond') }}</option>
+                    <option value="video">{{ t('providerPool.unitVideo') }}</option>
+                  </select>
+                </div>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('providerPool.mediaUnitHint') }}
+              </p>
+            </template>
+            <template v-else>
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                    t('providerPool.inputPrice')
+                  }}</label>
+                  <input
+                    v-model.number="pricingForm.inputPrice"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                    t('providerPool.outputPrice')
+                  }}</label>
+                  <input
+                    v-model.number="pricingForm.outputPrice"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                    t('providerPool.cachePrice')
+                  }}</label>
+                  <input
+                    v-model.number="pricingForm.cachePrice"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  />
+                </div>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('providerPool.perMillionTokens') }}
+              </p>
+            </template>
+            <div class="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
+                @click="showPricingModal = false"
+              >
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                type="submit"
+                class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
+              >
+                {{ t('common.save') }}
+              </button>
             </div>
-          </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('providerPool.perMillionTokens') }}</p>
-          </template>
-          <div class="flex justify-end gap-3 mt-6">
-            <button
-              type="button"
-              class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
-              @click="showPricingModal = false"
-            >
-              {{ t('common.cancel') }}
-            </button>
-            <button
-              type="submit"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
-            >
-              {{ t('common.save') }}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
-    </div>
     </Teleport>
 
     <!-- Model Params Modal -->
     <Teleport to="body">
-    <div v-if="showParamsModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.editModelParams') }}</h2>
-        <form class="space-y-4" @submit.prevent="saveModelParams">
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.temperature') }}</label>
-            <input
-              v-model.number="paramsForm.temperature"
-              type="number"
-              step="0.1"
-              min="0"
-              max="2"
-              :placeholder="t('providerPool.defaultPlaceholder')"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-            />
-            <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.temperatureHint') }}</p>
-          </div>
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.maxTokens') }}</label>
-            <input
-              v-model.number="paramsForm.maxTokens"
-              type="number"
-              step="1"
-              min="1"
-              :placeholder="t('providerPool.defaultPlaceholder')"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-            />
-            <p class="text-xs text-gray-400 mt-1">
-              {{ t('providerPool.maxTokensHint') }}
-              <span v-if="displayProvider?.model_params?.detected_max_tokens" class="text-gray-900 dark:text-gray-300">
-                ({{ t('providerPool.detectedMax') }}: {{ displayProvider.model_params.detected_max_tokens }})
-              </span>
-            </p>
-          </div>
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.topP') }}</label>
-            <input
-              v-model.number="paramsForm.topP"
-              type="number"
-              step="0.1"
-              min="0"
-              max="1"
-              :placeholder="t('providerPool.defaultPlaceholder')"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-            />
-            <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.topPHint') }}</p>
-          </div>
-          <div class="flex justify-end gap-3 mt-6">
-            <button
-              type="button"
-              class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
-              @click="showParamsModal = false"
-            >
-              {{ t('common.cancel') }}
-            </button>
-            <button
-              type="submit"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
-            >
-              {{ t('common.save') }}
-            </button>
-          </div>
-        </form>
+      <div
+        v-if="showParamsModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      >
+        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
+          <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+            {{ t('providerPool.editModelParams') }}
+          </h2>
+          <form class="space-y-4" @submit.prevent="saveModelParams">
+            <div>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.temperature')
+              }}</label>
+              <input
+                v-model.number="paramsForm.temperature"
+                type="number"
+                step="0.1"
+                min="0"
+                max="2"
+                :placeholder="t('providerPool.defaultPlaceholder')"
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+              />
+              <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.temperatureHint') }}</p>
+            </div>
+            <div>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.maxTokens')
+              }}</label>
+              <input
+                v-model.number="paramsForm.maxTokens"
+                type="number"
+                step="1"
+                min="1"
+                :placeholder="t('providerPool.defaultPlaceholder')"
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+              />
+              <p class="text-xs text-gray-400 mt-1">
+                {{ t('providerPool.maxTokensHint') }}
+                <span
+                  v-if="displayProvider?.model_params?.detected_max_tokens"
+                  class="text-gray-900 dark:text-gray-300"
+                >
+                  ({{ t('providerPool.detectedMax') }}:
+                  {{ displayProvider.model_params.detected_max_tokens }})
+                </span>
+              </p>
+            </div>
+            <div>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.topP')
+              }}</label>
+              <input
+                v-model.number="paramsForm.topP"
+                type="number"
+                step="0.1"
+                min="0"
+                max="1"
+                :placeholder="t('providerPool.defaultPlaceholder')"
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+              />
+              <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.topPHint') }}</p>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
+                @click="showParamsModal = false"
+              >
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                type="submit"
+                class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
+              >
+                {{ t('common.save') }}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
     </Teleport>
 
     <!-- Allowed Models Modal -->
     <Teleport to="body">
-    <div v-if="showAllowedModelsModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-2">{{ t('providerPool.selectPreferredModels') }}</h2>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ t('providerPool.preferredModelsHint') }}</p>
+      <div
+        v-if="showAllowedModelsModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      >
+        <div
+          class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-lg mx-4 max-h-[80vh] flex flex-col"
+        >
+          <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-2">
+            {{ t('providerPool.selectPreferredModels') }}
+          </h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            {{ t('providerPool.preferredModelsHint') }}
+          </p>
 
-        <!-- Loading state -->
-        <div v-if="loadingAllModels" class="flex-1 flex items-center justify-center">
-          <div class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full"></div>
-        </div>
-
-        <!-- Model list -->
-        <div v-else class="flex-1 overflow-hidden flex flex-col">
-          <!-- Quick actions -->
-          <div class="flex gap-2 mb-3">
-            <button
-              type="button"
-              class="px-2 py-1 text-xs bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded"
-              @click="selectAllModels"
-            >
-              {{ t('providerPool.selectAll') }}
-            </button>
-            <button
-              type="button"
-              class="px-2 py-1 text-xs bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded"
-              @click="clearAllModels"
-            >
-              {{ t('providerPool.clearAll') }}
-            </button>
-            <span class="text-xs text-gray-500 dark:text-gray-400 ml-auto self-center">
-              {{ t('providerPool.selectedCount', { count: allowedModelsForm.length }) }}
-            </span>
+          <!-- Loading state -->
+          <div v-if="loadingAllModels" class="flex-1 flex items-center justify-center">
+            <div
+              class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full"
+            ></div>
           </div>
 
-          <!-- Model checkboxes -->
-          <div class="flex-1 overflow-y-auto space-y-1 border border-gray-200 dark:border-slate-600 rounded-lg p-2">
-            <label
-              v-for="model in allAvailableModels"
-              :key="model.id"
-              class="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded cursor-pointer"
-              @mouseenter="model.capabilities?.length && showCapTip($event, model.capabilities)"
-              @mouseleave="hideCapTip"
-            >
-              <input
-                type="checkbox"
-                :checked="allowedModelsForm.includes(model.id)"
-                class="w-4 h-4 text-gray-900 dark:text-gray-300 bg-gray-100 dark:bg-slate-700 border-gray-300 dark:border-slate-500 rounded focus:ring-gray-400"
-                @change="toggleModelInAllowedList(model.id)"
-              />
-              <div class="flex-1 min-w-0">
-                <span class="text-sm text-gray-900 dark:text-white">{{ model.display_name || model.name }}</span>
-                <span v-if="model.capabilities?.length" class="text-[10px] leading-none text-gray-400 ml-0.5">✦</span>
-                <span class="text-xs text-gray-500 ml-1">{{ model.id }}</span>
-              </div>
-              <span v-if="model.context_window" class="text-xs text-gray-400">
-                {{ (model.context_window / 1000).toFixed(0) }}K
+          <!-- Model list -->
+          <div v-else class="flex-1 overflow-hidden flex flex-col">
+            <!-- Quick actions -->
+            <div class="flex gap-2 mb-3">
+              <button
+                type="button"
+                class="px-2 py-1 text-xs bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded"
+                @click="selectAllModels"
+              >
+                {{ t('providerPool.selectAll') }}
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1 text-xs bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded"
+                @click="clearAllModels"
+              >
+                {{ t('providerPool.clearAll') }}
+              </button>
+              <span class="text-xs text-gray-500 dark:text-gray-400 ml-auto self-center">
+                {{ t('providerPool.selectedCount', { count: allowedModelsForm.length }) }}
               </span>
-            </label>
-            <div v-if="allAvailableModels.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
-              {{ t('providerPool.noModelsAvailable') }}
+            </div>
+
+            <!-- Model checkboxes -->
+            <div
+              class="flex-1 overflow-y-auto space-y-1 border border-gray-200 dark:border-slate-600 rounded-lg p-2"
+            >
+              <label
+                v-for="model in allAvailableModels"
+                :key="model.id"
+                class="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded cursor-pointer"
+                @mouseenter="model.capabilities?.length && showCapTip($event, model.capabilities)"
+                @mouseleave="hideCapTip"
+              >
+                <input
+                  type="checkbox"
+                  :checked="allowedModelsForm.includes(model.id)"
+                  class="w-4 h-4 text-gray-900 dark:text-gray-300 bg-gray-100 dark:bg-slate-700 border-gray-300 dark:border-slate-500 rounded focus:ring-gray-400"
+                  @change="toggleModelInAllowedList(model.id)"
+                />
+                <div class="flex-1 min-w-0">
+                  <span class="text-sm text-gray-900 dark:text-white">{{
+                    model.display_name || model.name
+                  }}</span>
+                  <span
+                    v-if="model.capabilities?.length"
+                    class="text-[10px] leading-none text-gray-400 ml-0.5"
+                    >✦</span
+                  >
+                  <span class="text-xs text-gray-500 ml-1">{{ model.id }}</span>
+                </div>
+                <span v-if="model.context_window" class="text-xs text-gray-400">
+                  {{ (model.context_window / 1000).toFixed(0) }}K
+                </span>
+              </label>
+              <div
+                v-if="allAvailableModels.length === 0"
+                class="text-center py-4 text-gray-500 dark:text-gray-400 text-sm"
+              >
+                {{ t('providerPool.noModelsAvailable') }}
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Actions -->
-        <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200 dark:border-slate-600">
-          <button
-            type="button"
-            class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
-            @click="showAllowedModelsModal = false"
+          <!-- Actions -->
+          <div
+            class="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200 dark:border-slate-600"
           >
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            type="button"
-            :disabled="savingAllowedModels"
-            class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg disabled:opacity-50"
-            @click="saveAllowedModels"
-          >
-            {{ savingAllowedModels ? t('common.saving') : t('common.save') }}
-          </button>
+            <button
+              type="button"
+              class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
+              @click="showAllowedModelsModal = false"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              type="button"
+              :disabled="savingAllowedModels"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg disabled:opacity-50"
+              @click="saveAllowedModels"
+            >
+              {{ savingAllowedModels ? t('common.saving') : t('common.save') }}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
     </Teleport>
 
     <!-- Capability tooltip (teleported to body to escape overflow) -->
     <Teleport to="body">
-      <div
-        v-if="capTipVisible"
-        class="cap-tooltip"
-        :style="capTipStyle"
-      >{{ capTipText }}</div>
+      <div v-if="capTipVisible" class="cap-tooltip" :style="capTipStyle">{{ capTipText }}</div>
     </Teleport>
   </div>
 </template>

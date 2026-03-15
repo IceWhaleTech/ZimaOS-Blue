@@ -82,14 +82,17 @@ const translatedPreviewWarning = computed(() => {
   return getPreviewWarning(preview.value)
 })
 
-watch(() => props.visible, async (visible) => {
-  if (visible && props.item?.fix_action) {
-    await loadPreview()
-  } else {
-    preview.value = null
-    error.value = ''
+watch(
+  () => props.visible,
+  async (visible) => {
+    if (visible && props.item?.fix_action) {
+      await loadPreview()
+    } else {
+      preview.value = null
+      error.value = ''
+    }
   }
-})
+)
 
 async function loadPreview() {
   if (!props.item?.fix_action) return
@@ -135,9 +138,13 @@ async function handleApply() {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       @click.self="emit('close')"
     >
-      <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+      <div
+        class="bg-white dark:bg-gray-700 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col"
+      >
         <!-- Header -->
-        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <div
+          class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
+        >
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('security.scan.fixPreview') }}
           </h2>
@@ -146,7 +153,12 @@ async function handleApply() {
             @click="emit('close')"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -155,9 +167,24 @@ async function handleApply() {
         <div class="p-6 space-y-4 overflow-y-auto flex-1">
           <!-- Loading state -->
           <div v-if="loading" class="flex items-center justify-center py-8">
-            <svg class="animate-spin w-8 h-8 text-gray-900 dark:text-gray-300" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            <svg
+              class="animate-spin w-8 h-8 text-gray-900 dark:text-gray-300"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              />
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
             </svg>
           </div>
 
@@ -165,7 +192,12 @@ async function handleApply() {
           <div v-else-if="error" class="text-center py-8">
             <div class="text-red-500 dark:text-red-400 mb-2">
               <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
               </svg>
             </div>
             <p class="text-gray-600 dark:text-gray-400">{{ error }}</p>
@@ -184,7 +216,9 @@ async function handleApply() {
               <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 {{ t('security.scan.fixDescription') }}
               </h3>
-              <p class="text-sm text-gray-600 dark:text-gray-400">{{ translatedPreviewDescription }}</p>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                {{ translatedPreviewDescription }}
+              </p>
             </div>
 
             <!-- Changes list -->
@@ -198,8 +232,18 @@ async function handleApply() {
                   :key="index"
                   class="flex items-start gap-2 text-sm"
                 >
-                  <svg class="w-4 h-4 text-gray-900 dark:text-gray-300 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  <svg
+                    class="w-4 h-4 text-gray-900 dark:text-gray-300 mt-0.5 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 5l7 7-7 7"
+                    />
                   </svg>
                   <span class="text-gray-600 dark:text-gray-400">{{ change }}</span>
                 </li>
@@ -208,33 +252,82 @@ async function handleApply() {
 
             <!-- Reversible indicator -->
             <div class="flex items-center gap-2 text-sm">
-              <span :class="preview.reversible ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'">
-                <svg v-if="preview.reversible" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <span
+                :class="
+                  preview.reversible
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-yellow-600 dark:text-yellow-400'
+                "
+              >
+                <svg
+                  v-if="preview.reversible"
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
                 </svg>
                 <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
               </span>
-              <span :class="preview.reversible ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'">
-                {{ preview.reversible ? t('security.scan.reversible') : t('security.scan.irreversible') }}
+              <span
+                :class="
+                  preview.reversible
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-yellow-600 dark:text-yellow-400'
+                "
+              >
+                {{
+                  preview.reversible
+                    ? t('security.scan.reversible')
+                    : t('security.scan.irreversible')
+                }}
               </span>
             </div>
 
             <!-- Warning -->
-            <div v-if="translatedPreviewWarning" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+            <div
+              v-if="translatedPreviewWarning"
+              class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3"
+            >
               <div class="flex items-start gap-2">
-                <svg class="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <svg
+                  class="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
-                <p class="text-sm text-yellow-700 dark:text-yellow-300">{{ translatedPreviewWarning }}</p>
+                <p class="text-sm text-yellow-700 dark:text-yellow-300">
+                  {{ translatedPreviewWarning }}
+                </p>
               </div>
             </div>
           </template>
         </div>
 
         <!-- Footer -->
-        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3">
+        <div
+          class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3"
+        >
           <button
             class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
             @click="emit('close')"
@@ -247,11 +340,27 @@ async function handleApply() {
             @click="handleApply"
           >
             <svg v-if="applying" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              />
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
             </svg>
             <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
             </svg>
             {{ t('security.scan.applyFix') }}
           </button>

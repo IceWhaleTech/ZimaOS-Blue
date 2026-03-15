@@ -72,10 +72,7 @@ function formatDuration(ms?: number): string {
 
 <template>
   <div
-    :class="[
-      'px-4 py-3 rounded-lg border-2 shadow-sm min-w-[200px] max-w-[300px]',
-      statusColor
-    ]"
+    :class="['px-4 py-3 rounded-lg border-2 shadow-sm min-w-[200px] max-w-[300px]', statusColor]"
   >
     <Handle type="target" :position="Position.Top" class="!bg-gray-400" />
 
@@ -87,7 +84,9 @@ function formatDuration(ms?: number): string {
       </div>
 
       <div class="flex-1 min-w-0">
-        <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-2">
+        <div
+          class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-2"
+        >
           <span>{{ t('companion.nodes.toolCall') }}</span>
           <span
             v-if="data.sandboxUsed"
@@ -107,7 +106,7 @@ function formatDuration(ms?: number): string {
                 ? 'bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400'
                 : data.status === 'failed' || data.status === 'error'
                   ? 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
             ]"
           >
             {{ t(`companion.nodes.status.${data.status}`) }}

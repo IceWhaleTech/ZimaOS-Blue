@@ -66,8 +66,7 @@ export interface PermissionsResponse {
 // User Management API
 export const usersApi = {
   // List users with pagination
-  list: (params?: ListUsersParams) =>
-    api.get<ListUsersResponse>('/users', { params }),
+  list: (params?: ListUsersParams) => api.get<ListUsersResponse>('/users', { params }),
 
   // Get user by ID
   get: (id: string) => api.get<User>(`/users/${id}`),
@@ -76,8 +75,7 @@ export const usersApi = {
   create: (data: CreateUserRequest) => api.post<User>('/users', data),
 
   // Update user
-  update: (id: string, data: UpdateUserRequest) =>
-    api.put<User>(`/users/${id}`, data),
+  update: (id: string, data: UpdateUserRequest) => api.put<User>(`/users/${id}`, data),
 
   // Delete user
   delete: (id: string) => api.delete<void>(`/users/${id}`),
@@ -99,8 +97,7 @@ export const permissionsApi = {
   getMyPermissions: () => api.get<PermissionsResponse>('/users/me/permissions'),
 
   // Get user's permissions (admin only)
-  getUserPermissions: (id: string) =>
-    api.get<PermissionsResponse>(`/users/${id}/permissions`),
+  getUserPermissions: (id: string) => api.get<PermissionsResponse>(`/users/${id}/permissions`),
 
   // Set user's permissions (admin only)
   setUserPermissions: (id: string, permissions: string[]) =>

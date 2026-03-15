@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Conversation } from '@/api/chat'
 
@@ -23,21 +23,10 @@ const emit = defineEmits<{
 }>()
 
 const searchQuery = ref('')
-const searchActive = ref(false)
 const showDeleteConfirm = ref<string | null>(null)
-const searchInputRef = ref<HTMLInputElement | null>(null)
 const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const longPressId = ref<string | null>(null)
 const showContextMenu = ref<string | null>(null)
-
-function toggleSearch() {
-  searchActive.value = !searchActive.value
-  if (searchActive.value) {
-    nextTick(() => searchInputRef.value?.focus())
-  } else {
-    searchQuery.value = ''
-  }
-}
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
@@ -85,6 +74,26 @@ function handlePin(id: string, isPinned: boolean) {
   }
 }
 
+function handlePinFromContextMenu(id: string, isPinned: boolean) {
+  handlePin(id, isPinned)
+  showContextMenu.value = null
+}
+
+function handleDeleteFromContextMenu() {
+  if (!showContextMenu.value) return
+  handleDelete(showContextMenu.value)
+  showContextMenu.value = null
+}
+
+function getConversationPreview(title: string): string {
+  const compact = String(title || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!compact) return ''
+  if (compact.length <= 42) return `${compact}...`
+  return `${compact.slice(0, 42)}...`
+}
+
 // Long press handling for mobile - show bottom sheet
 function startLongPress(id: string) {
   longPressId.value = id
@@ -115,57 +124,86 @@ watch(searchQuery, (query) => {
 
 <template>
   <div class="conversation-list h-full flex flex-col">
-    <!-- Header: new chat + search merged into one row -->
-    <div class="list-header sticky top-0 z-10 flex items-center gap-2 p-3 sm:p-4">
-      <!-- Default: New Chat button / Search active: Search input -->
-      <div class="flex-1 min-w-0">
-        <button
-          v-if="!searchActive"
-          class="create-btn w-full py-2 px-3.5 text-sm text-white rounded-xl flex items-center justify-center gap-1.5 transition-all duration-200"
-          @click="handleCreate"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-          </svg>
-          {{ t('chat.newChat') }}
-          <span class="create-count" :title="`${conversations.length}`">{{ conversations.length }}</span>
-        </button>
-        <div v-else class="search-input-wrap relative">
+    <div class="list-header sticky top-0 z-10">
+      <div class="list-headline">
+        <h2 class="list-title truncate">{{ t('chat.conversations') }}</h2>
+        <span class="list-count">{{ conversations.length }}</span>
+      </div>
+
+      <div class="search-row">
+        <div class="search-input-wrap relative flex-1">
           <input
-            ref="searchInputRef"
             v-model="searchQuery"
             type="text"
             :placeholder="t('chat.searchConversations')"
-            class="search-input w-full text-sm text-gray-900 dark:text-white rounded-xl px-4 py-2 pl-10 focus:outline-none"
-            @keydown.escape="toggleSearch"
+            class="search-input w-full text-gray-900 dark:text-white focus:outline-none"
           />
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
           </svg>
+          <button
+            v-if="searchQuery"
+            class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-500 hover:text-gray-800 dark:text-slate-400 dark:hover:text-white hover:bg-gray-200/70 dark:hover:bg-slate-600/70 transition-colors"
+            :title="t('common.clear')"
+            @click="searchQuery = ''"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
         </div>
+        <button
+          class="create-btn create-btn-inline transition-all duration-200"
+          :title="t('chat.newChat')"
+          @click="handleCreate"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2.3"
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+        </button>
       </div>
-      <!-- Search / Close toggle button -->
-      <button
-        class="search-toggle-btn shrink-0 p-2 rounded-lg transition-colors"
-        :title="searchActive ? t('common.cancel') : t('chat.searchConversations')"
-        @click="toggleSearch"
-      >
-        <!-- Search icon -->
-        <svg v-if="!searchActive" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-        <!-- Close icon -->
-        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
     </div>
 
     <!-- Conversation list -->
     <div class="convo-scroll flex-1 overflow-y-auto">
       <!-- Loading state -->
       <div v-if="loading || searching" class="p-4 text-center text-gray-500 dark:text-gray-400">
-        <div class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto" />
+        <div
+          class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"
+        />
         <p class="mt-2">{{ searching ? t('chat.searching') : t('common.loading') }}</p>
       </div>
 
@@ -194,11 +232,11 @@ watch(searchQuery, (query) => {
       </div>
 
       <!-- Conversation items -->
-      <div v-else class="convo-stack p-2">
+      <div v-else class="convo-stack">
         <div
           v-for="(conversation, index) in conversations"
           :key="conversation.id"
-          class="conversation-item relative group rounded-xl"
+          class="conversation-item relative group"
           :class="{
             'convo-card-active': conversation.id === currentId,
             'convo-card-running': !!executingConversationIds?.includes(conversation.id),
@@ -206,7 +244,7 @@ watch(searchQuery, (query) => {
           :style="{ '--item-index': String(index) }"
         >
           <button
-            class="convo-main-btn w-full p-3.5 text-left rounded-xl transition-all duration-200"
+            class="convo-main-btn w-full text-left transition-all duration-200"
             @click="handleSelect(conversation.id)"
             @mousedown="startLongPress(conversation.id)"
             @mouseup="cancelLongPress"
@@ -214,10 +252,11 @@ watch(searchQuery, (query) => {
             @touchstart="startLongPress(conversation.id)"
             @touchend="cancelLongPress"
           >
-            <div class="flex items-start justify-between gap-2">
+            <div class="convo-row flex justify-between">
               <div class="flex-1 min-w-0">
-                <h3 class="convo-title-row text-gray-900 dark:text-white font-medium flex items-center gap-1.5 min-w-0">
-                  <!-- Pin icon inline with title -->
+                <h3
+                  class="convo-title-row text-gray-900 dark:text-white font-medium flex items-center gap-1.5 min-w-0"
+                >
                   <svg
                     v-if="conversation.pinned"
                     xmlns="http://www.w3.org/2000/svg"
@@ -225,36 +264,38 @@ watch(searchQuery, (query) => {
                     viewBox="0 0 24 24"
                     fill="currentColor"
                   >
-                    <path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z" />
+                    <path
+                      d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
+                    />
                   </svg>
                   <span class="convo-title-scroll" :title="conversation.title">
                     <span class="convo-title">{{ conversation.title }}</span>
                   </span>
-                  <span
-                    v-if="conversation.pinned"
-                    class="pin-chip hidden sm:inline-flex"
-                  >
-                    {{ t('chat.pinConversation') }}
-                  </span>
                 </h3>
-                <p class="convo-meta text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p class="convo-preview text-gray-500 dark:text-gray-400">
+                  {{ getConversationPreview(conversation.title) }}
+                </p>
+              </div>
+              <div class="convo-side">
+                <p class="convo-time text-gray-400 dark:text-slate-500">
                   {{ formatDate(conversation.updated_at) }}
                 </p>
+                <span class="convo-actions-slot" aria-hidden="true" />
               </div>
             </div>
           </button>
 
           <!-- Pin/Unpin and Delete buttons -->
-          <div class="convo-actions absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 transition-opacity">
+          <div class="convo-actions absolute flex items-center gap-0.5 transition-opacity">
             <!-- Pin button -->
             <button
-              class="action-btn p-2 text-gray-400 hover:text-yellow-500 transition-colors"
+              class="action-btn p-1.5 text-gray-400 hover:text-yellow-500 transition-colors"
               :title="conversation.pinned ? t('chat.unpinConversation') : t('chat.pinConversation')"
               @click.stop="handlePin(conversation.id, conversation.pinned || false)"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5 transform rotate-45"
+                class="h-4 w-4 transform rotate-45"
                 :class="{ 'text-yellow-500': conversation.pinned }"
                 viewBox="0 0 24 24"
                 :fill="conversation.pinned ? 'currentColor' : 'none'"
@@ -270,13 +311,13 @@ watch(searchQuery, (query) => {
             </button>
             <!-- Delete button -->
             <button
-              class="action-btn p-2 text-gray-400 hover:text-red-500 transition-colors"
+              class="action-btn p-1.5 text-gray-400 hover:text-red-500 transition-colors"
               :title="t('chat.deleteConversation')"
               @click.stop="handleDelete(conversation.id)"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5"
+                class="h-4 w-4"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -296,7 +337,9 @@ watch(searchQuery, (query) => {
             v-if="showDeleteConfirm === conversation.id"
             class="delete-mask absolute inset-0 flex items-center justify-center gap-2 p-2 rounded-xl"
           >
-            <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('chat.confirmDelete') }}</span>
+            <span class="text-sm text-gray-600 dark:text-gray-300">{{
+              t('chat.confirmDelete')
+            }}</span>
             <button
               class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
               @click.stop="confirmDelete(conversation.id)"
@@ -341,10 +384,10 @@ watch(searchQuery, (query) => {
             <div class="p-4 space-y-2">
               <!-- Pin/Unpin action -->
               <button
-                v-for="conv in conversations.filter(c => c.id === showContextMenu)"
+                v-for="conv in conversations.filter((c) => c.id === showContextMenu)"
                 :key="conv.id"
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                @click="handlePin(conv.id, conv.pinned || false); showContextMenu = null"
+                @click="handlePinFromContextMenu(conv.id, conv.pinned || false)"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -368,7 +411,7 @@ watch(searchQuery, (query) => {
               <!-- Delete action -->
               <button
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                @click="handleDelete(showContextMenu); showContextMenu = null"
+                @click="handleDeleteFromContextMenu"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -408,42 +451,56 @@ watch(searchQuery, (query) => {
 
 <style scoped>
 .conversation-list {
-  --cl-border-soft: var(--chat-sidebar-border-soft, rgba(148, 163, 184, 0.22));
-  --cl-border-strong: var(--chat-sidebar-border-strong, rgba(56, 189, 248, 0.42));
-  --cl-card-bg: var(--chat-sidebar-card-bg, rgba(15, 23, 42, 0.18));
-  --cl-card-bg-hover: var(--chat-sidebar-card-bg-hover, rgba(30, 41, 59, 0.42));
-  --cl-card-bg-active: var(--chat-sidebar-card-bg-active, linear-gradient(135deg, rgba(14, 116, 144, 0.25), rgba(15, 23, 42, 0.5)));
-  --cl-header-py: 0.85rem;
-  --cl-header-px: 0.9rem;
-  --cl-item-py: 0.8rem;
-  --cl-item-px: 0.85rem;
-  --cl-radius: 0.75rem;
-  background: var(--chat-sidebar-bg, linear-gradient(180deg, rgba(15, 23, 42, 0.32), rgba(15, 23, 42, 0.12)));
+  --cl-border-soft: rgba(148, 163, 184, 0.22);
+  --cl-border-strong: rgba(14, 165, 233, 0.4);
+  --cl-card-bg: transparent;
+  --cl-card-bg-hover: rgba(241, 245, 249, 0.72);
+  --cl-card-bg-active: rgba(219, 234, 254, 0.42);
+  --cl-header-py: calc(var(--chat-pane-pad-y, 0.96rem) - 0.02rem);
+  --cl-header-px: var(--chat-pane-pad-x, 1rem);
+  --cl-item-py: 0.6rem;
+  --cl-item-px: 1rem;
+  --cl-actions-width: 2.75rem;
+  --cl-side-width: 4.5rem;
+  --cl-radius: 0.95rem;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(244, 247, 251, 0.97));
   overflow-x: hidden;
 }
 
 :global(.chat-view.ui-density-compact) .conversation-list {
-  --cl-header-py: 0.65rem;
-  --cl-header-px: 0.75rem;
-  --cl-item-py: 0.65rem;
-  --cl-item-px: 0.72rem;
-  --cl-radius: 0.65rem;
+  --cl-header-py: 0.72rem;
+  --cl-header-px: 0.82rem;
+  --cl-item-py: 0.48rem;
+  --cl-item-px: 0.82rem;
+  --cl-actions-width: 2.55rem;
+  --cl-side-width: 4.15rem;
+  --cl-radius: 0.8rem;
 }
 
 :global(.chat-view.ui-density-comfortable) .conversation-list {
-  --cl-header-py: 1rem;
-  --cl-header-px: 1.05rem;
-  --cl-item-py: 0.95rem;
-  --cl-item-px: 1rem;
-  --cl-radius: 0.85rem;
+  --cl-header-py: 1.08rem;
+  --cl-header-px: 1.12rem;
+  --cl-item-py: 0.7rem;
+  --cl-item-px: 1.08rem;
+  --cl-actions-width: 2.9rem;
+  --cl-side-width: 4.8rem;
+  --cl-radius: 1rem;
 }
 
 .list-header {
   border-bottom: 1px solid var(--cl-border-soft);
-  background: var(--chat-sidebar-header-bg, linear-gradient(180deg, rgba(15, 23, 42, 0.42), rgba(15, 23, 42, 0.24)));
-  backdrop-filter: blur(10px);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(249, 250, 251, 0.96));
+  backdrop-filter: blur(8px);
   position: relative;
   padding: var(--cl-header-py) var(--cl-header-px);
+}
+
+.list-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  margin-bottom: 0.78rem;
 }
 
 .list-header::after {
@@ -453,66 +510,111 @@ watch(searchQuery, (query) => {
   right: 0;
   bottom: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.38), transparent);
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.32), transparent);
   pointer-events: none;
 }
 
-.create-btn {
-  border-radius: var(--cl-radius);
-  background: var(--chat-sidebar-create-bg, linear-gradient(135deg, #0f172a, #334155));
-  box-shadow: 0 7px 16px rgba(15, 23, 42, 0.24);
+.list-title {
+  font-size: 0.76rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(100, 116, 139);
 }
 
-.create-count {
-  min-width: 1.5rem;
-  height: 1.5rem;
+.list-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 1.55rem;
+  height: 1.55rem;
   border-radius: 999px;
+  padding: 0 0.42rem;
   font-size: 0.68rem;
   font-weight: 700;
-  color: rgb(203 213 225);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  background: rgba(15, 23, 42, 0.34);
+  color: rgb(71, 85, 105);
+  background: rgba(226, 232, 240, 0.9);
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.72rem;
+}
+
+.create-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.88rem;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.96), rgba(29, 78, 216, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 16px 28px -22px rgba(37, 99, 235, 0.74);
+  color: #eff6ff;
+  border: 1px solid rgba(37, 99, 235, 0.28);
+}
+
+.create-btn-inline {
+  width: 2.7rem;
+  height: 2.7rem;
+  flex-shrink: 0;
 }
 
 .create-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.28);
+  filter: brightness(1.03);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 18px 30px -22px rgba(37, 99, 235, 0.84);
 }
 
 .search-input-wrap {
-  border: 1px solid rgba(148, 163, 184, 0.26);
+  border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: var(--cl-radius);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  overflow: hidden;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .search-input-wrap:focus-within {
-  border-color: rgba(125, 211, 252, 0.52);
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.11);
 }
 
 .search-input {
+  border: none;
+  border-radius: inherit;
   background: transparent;
+  box-shadow: none;
+  min-height: 2.7rem;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.76rem 2.35rem 0.76rem 2.65rem;
+  font-size: 0.95rem;
+  line-height: 1.2;
 }
 
-.search-input:focus {
-  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.35);
+.search-input:focus,
+.search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
-.search-toggle-btn {
-  color: rgb(148 163 184);
-}
-
-.search-toggle-btn:hover {
-  color: rgb(226 232 240);
-  background: rgba(148, 163, 184, 0.14);
+.search-input::placeholder {
+  color: rgba(100, 116, 139, 0.95);
 }
 
 .convo-stack {
   display: grid;
-  gap: 0.4rem;
-  padding-right: 0.35rem;
+  gap: 0.22rem;
+  padding: 0.55rem 0.5rem 0.72rem;
+  padding-right: 0.36rem;
 }
 
 .convo-scroll {
@@ -522,7 +624,7 @@ watch(searchQuery, (query) => {
 
 .conversation-item {
   animation: convo-fade-in 0.24s ease-out both;
-  animation-delay: calc(var(--item-index, 0) * 20ms);
+  animation-delay: calc(var(--item-index, 0) * 14ms);
   min-width: 0;
 }
 
@@ -533,65 +635,56 @@ watch(searchQuery, (query) => {
   overflow: hidden;
   border-radius: var(--cl-radius);
   padding: var(--cl-item-py) var(--cl-item-px);
+  min-height: 3.72rem;
   min-width: 0;
   max-width: 100%;
 }
 
 .convo-main-btn::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(130deg, rgba(125, 211, 252, 0.06), transparent 34%, rgba(45, 212, 191, 0.06));
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  pointer-events: none;
+  content: none;
 }
 
 .convo-main-btn:hover {
   background: var(--cl-card-bg-hover);
-  border-color: rgba(148, 163, 184, 0.2);
-  transform: translateX(1px);
-}
-
-.convo-main-btn:hover::before {
-  opacity: 1;
+  border-color: transparent;
 }
 
 .convo-card-active .convo-main-btn {
   background: var(--cl-card-bg-active);
-  border-color: var(--cl-border-strong);
-  box-shadow: 0 12px 22px rgba(2, 132, 199, 0.2);
-}
-
-.convo-card-running .convo-main-btn::after {
-  content: '';
-  position: absolute;
-  right: 0.4rem;
-  top: 0.4rem;
-  width: 0.36rem;
-  height: 0.36rem;
-  border-radius: 999px;
-  background: rgb(56 189 248);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14);
+  border-color: rgba(125, 211, 252, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 14px 24px -24px rgba(14, 165, 233, 0.36);
 }
 
 .conversation-item::before {
   content: '';
   position: absolute;
-  left: 0.1rem;
-  top: 18%;
-  bottom: 18%;
-  width: 2px;
+  left: 0.14rem;
+  top: 0.62rem;
+  bottom: 0.62rem;
+  width: 3px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #38bdf8, #22d3ee);
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.9), rgba(14, 165, 233, 0.75));
   opacity: 0;
-  transform: scaleY(0.6);
+  transform: scaleY(0.7);
   transition: all 0.2s ease;
 }
 
 .convo-card-active::before {
-  opacity: 0.95;
+  opacity: 0.62;
   transform: scaleY(1);
+}
+
+.conversation-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 1.08rem;
+  right: 0.92rem;
+  bottom: -0.04rem;
+  height: 1px;
+  background: rgba(203, 213, 225, 0.6);
+  pointer-events: none;
 }
 
 .convo-title {
@@ -601,7 +694,9 @@ watch(searchQuery, (query) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.015em;
+  font-size: 1rem;
+  line-height: 1.28;
 }
 
 .convo-title-scroll {
@@ -612,21 +707,70 @@ watch(searchQuery, (query) => {
   white-space: nowrap;
 }
 
-.convo-meta {
-  font-size: 0.76rem;
+.convo-row {
+  align-items: stretch;
+  gap: 0.82rem;
+  height: 100%;
 }
 
-.pin-chip {
-  font-size: 0.62rem;
-  line-height: 1;
-  padding: 0.22rem 0.38rem;
+.convo-preview {
+  line-height: 1.28;
+  letter-spacing: 0.01em;
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 0.12rem;
+  font-size: 0.73rem;
+}
+
+.convo-side {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 var(--cl-side-width);
+  width: var(--cl-side-width);
+  min-width: var(--cl-side-width);
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.28rem;
+}
+
+.convo-time {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.32rem;
+  box-sizing: border-box;
+  padding-top: 0.02rem;
+  font-size: 0.74rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.convo-actions-slot {
+  width: var(--cl-actions-width);
+  height: 1.28rem;
+  flex-shrink: 0;
+}
+
+.convo-card-running .convo-time::before {
+  content: '';
+  width: 0.34rem;
+  height: 0.34rem;
   border-radius: 999px;
-  color: rgb(250 204 21);
-  background: rgba(234, 179, 8, 0.16);
-  border: 1px solid rgba(234, 179, 8, 0.34);
+  background: rgb(56 189 248);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+  flex-shrink: 0;
 }
 
 .convo-actions {
+  right: calc(var(--cl-item-px) - 0.02rem);
+  top: auto;
+  bottom: calc(var(--cl-item-py) - 0.04rem);
+  transform: none;
+  gap: 0.25rem;
   opacity: 0;
 }
 
@@ -636,21 +780,22 @@ watch(searchQuery, (query) => {
 }
 
 .action-btn {
-  border-radius: 0.55rem;
+  border-radius: 0.44rem;
 }
 
 .action-btn:hover {
-  background: rgba(148, 163, 184, 0.14);
+  background: rgba(148, 163, 184, 0.1);
 }
 
 .delete-mask {
-  background: rgba(15, 23, 42, 0.9);
+  background: rgba(248, 250, 252, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .empty-state {
   border-radius: 0.85rem;
   border: 1px dashed rgba(148, 163, 184, 0.34);
-  background: rgba(15, 23, 42, 0.22);
+  background: rgba(255, 255, 255, 0.76);
 }
 
 .conversation-list::-webkit-scrollbar {
@@ -662,7 +807,7 @@ watch(searchQuery, (query) => {
 }
 
 .conversation-list::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.42);
+  background: rgba(148, 163, 184, 0.36);
   border-radius: 3px;
 }
 
@@ -677,51 +822,148 @@ watch(searchQuery, (query) => {
   }
 }
 
-:root.light .create-count,
-[data-theme="light"] .create-count {
-  color: rgb(71 85 105);
-  border-color: rgba(148, 163, 184, 0.34);
-  background: rgba(255, 255, 255, 0.88);
-}
-
 :root.light .search-input-wrap,
-[data-theme="light"] .search-input-wrap {
+[data-theme='light'] .search-input-wrap {
   background: rgba(255, 255, 255, 0.88);
-  border-color: rgba(148, 163, 184, 0.3);
-}
-
-:root.light .search-toggle-btn,
-[data-theme="light"] .search-toggle-btn {
-  color: rgb(100 116 139);
-}
-
-:root.light .search-toggle-btn:hover,
-[data-theme="light"] .search-toggle-btn:hover {
-  color: rgb(30 41 59);
-  background: rgba(148, 163, 184, 0.16);
+  border-color: rgba(148, 163, 184, 0.32);
 }
 
 :root.light .convo-main-btn:hover,
-[data-theme="light"] .convo-main-btn:hover {
+[data-theme='light'] .convo-main-btn:hover {
   border-color: rgba(148, 163, 184, 0.35);
 }
 
-:root.light .pin-chip,
-[data-theme="light"] .pin-chip {
-  background: rgba(250, 204, 21, 0.12);
-  border-color: rgba(245, 158, 11, 0.3);
-  color: rgb(180 83 9);
+:root.light .conversation-list,
+[data-theme='light'] .conversation-list {
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(244, 247, 251, 0.94));
 }
 
-:root.light .delete-mask,
-[data-theme="light"] .delete-mask {
-  background: rgba(248, 250, 252, 0.96);
+:root.light .list-count,
+[data-theme='light'] .list-count {
+  color: rgb(71, 85, 105);
+  background: rgba(226, 232, 240, 0.9);
 }
 
-:root.light .empty-state,
-[data-theme="light"] .empty-state {
-  border-color: rgba(148, 163, 184, 0.38);
-  background: rgba(255, 255, 255, 0.86);
+:root.light .list-title,
+[data-theme='light'] .list-title {
+  color: rgb(100, 116, 139);
+}
+
+:root.dark .conversation-list,
+[data-theme='dark'] .conversation-list {
+  --cl-border-soft: rgba(71, 85, 105, 0.44);
+  --cl-border-strong: rgba(56, 189, 248, 0.5);
+  --cl-card-bg: transparent;
+  --cl-card-bg-hover: rgba(30, 41, 59, 0.66);
+  --cl-card-bg-active: rgba(8, 47, 73, 0.46);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.93), rgba(15, 23, 42, 0.91));
+}
+
+:root.dark .list-header,
+[data-theme='dark'] .list-header {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.84));
+}
+
+:root.dark .list-title,
+[data-theme='dark'] .list-title {
+  color: rgb(148, 163, 184);
+}
+
+:root.dark .list-count,
+[data-theme='dark'] .list-count {
+  color: rgb(203, 213, 225);
+  background: rgba(51, 65, 85, 0.9);
+}
+
+:root.dark .search-input-wrap,
+[data-theme='dark'] .search-input-wrap {
+  border-color: rgba(71, 85, 105, 0.68);
+  background: rgba(15, 23, 42, 0.58);
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+}
+
+:root.dark .search-input::placeholder,
+[data-theme='dark'] .search-input::placeholder {
+  color: rgba(148, 163, 184, 0.95);
+}
+
+:root.dark .convo-main-btn,
+[data-theme='dark'] .convo-main-btn {
+  border-color: transparent;
+}
+
+:root.dark .convo-main-btn:hover,
+[data-theme='dark'] .convo-main-btn:hover {
+  border-color: transparent;
+}
+
+:root.dark .conversation-item:not(:last-child)::after,
+[data-theme='dark'] .conversation-item:not(:last-child)::after {
+  background: rgba(51, 65, 85, 0.72);
+}
+
+:root.dark .create-btn,
+[data-theme='dark'] .create-btn {
+  color: rgb(224, 242, 254);
+  border-color: rgba(37, 99, 235, 0.4);
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.94), rgba(30, 64, 175, 0.94));
+}
+
+:root.dark .create-btn:hover,
+[data-theme='dark'] .create-btn:hover {
+  border-color: rgba(96, 165, 250, 0.56);
+}
+
+:root.dark .convo-title-row,
+[data-theme='dark'] .convo-title-row {
+  color: rgb(241, 245, 249);
+}
+
+:root.dark .convo-preview,
+[data-theme='dark'] .convo-preview {
+  color: rgb(148, 163, 184);
+}
+
+:root.dark .convo-time,
+[data-theme='dark'] .convo-time {
+  color: rgb(100, 116, 139);
+}
+
+:root.dark .delete-mask,
+[data-theme='dark'] .delete-mask {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: rgba(71, 85, 105, 0.45);
+}
+
+:root.dark .empty-state,
+[data-theme='dark'] .empty-state {
+  border-color: rgba(71, 85, 105, 0.64);
+  background: rgba(15, 23, 42, 0.66);
+}
+
+:global(.chat-desktop-shell) .conversation-list {
+  background: rgba(248, 250, 252, 0.72);
+}
+
+:global(.chat-desktop-shell) .list-header {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+}
+
+:global(.chat-desktop-shell) .empty-state {
+  background: rgba(255, 255, 255, 0.58);
+}
+
+:global([data-theme='dark'] .chat-desktop-shell) .conversation-list {
+  background: rgba(15, 23, 42, 0.44);
+}
+
+:global([data-theme='dark'] .chat-desktop-shell) .list-header {
+  background: rgba(15, 23, 42, 0.86);
+}
+
+:global([data-theme='dark'] .chat-desktop-shell) .empty-state {
+  background: rgba(15, 23, 42, 0.54);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -731,9 +973,14 @@ watch(searchQuery, (query) => {
 
   .convo-main-btn,
   .create-btn,
-  .search-toggle-btn,
   .action-btn {
     transition: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .list-header {
+    padding-top: calc(max(env(safe-area-inset-top), 0px) + 0.85rem);
   }
 }
 

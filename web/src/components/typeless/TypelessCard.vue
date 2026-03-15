@@ -21,7 +21,9 @@ const isStreaming = computed(() => props.card._streaming === true)
 
 // Check if card can be rendered functionally (simple cards)
 const isFunctional = computed(() => canRenderFunctionally(props.card))
-const supportsActionLoading = computed(() => ['result', 'web-fetch', 'action', 'ui-review', 'choice'].includes(props.card.type))
+const supportsActionLoading = computed(() =>
+  ['result', 'web-fetch', 'action', 'ui-review', 'choice'].includes(props.card.type)
+)
 
 // Pre-render HTML for functional cards
 const functionalHtml = computed(() => {
@@ -86,10 +88,7 @@ function handleSelect(selectedIds: string[], otherText?: string) {
     <div v-if="isFunctional" v-html="functionalHtml" />
 
     <!-- Loading state -->
-    <div
-      v-else-if="isLoading"
-      class="animate-pulse bg-gray-700 dark:bg-gray-500 rounded-lg h-24"
-    />
+    <div v-else-if="isLoading" class="animate-pulse bg-gray-700 dark:bg-gray-500 rounded-lg h-24" />
 
     <!-- Dynamic component from pool -->
     <template v-else-if="dynamicComponent">

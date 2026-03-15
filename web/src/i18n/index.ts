@@ -145,7 +145,6 @@ export const i18n = createI18n({
   },
 })
 
-
 type LocaleComposerBridge = {
   setLocaleMessage: (locale: string, message: LocaleMessages) => void
   getLocaleMessage: (locale: string) => LocaleMessages
@@ -168,18 +167,35 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
 
     const messages = await import(`./locales/${locale}.ts`)
     const localeMessages = messages.default as LocaleMessages
-    const localeOverrides = (priorityLocaleOverrides as Record<string, LocaleMessages>)[locale] || {}
-    const billingOverrides = (priorityBillingOverrides as Record<string, LocaleMessages>)[locale] || {}
-    const settingsOverrides = (prioritySettingsOverrides as Record<string, LocaleMessages>)[locale] || {}
-    const smallModelOverrides = (prioritySmallModelOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const localeOverrides =
+      (priorityLocaleOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const billingOverrides =
+      (priorityBillingOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const settingsOverrides =
+      (prioritySettingsOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const smallModelOverrides =
+      (prioritySmallModelOverrides as Record<string, LocaleMessages>)[locale] || {}
     const i18nGlobal = i18n.global as unknown as LocaleComposerBridge
-    const mergedBaseMessages = locale === 'en-US'
-      ? localeMessages
-      : deepMergeMessages<LocaleMessages>(i18nGlobal.getLocaleMessage('en-US'), localeMessages)
-    const withPriorityOverrides = deepMergeMessages<LocaleMessages>(mergedBaseMessages, localeOverrides)
-    const withBillingOverrides = deepMergeMessages<LocaleMessages>(withPriorityOverrides, billingOverrides)
-    const withSettingsOverrides = deepMergeMessages<LocaleMessages>(withBillingOverrides, settingsOverrides)
-    const mergedMessages = deepMergeMessages<LocaleMessages>(withSettingsOverrides, smallModelOverrides)
+    const mergedBaseMessages =
+      locale === 'en-US'
+        ? localeMessages
+        : deepMergeMessages<LocaleMessages>(i18nGlobal.getLocaleMessage('en-US'), localeMessages)
+    const withPriorityOverrides = deepMergeMessages<LocaleMessages>(
+      mergedBaseMessages,
+      localeOverrides
+    )
+    const withBillingOverrides = deepMergeMessages<LocaleMessages>(
+      withPriorityOverrides,
+      billingOverrides
+    )
+    const withSettingsOverrides = deepMergeMessages<LocaleMessages>(
+      withBillingOverrides,
+      settingsOverrides
+    )
+    const mergedMessages = deepMergeMessages<LocaleMessages>(
+      withSettingsOverrides,
+      smallModelOverrides
+    )
 
     i18nGlobal.setLocaleMessage(locale, mergedMessages)
     loadedLocales.add(locale)
@@ -193,7 +209,7 @@ export async function setLocale(locale: LocaleKey): Promise<void> {
   // cleanly fall back to English instead of showing raw translation keys.
   await loadLocaleMessages('en-US')
   await loadLocaleMessages(locale)
-  ;((i18n.global as unknown as LocaleComposerBridge).locale).value = locale
+  ;(i18n.global as unknown as LocaleComposerBridge).locale.value = locale
   localStorage.setItem(LOCALE_KEY, locale)
   document.documentElement.lang = locale
 
@@ -204,7 +220,7 @@ export async function setLocale(locale: LocaleKey): Promise<void> {
 }
 
 export function getLocale(): LocaleKey {
-  return ((i18n.global as unknown as LocaleComposerBridge).locale).value as LocaleKey
+  return (i18n.global as unknown as LocaleComposerBridge).locale.value as LocaleKey
 }
 
 // Initialize: always load the default locale (including en-US)

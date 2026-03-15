@@ -29,7 +29,9 @@ const lineColors: Record<string, string> = {
 </script>
 
 <template>
-  <div class="steps-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="steps-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <!-- Title -->
     <div v-if="card.title" class="px-3 py-1.5 border-b border-gray-200 dark:border-gray-700">
       <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -47,13 +49,35 @@ const lineColors: Record<string, string> = {
               :class="statusColors[getStepStatus(step, index, card.currentStep)]"
             >
               <template v-if="getStepStatus(step, index, card.currentStep) === 'completed'">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
               </template>
               <template v-else-if="getStepStatus(step, index, card.currentStep) === 'error'">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </template>
               <template v-else-if="step.icon">
@@ -67,11 +91,18 @@ const lineColors: Record<string, string> = {
             <div class="mt-3 text-center">
               <p
                 class="text-sm font-medium"
-                :class="getStepStatus(step, index, card.currentStep) === 'current' ? 'text-gray-900 dark:text-white dark:text-white' : 'text-gray-900 dark:text-white'"
+                :class="
+                  getStepStatus(step, index, card.currentStep) === 'current'
+                    ? 'text-gray-900 dark:text-white dark:text-white'
+                    : 'text-gray-900 dark:text-white'
+                "
               >
                 {{ step.title }}
               </p>
-              <p v-if="step.description" class="mt-1 text-xs text-gray-500 dark:text-gray-400 max-w-[120px]">
+              <p
+                v-if="step.description"
+                class="mt-1 text-xs text-gray-500 dark:text-gray-400 max-w-[120px]"
+              >
                 {{ step.description }}
               </p>
             </div>
@@ -98,8 +129,19 @@ const lineColors: Record<string, string> = {
                 :class="statusColors[getStepStatus(step, index, card.currentStep)]"
               >
                 <template v-if="getStepStatus(step, index, card.currentStep) === 'completed'">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    />
                   </svg>
                 </template>
                 <template v-else-if="step.icon">
@@ -120,7 +162,11 @@ const lineColors: Record<string, string> = {
             <div class="flex-1 pt-1">
               <p
                 class="text-sm font-medium"
-                :class="getStepStatus(step, index, card.currentStep) === 'current' ? 'text-gray-900 dark:text-white' : 'text-gray-900 dark:text-white'"
+                :class="
+                  getStepStatus(step, index, card.currentStep) === 'current'
+                    ? 'text-gray-900 dark:text-white'
+                    : 'text-gray-900 dark:text-white'
+                "
               >
                 {{ step.title }}
               </p>

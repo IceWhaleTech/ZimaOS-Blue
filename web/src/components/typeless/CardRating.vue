@@ -21,7 +21,9 @@ function getBarWidth(percentage?: number, count?: number): string {
 </script>
 
 <template>
-  <div class="rating-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="rating-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -32,14 +34,21 @@ function getBarWidth(percentage?: number, count?: number): string {
       <div class="flex items-center gap-6">
         <!-- Big number -->
         <div class="text-center">
-          <p class="text-5xl font-bold text-gray-900 dark:text-white">{{ card.rating.toFixed(1) }}</p>
+          <p class="text-5xl font-bold text-gray-900 dark:text-white">
+            {{ card.rating.toFixed(1) }}
+          </p>
           <div class="flex items-center justify-center mt-2">
             <!-- Full stars -->
             <span v-for="i in fullStars" :key="'full-' + i" class="text-yellow-400 text-xl">★</span>
             <!-- Half star -->
             <span v-if="hasHalfStar" class="text-yellow-400 text-xl">☆</span>
             <!-- Empty stars -->
-            <span v-for="i in emptyStars" :key="'empty-' + i" class="text-gray-300 dark:text-gray-600 text-xl">★</span>
+            <span
+              v-for="i in emptyStars"
+              :key="'empty-' + i"
+              class="text-gray-300 dark:text-gray-600 text-xl"
+              >★</span
+            >
           </div>
           <p v-if="card.reviewCount" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
             {{ card.reviewCount.toLocaleString() }} reviews
@@ -70,7 +79,11 @@ function getBarWidth(percentage?: number, count?: number): string {
             v-if="card.review.avatar"
             class="w-10 h-10 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700 flex-shrink-0"
           >
-            <img :src="card.review.avatar" :alt="card.review.author" class="w-full h-full object-cover" />
+            <img
+              :src="card.review.avatar"
+              :alt="card.review.author"
+              class="w-full h-full object-cover"
+            />
           </div>
           <div
             v-else
@@ -80,8 +93,12 @@ function getBarWidth(percentage?: number, count?: number): string {
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <span class="font-medium text-gray-900 dark:text-white">{{ card.review.author }}</span>
-              <span v-if="card.review.date" class="text-xs text-gray-500 dark:text-gray-400">{{ card.review.date }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{
+                card.review.author
+              }}</span>
+              <span v-if="card.review.date" class="text-xs text-gray-500 dark:text-gray-400">{{
+                card.review.date
+              }}</span>
             </div>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">{{ card.review.content }}</p>
           </div>

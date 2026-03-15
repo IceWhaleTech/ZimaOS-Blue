@@ -105,12 +105,14 @@ export const useCompanionStore = defineStore('companion', () => {
     const tracked: TrackedEvent = {
       ...event,
       state: initialState,
-      transitions: [{
-        from: 'pending' as EventState,
-        to: initialState,
-        timestamp: new Date().toISOString(),
-        reason: 'Event created',
-      }],
+      transitions: [
+        {
+          from: 'pending' as EventState,
+          to: initialState,
+          timestamp: new Date().toISOString(),
+          reason: 'Event created',
+        },
+      ],
       startedAt: initialState === 'running' ? new Date().toISOString() : undefined,
     }
 
@@ -167,7 +169,7 @@ export const useCompanionStore = defineStore('companion', () => {
   }
 
   function getEventsByState(state: EventState): TrackedEvent[] {
-    return Array.from(trackedEvents.value.values()).filter(e => e.state === state)
+    return Array.from(trackedEvents.value.values()).filter((e) => e.state === state)
   }
 
   function addStateListener(listener: (event: TrackedEvent) => void): () => void {
@@ -181,7 +183,7 @@ export const useCompanionStore = defineStore('companion', () => {
   }
 
   function notifyStateListeners(event: TrackedEvent): void {
-    eventStateListeners.value.forEach(listener => {
+    eventStateListeners.value.forEach((listener) => {
       try {
         listener(event)
       } catch (e) {
@@ -195,9 +197,7 @@ export const useCompanionStore = defineStore('companion', () => {
   }
 
   // Computed
-  const activeSessions = computed(() =>
-    sessions.value.filter((s) => s.status === 'active')
-  )
+  const activeSessions = computed(() => sessions.value.filter((s) => s.status === 'active'))
 
   const sortedSessions = computed(() =>
     [...sessions.value].sort(
@@ -205,9 +205,7 @@ export const useCompanionStore = defineStore('companion', () => {
     )
   )
 
-  const unacknowledgedAlerts = computed(() =>
-    alerts.value.filter((a) => !a.acknowledged)
-  )
+  const unacknowledgedAlerts = computed(() => alerts.value.filter((a) => !a.acknowledged))
 
   const threatDistribution = computed(() => {
     const dist: Record<ThreatLevel, number> = {
@@ -340,7 +338,10 @@ export const useCompanionStore = defineStore('companion', () => {
     }
   }
 
-  async function fetchAlerts(opts?: ListOptions & { severity?: AlertSeverity; acknowledged?: boolean }, append = false) {
+  async function fetchAlerts(
+    opts?: ListOptions & { severity?: AlertSeverity; acknowledged?: boolean },
+    append = false
+  ) {
     try {
       loadingAlerts.value = true
       error.value = null
@@ -453,7 +454,12 @@ export const useCompanionStore = defineStore('companion', () => {
     }
   }
 
-  async function exportData(opts?: { format?: 'json' | 'csv'; sessionIds?: string[]; from?: string; to?: string }) {
+  async function exportData(opts?: {
+    format?: 'json' | 'csv'
+    sessionIds?: string[]
+    from?: string
+    to?: string
+  }) {
     try {
       const response = await companionApi.exportData(opts)
       const blob = response.data as Blob
@@ -489,7 +495,12 @@ export const useCompanionStore = defineStore('companion', () => {
         type: 'info',
         title: i18n.global.t('companion.toasts.memorySavedTitle', 'Remembered new content'),
         titleKey: 'companion.toasts.memorySavedTitle',
-        message: event.message?.content?.slice(0, 80) || i18n.global.t('companion.toasts.memorySavedMessage', 'Extracted memory from the conversation'),
+        message:
+          event.message?.content?.slice(0, 80) ||
+          i18n.global.t(
+            'companion.toasts.memorySavedMessage',
+            'Extracted memory from the conversation'
+          ),
         messageKey: event.message?.content ? undefined : 'companion.toasts.memorySavedMessage',
         duration: 5000,
         action: {
@@ -503,13 +514,14 @@ export const useCompanionStore = defineStore('companion', () => {
     }
 
     // Track event in state machine
-    const initialState: EventState = event.status === 'success' || event.status === 'completed'
-      ? 'completed'
-      : event.status === 'failed' || event.status === 'error'
-        ? 'failed'
-        : event.status === 'running' || event.status === 'pending'
-          ? event.status as EventState
-          : 'completed'
+    const initialState: EventState =
+      event.status === 'success' || event.status === 'completed'
+        ? 'completed'
+        : event.status === 'failed' || event.status === 'error'
+          ? 'failed'
+          : event.status === 'running' || event.status === 'pending'
+            ? (event.status as EventState)
+            : 'completed'
     trackEvent(event, initialState)
 
     // Update session in list if it exists
@@ -600,7 +612,8 @@ export const useCompanionStore = defineStore('companion', () => {
 
   function generateDemoEvent(sessionId: string): SessionEvent {
     const eventTypes = ['message_received', 'message_sent', 'tool_call', 'llm_request'] as const
-    const eventType = eventTypes[Math.floor(Math.random() * eventTypes.length)] ?? 'message_received'
+    const eventType =
+      eventTypes[Math.floor(Math.random() * eventTypes.length)] ?? 'message_received'
     const platforms: Platform[] = ['telegram', 'whatsapp', 'discord', 'slack', 'web']
 
     return {
@@ -655,12 +668,13 @@ export const useCompanionStore = defineStore('companion', () => {
     totalAlerts.value = demoAlerts.length
 
     stats.value = {
-      active_sessions: demoSessions.filter(s => s.status === 'active').length,
+      active_sessions: demoSessions.filter((s) => s.status === 'active').length,
       total_sessions: demoSessions.length,
       total_events: demoSessions.reduce((sum, s) => sum + s.event_count, 0),
       total_alerts: demoAlerts.length,
-      unacked_alerts: demoAlerts.filter(a => !a.acknowledged).length,
-      avg_session_duration: demoSessions.reduce((sum, s) => sum + s.duration, 0) / demoSessions.length,
+      unacked_alerts: demoAlerts.filter((a) => !a.acknowledged).length,
+      avg_session_duration:
+        demoSessions.reduce((sum, s) => sum + s.duration, 0) / demoSessions.length,
       sessions_by_platform: {} as Record<Platform, number>,
       threats_by_level: { none: 0, low: 0, medium: 0, high: 0, critical: 0 },
       events_by_type: {} as Record<SessionEventType, number>,

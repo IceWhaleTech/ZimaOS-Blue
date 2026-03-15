@@ -59,7 +59,9 @@ export function getErrorMessage(error: unknown): string {
     const status = axiosError.response.status
 
     // Try to get error message from response body
-    const responseData = axiosError.response.data as { error?: string; message?: string } | undefined
+    const responseData = axiosError.response.data as
+      | { error?: string; message?: string }
+      | undefined
     if (responseData?.error) {
       return responseData.error
     }

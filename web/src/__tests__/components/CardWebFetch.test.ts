@@ -97,7 +97,9 @@ describe('CardWebFetch', () => {
     expect(wrapper.text()).toContain('Expand web content')
     expect(wrapper.text()).not.toContain('Line one')
 
-    const toggleButton = wrapper.findAll('button').find(button => button.text().includes('Expand web content'))
+    const toggleButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Expand web content'))
     expect(toggleButton).toBeDefined()
 
     await toggleButton!.trigger('click')
@@ -118,9 +120,7 @@ describe('CardWebFetch', () => {
           status: 'warning',
           warning_code: 'login_wall',
           content: 'Log in to continue',
-          actions: [
-            { id: 'use_browser', label: 'Use browser', variant: 'primary' },
-          ],
+          actions: [{ id: 'use_browser', label: 'Use browser', variant: 'primary' }],
         },
       },
       global: {
@@ -144,9 +144,7 @@ describe('CardWebFetch', () => {
           title: 'web_fetch',
           url: 'notaurl',
           content: 'Log in to continue',
-          actions: [
-            { id: 'use_browser', label: 'Use browser', variant: 'primary' },
-          ],
+          actions: [{ id: 'use_browser', label: 'Use browser', variant: 'primary' }],
         },
         actionLoading: true,
         activeActionId: 'use_browser',

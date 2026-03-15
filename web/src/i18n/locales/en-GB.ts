@@ -116,7 +116,9 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Command execution was blocked because directory approval timed out. Please approve the directory and try again.',
+    conversations: 'Conversations',
+    execDirectoryApprovalTimeout:
+      'Command execution was blocked because directory approval timed out. Please approve the directory and try again.',
     streamProgress: {
       requestAccepted: 'Request received, preparing response...',
       generating: 'Generating response...',
@@ -1039,21 +1041,21 @@ export default {
         selectorPlaceholder: 'CSS Selector (e.g., #button, .class)',
         textPlaceholder: 'Text to type',
         timeoutPlaceholder: 'Timeout (ms)',
-      action: 'Action',
-      name: 'Name',
-      title: 'Title',
-      description: 'Description',
-      schedule: 'Schedule',
-      cron: 'Cron',
-      handler: 'Handler',
-      type: 'Type',
-      command: 'Command',
-      payload: 'Payload',
-      job_id: 'Job ID',
-      jobId: 'Job ID',
-      cron_id: 'Cron ID',
-      cronId: 'Cron ID',
-    },
+        action: 'Action',
+        name: 'Name',
+        title: 'Title',
+        description: 'Description',
+        schedule: 'Schedule',
+        cron: 'Cron',
+        handler: 'Handler',
+        type: 'Type',
+        command: 'Command',
+        payload: 'Payload',
+        job_id: 'Job ID',
+        jobId: 'Job ID',
+        cron_id: 'Cron ID',
+        cronId: 'Cron ID',
+      },
       cancel: 'Cancel',
       create: 'Create Task',
     },
@@ -1924,12 +1926,13 @@ export default {
       jsonDesc: 'JSON format, suitable for backup and analysis',
       csvDesc: 'CSV format, suitable for spreadsheets',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Remembered new content',
       memorySavedMessage: 'Extracted memory from the conversation',
       manageMemory: 'Manage memory',
-    },},
+    },
+  },
   configure: 'Configure',
   confirm: 'Confirm',
   connections: {
@@ -2618,7 +2621,7 @@ export default {
     workspaceFilesLoadFailed: 'Failed to load workspace files',
     workspaceOpenFailed: 'Unable to open workspace in file manager',
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'File Sources',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -3016,8 +3019,12 @@ export default {
   save: 'Save',
   security: {
     title: 'Security Center',
+    approvedDirectories: 'Approved Directories',
+    approvedDirectoriesDesc: 'Directories approved via Allow Always for exec/convert.',
+    noApprovedDirectories: 'No approved directories',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Approved Directories',
       overview: 'Overview',
       firewall: 'Firewall',
       masking: 'Data Masking',
@@ -3515,6 +3522,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Network Access',
+    networkTitle: 'Network & Access',
+    releaseTrack: 'Version Management',
+    systemVersion: 'Updates & Versions',
     llmApiKeyRequired: 'Please configure an API key before opening the LLM Provider page.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -4219,7 +4230,8 @@ export default {
     importFailed: 'Failed to import data',
     previewFailed: 'Failed to preview data',
     chatDataTitle: 'Chat Data',
-    chatDataDescription: 'Import, export, and cleanup chat history and related data from one place.',
+    chatDataDescription:
+      'Import, export, and cleanup chat history and related data from one place.',
     manageData: 'Manage Data',
     retentionSaved: 'Retention settings saved',
     cleanupSuccess: 'Data cleanup completed successfully',
@@ -4238,7 +4250,8 @@ export default {
       eventsRetention: 'Events Retention',
       alertsRetention: 'Alerts Retention',
       totalRecords: 'Total monitoring records',
-      policyHint: 'Each data type supports 1 to 365 days. Shorter retention reduces storage, while longer retention helps audits and troubleshooting.',
+      policyHint:
+        'Each data type supports 1 to 365 days. Shorter retention reduces storage, while longer retention helps audits and troubleshooting.',
       daysRange: 'Allowed range: 1-365 days',
       sessionsHint: 'Agent session lifecycle and runtime metadata.',
       eventsHint: 'Tool calls, execution traces, and audit events.',
@@ -4246,7 +4259,8 @@ export default {
       sessionsSuggested: 'Suggested: 14-30 days for routine operations',
       eventsSuggested: 'Suggested: 7-14 days for balanced audit volume',
       alertsSuggested: 'Suggested: 30-90 days for incident review',
-      saveHint: 'New retention windows apply to upcoming automatic cleanup and manual cleanup runs.',
+      saveHint:
+        'New retention windows apply to upcoming automatic cleanup and manual cleanup runs.',
 
       days: 'days',
     },

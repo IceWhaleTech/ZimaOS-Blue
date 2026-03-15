@@ -337,7 +337,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'ファイルの出所',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -429,7 +429,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'ディレクトリ承認のタイムアウトにより、コマンド実行がブロックされました。ディレクトリを承認してから再試行してください。',
+    execDirectoryApprovalTimeout:
+      'ディレクトリ承認のタイムアウトにより、コマンド実行がブロックされました。ディレクトリを承認してから再試行してください。',
     streamProgress: {
       requestAccepted: 'リクエストを受信しました。応答を準備しています...',
       generating: '応答を生成しています...',
@@ -552,6 +553,7 @@ export default {
     inputPlaceholderShort: 'メッセージを入力...',
     newLine: 'Shift+Enter で改行',
     dragDropHint: 'ファイルをドラッグ＆ドロップまたは貼り付けて添付',
+    conversations: '会話',
     searchConversations: '会話を検索...',
     noConversationsFound: '会話が見つかりません',
     noConversationsYet: 'まだ会話がありません',
@@ -786,6 +788,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'ネットワークアクセス',
+    networkTitle: 'ネットワークとアクセス',
+    releaseTrack: 'バージョン管理',
+    systemVersion: '更新とバージョン',
     llmApiKeyRequired: 'LLM Provider ページを開く前に API Key を設定してください。',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -2568,6 +2574,9 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: '承認済みディレクトリ',
+    approvedDirectoriesDesc: 'exec/convert に対して「常に許可」で承認されたディレクトリ。',
+    noApprovedDirectories: '承認済みディレクトリはありません',
     firewall: {
       ...enUS.security.firewall,
       title: 'プロンプトファイアウォール',
@@ -2587,6 +2596,7 @@ export default {
     title: 'セキュリティセンター',
     tabs: {
       ...enUS.security.tabs,
+      approvals: '承認済みディレクトリ',
       overview: '概要',
       monitoring: '監視',
       events: 'イベント',
@@ -3310,12 +3320,13 @@ export default {
       },
       alertDescription: 'これはデモ用のアラートです。',
     },
-  
+
     toasts: {
       memorySavedTitle: '新しい内容を記憶しました',
       memorySavedMessage: '会話からメモリを抽出しました',
       manageMemory: 'メモリを管理',
-    },},
+    },
+  },
   a2ui: {
     ...enUS.a2ui,
     title: 'AI UI ジェネレーター',
@@ -4831,7 +4842,8 @@ export default {
     importFailed: 'データのインポートに失敗しました',
     previewFailed: 'データのプレビューに失敗しました',
     chatDataTitle: 'チャットデータ',
-    chatDataDescription: 'チャット履歴と関連データのインポート、エクスポート、クリーンアップを1か所で行います。',
+    chatDataDescription:
+      'チャット履歴と関連データのインポート、エクスポート、クリーンアップを1か所で行います。',
     manageData: 'データを管理',
     retentionSaved: '保持設定を保存しました',
     cleanupSuccess: 'データのクリーンアップが完了しました',
@@ -4849,7 +4861,8 @@ export default {
       eventsRetention: 'イベント保持期間',
       alertsRetention: 'アラート保持期間',
       totalRecords: '監視レコード総数',
-      policyHint: '各データ種別は 1〜365 日を設定できます。短くすると保存容量を抑えられ、長くすると監査やトラブルシュートに役立ちます。',
+      policyHint:
+        '各データ種別は 1〜365 日を設定できます。短くすると保存容量を抑えられ、長くすると監査やトラブルシュートに役立ちます。',
       daysRange: '設定可能範囲: 1〜365 日',
       sessionsHint: 'Agent セッションのライフサイクルと実行時メタデータ。',
       eventsHint: 'ツール呼び出し、実行トレース、監査イベント。',
@@ -4857,7 +4870,8 @@ export default {
       sessionsSuggested: '推奨: 日常運用では 14〜30 日',
       eventsSuggested: '推奨: 監査量とのバランスなら 7〜14 日',
       alertsSuggested: '推奨: インシデント確認には 30〜90 日',
-      saveHint: '新しい保持期間は、次回以降の自動クリーンアップと手動クリーンアップに適用されます。',
+      saveHint:
+        '新しい保持期間は、次回以降の自動クリーンアップと手動クリーンアップに適用されます。',
 
       days: '日',
     },

@@ -46,10 +46,13 @@ export function prefetchRoute(routeName: string): void {
 export function prefetchCriticalRoutes(): void {
   // Wait for idle time before prefetching
   if ('requestIdleCallback' in window) {
-    requestIdleCallback(() => {
-      // Prefetch most commonly visited routes
-      prefetchRoute('Chat')
-      prefetchRoute('Settings')
-    }, { timeout: 3000 })
+    requestIdleCallback(
+      () => {
+        // Prefetch most commonly visited routes
+        prefetchRoute('Chat')
+        prefetchRoute('Settings')
+      },
+      { timeout: 3000 }
+    )
   }
 }

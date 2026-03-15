@@ -210,7 +210,7 @@ func (mcl *ModelCompatLayer) loadDefaultFeatures() {
 			Vision:           false,
 			Streaming:        true,
 			SystemPrompt:     true,
-			MaxContextTokens: 64000,
+			MaxContextTokens: 128000,
 			MaxOutputTokens:  8192,
 		},
 		"deepseek-coder": {
@@ -219,7 +219,7 @@ func (mcl *ModelCompatLayer) loadDefaultFeatures() {
 			Vision:           false,
 			Streaming:        true,
 			SystemPrompt:     true,
-			MaxContextTokens: 64000,
+			MaxContextTokens: 128000,
 			MaxOutputTokens:  8192,
 		},
 		"qwen2": {

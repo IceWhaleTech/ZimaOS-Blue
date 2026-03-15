@@ -42,7 +42,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   contextmenu: [event: MouseEvent, messageId: string]
-  cardAction: [conversationId: string, messageId: string, cardId: string, actionId: string, actionLabel?: string]
+  cardAction: [
+    conversationId: string,
+    messageId: string,
+    cardId: string,
+    actionId: string,
+    actionLabel?: string,
+  ]
   continue: []
   regenerate: []
 }>()
@@ -56,9 +62,26 @@ const cardActionError = ref<{ cardId: string; message: string } | null>(null)
 
 const isUser = computed(() => props.message.role === 'user')
 const isAssistant = computed(() => props.message.role === 'assistant')
-const isSelected = computed(() => props.isSelected ?? chatStore.selectedMessageIds.has(props.message.id))
+const isSelected = computed(
+  () => props.isSelected ?? chatStore.selectedMessageIds.has(props.message.id)
+)
 const isMultiSelectMode = computed(() => props.isMultiSelectMode ?? chatStore.isMultiSelectMode)
 const isMobile = computed(() => !!props.isMobile)
+const showLeadingAvatar = computed(() => isAssistant.value)
+const showTrailingAvatar = computed(() => isUser.value)
+const currentAvatarVariantClass = computed(() => {
+  return isAssistant.value ? 'avatar-user' : 'avatar-assistant'
+})
+const currentAvatarLabel = computed(() => (isAssistant.value ? 'Blue' : 'You'))
+const userBubbleClasses = computed(() => [
+  'user-message',
+  'chat-copy-bubble',
+  'px-4',
+  'py-2',
+  'inline-block',
+  'chat-user-bubble',
+])
+const userCopyButtonPositionClass = '-left-8 top-1/2 -translate-y-1/2'
 
 const trackStreamingState = computed(() => isAssistant.value && !!props.isStreaming)
 const hasMediaTask = computed(() => {
@@ -72,11 +95,13 @@ const mediaTaskId = computed(() => {
 })
 
 // Check if user message has attachments
-const hasAttachments = computed(() => isUser.value && props.message.attachments && props.message.attachments.length > 0)
+const hasAttachments = computed(
+  () => isUser.value && props.message.attachments && props.message.attachments.length > 0
+)
 
 const audioAttachments = computed(() => {
   if (!isUser.value || !props.message.attachments) return []
-  return props.message.attachments.filter(a => a.type === 'audio')
+  return props.message.attachments.filter((a) => a.type === 'audio')
 })
 
 // Check if this is a voice-only message (audio attachment, no meaningful text)
@@ -125,9 +150,8 @@ function parseInlineImagesCached(content: string): InlineImageParseResult {
     images.push({ alt: match[1] ?? 'image', url: match[2] ?? '' })
   }
 
-  const strippedText = images.length > 0
-    ? content.replace(INLINE_IMAGE_STRIP_RE, '').trim()
-    : content
+  const strippedText =
+    images.length > 0 ? content.replace(INLINE_IMAGE_STRIP_RE, '').trim() : content
 
   const parsed = { images, strippedText }
   if (cache.size >= INLINE_IMAGE_CACHE_MAX && !cache.has(content)) {
@@ -186,22 +210,26 @@ function scheduleStreamingContentUpdate(nextContent: string) {
   // Skip immediate frame updates for tiny plain-text appends.
   if (nextContent.startsWith(lastStreamingFlushedContent)) {
     const delta = nextContent.slice(lastStreamingFlushedContent.length)
-    const shouldDefer = delta.length > 0
-      && delta.length < STREAMING_RENDER_MIN_DELTA
-      && !hasStreamingRenderFlushHint(delta)
-      && (Date.now() - lastStreamingFlushAt) < STREAMING_RENDER_MAX_DEFER_MS
+    const shouldDefer =
+      delta.length > 0 &&
+      delta.length < STREAMING_RENDER_MIN_DELTA &&
+      !hasStreamingRenderFlushHint(delta) &&
+      Date.now() - lastStreamingFlushAt < STREAMING_RENDER_MAX_DEFER_MS
 
     if (shouldDefer) {
       if (!streamingRenderFallbackTimer) {
         const wait = STREAMING_RENDER_MAX_DEFER_MS - (Date.now() - lastStreamingFlushAt)
-        streamingRenderFallbackTimer = setTimeout(() => {
-          streamingRenderFallbackTimer = null
-          if (streamingRenderRafId !== null) return
-          streamingRenderRafId = window.requestAnimationFrame(() => {
-            streamingRenderRafId = null
-            flushStreamingContent(pendingStreamingContent)
-          })
-        }, Math.max(8, wait))
+        streamingRenderFallbackTimer = setTimeout(
+          () => {
+            streamingRenderFallbackTimer = null
+            if (streamingRenderRafId !== null) return
+            streamingRenderRafId = window.requestAnimationFrame(() => {
+              streamingRenderRafId = null
+              flushStreamingContent(pendingStreamingContent)
+            })
+          },
+          Math.max(8, wait)
+        )
       }
       return
     }
@@ -243,11 +271,9 @@ watch(
   }
 )
 
-const renderSourceContent = computed(() => (
-  trackStreamingState.value
-    ? throttledStreamingContent.value
-    : props.message.content
-))
+const renderSourceContent = computed(() =>
+  trackStreamingState.value ? throttledStreamingContent.value : props.message.content
+)
 
 const STREAMING_TYPELESS_HINT_TAIL = 4
 const RE_STREAMING_ORDERED_LIST_HINT = /\d+\.\s/
@@ -255,13 +281,15 @@ const streamingTypelessHintContent = ref(renderSourceContent.value)
 const streamingMayContainTypelessCards = ref(true)
 
 function hasStreamingTypelessHints(content: string): boolean {
-  if (content.includes('```')
-    || content.includes('|')
-    || content.includes('- ')
-    || content.includes('* ')
-    || content.includes('+ ')
-    || content.includes('![')
-    || content.includes('http')) {
+  if (
+    content.includes('```') ||
+    content.includes('|') ||
+    content.includes('- ') ||
+    content.includes('* ') ||
+    content.includes('+ ') ||
+    content.includes('![') ||
+    content.includes('http')
+  ) {
     return true
   }
   return content.includes('.') && RE_STREAMING_ORDERED_LIST_HINT.test(content)
@@ -332,7 +360,9 @@ const isSpeaking = ref(false)
 const ttsError = ref<string | null>(null)
 
 // Attachment preview state
-const previewAttachment = ref<{ type: string; src: string; name: string; content?: string } | null>(null)
+const previewAttachment = ref<{ type: string; src: string; name: string; content?: string } | null>(
+  null
+)
 
 // Voice message playback state
 const playingAudioId = ref<number | null>(null)
@@ -340,7 +370,10 @@ const audioProgress = ref(0) // 0-1
 let activeAudio: HTMLAudioElement | null = null
 let audioProgressTimer: ReturnType<typeof setInterval> | null = null
 
-function playVoiceMessage(attachment: { mime_type: string; data: string; duration?: number }, index: number) {
+function playVoiceMessage(
+  attachment: { mime_type: string; data: string; duration?: number },
+  index: number
+) {
   // If same audio is playing, stop it
   if (playingAudioId.value === index) {
     stopVoiceMessage()
@@ -458,7 +491,7 @@ const toolDisplayNames = computed(() => {
   const commands = chatStore.toolExecutingCommands
   if (commands.length > 0) {
     // Extract skill name from "blue <subcommand> ..." pattern
-    return commands.map(cmd => {
+    return commands.map((cmd) => {
       const m = cmd.match(/^blue\s+(\S+)/)
       return m ? m[1] : formatToolName('exec')
     })
@@ -526,8 +559,9 @@ watch(
   { immediate: true }
 )
 
-const interruptedIndicatorHtml = computed(() =>
-  `<div class="response-interrupted-indicator"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><span>${t('chat.responseInterrupted')}</span></div>`
+const interruptedIndicatorHtml = computed(
+  () =>
+    `<div class="response-interrupted-indicator"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><span>${t('chat.responseInterrupted')}</span></div>`
 )
 
 const INTERRUPTED_MARKER = '[Response interrupted]'
@@ -671,7 +705,11 @@ function stripProcessContent(text: string): string {
   return stripped
 }
 
-function parsePersistedProcessToolResults(content: string, messageId: string, createdAt?: string): ToolResultItem[] {
+function parsePersistedProcessToolResults(
+  content: string,
+  messageId: string,
+  createdAt?: string
+): ToolResultItem[] {
   const cacheKey = `${messageId}:${content}`
   const cache = getProcessToolResultsCache()
   const cached = cache.get(cacheKey)
@@ -703,26 +741,29 @@ function parsePersistedProcessToolResults(content: string, messageId: string, cr
       entries.forEach((entry, itemIndex) => {
         if (!entry || typeof entry !== 'object') return
         const payload = entry as Record<string, unknown>
-        const command = typeof payload.cmd === 'string'
-          ? payload.cmd.trim()
-          : typeof payload.command === 'string'
-            ? payload.command.trim()
-            : ''
+        const command =
+          typeof payload.cmd === 'string'
+            ? payload.cmd.trim()
+            : typeof payload.command === 'string'
+              ? payload.command.trim()
+              : ''
         const status = typeof payload.status === 'string' ? payload.status.trim() : ''
         const output = typeof payload.output === 'string' ? payload.output : ''
-        const name = typeof payload.tool === 'string'
-          ? payload.tool.trim()
-          : typeof payload.name === 'string'
-            ? payload.name.trim()
-            : ''
+        const name =
+          typeof payload.tool === 'string'
+            ? payload.tool.trim()
+            : typeof payload.name === 'string'
+              ? payload.name.trim()
+              : ''
         const rawIcon = typeof payload.icon === 'string' ? payload.icon : ''
-        const icon: ToolResultItem['icon'] = rawIcon === '✓' || rawIcon === '✗' || rawIcon === '⏳'
-          ? rawIcon
-          : /(error|fail)/i.test(status)
-            ? '✗'
-            : status
-              ? '✓'
-              : '⏳'
+        const icon: ToolResultItem['icon'] =
+          rawIcon === '✓' || rawIcon === '✗' || rawIcon === '⏳'
+            ? rawIcon
+            : /(error|fail)/i.test(status)
+              ? '✗'
+              : status
+                ? '✓'
+                : '⏳'
 
         if (!command && !status && !output) return
 
@@ -751,7 +792,11 @@ function parsePersistedProcessToolResults(content: string, messageId: string, cr
 
 const persistedProcessToolResults = computed(() => {
   if (isUser.value || props.isStreaming) return []
-  return parsePersistedProcessToolResults(strippedContent.value, props.message.id, props.message.created_at)
+  return parsePersistedProcessToolResults(
+    strippedContent.value,
+    props.message.id,
+    props.message.created_at
+  )
 })
 
 const contentWithoutProcessBlocks = computed(() => {
@@ -819,10 +864,10 @@ const assistantTextState = computed<AssistantTextState>(() => {
   if (cache) {
     const cached = cache.get(cacheKey)
     if (
-      cached
-      && cached.text === text
-      && cached.showToolDetails === showToolDetails
-      && cached.interruptedHtml === interruptedHtml
+      cached &&
+      cached.text === text &&
+      cached.showToolDetails === showToolDetails &&
+      cached.interruptedHtml === interruptedHtml
     ) {
       return cached.value
     }
@@ -858,7 +903,10 @@ const renderedContent = computed(() => assistantTextState.value.html)
 
 // Whether bubble content is empty (only indicators showing)
 const isContentEmpty = computed(() => {
-  return assistantTextState.value.isEmpty && (!settingsStore.showToolDetails || persistedProcessToolResults.value.length === 0)
+  return (
+    assistantTextState.value.isEmpty &&
+    (!settingsStore.showToolDetails || persistedProcessToolResults.value.length === 0)
+  )
 })
 
 // Hide empty assistant messages that are not streaming (collapsed empty bubbles)
@@ -888,9 +936,19 @@ const parsedContent = computed(() => {
   // Use incremental parsing for streaming to avoid re-parsing entire content
   // Pass conversation_id to ensure cache key uniqueness across conversations
   if (props.isStreaming) {
-    return parseTypelessContentIncremental(content, renderMessageId, props.message.conversation_id, explicitTodoCardId)
+    return parseTypelessContentIncremental(
+      content,
+      renderMessageId,
+      props.message.conversation_id,
+      explicitTodoCardId
+    )
   }
-  return parseTypelessContent(content, renderMessageId, props.message.conversation_id, explicitTodoCardId)
+  return parseTypelessContent(
+    content,
+    renderMessageId,
+    props.message.conversation_id,
+    explicitTodoCardId
+  )
 })
 
 type ContentSegment = {
@@ -916,13 +974,37 @@ function getNextTextSegmentIndex(segments: ContentSegment[]): number {
 // Card types that represent content or results — always visible even when tool details are hidden.
 // Only tool-invocation cards (steps) are hidden when details are off.
 const RESULT_CARD_TYPES = new Set([
-  'result', 'search', 'weather', 'chart', 'gallery', 'map', 'profile',
-  'rating', 'comparison', 'metric', 'link', 'audio', 'video', 'file',
-  'media-generate', 'ui-review', 'deep-research', 'detection',
-  'ui-review-progress', 'analyze-progress', 'browser-progress',
-  'deep-research-progress', 'deep-research-event',
-  'web-fetch', 'convert-task',
-  'list', 'table', 'code', 'terminal', 'mermaid', 'accordion',
+  'result',
+  'search',
+  'weather',
+  'chart',
+  'gallery',
+  'map',
+  'profile',
+  'rating',
+  'comparison',
+  'metric',
+  'link',
+  'audio',
+  'video',
+  'file',
+  'media-generate',
+  'ui-review',
+  'deep-research',
+  'detection',
+  'ui-review-progress',
+  'analyze-progress',
+  'browser-progress',
+  'deep-research-progress',
+  'deep-research-event',
+  'web-fetch',
+  'convert-task',
+  'list',
+  'table',
+  'code',
+  'terminal',
+  'mermaid',
+  'accordion',
 ])
 
 function buildEffectiveSegments(
@@ -930,7 +1012,7 @@ function buildEffectiveSegments(
   conversationId: string,
   messageId: string,
   showToolDetails: boolean,
-  isStreaming: boolean,
+  isStreaming: boolean
 ): ContentSegment[] | null {
   if (!parsed || parsed.cards.length === 0) return null
 
@@ -944,14 +1026,20 @@ function buildEffectiveSegments(
   const incrementalCache = getEffectiveSegmentsIncrementalCache()
   const incremental = incrementalCache.get(cacheKey)
   if (
-    incremental
-    && incremental.parsedCards === parsed.cards
-    && parsed.text.startsWith(incremental.parsedText)
+    incremental &&
+    incremental.parsedCards === parsed.cards &&
+    parsed.text.startsWith(incremental.parsedText)
   ) {
     const delta = parsed.text.slice(incremental.parsedText.length)
     if (!delta.includes('[[TYPELESS_CARD:')) {
       if (incremental.value === null) {
-        setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, null)
+        setEffectiveSegmentsIncrementalCache(
+          incrementalCache,
+          cacheKey,
+          parsed.text,
+          parsed.cards,
+          null
+        )
         setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, null)
         return null
       }
@@ -961,7 +1049,13 @@ function buildEffectiveSegments(
       if (lastSegment?.type === 'text') {
         const nextTailText = trimIfNeeded((lastSegment.content as string) + delta)
         if (nextTailText === lastSegment.content) {
-          setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, previous)
+          setEffectiveSegmentsIncrementalCache(
+            incrementalCache,
+            cacheKey,
+            parsed.text,
+            parsed.cards,
+            previous
+          )
           setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, previous)
           return previous
         }
@@ -971,7 +1065,13 @@ function buildEffectiveSegments(
           ...lastSegment,
           content: nextTailText,
         }
-        setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, next)
+        setEffectiveSegmentsIncrementalCache(
+          incrementalCache,
+          cacheKey,
+          parsed.text,
+          parsed.cards,
+          next
+        )
         setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, next)
         return next
       }
@@ -979,7 +1079,13 @@ function buildEffectiveSegments(
       const deltaText = trimIfNeeded(delta)
       // No trailing text segment to extend; whitespace-only append keeps content unchanged.
       if (!deltaText) {
-        setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, previous)
+        setEffectiveSegmentsIncrementalCache(
+          incrementalCache,
+          cacheKey,
+          parsed.text,
+          parsed.cards,
+          previous
+        )
         setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, previous)
         return previous
       }
@@ -990,7 +1096,13 @@ function buildEffectiveSegments(
         content: deltaText,
         key: `${convId}-${messageId}-text-${getNextTextSegmentIndex(previous)}`,
       })
-      setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, next)
+      setEffectiveSegmentsIncrementalCache(
+        incrementalCache,
+        cacheKey,
+        parsed.text,
+        parsed.cards,
+        next
+      )
       setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, next)
       return next
     }
@@ -998,14 +1110,26 @@ function buildEffectiveSegments(
 
   // If tool details are hidden and no result-type cards exist, skip split/filter work.
   if (!showToolDetails && !parsed.cards.some((card) => RESULT_CARD_TYPES.has(card.type))) {
-    setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, null)
+    setEffectiveSegmentsIncrementalCache(
+      incrementalCache,
+      cacheKey,
+      parsed.text,
+      parsed.cards,
+      null
+    )
     setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, null)
     return null
   }
 
   const segments = splitIntoSegments(parsed.text, parsed.cards, splitIncrementalKey)
   if (segments.length === 0) {
-    setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, null)
+    setEffectiveSegmentsIncrementalCache(
+      incrementalCache,
+      cacheKey,
+      parsed.text,
+      parsed.cards,
+      null
+    )
     setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, null)
     return null
   }
@@ -1040,7 +1164,13 @@ function buildEffectiveSegments(
 
   // If no cards survived filtering, return null to fall back to plain text rendering.
   const result = hasCards ? effective : null
-  setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, result)
+  setEffectiveSegmentsIncrementalCache(
+    incrementalCache,
+    cacheKey,
+    parsed.text,
+    parsed.cards,
+    result
+  )
   setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, result)
   return result
 }
@@ -1066,11 +1196,13 @@ const CHAT_HASH_CACHE_KEY = '__zima_chat_hash_cache_v1__'
 const CHAT_HASH_CACHE_MAX = 500
 const STREAMING_SEGMENT_HTML_CACHE_KEY = '__zima_chat_streaming_segment_html_cache_v1__'
 const STREAMING_SEGMENT_HTML_CACHE_MAX = 600
-const STREAMING_SEGMENT_RENDER_INCREMENTAL_CACHE_KEY = '__zima_chat_streaming_segment_render_incremental_cache_v1__'
+const STREAMING_SEGMENT_RENDER_INCREMENTAL_CACHE_KEY =
+  '__zima_chat_streaming_segment_render_incremental_cache_v1__'
 const STREAMING_SEGMENT_RENDER_INCREMENTAL_CACHE_MAX = 300
 const EFFECTIVE_SEGMENTS_CACHE_KEY = '__zima_chat_effective_segments_cache_v1__'
 const EFFECTIVE_SEGMENTS_CACHE_PER_PARSED_MAX = 8
-const EFFECTIVE_SEGMENTS_INCREMENTAL_CACHE_KEY = '__zima_chat_effective_segments_incremental_cache_v1__'
+const EFFECTIVE_SEGMENTS_INCREMENTAL_CACHE_KEY =
+  '__zima_chat_effective_segments_incremental_cache_v1__'
 const EFFECTIVE_SEGMENTS_INCREMENTAL_CACHE_MAX = 300
 
 interface StreamingSegmentHtmlCacheEntry {
@@ -1126,7 +1258,10 @@ function getStreamingSegmentHtmlCache(): Map<string, StreamingSegmentHtmlCacheEn
   return cache
 }
 
-function getStreamingSegmentRenderIncrementalCache(): Map<string, StreamingSegmentRenderIncrementalCacheEntry> {
+function getStreamingSegmentRenderIncrementalCache(): Map<
+  string,
+  StreamingSegmentRenderIncrementalCacheEntry
+> {
   const g = globalThis as Record<string, unknown>
   const existing = g[STREAMING_SEGMENT_RENDER_INCREMENTAL_CACHE_KEY]
   if (existing instanceof Map) {
@@ -1140,7 +1275,7 @@ function getStreamingSegmentRenderIncrementalCache(): Map<string, StreamingSegme
 function setStreamingSegmentRenderIncrementalCache(
   cache: Map<string, StreamingSegmentRenderIncrementalCacheEntry>,
   key: string,
-  value: StreamingSegmentRenderIncrementalCacheEntry,
+  value: StreamingSegmentRenderIncrementalCacheEntry
 ) {
   if (cache.size >= STREAMING_SEGMENT_RENDER_INCREMENTAL_CACHE_MAX && !cache.has(key)) {
     evictOldestMapEntry(cache)
@@ -1177,7 +1312,10 @@ function getEffectiveSegmentsCacheForParsed(parsed: ParsedContent): EffectiveSeg
   return next
 }
 
-function getEffectiveSegmentsIncrementalCache(): Map<string, EffectiveSegmentsIncrementalCacheEntry> {
+function getEffectiveSegmentsIncrementalCache(): Map<
+  string,
+  EffectiveSegmentsIncrementalCacheEntry
+> {
   const g = globalThis as Record<string, unknown>
   const existing = g[EFFECTIVE_SEGMENTS_INCREMENTAL_CACHE_KEY]
   if (existing instanceof Map) {
@@ -1193,7 +1331,7 @@ function setEffectiveSegmentsIncrementalCache(
   key: string,
   parsedText: string,
   parsedCards: TypelessCard[],
-  value: ContentSegment[] | null,
+  value: ContentSegment[] | null
 ) {
   if (cache.size >= EFFECTIVE_SEGMENTS_INCREMENTAL_CACHE_MAX && !cache.has(key)) {
     evictOldestMapEntry(cache)
@@ -1209,7 +1347,7 @@ function setEffectiveSegmentsCacheForParsed(
   parsed: ParsedContent,
   cache: EffectiveSegmentsCacheEntry,
   key: string,
-  value: ContentSegment[] | null,
+  value: ContentSegment[] | null
 ) {
   if (cache.size >= EFFECTIVE_SEGMENTS_CACHE_PER_PARSED_MAX && !cache.has(key)) {
     evictOldestMapEntry(cache)
@@ -1242,7 +1380,7 @@ function hashStringCached(value: string): string {
 function setSegmentRenderCache(
   cache: Map<string, SegmentRenderState>,
   key: string,
-  value: SegmentRenderState,
+  value: SegmentRenderState
 ) {
   if (cache.size >= SEGMENT_RENDER_CACHE_MAX && !cache.has(key)) {
     evictOldestMapEntry(cache)
@@ -1255,7 +1393,7 @@ function getSegmentRenderCacheEntryKey(
   messageId: string,
   showToolDetails: boolean,
   content: string,
-  interruptedHtml: string,
+  interruptedHtml: string
 ): string {
   return `${conversationId}:${messageId}:${showToolDetails ? '1' : '0'}:${hashStringCached(content)}:${hashStringCached(interruptedHtml)}`
 }
@@ -1285,7 +1423,7 @@ const segmentRenderState = computed(() => {
       props.message.id,
       settingsStore.showToolDetails,
       displayContentWithoutProcessBlocks.value,
-      interruptedIndicatorHtml.value,
+      interruptedIndicatorHtml.value
     )
     cache = getSegmentRenderCache()
     const cached = cache.get(cacheKey)
@@ -1299,7 +1437,7 @@ const segmentRenderState = computed(() => {
     convId,
     props.message.id,
     settingsStore.showToolDetails,
-    Boolean(props.isStreaming),
+    Boolean(props.isStreaming)
   )
   if (!segments) {
     if (cache && cacheKey) {
@@ -1321,9 +1459,9 @@ const segmentRenderState = computed(() => {
   let startIndex = 0
 
   if (
-    previousStreamingRender
-    && previousStreamingRender.showToolDetails === showToolDetails
-    && previousStreamingRender.interruptedHtml === interruptedHtml
+    previousStreamingRender &&
+    previousStreamingRender.showToolDetails === showToolDetails &&
+    previousStreamingRender.interruptedHtml === interruptedHtml
   ) {
     const previousSegments = previousStreamingRender.segments
     const previousRendered = previousStreamingRender.state.rendered
@@ -1375,10 +1513,10 @@ const segmentRenderState = computed(() => {
     if (streamingSegmentHtmlCache) {
       const cached = streamingSegmentHtmlCache.get(segment.key)
       if (
-        cached
-        && cached.sourceText === text
-        && cached.showToolDetails === showToolDetails
-        && cached.interruptedHtml === interruptedHtml
+        cached &&
+        cached.sourceText === text &&
+        cached.showToolDetails === showToolDetails &&
+        cached.interruptedHtml === interruptedHtml
       ) {
         rendered.push({ ...segment, html: cached.html })
         continue
@@ -1394,8 +1532,8 @@ const segmentRenderState = computed(() => {
 
     if (streamingSegmentHtmlCache) {
       if (
-        streamingSegmentHtmlCache.size >= STREAMING_SEGMENT_HTML_CACHE_MAX
-        && !streamingSegmentHtmlCache.has(segment.key)
+        streamingSegmentHtmlCache.size >= STREAMING_SEGMENT_HTML_CACHE_MAX &&
+        !streamingSegmentHtmlCache.has(segment.key)
       ) {
         evictOldestMapEntry(streamingSegmentHtmlCache)
       }
@@ -1430,7 +1568,7 @@ const segmentRenderState = computed(() => {
         showToolDetails,
         interruptedHtml,
         state: nextState,
-      },
+      }
     )
   }
 
@@ -1453,7 +1591,14 @@ const formattedTime = computed(() => {
 
 const formattedTimeLong = computed(() => {
   const date = new Date(props.message.created_at)
-  return date.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return date.toLocaleString([], {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
 })
 
 // Get metadata from store or message itself
@@ -1473,7 +1618,9 @@ const metadata = computed(() => {
 // Get provider location (cloud/local) for icon display
 const providerLocation = computed(() => {
   if (!metadata.value?.provider) return null
-  const provider = providerPoolStore.providers.find(p => p.name === metadata.value?.provider || p.id === metadata.value?.provider)
+  const provider = providerPoolStore.providers.find(
+    (p) => p.name === metadata.value?.provider || p.id === metadata.value?.provider
+  )
   return provider?.location || null
 })
 
@@ -1497,17 +1644,43 @@ function formatTokens(num: number | undefined): string {
   return num.toLocaleString()
 }
 
-function formatTTFT(ms: number | undefined): string {
-  if (ms === undefined || ms === null || ms === 0) return ''
-  // Always convert to seconds
-  const seconds = ms / 1000
-  return seconds.toFixed(2) + 's'
+function formatResponseDuration(ms: number | undefined, fallbackMs?: number): string {
+  const value = ms && ms > 0 ? ms : fallbackMs && fallbackMs > 0 ? fallbackMs : 0
+  if (!value) return ''
+  return (value / 1000).toFixed(2) + 's'
 }
 
 function formatSpeed(tps: number | undefined): string {
   if (tps === undefined || tps === null || tps === 0) return ''
   return tps.toFixed(1)
 }
+
+type MessageStatItem = {
+  key: 'duration' | 'speed' | 'input' | 'output'
+  value: string
+  icon?: 'input' | 'output'
+}
+
+const messageStatItems = computed<MessageStatItem[]>(() => {
+  if (isMobile.value || !isAssistant.value) return []
+  const stats = metadata.value?.stats
+  if (!stats) return []
+
+  const items: MessageStatItem[] = []
+  const duration = formatResponseDuration(stats.latency_ms, stats.ttft_ms)
+  const speed = formatSpeed(stats.tokens_per_second)
+  const inputTokens = formatTokens(stats.input_tokens)
+  const outputTokens = formatTokens(stats.output_tokens)
+
+  if (duration) items.push({ key: 'duration', value: duration })
+  if (speed) items.push({ key: 'speed', value: `${speed} tokens/s` })
+  if (inputTokens) items.push({ key: 'input', value: inputTokens, icon: 'input' })
+  if (outputTokens) items.push({ key: 'output', value: outputTokens, icon: 'output' })
+
+  return items
+})
+
+const showAssistantStatsBar = computed(() => messageStatItems.value.length > 0)
 
 function handleContextMenu(event: MouseEvent) {
   // Don't trigger context menu during streaming
@@ -1562,8 +1735,12 @@ onUnmounted(() => {
   stopToolExecutingStateWatch()
   stopWaitingTimerStateWatch()
   clearIncrementalState(props.message.render_key || props.message.id, props.message.conversation_id)
-  clearSplitSegmentsIncrementalState(`${props.message.conversation_id || 'unknown'}:${props.message.id}`)
-  clearStreamingSegmentRenderIncrementalState(`${props.message.conversation_id || 'unknown'}:${props.message.id}`)
+  clearSplitSegmentsIncrementalState(
+    `${props.message.conversation_id || 'unknown'}:${props.message.id}`
+  )
+  clearStreamingSegmentRenderIncrementalState(
+    `${props.message.conversation_id || 'unknown'}:${props.message.id}`
+  )
   stopToolTimer()
   stopWaitingTimer()
   stopVoiceMessage()
@@ -1581,89 +1758,97 @@ const lastPlayedLength = ref(0)
 
 // Strip complex card content (code blocks, mermaid, tables) from text for TTS
 function stripComplexCardsForTTS(text: string): string {
-  return text
-    // Remove process blocks (<!-- process-start -->...<!-- process-end -->)
-    .replace(/<!--\s*process-start\s*-->[\s\S]*?<!--\s*process-end\s*-->/g, '')
-    // Remove fenced code blocks (```...```)
-    .replace(/```[\s\S]*?```/g, '')
-    // Remove HTML comments
-    .replace(/<!--[\s\S]*?-->/g, '')
-    // Remove markdown tables (lines starting with |)
-    .replace(/^\|.*\|$/gm, '')
-    // Remove table separator lines (|---|---|)
-    .replace(/^\|[-:\s|]+\|$/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  return (
+    text
+      // Remove process blocks (<!-- process-start -->...<!-- process-end -->)
+      .replace(/<!--\s*process-start\s*-->[\s\S]*?<!--\s*process-end\s*-->/g, '')
+      // Remove fenced code blocks (```...```)
+      .replace(/```[\s\S]*?```/g, '')
+      // Remove HTML comments
+      .replace(/<!--[\s\S]*?-->/g, '')
+      // Remove markdown tables (lines starting with |)
+      .replace(/^\|.*\|$/gm, '')
+      // Remove table separator lines (|---|---|)
+      .replace(/^\|[-:\s|]+\|$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  )
 }
 
 // Watch for content changes during streaming to play incrementally
-watch(() => props.message.content, (newContent, _oldContent) => {
-  if (!trackStreamingState.value) return
+watch(
+  () => props.message.content,
+  (newContent, _oldContent) => {
+    if (!trackStreamingState.value) return
 
-  const autoPlayEnabled = isAutoPlayEnabled()
-  if (!autoPlayEnabled) return
-
-  // Strip complex cards (code, mermaid, tables) before extracting sentences
-  const ttsText = stripComplexCardsForTTS(newContent)
-
-  // Find new complete sentences (backend humanizer will clean markdown)
-  const sentences = ttsText.match(/[^.!?。！？]+[.!?。！？]+/g) || []
-  const completeSentences = sentences.join('')
-
-  // Play new sentences that haven't been played yet
-  if (completeSentences.length > lastPlayedLength.value) {
-    const newText = completeSentences.slice(lastPlayedLength.value)
-    lastPlayedLength.value = completeSentences.length
-
-    if (newText.trim()) {
-      isSpeaking.value = true
-      hasAutoPlayed.value = true
-      // Don't await — let playback run in background so watcher can fire again
-      streamingTTSManager.streamAndPlay(newText)
-    }
-  }
-})
-
-// Play remaining text when streaming completes
-watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
-  if (wasStreaming && !isStreaming && isAssistant.value) {
     const autoPlayEnabled = isAutoPlayEnabled()
     if (!autoPlayEnabled) return
 
-    const textContent = stripComplexCardsForTTS(props.message.content)
+    // Strip complex cards (code, mermaid, tables) before extracting sentences
+    const ttsText = stripComplexCardsForTTS(newContent)
 
-    if (!textContent) return
+    // Find new complete sentences (backend humanizer will clean markdown)
+    const sentences = ttsText.match(/[^.!?。！？]+[.!?。！？]+/g) || []
+    const completeSentences = sentences.join('')
 
-    // If we already played during streaming, only play remaining incomplete sentence
-    if (hasAutoPlayed.value) {
-      const sentences = textContent.match(/[^.!?。！？]+[.!?。！？]+/g) || []
-      const completeSentences = sentences.join('')
-      const remaining = textContent.slice(completeSentences.length).trim()
+    // Play new sentences that haven't been played yet
+    if (completeSentences.length > lastPlayedLength.value) {
+      const newText = completeSentences.slice(lastPlayedLength.value)
+      lastPlayedLength.value = completeSentences.length
 
-      // Set onComplete BEFORE streamAndPlay to avoid race where queue
-      // drains synchronously before the callback is set
-      streamingTTSManager.onComplete = () => {
+      if (newText.trim()) {
+        isSpeaking.value = true
+        hasAutoPlayed.value = true
+        // Don't await — let playback run in background so watcher can fire again
+        streamingTTSManager.streamAndPlay(newText)
+      }
+    }
+  }
+)
+
+// Play remaining text when streaming completes
+watch(
+  () => props.isStreaming,
+  async (isStreaming, wasStreaming) => {
+    if (wasStreaming && !isStreaming && isAssistant.value) {
+      const autoPlayEnabled = isAutoPlayEnabled()
+      if (!autoPlayEnabled) return
+
+      const textContent = stripComplexCardsForTTS(props.message.content)
+
+      if (!textContent) return
+
+      // If we already played during streaming, only play remaining incomplete sentence
+      if (hasAutoPlayed.value) {
+        const sentences = textContent.match(/[^.!?。！？]+[.!?。！？]+/g) || []
+        const completeSentences = sentences.join('')
+        const remaining = textContent.slice(completeSentences.length).trim()
+
+        // Set onComplete BEFORE streamAndPlay to avoid race where queue
+        // drains synchronously before the callback is set
+        streamingTTSManager.onComplete = () => {
+          isSpeaking.value = false
+          hasAutoPlayed.value = false
+          lastPlayedLength.value = 0
+          streamingTTSManager.onComplete = null
+        }
+
+        if (remaining) {
+          // Append remaining text to the streaming queue (non-blocking)
+          streamingTTSManager.streamAndPlay(remaining)
+        }
+      } else {
+        // Play full text if nothing was played during streaming
+        hasAutoPlayed.value = true
+        isSpeaking.value = true
+        await playTTSAudio(textContent)
         isSpeaking.value = false
         hasAutoPlayed.value = false
         lastPlayedLength.value = 0
-        streamingTTSManager.onComplete = null
       }
-
-      if (remaining) {
-        // Append remaining text to the streaming queue (non-blocking)
-        streamingTTSManager.streamAndPlay(remaining)
-      }
-    } else {
-      // Play full text if nothing was played during streaming
-      hasAutoPlayed.value = true
-      isSpeaking.value = true
-      await playTTSAudio(textContent)
-      isSpeaking.value = false
-      hasAutoPlayed.value = false
-      lastPlayedLength.value = 0
     }
   }
-})
+)
 
 function isCardActionLoading(cardId?: string, actionId?: string): boolean {
   if (!cardId || cardActionLoading.value?.cardId !== cardId) return false
@@ -1689,7 +1874,7 @@ async function handleCardAction(actionId: string, cardId?: string) {
   let formData: Record<string, unknown> | undefined
   let cardType: string | undefined
   let cardTitle: string | undefined
-  const card = parsedContent.value?.cards.find(c => c.id === cardId)
+  const card = parsedContent.value?.cards.find((c) => c.id === cardId)
   if (card) {
     cardType = card.type
     if ('title' in card && typeof (card as any).title === 'string') {
@@ -1698,7 +1883,11 @@ async function handleCardAction(actionId: string, cardId?: string) {
     if ('actions' in card && Array.isArray((card as any).actions)) {
       const action = (card as any).actions.find((a: any) => a.id === actionId)
       actionLabel = action?.label
-      if (action?.form_data && typeof action.form_data === 'object' && !Array.isArray(action.form_data)) {
+      if (
+        action?.form_data &&
+        typeof action.form_data === 'object' &&
+        !Array.isArray(action.form_data)
+      ) {
         formData = action.form_data as Record<string, unknown>
       }
     }
@@ -1717,14 +1906,24 @@ async function handleCardAction(actionId: string, cardId?: string) {
       form_data: formData,
     })
     // Emit event to parent for potential UI updates
-    emit('cardAction', props.message.conversation_id, props.message.id, cardId, actionId, actionLabel)
+    emit(
+      'cardAction',
+      props.message.conversation_id,
+      props.message.id,
+      cardId,
+      actionId,
+      actionLabel
+    )
     // Auto-send the mapped message to trigger a new streaming turn
     if (res.data?.message) {
       await chatStore.sendMessage(res.data.message)
     }
   } catch (error) {
     console.error('Card action failed:', error)
-    cardActionError.value = { cardId, message: error instanceof Error ? error.message : 'Action failed' }
+    cardActionError.value = {
+      cardId,
+      message: error instanceof Error ? error.message : 'Action failed',
+    }
   } finally {
     cardActionLoading.value = null
   }
@@ -1735,7 +1934,9 @@ async function handleCardSelect(cardId: string, selectedIds: string[], otherText
   if (!cardId || isCardActionLoading(cardId)) return
 
   // Find the choice card
-  const choiceCard = parsedContent.value?.cards.find(c => c.id === cardId) as TypelessCardChoice | undefined
+  const choiceCard = parsedContent.value?.cards.find((c) => c.id === cardId) as
+    | TypelessCardChoice
+    | undefined
   if (!choiceCard) return
 
   // Build form data with selections
@@ -1748,7 +1949,7 @@ async function handleCardSelect(cardId: string, selectedIds: string[], otherText
 
   // Get selected labels for the action label
   const selectedLabels = selectedIds
-    .map(id => choiceCard.options?.find(o => o.id === id)?.label)
+    .map((id) => choiceCard.options?.find((o) => o.id === id)?.label)
     .filter(Boolean)
     .join(', ')
 
@@ -1762,10 +1963,20 @@ async function handleCardSelect(cardId: string, selectedIds: string[], otherText
       action_label: selectedLabels || otherText || 'Selection',
       form_data: formData,
     })
-    emit('cardAction', props.message.conversation_id, props.message.id, cardId, 'select', selectedLabels)
+    emit(
+      'cardAction',
+      props.message.conversation_id,
+      props.message.id,
+      cardId,
+      'select',
+      selectedLabels
+    )
   } catch (error) {
     console.error('Card selection failed:', error)
-    cardActionError.value = { cardId, message: error instanceof Error ? error.message : 'Selection failed' }
+    cardActionError.value = {
+      cardId,
+      message: error instanceof Error ? error.message : 'Selection failed',
+    }
   } finally {
     cardActionLoading.value = null
   }
@@ -1805,14 +2016,17 @@ function isAutoPlayEnabled(): boolean {
   return isTtsAutoPlayEnabled()
 }
 
-watch(() => props.disableAutoTTS, (disabled) => {
-  if (!disabled) return
-  ttsAborted = true
-  streamingTTSManager.stop()
-  isSpeaking.value = false
-  hasAutoPlayed.value = false
-  lastPlayedLength.value = 0
-})
+watch(
+  () => props.disableAutoTTS,
+  (disabled) => {
+    if (!disabled) return
+    ttsAborted = true
+    streamingTTSManager.stop()
+    isSpeaking.value = false
+    hasAutoPlayed.value = false
+    lastPlayedLength.value = 0
+  }
+)
 
 // Show init progress toast when Kokoro is still loading
 async function showInitProgressToast(): Promise<void> {
@@ -1829,7 +2043,12 @@ async function showInitProgressToast(): Promise<void> {
     const toastId = notification.info(
       t('speech.initProgress'),
       te(stageKey) ? t(stageKey) : stage,
-      { duration: 0, dismissible: true, titleKey: 'speech.initProgress', messageKey: te(stageKey) ? stageKey : undefined }
+      {
+        duration: 0,
+        dismissible: true,
+        titleKey: 'speech.initProgress',
+        messageKey: te(stageKey) ? stageKey : undefined,
+      }
     )
 
     // Poll until ready
@@ -1841,7 +2060,10 @@ async function showInitProgressToast(): Promise<void> {
           clearInterval(poll)
           notification.remove(toastId)
           if (s === 'ready') {
-            notification.success(t('speech.initComplete'), undefined, { duration: 2000, titleKey: 'speech.initComplete' })
+            notification.success(t('speech.initComplete'), undefined, {
+              duration: 2000,
+              titleKey: 'speech.initComplete',
+            })
           }
         }
       } catch {
@@ -1890,9 +2112,13 @@ async function playTTSAudio(textContent: string) {
   }
 }
 
-
 // Open attachment preview modal
-function openAttachmentPreview(attachment: { type: string; name: string; mime_type: string; data: string }) {
+function openAttachmentPreview(attachment: {
+  type: string
+  name: string
+  mime_type: string
+  data: string
+}) {
   if (attachment.type === 'image') {
     previewAttachment.value = {
       type: 'image',
@@ -1930,11 +2156,20 @@ function openAttachmentPreview(attachment: { type: string; name: string; mime_ty
 // Check if MIME type is text-based
 function isTextMimeType(mimeType: string): boolean {
   const textTypes = [
-    'text/plain', 'text/html', 'text/css', 'text/javascript',
-    'text/csv', 'text/xml', 'text/markdown',
-    'application/json', 'application/xml', 'application/javascript',
-    'application/x-javascript', 'application/typescript',
-    'application/x-yaml', 'application/yaml',
+    'text/plain',
+    'text/html',
+    'text/css',
+    'text/javascript',
+    'text/csv',
+    'text/xml',
+    'text/markdown',
+    'application/json',
+    'application/xml',
+    'application/javascript',
+    'application/x-javascript',
+    'application/typescript',
+    'application/x-yaml',
+    'application/yaml',
   ]
   if (textTypes.includes(mimeType)) return true
   if (mimeType.startsWith('text/')) return true
@@ -1949,13 +2184,13 @@ function decodeTextContent(base64Data: string): string {
     const utf8Content = atob(base64Data)
     // Check if it looks like valid UTF-8 (no replacement characters after decode)
     const decoder = new TextDecoder('utf-8', { fatal: true })
-    const bytes = Uint8Array.from(utf8Content, c => c.charCodeAt(0))
+    const bytes = Uint8Array.from(utf8Content, (c) => c.charCodeAt(0))
     return decoder.decode(bytes)
   } catch {
     // If UTF-8 fails, try GBK/GB2312 (common on Windows Chinese systems)
     try {
       const binaryString = atob(base64Data)
-      const bytes = Uint8Array.from(binaryString, c => c.charCodeAt(0))
+      const bytes = Uint8Array.from(binaryString, (c) => c.charCodeAt(0))
       const decoder = new TextDecoder('gbk')
       return decoder.decode(bytes)
     } catch {
@@ -1984,7 +2219,7 @@ function formatToolName(name: string): string {
   const key = `tools.names.${name}`
   if (te(key)) return t(key)
   // Fallback: title-case the snake_case name
-  return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 // Get file icon based on extension
@@ -1992,51 +2227,51 @@ function getFileIcon(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   const iconMap: Record<string, string> = {
     // Documents
-    'pdf': '📄',
-    'doc': '📝',
-    'docx': '📝',
-    'txt': '📄',
-    'md': '📝',
-    'rtf': '📝',
+    pdf: '📄',
+    doc: '📝',
+    docx: '📝',
+    txt: '📄',
+    md: '📝',
+    rtf: '📝',
     // Spreadsheets
-    'xls': '📊',
-    'xlsx': '📊',
-    'csv': '📊',
+    xls: '📊',
+    xlsx: '📊',
+    csv: '📊',
     // Code
-    'js': '💻',
-    'ts': '💻',
-    'py': '🐍',
-    'java': '☕',
-    'go': '🔷',
-    'rs': '🦀',
-    'c': '💻',
-    'cpp': '💻',
-    'h': '💻',
-    'html': '🌐',
-    'css': '🎨',
-    'json': '📋',
-    'xml': '📋',
-    'yaml': '📋',
-    'yml': '📋',
+    js: '💻',
+    ts: '💻',
+    py: '🐍',
+    java: '☕',
+    go: '🔷',
+    rs: '🦀',
+    c: '💻',
+    cpp: '💻',
+    h: '💻',
+    html: '🌐',
+    css: '🎨',
+    json: '📋',
+    xml: '📋',
+    yaml: '📋',
+    yml: '📋',
     // Archives
-    'zip': '📦',
-    'rar': '📦',
+    zip: '📦',
+    rar: '📦',
     '7z': '📦',
-    'tar': '📦',
-    'gz': '📦',
+    tar: '📦',
+    gz: '📦',
     // Media
-    'mp3': '🎵',
-    'wav': '🎵',
-    'mp4': '🎬',
-    'avi': '🎬',
-    'mkv': '🎬',
+    mp3: '🎵',
+    wav: '🎵',
+    mp4: '🎬',
+    avi: '🎬',
+    mkv: '🎬',
     // Images (shouldn't reach here but just in case)
-    'png': '🖼️',
-    'jpg': '🖼️',
-    'jpeg': '🖼️',
-    'gif': '🖼️',
-    'svg': '🖼️',
-    'webp': '🖼️',
+    png: '🖼️',
+    jpg: '🖼️',
+    jpeg: '🖼️',
+    gif: '🖼️',
+    svg: '🖼️',
+    webp: '🖼️',
   }
   return iconMap[ext] || '📎'
 }
@@ -2107,13 +2342,12 @@ async function handleMobileDelete() {
   }
   closeMobileActions()
 }
-
 </script>
 
 <template>
   <div
     v-show="!shouldHideMessage"
-    class="message group relative p-2 sm:p-4 transition-colors duration-150"
+    class="message group relative p-2 sm:px-3.5 sm:py-3 transition-colors duration-150"
     :class="{
       'bg-gray-100 dark:bg-gray-600/10': isSelected,
       'cursor-pointer': isMultiSelectMode,
@@ -2131,55 +2365,97 @@ async function handleMobileDelete() {
     >
       <div
         class="w-5 h-5 rounded border-2 flex items-center justify-center transition-colors"
-        :class="isSelected ? 'bg-gray-700 dark:bg-gray-500 border-gray-900 dark:border-gray-700' : 'border-gray-400 dark:border-gray-600'"
+        :class="
+          isSelected
+            ? 'bg-gray-700 dark:bg-gray-500 border-gray-900 dark:border-gray-700'
+            : 'border-gray-400 dark:border-gray-600'
+        "
       >
-        <svg v-if="isSelected" class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+        <svg
+          v-if="isSelected"
+          class="w-3 h-3 text-white"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="3"
+            d="M5 13l4 4L19 7"
+          />
         </svg>
       </div>
     </div>
 
     <!-- Message content wrapper -->
     <div
-      class="flex gap-2 sm:gap-3"
+      class="flex gap-2 sm:gap-3.5"
       :class="{
         'justify-end': isUser,
         'pl-8': isMultiSelectMode,
       }"
     >
-      <!-- Avatar (AI) -->
       <div
-        v-if="isAssistant"
-        class="avatar flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold"
+        v-if="showLeadingAvatar"
+        :class="[
+          'avatar flex-shrink-0 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold',
+          currentAvatarVariantClass,
+        ]"
       >
-        AI
+        <span class="sr-only">{{ currentAvatarLabel }}</span>
       </div>
 
       <!-- Content -->
       <div
-        class="content min-w-0 max-w-[80%]"
+        class="content min-w-0"
+        :class="isUser ? 'max-w-[70%] sm:max-w-[64%]' : 'max-w-[86%] sm:max-w-[78%] lg:max-w-[72%]'"
       >
         <!-- Provider and Model info (above chat bubble for assistant) -->
-        <div v-if="!isMobile && isAssistant && metadata && (metadata.provider || metadata.model)" class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-1">
+        <div
+          v-if="!isMobile && isAssistant && metadata && (metadata.provider || metadata.model)"
+          class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-1"
+        >
           <!-- Cloud/Local icon -->
-          <svg v-if="providerLocation === 'cloud'" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+          <svg
+            v-if="providerLocation === 'cloud'"
+            class="w-3 h-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+            />
           </svg>
-          <svg v-else-if="providerLocation === 'local'" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          <svg
+            v-else-if="providerLocation === 'local'"
+            class="w-3 h-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+            />
           </svg>
           <!-- Provider name -->
-          <span v-if="metadata.provider">{{ providerPoolStore.getProviderDisplayName(metadata.provider) }}</span>
+          <span v-if="metadata.provider">{{
+            providerPoolStore.getProviderDisplayName(metadata.provider)
+          }}</span>
           <!-- Model name -->
           <span v-if="metadata.model" class="text-gray-400 dark:text-gray-500">/</span>
           <span v-if="metadata.model">{{ metadata.model }}</span>
         </div>
 
         <!-- User message bubble -->
-        <div
-          v-if="isUser"
-          class="user-message-wrapper relative"
-        >
+        <div v-if="isUser" class="user-message-wrapper relative">
           <!-- Voice message bubble (WeChat/WhatsApp style) -->
           <div v-if="isVoiceMessage" class="voice-message-container">
             <div
@@ -2192,7 +2468,12 @@ async function handleMobileDelete() {
               <div class="voice-bubble-inner">
                 <!-- Play/Stop icon -->
                 <div class="voice-play-btn">
-                  <svg v-if="playingAudioId === index" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    v-if="playingAudioId === index"
+                    class="w-5 h-5"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     <rect x="6" y="4" width="4" height="16" rx="1" />
                     <rect x="14" y="4" width="4" height="16" rx="1" />
                   </svg>
@@ -2206,8 +2487,13 @@ async function handleMobileDelete() {
                     v-for="bar in 12"
                     :key="bar"
                     class="voice-bar"
-                    :class="{ 'voice-bar-active': playingAudioId === index && (bar - 1) / 12 <= audioProgress }"
-                    :style="{ height: `${[40,65,50,80,60,90,55,75,45,85,70,50][bar-1]}%` }"
+                    :class="{
+                      'voice-bar-active':
+                        playingAudioId === index && (bar - 1) / 12 <= audioProgress,
+                    }"
+                    :style="{
+                      height: `${[40, 65, 50, 80, 60, 90, 55, 75, 45, 85, 70, 50][bar - 1]}%`,
+                    }"
                   />
                 </div>
                 <!-- Duration -->
@@ -2216,14 +2502,18 @@ async function handleMobileDelete() {
             </div>
           </div>
           <!-- Normal message bubble -->
-          <div v-else class="user-message chat-user-bubble px-4 py-2 inline-block">
+          <div v-else :class="userBubbleClasses">
             <!-- Attachments display inside bubble -->
             <div v-if="hasAttachments" class="mb-2 flex flex-wrap gap-2">
               <div
                 v-for="(attachment, index) in message.attachments"
                 :key="index"
                 class="attachment-preview rounded-lg overflow-hidden border border-gray-300 dark:border-white/20 cursor-pointer hover:opacity-90 transition-opacity bg-white/90 dark:bg-white/10"
-                @click="attachment.type === 'audio' ? playVoiceMessage(attachment, index) : openAttachmentPreview(attachment)"
+                @click="
+                  attachment.type === 'audio'
+                    ? playVoiceMessage(attachment, index)
+                    : openAttachmentPreview(attachment)
+                "
               >
                 <!-- Image attachment -->
                 <img
@@ -2238,22 +2528,33 @@ async function handleMobileDelete() {
                   v-else-if="attachment.type === 'audio'"
                   class="flex items-center gap-2 px-3 py-2"
                 >
-                  <svg v-if="playingAudioId === index" class="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    v-if="playingAudioId === index"
+                    class="w-4 h-4 text-green-500"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     <rect x="6" y="4" width="4" height="16" rx="1" />
                     <rect x="14" y="4" width="4" height="16" rx="1" />
                   </svg>
-                  <svg v-else class="w-4 h-4 text-gray-600 dark:text-gray-300" fill="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    v-else
+                    class="w-4 h-4 text-gray-600 dark:text-gray-300"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     <path d="M8 5v14l11-7z" />
                   </svg>
-                  <span class="text-sm text-gray-700 dark:text-white/90">{{ formatVoiceDuration(attachment.duration) }}</span>
+                  <span class="text-sm text-gray-700 dark:text-white/90">{{
+                    formatVoiceDuration(attachment.duration)
+                  }}</span>
                 </div>
                 <!-- File attachment with icon -->
-                <div
-                  v-else
-                  class="flex items-center gap-2 px-3 py-2"
-                >
+                <div v-else class="flex items-center gap-2 px-3 py-2">
                   <span class="text-lg">{{ getFileIcon(attachment.name) }}</span>
-                  <span class="text-sm text-gray-700 dark:text-white/90 max-w-[150px] truncate">{{ attachment.name }}</span>
+                  <span class="text-sm text-gray-700 dark:text-white/90 max-w-[150px] truncate">{{
+                    attachment.name
+                  }}</span>
                 </div>
               </div>
             </div>
@@ -2268,11 +2569,24 @@ async function handleMobileDelete() {
               />
             </div>
             <!-- Text content (hide placeholder patterns like [filename.txt], [Attachments:...]) -->
-            <span v-if="userTextContent && !isPlaceholderContent(userTextContent)">{{ userTextContent }}</span>
+            <span v-if="userTextContent && !isPlaceholderContent(userTextContent)">{{
+              userTextContent
+            }}</span>
             <!-- Show continue icon when content is [CONTINUE] and no attachments -->
-            <span v-else-if="message.content === '[CONTINUE]' && (!message.attachments || message.attachments.length === 0)" class="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+            <span
+              v-else-if="
+                message.content === '[CONTINUE]' &&
+                (!message.attachments || message.attachments.length === 0)
+              "
+              class="flex items-center gap-1 text-gray-500 dark:text-gray-400"
+            >
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
               <span class="text-sm">{{ t('chat.continueGenerating') }}</span>
             </span>
@@ -2280,24 +2594,46 @@ async function handleMobileDelete() {
           <!-- Copy button for user message -->
           <button
             v-if="!isStreaming && !isMultiSelectMode"
-            class="copy-message-btn absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
+            :class="[
+              'copy-message-btn absolute opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700',
+              userCopyButtonPositionClass,
+            ]"
             :title="t('chat.copyMessage')"
             @click.stop="handleCopyMessage"
           >
-            <svg v-if="copyState === 'idle'" class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            <svg
+              v-if="copyState === 'idle'"
+              class="w-4 h-4 text-gray-500 dark:text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
             </svg>
-            <svg v-else class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            <svg
+              v-else
+              class="w-4 h-4 text-green-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
             </svg>
           </button>
         </div>
 
         <!-- Card-only assistant message: render cards directly without bubble wrapper -->
-        <div
-          v-else-if="isCardOnly && cardOnlySegments"
-          class="assistant-message-wrapper relative"
-        >
+        <div v-else-if="isCardOnly && cardOnlySegments" class="assistant-message-wrapper relative">
           <TypelessCardComponent
             v-for="segment in cardOnlySegments"
             :key="segment.key"
@@ -2319,21 +2655,40 @@ async function handleMobileDelete() {
           ]"
         >
           <!-- Action buttons for assistant message -->
-          <div
-            v-if="!isStreaming && !isMultiSelectMode"
-            class="assistant-actions"
-          >
+          <div v-if="!isStreaming && !isMultiSelectMode" class="assistant-actions">
             <!-- Copy button -->
             <button
               class="copy-message-btn assistant-action-btn"
               :title="t('chat.copyMessage')"
               @click.stop="handleCopyMessage"
             >
-              <svg v-if="copyState === 'idle'" class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              <svg
+                v-if="copyState === 'idle'"
+                class="w-4 h-4 text-gray-500 dark:text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
               </svg>
-              <svg v-else class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              <svg
+                v-else
+                class="w-4 h-4 text-green-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </button>
             <!-- TTS Play button -->
@@ -2343,12 +2698,39 @@ async function handleMobileDelete() {
               :title="isSpeaking ? t('chat.stopTTS') : t('chat.playTTS')"
               @click.stop="handlePlayTTS"
             >
-              <svg v-if="isSpeaking" class="w-4 h-4 text-gray-900 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+              <svg
+                v-if="isSpeaking"
+                class="w-4 h-4 text-gray-900 dark:text-gray-300"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
+                />
               </svg>
-              <svg v-else class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              <svg
+                v-else
+                class="w-4 h-4 text-gray-500 dark:text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                />
               </svg>
             </button>
             <!-- Export button -->
@@ -2357,14 +2739,27 @@ async function handleMobileDelete() {
               :title="t('chat.exportMessage')"
               @click.stop="handleExportMessage"
             >
-              <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <svg
+                class="w-4 h-4 text-gray-500 dark:text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
               </svg>
             </button>
           </div>
 
           <!-- Media task card (replaces normal assistant content) -->
-          <div v-if="hasMediaTask" class="assistant-message chat-assistant-bubble px-4 py-3 max-w-none">
+          <div
+            v-if="hasMediaTask"
+            class="assistant-message chat-assistant-bubble px-4 py-3 max-w-none"
+          >
             <MediaPlaceholder :task-id="mediaTaskId" />
           </div>
 
@@ -2372,10 +2767,15 @@ async function handleMobileDelete() {
           <div
             v-else
             :class="[
-              'assistant-message chat-assistant-bubble px-4 prose prose-slate dark:prose-invert max-w-none',
-              showWaitingTimer || (isContentEmpty && !(isStreaming && chatStore.toolExecuting))
-                ? 'assistant-message-indicator-only'
-                : 'py-3',
+              'assistant-message chat-copy-bubble chat-assistant-bubble px-4 prose prose-slate dark:prose-invert max-w-none',
+              {
+                'assistant-message-indicator-only':
+                  showWaitingTimer || (isContentEmpty && !(isStreaming && chatStore.toolExecuting)),
+                'py-3': !(
+                  showWaitingTimer ||
+                  (isContentEmpty && !(isStreaming && chatStore.toolExecuting))
+                ),
+              },
             ]"
             @click="handleCopyClick"
           >
@@ -2400,11 +2800,15 @@ async function handleMobileDelete() {
               </template>
             </template>
             <!-- Render without typeless cards -->
+            <div v-else-if="!isContentEmpty" class="prose-content" v-html="renderedContent" />
             <div
-              v-else-if="!isContentEmpty"
-              v-html="renderedContent"
-            />
-            <div v-if="!isStreaming && persistedProcessToolResults.length > 0 && settingsStore.showToolDetails" class="tool-detail-cards my-2 -mx-1">
+              v-if="
+                !isStreaming &&
+                persistedProcessToolResults.length > 0 &&
+                settingsStore.showToolDetails
+              "
+              class="tool-detail-cards my-2 -mx-1"
+            >
               <ToolDetailCard
                 v-for="item in persistedProcessToolResults"
                 :key="item.id"
@@ -2412,47 +2816,87 @@ async function handleMobileDelete() {
               />
             </div>
             <!-- Tool detail cards (collapsible, shown when toggle is on) -->
-            <div v-if="isStreaming && chatStore.toolResults.length > 0 && settingsStore.showToolDetails" class="tool-detail-cards my-2 -mx-1">
-              <ToolDetailCard
-                v-for="item in chatStore.toolResults"
-                :key="item.id"
-                :item="item"
-              />
+            <div
+              v-if="
+                isStreaming && chatStore.toolResults.length > 0 && settingsStore.showToolDetails
+              "
+              class="tool-detail-cards my-2 -mx-1"
+            >
+              <ToolDetailCard v-for="item in chatStore.toolResults" :key="item.id" :item="item" />
             </div>
             <!-- Tool execution indicator (inside bubble) -->
-            <div v-if="isStreaming && chatStore.toolExecuting && settingsStore.showToolDetails" :class="['tool-executing-indicator', { 'mt-0': isContentEmpty }]">
+            <div
+              v-if="isStreaming && chatStore.toolExecuting && settingsStore.showToolDetails"
+              :class="['tool-executing-indicator', { 'mt-0': isContentEmpty }]"
+            >
               <div class="tool-pill">
-                <span class="tool-dots">
-                  <span /><span /><span />
-                </span>
+                <span class="tool-dots"> <span /><span /><span /> </span>
                 <span class="tool-label">{{ t('tools.callingProgress') }}</span>
                 <span class="tool-timer tabular-nums">{{ toolElapsedSeconds }}s</span>
-                <span v-if="chatStore.toolSandboxAvailable" class="sandbox-badge" :title="t('tools.sandboxProtected')">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                <span
+                  v-if="chatStore.toolSandboxAvailable"
+                  class="sandbox-badge"
+                  :title="t('tools.sandboxProtected')"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-3.5 w-3.5"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clip-rule="evenodd"
+                    />
                   </svg>
                 </span>
               </div>
               <div v-if="toolDisplayNames.length > 0" class="tool-names">
-                <span v-for="name in toolDisplayNames" :key="name" class="tool-name-tag">{{ name }}</span>
+                <span v-for="name in toolDisplayNames" :key="name" class="tool-name-tag">{{
+                  name
+                }}</span>
               </div>
             </div>
             <!-- Minimal thinking indicator when tool details hidden -->
-            <div v-else-if="isStreaming && chatStore.toolExecuting && !settingsStore.showToolDetails" class="tool-executing-indicator" :class="{ 'mt-0': isContentEmpty }">
+            <div
+              v-else-if="isStreaming && chatStore.toolExecuting && !settingsStore.showToolDetails"
+              class="tool-executing-indicator"
+              :class="{ 'mt-0': isContentEmpty }"
+            >
               <div class="tool-pill">
-                <span class="tool-dots">
-                  <span /><span /><span />
-                </span>
+                <span class="tool-dots"> <span /><span /><span /> </span>
                 <span class="tool-timer tabular-nums">{{ toolElapsedSeconds }}s</span>
               </div>
             </div>
             <!-- Waiting timer card (>3s with no content) -->
-            <div v-if="showWaitingTimer" :class="['-mx-1', isContentEmpty ? 'my-0' : 'my-3']" class="waiting-card">
+            <div
+              v-if="showWaitingTimer"
+              :class="['-mx-1', isContentEmpty ? 'my-0' : 'my-3']"
+              class="waiting-card"
+            >
               <div class="waiting-card-inner">
                 <div class="waiting-card-header">
                   <svg class="waiting-card-spinner" width="20" height="20" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" opacity="0.15" />
-                    <circle cx="12" cy="12" r="10" fill="none" stroke="url(#waitGrad)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="40 23" />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      opacity="0.15"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      fill="none"
+                      stroke="url(#waitGrad)"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-dasharray="40 23"
+                    />
                     <defs>
                       <linearGradient id="waitGrad" x1="0" y1="0" x2="1" y2="1">
                         <stop offset="0%" stop-color="#818cf8" />
@@ -2460,7 +2904,9 @@ async function handleMobileDelete() {
                       </linearGradient>
                     </defs>
                   </svg>
-                  <span class="waiting-card-title">{{ t('chat.waitingThinking', 'Thinking...') }}</span>
+                  <span class="waiting-card-title">{{
+                    t('chat.waitingThinking', 'Thinking...')
+                  }}</span>
                   <span class="waiting-card-timer tabular-nums">{{ waitingElapsed }}s</span>
                 </div>
                 <div class="waiting-card-bar">
@@ -2472,53 +2918,71 @@ async function handleMobileDelete() {
         </div>
 
         <!-- Streaming indicator -->
-        <div v-if="isStreaming && isAssistant && !chatStore.toolExecuting && !showWaitingTimer" class="streaming-indicator mt-2">
+        <div
+          v-if="isStreaming && isAssistant && !chatStore.toolExecuting && !showWaitingTimer"
+          class="streaming-indicator mt-2"
+        >
           <span class="inline-flex gap-1">
-            <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 0ms" />
-            <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 150ms" />
-            <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 300ms" />
+            <span
+              class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce"
+              style="animation-delay: 0ms"
+            />
+            <span
+              class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce"
+              style="animation-delay: 150ms"
+            />
+            <span
+              class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce"
+              style="animation-delay: 300ms"
+            />
           </span>
         </div>
 
         <!-- Timestamp -->
         <div
-          class="timestamp text-xs text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-2 flex-wrap"
-          :class="{ 'justify-end': isUser }"
+          class="timestamp text-xs text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-x-3 gap-y-1 flex-wrap"
+          :class="showAssistantStatsBar ? 'justify-between' : isUser ? 'justify-end' : ''"
         >
-          <span>{{ formattedTime }}</span>
-
-          <!-- Stats for assistant messages -->
-          <template v-if="!isMobile && isAssistant && metadata?.stats">
-            <span class="ml-2 flex items-center gap-2">
-              <span v-if="formatTokens(metadata.stats.input_tokens)" class="flex items-center gap-0.5">
-                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4" />
+          <template v-if="showAssistantStatsBar">
+            <div class="message-stats-inline">
+              <span v-for="item in messageStatItems" :key="item.key" class="message-stat-chip">
+                <svg
+                  v-if="item.icon === 'input'"
+                  class="message-stat-icon"
+                  viewBox="0 0 12 12"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M6 2l3.5 4h-7L6 2z" />
                 </svg>
-                {{ formatTokens(metadata.stats.input_tokens) }}
-              </span>
-              <span v-if="formatTokens(metadata.stats.output_tokens)" class="flex items-center gap-0.5">
-                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8v12m0 0l-4-4m4 4l4-4" />
+                <svg
+                  v-else-if="item.icon === 'output'"
+                  class="message-stat-icon"
+                  viewBox="0 0 12 12"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M2.5 6h7L6 10 2.5 6z" />
                 </svg>
-                {{ formatTokens(metadata.stats.output_tokens) }}
+                <span>{{ item.value }}</span>
               </span>
-              <span v-if="formatTTFT(metadata.stats.ttft_ms)">
-                ⏱️ {{ formatTTFT(metadata.stats.ttft_ms) }}
-              </span>
-              <span v-if="formatSpeed(metadata.stats.tokens_per_second)">
-                {{ formatSpeed(metadata.stats.tokens_per_second) }} tokens/s
-              </span>
-            </span>
+            </div>
+            <span class="message-meta-time">{{ formattedTime }}</span>
+          </template>
+          <template v-else>
+            <span class="message-meta-time">{{ formattedTime }}</span>
           </template>
         </div>
       </div>
 
-      <!-- User avatar -->
       <div
-        v-if="isUser"
-        class="avatar flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white text-xs sm:text-sm font-bold"
+        v-if="showTrailingAvatar"
+        :class="[
+          'avatar flex-shrink-0 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold',
+          currentAvatarVariantClass,
+        ]"
       >
-        U
+        <span class="sr-only">{{ currentAvatarLabel }}</span>
       </div>
     </div>
 
@@ -2535,7 +2999,12 @@ async function handleMobileDelete() {
             @click="closeAttachmentPreview"
           >
             <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
           <!-- Image preview -->
@@ -2550,15 +3019,24 @@ async function handleMobileDelete() {
             v-else-if="previewAttachment.type === 'text'"
             class="bg-gray-200 rounded-lg p-4 max-w-[80vw] max-h-[80vh] overflow-auto"
           >
-            <pre class="text-sm text-gray-100 whitespace-pre-wrap font-mono">{{ previewAttachment.content }}</pre>
+            <pre class="text-sm text-gray-100 whitespace-pre-wrap font-mono">{{
+              previewAttachment.content
+            }}</pre>
           </div>
           <!-- Generic file preview -->
-          <div
-            v-else
-            class="bg-gray-700 rounded-lg p-8 flex flex-col items-center gap-4"
-          >
-            <svg class="w-16 h-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          <div v-else class="bg-gray-700 rounded-lg p-8 flex flex-col items-center gap-4">
+            <svg
+              class="w-16 h-16 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
             </svg>
             <span class="text-gray-300">{{ t('chat.filePreviewNotSupported') }}</span>
           </div>
@@ -2587,7 +3065,9 @@ async function handleMobileDelete() {
             <!-- Actions -->
             <div class="px-4 pb-6">
               <!-- Message info card -->
-              <div class="px-4 py-3 mb-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl text-xs text-gray-500 dark:text-gray-400 space-y-2">
+              <div
+                class="px-4 py-3 mb-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl text-xs text-gray-500 dark:text-gray-400 space-y-2"
+              >
                 <div class="flex items-center justify-between">
                   <span class="text-gray-400 dark:text-gray-500">{{ formattedTimeLong }}</span>
                 </div>
@@ -2598,10 +3078,22 @@ async function handleMobileDelete() {
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 @click="handleMobileCopy"
               >
-                <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                <svg
+                  class="w-5 h-5 text-gray-600 dark:text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
                 </svg>
-                <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('chat.copyMessage') }}</span>
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{
+                  t('chat.copyMessage')
+                }}</span>
               </button>
 
               <!-- TTS action (only for assistant messages) -->
@@ -2610,10 +3102,22 @@ async function handleMobileDelete() {
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 @click="handleMobileTTS"
               >
-                <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                <svg
+                  class="w-5 h-5 text-gray-600 dark:text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                  />
                 </svg>
-                <span class="text-base font-medium text-gray-900 dark:text-white">{{ isSpeaking ? t('chat.stopTTS') : t('chat.playTTS') }}</span>
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{
+                  isSpeaking ? t('chat.stopTTS') : t('chat.playTTS')
+                }}</span>
               </button>
 
               <!-- Continue / Regenerate (only for last assistant message, not while streaming) -->
@@ -2622,20 +3126,49 @@ async function handleMobileDelete() {
                   class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   @click="emit('continue'); closeMobileActions()"
                 >
-                  <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg
+                    class="w-5 h-5 text-gray-600 dark:text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
-                  <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('chat.continueGenerating') }}</span>
+                  <span class="text-base font-medium text-gray-900 dark:text-white">{{
+                    t('chat.continueGenerating')
+                  }}</span>
                 </button>
                 <button
                   class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   @click="emit('regenerate'); closeMobileActions()"
                 >
-                  <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <svg
+                    class="w-5 h-5 text-gray-600 dark:text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
                   </svg>
-                  <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('chat.regenerate') }}</span>
+                  <span class="text-base font-medium text-gray-900 dark:text-white">{{
+                    t('chat.regenerate')
+                  }}</span>
                 </button>
               </template>
 
@@ -2644,10 +3177,22 @@ async function handleMobileDelete() {
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 @click="handleMobileExport"
               >
-                <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <svg
+                  class="w-5 h-5 text-gray-600 dark:text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
                 </svg>
-                <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('chat.exportMessage') }}</span>
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{
+                  t('chat.exportMessage')
+                }}</span>
               </button>
 
               <!-- Select action (enter multi-select mode) -->
@@ -2655,10 +3200,22 @@ async function handleMobileDelete() {
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 @click="handleMobileSelect"
               >
-                <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                <svg
+                  class="w-5 h-5 text-gray-600 dark:text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                  />
                 </svg>
-                <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('chat.selectMessage') }}</span>
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{
+                  t('chat.selectMessage')
+                }}</span>
               </button>
 
               <!-- Delete action -->
@@ -2666,8 +3223,18 @@ async function handleMobileDelete() {
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 @click="handleMobileDelete"
               >
-                <svg class="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                <svg
+                  class="w-5 h-5 text-red-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
                 </svg>
                 <span class="text-base font-medium text-red-500">{{ t('common.delete') }}</span>
               </button>
@@ -2677,7 +3244,9 @@ async function handleMobileDelete() {
                 class="w-full mt-2 px-4 py-3 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                 @click="closeMobileActions"
               >
-                <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('common.cancel') }}</span>
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{
+                  t('common.cancel')
+                }}</span>
               </button>
             </div>
           </div>
@@ -2688,13 +3257,21 @@ async function handleMobileDelete() {
 </template>
 
 <style scoped>
+.chat-copy-bubble {
+  font-family:
+    'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC',
+    var(--font-sans);
+  font-size: 0.94rem;
+  line-height: 1.64;
+  font-weight: 400;
+  word-break: break-word;
+}
+
 .assistant-message {
-  background: var(--chat-assistant-bg, rgba(15, 23, 42, 0.5));
-  border: var(--chat-assistant-border, 1px solid rgba(148, 163, 184, 0.18));
-  color: var(--chat-assistant-text, inherit);
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
-  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.18);
+  background: transparent;
+  color: rgb(30, 41, 59);
+  padding: 0.05rem 0;
+  box-shadow: none;
 }
 
 .assistant-message.assistant-message-indicator-only {
@@ -2706,20 +3283,63 @@ async function handleMobileDelete() {
 }
 
 .chat-user-bubble {
-  background: var(--chat-user-bg, linear-gradient(135deg, #0284c7, #0891b2));
-  color: var(--chat-user-text, #f8fafc);
-  border: var(--chat-user-border, none);
-  border-radius: 0.95rem 0.35rem 0.95rem 0.95rem;
-  box-shadow: 0 10px 20px rgba(8, 145, 178, 0.24);
+  background: linear-gradient(180deg, rgba(219, 234, 254, 0.92), rgba(191, 219, 254, 0.92));
+  color: rgb(30, 41, 59);
+  border: 1px solid rgba(147, 197, 253, 0.66);
+  border-radius: 0.84rem 0.84rem 0.3rem 0.84rem;
+  box-shadow: 0 8px 16px -24px rgba(37, 99, 235, 0.72);
+  padding: 0.7rem 0.95rem;
 }
 
 .chat-assistant-bubble {
-  border-radius: 0.95rem;
+  background: var(--chat-assistant-bg, rgba(255, 255, 255, 0.96));
+  border: var(--chat-assistant-border, 1px solid rgba(148, 163, 184, 0.24));
+  border-radius: 0.84rem 0.84rem 0.84rem 0.3rem;
+  box-shadow: 0 8px 16px -24px rgba(15, 23, 42, 0.28);
+  padding: 0.8rem 1rem;
 }
 
 .avatar {
-  background: var(--chat-avatar-bg, linear-gradient(135deg, #0ea5e9, #14b8a6));
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 8px 16px rgba(15, 23, 42, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: none;
+}
+
+.avatar-assistant {
+  background: linear-gradient(180deg, #e5e7eb, #d1d5db);
+}
+
+.avatar-user {
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+}
+
+:root.dark .assistant-message,
+[data-theme='dark'] .assistant-message {
+  background: transparent;
+  color: rgb(226, 232, 240);
+  box-shadow: none;
+}
+
+:root.dark .chat-assistant-bubble,
+[data-theme='dark'] .chat-assistant-bubble {
+  box-shadow: 0 10px 24px -26px rgba(2, 6, 23, 0.78);
+}
+
+:root.dark .chat-user-bubble,
+[data-theme='dark'] .chat-user-bubble {
+  background: linear-gradient(160deg, rgba(37, 99, 235, 0.92), rgba(30, 64, 175, 0.94));
+  color: rgb(239, 246, 255);
+  border-color: rgba(96, 165, 250, 0.46);
+  box-shadow: 0 9px 20px -22px rgba(37, 99, 235, 0.82);
+}
+
+:root.dark .avatar,
+[data-theme='dark'] .avatar {
+  border-color: rgba(71, 85, 105, 0.52);
+}
+
+:root.dark .avatar-assistant,
+[data-theme='dark'] .avatar-assistant {
+  background: linear-gradient(180deg, #475569, #334155);
 }
 
 /* Fade transition for mobile action menu */
@@ -2746,6 +3366,11 @@ async function handleMobileDelete() {
   transform: translateY(100%);
 }
 
+.message {
+  max-width: 64rem;
+  margin: 0 auto;
+}
+
 .prose :deep(pre) {
   margin: 0;
   padding: 0;
@@ -2764,7 +3389,7 @@ async function handleMobileDelete() {
 }
 
 :root.dark .prose :deep(.tree-structure),
-[data-theme="dark"] .prose :deep(.tree-structure) {
+[data-theme='dark'] .prose :deep(.tree-structure) {
   background: rgba(255, 255, 255, 0.05);
 }
 
@@ -2780,7 +3405,7 @@ async function handleMobileDelete() {
 }
 
 :root.dark .prose :deep(.inline-code),
-[data-theme="dark"] .prose :deep(.inline-code) {
+[data-theme='dark'] .prose :deep(.inline-code) {
   background: rgba(255, 255, 255, 0.1);
 }
 
@@ -2789,7 +3414,7 @@ async function handleMobileDelete() {
 }
 
 :root.dark .prose :deep(a),
-[data-theme="dark"] .prose :deep(a) {
+[data-theme='dark'] .prose :deep(a) {
   color: #38bdf8;
 }
 
@@ -2802,15 +3427,37 @@ async function handleMobileDelete() {
   padding-left: 1.5rem;
 }
 
+.assistant-message :deep(p) {
+  line-height: 1.64;
+  margin-block: 0.38rem;
+}
+
+.assistant-message :deep(ul),
+.assistant-message :deep(ol) {
+  margin-block: 0.46rem;
+  padding: 0.48rem 0.78rem 0.48rem 1.24rem;
+  border: 1px solid rgba(203, 213, 225, 0.64);
+  border-radius: 0.68rem;
+  background: rgba(248, 250, 252, 0.62);
+}
+
+:root.dark .assistant-message :deep(ul),
+:root.dark .assistant-message :deep(ol),
+[data-theme='dark'] .assistant-message :deep(ul),
+[data-theme='dark'] .assistant-message :deep(ol) {
+  border-color: rgba(71, 85, 105, 0.72);
+  background: rgba(15, 23, 42, 0.58);
+}
+
 .prose :deep(blockquote) {
-  border-left-width: 4px;
-  padding-left: 1rem;
-  font-style: italic;
-  color: #6b7280;
+  border-left-width: 3px;
+  border-left-color: rgba(148, 163, 184, 0.7);
+  padding-left: 0.9rem;
+  color: #64748b;
 }
 
 :root.dark .prose :deep(blockquote),
-[data-theme="dark"] .prose :deep(blockquote) {
+[data-theme='dark'] .prose :deep(blockquote) {
   color: #9ca3af;
 }
 
@@ -2829,25 +3476,27 @@ async function handleMobileDelete() {
 }
 
 .assistant-message-with-actions {
-  padding-right: 2.75rem;
+  padding-right: 2.4rem;
 }
 
 .assistant-actions {
   position: absolute;
-  top: 0.2rem;
+  top: 0.1rem;
   right: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.35rem;
-  border-radius: 0.85rem;
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  background: rgba(255, 255, 255, 0.9);
+  gap: 0.16rem;
+  padding: 0.22rem;
+  border-radius: 0.62rem;
+  border: 1px solid rgba(203, 213, 225, 0.58);
+  background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(6px);
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
   opacity: 0;
-  transform: translateX(4px);
-  transition: opacity 0.16s ease, transform 0.16s ease;
+  transform: translateX(2px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
 }
 
 .message:hover .assistant-actions,
@@ -2857,12 +3506,12 @@ async function handleMobileDelete() {
 }
 
 .assistant-action-btn {
-  width: 1.85rem;
-  height: 1.85rem;
+  width: 1.62rem;
+  height: 1.62rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0.6rem;
+  border-radius: 0.46rem;
   background: transparent;
   transition: background-color 0.12s ease;
 }
@@ -2872,14 +3521,14 @@ async function handleMobileDelete() {
 }
 
 :root.dark .assistant-actions,
-[data-theme="dark"] .assistant-actions {
-  border-color: rgba(71, 85, 105, 0.95);
-  background: rgba(30, 41, 59, 0.92);
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45);
+[data-theme='dark'] .assistant-actions {
+  border-color: rgba(71, 85, 105, 0.66);
+  background: rgba(30, 41, 59, 0.72);
+  box-shadow: 0 6px 12px rgba(2, 6, 23, 0.28);
 }
 
 :root.dark .assistant-action-btn:hover,
-[data-theme="dark"] .assistant-action-btn:hover {
+[data-theme='dark'] .assistant-action-btn:hover {
   background: rgba(100, 116, 139, 0.35);
 }
 
@@ -2892,6 +3541,34 @@ async function handleMobileDelete() {
 /* Metadata tooltip styles */
 .metadata-tooltip {
   pointer-events: none;
+}
+
+.message-stats-inline {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.message-stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.message-stat-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex-shrink: 0;
+  opacity: 0.72;
+}
+
+.message-meta-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Fade transition */
@@ -2924,7 +3601,7 @@ async function handleMobileDelete() {
 }
 
 :root.light .assistant-message :deep(.response-interrupted-indicator),
-[data-theme="light"] .assistant-message :deep(.response-interrupted-indicator) {
+[data-theme='light'] .assistant-message :deep(.response-interrupted-indicator) {
   color: #64748b;
   border-color: rgba(100, 116, 139, 0.25);
 }
@@ -2937,7 +3614,7 @@ async function handleMobileDelete() {
 }
 
 :root.light .assistant-message :deep(.error-block-indicator),
-[data-theme="light"] .assistant-message :deep(.error-block-indicator) {
+[data-theme='light'] .assistant-message :deep(.error-block-indicator) {
   background: rgba(239, 68, 68, 0.06);
   border-color: rgba(239, 68, 68, 0.2);
   color: #dc2626;
@@ -2966,12 +3643,12 @@ async function handleMobileDelete() {
 }
 
 :root.dark .sandbox-badge,
-[data-theme="dark"] .sandbox-badge {
+[data-theme='dark'] .sandbox-badge {
   color: #4ade80;
 }
 
 :root.dark .tool-pill,
-[data-theme="dark"] .tool-pill {
+[data-theme='dark'] .tool-pill {
   background: rgba(56, 189, 248, 0.14);
   border-color: rgba(56, 189, 248, 0.24);
 }
@@ -2990,11 +3667,15 @@ async function handleMobileDelete() {
   animation: tool-dot-pulse 1.2s ease-in-out infinite;
 }
 
-.tool-dots span:nth-child(2) { animation-delay: 0.2s; }
-.tool-dots span:nth-child(3) { animation-delay: 0.4s; }
+.tool-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.tool-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
 
 :root.dark .tool-dots span,
-[data-theme="dark"] .tool-dots span {
+[data-theme='dark'] .tool-dots span {
   background: #38bdf8;
 }
 
@@ -3005,7 +3686,7 @@ async function handleMobileDelete() {
 }
 
 :root.dark .tool-label,
-[data-theme="dark"] .tool-label {
+[data-theme='dark'] .tool-label {
   color: #7dd3fc;
 }
 
@@ -3015,13 +3696,21 @@ async function handleMobileDelete() {
 }
 
 :root.dark .tool-timer,
-[data-theme="dark"] .tool-timer {
+[data-theme='dark'] .tool-timer {
   color: #64748b;
 }
 
 @keyframes tool-dot-pulse {
-  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-  40% { opacity: 1; transform: scale(1); }
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .tool-names {
@@ -3043,7 +3732,7 @@ async function handleMobileDelete() {
 }
 
 :root.dark .tool-name-tag,
-[data-theme="dark"] .tool-name-tag {
+[data-theme='dark'] .tool-name-tag {
   background: rgba(56, 189, 248, 0.12);
   color: #7dd3fc;
   border-color: rgba(56, 189, 248, 0.22);
@@ -3066,7 +3755,7 @@ async function handleMobileDelete() {
 }
 
 :root.dark .waiting-card-inner,
-[data-theme="dark"] .waiting-card-inner {
+[data-theme='dark'] .waiting-card-inner {
   background:
     linear-gradient(#1e293b, #1e293b) padding-box,
     linear-gradient(135deg, #0ea5e9, #14b8a6, #22c55e) border-box;
@@ -3093,7 +3782,7 @@ async function handleMobileDelete() {
 }
 
 :root.dark .waiting-card-title,
-[data-theme="dark"] .waiting-card-title {
+[data-theme='dark'] .waiting-card-title {
   color: #7dd3fc;
 }
 
@@ -3115,7 +3804,7 @@ async function handleMobileDelete() {
 }
 
 :root.dark .waiting-card-bar,
-[data-theme="dark"] .waiting-card-bar {
+[data-theme='dark'] .waiting-card-bar {
   background: #334155;
 }
 
@@ -3128,19 +3817,35 @@ async function handleMobileDelete() {
 }
 
 @keyframes waiting-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes waiting-bar-slide {
-  0% { transform: translateX(-100%); }
-  50% { transform: translateX(150%); }
-  100% { transform: translateX(-100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(150%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
 }
 
 @keyframes waiting-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Voice message bubble — WeChat/WhatsApp style */
@@ -3220,29 +3925,5 @@ async function handleMobileDelete() {
   font-weight: 500;
   opacity: 0.9;
   font-variant-numeric: tabular-nums;
-}
-
-:global(.chat-view.theme-style-minimal) .voice-bubble {
-  box-shadow: none;
-}
-
-:global(.light .chat-view.theme-style-minimal) .voice-play-btn,
-:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-play-btn {
-  background: rgba(15, 23, 42, 0.12);
-}
-
-:global(.light .chat-view.theme-style-minimal) .voice-bubble:hover .voice-play-btn,
-:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-bubble:hover .voice-play-btn {
-  background: rgba(15, 23, 42, 0.2);
-}
-
-:global(.light .chat-view.theme-style-minimal) .voice-bar,
-:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-bar {
-  background: rgba(15, 23, 42, 0.28);
-}
-
-:global(.light .chat-view.theme-style-minimal) .voice-bar-active,
-:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-bar-active {
-  background: rgba(15, 23, 42, 0.75);
 }
 </style>

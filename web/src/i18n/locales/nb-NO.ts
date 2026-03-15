@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Filkilder',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -565,6 +565,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Nettverkstilgang',
+    networkTitle: 'Nettverk og tilgang',
+    releaseTrack: 'Versjonsstyring',
+    systemVersion: 'Oppdateringer og versjoner',
     llmApiKeyRequired: 'Konfigurer en API-nøkkel før du åpner siden for LLM-leverandører.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -696,8 +700,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Godkjente kataloger',
+    approvedDirectoriesDesc: 'Kataloger godkjent via «Tillat alltid» for exec/convert.',
+    noApprovedDirectories: 'Ingen godkjente kataloger',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Godkjente kataloger',
       firewall: 'Brannmur',
       masking: 'Datamaskering',
     },
@@ -1794,6 +1802,14 @@ export default {
     createAccount: 'Opprett konto',
     createAdminAccount: 'Opprett administratorkonto',
     hint: 'Forhåndsvisningsmodus – dataene dine bevares etter at du oppretter konto',
+    passwordCheck: {
+      length: 'Minst {n} tegn',
+      uppercase: 'En stor bokstav',
+      lowercase: 'En liten bokstav',
+      letter: 'En bokstav',
+      number: 'Ett tall',
+      special: "Ett spesialtegn (!{'@'}#$%...)",
+    },
   },
   // Flat keys in Norwegian
   accept: 'Godta',
@@ -1908,6 +1924,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    conversations: 'Samtaler',
     execDirectoryApprovalTimeout:
       'Kjøring av kommando ble blokkert fordi mappegodkjenningen gikk ut på tid. Godkjenn mappen og prøv igjen.',
     streamProgress: {

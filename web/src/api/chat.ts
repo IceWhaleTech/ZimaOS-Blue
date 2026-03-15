@@ -52,12 +52,12 @@ export interface MessageAttachment {
 
 export interface SendMessageRequest {
   message: string
-  provider: string  // Provider ID from Provider Pool
+  provider: string // Provider ID from Provider Pool
   model: string
   temperature?: number
   max_tokens?: number
   attachments?: MessageAttachment[]
-  regenerate?: boolean  // True if this is a regenerate request
+  regenerate?: boolean // True if this is a regenerate request
   web_search_enabled?: boolean
   deep_research_enabled?: boolean
 }
@@ -156,8 +156,7 @@ export interface StreamChunk {
 
 // Conversation API
 export const conversationApi = {
-  create: (title?: string) =>
-    api.post<Conversation>('/conversations', { title: title || '' }),
+  create: (title?: string) => api.post<Conversation>('/conversations', { title: title || '' }),
 
   list: (limit = 50, offset = 0) =>
     api.get<Conversation[]>('/conversations', { params: { limit, offset } }),
@@ -209,11 +208,9 @@ export const messageApi = {
 // Warmup API - Pre-compute system prompt and context to reduce TTFT
 export const warmupApi = {
   /** Fire-and-forget warmup for a conversation. Returns 204. */
-  trigger: (conversationId: string) =>
-    api.post(`/conversations/${conversationId}/warmup`),
+  trigger: (conversationId: string) => api.post(`/conversations/${conversationId}/warmup`),
   /** Cancel an in-flight hidden warmup request. Returns 204. */
-  cancel: (conversationId: string) =>
-    api.delete(`/conversations/${conversationId}/warmup`),
+  cancel: (conversationId: string) => api.delete(`/conversations/${conversationId}/warmup`),
 }
 
 // Injection API - Send a message during active streaming
@@ -267,7 +264,14 @@ export interface AgentTask {
   conversation_id?: string
   goal: string
   plan: AgentPlanStep[]
-  status: 'pending' | 'planning' | 'executing' | 'waiting_input' | 'completed' | 'failed' | 'cancelled'
+  status:
+    | 'pending'
+    | 'planning'
+    | 'executing'
+    | 'waiting_input'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
   current_step: number
   progress: number
   result?: string
@@ -313,17 +317,13 @@ export const agentApi = {
   createTask: (goal: string, conversationId?: string, context?: string) =>
     api.post<AgentTask>('/agent/tasks', { goal, conversation_id: conversationId, context }),
 
-  listTasks: () =>
-    api.get<AgentTask[]>('/agent/tasks'),
+  listTasks: () => api.get<AgentTask[]>('/agent/tasks'),
 
-  getTask: (id: string) =>
-    api.get<AgentTask>(`/agent/tasks/${id}`),
+  getTask: (id: string) => api.get<AgentTask>(`/agent/tasks/${id}`),
 
-  cancelTask: (id: string) =>
-    api.post(`/agent/tasks/${id}/cancel`),
+  cancelTask: (id: string) => api.post(`/agent/tasks/${id}/cancel`),
 
-  deleteTask: (id: string) =>
-    api.delete(`/agent/tasks/${id}`),
+  deleteTask: (id: string) => api.delete(`/agent/tasks/${id}`),
 
   /** Send a message to a running agent task. Queued for injection at next natural boundary. */
   sendMessage: (taskId: string, message: string) =>

@@ -54,6 +54,20 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Research.Autoresearch.Enabled {
 		t.Errorf("Research.Autoresearch.Enabled = %v, want false", cfg.Research.Autoresearch.Enabled)
 	}
+	if cfg.Security.Password.MinLength != 6 {
+		t.Errorf("Security.Password.MinLength = %v, want %v", cfg.Security.Password.MinLength, 6)
+	}
+}
+
+func TestLoad_DefaultPasswordMinLength(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Security.Password.MinLength != 6 {
+		t.Fatalf("Security.Password.MinLength = %v, want %v", cfg.Security.Password.MinLength, 6)
+	}
 }
 
 func TestLoad_FromFile(t *testing.T) {

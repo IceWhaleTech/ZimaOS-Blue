@@ -46,7 +46,6 @@ describe('NotificationContainer i18n', () => {
     setActivePinia(createPinia())
   })
 
-
   it('renders translated params for keyed titles', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)

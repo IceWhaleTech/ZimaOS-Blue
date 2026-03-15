@@ -45,15 +45,16 @@ export interface WorkspaceTreeParams {
 export const workspaceApi = {
   getMeta: () => api.get<WorkspaceMeta>('/workspace/meta'),
 
-  getTree: (params?: WorkspaceTreeParams) =>
-    api.get<WorkspaceTree>('/workspace/tree', { params }),
+  getTree: (params?: WorkspaceTreeParams) => api.get<WorkspaceTree>('/workspace/tree', { params }),
 
   listFiles: () => api.get<{ files: WorkspaceFile[] }>('/workspace/files'),
 
   getFile: (name: string) => api.get<WorkspaceFile>(`/workspace/files/${name}`),
 
   putFile: (name: string, content: string) =>
-    api.put<{ status: string; name: string; bytes: number }>(`/workspace/files/${name}`, { content }),
+    api.put<{ status: string; name: string; bytes: number }>(`/workspace/files/${name}`, {
+      content,
+    }),
 
   getStats: () => api.get<WorkspaceStats>('/workspace/stats'),
 }

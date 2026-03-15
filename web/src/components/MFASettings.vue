@@ -122,9 +122,22 @@ function closeRecoveryCodes() {
 
 <template>
   <section class="mb-6 sm:mb-8">
-    <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4 flex items-center gap-2">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+    <h2
+      class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4 flex items-center gap-2"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-5 w-5 flex-shrink-0"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+        />
       </svg>
       <span class="truncate">{{ t('mfa.title') }}</span>
     </h2>
@@ -142,17 +155,14 @@ function closeRecoveryCodes() {
             <div
               :class="[
                 'w-3 h-3 rounded-full',
-                mfaStatus.enabled ? 'bg-green-500' : 'bg-yellow-500'
+                mfaStatus.enabled ? 'bg-green-500' : 'bg-yellow-500',
               ]"
             />
             <span class="text-gray-900 dark:text-white font-medium">
               {{ mfaStatus.enabled ? t('mfa.enabled') : t('mfa.disabled') }}
             </span>
           </div>
-          <span
-            v-if="mfaStatus.enabled"
-            class="text-sm text-gray-500 dark:text-slate-400"
-          >
+          <span v-if="mfaStatus.enabled" class="text-sm text-gray-500 dark:text-slate-400">
             {{ t('mfa.recoveryCodesRemaining', { count: mfaStatus.recovery_codes_remaining }) }}
           </span>
         </div>
@@ -193,7 +203,9 @@ function closeRecoveryCodes() {
       <div v-if="setupData" class="space-y-6">
         <div>
           <h3 class="text-gray-900 dark:text-white font-medium mb-2">{{ t('mfa.step1Title') }}</h3>
-          <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">{{ t('mfa.step1Description') }}</p>
+          <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">
+            {{ t('mfa.step1Description') }}
+          </p>
 
           <!-- QR Code -->
           <div v-if="setupData.qr_code" class="flex justify-center mb-4">
@@ -207,13 +219,17 @@ function closeRecoveryCodes() {
           <!-- Manual entry -->
           <div class="bg-gray-100 dark:bg-slate-700 rounded-lg p-3">
             <p class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('mfa.manualEntry') }}</p>
-            <code class="text-sm text-gray-900 dark:text-white break-all">{{ setupData.secret }}</code>
+            <code class="text-sm text-gray-900 dark:text-white break-all">{{
+              setupData.secret
+            }}</code>
           </div>
         </div>
 
         <div>
           <h3 class="text-gray-900 dark:text-white font-medium mb-2">{{ t('mfa.step2Title') }}</h3>
-          <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">{{ t('mfa.step2Description') }}</p>
+          <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">
+            {{ t('mfa.step2Description') }}
+          </p>
 
           <div class="flex gap-3">
             <input
@@ -260,7 +276,9 @@ function closeRecoveryCodes() {
             {{ t('mfa.recoveryCodes') }}
           </h3>
 
-          <div class="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-600 rounded-lg p-4 mb-4">
+          <div
+            class="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-600 rounded-lg p-4 mb-4"
+          >
             <p class="text-yellow-800 dark:text-yellow-200 text-sm">
               {{ t('mfa.recoveryCodesWarning') }}
             </p>
@@ -283,11 +301,35 @@ function closeRecoveryCodes() {
               class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
               @click="copyRecoveryCodes"
             >
-              <svg v-if="!copiedCodes" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              <svg
+                v-if="!copiedCodes"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
               </svg>
-              <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              <svg
+                v-else
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               {{ copiedCodes ? t('common.copied') : t('common.copy') }}
             </button>
@@ -314,7 +356,9 @@ function closeRecoveryCodes() {
             {{ t('mfa.disableTitle') }}
           </h3>
 
-          <div class="bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-600 rounded-lg p-4 mb-4">
+          <div
+            class="bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-600 rounded-lg p-4 mb-4"
+          >
             <p class="text-red-800 dark:text-red-200 text-sm">
               {{ t('mfa.disableWarning') }}
             </p>

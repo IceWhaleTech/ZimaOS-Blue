@@ -12,11 +12,11 @@ export const useTTSStore = defineStore('tts', () => {
 
   // Computed
   const currentProvider = computed(() => {
-    return providers.value.find(p => p.type === preferredProvider.value)
+    return providers.value.find((p) => p.type === preferredProvider.value)
   })
 
   const downloadedLanguages = computed(() => {
-    return languagePacks.value.filter(p => p.downloaded).map(p => p.language)
+    return languagePacks.value.filter((p) => p.downloaded).map((p) => p.language)
   })
 
   // Actions
@@ -65,7 +65,7 @@ export const useTTSStore = defineStore('tts', () => {
       loading.value = true
       error.value = null
       await ttsApi.downloadLanguagePack(language)
-      const pack = languagePacks.value.find(p => p.language === language)
+      const pack = languagePacks.value.find((p) => p.language === language)
       if (pack) {
         pack.downloaded = true
       }
@@ -81,7 +81,7 @@ export const useTTSStore = defineStore('tts', () => {
       loading.value = true
       error.value = null
       await ttsApi.deleteLanguagePack(language)
-      const pack = languagePacks.value.find(p => p.language === language)
+      const pack = languagePacks.value.find((p) => p.language === language)
       if (pack) {
         pack.downloaded = false
       }
@@ -98,7 +98,7 @@ export const useTTSStore = defineStore('tts', () => {
       error.value = null
       await ttsApi.downloadAllLanguagePacks()
       // Mark all packs as downloaded
-      languagePacks.value.forEach(pack => {
+      languagePacks.value.forEach((pack) => {
         pack.downloaded = true
       })
     } catch (err) {

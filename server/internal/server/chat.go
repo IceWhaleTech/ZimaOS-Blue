@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -46,6 +47,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/upstreamerrors"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voicewake"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -284,6 +286,7 @@ var reExecWebSearchQuery = regexp.MustCompile(`(?i)\bquery=(?:"([^"]+)"|'([^']+)
 var reTodoUnchecked = regexp.MustCompile(`(?m)^([ \t]*[-*]\s+)\[ \]\s+([^\n]+)$`)
 var reTodoAnyItem = regexp.MustCompile(`(?m)^[ \t]*[-*]\s+\[([ xX])\]\s+(?:~~)?([^\n~]+?)(?:~~)?\s*$`)
 var reTodoChecklistBlock = regexp.MustCompile(`(?m)(^|\n)([ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+(?:\n[ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+)*)`)
+var reTypelessBlock = regexp.MustCompile("(?s)```typeless\\s*\\n(.*?)\\n```")
 var reAskOptionLine = regexp.MustCompile(`(?m)^[A-E][\.\)]\s+\S+`)
 var reShortAffirmativeEN = regexp.MustCompile(`(?i)^(ok|okay|yes|y|sure|go ahead|continue|sounds good|do it|please continue|let'?s go)$`)
 var reShortAffirmativeIntl = regexp.MustCompile(`(?i)^(继续|继续吧|继续执行|接着|接着做|好的|好|可以|行|嗯|收到|明白|同意|同意了|` +
@@ -3352,20 +3355,85 @@ func stripDuplicateTodoChecklistForPersistence(content, trackedTodoContent strin
 	return stripped
 }
 
+func stripDuplicateTodoChecklistFromTypelessCards(content, trackedTodoContent string) string {
+	trackedSig := todoChecklistSignature(trackedTodoContent)
+	if trackedSig == "" || !strings.Contains(content, "```typeless") {
+		return content
+	}
+	return reTypelessBlock.ReplaceAllStringFunc(content, func(block string) string {
+		match := reTypelessBlock.FindStringSubmatch(block)
+		if len(match) < 2 {
+			return block
+		}
+
+		var payload map[string]interface{}
+		if err := json.Unmarshal([]byte(match[1]), &payload); err != nil {
+			return block
+		}
+
+		details, ok := payload["details"].([]interface{})
+		if !ok || len(details) == 0 {
+			return block
+		}
+
+		filtered := make([]interface{}, 0, len(details))
+		changed := false
+		for _, rawDetail := range details {
+			detail, ok := rawDetail.(map[string]interface{})
+			if !ok {
+				filtered = append(filtered, rawDetail)
+				continue
+			}
+			label := strings.TrimSpace(fmt.Sprintf("%v", detail["label"]))
+			value := strings.TrimSpace(fmt.Sprintf("%v", detail["value"]))
+			if strings.EqualFold(label, "checklist") && todoChecklistSignature(value) == trackedSig {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, rawDetail)
+		}
+		if !changed {
+			return block
+		}
+
+		if len(filtered) == 0 {
+			delete(payload, "details")
+		} else {
+			payload["details"] = filtered
+		}
+
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return block
+		}
+		return "\n\n```typeless\n" + string(encoded) + "\n```"
+	})
+}
+
 func todoAwarePersistedContent(content, trackedTodoContent string, persistTodoInPlace bool) string {
 	trimmed := strings.TrimSpace(content)
 	if trimmed == "" {
 		return ""
 	}
+	sanitized := stripDuplicateTodoChecklistForPersistence(trimmed, trackedTodoContent)
+	sanitized = stripDuplicateTodoChecklistFromTypelessCards(sanitized, trackedTodoContent)
 	if persistTodoInPlace {
 		if checklist, ok := extractFirstTodoChecklist(trimmed); ok {
 			return checklist
 		}
+		if strings.TrimSpace(sanitized) == "" {
+			if tracked := strings.TrimSpace(trackedTodoContent); tracked != "" {
+				return tracked
+			}
+		}
+		return sanitized
+	}
+	if strings.TrimSpace(sanitized) == "" {
 		if tracked := strings.TrimSpace(trackedTodoContent); tracked != "" {
 			return tracked
 		}
 	}
-	return stripDuplicateTodoChecklistForPersistence(trimmed, trackedTodoContent)
+	return sanitized
 }
 
 func syncTrackedTodoAfterToolRound(trackedTodoContent, planChecklist string, planChecklistUpdated, planCompletedByTool bool) (string, bool) {
@@ -4015,6 +4083,10 @@ type chatInputBudgetEstimate struct {
 	MaxInputTokens       int
 }
 
+func (e chatInputBudgetEstimate) Exceeds() bool {
+	return e.ContextWindow > 0 && e.EstimatedInputTokens > e.MaxInputTokens
+}
+
 func (h *ChatHandler) resolveContextWindowForModel(model string) int {
 	trimmed := strings.TrimSpace(model)
 	if trimmed != "" && !strings.EqualFold(trimmed, "auto") && h != nil && h.providerPool != nil && h.providerPool.Discovery != nil {
@@ -4051,27 +4123,694 @@ func estimateOutputReserveTokens(contextWindow, requestedMaxTokens int) int {
 	return reserve
 }
 
-func (h *ChatHandler) estimatePreparedInputBudget(model string, maxTokens int, messages []llm.Message) *chatInputBudgetEstimate {
+func (h *ChatHandler) measurePreparedInputBudget(model string, maxTokens int, messages []llm.Message) chatInputBudgetEstimate {
 	contextWindow := h.resolveContextWindowForModel(model)
 	if contextWindow <= 0 {
-		return nil
+		return chatInputBudgetEstimate{Model: strings.TrimSpace(model)}
 	}
 	reservedOutput := estimateOutputReserveTokens(contextWindow, maxTokens)
 	maxInputTokens := contextWindow - reservedOutput
 	if maxInputTokens < 1 {
 		maxInputTokens = 1
 	}
-	estimatedInput := estimateInputTokens(messages)
-	if estimatedInput <= maxInputTokens {
-		return nil
-	}
-	return &chatInputBudgetEstimate{
+	return chatInputBudgetEstimate{
 		Model:                strings.TrimSpace(model),
 		ContextWindow:        contextWindow,
 		ReservedOutputTokens: reservedOutput,
-		EstimatedInputTokens: estimatedInput,
+		EstimatedInputTokens: estimateInputTokens(messages),
 		MaxInputTokens:       maxInputTokens,
 	}
+}
+
+func (h *ChatHandler) estimatePreparedInputBudget(model string, maxTokens int, messages []llm.Message) *chatInputBudgetEstimate {
+	estimate := h.measurePreparedInputBudget(model, maxTokens, messages)
+	if !estimate.Exceeds() {
+		return nil
+	}
+	return &estimate
+}
+
+type preparedBudgetFitParams struct {
+	ConvID             string
+	Model              string
+	MaxTokens          int
+	Messages           []llm.Message
+	ExplicitProviderID string
+	ProviderExplicit   bool
+}
+
+type preparedBudgetAttempt struct {
+	Stage       int
+	Model       string
+	ProviderID  string
+	Messages    []llm.Message
+	Budget      chatInputBudgetEstimate
+	ContextTrim *ContextTrimInfo
+}
+
+type preparedBudgetFailure struct {
+	Budget                     chatInputBudgetEstimate
+	CompressionStagesAttempted []int
+	FallbackAttempted          bool
+	OriginalModel              string
+}
+
+type preparedBudgetFitPlan struct {
+	OriginalModel string
+	attempts      []preparedBudgetAttempt
+	current       int
+	failure       *preparedBudgetFailure
+}
+
+func (p *preparedBudgetFitPlan) Current() *preparedBudgetAttempt {
+	if p == nil || p.current < 0 || p.current >= len(p.attempts) {
+		return nil
+	}
+	return &p.attempts[p.current]
+}
+
+func (p *preparedBudgetFitPlan) Advance() bool {
+	if p == nil {
+		return false
+	}
+	if p.current+1 >= len(p.attempts) {
+		return false
+	}
+	p.current++
+	return true
+}
+
+func (p *preparedBudgetFitPlan) Failure() *preparedBudgetFailure {
+	if p == nil {
+		return nil
+	}
+	if p.failure != nil {
+		return p.failure
+	}
+	if len(p.attempts) == 0 {
+		return nil
+	}
+	last := p.attempts[len(p.attempts)-1]
+	return &preparedBudgetFailure{
+		Budget:                     last.Budget,
+		CompressionStagesAttempted: []int{1, 2, 3},
+		FallbackAttempted:          last.ContextTrim != nil && strings.TrimSpace(last.ContextTrim.FallbackModel) != "",
+		OriginalModel:              p.OriginalModel,
+	}
+}
+
+type preparedBudgetFallbackCandidate struct {
+	Provider *providerpool.Provider
+	Model    *providerpool.Model
+}
+
+func cloneLLMMessage(msg llm.Message) llm.Message {
+	cloned := msg
+	if len(msg.ContentParts) > 0 {
+		cloned.ContentParts = make([]llm.ContentPart, len(msg.ContentParts))
+		copy(cloned.ContentParts, msg.ContentParts)
+	}
+	if len(msg.ToolCalls) > 0 {
+		cloned.ToolCalls = make([]llm.ToolCall, len(msg.ToolCalls))
+		copy(cloned.ToolCalls, msg.ToolCalls)
+	}
+	return cloned
+}
+
+func cloneLLMMessages(messages []llm.Message) []llm.Message {
+	if len(messages) == 0 {
+		return nil
+	}
+	out := make([]llm.Message, len(messages))
+	for i := range messages {
+		out[i] = cloneLLMMessage(messages[i])
+	}
+	return out
+}
+
+func llmMessagesEqual(a, b []llm.Message) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Role != b[i].Role ||
+			a[i].Content != b[i].Content ||
+			a[i].ToolCallID != b[i].ToolCallID ||
+			a[i].ToolName != b[i].ToolName ||
+			len(a[i].ContentParts) != len(b[i].ContentParts) ||
+			len(a[i].ToolCalls) != len(b[i].ToolCalls) {
+			return false
+		}
+		for j := range a[i].ContentParts {
+			if a[i].ContentParts[j] != b[i].ContentParts[j] {
+				return false
+			}
+		}
+		for j := range a[i].ToolCalls {
+			if a[i].ToolCalls[j] != b[i].ToolCalls[j] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func preparedLeadingSystemCount(messages []llm.Message) int {
+	count := 0
+	for count < len(messages) && messages[count].Role == llm.RoleSystem {
+		count++
+	}
+	return count
+}
+
+func preparedCurrentTurnStartIndex(messages []llm.Message, minimum int) int {
+	start := len(messages)
+	for i := len(messages) - 1; i >= minimum; i-- {
+		if messages[i].Role == llm.RoleUser {
+			start = i
+			break
+		}
+	}
+	return start
+}
+
+func splitPreparedMessagesForBudget(messages []llm.Message) (leadingSystem, historical, currentTurn []llm.Message) {
+	if len(messages) == 0 {
+		return nil, nil, nil
+	}
+	systemCount := preparedLeadingSystemCount(messages)
+	currentStart := preparedCurrentTurnStartIndex(messages, systemCount)
+	if currentStart < systemCount {
+		currentStart = systemCount
+	}
+	leadingSystem = cloneLLMMessages(messages[:systemCount])
+	historical = cloneLLMMessages(messages[systemCount:currentStart])
+	currentTurn = cloneLLMMessages(messages[currentStart:])
+	return leadingSystem, historical, currentTurn
+}
+
+func preparedRecentRoundsStartIndex(messages []llm.Message, rounds int) int {
+	if len(messages) == 0 || rounds <= 0 {
+		return len(messages)
+	}
+	roundCount := 0
+	startIdx := len(messages)
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != llm.RoleUser {
+			continue
+		}
+		roundCount++
+		if roundCount > rounds {
+			break
+		}
+		startIdx = i
+	}
+	return startIdx
+}
+
+func splitPreparedHistoryByRecentUserTurns(messages []llm.Message, rounds int) (older, recent []llm.Message) {
+	if len(messages) == 0 {
+		return nil, nil
+	}
+	startIdx := preparedRecentRoundsStartIndex(messages, rounds)
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	if startIdx > len(messages) {
+		startIdx = len(messages)
+	}
+	older = cloneLLMMessages(messages[:startIdx])
+	recent = removeOrphanedToolResults(cloneLLMMessages(messages[startIdx:]))
+	return older, recent
+}
+
+func compactPreparedHistoricalMessages(history []llm.Message) []llm.Message {
+	if len(history) == 0 {
+		return nil
+	}
+	out := make([]llm.Message, 0, len(history))
+	for i := 0; i < len(history); i++ {
+		msg := cloneLLMMessage(history[i])
+		if msg.Role == llm.RoleAssistant && len(msg.ToolCalls) > 0 {
+			toolResults := make([]llm.Message, 0, 4)
+			j := i + 1
+			for ; j < len(history); j++ {
+				if history[j].Role != llm.RoleTool {
+					break
+				}
+				toolResults = append(toolResults, cloneLLMMessage(history[j]))
+			}
+			out = append(out, compactAssistantToolContextForLLM(msg))
+			if len(toolResults) > 0 {
+				out = append(out, compactToolResultsForLLM(msg.ToolCalls, toolResults)...)
+			}
+			i = j - 1
+			continue
+		}
+		if msg.Role == llm.RoleTool {
+			msg.Content = compactToolResultContentForLLM(msg.ToolName, msg.Content)
+		}
+		out = append(out, msg)
+	}
+	return removeOrphanedToolResults(out)
+}
+
+func flattenLLMMessageForSummary(msg llm.Message) string {
+	if strings.TrimSpace(msg.Content) != "" {
+		return msg.Content
+	}
+	var parts []string
+	for _, part := range msg.ContentParts {
+		switch part.Type {
+		case "text":
+			if strings.TrimSpace(part.Text) != "" {
+				parts = append(parts, part.Text)
+			}
+		case "image":
+			parts = append(parts, "[image attachment]")
+		case "audio":
+			parts = append(parts, "[audio attachment]")
+		default:
+			if strings.TrimSpace(part.Text) != "" {
+				parts = append(parts, part.Text)
+			}
+		}
+	}
+	if len(parts) == 0 && len(msg.ToolCalls) > 0 {
+		names := make([]string, 0, len(msg.ToolCalls))
+		for _, tc := range msg.ToolCalls {
+			if name := strings.TrimSpace(tc.Name); name != "" {
+				names = append(names, name)
+			}
+		}
+		if len(names) > 0 {
+			parts = append(parts, "Tool calls: "+strings.Join(names, ", "))
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func llmMessagesToSummaryMemory(messages []llm.Message) []memory.Message {
+	if len(messages) == 0 {
+		return nil
+	}
+	out := make([]memory.Message, 0, len(messages))
+	for _, msg := range messages {
+		m := memory.Message{
+			Role:       string(msg.Role),
+			Content:    flattenLLMMessageForSummary(msg),
+			ToolCallID: msg.ToolCallID,
+			ToolName:   msg.ToolName,
+		}
+		if len(msg.ToolCalls) > 0 {
+			m.ToolCalls = make([]memory.ToolCall, len(msg.ToolCalls))
+			for i, tc := range msg.ToolCalls {
+				m.ToolCalls[i] = memory.ToolCall{ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments}
+			}
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+func (h *ChatHandler) preparedBudgetTrimSettings() trimPolicyPruneSettings {
+	settings := trimPolicyDefaultPruneSettings
+	if h != nil && h.settingsHandler != nil {
+		settings.Tools.Allow = h.settingsHandler.GetSmallModelContextPruneToolAllow()
+		settings.Tools.Deny = h.settingsHandler.GetSmallModelContextPruneToolDeny()
+	}
+	return settings
+}
+
+func (h *ChatHandler) applyPreparedTrimPolicy(model string, messages []llm.Message) []llm.Message {
+	contextWindow := h.resolveContextWindowForModel(model)
+	if contextWindow <= 0 || len(messages) == 0 {
+		return removeOrphanedToolResults(messages)
+	}
+	pruned, _ := trimPolicyPruneContextMessagesWithReport(messages, contextWindow, h.preparedBudgetTrimSettings())
+	return removeOrphanedToolResults(pruned)
+}
+
+func (h *ChatHandler) loadPreparedHistorySummary(ctx context.Context, convID string, older, recent []llm.Message) string {
+	if len(older) == 0 {
+		return ""
+	}
+	if h != nil && h.summaryCache != nil {
+		if cached, ok := h.summaryCache.Get(convID); ok {
+			if summary, ok := cached.(*ConversationSummary); ok && strings.TrimSpace(summary.Text) != "" {
+				return strings.TrimSpace(summary.Text)
+			}
+		}
+	}
+	all := append(llmMessagesToSummaryMemory(older), llmMessagesToSummaryMemory(recent)...)
+	return strings.TrimSpace(h.generateSummarySync(ctx, convID, all, cloneLLMMessages(recent)))
+}
+
+func (h *ChatHandler) buildPreparedBudgetStage1(model string, original []llm.Message) []llm.Message {
+	leadingSystem, historical, currentTurn := splitPreparedMessagesForBudget(original)
+	out := make([]llm.Message, 0, len(leadingSystem)+len(historical)+len(currentTurn))
+	out = append(out, leadingSystem...)
+	out = append(out, compactPreparedHistoricalMessages(historical)...)
+	out = append(out, currentTurn...)
+	return h.applyPreparedTrimPolicy(model, out)
+}
+
+func (h *ChatHandler) buildPreparedBudgetStage2(ctx context.Context, convID, model string, original []llm.Message) ([]llm.Message, string) {
+	leadingSystem, historical, currentTurn := splitPreparedMessagesForBudget(original)
+	older, recent := splitPreparedHistoryByRecentUserTurns(historical, compressedTierRecentRounds)
+	summaryText := h.loadPreparedHistorySummary(ctx, convID, older, recent)
+	out := make([]llm.Message, 0, len(leadingSystem)+len(recent)+len(currentTurn)+1)
+	out = append(out, leadingSystem...)
+	if summaryText != "" {
+		out = append(out, llm.Message{
+			Role:    llm.RoleSystem,
+			Content: "Previous conversation context: " + summaryText,
+		})
+	}
+	out = append(out, compactPreparedHistoricalMessages(recent)...)
+	out = append(out, currentTurn...)
+	return h.applyPreparedTrimPolicy(model, out), summaryText
+}
+
+func (h *ChatHandler) buildPreparedBudgetStage3(ctx context.Context, convID, model string, original []llm.Message, summaryText string) ([]llm.Message, string) {
+	leadingSystem, historical, currentTurn := splitPreparedMessagesForBudget(original)
+	combined := make([]llm.Message, 0, len(historical)+len(currentTurn))
+	combined = append(combined, cloneLLMMessages(historical)...)
+	combined = append(combined, cloneLLMMessages(currentTurn)...)
+	older, recent := splitPreparedHistoryByRecentUserTurns(combined, 2)
+	if summaryText == "" {
+		summaryText = h.loadPreparedHistorySummary(ctx, convID, older, recent)
+	}
+	out := make([]llm.Message, 0, len(leadingSystem)+len(recent)+1)
+	out = append(out, leadingSystem...)
+	if summaryText != "" {
+		out = append(out, llm.Message{
+			Role:    llm.RoleSystem,
+			Content: "Previous conversation context: " + summaryText,
+		})
+	}
+	out = append(out, recent...)
+	return h.applyPreparedTrimPolicy(model, out), summaryText
+}
+
+func buildPreparedBudgetContextTrim(
+	originalModel string,
+	stage int,
+	beforeMessages []llm.Message,
+	beforeBudget chatInputBudgetEstimate,
+	afterMessages []llm.Message,
+	afterBudget chatInputBudgetEstimate,
+	fallbackModel string,
+	fallbackProvider string,
+) *ContextTrimInfo {
+	trim := &ContextTrimInfo{
+		Type:          "progressive_compaction",
+		Stage:         stage,
+		OriginalModel: strings.TrimSpace(originalModel),
+		Before:        len(beforeMessages),
+		After:         len(afterMessages),
+		TokensBefore:  beforeBudget.EstimatedInputTokens,
+		TokensAfter:   afterBudget.EstimatedInputTokens,
+	}
+	if trim.Before > trim.After {
+		trim.MessagesPruned = trim.Before - trim.After
+	}
+	if strings.TrimSpace(fallbackModel) != "" {
+		trim.FallbackModel = strings.TrimSpace(fallbackModel)
+	}
+	if strings.TrimSpace(fallbackProvider) != "" {
+		trim.FallbackProvider = strings.TrimSpace(fallbackProvider)
+	}
+	return trim
+}
+
+func appendPreparedBudgetAttempt(
+	attempts []preparedBudgetAttempt,
+	stage int,
+	model string,
+	providerID string,
+	messages []llm.Message,
+	budget chatInputBudgetEstimate,
+	contextTrim *ContextTrimInfo,
+) []preparedBudgetAttempt {
+	if budget.Exceeds() {
+		return attempts
+	}
+	if len(attempts) > 0 {
+		last := attempts[len(attempts)-1]
+		if strings.EqualFold(strings.TrimSpace(last.Model), strings.TrimSpace(model)) &&
+			strings.EqualFold(strings.TrimSpace(last.ProviderID), strings.TrimSpace(providerID)) &&
+			llmMessagesEqual(last.Messages, messages) {
+			return attempts
+		}
+	}
+	attempts = append(attempts, preparedBudgetAttempt{
+		Stage:       stage,
+		Model:       strings.TrimSpace(model),
+		ProviderID:  strings.TrimSpace(providerID),
+		Messages:    cloneLLMMessages(messages),
+		Budget:      budget,
+		ContextTrim: contextTrim,
+	})
+	return attempts
+}
+
+func (h *ChatHandler) selectPreparedBudgetFallbackCandidates(messages []llm.Message, maxTokens int, originalModel, explicitProviderID string) ([]preparedBudgetFallbackCandidate, bool) {
+	if h == nil || h.providerPool == nil || h.providerPool.Registry == nil || h.providerPool.Discovery == nil {
+		return nil, false
+	}
+	providers := h.providerPool.Registry.ListEnabled()
+	if len(providers) == 0 {
+		return nil, false
+	}
+	all := make([]preparedBudgetFallbackCandidate, 0, 16)
+	sameProvider := make([]preparedBudgetFallbackCandidate, 0, 8)
+	for _, provider := range providers {
+		if provider == nil || !provider.Enabled {
+			continue
+		}
+		models, err := h.providerPool.Discovery.GetFilteredModels(provider.ID)
+		if err != nil {
+			continue
+		}
+		for _, candidateModel := range models {
+			if candidateModel == nil || !candidateModel.Enabled || candidateModel.ContextWindow <= 0 {
+				continue
+			}
+			if strings.EqualFold(strings.TrimSpace(candidateModel.ID), strings.TrimSpace(originalModel)) &&
+				strings.EqualFold(strings.TrimSpace(candidateModel.ProviderID), strings.TrimSpace(explicitProviderID)) {
+				continue
+			}
+			if h.measurePreparedInputBudget(candidateModel.ID, maxTokens, messages).Exceeds() {
+				continue
+			}
+			candidate := preparedBudgetFallbackCandidate{Provider: provider, Model: candidateModel}
+			if explicitProviderID != "" && strings.EqualFold(provider.ID, explicitProviderID) {
+				sameProvider = append(sameProvider, candidate)
+				continue
+			}
+			all = append(all, candidate)
+		}
+	}
+	sortCandidates := func(candidates []preparedBudgetFallbackCandidate) {
+		sort.SliceStable(candidates, func(i, j int) bool {
+			if candidates[i].Model.ContextWindow != candidates[j].Model.ContextWindow {
+				return candidates[i].Model.ContextWindow < candidates[j].Model.ContextWindow
+			}
+			if candidates[i].Model.InputPrice != candidates[j].Model.InputPrice {
+				return candidates[i].Model.InputPrice < candidates[j].Model.InputPrice
+			}
+			if candidates[i].Provider.Priority != candidates[j].Provider.Priority {
+				return candidates[i].Provider.Priority > candidates[j].Provider.Priority
+			}
+			if candidates[i].Provider.ID != candidates[j].Provider.ID {
+				return candidates[i].Provider.ID < candidates[j].Provider.ID
+			}
+			return candidates[i].Model.ID < candidates[j].Model.ID
+		})
+	}
+	sortCandidates(sameProvider)
+	sortCandidates(all)
+	if explicitProviderID != "" {
+		return append(sameProvider, all...), true
+	}
+	return all, true
+}
+
+func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params preparedBudgetFitParams) *preparedBudgetFitPlan {
+	model := strings.TrimSpace(params.Model)
+	if model == "" {
+		model = "auto"
+	}
+	originalMessages := cloneLLMMessages(params.Messages)
+	originalBudget := h.measurePreparedInputBudget(model, params.MaxTokens, originalMessages)
+	attempts := make([]preparedBudgetAttempt, 0, 6)
+	if !originalBudget.Exceeds() {
+		attempts = appendPreparedBudgetAttempt(attempts, 0, model, "", originalMessages, originalBudget, nil)
+	}
+
+	stage1Messages := h.buildPreparedBudgetStage1(model, originalMessages)
+	stage1Budget := h.measurePreparedInputBudget(model, params.MaxTokens, stage1Messages)
+	if !llmMessagesEqual(originalMessages, stage1Messages) {
+		attempts = appendPreparedBudgetAttempt(
+			attempts,
+			1,
+			model,
+			"",
+			stage1Messages,
+			stage1Budget,
+			buildPreparedBudgetContextTrim(model, 1, originalMessages, originalBudget, stage1Messages, stage1Budget, "", ""),
+		)
+	}
+
+	stage2Messages, summaryText := h.buildPreparedBudgetStage2(ctx, params.ConvID, model, originalMessages)
+	stage2Budget := h.measurePreparedInputBudget(model, params.MaxTokens, stage2Messages)
+	if !llmMessagesEqual(originalMessages, stage2Messages) {
+		attempts = appendPreparedBudgetAttempt(
+			attempts,
+			2,
+			model,
+			"",
+			stage2Messages,
+			stage2Budget,
+			buildPreparedBudgetContextTrim(model, 2, originalMessages, originalBudget, stage2Messages, stage2Budget, "", ""),
+		)
+	}
+
+	stage3Messages, summaryText := h.buildPreparedBudgetStage3(ctx, params.ConvID, model, originalMessages, summaryText)
+	stage3Budget := h.measurePreparedInputBudget(model, params.MaxTokens, stage3Messages)
+	if !llmMessagesEqual(originalMessages, stage3Messages) {
+		attempts = appendPreparedBudgetAttempt(
+			attempts,
+			3,
+			model,
+			"",
+			stage3Messages,
+			stage3Budget,
+			buildPreparedBudgetContextTrim(model, 3, originalMessages, originalBudget, stage3Messages, stage3Budget, "", ""),
+		)
+	}
+
+	fallbackCandidates, fallbackAttempted := h.selectPreparedBudgetFallbackCandidates(stage3Messages, params.MaxTokens, model, strings.TrimSpace(params.ExplicitProviderID))
+	for _, candidate := range fallbackCandidates {
+		budget := h.measurePreparedInputBudget(candidate.Model.ID, params.MaxTokens, stage3Messages)
+		if budget.Exceeds() {
+			continue
+		}
+		attempts = appendPreparedBudgetAttempt(
+			attempts,
+			3,
+			candidate.Model.ID,
+			candidate.Provider.ID,
+			stage3Messages,
+			budget,
+			buildPreparedBudgetContextTrim(model, 3, originalMessages, originalBudget, stage3Messages, budget, candidate.Model.ID, candidate.Provider.ID),
+		)
+	}
+
+	if len(attempts) > 0 {
+		return &preparedBudgetFitPlan{
+			OriginalModel: model,
+			attempts:      attempts,
+			current:       0,
+		}
+	}
+
+	finalBudget := stage3Budget
+	if finalBudget.ContextWindow <= 0 {
+		finalBudget = originalBudget
+	}
+	return &preparedBudgetFitPlan{
+		OriginalModel: model,
+		current:       -1,
+		failure: &preparedBudgetFailure{
+			Budget:                     finalBudget,
+			CompressionStagesAttempted: []int{1, 2, 3},
+			FallbackAttempted:          fallbackAttempted,
+			OriginalModel:              model,
+		},
+	}
+}
+
+func (h *ChatHandler) writePreparedInputBudgetFailure(c echo.Context, failure *preparedBudgetFailure) error {
+	header := c.Response().Header()
+	header.Del("X-Stream-ID")
+	header.Del("X-Accel-Buffering")
+	header.Del("Content-Encoding")
+	header.Set(echo.HeaderContentType, echo.MIMEApplicationJSONCharsetUTF8)
+
+	if failure == nil {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"success":                 false,
+			"context_window_exceeded": true,
+			"message":                 "Message exceeds estimated context window for selected model",
+		})
+	}
+	estimate := failure.Budget
+	payload := map[string]interface{}{
+		"success":                      false,
+		"context_window_exceeded":      true,
+		"message":                      "Message exceeds estimated context window for selected model",
+		"model":                        estimate.Model,
+		"original_model":               failure.OriginalModel,
+		"context_window":               estimate.ContextWindow,
+		"max_input_tokens":             estimate.MaxInputTokens,
+		"estimated_input_tokens":       estimate.EstimatedInputTokens,
+		"reserved_output_tokens":       estimate.ReservedOutputTokens,
+		"compression_stages_attempted": failure.CompressionStagesAttempted,
+		"fallback_attempted":           failure.FallbackAttempted,
+	}
+	return c.JSON(http.StatusBadRequest, payload)
+}
+
+func resolvePreparedBudgetAttemptProvider(defaultPinnedProviderID string, attempt *preparedBudgetAttempt) string {
+	if attempt != nil && strings.TrimSpace(attempt.ProviderID) != "" {
+		return strings.TrimSpace(attempt.ProviderID)
+	}
+	return strings.TrimSpace(defaultPinnedProviderID)
+}
+
+func shouldDisablePreparedBudgetContinuation(originalModel, defaultPinnedProviderID string, attempt *preparedBudgetAttempt) bool {
+	if attempt == nil {
+		return false
+	}
+	attemptModel := strings.TrimSpace(attempt.Model)
+	if attemptModel != "" && !strings.EqualFold(attemptModel, strings.TrimSpace(originalModel)) {
+		return true
+	}
+	targetProviderID := strings.TrimSpace(attempt.ProviderID)
+	if targetProviderID != "" && !strings.EqualFold(targetProviderID, strings.TrimSpace(defaultPinnedProviderID)) {
+		return true
+	}
+	if attemptModel == "" || strings.EqualFold(attemptModel, "auto") {
+		return false
+	}
+	return !supportsResponsesContinuation(attemptModel)
+}
+
+func (h *ChatHandler) isPreparedBudgetContextTooLongError(err error, providerName string, statusCode int) bool {
+	if err == nil {
+		return false
+	}
+	body := err.Error()
+	if pe, ok := err.(*proxybridge.ProxyError); ok {
+		if statusCode <= 0 {
+			statusCode = pe.StatusCode
+		}
+		if strings.TrimSpace(pe.Body) != "" {
+			body = pe.Body
+		}
+	}
+	classifier := proxy.NewAPIErrorClassifier()
+	classification := classifier.ClassifyError(providerName, statusCode, []byte(body))
+	if classification.Type == proxy.ErrorTypeContextTooLong {
+		return true
+	}
+	errLower := strings.ToLower(body)
+	return strings.Contains(errLower, "context too long") ||
+		strings.Contains(errLower, "maximum context length") ||
+		strings.Contains(errLower, "context_length_exceeded") ||
+		strings.Contains(errLower, "prompt is too long")
 }
 
 func (h *ChatHandler) rejectIfPreparedInputExceedsBudget(c echo.Context, model string, maxTokens int, messages []llm.Message) error {
@@ -4079,15 +4818,11 @@ func (h *ChatHandler) rejectIfPreparedInputExceedsBudget(c echo.Context, model s
 	if estimate == nil {
 		return nil
 	}
-	return c.JSON(http.StatusBadRequest, map[string]interface{}{
-		"success":                 false,
-		"context_window_exceeded": true,
-		"message":                 "Message exceeds estimated context window for selected model",
-		"model":                   estimate.Model,
-		"context_window":          estimate.ContextWindow,
-		"max_input_tokens":        estimate.MaxInputTokens,
-		"estimated_input_tokens":  estimate.EstimatedInputTokens,
-		"reserved_output_tokens":  estimate.ReservedOutputTokens,
+	return h.writePreparedInputBudgetFailure(c, &preparedBudgetFailure{
+		Budget:                     *estimate,
+		CompressionStagesAttempted: nil,
+		FallbackAttempted:          false,
+		OriginalModel:              strings.TrimSpace(model),
 	})
 }
 
@@ -4113,8 +4848,21 @@ func estimateCurrentRequestMessages(req SendMessageRequest) []llm.Message {
 	return []llm.Message{{Role: llm.RoleUser, ContentParts: parts}}
 }
 
-func (h *ChatHandler) rejectIfCurrentRequestExceedsBudget(c echo.Context, model string, req SendMessageRequest) error {
-	return h.rejectIfPreparedInputExceedsBudget(c, model, req.MaxTokens, estimateCurrentRequestMessages(req))
+func (h *ChatHandler) rejectIfCurrentRequestExceedsBudget(c echo.Context, model string, req SendMessageRequest, explicitProviderID string) error {
+	messages := estimateCurrentRequestMessages(req)
+	if estimate := h.estimatePreparedInputBudget(model, req.MaxTokens, messages); estimate != nil {
+		if candidates, attempted := h.selectPreparedBudgetFallbackCandidates(messages, req.MaxTokens, model, explicitProviderID); len(candidates) > 0 {
+			return nil
+		} else if attempted {
+			return h.writePreparedInputBudgetFailure(c, &preparedBudgetFailure{
+				Budget:                     *estimate,
+				CompressionStagesAttempted: []int{1, 2, 3},
+				FallbackAttempted:          true,
+				OriginalModel:              strings.TrimSpace(model),
+			})
+		}
+	}
+	return h.rejectIfPreparedInputExceedsBudget(c, model, req.MaxTokens, messages)
 }
 
 // providerPoolToLLM maps Provider Pool IDs to LLM provider names.
@@ -4965,6 +5713,11 @@ func preContentRetrySkipReason(err error) string {
 		return "overloaded"
 	case pe.IsNoProvider():
 		return "no_provider"
+	case strings.Contains(bodyLower, "context too long"),
+		strings.Contains(bodyLower, "maximum context length"),
+		strings.Contains(bodyLower, "context_length_exceeded"),
+		strings.Contains(bodyLower, "prompt is too long"):
+		return "context_too_long"
 	case strings.Contains(bodyLower, "context canceled"),
 		strings.Contains(bodyLower, "context cancelled"),
 		strings.Contains(bodyLower, "deadline exceeded"):
@@ -6748,12 +7501,43 @@ func (h *ChatHandler) shouldRouteShortQA(req SendMessageRequest, routingMessage 
 	return h.isShortQAShape(req, routingMessage)
 }
 
-func (h *ChatHandler) isShortQAShape(req SendMessageRequest, routingMessage string) bool {
+func (h *ChatHandler) shouldRouteImageQA(req SendMessageRequest, routingMessage string) bool {
+	if h == nil || h.settingsHandler == nil || !h.isSmallModelReady() {
+		return false
+	}
+	if !h.settingsHandler.GetSmallModelEnabled() || !h.settingsHandler.GetSmallModelRouteImageQAEnabled() {
+		return false
+	}
+	return h.isImageQAShape(req, routingMessage)
+}
+
+func (h *ChatHandler) isImageQAShape(req SendMessageRequest, routingMessage string) bool {
 	images, ok := collectSmallModelImages(req.Attachments)
-	if !ok {
+	if !ok || len(images) == 0 {
 		return false
 	}
 	if len(images) > 4 {
+		return false
+	}
+	if req.DeepResearchEnabled != nil && *req.DeepResearchEnabled {
+		return false
+	}
+	msg := strings.TrimSpace(routingMessage)
+	if strings.Contains(msg, "\n") {
+		return false
+	}
+	if msg != "" && shouldPreferDeepSearchReport(msg) {
+		return false
+	}
+	if msg == "" {
+		return true
+	}
+	return len([]rune(msg)) <= 120
+}
+
+func (h *ChatHandler) isShortQAShape(req SendMessageRequest, routingMessage string) bool {
+	images, ok := collectSmallModelImages(req.Attachments)
+	if !ok || len(images) > 0 {
 		return false
 	}
 	if req.DeepResearchEnabled != nil && *req.DeepResearchEnabled {
@@ -6850,21 +7634,56 @@ func (h *ChatHandler) generateWithSmallModelPrefixReuse(
 }
 
 func (h *ChatHandler) trySmallModelShortQA(ctx context.Context, message string, maxTokens int, temperature float64, images ...smallmodel.ImageInput) (*llm.ChatResponse, error) {
+	return h.trySmallModelConciseQA(
+		ctx,
+		"smallmodel:short_qa:v1",
+		"short_qa",
+		"You are a concise assistant. Answer briefly and directly. If uncertain, say so and avoid fabricating facts.",
+		message,
+		maxTokens,
+		temperature,
+		images...,
+	)
+}
+
+func (h *ChatHandler) trySmallModelImageQA(ctx context.Context, message string, maxTokens int, temperature float64, images ...smallmodel.ImageInput) (*llm.ChatResponse, error) {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		trimmed = "Describe the image briefly."
+	}
+	return h.trySmallModelConciseQA(
+		ctx,
+		"smallmodel:image_qa:v1",
+		"image_qa",
+		"You are a concise visual assistant. Answer briefly using the attached image and the user's request. If the image is unclear, say so instead of guessing.",
+		trimmed,
+		maxTokens,
+		temperature,
+		images...,
+	)
+}
+
+func (h *ChatHandler) trySmallModelConciseQA(
+	ctx context.Context,
+	cacheKey, scene, instruction, message string,
+	maxTokens int,
+	temperature float64,
+	images ...smallmodel.ImageInput,
+) (*llm.ChatResponse, error) {
 	if h.smallModel == nil {
 		return nil, smallmodel.ErrNotReady
 	}
 	if h.smallModelBreaker != nil && !h.smallModelBreaker.Allow(time.Now()) {
 		return nil, smallmodel.ErrCircuitOpen
 	}
-	prefix := "You are a concise assistant. Answer briefly and directly. " +
-		"If uncertain, say so and avoid fabricating facts.\n\nUser: "
+	prefix := strings.TrimSpace(instruction) + "\n\nUser: "
 	suffix := strings.TrimSpace(message) + "\nAssistant:"
 	started := time.Now()
-	resp, err := h.generateWithSmallModelPrefixReuse(ctx, "smallmodel:short_qa:v1", prefix, suffix, maxTokens, temperature, images...)
-	h.smallModelStats.RecordLatencyWithScene("short_qa", time.Since(started))
+	resp, err := h.generateWithSmallModelPrefixReuse(ctx, cacheKey, prefix, suffix, maxTokens, temperature, images...)
+	h.smallModelStats.RecordLatencyWithScene(scene, time.Since(started))
 	if err != nil {
 		if h.smallModelBreaker != nil && h.smallModelBreaker.RecordFailure(time.Now()) {
-			logger.Warn().Str("route", "short_qa").Msg("[chat] small model circuit breaker opened")
+			logger.Warn().Str("route", scene).Msg("[chat] small model circuit breaker opened")
 		}
 		return nil, err
 	}
@@ -7494,26 +8313,54 @@ func (h *ChatHandler) getUserID(c echo.Context) string {
 	return ""
 }
 
-func (h *ChatHandler) listFilterUserID(c echo.Context) string {
-	userID := h.getUserID(c)
+// conversationScopeUserID keeps list/detail access rules aligned for scoped conversations.
+func conversationScopeUserID(c echo.Context) string {
+	claims := auth.GetUserFromContext(c)
+	if claims == nil || claims.Role == "admin" {
+		return ""
+	}
+
+	userID := strings.TrimSpace(claims.UserID)
 	if userID == "preview-user" {
 		return ""
 	}
 	return userID
 }
 
+func (h *ChatHandler) listFilterUserID(c echo.Context) string {
+	return conversationScopeUserID(c)
+}
+
+func isChannelConversationID(id string) bool {
+	return strings.HasPrefix(strings.TrimSpace(id), "ch:")
+}
+
 // checkConversationOwnership verifies the caller owns the conversation (or is admin).
 // Returns the conversation if authorized, or an HTTP error.
 func (h *ChatHandler) checkConversationOwnership(c echo.Context, id string) (*memory.Conversation, error) {
-	claims := auth.GetUserFromContext(c)
+	scopedUserID := conversationScopeUserID(c)
+
+	ctx := c.Request().Context()
 	var (
 		conv *memory.Conversation
 		err  error
 	)
-	if claims != nil && claims.Role != "admin" {
-		conv, err = h.store.GetConversation(c.Request().Context(), id, claims.UserID)
+	if scopedUserID != "" {
+		conv, err = h.store.GetConversation(ctx, id, scopedUserID)
+		if err == memory.ErrNotFound && isChannelConversationID(id) {
+			// Channel conversations can be system-scoped (empty user_id) because
+			// they are created by inbound channel handlers outside user auth flows.
+			conv, err = h.store.GetConversation(ctx, id)
+			if err == nil {
+				ownerUserID := strings.TrimSpace(conv.UserID)
+				if ownerUserID != "" && ownerUserID != scopedUserID {
+					conv = nil
+					err = memory.ErrNotFound
+				}
+			}
+		}
 	} else {
-		conv, err = h.store.GetConversation(c.Request().Context(), id)
+		conv, err = h.store.GetConversation(ctx, id)
 	}
 	if err != nil {
 		if err == memory.ErrNotFound {
@@ -11931,12 +12778,16 @@ type SendMessageResponse struct {
 
 // ContextTrimInfo carries per-request context reduction stats from the proxy pruner/compactor.
 type ContextTrimInfo struct {
-	Type           string `json:"type"` // "pruned" | "compacted"
-	MessagesPruned int    `json:"messages_pruned,omitempty"`
-	TokensBefore   int    `json:"tokens_before,omitempty"`
-	TokensAfter    int    `json:"tokens_after,omitempty"`
-	Before         int    `json:"before,omitempty"`
-	After          int    `json:"after,omitempty"`
+	Type             string `json:"type"` // "pruned" | "compacted" | "progressive_compaction"
+	Stage            int    `json:"stage,omitempty"`
+	MessagesPruned   int    `json:"messages_pruned,omitempty"`
+	TokensBefore     int    `json:"tokens_before,omitempty"`
+	TokensAfter      int    `json:"tokens_after,omitempty"`
+	Before           int    `json:"before,omitempty"`
+	After            int    `json:"after,omitempty"`
+	OriginalModel    string `json:"original_model,omitempty"`
+	FallbackModel    string `json:"fallback_model,omitempty"`
+	FallbackProvider string `json:"fallback_provider,omitempty"`
 }
 
 // SendMessage sends a message and gets a response from the LLM.
@@ -12033,8 +12884,15 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		model = convState.SelectedModelID
 	}
 	model = h.defaultModelForCCCLI(model)
-	if err := h.rejectIfCurrentRequestExceedsBudget(c, model, req); err != nil {
+	currentExplicitProviderID := strings.TrimSpace(req.Provider)
+	if currentExplicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
+		currentExplicitProviderID = strings.TrimSpace(convState.SelectedProviderID)
+	}
+	if err := h.rejectIfCurrentRequestExceedsBudget(c, model, req, currentExplicitProviderID); err != nil {
 		return err
+	}
+	if c.Response().Committed {
+		return nil
 	}
 
 	// Store user message
@@ -12127,8 +12985,40 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	} else {
 		logger.Warn().Msg("[chat] SendMessage: systemPromptBuilder is nil, no system prompt injected")
 	}
-	if err := h.rejectIfPreparedInputExceedsBudget(c, model, req.MaxTokens, compactedMessages); err != nil {
-		return err
+	explicitProviderID := strings.TrimSpace(req.Provider)
+	providerExplicit := explicitProviderID != ""
+	if explicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
+		explicitProviderID = strings.TrimSpace(convState.SelectedProviderID)
+		providerExplicit = true
+	}
+	defaultPinnedProviderID := explicitProviderID
+	if defaultPinnedProviderID == "" {
+		if aff := h.getProviderAffinity(convID); aff != nil {
+			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
+		}
+	}
+	budgetPlan := h.fitPreparedMessagesToBudget(c.Request().Context(), preparedBudgetFitParams{
+		ConvID:             convID,
+		Model:              model,
+		MaxTokens:          req.MaxTokens,
+		Messages:           compactedMessages,
+		ExplicitProviderID: explicitProviderID,
+		ProviderExplicit:   providerExplicit,
+	})
+	currentBudgetAttempt := budgetPlan.Current()
+	if currentBudgetAttempt == nil {
+		return h.writePreparedInputBudgetFailure(c, budgetPlan.Failure())
+	}
+	compactedMessages = cloneLLMMessages(currentBudgetAttempt.Messages)
+	model = currentBudgetAttempt.Model
+	turnHookCtx.Model = model
+	if shouldDisablePreparedBudgetContinuation(budgetPlan.OriginalModel, defaultPinnedProviderID, currentBudgetAttempt) {
+		previousResponseID = ""
+		turnHookCtx.UsesContinuation = false
+	}
+	var progressiveContextTrim *ContextTrimInfo
+	if currentBudgetAttempt.ContextTrim != nil {
+		progressiveContextTrim = currentBudgetAttempt.ContextTrim
 	}
 
 	// Build chat request
@@ -12174,7 +13064,27 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		h.maybeAutoRollbackToolDispatchRoute()
 	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
-	h.applyPromptCacheKeyForRequest(convID, req.Provider, convState, &chatReq)
+	applyBudgetAttemptToChatReq := func(attempt *preparedBudgetAttempt) {
+		if attempt == nil {
+			return
+		}
+		currentBudgetAttempt = attempt
+		model = attempt.Model
+		compactedMessages = cloneLLMMessages(attempt.Messages)
+		chatReq.Model = model
+		chatReq.Messages = cloneLLMMessages(compactedMessages)
+		if supportsResponsesContinuation(chatReq.Model) && previousResponseID != "" &&
+			!shouldDisablePreparedBudgetContinuation(budgetPlan.OriginalModel, defaultPinnedProviderID, attempt) {
+			chatReq.PreviousResponseID = previousResponseID
+		} else {
+			chatReq.PreviousResponseID = ""
+		}
+		progressiveContextTrim = attempt.ContextTrim
+		turnHookCtx.Model = chatReq.Model
+		turnHookCtx.UsesContinuation = strings.TrimSpace(chatReq.PreviousResponseID) != ""
+		h.applyPromptCacheKeyForRequest(convID, resolvePreparedBudgetAttemptProvider(defaultPinnedProviderID, attempt), convState, &chatReq)
+	}
+	applyBudgetAttemptToChatReq(currentBudgetAttempt)
 	deepSearchState := newDeepSearchLoopState(routingMessage, selectedTools)
 	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	maxToolRoundsForRequest := h.resolveToolRoundLimitForRequest(
@@ -12216,26 +13126,56 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if requester := h.buildBrowserCheckpointRequester(c.Request().Context(), "web", webUserID, convID, "", "", webLang); requester != nil {
 		toolCtx = tools.WithBrowserCheckpointRequester(toolCtx, requester)
 	}
-	llmCtx := withProxySession(c.Request().Context(), convID)
-	llmCtx = withProxyLocale(llmCtx, locale)
+	llmBaseCtx := withProxySession(c.Request().Context(), convID)
+	llmBaseCtx = withProxyLocale(llmBaseCtx, locale)
 	var resolvedRoute proxy.ResolvedRoute
-	llmCtx = proxy.WithResolvedRoute(llmCtx, &resolvedRoute)
-	if strings.TrimSpace(req.Provider) != "" {
-		llmCtx = proxy.WithPinnedProvider(llmCtx, req.Provider)
-	} else if strings.TrimSpace(convState.SelectedProviderID) != "" {
-		llmCtx = proxy.WithPinnedProvider(llmCtx, convState.SelectedProviderID)
-	} else if aff := h.getProviderAffinity(convID); aff != nil {
-		llmCtx = proxy.WithPinnedProvider(llmCtx, aff.ProviderID)
-	}
+	llmBaseCtx = proxy.WithResolvedRoute(llmBaseCtx, &resolvedRoute)
 	// Attach prune stats slot so the proxy pruner can populate it (non-streaming path).
 	pruneStats := &pruner.RequestPruneStats{}
-	llmCtx = pruner.WithPruneStats(llmCtx, pruneStats)
+	llmBaseCtx = pruner.WithPruneStats(llmBaseCtx, pruneStats)
 	if h.shouldDisableProxyPruner() {
-		llmCtx = pruner.WithPrunerDisabled(llmCtx, true)
+		llmBaseCtx = pruner.WithPrunerDisabled(llmBaseCtx, true)
 	}
+	buildLLMCtxForBudgetAttempt := func(attempt *preparedBudgetAttempt) context.Context {
+		resolvedRoute = proxy.ResolvedRoute{}
+		ctx := llmBaseCtx
+		ctx = proxy.WithPinnedProvider(ctx, resolvePreparedBudgetAttemptProvider(defaultPinnedProviderID, attempt))
+		if shouldDisablePreparedBudgetContinuation(budgetPlan.OriginalModel, defaultPinnedProviderID, attempt) {
+			ctx = proxy.WithDisableResponsesContinuation(ctx)
+		}
+		return ctx
+	}
+	llmCtx := buildLLMCtxForBudgetAttempt(currentBudgetAttempt)
 
 	smImages, smImagesOK := collectSmallModelImages(req.Attachments)
-	if h.shouldRouteShortQA(req, routingMessage) {
+	if h.shouldRouteImageQA(req, routingMessage) {
+		smCtx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
+		if !smImagesOK {
+			smImages = nil
+		}
+		smResp, smErr := h.trySmallModelImageQA(smCtx, routingMessage, req.MaxTokens, req.Temperature, smImages...)
+		cancel()
+		if smErr == nil && smResp != nil {
+			h.smallModelStats.RecordImageQARoute(true)
+			resp = smResp
+			err = nil
+			logger.Info().
+				Str("conv_id", convID).
+				Str("route", "image_qa").
+				Str("provider", "smallmodel").
+				Msg("[chat] routed to small model")
+		} else {
+			h.smallModelStats.RecordImageQARoute(false)
+			h.smallModelStats.RecordFallback(smallModelFallbackReason(smErr))
+			logger.Warn().
+				Err(smErr).
+				Str("conv_id", convID).
+				Str("route", "image_qa").
+				Str("fallback_reason", smallModelFallbackReason(smErr)).
+				Msg("[chat] small model image route failed, fallback to LLM")
+		}
+	}
+	if resp == nil && err == nil && h.shouldRouteShortQA(req, routingMessage) {
 		smCtx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
 		if !smImagesOK {
 			smImages = nil
@@ -12305,6 +13245,37 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 		for round := 0; round < maxToolRoundsForRequest; round++ {
 			resp, err = h.chatOnce(llmCtx, chatReq)
+			if round == 0 && err != nil && llmCtx.Err() == nil {
+				for {
+					statusCode := 0
+					if pe, ok := err.(*proxybridge.ProxyError); ok {
+						statusCode = pe.StatusCode
+					}
+					providerName := strings.TrimSpace(resolvedRoute.Provider)
+					if providerName == "" {
+						providerName = strings.TrimSpace(resolvedRoute.ProviderID)
+					}
+					if providerName == "" && currentBudgetAttempt != nil {
+						providerName = strings.TrimSpace(currentBudgetAttempt.ProviderID)
+					}
+					if !h.isPreparedBudgetContextTooLongError(err, providerName, statusCode) || !budgetPlan.Advance() {
+						break
+					}
+					applyBudgetAttemptToChatReq(budgetPlan.Current())
+					llmCtx = buildLLMCtxForBudgetAttempt(currentBudgetAttempt)
+					logger.Warn().
+						Err(err).
+						Str("conv_id", convID).
+						Int("next_stage", currentBudgetAttempt.Stage).
+						Str("fallback_model", currentBudgetAttempt.Model).
+						Str("fallback_provider", currentBudgetAttempt.ProviderID).
+						Msg("[chat] upstream context limit hit, advancing prepared budget attempt")
+					resp, err = h.chatOnce(llmCtx, chatReq)
+					if err == nil || resp != nil || llmCtx.Err() != nil {
+						break
+					}
+				}
+			}
 			if err != nil || resp == nil {
 				if round > 0 && err != nil && awaitingPostToolSummary && autoContinueCount < maxAutoContinueRetries && llmCtx.Err() == nil {
 					reason := classifyEmptyPostToolAutoContinueReason(todoContent, agentModeAutoContinue, planCompletedByTool)
@@ -12715,6 +13686,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			sanitizeModelHint(model, chatReq.Model),
 		)
 		resp.Message.Content = stripDuplicateTodoChecklistForPersistence(resp.Message.Content, todoContent)
+		resp.Message.Content = stripDuplicateTodoChecklistFromTypelessCards(resp.Message.Content, todoContent)
 	}
 
 	// Estimate tokens if API didn't return usage data
@@ -12756,6 +13728,34 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	if err != nil {
+		statusCode := 0
+		if pe, ok := err.(*proxybridge.ProxyError); ok {
+			statusCode = pe.StatusCode
+		}
+		providerName := strings.TrimSpace(resolvedRoute.Provider)
+		if providerName == "" {
+			providerName = strings.TrimSpace(resolvedRoute.ProviderID)
+		}
+		if providerName == "" && currentBudgetAttempt != nil {
+			providerName = strings.TrimSpace(currentBudgetAttempt.ProviderID)
+		}
+		if budgetPlan != nil && currentBudgetAttempt != nil &&
+			budgetPlan.current+1 >= len(budgetPlan.attempts) &&
+			h.isPreparedBudgetContextTooLongError(err, providerName, statusCode) {
+			fallbackAttempted := false
+			for _, attempt := range budgetPlan.attempts {
+				if attempt.ContextTrim != nil && strings.TrimSpace(attempt.ContextTrim.FallbackModel) != "" {
+					fallbackAttempted = true
+					break
+				}
+			}
+			return h.writePreparedInputBudgetFailure(c, &preparedBudgetFailure{
+				Budget:                     currentBudgetAttempt.Budget,
+				CompressionStagesAttempted: []int{1, 2, 3},
+				FallbackAttempted:          fallbackAttempted,
+				OriginalModel:              budgetPlan.OriginalModel,
+			})
+		}
 		// Emit error event to companion (async)
 		sanitizedErr := proxy.SanitizeError(err)
 		h.emitErrorEventAsync(sessionID, sanitizedErr)
@@ -12789,8 +13789,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	h.conversationCache.Invalidate(convID)
 	h.afterAssistantPersistedHooks(turnHookCtx, assistantMsg)
 
-	var contextTrim *ContextTrimInfo
-	if pruneStats.Pruned {
+	contextTrim := progressiveContextTrim
+	if contextTrim == nil && pruneStats.Pruned {
 		logger.Info().
 			Str("conv_id", convID).
 			Int("messages_pruned", pruneStats.MessagesPruned).
@@ -13329,8 +14329,15 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		model = convState.SelectedModelID
 	}
 	model = h.defaultModelForCCCLI(model)
-	if err := h.rejectIfCurrentRequestExceedsBudget(c, model, req); err != nil {
+	currentExplicitProviderID := strings.TrimSpace(req.Provider)
+	if currentExplicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
+		currentExplicitProviderID = strings.TrimSpace(convState.SelectedProviderID)
+	}
+	if err := h.rejectIfCurrentRequestExceedsBudget(c, model, req, currentExplicitProviderID); err != nil {
 		return err
+	}
+	if c.Response().Committed {
+		return nil
 	}
 	providerName := "auto"
 
@@ -13496,8 +14503,40 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	} else {
 		logger.Warn().Msg("[chat] StreamMessage: systemPromptBuilder is nil, no system prompt injected")
 	}
-	if err := h.rejectIfPreparedInputExceedsBudget(c, model, req.MaxTokens, compactedMessages); err != nil {
-		return err
+	explicitProviderID := strings.TrimSpace(req.Provider)
+	providerExplicit := explicitProviderID != ""
+	if explicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
+		explicitProviderID = strings.TrimSpace(convState.SelectedProviderID)
+		providerExplicit = true
+	}
+	defaultPinnedProviderID := explicitProviderID
+	if defaultPinnedProviderID == "" {
+		if aff := h.getProviderAffinity(convID); aff != nil {
+			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
+		}
+	}
+	budgetPlan := h.fitPreparedMessagesToBudget(c.Request().Context(), preparedBudgetFitParams{
+		ConvID:             convID,
+		Model:              model,
+		MaxTokens:          req.MaxTokens,
+		Messages:           compactedMessages,
+		ExplicitProviderID: explicitProviderID,
+		ProviderExplicit:   providerExplicit,
+	})
+	currentBudgetAttempt := budgetPlan.Current()
+	if currentBudgetAttempt == nil {
+		return h.writePreparedInputBudgetFailure(c, budgetPlan.Failure())
+	}
+	compactedMessages = cloneLLMMessages(currentBudgetAttempt.Messages)
+	model = currentBudgetAttempt.Model
+	turnHookCtx.Model = model
+	if shouldDisablePreparedBudgetContinuation(budgetPlan.OriginalModel, defaultPinnedProviderID, currentBudgetAttempt) {
+		previousResponseID = ""
+		turnHookCtx.UsesContinuation = false
+	}
+	var progressiveContextTrim *ContextTrimInfo
+	if currentBudgetAttempt.ContextTrim != nil {
+		progressiveContextTrim = currentBudgetAttempt.ContextTrim
 	}
 
 	// Build chat request
@@ -13544,7 +14583,29 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		h.maybeAutoRollbackToolDispatchRoute()
 	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
-	h.applyPromptCacheKeyForRequest(convID, req.Provider, convState, &chatReq)
+	applyBudgetAttemptToChatReq := func(attempt *preparedBudgetAttempt) {
+		if attempt == nil {
+			return
+		}
+		currentBudgetAttempt = attempt
+		model = attempt.Model
+		compactedMessages = cloneLLMMessages(attempt.Messages)
+		chatReq.Model = model
+		chatReq.Messages = cloneLLMMessages(compactedMessages)
+		if !disableResponsesContinuation &&
+			supportsResponsesContinuation(chatReq.Model) &&
+			previousResponseID != "" &&
+			!shouldDisablePreparedBudgetContinuation(budgetPlan.OriginalModel, defaultPinnedProviderID, attempt) {
+			chatReq.PreviousResponseID = previousResponseID
+		} else {
+			chatReq.PreviousResponseID = ""
+		}
+		progressiveContextTrim = attempt.ContextTrim
+		turnHookCtx.Model = chatReq.Model
+		turnHookCtx.UsesContinuation = strings.TrimSpace(chatReq.PreviousResponseID) != ""
+		h.applyPromptCacheKeyForRequest(convID, resolvePreparedBudgetAttemptProvider(defaultPinnedProviderID, attempt), convState, &chatReq)
+	}
+	applyBudgetAttemptToChatReq(currentBudgetAttempt)
 	deepSearchState := newDeepSearchLoopState(routingMessage, selectedTools)
 	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	maxToolRoundsForRequest := h.resolveToolRoundLimitForRequest(
@@ -13592,20 +14653,6 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var resolvedRoute proxy.ResolvedRoute
 	ctx = proxy.WithResolvedRoute(ctx, &resolvedRoute)
 
-	// Provider pinning: explicit user selection takes priority over affinity.
-	if req.Provider != "" {
-		ctx = proxy.WithPinnedProvider(ctx, req.Provider)
-		logger.Debug().Str("conv_id", convID).Str("provider_id", req.Provider).Msg("[chat] stream: using user-selected provider")
-	} else if convState.SelectedProviderID != "" {
-		ctx = proxy.WithPinnedProvider(ctx, convState.SelectedProviderID)
-		logger.Debug().Str("conv_id", convID).Str("provider_id", convState.SelectedProviderID).Msg("[chat] stream: using conversation-selected provider")
-	} else if aff := h.getProviderAffinity(convID); aff != nil {
-		// Provider affinity: pin to the same provider that served the last turn
-		// to maximize Anthropic prompt cache hits (cache is per-provider, 5-min TTL).
-		ctx = proxy.WithPinnedProvider(ctx, aff.ProviderID)
-		logger.Debug().Str("conv_id", convID).Str("provider_id", aff.ProviderID).Msg("[chat] stream: using provider affinity")
-	}
-
 	streamLocale := ""
 	streamLang := i18n.DefaultLanguage
 	streamUserID := h.getUserID(c)
@@ -13621,9 +14668,18 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	ctx = tools.WithUserID(ctx, streamUserID)
 	ctx = tools.WithChannel(ctx, "web")
 	ctx = tools.WithSessionID(ctx, convID)
-	if disableResponsesContinuation {
-		ctx = proxy.WithDisableResponsesContinuation(ctx)
+	streamBaseCtx := ctx
+	buildStreamCtxForBudgetAttempt := func(attempt *preparedBudgetAttempt) context.Context {
+		resolvedRoute = proxy.ResolvedRoute{}
+		attemptCtx := streamBaseCtx
+		attemptCtx = proxy.WithPinnedProvider(attemptCtx, resolvePreparedBudgetAttemptProvider(defaultPinnedProviderID, attempt))
+		disableForAttempt := shouldDisablePreparedBudgetContinuation(budgetPlan.OriginalModel, defaultPinnedProviderID, attempt)
+		if disableResponsesContinuation || disableForAttempt {
+			attemptCtx = proxy.WithDisableResponsesContinuation(attemptCtx)
+		}
+		return attemptCtx
 	}
+	ctx = buildStreamCtxForBudgetAttempt(currentBudgetAttempt)
 	// tools (e.g. browser navigate/screenshot) don't get "context canceled".
 	toolCtx := context.WithoutCancel(ctx)
 
@@ -13647,17 +14703,23 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	rc := http.NewResponseController(c.Response())
 	rc.SetWriteDeadline(time.Time{})
 
-	// Flush headers immediately
-	c.Response().WriteHeader(http.StatusOK)
-	flusher.Flush()
-
 	// Pre-allocate buffer for SSE writes to reduce allocations.
 	sseBuffer := bytes.NewBuffer(make([]byte, 0, 512))
 	streamSeq := int64(0)
+	streamHeadersFlushed := false
+	flushStreamHeaders := func() {
+		if streamHeadersFlushed {
+			return
+		}
+		c.Response().WriteHeader(http.StatusOK)
+		flusher.Flush()
+		streamHeadersFlushed = true
+	}
 	emitSSE := func(payload map[string]interface{}) {
 		if payload == nil {
 			return
 		}
+		flushStreamHeaders()
 		if raw, ok := payload["stream_id"]; !ok || strings.TrimSpace(fmt.Sprintf("%v", raw)) == "" {
 			payload["stream_id"] = streamID
 		}
@@ -13899,6 +14961,30 @@ STREAM_LOOP:
 			// Send pruning/compaction metadata as soon as the first chunk arrives.
 			// Do not wait for the first text delta: tool-first streams may otherwise never show it.
 			if !contextTrimSent {
+				if progressiveContextTrim != nil {
+					logger.Info().
+						Str("conv_id", convID).
+						Str("stream_id", streamID).
+						Int("stage", progressiveContextTrim.Stage).
+						Str("original_model", progressiveContextTrim.OriginalModel).
+						Str("fallback_model", progressiveContextTrim.FallbackModel).
+						Str("fallback_provider", progressiveContextTrim.FallbackProvider).
+						Msg("[chat] stream context progressively compacted")
+					emitSSE(map[string]interface{}{
+						"type":              progressiveContextTrim.Type,
+						"stage":             progressiveContextTrim.Stage,
+						"messages_pruned":   progressiveContextTrim.MessagesPruned,
+						"tokens_before":     progressiveContextTrim.TokensBefore,
+						"tokens_after":      progressiveContextTrim.TokensAfter,
+						"before":            progressiveContextTrim.Before,
+						"after":             progressiveContextTrim.After,
+						"original_model":    progressiveContextTrim.OriginalModel,
+						"fallback_model":    progressiveContextTrim.FallbackModel,
+						"fallback_provider": progressiveContextTrim.FallbackProvider,
+						"stream_id":         streamID,
+					})
+					contextTrimSent = true
+				}
 				if pruneStats.Pruned {
 					logger.Info().
 						Str("conv_id", convID).
@@ -14323,6 +15409,38 @@ STREAM_LOOP:
 		}
 		if h.proxyBridge != nil {
 			err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
+			if err != nil && toolRound == 0 && fullContent == "" && !streamErrorHandled && ctx.Err() == nil {
+				for {
+					statusCode := 0
+					if pe, ok := err.(*proxybridge.ProxyError); ok {
+						statusCode = pe.StatusCode
+					}
+					providerName := strings.TrimSpace(resolvedRoute.Provider)
+					if providerName == "" {
+						providerName = strings.TrimSpace(resolvedRoute.ProviderID)
+					}
+					if providerName == "" && currentBudgetAttempt != nil {
+						providerName = strings.TrimSpace(currentBudgetAttempt.ProviderID)
+					}
+					if !h.isPreparedBudgetContextTooLongError(err, providerName, statusCode) || !budgetPlan.Advance() {
+						break
+					}
+					applyBudgetAttemptToChatReq(budgetPlan.Current())
+					ctx = buildStreamCtxForBudgetAttempt(currentBudgetAttempt)
+					toolCtx = context.WithoutCancel(ctx)
+					logger.Warn().
+						Err(err).
+						Str("conv_id", convID).
+						Int("next_stage", currentBudgetAttempt.Stage).
+						Str("fallback_model", currentBudgetAttempt.Model).
+						Str("fallback_provider", currentBudgetAttempt.ProviderID).
+						Msg("[chat] stream: upstream context limit hit, advancing prepared budget attempt")
+					err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
+					if err == nil || fullContent != "" || streamErrorHandled || ctx.Err() != nil {
+						break
+					}
+				}
+			}
 			// Transparent retry: if the stream failed before any content was sent to the client,
 			// retry with backoff. This handles transient network errors silently.
 			// Skip retries for client errors (4xx), overloaded (429/529), and no-provider (503)
@@ -15694,6 +16812,35 @@ STREAM_LOOP:
 		if streamErrorHandled {
 			return nil
 		}
+		if !streamHeadersFlushed && fullContent == "" && budgetPlan != nil && currentBudgetAttempt != nil {
+			statusCode := 0
+			if pe, ok := err.(*proxybridge.ProxyError); ok {
+				statusCode = pe.StatusCode
+			}
+			providerName := strings.TrimSpace(resolvedRoute.Provider)
+			if providerName == "" {
+				providerName = strings.TrimSpace(resolvedRoute.ProviderID)
+			}
+			if providerName == "" {
+				providerName = strings.TrimSpace(currentBudgetAttempt.ProviderID)
+			}
+			if budgetPlan.current+1 >= len(budgetPlan.attempts) &&
+				h.isPreparedBudgetContextTooLongError(err, providerName, statusCode) {
+				fallbackAttempted := false
+				for _, attempt := range budgetPlan.attempts {
+					if attempt.ContextTrim != nil && strings.TrimSpace(attempt.ContextTrim.FallbackModel) != "" {
+						fallbackAttempted = true
+						break
+					}
+				}
+				return h.writePreparedInputBudgetFailure(c, &preparedBudgetFailure{
+					Budget:                     currentBudgetAttempt.Budget,
+					CompressionStagesAttempted: []int{1, 2, 3},
+					FallbackAttempted:          fallbackAttempted,
+					OriginalModel:              budgetPlan.OriginalModel,
+				})
+			}
+		}
 		if fullContent == "" && strings.TrimSpace(req.Provider) == "" && h.shouldUseDeepResearchFallback(err, routingMessage, req.DeepResearchEnabled) {
 			fbCtx, cancel := context.WithTimeout(c.Request().Context(), 45*time.Second)
 			fallbackContent, fbErr := h.runDeepResearchFallback(fbCtx, routingMessage, streamLocale)
@@ -15984,6 +17131,17 @@ STREAM_LOOP:
 			LatencyMs:       int64(finalLatencyMs),
 			TTFTMs:          int64(finalTTFTMs),
 			TokensPerSecond: finalTPS,
+		}
+		if streamingMsgID != "" && streamingMsgID == todoMsgID && strings.TrimSpace(todoContent) != "" {
+			if _, hasChecklist := extractFirstTodoChecklist(persistedFinalContent); !hasChecklist &&
+				strings.TrimSpace(persistedFinalContent) != strings.TrimSpace(todoContent) {
+				if updErr := h.store.UpdateMessageContent(context.Background(), todoMsgID, todoContent, nil); updErr != nil {
+					logger.Error().Err(updErr).Str("conv_id", convID).Msg("[chat] failed to restore todo checklist message before final summary persist")
+				} else {
+					h.conversationCache.Invalidate(convID)
+				}
+				streamingMsgID = ""
+			}
 		}
 		var assistantMsgForHook *memory.Message
 		if streamingMsgID != "" {
@@ -16970,15 +18128,32 @@ func (h *ChatHandler) InjectMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "message is required")
 	}
 
-	// Find the active stream for this conversation
-	h.convStreamMu.RLock()
-	streamID, hasStream := h.convToStream[convID]
-	h.convStreamMu.RUnlock()
-	if !hasStream {
+	streamID, injected := h.enqueueConversationInjection(convID, req.Message)
+	if !injected {
 		return c.JSON(http.StatusNotFound, map[string]interface{}{
 			"success": false,
 			"message": "no active stream for this conversation",
 		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":   true,
+		"injected":  true,
+		"stream_id": streamID,
+	})
+}
+
+func (h *ChatHandler) enqueueConversationInjection(convID, message string) (string, bool) {
+	message = strings.TrimSpace(message)
+	if convID == "" || message == "" {
+		return "", false
+	}
+
+	h.convStreamMu.RLock()
+	streamID, hasStream := h.convToStream[convID]
+	h.convStreamMu.RUnlock()
+	if !hasStream {
+		return "", false
 	}
 
 	// Create or reuse injection channel
@@ -16992,25 +18167,89 @@ func (h *ChatHandler) InjectMessage(c echo.Context) error {
 
 	// Non-blocking send — if channel already has a message, replace it
 	select {
-	case ch <- req.Message:
+	case ch <- message:
 	default:
 		// Drain old message and send new one
 		select {
 		case <-ch:
 		default:
 		}
-		ch <- req.Message
+		ch <- message
 	}
 
 	// Cancel the active stream — StreamMessage will detect the injection
 	h.markConversationCancelledForResponsesContinuation(convID)
 	h.streamController.Cancel(streamID)
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success":   true,
-		"injected":  true,
-		"stream_id": streamID,
-	})
+	return streamID, true
+}
+
+func (h *ChatHandler) invokeInternalSendMessage(ctx context.Context, conv *memory.Conversation, req SendMessageRequest) error {
+	if h == nil || conv == nil {
+		return fmt.Errorf("conversation is required")
+	}
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(conv.UserID) != "" {
+		ctx = context.WithValue(ctx, auth.UserContextKey, &auth.UserClaims{
+			UserID: conv.UserID,
+			Role:   "user",
+		})
+	}
+
+	httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewReader(payload)).WithContext(ctx)
+	httpReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	httpReq.RemoteAddr = "127.0.0.1:0"
+
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	c := e.NewContext(httpReq, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := h.SendMessage(c); err != nil {
+		if httpErr, ok := err.(*echo.HTTPError); ok {
+			return fmt.Errorf("%v", httpErr.Message)
+		}
+		return err
+	}
+	if rec.Code >= http.StatusBadRequest {
+		body := strings.TrimSpace(rec.Body.String())
+		if body == "" {
+			body = http.StatusText(rec.Code)
+		}
+		return errors.New(body)
+	}
+	if h.sseBroker != nil {
+		h.sseBroker.Publish(strings.TrimSpace(conv.UserID), "conversation_updated", map[string]any{
+			"id":        conv.ID,
+			"streaming": false,
+		})
+	}
+	return nil
+}
+
+// SubmitVoiceWakeMessage injects into an active stream if present, otherwise
+// reuses the normal non-streaming SendMessage pipeline via an internal echo context.
+func (h *ChatHandler) SubmitVoiceWakeMessage(ctx context.Context, conversationID, text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	conv, err := h.store.GetConversation(ctx, conversationID)
+	if err != nil {
+		if err == memory.ErrNotFound {
+			return voicewake.ErrTargetUnavailable
+		}
+		return err
+	}
+	if _, injected := h.enqueueConversationInjection(conversationID, text); injected {
+		return nil
+	}
+	return h.invokeInternalSendMessage(ctx, conv, SendMessageRequest{Message: text})
 }
 
 func (h *ChatHandler) markConversationCancelledForResponsesContinuation(convID string) {

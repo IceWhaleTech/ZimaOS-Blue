@@ -46,7 +46,8 @@ const RESUME_THRESHOLD_RATIO = 0.12
 const DEFAULT_NOISE_CALIBRATION_DURATION = 400
 
 export class EnergyVAD {
-  private opts: Required<Omit<VADOptions, 'onSpeechStart' | 'onSpeechEnd' | 'onVolumeChange'>> & Pick<VADOptions, 'onSpeechStart' | 'onSpeechEnd' | 'onVolumeChange'>
+  private opts: Required<Omit<VADOptions, 'onSpeechStart' | 'onSpeechEnd' | 'onVolumeChange'>> &
+    Pick<VADOptions, 'onSpeechStart' | 'onSpeechEnd' | 'onVolumeChange'>
   private state: VADState = 'idle'
   private stream: MediaStream | null = null
   private audioCtx: AudioContext | null = null
@@ -72,15 +73,20 @@ export class EnergyVAD {
   private _isListening = false
   private _isSpeaking = false
 
-  get isListening() { return this._isListening }
-  get isSpeaking() { return this._isSpeaking }
+  get isListening() {
+    return this._isListening
+  }
+  get isSpeaking() {
+    return this._isSpeaking
+  }
 
   constructor(options?: VADOptions) {
     const preBufferDuration = options?.preBufferDuration ?? 300
     this.opts = {
       speechThreshold: options?.speechThreshold ?? 0.015,
       silenceThreshold: options?.silenceThreshold ?? 0.01,
-      noiseCalibrationDuration: options?.noiseCalibrationDuration ?? DEFAULT_NOISE_CALIBRATION_DURATION,
+      noiseCalibrationDuration:
+        options?.noiseCalibrationDuration ?? DEFAULT_NOISE_CALIBRATION_DURATION,
       silenceDuration: options?.silenceDuration ?? 1500,
       minSpeechDuration: options?.minSpeechDuration ?? 300,
       preBufferDuration,
@@ -100,7 +106,7 @@ export class EnergyVAD {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
-      }
+      },
     })
 
     this.audioCtx = new AudioContext()
@@ -179,7 +185,7 @@ export class EnergyVAD {
         this.audioCtx = null
       }
       if (this.stream) {
-        this.stream.getTracks().forEach(t => t.stop())
+        this.stream.getTracks().forEach((t) => t.stop())
         this.stream = null
       }
     }
@@ -209,7 +215,7 @@ export class EnergyVAD {
     if (this.paused) return
 
     const now = Date.now()
-    const isCalibrating = (now - this.listeningStartTime) < this.opts.noiseCalibrationDuration
+    const isCalibrating = now - this.listeningStartTime < this.opts.noiseCalibrationDuration
     const initialThresholds = this.computeAdaptiveThresholds()
 
     // Keep tracking ambient floor while not actively in speaking state.
@@ -234,7 +240,7 @@ export class EnergyVAD {
           this.speechFrameCount++
           if (this.speechFrameCount >= MIN_SPEECH_FRAMES) {
             this.state = 'speaking'
-            this.speechStartTime = now - (MIN_SPEECH_FRAMES * TICK_INTERVAL)
+            this.speechStartTime = now - MIN_SPEECH_FRAMES * TICK_INTERVAL
             this._isSpeaking = true
             this.markSpeechStart()
             this.opts.onSpeechStart?.()
@@ -300,9 +306,9 @@ export class EnergyVAD {
     this.noiseFloor += (clamped - this.noiseFloor) * alpha
   }
 
-  private computeAdaptiveThresholds(): { speech: number, silence: number } {
-    const adaptiveSpeech = (this.noiseFloor * SPEECH_NOISE_RATIO) + SPEECH_NOISE_OFFSET
-    const adaptiveSilence = (this.noiseFloor * SILENCE_NOISE_RATIO) + SILENCE_NOISE_OFFSET
+  private computeAdaptiveThresholds(): { speech: number; silence: number } {
+    const adaptiveSpeech = this.noiseFloor * SPEECH_NOISE_RATIO + SPEECH_NOISE_OFFSET
+    const adaptiveSilence = this.noiseFloor * SILENCE_NOISE_RATIO + SILENCE_NOISE_OFFSET
     const speech = Math.max(this.opts.speechThreshold, adaptiveSpeech)
     const silenceUpper = Math.max(0.001, speech - THRESHOLD_HYSTERESIS)
     const silence = Math.min(Math.max(this.opts.silenceThreshold, adaptiveSilence), silenceUpper)
@@ -313,7 +319,7 @@ export class EnergyVAD {
     const resumeOffset = Math.max(
       RESUME_THRESHOLD_MIN_OFFSET,
       speechThreshold * RESUME_THRESHOLD_RATIO,
-      THRESHOLD_HYSTERESIS,
+      THRESHOLD_HYSTERESIS
     )
     return speechThreshold + resumeOffset
   }
@@ -325,7 +331,7 @@ export class EnergyVAD {
       return new MediaRecorder(this.stream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
-          : 'audio/webm'
+          : 'audio/webm',
       })
     } catch {
       return new MediaRecorder(this.stream!)
@@ -351,7 +357,11 @@ export class EnergyVAD {
   /** Stop the continuous recorder. */
   private stopRecorder(): void {
     if (this.recorder && this.recorder.state !== 'inactive') {
-      try { this.recorder.stop() } catch { /* ignore */ }
+      try {
+        this.recorder.stop()
+      } catch {
+        /* ignore */
+      }
     }
     this.recorder = null
     this.chunks = []
@@ -385,7 +395,9 @@ export class EnergyVAD {
       } else {
         // chunk[0] = init segment, then speech region chunks
         const firstChunk = this.chunks[0]
-        speechSlice = firstChunk ? [firstChunk, ...this.chunks.slice(startIdx)] : this.chunks.slice(startIdx)
+        speechSlice = firstChunk
+          ? [firstChunk, ...this.chunks.slice(startIdx)]
+          : this.chunks.slice(startIdx)
       }
 
       const blob = new Blob(speechSlice, { type: mr.mimeType || 'audio/webm' })

@@ -50,7 +50,9 @@ describe('providerPool store delete provider', () => {
       priority: 10,
     })
 
-    await expect(store.deleteProvider('media-kling')).rejects.toThrow('Media providers are not deletable')
+    await expect(store.deleteProvider('media-kling')).rejects.toThrow(
+      'Media providers are not deletable'
+    )
     expect(providerPoolApi.deleteProvider).not.toHaveBeenCalled()
   })
 })

@@ -63,7 +63,9 @@ function formatDate(dateStr: string): string {
           >
             {{ getTriggerTypeLabel(props.rule.trigger_type) }}
           </span>
-          <span class="text-gray-400 dark:text-gray-500 text-xs">{{ t('autoReply.card.priority', { priority: props.rule.priority }) }}</span>
+          <span class="text-gray-400 dark:text-gray-500 text-xs">{{
+            t('autoReply.card.priority', { priority: props.rule.priority })
+          }}</span>
         </div>
       </div>
       <button
@@ -81,8 +83,12 @@ function formatDate(dateStr: string): string {
 
     <!-- Trigger Value -->
     <div class="mb-3">
-      <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">{{ t('autoReply.card.trigger', 'Trigger') }}</div>
-      <code class="text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded block truncate">
+      <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">
+        {{ t('autoReply.card.trigger', 'Trigger') }}
+      </div>
+      <code
+        class="text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded block truncate"
+      >
         {{ props.rule.trigger_value }}
       </code>
     </div>
@@ -102,7 +108,9 @@ function formatDate(dateStr: string): string {
 
     <!-- Channels -->
     <div v-if="rule.channels.length > 0" class="mb-3">
-      <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">{{ t('autoReply.card.channels', 'Channels') }}</div>
+      <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">
+        {{ t('autoReply.card.channels', 'Channels') }}
+      </div>
       <div class="flex flex-wrap gap-1">
         <span
           v-for="channel in rule.channels"

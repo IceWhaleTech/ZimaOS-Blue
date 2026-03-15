@@ -23,10 +23,14 @@ const contentDraft = ref('')
 const indicatorClass = computed(() => {
   const type = status.value?.last_event?.indicator_type
   switch (type) {
-    case 'ok': return 'bg-green-500'
-    case 'alert': return 'bg-yellow-500'
-    case 'error': return 'bg-red-500'
-    default: return 'bg-gray-400'
+    case 'ok':
+      return 'bg-green-500'
+    case 'alert':
+      return 'bg-yellow-500'
+    case 'error':
+      return 'bg-red-500'
+    default:
+      return 'bg-gray-400'
   }
 })
 
@@ -130,10 +134,16 @@ onMounted(() => {
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('heartbeat.title') }}</h3>
+      <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+        {{ t('heartbeat.title') }}
+      </h3>
       <button
         class="px-3 py-1.5 text-sm rounded-lg transition-colors"
-        :class="loading ? 'bg-gray-200 dark:bg-gray-700 text-gray-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
+        :class="
+          loading
+            ? 'bg-gray-200 dark:bg-gray-700 text-gray-400'
+            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+        "
         :disabled="loading"
         @click="fetchStatus"
       >
@@ -145,7 +155,9 @@ onMounted(() => {
 
     <!-- Enable/Disable Toggle -->
     <div v-if="status" class="flex items-center justify-between py-2">
-      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('heartbeat.enableToggle') }}</span>
+      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{
+        t('heartbeat.enableToggle')
+      }}</span>
       <button
         role="switch"
         :aria-checked="status.enabled"
@@ -162,7 +174,10 @@ onMounted(() => {
     </div>
 
     <!-- Status Card (only when enabled) -->
-    <div v-if="status && status.enabled" class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+    <div
+      v-if="status && status.enabled"
+      class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3"
+    >
       <!-- Indicator -->
       <div class="flex items-center gap-3">
         <span class="w-2.5 h-2.5 rounded-full" :class="indicatorClass" />
@@ -180,7 +195,9 @@ onMounted(() => {
         </div>
         <div v-if="status.last_event.reason" class="flex justify-between">
           <span>{{ t('heartbeat.reasonLabel') }}</span>
-          <span class="text-gray-500">{{ t(`heartbeat.reason.${status.last_event.reason}`, status.last_event.reason) }}</span>
+          <span class="text-gray-500">{{
+            t(`heartbeat.reason.${status.last_event.reason}`, status.last_event.reason)
+          }}</span>
         </div>
         <div v-if="status.last_event.duration_ms" class="flex justify-between">
           <span>{{ t('heartbeat.duration') }}</span>
@@ -189,7 +206,10 @@ onMounted(() => {
       </div>
 
       <!-- Next Due -->
-      <div v-if="status.next_due" class="text-sm text-gray-600 dark:text-gray-400 flex justify-between">
+      <div
+        v-if="status.next_due"
+        class="text-sm text-gray-600 dark:text-gray-400 flex justify-between"
+      >
         <span>{{ t('heartbeat.nextDue') }}</span>
         <span>{{ formatTime(status.next_due) }}</span>
       </div>
@@ -197,7 +217,11 @@ onMounted(() => {
       <!-- Trigger Button -->
       <button
         class="w-full mt-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors"
-        :class="triggering ? 'bg-gray-300 dark:bg-gray-600 text-gray-500' : 'bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 hover:bg-gray-700 dark:hover:bg-gray-300'"
+        :class="
+          triggering
+            ? 'bg-gray-300 dark:bg-gray-600 text-gray-500'
+            : 'bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 hover:bg-gray-700 dark:hover:bg-gray-300'
+        "
         :disabled="triggering"
         @click="triggerNow"
       >
@@ -210,7 +234,9 @@ onMounted(() => {
       <div class="flex items-center justify-between">
         <div>
           <span class="text-sm font-medium text-gray-900 dark:text-white">HEARTBEAT.md</span>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('heartbeat.contentDescription') }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            {{ t('heartbeat.contentDescription') }}
+          </p>
         </div>
         <button
           v-if="!contentEditing"
@@ -251,7 +277,8 @@ onMounted(() => {
         <pre
           v-else
           class="text-sm font-mono text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 rounded-lg p-3 whitespace-pre-wrap min-h-[4rem] max-h-48 overflow-y-auto"
-        >{{ contentText || t('heartbeat.contentEmpty') }}</pre>
+          >{{ contentText || t('heartbeat.contentEmpty') }}</pre
+        >
       </template>
     </div>
 
@@ -261,7 +288,10 @@ onMounted(() => {
     </div>
 
     <!-- Error fallback -->
-    <div v-else-if="fetchError" class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center space-y-2">
+    <div
+      v-else-if="fetchError"
+      class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center space-y-2"
+    >
       <p>{{ t('heartbeat.fetchError') }}</p>
       <button
         class="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"

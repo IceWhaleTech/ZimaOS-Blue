@@ -67,12 +67,7 @@ const actionBadgeColor = computed(() => {
 </script>
 
 <template>
-  <div
-    :class="[
-      'px-4 py-3 rounded-lg border-2 shadow-sm min-w-[200px] max-w-[300px]',
-      bgColor
-    ]"
-  >
+  <div :class="['px-4 py-3 rounded-lg border-2 shadow-sm min-w-[200px] max-w-[300px]', bgColor]">
     <Handle type="target" :position="Position.Top" class="!bg-gray-400" />
 
     <div class="flex items-start gap-3">
@@ -90,22 +85,14 @@ const actionBadgeColor = computed(() => {
           <span class="text-sm font-medium text-gray-900 dark:text-white">
             {{ t(`companion.threat.${threatLevel}`) }}
           </span>
-          <span
-            v-if="data.threatScore"
-            class="text-xs text-gray-500 dark:text-gray-400"
-          >
+          <span v-if="data.threatScore" class="text-xs text-gray-500 dark:text-gray-400">
             ({{ data.threatScore }})
           </span>
         </div>
 
         <!-- Action badge -->
         <div v-if="data.action" class="mt-2">
-          <span
-            :class="[
-              'px-1.5 py-0.5 text-[10px] rounded',
-              actionBadgeColor
-            ]"
-          >
+          <span :class="['px-1.5 py-0.5 text-[10px] rounded', actionBadgeColor]">
             {{ t(`companion.security.actions.${data.action}`) }}
           </span>
         </div>

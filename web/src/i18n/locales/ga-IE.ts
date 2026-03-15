@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Foinsí comhad',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -567,6 +567,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Rochtain líonra',
+    networkTitle: 'Líonra agus rochtain',
+    releaseTrack: 'Bainistiú leaganacha',
+    systemVersion: 'Nuashonruithe agus leaganacha',
     llmApiKeyRequired: 'Cumraigh eochair API sula n-osclaíonn tú leathanach soláthraithe LLM.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -704,8 +708,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Eolairí ceadaithe',
+    approvedDirectoriesDesc: 'Eolairí ceadaithe trí “Ceadaigh i gcónaí” le haghaidh exec/convert.',
+    noApprovedDirectories: 'Níl aon eolairí ceadaithe',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Eolairí ceadaithe',
       firewall: 'Balla Dóiteáin',
       masking: 'Mascáil Sonraí',
     },
@@ -1066,6 +1074,7 @@ export default {
       length: 'Ar a laghad {n} carachtar',
       uppercase: 'Litir cháipitil amháin',
       lowercase: 'Litir bheag amháin',
+      letter: 'Litir amháin',
       number: 'Uimhir amháin',
       special: "Carachtar speisialta amháin (!{'@'}#$%...)",
     },
@@ -1138,7 +1147,9 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Cuireadh bac ar fheidhmiú an ordaithe mar chuaigh cead an eolaire in éag. Faomh an eolaire agus bain triail eile as.',
+    conversations: 'Comhráite',
+    execDirectoryApprovalTimeout:
+      'Cuireadh bac ar fheidhmiú an ordaithe mar chuaigh cead an eolaire in éag. Faomh an eolaire agus bain triail eile as.',
     streamProgress: {
       requestAccepted: 'Iarratas faighte, freagra á ullmhú...',
       generating: 'Freagra á ghiniúint...',
@@ -1537,7 +1548,8 @@ export default {
     importFailed: 'Theip ar iompórtáil sonraí',
     previewFailed: 'Theip ar réamhamharc sonraí',
     chatDataTitle: 'Sonraí comhrá',
-    chatDataDescription: 'Iompórtáil, easpórtáil agus glan stair chomhrá agus sonraí gaolmhara ó áit amháin.',
+    chatDataDescription:
+      'Iompórtáil, easpórtáil agus glan stair chomhrá agus sonraí gaolmhara ó áit amháin.',
     manageData: 'Bainistigh sonraí',
     retentionSaved: 'Socruithe coinneála sábháladh',
     cleanupSuccess: 'Glantachán sonraí críochnaithe go rathúil',
@@ -1563,7 +1575,8 @@ export default {
       eventsRetention: 'Coinneáil Imeachtaí',
       alertsRetention: 'Coinneáil Foláirimh',
       totalRecords: 'Líon iomlán taifead monatóireachta',
-      policyHint: 'Tacaíonn gach cineál sonraí le 1 go 365 lá. Laghdaíonn coinneáil níos giorra stóráil, agus cuidíonn coinneáil níos faide le hiniúchtaí agus fabhtcheartú.',
+      policyHint:
+        'Tacaíonn gach cineál sonraí le 1 go 365 lá. Laghdaíonn coinneáil níos giorra stóráil, agus cuidíonn coinneáil níos faide le hiniúchtaí agus fabhtcheartú.',
       daysRange: 'Raon ceadaithe: 1-365 lá',
       sessionsHint: 'Saolré seisiún an ghníomhaire agus meiteashonraí ama rite.',
       eventsHint: 'Glaonna uirlisí, rianta forghníomhaithe agus imeachtaí iniúchta.',
@@ -1571,7 +1584,8 @@ export default {
       sessionsSuggested: 'Molta: 14-30 lá d’oibríochtaí rialta',
       eventsSuggested: 'Molta: 7-14 lá do mhéid iniúchta cothromaithe',
       alertsSuggested: 'Molta: 30-90 lá d’athbhreithniú teagmhais',
-      saveHint: 'Cuirfear na fuinneoga coinneála nua i bhfeidhm ar ghlantacháin uathoibríocha agus láimhe amach anseo.',
+      saveHint:
+        'Cuirfear na fuinneoga coinneála nua i bhfeidhm ar ghlantacháin uathoibríocha agus láimhe amach anseo.',
 
       days: 'lá',
     },
@@ -1624,7 +1638,8 @@ export default {
       totalMemories: 'Cuimhní iomlána',
       backend: 'Backend',
       exportSection: 'Easpórtáil cuimhní',
-      exportDesc: 'Íoslódáil gach cuimhne mar chomhad Markdown le haghaidh cúltaca nó eagarthóireachta.',
+      exportDesc:
+        'Íoslódáil gach cuimhne mar chomhad Markdown le haghaidh cúltaca nó eagarthóireachta.',
       exportButton: 'Easpórtáil mar Markdown',
       exportSuccess: 'Easpórtáladh cuimhní go rathúil',
       exportFailed: 'Theip ar easpórtáil cuimhní',
@@ -1698,12 +1713,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Ábhar nua curtha i gcuimhne',
       memorySavedMessage: 'Baineadh cuimhne as an gcomhrá',
       manageMemory: 'Bainistigh an chuimhne',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },

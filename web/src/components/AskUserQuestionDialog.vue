@@ -80,8 +80,12 @@ const checkpointScreenshotSrc = computed(() => {
 })
 
 const isCheckpointQuestion = computed(() => !!checkpointContext.value)
-const dismissLabel = computed(() => isCheckpointQuestion.value ? t('askQuestion.browserCheckpoint.cancel') : t('askQuestion.skip'))
-const submitLabel = computed(() => isCheckpointQuestion.value ? t('askQuestion.browserCheckpoint.continue') : t('askQuestion.submit'))
+const dismissLabel = computed(() =>
+  isCheckpointQuestion.value ? t('askQuestion.browserCheckpoint.cancel') : t('askQuestion.skip')
+)
+const submitLabel = computed(() =>
+  isCheckpointQuestion.value ? t('askQuestion.browserCheckpoint.continue') : t('askQuestion.submit')
+)
 const checkpointRiskLabel = computed(() => {
   const risk = (checkpointContext.value?.risk_level || 'high').toLowerCase()
   const key = `execCard.risk.${risk}`
@@ -147,7 +151,7 @@ function toggleOther(qId: string, multiSelect: boolean) {
 
 function isAnswerComplete(ans: { selected: string[]; otherText: string } | undefined): boolean {
   if (!ans) return false
-  const hasNormalOption = ans.selected.some(v => v !== '__other__')
+  const hasNormalOption = ans.selected.some((v) => v !== '__other__')
   const hasOther = ans.selected.includes('__other__') && ans.otherText.trim() !== ''
   return hasNormalOption || hasOther
 }
@@ -179,17 +183,20 @@ const remainingSeconds = ref(0)
 let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 watch(question, (q) => {
-  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
   if (q) {
-		const updateRemaining = () => {
-			const ms = q.expires_at - Date.now()
-			remainingSeconds.value = Math.max(0, Math.ceil(ms / 1000))
-			if (remainingSeconds.value <= 0 && countdownTimer) {
-				clearInterval(countdownTimer)
-				countdownTimer = null
-				dismiss()
-			}
-		}
+    const updateRemaining = () => {
+      const ms = q.expires_at - Date.now()
+      remainingSeconds.value = Math.max(0, Math.ceil(ms / 1000))
+      if (remainingSeconds.value <= 0 && countdownTimer) {
+        clearInterval(countdownTimer)
+        countdownTimer = null
+        dismiss()
+      }
+    }
     updateRemaining()
     countdownTimer = setInterval(updateRemaining, 1000)
   }
@@ -233,12 +240,28 @@ function dismiss() {
         v-if="question"
         class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
       >
-        <div class="w-full max-w-lg mx-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden">
+        <div
+          class="w-full max-w-lg mx-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden"
+        >
           <!-- Header -->
-          <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
-            <div class="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800/40 flex items-center justify-center">
-              <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <div
+            class="flex items-center gap-3 px-5 py-4 border-b border-gray-100 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20"
+          >
+            <div
+              class="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800/40 flex items-center justify-center"
+            >
+              <svg
+                class="w-5 h-5 text-blue-600 dark:text-blue-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
             </div>
             <div class="flex-1 min-w-0">
@@ -249,13 +272,19 @@ function dismiss() {
                 {{ t('askQuestion.subtitle') }}
               </p>
             </div>
-            <span v-if="remainingSeconds > 0" class="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+            <span
+              v-if="remainingSeconds > 0"
+              class="text-xs text-gray-400 dark:text-gray-500 tabular-nums"
+            >
               {{ t('askQuestion.timeout', { seconds: remainingSeconds }) }}
             </span>
           </div>
 
           <!-- Step indicator (if multiple questions) -->
-          <div v-if="totalQuestions > 1" class="px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+          <div
+            v-if="totalQuestions > 1"
+            class="px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
+          >
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('askQuestion.step', { current: currentIndex, total: totalQuestions }) }}
@@ -277,11 +306,13 @@ function dismiss() {
                 v-for="(q, idx) in question.questions"
                 :key="q.id"
                 class="w-2 h-2 rounded-full transition-colors"
-                :class="idx === activeTab
-                  ? 'bg-blue-500'
-                  : isTabAnswered(q.id)
-                    ? 'bg-green-500'
-                    : 'bg-gray-300 dark:bg-gray-600'"
+                :class="
+                  idx === activeTab
+                    ? 'bg-blue-500'
+                    : isTabAnswered(q.id)
+                      ? 'bg-green-500'
+                      : 'bg-gray-300 dark:bg-gray-600'
+                "
                 @click="activeTab = idx"
               />
             </div>
@@ -289,7 +320,9 @@ function dismiss() {
 
           <!-- Question body - show current question only -->
           <div v-if="currentQuestion" class="px-4 py-3 space-y-2.5 max-h-[68vh] overflow-y-auto">
-            <p class="text-xs font-medium text-gray-800 dark:text-gray-200">{{ currentQuestion.question }}</p>
+            <p class="text-xs font-medium text-gray-800 dark:text-gray-200">
+              {{ currentQuestion.question }}
+            </p>
             <p
               v-if="currentQuestion.detail"
               class="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md px-2 py-1"
@@ -312,7 +345,10 @@ function dismiss() {
               <div v-if="checkpointContext.action" class="text-xs text-blue-700 dark:text-blue-200">
                 {{ t('askQuestion.browserCheckpoint.action') }}: {{ checkpointContext.action }}
               </div>
-              <div v-if="checkpointContext.url" class="text-xs text-blue-700 dark:text-blue-200 break-all">
+              <div
+                v-if="checkpointContext.url"
+                class="text-xs text-blue-700 dark:text-blue-200 break-all"
+              >
                 {{ t('askQuestion.browserCheckpoint.url') }}: {{ checkpointContext.url }}
               </div>
               <img
@@ -329,27 +365,65 @@ function dismiss() {
                 v-for="opt in currentQuestion.options"
                 :key="opt.label"
                 class="flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors"
-                :class="isSelected(currentQuestion.id, opt.value || opt.label)
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
-                @click="toggleOption(currentQuestion.id, opt.value || opt.label, !!currentQuestion.multi_select)"
+                :class="
+                  isSelected(currentQuestion.id, opt.value || opt.label)
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                "
+                @click="
+                  toggleOption(
+                    currentQuestion.id,
+                    opt.value || opt.label,
+                    !!currentQuestion.multi_select
+                  )
+                "
               >
                 <!-- Radio / Checkbox indicator -->
                 <div class="flex-shrink-0 mt-0.5">
-                  <div v-if="!currentQuestion.multi_select" class="w-4 h-4 rounded-full border-2 flex items-center justify-center"
-                    :class="isSelected(currentQuestion.id, opt.value || opt.label) ? 'border-blue-500' : 'border-gray-300 dark:border-gray-600'">
-                    <div v-if="isSelected(currentQuestion.id, opt.value || opt.label)" class="w-2 h-2 rounded-full bg-blue-500" />
+                  <div
+                    v-if="!currentQuestion.multi_select"
+                    class="w-4 h-4 rounded-full border-2 flex items-center justify-center"
+                    :class="
+                      isSelected(currentQuestion.id, opt.value || opt.label)
+                        ? 'border-blue-500'
+                        : 'border-gray-300 dark:border-gray-600'
+                    "
+                  >
+                    <div
+                      v-if="isSelected(currentQuestion.id, opt.value || opt.label)"
+                      class="w-2 h-2 rounded-full bg-blue-500"
+                    />
                   </div>
-                  <div v-else class="w-4 h-4 rounded border-2 flex items-center justify-center"
-                    :class="isSelected(currentQuestion.id, opt.value || opt.label) ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600'">
-                    <svg v-if="isSelected(currentQuestion.id, opt.value || opt.label)" class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  <div
+                    v-else
+                    class="w-4 h-4 rounded border-2 flex items-center justify-center"
+                    :class="
+                      isSelected(currentQuestion.id, opt.value || opt.label)
+                        ? 'border-blue-500 bg-blue-500'
+                        : 'border-gray-300 dark:border-gray-600'
+                    "
+                  >
+                    <svg
+                      v-if="isSelected(currentQuestion.id, opt.value || opt.label)"
+                      class="w-3 h-3 text-white"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"
+                      />
                     </svg>
                   </div>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <span class="text-xs font-medium text-gray-800 dark:text-gray-200">{{ opt.label }}</span>
-                  <p v-if="opt.description" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ opt.description }}</p>
+                  <span class="text-xs font-medium text-gray-800 dark:text-gray-200">{{
+                    opt.label
+                  }}</span>
+                  <p v-if="opt.description" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {{ opt.description }}
+                  </p>
                 </div>
               </label>
 
@@ -357,25 +431,55 @@ function dismiss() {
               <label
                 v-if="!isCheckpointQuestion"
                 class="flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors"
-                :class="isOtherSelected(currentQuestion.id)
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
+                :class="
+                  isOtherSelected(currentQuestion.id)
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                "
                 @click="toggleOther(currentQuestion.id, !!currentQuestion.multi_select)"
               >
                 <div class="flex-shrink-0 mt-0.5">
-                  <div v-if="!currentQuestion.multi_select" class="w-4 h-4 rounded-full border-2 flex items-center justify-center"
-                    :class="isOtherSelected(currentQuestion.id) ? 'border-blue-500' : 'border-gray-300 dark:border-gray-600'">
-                    <div v-if="isOtherSelected(currentQuestion.id)" class="w-2 h-2 rounded-full bg-blue-500" />
+                  <div
+                    v-if="!currentQuestion.multi_select"
+                    class="w-4 h-4 rounded-full border-2 flex items-center justify-center"
+                    :class="
+                      isOtherSelected(currentQuestion.id)
+                        ? 'border-blue-500'
+                        : 'border-gray-300 dark:border-gray-600'
+                    "
+                  >
+                    <div
+                      v-if="isOtherSelected(currentQuestion.id)"
+                      class="w-2 h-2 rounded-full bg-blue-500"
+                    />
                   </div>
-                  <div v-else class="w-4 h-4 rounded border-2 flex items-center justify-center"
-                    :class="isOtherSelected(currentQuestion.id) ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600'">
-                    <svg v-if="isOtherSelected(currentQuestion.id)" class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  <div
+                    v-else
+                    class="w-4 h-4 rounded border-2 flex items-center justify-center"
+                    :class="
+                      isOtherSelected(currentQuestion.id)
+                        ? 'border-blue-500 bg-blue-500'
+                        : 'border-gray-300 dark:border-gray-600'
+                    "
+                  >
+                    <svg
+                      v-if="isOtherSelected(currentQuestion.id)"
+                      class="w-3 h-3 text-white"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"
+                      />
                     </svg>
                   </div>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <span class="text-xs font-medium text-gray-800 dark:text-gray-200">{{ t('askQuestion.other') }}</span>
+                  <span class="text-xs font-medium text-gray-800 dark:text-gray-200">{{
+                    t('askQuestion.other')
+                  }}</span>
                   <input
                     v-if="isOtherSelected(currentQuestion.id)"
                     v-model="getOrCreateAnswer(currentQuestion.id).otherText"
@@ -390,7 +494,10 @@ function dismiss() {
           </div>
 
           <!-- Actions (hidden in quick mode) -->
-          <div v-if="!isQuickMode" class="flex gap-2 px-4 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+          <div
+            v-if="!isQuickMode"
+            class="flex gap-2 px-4 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
+          >
             <button
               class="px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
               @click="dismiss"
@@ -407,9 +514,11 @@ function dismiss() {
             <button
               v-else
               class="flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-colors cursor-pointer"
-              :class="canSubmit
-                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'"
+              :class="
+                canSubmit
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+              "
               :disabled="!canSubmit"
               @click="submit"
             >

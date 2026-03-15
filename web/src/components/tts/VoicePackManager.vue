@@ -17,12 +17,7 @@
         >
           {{ loading ? t('common.downloading') : t('common.download') }}
         </button>
-        <button
-          v-else
-          :disabled="loading"
-          class="btn-delete"
-          @click="deletePack(pack.language)"
-        >
+        <button v-else :disabled="loading" class="btn-delete" @click="deletePack(pack.language)">
           {{ t('common.delete') }}
         </button>
       </div>
@@ -41,7 +36,9 @@ import { useTTSStore } from '@/stores/tts'
 
 const { t } = useI18n()
 const ttsStore = useTTSStore()
-const packs = ref<{ language: string; name: string; size_kb: number; downloaded: boolean; downloading?: boolean }[]>([])
+const packs = ref<
+  { language: string; name: string; size_kb: number; downloaded: boolean; downloading?: boolean }[]
+>([])
 const loading = ref(false)
 const error = ref('')
 

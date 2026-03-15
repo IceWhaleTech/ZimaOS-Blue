@@ -39,22 +39,24 @@ const steps = computed<ProgressStep[]>(() => {
     return props.card.steps
   }
   if (props.card.step && props.card.name) {
-    return [{
-      step: props.card.step,
-      name: props.card.name,
-      status: props.card.status || 'running',
-      url: props.card.url,
-      recipe_name: props.card.recipe_name,
-    }]
+    return [
+      {
+        step: props.card.step,
+        name: props.card.name,
+        status: props.card.status || 'running',
+        url: props.card.url,
+        recipe_name: props.card.recipe_name,
+      },
+    ]
   }
   return []
 })
 
-const isRunning = computed(() => steps.value.some(s => s.status === 'running'))
+const isRunning = computed(() => steps.value.some((s) => s.status === 'running'))
 
 const progressPercent = computed(() => {
   if (steps.value.length === 0) return 0
-  const done = steps.value.filter(s => s.status === 'success' || s.status === 'failed').length
+  const done = steps.value.filter((s) => s.status === 'success' || s.status === 'failed').length
   return Math.round((done / steps.value.length) * 100)
 })
 
@@ -103,27 +105,50 @@ function stepLabel(step: ProgressStep): string {
     const recipe = resolveRecipeName(step)
     if (!recipe) return step.name || step.step
     const translated = t('browserProgress.steps.recipe', { recipe })
-    return translated === 'browserProgress.steps.recipe' ? (step.name || step.step) : translated
+    return translated === 'browserProgress.steps.recipe' ? step.name || step.step : translated
   }
 
   const key = `browserProgress.steps.${stepKey}`
   const translated = t(key)
-  return translated === key ? (step.name || step.step) : translated
+  return translated === key ? step.name || step.step : translated
 }
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
+  <div
+    class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
+  >
     <div class="px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/50">
       <div class="flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L5 12.25l1.41-1.41 3.34 3.34 7.84-7.84L19 7.75z" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-4 w-4 text-blue-400 flex-shrink-0"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9.75 17L5 12.25l1.41-1.41 3.34 3.34 7.84-7.84L19 7.75z"
+          />
         </svg>
-        <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('browserProgress.title') }}</span>
-        <span v-if="isRunning" class="ml-auto inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse flex-shrink-0" />
-        <span v-else class="ml-auto text-xs text-gray-400 tabular-nums">{{ progressPercent }}%</span>
+        <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{
+          t('browserProgress.title')
+        }}</span>
+        <span
+          v-if="isRunning"
+          class="ml-auto inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse flex-shrink-0"
+        />
+        <span v-else class="ml-auto text-xs text-gray-400 tabular-nums"
+          >{{ progressPercent }}%</span
+        >
       </div>
-      <div v-if="currentURL" class="mt-1 pl-6 text-xs text-gray-400 whitespace-normal break-all leading-relaxed">
+      <div
+        v-if="currentURL"
+        class="mt-1 pl-6 text-xs text-gray-400 whitespace-normal break-all leading-relaxed"
+      >
         {{ currentURL }}
       </div>
     </div>
@@ -146,12 +171,23 @@ function stepLabel(step: ProgressStep): string {
           class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
           :class="[stepColor(step.status), stepBg(step.status)]"
         >
-          <span v-if="step.status === 'running'" class="animate-spin">{{ stepIcon(step.status) }}</span>
+          <span v-if="step.status === 'running'" class="animate-spin">{{
+            stepIcon(step.status)
+          }}</span>
           <span v-else>{{ stepIcon(step.status) }}</span>
         </span>
         <div class="min-w-0 flex-1">
-          <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-normal break-words leading-relaxed">{{ stepLabel(step) }}</div>
-          <div v-if="step.url" class="text-xs text-gray-400 whitespace-normal break-all leading-relaxed">{{ step.url }}</div>
+          <div
+            class="text-sm text-gray-700 dark:text-gray-300 whitespace-normal break-words leading-relaxed"
+          >
+            {{ stepLabel(step) }}
+          </div>
+          <div
+            v-if="step.url"
+            class="text-xs text-gray-400 whitespace-normal break-all leading-relaxed"
+          >
+            {{ step.url }}
+          </div>
         </div>
       </div>
     </div>

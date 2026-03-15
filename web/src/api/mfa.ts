@@ -42,6 +42,5 @@ export const mfaApi = {
   getRecoveryCodes: () => api.get<RecoveryCodesResponse>('/auth/mfa/recovery'),
 
   // Regenerate recovery codes
-  regenerateRecoveryCodes: () =>
-    api.post<RecoveryCodesResponse>('/auth/mfa/recovery/regenerate'),
+  regenerateRecoveryCodes: () => api.post<RecoveryCodesResponse>('/auth/mfa/recovery/regenerate'),
 }

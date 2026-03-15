@@ -6,7 +6,10 @@ const USER_ERROR_KEY_MAP: Record<string, string> = {
   'email already exists': 'users.error.emailExists',
 }
 
-export function getUserErrorMessage(message: string | null | undefined, fallbackKey: string): string {
+export function getUserErrorMessage(
+  message: string | null | undefined,
+  fallbackKey: string
+): string {
   if (message) {
     const key = USER_ERROR_KEY_MAP[message]
     if (key) {

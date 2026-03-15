@@ -108,7 +108,10 @@ export async function createTenant(request: CreateTenantRequest): Promise<Tenant
   return response.data
 }
 
-export async function updateTenant(tenantId: string, request: UpdateTenantRequest): Promise<Tenant> {
+export async function updateTenant(
+  tenantId: string,
+  request: UpdateTenantRequest
+): Promise<Tenant> {
   const response = await api.put(`/api/v1/tenants/${tenantId}`, request)
   return response.data
 }

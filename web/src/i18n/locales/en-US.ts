@@ -263,6 +263,7 @@ export default {
     profile: 'Profile',
     automation: 'Automation',
     channels: 'Channels',
+    configuration: 'Configuration',
     security: 'Security',
     users: 'Users',
     taskCenter: 'Task Center',
@@ -288,7 +289,7 @@ export default {
     workspaceFilesLoadFailed: 'Failed to load workspace files',
     workspaceOpenFailed: 'Unable to open workspace in file manager',
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'File Sources',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -546,6 +547,7 @@ export default {
     inputPlaceholderShort: 'Type a message...',
     send: 'Send',
     sendDuringStream: 'Send (adds to conversation)',
+    conversations: 'Conversations',
     searchConversations: 'Search conversations...',
     searching: 'Searching...',
     noConversationsFound: 'No conversations found',
@@ -877,6 +879,10 @@ export default {
     title: 'Settings',
     saved: 'Saved',
     saveFailed: 'Failed to save configuration',
+    networkSurface: 'Network Access',
+    networkTitle: 'Network & Access',
+    releaseTrack: 'Version Management',
+    systemVersion: 'Updates & Versions',
     // Tab names
     tab: {
       general: 'General',
@@ -1002,6 +1008,8 @@ export default {
     closeBehaviorQuit: 'Quit',
     closeBehaviorMinimize: 'Minimize to Tray',
     closeBehaviorSaved: 'Close behavior saved',
+    memorySurface: 'Memory',
+    memoryManagement: 'Memory Usage & Management',
     agentReflection: {
       title: 'Auto Reflection',
       description:
@@ -1077,6 +1085,7 @@ export default {
       shadowGateSceneTool: 'Tool Calls',
       summary: 'Summary Acceleration',
       docExtract: 'Document Extraction Acceleration',
+      imageQA: 'Image Recognition Acceleration',
       mediaIntent: 'Media Generation Scenario Recognition',
       shortQA: 'Short QA Acceleration',
       shadowOnly: 'Phase 1: background validation only',
@@ -1087,6 +1096,9 @@ export default {
       shortQAAttempts: 'Short QA Count',
       shortQASuccessRate: 'Short QA Hit Rate',
       shortQALatencyMs: 'Short QA Latency',
+      imageQAAttempts: 'Image Recognition Count',
+      imageQASuccessRate: 'Image Recognition Hit Rate',
+      imageQALatencyMs: 'Image Recognition Latency',
       toolDispatchAttempts: 'Tool Dispatch Count',
       toolDispatchSuccessRate: 'Tool Dispatch Hit Rate',
       toolDispatchLatencyMs: 'Tool Dispatch Latency',
@@ -1470,6 +1482,7 @@ export default {
     score: 'Score',
     noResults: 'No memories found matching your query',
     searchHint: 'Enter a search query to find relevant memories',
+    recallSettings: 'Recall Settings',
     prune: 'Prune Old',
     pruneSuccess: 'Pruned {count} old memories',
     clearAll: 'Clear All',
@@ -2346,8 +2359,12 @@ export default {
   },
   security: {
     title: 'Security Center',
+    approvedDirectories: 'Approved Directories',
+    approvedDirectoriesDesc: 'Directories approved via Allow Always for exec/convert.',
+    noApprovedDirectories: 'No approved directories',
     tabs: {
       overview: 'Overview',
+      approvals: 'Approved Directories',
       firewall: 'Firewall',
       network: 'Network',
       masking: 'Data Masking',
@@ -4864,7 +4881,8 @@ export default {
     importFailed: 'Failed to import data',
     previewFailed: 'Failed to preview data',
     chatDataTitle: 'Chat Data',
-    chatDataDescription: 'Import, export, and cleanup chat history and related data from one place.',
+    chatDataDescription:
+      'Import, export, and cleanup chat history and related data from one place.',
     manageData: 'Manage Data',
     retentionSaved: 'Retention settings saved',
     cleanupSuccess: 'Data cleanup completed successfully',
@@ -4893,7 +4911,8 @@ export default {
       sessionsSuggested: 'Suggested: 14-30 days for routine operations',
       eventsSuggested: 'Suggested: 7-14 days for balanced audit volume',
       alertsSuggested: 'Suggested: 30-90 days for incident review',
-      saveHint: 'New retention windows apply to upcoming automatic cleanup and manual cleanup runs.',
+      saveHint:
+        'New retention windows apply to upcoming automatic cleanup and manual cleanup runs.',
       days: 'days',
     },
     // Cleanup section

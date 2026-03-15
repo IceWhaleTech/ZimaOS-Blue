@@ -70,8 +70,10 @@ export class WakeWordDetector {
 
     // Check for Web Speech API support
     const SpeechRecognitionCtor =
-      (window as unknown as { SpeechRecognition?: SpeechRecognitionConstructor }).SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionConstructor }).webkitSpeechRecognition
+      (window as unknown as { SpeechRecognition?: SpeechRecognitionConstructor })
+        .SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionConstructor })
+        .webkitSpeechRecognition
 
     if (!SpeechRecognitionCtor) {
       console.warn('Web Speech API not supported')

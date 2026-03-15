@@ -28,7 +28,10 @@ export function isLocalAbsolutePath(value: string): boolean {
 }
 
 export function isLoopbackHost(hostname: string): boolean {
-  const normalized = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '')
+  const normalized = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
   if (!normalized) return false
   if (normalized === 'localhost' || normalized.endsWith('.localhost')) return true
   if (normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') return true

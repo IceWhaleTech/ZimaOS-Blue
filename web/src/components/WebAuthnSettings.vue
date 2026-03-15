@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import {
-  webauthnApi,
-  prepareRegistrationOptions,
-  type WebAuthnStatus,
-} from '@/api/webauthn'
+import { webauthnApi, prepareRegistrationOptions, type WebAuthnStatus } from '@/api/webauthn'
 
 const { t } = useI18n()
 
@@ -140,9 +136,22 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
 
 <template>
   <section class="mb-6 sm:mb-8">
-    <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4 flex items-center gap-2">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+    <h2
+      class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4 flex items-center gap-2"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-5 w-5 flex-shrink-0"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+        />
       </svg>
       <span class="truncate">{{ t('webauthn.title') }}</span>
     </h2>
@@ -151,15 +160,29 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
       <!-- Not supported message -->
       <div v-if="!isSupported" class="text-center py-4">
         <div class="text-yellow-600 dark:text-yellow-400 mb-2">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-12 w-12 mx-auto"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
           </svg>
         </div>
         <p class="text-gray-500 dark:text-slate-400">{{ t('webauthn.notSupported') }}</p>
       </div>
 
       <!-- Loading state -->
-      <div v-else-if="loading && !status" class="text-gray-500 dark:text-slate-400 text-center py-4">
+      <div
+        v-else-if="loading && !status"
+        class="text-gray-500 dark:text-slate-400 text-center py-4"
+      >
         {{ t('common.loading') }}
       </div>
 
@@ -177,13 +200,28 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
             class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg"
           >
             <div class="flex items-center gap-3 min-w-0">
-              <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-600/10 flex items-center justify-center flex-shrink-0">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-900 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              <div
+                class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-600/10 flex items-center justify-center flex-shrink-0"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5 text-gray-900 dark:text-gray-300"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                  />
                 </svg>
               </div>
               <div class="min-w-0">
-                <h4 class="text-gray-900 dark:text-white font-medium truncate">{{ credential.name }}</h4>
+                <h4 class="text-gray-900 dark:text-white font-medium truncate">
+                  {{ credential.name }}
+                </h4>
                 <p class="text-xs text-gray-500 dark:text-slate-400">
                   {{ t('webauthn.lastUsed') }}: {{ formatDate(credential.last_used_at) }}
                 </p>
@@ -195,8 +233,19 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
               :title="t('webauthn.delete')"
               @click="deleteCredential(credential.id)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
               </svg>
             </button>
           </div>
@@ -205,12 +254,27 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
         <!-- Empty state -->
         <div v-else class="text-center py-6 mb-4">
           <div class="text-gray-400 dark:text-slate-500 mb-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-12 w-12 mx-auto"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+              />
             </svg>
           </div>
-          <h3 class="text-gray-900 dark:text-white font-medium mb-1">{{ t('webauthn.noCredentials') }}</h3>
-          <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('webauthn.noCredentialsDesc') }}</p>
+          <h3 class="text-gray-900 dark:text-white font-medium mb-1">
+            {{ t('webauthn.noCredentials') }}
+          </h3>
+          <p class="text-sm text-gray-500 dark:text-slate-400">
+            {{ t('webauthn.noCredentialsDesc') }}
+          </p>
         </div>
 
         <!-- Add button -->
@@ -219,8 +283,19 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
           class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
           @click="openRegisterModal"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 4v16m8-8H4"
+            />
           </svg>
           {{ t('webauthn.addCredential') }}
         </button>

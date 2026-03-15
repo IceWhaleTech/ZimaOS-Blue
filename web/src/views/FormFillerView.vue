@@ -34,7 +34,7 @@ async function loadTemplates() {
     const response = await templateApi.list()
     templates.value = response.data ?? []
     // Select default template
-    const defaultTemplate = templates.value.find(t => t.is_default)
+    const defaultTemplate = templates.value.find((t) => t.is_default)
     if (defaultTemplate) {
       selectedTemplate.value = defaultTemplate
     } else if (templates.value.length > 0 && templates.value[0]) {
@@ -87,7 +87,7 @@ async function updateTemplate() {
       is_default: editingTemplate.value.is_default,
       fields: editingTemplate.value.fields,
     })
-    const index = templates.value.findIndex(t => t.id === response.data.id)
+    const index = templates.value.findIndex((t) => t.id === response.data.id)
     if (index !== -1) {
       templates.value[index] = response.data
     }
@@ -108,7 +108,7 @@ async function deleteTemplate(id: string) {
 
   try {
     await templateApi.delete(id)
-    templates.value = templates.value.filter(t => t.id !== id)
+    templates.value = templates.value.filter((t) => t.id !== id)
     if (selectedTemplate.value?.id === id) {
       selectedTemplate.value = templates.value[0] || null
     }
@@ -140,7 +140,7 @@ async function saveFieldValue(fieldType: string, value: string) {
       fields: updatedFields,
     })
     selectedTemplate.value = response.data
-    const index = templates.value.findIndex(t => t.id === response.data.id)
+    const index = templates.value.findIndex((t) => t.id === response.data.id)
     if (index !== -1) {
       templates.value[index] = response.data
     }
@@ -163,7 +163,7 @@ function showSaveStatus(message: string) {
 
 // Computed
 const sortedFieldTypes = computed(() => {
-  return FIELD_TYPES.map(ft => ({
+  return FIELD_TYPES.map((ft) => ({
     ...ft,
     value: selectedTemplate.value?.fields[ft.value] || '',
   }))
@@ -269,7 +269,13 @@ onMounted(() => {
               type="text"
               :value="selectedTemplate.fields[field.label.toLowerCase().replace(/\s+/g, '')] || ''"
               :placeholder="t('formFiller.enterValue')"
-              @blur="(e) => saveFieldValue(field.label.toLowerCase().replace(/\s+/g, ''), (e.target as HTMLInputElement).value)"
+              @blur="
+                (e) =>
+                  saveFieldValue(
+                    field.label.toLowerCase().replace(/\s+/g, ''),
+                    (e.target as HTMLInputElement).value
+                  )
+              "
             />
           </div>
         </div>
@@ -311,7 +317,11 @@ onMounted(() => {
           <button class="btn btn-secondary" @click="showCreateDialog = false">
             {{ t('common.cancel') }}
           </button>
-          <button class="btn btn-primary" :disabled="!newTemplateName.trim()" @click="createTemplate">
+          <button
+            class="btn btn-primary"
+            :disabled="!newTemplateName.trim()"
+            @click="createTemplate"
+          >
             {{ t('common.create') }}
           </button>
         </div>
@@ -319,16 +329,16 @@ onMounted(() => {
     </div>
 
     <!-- Edit Template Dialog -->
-    <div v-if="showEditDialog && editingTemplate" class="dialog-overlay" @click.self="showEditDialog = false">
+    <div
+      v-if="showEditDialog && editingTemplate"
+      class="dialog-overlay"
+      @click.self="showEditDialog = false"
+    >
       <div class="dialog">
         <h3>{{ t('formFiller.editTemplate') }}</h3>
         <div class="form-group">
           <label for="edit-template-name">{{ t('formFiller.templateName') }}</label>
-          <input
-            id="edit-template-name"
-            v-model="editingTemplate.name"
-            type="text"
-          />
+          <input id="edit-template-name" v-model="editingTemplate.name" type="text" />
         </div>
         <div class="form-group">
           <label class="checkbox-label">
@@ -348,19 +358,32 @@ onMounted(() => {
     </div>
 
     <!-- Pattern Editor Dialog -->
-    <div v-if="showPatternDialog && patterns" class="dialog-overlay" @click.self="showPatternDialog = false">
+    <div
+      v-if="showPatternDialog && patterns"
+      class="dialog-overlay"
+      @click.self="showPatternDialog = false"
+    >
       <div class="dialog dialog-large">
         <h3>{{ t('formFiller.editPatterns') }}</h3>
         <div class="patterns-editor">
-          <div v-for="(keywords, fieldType) in patterns.patterns" :key="fieldType" class="pattern-row">
+          <div
+            v-for="(keywords, fieldType) in patterns.patterns"
+            :key="fieldType"
+            class="pattern-row"
+          >
             <label>{{ fieldType }}</label>
             <input
               type="text"
               :value="keywords.join(', ')"
-              @blur="(e) => {
-                const value = (e.target as HTMLInputElement).value
-                patterns!.patterns[fieldType as keyof typeof patterns.patterns] = value.split(',').map(s => s.trim()).filter(Boolean)
-              }"
+              @blur="
+                (e) => {
+                  const value = (e.target as HTMLInputElement).value
+                  patterns!.patterns[fieldType as keyof typeof patterns.patterns] = value
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                }
+              "
             />
           </div>
         </div>
@@ -368,7 +391,16 @@ onMounted(() => {
           <button class="btn btn-secondary" @click="showPatternDialog = false">
             {{ t('common.close') }}
           </button>
-          <button class="btn btn-primary" @click="async () => { await patternApi.update(patterns!.patterns); showPatternDialog = false; showSaveStatus(t('formFiller.patternsSaved')); }">
+          <button
+            class="btn btn-primary"
+            @click="
+              async () => {
+                await patternApi.update(patterns!.patterns)
+                showPatternDialog = false
+                showSaveStatus(t('formFiller.patternsSaved'))
+              }
+            "
+          >
             {{ t('common.save') }}
           </button>
         </div>
@@ -711,7 +743,7 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.form-group input[type="text"] {
+.form-group input[type='text'] {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border-color);

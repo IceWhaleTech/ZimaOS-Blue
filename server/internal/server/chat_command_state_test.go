@@ -9,11 +9,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
+
+func requestWithUser(req *http.Request, userID string) *http.Request {
+	claims := &auth.UserClaims{
+		UserID: userID,
+		Role:   "user",
+	}
+	ctx := context.WithValue(req.Context(), auth.UserContextKey, claims)
+	return req.WithContext(ctx)
+}
 
 func TestConversationCommandStateAPI(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
@@ -63,6 +73,87 @@ func TestConversationCommandStateAPI(t *testing.T) {
 	}
 	if state["web_search_enabled"] != false || state["deep_research_enabled"] != true {
 		t.Fatalf("unexpected preference flags: %v", state)
+	}
+}
+
+func TestConversationCommandStateAPISharedAcrossConversationsForSameUser(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv1, err := store.CreateConversation(context.Background(), "User A #1", "user-a")
+	if err != nil {
+		t.Fatalf("CreateConversation(user-a #1): %v", err)
+	}
+	conv2, err := store.CreateConversation(context.Background(), "User A #2", "user-a")
+	if err != nil {
+		t.Fatalf("CreateConversation(user-a #2): %v", err)
+	}
+	convB, err := store.CreateConversation(context.Background(), "User B #1", "user-b")
+	if err != nil {
+		t.Fatalf("CreateConversation(user-b #1): %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	e := echo.New()
+
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv1.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true,"web_search_enabled":false,"deep_research_enabled":true}`))
+	patchReq = requestWithUser(patchReq, "user-a")
+	patchReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	patchRec := httptest.NewRecorder()
+	patchCtx := e.NewContext(patchReq, patchRec)
+	patchCtx.SetParamNames("id")
+	patchCtx.SetParamValues(conv1.ID)
+	if err := handler.PatchConversationCommandState(patchCtx); err != nil {
+		t.Fatalf("PatchConversationCommandState(user-a #1): %v", err)
+	}
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("patch status = %d, want 200", patchRec.Code)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conv2.ID+"/command-state", nil)
+	getReq = requestWithUser(getReq, "user-a")
+	getRec := httptest.NewRecorder()
+	getCtx := e.NewContext(getReq, getRec)
+	getCtx.SetParamNames("id")
+	getCtx.SetParamValues(conv2.ID)
+	if err := handler.GetConversationCommandState(getCtx); err != nil {
+		t.Fatalf("GetConversationCommandState(user-a #2): %v", err)
+	}
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want 200", getRec.Code)
+	}
+	var userAState map[string]any
+	if err := json.Unmarshal(getRec.Body.Bytes(), &userAState); err != nil {
+		t.Fatalf("json.Unmarshal(user-a): %v", err)
+	}
+	if userAState["selected_provider_id"] != "openai" || userAState["selected_model_id"] != "gpt-5" {
+		t.Fatalf("unexpected shared user-a state: %v", userAState)
+	}
+	if userAState["offline"] != true || userAState["web_search_enabled"] != false || userAState["deep_research_enabled"] != true {
+		t.Fatalf("unexpected shared user-a flags: %v", userAState)
+	}
+
+	getReqB := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+convB.ID+"/command-state", nil)
+	getReqB = requestWithUser(getReqB, "user-b")
+	getRecB := httptest.NewRecorder()
+	getCtxB := e.NewContext(getReqB, getRecB)
+	getCtxB.SetParamNames("id")
+	getCtxB.SetParamValues(convB.ID)
+	if err := handler.GetConversationCommandState(getCtxB); err != nil {
+		t.Fatalf("GetConversationCommandState(user-b): %v", err)
+	}
+	if getRecB.Code != http.StatusOK {
+		t.Fatalf("user-b get status = %d, want 200", getRecB.Code)
+	}
+	var userBState conversationCommandStateResponse
+	if err := json.Unmarshal(getRecB.Body.Bytes(), &userBState); err != nil {
+		t.Fatalf("json.Unmarshal(user-b): %v", err)
+	}
+	if userBState.SelectedProviderID != "" || userBState.SelectedModelID != "" || userBState.Offline || !userBState.WebSearchEnabled || userBState.DeepResearchEnabled {
+		t.Fatalf("unexpected isolated user-b state: %v", userBState)
 	}
 }
 

@@ -6,7 +6,11 @@ import { speechApi } from '@/api/speech'
 import { convertToWav } from '@/utils/audioConverter'
 import { EnergyVAD } from '@/utils/vad'
 import { markdownToText } from '@/utils/markdown'
-import { isTtsAutoPlayEnabled, isTtsSpeechMuted, setTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
+import {
+  isTtsAutoPlayEnabled,
+  isTtsSpeechMuted,
+  setTtsAutoPlayEnabled,
+} from '@/utils/ttsPreferences'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useChatStore } from '@/stores/chat'
@@ -22,8 +26,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  'transcript': [text: string]
-  'response': [text: string]
+  transcript: [text: string]
+  response: [text: string]
 }>()
 
 // Conversation state machine
@@ -86,7 +90,7 @@ async function open() {
   // Pre-check mic permission
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    stream.getTracks().forEach(t => t.stop())
+    stream.getTracks().forEach((t) => t.stop())
   } catch (err: any) {
     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
       error.value = t('chat.voiceMicrophonePermissionDenied')
@@ -244,33 +248,39 @@ function toggleAutoPlay() {
 }
 
 // Watch for modelValue changes
-watch(() => props.modelValue, (newValue) => {
-  if (newValue) {
-    conversationBubbles.value = []
-    lastSpokenAssistantMessageId.value = null
-    open()
-  } else {
-    stopAll()
-  }
-})
-
-// Watch for AI response completion and play TTS
-watch(() => chatStore.streaming, async (streaming, wasStreaming) => {
-  if (wasStreaming && !streaming && props.modelValue) {
-    const messages = chatStore.messages
-    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : undefined
-    if (lastMsg?.role === 'assistant' && lastMsg.content) {
-      const plainText = markdownToText(lastMsg.content)
-      if (lastSpokenAssistantMessageId.value === lastMsg.id) {
-        resumeListening()
-        return
-      }
-      pushBubble('assistant', plainText)
-      await playResponseTTS(plainText)
-      lastSpokenAssistantMessageId.value = lastMsg.id
+watch(
+  () => props.modelValue,
+  (newValue) => {
+    if (newValue) {
+      conversationBubbles.value = []
+      lastSpokenAssistantMessageId.value = null
+      open()
+    } else {
+      stopAll()
     }
   }
-})
+)
+
+// Watch for AI response completion and play TTS
+watch(
+  () => chatStore.streaming,
+  async (streaming, wasStreaming) => {
+    if (wasStreaming && !streaming && props.modelValue) {
+      const messages = chatStore.messages
+      const lastMsg = messages.length > 0 ? messages[messages.length - 1] : undefined
+      if (lastMsg?.role === 'assistant' && lastMsg.content) {
+        const plainText = markdownToText(lastMsg.content)
+        if (lastSpokenAssistantMessageId.value === lastMsg.id) {
+          resumeListening()
+          return
+        }
+        pushBubble('assistant', plainText)
+        await playResponseTTS(plainText)
+        lastSpokenAssistantMessageId.value = lastMsg.id
+      }
+    }
+  }
+)
 
 function pushBubble(role: 'user' | 'assistant', text: string) {
   const value = text.trim()
@@ -334,9 +344,7 @@ onUnmounted(() => {
       >
         <div
           class="talk-mode-container w-full p-6"
-          :class="isMobile
-            ? 'mobile-fullscreen'
-            : 'glass-card max-w-md mx-4 rounded-2xl'"
+          :class="isMobile ? 'mobile-fullscreen' : 'glass-card max-w-md mx-4 rounded-2xl'"
         >
           <!-- Header -->
           <div class="flex items-center justify-between mb-4">
@@ -350,12 +358,36 @@ onUnmounted(() => {
                 :title="autoPlayTTS ? t('chat.talkMode.mute') : t('chat.talkMode.unmute')"
                 @click="toggleAutoPlay"
               >
-                <svg v-if="autoPlayTTS" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                <svg
+                  v-if="autoPlayTTS"
+                  class="w-5 h-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                  />
                 </svg>
                 <svg v-else class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                  <line x1="3" y1="21" x2="21" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                  />
+                  <line
+                    x1="3"
+                    y1="21"
+                    x2="21"
+                    y2="3"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  />
                 </svg>
               </button>
               <!-- Close button -->
@@ -363,8 +395,18 @@ onUnmounted(() => {
                 class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 transition-colors cursor-pointer"
                 @click="close"
               >
-                <svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  class="w-5 h-5 text-gray-500 dark:text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -385,7 +427,10 @@ onUnmounted(() => {
                 {{ bubble.text }}
               </div>
             </div>
-            <div v-if="!conversationBubbles.length" class="text-xs text-gray-500 dark:text-gray-400 text-center py-6">
+            <div
+              v-if="!conversationBubbles.length"
+              class="text-xs text-gray-500 dark:text-gray-400 text-center py-6"
+            >
               {{ t('chat.talkMode.conversationDesc') }}
             </div>
           </div>
@@ -399,7 +444,8 @@ onUnmounted(() => {
                 'bg-yellow-500': conversationState === 'transcribing',
                 'bg-blue-500': conversationState === 'processing',
                 'bg-purple-500': conversationState === 'speaking',
-                'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400': conversationState === 'idle',
+                'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400':
+                  conversationState === 'idle',
               }"
               @click="toggleListening"
             >
@@ -407,7 +453,11 @@ onUnmounted(() => {
               <div
                 v-if="conversationState === 'listening'"
                 class="absolute inset-0 rounded-full transition-transform duration-100"
-                :style="{ transform: `scale(${1 + audioLevel / 150})`, opacity: 0.2, background: 'rgba(34, 197, 94, 0.4)' }"
+                :style="{
+                  transform: `scale(${1 + audioLevel / 150})`,
+                  opacity: 0.2,
+                  background: 'rgba(34, 197, 94, 0.4)',
+                }"
               />
               <div
                 v-if="conversationState === 'listening'"
@@ -415,18 +465,69 @@ onUnmounted(() => {
               />
 
               <!-- Icons per state -->
-              <svg v-if="conversationState === 'listening'" class="w-10 h-10 text-white relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              <svg
+                v-if="conversationState === 'listening'"
+                class="w-10 h-10 text-white relative z-10"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                />
               </svg>
-              <svg v-else-if="conversationState === 'transcribing' || conversationState === 'processing'" class="w-10 h-10 text-white animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              <svg
+                v-else-if="
+                  conversationState === 'transcribing' || conversationState === 'processing'
+                "
+                class="w-10 h-10 text-white animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
               </svg>
-              <svg v-else-if="conversationState === 'speaking'" class="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              <svg
+                v-else-if="conversationState === 'speaking'"
+                class="w-10 h-10 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                />
               </svg>
-              <svg v-else class="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              <svg
+                v-else
+                class="w-10 h-10 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                />
               </svg>
             </button>
 
@@ -462,8 +563,18 @@ onUnmounted(() => {
             v-if="error"
             class="mt-4 p-3 rounded-lg bg-red-500/10 text-red-400 text-sm flex items-center gap-2"
           >
-            <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              class="w-4 h-4 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
             <span>{{ error }}</span>
           </div>
@@ -536,8 +647,15 @@ onUnmounted(() => {
 
 /* Breathing animation for listening state */
 @keyframes talk-breathing {
-  0%, 100% { transform: scale(1); opacity: 0.3; }
-  50% { transform: scale(1.08); opacity: 0.15; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.15;
+  }
 }
 .talk-breathing {
   animation: talk-breathing 2s ease-in-out infinite;

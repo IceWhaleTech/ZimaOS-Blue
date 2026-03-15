@@ -482,7 +482,7 @@ func estimateMaxContext(providerName string) int {
 	case strings.Contains(name, "gpt-3.5"):
 		return 16385
 	case strings.Contains(name, "deepseek"):
-		return 64000
+		return 128000
 	case strings.Contains(name, "qwen"):
 		return 32768
 	default:

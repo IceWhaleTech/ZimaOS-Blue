@@ -60,32 +60,26 @@ export interface PruneResponse {
 // Memory API
 export const memoryApi = {
   /** Store a new memory */
-  store: (request: StoreMemoryRequest) =>
-    api.post<StoreMemoryResponse>('/memory/store', request),
+  store: (request: StoreMemoryRequest) => api.post<StoreMemoryResponse>('/memory/store', request),
 
   /** Search memories by keyword */
   search: (request: SearchMemoryRequest) =>
     api.post<SearchMemoryResponse>('/memory/search', request),
 
   /** Get a memory by ID */
-  get: (id: string) =>
-    api.get<Memory>(`/memory/${encodeURIComponent(id)}`),
+  get: (id: string) => api.get<Memory>(`/memory/${encodeURIComponent(id)}`),
 
   /** Delete a memory by ID */
-  delete: (id: string) =>
-    api.delete(`/memory/${encodeURIComponent(id)}`),
+  delete: (id: string) => api.delete(`/memory/${encodeURIComponent(id)}`),
 
   /** Prune old memories */
-  prune: () =>
-    api.post<PruneResponse>('/memory/prune'),
+  prune: () => api.post<PruneResponse>('/memory/prune'),
 
   /** Clear all memories */
-  clear: () =>
-    api.delete('/memory'),
+  clear: () => api.delete('/memory'),
 
   /** Get memory statistics */
-  stats: () =>
-    api.get<MemoryStats>('/memory/stats'),
+  stats: () => api.get<MemoryStats>('/memory/stats'),
 
   /** Export memories as Markdown */
   exportMarkdown: () =>

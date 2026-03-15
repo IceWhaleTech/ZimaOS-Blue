@@ -198,7 +198,8 @@ describe('CardResult', () => {
   })
 
   it('renders image previews for result cards and normalizes raw base64 strings', () => {
-    const base64PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII='
+    const base64PNG =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII='
     const wrapper = mount(CardResult, {
       props: {
         card: {
@@ -225,9 +226,7 @@ describe('CardResult', () => {
           type: 'result',
           title: 'File Write',
           status: 'success',
-          details: [
-            { label: 'Path', value: '/Users/orca/Documents/report.pdf' },
-          ],
+          details: [{ label: 'Path', value: '/Users/orca/Documents/report.pdf' }],
         },
       },
       global: {
@@ -249,9 +248,7 @@ describe('CardResult', () => {
           type: 'result',
           title: 'analyze',
           status: 'success',
-          details: [
-            { label: 'report_url', value: '/api/v1/media/analyze/r1.html' },
-          ],
+          details: [{ label: 'report_url', value: '/api/v1/media/analyze/r1.html' }],
         },
       },
       global: {

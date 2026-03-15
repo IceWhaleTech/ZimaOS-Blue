@@ -20,7 +20,9 @@ function handleLinkClick(url: string) {
 </script>
 
 <template>
-  <div class="profile-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="profile-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <!-- Header with gradient -->
     <div class="h-20 bg-gradient-to-r from-gray-700 to-gray-900" />
 
@@ -45,8 +47,19 @@ function handleLinkClick(url: string) {
           v-if="card.verified"
           class="absolute bottom-0 right-0 w-7 h-7 bg-gray-700 dark:bg-gray-500 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4 text-white"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M5 13l4 4L19 7"
+            />
           </svg>
         </div>
       </div>
@@ -65,7 +78,10 @@ function handleLinkClick(url: string) {
       </p>
 
       <!-- Stats -->
-      <div v-if="card.stats?.length" class="flex gap-6 mb-4 py-4 border-y border-gray-200 dark:border-gray-700">
+      <div
+        v-if="card.stats?.length"
+        class="flex gap-6 mb-4 py-4 border-y border-gray-200 dark:border-gray-700"
+      >
         <div v-for="(stat, index) in card.stats" :key="index" class="text-center">
           <p class="text-xl font-bold text-gray-900 dark:text-white">{{ stat.value }}</p>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ stat.label }}</p>

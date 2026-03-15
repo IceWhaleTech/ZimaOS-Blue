@@ -100,9 +100,7 @@ describe('Deep research cards', () => {
           status: 'completed',
           iterations: 2,
           stop_reason: 'coverage_sufficient',
-          citations: [
-            { title: 'Official filing', url: 'https://example.com/filing' },
-          ],
+          citations: [{ title: 'Official filing', url: 'https://example.com/filing' }],
           open_questions: ['Need official confirmation on one metric'],
           verification_summary: {
             resolved_count: 1,
@@ -141,8 +139,6 @@ describe('Deep research cards', () => {
     expect(wrapper.text()).toContain('topic official statement primary source')
     expect(wrapper.text()).toContain('Citation Coverage 88%')
   })
-
-
 
   it('renders knowledge-base artifacts when present', () => {
     const wrapper = mount(CardDeepResearch, {

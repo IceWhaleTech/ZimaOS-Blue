@@ -3,31 +3,31 @@
 .skill-tab,
 .plugin-tab,
 .tool-tab {
-  --bg-primary: var(--color-bg-elevated, #1E293B);
+  --bg-primary: var(--color-bg-elevated, #1e293b);
   --bg-secondary: var(--color-bg-surface, #334155);
   --bg-hover: var(--glass-bg-hover, rgba(255, 255, 255, 0.1));
-  --text-primary: var(--color-text-primary, #F8FAFC);
-  --text-secondary: var(--color-text-secondary, #94A3B8);
-  --text-muted: var(--color-text-muted, #64748B);
+  --text-primary: var(--color-text-primary, #f8fafc);
+  --text-secondary: var(--color-text-secondary, #94a3b8);
+  --text-muted: var(--color-text-muted, #64748b);
   --border: var(--glass-border, rgba(255, 255, 255, 0.1));
-  --primary: var(--color-accent, #3B82F6);
-  --success: var(--color-success, #22C55E);
-  --warning: var(--color-warning, #F59E0B);
-  --error: var(--color-error, #EF4444);
+  --primary: var(--color-accent, #3b82f6);
+  --success: var(--color-success, #22c55e);
+  --warning: var(--color-warning, #f59e0b);
+  --error: var(--color-error, #ef4444);
 }
 
 :root.light .skill-tab,
 :root.light .plugin-tab,
 :root.light .tool-tab,
-[data-theme="light"] .skill-tab,
-[data-theme="light"] .plugin-tab,
-[data-theme="light"] .tool-tab {
-  --bg-primary: var(--color-bg-elevated, #FFFFFF);
-  --bg-secondary: var(--color-bg-surface, #F1F5F9);
+[data-theme='light'] .skill-tab,
+[data-theme='light'] .plugin-tab,
+[data-theme='light'] .tool-tab {
+  --bg-primary: var(--color-bg-elevated, #ffffff);
+  --bg-secondary: var(--color-bg-surface, #f1f5f9);
   --bg-hover: var(--glass-bg-hover, rgba(0, 0, 0, 0.05));
-  --text-primary: var(--color-text-primary, #0F172A);
+  --text-primary: var(--color-text-primary, #0f172a);
   --text-secondary: var(--color-text-secondary, #475569);
-  --text-muted: var(--color-text-muted, #64748B);
+  --text-muted: var(--color-text-muted, #64748b);
   --border: var(--glass-border, rgba(0, 0, 0, 0.1));
 }
 
@@ -252,7 +252,9 @@
 .item-card:hover {
   background: var(--glass-bg-hover, rgba(255, 255, 255, 0.1));
   border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: var(--shadow-lg, 0 10px 15px rgba(0, 0, 0, 0.5)), 0 0 20px rgba(59, 130, 246, 0.15);
+  box-shadow:
+    var(--shadow-lg, 0 10px 15px rgba(0, 0, 0, 0.5)),
+    0 0 20px rgba(59, 130, 246, 0.15);
   transform: translateY(-4px);
 }
 
@@ -547,18 +549,18 @@
 }
 
 :root.light .toggle-slider,
-[data-theme="light"] .toggle-slider {
+[data-theme='light'] .toggle-slider {
   background: #e5e7eb;
   border-color: #d1d5db;
 }
 
 :root.light .toggle-slider::after,
-[data-theme="light"] .toggle-slider::after {
+[data-theme='light'] .toggle-slider::after {
   background: #9ca3af;
 }
 
 :root.light .toggle-switch input:checked + .toggle-slider,
-[data-theme="light"] .toggle-switch input:checked + .toggle-slider {
+[data-theme='light'] .toggle-switch input:checked + .toggle-slider {
   background: #1f2937;
   border-color: #111827;
 }
@@ -778,54 +780,54 @@
 /* Light mode overrides */
 :root.light .category-badge,
 :root.light .type-badge,
-[data-theme="light"] .category-badge,
-[data-theme="light"] .type-badge {
+[data-theme='light'] .category-badge,
+[data-theme='light'] .type-badge {
   background: rgba(99, 102, 241, 0.1);
   color: #4f46e5;
   border-color: rgba(99, 102, 241, 0.2);
 }
 
 :root.light .builtin-badge,
-[data-theme="light"] .builtin-badge {
+[data-theme='light'] .builtin-badge {
   background: rgba(34, 197, 94, 0.1);
   color: #059669;
 }
 
 :root.light .status-running,
-[data-theme="light"] .status-running {
+[data-theme='light'] .status-running {
   background: rgba(34, 197, 94, 0.1);
   color: #059669;
 }
 
 :root.light .status-loaded,
-[data-theme="light"] .status-loaded {
+[data-theme='light'] .status-loaded {
   background: rgba(59, 130, 246, 0.1);
   color: #2563eb;
 }
 
 :root.light .status-error,
-[data-theme="light"] .status-error {
+[data-theme='light'] .status-error {
   background: rgba(239, 68, 68, 0.1);
   color: #dc2626;
 }
 
 :root.light .source-badge,
-[data-theme="light"] .source-badge {
+[data-theme='light'] .source-badge {
   background: rgba(245, 158, 11, 0.1);
   color: #b45309;
 }
 
 :root.light .tag,
 :root.light .capability,
-[data-theme="light"] .tag,
-[data-theme="light"] .capability {
+[data-theme='light'] .tag,
+[data-theme='light'] .capability {
   background: #f3f4f6;
   color: #6b7280;
   border-color: #e5e7eb;
 }
 
 :root.light .installed-badge,
-[data-theme="light"] .installed-badge {
+[data-theme='light'] .installed-badge {
   background: rgba(34, 197, 94, 0.1);
   color: #059669;
 }

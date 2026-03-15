@@ -101,7 +101,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Dateiquellen',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -309,6 +309,7 @@ export default {
     inputPlaceholderShort: 'Nachricht eingeben...',
     newLine: 'für neue Zeile',
     dragDropHint: 'Dateien ziehen & ablegen oder einfügen, um sie anzuhängen',
+    conversations: 'Konversationen',
     searchConversations: 'Unterhaltungen suchen...',
     noConversationsFound: 'Keine Unterhaltungen gefunden',
     noConversationsYet: 'Noch keine Unterhaltungen',
@@ -527,6 +528,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Netzwerkzugang',
+    networkTitle: 'Netzwerk und Zugriff',
+    releaseTrack: 'Versionsverwaltung',
+    systemVersion: 'Updates und Versionen',
     llmApiKeyRequired:
       'Bitte konfigurieren Sie einen API-Schlüssel, bevor Sie die LLM-Provider-Seite öffnen.',
     agentReflection: {
@@ -1746,8 +1751,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Genehmigte Verzeichnisse',
+    approvedDirectoriesDesc: 'Über „Immer erlauben“ für exec/convert genehmigte Verzeichnisse.',
+    noApprovedDirectories: 'Keine genehmigten Verzeichnisse',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Genehmigte Verzeichnisse',
       firewall: 'Firewall',
       masking: 'Datenmaskierung',
     },
@@ -2408,6 +2417,7 @@ export default {
       length: 'Mindestens {n} Zeichen',
       uppercase: 'Ein Großbuchstabe',
       lowercase: 'Ein Kleinbuchstabe',
+      letter: 'Ein Buchstabe',
       number: 'Eine Zahl',
       special: "Ein Sonderzeichen (!{'@'}#$%...)",
     },

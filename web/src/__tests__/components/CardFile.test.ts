@@ -44,12 +44,16 @@ describe('CardFile', () => {
     openInBrowserMock.mockResolvedValue(true)
     resolveLocalFileMock.mockReset()
     resolveLocalFileMock.mockResolvedValue({
-      path: '/Users/orca/Documents/report.pdf',
-      name: 'report.pdf',
-      size_bytes: 1024,
-      mime_type: 'application/pdf',
-      download_url: '/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf',
-      thumbnail_url: '/api/v1/system/local-file/thumbnail?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf',
+      data: {
+        path: '/Users/orca/Documents/report.pdf',
+        name: 'report.pdf',
+        size_bytes: 1024,
+        mime_type: 'application/pdf',
+        download_url:
+          '/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf',
+        thumbnail_url:
+          '/api/v1/system/local-file/thumbnail?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf',
+      },
     })
   })
 
@@ -97,11 +101,16 @@ describe('CardFile', () => {
 
     await flushPromises()
 
-    const thumbnailButton = wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Download')
+    const thumbnailButton = wrapper
+      .findAll('button')
+      .find((button) => button.attributes('aria-label') === 'Download')
     expect(thumbnailButton).toBeTruthy()
     await thumbnailButton!.trigger('click')
 
-    expect(openSpy).toHaveBeenCalledWith('/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf', '_blank')
+    expect(openSpy).toHaveBeenCalledWith(
+      '/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf',
+      '_blank'
+    )
   })
 
   it('uses openInBrowser for local absolute paths', async () => {
@@ -120,7 +129,9 @@ describe('CardFile', () => {
     })
 
     await flushPromises()
-    const actionButton = wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Open location')
+    const actionButton = wrapper
+      .findAll('button')
+      .find((button) => button.attributes('aria-label') === 'Open location')
     expect(actionButton).toBeTruthy()
     await actionButton!.trigger('click')
 
@@ -145,11 +156,16 @@ describe('CardFile', () => {
     })
 
     await flushPromises()
-    const actionButton = wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Open location')
+    const actionButton = wrapper
+      .findAll('button')
+      .find((button) => button.attributes('aria-label') === 'Open location')
     expect(actionButton).toBeTruthy()
     await actionButton!.trigger('click')
 
-    expect(openSpy).toHaveBeenCalledWith('/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf', '_blank')
+    expect(openSpy).toHaveBeenCalledWith(
+      '/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf',
+      '_blank'
+    )
   })
 
   it('does not open raw local path when openInBrowser fails and no download fallback is available', async () => {
@@ -170,7 +186,9 @@ describe('CardFile', () => {
     })
 
     await flushPromises()
-    const actionButton = wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Open location')
+    const actionButton = wrapper
+      .findAll('button')
+      .find((button) => button.attributes('aria-label') === 'Open location')
     expect(actionButton).toBeTruthy()
     await actionButton!.trigger('click')
 

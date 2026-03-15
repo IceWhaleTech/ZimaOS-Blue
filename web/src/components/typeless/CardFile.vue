@@ -84,9 +84,13 @@ const thumbnailDisplayUrl = computed(() => {
     : `${thumbnailUrl.value}?size=128`
 })
 
-watch(() => props.card.downloadUrl, () => {
-  void resolveLocalFileMetadata()
-}, { immediate: true })
+watch(
+  () => props.card.downloadUrl,
+  () => {
+    void resolveLocalFileMetadata()
+  },
+  { immediate: true }
+)
 
 async function resolveLocalFileMetadata() {
   resolveSeq += 1
@@ -97,9 +101,9 @@ async function resolveLocalFileMetadata() {
   if (!path || !isLocalAbsolutePath(path)) return
 
   try {
-    const data = await systemApi.resolveLocalFile(path)
+    const response = await systemApi.resolveLocalFile(path)
     if (currentSeq !== resolveSeq) return
-    localFile.value = data
+    localFile.value = response.data
   } catch {
     if (currentSeq !== resolveSeq) return
     localFile.value = null
@@ -146,10 +150,14 @@ function handleThumbnailClick() {
 </script>
 
 <template>
-  <div class="file-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="file-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <div class="p-4 flex items-center gap-4">
       <!-- File icon -->
-      <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-2xl overflow-hidden">
+      <div
+        class="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-2xl overflow-hidden"
+      >
         <button
           v-if="thumbnailDisplayUrl"
           class="w-full h-full"
@@ -188,8 +196,19 @@ function handleThumbnailClick() {
           :aria-label="t('common.preview', 'Preview')"
           @click="handlePreview"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+            />
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -201,11 +220,25 @@ function handleThumbnailClick() {
         <button
           v-if="card.downloadUrl"
           class="p-2 text-gray-900 dark:text-white hover:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
-          :title="isLocalDownloadPath ? t('common.openLocation', 'Open location') : t('common.download', 'Download')"
-          :aria-label="isLocalDownloadPath ? t('common.openLocation', 'Open location') : t('common.download', 'Download')"
+          :title="
+            isLocalDownloadPath
+              ? t('common.openLocation', 'Open location')
+              : t('common.download', 'Download')
+          "
+          :aria-label="
+            isLocalDownloadPath
+              ? t('common.openLocation', 'Open location')
+              : t('common.download', 'Download')
+          "
           @click="handleDownload"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"

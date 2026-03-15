@@ -12,7 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelVisible': [value: boolean]
-  'downloaded': []
+  downloaded: []
 }>()
 
 interface ModelWithStatus {
@@ -171,16 +171,19 @@ async function handleUse(modelId: string) {
   }
 }
 
-watch(() => props.modelVisible, (visible) => {
-  if (visible) {
-    downloadingModelId.value = null
-    progress.value = null
-    error.value = null
-    loadModels()
-  } else {
-    clearPollInterval()
+watch(
+  () => props.modelVisible,
+  (visible) => {
+    if (visible) {
+      downloadingModelId.value = null
+      progress.value = null
+      error.value = null
+      loadModels()
+    } else {
+      clearPollInterval()
+    }
   }
-})
+)
 </script>
 
 <template>
@@ -210,21 +213,59 @@ watch(() => props.modelVisible, (visible) => {
                   ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
                   : downloadingModelId === model.id
                     ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600'
-                    : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                    : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600',
               ]"
             >
               <div class="flex items-center gap-3">
                 <!-- Status icon -->
-                <svg v-if="model.downloaded" class="w-5 h-5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                <svg
+                  v-if="model.downloaded"
+                  class="w-5 h-5 text-green-500 flex-shrink-0"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
-                <svg v-else-if="downloadingModelId === model.id" class="w-5 h-5 text-gray-900 dark:text-white flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  v-else-if="downloadingModelId === model.id"
+                  class="w-5 h-5 text-gray-900 dark:text-white flex-shrink-0 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  ></circle>
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 <!-- Download icon for not-downloaded models -->
-                <svg v-else class="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                <svg
+                  v-else
+                  class="w-5 h-5 text-gray-400 flex-shrink-0"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
                 </svg>
 
                 <!-- Model info -->
@@ -232,7 +273,11 @@ watch(() => props.modelVisible, (visible) => {
                   <div class="font-medium text-gray-900 dark:text-white">
                     {{ trModelText(model.name) }}
                     <span class="text-xs text-gray-400 ml-1">{{ model.size }}</span>
-                    <span v-if="model.active" class="text-xs text-green-600 dark:text-green-400 ml-1">{{ t('speech.inUse') }}</span>
+                    <span
+                      v-if="model.active"
+                      class="text-xs text-green-600 dark:text-green-400 ml-1"
+                      >{{ t('speech.inUse') }}</span
+                    >
                   </div>
                   <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {{ trModelText(model.description) }}
@@ -266,10 +311,29 @@ watch(() => props.modelVisible, (visible) => {
                   {{ t('common.use') }}
                 </button>
                 <!-- Switching indicator -->
-                <span v-else-if="switchingModelId === model.id" class="text-gray-900 dark:text-white text-sm flex items-center gap-1">
-                  <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <span
+                  v-else-if="switchingModelId === model.id"
+                  class="text-gray-900 dark:text-white text-sm flex items-center gap-1"
+                >
+                  <svg
+                    class="animate-spin h-4 w-4"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    ></circle>
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                   {{ t('speech.switching') }}
                 </span>
@@ -284,15 +348,23 @@ watch(() => props.modelVisible, (visible) => {
                   ></div>
                 </div>
                 <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                  <span>{{ formatBytes(progress?.downloaded || 0) }} / {{ formatBytes(progress?.total || 0) }}</span>
-                  <span>{{ progress?.speed_human || '-- MB/s' }} · {{ progress?.eta || '--:--' }}</span>
+                  <span
+                    >{{ formatBytes(progress?.downloaded || 0) }} /
+                    {{ formatBytes(progress?.total || 0) }}</span
+                  >
+                  <span
+                    >{{ progress?.speed_human || '-- MB/s' }} · {{ progress?.eta || '--:--' }}</span
+                  >
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Error -->
-          <div v-if="error" class="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm">
+          <div
+            v-if="error"
+            class="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm"
+          >
             {{ error }}
           </div>
 

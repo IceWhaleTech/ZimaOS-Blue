@@ -37,31 +37,68 @@ async function handleCancel(job: DeepResearchJobSummary) {
 </script>
 
 <template>
-  <div class="rounded-[1.25rem] border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/90 shadow-xl backdrop-blur-md overflow-hidden">
-    <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 flex items-center justify-between gap-3">
+  <div
+    class="rounded-[1.25rem] border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/90 shadow-xl backdrop-blur-md overflow-hidden"
+  >
+    <div
+      class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 flex items-center justify-between gap-3"
+    >
       <div>
-        <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ t('chat.deepResearchRunningTasks', 'Running research tasks') }}</div>
-        <div class="text-xs text-slate-500 dark:text-slate-400">{{ t('chat.deepResearchRunningElsewhere', 'Track active deep research jobs across conversations.') }}</div>
+        <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
+          {{ t('chat.deepResearchRunningTasks', 'Running research tasks') }}
+        </div>
+        <div class="text-xs text-slate-500 dark:text-slate-400">
+          {{
+            t(
+              'chat.deepResearchRunningElsewhere',
+              'Track active deep research jobs across conversations.'
+            )
+          }}
+        </div>
       </div>
-      <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">{{ jobs.length }}</span>
+      <span
+        class="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+        >{{ jobs.length }}</span
+      >
     </div>
 
     <div class="max-h-64 overflow-y-auto px-3 py-3 space-y-2">
-      <div v-for="job in jobs" :key="job.job_id" class="rounded-2xl border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-950/60">
+      <div
+        v-for="job in jobs"
+        :key="job.job_id"
+        class="rounded-2xl border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-950/60"
+      >
         <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <span class="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">{{ stageLabel(job.stage) }}</span>
+            <div
+              class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+            >
+              <span
+                class="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
+                >{{ stageLabel(job.stage) }}</span
+              >
               <span>{{ Math.round(job.progress || 0) }}%</span>
-              <span v-if="job.iteration">{{ t('chat.deepResearchIteration', 'Iteration') }} {{ job.iteration }}</span>
+              <span v-if="job.iteration"
+                >{{ t('chat.deepResearchIteration', 'Iteration') }} {{ job.iteration }}</span
+              >
             </div>
-            <div class="mt-2 text-sm font-medium text-slate-800 dark:text-slate-100 break-words">{{ job.query }}</div>
-            <div v-if="job.latest_action || job.latest_gap" class="mt-2 text-xs text-slate-500 dark:text-slate-400 space-y-1">
+            <div class="mt-2 text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
+              {{ job.query }}
+            </div>
+            <div
+              v-if="job.latest_action || job.latest_gap"
+              class="mt-2 text-xs text-slate-500 dark:text-slate-400 space-y-1"
+            >
               <div v-if="job.latest_action" class="break-words">{{ job.latest_action }}</div>
-              <div v-if="job.latest_gap" class="break-words text-amber-700 dark:text-amber-200">{{ job.latest_gap }}</div>
+              <div v-if="job.latest_gap" class="break-words text-amber-700 dark:text-amber-200">
+                {{ job.latest_gap }}
+              </div>
             </div>
             <div class="mt-3 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-              <div class="h-full bg-blue-500 transition-all duration-500" :style="{ width: `${Math.max(0, Math.min(100, Math.round(job.progress || 0)))}%` }" />
+              <div
+                class="h-full bg-blue-500 transition-all duration-500"
+                :style="{ width: `${Math.max(0, Math.min(100, Math.round(job.progress || 0)))}%` }"
+              />
             </div>
           </div>
 
@@ -78,7 +115,11 @@ async function handleCancel(job: DeepResearchJobSummary) {
               :disabled="cancellingJobId === job.job_id"
               @click="handleCancel(job)"
             >
-              {{ cancellingJobId === job.job_id ? t('common.loading', 'Loading...') : t('chat.deepResearchCancelTask', 'Cancel') }}
+              {{
+                cancellingJobId === job.job_id
+                  ? t('common.loading', 'Loading...')
+                  : t('chat.deepResearchCancelTask', 'Cancel')
+              }}
             </button>
           </div>
         </div>

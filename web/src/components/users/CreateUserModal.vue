@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { usersApi, permissionsApi, PagePermissions, type PermissionInfo } from '@/api/users'
 import { authApi, type PasswordPolicy } from '@/api/auth'
 import { getUserErrorMessage } from '@/utils/userErrors'
+import { buildPasswordChecks } from '@/utils/passwordPolicy'
 
 const emit = defineEmits<{
   close: []
@@ -23,13 +24,14 @@ const showPassword = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const availablePermissions = ref<PermissionInfo[]>([])
+const policyLoading = ref(true)
 
 // Password policy from backend
 const policy = ref<PasswordPolicy>({
   min_length: 6,
-  require_uppercase: false,
-  require_lowercase: false,
-  require_letter: true,
+  require_uppercase: true,
+  require_lowercase: true,
+  require_letter: false,
   require_number: true,
   require_special: true,
 })
@@ -40,38 +42,40 @@ onMounted(async () => {
     policy.value = res.data
   } catch {
     // fallback to defaults
+  } finally {
+    policyLoading.value = false
   }
 })
 
 // Password strength indicators
 const passwordChecks = computed(() => {
-  const pwd = password.value
-  const p = policy.value
-  return {
-    length: pwd.length >= p.min_length,
-    letter: !p.require_letter || /\p{L}/u.test(pwd),
-    number: !p.require_number || /[0-9]/.test(pwd),
-    special: !p.require_special || /[^\p{L}\p{N}\s]/u.test(pwd),
-  }
+  return buildPasswordChecks(password.value, policy.value, t)
 })
 
 const passwordStrength = computed(() => {
-  const checks = passwordChecks.value
-  return Object.values(checks).filter(Boolean).length
+  return passwordChecks.value.filter((check) => check.passed).length
 })
 
 const allPasswordChecksPassed = computed(() => {
-  const checks = passwordChecks.value
-  return checks.length && checks.letter && checks.number && checks.special
+  return passwordChecks.value.every((check) => check.passed)
 })
 
+const requiresPasswordConfirmation = computed(() => !showPassword.value)
+
 const passwordMismatch = computed(() => {
-  return confirmPassword.value.length > 0 && password.value !== confirmPassword.value
+  return (
+    requiresPasswordConfirmation.value &&
+    confirmPassword.value.length > 0 &&
+    password.value !== confirmPassword.value
+  )
 })
 
 const isValid = computed(() => {
-  const baseValid = username.value.length >= 3 && allPasswordChecksPassed.value
-  return baseValid && password.value === confirmPassword.value
+  const baseValid =
+    !policyLoading.value && username.value.length >= 3 && allPasswordChecksPassed.value
+  return (
+    baseValid && (!requiresPasswordConfirmation.value || password.value === confirmPassword.value)
+  )
 })
 
 // Default permissions based on role
@@ -92,15 +96,60 @@ async function loadPermissions() {
     // Use default list if API fails
     availablePermissions.value = [
       { key: PagePermissions.CHAT, name: 'Chat', description: 'Access to chat', category: 'core' },
-      { key: PagePermissions.HOME, name: 'Dashboard', description: 'Access to dashboard', category: 'core' },
-      { key: PagePermissions.PROFILE, name: 'Profile', description: 'Access to profile', category: 'core' },
-      { key: PagePermissions.CHANNELS, name: 'Channels', description: 'Access to channels', category: 'communication' },
-      { key: PagePermissions.SETTINGS, name: 'Settings', description: 'Access to settings', category: 'admin' },
-      { key: PagePermissions.SECURITY, name: 'Security', description: 'Access to security', category: 'admin' },
-      { key: PagePermissions.AUTOMATION, name: 'Automation', description: 'Access to automation', category: 'advanced' },
-      { key: PagePermissions.PLUGINS, name: 'Plugins', description: 'Access to plugins', category: 'advanced' },
-      { key: PagePermissions.TOOLS, name: 'Tool Store', description: 'Access to tools', category: 'advanced' },
-      { key: PagePermissions.SKILLS, name: 'Skill Store', description: 'Access to skills', category: 'advanced' },
+      {
+        key: PagePermissions.HOME,
+        name: 'Dashboard',
+        description: 'Access to dashboard',
+        category: 'core',
+      },
+      {
+        key: PagePermissions.PROFILE,
+        name: 'Profile',
+        description: 'Access to profile',
+        category: 'core',
+      },
+      {
+        key: PagePermissions.CHANNELS,
+        name: 'Channels',
+        description: 'Access to channels',
+        category: 'communication',
+      },
+      {
+        key: PagePermissions.SETTINGS,
+        name: 'Settings',
+        description: 'Access to settings',
+        category: 'admin',
+      },
+      {
+        key: PagePermissions.SECURITY,
+        name: 'Security',
+        description: 'Access to security',
+        category: 'admin',
+      },
+      {
+        key: PagePermissions.AUTOMATION,
+        name: 'Automation',
+        description: 'Access to automation',
+        category: 'advanced',
+      },
+      {
+        key: PagePermissions.PLUGINS,
+        name: 'Plugins',
+        description: 'Access to plugins',
+        category: 'advanced',
+      },
+      {
+        key: PagePermissions.TOOLS,
+        name: 'Tool Store',
+        description: 'Access to tools',
+        category: 'advanced',
+      },
+      {
+        key: PagePermissions.SKILLS,
+        name: 'Skill Store',
+        description: 'Access to skills',
+        category: 'advanced',
+      },
     ]
   }
 }
@@ -123,7 +172,10 @@ async function handleSubmit() {
     emit('created')
   } catch (e) {
     const axiosError = e as { response?: { data?: { message?: string } } }
-    error.value = getUserErrorMessage(axiosError.response?.data?.message, 'users.error.createFailed')
+    error.value = getUserErrorMessage(
+      axiosError.response?.data?.message,
+      'users.error.createFailed'
+    )
   } finally {
     loading.value = false
   }
@@ -137,9 +189,13 @@ loadPermissions()
 <template>
   <Teleport to="body">
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div class="w-full max-w-lg bg-white dark:bg-gray-700 rounded-xl shadow-xl max-h-[90vh] overflow-y-auto">
+      <div
+        class="w-full max-w-lg bg-white dark:bg-gray-700 rounded-xl shadow-xl max-h-[90vh] overflow-y-auto"
+      >
         <!-- Header -->
-        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-700">
+        <div
+          class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-700"
+        >
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('users.addUser') }}
           </h2>
@@ -147,8 +203,19 @@ loadPermissions()
             class="p-1 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
             @click="emit('close')"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -215,6 +282,7 @@ loadPermissions()
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
                   class="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                  :minlength="policy.min_length"
                   required
                 />
                 <button
@@ -222,56 +290,67 @@ loadPermissions()
                   class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                   @click="showPassword = !showPassword"
                 >
-                  <svg v-if="showPassword" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                  <svg
+                    v-if="showPassword"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                    />
                   </svg>
-                  <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  <svg
+                    v-else
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                    />
                   </svg>
                 </button>
               </div>
               <!-- Password Strength Indicator -->
-              <div v-if="password.length > 0" class="mt-2 space-y-2">
+              <div v-if="!policyLoading && password.length > 0" class="mt-2 space-y-2">
                 <div class="flex gap-1">
                   <div
-                    v-for="i in 4"
+                    v-for="i in passwordChecks.length"
                     :key="i"
                     class="h-1 flex-1 rounded-full transition-colors"
                     :class="i <= passwordStrength ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
                   />
                 </div>
                 <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  <div class="flex items-center gap-1.5">
-                    <span :class="passwordChecks.length ? 'text-green-500' : 'text-gray-400'">
-                      {{ passwordChecks.length ? '✓' : '○' }}
+                  <div
+                    v-for="check in passwordChecks"
+                    :key="check.key"
+                    class="flex items-center gap-1.5"
+                  >
+                    <span :class="check.passed ? 'text-green-500' : 'text-gray-400'">
+                      {{ check.passed ? '✓' : '○' }}
                     </span>
-                    <span :class="passwordChecks.length ? 'text-green-600 dark:text-green-400' : 'text-gray-500'">
-                      {{ t('preview.passwordCheck.length', { n: policy.min_length }) }}
-                    </span>
-                  </div>
-                  <div class="flex items-center gap-1.5">
-                    <span :class="passwordChecks.letter ? 'text-green-500' : 'text-gray-400'">
-                      {{ passwordChecks.letter ? '✓' : '○' }}
-                    </span>
-                    <span :class="passwordChecks.letter ? 'text-green-600 dark:text-green-400' : 'text-gray-500'">
-                      {{ t('preview.passwordCheck.letter') }}
-                    </span>
-                  </div>
-                  <div class="flex items-center gap-1.5">
-                    <span :class="passwordChecks.number ? 'text-green-500' : 'text-gray-400'">
-                      {{ passwordChecks.number ? '✓' : '○' }}
-                    </span>
-                    <span :class="passwordChecks.number ? 'text-green-600 dark:text-green-400' : 'text-gray-500'">
-                      {{ t('preview.passwordCheck.number') }}
-                    </span>
-                  </div>
-                  <div class="flex items-center gap-1.5">
-                    <span :class="passwordChecks.special ? 'text-green-500' : 'text-gray-400'">
-                      {{ passwordChecks.special ? '✓' : '○' }}
-                    </span>
-                    <span :class="passwordChecks.special ? 'text-green-600 dark:text-green-400' : 'text-gray-500'">
-                      {{ t('preview.passwordCheck.special') }}
+                    <span
+                      :class="check.passed ? 'text-green-600 dark:text-green-400' : 'text-gray-500'"
+                    >
+                      {{ check.label }}
                     </span>
                   </div>
                 </div>
@@ -279,7 +358,7 @@ loadPermissions()
             </div>
 
             <!-- Confirm Password -->
-            <div>
+            <div v-if="requiresPasswordConfirmation">
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 {{ t('auth.confirmPassword') }} *
               </label>
@@ -287,7 +366,9 @@ loadPermissions()
                 v-model="confirmPassword"
                 :type="showPassword ? 'text' : 'password'"
                 class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-                :class="passwordMismatch ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
+                :class="
+                  passwordMismatch ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                "
                 :placeholder="t('auth.confirmPasswordPlaceholder')"
                 required
               />
@@ -301,7 +382,9 @@ loadPermissions()
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 {{ t('users.permissions') }}
               </label>
-              <div class="space-y-2 max-h-48 overflow-y-auto p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
+              <div
+                class="space-y-2 max-h-48 overflow-y-auto p-3 border border-gray-200 dark:border-gray-600 rounded-lg"
+              >
                 <label
                   v-for="perm in availablePermissions"
                   :key="perm.key"
@@ -314,8 +397,12 @@ loadPermissions()
                     class="w-4 h-4 text-gray-900 dark:text-gray-300 border-gray-300 rounded focus:ring-gray-400"
                   />
                   <div>
-                    <span class="text-sm text-gray-900 dark:text-white">{{ t(`users.pagePermissions.${perm.key}`, perm.name) }}</span>
-                    <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">{{ t(`users.pagePermissionDesc.${perm.key}`, perm.description) }}</span>
+                    <span class="text-sm text-gray-900 dark:text-white">{{
+                      t(`users.pagePermissions.${perm.key}`, perm.name)
+                    }}</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">{{
+                      t(`users.pagePermissionDesc.${perm.key}`, perm.description)
+                    }}</span>
                   </div>
                 </label>
               </div>
@@ -336,9 +423,25 @@ loadPermissions()
                 :disabled="!isValid || loading"
               >
                 <span v-if="loading" class="flex items-center justify-center space-x-2">
-                  <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    class="animate-spin h-4 w-4"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    ></circle>
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                   <span>{{ t('common.creating') }}</span>
                 </span>

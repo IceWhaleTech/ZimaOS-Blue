@@ -42,7 +42,7 @@ export const antigravityApi = {
    */
   getQuota(accessToken: string) {
     return api.post<AntigravityQuotaResponse>('/claudecode/antigravity/quota', {
-      access_token: accessToken
+      access_token: accessToken,
     })
   },
 
@@ -51,5 +51,5 @@ export const antigravityApi = {
    */
   getDetectedKeys() {
     return api.get<DetectedKeysResponse>('/claudecode/env-keys')
-  }
+  },
 }

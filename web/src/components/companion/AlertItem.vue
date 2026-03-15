@@ -71,14 +71,26 @@ function formatTime(timestamp: string): string {
       'rounded-lg border p-4 transition-all',
       severityConfig.bg,
       alert.acknowledged ? 'opacity-60' : '',
-      compact ? 'p-3' : 'p-4'
+      compact ? 'p-3' : 'p-4',
     ]"
   >
     <div class="flex items-start gap-3">
       <!-- Severity Icon -->
-      <div :class="['flex-shrink-0 p-2 rounded-full bg-white dark:bg-gray-700', severityConfig.color]">
-        <svg :class="compact ? 'w-4 h-4' : 'w-5 h-5'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="severityConfig.icon" />
+      <div
+        :class="['flex-shrink-0 p-2 rounded-full bg-white dark:bg-gray-700', severityConfig.color]"
+      >
+        <svg
+          :class="compact ? 'w-4 h-4' : 'w-5 h-5'"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            :d="severityConfig.icon"
+          />
         </svg>
       </div>
 
@@ -89,7 +101,7 @@ function formatTime(timestamp: string): string {
             :class="[
               'px-2 py-0.5 text-xs font-medium rounded-full uppercase',
               severityConfig.color,
-              'bg-white/50 dark:bg-gray-700/50'
+              'bg-white/50 dark:bg-gray-700/50',
             ]"
           >
             {{ alert.severity }}
@@ -105,11 +117,16 @@ function formatTime(timestamp: string): string {
           </span>
         </div>
 
-        <h4 :class="['font-medium text-gray-900 dark:text-white', compact ? 'text-sm' : 'text-base']">
+        <h4
+          :class="['font-medium text-gray-900 dark:text-white', compact ? 'text-sm' : 'text-base']"
+        >
           {{ alert.title }}
         </h4>
 
-        <p v-if="alert.description && !compact" class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+        <p
+          v-if="alert.description && !compact"
+          class="mt-1 text-sm text-gray-600 dark:text-gray-400"
+        >
           {{ alert.description }}
         </p>
 
@@ -120,15 +137,28 @@ function formatTime(timestamp: string): string {
             @click="emit('viewSession', alert.session_id)"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+              />
             </svg>
             {{ t('companion.alerts.viewSession') }}
           </button>
         </div>
 
         <!-- Acked info -->
-        <div v-if="alert.acknowledged && alert.acked_by" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+        <div
+          v-if="alert.acknowledged && alert.acked_by"
+          class="mt-2 text-xs text-gray-500 dark:text-gray-400"
+        >
           {{ t('companion.ackedBy') }}: {{ alert.acked_by }}
         </div>
       </div>

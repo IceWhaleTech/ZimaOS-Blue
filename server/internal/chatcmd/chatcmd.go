@@ -32,7 +32,8 @@ type CommandResult struct {
 	Content string
 }
 
-// CommandState is the persisted per-conversation command state.
+// CommandState is the persisted deterministic command state.
+// For authenticated users, it is shared across their conversations.
 type CommandState struct {
 	ConversationID      string
 	SelectedProviderID  string

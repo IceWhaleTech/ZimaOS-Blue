@@ -37,10 +37,15 @@ export const myApi = {
   // Providers
   listProviders: () => api.get<UserProviderConfig[]>('/my/providers'),
   getProvider: (name: string) => api.get<UserProviderConfig>(`/my/providers/${name}`),
-  updateProvider: (name: string, data: { api_key?: string; base_url?: string; enabled?: boolean }) =>
-    api.put<UserProviderConfig>(`/my/providers/${name}`, data),
+  updateProvider: (
+    name: string,
+    data: { api_key?: string; base_url?: string; enabled?: boolean }
+  ) => api.put<UserProviderConfig>(`/my/providers/${name}`, data),
   deleteProvider: (name: string) => api.delete(`/my/providers/${name}`),
-  testProvider: (name: string) => api.post<{ success: boolean; messageKey: string; models?: string[] }>(`/my/providers/${name}/test`),
+  testProvider: (name: string) =>
+    api.post<{ success: boolean; messageKey: string; models?: string[] }>(
+      `/my/providers/${name}/test`
+    ),
 
   // Skills
   listSkills: () => api.get<UserSkillConfig[]>('/my/skills'),

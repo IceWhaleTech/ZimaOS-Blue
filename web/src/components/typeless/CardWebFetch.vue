@@ -42,12 +42,18 @@ const warningCodeLabel = computed(() => formatToolWarningCodeLabel(props.card.wa
 const hostname = computed(() => hostFromUrl(url.value))
 const isMarkdown = computed(() => (props.card.extract_mode || '').toLowerCase() === 'markdown')
 const useBrowserAction = computed<ActionButton | null>(() => {
-  const configured = props.card.actions?.find(action => action.id === 'use_browser')
+  const configured = props.card.actions?.find((action) => action.id === 'use_browser')
   if (configured) return configured
   if (!url.value) return null
-  return { id: 'use_browser', label: t('webFetchCard.actions.use_browser', 'Use browser'), variant: 'primary' }
+  return {
+    id: 'use_browser',
+    label: t('webFetchCard.actions.use_browser', 'Use browser'),
+    variant: 'primary',
+  }
 })
-const renderedMarkdown = computed(() => isMarkdown.value && content.value ? renderMarkdown(content.value) : '')
+const renderedMarkdown = computed(() =>
+  isMarkdown.value && content.value ? renderMarkdown(content.value) : ''
+)
 const expanded = ref(false)
 const copiedUrl = ref(false)
 const copiedContent = ref(false)
@@ -81,7 +87,9 @@ async function copyUrl() {
   try {
     await navigator.clipboard.writeText(url.value)
     copiedUrl.value = true
-    setTimeout(() => { copiedUrl.value = false }, 1600)
+    setTimeout(() => {
+      copiedUrl.value = false
+    }, 1600)
   } catch {
     console.error('Failed to copy URL')
   }
@@ -92,7 +100,9 @@ async function copyContent() {
   try {
     await navigator.clipboard.writeText(content.value)
     copiedContent.value = true
-    setTimeout(() => { copiedContent.value = false }, 1600)
+    setTimeout(() => {
+      copiedContent.value = false
+    }, 1600)
   } catch {
     console.error('Failed to copy content')
   }
@@ -135,12 +145,18 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
 </script>
 
 <template>
-  <div class="rounded-xl border overflow-hidden bg-white dark:bg-gray-800 shadow-sm" :class="toneClasses.border">
+  <div
+    class="rounded-xl border overflow-hidden bg-white dark:bg-gray-800 shadow-sm"
+    :class="toneClasses.border"
+  >
     <div class="px-4 py-3 border-b" :class="toneClasses.header">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <span class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0" :class="toneClasses.dot" />
+            <span
+              class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
+              :class="toneClasses.dot"
+            />
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
               {{ title }}
             </h3>
@@ -156,12 +172,32 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
             />
           </div>
 
-          <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-            <span v-if="hostname" class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">{{ hostname }}</span>
-            <span v-if="card.extract_mode" class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">{{ card.extract_mode }}</span>
-            <span v-if="card.extractor" class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">{{ card.extractor }}</span>
-            <span v-if="card.content_type" class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">{{ card.content_type }}</span>
-            <span v-if="card.truncated" class="rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 px-2 py-0.5">{{ t('execCard.outputTruncated', 'truncated') }}</span>
+          <div
+            class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400"
+          >
+            <span v-if="hostname" class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">{{
+              hostname
+            }}</span>
+            <span
+              v-if="card.extract_mode"
+              class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5"
+              >{{ card.extract_mode }}</span
+            >
+            <span
+              v-if="card.extractor"
+              class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5"
+              >{{ card.extractor }}</span
+            >
+            <span
+              v-if="card.content_type"
+              class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5"
+              >{{ card.content_type }}</span
+            >
+            <span
+              v-if="card.truncated"
+              class="rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 px-2 py-0.5"
+              >{{ t('execCard.outputTruncated', 'truncated') }}</span
+            >
           </div>
 
           <a
@@ -179,7 +215,10 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
           <button
             v-if="useBrowserAction"
             class="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60 disabled:cursor-wait"
-            :class="[actionButtonClasses(useBrowserAction.variant), { 'opacity-60 cursor-wait': actionLoading }]"
+            :class="[
+              actionButtonClasses(useBrowserAction.variant),
+              { 'opacity-60 cursor-wait': actionLoading },
+            ]"
             :disabled="isActionDisabled(useBrowserAction)"
             :aria-busy="isActionActive(useBrowserAction.id) ? 'true' : undefined"
             @click="triggerAction(useBrowserAction.id, !!useBrowserAction.disabled)"
@@ -202,7 +241,9 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
             class="rounded-md border border-gray-200 dark:border-gray-700 px-2.5 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
             @click="copyContent"
           >
-            {{ copiedContent ? t('common.copied', 'Copied') : t('webFetchCard.copyText', 'Copy text') }}
+            {{
+              copiedContent ? t('common.copied', 'Copied') : t('webFetchCard.copyText', 'Copy text')
+            }}
           </button>
         </div>
       </div>
@@ -213,7 +254,9 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
         v-if="warning || warningCodeLabel"
         class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/60 dark:bg-amber-900/20"
       >
-        <div class="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+        <div
+          class="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200"
+        >
           {{ warningCodeLabel || t('toolWarnings.warning', 'Warning') }}
         </div>
         <p v-if="warning" class="mt-1 text-sm leading-relaxed text-amber-900 dark:text-amber-100">
@@ -221,14 +264,19 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
         </p>
       </div>
 
-      <div v-if="hasContent" class="mt-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 overflow-hidden">
+      <div
+        v-if="hasContent"
+        class="mt-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 overflow-hidden"
+      >
         <button
           class="flex w-full items-center justify-between gap-3 bg-white/70 px-4 py-3.5 text-left transition-colors hover:bg-white dark:bg-gray-800/50 dark:hover:bg-gray-800"
           :aria-expanded="expanded ? 'true' : 'false'"
           @click="expanded = !expanded"
         >
           <span class="flex min-w-0 items-center gap-3">
-            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300">
+            <span
+              class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300"
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4"
@@ -245,12 +293,25 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
               </svg>
             </span>
             <span class="min-w-0">
-              <span class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">{{ t('webFetchCard.contentLabel', 'Web content') }}</span>
-              <span class="block text-sm text-gray-700 dark:text-gray-200">{{ expanded ? t('webFetchCard.collapseHint', 'Hide the extracted page content') : t('webFetchCard.expandHint', 'View the extracted page content') }}</span>
+              <span
+                class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400"
+                >{{ t('webFetchCard.contentLabel', 'Web content') }}</span
+              >
+              <span class="block text-sm text-gray-700 dark:text-gray-200">{{
+                expanded
+                  ? t('webFetchCard.collapseHint', 'Hide the extracted page content')
+                  : t('webFetchCard.expandHint', 'View the extracted page content')
+              }}</span>
             </span>
           </span>
-          <span class="flex flex-shrink-0 items-center gap-2 text-sm font-medium text-sky-700 dark:text-sky-300">
-            <span>{{ expanded ? t('webFetchCard.collapseContent', 'Collapse web content') : t('webFetchCard.expandContent', 'Expand web content') }}</span>
+          <span
+            class="flex flex-shrink-0 items-center gap-2 text-sm font-medium text-sky-700 dark:text-sky-300"
+          >
+            <span>{{
+              expanded
+                ? t('webFetchCard.collapseContent', 'Collapse web content')
+                : t('webFetchCard.expandContent', 'Expand web content')
+            }}</span>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               class="h-4 w-4 text-gray-400 transition-transform duration-200"
@@ -259,24 +320,39 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </span>
         </button>
 
         <transition name="web-fetch-content">
-          <div v-if="expanded" class="border-t border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div
+            v-if="expanded"
+            class="border-t border-gray-200 dark:border-gray-700 overflow-hidden"
+          >
             <div
               v-if="isMarkdown"
               class="prose prose-sm dark:prose-invert max-w-none px-4 py-3"
               v-html="renderedMarkdown"
             />
-            <pre v-else class="px-4 py-3 text-sm leading-6 text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{{ content }}</pre>
+            <pre
+              v-else
+              class="px-4 py-3 text-sm leading-6 text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words"
+              >{{ content }}</pre
+            >
           </div>
         </transition>
       </div>
 
-      <div v-else class="mt-3 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+      <div
+        v-else
+        class="mt-3 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400"
+      >
         {{ t('webFetchCard.noContent', 'No extracted content') }}
       </div>
     </div>
@@ -287,7 +363,10 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
 .web-fetch-content-enter-active,
 .web-fetch-content-leave-active {
   overflow: hidden;
-  transition: max-height 220ms ease, opacity 180ms ease, transform 180ms ease;
+  transition:
+    max-height 220ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
 }
 
 .web-fetch-content-enter-from,

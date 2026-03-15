@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { skillApi } from '@/api/skill'
-import type { Skill, SkillSource, RemoteSkill, BrowseParams, InstallFromURLRequest } from '@/api/skill'
+import type {
+  Skill,
+  SkillSource,
+  RemoteSkill,
+  BrowseParams,
+  InstallFromURLRequest,
+} from '@/api/skill'
 
 export const useSkillStore = defineStore('skill', () => {
   // State
@@ -188,7 +194,11 @@ export const useSkillStore = defineStore('skill', () => {
       loadingMore.value = true
       error.value = null
       const nextPage = currentPage.value + 1
-      const response = await skillApi.browse({ ...params, page: nextPage, page_size: pageSize.value })
+      const response = await skillApi.browse({
+        ...params,
+        page: nextPage,
+        page_size: pageSize.value,
+      })
 
       if (response.data && 'skills' in response.data) {
         // Append new skills to existing list

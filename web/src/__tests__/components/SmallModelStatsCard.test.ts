@@ -93,7 +93,9 @@ describe('SmallModelStatsCard', () => {
 
     const firstText = wrapper.text()
     expect(firstText.indexOf('timeout')).toBeLessThan(firstText.indexOf('deepresearch unavailable'))
-    expect(firstText.indexOf('deepresearch unavailable')).toBeLessThan(firstText.indexOf('model unready'))
+    expect(firstText.indexOf('deepresearch unavailable')).toBeLessThan(
+      firstText.indexOf('model unready')
+    )
 
     await wrapper.find('button').trigger('click')
     await flushPromises()

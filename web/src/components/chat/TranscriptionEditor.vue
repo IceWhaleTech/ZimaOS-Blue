@@ -21,9 +21,12 @@ const editedText = ref(props.text)
 const isEditing = ref(false)
 
 // Watch for text changes from parent
-watch(() => props.text, (newText) => {
-  editedText.value = newText
-})
+watch(
+  () => props.text,
+  (newText) => {
+    editedText.value = newText
+  }
+)
 
 const confidencePercent = computed(() => {
   if (!props.confidence) return null
@@ -89,36 +92,21 @@ const handleKeydown = (e: KeyboardEvent) => {
       </div>
 
       <div class="editor-actions">
-        <button
-          v-if="!isEditing"
-          class="btn-edit"
-          @click="toggleEdit"
-        >
+        <button v-if="!isEditing" class="btn-edit" @click="toggleEdit">
           <span class="icon">✏️</span>
           {{ t('common.edit') }}
         </button>
-        <button
-          v-else
-          class="btn-done"
-          @click="toggleEdit"
-        >
+        <button v-else class="btn-done" @click="toggleEdit">
           <span class="icon">✓</span>
           {{ t('common.done') }}
         </button>
 
         <div class="spacer" />
 
-        <button
-          class="btn-cancel"
-          @click="cancel"
-        >
+        <button class="btn-cancel" @click="cancel">
           {{ t('common.cancel') }}
         </button>
-        <button
-          class="btn-send"
-          :disabled="!editedText.trim()"
-          @click="confirmAndSend"
-        >
+        <button class="btn-send" :disabled="!editedText.trim()" @click="confirmAndSend">
           <span class="icon">📤</span>
           {{ t('chat.transcription.send') }}
         </button>
@@ -180,7 +168,9 @@ const handleKeydown = (e: KeyboardEvent) => {
   resize: none;
   background: var(--color-bg-primary, #fff);
   color: var(--color-text-primary, #333);
-  transition: border-color 0.2s, background-color 0.2s;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
 }
 
 .editor-content textarea:read-only {
@@ -218,7 +208,9 @@ const handleKeydown = (e: KeyboardEvent) => {
   border-radius: 6px;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.2s, opacity 0.2s;
+  transition:
+    background-color 0.2s,
+    opacity 0.2s;
 }
 
 .btn-edit,

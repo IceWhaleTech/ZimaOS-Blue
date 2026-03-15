@@ -99,7 +99,12 @@ const diffLines = computed((): DiffLine[] => {
       result.push({ type: 'removed', content: oldLine, oldLineNum: oldIdx + 1 })
       oldIdx++
     } else if (oldLine === newLine) {
-      result.push({ type: 'unchanged', content: oldLine, oldLineNum: oldIdx + 1, newLineNum: newIdx + 1 })
+      result.push({
+        type: 'unchanged',
+        content: oldLine,
+        oldLineNum: oldIdx + 1,
+        newLineNum: newIdx + 1,
+      })
       oldIdx++
       newIdx++
     } else if (!newSet.has(oldLine)) {
@@ -177,13 +182,24 @@ const codeLines = computed(() => {
 
 // Language display
 const languageNames: Record<string, string> = {
-  js: 'JavaScript', javascript: 'JavaScript',
-  ts: 'TypeScript', typescript: 'TypeScript',
-  py: 'Python', python: 'Python',
-  go: 'Go', rust: 'Rust', java: 'Java',
-  cpp: 'C++', c: 'C', html: 'HTML', css: 'CSS',
-  json: 'JSON', yaml: 'YAML', sql: 'SQL',
-  bash: 'Bash', shell: 'Shell',
+  js: 'JavaScript',
+  javascript: 'JavaScript',
+  ts: 'TypeScript',
+  typescript: 'TypeScript',
+  py: 'Python',
+  python: 'Python',
+  go: 'Go',
+  rust: 'Rust',
+  java: 'Java',
+  cpp: 'C++',
+  c: 'C',
+  html: 'HTML',
+  css: 'CSS',
+  json: 'JSON',
+  yaml: 'YAML',
+  sql: 'SQL',
+  bash: 'Bash',
+  shell: 'Shell',
 }
 
 const languageDisplay = computed(() => {
@@ -202,11 +218,16 @@ const languageDisplay = computed(() => {
         @click.self="close"
       >
         <!-- Header -->
-        <div class="flex items-center justify-between px-6 py-4 bg-slate-900/95 border-b border-slate-700/60">
+        <div
+          class="flex items-center justify-between px-6 py-4 bg-slate-900/95 border-b border-slate-700/60"
+        >
           <div class="flex items-center gap-4">
             <!-- Window controls -->
             <div class="flex gap-1.5">
-              <div class="w-3 h-3 rounded-full bg-red-500 cursor-pointer hover:brightness-110" @click="close" />
+              <div
+                class="w-3 h-3 rounded-full bg-red-500 cursor-pointer hover:brightness-110"
+                @click="close"
+              />
               <div class="w-3 h-3 rounded-full bg-yellow-500" />
               <div class="w-3 h-3 rounded-full bg-green-500" />
             </div>
@@ -215,7 +236,10 @@ const languageDisplay = computed(() => {
               {{ fullscreenContent.title }}
             </h2>
             <!-- Language badge -->
-            <span v-if="languageDisplay" class="px-2 py-1 text-xs rounded border border-slate-600/80 bg-slate-800/80 text-slate-200">
+            <span
+              v-if="languageDisplay"
+              class="px-2 py-1 text-xs rounded border border-slate-600/80 bg-slate-800/80 text-slate-200"
+            >
               {{ languageDisplay }}
             </span>
             <!-- Diff stats -->
@@ -227,17 +251,28 @@ const languageDisplay = computed(() => {
 
           <div class="flex items-center gap-3">
             <!-- View mode toggle for diff -->
-            <div v-if="fullscreenContent.type === 'diff'" class="flex rounded-lg border border-slate-600/70 overflow-hidden">
+            <div
+              v-if="fullscreenContent.type === 'diff'"
+              class="flex rounded-lg border border-slate-600/70 overflow-hidden"
+            >
               <button
                 class="px-3 py-1.5 text-sm font-medium transition-colors"
-                :class="viewMode === 'unified' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:bg-slate-700/40'"
+                :class="
+                  viewMode === 'unified'
+                    ? 'bg-slate-700 text-white'
+                    : 'text-slate-300 hover:bg-slate-700/40'
+                "
                 @click="viewMode = 'unified'"
               >
                 {{ t('diffCard.unified', 'Unified') }}
               </button>
               <button
                 class="px-3 py-1.5 text-sm font-medium transition-colors"
-                :class="viewMode === 'split' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:bg-slate-700/40'"
+                :class="
+                  viewMode === 'split'
+                    ? 'bg-slate-700 text-white'
+                    : 'text-slate-300 hover:bg-slate-700/40'
+                "
                 @click="viewMode = 'split'"
               >
                 {{ t('diffCard.split', 'Split') }}
@@ -249,11 +284,35 @@ const languageDisplay = computed(() => {
               class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-200 hover:text-white hover:bg-slate-700/60 rounded-lg transition-colors"
               @click="copyContent"
             >
-              <svg v-if="!copied" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              <svg
+                v-if="!copied"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
               </svg>
-              <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              <svg
+                v-else
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4 text-green-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               {{ copied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy') }}
             </button>
@@ -263,19 +322,42 @@ const languageDisplay = computed(() => {
               class="p-2 text-slate-300 hover:text-white hover:bg-slate-700/60 rounded-lg transition-colors"
               @click="close"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
         </div>
 
         <!-- Labels for diff -->
-        <div v-if="fullscreenContent.type === 'diff' && (fullscreenContent.oldLabel || fullscreenContent.newLabel)" class="flex border-b border-slate-700/60 text-sm">
-          <div v-if="viewMode === 'split'" class="flex-1 px-6 py-2 bg-red-900/20 text-red-300 font-medium">
+        <div
+          v-if="
+            fullscreenContent.type === 'diff' &&
+            (fullscreenContent.oldLabel || fullscreenContent.newLabel)
+          "
+          class="flex border-b border-slate-700/60 text-sm"
+        >
+          <div
+            v-if="viewMode === 'split'"
+            class="flex-1 px-6 py-2 bg-red-900/20 text-red-300 font-medium"
+          >
             {{ fullscreenContent.oldLabel || t('diffCard.original', 'Original') }}
           </div>
-          <div v-if="viewMode === 'split'" class="flex-1 px-6 py-2 bg-green-900/20 text-green-300 font-medium border-l border-slate-700/60">
+          <div
+            v-if="viewMode === 'split'"
+            class="flex-1 px-6 py-2 bg-green-900/20 text-green-300 font-medium border-l border-slate-700/60"
+          >
             {{ fullscreenContent.newLabel || t('diffCard.modified', 'Modified') }}
           </div>
         </div>
@@ -283,14 +365,20 @@ const languageDisplay = computed(() => {
         <!-- Content -->
         <div class="flex-1 overflow-auto bg-gradient-to-b from-slate-900/50 to-slate-950">
           <!-- Code / Terminal content -->
-          <template v-if="fullscreenContent.type === 'code' || fullscreenContent.type === 'terminal'">
-            <pre class="p-6 text-sm leading-relaxed min-h-full"><code class="text-slate-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-slate-700/40"><span class="inline-block w-12 text-right mr-6 text-slate-500 select-none">{{ index + 1 }}</span>{{ line }}
+          <template
+            v-if="fullscreenContent.type === 'code' || fullscreenContent.type === 'terminal'"
+          >
+            <pre
+              class="p-6 text-sm leading-relaxed min-h-full"
+            ><code class="text-slate-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-slate-700/40"><span class="inline-block w-12 text-right mr-6 text-slate-500 select-none">{{ index + 1 }}</span>{{ line }}
 </span></template></code></pre>
           </template>
 
           <!-- Diff unified view -->
           <template v-else-if="fullscreenContent.type === 'diff' && viewMode === 'unified'">
-            <pre class="text-sm min-h-full"><code><template v-for="(line, index) in diffLines" :key="index"><div
+            <pre
+              class="text-sm min-h-full"
+            ><code><template v-for="(line, index) in diffLines" :key="index"><div
                   class="flex hover:bg-slate-700/35"
                   :class="getLineClass(line.type)"
                 ><span class="w-16 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="w-16 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line.newLineNum || '' }}</span><span
@@ -308,7 +396,9 @@ const languageDisplay = computed(() => {
             <div class="flex min-h-full">
               <!-- Left (old) -->
               <div class="flex-1 border-r border-slate-700/60">
-                <pre class="text-sm"><code><template v-for="(line, index) in splitDiff.left" :key="'left-' + index"><div
+                <pre
+                  class="text-sm"
+                ><code><template v-for="(line, index) in splitDiff.left" :key="'left-' + index"><div
                       class="flex hover:bg-slate-700/35"
                       :class="line ? getLineClass(line.type) : 'bg-slate-800/60'"
                     ><span class="w-14 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
@@ -319,7 +409,9 @@ const languageDisplay = computed(() => {
               </div>
               <!-- Right (new) -->
               <div class="flex-1">
-                <pre class="text-sm"><code><template v-for="(line, index) in splitDiff.right" :key="'right-' + index"><div
+                <pre
+                  class="text-sm"
+                ><code><template v-for="(line, index) in splitDiff.right" :key="'right-' + index"><div
                       class="flex hover:bg-slate-700/35"
                       :class="line ? getLineClass(line.type) : 'bg-slate-800/60'"
                     ><span class="w-14 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
@@ -334,9 +426,16 @@ const languageDisplay = computed(() => {
 
         <!-- Footer hint -->
         <div class="px-6 py-2 bg-slate-900/95 border-t border-slate-700/60 text-center">
-          <i18n-t keypath="fullscreenModal.exitHint" scope="global" tag="span" class="text-xs text-slate-300">
+          <i18n-t
+            keypath="fullscreenModal.exitHint"
+            scope="global"
+            tag="span"
+            class="text-xs text-slate-300"
+          >
             <template #key>
-              <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-600 text-slate-100">Esc</kbd>
+              <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-600 text-slate-100"
+                >Esc</kbd
+              >
             </template>
           </i18n-t>
         </div>

@@ -34,27 +34,21 @@ export interface MediaTestResult {
 }
 
 export const mediaProviderApi = {
-  list: () =>
-    api.get<{ providers: MediaProviderConfig[] }>('/media/providers'),
+  list: () => api.get<{ providers: MediaProviderConfig[] }>('/media/providers'),
 
-  get: (id: string) =>
-    api.get<MediaProviderConfig>(`/media/providers/${id}`),
+  get: (id: string) => api.get<MediaProviderConfig>(`/media/providers/${id}`),
 
   update: (id: string, data: { base_url?: string }) =>
     api.put<MediaProviderConfig>(`/media/providers/${id}`, data),
 
-  enable: (id: string) =>
-    api.post<{ status: string }>(`/media/providers/${id}/enable`),
+  enable: (id: string) => api.post<{ status: string }>(`/media/providers/${id}/enable`),
 
-  disable: (id: string) =>
-    api.post<{ status: string }>(`/media/providers/${id}/disable`),
+  disable: (id: string) => api.post<{ status: string }>(`/media/providers/${id}/disable`),
 
   setKey: (id: string, key: string) =>
     api.post<MediaProviderConfig>(`/media/providers/${id}/keys`, { key }),
 
-  removeKey: (id: string) =>
-    api.delete(`/media/providers/${id}/keys`),
+  removeKey: (id: string) => api.delete(`/media/providers/${id}/keys`),
 
-  test: (id: string) =>
-    api.post<MediaTestResult>(`/media/providers/${id}/test`),
+  test: (id: string) => api.post<MediaTestResult>(`/media/providers/${id}/test`),
 }

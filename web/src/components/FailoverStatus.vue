@@ -7,7 +7,9 @@ const { t } = useI18n()
 
 const metrics = ref<FailoverMetrics | null>(null)
 const config = ref<FailoverConfig | null>(null)
-const circuitBreakers = ref<Record<string, { state: string; failures: number; last_failure?: string }>>({})
+const circuitBreakers = ref<
+  Record<string, { state: string; failures: number; last_failure?: string }>
+>({})
 const loading = ref(false)
 const error = ref<string | null>(null)
 const refreshInterval = ref<number | null>(null)
@@ -157,7 +159,9 @@ onUnmounted(() => {
     <!-- Overview Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <!-- Total Failovers -->
-      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div
+        class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700"
+      >
         <div class="text-sm text-gray-500 dark:text-gray-400">
           {{ t('settings.failover.totalFailovers', 'Total Failovers') }}
         </div>
@@ -167,17 +171,30 @@ onUnmounted(() => {
       </div>
 
       <!-- Success Rate -->
-      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div
+        class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700"
+      >
         <div class="text-sm text-gray-500 dark:text-gray-400">
           {{ t('settings.failover.successRate', 'Success Rate') }}
         </div>
-        <div class="text-2xl font-semibold mt-1" :class="failoverSuccessRate >= 80 ? 'text-green-500' : failoverSuccessRate >= 50 ? 'text-yellow-500' : 'text-red-500'">
+        <div
+          class="text-2xl font-semibold mt-1"
+          :class="
+            failoverSuccessRate >= 80
+              ? 'text-green-500'
+              : failoverSuccessRate >= 50
+                ? 'text-yellow-500'
+                : 'text-red-500'
+          "
+        >
           {{ failoverSuccessRate }}%
         </div>
       </div>
 
       <!-- Stream Anomalies -->
-      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div
+        class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700"
+      >
         <div class="text-sm text-gray-500 dark:text-gray-400">
           {{ t('settings.failover.streamAnomalies', 'Stream Anomalies') }}
         </div>
@@ -187,7 +204,9 @@ onUnmounted(() => {
       </div>
 
       <!-- Failed Failovers -->
-      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div
+        class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700"
+      >
         <div class="text-sm text-gray-500 dark:text-gray-400">
           {{ t('settings.failover.failedFailovers', 'Failed Failovers') }}
         </div>
@@ -199,7 +218,9 @@ onUnmounted(() => {
 
     <!-- Circuit Breakers -->
     <div class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
-      <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+      <div
+        class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
+      >
         <h4 class="font-medium text-gray-900 dark:text-white">
           {{ t('settings.failover.circuitBreakers', 'Circuit Breakers') }}
         </h4>
@@ -212,7 +233,10 @@ onUnmounted(() => {
         </button>
       </div>
       <div class="p-4">
-        <div v-if="Object.keys(circuitBreakers).length === 0" class="text-center text-gray-500 dark:text-gray-400 py-4">
+        <div
+          v-if="Object.keys(circuitBreakers).length === 0"
+          class="text-center text-gray-500 dark:text-gray-400 py-4"
+        >
           {{ t('settings.failover.noBreakers', 'No circuit breakers active') }}
         </div>
         <div v-else class="space-y-2">
@@ -223,7 +247,10 @@ onUnmounted(() => {
             :class="getStateBgColor(breaker.state)"
           >
             <div class="flex items-center gap-3">
-              <div class="w-2 h-2 rounded-full" :class="getStateColor(breaker.state).replace('text-', 'bg-')"></div>
+              <div
+                class="w-2 h-2 rounded-full"
+                :class="getStateColor(breaker.state).replace('text-', 'bg-')"
+              ></div>
               <span class="font-medium text-gray-900 dark:text-white">{{ provider }}</span>
             </div>
             <div class="flex items-center gap-4 text-sm">
@@ -247,13 +274,22 @@ onUnmounted(() => {
           </h4>
         </div>
         <div class="p-4">
-          <div v-if="topErrors.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-4">
+          <div
+            v-if="topErrors.length === 0"
+            class="text-center text-gray-500 dark:text-gray-400 py-4"
+          >
             {{ t('settings.failover.noErrors', 'No errors recorded') }}
           </div>
           <div v-else class="space-y-3">
-            <div v-for="error in topErrors" :key="error.type" class="flex items-center justify-between">
+            <div
+              v-for="error in topErrors"
+              :key="error.type"
+              class="flex items-center justify-between"
+            >
               <span class="text-sm text-gray-700 dark:text-gray-300">{{ error.label }}</span>
-              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ error.count }}</span>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{
+                error.count
+              }}</span>
             </div>
           </div>
         </div>
@@ -267,13 +303,22 @@ onUnmounted(() => {
           </h4>
         </div>
         <div class="p-4">
-          <div v-if="providerFailoverStats.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-4">
+          <div
+            v-if="providerFailoverStats.length === 0"
+            class="text-center text-gray-500 dark:text-gray-400 py-4"
+          >
             {{ t('settings.failover.noFailovers', 'No failovers recorded') }}
           </div>
           <div v-else class="space-y-3">
-            <div v-for="stat in providerFailoverStats" :key="stat.provider" class="flex items-center justify-between">
+            <div
+              v-for="stat in providerFailoverStats"
+              :key="stat.provider"
+              class="flex items-center justify-between"
+            >
               <span class="text-sm text-gray-700 dark:text-gray-300">{{ stat.provider }}</span>
-              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ stat.count }}</span>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{
+                stat.count
+              }}</span>
             </div>
           </div>
         </div>
@@ -281,7 +326,10 @@ onUnmounted(() => {
     </div>
 
     <!-- Configuration Summary -->
-    <div v-if="config" class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
+    <div
+      v-if="config"
+      class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700"
+    >
       <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <h4 class="font-medium text-gray-900 dark:text-white">
           {{ t('settings.failover.configuration', 'Configuration') }}
@@ -289,32 +337,57 @@ onUnmounted(() => {
       </div>
       <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
-          <div class="text-gray-500 dark:text-gray-400">{{ t('settings.failover.enabled', 'Enabled') }}</div>
+          <div class="text-gray-500 dark:text-gray-400">
+            {{ t('settings.failover.enabled', 'Enabled') }}
+          </div>
           <div class="font-medium" :class="config.enabled ? 'text-green-500' : 'text-red-500'">
             {{ config.enabled ? t('common.yes', 'Yes') : t('common.no', 'No') }}
           </div>
         </div>
         <div>
-          <div class="text-gray-500 dark:text-gray-400">{{ t('settings.failover.maxRetries', 'Max Retries') }}</div>
+          <div class="text-gray-500 dark:text-gray-400">
+            {{ t('settings.failover.maxRetries', 'Max Retries') }}
+          </div>
           <div class="font-medium text-gray-900 dark:text-white">{{ config.max_retries }}</div>
         </div>
         <div>
-          <div class="text-gray-500 dark:text-gray-400">{{ t('settings.failover.circuitBreakerEnabled', 'Circuit Breaker') }}</div>
-          <div class="font-medium" :class="config.circuit_breaker ? 'text-green-500' : 'text-gray-500'">
-            {{ config.circuit_breaker ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled') }}
+          <div class="text-gray-500 dark:text-gray-400">
+            {{ t('settings.failover.circuitBreakerEnabled', 'Circuit Breaker') }}
+          </div>
+          <div
+            class="font-medium"
+            :class="config.circuit_breaker ? 'text-green-500' : 'text-gray-500'"
+          >
+            {{
+              config.circuit_breaker
+                ? t('common.enabled', 'Enabled')
+                : t('common.disabled', 'Disabled')
+            }}
           </div>
         </div>
         <div>
-          <div class="text-gray-500 dark:text-gray-400">{{ t('settings.failover.anomalyDetection', 'Anomaly Detection') }}</div>
-          <div class="font-medium" :class="config.streaming_anomaly?.enabled ? 'text-green-500' : 'text-gray-500'">
-            {{ config.streaming_anomaly?.enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled') }}
+          <div class="text-gray-500 dark:text-gray-400">
+            {{ t('settings.failover.anomalyDetection', 'Anomaly Detection') }}
+          </div>
+          <div
+            class="font-medium"
+            :class="config.streaming_anomaly?.enabled ? 'text-green-500' : 'text-gray-500'"
+          >
+            {{
+              config.streaming_anomaly?.enabled
+                ? t('common.enabled', 'Enabled')
+                : t('common.disabled', 'Disabled')
+            }}
           </div>
         </div>
       </div>
     </div>
 
     <!-- Error Alert -->
-    <div v-if="error" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+    <div
+      v-if="error"
+      class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4"
+    >
       <p class="text-red-600 dark:text-red-400">{{ error }}</p>
     </div>
   </div>

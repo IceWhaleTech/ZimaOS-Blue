@@ -36,7 +36,7 @@ export function translateCardActionLabel({
     return normalizedFallback || id
   }
 
-  const keys = [...scopes.map(scope => `${scope}.${id}`), `cardActions.${id}`]
+  const keys = [...scopes.map((scope) => `${scope}.${id}`), `cardActions.${id}`]
   for (const key of keys) {
     if (!te(key)) continue
     const translated = t(key, normalizedFallback || id)

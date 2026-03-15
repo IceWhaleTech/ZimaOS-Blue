@@ -151,7 +151,11 @@ export const systemApi = {
 
   // Write a client-side log entry to the server
   writeLog: (level: 'info' | 'warn' | 'error', message: string, source?: string) =>
-    api.post<{ success: boolean }>('/system/logs', { level, message, source: source || 'web-client' }),
+    api.post<{ success: boolean }>('/system/logs', {
+      level,
+      message,
+      source: source || 'web-client',
+    }),
 
   getMetrics: () => api.get<SystemMetrics>('/system/metrics'),
 
@@ -168,8 +172,7 @@ export const systemApi = {
   getInfo: (detailed?: boolean) =>
     api.get<SystemInfo>('/system/info', { params: detailed ? { detailed: 'true' } : undefined }),
 
-  revealPath: (path: string) =>
-    api.post<{ success: boolean }>('/system/reveal-path', { path }),
+  revealPath: (path: string) => api.post<{ success: boolean }>('/system/reveal-path', { path }),
 
   resolveLocalFile: (path: string) =>
     api.get<LocalFileResolveResponse>('/system/local-file', { params: { path } }),

@@ -25,9 +25,14 @@ function renderContent(content: string | number | null | undefined): string {
 </script>
 
 <template>
-  <div class="table-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="table-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <!-- Title -->
-    <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+    <div
+      v-if="card.title"
+      class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50"
+    >
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
     </div>
 
@@ -50,7 +55,7 @@ function renderContent(content: string | number | null | undefined): string {
             :key="rowIndex"
             :class="{
               'bg-gray-50 dark:bg-gray-700/30': card.striped && rowIndex % 2 === 1,
-              'hover:bg-gray-50 dark:hover:bg-gray-700/50': true
+              'hover:bg-gray-50 dark:hover:bg-gray-700/50': true,
             }"
           >
             <td
@@ -66,7 +71,10 @@ function renderContent(content: string | number | null | undefined): string {
     </div>
 
     <!-- Footer -->
-    <div v-if="card.footer" class="px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+    <div
+      v-if="card.footer"
+      class="px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50"
+    >
       <p class="text-xs text-gray-500 dark:text-gray-400">{{ card.footer }}</p>
     </div>
   </div>

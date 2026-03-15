@@ -283,11 +283,31 @@ codesign_binary() {
 
 # Run the web security audit with optional allowlist support.
 run_web_audit() {
-    if [ -f "$PROJECT_ROOT/web/scripts/audit-ci.mjs" ] && [ -f "$PROJECT_ROOT/web/audit-allowlist.json" ]; then
-        node scripts/audit-ci.mjs --omit=dev
+    if [ -f "$PROJECT_ROOT/web/scripts/audit-ci.mjs" ]; then
+        if [ -f "$PROJECT_ROOT/web/audit-allowlist.json" ]; then
+            node scripts/audit-ci.mjs --omit=dev
+        else
+            node scripts/audit-ci.mjs --no-allowlist --omit=dev
+        fi
     else
         npm audit --omit=dev
     fi
+}
+
+handle_web_audit_failure() {
+    local audit_status="$1"
+
+    case "$audit_status" in
+        1)
+            error "Production dependencies have vulnerabilities. Please fix them before building."
+            ;;
+        2)
+            error "Unable to complete npm audit because the npm registry request failed. Check network access and retry."
+            ;;
+        *)
+            error "npm audit failed unexpectedly (exit code: $audit_status)."
+            ;;
+    esac
 }
 
 # Build for production
@@ -299,8 +319,11 @@ build_all() {
     # Check production dependencies for vulnerabilities
     info "Checking production dependencies for vulnerabilities..."
     cd "$PROJECT_ROOT/web"
-    if ! run_web_audit; then
-        error "Production dependencies have vulnerabilities. Please fix them before building."
+    if run_web_audit; then
+        :
+    else
+        audit_status=$?
+        handle_web_audit_failure "$audit_status"
         exit 1
     fi
 
@@ -357,8 +380,11 @@ prd_run() {
     # Check production dependencies for vulnerabilities
     info "Checking production dependencies for vulnerabilities..."
     cd "$PROJECT_ROOT/web"
-    if ! run_web_audit; then
-        error "Production dependencies have vulnerabilities. Please fix them before building."
+    if run_web_audit; then
+        :
+    else
+        audit_status=$?
+        handle_web_audit_failure "$audit_status"
         exit 1
     fi
 

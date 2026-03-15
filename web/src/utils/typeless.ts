@@ -16,15 +16,25 @@ import type {
   ParsedContent,
 } from '@/types/typeless'
 import { i18n } from '@/i18n'
-import {
-  TYPELESS_MARKER_START,
-  TYPELESS_MARKER_END,
-} from '@/types/typeless'
+import { TYPELESS_MARKER_START, TYPELESS_MARKER_END } from '@/types/typeless'
 import { isLocalAbsolutePath } from '@/utils/localPath'
 
 // File extensions for different categories
 const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico']
-const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'json', 'xml', 'md']
+const documentExtensions = [
+  'pdf',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+  'txt',
+  'csv',
+  'json',
+  'xml',
+  'md',
+]
 
 // Terminal block language markers (module-level Set for O(1) lookup)
 const terminalMarkers = new Set(['terminal', 'console', 'shell-output', 'ansi', 'cli-output'])
@@ -63,10 +73,15 @@ function emitCard(card: TypelessCard, cards: TypelessCard[], result: string[]): 
 
 /** Build a TypelessCardCode. */
 function makeCodeCard(
-  id: string, code: string, language: string | undefined, streaming = false,
+  id: string,
+  code: string,
+  language: string | undefined,
+  streaming = false
 ): TypelessCardCode {
   return {
-    type: 'code', id, code,
+    type: 'code',
+    id,
+    code,
     language: language || undefined,
     showLineNumbers: true,
     ...(streaming ? { _streaming: true } : {}),
@@ -75,11 +90,19 @@ function makeCodeCard(
 
 /** Build a TypelessCardTerminal from a terminal type string. */
 function makeTerminalCard(
-  id: string, content: string, terminalType: string, streaming = false,
+  id: string,
+  content: string,
+  terminalType: string,
+  streaming = false
 ): TypelessCardTerminal {
   return {
-    type: 'terminal', id, content,
-    title: terminalType === 'terminal' ? 'Terminal' : terminalType.charAt(0).toUpperCase() + terminalType.slice(1),
+    type: 'terminal',
+    id,
+    content,
+    title:
+      terminalType === 'terminal'
+        ? 'Terminal'
+        : terminalType.charAt(0).toUpperCase() + terminalType.slice(1),
     theme: 'dark',
     ...(streaming ? { _streaming: true } : {}),
   } as TypelessCardTerminal
@@ -110,7 +133,7 @@ class ParseResultCache {
     let hash = 0
     for (let i = 0; i < source.length; i++) {
       const char = source.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
+      hash = (hash << 5) - hash + char
       hash = hash & hash
     }
     return hash.toString(36)
@@ -166,18 +189,24 @@ const parseCache = new ParseResultCache()
 
 function buildCardScopeKey(messageId?: string, conversationId?: string): string {
   const parts = [conversationId, messageId]
-    .map(value => value?.trim())
+    .map((value) => value?.trim())
     .filter((value): value is string => !!value)
   if (parts.length === 0) return ''
   return encodeURIComponent(parts.join(':'))
 }
 
-function buildParserCacheKey(messageId?: string, conversationId?: string, checklistCardId?: string): string {
+function buildParserCacheKey(
+  messageId?: string,
+  conversationId?: string,
+  checklistCardId?: string
+): string {
   const cardScopeKey = buildCardScopeKey(messageId, conversationId)
   const normalizedChecklistCardId = checklistCardId?.trim()
   if (!normalizedChecklistCardId) return cardScopeKey
   const encodedChecklistCardId = encodeURIComponent(normalizedChecklistCardId)
-  return cardScopeKey ? `${cardScopeKey}::todo=${encodedChecklistCardId}` : `todo=${encodedChecklistCardId}`
+  return cardScopeKey
+    ? `${cardScopeKey}::todo=${encodedChecklistCardId}`
+    : `todo=${encodedChecklistCardId}`
 }
 
 function buildConversationIncrementalPrefix(conversationId: string): string {
@@ -186,9 +215,16 @@ function buildConversationIncrementalPrefix(conversationId: string): string {
   return encodeURIComponent(`${trimmedConversationId}:`)
 }
 
-function buildMarkdownListCardID(index: number, checklist: boolean, scopeKey?: string, explicitChecklistCardId?: string, checklistOrdinal = 0): string {
+function buildMarkdownListCardID(
+  index: number,
+  checklist: boolean,
+  scopeKey?: string,
+  explicitChecklistCardId?: string,
+  checklistOrdinal = 0
+): string {
   const normalizedChecklistCardId = explicitChecklistCardId?.trim()
-  if (checklist && normalizedChecklistCardId && checklistOrdinal === 0) return normalizedChecklistCardId
+  if (checklist && normalizedChecklistCardId && checklistOrdinal === 0)
+    return normalizedChecklistCardId
   const prefix = checklist ? 'todo-checklist' : 'md-list'
   return scopeKey ? `${prefix}-${scopeKey}-${index}` : `${prefix}-${index}`
 }
@@ -221,13 +257,15 @@ function setIncrementalState(cacheKey: string, state: IncrementalParseState): vo
 }
 
 function mightContainIncrementalCardHints(content: string): boolean {
-  return content.includes('```')
-    || content.includes('|')
-    || content.includes('- ')
-    || content.includes('* ')
-    || content.includes('1. ')
-    || content.includes('![')
-    || content.includes('http')
+  return (
+    content.includes('```') ||
+    content.includes('|') ||
+    content.includes('- ') ||
+    content.includes('* ') ||
+    content.includes('1. ') ||
+    content.includes('![') ||
+    content.includes('http')
+  )
 }
 
 /**
@@ -245,7 +283,10 @@ export function parseTypelessContentIncremental(
 ): ParsedContent {
   // Use scoped message identity to avoid cross-conversation cache collisions
   const cardScopeKey = buildCardScopeKey(messageId, conversationId)
-  const cacheKey = buildParserCacheKey(messageId, conversationId, explicitChecklistCardId) || cardScopeKey || messageId
+  const cacheKey =
+    buildParserCacheKey(messageId, conversationId, explicitChecklistCardId) ||
+    cardScopeKey ||
+    messageId
   const state = incrementalStates.get(cacheKey)
 
   // Helper: check if any card has _streaming flag
@@ -254,7 +295,13 @@ export function parseTypelessContentIncremental(
 
   // If no previous state or content doesn't start with previous content, do full parse
   if (!state || !content.startsWith(state.lastContent)) {
-    const result = parseTypelessContentInternal(content, 0, true, cardScopeKey, explicitChecklistCardId) // isStreaming = true
+    const result = parseTypelessContentInternal(
+      content,
+      0,
+      true,
+      cardScopeKey,
+      explicitChecklistCardId
+    ) // isStreaming = true
     setIncrementalState(cacheKey, {
       lastContent: content,
       lastResult: result,
@@ -289,7 +336,13 @@ export function parseTypelessContentIncremental(
   }
 
   // Need to re-parse (new cards might be present or streaming card updated)
-  const result = parseTypelessContentInternal(content, 0, true, cardScopeKey, explicitChecklistCardId) // isStreaming = true
+  const result = parseTypelessContentInternal(
+    content,
+    0,
+    true,
+    cardScopeKey,
+    explicitChecklistCardId
+  ) // isStreaming = true
   setIncrementalState(cacheKey, {
     lastContent: content,
     lastResult: result,
@@ -351,7 +404,12 @@ export function clearConversationIncrementalStates(conversationId: string): void
  * Also converts markdown tables, code blocks, and lists to cards.
  * Uses LRU cache for performance.
  */
-export function parseTypelessContent(content: string, messageId?: string, conversationId?: string, explicitChecklistCardId?: string): ParsedContent {
+export function parseTypelessContent(
+  content: string,
+  messageId?: string,
+  conversationId?: string,
+  explicitChecklistCardId?: string
+): ParsedContent {
   const scopeKey = buildCardScopeKey(messageId, conversationId)
   const cacheKey = buildParserCacheKey(messageId, conversationId, explicitChecklistCardId)
   // Check cache first
@@ -392,8 +450,15 @@ function normalizeLooseJSON(str: string): string {
       while (i < len) {
         const c = str[i]!
         result += c
-        if (c === '\\' && i + 1 < len) { result += str[i + 1]!; i += 2; continue }
-        if (c === '"') { i++; break }
+        if (c === '\\' && i + 1 < len) {
+          result += str[i + 1]!
+          i += 2
+          continue
+        }
+        if (c === '"') {
+          i++
+          break
+        }
         i++
       }
       continue
@@ -405,9 +470,21 @@ function normalizeLooseJSON(str: string): string {
       i++
       while (i < len) {
         const c = str[i]!
-        if (c === '\\' && i + 1 < len) { result += '\\'; result += str[i + 1]!; i += 2; continue }
-        if (c === "'") { i++; break }
-        if (c === '"') { result += '\\"'; i++; continue } // escape inner double quotes
+        if (c === '\\' && i + 1 < len) {
+          result += '\\'
+          result += str[i + 1]!
+          i += 2
+          continue
+        }
+        if (c === "'") {
+          i++
+          break
+        }
+        if (c === '"') {
+          result += '\\"'
+          i++
+          continue
+        } // escape inner double quotes
         result += c
         i++
       }
@@ -419,7 +496,8 @@ function normalizeLooseJSON(str: string): string {
     if (ch === ',') {
       // Look ahead past whitespace for } or ]
       let j = i + 1
-      while (j < len && (str[j] === ' ' || str[j] === '\t' || str[j] === '\n' || str[j] === '\r')) j++
+      while (j < len && (str[j] === ' ' || str[j] === '\t' || str[j] === '\n' || str[j] === '\r'))
+        j++
       if (j >= len || str[j] === '}' || str[j] === ']') {
         i++ // skip trailing comma
         continue
@@ -485,9 +563,18 @@ function tryParseIncompleteJSON(jsonStr: string): unknown | null {
     let escapeNext = false
 
     for (const char of s) {
-      if (escapeNext) { escapeNext = false; continue }
-      if (char === '\\') { escapeNext = true; continue }
-      if (char === '"') { inString = !inString; continue }
+      if (escapeNext) {
+        escapeNext = false
+        continue
+      }
+      if (char === '\\') {
+        escapeNext = true
+        continue
+      }
+      if (char === '"') {
+        inString = !inString
+        continue
+      }
       if (inString) continue
       if (char === '{') braceCount++
       else if (char === '}') braceCount--
@@ -497,8 +584,14 @@ function tryParseIncompleteJSON(jsonStr: string): unknown | null {
 
     let fixed = s
     if (inString) fixed += '"'
-    while (bracketCount > 0) { fixed += ']'; bracketCount-- }
-    while (braceCount > 0) { fixed += '}'; braceCount-- }
+    while (bracketCount > 0) {
+      fixed += ']'
+      bracketCount--
+    }
+    while (braceCount > 0) {
+      fixed += '}'
+      braceCount--
+    }
     return fixed
   }
 
@@ -528,20 +621,20 @@ function tryParseIncompleteJSON(jsonStr: string): unknown | null {
 // Tool icon mapping (icons don't need i18n)
 const toolIconMap: Record<string, string> = {
   'Web Search': '🔍',
-  'Calculator': '🧮',
+  Calculator: '🧮',
   'System Info': '💻',
   'Current Time': '🕐',
   'File Read': '📄',
   'File Write': '📝',
-  'memory': '🧠',
-  'scheduler': '📅',
-  'browser': '🌐',
-  'sandbox': '📦',
-  'ui_reviewer': '👁️',
-  'ppt': '🖼️',
-  'autoreply': '💬',
-  'workflows': '⚙️',
-  'analyze': '📊',
+  memory: '🧠',
+  scheduler: '📅',
+  browser: '🌐',
+  sandbox: '📦',
+  ui_reviewer: '👁️',
+  ppt: '🖼️',
+  autoreply: '💬',
+  workflows: '⚙️',
+  analyze: '📊',
 }
 
 // Parameters to show as keyword-style (just the value, no label)
@@ -594,7 +687,11 @@ function extractInvocations(innerXml: string): StepItem[] {
 /**
  * Parse complete <function_calls>...</function_calls> blocks into steps cards.
  */
-function parseFunctionCalls(text: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+function parseFunctionCalls(
+  text: string,
+  cards: TypelessCard[],
+  cardIndex: { value: number }
+): string {
   const fcRegex = /<(?:antml:)?function_calls>([\s\S]*?)<\/(?:antml:)?function_calls>/g
   const reps: { start: number; end: number; placeholder: string }[] = []
   let m
@@ -609,7 +706,11 @@ function parseFunctionCalls(text: string, cards: TypelessCard[], cardIndex: { va
       variant: 'vertical',
     }
     cards.push(card)
-    reps.push({ start: m.index, end: m.index + m[0].length, placeholder: `[[TYPELESS_CARD:${card.id}]]` })
+    reps.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      placeholder: `[[TYPELESS_CARD:${card.id}]]`,
+    })
   }
   for (let i = reps.length - 1; i >= 0; i--) {
     const r = reps[i]!
@@ -621,18 +722,26 @@ function parseFunctionCalls(text: string, cards: TypelessCard[], cardIndex: { va
 /**
  * Parse incomplete/streaming <function_calls> (no closing tag yet).
  */
-function parseIncompleteFunctionCalls(text: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+function parseIncompleteFunctionCalls(
+  text: string,
+  cards: TypelessCard[],
+  cardIndex: { value: number }
+): string {
   const incRegex = /<(?:antml:)?function_calls>([\s\S]*)$/
   const m = incRegex.exec(text)
   if (!m || !m[1]) return text
   const steps = extractInvocations(m[1])
   // Also check for an incomplete <invoke (plain or antml: prefixed) that hasn't closed yet
   const lastInvokeIdx = Math.max(m[1].lastIndexOf('<invoke'), m[1].lastIndexOf('<antml:invoke'))
-  const partialInvoke = lastInvokeIdx >= 0
-    ? /<(?:antml:)?invoke\s+name="([^"]*)"/.exec(m[1].slice(lastInvokeIdx))
-    : null
+  const partialInvoke =
+    lastInvokeIdx >= 0
+      ? /<(?:antml:)?invoke\s+name="([^"]*)"/.exec(m[1].slice(lastInvokeIdx))
+      : null
   if (steps.length === 0 && !partialInvoke) return text
-  if (partialInvoke && (steps.length === 0 || steps[steps.length - 1]?.title !== partialInvoke[1])) {
+  if (
+    partialInvoke &&
+    (steps.length === 0 || steps[steps.length - 1]?.title !== partialInvoke[1])
+  ) {
     steps.push({ title: partialInvoke[1] || 'loading...', icon: '⏳', status: 'current' })
   }
   const card: TypelessCardSteps = {
@@ -651,7 +760,11 @@ function parseIncompleteFunctionCalls(text: string, cards: TypelessCard[], cardI
  * Parse special XML-like tags and convert to cards or remove them
  * Handles: <thinking>...</thinking>, <system_placeholder />, etc.
  */
-function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+function parseSpecialTags(
+  content: string,
+  cards: TypelessCard[],
+  cardIndex: { value: number }
+): string {
   if (!content) return content
   // Fast path: most assistant replies are plain text and contain none of these markers.
   if (!content.includes('<') && !content.includes('[SILENT_REPLY]')) {
@@ -670,9 +783,21 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
   // Parse thinking tags and convert to collapsible accordion
   // Supports: <thinking>...</thinking>, <think_context>...</think_context>, （ohan）...（ohan）
   const thinkingRegexes = [
-    { regex: /<thinking>([\s\S]*?)<\/thinking>/g, title: '💭 ' + t('thinking.title', 'Thinking Process'), prefix: 'thinking' },
-    { regex: /<think_context>([\s\S]*?)<\/think_context>/g, title: '💭 ' + t('thinking.context', 'Context'), prefix: 'think_context' },
-    { regex: /<think>([\s\S]*?)<\/think>/g, title: '💭 ' + t('thinking.think', 'Think'), prefix: 'think' },
+    {
+      regex: /<thinking>([\s\S]*?)<\/thinking>/g,
+      title: '💭 ' + t('thinking.title', 'Thinking Process'),
+      prefix: 'thinking',
+    },
+    {
+      regex: /<think_context>([\s\S]*?)<\/think_context>/g,
+      title: '💭 ' + t('thinking.context', 'Context'),
+      prefix: 'think_context',
+    },
+    {
+      regex: /<think>([\s\S]*?)<\/think>/g,
+      title: '💭 ' + t('thinking.think', 'Think'),
+      prefix: 'think',
+    },
   ]
   const replacements: { start: number; end: number; placeholder: string }[] = []
 
@@ -685,11 +810,13 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
           type: 'accordion',
           id: `${prefix}-${cardIndex.value++}`,
           title,
-          items: [{
-            title: t('thinking.expand', 'Expand'),
-            content: thinkingContent,
-            defaultOpen: false,
-          }],
+          items: [
+            {
+              title: t('thinking.expand', 'Expand'),
+              content: thinkingContent,
+              defaultOpen: false,
+            },
+          ],
           allowMultiple: false,
         }
         cards.push(card)
@@ -739,11 +866,13 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
           type: 'accordion',
           id: `${prefix}-streaming-${cardIndex.value++}`,
           title: '💭 ' + t('thinking.inProgress', 'Thinking...'),
-          items: [{
-            title: t('thinking.expand', 'Expand'),
-            content: thinkingContent,
-            defaultOpen: false,
-          }],
+          items: [
+            {
+              title: t('thinking.expand', 'Expand'),
+              content: thinkingContent,
+              defaultOpen: false,
+            },
+          ],
           allowMultiple: false,
           _streaming: true,
         }
@@ -760,13 +889,20 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
 /**
  * Internal parsing function (no caching)
  */
-function parseTypelessContentInternal(content: string, startCardIndex: number, isStreaming = false, cardScopeKey = '', explicitChecklistCardId = ''): ParsedContent {
+function parseTypelessContentInternal(
+  content: string,
+  startCardIndex: number,
+  isStreaming = false,
+  cardScopeKey = '',
+  explicitChecklistCardId = ''
+): ParsedContent {
   const cards: TypelessCard[] = []
   let text = content
   const cardIndex = { value: startCardIndex }
 
   // Valid card type check — reject empty or clearly invalid types during streaming
-  const isValidCardType = (type: string) => type.length > 0 && type.length < 30 && /^[a-z][a-z0-9-]*$/.test(type)
+  const isValidCardType = (type: string) =>
+    type.length > 0 && type.length < 30 && /^[a-z][a-z0-9-]*$/.test(type)
 
   // First, parse special XML-like tags
   text = parseSpecialTags(text, cards, cardIndex)
@@ -865,7 +1001,9 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
   if (isStreaming) {
     const lastStartIdx = text.lastIndexOf(TYPELESS_MARKER_START)
     if (lastStartIdx !== -1) {
-      const alreadyParsedAsCompleteBlock = replacements.some(replacement => replacement.start === lastStartIdx)
+      const alreadyParsedAsCompleteBlock = replacements.some(
+        (replacement) => replacement.start === lastStartIdx
+      )
       const incompleteStart = lastStartIdx + TYPELESS_MARKER_START.length
       const trailingContent = text.slice(incompleteStart)
 
@@ -878,7 +1016,11 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
         // Only try to parse if it looks like JSON (starts with {)
         if (jsonStr.startsWith('{')) {
           const partialCard = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
-          if (partialCard && typeof partialCard.type === 'string' && isValidCardType(partialCard.type)) {
+          if (
+            partialCard &&
+            typeof partialCard.type === 'string' &&
+            isValidCardType(partialCard.type)
+          ) {
             // Mark as streaming/incomplete
             partialCard._streaming = true
             if (!partialCard.id) {
@@ -908,7 +1050,13 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
   }
 
   // Parse markdown elements and convert to cards — SINGLE PASS over lines
-  text = parseMarkdownElementsSinglePass(text, cards, cardIndex, cardScopeKey, explicitChecklistCardId)
+  text = parseMarkdownElementsSinglePass(
+    text,
+    cards,
+    cardIndex,
+    cardScopeKey,
+    explicitChecklistCardId
+  )
 
   return { text, cards }
 }
@@ -1012,9 +1160,8 @@ function isOrderedListItemLine(content: string, start: number, end: number): boo
  * Optimized with fast string checks before regex, and pre-compiled regexes.
  */
 export function hasTypelessCards(content: string, useCache = true): boolean {
-  const shouldUseCache = useCache
-    && content.length > 0
-    && content.length <= HAS_TYPELESS_CACHE_MAX_CONTENT_LENGTH
+  const shouldUseCache =
+    useCache && content.length > 0 && content.length <= HAS_TYPELESS_CACHE_MAX_CONTENT_LENGTH
 
   if (shouldUseCache) {
     const cached = hasTypelessCardsCache.get(content)
@@ -1023,7 +1170,10 @@ export function hasTypelessCards(content: string, useCache = true): boolean {
 
   const finalize = (result: boolean): boolean => {
     if (!shouldUseCache) return result
-    if (hasTypelessCardsCache.size >= HAS_TYPELESS_CACHE_MAX && !hasTypelessCardsCache.has(content)) {
+    if (
+      hasTypelessCardsCache.size >= HAS_TYPELESS_CACHE_MAX &&
+      !hasTypelessCardsCache.has(content)
+    ) {
       evictOldestMapEntry(hasTypelessCardsCache)
     }
     hasTypelessCardsCache.set(content, result)
@@ -1052,7 +1202,10 @@ export function hasTypelessCards(content: string, useCache = true): boolean {
   }
 
   // Fast path: file paths — gate with common path separators
-  if ((content.includes(':\\') || content.includes('/') || content.includes('\\\\')) && RE_LOCAL_PATH_LINE.test(content)) {
+  if (
+    (content.includes(':\\') || content.includes('/') || content.includes('\\\\')) &&
+    RE_LOCAL_PATH_LINE.test(content)
+  ) {
     return finalize(true)
   }
 
@@ -1106,8 +1259,8 @@ export function hasTypelessCards(content: string, useCache = true): boolean {
 
     if (hasList) {
       if (
-        isUnorderedListItemLine(content, lineStart, lineEnd)
-        || isOrderedListItemLine(content, lineStart, lineEnd)
+        isUnorderedListItemLine(content, lineStart, lineEnd) ||
+        isOrderedListItemLine(content, lineStart, lineEnd)
       ) {
         listItemCount++
         if (listItemCount >= 2) return finalize(true)
@@ -1231,11 +1384,21 @@ export function clearSplitSegmentsIncrementalState(incrementalKey?: string): voi
 }
 
 function isProgressMergeCandidateCard(card: TypelessCard): boolean {
-  return card.type === 'ui-review-progress' || card.type === 'analyze-progress' || card.type === 'browser-progress'
+  return (
+    card.type === 'ui-review-progress' ||
+    card.type === 'analyze-progress' ||
+    card.type === 'browser-progress'
+  )
 }
 
-function getProgressMergeCandidateType(card: TypelessCard): 'ui-review-progress' | 'analyze-progress' | 'browser-progress' | null {
-  if (card.type === 'ui-review-progress' || card.type === 'analyze-progress' || card.type === 'browser-progress') {
+function getProgressMergeCandidateType(
+  card: TypelessCard
+): 'ui-review-progress' | 'analyze-progress' | 'browser-progress' | null {
+  if (
+    card.type === 'ui-review-progress' ||
+    card.type === 'analyze-progress' ||
+    card.type === 'browser-progress'
+  ) {
     return card.type
   }
   return null
@@ -1306,7 +1469,9 @@ export function splitIntoSegments(
         const previousLast = next[next.length - 1]
         const appendedFirst = appended[0]
         if (previousLast?.type === 'text' && appendedFirst?.type === 'text') {
-          const merged = trimIfNeeded((previousLast.content as string) + (appendedFirst.content as string))
+          const merged = trimIfNeeded(
+            (previousLast.content as string) + (appendedFirst.content as string)
+          )
           if (merged) {
             next[next.length - 1] = { type: 'text', content: merged }
           } else {
@@ -1415,9 +1580,7 @@ export function splitIntoSegments(
  * with a `steps` array, so the component renders them as one consolidated view.
  * Also merges consecutive analyze-progress cards the same way.
  */
-function mergeConsecutiveProgressCards(
-  segments: SplitSegment[]
-): SplitSegment[] {
+function mergeConsecutiveProgressCards(segments: SplitSegment[]): SplitSegment[] {
   const result: typeof segments = []
   let pendingSteps: TypelessCard[] = []
   let pendingType: 'ui-review-progress' | 'analyze-progress' | 'browser-progress' | null = null
@@ -1428,23 +1591,24 @@ function mergeConsecutiveProgressCards(
     const stepOrder: string[] = []
     pendingSteps.forEach((stepCard, index) => {
       const record = stepCard as unknown as Record<string, unknown>
-      const rawStep = typeof record.step === 'string' && record.step.trim()
-        ? record.step.trim()
-        : `${pendingType}-${index}`
+      const rawStep =
+        typeof record.step === 'string' && record.step.trim()
+          ? record.step.trim()
+          : `${pendingType}-${index}`
       if (!dedupedByStep.has(rawStep)) {
         stepOrder.push(rawStep)
       }
       dedupedByStep.set(rawStep, stepCard)
     })
     const normalizedSteps = stepOrder
-      .map(step => dedupedByStep.get(step))
+      .map((step) => dedupedByStep.get(step))
       .filter((step): step is TypelessCard => Boolean(step))
     const first = normalizedSteps[0]!
     const firstRecord = first as unknown as Record<string, unknown>
     const merged: TypelessCard = {
       type: pendingType,
       id: (firstRecord.id as string) || `${pendingType}-merged`,
-      steps: normalizedSteps.map(s => ({
+      steps: normalizedSteps.map((s) => ({
         step: (s as unknown as Record<string, unknown>).step,
         name: (s as unknown as Record<string, unknown>).name,
         status: (s as unknown as Record<string, unknown>).status,
@@ -1459,7 +1623,7 @@ function mergeConsecutiveProgressCards(
         recipe_name: (s as unknown as Record<string, unknown>).recipe_name,
         score: (s as unknown as Record<string, unknown>).score,
       })),
-      _streaming: pendingSteps.some(s => s._streaming),
+      _streaming: pendingSteps.some((s) => s._streaming),
     } as TypelessCard
     result.push({ type: 'card', content: merged })
     pendingSteps = []
@@ -1468,7 +1632,11 @@ function mergeConsecutiveProgressCards(
 
   for (const seg of segments) {
     const cardType = seg.type === 'card' ? (seg.content as TypelessCard).type : null
-    if (cardType === 'ui-review-progress' || cardType === 'analyze-progress' || cardType === 'browser-progress') {
+    if (
+      cardType === 'ui-review-progress' ||
+      cardType === 'analyze-progress' ||
+      cardType === 'browser-progress'
+    ) {
       if (pendingType && pendingType !== cardType) {
         flushPending()
       }
@@ -1488,8 +1656,11 @@ function mergeConsecutiveProgressCards(
  */
 function parseTableRow(line: string): string[] {
   const withoutPipes = line.charCodeAt(0) === 124 /* | */ ? line.slice(1) : line
-  const withoutEndPipe = withoutPipes.charCodeAt(withoutPipes.length - 1) === 124 ? withoutPipes.slice(0, -1) : withoutPipes
-  return withoutEndPipe.split('|').map(cell => cell.trim())
+  const withoutEndPipe =
+    withoutPipes.charCodeAt(withoutPipes.length - 1) === 124
+      ? withoutPipes.slice(0, -1)
+      : withoutPipes
+  return withoutEndPipe.split('|').map((cell) => cell.trim())
 }
 
 function isTableSeparator(trimmed: string): boolean {
@@ -1503,7 +1674,11 @@ function isTableRow(trimmed: string): boolean {
 }
 
 function getDomainFromUrl(url: string): string {
-  try { return new URL(url).hostname } catch { return url }
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
 }
 
 function mightContainMarkdownElements(content: string): boolean {
@@ -1512,7 +1687,11 @@ function mightContainMarkdownElements(content: string): boolean {
   if (content.includes('|')) return true
   if (content.includes('![')) return true
   if (content.includes('http')) return true
-  if ((content.includes(':\\') || content.includes('/') || content.includes('\\\\')) && RE_LOCAL_PATH_LINE.test(content)) return true
+  if (
+    (content.includes(':\\') || content.includes('/') || content.includes('\\\\')) &&
+    RE_LOCAL_PATH_LINE.test(content)
+  )
+    return true
   if (content.includes('- ') || content.includes('* ') || content.includes('+ ')) return true
   if (content.includes('.') && RE_DIGIT_DOT.test(content)) return true
   return false
@@ -1530,7 +1709,7 @@ function parseMarkdownElementsSinglePass(
   cards: TypelessCard[],
   cardIndex: { value: number },
   cardScopeKey = '',
-  explicitChecklistCardId = '',
+  explicitChecklistCardId = ''
 ): string {
   if (!mightContainMarkdownElements(content)) {
     return content
@@ -1566,35 +1745,51 @@ function parseMarkdownElementsSinglePass(
     if (!inTable || tableRows.length === 0) return
     const firstRow = tableRows[0]
     const card: TypelessCardTable = {
-      type: 'table', id: `md-table-${cardIndex.value++}`,
+      type: 'table',
+      id: `md-table-${cardIndex.value++}`,
       headers: hasTableHeader && firstRow ? firstRow : [],
       rows: hasTableHeader ? tableRows.slice(1) : tableRows,
       striped: true,
     }
     cards.push(card)
     result.push(`[[TYPELESS_CARD:${card.id}]]`)
-    tableRows = []; inTable = false; hasTableHeader = false
+    tableRows = []
+    inTable = false
+    hasTableHeader = false
   }
 
   const flushList = () => {
     if (!inList || listItems.length === 0) return
     const nextIndex = cardIndex.value++
     const card: TypelessCardList = {
-      type: 'list', id: buildMarkdownListCardID(nextIndex, listChecklist, cardScopeKey, explicitChecklistCardId, checklistCardCount),
-      items: listItems, ordered: listOrdered,
+      type: 'list',
+      id: buildMarkdownListCardID(
+        nextIndex,
+        listChecklist,
+        cardScopeKey,
+        explicitChecklistCardId,
+        checklistCardCount
+      ),
+      items: listItems,
+      ordered: listOrdered,
       variant: listChecklist ? 'checklist' : 'default',
     }
     cards.push(card)
     result.push(`[[TYPELESS_CARD:${card.id}]]`)
     if (listChecklist) checklistCardCount++
-    listItems = []; inList = false; listOrdered = false; listChecklist = false
-    listIndent = 0; listParentStack = []
+    listItems = []
+    inList = false
+    listOrdered = false
+    listChecklist = false
+    listIndent = 0
+    listParentStack = []
   }
 
   const flushImages = () => {
     if (pendingImages.length === 0) return
     const card: TypelessCardGallery = {
-      type: 'gallery', id: `md-gallery-${cardIndex.value++}`,
+      type: 'gallery',
+      id: `md-gallery-${cardIndex.value++}`,
       images: pendingImages,
       layout: pendingImages.length > 1 ? 'horizontal' : 'grid',
       columns: Math.min(pendingImages.length, 4) as 2 | 3 | 4,
@@ -1614,20 +1809,45 @@ function parseMarkdownElementsSinglePass(
         const rest = line.slice(3)
         const blockContent = fenceContent.join('\n')
         if (fenceKind === 'terminal') {
-          emitCard(makeTerminalCard(`md-terminal-${cardIndex.value++}`, blockContent, fenceLang), cards, result)
+          emitCard(
+            makeTerminalCard(`md-terminal-${cardIndex.value++}`, blockContent, fenceLang),
+            cards,
+            result
+          )
         } else if (fenceKind === 'mermaid') {
-          emitCard({ type: 'mermaid', id: `md-mermaid-${cardIndex.value++}`, code: blockContent } as TypelessCardMermaid, cards, result)
+          emitCard(
+            {
+              type: 'mermaid',
+              id: `md-mermaid-${cardIndex.value++}`,
+              code: blockContent,
+            } as TypelessCardMermaid,
+            cards,
+            result
+          )
         } else {
-          emitCard(makeCodeCard(`md-code-${cardIndex.value++}`, blockContent, fenceLang), cards, result)
+          emitCard(
+            makeCodeCard(`md-code-${cardIndex.value++}`, blockContent, fenceLang),
+            cards,
+            result
+          )
         }
-        fenceKind = null; fenceLang = ''; fenceContent = []
+        fenceKind = null
+        fenceLang = ''
+        fenceContent = []
         // Consecutive fence: ``````lang → close + open
         if (rest.startsWith('```') && !rest.startsWith('```typeless')) {
           const nextLang = rest.slice(3).trim()
           const nextLangLower = nextLang.toLowerCase()
-          if (terminalMarkers.has(nextLangLower)) { fenceKind = 'terminal'; fenceLang = nextLangLower }
-          else if (nextLangLower === 'mermaid') { fenceKind = 'mermaid'; fenceLang = nextLangLower }
-          else { fenceKind = 'code'; fenceLang = languageAliases[nextLangLower] || nextLang }
+          if (terminalMarkers.has(nextLangLower)) {
+            fenceKind = 'terminal'
+            fenceLang = nextLangLower
+          } else if (nextLangLower === 'mermaid') {
+            fenceKind = 'mermaid'
+            fenceLang = nextLangLower
+          } else {
+            fenceKind = 'code'
+            fenceLang = languageAliases[nextLangLower] || nextLang
+          }
           fenceContent = []
         }
       } else {
@@ -1638,12 +1858,21 @@ function parseMarkdownElementsSinglePass(
 
     // ===== Opening fence =====
     if (line.startsWith('```') && !line.startsWith('```typeless')) {
-      flushTable(); flushList(); flushImages()
+      flushTable()
+      flushList()
+      flushImages()
       const lang = line.slice(3).trim()
       const langLower = lang.toLowerCase()
-      if (terminalMarkers.has(langLower)) { fenceKind = 'terminal'; fenceLang = langLower }
-      else if (langLower === 'mermaid') { fenceKind = 'mermaid'; fenceLang = langLower }
-      else { fenceKind = 'code'; fenceLang = languageAliases[langLower] || lang }
+      if (terminalMarkers.has(langLower)) {
+        fenceKind = 'terminal'
+        fenceLang = langLower
+      } else if (langLower === 'mermaid') {
+        fenceKind = 'mermaid'
+        fenceLang = langLower
+      } else {
+        fenceKind = 'code'
+        fenceLang = languageAliases[langLower] || lang
+      }
       fenceContent = []
       continue
     }
@@ -1652,14 +1881,19 @@ function parseMarkdownElementsSinglePass(
     const trimmed = line.trim()
 
     if (isTableSeparator(trimmed)) {
-      flushList(); flushImages()
+      flushList()
+      flushImages()
       if (inTable && tableRows.length === 1) hasTableHeader = true
       continue
     }
 
     if (isTableRow(trimmed)) {
-      flushList(); flushImages()
-      if (!inTable) { inTable = true; tableRows = [] }
+      flushList()
+      flushImages()
+      if (!inTable) {
+        inTable = true
+        tableRows = []
+      }
       tableRows.push(parseTableRow(trimmed))
       continue
     }
@@ -1673,7 +1907,11 @@ function parseMarkdownElementsSinglePass(
 
     if (trimmed !== '') {
       const firstCode = trimmed.charCodeAt(0)
-      const isPossibleListStart = firstCode === 45 || firstCode === 42 || firstCode === 43 || (firstCode >= 48 && firstCode <= 57)
+      const isPossibleListStart =
+        firstCode === 45 ||
+        firstCode === 42 ||
+        firstCode === 43 ||
+        (firstCode >= 48 && firstCode <= 57)
       if (isPossibleListStart) {
         checkboxMatch = RE_CHECKBOX_ITEM.exec(line)
         ulMatch = !checkboxMatch ? RE_UL_ITEM.exec(line) : null
@@ -1683,35 +1921,66 @@ function parseMarkdownElementsSinglePass(
 
     if (checkboxMatch || ulMatch || olMatch) {
       flushImages()
-      let indent: number, itemContent: string, itemIsOrdered = false, itemIsCheckbox = false, itemChecked = false
+      let indent: number,
+        itemContent: string,
+        itemIsOrdered = false,
+        itemIsCheckbox = false,
+        itemChecked = false
       if (checkboxMatch) {
-        indent = checkboxMatch[1]?.length ?? 0; itemChecked = checkboxMatch[2]?.toLowerCase() === 'x'
-        itemContent = checkboxMatch[3] ?? ''; itemIsCheckbox = true
+        indent = checkboxMatch[1]?.length ?? 0
+        itemChecked = checkboxMatch[2]?.toLowerCase() === 'x'
+        itemContent = checkboxMatch[3] ?? ''
+        itemIsCheckbox = true
       } else if (ulMatch) {
-        indent = ulMatch[1]?.length ?? 0; itemContent = ulMatch[2] ?? ''
+        indent = ulMatch[1]?.length ?? 0
+        itemContent = ulMatch[2] ?? ''
       } else {
-        indent = olMatch![1]?.length ?? 0; itemContent = olMatch![2] ?? ''; itemIsOrdered = true
+        indent = olMatch![1]?.length ?? 0
+        itemContent = olMatch![2] ?? ''
+        itemIsOrdered = true
       }
-      if (!inList) { inList = true; listOrdered = itemIsOrdered; listChecklist = itemIsCheckbox; listIndent = indent; listParentStack = [] }
-      const newItem: ListItem = { content: itemContent, checked: itemIsCheckbox ? itemChecked : undefined }
+      if (!inList) {
+        inList = true
+        listOrdered = itemIsOrdered
+        listChecklist = itemIsCheckbox
+        listIndent = indent
+        listParentStack = []
+      }
+      const newItem: ListItem = {
+        content: itemContent,
+        checked: itemIsCheckbox ? itemChecked : undefined,
+      }
       if (indent > listIndent) {
         const parent = listParentStack[listParentStack.length - 1]
-        if (parent) { if (!parent.subItems) parent.subItems = []; parent.subItems.push(newItem) }
-        else listItems.push(newItem)
+        if (parent) {
+          if (!parent.subItems) parent.subItems = []
+          parent.subItems.push(newItem)
+        } else listItems.push(newItem)
         listParentStack.push(newItem)
       } else if (indent < listIndent) {
-        while (listParentStack.length > 0 && indent <= listIndent) { listParentStack.pop(); listIndent -= 2 }
+        while (listParentStack.length > 0 && indent <= listIndent) {
+          listParentStack.pop()
+          listIndent -= 2
+        }
         const parent = listParentStack[listParentStack.length - 1]
-        if (parent) { if (!parent.subItems) parent.subItems = []; parent.subItems.push(newItem) }
-        else listItems.push(newItem)
+        if (parent) {
+          if (!parent.subItems) parent.subItems = []
+          parent.subItems.push(newItem)
+        } else listItems.push(newItem)
         listParentStack.push(newItem)
       } else {
         if (listParentStack.length > 1) {
           listParentStack.pop()
           const parent = listParentStack[listParentStack.length - 1]
-          if (parent) { if (!parent.subItems) parent.subItems = []; parent.subItems.push(newItem) }
+          if (parent) {
+            if (!parent.subItems) parent.subItems = []
+            parent.subItems.push(newItem)
+          }
           listParentStack.push(newItem)
-        } else { listParentStack = [newItem]; listItems.push(newItem) }
+        } else {
+          listParentStack = [newItem]
+          listItems.push(newItem)
+        }
       }
       listIndent = indent
       continue
@@ -1722,12 +1991,12 @@ function parseMarkdownElementsSinglePass(
       const nextTrimmed = nextLine?.trim() ?? ''
       if (nextTrimmed !== '') {
         const firstCode = nextTrimmed.charCodeAt(0)
-        const nextLooksLikeList = (
-          firstCode === 45
-          || firstCode === 42
-          || firstCode === 43
-          || (firstCode >= 48 && firstCode <= 57)
-        ) && (RE_UL_ITEM.test(nextLine!) || RE_OL_ITEM.test(nextLine!))
+        const nextLooksLikeList =
+          (firstCode === 45 ||
+            firstCode === 42 ||
+            firstCode === 43 ||
+            (firstCode >= 48 && firstCode <= 57)) &&
+          (RE_UL_ITEM.test(nextLine!) || RE_OL_ITEM.test(nextLine!))
         if (nextLooksLikeList) {
           result.push(line)
           continue
@@ -1740,35 +2009,57 @@ function parseMarkdownElementsSinglePass(
     // Image-only lines
     if (trimmed.includes('![')) {
       RE_IMAGE_INLINE.lastIndex = 0
-      let match; let lastIdx = 0; let nonImageContent = ''
+      let match
+      let lastIdx = 0
+      let nonImageContent = ''
       const lineImages: GalleryImage[] = []
       while ((match = RE_IMAGE_INLINE.exec(trimmed)) !== null) {
         nonImageContent += trimmed.slice(lastIdx, match.index).trim()
         lastIdx = match.index + match[0].length
         const src = match[2]
         const isWindowsPath = !!src && RE_WINDOWS_ABS_PATH.test(src)
-        if (src && (src.startsWith('data:image/') || src.startsWith('http') || src.startsWith('/') || isWindowsPath)) {
-          lineImages.push({ src, alt: match[1] || undefined, thumbnail: (isWindowsPath || src.startsWith('/')) ? `${src}?thumbnail=true` : undefined })
+        if (
+          src &&
+          (src.startsWith('data:image/') ||
+            src.startsWith('http') ||
+            src.startsWith('/') ||
+            isWindowsPath)
+        ) {
+          lineImages.push({
+            src,
+            alt: match[1] || undefined,
+            thumbnail: isWindowsPath || src.startsWith('/') ? `${src}?thumbnail=true` : undefined,
+          })
         }
       }
       RE_IMAGE_INLINE.lastIndex = 0
       nonImageContent += trimmed.slice(lastIdx).trim()
-      if (lineImages.length > 0 && nonImageContent === '') { pendingImages.push(...lineImages); continue }
+      if (lineImages.length > 0 && nonImageContent === '') {
+        pendingImages.push(...lineImages)
+        continue
+      }
     }
     flushImages()
 
     // Standalone URL
     const urlMatch = RE_STANDALONE_URL.exec(trimmed)
     if (urlMatch && urlMatch[1]) {
-      const card: TypelessCardLink = { type: 'link', id: `md-link-${cardIndex.value++}`, url: urlMatch[1], title: getDomainFromUrl(urlMatch[1]) }
-      cards.push(card); result.push(`[[TYPELESS_CARD:${card.id}]]`); continue
+      const card: TypelessCardLink = {
+        type: 'link',
+        id: `md-link-${cardIndex.value++}`,
+        url: urlMatch[1],
+        title: getDomainFromUrl(urlMatch[1]),
+      }
+      cards.push(card)
+      result.push(`[[TYPELESS_CARD:${card.id}]]`)
+      continue
     }
 
     // File path
     if (!/\s/.test(trimmed) && isLocalAbsolutePath(trimmed)) {
       const normalizedPath = trimmed.replace(/[\\/]+$/, '') || trimmed
       const filename = normalizedPath.split(/[/\\]/).pop() || normalizedPath
-      const ext = filename.includes('.') ? (filename.split('.').pop()?.toLowerCase() || '') : ''
+      const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() || '' : ''
       if (!imageExtensions.includes(ext)) {
         const card: TypelessCardFile = {
           type: 'file',
@@ -1777,21 +2068,50 @@ function parseMarkdownElementsSinglePass(
           downloadUrl: trimmed,
           previewUrl: ext && documentExtensions.includes(ext) ? trimmed : undefined,
         }
-        cards.push(card); result.push(`[[TYPELESS_CARD:${card.id}]]`); continue
+        cards.push(card)
+        result.push(`[[TYPELESS_CARD:${card.id}]]`)
+        continue
       }
     }
 
     result.push(line)
   }
 
-  flushTable(); flushList(); flushImages()
+  flushTable()
+  flushList()
+  flushImages()
 
   // Handle unclosed fenced block (streaming)
   if (fenceKind !== null && fenceContent.length > 0) {
     const blockContent = fenceContent.join('\n')
-    if (fenceKind === 'terminal') emitCard(makeTerminalCard(`md-terminal-streaming-${cardIndex.value++}`, blockContent, fenceLang, true), cards, result)
-    else if (fenceKind === 'mermaid') emitCard({ type: 'mermaid', id: `md-mermaid-streaming-${cardIndex.value++}`, code: blockContent, _streaming: true } as TypelessCardMermaid, cards, result)
-    else emitCard(makeCodeCard(`md-code-streaming-${cardIndex.value++}`, blockContent, fenceLang, true), cards, result)
+    if (fenceKind === 'terminal')
+      emitCard(
+        makeTerminalCard(
+          `md-terminal-streaming-${cardIndex.value++}`,
+          blockContent,
+          fenceLang,
+          true
+        ),
+        cards,
+        result
+      )
+    else if (fenceKind === 'mermaid')
+      emitCard(
+        {
+          type: 'mermaid',
+          id: `md-mermaid-streaming-${cardIndex.value++}`,
+          code: blockContent,
+          _streaming: true,
+        } as TypelessCardMermaid,
+        cards,
+        result
+      )
+    else
+      emitCard(
+        makeCodeCard(`md-code-streaming-${cardIndex.value++}`, blockContent, fenceLang, true),
+        cards,
+        result
+      )
   }
 
   return result.join('\n')

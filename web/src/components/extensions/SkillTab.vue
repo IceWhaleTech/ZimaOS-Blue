@@ -67,7 +67,9 @@ const filteredSkills = computed(() => {
       const desc = getSkillDescription(s).toLowerCase()
       const tags = (s.tags || []).join(' ').toLowerCase()
       const id = s.id.toLowerCase()
-      return name.includes(query) || desc.includes(query) || tags.includes(query) || id.includes(query)
+      return (
+        name.includes(query) || desc.includes(query) || tags.includes(query) || id.includes(query)
+      )
     })
   }
 
@@ -81,14 +83,18 @@ const filteredSkills = computed(() => {
     result = result.filter((s) => !s.enabled)
   }
 
-  return [...result].sort((a, b) => getSkillName(a).toLowerCase().localeCompare(getSkillName(b).toLowerCase()))
+  return [...result].sort((a, b) =>
+    getSkillName(a).toLowerCase().localeCompare(getSkillName(b).toLowerCase())
+  )
 })
 
 const selectedSkill = computed(() => {
   if (!selectedSkillId.value) return null
-  return filteredSkills.value.find((s) => s.id === selectedSkillId.value)
-    || skillStore.skills.find((s) => s.id === selectedSkillId.value)
-    || null
+  return (
+    filteredSkills.value.find((s) => s.id === selectedSkillId.value) ||
+    skillStore.skills.find((s) => s.id === selectedSkillId.value) ||
+    null
+  )
 })
 
 const selectedSkillContent = computed(() => {
@@ -99,7 +105,9 @@ const selectedSkillContent = computed(() => {
 const selectedSkillContentParsed = computed(() => parseFrontmatter(selectedSkillContent.value))
 const selectedSkillDocContent = computed(() => selectedSkillContentParsed.value.body)
 const selectedSkillFrontmatter = computed(() => selectedSkillContentParsed.value.entries)
-const frontmatterLabel = computed(() => (te('skills.detail.sections.frontmatter') ? t('skills.detail.sections.frontmatter') : 'Frontmatter'))
+const frontmatterLabel = computed(() =>
+  te('skills.detail.sections.frontmatter') ? t('skills.detail.sections.frontmatter') : 'Frontmatter'
+)
 
 const selectedSkillContentLoading = computed(() => {
   if (!selectedSkill.value) return false
@@ -114,15 +122,19 @@ const skillStats = computed(() => ({
   categories: skillStore.categories.length,
 }))
 
-watch(filteredSkills, (list) => {
-  if (!list.length) {
-    selectedSkillId.value = null
-    return
-  }
-  if (!selectedSkillId.value || !list.some((s) => s.id === selectedSkillId.value)) {
-    void selectSkill(list[0]!)
-  }
-}, { immediate: true })
+watch(
+  filteredSkills,
+  (list) => {
+    if (!list.length) {
+      selectedSkillId.value = null
+      return
+    }
+    if (!selectedSkillId.value || !list.some((s) => s.id === selectedSkillId.value)) {
+      void selectSkill(list[0]!)
+    }
+  },
+  { immediate: true }
+)
 
 onMounted(async () => {
   await skillStore.fetchSkills()
@@ -219,7 +231,13 @@ function renderMarkdown(content: string): string {
 
     <div class="filters">
       <div class="search-box">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          class="search-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.35-4.35" />
         </svg>
@@ -245,7 +263,13 @@ function renderMarkdown(content: string): string {
       </select>
 
       <button class="btn-refresh" :disabled="skillStore.loading" @click="skillStore.fetchSkills()">
-        <svg v-if="!skillStore.loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          v-if="!skillStore.loading"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
           <path d="M3 3v5h5" />
           <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
@@ -279,7 +303,11 @@ function renderMarkdown(content: string): string {
           <article
             v-for="skill in filteredSkills"
             :key="skill.id"
-            :class="['item-card', 'skill-card', { active: selectedSkillId === skill.id, disabled: !skill.enabled }]"
+            :class="[
+              'item-card',
+              'skill-card',
+              { active: selectedSkillId === skill.id, disabled: !skill.enabled },
+            ]"
             tabindex="0"
             role="button"
             @click="selectSkill(skill)"
@@ -298,9 +326,14 @@ function renderMarkdown(content: string): string {
               <div class="item-title">
                 <h3 :title="getSkillName(skill)">{{ getSkillName(skill) }}</h3>
                 <div class="item-title-meta">
-                  <span v-if="skill.category" class="category-badge">{{ getCategoryLabel(skill.category) }}</span>
+                  <span v-if="skill.category" class="category-badge">{{
+                    getCategoryLabel(skill.category)
+                  }}</span>
                   <span class="builtin-badge">{{ t('plugins.builtin') }}</span>
-                  <span class="status-pill" :class="skill.enabled ? 'status-enabled' : 'status-disabled'">
+                  <span
+                    class="status-pill"
+                    :class="skill.enabled ? 'status-enabled' : 'status-disabled'"
+                  >
                     {{ skill.enabled ? t('common.enabled') : t('common.disabled') }}
                   </span>
                 </div>
@@ -317,7 +350,9 @@ function renderMarkdown(content: string): string {
               </label>
             </div>
 
-            <p class="item-description">{{ getSkillDescription(skill) || t('plugins.noDescription') }}</p>
+            <p class="item-description">
+              {{ getSkillDescription(skill) || t('plugins.noDescription') }}
+            </p>
 
             <div v-if="skill.tags?.length" class="item-tags">
               <span v-for="tag in skill.tags.slice(0, 4)" :key="tag" class="tag">{{ tag }}</span>
@@ -367,7 +402,10 @@ function renderMarkdown(content: string): string {
             </div>
           </div>
 
-          <section class="detail-section" v-if="selectedSkill.inputs?.length || selectedSkill.outputs?.length">
+          <section
+            class="detail-section"
+            v-if="selectedSkill.inputs?.length || selectedSkill.outputs?.length"
+          >
             <h4>{{ t('skills.detail.sections.parameters') }}</h4>
 
             <div v-if="selectedSkill.inputs?.length" class="param-group">
@@ -377,7 +415,9 @@ function renderMarkdown(content: string): string {
                   <div class="param-head">
                     <code>{{ input.name }}</code>
                     <span class="param-type">{{ input.type }}</span>
-                    <span v-if="input.required" class="param-required">{{ t('skills.detail.required') }}</span>
+                    <span v-if="input.required" class="param-required">{{
+                      t('skills.detail.required')
+                    }}</span>
                   </div>
                   <p>{{ input.description || t('common.noDescriptionAvailable') }}</p>
                 </li>
@@ -408,13 +448,21 @@ function renderMarkdown(content: string): string {
               <div v-if="selectedSkillFrontmatter.length" class="frontmatter-panel">
                 <p class="frontmatter-title">{{ frontmatterLabel }}</p>
                 <div class="frontmatter-grid">
-                  <div v-for="entry in selectedSkillFrontmatter" :key="entry.key" class="frontmatter-item">
+                  <div
+                    v-for="entry in selectedSkillFrontmatter"
+                    :key="entry.key"
+                    class="frontmatter-item"
+                  >
                     <span class="frontmatter-key">{{ entry.key }}</span>
                     <code class="frontmatter-value">{{ entry.value }}</code>
                   </div>
                 </div>
               </div>
-              <div v-if="selectedSkillDocContent" class="skill-content markdown-body" v-html="renderMarkdown(selectedSkillDocContent)"></div>
+              <div
+                v-if="selectedSkillDocContent"
+                class="skill-content markdown-body"
+                v-html="renderMarkdown(selectedSkillDocContent)"
+              ></div>
               <div v-else class="no-content">
                 <p>{{ t('skills.noContent') }}</p>
               </div>
@@ -504,7 +552,9 @@ function renderMarkdown(content: string): string {
 
 .skill-card.active {
   border-color: rgba(59, 130, 246, 0.45);
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35), 0 10px 22px rgba(59, 130, 246, 0.18);
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.35),
+    0 10px 22px rgba(59, 130, 246, 0.18);
 }
 
 .status-pill {

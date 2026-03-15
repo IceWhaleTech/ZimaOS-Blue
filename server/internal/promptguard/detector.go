@@ -8,6 +8,11 @@ import (
 	"unicode"
 )
 
+// DefaultMaxInputLengthChars is a conservative generic guardrail for raw prompt
+// size. 400K chars is roughly ~100K tokens, leaving headroom for system/tool
+// overhead on providers that top out around 128K tokens.
+const DefaultMaxInputLengthChars = 400000
+
 // ThreatLevel represents the severity of a detected threat.
 type ThreatLevel int
 
@@ -109,7 +114,7 @@ func DefaultDetectorConfig() *DetectorConfig {
 		EnableJailbreakPatterns:   true,
 		EnableDataExfiltration:    true,
 		BlockThreshold:            ThreatHigh,
-		MaxInputLength:            500000,
+		MaxInputLength:            DefaultMaxInputLengthChars,
 	}
 }
 

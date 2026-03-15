@@ -11,7 +11,7 @@ function cloneMessageValue<T>(value: T): T {
 
   if (isPlainObject(value)) {
     return Object.fromEntries(
-      Object.entries(value).map(([key, nestedValue]) => [key, cloneMessageValue(nestedValue)]),
+      Object.entries(value).map(([key, nestedValue]) => [key, cloneMessageValue(nestedValue)])
     ) as T
   }
 

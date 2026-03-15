@@ -35,6 +35,16 @@ func TestModelCompatLayer(t *testing.T) {
 		}
 	})
 
+	t.Run("GetDeepSeekFeatures", func(t *testing.T) {
+		features := mcl.GetFeatures("deepseek-chat")
+		if features == nil {
+			t.Fatal("expected features for deepseek-chat")
+		}
+		if features.MaxContextTokens != 128000 {
+			t.Errorf("expected max context 128000, got %d", features.MaxContextTokens)
+		}
+	})
+
 	t.Run("GetUnknownModelFeatures", func(t *testing.T) {
 		features := mcl.GetFeatures("unknown-model")
 		if features == nil {

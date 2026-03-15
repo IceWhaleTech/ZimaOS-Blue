@@ -12,6 +12,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voicewake"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
 
@@ -26,13 +27,13 @@ type SettingsHandler struct {
 	skillRerankerModelManager *claudecode.SkillRerankerModelManager
 	smallModelManager         *smallmodel.Manager
 	chatHandler               *ChatHandler
+	voiceWakeManager          *voicewake.Manager
 }
 
 // Settings represents user preferences stored on backend
 type Settings struct {
 	Locale                              string   `json:"locale,omitempty"`                                    // User's preferred locale (e.g., "zh-CN", "en-US")
 	Timezone                            string   `json:"timezone,omitempty"`                                  // User's timezone
-	ThemeStyle                          string   `json:"theme_style,omitempty"`                               // Chat theme style
 	SmartToolSelection                  *bool    `json:"smart_tool_selection,omitempty"`                      // IR-based tool filtering (nil = default false)
 	SmartSkillSelection                 *bool    `json:"smart_skill_selection,omitempty"`                     // Progressive skill selector (nil = default false)
 	SkillSelectorMode                   string   `json:"skill_selector_mode,omitempty"`                       // hybrid|ir_only|llm_only
@@ -70,18 +71,15 @@ type Settings struct {
 	OfflineIRFallbackEnabled            *bool    `json:"offline_ir_fallback_enabled,omitempty"`               // default false
 	FeatureIntentIREnabled              *bool    `json:"feature_intent_ir_enabled,omitempty"`                 // default false
 	DeepResearchV2Enabled               *bool    `json:"deep_research_v2_enabled,omitempty"`                  // default false
+	SmallModelRouteImageQAEnabled       *bool    `json:"small_model_route_image_qa_enabled,omitempty"`        // default inherits short-qa
 	SmallModelRouteShortQAEnabled       *bool    `json:"small_model_route_short_qa_enabled,omitempty"`        // default false
 	SmallModelRouteToolDispatchEnabled  *bool    `json:"small_model_route_tool_dispatch_enabled,omitempty"`   // default false
 	NoLLMDegradeMode                    string   `json:"no_llm_degrade_mode,omitempty"`                       // fixed default deepresearch
 	SmallModelUnavailablePolicy         string   `json:"small_model_unavailable_policy,omitempty"`            // default ir_first
-}
-
-var allowedThemeStyles = map[string]struct{}{
-	"default":  {},
-	"bubble":   {},
-	"minimal":  {},
-	"gradient": {},
-	"ocean":    {},
+	VoiceWakeEnabled                    *bool    `json:"voice_wake_enabled,omitempty"`                        // default false
+	VoiceWakeTriggers                   []string `json:"voice_wake_triggers,omitempty"`                       // default ["Blue"]
+	VoiceWakeLocale                     string   `json:"voice_wake_locale,omitempty"`                         // optional locale override
+	VoiceWakeTargetConversationID       string   `json:"voice_wake_target_conversation_id,omitempty"`         // fixed background target conversation
 }
 
 var allowedMemoryRecallModes = map[string]struct{}{
@@ -134,6 +132,13 @@ func (h *SettingsHandler) SetChatHandler(ch *ChatHandler) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.chatHandler = ch
+}
+
+// SetVoiceWakeManager wires the VoiceWake manager so settings changes can refresh runtime state.
+func (h *SettingsHandler) SetVoiceWakeManager(manager *voicewake.Manager) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.voiceWakeManager = manager
 }
 
 // Get handles GET /api/settings
@@ -322,11 +327,6 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 	if err := c.Bind(&newSettings); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
-	if newSettings.ThemeStyle != "" {
-		if _, valid := allowedThemeStyles[newSettings.ThemeStyle]; !valid {
-			newSettings.ThemeStyle = ""
-		}
-	}
 	if newSettings.MemoryRecallMode != "" {
 		if _, valid := allowedMemoryRecallModes[newSettings.MemoryRecallMode]; !valid {
 			newSettings.MemoryRecallMode = ""
@@ -425,13 +425,20 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 	}
 	newSettings.SmallModelContextPruneToolAllow = sanitizeStringList(newSettings.SmallModelContextPruneToolAllow, 32, 128)
 	newSettings.SmallModelContextPruneToolDeny = sanitizeStringList(newSettings.SmallModelContextPruneToolDeny, 32, 128)
+	newSettings.VoiceWakeTriggers = sanitizeStringList(newSettings.VoiceWakeTriggers, 8, 64)
+	newSettings.VoiceWakeLocale = strings.TrimSpace(newSettings.VoiceWakeLocale)
+	newSettings.VoiceWakeTargetConversationID = strings.TrimSpace(newSettings.VoiceWakeTargetConversationID)
 
 	h.mu.Lock()
 	h.settings = &newSettings
+	voiceWakeManager := h.voiceWakeManager
 	h.mu.Unlock()
 
 	if err := h.save(); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to save settings"})
+	}
+	if voiceWakeManager != nil {
+		_ = voiceWakeManager.Refresh(c.Request().Context())
 	}
 
 	return c.JSON(http.StatusOK, h.settings)
@@ -445,19 +452,12 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	}
 
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	// Apply partial updates
 	if locale, ok := updates["locale"].(string); ok {
 		h.settings.Locale = locale
 	}
 	if timezone, ok := updates["timezone"].(string); ok {
 		h.settings.Timezone = timezone
-	}
-	if themeStyle, ok := updates["theme_style"].(string); ok {
-		if _, valid := allowedThemeStyles[themeStyle]; valid {
-			h.settings.ThemeStyle = themeStyle
-		}
 	}
 	if v, ok := updates["smart_tool_selection"]; ok {
 		if b, isBool := v.(bool); isBool {
@@ -665,6 +665,11 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			h.settings.DeepResearchV2Enabled = &b
 		}
 	}
+	if v, ok := updates["small_model_route_image_qa_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelRouteImageQAEnabled = &b
+		}
+	}
 	if v, ok := updates["small_model_route_short_qa_enabled"]; ok {
 		if b, isBool := v.(bool); isBool {
 			h.settings.SmallModelRouteShortQAEnabled = &b
@@ -686,9 +691,32 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			h.settings.SmallModelUnavailablePolicy = policy
 		}
 	}
+	if v, ok := updates["voice_wake_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.VoiceWakeEnabled = &b
+		}
+	}
+	if v, ok := updates["voice_wake_triggers"]; ok {
+		if v == nil {
+			h.settings.VoiceWakeTriggers = nil
+		} else if list, ok := stringSliceFromAny(v); ok {
+			h.settings.VoiceWakeTriggers = sanitizeStringList(list, 8, 64)
+		}
+	}
+	if locale, ok := updates["voice_wake_locale"].(string); ok {
+		h.settings.VoiceWakeLocale = strings.TrimSpace(locale)
+	}
+	if target, ok := updates["voice_wake_target_conversation_id"].(string); ok {
+		h.settings.VoiceWakeTargetConversationID = strings.TrimSpace(target)
+	}
+	voiceWakeManager := h.voiceWakeManager
+	h.mu.Unlock()
 
 	if err := h.save(); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to save settings"})
+	}
+	if voiceWakeManager != nil {
+		_ = voiceWakeManager.Refresh(c.Request().Context())
 	}
 
 	return c.JSON(http.StatusOK, h.settings)
@@ -702,6 +730,34 @@ func (h *SettingsHandler) GetLocale() string {
 		return h.settings.Locale
 	}
 	return workspace.DetectLocale()
+}
+
+// GetVoiceWakeEnabled returns whether VoiceWake should be enabled.
+func (h *SettingsHandler) GetVoiceWakeEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.settings.VoiceWakeEnabled != nil && *h.settings.VoiceWakeEnabled
+}
+
+// GetVoiceWakeTriggers returns configured VoiceWake triggers with defaults applied.
+func (h *SettingsHandler) GetVoiceWakeTriggers() []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return append([]string(nil), voicewake.DefaultTriggers(sanitizeStringList(h.settings.VoiceWakeTriggers, 8, 64))...)
+}
+
+// GetVoiceWakeLocale returns the optional VoiceWake locale override.
+func (h *SettingsHandler) GetVoiceWakeLocale() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return strings.TrimSpace(h.settings.VoiceWakeLocale)
+}
+
+// GetVoiceWakeTargetConversationID returns the fixed VoiceWake target conversation.
+func (h *SettingsHandler) GetVoiceWakeTargetConversationID() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return strings.TrimSpace(h.settings.VoiceWakeTargetConversationID)
 }
 
 // GetSmartToolSelection returns whether smart tool selection is enabled (default false).
@@ -1175,6 +1231,18 @@ func (h *SettingsHandler) GetDeepResearchV2Enabled() bool {
 	return *h.settings.DeepResearchV2Enabled
 }
 
+func (h *SettingsHandler) GetSmallModelRouteImageQAEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelRouteImageQAEnabled != nil {
+		return *h.settings.SmallModelRouteImageQAEnabled
+	}
+	if h.settings.SmallModelRouteShortQAEnabled == nil {
+		return false
+	}
+	return *h.settings.SmallModelRouteShortQAEnabled
+}
+
 func (h *SettingsHandler) GetSmallModelRouteShortQAEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -1203,6 +1271,22 @@ func (h *SettingsHandler) SetSmallModelRouteShortQAEnabled(enabled bool) (bool, 
 		return false, nil
 	}
 	h.settings.SmallModelRouteShortQAEnabled = &enabled
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetSmallModelRouteImageQAEnabled updates image-qa route switch and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelRouteImageQAEnabled(enabled bool) (bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelRouteImageQAEnabled != nil && *h.settings.SmallModelRouteImageQAEnabled == enabled {
+		return false, nil
+	}
+	h.settings.SmallModelRouteImageQAEnabled = &enabled
 	if err := h.save(); err != nil {
 		return false, err
 	}

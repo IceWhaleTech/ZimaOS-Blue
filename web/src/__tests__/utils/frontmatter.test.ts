@@ -41,4 +41,3 @@ Doc`
     expect(parsed.body).toBe('Doc')
   })
 })
-

@@ -79,8 +79,7 @@ export const pluginApi = {
 
   get: (id: string) => api.get<Plugin>(`/plugins/${id}`),
 
-  enable: (id: string) =>
-    api.post<{ success: boolean; message: string }>(`/plugins/${id}/enable`),
+  enable: (id: string) => api.post<{ success: boolean; message: string }>(`/plugins/${id}/enable`),
 
   disable: (id: string) =>
     api.post<{ success: boolean; message: string }>(`/plugins/${id}/disable`),
@@ -91,8 +90,7 @@ export const pluginApi = {
   getLogs: (id: string, params?: { limit?: number; level?: string }) =>
     api.get<PluginLog[]>(`/plugins/${id}/logs`, { params }),
 
-  reload: (id: string) =>
-    api.post<{ success: boolean; message: string }>(`/plugins/${id}/reload`),
+  reload: (id: string) => api.post<{ success: boolean; message: string }>(`/plugins/${id}/reload`),
 
   // Plugin store
   listSources: () => api.get<PluginSource[]>('/plugin-store/sources'),
@@ -103,15 +101,18 @@ export const pluginApi = {
   removeSource: (id: string) =>
     api.delete<{ success: boolean; message: string }>(`/plugin-store/sources/${id}`),
 
-  browse: (params?: BrowseParams) =>
-    api.get<RemotePlugin[]>('/plugin-store/browse', { params }),
+  browse: (params?: BrowseParams) => api.get<RemotePlugin[]>('/plugin-store/browse', { params }),
 
   install: (id: string) =>
-    api.post<{ success: boolean; message: string; plugin?: RemotePlugin }>(`/plugin-store/install/${id}`),
+    api.post<{ success: boolean; message: string; plugin?: RemotePlugin }>(
+      `/plugin-store/install/${id}`
+    ),
 
   uninstall: (id: string) =>
     api.post<{ success: boolean; message: string }>(`/plugin-store/uninstall/${id}`),
 
   refresh: () =>
-    api.post<{ success: boolean; plugins_count: number; errors?: string[] }>('/plugin-store/refresh'),
+    api.post<{ success: boolean; plugins_count: number; errors?: string[] }>(
+      '/plugin-store/refresh'
+    ),
 }

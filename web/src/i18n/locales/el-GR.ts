@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Πηγές αρχείων',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -568,6 +568,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Πρόσβαση δικτύου',
+    networkTitle: 'Δίκτυο και πρόσβαση',
+    releaseTrack: 'Διαχείριση εκδόσεων',
+    systemVersion: 'Ενημερώσεις και εκδόσεις',
     llmApiKeyRequired: 'Ρυθμίστε ένα API key πριν ανοίξετε τη σελίδα παρόχων LLM.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -704,8 +708,13 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Εγκεκριμένοι κατάλογοι',
+    approvedDirectoriesDesc:
+      'Κατάλογοι εγκεκριμένοι μέσω της επιλογής «Να επιτρέπεται πάντα» για exec/convert.',
+    noApprovedDirectories: 'Δεν υπάρχουν εγκεκριμένοι κατάλογοι',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Εγκεκριμένοι κατάλογοι',
       firewall: 'Τείχος προστασίας',
       masking: 'Απόκρυψη δεδομένων',
     },
@@ -1065,6 +1074,7 @@ export default {
       length: 'Τουλάχιστον {n} χαρακτήρες',
       uppercase: 'Ένα κεφαλαίο γράμμα',
       lowercase: 'Ένα πεζό γράμμα',
+      letter: 'Ένα γράμμα',
       number: 'Ένας αριθμός',
       special: "Ένας ειδικός χαρακτήρας (!{'@'}#$%...)",
     },
@@ -1340,7 +1350,9 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Η εκτέλεση εντολής αποκλείστηκε επειδή έληξε η έγκριση του καταλόγου. Εγκρίνετε τον κατάλογο και δοκιμάστε ξανά.',
+    conversations: 'Συνομιλίες',
+    execDirectoryApprovalTimeout:
+      'Η εκτέλεση εντολής αποκλείστηκε επειδή έληξε η έγκριση του καταλόγου. Εγκρίνετε τον κατάλογο και δοκιμάστε ξανά.',
     streamProgress: {
       requestAccepted: 'Το αίτημα λήφθηκε, προετοιμάζεται απάντηση...',
       generating: 'Δημιουργία απάντησης...',
@@ -1734,7 +1746,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: 'Δεδομένα συνομιλίας',
-    chatDataDescription: 'Εισαγάγετε, εξαγάγετε και καθαρίστε το ιστορικό συνομιλιών και τα σχετικά δεδομένα από ένα σημείο.',
+    chatDataDescription:
+      'Εισαγάγετε, εξαγάγετε και καθαρίστε το ιστορικό συνομιλιών και τα σχετικά δεδομένα από ένα σημείο.',
     manageData: 'Διαχείριση δεδομένων',
     cleanupPreviewFailed: 'Αποτυχία προεπισκόπησης καθαρισμού',
     cleanupFailed: 'Αποτυχία καθαρισμού δεδομένων',
@@ -1756,7 +1769,8 @@ export default {
     importPasswordPlaceholder: 'Εισαγάγετε τον κωδικό που χρησιμοποιήθηκε κατά την εξαγωγή',
     confirmPasswordPlaceholder: 'Εισαγάγετε ξανά τον κωδικό',
     formatEncryptedDesc: 'Πλήρως κρυπτογραφημένη δυαδική μορφή. Υψηλότερη ασφάλεια.',
-    formatJsonDesc: 'Μορφή αναγνώσιμη από άνθρωπο. Ο κωδικός χρησιμοποιείται για επαλήθευση εισαγωγής.',
+    formatJsonDesc:
+      'Μορφή αναγνώσιμη από άνθρωπο. Ο κωδικός χρησιμοποιείται για επαλήθευση εισαγωγής.',
     retentionSaved: 'Οι ρυθμίσεις διατήρησης αποθηκεύτηκαν',
     export: 'Εξαγωγή δεδομένων χρήστη',
     exportDescription:
@@ -1787,7 +1801,8 @@ export default {
       events: 'Συμβάντα',
       alerts: 'Ειδοποιήσεις',
       totalRecords: 'Σύνολο εγγραφών παρακολούθησης',
-      policyHint: 'Κάθε τύπος δεδομένων υποστηρίζει από 1 έως 365 ημέρες. Η μικρότερη διατήρηση μειώνει τον χώρο, ενώ η μεγαλύτερη βοηθά σε ελέγχους και αντιμετώπιση προβλημάτων.',
+      policyHint:
+        'Κάθε τύπος δεδομένων υποστηρίζει από 1 έως 365 ημέρες. Η μικρότερη διατήρηση μειώνει τον χώρο, ενώ η μεγαλύτερη βοηθά σε ελέγχους και αντιμετώπιση προβλημάτων.',
       daysRange: 'Επιτρεπόμενο εύρος: 1-365 ημέρες',
       sessionsHint: 'Κύκλος ζωής συνεδριών agent και μεταδεδομένα εκτέλεσης.',
       eventsHint: 'Κλήσεις εργαλείων, ίχνη εκτέλεσης και συμβάντα ελέγχου.',
@@ -1795,7 +1810,8 @@ export default {
       sessionsSuggested: 'Προτείνεται: 14-30 ημέρες για συνήθη λειτουργία',
       eventsSuggested: 'Προτείνεται: 7-14 ημέρες για ισορροπημένο όγκο ελέγχου',
       alertsSuggested: 'Προτείνεται: 30-90 ημέρες για ανασκόπηση περιστατικών',
-      saveHint: 'Τα νέα παράθυρα διατήρησης θα εφαρμοστούν στους επόμενους αυτόματους και χειροκίνητους καθαρισμούς.',
+      saveHint:
+        'Τα νέα παράθυρα διατήρησης θα εφαρμοστούν στους επόμενους αυτόματους και χειροκίνητους καθαρισμούς.',
 
       days: 'ημέρες',
       storageInfo: 'Τρέχων όγκος',
@@ -1807,9 +1823,11 @@ export default {
     cleanup: {
       ...enUS.userdata.cleanup,
       title: 'Εκκαθάριση δεδομένων',
-      description: 'Διαγράψτε μόνιμα τα επιλεγμένα δεδομένα. Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.',
+      description:
+        'Διαγράψτε μόνιμα τα επιλεγμένα δεδομένα. Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.',
       warning: 'Καταστροφική ενέργεια',
-      warningDetail: 'Τα διαγραμμένα δεδομένα δεν μπορούν να ανακτηθούν. Εξαγάγετε πρώτα τα δεδομένα σας αν χρειάζεστε αντίγραφο ασφαλείας.',
+      warningDetail:
+        'Τα διαγραμμένα δεδομένα δεν μπορούν να ανακτηθούν. Εξαγάγετε πρώτα τα δεδομένα σας αν χρειάζεστε αντίγραφο ασφαλείας.',
       selectData: 'Επιλέξτε δεδομένα προς διαγραφή',
       chatHistory: 'Ιστορικό συνομιλιών',
       chatHistoryDesc: 'Όλες οι συνομιλίες και τα μηνύματα',
@@ -1828,15 +1846,19 @@ export default {
       willReset: 'Θα επαναφερθεί',
       willClear: 'Θα εκκαθαριστεί',
       authorizationStep: 'Απαιτείται εξουσιοδότηση',
-      authorizationHint: 'Ελέγξτε τα δεδομένα που θα διαγραφούν. Αυτό το βήμα λειτουργεί ως επιβεβαίωση εξουσιοδότησης.',
+      authorizationHint:
+        'Ελέγξτε τα δεδομένα που θα διαγραφούν. Αυτό το βήμα λειτουργεί ως επιβεβαίωση εξουσιοδότησης.',
       proceedToConfirm: 'Μετάβαση στην επιβεβαίωση',
       confirmStep: 'Τελική επιβεβαίωση',
-      confirmHint: 'Εισαγάγετε τον κωδικό σας για να επιβεβαιώσετε αυτήν την καταστροφική ενέργεια.',
-      confirmHintPreview: 'Πληκτρολογήστε «{confirmText}» παρακάτω για να επιβεβαιώσετε αυτήν την καταστροφική ενέργεια.',
+      confirmHint:
+        'Εισαγάγετε τον κωδικό σας για να επιβεβαιώσετε αυτήν την καταστροφική ενέργεια.',
+      confirmHintPreview:
+        'Πληκτρολογήστε «{confirmText}» παρακάτω για να επιβεβαιώσετε αυτήν την καταστροφική ενέργεια.',
       confirmText: 'ΕΠΙΒΕΒΑΙΩΣΗ ΔΙΑΓΡΑΦΗΣ',
       typeToConfirm: 'Πληκτρολογήστε για επιβεβαίωση',
       typeToConfirmPlaceholder: 'Πληκτρολογήστε «{confirmText}» για επιβεβαίωση',
-      productionHint: 'Σε περιβάλλοντα παραγωγής μπορεί να απαιτούνται επιπλέον διαπιστευτήρια (MFA, έγκριση διαχειριστή).',
+      productionHint:
+        'Σε περιβάλλοντα παραγωγής μπορεί να απαιτούνται επιπλέον διαπιστευτήρια (MFA, έγκριση διαχειριστή).',
       enterPassword: 'Εισαγάγετε κωδικό',
       passwordPlaceholder: 'Εισαγάγετε τον κωδικό σας για επιβεβαίωση',
       confirmDelete: 'Επιβεβαίωση διαγραφής',
@@ -1849,7 +1871,8 @@ export default {
       totalMemories: 'Συνολικές μνήμες',
       backend: 'Backend',
       exportSection: 'Εξαγωγή μνημών',
-      exportDesc: 'Κατεβάστε όλες τις μνήμες ως αρχείο Markdown για αντίγραφο ασφαλείας ή επεξεργασία.',
+      exportDesc:
+        'Κατεβάστε όλες τις μνήμες ως αρχείο Markdown για αντίγραφο ασφαλείας ή επεξεργασία.',
       exportButton: 'Εξαγωγή ως Markdown',
       exportSuccess: 'Οι μνήμες εξήχθησαν με επιτυχία',
       exportFailed: 'Αποτυχία εξαγωγής μνημών',
@@ -1927,12 +1950,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Αποθηκεύτηκε νέο περιεχόμενο',
       memorySavedMessage: 'Εξήχθη μνήμη από τη συνομιλία',
       manageMemory: 'Διαχείριση μνήμης',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -2050,7 +2074,8 @@ export default {
   sandbox: { ...enUS.sandbox },
   home: {
     ...enUS.home,
-    description: 'Ένα σταθερό, αξιόπιστο και ουδέτερο runtime για τους AI βοηθούς και τους αυτοματισμούς σας',
+    description:
+      'Ένα σταθερό, αξιόπιστο και ουδέτερο runtime για τους AI βοηθούς και τους αυτοματισμούς σας',
   },
   brand: { ...enUS.brand },
   users: { ...enUS.users },

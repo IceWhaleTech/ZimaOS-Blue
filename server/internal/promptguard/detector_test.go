@@ -41,8 +41,8 @@ func TestDefaultDetectorConfig(t *testing.T) {
 	if config.BlockThreshold != ThreatHigh {
 		t.Errorf("BlockThreshold = %v, want %v", config.BlockThreshold, ThreatHigh)
 	}
-	if config.MaxInputLength != 500000 {
-		t.Errorf("MaxInputLength = %d, want %d", config.MaxInputLength, 500000)
+	if config.MaxInputLength != DefaultMaxInputLengthChars {
+		t.Errorf("MaxInputLength = %d, want %d", config.MaxInputLength, DefaultMaxInputLengthChars)
 	}
 }
 

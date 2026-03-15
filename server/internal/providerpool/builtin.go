@@ -765,7 +765,7 @@ func BuiltinModels() map[string][]*Model {
 					JSON:         true,
 					SystemPrompt: true,
 				},
-				ContextWindow: 64000,
+				ContextWindow: 128000,
 				MaxOutput:     8192,
 				InputPrice:    0.27, // $0.27 per 1M input tokens (cache miss)
 				OutputPrice:   1.1,  // $1.10 per 1M output tokens
@@ -785,7 +785,7 @@ func BuiltinModels() map[string][]*Model {
 					JSON:         true,
 					SystemPrompt: true,
 				},
-				ContextWindow: 64000,
+				ContextWindow: 128000,
 				MaxOutput:     8192,
 				InputPrice:    0.55, // $0.55 per 1M input tokens
 				OutputPrice:   2.19, // $2.19 per 1M output tokens

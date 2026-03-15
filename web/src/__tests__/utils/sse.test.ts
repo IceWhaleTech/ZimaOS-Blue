@@ -345,7 +345,9 @@ describe('SSE Client', () => {
           if (callCount === 2) {
             return Promise.resolve({
               done: false,
-              value: encoder.encode('data: {"delta":"","done":true,"provider":"anthropic","model":"claude"}\n\n'),
+              value: encoder.encode(
+                'data: {"delta":"","done":true,"provider":"anthropic","model":"claude"}\n\n'
+              ),
             })
           }
           // Stream closes without [DONE]
@@ -488,8 +490,12 @@ describe('SSE Client', () => {
       expect(onError).not.toHaveBeenCalled()
       expect(onComplete).toHaveBeenCalledTimes(1)
       expect(onMessage).toHaveBeenCalledTimes(2)
-      expect(onMessage.mock.calls[0][0]).toEqual(expect.objectContaining({ delta: 'A', stream_id: 's1' }))
-      expect(onMessage.mock.calls[1][0]).toEqual(expect.objectContaining({ delta: 'B', stream_id: 's1' }))
+      expect(onMessage.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ delta: 'A', stream_id: 's1' })
+      )
+      expect(onMessage.mock.calls[1][0]).toEqual(
+        expect.objectContaining({ delta: 'B', stream_id: 's1' })
+      )
       expect(onStreamId).toHaveBeenCalledTimes(1)
       expect(onStreamId).toHaveBeenCalledWith('s1')
     })
@@ -509,7 +515,9 @@ describe('SSE Client', () => {
           if (callCount === 2) {
             return Promise.resolve({
               done: false,
-              value: encoder.encode('data: {"stream_id":"s1","injection":true,"user_message":"继续"}\n\n'),
+              value: encoder.encode(
+                'data: {"stream_id":"s1","injection":true,"user_message":"继续"}\n\n'
+              ),
             })
           }
           if (callCount === 3) {
@@ -550,8 +558,12 @@ describe('SSE Client', () => {
       expect(onComplete).toHaveBeenCalledTimes(1)
       expect(onInjection).toHaveBeenCalledTimes(1)
       expect(onMessage).toHaveBeenCalledTimes(2)
-      expect(onMessage.mock.calls[0][0]).toEqual(expect.objectContaining({ delta: 'A', stream_id: 's1' }))
-      expect(onMessage.mock.calls[1][0]).toEqual(expect.objectContaining({ delta: 'B', stream_id: 's2' }))
+      expect(onMessage.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ delta: 'A', stream_id: 's1' })
+      )
+      expect(onMessage.mock.calls[1][0]).toEqual(
+        expect.objectContaining({ delta: 'B', stream_id: 's2' })
+      )
       expect(onStreamId).toHaveBeenCalledTimes(2)
       expect(onStreamId.mock.calls[0][0]).toBe('s1')
       expect(onStreamId.mock.calls[1][0]).toBe('s2')
@@ -584,7 +596,9 @@ describe('SSE Client', () => {
           if (callCount === 4) {
             return Promise.resolve({
               done: false,
-              value: encoder.encode('data: {"stream_id":"s1","seq":3,"delta":"SHOULD_IGNORE_DUP"}\n\n'),
+              value: encoder.encode(
+                'data: {"stream_id":"s1","seq":3,"delta":"SHOULD_IGNORE_DUP"}\n\n'
+              ),
             })
           }
           if (callCount === 5) {
@@ -642,7 +656,9 @@ describe('SSE Client', () => {
           if (callCount === 2) {
             return Promise.resolve({
               done: false,
-              value: encoder.encode('data: {"stream_id":"s1","seq":2,"injection":true,"user_message":"继续"}\n\n'),
+              value: encoder.encode(
+                'data: {"stream_id":"s1","seq":2,"injection":true,"user_message":"继续"}\n\n'
+              ),
             })
           }
           if (callCount === 3) {
@@ -654,7 +670,9 @@ describe('SSE Client', () => {
           if (callCount === 4) {
             return Promise.resolve({
               done: false,
-              value: encoder.encode('data: {"stream_id":"s2","seq":1,"delta":"SHOULD_IGNORE_DUP"}\n\n'),
+              value: encoder.encode(
+                'data: {"stream_id":"s2","seq":1,"delta":"SHOULD_IGNORE_DUP"}\n\n'
+              ),
             })
           }
           if (callCount === 5) {
@@ -695,9 +713,15 @@ describe('SSE Client', () => {
       expect(onComplete).toHaveBeenCalledTimes(1)
       expect(onInjection).toHaveBeenCalledTimes(1)
       expect(onMessage).toHaveBeenCalledTimes(3)
-      expect(onMessage.mock.calls[0][0]).toEqual(expect.objectContaining({ delta: 'A', stream_id: 's1', seq: 1 }))
-      expect(onMessage.mock.calls[1][0]).toEqual(expect.objectContaining({ delta: 'B', stream_id: 's2', seq: 1 }))
-      expect(onMessage.mock.calls[2][0]).toEqual(expect.objectContaining({ delta: 'C', stream_id: 's2', seq: 2 }))
+      expect(onMessage.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ delta: 'A', stream_id: 's1', seq: 1 })
+      )
+      expect(onMessage.mock.calls[1][0]).toEqual(
+        expect.objectContaining({ delta: 'B', stream_id: 's2', seq: 1 })
+      )
+      expect(onMessage.mock.calls[2][0]).toEqual(
+        expect.objectContaining({ delta: 'C', stream_id: 's2', seq: 2 })
+      )
       expect(onStreamId).toHaveBeenCalledTimes(2)
       expect(onStreamId.mock.calls[0][0]).toBe('s1')
       expect(onStreamId.mock.calls[1][0]).toBe('s2')

@@ -166,7 +166,10 @@ onUnmounted(() => {
     </div>
 
     <!-- Video container -->
-    <div class="relative" :class="isFullscreen ? 'h-full flex items-center justify-center' : 'aspect-video'">
+    <div
+      class="relative"
+      :class="isFullscreen ? 'h-full flex items-center justify-center' : 'aspect-video'"
+    >
       <video
         ref="videoRef"
         class="w-full h-full object-contain"
@@ -202,7 +205,12 @@ onUnmounted(() => {
         @click="togglePlay"
       >
         <div class="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-900 ml-1" fill="currentColor" viewBox="0 0 24 24">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-8 w-8 text-gray-900 ml-1"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path d="M8 5v14l11-7z" />
           </svg>
         </div>
@@ -215,15 +223,14 @@ onUnmounted(() => {
         :class="showControls || !isPlaying ? 'opacity-100' : 'opacity-0'"
       >
         <!-- Progress bar -->
-        <div
-          class="h-1 bg-white/30 rounded-full cursor-pointer group mb-3"
-          @click="handleSeek"
-        >
+        <div class="h-1 bg-white/30 rounded-full cursor-pointer group mb-3" @click="handleSeek">
           <div
             class="h-full bg-gray-700 dark:bg-gray-500 rounded-full relative transition-all"
             :style="{ width: `${progress}%` }"
           >
-            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-gray-700 dark:bg-gray-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div
+              class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-gray-700 dark:bg-gray-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+            />
           </div>
         </div>
 
@@ -234,10 +241,22 @@ onUnmounted(() => {
             class="text-white hover:text-gray-900 dark:text-white transition-colors"
             @click.stop="togglePlay"
           >
-            <svg v-if="!isPlaying" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+            <svg
+              v-if="!isPlaying"
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path d="M8 5v14l11-7z" />
             </svg>
-            <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+            <svg
+              v-else
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
             </svg>
           </button>
@@ -255,15 +274,56 @@ onUnmounted(() => {
               class="text-white hover:text-gray-900 dark:text-white transition-colors"
               @click.stop="toggleMute"
             >
-              <svg v-if="isMuted || volume === 0" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+              <svg
+                v-if="isMuted || volume === 0"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+                />
               </svg>
-              <svg v-else-if="volume < 0.5" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              <svg
+                v-else-if="volume < 0.5"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15.536 8.464a5 5 0 010 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                />
               </svg>
-              <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              <svg
+                v-else
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                />
               </svg>
             </button>
             <div
@@ -282,11 +342,35 @@ onUnmounted(() => {
             class="text-white hover:text-gray-900 dark:text-white transition-colors"
             @click.stop="toggleFullscreen"
           >
-            <svg v-if="!isFullscreen" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            <svg
+              v-if="!isFullscreen"
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+              />
             </svg>
-            <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+            <svg
+              v-else
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
+              />
             </svg>
           </button>
         </div>

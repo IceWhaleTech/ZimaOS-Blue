@@ -48,8 +48,7 @@ export const webauthnApi = {
     api.delete(`/auth/webauthn/credentials/${credentialId}`),
 
   // Begin authentication ceremony
-  beginAuthentication: () =>
-    api.post<AuthenticationOptions>('/auth/webauthn/authenticate/begin'),
+  beginAuthentication: () => api.post<AuthenticationOptions>('/auth/webauthn/authenticate/begin'),
 
   // Complete authentication ceremony
   finishAuthentication: (credential: PublicKeyCredential) => {
@@ -90,7 +89,9 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
 }
 
 // Convert server options to browser-compatible format
-export function prepareRegistrationOptions(options: RegistrationOptions): PublicKeyCredentialCreationOptions {
+export function prepareRegistrationOptions(
+  options: RegistrationOptions
+): PublicKeyCredentialCreationOptions {
   const publicKey = options.publicKey
   return {
     ...publicKey,
@@ -106,7 +107,9 @@ export function prepareRegistrationOptions(options: RegistrationOptions): Public
   }
 }
 
-export function prepareAuthenticationOptions(options: AuthenticationOptions): PublicKeyCredentialRequestOptions {
+export function prepareAuthenticationOptions(
+  options: AuthenticationOptions
+): PublicKeyCredentialRequestOptions {
   const publicKey = options.publicKey
   return {
     ...publicKey,

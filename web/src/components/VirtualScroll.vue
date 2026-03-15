@@ -111,7 +111,7 @@ class FenwickTree {
 
     let idx = 0
     let bit = 1
-    while ((bit << 1) <= this.n) bit <<= 1
+    while (bit << 1 <= this.n) bit <<= 1
 
     let current = 0
     while (bit > 0) {
@@ -212,7 +212,7 @@ watch(
     heightTree.resize(itemCount, (index) => itemHeights.value[index] ?? estimatedHeight)
     bumpLayoutVersion()
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 // Get actual or estimated height for an item
@@ -374,15 +374,9 @@ onUnmounted(() => {
     @scroll.passive="handleScroll"
   >
     <!-- Spacer for total height -->
-    <div
-      class="virtual-scroll-spacer"
-      :style="{ height: `${totalHeight}px` }"
-    >
+    <div class="virtual-scroll-spacer" :style="{ height: `${totalHeight}px` }">
       <!-- Visible items container -->
-      <div
-        class="virtual-scroll-content"
-        :style="{ transform: `translateY(${offsetTop}px)` }"
-      >
+      <div class="virtual-scroll-content" :style="{ transform: `translateY(${offsetTop}px)` }">
         <slot
           v-for="offset in visibleCount"
           :key="visibleRange.start + offset - 1"

@@ -261,8 +261,8 @@ func TestGetSmallModelDefaults(t *testing.T) {
 	if h.GetSmallModelMediaIntentEnabled() {
 		t.Fatal("expected media intent switch default false")
 	}
-	if h.GetSmallModelRouteShortQAEnabled() || h.GetSmallModelRouteToolDispatchEnabled() {
-		t.Fatal("expected short-qa/tool-dispatch route switches default false")
+	if h.GetSmallModelRouteImageQAEnabled() || h.GetSmallModelRouteShortQAEnabled() || h.GetSmallModelRouteToolDispatchEnabled() {
+		t.Fatal("expected image-qa/short-qa/tool-dispatch route switches default false")
 	}
 	if h.GetOfflineIRFallbackEnabled() {
 		t.Fatal("expected offline IR fallback switch default false")
@@ -272,6 +272,47 @@ func TestGetSmallModelDefaults(t *testing.T) {
 	}
 	if h.GetDeepResearchV2Enabled() {
 		t.Fatal("expected deep research v2 switch default false")
+	}
+}
+
+func TestGetSmallModelRouteImageQAEnabled_InheritsShortQAWhenUnset(t *testing.T) {
+	h := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	h.settings.SmallModelRouteShortQAEnabled = &enabled
+	if !h.GetSmallModelRouteImageQAEnabled() {
+		t.Fatal("expected image QA switch to inherit short QA setting when unset")
+	}
+
+	disabled := false
+	h.settings.SmallModelRouteImageQAEnabled = &disabled
+	if h.GetSmallModelRouteImageQAEnabled() {
+		t.Fatal("expected explicit image QA switch to override inherited short QA setting")
+	}
+}
+
+func TestPatchSmallModelRouteImageQAEnabled_Persisted(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"small_model_route_image_qa_enabled":true}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Patch(c); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !h.GetSmallModelRouteImageQAEnabled() {
+		t.Fatal("expected image QA switch enabled after patch")
+	}
+
+	h2 := NewSettingsHandler(store)
+	if !h2.GetSmallModelRouteImageQAEnabled() {
+		t.Fatal("expected persisted image QA switch enabled")
 	}
 }
 
@@ -324,6 +365,38 @@ func TestPatchDeepResearchV2Disabled_Persisted(t *testing.T) {
 	h2 := NewSettingsHandler(store)
 	if h2.GetDeepResearchV2Enabled() {
 		t.Fatal("expected persisted deep research v2 switch disabled")
+	}
+}
+
+func TestPatchLegacyThemeStyleIgnored(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"locale":"en-US","theme_style":"minimal"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Patch(c); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if h.settings.Locale != "en-US" {
+		t.Fatalf("Locale = %q, want %q", h.settings.Locale, "en-US")
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if _, exists := resp["theme_style"]; exists {
+		t.Fatalf("unexpected theme_style field in response: %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "theme_style") {
+		t.Fatalf("response should not contain theme_style: %s", rec.Body.String())
 	}
 }
 

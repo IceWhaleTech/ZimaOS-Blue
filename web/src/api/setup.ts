@@ -105,15 +105,19 @@ export const setupApi = {
   getStatus: () => api.get<SetupStatus>('/setup/status'),
 
   // Get defaults for setup wizard
-  getDefaults: () => api.get<{
-    language: string
-    languages: { code: string; name: string }[]
-    providers: string[]
-  }>('/setup/defaults'),
+  getDefaults: () =>
+    api.get<{
+      language: string
+      languages: { code: string; name: string }[]
+      providers: string[]
+    }>('/setup/defaults'),
 
   // Validate a setup step
   validateStep: (step: number, config: Record<string, unknown>) =>
-    api.post<{ valid: boolean; errors: Record<string, string> }>('/setup/validate', { step, config }),
+    api.post<{ valid: boolean; errors: Record<string, string> }>('/setup/validate', {
+      step,
+      config,
+    }),
 
   // Test connection
   testConnection: (type: string, config: Record<string, string>) =>
@@ -140,29 +144,32 @@ export const providerDetectionApi = {
   detectAll: () => api.get<ProviderDetectionResult>('/providers/detect'),
 
   // Get Ollama status
-  getOllamaStatus: () => api.get<{
-    available: boolean
-    endpoint?: string
-    version?: string
-  }>('/providers/ollama'),
+  getOllamaStatus: () =>
+    api.get<{
+      available: boolean
+      endpoint?: string
+      version?: string
+    }>('/providers/ollama'),
 
   // Get Ollama models
   getOllamaModels: () => api.get<{ models: string[] }>('/providers/ollama/models'),
 
   // Get environment config
-  getEnvConfig: () => api.get<{
-    anthropic_key_set: boolean
-    openai_key_set: boolean
-    http_proxy?: string
-    https_proxy?: string
-  }>('/env/config'),
+  getEnvConfig: () =>
+    api.get<{
+      anthropic_key_set: boolean
+      openai_key_set: boolean
+      http_proxy?: string
+      https_proxy?: string
+    }>('/env/config'),
 
   // Get cc-switch profiles
-  getCCSwitchProfiles: () => api.get<{
-    available: boolean
-    active_profile?: string
-    profiles: { name: string; provider: string; model: string }[]
-  }>('/cc-switch/profiles'),
+  getCCSwitchProfiles: () =>
+    api.get<{
+      available: boolean
+      active_profile?: string
+      profiles: { name: string; provider: string; model: string }[]
+    }>('/cc-switch/profiles'),
 
   // Activate cc-switch profile
   activateCCSwitchProfile: (profile: string) =>
@@ -187,10 +194,11 @@ export const cliDownloadApi = {
   cancelDownload: () => api.delete('/cli/download'),
 
   // Get CLI config
-  getConfig: () => api.get<{
-    enabled: boolean
-    features: Record<string, boolean>
-  }>('/cli/config'),
+  getConfig: () =>
+    api.get<{
+      enabled: boolean
+      features: Record<string, boolean>
+    }>('/cli/config'),
 
   // Update CLI config
   updateConfig: (config: { enabled?: boolean; features?: Record<string, boolean> }) =>
@@ -203,10 +211,11 @@ export const cliDownloadApi = {
   disable: () => api.post<{ success: boolean; features_disabled: string[] }>('/cli/disable'),
 
   // Get feature matrix
-  getFeatureMatrix: () => api.get<{
-    cli_enabled: boolean
-    features: Record<string, { enabled: boolean; requires_cli: boolean }>
-  }>('/cli/feature-matrix'),
+  getFeatureMatrix: () =>
+    api.get<{
+      cli_enabled: boolean
+      features: Record<string, { enabled: boolean; requires_cli: boolean }>
+    }>('/cli/feature-matrix'),
 }
 
 // Features API
@@ -244,12 +253,13 @@ export const statisticsApi = {
     api.post<{ success: boolean }>('/stats/consent', { consented }),
 
   // Get consent information
-  getConsentInfo: () => api.get<{
-    what_we_collect: string[]
-    what_we_dont_collect: string[]
-    how_we_use: string[]
-    data_retention: string
-  }>('/stats/consent/info'),
+  getConsentInfo: () =>
+    api.get<{
+      what_we_collect: string[]
+      what_we_dont_collect: string[]
+      how_we_use: string[]
+      data_retention: string
+    }>('/stats/consent/info'),
 
   // Export statistics
   exportStats: (format: 'json' | 'csv' = 'json') =>

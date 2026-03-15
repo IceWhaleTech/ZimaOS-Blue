@@ -68,8 +68,7 @@ export const authApi = {
 
   me: () => api.get<User>('/users/me'),
 
-  updateProfile: (data: { email?: string; password?: string }) =>
-    api.put<User>('/users/me', data),
+  updateProfile: (data: { email?: string; password?: string }) => api.put<User>('/users/me', data),
 
   getPasswordPolicy: () => api.get<PasswordPolicy>('/auth/password-policy'),
 }
@@ -78,11 +77,9 @@ export const authApi = {
 export const apiKeyApi = {
   list: () => api.get<ApiKey[]>('/apikeys'),
 
-  create: (data: CreateApiKeyRequest) =>
-    api.post<CreateApiKeyResponse>('/apikeys', data),
+  create: (data: CreateApiKeyRequest) => api.post<CreateApiKeyResponse>('/apikeys', data),
 
   delete: (id: string) => api.delete<{ success: boolean }>(`/apikeys/${id}`),
 
-  regenerate: (id: string) =>
-    api.post<CreateApiKeyResponse>(`/apikeys/${id}/regenerate`),
+  regenerate: (id: string) => api.post<CreateApiKeyResponse>(`/apikeys/${id}/regenerate`),
 }

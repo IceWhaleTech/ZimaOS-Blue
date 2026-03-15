@@ -101,7 +101,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Sources des fichiers',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -310,6 +310,7 @@ export default {
     inputPlaceholderShort: 'Saisissez un message...',
     newLine: 'pour une nouvelle ligne',
     dragDropHint: 'Glissez-déposez ou collez des fichiers à joindre',
+    conversations: 'Discussions',
     searchConversations: 'Rechercher des conversations...',
     noConversationsFound: 'Aucune conversation trouvée',
     noConversationsYet: 'Aucune conversation pour le moment',
@@ -530,6 +531,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Accès réseau',
+    networkTitle: 'Réseau et accès',
+    releaseTrack: 'Gestion des versions',
+    systemVersion: 'Mises à jour et versions',
     llmApiKeyRequired: 'Configurez une clé API avant d’ouvrir la page des fournisseurs LLM.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -1750,8 +1755,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Répertoires approuvés',
+    approvedDirectoriesDesc: 'Répertoires approuvés via « Toujours autoriser » pour exec/convert.',
+    noApprovedDirectories: 'Aucun répertoire approuvé',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Répertoires approuvés',
       firewall: 'Pare-feu',
       masking: 'Masquage des données',
     },
@@ -2411,6 +2420,7 @@ export default {
       length: 'Au moins {n} caractères',
       uppercase: 'Une lettre majuscule',
       lowercase: 'Une lettre minuscule',
+      letter: 'Une lettre',
       number: 'Un chiffre',
       special: "Un caractère spécial (!{'@'}#$%...)",
     },

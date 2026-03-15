@@ -47,7 +47,9 @@ function getChangeIcon(item: MetricItem): string {
 </script>
 
 <template>
-  <div class="metric-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="metric-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -69,11 +71,17 @@ function getChangeIcon(item: MetricItem): string {
         <!-- Value -->
         <div class="flex items-baseline gap-1">
           <span class="text-2xl font-bold text-gray-900 dark:text-white">{{ metric.value }}</span>
-          <span v-if="metric.unit" class="text-sm text-gray-500 dark:text-gray-400">{{ metric.unit }}</span>
+          <span v-if="metric.unit" class="text-sm text-gray-500 dark:text-gray-400">{{
+            metric.unit
+          }}</span>
         </div>
 
         <!-- Change indicator -->
-        <div v-if="metric.change !== undefined" class="mt-2 flex items-center gap-1 text-sm" :class="getChangeColor(metric)">
+        <div
+          v-if="metric.change !== undefined"
+          class="mt-2 flex items-center gap-1 text-sm"
+          :class="getChangeColor(metric)"
+        >
           <span>{{ getChangeIcon(metric) }}</span>
           <span>{{ formatChange(metric.change) }}</span>
         </div>

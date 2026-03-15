@@ -44,24 +44,28 @@ describe('deepResearchJobs store', () => {
     mocks.routerPush.mockResolvedValue(undefined)
     mocks.chatStore.selectConversation.mockResolvedValue(undefined)
     vi.mocked(deepResearchApi.listJobs).mockResolvedValue({ data: [] } as never)
-    vi.mocked(deepResearchApi.cancelJob).mockResolvedValue({ data: { status: 'cancelled' } } as never)
+    vi.mocked(deepResearchApi.cancelJob).mockResolvedValue({
+      data: { status: 'cancelled' },
+    } as never)
   })
 
   it('hydrates active jobs and preserves conversation ids', async () => {
     vi.mocked(deepResearchApi.listJobs).mockResolvedValue({
-      data: [{
-        id: 'job-1',
-        job_id: 'job-1',
-        query: 'research topic',
-        status: 'running',
-        stage: 'verify',
-        progress: 65,
-        iteration: 2,
-        latest_action: 'verification_completed',
-        latest_gap: 'Need primary source',
-        conversation_id: 'conv-1',
-        updated_at: '2026-03-11T00:00:00.000Z',
-      }],
+      data: [
+        {
+          id: 'job-1',
+          job_id: 'job-1',
+          query: 'research topic',
+          status: 'running',
+          stage: 'verify',
+          progress: 65,
+          iteration: 2,
+          latest_action: 'verification_completed',
+          latest_gap: 'Need primary source',
+          conversation_id: 'conv-1',
+          updated_at: '2026-03-11T00:00:00.000Z',
+        },
+      ],
     } as never)
 
     const store = useDeepResearchJobsStore()
@@ -116,7 +120,10 @@ describe('deepResearchJobs store', () => {
     await store.openJob('job-9', 'conv-9')
 
     expect(store.pendingFocusJobId).toBe('job-9')
-    expect(mocks.routerPush).toHaveBeenCalledWith({ name: 'Chat', query: { conversationId: 'conv-9' } })
+    expect(mocks.routerPush).toHaveBeenCalledWith({
+      name: 'Chat',
+      query: { conversationId: 'conv-9' },
+    })
     expect(mocks.chatStore.selectConversation).toHaveBeenCalledWith('conv-9')
 
     store.consumePendingFocusJobId()

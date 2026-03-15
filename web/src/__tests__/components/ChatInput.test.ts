@@ -77,11 +77,15 @@ describe('ChatInput cancel affordance', () => {
 
     await wrapper.vm.$nextTick()
 
-    const cancelButton = wrapper.findAll('button').find(button => button.classes().includes('border-red-500/30'))
+    const cancelButton = wrapper
+      .findAll('button')
+      .find((button) => button.classes().includes('desktop-cancel-btn'))
     expect(cancelButton?.exists()).toBe(true)
 
     await wrapper.find('textarea').setValue('hello')
-    const sendButton = wrapper.findAll('button').find(button => button.classes().includes('chat-send-btn'))
+    const sendButton = wrapper
+      .findAll('button')
+      .find((button) => button.classes().includes('chat-send-btn'))
     expect(sendButton?.exists()).toBe(true)
     await sendButton!.trigger('click')
 
@@ -132,7 +136,9 @@ describe('ChatInput cancel affordance', () => {
     await textarea.setValue('message to cache')
     expect(localStorage.getItem('zima.chat.input_draft.v1')).toBe('message to cache')
 
-    const sendButton = wrapper.findAll('button').find(button => button.classes().includes('chat-send-btn'))
+    const sendButton = wrapper
+      .findAll('button')
+      .find((button) => button.classes().includes('chat-send-btn'))
     expect(sendButton?.exists()).toBe(true)
     await sendButton!.trigger('click')
 

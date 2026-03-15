@@ -75,13 +75,11 @@ const mocks = vi.hoisted(() => ({
     agentMode: false,
     claudeCodeEnabled: false,
     showToolDetails: true,
-    themeStyle: 'default',
     fetchTools: vi.fn(),
     updateFromPoolProviders: vi.fn(),
     setAgentAutoConfirm: vi.fn(),
     setAgentMode: vi.fn(),
     setShowToolDetails: vi.fn(),
-    setThemeStyle: vi.fn(),
   },
   providerPoolStore: {
     activeProviders: [] as unknown[],
@@ -154,10 +152,6 @@ vi.mock('@/stores/chat', () => ({
 }))
 
 vi.mock('@/stores/settings', () => ({
-  THEME_STYLES: [
-    { id: 'default', labelKey: 'theme.styles.default' },
-    { id: 'bubble', labelKey: 'theme.styles.bubble' },
-  ],
   useSettingsStore: () => mocks.settingsStore,
 }))
 
@@ -254,7 +248,8 @@ vi.mock('@/components/ChatInput.vue', () => ({
       streaming: { type: Boolean, default: false },
       canCancel: { type: Boolean, default: false },
     },
-    template: '<div class="chat-input-stub" :data-disabled="String(disabled)" :data-streaming="String(streaming)" :data-can-cancel="String(canCancel)" />',
+    template:
+      '<div class="chat-input-stub" :data-disabled="String(disabled)" :data-streaming="String(streaming)" :data-can-cancel="String(canCancel)" />',
   },
 }))
 
@@ -287,7 +282,10 @@ vi.mock('@/components/AgentTaskPanel.vue', () => ({
 }))
 
 vi.mock('@/components/DeepResearchTaskDock.vue', () => ({
-  default: { name: 'DeepResearchTaskDock', template: '<div class="deep-research-task-dock-stub" />' },
+  default: {
+    name: 'DeepResearchTaskDock',
+    template: '<div class="deep-research-task-dock-stub" />',
+  },
 }))
 
 const localStorageMock = (() => {
@@ -307,21 +305,27 @@ const localStorageMock = (() => {
 })()
 
 vi.stubGlobal('localStorage', localStorageMock)
-vi.stubGlobal('matchMedia', vi.fn().mockImplementation(() => ({
-  matches: false,
-  media: '',
-  onchange: null,
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  addListener: vi.fn(),
-  removeListener: vi.fn(),
-  dispatchEvent: vi.fn(),
-})))
-vi.stubGlobal('ResizeObserver', class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
+vi.stubGlobal(
+  'matchMedia',
+  vi.fn().mockImplementation(() => ({
+    matches: false,
+    media: '',
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }))
+)
+vi.stubGlobal(
+  'ResizeObserver',
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+)
 
 const WEB_FETCH_URL = 'https://www.reddit.com/r/test'
 const WEB_FETCH_CARD_ID = 'web-fetch-https%3A%2F%2Fwww.reddit.com%2Fr%2Ftest'
@@ -342,7 +346,9 @@ function makeTypelessBlock(payload: Record<string, unknown>) {
 }
 
 async function mountChatViewWithMessages(messages: Array<{ id: string; content: string }>) {
-  mocks.chatStore.messages = messages.map(message => makeAssistantMessage(message.content, message.id))
+  mocks.chatStore.messages = messages.map((message) =>
+    makeAssistantMessage(message.content, message.id)
+  )
 
   const router = createRouter({
     history: createMemoryHistory(),
@@ -375,7 +381,7 @@ async function mountChatView(content: string) {
 }
 
 function findButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
-  return wrapper.findAll('button').find(button => button.text().includes(text))
+  return wrapper.findAll('button').find((button) => button.text().includes(text))
 }
 
 describe('ChatView page-level card actions', () => {
@@ -455,13 +461,11 @@ describe('ChatView page-level card actions', () => {
     mocks.settingsStore.agentMode = false
     mocks.settingsStore.claudeCodeEnabled = false
     mocks.settingsStore.showToolDetails = true
-    mocks.settingsStore.themeStyle = 'default'
     mocks.settingsStore.fetchTools.mockReset().mockResolvedValue(undefined)
     mocks.settingsStore.updateFromPoolProviders.mockReset()
     mocks.settingsStore.setAgentAutoConfirm.mockReset()
     mocks.settingsStore.setAgentMode.mockReset()
     mocks.settingsStore.setShowToolDetails.mockReset()
-    mocks.settingsStore.setThemeStyle.mockReset()
 
     mocks.providerPoolStore.activeProviders = []
     mocks.providerPoolStore.cloudProviders = []
@@ -474,7 +478,9 @@ describe('ChatView page-level card actions', () => {
     mocks.providerPoolStore.routingMode = 'auto'
     mocks.providerPoolStore.trialProviders = []
     mocks.providerPoolStore.trialQuota = null
-    mocks.providerPoolStore.getProviderDisplayName.mockReset().mockImplementation((providerId: string) => providerId)
+    mocks.providerPoolStore.getProviderDisplayName
+      .mockReset()
+      .mockImplementation((providerId: string) => providerId)
     mocks.providerPoolStore.fetchProviders.mockReset().mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchRoutingMode.mockReset().mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
@@ -523,12 +529,29 @@ describe('ChatView page-level card actions', () => {
     await setLocale('zh-CN')
     mocks.chatStore.awaitingConfirmation = true
 
-    const wrapper = await mountChatViewWithMessages([{ id: 'msg-confirm', content: 'Please confirm' }])
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-confirm', content: 'Please confirm' },
+    ])
 
     expect(wrapper.text()).toContain('等待你的确认以继续')
     expect(wrapper.text()).not.toContain('Waiting for your confirmation to continue')
 
     i18n.global.locale.value = 'en-US'
+  })
+
+  it('shows the work-details toggle near the input area and keeps it clickable', async () => {
+    mocks.settingsStore.showToolDetails = false
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-details', content: 'Need more detail' },
+    ])
+
+    const toggle = findButtonByText(wrapper, 'Show work details')
+    expect(toggle?.exists()).toBe(true)
+
+    await toggle!.trigger('click')
+
+    expect(mocks.settingsStore.setShowToolDetails).toHaveBeenCalledWith(true)
   })
 
   it('toggles waiting indicator, stop button, and input disabled state across conversation switches', async () => {
@@ -537,7 +560,9 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.sending = true
     mocks.chatStore.awaitingConfirmation = true
 
-    const wrapper = await mountChatViewWithMessages([{ id: 'msg-streaming', content: 'Streaming answer' }])
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-streaming', content: 'Streaming answer' },
+    ])
 
     expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
     expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
@@ -581,7 +606,9 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.sending = true
     mocks.chatStore.awaitingConfirmation = true
 
-    const restoredWrapper = await mountChatViewWithMessages([{ id: 'msg-streaming', content: 'Streaming answer' }])
+    const restoredWrapper = await mountChatViewWithMessages([
+      { id: 'msg-streaming', content: 'Streaming answer' },
+    ])
 
     expect(restoredWrapper.text()).toContain('Waiting for your confirmation to continue')
     expect(findButtonByText(restoredWrapper, 'Stop generating')?.exists()).toBe(true)
@@ -603,32 +630,46 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.sending = true
     mocks.chatStore.awaitingConfirmation = true
     mocks.chatStore.sortedConversations = [
-      { id: 'conv-1', title: 'Test conversation', created_at: '2026-03-08T00:00:00.000Z', updated_at: '2026-03-08T00:00:00.000Z' },
-      { id: 'conv-2', title: 'Other conversation', created_at: '2026-03-08T00:00:01.000Z', updated_at: '2026-03-08T00:00:01.000Z' },
+      {
+        id: 'conv-1',
+        title: 'Test conversation',
+        created_at: '2026-03-08T00:00:00.000Z',
+        updated_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'conv-2',
+        title: 'Other conversation',
+        created_at: '2026-03-08T00:00:01.000Z',
+        updated_at: '2026-03-08T00:00:01.000Z',
+      },
     ]
 
     mocks.chatStore.selectConversation.mockImplementation(async (id: string) => {
       mocks.chatStore.currentConversationId = id
-      mocks.chatStore.currentConversation = id === 'conv-1'
-        ? {
-            id: 'conv-1',
-            title: 'Test conversation',
-            created_at: '2026-03-08T00:00:00.000Z',
-            updated_at: '2026-03-08T00:00:00.000Z',
-          }
-        : {
-            id: 'conv-2',
-            title: 'Other conversation',
-            created_at: '2026-03-08T00:00:01.000Z',
-            updated_at: '2026-03-08T00:00:01.000Z',
-          }
-      mocks.chatStore.messages = id === 'conv-1' ? [makeAssistantMessage('Streaming answer', 'msg-streaming')] : []
+      mocks.chatStore.currentConversation =
+        id === 'conv-1'
+          ? {
+              id: 'conv-1',
+              title: 'Test conversation',
+              created_at: '2026-03-08T00:00:00.000Z',
+              updated_at: '2026-03-08T00:00:00.000Z',
+            }
+          : {
+              id: 'conv-2',
+              title: 'Other conversation',
+              created_at: '2026-03-08T00:00:01.000Z',
+              updated_at: '2026-03-08T00:00:01.000Z',
+            }
+      mocks.chatStore.messages =
+        id === 'conv-1' ? [makeAssistantMessage('Streaming answer', 'msg-streaming')] : []
       mocks.chatStore.streaming = id === 'conv-1'
       mocks.chatStore.sending = id === 'conv-1'
       mocks.chatStore.awaitingConfirmation = id === 'conv-1'
     })
 
-    const wrapper = await mountChatViewWithMessages([{ id: 'msg-streaming', content: 'Streaming answer' }])
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-streaming', content: 'Streaming answer' },
+    ])
 
     expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
     expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
@@ -667,27 +708,29 @@ describe('ChatView page-level card actions', () => {
       },
     })
 
-    const wrapper = await mountChatView(makeTypelessBlock({
-      type: 'web-fetch',
-      id: WEB_FETCH_CARD_ID,
-      title: 'Sign in',
-      status: 'warning',
-      url: WEB_FETCH_URL,
-      content: 'Log in to continue',
-      content_type: 'text/html',
-      extract_mode: 'text',
-      extractor: 'html',
-      warning: 'page appears to be a login wall; use browser or pass browser_target_id',
-      warning_code: 'login_wall',
-      actions: [
-        {
-          id: 'use_browser',
-          label: 'Use browser',
-          variant: 'primary',
-          form_data: { url: WEB_FETCH_URL },
-        },
-      ],
-    }))
+    const wrapper = await mountChatView(
+      makeTypelessBlock({
+        type: 'web-fetch',
+        id: WEB_FETCH_CARD_ID,
+        title: 'Sign in',
+        status: 'warning',
+        url: WEB_FETCH_URL,
+        content: 'Log in to continue',
+        content_type: 'text/html',
+        extract_mode: 'text',
+        extractor: 'html',
+        warning: 'page appears to be a login wall; use browser or pass browser_target_id',
+        warning_code: 'login_wall',
+        actions: [
+          {
+            id: 'use_browser',
+            label: 'Use browser',
+            variant: 'primary',
+            form_data: { url: WEB_FETCH_URL },
+          },
+        ],
+      })
+    )
 
     const button = findButtonByText(wrapper, 'Use browser')
     expect(button?.exists()).toBe(true)
@@ -704,7 +747,9 @@ describe('ChatView page-level card actions', () => {
       card_title: 'Sign in',
       form_data: { url: WEB_FETCH_URL },
     })
-    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith(`Open ${WEB_FETCH_URL} with the browser tool.`)
+    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith(
+      `Open ${WEB_FETCH_URL} with the browser tool.`
+    )
   })
 
   it('submits browser extract action from ChatView with browser_target_id intact', async () => {
@@ -715,28 +760,30 @@ describe('ChatView page-level card actions', () => {
       },
     })
 
-    const wrapper = await mountChatView(makeTypelessBlock({
-      type: 'result',
-      id: BROWSER_CARD_ID,
-      title: 'Browser page',
-      status: 'info',
-      message: 'Interactive page opened in the browser session.',
-      details: [
-        { label: 'url', value: WEB_FETCH_URL },
-        { label: 'browser_target_id', value: 'tab-42' },
-      ],
-      actions: [
-        {
-          id: 'extract_with_web_fetch',
-          label: 'Extract readable content',
-          variant: 'primary',
-          form_data: {
-            url: WEB_FETCH_URL,
-            browser_target_id: 'tab-42',
+    const wrapper = await mountChatView(
+      makeTypelessBlock({
+        type: 'result',
+        id: BROWSER_CARD_ID,
+        title: 'Browser page',
+        status: 'info',
+        message: 'Interactive page opened in the browser session.',
+        details: [
+          { label: 'url', value: WEB_FETCH_URL },
+          { label: 'browser_target_id', value: 'tab-42' },
+        ],
+        actions: [
+          {
+            id: 'extract_with_web_fetch',
+            label: 'Extract readable content',
+            variant: 'primary',
+            form_data: {
+              url: WEB_FETCH_URL,
+              browser_target_id: 'tab-42',
+            },
           },
-        },
-      ],
-    }))
+        ],
+      })
+    )
 
     const button = findButtonByText(wrapper, 'Extract readable content')
     expect(button?.exists()).toBe(true)
@@ -859,7 +906,7 @@ describe('ChatView page-level card actions', () => {
         browser_target_id: 'tab-42',
       },
     })
-    expect(mocks.chatStore.sendMessage.mock.calls.map(call => call[0])).toEqual([
+    expect(mocks.chatStore.sendMessage.mock.calls.map((call) => call[0])).toEqual([
       `Open ${WEB_FETCH_URL} with the browser tool.`,
       `Use web_fetch on ${WEB_FETCH_URL} with browser_target_id=tab-42 to extract readable content.`,
     ])
@@ -879,27 +926,29 @@ describe('ChatView page-level card actions', () => {
         },
       })
 
-    const wrapper = await mountChatView(makeTypelessBlock({
-      type: 'web-fetch',
-      id: WEB_FETCH_CARD_ID,
-      title: 'Sign in',
-      status: 'warning',
-      url: WEB_FETCH_URL,
-      content: 'Log in to continue',
-      content_type: 'text/html',
-      extract_mode: 'text',
-      extractor: 'html',
-      warning: 'page appears to be a login wall; use browser or pass browser_target_id',
-      warning_code: 'login_wall',
-      actions: [
-        {
-          id: 'use_browser',
-          label: 'Use browser',
-          variant: 'primary',
-          form_data: { url: WEB_FETCH_URL },
-        },
-      ],
-    }))
+    const wrapper = await mountChatView(
+      makeTypelessBlock({
+        type: 'web-fetch',
+        id: WEB_FETCH_CARD_ID,
+        title: 'Sign in',
+        status: 'warning',
+        url: WEB_FETCH_URL,
+        content: 'Log in to continue',
+        content_type: 'text/html',
+        extract_mode: 'text',
+        extractor: 'html',
+        warning: 'page appears to be a login wall; use browser or pass browser_target_id',
+        warning_code: 'login_wall',
+        actions: [
+          {
+            id: 'use_browser',
+            label: 'Use browser',
+            variant: 'primary',
+            form_data: { url: WEB_FETCH_URL },
+          },
+        ],
+      })
+    )
 
     const useBrowserButton = findButtonByText(wrapper, 'Use browser')
     expect(useBrowserButton?.exists()).toBe(true)
@@ -916,7 +965,9 @@ describe('ChatView page-level card actions', () => {
       card_title: 'Sign in',
       form_data: { url: WEB_FETCH_URL },
     })
-    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith(`Open ${WEB_FETCH_URL} with the browser tool.`)
+    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith(
+      `Open ${WEB_FETCH_URL} with the browser tool.`
+    )
 
     mocks.chatStore.messages = [
       ...mocks.chatStore.messages,
@@ -972,10 +1023,9 @@ describe('ChatView page-level card actions', () => {
         browser_target_id: 'tab-42',
       },
     })
-    expect(mocks.chatStore.sendMessage.mock.calls.map(call => call[0])).toEqual([
+    expect(mocks.chatStore.sendMessage.mock.calls.map((call) => call[0])).toEqual([
       `Open ${WEB_FETCH_URL} with the browser tool.`,
       `Use web_fetch on ${WEB_FETCH_URL} with browser_target_id=tab-42 to extract readable content.`,
     ])
   })
-
 })

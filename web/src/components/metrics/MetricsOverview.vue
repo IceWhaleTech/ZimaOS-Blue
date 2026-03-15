@@ -52,13 +52,25 @@ function formatLatency(ms: number | undefined | null): string {
           </p>
         </div>
         <div class="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-          <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          <svg
+            class="w-6 h-6 text-blue-600 dark:text-blue-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M13 10V3L4 14h7v7l9-11h-7z"
+            />
           </svg>
         </div>
       </div>
       <div class="mt-2 flex items-center text-sm">
-        <span :class="stats && (stats.successRate ?? 0) >= 95 ? 'text-green-700' : 'text-orange-500'">
+        <span
+          :class="stats && (stats.successRate ?? 0) >= 95 ? 'text-green-700' : 'text-orange-500'"
+        >
           {{ stats ? (stats.successRate ?? 0).toFixed(1) : '-' }}%
         </span>
         <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('metrics.successRate') }}</span>
@@ -75,8 +87,18 @@ function formatLatency(ms: number | undefined | null): string {
           </p>
         </div>
         <div class="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
-          <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          <svg
+            class="w-6 h-6 text-green-600 dark:text-green-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+            />
           </svg>
         </div>
       </div>
@@ -96,8 +118,18 @@ function formatLatency(ms: number | undefined | null): string {
           </p>
         </div>
         <div class="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
-          <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg
+            class="w-6 h-6 text-purple-600 dark:text-purple-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
         </div>
       </div>
@@ -118,8 +150,18 @@ function formatLatency(ms: number | undefined | null): string {
           </p>
         </div>
         <div class="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-full">
-          <svg class="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+          <svg
+            class="w-6 h-6 text-orange-600 dark:text-orange-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+            />
           </svg>
         </div>
       </div>

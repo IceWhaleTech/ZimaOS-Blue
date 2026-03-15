@@ -20,7 +20,9 @@ function renderContent(content: string): string {
 </script>
 
 <template>
-  <div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -39,7 +41,10 @@ function renderContent(content: string): string {
         class="flex items-start gap-2 text-gray-700 dark:text-gray-300"
       >
         <span v-if="item.icon" class="flex-shrink-0">{{ item.icon }}</span>
-        <span v-else-if="!card.ordered" class="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-gray-400" />
+        <span
+          v-else-if="!card.ordered"
+          class="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-gray-400"
+        />
         <div class="flex-1">
           <span v-html="renderContent(item.content)" />
           <!-- Sub-items -->
@@ -82,7 +87,12 @@ function renderContent(content: string): string {
             viewBox="0 0 24 24"
             stroke="currentColor"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="3"
+              d="M5 13l4 4L19 7"
+            />
           </svg>
         </div>
         <span

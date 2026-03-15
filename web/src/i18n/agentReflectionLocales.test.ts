@@ -20,16 +20,26 @@ function fileNameFromModulePath(modulePath: string): string {
   return modulePath.split('/').pop() ?? modulePath
 }
 
-const localeModules = import.meta.glob<{ default: LocaleMessages }>('./locales/*.ts', { eager: true })
-const localeSourceModules = import.meta.glob('./locales/*.ts', { eager: true, query: '?raw', import: 'default' }) as Record<string, string>
-const localeFiles = Object.keys(localeModules)
-  .map(fileNameFromModulePath)
-  .sort()
+const localeModules = import.meta.glob<{ default: LocaleMessages }>('./locales/*.ts', {
+  eager: true,
+})
+const localeSourceModules = import.meta.glob('./locales/*.ts', {
+  eager: true,
+  query: '?raw',
+  import: 'default',
+}) as Record<string, string>
+const localeFiles = Object.keys(localeModules).map(fileNameFromModulePath).sort()
 const localeMessagesByFile = new Map(
-  Object.entries(localeModules).map(([modulePath, mod]) => [fileNameFromModulePath(modulePath), mod.default]),
+  Object.entries(localeModules).map(([modulePath, mod]) => [
+    fileNameFromModulePath(modulePath),
+    mod.default,
+  ])
 )
 const localeSourceByFile = new Map(
-  Object.entries(localeSourceModules).map(([modulePath, source]) => [fileNameFromModulePath(modulePath), source]),
+  Object.entries(localeSourceModules).map(([modulePath, source]) => [
+    fileNameFromModulePath(modulePath),
+    source,
+  ])
 )
 
 describe('settings.agentReflection locale coverage', () => {
@@ -37,9 +47,13 @@ describe('settings.agentReflection locale coverage', () => {
     for (const file of localeFiles) {
       const source = localeSourceByFile.get(file)
       expect(source, `${file} should be loadable as raw source`).toBeTruthy()
-      expect(source, `${file} should declare settings.agentReflection`).toMatch(/agentReflection:\s*\{/)
+      expect(source, `${file} should declare settings.agentReflection`).toMatch(
+        /agentReflection:\s*\{/
+      )
       for (const key of requiredKeys) {
-        expect(source, `${file} should include agentReflection.${key}`).toMatch(new RegExp(`\\b${key}:`))
+        expect(source, `${file} should include agentReflection.${key}`).toMatch(
+          new RegExp(`\\b${key}:`)
+        )
       }
     }
   })
@@ -51,13 +65,20 @@ describe('settings.agentReflection locale coverage', () => {
       const messages = localeMessagesByFile.get(file)
       expect(messages, `${file} should be loadable via import.meta.glob`).toBeTruthy()
 
-      const section = messages?.settings?.agentReflection as Partial<AgentReflectionMessages> | undefined
+      const section = messages?.settings?.agentReflection as
+        | Partial<AgentReflectionMessages>
+        | undefined
       expect(section, `${file} should expose settings.agentReflection`).toBeTruthy()
 
       for (const key of requiredKeys) {
         const value = section?.[key]
-        expect(typeof value, `${file} should expose a string for agentReflection.${key}`).toBe('string')
-        expect(String(value).trim().length, `${file} should expose a non-empty agentReflection.${key}`).toBeGreaterThan(0)
+        expect(typeof value, `${file} should expose a string for agentReflection.${key}`).toBe(
+          'string'
+        )
+        expect(
+          String(value).trim().length,
+          `${file} should expose a non-empty agentReflection.${key}`
+        ).toBeGreaterThan(0)
       }
     }
   })

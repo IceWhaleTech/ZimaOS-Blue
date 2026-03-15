@@ -58,7 +58,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Fájlforrások',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -94,12 +94,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Új tartalom megjegyezve',
       memorySavedMessage: 'Memória kinyerve a beszélgetésből',
       manageMemory: 'Memória kezelése',
-    },},
+    },
+  },
   dashboard: {
     ...enUS.dashboard,
     categories: {
@@ -580,6 +581,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Hálózati hozzáférés',
+    networkTitle: 'Hálózat és hozzáférés',
+    releaseTrack: 'Verziókezelés',
+    systemVersion: 'Frissítések és verziók',
     llmApiKeyRequired: 'Az LLM-szolgáltatók oldalának megnyitása előtt állítson be API-kulcsot.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -713,8 +718,13 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Jóváhagyott könyvtárak',
+    approvedDirectoriesDesc:
+      'Az exec/convert számára az „Mindig engedélyezés” opcióval jóváhagyott könyvtárak.',
+    noApprovedDirectories: 'Nincsenek jóváhagyott könyvtárak',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Jóváhagyott könyvtárak',
       firewall: 'Tűzfal',
       masking: 'Adatmaszkolás',
     },
@@ -1077,6 +1087,7 @@ export default {
       length: 'Legalább {n} karakter',
       uppercase: 'Egy nagybetű',
       lowercase: 'Egy kisbetű',
+      letter: 'Egy betű',
       number: 'Egy szám',
       special: "Egy speciális karakter (!{'@'}#$%...)",
     },
@@ -1395,7 +1406,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: 'Chatadatok',
-    chatDataDescription: 'A csevegési előzmények és kapcsolódó adatok importálása, exportálása és törlése egy helyről.',
+    chatDataDescription:
+      'A csevegési előzmények és kapcsolódó adatok importálása, exportálása és törlése egy helyről.',
     manageData: 'Adatok kezelése',
     cleanupPreviewFailed: 'A tisztítási előnézet sikertelen',
     cleanupFailed: 'Az adattisztítás sikertelen',
@@ -1449,7 +1461,8 @@ export default {
       alerts: 'Riasztások',
       policy: 'Megőrzési irányelvek',
       totalRecords: 'Megfigyelési rekordok összesen',
-      policyHint: 'Minden adattípus 1 és 365 nap közötti értéket támogat. A rövidebb megőrzés kevesebb tárhelyet igényel, a hosszabb segíti az auditot és a hibakeresést.',
+      policyHint:
+        'Minden adattípus 1 és 365 nap közötti értéket támogat. A rövidebb megőrzés kevesebb tárhelyet igényel, a hosszabb segíti az auditot és a hibakeresést.',
       daysRange: 'Engedélyezett tartomány: 1-365 nap',
       sessionsHint: 'Az agent munkamenet-életciklusa és futásidejű metaadatai.',
       eventsHint: 'Eszközhívások, végrehajtási nyomvonalak és audit-események.',
@@ -1470,7 +1483,8 @@ export default {
       title: 'Adattisztítás',
       description: 'A kijelölt adatok végleges törlése. Ez a művelet nem vonható vissza.',
       warning: 'Destruktív művelet',
-      warningDetail: 'A törölt adatok nem állíthatók helyre. Ha biztonsági mentésre van szüksége, előbb exportálja az adatait.',
+      warningDetail:
+        'A törölt adatok nem állíthatók helyre. Ha biztonsági mentésre van szüksége, előbb exportálja az adatait.',
       selectData: 'Törlendő adatok kiválasztása',
       chatHistory: 'Csevegési előzmények',
       chatHistoryDesc: 'Minden beszélgetés és üzenet',
@@ -1489,7 +1503,8 @@ export default {
       willReset: 'Vissza lesz állítva',
       willClear: 'Törölve lesz',
       authorizationStep: 'Jóváhagyás szükséges',
-      authorizationHint: 'Tekintse át a törlendő adatokat. Ez a lépés jóváhagyási megerősítésként szolgál.',
+      authorizationHint:
+        'Tekintse át a törlendő adatokat. Ez a lépés jóváhagyási megerősítésként szolgál.',
       proceedToConfirm: 'Tovább a megerősítéshez',
       confirmStep: 'Végső megerősítés',
       confirmHint: 'Adja meg jelszavát ennek a destruktív műveletnek a megerősítéséhez.',
@@ -1497,7 +1512,8 @@ export default {
       confirmText: 'TÖRLÉS MEGERŐSÍTÉSE',
       typeToConfirm: 'Írja be a megerősítéshez',
       typeToConfirmPlaceholder: 'A megerősítéshez írja be: "{confirmText}"',
-      productionHint: 'Éles környezetben további hitelesítő adatokra lehet szükség (MFA, adminisztrátori jóváhagyás).',
+      productionHint:
+        'Éles környezetben további hitelesítő adatokra lehet szükség (MFA, adminisztrátori jóváhagyás).',
       enterPassword: 'Jelszó megadása',
       passwordPlaceholder: 'Adja meg a jelszavát a megerősítéshez',
       confirmDelete: 'Törlés megerősítése',
@@ -1510,7 +1526,8 @@ export default {
       totalMemories: 'Összes memória',
       backend: 'Backend',
       exportSection: 'Memóriák exportálása',
-      exportDesc: 'Töltse le az összes memóriát Markdown fájlként biztonsági mentéshez vagy szerkesztéshez.',
+      exportDesc:
+        'Töltse le az összes memóriát Markdown fájlként biztonsági mentéshez vagy szerkesztéshez.',
       exportButton: 'Exportálás Markdownként',
       exportSuccess: 'A memóriák exportálása sikeres',
       exportFailed: 'A memóriák exportálása sikertelen',
@@ -1657,7 +1674,8 @@ export default {
   sandbox: enUS.sandbox,
   home: {
     ...enUS.home,
-    description: 'Stabil, megbízható és semleges futtatókörnyezet az AI-asszisztensekhez és automatizálásokhoz',
+    description:
+      'Stabil, megbízható és semleges futtatókörnyezet az AI-asszisztensekhez és automatizálásokhoz',
   },
   brand: enUS.brand,
   speech: {
@@ -1939,7 +1957,9 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'A parancs végrehajtása blokkolva lett, mert a könyvtár jóváhagyása időtúllépés miatt lejárt. Hagyja jóvá a könyvtárat, majd próbálja újra.',
+    conversations: 'Beszélgetések',
+    execDirectoryApprovalTimeout:
+      'A parancs végrehajtása blokkolva lett, mert a könyvtár jóváhagyása időtúllépés miatt lejárt. Hagyja jóvá a könyvtárat, majd próbálja újra.',
     streamProgress: {
       requestAccepted: 'Kérelem fogadva, válasz előkészítése...',
       generating: 'Válasz generálása...',

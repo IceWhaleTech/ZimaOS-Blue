@@ -29,7 +29,9 @@ function isParseLikeError(message: string): boolean {
 function canAttemptStreamingRender(code: string): boolean {
   if (code.length < 12) return false
   const firstLine = code.split('\n', 1)[0]?.trim().toLowerCase() || ''
-  return /^(flowchart|graph|mindmap|sequencediagram|sequence|classdiagram|class|statediagram|state|erdiagram|er|gantt|pie|journey|gitgraph|timeline|quadrantchart|quadrant|sankey|xychart|xy)\b/.test(firstLine)
+  return /^(flowchart|graph|mindmap|sequencediagram|sequence|classdiagram|class|statediagram|state|erdiagram|er|gantt|pie|journey|gitgraph|timeline|quadrantchart|quadrant|sankey|xychart|xy)\b/.test(
+    firstLine
+  )
 }
 
 function scheduleRender(delay = isStreamingCard.value ? 280 : 100): void {
@@ -118,7 +120,7 @@ async function renderDiagram() {
 
     // Clean up any existing SVG elements with old IDs to prevent conflicts
     const existingSvgs = document.querySelectorAll('[id^="mermaid-"]')
-    existingSvgs.forEach(svg => {
+    existingSvgs.forEach((svg) => {
       if (svg.id !== id && !containerRef.value?.contains(svg)) {
         svg.remove()
       }
@@ -161,15 +163,21 @@ async function copyCode() {
 }
 
 // Watch for theme changes
-watch(() => props.card.theme, () => {
-  scheduleRender(0)
-})
+watch(
+  () => props.card.theme,
+  () => {
+    scheduleRender(0)
+  }
+)
 
 // Watch for code changes with debounce to prevent rapid re-renders
 let renderTimeout: ReturnType<typeof setTimeout> | null = null
-watch(() => props.card.code, () => {
-  scheduleRender()
-})
+watch(
+  () => props.card.code,
+  () => {
+    scheduleRender()
+  }
+)
 
 // When streaming finishes, render once with final complete code.
 watch(isStreamingCard, (streaming, wasStreaming) => {
@@ -192,20 +200,28 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mermaid-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700 flex flex-col h-full">
+  <div
+    class="mermaid-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700 flex flex-col h-full"
+  >
     <!-- Header -->
-    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+    <div
+      class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 flex-shrink-0"
+    >
       <div class="flex items-center gap-2">
         <!-- Mermaid icon -->
         <svg class="w-4 h-4 text-pink-500" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+          <path
+            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"
+          />
         </svg>
         <!-- Title -->
         <span v-if="card.title" class="text-sm text-gray-600 dark:text-gray-400">
           {{ card.title }}
         </span>
         <!-- Diagram type badge -->
-        <span class="px-2 py-0.5 text-xs rounded bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300">
+        <span
+          class="px-2 py-0.5 text-xs rounded bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300"
+        >
           {{ diagramTypeDisplay }}
         </span>
       </div>
@@ -215,7 +231,14 @@ onUnmounted(() => {
         :title="t('mermaid.copyCode')"
         @click="copyCode"
       >
-        <svg v-if="!copied" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          v-if="!copied"
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -223,18 +246,44 @@ onUnmounted(() => {
             d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
           />
         </svg>
-        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+        <svg
+          v-else
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-4 w-4 text-green-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M5 13l4 4L19 7"
+          />
         </svg>
       </button>
     </div>
 
     <!-- Content -->
-    <div ref="containerRef" class="flex-1 overflow-auto flex items-center justify-center min-h-[200px]">
+    <div
+      ref="containerRef"
+      class="flex-1 overflow-auto flex items-center justify-center min-h-[200px]"
+    >
       <!-- Error state -->
       <div v-if="error" class="flex items-center gap-2 text-red-500 dark:text-red-400 p-4">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
         </svg>
         <span class="text-sm">{{ error }}</span>
       </div>

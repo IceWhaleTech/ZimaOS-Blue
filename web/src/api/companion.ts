@@ -2,7 +2,15 @@ import api from './client'
 
 // Types matching backend companion/types.go
 
-export type Platform = 'whatsapp' | 'telegram' | 'discord' | 'slack' | 'matrix' | 'feishu' | 'web' | 'api'
+export type Platform =
+  | 'whatsapp'
+  | 'telegram'
+  | 'discord'
+  | 'slack'
+  | 'matrix'
+  | 'feishu'
+  | 'web'
+  | 'api'
 export type SessionStatus = 'active' | 'idle' | 'ended' | 'error'
 export type ThreatLevel = 'none' | 'low' | 'medium' | 'high' | 'critical'
 export type AlertSeverity = 'info' | 'warning' | 'high' | 'error' | 'critical'
@@ -178,39 +186,39 @@ export const companionApi = {
   listSessions: (opts?: ListOptions) =>
     api.get<ListResponse<CompanionSession>>('/companion/sessions', { params: opts }),
 
-  getSession: (id: string) =>
-    api.get<CompanionSession>(`/companion/sessions/${id}`),
+  getSession: (id: string) => api.get<CompanionSession>(`/companion/sessions/${id}`),
 
   getSessionEvents: (id: string, opts?: ListOptions) =>
     api.get<ListResponse<SessionEvent>>(`/companion/sessions/${id}/events`, { params: opts }),
 
-  getSessionFlow: (id: string) =>
-    api.get<FlowGraph>(`/companion/sessions/${id}/flow`),
+  getSessionFlow: (id: string) => api.get<FlowGraph>(`/companion/sessions/${id}/flow`),
 
-  deleteSession: (id: string) =>
-    api.delete<{ message: string }>(`/companion/sessions/${id}`),
+  deleteSession: (id: string) => api.delete<{ message: string }>(`/companion/sessions/${id}`),
 
   // Alerts
   listAlerts: (opts?: ListOptions & { severity?: AlertSeverity; acknowledged?: boolean }) =>
     api.get<ListResponse<Alert>>('/companion/alerts', { params: opts }),
 
-  acknowledgeAlert: (id: string) =>
-    api.put<Alert>(`/companion/alerts/${id}/ack`),
+  acknowledgeAlert: (id: string) => api.put<Alert>(`/companion/alerts/${id}/ack`),
 
   bulkAcknowledgeAlerts: (ids: string[]) =>
     api.put<{ acknowledged: number }>('/companion/alerts/bulk-ack', { alert_ids: ids }),
 
   // Stats
-  getStats: () =>
-    api.get<Stats>('/companion/stats'),
+  getStats: () => api.get<Stats>('/companion/stats'),
 
   // Export
-  exportData: (opts?: { format?: 'json' | 'csv'; sessionIds?: string[]; from?: string; to?: string }) => {
+  exportData: (opts?: {
+    format?: 'json' | 'csv'
+    sessionIds?: string[]
+    from?: string
+    to?: string
+  }) => {
     const params = new URLSearchParams()
     if (opts?.format) params.append('format', opts.format)
     if (opts?.from) params.append('from', opts.from)
     if (opts?.to) params.append('to', opts.to)
-    opts?.sessionIds?.forEach(id => params.append('session_id', id))
+    opts?.sessionIds?.forEach((id) => params.append('session_id', id))
     return api.get(`/companion/export?${params.toString()}`, { responseType: 'blob' })
   },
 }
@@ -219,9 +227,7 @@ export const companionApi = {
 export function getCompanionStreamUrl(sessionId?: string): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.host
-  const path = sessionId
-    ? `/api/v1/companion/session/${sessionId}`
-    : '/api/v1/companion/stream'
+  const path = sessionId ? `/api/v1/companion/session/${sessionId}` : '/api/v1/companion/stream'
   return `${protocol}//${host}${path}`
 }
 
@@ -247,12 +253,10 @@ export interface CompanionSettings {
 
 // Settings API
 export const companionSettingsApi = {
-  getSettings: () =>
-    api.get<CompanionSettings>('/companion/settings'),
+  getSettings: () => api.get<CompanionSettings>('/companion/settings'),
 
   updateSettings: (retention: RetentionConfig) =>
     api.put<{ message: string; retention: RetentionConfig }>('/companion/settings', { retention }),
 
-  triggerCleanup: () =>
-    api.post<{ message: string; success: boolean }>('/companion/cleanup'),
+  triggerCleanup: () => api.post<{ message: string; success: boolean }>('/companion/cleanup'),
 }

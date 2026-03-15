@@ -61,51 +61,6 @@ export const cardRegistry: DashboardCardConfig[] = [
     defaultOrder: 5,
     minWidth: 2,
   },
-  {
-    id: 'memory-chart',
-    titleKey: 'dashboard.cards.memoryChart',
-    icon: 'memory',
-    iconColor: 'green',
-    component: 'MemoryChartCard',
-    category: 'system',
-    defaultEnabled: true,
-    defaultOrder: 6,
-    minWidth: 2,
-  },
-  {
-    id: 'goroutines-chart',
-    titleKey: 'dashboard.cards.goroutinesChart',
-    icon: 'chart',
-    iconColor: 'purple',
-    component: 'GoroutinesChartCard',
-    category: 'system',
-    defaultEnabled: false,
-    defaultOrder: 7,
-    minWidth: 2,
-  },
-  {
-    id: 'heap-chart',
-    titleKey: 'dashboard.cards.heapChart',
-    icon: 'memory',
-    iconColor: 'orange',
-    component: 'HeapChartCard',
-    category: 'system',
-    defaultEnabled: false,
-    defaultOrder: 8,
-    minWidth: 2,
-  },
-  {
-    id: 'system-info',
-    titleKey: 'dashboard.cards.systemInfo',
-    icon: 'info',
-    iconColor: 'gray',
-    component: 'SystemInfoCard',
-    category: 'system',
-    defaultEnabled: true,
-    defaultOrder: 9,
-    minWidth: 4,
-  },
-
   // Metrics Cards (disabled by default)
   {
     id: 'metrics-overview',
@@ -181,12 +136,19 @@ export function getCardConfig(id: string): DashboardCardConfig | undefined {
 }
 
 // Get cards by category
-export function getCardsByCategory(category: DashboardCardConfig['category']): DashboardCardConfig[] {
+export function getCardsByCategory(
+  category: DashboardCardConfig['category']
+): DashboardCardConfig[] {
   return cardRegistry.filter((card) => card.category === category)
 }
 
 // Get default card states
-export function getDefaultCardStates(): { id: string; enabled: boolean; order: number; collapsed: boolean }[] {
+export function getDefaultCardStates(): {
+  id: string
+  enabled: boolean
+  order: number
+  collapsed: boolean
+}[] {
   return cardRegistry.map((card) => ({
     id: card.id,
     enabled: card.defaultEnabled,

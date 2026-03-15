@@ -63,21 +63,18 @@ watch(
 )
 
 // Validate regex
-watch(
-  [triggerType, triggerValue],
-  ([type, value]) => {
-    if (type === 'regex' && value) {
-      try {
-        new RegExp(value)
-        delete errors.value.triggerValue
-      } catch {
-        errors.value.triggerValue = t('autoReply.invalidRegex')
-      }
-    } else {
+watch([triggerType, triggerValue], ([type, value]) => {
+  if (type === 'regex' && value) {
+    try {
+      new RegExp(value)
       delete errors.value.triggerValue
+    } catch {
+      errors.value.triggerValue = t('autoReply.invalidRegex')
     }
+  } else {
+    delete errors.value.triggerValue
   }
-)
+})
 
 function resetForm(): void {
   name.value = ''
@@ -106,8 +103,7 @@ function insertVariable(variable: string, responseIndex: number): void {
     const start = textarea.selectionStart
     const end = textarea.selectionEnd
     const text = responses.value[responseIndex] || ''
-    responses.value[responseIndex] =
-      text.substring(0, start) + variable + text.substring(end)
+    responses.value[responseIndex] = text.substring(0, start) + variable + text.substring(end)
     // Restore cursor position
     setTimeout(() => {
       textarea.focus()
@@ -141,7 +137,9 @@ function variableTitle(descKey: string, fallback: string): string {
   <form class="space-y-4" @submit.prevent="handleSubmit">
     <!-- Name -->
     <div>
-      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('autoReply.ruleName') }}</label>
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{
+        t('autoReply.ruleName')
+      }}</label>
       <input
         v-model="name"
         type="text"
@@ -153,7 +151,9 @@ function variableTitle(descKey: string, fallback: string): string {
 
     <!-- Trigger Type -->
     <div>
-      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('autoReply.triggerType') }}</label>
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{
+        t('autoReply.triggerType')
+      }}</label>
       <select
         v-model="triggerType"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
@@ -179,7 +179,11 @@ function variableTitle(descKey: string, fallback: string): string {
         type="text"
         :placeholder="t('autoReply.enterTriggerText')"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 border border-gray-300 dark:border-gray-600"
-        :class="errors.triggerValue ? 'ring-2 ring-red-500' : 'focus:ring-gray-900 dark:focus:ring-gray-400'"
+        :class="
+          errors.triggerValue
+            ? 'ring-2 ring-red-500'
+            : 'focus:ring-gray-900 dark:focus:ring-gray-400'
+        "
         required
       />
       <p v-if="errors.triggerValue" class="mt-1 text-sm text-red-500 dark:text-red-400">
@@ -191,7 +195,9 @@ function variableTitle(descKey: string, fallback: string): string {
     <div>
       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
         {{ t('autoReply.priority') }}
-        <span class="text-gray-400 dark:text-gray-500 font-normal">{{ t('autoReply.priorityHint') }}</span>
+        <span class="text-gray-400 dark:text-gray-500 font-normal">{{
+          t('autoReply.priorityHint')
+        }}</span>
       </label>
       <input
         v-model.number="priority"
@@ -207,7 +213,9 @@ function variableTitle(descKey: string, fallback: string): string {
       <div class="flex items-center justify-between mb-2">
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('autoReply.responses') }}
-          <span class="text-gray-400 dark:text-gray-500 font-normal">{{ t('autoReply.responsesHint') }}</span>
+          <span class="text-gray-400 dark:text-gray-500 font-normal">{{
+            t('autoReply.responsesHint')
+          }}</span>
         </label>
         <button
           type="button"
@@ -219,8 +227,12 @@ function variableTitle(descKey: string, fallback: string): string {
       </div>
 
       <!-- Template Variables -->
-      <div class="mb-3 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
-        <div class="text-xs text-gray-500 dark:text-gray-500 mb-2">{{ t('autoReply.availableVariables') }}</div>
+      <div
+        class="mb-3 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700"
+      >
+        <div class="text-xs text-gray-500 dark:text-gray-500 mb-2">
+          {{ t('autoReply.availableVariables') }}
+        </div>
         <div class="flex flex-wrap gap-2">
           <button
             v-for="variable in templateVariables"
@@ -237,11 +249,7 @@ function variableTitle(descKey: string, fallback: string): string {
 
       <!-- Response Inputs -->
       <div class="space-y-2">
-        <div
-          v-for="(_response, index) in responses"
-          :key="index"
-          class="flex gap-2"
-        >
+        <div v-for="(_response, index) in responses" :key="index" class="flex gap-2">
           <textarea
             v-model="responses[index]"
             :data-response-index="index"
@@ -289,7 +297,13 @@ function variableTitle(descKey: string, fallback: string): string {
         class="px-4 py-2 bg-gray-800 dark:bg-gray-500 hover:bg-gray-700 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         :disabled="loading || !isValid"
       >
-        {{ loading ? t('autoReply.saving') : rule ? t('autoReply.updateRule') : t('autoReply.createRule') }}
+        {{
+          loading
+            ? t('autoReply.saving')
+            : rule
+              ? t('autoReply.updateRule')
+              : t('autoReply.createRule')
+        }}
       </button>
     </div>
   </form>

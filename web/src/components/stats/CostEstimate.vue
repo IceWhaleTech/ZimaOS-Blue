@@ -26,7 +26,9 @@ const costLevel = computed(() => {
 </script>
 
 <template>
-  <div class="cost-estimate bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+  <div
+    class="cost-estimate bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700"
+  >
     <div class="flex items-center justify-between">
       <div>
         <h3 class="font-medium text-gray-900 dark:text-white">
@@ -40,9 +42,11 @@ const costLevel = computed(() => {
         <p
           :class="[
             'text-2xl font-semibold',
-            costLevel === 'low' ? 'text-green-600 dark:text-green-400' :
-            costLevel === 'medium' ? 'text-yellow-600 dark:text-yellow-400' :
-            'text-red-600 dark:text-red-400'
+            costLevel === 'low'
+              ? 'text-green-600 dark:text-green-400'
+              : costLevel === 'medium'
+                ? 'text-yellow-600 dark:text-yellow-400'
+                : 'text-red-600 dark:text-red-400',
           ]"
         >
           {{ formattedCost }}

@@ -74,6 +74,31 @@ echo [INFO] Skipping third_party native libraries (Windows uses native TTS/ASR o
 echo [OK] Third_party libraries not needed on Windows
 exit /b 0
 
+:run_web_audit
+if exist "%PROJECT_ROOT%web\scripts\audit-ci.mjs" (
+    if exist "%PROJECT_ROOT%web\audit-allowlist.json" (
+        call node scripts\audit-ci.mjs --omit=dev
+    ) else (
+        call node scripts\audit-ci.mjs --no-allowlist --omit=dev
+    )
+) else (
+    call npm audit --omit=dev
+)
+exit /b %errorlevel%
+
+:handle_web_audit_failure
+set "AUDIT_STATUS=%~1"
+if "%AUDIT_STATUS%"=="1" (
+    echo [ERROR] Production dependencies have vulnerabilities. Please fix them before building.
+) else (
+    if "%AUDIT_STATUS%"=="2" (
+        echo [ERROR] Unable to complete npm audit because the npm registry request failed. Check network access and retry.
+    ) else (
+        echo [ERROR] npm audit failed unexpectedly ^(exit code: %AUDIT_STATUS%^).
+    )
+)
+exit /b 0
+
 :run
 goto :%COMMAND% 2>nul || (
     echo Unknown command: %COMMAND%
@@ -143,9 +168,10 @@ echo [INFO] Building for production...
 :: Check production dependencies for vulnerabilities
 echo [INFO] Checking production dependencies for vulnerabilities...
 cd /d "%PROJECT_ROOT%web"
-call npm audit --omit=dev
-if errorlevel 1 (
-    echo [ERROR] Production dependencies have vulnerabilities. Please fix them before building.
+call :run_web_audit
+set "AUDIT_STATUS=%errorlevel%"
+if not "%AUDIT_STATUS%"=="0" (
+    call :handle_web_audit_failure %AUDIT_STATUS%
     exit /b 1
 )
 echo.
@@ -215,9 +241,10 @@ echo [INFO] Production run: build web, copy to server/internal/web, start server
 echo [INFO] Checking production dependencies for vulnerabilities...
 cd /d "%PROJECT_ROOT%web"
 call npm install
-call npm audit --omit=dev
-if errorlevel 1 (
-    echo [ERROR] Production dependencies have vulnerabilities. Please fix them before building.
+call :run_web_audit
+set "AUDIT_STATUS=%errorlevel%"
+if not "%AUDIT_STATUS%"=="0" (
+    call :handle_web_audit_failure %AUDIT_STATUS%
     exit /b 1
 )
 echo.

@@ -109,10 +109,14 @@ export const voiceApi = {
 
   // Synthesize and get audio blob
   synthesizeAudio: async (text: string): Promise<Blob> => {
-    const response = await api.post('/voice/synthesize', { text }, {
-      responseType: 'blob',
-      timeout: 120000,
-    })
+    const response = await api.post(
+      '/voice/synthesize',
+      { text },
+      {
+        responseType: 'blob',
+        timeout: 120000,
+      }
+    )
     return response.data
   },
 
@@ -131,8 +135,7 @@ export const voiceApi = {
   },
 
   // Create voice session
-  createSession: (data: CreateSessionRequest) =>
-    api.post<VoiceSession>('/voice/sessions', data),
+  createSession: (data: CreateSessionRequest) => api.post<VoiceSession>('/voice/sessions', data),
 
   // Get voice session
   getSession: (id: string) => api.get<VoiceSession>(`/voice/sessions/${id}`),
@@ -591,7 +594,7 @@ class StreamingTTSManager {
 
   private splitIntoSentences(text: string): string[] {
     const sentences = text.match(/[^.!?。！？]+[.!?。！？]+|[^.!?。！？]+$/g) || [text]
-    return sentences.map(s => s.trim()).filter(s => s.length > 0)
+    return sentences.map((s) => s.trim()).filter((s) => s.length > 0)
   }
 
   // Reset state for a fresh session
@@ -672,7 +675,10 @@ class StreamingTTSManager {
   }
 
   private async fetchAudio(text: string, index: number) {
-    if (this.isStopped) { this.activeFetches--; return }
+    if (this.isStopped) {
+      this.activeFetches--
+      return
+    }
     const gen = this.generation
 
     const onDone = () => {
@@ -696,13 +702,25 @@ class StreamingTTSManager {
     try {
       const token = localStorage.getItem('token')
       const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
-      const es = new EventSource(`/api/v1/voice/synthesize/stream?text=${encodeURIComponent(text)}${tokenParam}`)
+      const es = new EventSource(
+        `/api/v1/voice/synthesize/stream?text=${encodeURIComponent(text)}${tokenParam}`
+      )
       let received = false
       let closed = false
 
       es.addEventListener('audio', (e) => {
-        if (gen !== this.generation) { es.close(); closed = true; onDone(); return }
-        if (this.isStopped) { es.close(); closed = true; onDone(); return }
+        if (gen !== this.generation) {
+          es.close()
+          closed = true
+          onDone()
+          return
+        }
+        if (this.isStopped) {
+          es.close()
+          closed = true
+          onDone()
+          return
+        }
         const data = JSON.parse(e.data)
         if (this.queue[index]) {
           if (data.played_locally) {
@@ -725,7 +743,10 @@ class StreamingTTSManager {
         if (closed) return // Ignore error events after intentional close
         es.close()
         closed = true
-        if (gen !== this.generation) { onDone(); return }
+        if (gen !== this.generation) {
+          onDone()
+          return
+        }
         if (this.queue[index]) {
           this.queue[index].fetching = false
           this.queue[index].fetchDone = true
@@ -744,7 +765,10 @@ class StreamingTTSManager {
         if (closed) return
         es.close()
         closed = true
-        if (gen !== this.generation) { onDone(); return }
+        if (gen !== this.generation) {
+          onDone()
+          return
+        }
         if (this.queue[index]) {
           this.queue[index].fetching = false
           this.queue[index].fetchDone = true
@@ -824,7 +848,7 @@ class StreamingTTSManager {
         this.playNext()
         return
       }
-      (this as any)[retryKey] = retries + 1
+      ;(this as any)[retryKey] = retries + 1
       setTimeout(() => {
         if (gen === this.generation) this.playNext()
       }, 100)

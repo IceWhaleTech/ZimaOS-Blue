@@ -10,7 +10,10 @@ export function sanitizeCompanionPreview(input: unknown, maxLen = 160, singleLin
   text = text
     .replace(/\b(Bearer)\s+[A-Za-z0-9._~+\/-]+=*/gi, '$1 [REDACTED]')
     .replace(/\b(sk|rk)-[A-Za-z0-9_-]{12,}\b/g, '$1-[REDACTED]')
-    .replace(/(["']?(?:api[_-]?key|token|secret|password|access[_-]?token|refresh[_-]?token)["']?\s*[:=]\s*["']?)([^\s,"'}]{6,})/gi, '$1[REDACTED]')
+    .replace(
+      /(["']?(?:api[_-]?key|token|secret|password|access[_-]?token|refresh[_-]?token)["']?\s*[:=]\s*["']?)([^\s,"'}]{6,})/gi,
+      '$1[REDACTED]'
+    )
 
   text = singleLine ? text.replace(/\s+/g, ' ').trim() : text.replace(/\r\n/g, '\n').trim()
 

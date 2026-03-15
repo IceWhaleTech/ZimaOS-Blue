@@ -8,21 +8,14 @@ describe('Typeless Detection', () => {
   })
 
   it('detects markdown tables with at least two data rows', () => {
-    const content = [
-      '| Name | Value |',
-      '| --- | --- |',
-      '| CPU | 58% |',
-      '| RAM | 72% |',
-    ].join('\n')
+    const content = ['| Name | Value |', '| --- | --- |', '| CPU | 58% |', '| RAM | 72% |'].join(
+      '\n'
+    )
     expect(hasTypelessCards(content)).toBe(true)
   })
 
   it('resets table detection after non-separator content', () => {
-    const content = [
-      '| Name | Value |',
-      'not a table row',
-      '| CPU | 58% |',
-    ].join('\n')
+    const content = ['| Name | Value |', 'not a table row', '| CPU | 58% |'].join('\n')
     expect(hasTypelessCards(content)).toBe(false)
   })
 

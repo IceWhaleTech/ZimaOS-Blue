@@ -223,7 +223,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: '파일 출처',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -427,6 +427,7 @@ export default {
     inputPlaceholderShort: '메시지를 입력하세요...',
     newLine: '새 줄',
     dragDropHint: '파일을 끌어다 놓거나 붙여넣어 첨부',
+    conversations: '대화',
     searchConversations: '대화 검색...',
     noConversationsFound: '대화를 찾을 수 없습니다',
     noConversationsYet: '아직 대화가 없습니다',
@@ -637,6 +638,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: '네트워크 액세스',
+    networkTitle: '네트워크 및 액세스',
+    releaseTrack: '버전 관리',
+    systemVersion: '업데이트 및 버전',
     llmApiKeyRequired: 'LLM Provider 페이지를 열기 전에 API Key를 먼저 설정하세요.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -1981,8 +1986,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: '승인된 디렉터리',
+    approvedDirectoriesDesc: 'exec/convert에 대해 "항상 허용"으로 승인된 디렉터리입니다.',
+    noApprovedDirectories: '승인된 디렉터리가 없습니다',
     tabs: {
       ...enUS.security.tabs,
+      approvals: '승인된 디렉터리',
       firewall: '방화벽',
       masking: '데이터 마스킹',
     },
@@ -2873,6 +2882,7 @@ export default {
       length: '최소 {n}자',
       uppercase: '대문자 1개',
       lowercase: '소문자 1개',
+      letter: '알파벳 1개',
       number: '숫자 1개',
       special: "특수문자 1개 (!{'@'}#$%...)",
     },

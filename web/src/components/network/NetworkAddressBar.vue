@@ -72,20 +72,8 @@ async function handleOpenInBrowser() {
     </svg>
     <span>{{ t('network.openIn', { browser: browserName }) }}</span>
     <!-- Loading spinner -->
-    <svg
-      v-if="opening || loading"
-      class="w-3 h-3 animate-spin"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <circle
-        class="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        stroke-width="4"
-      />
+    <svg v-if="opening || loading" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
       <path
         class="opacity-75"
         fill="currentColor"

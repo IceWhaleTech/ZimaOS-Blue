@@ -15,21 +15,23 @@ const THINKING_CARD_PREFIXES = ['thinking-', 'think-', 'think_context-']
 const firstItem = computed(() => props.card.items[0] ?? null)
 const isThinkingCard = computed(() => {
   const cardId = props.card.id ?? ''
-  return THINKING_CARD_PREFIXES.some(prefix => cardId.startsWith(prefix))
+  return THINKING_CARD_PREFIXES.some((prefix) => cardId.startsWith(prefix))
 })
 
 // When showToolDetails is true, expand all accordion items by default
-const openItems = ref<Set<number>>(new Set(
-  props.card.items
-    .map((item, index) => {
-      // Thinking details should stay collapsed by default and expand only on click
-      if (isThinkingCard.value) return -1
-      // If showToolDetails is on, expand by default
-      if (settingsStore.showToolDetails) return index
-      return item.defaultOpen ? index : -1
-    })
-    .filter(i => i >= 0)
-))
+const openItems = ref<Set<number>>(
+  new Set(
+    props.card.items
+      .map((item, index) => {
+        // Thinking details should stay collapsed by default and expand only on click
+        if (isThinkingCard.value) return -1
+        // If showToolDetails is on, expand by default
+        if (settingsStore.showToolDetails) return index
+        return item.defaultOpen ? index : -1
+      })
+      .filter((i) => i >= 0)
+  )
+)
 
 // Watch for changes to showToolDetails and update openItems accordingly
 watch(
@@ -42,9 +44,7 @@ watch(
     } else {
       // Close to defaultOpen state when disabled
       openItems.value = new Set(
-        props.card.items
-          .map((item, index) => item.defaultOpen ? index : -1)
-          .filter(i => i >= 0)
+        props.card.items.map((item, index) => (item.defaultOpen ? index : -1)).filter((i) => i >= 0)
       )
     }
   }
@@ -68,7 +68,9 @@ function isOpen(index: number): boolean {
 </script>
 
 <template>
-  <div class="accordion-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="accordion-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <!-- Accordion items - single item mode for thinking cards -->
     <div v-if="card.items.length === 1 && firstItem" class="accordion-single">
       <!-- Header -->
@@ -78,8 +80,12 @@ function isOpen(index: number): boolean {
       >
         <div class="flex items-center gap-2">
           <span v-if="firstItem.icon" class="text-sm">{{ firstItem.icon }}</span>
-          <span v-if="isThinkingCard" class="thinking-shimmer text-sm font-semibold">{{ t('accordionCard.thinking', 'Thinking') }}</span>
-          <span v-else class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ card.title }}</span>
+          <span v-if="isThinkingCard" class="thinking-shimmer text-sm font-semibold">{{
+            t('accordionCard.thinking', 'Thinking')
+          }}</span>
+          <span v-else class="text-sm font-medium text-gray-700 dark:text-gray-200">{{
+            card.title
+          }}</span>
         </div>
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -89,7 +95,12 @@ function isOpen(index: number): boolean {
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M19 9l-7 7-7-7"
+          />
         </svg>
       </button>
 
@@ -129,7 +140,12 @@ function isOpen(index: number): boolean {
             viewBox="0 0 24 24"
             stroke="currentColor"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            />
           </svg>
         </button>
 
@@ -149,7 +165,14 @@ function isOpen(index: number): boolean {
 
 <style scoped>
 .thinking-shimmer {
-  background: linear-gradient(90deg, #6b7280 0%, #9ca3af 30%, #111827 50%, #9ca3af 70%, #6b7280 100%);
+  background: linear-gradient(
+    90deg,
+    #6b7280 0%,
+    #9ca3af 30%,
+    #111827 50%,
+    #9ca3af 70%,
+    #6b7280 100%
+  );
   background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -158,7 +181,14 @@ function isOpen(index: number): boolean {
 }
 
 :global(.dark) .thinking-shimmer {
-  background: linear-gradient(90deg, #9ca3af 0%, #d1d5db 30%, #f9fafb 50%, #d1d5db 70%, #9ca3af 100%);
+  background: linear-gradient(
+    90deg,
+    #9ca3af 0%,
+    #d1d5db 30%,
+    #f9fafb 50%,
+    #d1d5db 70%,
+    #9ca3af 100%
+  );
   background-size: 220% 100%;
 }
 

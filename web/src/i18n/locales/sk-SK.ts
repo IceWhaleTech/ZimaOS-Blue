@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Pôvod súborov',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -565,6 +565,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Sieťový prístup',
+    networkTitle: 'Sieť a prístup',
+    releaseTrack: 'Správa verzií',
+    systemVersion: 'Aktualizácie a verzie',
     llmApiKeyRequired: 'Pred otvorením stránky poskytovateľov LLM najprv nastavte API kľúč.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -698,8 +702,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Schválené adresáre',
+    approvedDirectoriesDesc: 'Adresáre schválené pomocou možnosti „Vždy povoliť“ pre exec/convert.',
+    noApprovedDirectories: 'Žiadne schválené adresáre',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Schválené adresáre',
       firewall: 'Firewall',
       masking: 'Maskovanie údajov',
     },
@@ -1056,6 +1064,7 @@ export default {
       length: 'Aspoň {n} znakov',
       uppercase: 'Jedno veľké písmeno',
       lowercase: 'Jedno malé písmeno',
+      letter: 'Jedno písmeno',
       number: 'Jedna číslica',
       special: "Jeden špeciálny znak (!{'@'}#$%...)",
     },
@@ -1127,6 +1136,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    conversations: 'Konverzácie',
     execDirectoryApprovalTimeout:
       'Spustenie príkazu bolo zablokované, pretože schválenie adresára vypršalo. Schváľte adresár a skúste to znova.',
     streamProgress: {

@@ -73,11 +73,9 @@ export const toolApi = {
 
   get: (id: string) => api.get<Tool>(`/tools/${id}`),
 
-  enable: (id: string) =>
-    api.post<{ success: boolean; message: string }>(`/tools/${id}/enable`),
+  enable: (id: string) => api.post<{ success: boolean; message: string }>(`/tools/${id}/enable`),
 
-  disable: (id: string) =>
-    api.post<{ success: boolean; message: string }>(`/tools/${id}/disable`),
+  disable: (id: string) => api.post<{ success: boolean; message: string }>(`/tools/${id}/disable`),
 
   // Tool store
   listStore: () => api.get<ToolStoreItem[]>('/tool-store/browse'),
@@ -90,8 +88,7 @@ export const toolApi = {
   removeSource: (id: string) =>
     api.delete<{ success: boolean; message: string }>(`/tool-store/sources/${id}`),
 
-  browse: (params?: BrowseParams) =>
-    api.get<RemoteTool[]>('/tool-store/browse', { params }),
+  browse: (params?: BrowseParams) => api.get<RemoteTool[]>('/tool-store/browse', { params }),
 
   install: (id: string) =>
     api.post<{ success: boolean; message: string; tool?: RemoteTool }>(`/tool-store/install/${id}`),

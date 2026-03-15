@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Filkällor',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -564,6 +564,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Nätverksåtkomst',
+    networkTitle: 'Nätverk och åtkomst',
+    releaseTrack: 'Versionshantering',
+    systemVersion: 'Uppdateringar och versioner',
     llmApiKeyRequired: 'Konfigurera en API-nyckel innan du öppnar sidan för LLM-leverantörer.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -697,8 +701,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Godkända kataloger',
+    approvedDirectoriesDesc: 'Kataloger som har godkänts via "Tillåt alltid" för exec/convert.',
+    noApprovedDirectories: 'Inga godkända kataloger',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Godkända kataloger',
       firewall: 'Brandvägg',
       masking: 'Datamaskering',
     },
@@ -1360,6 +1368,7 @@ export default {
       length: 'Minst {n} tecken',
       uppercase: 'En versal',
       lowercase: 'En gemen',
+      letter: 'En bokstav',
       number: 'En siffra',
       special: "Ett specialtecken (!{'@'}#$%...)",
     },
@@ -1431,6 +1440,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    conversations: 'Konversationer',
     execDirectoryApprovalTimeout:
       'Kommando körning blockerades eftersom kataloggodkännandet tog för lång tid. Godkänn katalogen och försök igen.',
     streamProgress: {

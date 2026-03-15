@@ -39,7 +39,9 @@ describe('useTauri', () => {
     revealPathMock.mockResolvedValue({ success: true })
     resolveLocalFileMock.mockReset()
     resolveLocalFileMock.mockResolvedValue({
-      download_url: '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt',
+      data: {
+        download_url: '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt',
+      },
     })
     isCurrentHostLoopbackMock.mockReset()
     isCurrentHostLoopbackMock.mockReturnValue(true)
@@ -123,7 +125,10 @@ describe('useTauri', () => {
       expect(ok).toBe(true)
       expect(invoke).toHaveBeenCalledWith('reveal_path', { path: '/tmp/report.txt' })
       expect(resolveLocalFileMock).toHaveBeenCalledWith('/tmp/report.txt')
-      expect(openSpy).toHaveBeenCalledWith('/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt', '_blank')
+      expect(openSpy).toHaveBeenCalledWith(
+        '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt',
+        '_blank'
+      )
       expect(invoke).not.toHaveBeenCalledWith('open_url', { url: '/tmp/report.txt' })
     })
 
@@ -199,7 +204,10 @@ describe('useTauri', () => {
       expect(ok).toBe(true)
       expect(revealPathMock).not.toHaveBeenCalled()
       expect(resolveLocalFileMock).toHaveBeenCalledWith('/tmp/report.txt')
-      expect(openSpy).toHaveBeenCalledWith('/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt', '_blank')
+      expect(openSpy).toHaveBeenCalledWith(
+        '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt',
+        '_blank'
+      )
     })
   })
 

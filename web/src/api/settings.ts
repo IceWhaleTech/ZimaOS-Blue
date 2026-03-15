@@ -7,9 +7,8 @@ export type SmallModelUnavailablePolicy = 'ir_first'
 
 // User settings stored on backend
 export interface Settings {
-  locale?: string   // User's preferred locale (e.g., "zh-CN", "en-US")
+  locale?: string // User's preferred locale (e.g., "zh-CN", "en-US")
   timezone?: string // User's timezone
-  theme_style?: string // Chat theme style (default/bubble/minimal/gradient/ocean)
   smart_tool_selection?: boolean // IR-based tool filtering (default false)
   smart_skill_selection?: boolean // Progressive skill selector (default false)
   skill_selector_mode?: 'hybrid' | 'ir_only' | 'llm_only' // Skill selector strategy
@@ -42,10 +41,15 @@ export interface Settings {
   offline_ir_fallback_enabled?: boolean // Offline IR fallback (default false)
   feature_intent_ir_enabled?: boolean // Channel feature-intent IR hints (default false)
   deep_research_v2_enabled?: boolean // default false
+  small_model_route_image_qa_enabled?: boolean // default inherits short QA
   small_model_route_short_qa_enabled?: boolean // default false
   small_model_route_tool_dispatch_enabled?: boolean // default false
   no_llm_degrade_mode?: NoLLMDegradeMode // Fixed deepresearch
   small_model_unavailable_policy?: SmallModelUnavailablePolicy // Fixed ir_first
+  voice_wake_enabled?: boolean // default false
+  voice_wake_triggers?: string[] // default ["Blue"]
+  voice_wake_locale?: string // optional locale override
+  voice_wake_target_conversation_id?: string // fixed background target conversation
 }
 
 // Smart tool selection stats
@@ -111,6 +115,8 @@ export interface SmallModelStatus {
 export interface SmallModelStats {
   short_qa_route_attempts: number
   short_qa_route_success: number
+  image_qa_route_attempts?: number
+  image_qa_route_success?: number
   tool_dispatch_route_attempts: number
   tool_dispatch_route_success: number
   summary_attempts: number
@@ -123,6 +129,8 @@ export interface SmallModelStats {
   small_model_latency_samples?: number
   short_qa_latency_ms?: number
   short_qa_latency_samples?: number
+  image_qa_latency_ms?: number
+  image_qa_latency_samples?: number
   tool_dispatch_latency_ms?: number
   tool_dispatch_latency_samples?: number
   summary_latency_ms?: number
@@ -175,13 +183,17 @@ export const settingsApi = {
   getToolStats: () => api.get<ToolSelectorStats>('/tools/stats'),
 
   // Skill reranker ONNX model management
-  getSkillRerankerModelStatus: () => api.get<SkillRerankerModelStatus>('/settings/skill-reranker/model/status'),
-  downloadSkillRerankerModel: () => api.post<{ success: boolean; message?: string }>('/settings/skill-reranker/model/download'),
-  cancelSkillRerankerModelDownload: () => api.post<{ success: boolean }>('/settings/skill-reranker/model/cancel'),
+  getSkillRerankerModelStatus: () =>
+    api.get<SkillRerankerModelStatus>('/settings/skill-reranker/model/status'),
+  downloadSkillRerankerModel: () =>
+    api.post<{ success: boolean; message?: string }>('/settings/skill-reranker/model/download'),
+  cancelSkillRerankerModelDownload: () =>
+    api.post<{ success: boolean }>('/settings/skill-reranker/model/cancel'),
 
   // Fixed small-model management
   getSmallModelStatus: () => api.get<SmallModelStatus>('/settings/small-model/status'),
-  downloadSmallModel: () => api.post<{ success: boolean; message?: string }>('/settings/small-model/download'),
+  downloadSmallModel: () =>
+    api.post<{ success: boolean; message?: string }>('/settings/small-model/download'),
   cancelSmallModelDownload: () => api.post<{ success: boolean }>('/settings/small-model/cancel'),
   // Small-model observability counters
   getSmallModelStats: () => api.get<SmallModelStats>('/small-model/stats'),

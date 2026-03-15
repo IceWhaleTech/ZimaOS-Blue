@@ -61,16 +61,13 @@ const progressWidth = computed(() => `${Math.min(100, Math.max(0, props.card.pro
 
     <!-- Steps -->
     <div v-if="card.steps && card.steps.length > 0" class="mt-4 space-y-2">
-      <div
-        v-for="(step, index) in card.steps"
-        :key="index"
-        class="flex items-center gap-2 text-sm"
-      >
+      <div v-for="(step, index) in card.steps" :key="index" class="flex items-center gap-2 text-sm">
         <span
           class="w-5 h-5 rounded-full flex items-center justify-center text-xs"
           :class="{
             'bg-gray-100 dark:bg-gray-600 text-gray-500': step.status === 'pending',
-            'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400': step.status === 'running',
+            'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400':
+              step.status === 'running',
             'bg-green-100 dark:bg-green-900/30 text-green-500': step.status === 'completed',
             'bg-red-100 dark:bg-red-900/30 text-red-500': step.status === 'failed',
           }"
@@ -90,9 +87,7 @@ const progressWidth = computed(() => `${Math.min(100, Math.max(0, props.card.pro
         >
           {{ step.name }}
         </span>
-        <span v-if="step.message" class="text-gray-400 text-xs">
-          - {{ step.message }}
-        </span>
+        <span v-if="step.message" class="text-gray-400 text-xs"> - {{ step.message }} </span>
       </div>
     </div>
   </div>

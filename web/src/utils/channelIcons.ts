@@ -62,7 +62,10 @@ export function getChannelIcon(channelType: string): string | undefined {
   return channelIcons[channelType.toLowerCase()]
 }
 
-export function getChannelIconOrDefault(channelType: string, defaultIcon = '/icons/channels/default.svg'): string {
+export function getChannelIconOrDefault(
+  channelType: string,
+  defaultIcon = '/icons/channels/default.svg'
+): string {
   return channelIcons[channelType.toLowerCase()] || defaultIcon
 }
 

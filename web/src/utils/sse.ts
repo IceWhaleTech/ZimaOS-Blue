@@ -9,10 +9,25 @@ export interface SSEClientOptions {
   onComplete?: (finalChunk?: StreamChunk) => void
   onBlocked?: (message: string, threatLevel: string) => void
   onTrialExhausted?: (message: string) => void
-  onContextTrimmed?: (info: { type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number }) => void
-  onToolExecuting?: (toolCount: number, toolNames?: string[], sandboxAvailable?: boolean, toolCommands?: string[]) => void
+  onContextTrimmed?: (info: {
+    type: 'pruned' | 'compacted'
+    messagesPruned?: number
+    tokensBefore?: number
+    tokensAfter?: number
+    before?: number
+    after?: number
+  }) => void
+  onToolExecuting?: (
+    toolCount: number,
+    toolNames?: string[],
+    sandboxAvailable?: boolean,
+    toolCommands?: string[]
+  ) => void
   /** Called when tool execution completes with results summary. */
-  onToolResults?: (results: Array<{ name: string; id: string; args?: string; result?: string }>, toolRound: number) => void
+  onToolResults?: (
+    results: Array<{ name: string; id: string; args?: string; result?: string }>,
+    toolRound: number
+  ) => void
   /** Called when a new tool round starts — the server persisted the previous round as a separate message. */
   onNewMessage?: (toolRound: number) => void
   /** Called when the server advances a TODO checklist item and persists it to DB. */
@@ -114,7 +129,10 @@ export class SSEClient {
             try {
               const data = await response.json()
               if (data.blocked) {
-                options.onBlocked?.(data.message || 'Message blocked', data.threat_level || 'unknown')
+                options.onBlocked?.(
+                  data.message || 'Message blocked',
+                  data.threat_level || 'unknown'
+                )
                 return
               }
             } catch {
@@ -240,21 +258,36 @@ export class SSEClient {
                     options.onStreamId?.(chunkStreamId)
                   } else if (chunkStreamId !== currentStreamId) {
                     if (allowStreamIdSwitch) {
-                      console.info('[SSE] stream_id switched after injection:', currentStreamId, '->', chunkStreamId)
+                      console.info(
+                        '[SSE] stream_id switched after injection:',
+                        currentStreamId,
+                        '->',
+                        chunkStreamId
+                      )
                       currentStreamId = chunkStreamId
                       allowStreamIdSwitch = false
                       lastSeq = 0
                       options.onStreamId?.(chunkStreamId)
                     } else {
                       // Ignore stale/interleaved chunks from a different stream id.
-                      console.warn('[SSE] stale chunk ignored due stream_id mismatch:', chunkStreamId, 'expected:', currentStreamId)
+                      console.warn(
+                        '[SSE] stale chunk ignored due stream_id mismatch:',
+                        chunkStreamId,
+                        'expected:',
+                        currentStreamId
+                      )
                       continue
                     }
                   }
                 }
                 if (typeof chunk.seq === 'number' && Number.isFinite(chunk.seq)) {
                   if (chunk.seq <= lastSeq) {
-                    console.warn('[SSE] stale chunk ignored due seq mismatch:', chunk.seq, 'last:', lastSeq)
+                    console.warn(
+                      '[SSE] stale chunk ignored due seq mismatch:',
+                      chunk.seq,
+                      'last:',
+                      lastSeq
+                    )
                     continue
                   }
                   lastSeq = chunk.seq
@@ -301,7 +334,12 @@ export class SSEClient {
                 // Check for tool execution event
                 if (chunk.tool_executing) {
                   console.info('[SSE] tool_executing event, receivedData so far:', receivedData)
-                  options.onToolExecuting?.(chunk.tool_calls || 0, chunk.tool_names, chunk.sandbox_available, chunk.tool_commands)
+                  options.onToolExecuting?.(
+                    chunk.tool_calls || 0,
+                    chunk.tool_names,
+                    chunk.sandbox_available,
+                    chunk.tool_commands
+                  )
                   continue
                 }
                 // Check for tool results event
@@ -341,7 +379,9 @@ export class SSEClient {
                     // no LLM text (e.g. provider returned empty after tool round).
                     // Treat this as a valid completion, not an error.
                     if (chunk.empty_response) {
-                      console.warn('[SSE] empty response after tool execution, treating as complete')
+                      console.warn(
+                        '[SSE] empty response after tool execution, treating as complete'
+                      )
                       finalChunkData = chunk
                     } else {
                       console.error('[SSE] PROVIDER_RETURNED_EMPTY debug:', {
@@ -387,10 +427,12 @@ export class SSEClient {
           // Pre-content: no data sent yet — retry the connection
           connectAttempt++
           if (connectAttempt <= MAX_CONNECT_RETRIES) {
-            console.warn(`[SSE] network error, retrying (${connectAttempt}/${MAX_CONNECT_RETRIES})...`)
+            console.warn(
+              `[SSE] network error, retrying (${connectAttempt}/${MAX_CONNECT_RETRIES})...`
+            )
             // Reset abort controller for retry
             this.abortController = new AbortController()
-            await new Promise(resolve => setTimeout(resolve, CONNECT_RETRY_DELAY))
+            await new Promise((resolve) => setTimeout(resolve, CONNECT_RETRY_DELAY))
             continue
           }
         }

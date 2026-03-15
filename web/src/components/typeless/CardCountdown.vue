@@ -60,7 +60,9 @@ function padZero(num: number): string {
 
     <!-- Expired state -->
     <div v-if="timeLeft.expired" class="text-center py-4">
-      <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('countdownCard.expired', "Time's up!") }}</p>
+      <p class="text-2xl font-bold text-gray-900 dark:text-white">
+        {{ t('countdownCard.expired', "Time's up!") }}
+      </p>
     </div>
 
     <!-- Countdown display -->
@@ -77,11 +79,15 @@ function padZero(num: number): string {
         >
           {{ padZero(timeLeft.days) }}
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('countdownCard.days', 'Days') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('countdownCard.days', 'Days') }}
+        </p>
       </div>
 
       <!-- Separator -->
-      <div v-if="showDays && showHours" class="flex items-center text-2xl text-gray-400 font-bold">:</div>
+      <div v-if="showDays && showHours" class="flex items-center text-2xl text-gray-400 font-bold">
+        :
+      </div>
 
       <!-- Hours -->
       <div v-if="showHours" class="text-center">
@@ -95,11 +101,18 @@ function padZero(num: number): string {
         >
           {{ padZero(timeLeft.hours) }}
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('countdownCard.hours', 'Hours') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('countdownCard.hours', 'Hours') }}
+        </p>
       </div>
 
       <!-- Separator -->
-      <div v-if="showHours && showMinutes" class="flex items-center text-2xl text-gray-400 font-bold">:</div>
+      <div
+        v-if="showHours && showMinutes"
+        class="flex items-center text-2xl text-gray-400 font-bold"
+      >
+        :
+      </div>
 
       <!-- Minutes -->
       <div v-if="showMinutes" class="text-center">
@@ -113,11 +126,18 @@ function padZero(num: number): string {
         >
           {{ padZero(timeLeft.minutes) }}
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('countdownCard.minutes', 'Minutes') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('countdownCard.minutes', 'Minutes') }}
+        </p>
       </div>
 
       <!-- Separator -->
-      <div v-if="showMinutes && showSeconds" class="flex items-center text-2xl text-gray-400 font-bold">:</div>
+      <div
+        v-if="showMinutes && showSeconds"
+        class="flex items-center text-2xl text-gray-400 font-bold"
+      >
+        :
+      </div>
 
       <!-- Seconds -->
       <div v-if="showSeconds" class="text-center">
@@ -131,7 +151,9 @@ function padZero(num: number): string {
         >
           {{ padZero(timeLeft.seconds) }}
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('countdownCard.seconds', 'Seconds') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('countdownCard.seconds', 'Seconds') }}
+        </p>
       </div>
     </div>
 

@@ -64,11 +64,15 @@ function actionDescription(action: QuickAction): string {
 <template>
   <div class="bg-white dark:bg-gray-700 rounded-lg shadow">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.quickActionsTitle') }}</h2>
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+        {{ t('common.quickActionsTitle') }}
+      </h2>
     </div>
 
     <div v-if="loading" class="p-6 text-center">
-      <div class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"></div>
+      <div
+        class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"
+      ></div>
       <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('common.loadingActions') }}</p>
     </div>
 
@@ -83,7 +87,7 @@ function actionDescription(action: QuickAction): string {
         class="flex flex-col items-center p-4 rounded-lg transition-colors"
         :class="[
           getColorClasses(action.color),
-          action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+          action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
         ]"
         :disabled="action.disabled"
         @click="handleAction(action)"

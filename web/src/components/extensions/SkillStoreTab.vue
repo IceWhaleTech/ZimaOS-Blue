@@ -32,15 +32,19 @@ const selectedSkill = computed(() => {
   return skills.value.find((s) => s.id === selectedSkillId.value) || null
 })
 
-watch(skills, (list) => {
-  if (!list.length) {
-    selectedSkillId.value = null
-    return
-  }
-  if (!selectedSkillId.value || !list.some((s) => s.id === selectedSkillId.value)) {
-    selectedSkillId.value = list[0]!.id
-  }
-}, { immediate: true })
+watch(
+  skills,
+  (list) => {
+    if (!list.length) {
+      selectedSkillId.value = null
+      return
+    }
+    if (!selectedSkillId.value || !list.some((s) => s.id === selectedSkillId.value)) {
+      selectedSkillId.value = list[0]!.id
+    }
+  },
+  { immediate: true }
+)
 
 function getCategoryIcon(category?: string): string {
   const icons: Record<string, string> = {
@@ -67,7 +71,10 @@ function getCategoryLabel(category?: string): string {
 
 function getCategories(category?: string): string[] {
   if (!category) return []
-  return category.split(',').map((c) => c.trim()).filter((c) => c)
+  return category
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c) => c)
 }
 
 function formatNumber(num?: number): string {
@@ -297,7 +304,13 @@ onUnmounted(() => {
   <div class="skill-store-tab skill-store-redesign">
     <div class="filters">
       <div class="search-box">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          class="search-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.35-4.35" />
         </svg>
@@ -351,7 +364,13 @@ onUnmounted(() => {
     </div>
 
     <div v-if="initializing && !skills.length" class="initializing-state">
-      <svg class="initializing-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <svg
+        class="initializing-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
         <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
       </svg>
       <div class="initializing-spinner"></div>
@@ -365,13 +384,25 @@ onUnmounted(() => {
     </div>
 
     <div v-else-if="!loading && skills.length === 0" class="empty-state">
-      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg
+        class="empty-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.35-4.35" />
       </svg>
       <h3>{{ t('skillStore.noResults') }}</h3>
-      <p>{{ searchQuery ? t('skillStore.noResultsForQuery') : t('skillStore.noSkillsAvailable') }}</p>
-      <button v-if="searchQuery" class="btn-clear-search" @click="searchQuery = ''; handleSearch()">
+      <p>
+        {{ searchQuery ? t('skillStore.noResultsForQuery') : t('skillStore.noSkillsAvailable') }}
+      </p>
+      <button
+        v-if="searchQuery"
+        class="btn-clear-search"
+        @click="searchQuery = ''; handleSearch()"
+      >
         {{ t('skillStore.clearSearch') }}
       </button>
     </div>
@@ -382,7 +413,11 @@ onUnmounted(() => {
           <article
             v-for="skill in skills"
             :key="skill.id"
-            :class="['item-card', 'store-card', { installed: skill.installed, active: selectedSkillId === skill.id }]"
+            :class="[
+              'item-card',
+              'store-card',
+              { installed: skill.installed, active: selectedSkillId === skill.id },
+            ]"
             tabindex="0"
             role="button"
             @click="selectSkill(skill)"
@@ -415,24 +450,24 @@ onUnmounted(() => {
               </span>
               <span v-if="skill.stars" class="stat" :title="t('skillStore.stars')">
                 <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  <path
+                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                  />
                 </svg>
                 {{ formatNumber(skill.stars) }}
               </span>
               <span v-if="skill.rating" class="stat" :title="t('skillStore.rating')">
                 <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  <path
+                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                  />
                 </svg>
                 {{ skill.rating.toFixed(1) }}
               </span>
             </div>
 
             <div v-if="getCategories(skill.category).length" class="item-categories">
-              <span
-                v-for="cat in getCategories(skill.category)"
-                :key="cat"
-                class="category-badge"
-              >
+              <span v-for="cat in getCategories(skill.category)" :key="cat" class="category-badge">
                 {{ getCategoryLabel(cat) }}
               </span>
             </div>
@@ -446,9 +481,14 @@ onUnmounted(() => {
               >
                 <template v-if="installing.has(skill.id)">
                   <div class="install-progress-bar">
-                    <div class="install-progress-fill" :style="{ width: (installProgress.get(skill.id) || 0) + '%' }"></div>
+                    <div
+                      class="install-progress-fill"
+                      :style="{ width: (installProgress.get(skill.id) || 0) + '%' }"
+                    ></div>
                   </div>
-                  <span class="install-progress-text">{{ installProgress.get(skill.id) || 0 }}%</span>
+                  <span class="install-progress-text"
+                    >{{ installProgress.get(skill.id) || 0 }}%</span
+                  >
                 </template>
                 <span v-else>{{ t('skillStore.install') }}</span>
               </button>
@@ -478,10 +518,16 @@ onUnmounted(() => {
               <span class="detail-icon">{{ getCategoryIcon(selectedSkill.category) }}</span>
               <div>
                 <h2>{{ selectedSkill.name }}</h2>
-                <p>{{ selectedSkill.summary || selectedSkill.description || t('plugins.noDescription') }}</p>
+                <p>
+                  {{
+                    selectedSkill.summary || selectedSkill.description || t('plugins.noDescription')
+                  }}
+                </p>
               </div>
             </div>
-            <span class="source-badge">{{ selectedSkill.source_name || selectedSkill.source_id }}</span>
+            <span class="source-badge">{{
+              selectedSkill.source_name || selectedSkill.source_id
+            }}</span>
           </div>
 
           <div class="detail-actions">
@@ -493,9 +539,14 @@ onUnmounted(() => {
             >
               <template v-if="installing.has(selectedSkill.id)">
                 <div class="install-progress-bar">
-                  <div class="install-progress-fill" :style="{ width: (installProgress.get(selectedSkill.id) || 0) + '%' }"></div>
+                  <div
+                    class="install-progress-fill"
+                    :style="{ width: (installProgress.get(selectedSkill.id) || 0) + '%' }"
+                  ></div>
                 </div>
-                <span class="install-progress-text">{{ installProgress.get(selectedSkill.id) || 0 }}%</span>
+                <span class="install-progress-text"
+                  >{{ installProgress.get(selectedSkill.id) || 0 }}%</span
+                >
               </template>
               <span v-else>{{ t('skillStore.install') }}</span>
             </button>
@@ -540,12 +591,18 @@ onUnmounted(() => {
 
           <section class="detail-section" v-if="selectedSkill.readme">
             <h4>{{ t('skillStore.detail.sections.readme') }}</h4>
-            <div class="skill-content markdown-body" v-html="renderMarkdown(selectedSkill.readme)"></div>
+            <div
+              class="skill-content markdown-body"
+              v-html="renderMarkdown(selectedSkill.readme)"
+            ></div>
           </section>
 
           <section class="detail-section" v-else-if="selectedSkill.changelog">
             <h4>{{ t('skillStore.detail.sections.changelog') }}</h4>
-            <div class="skill-content markdown-body" v-html="renderMarkdown(selectedSkill.changelog)"></div>
+            <div
+              class="skill-content markdown-body"
+              v-html="renderMarkdown(selectedSkill.changelog)"
+            ></div>
           </section>
 
           <section class="detail-section" v-else>
@@ -598,7 +655,9 @@ onUnmounted(() => {
 
 .store-card.active {
   border-color: rgba(59, 130, 246, 0.45);
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35), 0 10px 22px rgba(59, 130, 246, 0.18);
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.35),
+    0 10px 22px rgba(59, 130, 246, 0.18);
 }
 
 .item-stats {

@@ -3,7 +3,11 @@
  * Run: npx vitest bench --run src/utils/__tests__/typeless-perf.bench.ts
  */
 import { bench, describe } from 'vitest'
-import { parseTypelessContent, parseTypelessContentIncremental, hasTypelessCards } from '../typeless'
+import {
+  parseTypelessContent,
+  parseTypelessContentIncremental,
+  hasTypelessCards,
+} from '../typeless'
 
 const SMALL = `Here is a simple response.
 
@@ -57,21 +61,39 @@ const STREAMING = `Partial response with unclosed code:
   "status": "running`
 
 describe('hasTypelessCards', () => {
-  bench('small', () => { hasTypelessCards(SMALL) })
-  bench('medium', () => { hasTypelessCards(MEDIUM) })
-  bench('large', () => { hasTypelessCards(LARGE) })
+  bench('small', () => {
+    hasTypelessCards(SMALL)
+  })
+  bench('medium', () => {
+    hasTypelessCards(MEDIUM)
+  })
+  bench('large', () => {
+    hasTypelessCards(LARGE)
+  })
 })
 
 describe('parseTypelessContent (full parse)', () => {
-  bench('small', () => { parseTypelessContent(SMALL) })
-  bench('medium', () => { parseTypelessContent(MEDIUM) })
-  bench('large', () => { parseTypelessContent(LARGE) })
+  bench('small', () => {
+    parseTypelessContent(SMALL)
+  })
+  bench('medium', () => {
+    parseTypelessContent(MEDIUM)
+  })
+  bench('large', () => {
+    parseTypelessContent(LARGE)
+  })
 })
 
 describe('parseTypelessContentIncremental', () => {
-  bench('small', () => { parseTypelessContentIncremental(SMALL, 'msg-1', 'conv-bench') })
-  bench('medium', () => { parseTypelessContentIncremental(MEDIUM, 'msg-2', 'conv-bench') })
-  bench('streaming (unclosed)', () => { parseTypelessContentIncremental(STREAMING, 'msg-3', 'conv-bench') })
+  bench('small', () => {
+    parseTypelessContentIncremental(SMALL, 'msg-1', 'conv-bench')
+  })
+  bench('medium', () => {
+    parseTypelessContentIncremental(MEDIUM, 'msg-2', 'conv-bench')
+  })
+  bench('streaming (unclosed)', () => {
+    parseTypelessContentIncremental(STREAMING, 'msg-3', 'conv-bench')
+  })
 })
 
 describe('streaming simulation', () => {

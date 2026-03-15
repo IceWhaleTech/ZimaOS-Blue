@@ -62,13 +62,16 @@ export const cronApi = {
   delete: (id: string) => api.delete<{ status: string }>(`/cron/${id}`, { baseURL: '/api' }),
 
   // Enable cron job
-  enable: (id: string) => api.post<{ status: string }>(`/cron/${id}/enable`, null, { baseURL: '/api' }),
+  enable: (id: string) =>
+    api.post<{ status: string }>(`/cron/${id}/enable`, null, { baseURL: '/api' }),
 
   // Disable cron job
-  disable: (id: string) => api.post<{ status: string }>(`/cron/${id}/disable`, null, { baseURL: '/api' }),
+  disable: (id: string) =>
+    api.post<{ status: string }>(`/cron/${id}/disable`, null, { baseURL: '/api' }),
 
   // Trigger cron job manually
-  trigger: (id: string) => api.post<{ status: string }>(`/cron/${id}/trigger`, null, { baseURL: '/api' }),
+  trigger: (id: string) =>
+    api.post<{ status: string }>(`/cron/${id}/trigger`, null, { baseURL: '/api' }),
 
   // Get job executions
   getExecutions: (id: string, limit = 20) =>

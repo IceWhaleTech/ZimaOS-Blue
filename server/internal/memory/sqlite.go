@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -190,10 +191,21 @@ func (s *Store) migrate() error {
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 	);
 
+	CREATE TABLE IF NOT EXISTS user_command_state (
+		user_id TEXT PRIMARY KEY,
+		selected_provider_id TEXT NOT NULL DEFAULT '',
+		selected_model_id TEXT NOT NULL DEFAULT '',
+		offline BOOLEAN NOT NULL DEFAULT 0,
+		web_search_enabled BOOLEAN NOT NULL DEFAULT 1,
+		deep_research_enabled BOOLEAN NOT NULL DEFAULT 0,
+		updated_at DATETIME NOT NULL
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
 	CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at);
 	CREATE INDEX IF NOT EXISTS idx_conversation_runtime_state_updated_at ON conversation_runtime_state(updated_at);
 	CREATE INDEX IF NOT EXISTS idx_conversation_command_state_updated_at ON conversation_command_state(updated_at);
+	CREATE INDEX IF NOT EXISTS idx_user_command_state_updated_at ON user_command_state(updated_at);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -861,19 +873,27 @@ func (s *Store) GetLatestAssistantMessage(ctx context.Context, conversationID st
 	return &msg, nil
 }
 
-// GetConversationCommandState returns persisted deterministic command state for a conversation.
-// Missing rows fall back to defaults: provider/model auto, offline=false, web=true, deep=false.
-func (s *Store) GetConversationCommandState(ctx context.Context, conversationID string) (ConversationCommandState, error) {
-	conversationID = strings.TrimSpace(conversationID)
-	state := ConversationCommandState{
-		ConversationID:      conversationID,
+func defaultConversationCommandState(conversationID string) ConversationCommandState {
+	return ConversationCommandState{
+		ConversationID:      strings.TrimSpace(conversationID),
 		WebSearchEnabled:    true,
 		DeepResearchEnabled: false,
 	}
-	if conversationID == "" {
-		return state, nil
-	}
+}
 
+func (s *Store) getConversationCommandStateScope(ctx context.Context, conversationID string) (string, error) {
+	var userID string
+	if err := s.db.QueryRowContext(ctx, "SELECT user_id FROM conversations WHERE id = ?", conversationID).Scan(&userID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", ErrNotFound
+		}
+		return "", fmt.Errorf("failed to resolve conversation command state scope: %w", err)
+	}
+	return strings.TrimSpace(userID), nil
+}
+
+func (s *Store) getPersistedConversationCommandState(ctx context.Context, conversationID string) (ConversationCommandState, bool, error) {
+	state := defaultConversationCommandState(conversationID)
 	var selectedProviderID, selectedModelID string
 	var offline, webSearchEnabled, deepResearchEnabled bool
 	var updatedAt time.Time
@@ -884,10 +904,10 @@ func (s *Store) GetConversationCommandState(ctx context.Context, conversationID 
 		conversationID,
 	).Scan(&selectedProviderID, &selectedModelID, &offline, &webSearchEnabled, &deepResearchEnabled, &updatedAt)
 	if err == sql.ErrNoRows {
-		return state, nil
+		return state, false, nil
 	}
 	if err != nil {
-		return state, fmt.Errorf("failed to get conversation command state: %w", err)
+		return state, false, fmt.Errorf("failed to get conversation command state: %w", err)
 	}
 
 	state.SelectedProviderID = strings.TrimSpace(selectedProviderID)
@@ -896,14 +916,122 @@ func (s *Store) GetConversationCommandState(ctx context.Context, conversationID 
 	state.WebSearchEnabled = webSearchEnabled
 	state.DeepResearchEnabled = deepResearchEnabled
 	state.UpdatedAt = updatedAt
-	return state, nil
+	return state, true, nil
+}
+
+func (s *Store) getPersistedUserCommandState(ctx context.Context, userID string) (ConversationCommandState, bool, error) {
+	state := defaultConversationCommandState("")
+	var selectedProviderID, selectedModelID string
+	var offline, webSearchEnabled, deepResearchEnabled bool
+	var updatedAt time.Time
+	err := s.db.QueryRowContext(ctx,
+		`SELECT selected_provider_id, selected_model_id, offline, web_search_enabled, deep_research_enabled, updated_at
+		FROM user_command_state
+		WHERE user_id = ?`,
+		userID,
+	).Scan(&selectedProviderID, &selectedModelID, &offline, &webSearchEnabled, &deepResearchEnabled, &updatedAt)
+	if err == sql.ErrNoRows {
+		return state, false, nil
+	}
+	if err != nil {
+		return state, false, fmt.Errorf("failed to get user command state: %w", err)
+	}
+
+	state.SelectedProviderID = strings.TrimSpace(selectedProviderID)
+	state.SelectedModelID = strings.TrimSpace(selectedModelID)
+	state.Offline = offline
+	state.WebSearchEnabled = webSearchEnabled
+	state.DeepResearchEnabled = deepResearchEnabled
+	state.UpdatedAt = updatedAt
+	return state, true, nil
+}
+
+func (s *Store) getLatestLegacyConversationCommandStateForUser(ctx context.Context, userID string) (ConversationCommandState, bool, error) {
+	state := defaultConversationCommandState("")
+	var selectedProviderID, selectedModelID string
+	var offline, webSearchEnabled, deepResearchEnabled bool
+	var updatedAt time.Time
+	err := s.db.QueryRowContext(ctx,
+		`SELECT cs.selected_provider_id, cs.selected_model_id, cs.offline, cs.web_search_enabled, cs.deep_research_enabled, cs.updated_at
+		FROM conversation_command_state cs
+		INNER JOIN conversations c ON c.id = cs.conversation_id
+		WHERE c.user_id = ?
+		ORDER BY cs.updated_at DESC, cs.conversation_id DESC
+		LIMIT 1`,
+		userID,
+	).Scan(&selectedProviderID, &selectedModelID, &offline, &webSearchEnabled, &deepResearchEnabled, &updatedAt)
+	if err == sql.ErrNoRows {
+		return state, false, nil
+	}
+	if err != nil {
+		return state, false, fmt.Errorf("failed to get legacy conversation command state for user: %w", err)
+	}
+
+	state.SelectedProviderID = strings.TrimSpace(selectedProviderID)
+	state.SelectedModelID = strings.TrimSpace(selectedModelID)
+	state.Offline = offline
+	state.WebSearchEnabled = webSearchEnabled
+	state.DeepResearchEnabled = deepResearchEnabled
+	state.UpdatedAt = updatedAt
+	return state, true, nil
+}
+
+// GetConversationCommandState returns persisted deterministic command state for a conversation.
+// For authenticated conversations (with user_id), state is user-scoped and shared across sessions.
+// Missing rows fall back to defaults: provider/model auto, offline=false, web=true, deep=false.
+func (s *Store) GetConversationCommandState(ctx context.Context, conversationID string) (ConversationCommandState, error) {
+	conversationID = strings.TrimSpace(conversationID)
+	state := defaultConversationCommandState(conversationID)
+	if conversationID == "" {
+		return state, nil
+	}
+
+	userID, err := s.getConversationCommandStateScope(ctx, conversationID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return state, nil
+		}
+		return state, err
+	}
+	if userID != "" {
+		userState, ok, err := s.getPersistedUserCommandState(ctx, userID)
+		if err != nil {
+			return state, err
+		}
+		if ok {
+			userState.ConversationID = conversationID
+			return userState, nil
+		}
+		// Compatibility fallback for legacy per-conversation rows before user-scoped state was introduced.
+		legacy, ok, err := s.getLatestLegacyConversationCommandStateForUser(ctx, userID)
+		if err != nil {
+			return state, err
+		}
+		if ok {
+			legacy.ConversationID = conversationID
+			return legacy, nil
+		}
+		return state, nil
+	}
+
+	convState, _, err := s.getPersistedConversationCommandState(ctx, conversationID)
+	if err != nil {
+		return state, err
+	}
+	return convState, nil
 }
 
 // UpsertConversationCommandState stores deterministic command state for a conversation.
+// For authenticated conversations (with user_id), state is persisted once per user.
 func (s *Store) UpsertConversationCommandState(ctx context.Context, state ConversationCommandState) error {
 	conversationID := strings.TrimSpace(state.ConversationID)
 	if conversationID == "" {
 		return nil
+	}
+
+	userID, err := s.getConversationCommandStateScope(ctx, conversationID)
+	if err != nil {
+		return err
 	}
 
 	state.ConversationID = conversationID
@@ -914,7 +1042,33 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.db.ExecContext(ctx,
+	if userID != "" {
+		_, err = s.db.ExecContext(ctx,
+			`INSERT INTO user_command_state (user_id, selected_provider_id, selected_model_id, offline, web_search_enabled, deep_research_enabled, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(user_id)
+			DO UPDATE SET
+				selected_provider_id = excluded.selected_provider_id,
+				selected_model_id = excluded.selected_model_id,
+				offline = excluded.offline,
+				web_search_enabled = excluded.web_search_enabled,
+				deep_research_enabled = excluded.deep_research_enabled,
+				updated_at = excluded.updated_at`,
+			userID,
+			state.SelectedProviderID,
+			state.SelectedModelID,
+			state.Offline,
+			state.WebSearchEnabled,
+			state.DeepResearchEnabled,
+			state.UpdatedAt,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to upsert user command state: %w", err)
+		}
+		return nil
+	}
+
+	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO conversation_command_state (conversation_id, selected_provider_id, selected_model_id, offline, web_search_enabled, deep_research_enabled, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(conversation_id)
@@ -940,14 +1094,30 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 }
 
 // ClearConversationCommandState removes persisted deterministic command state for a conversation.
+// For authenticated conversations (with user_id), this clears the shared user-scoped state.
 func (s *Store) ClearConversationCommandState(ctx context.Context, conversationID string) error {
 	conversationID = strings.TrimSpace(conversationID)
 	if conversationID == "" {
 		return nil
 	}
 
+	userID, err := s.getConversationCommandStateScope(ctx, conversationID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if userID != "" {
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM user_command_state WHERE user_id = ?`, userID); err != nil {
+			return fmt.Errorf("failed to clear user command state: %w", err)
+		}
+		return nil
+	}
 
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM conversation_command_state WHERE conversation_id = ?`, conversationID); err != nil {
 		return fmt.Errorf("failed to clear conversation command state: %w", err)

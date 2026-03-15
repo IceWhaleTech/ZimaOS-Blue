@@ -49,7 +49,12 @@ describe('CardBrowserProgress', () => {
             { step: 'navigate', name: 'Navigating', status: 'running' },
             { step: 'snapshot', name: 'Reading page', status: 'pending' },
             { step: 'screenshot', name: 'Capturing screenshot', status: 'success' },
-            { step: 'recipe', name: 'Running login recipe', status: 'running', recipe_name: 'login recipe' },
+            {
+              step: 'recipe',
+              name: 'Running login recipe',
+              status: 'running',
+              recipe_name: 'login recipe',
+            },
           ],
         },
       },
@@ -73,9 +78,7 @@ describe('CardBrowserProgress', () => {
       props: {
         card: {
           type: 'browser-progress',
-          steps: [
-            { step: 'recipe', name: 'Running login recipe', status: 'running' },
-          ],
+          steps: [{ step: 'recipe', name: 'Running login recipe', status: 'running' }],
         },
       },
       global: {
@@ -91,9 +94,7 @@ describe('CardBrowserProgress', () => {
       props: {
         card: {
           type: 'browser-progress',
-          steps: [
-            { step: 'download', name: 'Downloading assets', status: 'running' },
-          ],
+          steps: [{ step: 'download', name: 'Downloading assets', status: 'running' }],
         },
       },
       global: {

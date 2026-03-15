@@ -13,7 +13,11 @@ import { speechApi } from '@/api/speech'
 import { WakeWordDetector } from '@/utils/wakeword'
 import { convertToWav } from '@/utils/audioConverter'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
-import { isTtsAutoPlayEnabled, isTtsSpeechMuted, setTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
+import {
+  isTtsAutoPlayEnabled,
+  isTtsSpeechMuted,
+  setTtsAutoPlayEnabled,
+} from '@/utils/ttsPreferences'
 import { useChatStore } from '@/stores/chat'
 
 const { t } = useI18n()
@@ -314,56 +318,187 @@ function parseCheckpointDecision(text: string): 'continue' | 'cancel' | '' {
   const normalized = text
     .trim()
     .toLowerCase()
-    .replace(/^[\s.,!?;:，。！？；：、'"`“”‘’()（）【】\[\]-]+|[\s.,!?;:，。！？；：、'"`“”‘’()（）【】\[\]-]+$/g, '')
+    .replace(
+      /^[\s.,!?;:，。！？；：、'"`“”‘’()（）【】\[\]-]+|[\s.,!?;:，。！？；：、'"`“”‘’()（）【】\[\]-]+$/g,
+      ''
+    )
 
   if (!normalized) return ''
-  if ([
-    '1', 'y', 'yes', 'ok', 'okay', 'continue', 'proceed', 'confirm',
-    '好', '好的', '行', '可以', '继续', '继续吧', '确认', '繼續', '確認',
-    'oui', 'continuer', 'confirmer',
-    'ja', 'weiter', 'bestätigen', 'bestaetigen',
-    'sí', 'si', 'continuar', 'confirmar', 'continúa', 'continua',
-    'sì', 'continua', 'conferma',
-    'sim',
-    'да', 'продолжить', 'подтвердить',
-    'はい', '続行', '確認する',
-    '네', '예', '계속', '확인',
-    'ano', 'pokračovat', 'pokracovat', 'potvrdit',
-    'tak', 'kontynuuj', 'potwierdz',
-    'نعم',
-    'ναι', 'συνέχεια', 'συνεχίστε', 'συνεχισε',
-    'igen', 'folytatás', 'folytatas', 'megerősít', 'megerosit',
-    'da', 'nastavi', 'potvrdi', 'confirmă', 'confirma',
-    'fortsett', 'bekreft',
-    'fortsätt', 'fortsaett', 'bekräfta', 'bekrafta',
-    'lean ar aghaidh', 'deimhnigh',
-    'അതെ', 'തുടരുക', 'സ്ഥിരീകരിക്കുക',
-  ].includes(normalized)) {
+  if (
+    [
+      '1',
+      'y',
+      'yes',
+      'ok',
+      'okay',
+      'continue',
+      'proceed',
+      'confirm',
+      '好',
+      '好的',
+      '行',
+      '可以',
+      '继续',
+      '继续吧',
+      '确认',
+      '繼續',
+      '確認',
+      'oui',
+      'continuer',
+      'confirmer',
+      'ja',
+      'weiter',
+      'bestätigen',
+      'bestaetigen',
+      'sí',
+      'si',
+      'continuar',
+      'confirmar',
+      'continúa',
+      'continua',
+      'sì',
+      'continua',
+      'conferma',
+      'sim',
+      'да',
+      'продолжить',
+      'подтвердить',
+      'はい',
+      '続行',
+      '確認する',
+      '네',
+      '예',
+      '계속',
+      '확인',
+      'ano',
+      'pokračovat',
+      'pokracovat',
+      'potvrdit',
+      'tak',
+      'kontynuuj',
+      'potwierdz',
+      'نعم',
+      'ναι',
+      'συνέχεια',
+      'συνεχίστε',
+      'συνεχισε',
+      'igen',
+      'folytatás',
+      'folytatas',
+      'megerősít',
+      'megerosit',
+      'da',
+      'nastavi',
+      'potvrdi',
+      'confirmă',
+      'confirma',
+      'fortsett',
+      'bekreft',
+      'fortsätt',
+      'fortsaett',
+      'bekräfta',
+      'bekrafta',
+      'lean ar aghaidh',
+      'deimhnigh',
+      'അതെ',
+      'തുടരുക',
+      'സ്ഥിരീകരിക്കുക',
+    ].includes(normalized)
+  ) {
     return 'continue'
   }
-  if ([
-    '2', 'n', 'no', 'cancel', 'stop', 'deny', 'reject', 'abort',
-    '取消', '拒绝', '不要', '停止', '中止', '取消吧', '拒絕',
-    'non', 'annuler', 'arrêter', 'arreter', 'refuser',
-    'nein', 'abbrechen', 'stopp', 'ablehnen',
-    'cancelar', 'detener', 'rechazar',
-    'annulla', 'ferma', 'rifiuta',
-    'não', 'nao', 'parar', 'recusar',
-    'нет', 'отмена', 'стоп', 'отклонить',
-    'いいえ', 'キャンセル', '停止', '拒否',
-    '아니요', '아니오', '취소', '중지', '거부',
-    'ne', 'zrušit', 'zrusit', 'zamítnout', 'zamitnout',
-    'nie', 'anuluj', 'odrzuć', 'odrzuc',
-    'όχι', 'ακύρωση', 'ακυρωση', 'σταμάτα', 'σταματα',
-    'nem', 'mégse', 'megse', 'elutasít', 'elutasit',
-    'otkaži', 'otkazi', 'odbij',
-    'nu', 'anulează', 'anuleaza', 'respinge',
-    'stans', 'afbryd',
-    'nei', 'avbryt',
-    'nej', 'avbryt', 'avbryt',
-    'ná', 'na', 'cealaigh', 'diúltaigh', 'diultaigh',
-    'ഇല്ല', 'റദ്ദാക്കുക', 'നിർത്തുക',
-  ].includes(normalized)) {
+  if (
+    [
+      '2',
+      'n',
+      'no',
+      'cancel',
+      'stop',
+      'deny',
+      'reject',
+      'abort',
+      '取消',
+      '拒绝',
+      '不要',
+      '停止',
+      '中止',
+      '取消吧',
+      '拒絕',
+      'non',
+      'annuler',
+      'arrêter',
+      'arreter',
+      'refuser',
+      'nein',
+      'abbrechen',
+      'stopp',
+      'ablehnen',
+      'cancelar',
+      'detener',
+      'rechazar',
+      'annulla',
+      'ferma',
+      'rifiuta',
+      'não',
+      'nao',
+      'parar',
+      'recusar',
+      'нет',
+      'отмена',
+      'стоп',
+      'отклонить',
+      'いいえ',
+      'キャンセル',
+      '停止',
+      '拒否',
+      '아니요',
+      '아니오',
+      '취소',
+      '중지',
+      '거부',
+      'ne',
+      'zrušit',
+      'zrusit',
+      'zamítnout',
+      'zamitnout',
+      'nie',
+      'anuluj',
+      'odrzuć',
+      'odrzuc',
+      'όχι',
+      'ακύρωση',
+      'ακυρωση',
+      'σταμάτα',
+      'σταματα',
+      'nem',
+      'mégse',
+      'megse',
+      'elutasít',
+      'elutasit',
+      'otkaži',
+      'otkazi',
+      'odbij',
+      'nu',
+      'anulează',
+      'anuleaza',
+      'respinge',
+      'stans',
+      'afbryd',
+      'nei',
+      'avbryt',
+      'nej',
+      'avbryt',
+      'avbryt',
+      'ná',
+      'na',
+      'cealaigh',
+      'diúltaigh',
+      'diultaigh',
+      'ഇല്ല',
+      'റദ്ദാക്കുക',
+      'നിർത്തുക',
+    ].includes(normalized)
+  ) {
     return 'cancel'
   }
   return ''
@@ -374,10 +509,12 @@ async function submitCheckpointDecision(decision: 'continue' | 'cancel') {
   if (!pending || pending.questions.length === 0) return
   const first = pending.questions[0]
   if (!first) return
-  await chatStore.submitQuestionAnswers([{
-    question_id: first.id,
-    selected: [decision],
-  }])
+  await chatStore.submitQuestionAnswers([
+    {
+      question_id: first.id,
+      selected: [decision],
+    },
+  ])
 }
 
 async function trySubmitCheckpointByVoice(text: string) {
@@ -415,8 +552,19 @@ watch(wakeWordEnabled, () => {
     >
       <span>{{ error }}</span>
       <button class="text-red-300 hover:text-red-100" @click="error = null">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M6 18L18 6M6 6l12 12"
+          />
         </svg>
       </button>
     </div>
@@ -499,7 +647,9 @@ watch(wakeWordEnabled, () => {
         </div>
         <div class="flex items-center gap-4">
           <div class="flex-1">
-            <label class="block text-xs text-gray-500 mb-1">{{ t('voiceView.wakeWordLabel') }}</label>
+            <label class="block text-xs text-gray-500 mb-1">{{
+              t('voiceView.wakeWordLabel')
+            }}</label>
             <input
               v-model="wakeWord"
               type="text"
@@ -514,7 +664,9 @@ watch(wakeWordEnabled, () => {
               :class="wakeWordListening ? 'bg-green-500 animate-pulse' : 'bg-gray-500'"
             ></span>
             <span class="text-xs text-gray-500">
-              {{ wakeWordListening ? t('voiceView.wakeWordListening') : t('voiceView.wakeWordIdle') }}
+              {{
+                wakeWordListening ? t('voiceView.wakeWordListening') : t('voiceView.wakeWordIdle')
+              }}
             </span>
           </div>
         </div>
@@ -522,10 +674,18 @@ watch(wakeWordEnabled, () => {
     </div>
 
     <!-- Browser checkpoint confirmation (voice + button fallback) -->
-    <div v-if="pendingCheckpointQuestion" class="bg-blue-900/30 border border-blue-500/40 rounded-lg p-4 mb-6">
-      <div class="text-sm font-medium text-blue-200 mb-1">{{ t('voiceView.checkpoint.title') }}</div>
+    <div
+      v-if="pendingCheckpointQuestion"
+      class="bg-blue-900/30 border border-blue-500/40 rounded-lg p-4 mb-6"
+    >
+      <div class="text-sm font-medium text-blue-200 mb-1">
+        {{ t('voiceView.checkpoint.title') }}
+      </div>
       <div class="text-xs text-blue-100/90 mb-2">
-        {{ pendingCheckpointQuestion.questions[0]?.question || t('voiceView.checkpoint.fallbackQuestion') }}
+        {{
+          pendingCheckpointQuestion.questions[0]?.question ||
+          t('voiceView.checkpoint.fallbackQuestion')
+        }}
       </div>
       <div class="text-xs text-blue-200/80 mb-3">{{ t('voiceView.checkpoint.help') }}</div>
       <div class="flex gap-2">
@@ -547,8 +707,19 @@ watch(wakeWordEnabled, () => {
     <!-- Messages -->
     <div class="bg-gray-700 rounded-lg mb-6 min-h-[300px] max-h-[400px] overflow-y-auto">
       <div v-if="messages.length === 0" class="p-8 text-center text-gray-500">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-12 w-12 mx-auto mb-4 opacity-50"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+          />
         </svg>
         <p>{{ t('voiceView.emptyHint') }}</p>
       </div>
@@ -561,7 +732,11 @@ watch(wakeWordEnabled, () => {
         >
           <div
             class="max-w-[80%] rounded-lg px-4 py-2"
-            :class="msg.role === 'user' ? 'bg-gray-700 dark:bg-gray-500 text-white' : 'bg-gray-700 text-gray-200'"
+            :class="
+              msg.role === 'user'
+                ? 'bg-gray-700 dark:bg-gray-500 text-white'
+                : 'bg-gray-700 text-gray-200'
+            "
           >
             {{ msg.text }}
           </div>
@@ -596,7 +771,8 @@ watch(wakeWordEnabled, () => {
         :class="{
           'bg-gray-700 cursor-not-allowed': !isConnected || sessionState !== 'idle',
           'bg-red-600 hover:bg-red-700 scale-110': isRecording,
-          'bg-gray-700 dark:bg-gray-500 hover:bg-gray-700 dark:bg-gray-500': canRecord && !isRecording,
+          'bg-gray-700 dark:bg-gray-500 hover:bg-gray-700 dark:bg-gray-500':
+            canRecord && !isRecording,
         }"
         @mousedown="startRecording"
         @mouseup="stopRecording"

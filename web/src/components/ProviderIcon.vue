@@ -10,7 +10,7 @@ const props = defineProps<{
 // Alias mapping for providers with multiple names
 const aliases: Record<string, string> = {
   'azure-openai': 'azure',
-  'bedrock': 'aws',
+  bedrock: 'aws',
   'zimaos-blue-trial': '__trial__',
   'dashscope-image': 'qwen',
   'gemini-image': 'google',
@@ -19,9 +19,28 @@ const aliases: Record<string, string> = {
 
 // Known provider icon files
 const knownIcons = new Set([
-  'aihubmix', 'anthropic', 'aws', 'azure', 'codex', 'copilot', 'deepseek', 'default',
-  'glm', 'google', 'grok', 'minimax', 'moonshot', 'mulerouter', 'ngrok', 'nvidia', 'ollama',
-  'openai', 'openrouter', 'qwen', 'siliconflow', 'venice',
+  'aihubmix',
+  'anthropic',
+  'aws',
+  'azure',
+  'codex',
+  'copilot',
+  'deepseek',
+  'default',
+  'glm',
+  'google',
+  'grok',
+  'minimax',
+  'moonshot',
+  'mulerouter',
+  'ngrok',
+  'nvidia',
+  'ollama',
+  'openai',
+  'openrouter',
+  'qwen',
+  'siliconflow',
+  'venice',
 ])
 
 // Try to match a known icon from a custom provider ID (e.g. "custom-anthropic-cursor" → "anthropic")
@@ -42,11 +61,16 @@ const iconSrc = computed(() => {
 
 const sizeClass = computed(() => {
   switch (props.size) {
-    case 'sm': return 'w-4 h-4'
-    case 'md': return 'w-5 h-5'
-    case 'lg': return 'w-6 h-6'
-    case 'xl': return 'w-8 h-8'
-    default: return 'w-5 h-5'
+    case 'sm':
+      return 'w-4 h-4'
+    case 'md':
+      return 'w-5 h-5'
+    case 'lg':
+      return 'w-6 h-6'
+    case 'xl':
+      return 'w-8 h-8'
+    default:
+      return 'w-5 h-5'
   }
 })
 </script>
@@ -57,6 +81,14 @@ const sizeClass = computed(() => {
     :alt="providerId"
     :class="[sizeClass, 'dark:brightness-150']"
     class="inline-block"
-    @error="(e) => { const img = e.target as HTMLImageElement; if (!img.dataset.fallback) { img.dataset.fallback = '1'; img.src = '/icons/providers/default.svg' } }"
+    @error="
+      (e) => {
+        const img = e.target as HTMLImageElement
+        if (!img.dataset.fallback) {
+          img.dataset.fallback = '1'
+          img.src = '/icons/providers/default.svg'
+        }
+      }
+    "
   />
 </template>

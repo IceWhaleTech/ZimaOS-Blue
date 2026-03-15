@@ -65,12 +65,13 @@ type StatusKey = keyof typeof statusConfig
 
 const cardStatus = computed<StatusKey>(() => {
   const s = props.card.status
-  return s && s in statusConfig ? s as StatusKey : 'info'
+  return s && s in statusConfig ? (s as StatusKey) : 'info'
 })
 
 const buttonClasses = {
   primary: 'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white',
-  secondary: 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300',
+  secondary:
+    'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300',
   danger: 'bg-red-500 hover:bg-red-600 text-white',
 }
 
@@ -83,7 +84,12 @@ function isMapValue(val: unknown): val is Record<string, unknown> {
 function tryParseObject(val: unknown): Record<string, unknown> | null {
   if (isMapValue(val)) return val
   if (typeof val === 'string' && val.startsWith('{')) {
-    try { const o = JSON.parse(val); if (isMapValue(o)) return o } catch { /* not JSON */ }
+    try {
+      const o = JSON.parse(val)
+      if (isMapValue(o)) return o
+    } catch {
+      /* not JSON */
+    }
   }
   return null
 }
@@ -111,7 +117,9 @@ async function copyTitle() {
   try {
     await navigator.clipboard.writeText(props.card.title)
     titleCopied.value = true
-    setTimeout(() => { titleCopied.value = false }, 2000)
+    setTimeout(() => {
+      titleCopied.value = false
+    }, 2000)
   } catch {
     console.error('Failed to copy title')
   }
@@ -126,7 +134,9 @@ function isActionDisabled(action: { disabled?: boolean }): boolean {
 }
 
 function actionButtonLabel(action: { id: string; label: string }): string {
-  return isActionActive(action.id) ? t('common.processing', 'Processing...') : tAction(action.id, action.label)
+  return isActionActive(action.id)
+    ? t('common.processing', 'Processing...')
+    : tAction(action.id, action.label)
 }
 
 function handleAction(actionId: string, disabled = false) {
@@ -219,7 +229,10 @@ const translatedMessage = computed(() => {
       if (re.test(msg)) return t(key, msg)
     }
   }
-  const normalizedMessage = msg.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  const normalizedMessage = msg
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
   const key = 'resultCard.messages.' + normalizedMessage
   return te(key) ? t(key) : msg
 })
@@ -229,7 +242,12 @@ const warningCodeLabel = computed(() => formatToolWarningCodeLabel(props.card.wa
 const resolvedImageSrc = computed(() => {
   const raw = (props.card.image || '').trim()
   if (!raw) return ''
-  if (raw.startsWith('data:image/') || raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/')) {
+  if (
+    raw.startsWith('data:image/') ||
+    raw.startsWith('http://') ||
+    raw.startsWith('https://') ||
+    raw.startsWith('/')
+  ) {
     return raw
   }
   return `data:image/png;base64,${raw}`
@@ -239,14 +257,14 @@ const resolvedImageSrc = computed(() => {
 const visibleDetails = computed(() => {
   if (!props.card.details) return []
   return props.card.details
-    .filter(d => {
+    .filter((d) => {
       const lbl = d.label.toLowerCase()
       if (lbl === 'status' || lbl === '状态') return false
       if (lbl === 'warning' || lbl === 'warning_code') return false
       if ((lbl === 'result' || lbl === '结果') && props.card.message) return false
       return true
     })
-    .map(d => ({
+    .map((d) => ({
       ...d,
       parsedObject: tryParseObject(d.value),
       isMultiline: d.multiline || (typeof d.value === 'string' && d.value.includes('\n')),
@@ -298,7 +316,12 @@ const visibleDetails = computed(() => {
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+          />
         </svg>
         <svg
           v-else
@@ -308,7 +331,12 @@ const visibleDetails = computed(() => {
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M5 13l4 4L19 7"
+          />
         </svg>
       </button>
     </div>
@@ -341,38 +369,63 @@ const visibleDetails = computed(() => {
         class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/60 dark:bg-amber-900/20"
         :class="card.message ? 'mt-3' : ''"
       >
-        <div class="flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-200">
+        <div
+          class="flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-200"
+        >
           <span>{{ warningCodeLabel || t('toolWarnings.warning', 'Warning') }}</span>
         </div>
-        <p v-if="warningText" class="mt-1 text-sm leading-relaxed text-amber-900 dark:text-amber-100">
+        <p
+          v-if="warningText"
+          class="mt-1 text-sm leading-relaxed text-amber-900 dark:text-amber-100"
+        >
           {{ warningText }}
         </p>
       </div>
 
       <!-- Details -->
       <div v-if="visibleDetails.length > 0" class="mt-2.5">
-        <div class="rounded-md bg-gray-50 dark:bg-gray-900/40 divide-y divide-gray-100 dark:divide-gray-700/50">
+        <div
+          class="rounded-md bg-gray-50 dark:bg-gray-900/40 divide-y divide-gray-100 dark:divide-gray-700/50"
+        >
           <div
             v-for="(detail, index) in visibleDetails"
             :key="index"
             class="px-3.5 py-2.5 text-sm group"
-            :class="detail.parsedObject || detail.isMultiline ? 'flex flex-col gap-1.5' : 'flex items-center justify-between'"
+            :class="
+              detail.parsedObject || detail.isMultiline
+                ? 'flex flex-col gap-1.5'
+                : 'flex items-center justify-between'
+            "
           >
-            <span class="text-gray-400 dark:text-gray-500 text-xs flex-shrink-0">{{ tLabel(detail.label) }}</span>
+            <span class="text-gray-400 dark:text-gray-500 text-xs flex-shrink-0">{{
+              tLabel(detail.label)
+            }}</span>
             <!-- Nested table for map/object values -->
-            <div v-if="detail.parsedObject" class="rounded border border-gray-200 dark:border-gray-700/60 bg-white dark:bg-gray-800/60 divide-y divide-gray-100 dark:divide-gray-700/40 overflow-hidden">
+            <div
+              v-if="detail.parsedObject"
+              class="rounded border border-gray-200 dark:border-gray-700/60 bg-white dark:bg-gray-800/60 divide-y divide-gray-100 dark:divide-gray-700/40 overflow-hidden"
+            >
               <div
                 v-for="(subVal, subKey) in detail.parsedObject"
                 :key="String(subKey)"
                 class="flex items-center justify-between px-3 py-1.5 text-xs"
               >
                 <span class="text-gray-400 dark:text-gray-500">{{ tLabel(String(subKey)) }}</span>
-                <span class="text-gray-700 dark:text-gray-300 font-mono text-right max-w-[70%] break-all">{{ toDisplayString(subVal) }}</span>
+                <span
+                  class="text-gray-700 dark:text-gray-300 font-mono text-right max-w-[70%] break-all"
+                  >{{ toDisplayString(subVal) }}</span
+                >
               </div>
             </div>
             <!-- Multiline text value (e.g. stdout) -->
-            <div v-else-if="detail.isMultiline" class="rounded border border-gray-200 dark:border-gray-700/60 bg-gray-50 dark:bg-gray-900/60 overflow-hidden">
-              <pre class="px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-64 overflow-y-auto leading-relaxed">{{ detail.value }}</pre>
+            <div
+              v-else-if="detail.isMultiline"
+              class="rounded border border-gray-200 dark:border-gray-700/60 bg-gray-50 dark:bg-gray-900/60 overflow-hidden"
+            >
+              <pre
+                class="px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-64 overflow-y-auto leading-relaxed"
+                >{{ detail.value }}</pre
+              >
             </div>
             <!-- Link value -->
             <div v-else-if="detail.isLink" class="flex items-center gap-1.5">
@@ -381,7 +434,8 @@ const visibleDetails = computed(() => {
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-              >{{ t('resultCard.openLink', 'Open') }} ↗</a>
+                >{{ t('resultCard.openLink', 'Open') }} ↗</a
+              >
             </div>
             <div v-else-if="detail.isLocalPath" class="flex items-center gap-1.5">
               <button
@@ -393,11 +447,18 @@ const visibleDetails = computed(() => {
             </div>
             <!-- Simple string value -->
             <div v-else class="flex items-center gap-1.5">
-              <span class="text-gray-700 dark:text-gray-300 font-mono text-xs">{{ tDetailValue(detail.label, detail.value) }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span>
+              <span class="text-gray-700 dark:text-gray-300 font-mono text-xs"
+                >{{ tDetailValue(detail.label, detail.value)
+                }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span
+              >
               <button
                 v-if="detail.copyable"
                 class="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
-                :title="copiedIndex === index ? t('resultCard.copied', 'Copied!') : t('resultCard.copy', 'Copy')"
+                :title="
+                  copiedIndex === index
+                    ? t('resultCard.copied', 'Copied!')
+                    : t('resultCard.copy', 'Copy')
+                "
                 @click="copyValue(detail.value, index)"
               >
                 <svg
@@ -442,7 +503,10 @@ const visibleDetails = computed(() => {
           v-for="action in card.actions"
           :key="action.id"
           class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :class="[buttonClasses[action.variant || 'secondary'], { 'opacity-60 cursor-wait': actionLoading }]"
+          :class="[
+            buttonClasses[action.variant || 'secondary'],
+            { 'opacity-60 cursor-wait': actionLoading },
+          ]"
           :disabled="isActionDisabled(action)"
           :aria-busy="isActionActive(action.id) ? 'true' : undefined"
           @click="handleAction(action.id, !!action.disabled)"

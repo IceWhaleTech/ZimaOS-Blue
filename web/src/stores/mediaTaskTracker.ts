@@ -83,7 +83,7 @@ export const useMediaTaskTracker = defineStore('mediaTaskTracker', () => {
     initialTask: MediaTask,
     chatMessageId: string,
     conversationId: string,
-    onUpdate: (task: MediaTask) => void,
+    onUpdate: (task: MediaTask) => void
   ) {
     stop(taskId)
 
@@ -161,7 +161,7 @@ export const useMediaTaskTracker = defineStore('mediaTaskTracker', () => {
   /** Resume tracking for tasks that were active before navigation. */
   function resumeForConversation(
     conversationId: string,
-    onUpdate: (chatMessageId: string, task: MediaTask) => void,
+    onUpdate: (chatMessageId: string, task: MediaTask) => void
   ) {
     tasks.value.forEach((tracked, taskId) => {
       if (tracked.conversationId !== conversationId) return

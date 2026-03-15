@@ -17,7 +17,8 @@ const emit = defineEmits<{
 
 const buttonClasses = {
   primary: 'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white',
-  secondary: 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300',
+  secondary:
+    'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300',
   danger: 'bg-red-500 hover:bg-red-600 text-white',
 }
 
@@ -45,10 +46,7 @@ function handleClick(actionId: string, disabled = false) {
     <h4 class="font-medium text-gray-900 dark:text-white mb-1">
       {{ card.title }}
     </h4>
-    <p
-      v-if="card.description"
-      class="text-sm text-gray-500 dark:text-gray-400 mb-4"
-    >
+    <p v-if="card.description" class="text-sm text-gray-500 dark:text-gray-400 mb-4">
       {{ card.description }}
     </p>
 
@@ -57,7 +55,10 @@ function handleClick(actionId: string, disabled = false) {
         v-for="action in card.actions"
         :key="action.id"
         class="px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-wait"
-        :class="[buttonClasses[action.variant || 'secondary'], { 'opacity-60 cursor-wait': actionLoading }]"
+        :class="[
+          buttonClasses[action.variant || 'secondary'],
+          { 'opacity-60 cursor-wait': actionLoading },
+        ]"
         :disabled="isActionDisabled(action)"
         :aria-busy="isActionActive(action.id) ? 'true' : undefined"
         @click="handleClick(action.id, !!action.disabled)"

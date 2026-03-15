@@ -1,6 +1,21 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams, type RoutingMode, type LocationStats, type TrialQuotaStatus, type OAuthQuotaInfo, type ProviderVerificationResult, type VerifyProviderCandidateRequest } from '@/api/providerPool'
+import {
+  providerPoolApi,
+  type Provider,
+  type Model,
+  type UsageSummary,
+  type IDEInfo,
+  type PricingConfig,
+  type ModelPricing,
+  type ModelParams,
+  type RoutingMode,
+  type LocationStats,
+  type TrialQuotaStatus,
+  type OAuthQuotaInfo,
+  type ProviderVerificationResult,
+  type VerifyProviderCandidateRequest,
+} from '@/api/providerPool'
 import { mediaProviderApi, type MediaProviderConfig } from '@/api/mediaProviders'
 
 export const useProviderPoolStore = defineStore('providerPool', () => {
@@ -21,48 +36,32 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   const loadingQuota = ref<string | null>(null)
 
   // Computed
-  const enabledProviders = computed(() =>
-    providers.value.filter(p => p.enabled)
-  )
+  const enabledProviders = computed(() => providers.value.filter((p) => p.enabled))
 
   const activeProviders = computed(() =>
-    providers.value.filter(p => p.enabled && p.status === 'active')
+    providers.value.filter((p) => p.enabled && p.status === 'active')
   )
 
-  const builtinProviders = computed(() =>
-    providers.value.filter(p => p.type === 'builtin')
-  )
+  const builtinProviders = computed(() => providers.value.filter((p) => p.type === 'builtin'))
 
-  const platformProviders = computed(() =>
-    providers.value.filter(p => p.type === 'platform')
-  )
+  const platformProviders = computed(() => providers.value.filter((p) => p.type === 'platform'))
 
-  const customProviders = computed(() =>
-    providers.value.filter(p => p.type === 'custom')
-  )
+  const customProviders = computed(() => providers.value.filter((p) => p.type === 'custom'))
 
-  const ideProviders = computed(() =>
-    providers.value.filter(p => p.type === 'ide')
-  )
+  const ideProviders = computed(() => providers.value.filter((p) => p.type === 'ide'))
 
-  const trialProviders = computed(() =>
-    providers.value.filter(p => p.type === 'trial')
-  )
+  const trialProviders = computed(() => providers.value.filter((p) => p.type === 'trial'))
 
-  const mediaProviders = computed(() =>
-    providers.value.filter(p => p.type === 'media')
-  )
+  const mediaProviders = computed(() => providers.value.filter((p) => p.type === 'media'))
 
-  const oauthProviders = computed(() =>
-    providers.value.filter(p => !!p.oauth)
-  )
+  const oauthProviders = computed(() => providers.value.filter((p) => !!p.oauth))
 
   const cloudProviders = computed(() =>
-    providers.value.filter(p => p.enabled && p.location === 'cloud')
+    providers.value.filter((p) => p.enabled && p.location === 'cloud')
   )
 
   const localProviders = computed(() =>
-    providers.value.filter(p => p.enabled && p.location === 'local')
+    providers.value.filter((p) => p.enabled && p.location === 'local')
   )
 
   const hasCloudProviders = computed(() => cloudProviders.value.length > 0)
@@ -70,21 +69,21 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   // Check if user has configured their own providers (non-trial)
   const hasUserConfiguredProviders = computed(() =>
-    providers.value.some(p => p.enabled && p.type !== 'trial')
+    providers.value.some((p) => p.enabled && p.type !== 'trial')
   )
 
   const selectedProvider = computed(() =>
-    providers.value.find(p => p.id === selectedProviderId.value)
+    providers.value.find((p) => p.id === selectedProviderId.value)
   )
 
   const providerModels = computed(() => {
     if (!selectedProviderId.value) return []
-    return models.value.filter(m => m.provider_id === selectedProviderId.value)
+    return models.value.filter((m) => m.provider_id === selectedProviderId.value)
   })
 
   // Get provider display name by ID
   function getProviderDisplayName(providerId: string): string {
-    const provider = providers.value.find(p => p.id === providerId)
+    const provider = providers.value.find((p) => p.id === providerId)
     return provider?.name || providerId
   }
 
@@ -103,18 +102,34 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       website: cfg.website,
       api_key_url: cfg.api_key_url,
       priority: 0,
-      api_keys: cfg.has_api_key ? [{ id: 'default', key_hash: cfg.key_hash || '***', usage_count: 0, created_at: '', enabled: true }] : [],
+      api_keys: cfg.has_api_key
+        ? [
+            {
+              id: 'default',
+              key_hash: cfg.key_hash || '***',
+              usage_count: 0,
+              created_at: '',
+              enabled: true,
+            },
+          ]
+        : [],
       is_builtin: true,
     }
     // Map media models to provider models
     if (cfg.models?.length) {
-      provider.models = cfg.models.map(m => ({
+      provider.models = cfg.models.map((m) => ({
         id: m.id,
         provider_id: cfg.id,
         name: m.name,
         display_name: m.name,
         enabled: true,
-        capabilities: [m.type === 'video' ? 'video_generation' : m.type === 'image' ? 'image_generation' : m.type],
+        capabilities: [
+          m.type === 'video'
+            ? 'video_generation'
+            : m.type === 'image'
+              ? 'image_generation'
+              : m.type,
+        ],
         price_per_request: m.price,
         pricing_unit: m.pricing_unit,
       }))
@@ -124,28 +139,30 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   function mapMediaModelsToProviderModels(cfg: MediaProviderConfig): Model[] {
     if (!cfg.models?.length) return []
-    return cfg.models.map(m => ({
+    return cfg.models.map((m) => ({
       id: m.id,
       provider_id: cfg.id,
       name: m.name,
       display_name: m.name,
       enabled: true,
-      capabilities: [m.type === 'video' ? 'video_generation' : m.type === 'image' ? 'image_generation' : m.type],
+      capabilities: [
+        m.type === 'video' ? 'video_generation' : m.type === 'image' ? 'image_generation' : m.type,
+      ],
       price_per_request: m.price,
       pricing_unit: m.pricing_unit,
     }))
   }
 
   function isMediaProvider(providerId: string): boolean {
-    return providers.value.find(p => p.id === providerId)?.type === 'media'
+    return providers.value.find((p) => p.id === providerId)?.type === 'media'
   }
 
   function syncMediaProviderModels(providerId: string, modelsForProvider: Model[]) {
-    const provider = providers.value.find(p => p.id === providerId)
+    const provider = providers.value.find((p) => p.id === providerId)
     if (provider) {
       provider.models = [...modelsForProvider]
     }
-    models.value = models.value.filter(m => m.provider_id !== providerId)
+    models.value = models.value.filter((m) => m.provider_id !== providerId)
     models.value.push(...modelsForProvider)
   }
 
@@ -221,12 +238,12 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
         }
         const response = await providerPoolApi.listProviderModels(providerId)
         const providerModels = response.data.models || []
-        const provider = providers.value.find(p => p.id === providerId)
+        const provider = providers.value.find((p) => p.id === providerId)
         if (provider) {
           provider.models = [...providerModels]
         }
         // Update models for this provider
-        models.value = models.value.filter(m => m.provider_id !== providerId)
+        models.value = models.value.filter((m) => m.provider_id !== providerId)
         models.value.push(...providerModels)
       } else {
         const response = await providerPoolApi.listAllModels()
@@ -252,7 +269,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       }
       const response = await providerPoolApi.fetchProviderModels(providerId)
       // Update models for this provider
-      models.value = models.value.filter(m => m.provider_id !== providerId)
+      models.value = models.value.filter((m) => m.provider_id !== providerId)
       models.value.push(...(response.data.models || []))
       return { success: true, models: response.data.models || [] }
     } catch (e) {
@@ -265,7 +282,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   async function probeModels(providerId: string, concurrency = 5) {
     try {
       if (isMediaProvider(providerId)) {
-        const mediaModels = models.value.filter(m => m.provider_id === providerId)
+        const mediaModels = models.value.filter((m) => m.provider_id === providerId)
         return {
           success: true,
           total: mediaModels.length,
@@ -286,7 +303,14 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       }
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to probe models'
-      return { success: false, error: errorMessage, total: 0, available: 0, unavailable: 0, results: [] }
+      return {
+        success: false,
+        error: errorMessage,
+        total: 0,
+        available: 0,
+        unavailable: 0,
+        results: [],
+      }
     }
   }
 
@@ -295,9 +319,9 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       const response = await providerPoolApi.fetchKeyModels(providerId, keyId)
       const keyModels = response.data.models || []
       // Update the provider's API key with its models
-      const provider = providers.value.find(p => p.id === providerId)
+      const provider = providers.value.find((p) => p.id === providerId)
       if (provider && provider.api_keys) {
-        const key = provider.api_keys.find(k => k.id === keyId)
+        const key = provider.api_keys.find((k) => k.id === keyId)
         if (key) {
           key.models = keyModels
           key.models_updated_at = new Date().toISOString()
@@ -315,9 +339,9 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       const response = await providerPoolApi.listKeyModels(providerId, keyId)
       const keyModels = response.data.models || []
       // Update the provider's API key with its models
-      const provider = providers.value.find(p => p.id === providerId)
+      const provider = providers.value.find((p) => p.id === providerId)
       if (provider && provider.api_keys) {
-        const key = provider.api_keys.find(k => k.id === keyId)
+        const key = provider.api_keys.find((k) => k.id === keyId)
         if (key) {
           key.models = keyModels
         }
@@ -349,7 +373,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     error.value = null
     try {
       const response = await providerPoolApi.updateProvider(id, updates)
-      const index = providers.value.findIndex(p => p.id === id)
+      const index = providers.value.findIndex((p) => p.id === id)
       if (index !== -1) {
         providers.value[index] = response.data
       }
@@ -365,7 +389,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   // Update provider priority locally (for drag-and-drop reordering)
   // This updates the frontend immediately and syncs to backend in background
   function updateProviderPriorityLocal(id: string, priority: number) {
-    const provider = providers.value.find(p => p.id === id)
+    const provider = providers.value.find((p) => p.id === id)
     if (provider) {
       provider.priority = priority
     }
@@ -375,7 +399,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   async function syncPrioritiesToBackend(updates: Array<{ id: string; priority: number }>) {
     // Update backend in background without blocking UI
     for (const { id, priority } of updates) {
-      providerPoolApi.updateProvider(id, { priority }).catch(err => {
+      providerPoolApi.updateProvider(id, { priority }).catch((err) => {
         console.error(`Failed to sync priority for ${id}:`, err)
       })
     }
@@ -385,12 +409,12 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     loading.value = true
     error.value = null
     try {
-      const provider = providers.value.find(p => p.id === id)
+      const provider = providers.value.find((p) => p.id === id)
       if (provider?.type === 'media') {
         throw new Error('Media providers are not deletable')
       }
       await providerPoolApi.deleteProvider(id)
-      providers.value = providers.value.filter(p => p.id !== id)
+      providers.value = providers.value.filter((p) => p.id !== id)
       if (selectedProviderId.value === id) {
         selectedProviderId.value = null
       }
@@ -404,7 +428,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function enableProvider(id: string) {
     try {
-      const provider = providers.value.find(p => p.id === id)
+      const provider = providers.value.find((p) => p.id === id)
       if (provider?.type === 'media') {
         await mediaProviderApi.enable(id)
       } else {
@@ -424,7 +448,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function disableProvider(id: string) {
     try {
-      const provider = providers.value.find(p => p.id === id)
+      const provider = providers.value.find((p) => p.id === id)
       if (provider?.type === 'media') {
         await mediaProviderApi.disable(id)
       } else {
@@ -443,7 +467,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   async function clearProviderError(id: string) {
     try {
       await providerPoolApi.clearError(id)
-      const provider = providers.value.find(p => p.id === id)
+      const provider = providers.value.find((p) => p.id === id)
       if (provider) {
         provider.status = 'active'
         provider.last_error = ''
@@ -454,7 +478,9 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     }
   }
 
-  async function verifyProviderCandidate(payload: VerifyProviderCandidateRequest): Promise<ProviderVerificationResult> {
+  async function verifyProviderCandidate(
+    payload: VerifyProviderCandidateRequest
+  ): Promise<ProviderVerificationResult> {
     try {
       const response = await providerPoolApi.verifyProviderCandidate(payload)
       return response.data
@@ -473,7 +499,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
       const updatedProvider = response.data.provider
       if (updatedProvider) {
-        const index = providers.value.findIndex(p => p.id === providerId)
+        const index = providers.value.findIndex((p) => p.id === providerId)
         if (index !== -1) {
           providers.value[index] = {
             ...providers.value[index],
@@ -491,7 +517,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function testProvider(id: string, keyId?: string) {
     try {
-      const provider = providers.value.find(p => p.id === id)
+      const provider = providers.value.find((p) => p.id === id)
       if (provider?.type === 'media') {
         const response = await mediaProviderApi.test(id)
         if (provider) {
@@ -530,7 +556,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   async function updateModelParams(id: string, params: ModelParams) {
     try {
       const response = await providerPoolApi.updateModelParams(id, params)
-      const provider = providers.value.find(p => p.id === id)
+      const provider = providers.value.find((p) => p.id === id)
       if (provider) {
         provider.model_params = response.data.model_params
       }
@@ -544,7 +570,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   async function detectCapabilities(id: string) {
     try {
       const response = await providerPoolApi.detectCapabilities(id)
-      const provider = providers.value.find(p => p.id === id)
+      const provider = providers.value.find((p) => p.id === id)
       if (provider) {
         if (!provider.model_params) {
           provider.model_params = {}
@@ -562,7 +588,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   async function updateAllowedModels(id: string, allowedModels: string[]) {
     try {
       const response = await providerPoolApi.updateAllowedModels(id, allowedModels)
-      const provider = providers.value.find(p => p.id === id)
+      const provider = providers.value.find((p) => p.id === id)
       if (provider) {
         provider.allowed_models = response.data.allowed_models
       }
@@ -576,7 +602,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   async function updateProviderIcon(id: string, icon: string) {
     try {
       const response = await providerPoolApi.updateProviderIcon(id, icon)
-      const provider = providers.value.find(p => p.id === id)
+      const provider = providers.value.find((p) => p.id === id)
       if (provider) {
         provider.custom_icon = response.data.custom_icon
       }
@@ -590,7 +616,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   async function deleteProviderIcon(id: string) {
     try {
       await providerPoolApi.deleteProviderIcon(id)
-      const provider = providers.value.find(p => p.id === id)
+      const provider = providers.value.find((p) => p.id === id)
       if (provider) {
         provider.custom_icon = undefined
       }
@@ -602,17 +628,19 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function addAPIKey(providerId: string, key: string, label?: string) {
     try {
-      const provider = providers.value.find(p => p.id === providerId)
+      const provider = providers.value.find((p) => p.id === providerId)
       if (provider?.type === 'media') {
         const resp = await mediaProviderApi.setKey(providerId, key)
         const cfg = resp.data
         const keyHash = cfg.key_hash || '***'
         if (provider) {
-          provider.api_keys = [{ id: 'default', key_hash: keyHash, usage_count: 0, created_at: '', enabled: true }]
+          provider.api_keys = [
+            { id: 'default', key_hash: keyHash, usage_count: 0, created_at: '', enabled: true },
+          ]
           if (provider.enabled) provider.status = 'active'
           // Update models from response
           if (cfg.models?.length) {
-            provider.models = cfg.models.map(m => ({
+            provider.models = cfg.models.map((m) => ({
               id: m.id,
               provider_id: providerId,
               name: m.name,
@@ -646,7 +674,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function removeAPIKey(providerId: string, keyId: string) {
     try {
-      const provider = providers.value.find(p => p.id === providerId)
+      const provider = providers.value.find((p) => p.id === providerId)
       if (provider?.type === 'media') {
         await mediaProviderApi.removeKey(providerId)
         if (provider) {
@@ -657,7 +685,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       }
       await providerPoolApi.removeAPIKey(providerId, keyId)
       if (provider && provider.api_keys) {
-        provider.api_keys = provider.api_keys.filter(k => k.id !== keyId)
+        provider.api_keys = provider.api_keys.filter((k) => k.id !== keyId)
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to remove API key'
@@ -694,7 +722,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   async function connectIDE(ideType: string) {
     try {
       const response = await providerPoolApi.connectIDE(ideType)
-      const index = ides.value.findIndex(i => i.type === ideType)
+      const index = ides.value.findIndex((i) => i.type === ideType)
       if (index !== -1) {
         ides.value[index] = response.data
       }
@@ -751,13 +779,21 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     }
   }
 
-  async function setModelPricing(modelId: string, pricing: { provider_id?: string; input_price: number; output_price: number; cache_price?: number }) {
+  async function setModelPricing(
+    modelId: string,
+    pricing: {
+      provider_id?: string
+      input_price: number
+      output_price: number
+      cache_price?: number
+    }
+  ) {
     try {
       const response = await providerPoolApi.setModelPricing(modelId, pricing)
       // Update local state
       const key = pricing.provider_id ? `${pricing.provider_id}:${modelId}` : modelId
-      const index = customPricing.value.findIndex(p =>
-        (p.provider_id ? `${p.provider_id}:${p.model_id}` : p.model_id) === key
+      const index = customPricing.value.findIndex(
+        (p) => (p.provider_id ? `${p.provider_id}:${p.model_id}` : p.model_id) === key
       )
       if (index !== -1) {
         customPricing.value[index] = response.data
@@ -776,8 +812,8 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       await providerPoolApi.removeModelPricing(modelId, providerId)
       // Update local state
       const key = providerId ? `${providerId}:${modelId}` : modelId
-      customPricing.value = customPricing.value.filter(p =>
-        (p.provider_id ? `${p.provider_id}:${p.model_id}` : p.model_id) !== key
+      customPricing.value = customPricing.value.filter(
+        (p) => (p.provider_id ? `${p.provider_id}:${p.model_id}` : p.model_id) !== key
       )
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to remove model pricing'
@@ -832,7 +868,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   /** Update a single provider's status in-place (called from SSE events). */
   function updateProviderStatus(providerId: string, status: string) {
-    const provider = providers.value.find(p => p.id === providerId)
+    const provider = providers.value.find((p) => p.id === providerId)
     if (provider) {
       provider.status = status as Provider['status']
     }

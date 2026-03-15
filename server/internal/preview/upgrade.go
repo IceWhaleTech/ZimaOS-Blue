@@ -25,9 +25,10 @@ type UpgradeRequest struct {
 
 // UpgradeResponse represents the response after successful upgrade.
 type UpgradeResponse struct {
-	Success      bool       `json:"success"`
-	User         *user.User `json:"user"`
-	DataMigrated bool       `json:"data_migrated"`
+	Success        bool             `json:"success"`
+	User           *user.User       `json:"user"`
+	DataMigrated   bool             `json:"data_migrated"`
+	MigratedCounts map[string]int64 `json:"migrated_counts,omitempty"`
 }
 
 // UpgradeService handles upgrading from preview mode to normal mode.
@@ -77,18 +78,24 @@ func (s *UpgradeService) Upgrade(ctx context.Context, req *UpgradeRequest) (*Upg
 
 	// Migrate preview data to admin
 	dataMigrated := false
+	var migratedCounts map[string]int64
 	if s.migrationService != nil {
-		if err := s.migrationService.MigratePreviewData(ctx, adminUser.ID.String()); err != nil {
+		migrationResult, err := s.migrationService.MigratePreviewData(ctx, adminUser.ID.String())
+		if err != nil {
 			// Log error but don't fail the upgrade
 			// The admin is created, migration is best-effort
 		} else {
 			dataMigrated = true
+			if migrationResult != nil {
+				migratedCounts = migrationResult.MigratedCounts
+			}
 		}
 	}
 
 	return &UpgradeResponse{
-		Success:      true,
-		User:         adminUser,
-		DataMigrated: dataMigrated,
+		Success:        true,
+		User:           adminUser,
+		DataMigrated:   dataMigrated,
+		MigratedCounts: migratedCounts,
 	}, nil
 }

@@ -31,7 +31,7 @@ const selectedIp = ref<string>('all')
 
 // Get unique IPs from connections
 const uniqueIps = computed(() => {
-  const ips = new Set(props.connections.map(c => c.clientIp))
+  const ips = new Set(props.connections.map((c) => c.clientIp))
   return Array.from(ips).sort()
 })
 
@@ -40,7 +40,7 @@ const filteredConnections = computed(() => {
   if (selectedIp.value === 'all') {
     return props.connections
   }
-  return props.connections.filter(c => c.clientIp === selectedIp.value)
+  return props.connections.filter((c) => c.clientIp === selectedIp.value)
 })
 
 const sortedConnections = computed(() => {
@@ -96,12 +96,18 @@ function toggleSort(field: typeof sortBy.value) {
 
 <template>
   <div class="bg-white dark:bg-gray-700 rounded-lg shadow">
-    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.activeConnectionsTitle') }}</h2>
+    <div
+      class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
+    >
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+        {{ t('common.activeConnectionsTitle') }}
+      </h2>
       <div class="flex items-center gap-4">
         <!-- IP Filter -->
         <div class="flex items-center gap-2">
-          <label class="text-sm text-gray-500 dark:text-gray-400">{{ t('common.filterByIp') }}:</label>
+          <label class="text-sm text-gray-500 dark:text-gray-400"
+            >{{ t('common.filterByIp') }}:</label
+          >
           <select
             v-model="selectedIp"
             class="text-sm bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
@@ -117,11 +123,16 @@ function toggleSort(field: typeof sortBy.value) {
     </div>
 
     <div v-if="loading" class="p-6 text-center">
-      <div class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"></div>
+      <div
+        class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"
+      ></div>
       <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('common.loadingConnections') }}</p>
     </div>
 
-    <div v-else-if="connections.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">
+    <div
+      v-else-if="connections.length === 0"
+      class="p-6 text-center text-gray-500 dark:text-gray-400"
+    >
       {{ t('common.noActiveConnections') }}
     </div>
 
@@ -129,10 +140,14 @@ function toggleSort(field: typeof sortBy.value) {
       <table class="w-full">
         <thead class="bg-gray-50 dark:bg-gray-700">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+            <th
+              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+            >
               {{ t('common.type') }}
             </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+            <th
+              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+            >
               {{ t('common.clientIp') }}
             </th>
             <th

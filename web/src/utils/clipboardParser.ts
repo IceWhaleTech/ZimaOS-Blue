@@ -86,13 +86,16 @@ export function parseClipboardData(data: string): Record<string, string> {
   }
 
   // Try different parsing strategies line by line
-  const lines = data.split('\n').map(line => line.trim()).filter(line => line)
+  const lines = data
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line)
 
   // Special case: single line with space-separated URL + token
   // Format: "https://example.com/ sk-xxxxx" or "sk-xxxxx https://example.com/"
   if (lines.length === 1) {
     const firstLine = lines[0] || ''
-    const parts = firstLine.split(/\s+/).filter(p => p)
+    const parts = firstLine.split(/\s+/).filter((p) => p)
     if (parts.length === 2) {
       const part0 = parts[0] || ''
       const part1 = parts[1] || ''
@@ -105,10 +108,18 @@ export function parseClipboardData(data: string): Record<string, string> {
       let urlPart: string | null = null
       let tokenPart: string | null = null
 
-      if (part1UrlProb >= threshold && part2TokenProb >= threshold && part1UrlProb > part1TokenProb) {
+      if (
+        part1UrlProb >= threshold &&
+        part2TokenProb >= threshold &&
+        part1UrlProb > part1TokenProb
+      ) {
         urlPart = part0 ?? null
         tokenPart = part1 ?? null
-      } else if (part2UrlProb >= threshold && part1TokenProb >= threshold && part2UrlProb > part2TokenProb) {
+      } else if (
+        part2UrlProb >= threshold &&
+        part1TokenProb >= threshold &&
+        part2UrlProb > part2TokenProb
+      ) {
         urlPart = part1 ?? null
         tokenPart = part0 ?? null
       }
@@ -138,7 +149,11 @@ export function parseClipboardData(data: string): Record<string, string> {
     if (line1UrlProb >= threshold && line2TokenProb >= threshold && line1UrlProb > line1TokenProb) {
       urlLine = line0 ?? null
       tokenLine = line1 ?? null
-    } else if (line2UrlProb >= threshold && line1TokenProb >= threshold && line2UrlProb > line2TokenProb) {
+    } else if (
+      line2UrlProb >= threshold &&
+      line1TokenProb >= threshold &&
+      line2UrlProb > line2TokenProb
+    ) {
       urlLine = line1 ?? null
       tokenLine = line0 ?? null
     }
@@ -205,13 +220,17 @@ export function parseClipboardFields(data: string): string[] {
 
   // Check if data has explicit key-value indicators (=, :, tab-separated key-value)
   // If so, defer to parseClipboardData
-  const lines = data.split('\n').map(l => l.trim()).filter(l => l.length > 0)
-  const hasKvIndicators = lines.some(line =>
-    /^[\w-]+\s*=\s*.+$/.test(line) ||           // key=value
-    /^[^:：]+[：:]\s*(?!\/\/).+$/.test(line)     // key: value (not URL)
+  const lines = data
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+  const hasKvIndicators = lines.some(
+    (line) =>
+      /^[\w-]+\s*=\s*.+$/.test(line) || // key=value
+      /^[^:：]+[：:]\s*(?!\/\/).+$/.test(line) // key: value (not URL)
   )
   // Tab kv: every line must have exactly one tab with a word-like key
-  const hasTabKv = lines.length > 0 && lines.every(line => /^[\w-]+\t[^\t]+$/.test(line))
+  const hasTabKv = lines.length > 0 && lines.every((line) => /^[\w-]+\t[^\t]+$/.test(line))
   // Also check single-line quoted key-value: key = "value"
   const hasQuotedKv = /\w+\s*=\s*"[^"]+"/.test(data)
 

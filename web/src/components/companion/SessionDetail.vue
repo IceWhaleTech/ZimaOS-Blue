@@ -38,9 +38,11 @@ watch(
 
 const events = computed(() => companionStore.sessionEvents)
 
-const flowEvents = computed(() => ([...events.value].sort((a, b) =>
-  new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-)))
+const flowEvents = computed(() =>
+  [...events.value].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  )
+)
 
 function sanitizePreview(input: unknown, maxLen = 140): string {
   return sanitizeCompanionPreview(input, maxLen, true)
@@ -135,9 +137,13 @@ function formatStatus(status?: string): string {
 </script>
 
 <template>
-  <div class="session-detail bg-white dark:bg-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-full min-h-0">
+  <div
+    class="session-detail bg-white dark:bg-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-full min-h-0"
+  >
     <!-- Header -->
-    <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
+    <div
+      class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700"
+    >
       <div>
         <h2 class="text-lg font-bold text-gray-900 dark:text-white">
           {{ t('companion.sessionDetail') }}
@@ -149,7 +155,12 @@ function formatStatus(status?: string): string {
         @click="emit('close')"
       >
         <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M6 18L18 6M6 6l12 12"
+          />
         </svg>
       </button>
     </div>
@@ -159,23 +170,43 @@ function formatStatus(status?: string): string {
       <!-- Session Info Grid -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.platform') }}</div>
-          <div class="font-medium text-gray-900 dark:text-white capitalize">{{ session.platform }}</div>
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
+            {{ t('companion.platform') }}
+          </div>
+          <div class="font-medium text-gray-900 dark:text-white capitalize">
+            {{ session.platform }}
+          </div>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.statusLabel') }}</div>
-          <span :class="['px-2 py-0.5 rounded-full text-xs font-medium', getStatusColor(session.status)]">
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
+            {{ t('companion.statusLabel') }}
+          </div>
+          <span
+            :class="[
+              'px-2 py-0.5 rounded-full text-xs font-medium',
+              getStatusColor(session.status),
+            ]"
+          >
             {{ t(`companion.status.${session.status}`) }}
           </span>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.threat_level') }}</div>
-          <span :class="['px-2 py-0.5 rounded-full text-xs font-medium', getThreatColor(session.threat_level)]">
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
+            {{ t('companion.threat_level') }}
+          </div>
+          <span
+            :class="[
+              'px-2 py-0.5 rounded-full text-xs font-medium',
+              getThreatColor(session.threat_level),
+            ]"
+          >
             {{ t(`companion.threat.${session.threat_level}`) }}
           </span>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.threat_score') }}</div>
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
+            {{ t('companion.threat_score') }}
+          </div>
           <div class="font-medium text-gray-900 dark:text-white">{{ session.threat_score }}</div>
         </div>
       </div>
@@ -183,28 +214,46 @@ function formatStatus(status?: string): string {
       <!-- Session Metadata -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.events') }}</div>
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
+            {{ t('companion.events') }}
+          </div>
           <div class="font-medium text-gray-900 dark:text-white">{{ session.event_count }}</div>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.messages') }}</div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ session.metadata?.message_count || 0 }}</div>
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
+            {{ t('companion.messages') }}
+          </div>
+          <div class="font-medium text-gray-900 dark:text-white">
+            {{ session.metadata?.message_count || 0 }}
+          </div>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.toolCalls') }}</div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ session.metadata?.tool_call_count || 0 }}</div>
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
+            {{ t('companion.toolCalls') }}
+          </div>
+          <div class="font-medium text-gray-900 dark:text-white">
+            {{ session.metadata?.tool_call_count || 0 }}
+          </div>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.tokens') }}</div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ session.metadata?.total_tokens || 0 }}</div>
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
+            {{ t('companion.tokens') }}
+          </div>
+          <div class="font-medium text-gray-900 dark:text-white">
+            {{ session.metadata?.total_tokens || 0 }}
+          </div>
         </div>
       </div>
 
       <!-- Time Info -->
       <div class="flex flex-wrap gap-4 text-sm text-gray-500 dark:text-slate-400 mb-6">
         <span>{{ t('companion.started') }}: {{ formatDate(session.started_at) }}</span>
-        <span v-if="session.ended_at">{{ t('companion.ended') }}: {{ formatDate(session.ended_at) }}</span>
-        <span v-if="session.duration">{{ t('companion.duration') }}: {{ formatDuration(session.duration) }}</span>
+        <span v-if="session.ended_at"
+          >{{ t('companion.ended') }}: {{ formatDate(session.ended_at) }}</span
+        >
+        <span v-if="session.duration"
+          >{{ t('companion.duration') }}: {{ formatDuration(session.duration) }}</span
+        >
       </div>
 
       <!-- View Mode Toggle -->
@@ -215,12 +264,22 @@ function formatStatus(status?: string): string {
               'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
               viewMode === 'flow'
                 ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white',
             ]"
             @click="viewMode = 'flow'"
           >
-            <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+            <svg
+              class="w-4 h-4 inline-block mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+              />
             </svg>
             {{ t('companion.viewMode.flow') }}
           </button>
@@ -229,12 +288,22 @@ function formatStatus(status?: string): string {
               'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
               viewMode === 'timeline'
                 ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white',
             ]"
             @click="viewMode = 'timeline'"
           >
-            <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            <svg
+              class="w-4 h-4 inline-block mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 6h16M4 10h16M4 14h16M4 18h16"
+              />
             </svg>
             {{ t('companion.viewMode.timeline') }}
           </button>
@@ -243,7 +312,9 @@ function formatStatus(status?: string): string {
 
       <!-- Flow View -->
       <div v-if="viewMode === 'flow'" class="flex-1 min-h-0">
-        <div class="h-full min-h-[360px] sm:min-h-[420px] border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
+        <div
+          class="h-full min-h-[360px] sm:min-h-[420px] border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden"
+        >
           <SessionFlowCanvas
             :events="flowEvents"
             :selected-event-id="selectedEventId"
@@ -264,7 +335,10 @@ function formatStatus(status?: string): string {
           {{ t('common.loading') }}
         </div>
 
-        <div v-else-if="events.length === 0" class="text-center py-4 text-gray-500 dark:text-slate-400">
+        <div
+          v-else-if="events.length === 0"
+          class="text-center py-4 text-gray-500 dark:text-slate-400"
+        >
           {{ t('companion.noEvents') }}
         </div>
 
@@ -274,7 +348,7 @@ function formatStatus(status?: string): string {
             :key="event.id"
             :class="[
               'p-3 bg-gray-50 dark:bg-slate-700/40 rounded-lg border-l-4 border border-gray-200/80 dark:border-slate-600/70 hover:bg-gray-100/70 dark:hover:bg-slate-700/60 transition-colors',
-              getEventColor(event.event_type)
+              getEventColor(event.event_type),
             ]"
           >
             <div class="flex items-center gap-2 flex-wrap">
@@ -288,7 +362,9 @@ function formatStatus(status?: string): string {
               >
                 {{ formatStatus(event.status) }}
               </span>
-              <span class="ml-auto text-xs px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400">
+              <span
+                class="ml-auto text-xs px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400"
+              >
                 {{ formatTime(event.timestamp) }}
               </span>
             </div>
@@ -296,10 +372,15 @@ function formatStatus(status?: string): string {
             <!-- Message Event -->
             <div v-if="event.message" class="text-sm text-gray-600 dark:text-slate-300 mt-2 pl-6">
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                <span class="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-slate-600 rounded font-medium">
+                <span
+                  class="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-slate-600 rounded font-medium"
+                >
                   {{ t('companion.direction.' + event.message.direction) }}
                 </span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400">{{ event.message.contentType }}</span>
+                <span
+                  class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400"
+                  >{{ event.message.contentType }}</span
+                >
               </div>
               <div class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5">
                 {{ sanitizePreview(event.message.content, 200) }}
@@ -309,40 +390,80 @@ function formatStatus(status?: string): string {
             <!-- Tool Call Event -->
             <div v-if="event.tool_call" class="text-sm text-gray-600 dark:text-slate-300 mt-2 pl-6">
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                <span class="font-mono text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70">{{ event.tool_call.toolName }}</span>
-                <span v-if="event.tool_call.sandboxUsed" class="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded font-medium">
+                <span
+                  class="font-mono text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70"
+                  >{{ event.tool_call.toolName }}</span
+                >
+                <span
+                  v-if="event.tool_call.sandboxUsed"
+                  class="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded font-medium"
+                >
                   sandbox
                 </span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400">{{ formatDuration(event.tool_call.duration) }}</span>
+                <span
+                  class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400"
+                  >{{ formatDuration(event.tool_call.duration) }}</span
+                >
               </div>
-              <div v-if="event.tool_call.inputPreview" class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2">
-                <span class="font-medium text-gray-600 dark:text-slate-300">{{ t('companion.llmDetails.input') }}:</span>
+              <div
+                v-if="event.tool_call.inputPreview"
+                class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2"
+              >
+                <span class="font-medium text-gray-600 dark:text-slate-300"
+                  >{{ t('companion.llmDetails.input') }}:</span
+                >
                 {{ sanitizePreview(event.tool_call.inputPreview, 220) }}
               </div>
-              <div v-if="event.tool_call.outputPreview" class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2 mt-1.5">
-                <span class="font-medium text-gray-600 dark:text-slate-300">{{ t('companion.nodes.tokensOut') }}:</span>
+              <div
+                v-if="event.tool_call.outputPreview"
+                class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2 mt-1.5"
+              >
+                <span class="font-medium text-gray-600 dark:text-slate-300"
+                  >{{ t('companion.nodes.tokensOut') }}:</span
+                >
                 {{ sanitizePreview(event.tool_call.outputPreview, 220) }}
               </div>
             </div>
 
             <!-- LLM Request Event -->
-            <div v-if="event.llm_request" class="text-sm text-gray-600 dark:text-slate-300 mt-2 pl-6">
+            <div
+              v-if="event.llm_request"
+              class="text-sm text-gray-600 dark:text-slate-300 mt-2 pl-6"
+            >
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                <span class="font-mono text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70">{{ event.llm_request.provider }}/{{ event.llm_request.model }}</span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400">{{ formatDuration(event.llm_request.duration) }}</span>
+                <span
+                  class="font-mono text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70"
+                  >{{ event.llm_request.provider }}/{{ event.llm_request.model }}</span
+                >
+                <span
+                  class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400"
+                  >{{ formatDuration(event.llm_request.duration) }}</span
+                >
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                 <div class="rounded bg-white/70 dark:bg-slate-800/40 p-2">
-                  <div class="text-gray-400 dark:text-slate-500">{{ t('companion.llmDetails.prompt') }}</div>
-                  <div class="font-medium text-gray-700 dark:text-slate-200">{{ formatTokens(event.llm_request.promptTokens) }}</div>
+                  <div class="text-gray-400 dark:text-slate-500">
+                    {{ t('companion.llmDetails.prompt') }}
+                  </div>
+                  <div class="font-medium text-gray-700 dark:text-slate-200">
+                    {{ formatTokens(event.llm_request.promptTokens) }}
+                  </div>
                 </div>
                 <div class="rounded bg-white/70 dark:bg-slate-800/40 p-2">
-                  <div class="text-gray-400 dark:text-slate-500">{{ t('companion.llmDetails.completion') }}</div>
-                  <div class="font-medium text-gray-700 dark:text-slate-200">{{ formatTokens(event.llm_request.completionTokens) }}</div>
+                  <div class="text-gray-400 dark:text-slate-500">
+                    {{ t('companion.llmDetails.completion') }}
+                  </div>
+                  <div class="font-medium text-gray-700 dark:text-slate-200">
+                    {{ formatTokens(event.llm_request.completionTokens) }}
+                  </div>
                 </div>
                 <div class="rounded bg-white/70 dark:bg-slate-800/40 p-2">
-                  <div class="text-gray-400 dark:text-slate-500">{{ t('companion.llmDetails.total') }}</div>
-                  <div class="font-medium text-gray-700 dark:text-slate-200">{{ formatTokens(event.llm_request.totalTokens) }}</div>
+                  <div class="text-gray-400 dark:text-slate-500">
+                    {{ t('companion.llmDetails.total') }}
+                  </div>
+                  <div class="font-medium text-gray-700 dark:text-slate-200">
+                    {{ formatTokens(event.llm_request.totalTokens) }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -350,14 +471,24 @@ function formatStatus(status?: string): string {
             <!-- Security Event -->
             <div v-if="event.security" class="text-sm mt-2 pl-6">
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', getThreatColor(event.security.threatLevel)]">
+                <span
+                  :class="[
+                    'px-1.5 py-0.5 rounded text-xs font-medium',
+                    getThreatColor(event.security.threatLevel),
+                  ]"
+                >
                   {{ event.security.threatLevel }}
                 </span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400">
+                <span
+                  class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400"
+                >
                   {{ t('companion.llmDetails.score') }}: {{ event.security.threatScore }}
                 </span>
               </div>
-              <div v-if="event.security.threatTypes.length" class="flex flex-wrap gap-1.5 text-xs text-gray-500 dark:text-slate-400">
+              <div
+                v-if="event.security.threatTypes.length"
+                class="flex flex-wrap gap-1.5 text-xs text-gray-500 dark:text-slate-400"
+              >
                 <span
                   v-for="threatType in event.security.threatTypes"
                   :key="threatType"
@@ -366,13 +497,19 @@ function formatStatus(status?: string): string {
                   {{ threatType }}
                 </span>
               </div>
-              <div v-if="event.security.details" class="text-xs text-gray-500 dark:text-slate-400 mt-1.5 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2">
+              <div
+                v-if="event.security.details"
+                class="text-xs text-gray-500 dark:text-slate-400 mt-1.5 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2"
+              >
                 {{ event.security.details }}
               </div>
             </div>
 
             <!-- Error Event -->
-            <div v-if="event.error" class="text-sm text-red-600 dark:text-red-400 mt-2 pl-6 break-words">
+            <div
+              v-if="event.error"
+              class="text-sm text-red-600 dark:text-red-400 mt-2 pl-6 break-words"
+            >
               {{ event.error }}
             </div>
           </div>

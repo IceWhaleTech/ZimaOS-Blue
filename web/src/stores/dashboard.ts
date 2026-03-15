@@ -5,36 +5,72 @@ import { cardRegistry, getDefaultCardStates } from '@/components/dashboard/cardR
 
 const STORAGE_KEY = 'dashboard-layout'
 
+function getStoredLayout(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function persistLayout(value: string): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, value)
+  } catch {
+    // Ignore storage failures in restricted environments.
+  }
+}
+
+function createDefaultCardState(id: string): DashboardCardState | null {
+  const config = cardRegistry.find((card) => card.id === id)
+  if (!config) return null
+
+  return {
+    id: config.id,
+    enabled: config.defaultEnabled,
+    order: config.defaultOrder,
+    collapsed: false,
+  }
+}
+
+function normalizeCardStates(states: DashboardCardState[]): DashboardCardState[] {
+  const stateMap = new Map(states.map((state) => [state.id, state]))
+
+  return cardRegistry.map((config) => {
+    const existing = stateMap.get(config.id)
+    if (existing) {
+      return {
+        ...existing,
+        order: Number.isFinite(existing.order) ? existing.order : config.defaultOrder,
+        collapsed: existing.collapsed ?? false,
+      }
+    }
+
+    return {
+      id: config.id,
+      enabled: config.defaultEnabled,
+      order: config.defaultOrder,
+      collapsed: false,
+    }
+  })
+}
+
 export const useDashboardStore = defineStore('dashboard', () => {
   // State
   const cardStates = ref<DashboardCardState[]>([])
   const isCustomizing = ref(false)
 
+  function syncCardStates() {
+    cardStates.value = normalizeCardStates(cardStates.value)
+  }
+
   // Initialize from localStorage or defaults
   function initialize() {
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = getStoredLayout()
     if (stored) {
       try {
         const layout: DashboardLayout = JSON.parse(stored)
-        // Merge with registry to handle new cards
-        const storedIds = new Set(layout.cards.map((c) => c.id))
-        const mergedCards = [...layout.cards]
-
-        // Add any new cards from registry that aren't in stored layout
-        for (const card of cardRegistry) {
-          if (!storedIds.has(card.id)) {
-            mergedCards.push({
-              id: card.id,
-              enabled: card.defaultEnabled,
-              order: card.defaultOrder,
-              collapsed: false,
-            })
-          }
-        }
-
-        // Remove cards that no longer exist in registry
-        const registryIds = new Set(cardRegistry.map((c) => c.id))
-        cardStates.value = mergedCards.filter((c) => registryIds.has(c.id))
+        cardStates.value = normalizeCardStates(layout.cards)
       } catch {
         cardStates.value = getDefaultCardStates()
       }
@@ -45,16 +81,19 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
   // Save to localStorage
   function saveLayout() {
+    syncCardStates()
     const layout: DashboardLayout = {
       cards: cardStates.value,
       lastModified: new Date().toISOString(),
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(layout))
+    persistLayout(JSON.stringify(layout))
   }
 
   // Computed
+  const resolvedCardStates = computed(() => normalizeCardStates(cardStates.value))
+
   const enabledCards = computed(() => {
-    return cardStates.value
+    return resolvedCardStates.value
       .filter((state) => state.enabled)
       .sort((a, b) => a.order - b.order)
       .map((state) => {
@@ -65,7 +104,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   })
 
   const disabledCards = computed(() => {
-    return cardStates.value
+    return resolvedCardStates.value
       .filter((state) => !state.enabled)
       .map((state) => {
         const config = cardRegistry.find((c) => c.id === state.id)
@@ -76,7 +115,16 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
   // Actions
   function toggleCard(id: string) {
-    const card = cardStates.value.find((c) => c.id === id)
+    syncCardStates()
+
+    let card = cardStates.value.find((c) => c.id === id)
+    if (!card) {
+      const next = createDefaultCardState(id)
+      if (!next) return
+      cardStates.value.push(next)
+      card = next
+    }
+
     if (card) {
       card.enabled = !card.enabled
       saveLayout()
@@ -84,6 +132,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
 
   function toggleCollapse(id: string) {
+    syncCardStates()
     const card = cardStates.value.find((c) => c.id === id)
     if (card) {
       card.collapsed = !card.collapsed
@@ -92,6 +141,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
 
   function reorderCards(fromIndex: number, toIndex: number) {
+    syncCardStates()
     const enabledList = enabledCards.value
     if (fromIndex < 0 || fromIndex >= enabledList.length) return
     if (toIndex < 0 || toIndex >= enabledList.length) return
@@ -139,11 +189,13 @@ export const useDashboardStore = defineStore('dashboard', () => {
     isCustomizing,
 
     // Computed
+    resolvedCardStates,
     enabledCards,
     disabledCards,
 
     // Actions
     initialize,
+    syncCardStates,
     toggleCard,
     toggleCollapse,
     reorderCards,

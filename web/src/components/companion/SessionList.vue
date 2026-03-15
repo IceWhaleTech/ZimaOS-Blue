@@ -89,12 +89,18 @@ function formatDuration(ms: number): string {
 <template>
   <div class="session-list">
     <!-- Loading State -->
-    <div v-if="loading && sessions.length === 0" class="text-center py-8 text-gray-500 dark:text-slate-400">
+    <div
+      v-if="loading && sessions.length === 0"
+      class="text-center py-8 text-gray-500 dark:text-slate-400"
+    >
       {{ t('common.loading') }}
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="sessions.length === 0" class="text-center py-8 text-gray-500 dark:text-slate-400">
+    <div
+      v-else-if="sessions.length === 0"
+      class="text-center py-8 text-gray-500 dark:text-slate-400"
+    >
       {{ t('companion.noSessions') }}
     </div>
 
@@ -107,7 +113,7 @@ function formatDuration(ms: number): string {
           'glass-card p-4 cursor-pointer transition-all',
           selectedId === session.id
             ? 'ring-2 ring-accent bg-gray-100 dark:bg-gray-600/5'
-            : 'hover:bg-gray-50 dark:hover:bg-slate-700/50'
+            : 'hover:bg-gray-50 dark:hover:bg-slate-700/50',
         ]"
         @click="emit('select', session)"
       >
@@ -115,27 +121,42 @@ function formatDuration(ms: number): string {
           <!-- Platform & User -->
           <div class="flex items-center gap-3">
             <!-- Channel icon -->
-            <div class="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700">
-              <img :src="getPlatformIcon(session.platform)" :alt="session.platform" class="w-6 h-6" />
+            <div
+              class="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700"
+            >
+              <img
+                :src="getPlatformIcon(session.platform)"
+                :alt="session.platform"
+                class="w-6 h-6"
+              />
             </div>
             <div>
               <div class="font-medium text-gray-900 dark:text-white">
                 {{ session.user_id || t('companion.anonymous') }}
               </div>
               <div class="text-xs text-gray-500 dark:text-slate-400">
-                {{ getPlatformName(session.platform) }} · <span class="font-mono">{{ session.id.slice(0, 8) }}...</span>
+                {{ getPlatformName(session.platform) }} ·
+                <span class="font-mono">{{ session.id.slice(0, 8) }}...</span>
               </div>
             </div>
           </div>
 
           <!-- Status Badges -->
           <div class="flex items-center gap-2">
-            <span :class="['px-2 py-0.5 rounded-full text-xs font-medium', getStatusColor(session.status)]">
+            <span
+              :class="[
+                'px-2 py-0.5 rounded-full text-xs font-medium',
+                getStatusColor(session.status),
+              ]"
+            >
               {{ t(`companion.status.${session.status}`) }}
             </span>
             <span
               v-if="session.threat_level !== 'none'"
-              :class="['px-2 py-0.5 rounded-full text-xs font-medium', getThreatColor(session.threat_level)]"
+              :class="[
+                'px-2 py-0.5 rounded-full text-xs font-medium',
+                getThreatColor(session.threat_level),
+              ]"
             >
               {{ t(`companion.threat.${session.threat_level}`) }}
             </span>
@@ -146,25 +167,45 @@ function formatDuration(ms: number): string {
         <div class="flex flex-wrap gap-4 text-xs text-gray-500 dark:text-slate-400">
           <span class="flex items-center gap-1">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+              />
             </svg>
             {{ session.event_count }} {{ t('companion.events') }}
           </span>
           <span class="flex items-center gap-1">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
             {{ formatDate(session.started_at) }}
           </span>
           <span v-if="session.duration" class="flex items-center gap-1">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
             </svg>
             {{ formatDuration(session.duration) }}
           </span>
           <span v-if="session.metadata?.message_count" class="flex items-center gap-1">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              />
             </svg>
             {{ session.metadata.message_count }} {{ t('companion.messages') }}
           </span>
@@ -173,7 +214,9 @@ function formatDuration(ms: number): string {
         <!-- Active Indicator -->
         <div v-if="session.status === 'active'" class="mt-2 flex items-center gap-2">
           <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-          <span class="text-xs text-green-600 dark:text-green-400">{{ t('companion.liveSession') }}</span>
+          <span class="text-xs text-green-600 dark:text-green-400">{{
+            t('companion.liveSession')
+          }}</span>
         </div>
       </div>
 

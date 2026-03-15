@@ -7,24 +7,143 @@ import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const WEB_ROOT = path.resolve(__dirname, '..')
-const ALLOWLIST_PATH = path.join(WEB_ROOT, 'audit-allowlist.json')
+const DEFAULT_CWD = path.resolve(__dirname, '..')
+const DEFAULT_ALLOWLIST_PATH = path.join(DEFAULT_CWD, 'audit-allowlist.json')
+const DEFAULT_MAX_ATTEMPTS = 3
 
-function fail(message) {
-  console.error(message)
-  process.exit(1)
+export const EXIT_CODES = Object.freeze({
+  ok: 0,
+  vulnerabilities: 1,
+  unavailable: 2,
+})
+
+const TRANSIENT_FAILURE_PATTERNS = [
+  'advisories/bulk failed',
+  'before secure tls connection was established',
+  'client network socket disconnected',
+  'eai_again',
+  'econnreset',
+  'fetch failed',
+  'network timeout',
+  'socket hang up',
+  'tls',
+  '503',
+  '504',
+]
+
+function parseCliArgs(argv) {
+  const extraArgs = []
+  let cwd = DEFAULT_CWD
+  let allowlistPath = DEFAULT_ALLOWLIST_PATH
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+
+    if (arg === '--no-allowlist') {
+      allowlistPath = null
+      continue
+    }
+
+    if (arg === '--cwd' || arg.startsWith('--cwd=')) {
+      const value = arg === '--cwd' ? argv[++index] : arg.slice('--cwd='.length)
+      if (!value) {
+        throw new Error('Missing value for --cwd')
+      }
+      cwd = path.resolve(value)
+      continue
+    }
+
+    if (arg === '--allowlist' || arg.startsWith('--allowlist=')) {
+      const value = arg === '--allowlist' ? argv[++index] : arg.slice('--allowlist='.length)
+      if (!value) {
+        throw new Error('Missing value for --allowlist')
+      }
+      allowlistPath = path.resolve(value)
+      continue
+    }
+
+    extraArgs.push(arg)
+  }
+
+  return { allowlistPath, cwd, extraArgs }
 }
 
-function loadAllowlist() {
-  if (!fs.existsSync(ALLOWLIST_PATH)) {
-    fail(`Missing audit allowlist file: ${ALLOWLIST_PATH}`)
+function getMaxAttempts(env) {
+  const rawValue = env?.NPM_AUDIT_MAX_ATTEMPTS
+  if (!rawValue) {
+    return DEFAULT_MAX_ATTEMPTS
+  }
+
+  const parsedValue = Number.parseInt(rawValue, 10)
+  if (Number.isFinite(parsedValue) && parsedValue >= 1) {
+    return parsedValue
+  }
+
+  return DEFAULT_MAX_ATTEMPTS
+}
+
+function isAuditReport(report) {
+  return (
+    report &&
+    typeof report === 'object' &&
+    typeof report.vulnerabilities === 'object' &&
+    report.vulnerabilities !== null
+  )
+}
+
+function isTransientFailure(text) {
+  if (!text) {
+    return false
+  }
+
+  const normalized = text.toLowerCase()
+  return TRANSIENT_FAILURE_PATTERNS.some((pattern) => normalized.includes(pattern))
+}
+
+function formatFailureDetails(parts) {
+  return parts.map((part) => (typeof part === 'string' ? part.trim() : '')).filter(Boolean).join('\n')
+}
+
+function classifyAuditFailure({ report, stderr, stdout }) {
+  const message = typeof report?.message === 'string' ? report.message : ''
+  const summary = typeof report?.error?.summary === 'string' ? report.error.summary : ''
+  const detail = typeof report?.error?.detail === 'string' ? report.error.detail : ''
+  const retryable =
+    isTransientFailure(message) ||
+    isTransientFailure(summary) ||
+    isTransientFailure(detail) ||
+    isTransientFailure(stderr)
+  const failureDetails = formatFailureDetails([message, summary, detail, stderr])
+
+  if (message || summary || detail) {
+    return {
+      exitCode: EXIT_CODES.unavailable,
+      message: `${retryable ? 'npm audit could not complete because the npm registry request failed.' : 'npm audit could not complete.'}${failureDetails ? `\n${failureDetails}` : ''}`,
+      retryable,
+    }
+  }
+
+  return {
+    exitCode: EXIT_CODES.unavailable,
+    message: `Unexpected npm audit format:\n${stdout}`,
+    retryable: false,
+  }
+}
+
+function loadAllowlist(allowlistPath, { existsSync = fs.existsSync, readFileSync = fs.readFileSync } = {}) {
+  if (!allowlistPath) {
+    return { allowedAdvisoryIds: new Set(), notes: {} }
+  }
+
+  if (!existsSync(allowlistPath)) {
+    throw new Error(`Missing audit allowlist file: ${allowlistPath}`)
   }
 
   let parsed
   try {
-    parsed = JSON.parse(fs.readFileSync(ALLOWLIST_PATH, 'utf8'))
+    parsed = JSON.parse(readFileSync(allowlistPath, 'utf8'))
   } catch (error) {
-    fail(`Failed to parse ${ALLOWLIST_PATH}: ${error instanceof Error ? error.message : String(error)}`)
+    throw new Error(`Failed to parse ${allowlistPath}: ${error instanceof Error ? error.message : String(error)}`)
   }
 
   const ids = Array.isArray(parsed.allowedAdvisoryIds) ? parsed.allowedAdvisoryIds : []
@@ -34,35 +153,81 @@ function loadAllowlist() {
   return { allowedAdvisoryIds, notes }
 }
 
-function runNpmAudit(extraArgs) {
-  const result = spawnSync('npm', ['audit', '--json', ...extraArgs], {
-    cwd: WEB_ROOT,
-    encoding: 'utf8',
-    env: process.env,
-  })
+function formatRetryMessage(failure, attempt, maxAttempts) {
+  return `${failure.message}\nRetrying npm audit (${attempt + 1}/${maxAttempts})...`
+}
 
-  if (result.error) {
-    fail(`Failed to run npm audit: ${result.error.message}`)
-  }
+function runNpmAudit(extraArgs, options = {}) {
+  const {
+    cwd = DEFAULT_CWD,
+    env = process.env,
+    error = console.error,
+    maxAttempts = getMaxAttempts(env),
+    spawn = spawnSync,
+  } = options
 
-  const stdout = result.stdout?.trim() || ''
-  if (!stdout) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const result = spawn('npm', ['audit', '--json', ...extraArgs], {
+      cwd,
+      encoding: 'utf8',
+      env,
+    })
+
+    if (result.error) {
+      return {
+        exitCode: EXIT_CODES.unavailable,
+        message: `Failed to run npm audit: ${result.error.message}`,
+        ok: false,
+      }
+    }
+
+    const stdout = result.stdout?.trim() || ''
     const stderr = result.stderr?.trim() || ''
-    fail(`npm audit did not return JSON output.\n${stderr}`)
+    if (!stdout) {
+      const retryable = isTransientFailure(stderr)
+      const failure = {
+        exitCode: EXIT_CODES.unavailable,
+        message: `npm audit did not return JSON output.${stderr ? `\n${stderr}` : ''}`,
+        retryable,
+      }
+
+      if (retryable && attempt < maxAttempts) {
+        error(formatRetryMessage(failure, attempt, maxAttempts))
+        continue
+      }
+
+      return { ...failure, ok: false }
+    }
+
+    let report
+    try {
+      report = JSON.parse(stdout)
+    } catch (error) {
+      return {
+        exitCode: EXIT_CODES.unavailable,
+        message: `npm audit returned non-JSON output: ${error instanceof Error ? error.message : String(error)}`,
+        ok: false,
+      }
+    }
+
+    if (isAuditReport(report)) {
+      return { ok: true, report }
+    }
+
+    const failure = classifyAuditFailure({ report, stderr, stdout })
+    if (failure.retryable && attempt < maxAttempts) {
+      error(formatRetryMessage(failure, attempt, maxAttempts))
+      continue
+    }
+
+    return { ...failure, ok: false }
   }
 
-  let report
-  try {
-    report = JSON.parse(stdout)
-  } catch (error) {
-    fail(`npm audit returned non-JSON output: ${error instanceof Error ? error.message : String(error)}`)
+  return {
+    exitCode: EXIT_CODES.unavailable,
+    message: 'npm audit could not complete after exhausting retries.',
+    ok: false,
   }
-
-  if (!report || typeof report !== 'object' || typeof report.vulnerabilities !== 'object' || report.vulnerabilities === null) {
-    fail(`Unexpected npm audit format:\n${stdout}`)
-  }
-
-  return report
 }
 
 function collectBlockedPackages(vulnerabilities, allowedAdvisoryIds) {
@@ -129,11 +294,39 @@ function collectBlockedPackages(vulnerabilities, allowedAdvisoryIds) {
   return { blockedPackages, blockedAdvisories, allowlistedAdvisories }
 }
 
-function main() {
-  const extraArgs = process.argv.slice(2)
-  const { allowedAdvisoryIds, notes } = loadAllowlist()
-  const report = runNpmAudit(extraArgs)
-  const vulnerabilities = report.vulnerabilities || {}
+export function main(argv = process.argv.slice(2), options = {}) {
+  const { error = console.error, existsSync, log = console.log, readFileSync, spawn, env = process.env } = options
+
+  let parsedArgs
+  try {
+    parsedArgs = parseCliArgs(argv)
+  } catch (parseError) {
+    error(parseError instanceof Error ? parseError.message : String(parseError))
+    return EXIT_CODES.unavailable
+  }
+
+  let allowlist
+  try {
+    allowlist = loadAllowlist(parsedArgs.allowlistPath, { existsSync, readFileSync })
+  } catch (loadError) {
+    error(loadError instanceof Error ? loadError.message : String(loadError))
+    return EXIT_CODES.unavailable
+  }
+
+  const auditResult = runNpmAudit(parsedArgs.extraArgs, {
+    cwd: parsedArgs.cwd,
+    env,
+    error,
+    spawn,
+  })
+
+  if (!auditResult.ok) {
+    error(auditResult.message)
+    return auditResult.exitCode
+  }
+
+  const { allowedAdvisoryIds, notes } = allowlist
+  const vulnerabilities = auditResult.report.vulnerabilities || {}
   const { blockedPackages, blockedAdvisories, allowlistedAdvisories } = collectBlockedPackages(
     vulnerabilities,
     allowedAdvisoryIds
@@ -141,35 +334,37 @@ function main() {
 
   if (blockedPackages.size === 0) {
     if (allowlistedAdvisories.size > 0) {
-      console.log(`npm audit passed with allowlist (${allowlistedAdvisories.size} advisory/advisories ignored):`)
+      log(`npm audit passed with allowlist (${allowlistedAdvisories.size} advisory/advisories ignored):`)
       for (const [id, advisory] of allowlistedAdvisories.entries()) {
         const note = notes[String(id)]
         const ghsa = note?.ghsa || 'unknown-ghsa'
         const title = advisory?.title || 'No title'
-        console.log(`- ${id} (${ghsa}): ${title}`)
+        log(`- ${id} (${ghsa}): ${title}`)
       }
     } else {
-      console.log('npm audit passed with no vulnerabilities.')
+      log('npm audit passed with no vulnerabilities.')
     }
-    return
+    return EXIT_CODES.ok
   }
 
-  console.error(`npm audit failed: found ${blockedPackages.size} blocking vulnerable package(s).`)
-  console.error('Blocking packages:')
+  error(`npm audit failed: found ${blockedPackages.size} blocking vulnerable package(s).`)
+  error('Blocking packages:')
   for (const pkgName of [...blockedPackages].sort()) {
-    console.error(`- ${pkgName}`)
+    error(`- ${pkgName}`)
   }
 
   if (blockedAdvisories.size > 0) {
-    console.error('Blocking advisories:')
+    error('Blocking advisories:')
     for (const [id, advisory] of blockedAdvisories.entries()) {
       const title = advisory?.title || 'No title'
       const url = advisory?.url || ''
-      console.error(`- ${id}: ${title}${url ? ` (${url})` : ''}`)
+      error(`- ${id}: ${title}${url ? ` (${url})` : ''}`)
     }
   }
 
-  process.exit(1)
+  return EXIT_CODES.vulnerabilities
 }
 
-main()
+if (path.resolve(process.argv[1] || '') === __filename) {
+  process.exit(main())
+}

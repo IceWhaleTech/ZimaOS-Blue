@@ -53,8 +53,8 @@ function encodeWav(audioBuffer: AudioBuffer): Blob {
   view.setUint16(20, format, true)
   view.setUint16(22, numChannels, true)
   view.setUint32(24, sampleRate, true)
-  view.setUint32(28, sampleRate * numChannels * bitDepth / 8, true)
-  view.setUint16(32, numChannels * bitDepth / 8, true)
+  view.setUint32(28, (sampleRate * numChannels * bitDepth) / 8, true)
+  view.setUint16(32, (numChannels * bitDepth) / 8, true)
   view.setUint16(34, bitDepth, true)
   writeString(view, 36, 'data')
   view.setUint32(40, samples.length * 2, true)
@@ -63,7 +63,7 @@ function encodeWav(audioBuffer: AudioBuffer): Blob {
   let offset = 44
   for (let i = 0; i < samples.length; i++) {
     const sample = Math.max(-1, Math.min(1, samples[i] ?? 0))
-    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true)
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
     offset += 2
   }
 

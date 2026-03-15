@@ -57,7 +57,9 @@ export async function getEntities(domain?: string): Promise<HAEntity[]> {
 }
 
 export async function getEntity(entityId: string): Promise<HAEntity> {
-  const response = await api.get(`/homeassistant/entities/${encodeURIComponent(entityId)}`, { baseURL: '/api' })
+  const response = await api.get(`/homeassistant/entities/${encodeURIComponent(entityId)}`, {
+    baseURL: '/api',
+  })
   return response.data
 }
 
@@ -66,10 +68,14 @@ export async function controlEntity(
   action: string,
   parameters?: Record<string, unknown>
 ): Promise<void> {
-  await api.post(`/homeassistant/entities/${encodeURIComponent(entityId)}/control`, {
-    action,
-    parameters,
-  }, { baseURL: '/api' })
+  await api.post(
+    `/homeassistant/entities/${encodeURIComponent(entityId)}/control`,
+    {
+      action,
+      parameters,
+    },
+    { baseURL: '/api' }
+  )
 }
 
 export async function getScenes(): Promise<HAScene[]> {
@@ -78,7 +84,9 @@ export async function getScenes(): Promise<HAScene[]> {
 }
 
 export async function activateScene(sceneId: string): Promise<void> {
-  await api.post(`/homeassistant/scenes/${encodeURIComponent(sceneId)}/activate`, null, { baseURL: '/api' })
+  await api.post(`/homeassistant/scenes/${encodeURIComponent(sceneId)}/activate`, null, {
+    baseURL: '/api',
+  })
 }
 
 export async function getAutomations(): Promise<HAAutomation[]> {
@@ -87,13 +95,19 @@ export async function getAutomations(): Promise<HAAutomation[]> {
 }
 
 export async function triggerAutomation(automationId: string): Promise<void> {
-  await api.post(`/homeassistant/automations/${encodeURIComponent(automationId)}/trigger`, null, { baseURL: '/api' })
+  await api.post(`/homeassistant/automations/${encodeURIComponent(automationId)}/trigger`, null, {
+    baseURL: '/api',
+  })
 }
 
 export async function toggleAutomation(automationId: string, enable: boolean): Promise<void> {
-  await api.post(`/homeassistant/automations/${encodeURIComponent(automationId)}/toggle`, {
-    enable,
-  }, { baseURL: '/api' })
+  await api.post(
+    `/homeassistant/automations/${encodeURIComponent(automationId)}/toggle`,
+    {
+      enable,
+    },
+    { baseURL: '/api' }
+  )
 }
 
 export async function processCommand(command: string): Promise<HACommandResult> {

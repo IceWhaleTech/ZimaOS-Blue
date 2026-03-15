@@ -100,7 +100,13 @@
             :disabled="!canSubmit || submitting"
             @click="handleSubmit"
           >
-            {{ submitting ? t('tenants.saving') : editingTenant ? t('tenants.save') : t('tenants.create') }}
+            {{
+              submitting
+                ? t('tenants.saving')
+                : editingTenant
+                  ? t('tenants.save')
+                  : t('tenants.create')
+            }}
           </button>
         </div>
       </div>
@@ -118,12 +124,10 @@
           <p class="warning">{{ t('tenants.deleteWarning') }}</p>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="deletingTenant = null">{{ t('tenants.cancel') }}</button>
-          <button
-            class="btn btn-danger"
-            :disabled="deleting"
-            @click="handleDelete"
-          >
+          <button class="btn btn-secondary" @click="deletingTenant = null">
+            {{ t('tenants.cancel') }}
+          </button>
+          <button class="btn btn-danger" :disabled="deleting" @click="handleDelete">
             {{ deleting ? t('tenants.deleting') : t('tenants.delete') }}
           </button>
         </div>

@@ -63,8 +63,7 @@ const filteredTools = computed(() => {
     const query = searchQuery.value.toLowerCase()
     result = result.filter(
       (tool) =>
-        tool.name.toLowerCase().includes(query) ||
-        tool.description?.toLowerCase().includes(query)
+        tool.name.toLowerCase().includes(query) || tool.description?.toLowerCase().includes(query)
     )
   }
 
@@ -83,7 +82,7 @@ const toolStats = computed(() => ({
 
 const categories = computed(() => {
   const cats = new Set<string>()
-  toolStore.tools.forEach(tool => {
+  toolStore.tools.forEach((tool) => {
     if (tool.category) cats.add(tool.category)
   })
   return Array.from(cats).sort()
@@ -110,9 +109,21 @@ function getToolIconUrl(tool: Tool): string | null {
     ppt: 'mediagen',
   }
   const availableIcons = new Set([
-    'analyze', 'browser', 'eye', 'file-read', 'file-write', 'mediagen', 'memory',
-    'notifications', 'process', 'question', 'sandbox', 'schedule', 'terminal',
-    'web-search', 'workflow',
+    'analyze',
+    'browser',
+    'eye',
+    'file-read',
+    'file-write',
+    'mediagen',
+    'memory',
+    'notifications',
+    'process',
+    'question',
+    'sandbox',
+    'schedule',
+    'terminal',
+    'web-search',
+    'workflow',
   ])
 
   // First try to use the icon field
@@ -189,7 +200,13 @@ function getCategoryIcon(category?: string): string {
     <!-- Filters -->
     <div class="filters">
       <div class="search-box">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          class="search-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.35-4.35" />
         </svg>
@@ -209,7 +226,13 @@ function getCategoryIcon(category?: string): string {
       </select>
 
       <button class="btn-refresh" :disabled="toolStore.loading" @click="toolStore.fetchTools()">
-        <svg v-if="!toolStore.loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          v-if="!toolStore.loading"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
           <path d="M3 3v5h5" />
           <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
@@ -239,7 +262,12 @@ function getCategoryIcon(category?: string): string {
         :class="['item-card', { disabled: !tool.enabled }]"
       >
         <div class="item-header">
-          <img v-if="getToolIconUrl(tool)" :src="getToolIconUrl(tool)!" class="item-icon-svg" :alt="getToolName(tool)" />
+          <img
+            v-if="getToolIconUrl(tool)"
+            :src="getToolIconUrl(tool)!"
+            class="item-icon-svg"
+            :alt="getToolName(tool)"
+          />
           <span v-else class="item-icon">{{ getCategoryIcon(tool.category) }}</span>
           <div class="item-title">
             <h3 :title="getToolName(tool)">{{ getToolName(tool) }}</h3>
@@ -270,7 +298,13 @@ function getCategoryIcon(category?: string): string {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <p>{{ searchQuery || filterCategory !== 'all' ? t('plugins.noMatchingTools') : t('plugins.noTools') }}</p>
+        <p>
+          {{
+            searchQuery || filterCategory !== 'all'
+              ? t('plugins.noMatchingTools')
+              : t('plugins.noTools')
+          }}
+        </p>
       </div>
     </div>
   </div>

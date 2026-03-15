@@ -43,7 +43,9 @@
       <div class="dialog-footer">
         <button class="btn-secondary" @click="decline">{{ t('decline') }}</button>
         <a href="#" class="learn-more">{{ t('speech.privacyDialog.learnMore') }}</a>
-        <button class="btn-primary" @click="accept">{{ t('speech.privacyDialog.acceptContinue') }}</button>
+        <button class="btn-primary" @click="accept">
+          {{ t('speech.privacyDialog.acceptContinue') }}
+        </button>
       </div>
     </div>
   </div>

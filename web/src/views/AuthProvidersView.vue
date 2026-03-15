@@ -2,7 +2,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { extauthAdminApi } from '@/api/extauth'
-import type { ProviderConfig, ProviderType, CreateProviderRequest, UpdateProviderRequest } from '@/api/extauth'
+import type {
+  ProviderConfig,
+  ProviderType,
+  CreateProviderRequest,
+  UpdateProviderRequest,
+} from '@/api/extauth'
 
 const { t } = useI18n()
 
@@ -32,7 +37,15 @@ const form = ref<CreateProviderRequest>({
   order: 0,
 })
 
-const providerTypes: ProviderType[] = ['generic', 'google', 'github', 'microsoft', 'keycloak', 'authentik', 'auth0']
+const providerTypes: ProviderType[] = [
+  'generic',
+  'google',
+  'github',
+  'microsoft',
+  'keycloak',
+  'authentik',
+  'auth0',
+]
 
 function getProviderTypeLabel(type: ProviderType): string {
   switch (type) {
@@ -173,7 +186,7 @@ async function saveProvider() {
         updateData.client_secret = form.value.client_secret
       }
       const response = await extauthAdminApi.updateProvider(editingProvider.value!.id, updateData)
-      const index = providers.value.findIndex(p => p.id === editingProvider.value!.id)
+      const index = providers.value.findIndex((p) => p.id === editingProvider.value!.id)
       if (index !== -1) {
         providers.value[index] = response.data
       }
@@ -191,11 +204,15 @@ async function saveProvider() {
 async function toggleProvider(provider: ProviderConfig) {
   try {
     const response = await extauthAdminApi.toggleProvider(provider.id, !provider.enabled)
-    const index = providers.value.findIndex(p => p.id === provider.id)
+    const index = providers.value.findIndex((p) => p.id === provider.id)
     if (index !== -1) {
       providers.value[index] = response.data
     }
-    showSuccess(response.data.enabled ? t('authProviders.providerEnabled') : t('authProviders.providerDisabled'))
+    showSuccess(
+      response.data.enabled
+        ? t('authProviders.providerEnabled')
+        : t('authProviders.providerDisabled')
+    )
   } catch (e) {
     error.value = e instanceof Error ? e.message : t('authProviders.failedToToggleProvider')
   }
@@ -208,7 +225,7 @@ async function deleteProvider(provider: ProviderConfig) {
 
   try {
     await extauthAdminApi.deleteProvider(provider.id)
-    providers.value = providers.value.filter(p => p.id !== provider.id)
+    providers.value = providers.value.filter((p) => p.id !== provider.id)
     showSuccess(t('authProviders.providerDeleted'))
   } catch (e) {
     error.value = e instanceof Error ? e.message : t('authProviders.failedToDeleteProvider')
@@ -259,8 +276,19 @@ function updateScope(index: number, value: string) {
         class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
         @click="openCreateModal"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 4v16m8-8H4"
+          />
         </svg>
         {{ t('authProviders.addProvider') }}
       </button>
@@ -289,8 +317,19 @@ function updateScope(index: number, value: string) {
 
     <!-- Empty State -->
     <div v-else-if="providers.length === 0" class="bg-gray-700 rounded-lg p-8 text-center">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-12 w-12 mx-auto text-gray-500 mb-4"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+        />
       </svg>
       <h3 class="text-lg font-medium text-white mb-2">{{ t('authProviders.noProviders') }}</h3>
       <p class="text-gray-400 mb-4">{{ t('authProviders.noProvidersDesc') }}</p>
@@ -304,11 +343,7 @@ function updateScope(index: number, value: string) {
 
     <!-- Providers List -->
     <div v-else class="space-y-4">
-      <div
-        v-for="provider in providers"
-        :key="provider.id"
-        class="bg-gray-700 rounded-lg p-4"
-      >
+      <div v-for="provider in providers" :key="provider.id" class="bg-gray-700 rounded-lg p-4">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-4">
             <!-- Status Indicator -->
@@ -328,7 +363,10 @@ function updateScope(index: number, value: string) {
               <div class="text-sm text-gray-400 mt-1">
                 <span>{{ t('authProviders.providerId') }}: {{ provider.id }}</span>
                 <span class="mx-2">|</span>
-                <span>{{ t('authProviders.clientId') }}: {{ provider.client_id.substring(0, 20) }}...</span>
+                <span
+                  >{{ t('authProviders.clientId') }}:
+                  {{ provider.client_id.substring(0, 20) }}...</span
+                >
               </div>
               <div v-if="provider.issuer_url" class="text-sm text-gray-500 mt-1">
                 {{ t('authProviders.issuer') }}: {{ provider.issuer_url }}
@@ -340,9 +378,11 @@ function updateScope(index: number, value: string) {
           <div class="flex items-center gap-2">
             <button
               class="px-3 py-1.5 text-sm rounded-lg transition-colors"
-              :class="provider.enabled
-                ? 'text-yellow-400 hover:bg-yellow-900/20'
-                : 'text-green-400 hover:bg-green-900/20'"
+              :class="
+                provider.enabled
+                  ? 'text-yellow-400 hover:bg-yellow-900/20'
+                  : 'text-green-400 hover:bg-green-900/20'
+              "
               @click="toggleProvider(provider)"
             >
               {{ provider.enabled ? t('authProviders.disable') : t('common.enable') }}
@@ -380,7 +420,9 @@ function updateScope(index: number, value: string) {
             <!-- Basic Info -->
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.providerId') }}</label>
+                <label class="block text-sm text-gray-400 mb-2">{{
+                  t('authProviders.providerId')
+                }}</label>
                 <input
                   v-model="form.id"
                   type="text"
@@ -392,7 +434,9 @@ function updateScope(index: number, value: string) {
                 />
               </div>
               <div>
-                <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.displayName') }}</label>
+                <label class="block text-sm text-gray-400 mb-2">{{
+                  t('authProviders.displayName')
+                }}</label>
                 <input
                   v-model="form.name"
                   type="text"
@@ -405,7 +449,9 @@ function updateScope(index: number, value: string) {
 
             <!-- Provider Type -->
             <div>
-              <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.providerType') }}</label>
+              <label class="block text-sm text-gray-400 mb-2">{{
+                t('authProviders.providerType')
+              }}</label>
               <select
                 v-model="form.type"
                 class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
@@ -420,7 +466,9 @@ function updateScope(index: number, value: string) {
             <!-- OAuth Credentials -->
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.clientId') }}</label>
+                <label class="block text-sm text-gray-400 mb-2">{{
+                  t('authProviders.clientId')
+                }}</label>
                 <input
                   v-model="form.client_id"
                   type="text"
@@ -432,7 +480,9 @@ function updateScope(index: number, value: string) {
               <div>
                 <label class="block text-sm text-gray-400 mb-2">
                   {{ t('authProviders.clientSecret') }}
-                  <span v-if="!isCreating" class="text-gray-500">{{ t('authProviders.clientSecretKeepBlank') }}</span>
+                  <span v-if="!isCreating" class="text-gray-500">{{
+                    t('authProviders.clientSecretKeepBlank')
+                  }}</span>
                 </label>
                 <input
                   v-model="form.client_secret"
@@ -459,7 +509,9 @@ function updateScope(index: number, value: string) {
             </div>
 
             <div>
-              <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.redirectUrl') }}</label>
+              <label class="block text-sm text-gray-400 mb-2">{{
+                t('authProviders.redirectUrl')
+              }}</label>
               <input
                 v-model="form.redirect_url"
                 type="url"
@@ -496,8 +548,19 @@ function updateScope(index: number, value: string) {
                     class="p-2 text-red-400 hover:bg-red-900/20 rounded-lg"
                     @click="removeScope(index)"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -517,7 +580,9 @@ function updateScope(index: number, value: string) {
                 </label>
               </div>
               <div>
-                <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.defaultRole') }}</label>
+                <label class="block text-sm text-gray-400 mb-2">{{
+                  t('authProviders.defaultRole')
+                }}</label>
                 <input
                   v-model="form.default_role"
                   type="text"
@@ -543,7 +608,11 @@ function updateScope(index: number, value: string) {
                 </button>
               </div>
               <div class="space-y-2">
-                <div v-for="(domain, index) in form.allowed_domains" :key="index" class="flex gap-2">
+                <div
+                  v-for="(domain, index) in form.allowed_domains"
+                  :key="index"
+                  class="flex gap-2"
+                >
                   <input
                     :value="domain"
                     type="text"
@@ -556,8 +625,19 @@ function updateScope(index: number, value: string) {
                     class="p-2 text-red-400 hover:bg-red-900/20 rounded-lg"
                     @click="removeAllowedDomain(index)"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -566,7 +646,9 @@ function updateScope(index: number, value: string) {
 
             <!-- Display Order -->
             <div>
-              <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.displayOrder') }}</label>
+              <label class="block text-sm text-gray-400 mb-2">{{
+                t('authProviders.displayOrder')
+              }}</label>
               <input
                 v-model.number="form.order"
                 type="number"
@@ -582,7 +664,13 @@ function updateScope(index: number, value: string) {
                 :disabled="loading"
                 class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               >
-                {{ loading ? t('common.saving') : (isCreating ? t('authProviders.createProvider') : t('authProviders.saveChanges')) }}
+                {{
+                  loading
+                    ? t('common.saving')
+                    : isCreating
+                      ? t('authProviders.createProvider')
+                      : t('authProviders.saveChanges')
+                }}
               </button>
               <button
                 type="button"

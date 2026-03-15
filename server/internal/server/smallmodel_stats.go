@@ -13,6 +13,8 @@ type SmallModelStats struct {
 
 	ShortQARouteAttempts       int64            `json:"short_qa_route_attempts"`
 	ShortQARouteSuccess        int64            `json:"short_qa_route_success"`
+	ImageQARouteAttempts       int64            `json:"image_qa_route_attempts"`
+	ImageQARouteSuccess        int64            `json:"image_qa_route_success"`
 	ToolDispatchRouteAttempts  int64            `json:"tool_dispatch_route_attempts"`
 	ToolDispatchRouteSuccess   int64            `json:"tool_dispatch_route_success"`
 	SummaryAttempts            int64            `json:"summary_attempts"`
@@ -27,6 +29,9 @@ type SmallModelStats struct {
 	ShortQALatencyMs           float64          `json:"short_qa_latency_ms"`
 	ShortQALatencySamples      int64            `json:"short_qa_latency_samples"`
 	ShortQALatencyMsTotal      int64            `json:"short_qa_latency_ms_total"`
+	ImageQALatencyMs           float64          `json:"image_qa_latency_ms"`
+	ImageQALatencySamples      int64            `json:"image_qa_latency_samples"`
+	ImageQALatencyMsTotal      int64            `json:"image_qa_latency_ms_total"`
 	ToolDispatchLatencyMs      float64          `json:"tool_dispatch_latency_ms"`
 	ToolDispatchLatencySamples int64            `json:"tool_dispatch_latency_samples"`
 	ToolDispatchLatencyTotal   int64            `json:"tool_dispatch_latency_ms_total"`
@@ -57,6 +62,18 @@ func (s *SmallModelStats) RecordShortQARoute(success bool) {
 	s.ShortQARouteAttempts++
 	if success {
 		s.ShortQARouteSuccess++
+	}
+}
+
+func (s *SmallModelStats) RecordImageQARoute(success bool) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ImageQARouteAttempts++
+	if success {
+		s.ImageQARouteSuccess++
 	}
 }
 
@@ -144,6 +161,9 @@ func (s *SmallModelStats) RecordLatencyWithScene(scene string, d time.Duration) 
 	case "short_qa":
 		s.ShortQALatencySamples++
 		s.ShortQALatencyMsTotal += ms
+	case "image_qa":
+		s.ImageQALatencySamples++
+		s.ImageQALatencyMsTotal += ms
 	case "tool_dispatch":
 		s.ToolDispatchLatencySamples++
 		s.ToolDispatchLatencyTotal += ms
@@ -192,6 +212,8 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 	cp := SmallModelStats{
 		ShortQARouteAttempts:       s.ShortQARouteAttempts,
 		ShortQARouteSuccess:        s.ShortQARouteSuccess,
+		ImageQARouteAttempts:       s.ImageQARouteAttempts,
+		ImageQARouteSuccess:        s.ImageQARouteSuccess,
 		ToolDispatchRouteAttempts:  s.ToolDispatchRouteAttempts,
 		ToolDispatchRouteSuccess:   s.ToolDispatchRouteSuccess,
 		SummaryAttempts:            s.SummaryAttempts,
@@ -204,6 +226,8 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 		LatencyMsTotal:             s.LatencyMsTotal,
 		ShortQALatencySamples:      s.ShortQALatencySamples,
 		ShortQALatencyMsTotal:      s.ShortQALatencyMsTotal,
+		ImageQALatencySamples:      s.ImageQALatencySamples,
+		ImageQALatencyMsTotal:      s.ImageQALatencyMsTotal,
 		ToolDispatchLatencySamples: s.ToolDispatchLatencySamples,
 		ToolDispatchLatencyTotal:   s.ToolDispatchLatencyTotal,
 		SummaryLatencySamples:      s.SummaryLatencySamples,
@@ -220,6 +244,9 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 	}
 	if cp.ShortQALatencySamples > 0 {
 		cp.ShortQALatencyMs = float64(cp.ShortQALatencyMsTotal) / float64(cp.ShortQALatencySamples)
+	}
+	if cp.ImageQALatencySamples > 0 {
+		cp.ImageQALatencyMs = float64(cp.ImageQALatencyMsTotal) / float64(cp.ImageQALatencySamples)
 	}
 	if cp.ToolDispatchLatencySamples > 0 {
 		cp.ToolDispatchLatencyMs = float64(cp.ToolDispatchLatencyTotal) / float64(cp.ToolDispatchLatencySamples)
@@ -244,6 +271,8 @@ func (s *SmallModelStats) Reset() {
 	defer s.mu.Unlock()
 	s.ShortQARouteAttempts = 0
 	s.ShortQARouteSuccess = 0
+	s.ImageQARouteAttempts = 0
+	s.ImageQARouteSuccess = 0
 	s.ToolDispatchRouteAttempts = 0
 	s.ToolDispatchRouteSuccess = 0
 	s.SummaryAttempts = 0
@@ -258,6 +287,9 @@ func (s *SmallModelStats) Reset() {
 	s.ShortQALatencyMs = 0
 	s.ShortQALatencySamples = 0
 	s.ShortQALatencyMsTotal = 0
+	s.ImageQALatencyMs = 0
+	s.ImageQALatencySamples = 0
+	s.ImageQALatencyMsTotal = 0
 	s.ToolDispatchLatencyMs = 0
 	s.ToolDispatchLatencySamples = 0
 	s.ToolDispatchLatencyTotal = 0

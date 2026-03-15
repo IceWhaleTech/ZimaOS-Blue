@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'ഫയൽ ഉറവിടങ്ങൾ',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -576,6 +576,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'നെറ്റ്വർക്ക് പ്രവേശനം',
+    networkTitle: 'നെറ്റ്വർക്കും ആക്‌സസും',
+    releaseTrack: 'പതിപ്പ് മാനേജ്മെന്റ്',
+    systemVersion: 'അപ്ഡേറ്റുകളും പതിപ്പുകളും',
     llmApiKeyRequired: 'LLM Provider പേജ് തുറക്കുന്നതിന് മുമ്പ് API Key ക്രമീകരിക്കുക.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -709,8 +713,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'അംഗീകരിച്ച ഡയറക്ടറികൾ',
+    approvedDirectoriesDesc: 'exec/convert നായി "എപ്പോഴും അനുവദിക്കുക" വഴി അംഗീകരിച്ച ഡയറക്ടറികൾ.',
+    noApprovedDirectories: 'അംഗീകരിച്ച ഡയറക്ടറികളൊന്നുമില്ല',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'അംഗീകൃത ഡയറക്ടറികൾ',
       firewall: 'ഫയർവാൾ',
       masking: 'ഡാറ്റ മാസ്കിംഗ്',
     },
@@ -1072,6 +1080,7 @@ export default {
       length: 'കുറഞ്ഞത് {n} പ്രതീകങ്ങൾ',
       uppercase: 'ഒരു വലിയ അക്ഷരം',
       lowercase: 'ഒരു ചെറിയ അക്ഷരം',
+      letter: 'ഒരു അക്ഷരം',
       number: 'ഒരു അക്കം',
       special: "ഒരു പ്രത്യേക പ്രതീകം (!{'@'}#$%...)",
     },
@@ -1143,6 +1152,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    conversations: 'സംഭാഷണങ്ങൾ',
     execDirectoryApprovalTimeout:
       'ഡയറക്ടറി അനുമതി സമയപരിധി കഴിഞ്ഞതിനാൽ കമാൻഡ് പ്രവർത്തനം തടയപ്പെട്ടു. ഡയറക്ടറി അനുമതിപ്പിച്ച് വീണ്ടും ശ്രമിക്കുക.',
     streamProgress: {

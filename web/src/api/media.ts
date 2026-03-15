@@ -110,7 +110,13 @@ export async function generateImage(req: MediaRequest) {
 }
 
 export async function generateVideo(req: MediaRequest) {
-  const { data } = await api.post<{ task_id: string; status: string; type: string; progress: number; message: string }>('/media/videos/generations', req)
+  const { data } = await api.post<{
+    task_id: string
+    status: string
+    type: string
+    progress: number
+    message: string
+  }>('/media/videos/generations', req)
   return data
 }
 
@@ -127,7 +133,12 @@ export async function listModels(type?: MediaType) {
 
 // IR-based API functions
 
-export async function classifyIntent(message: string, hasImages = false, imageCount = 0, locale = '') {
+export async function classifyIntent(
+  message: string,
+  hasImages = false,
+  imageCount = 0,
+  locale = ''
+) {
   const { data } = await api.post<ClassifyResponse>('/media/classify', {
     message,
     has_images: hasImages,
@@ -143,12 +154,16 @@ export async function directGenerate(req: DirectGenerateRequest) {
 }
 
 export async function retryTask(taskId: string) {
-  const { data } = await api.post<{ task_id: string; message_id: string; status: string }>(`/media/tasks/${taskId}/retry`)
+  const { data } = await api.post<{ task_id: string; message_id: string; status: string }>(
+    `/media/tasks/${taskId}/retry`
+  )
   return data
 }
 
 export async function cancelTask(taskId: string) {
-  const { data } = await api.post<{ success: boolean; task_id: string; status: string }>(`/media/tasks/${taskId}/cancel`)
+  const { data } = await api.post<{ success: boolean; task_id: string; status: string }>(
+    `/media/tasks/${taskId}/cancel`
+  )
   return data
 }
 
@@ -168,7 +183,7 @@ export function streamMediaTask(
     onComplete?: (evt: MediaProgressEvent) => void
     onCancelled?: (evt: MediaProgressEvent) => void
     onError?: (error: string) => void
-  },
+  }
 ): AbortController {
   const controller = new AbortController()
 
@@ -273,7 +288,7 @@ export function streamImageGeneration(
     onProgress?: (evt: MediaProgressEvent) => void
     onComplete?: (evt: MediaProgressEvent) => void
     onError?: (error: string) => void
-  },
+  }
 ): AbortController {
   const controller = new AbortController()
 

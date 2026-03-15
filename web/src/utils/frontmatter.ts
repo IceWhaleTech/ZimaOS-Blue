@@ -22,8 +22,8 @@ function cleanValue(raw: string): string {
   }
 
   if (
-    (value.startsWith('"') && value.endsWith('"'))
-    || (value.startsWith('\'') && value.endsWith('\''))
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
   ) {
     value = value.slice(1, -1)
   }
@@ -89,14 +89,13 @@ function parseEntries(rawFrontmatter: string): FrontmatterEntry[] {
     activeKey = null
   }
 
-  return order
-    .map((key) => {
-      const list = (values.get(key) || []).filter(Boolean)
-      return {
-        key,
-        value: list.length ? Array.from(new Set(list)).join(', ') : '-',
-      }
-    })
+  return order.map((key) => {
+    const list = (values.get(key) || []).filter(Boolean)
+    return {
+      key,
+      value: list.length ? Array.from(new Set(list)).join(', ') : '-',
+    }
+  })
 }
 
 export function parseFrontmatter(content: string): FrontmatterParseResult {
@@ -125,4 +124,3 @@ export function parseFrontmatter(content: string): FrontmatterParseResult {
     hasFrontmatter: true,
   }
 }
-

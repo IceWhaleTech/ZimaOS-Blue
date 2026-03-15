@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Izvori datoteka',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -564,6 +564,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Mrežni pristup',
+    networkTitle: 'Mreža i pristup',
+    releaseTrack: 'Upravljanje verzijama',
+    systemVersion: 'Ažuriranja i verzije',
     llmApiKeyRequired: 'Prije otvaranja stranice LLM pružatelja prvo konfigurirajte API ključ.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -697,8 +701,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Odobreni direktoriji',
+    approvedDirectoriesDesc: 'Direktoriji odobreni putem opcije "Uvijek dopusti" za exec/convert.',
+    noApprovedDirectories: 'Nema odobrenih direktorija',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Odobreni direktoriji',
       firewall: 'Vatrozid',
       masking: 'Maskiranje podataka',
     },
@@ -1204,7 +1212,8 @@ export default {
   userdata: {
     ...enUS.userdata,
     chatDataTitle: 'Podaci chata',
-    chatDataDescription: 'Uvezite, izvezite i očistite povijest chata i povezane podatke na jednom mjestu.',
+    chatDataDescription:
+      'Uvezite, izvezite i očistite povijest chata i povezane podatke na jednom mjestu.',
     manageData: 'Upravljaj podacima',
     cleanupPreviewFailed: 'Pregled čišćenja nije uspio',
     cleanupFailed: 'Čišćenje podataka nije uspjelo',
@@ -1227,8 +1236,10 @@ export default {
     formatEncryptedDesc: 'Potpuno šifrirani binarni format. Veća sigurnost.',
     formatJsonDesc: 'Format čitljiv ljudima. Lozinka se koristi za provjeru uvoza.',
     retentionSaved: 'Postavke zadržavanja su spremljene',
-    exportDescription: 'Izvezite svoju povijest razgovora i postavke u datoteku. Datoteka će biti zaštićena lozinkom.',
-    importDescription: 'Uvezite prethodno izvezene podatke. Trebat će vam lozinka korištena pri izvozu.',
+    exportDescription:
+      'Izvezite svoju povijest razgovora i postavke u datoteku. Datoteka će biti zaštićena lozinkom.',
+    importDescription:
+      'Uvezite prethodno izvezene podatke. Trebat će vam lozinka korištena pri izvozu.',
     tabs: {
       ...enUS.userdata.tabs,
       export: 'Izvoz',
@@ -1255,7 +1266,8 @@ export default {
       events: 'Događaji',
       alerts: 'Upozorenja',
       totalRecords: 'Ukupan broj zapisa nadzora',
-      policyHint: 'Svaka vrsta podataka podržava 1 do 365 dana. Kraće zadržavanje smanjuje pohranu, a dulje pomaže u reviziji i otklanjanju poteškoća.',
+      policyHint:
+        'Svaka vrsta podataka podržava 1 do 365 dana. Kraće zadržavanje smanjuje pohranu, a dulje pomaže u reviziji i otklanjanju poteškoća.',
       daysRange: 'Dopušteni raspon: 1-365 dana',
       sessionsHint: 'Životni ciklus sesija agenta i metapodaci izvođenja.',
       eventsHint: 'Pozivi alata, tragovi izvođenja i revizijski događaji.',
@@ -1263,7 +1275,8 @@ export default {
       sessionsSuggested: 'Preporučeno: 14-30 dana za redovni rad',
       eventsSuggested: 'Preporučeno: 7-14 dana za uravnotežen opseg revizije',
       alertsSuggested: 'Preporučeno: 30-90 dana za pregled incidenata',
-      saveHint: 'Novi prozori zadržavanja primjenjuju se na nadolazeća automatska i ručna čišćenja.',
+      saveHint:
+        'Novi prozori zadržavanja primjenjuju se na nadolazeća automatska i ručna čišćenja.',
 
       days: 'dana',
       storageInfo: 'Trenutna količina',
@@ -1277,7 +1290,8 @@ export default {
       title: 'Čišćenje podataka',
       description: 'Trajno izbrišite odabrane podatke. Ova se radnja ne može poništiti.',
       warning: 'Destruktivna radnja',
-      warningDetail: 'Izbrisani podaci ne mogu se vratiti. Ako trebate sigurnosnu kopiju, prvo izvezite podatke.',
+      warningDetail:
+        'Izbrisani podaci ne mogu se vratiti. Ako trebate sigurnosnu kopiju, prvo izvezite podatke.',
       selectData: 'Odaberite podatke za brisanje',
       chatHistory: 'Povijest razgovora',
       chatHistoryDesc: 'Svi razgovori i poruke',
@@ -1296,7 +1310,8 @@ export default {
       willReset: 'Bit će resetirano',
       willClear: 'Bit će očišćeno',
       authorizationStep: 'Potrebna autorizacija',
-      authorizationHint: 'Pregledajte podatke koji će biti izbrisani. Ovaj korak služi kao potvrda autorizacije.',
+      authorizationHint:
+        'Pregledajte podatke koji će biti izbrisani. Ovaj korak služi kao potvrda autorizacije.',
       proceedToConfirm: 'Nastavi na potvrdu',
       confirmStep: 'Završna potvrda',
       confirmHint: 'Unesite lozinku da potvrdite ovu destruktivnu radnju.',
@@ -1304,7 +1319,8 @@ export default {
       confirmText: 'POTVRDI BRISANJE',
       typeToConfirm: 'Upišite za potvrdu',
       typeToConfirmPlaceholder: 'Upišite "{confirmText}" za potvrdu',
-      productionHint: 'U produkcijskim okruženjima mogu biti potrebne dodatne vjerodajnice (MFA, odobrenje administratora).',
+      productionHint:
+        'U produkcijskim okruženjima mogu biti potrebne dodatne vjerodajnice (MFA, odobrenje administratora).',
       enterPassword: 'Unesite lozinku',
       passwordPlaceholder: 'Unesite lozinku za potvrdu',
       confirmDelete: 'Potvrdi brisanje',
@@ -1317,7 +1333,8 @@ export default {
       totalMemories: 'Ukupno memorija',
       backend: 'Backend',
       exportSection: 'Izvezi memorije',
-      exportDesc: 'Preuzmite sve memorije kao Markdown datoteku za sigurnosnu kopiju ili uređivanje.',
+      exportDesc:
+        'Preuzmite sve memorije kao Markdown datoteku za sigurnosnu kopiju ili uređivanje.',
       exportButton: 'Izvezi kao Markdown',
       exportSuccess: 'Memorije su uspješno izvezene',
       exportFailed: 'Izvoz memorija nije uspio',
@@ -1377,12 +1394,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Zapamćen je novi sadržaj',
       memorySavedMessage: 'Memorija je izdvojena iz razgovora',
       manageMemory: 'Upravljaj memorijom',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -1795,6 +1813,7 @@ export default {
       length: 'Najmanje {n} znakova',
       uppercase: 'Jedno veliko slovo',
       lowercase: 'Jedno malo slovo',
+      letter: 'Jedno slovo',
       number: 'Jedna znamenka',
       special: "Jedan poseban znak (!{'@'}#$%...)",
     },
@@ -1883,7 +1902,9 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Izvršavanje naredbe je blokirano jer je odobrenje direktorija isteklo. Odobrite direktorij i pokušajte ponovno.',
+    conversations: 'Razgovori',
+    execDirectoryApprovalTimeout:
+      'Izvršavanje naredbe je blokirano jer je odobrenje direktorija isteklo. Odobrite direktorij i pokušajte ponovno.',
     streamProgress: {
       requestAccepted: 'Zahtjev je primljen, pripremam odgovor...',
       generating: 'Generiram odgovor...',

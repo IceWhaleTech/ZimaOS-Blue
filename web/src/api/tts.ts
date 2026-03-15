@@ -37,8 +37,7 @@ export const ttsApi = {
     api.post<ConsentResponse>('/tts/consent', { service, given }),
 
   // Provider management
-  listProviders: () =>
-    api.get<{ providers: TTSProvider[]; preferred: string }>('/tts/providers'),
+  listProviders: () => api.get<{ providers: TTSProvider[]; preferred: string }>('/tts/providers'),
 
   setPreferredProvider: (provider: string) =>
     api.post<{ message: string; provider: string }>('/tts/providers/preferred', {
@@ -52,8 +51,7 @@ export const ttsApi = {
     }),
 
   // eSpeak-NG language packs
-  listLanguagePacks: () =>
-    api.get<{ packs: LanguagePack[] }>('/tts/espeak/packs'),
+  listLanguagePacks: () => api.get<{ packs: LanguagePack[] }>('/tts/espeak/packs'),
 
   downloadLanguagePack: (language: string) =>
     api.post<{ message: string; language: string }>(`/tts/espeak/packs/${language}`),
@@ -65,12 +63,7 @@ export const ttsApi = {
     api.delete<{ message: string; language: string }>(`/tts/espeak/packs/${language}`),
 
   // Synthesis
-  synthesize: (text: string) =>
-    api.post(
-      '/tts/synthesize',
-      { text },
-      { responseType: 'blob' }
-    ),
+  synthesize: (text: string) => api.post('/tts/synthesize', { text }, { responseType: 'blob' }),
 }
 
 export default ttsApi

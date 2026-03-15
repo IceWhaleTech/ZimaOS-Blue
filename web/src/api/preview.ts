@@ -24,6 +24,7 @@ export interface UpgradeResponse {
     role: string
   }
   data_migrated: boolean
+  migrated_counts?: Record<string, number>
 }
 
 export interface PresetQuestionAttachment {

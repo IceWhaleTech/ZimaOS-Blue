@@ -37,6 +37,9 @@ func TestCapabilityDetector_GetCapability(t *testing.T) {
 				if cap.AdapterRequired != tt.wantAdapter {
 					t.Errorf("AdapterRequired = %v, want %v", cap.AdapterRequired, tt.wantAdapter)
 				}
+				if tt.provider == "deepseek" && cap.MaxContextSize != 128000 {
+					t.Errorf("MaxContextSize = %d, want %d", cap.MaxContextSize, 128000)
+				}
 			}
 		})
 	}

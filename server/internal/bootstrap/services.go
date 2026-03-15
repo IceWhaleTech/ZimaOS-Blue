@@ -130,7 +130,14 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 
 	// Tool registry (read, write, web_search + memory registered lazily)
 	s.ToolRegistry = tools.NewRegistry()
-	tools.RegisterBuiltinToolsWithConfig(s.ToolRegistry, buildWebSearchConfig(appCfg), buildWebFetchConfig(appCfg), nil, 0)
+	workspaceRoot := filepath.Join(cfg.DataDir, "workspace")
+	tools.RegisterBuiltinToolsWithConfig(
+		s.ToolRegistry,
+		buildWebSearchConfig(appCfg),
+		buildWebFetchConfig(appCfg),
+		[]string{workspaceRoot},
+		0,
+	)
 	tools.AttachPDFServiceToWebTools(s.ToolRegistry, s.PDFService)
 	tools.RegisterFactoryToolDefinitions(s.ToolRegistry)
 	tools.RegisterAgentTools(s.ToolRegistry, appCfg)

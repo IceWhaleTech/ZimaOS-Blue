@@ -111,11 +111,26 @@ describe('ChatMessage todo checklist dedupe', () => {
     const canonical = assistantMessage('msg-a1', '- [ ] 收集信息\n- [ ] 写总结', {
       todo_card_id: 'todo-checklist-msg-a1',
     })
-    const duplicate = assistantMessage('msg-a3', '- [x] 收集信息\n- [ ] 写总结\n\n我继续执行第二步。')
+    const duplicate = assistantMessage(
+      'msg-a3',
+      '- [x] 收集信息\n- [ ] 写总结\n\n我继续执行第二步。'
+    )
     chatStore.messages = [
-      { id: 'msg-u1', conversation_id: 'conv-1', role: 'user', content: '帮我整理', created_at: '2026-03-11T00:00:00.000Z' },
+      {
+        id: 'msg-u1',
+        conversation_id: 'conv-1',
+        role: 'user',
+        content: '帮我整理',
+        created_at: '2026-03-11T00:00:00.000Z',
+      },
       canonical,
-      { id: 'msg-u2', conversation_id: 'conv-1', role: 'user', content: '继续', created_at: '2026-03-11T00:00:01.000Z' },
+      {
+        id: 'msg-u2',
+        conversation_id: 'conv-1',
+        role: 'user',
+        content: '继续',
+        created_at: '2026-03-11T00:00:01.000Z',
+      },
       duplicate,
     ]
 
@@ -143,4 +158,3 @@ describe('ChatMessage todo checklist dedupe', () => {
     expect(wrapper.text()).not.toContain('写总结')
   })
 })
-

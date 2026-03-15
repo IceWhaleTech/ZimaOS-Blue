@@ -72,13 +72,11 @@ const mocks = vi.hoisted(() => ({
     agentMode: false,
     claudeCodeEnabled: false,
     showToolDetails: true,
-    themeStyle: 'default',
     fetchTools: vi.fn(),
     updateFromPoolProviders: vi.fn(),
     setAgentAutoConfirm: vi.fn(),
     setAgentMode: vi.fn(),
     setShowToolDetails: vi.fn(),
-    setThemeStyle: vi.fn(),
   },
   providerPoolStore: {
     activeProviders: [] as unknown[],
@@ -143,7 +141,6 @@ vi.mock('@/stores/chat', () => ({
 }))
 
 vi.mock('@/stores/settings', () => ({
-  THEME_STYLES: [{ id: 'default', labelKey: 'theme.styles.default' }],
   useSettingsStore: () => mocks.settingsStore,
 }))
 
@@ -204,7 +201,8 @@ vi.mock('@/components/ChatInput.vue', () => ({
       focus() {},
       resetWarmup() {},
     },
-    template: '<button class="chat-input-send-stub" @click="$emit(\'send\', \'need provider\', [])" />',
+    template:
+      '<button class="chat-input-send-stub" @click="$emit(\'send\', \'need provider\', [])" />',
   },
 }))
 

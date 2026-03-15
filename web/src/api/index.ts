@@ -126,7 +126,8 @@ export const healthApi = {
   },
   getLiveness: () => api.get<{ status: string }>('/health/live'),
   getReadiness: () => api.get<{ status: string }>('/health/ready'),
-  getDetailedHealth: () => api.get<HealthStatus & { runtime: RuntimeStats }>('/system/health/detailed'),
+  getDetailedHealth: () =>
+    api.get<HealthStatus & { runtime: RuntimeStats }>('/system/health/detailed'),
 }
 
 export const workerApi = {
@@ -154,7 +155,8 @@ export interface BackupProgress {
 export const backupApi = {
   list: () => api.get<BackupInfo[]>('/backup'),
   create: () => api.post<BackupInfo>('/backup', {}, { timeout: 0 }), // No timeout for backup
-  restore: (id: string, req: BackupRestoreRequest = {}) => api.post<BackupRestoreResponse>(`/backup/${id}/restore`, req, { timeout: 0 }), // No timeout for restore
+  restore: (id: string, req: BackupRestoreRequest = {}) =>
+    api.post<BackupRestoreResponse>(`/backup/${id}/restore`, req, { timeout: 0 }), // No timeout for restore
   delete: (id: string) => api.delete<{ success: boolean }>(`/backup/${id}`),
   getProgress: () => api.get<BackupProgress>('/backup/progress'),
 }

@@ -62,12 +62,19 @@ func TestMigrationService_MigratePreviewData_AssignsConversations(t *testing.T) 
 	if err != nil {
 		t.Fatalf("failed to insert conversation: %v", err)
 	}
+	_, err = db.Exec(`INSERT INTO conversations (id, user_id, title) VALUES ('conv3', 'preview-user', 'Test 3')`)
+	if err != nil {
+		t.Fatalf("failed to insert conversation: %v", err)
+	}
 
 	// Migrate
 	adminUserID := "admin-user-id-123"
-	err = migrationService.MigratePreviewData(ctx, adminUserID)
+	result, err := migrationService.MigratePreviewData(ctx, adminUserID)
 	if err != nil {
 		t.Fatalf("MigratePreviewData() error = %v", err)
+	}
+	if got := result.MigratedCounts["conversations"]; got != 3 {
+		t.Fatalf("migrated conversations = %d, want 3", got)
 	}
 
 	// Verify conversations are assigned to admin
@@ -76,8 +83,8 @@ func TestMigrationService_MigratePreviewData_AssignsConversations(t *testing.T) 
 	if err != nil {
 		t.Fatalf("failed to count conversations: %v", err)
 	}
-	if count != 2 {
-		t.Errorf("expected 2 conversations assigned to admin, got %d", count)
+	if count != 3 {
+		t.Errorf("expected 3 conversations assigned to admin, got %d", count)
 	}
 }
 
@@ -88,7 +95,7 @@ func TestMigrationService_MigratePreviewData_MarksMigrationComplete(t *testing.T
 	ctx := context.Background()
 
 	// Migrate
-	err := migrationService.MigratePreviewData(ctx, "admin-user-id")
+	_, err := migrationService.MigratePreviewData(ctx, "admin-user-id")
 	if err != nil {
 		t.Fatalf("MigratePreviewData() error = %v", err)
 	}
@@ -155,12 +162,12 @@ func TestMigrationService_MigratePreviewData_Idempotent(t *testing.T) {
 	adminUserID := "admin-user-id"
 
 	// Migrate twice
-	err = migrationService.MigratePreviewData(ctx, adminUserID)
+	_, err = migrationService.MigratePreviewData(ctx, adminUserID)
 	if err != nil {
 		t.Fatalf("first MigratePreviewData() error = %v", err)
 	}
 
-	err = migrationService.MigratePreviewData(ctx, adminUserID)
+	_, err = migrationService.MigratePreviewData(ctx, adminUserID)
 	if err != nil {
 		t.Fatalf("second MigratePreviewData() error = %v", err)
 	}
@@ -194,7 +201,7 @@ func TestMigrationService_MigratePreviewData_PreservesExistingUserConversations(
 
 	// Migrate
 	adminUserID := "admin-user-id"
-	err = migrationService.MigratePreviewData(ctx, adminUserID)
+	_, err = migrationService.MigratePreviewData(ctx, adminUserID)
 	if err != nil {
 		t.Fatalf("MigratePreviewData() error = %v", err)
 	}
@@ -217,5 +224,15 @@ func TestMigrationService_MigratePreviewData_PreservesExistingUserConversations(
 	}
 	if otherCount != 1 {
 		t.Errorf("expected 1 conversation for other user, got %d", otherCount)
+	}
+}
+
+func TestMigrationService_MigratePreviewData_RequiresAdminUserID(t *testing.T) {
+	migrationService, _, cleanup := setupTestMigrationService(t)
+	defer cleanup()
+
+	_, err := migrationService.MigratePreviewData(context.Background(), " ")
+	if err == nil {
+		t.Fatal("expected error for empty admin user id")
 	}
 }

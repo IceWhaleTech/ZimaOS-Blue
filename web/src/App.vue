@@ -33,10 +33,13 @@ onMounted(async () => {
   connectEventStream()
 
   // Pre-fetch provider and enhanced mode state so ChatView has data on first render
-  providerPoolStore.fetchProviders().then(() => {
-    const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
-    settingsStore.updateFromPoolProviders(llmProviders)
-  }).catch(() => {})
+  providerPoolStore
+    .fetchProviders()
+    .then(() => {
+      const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
+      settingsStore.updateFromPoolProviders(llmProviders)
+    })
+    .catch(() => {})
   settingsStore.fetchBackendSettings().catch(() => {})
   settingsStore.fetchClaudeCodeEnabled()
 })

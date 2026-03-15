@@ -102,7 +102,9 @@ describe('CardConvertTask', () => {
     expect(wrapper.text()).toContain('Speech audio created')
     expect(wrapper.find('audio').exists()).toBe(true)
     expect(wrapper.text()).toContain('Download audio')
-    const hasCancelButton = wrapper.findAll('button').some(button => button.text().includes('Cancel'))
+    const hasCancelButton = wrapper
+      .findAll('button')
+      .some((button) => button.text().includes('Cancel'))
     expect(hasCancelButton).toBe(false)
   })
 
@@ -228,7 +230,9 @@ describe('CardConvertTask', () => {
       },
     })
 
-    const locationButton = wrapper.findAll('button').find(button => button.text().includes('Open location'))
+    const locationButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Open location'))
     expect(locationButton).toBeTruthy()
     await locationButton!.trigger('click')
     await flushPromises()
@@ -270,7 +274,9 @@ describe('CardConvertTask', () => {
       },
     })
 
-    const locationButton = wrapper.findAll('button').find(button => button.text().includes('Open location'))
+    const locationButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Open location'))
     expect(locationButton).toBeTruthy()
     await locationButton!.trigger('click')
     await flushPromises()

@@ -122,7 +122,9 @@ onUnmounted(() => {
 <template>
   <div class="security-alerts">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('securityAlerts.title') }}</h2>
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+        {{ t('securityAlerts.title') }}
+      </h2>
       <button
         :disabled="loading"
         class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
@@ -144,74 +146,122 @@ onUnmounted(() => {
         <div class="text-2xl font-bold text-red-600 dark:text-red-400">
           {{ criticalAlerts.length + highAlerts.length }}
         </div>
-        <div class="text-sm text-red-600/70 dark:text-red-400/70">{{ t('securityAlerts.summary.criticalHigh') }}</div>
+        <div class="text-sm text-red-600/70 dark:text-red-400/70">
+          {{ t('securityAlerts.summary.criticalHigh') }}
+        </div>
       </div>
       <div class="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
         <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
           {{ mediumAlerts.length }}
         </div>
-        <div class="text-sm text-yellow-600/70 dark:text-yellow-400/70">{{ t('security.threats.riskLevel.medium') }}</div>
+        <div class="text-sm text-yellow-600/70 dark:text-yellow-400/70">
+          {{ t('security.threats.riskLevel.medium') }}
+        </div>
       </div>
       <div class="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
         <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white">
           {{ lowAlerts.length }}
         </div>
-        <div class="text-sm text-gray-900 dark:text-white/70 dark:text-white/70">{{ t('security.threats.riskLevel.low') }}</div>
+        <div class="text-sm text-gray-900 dark:text-white/70 dark:text-white/70">
+          {{ t('security.threats.riskLevel.low') }}
+        </div>
       </div>
       <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
         <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">
           {{ unresolvedAlerts }}
         </div>
-        <div class="text-sm text-gray-600/70 dark:text-gray-400/70">{{ t('securityAlerts.summary.unresolved') }}</div>
+        <div class="text-sm text-gray-600/70 dark:text-gray-400/70">
+          {{ t('securityAlerts.summary.unresolved') }}
+        </div>
       </div>
     </div>
 
-    <div v-if="guardStats" class="mb-4 p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
-      <h3 class="font-medium text-gray-900 dark:text-white mb-3">{{ t('securityAlerts.sections.promptGuard') }}</h3>
+    <div
+      v-if="guardStats"
+      class="mb-4 p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700"
+    >
+      <h3 class="font-medium text-gray-900 dark:text-white mb-3">
+        {{ t('securityAlerts.sections.promptGuard') }}
+      </h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
           <span class="text-gray-500 dark:text-gray-400">{{ t('common.status') }}:</span>
-          <span :class="guardStats.enabled ? 'text-green-600' : 'text-red-600'" class="ml-2 font-medium">
+          <span
+            :class="guardStats.enabled ? 'text-green-600' : 'text-red-600'"
+            class="ml-2 font-medium"
+          >
             {{ guardStats.enabled ? t('common.enabled') : t('common.disabled') }}
           </span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.patterns') }}:</span>
-          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ guardStats.pattern_count }}</span>
+          <span class="text-gray-500 dark:text-gray-400"
+            >{{ t('securityAlerts.labels.patterns') }}:</span
+          >
+          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{
+            guardStats.pattern_count
+          }}</span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.detections') }}:</span>
+          <span class="text-gray-500 dark:text-gray-400"
+            >{{ t('securityAlerts.labels.detections') }}:</span
+          >
           <span class="ml-2 font-medium text-yellow-600">{{ guardStats.detection_count }}</span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.blocked') }}:</span>
+          <span class="text-gray-500 dark:text-gray-400"
+            >{{ t('securityAlerts.labels.blocked') }}:</span
+          >
           <span class="ml-2 font-medium text-red-600">{{ guardStats.blocked_count }}</span>
         </div>
       </div>
     </div>
 
-    <div v-if="authStats" class="mb-4 p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
-      <h3 class="font-medium text-gray-900 dark:text-white mb-3">{{ t('securityAlerts.sections.authentication') }}</h3>
+    <div
+      v-if="authStats"
+      class="mb-4 p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700"
+    >
+      <h3 class="font-medium text-gray-900 dark:text-white mb-3">
+        {{ t('securityAlerts.sections.authentication') }}
+      </h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.auth') }}:</span>
-          <span :class="authStats.auth_enabled ? 'text-green-600' : 'text-gray-600'" class="ml-2 font-medium">
+          <span class="text-gray-500 dark:text-gray-400"
+            >{{ t('securityAlerts.labels.auth') }}:</span
+          >
+          <span
+            :class="authStats.auth_enabled ? 'text-green-600' : 'text-gray-600'"
+            class="ml-2 font-medium"
+          >
             {{ authStats.auth_enabled ? t('common.enabled') : t('common.disabled') }}
           </span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.apiKeys') }}:</span>
-          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ authStats.api_key_count }}</span>
+          <span class="text-gray-500 dark:text-gray-400"
+            >{{ t('securityAlerts.labels.apiKeys') }}:</span
+          >
+          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{
+            authStats.api_key_count
+          }}</span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.authFailures') }}:</span>
-          <span :class="authStats.auth_failures > 0 ? 'text-red-600' : 'text-green-600'" class="ml-2 font-medium">
+          <span class="text-gray-500 dark:text-gray-400"
+            >{{ t('securityAlerts.labels.authFailures') }}:</span
+          >
+          <span
+            :class="authStats.auth_failures > 0 ? 'text-red-600' : 'text-green-600'"
+            class="ml-2 font-medium"
+          >
             {{ authStats.auth_failures }}
           </span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.rateLimited') }}:</span>
-          <span :class="authStats.rate_limit_hits > 0 ? 'text-yellow-600' : 'text-green-600'" class="ml-2 font-medium">
+          <span class="text-gray-500 dark:text-gray-400"
+            >{{ t('securityAlerts.labels.rateLimited') }}:</span
+          >
+          <span
+            :class="authStats.rate_limit_hits > 0 ? 'text-yellow-600' : 'text-green-600'"
+            class="ml-2 font-medium"
+          >
             {{ authStats.rate_limit_hits }}
           </span>
         </div>
@@ -219,7 +269,10 @@ onUnmounted(() => {
     </div>
 
     <div class="space-y-2">
-      <div v-if="alerts.length === 0 && !loading" class="text-center py-8 text-gray-500 dark:text-gray-400">
+      <div
+        v-if="alerts.length === 0 && !loading"
+        class="text-center py-8 text-gray-500 dark:text-gray-400"
+      >
         {{ t('common.noSecurityAlerts') }}
       </div>
 
@@ -247,7 +300,9 @@ onUnmounted(() => {
               {{ alert.details }}
             </p>
             <div class="flex items-center gap-4 mt-2 text-xs text-gray-400">
-              <span v-if="alert.source_ip">{{ t('securityAlerts.labels.ip') }}: {{ alert.source_ip }}</span>
+              <span v-if="alert.source_ip"
+                >{{ t('securityAlerts.labels.ip') }}: {{ alert.source_ip }}</span
+              >
               <span>{{ new Date(alert.timestamp).toLocaleString() }}</span>
             </div>
           </div>

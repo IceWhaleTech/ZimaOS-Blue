@@ -44,10 +44,13 @@ export function useEventStream() {
     if (providerResyncTimer) return
     providerResyncTimer = setTimeout(() => {
       providerResyncTimer = null
-      providerPoolStore.fetchProviders().then(() => {
-        const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
-        settingsStore.updateFromPoolProviders(llmProviders)
-      }).catch(() => {})
+      providerPoolStore
+        .fetchProviders()
+        .then(() => {
+          const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
+          settingsStore.updateFromPoolProviders(llmProviders)
+        })
+        .catch(() => {})
     }, 250)
   }
 
@@ -139,7 +142,11 @@ export function useEventStream() {
       const cbs = listeners.get(type)
       if (cbs) {
         for (const cb of cbs) {
-          try { cb(data) } catch { /* ignore listener errors */ }
+          try {
+            cb(data)
+          } catch {
+            /* ignore listener errors */
+          }
         }
       }
 
@@ -151,102 +158,108 @@ export function useEventStream() {
 
       console.log('[EventStream] Entering switch with type:', type)
       switch (type) {
-      case 'push': {
-        const reminderTextRaw = String(data.message || t('push.defaultMessage'))
-        const reminderText = reminderTextRaw.startsWith('⏰') ? reminderTextRaw : `⏰ ${reminderTextRaw}`
-        const reminderTitle = t('push.reminder')
+        case 'push': {
+          const reminderTextRaw = String(data.message || t('push.defaultMessage'))
+          const reminderText = reminderTextRaw.startsWith('⏰')
+            ? reminderTextRaw
+            : `⏰ ${reminderTextRaw}`
+          const reminderTitle = t('push.reminder')
 
-        // Show toast notification with optional action to navigate to conversation
-        const toastOpts: any = { duration: 10000 }
-        if (data.conversation_id) {
-          toastOpts.action = {
-            label: t('push.viewConversation'),
-            handler: () => {
-              chatStore.selectConversation(data.conversation_id)
-            },
+          // Show toast notification with optional action to navigate to conversation
+          const toastOpts: any = { duration: 10000 }
+          if (data.conversation_id) {
+            toastOpts.action = {
+              label: t('push.viewConversation'),
+              handler: () => {
+                chatStore.selectConversation(data.conversation_id)
+              },
+            }
           }
-        }
-        notificationStore.info(
-          reminderTitle,
-          reminderText,
-          toastOpts,
-        )
+          notificationStore.info(reminderTitle, reminderText, toastOpts)
 
-        // Refresh conversation list so the injected message shows up
-        chatStore.fetchConversations()
-        if (data.conversation_id && chatStore.currentConversationId === data.conversation_id) {
-          chatStore.fetchMessages(data.conversation_id)
-        }
+          // Refresh conversation list so the injected message shows up
+          chatStore.fetchConversations()
+          if (data.conversation_id && chatStore.currentConversationId === data.conversation_id) {
+            chatStore.fetchMessages(data.conversation_id)
+          }
 
-        // Desktop notification if page is hidden
-        if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification(reminderTitle, { body: reminderText })
-        }
-        break
-      }
-
-      case 'conversation_updated': {
-        // If this tab is already streaming this conversation, skip — we have real-time deltas
-        if (data.streaming && chatStore.streaming && chatStore.currentConversationId === data.id) {
+          // Desktop notification if page is hidden
+          if (
+            document.hidden &&
+            'Notification' in window &&
+            Notification.permission === 'granted'
+          ) {
+            new Notification(reminderTitle, { body: reminderText })
+          }
           break
         }
 
-        // Refresh conversation list (title changes, etc.)
-        chatStore.fetchConversations()
+        case 'conversation_updated': {
+          // If this tab is already streaming this conversation, skip — we have real-time deltas
+          if (
+            data.streaming &&
+            chatStore.streaming &&
+            chatStore.currentConversationId === data.id
+          ) {
+            break
+          }
 
-        // If the updated conversation is the current one, refresh messages
-        if (data.id && chatStore.currentConversationId === data.id) {
-          if (data.streaming) {
-            // Debounce streaming updates to avoid hammering the API
-            if (streamingFetchTimer) clearTimeout(streamingFetchTimer)
-            streamingFetchTimer = setTimeout(() => {
-              streamingFetchTimer = null
+          // Refresh conversation list (title changes, etc.)
+          chatStore.fetchConversations()
+
+          // If the updated conversation is the current one, refresh messages
+          if (data.id && chatStore.currentConversationId === data.id) {
+            if (data.streaming) {
+              // Debounce streaming updates to avoid hammering the API
+              if (streamingFetchTimer) clearTimeout(streamingFetchTimer)
+              streamingFetchTimer = setTimeout(() => {
+                streamingFetchTimer = null
+                chatStore.fetchMessages(data.id)
+              }, 500)
+            } else {
+              // Final update — fetch immediately
+              if (streamingFetchTimer) {
+                clearTimeout(streamingFetchTimer)
+                streamingFetchTimer = null
+              }
               chatStore.fetchMessages(data.id)
-            }, 500)
-          } else {
-            // Final update — fetch immediately
-            if (streamingFetchTimer) {
-              clearTimeout(streamingFetchTimer)
-              streamingFetchTimer = null
             }
-            chatStore.fetchMessages(data.id)
           }
+          break
         }
-        break
-      }
 
-      case 'conversation_title_updated': {
-        // Update title in-place without a full fetchConversations round-trip
-        if (data.id && data.title) {
-          const conv = chatStore.conversations.find((c: { id: string }) => c.id === data.id)
-          if (conv) {
-            conv.title = data.title
+        case 'conversation_title_updated': {
+          // Update title in-place without a full fetchConversations round-trip
+          if (data.id && data.title) {
+            const conv = chatStore.conversations.find((c: { id: string }) => c.id === data.id)
+            if (conv) {
+              conv.title = data.title
+            }
           }
+          break
         }
-        break
-      }
 
-      case 'provider_status_changed': {
-        if (data.provider_id && data.status) {
-          const hasProvider = providerPoolStore.providers.some(p => p.id === data.provider_id)
-          providerPoolStore.updateProviderStatus(data.provider_id, data.status)
-          if (!hasProvider || providerPoolStore.providers.length === 0) {
-            scheduleProviderResync()
+        case 'provider_status_changed': {
+          if (data.provider_id && data.status) {
+            const hasProvider = providerPoolStore.providers.some((p) => p.id === data.provider_id)
+            providerPoolStore.updateProviderStatus(data.provider_id, data.status)
+            if (!hasProvider || providerPoolStore.providers.length === 0) {
+              scheduleProviderResync()
+            }
           }
+          break
         }
-        break
-      }
 
-      case 'tool_approval_request': {
-        chatStore.setPendingApproval(data)
-        break
-      }
+        case 'tool_approval_request': {
+          chatStore.setPendingApproval(data)
+          break
+        }
 
-      case 'exec:approval-request': {
-        chatStore.setPendingExecApproval(data)
-        break
+        case 'exec:approval-request': {
+          chatStore.setPendingExecApproval(data)
+          break
+        }
       }
-    }
     } catch (e) {
       // Silently ignore errors in event handling to prevent stream interruption
     }

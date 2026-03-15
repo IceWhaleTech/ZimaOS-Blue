@@ -122,9 +122,7 @@ export const extauthApi = {
       params.set('redirect_uri', redirectUri)
     }
     const query = params.toString()
-    return api.get<AuthorizeResponse>(
-      `/auth/oidc/${provider}/authorize${query ? `?${query}` : ''}`
-    )
+    return api.get<AuthorizeResponse>(`/auth/oidc/${provider}/authorize${query ? `?${query}` : ''}`)
   },
 
   // Exchange code for tokens (used after callback)
@@ -141,14 +139,11 @@ export const extauthApi = {
       params.set('redirect_uri', redirectUri)
     }
     const query = params.toString()
-    return api.post<AuthorizeResponse>(
-      `/auth/link/${provider}${query ? `?${query}` : ''}`
-    )
+    return api.post<AuthorizeResponse>(`/auth/link/${provider}${query ? `?${query}` : ''}`)
   },
 
   // Unlink an external account
-  unlinkAccount: (provider: string) =>
-    api.delete<{ status: string }>(`/auth/link/${provider}`),
+  unlinkAccount: (provider: string) => api.delete<{ status: string }>(`/auth/link/${provider}`),
 }
 
 // Admin API for managing providers
@@ -168,8 +163,7 @@ export const extauthAdminApi = {
     api.put<ProviderConfig>(`/admin/auth/providers/${id}`, data),
 
   // Delete provider
-  deleteProvider: (id: string) =>
-    api.delete<{ success: boolean }>(`/admin/auth/providers/${id}`),
+  deleteProvider: (id: string) => api.delete<{ success: boolean }>(`/admin/auth/providers/${id}`),
 
   // Enable/disable provider
   toggleProvider: (id: string, enabled: boolean) =>

@@ -12,7 +12,7 @@ import {
   getRemoteAccessConfig,
   updateRemoteAccessConfig,
   type TunnelStatus as TunnelStatusType,
-  type TunnelProvider
+  type TunnelProvider,
 } from '@/api/remote-access'
 import TunnelStatus from '@/components/remote-access/TunnelStatus.vue'
 
@@ -102,9 +102,10 @@ const getLocalizedChannelOrder = (): string[] => {
 }
 
 const alwaysVisibleChannelIds = ['mattermost', 'nextcloudtalk'] as const
+const defaultVisibleChannelCount = 5
 
 // Primary channels shown by default - locale favorites, self-hosted channels,
-// plus any channels the user already enabled.
+// plus any channels the user already enabled. The list itself is trimmed to 5 items.
 const primaryChannelIds = computed(() => {
   const seen = new Set<string>()
   const ordered: string[] = []
@@ -167,8 +168,21 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.telegramHint',
     docUrl: 'https://core.telegram.org/bots#how-do-i-create-a-bot',
     fields: [
-      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholderKey: 'channels.placeholderBotToken', value: '', required: true },
-      { key: 'bot_username', labelKey: 'channels.botUsername', type: 'text', placeholderKey: 'channels.placeholderBotUsername', value: '' },
+      {
+        key: 'bot_token',
+        labelKey: 'channels.botToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderBotToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'bot_username',
+        labelKey: 'channels.botUsername',
+        type: 'text',
+        placeholderKey: 'channels.placeholderBotUsername',
+        value: '',
+      },
     ],
   },
   {
@@ -181,8 +195,21 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.discordHint',
     docUrl: 'https://discord.com/developers/docs/getting-started',
     fields: [
-      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholderKey: 'channels.placeholderDiscordBotToken', value: '', required: true },
-      { key: 'application_id', labelKey: 'channels.applicationId', type: 'text', placeholderKey: 'channels.placeholderApplicationId', value: '' },
+      {
+        key: 'bot_token',
+        labelKey: 'channels.botToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderDiscordBotToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'application_id',
+        labelKey: 'channels.applicationId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderApplicationId',
+        value: '',
+      },
     ],
   },
   {
@@ -195,9 +222,29 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.slackHint',
     docUrl: 'https://api.slack.com/start/quickstart',
     fields: [
-      { key: 'bot_token', labelKey: 'channels.slackBotToken', type: 'password', placeholderKey: 'channels.placeholderSlackBotToken', value: '', required: true },
-      { key: 'app_token', labelKey: 'channels.slackAppToken', type: 'password', placeholderKey: 'channels.placeholderSlackAppToken', value: '', required: true },
-      { key: 'signing_secret', labelKey: 'channels.signingSecret', type: 'password', placeholderKey: 'channels.placeholderSigningSecret', value: '' },
+      {
+        key: 'bot_token',
+        labelKey: 'channels.slackBotToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderSlackBotToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'app_token',
+        labelKey: 'channels.slackAppToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderSlackAppToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'signing_secret',
+        labelKey: 'channels.signingSecret',
+        type: 'password',
+        placeholderKey: 'channels.placeholderSigningSecret',
+        value: '',
+      },
     ],
   },
   {
@@ -210,7 +257,14 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.whatsappHint',
     docUrl: 'https://developers.facebook.com/docs/whatsapp/cloud-api/get-started',
     fields: [
-      { key: 'phone_number', labelKey: 'channels.phoneNumber', type: 'tel', placeholderKey: 'channels.placeholderPhoneNumber', value: '', required: true },
+      {
+        key: 'phone_number',
+        labelKey: 'channels.phoneNumber',
+        type: 'tel',
+        placeholderKey: 'channels.placeholderPhoneNumber',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -223,7 +277,14 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.signalHint',
     docUrl: 'https://github.com/AsamK/signal-cli',
     fields: [
-      { key: 'phone_number', labelKey: 'channels.phoneNumber', type: 'tel', placeholderKey: 'channels.placeholderPhoneNumber', value: '', required: true },
+      {
+        key: 'phone_number',
+        labelKey: 'channels.phoneNumber',
+        type: 'tel',
+        placeholderKey: 'channels.placeholderPhoneNumber',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -234,11 +295,32 @@ const channelDefs = shallowRef<ChannelDef[]>([
     status: 'disconnected',
     descriptionKey: 'channels.teamsDesc',
     hintKey: 'channels.teamsHint',
-    docUrl: 'https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/create-a-bot-for-teams',
+    docUrl:
+      'https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/create-a-bot-for-teams',
     fields: [
-      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholderKey: 'channels.placeholderAppId', value: '', required: true },
-      { key: 'app_password', labelKey: 'channels.appPassword', type: 'password', placeholderKey: 'channels.placeholderAppPassword', value: '', required: true },
-      { key: 'tenant_id', labelKey: 'channels.tenantId', type: 'text', placeholderKey: 'channels.placeholderTenantId', value: '' },
+      {
+        key: 'app_id',
+        labelKey: 'channels.appId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderAppId',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'app_password',
+        labelKey: 'channels.appPassword',
+        type: 'password',
+        placeholderKey: 'channels.placeholderAppPassword',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'tenant_id',
+        labelKey: 'channels.tenantId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderTenantId',
+        value: '',
+      },
     ],
   },
   {
@@ -251,8 +333,22 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.mattermostHint',
     docUrl: 'https://developers.mattermost.com/integrate/reference/bot-accounts/',
     fields: [
-      { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholderKey: 'channels.placeholderServerUrl', value: '', required: true },
-      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholderKey: 'channels.placeholderBotAccessToken', value: '', required: true },
+      {
+        key: 'server_url',
+        labelKey: 'channels.serverUrl',
+        type: 'url',
+        placeholderKey: 'channels.placeholderServerUrl',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'bot_token',
+        labelKey: 'channels.botToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderBotAccessToken',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -265,10 +361,38 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.nextcloudTalkHint',
     docUrl: 'https://nextcloud.com/talk/',
     fields: [
-      { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholderKey: 'channels.placeholderNextcloudServerUrl', value: '', required: true },
-      { key: 'username', labelKey: 'channels.username', type: 'text', placeholderKey: 'channels.placeholderUsername', value: '', required: true },
-      { key: 'password', labelKey: 'channels.password', type: 'password', placeholderKey: 'channels.placeholderPassword', value: '', required: true },
-      { key: 'room_token', labelKey: 'channels.roomToken', type: 'text', placeholderKey: 'channels.placeholderNextcloudRoomToken', value: '', required: true },
+      {
+        key: 'server_url',
+        labelKey: 'channels.serverUrl',
+        type: 'url',
+        placeholderKey: 'channels.placeholderNextcloudServerUrl',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'username',
+        labelKey: 'channels.username',
+        type: 'text',
+        placeholderKey: 'channels.placeholderUsername',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'password',
+        labelKey: 'channels.password',
+        type: 'password',
+        placeholderKey: 'channels.placeholderPassword',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'room_token',
+        labelKey: 'channels.roomToken',
+        type: 'text',
+        placeholderKey: 'channels.placeholderNextcloudRoomToken',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -281,7 +405,14 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.googleChatHint',
     docUrl: 'https://developers.google.com/workspace/chat/quickstart/gcf-app',
     fields: [
-      { key: 'credentials_json', labelKey: 'channels.serviceAccountJson', type: 'textarea', placeholderKey: 'channels.placeholderServiceAccountJson', value: '', required: true },
+      {
+        key: 'credentials_json',
+        labelKey: 'channels.serviceAccountJson',
+        type: 'textarea',
+        placeholderKey: 'channels.placeholderServiceAccountJson',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -294,10 +425,36 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.feishuHint',
     docUrl: 'https://open.feishu.cn/document/develop-an-echo-bot/introduction',
     fields: [
-      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholderKey: 'channels.placeholderFeishuAppId', value: '', required: true },
-      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholderKey: 'channels.placeholderAppSecret', value: '', required: true },
-      { key: 'verification_token', labelKey: 'channels.verificationToken', type: 'password', placeholderKey: 'channels.placeholderVerificationToken', value: '' },
-      { key: 'encrypt_key', labelKey: 'channels.encryptKey', type: 'password', placeholder: '', value: '' },
+      {
+        key: 'app_id',
+        labelKey: 'channels.appId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderFeishuAppId',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'app_secret',
+        labelKey: 'channels.appSecret',
+        type: 'password',
+        placeholderKey: 'channels.placeholderAppSecret',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'verification_token',
+        labelKey: 'channels.verificationToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderVerificationToken',
+        value: '',
+      },
+      {
+        key: 'encrypt_key',
+        labelKey: 'channels.encryptKey',
+        type: 'password',
+        placeholder: '',
+        value: '',
+      },
     ],
   },
   {
@@ -310,9 +467,30 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.dingtalkHint',
     docUrl: 'https://open.dingtalk.com/document/orgapp/create-an-enterprise-chatbot',
     fields: [
-      { key: 'app_key', labelKey: 'channels.appKey', type: 'text', placeholderKey: 'channels.placeholderDingtalkAppKey', value: '', required: true },
-      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholderKey: 'channels.placeholderAppSecret', value: '', required: true },
-      { key: 'robot_code', labelKey: 'channels.robotCode', type: 'text', placeholderKey: 'channels.placeholderRobotCode', value: '', required: true },
+      {
+        key: 'app_key',
+        labelKey: 'channels.appKey',
+        type: 'text',
+        placeholderKey: 'channels.placeholderDingtalkAppKey',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'app_secret',
+        labelKey: 'channels.appSecret',
+        type: 'password',
+        placeholderKey: 'channels.placeholderAppSecret',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'robot_code',
+        labelKey: 'channels.robotCode',
+        type: 'text',
+        placeholderKey: 'channels.placeholderRobotCode',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -325,9 +503,30 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.qqHint',
     docUrl: 'https://bot.q.qq.com/wiki',
     fields: [
-      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholderKey: 'channels.placeholderQQAppId', value: '', required: true },
-      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholderKey: 'channels.placeholderAppSecret', value: '', required: true },
-      { key: 'token', labelKey: 'channels.botToken', type: 'password', placeholderKey: 'channels.placeholderBotTokenGeneric', value: '', required: true },
+      {
+        key: 'app_id',
+        labelKey: 'channels.appId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderQQAppId',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'app_secret',
+        labelKey: 'channels.appSecret',
+        type: 'password',
+        placeholderKey: 'channels.placeholderAppSecret',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'token',
+        labelKey: 'channels.botToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderBotTokenGeneric',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -340,9 +539,30 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.wechatHint',
     docUrl: 'https://developer.work.weixin.qq.com/document/path/90664',
     fields: [
-      { key: 'corp_id', labelKey: 'channels.corpId', type: 'text', placeholderKey: 'channels.placeholderWechatCorpId', value: '', required: true },
-      { key: 'agent_id', labelKey: 'channels.agentId', type: 'text', placeholderKey: 'channels.placeholderAgentId', value: '', required: true },
-      { key: 'secret', labelKey: 'channels.secret', type: 'password', placeholderKey: 'channels.placeholderSecret', value: '', required: true },
+      {
+        key: 'corp_id',
+        labelKey: 'channels.corpId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderWechatCorpId',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'agent_id',
+        labelKey: 'channels.agentId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderAgentId',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'secret',
+        labelKey: 'channels.secret',
+        type: 'password',
+        placeholderKey: 'channels.placeholderSecret',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -355,9 +575,30 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.matrixHint',
     docUrl: 'https://spec.matrix.org/latest/client-server-api/',
     fields: [
-      { key: 'homeserver', labelKey: 'channels.matrixHomeserver', type: 'url', placeholderKey: 'channels.placeholderMatrixHomeserver', value: '', required: true },
-      { key: 'user_id', labelKey: 'channels.matrixUserId', type: 'text', placeholderKey: 'channels.placeholderMatrixUserId', value: '', required: true },
-      { key: 'access_token', labelKey: 'channels.accessToken', type: 'password', placeholderKey: 'channels.placeholderAccessToken', value: '', required: true },
+      {
+        key: 'homeserver',
+        labelKey: 'channels.matrixHomeserver',
+        type: 'url',
+        placeholderKey: 'channels.placeholderMatrixHomeserver',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'user_id',
+        labelKey: 'channels.matrixUserId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderMatrixUserId',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'access_token',
+        labelKey: 'channels.accessToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderAccessToken',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -381,8 +622,22 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.blueBubblesHint',
     docUrl: 'https://bluebubbles.app/docs/',
     fields: [
-      { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholderKey: 'channels.placeholderBlueBubblesServerUrl', value: '', required: true },
-      { key: 'password', labelKey: 'channels.password', type: 'password', placeholderKey: 'channels.placeholderServerPassword', value: '', required: true },
+      {
+        key: 'server_url',
+        labelKey: 'channels.serverUrl',
+        type: 'url',
+        placeholderKey: 'channels.placeholderBlueBubblesServerUrl',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'password',
+        labelKey: 'channels.password',
+        type: 'password',
+        placeholderKey: 'channels.placeholderServerPassword',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -395,11 +650,43 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.zaloHint',
     docUrl: 'https://developers.zalo.me/docs/api/official-account-api-147',
     fields: [
-      { key: 'oa_id', labelKey: 'channels.oaId', type: 'text', placeholderKey: 'channels.placeholderOaId', value: '', required: true },
-      { key: 'access_token', labelKey: 'channels.accessToken', type: 'password', placeholderKey: 'channels.placeholderOaAccessToken', value: '', required: true },
-      { key: 'refresh_token', labelKey: 'channels.refreshToken', type: 'password', placeholderKey: 'channels.placeholderOaRefreshToken', value: '' },
-      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholderKey: 'channels.placeholderZaloAppId', value: '' },
-      { key: 'secret_key', labelKey: 'channels.secretKey', type: 'password', placeholderKey: 'channels.placeholderZaloSecretKey', value: '' },
+      {
+        key: 'oa_id',
+        labelKey: 'channels.oaId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderOaId',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'access_token',
+        labelKey: 'channels.accessToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderOaAccessToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'refresh_token',
+        labelKey: 'channels.refreshToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderOaRefreshToken',
+        value: '',
+      },
+      {
+        key: 'app_id',
+        labelKey: 'channels.appId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderZaloAppId',
+        value: '',
+      },
+      {
+        key: 'secret_key',
+        labelKey: 'channels.secretKey',
+        type: 'password',
+        placeholderKey: 'channels.placeholderZaloSecretKey',
+        value: '',
+      },
     ],
   },
   {
@@ -412,8 +699,22 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.lineHint',
     docUrl: 'https://developers.line.biz/en/docs/messaging-api/',
     fields: [
-      { key: 'channel_access_token', labelKey: 'channels.channelAccessToken', type: 'password', placeholderKey: 'channels.placeholderLineChannelToken', value: '', required: true },
-      { key: 'channel_secret', labelKey: 'channels.channelSecret', type: 'password', placeholderKey: 'channels.placeholderLineChannelSecret', value: '', required: true },
+      {
+        key: 'channel_access_token',
+        labelKey: 'channels.channelAccessToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderLineChannelToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'channel_secret',
+        labelKey: 'channels.channelSecret',
+        type: 'password',
+        placeholderKey: 'channels.placeholderLineChannelSecret',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -426,9 +727,29 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.messengerHint',
     docUrl: 'https://developers.facebook.com/docs/messenger-platform/',
     fields: [
-      { key: 'page_access_token', labelKey: 'channels.pageAccessToken', type: 'password', placeholderKey: 'channels.placeholderMessengerPageToken', value: '', required: true },
-      { key: 'verify_token', labelKey: 'channels.verifyToken', type: 'password', placeholderKey: 'channels.placeholderMessengerVerifyToken', value: '', required: true },
-      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholderKey: 'channels.placeholderAppSecret', value: '' },
+      {
+        key: 'page_access_token',
+        labelKey: 'channels.pageAccessToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderMessengerPageToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'verify_token',
+        labelKey: 'channels.verifyToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderMessengerVerifyToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'app_secret',
+        labelKey: 'channels.appSecret',
+        type: 'password',
+        placeholderKey: 'channels.placeholderAppSecret',
+        value: '',
+      },
     ],
   },
   {
@@ -441,8 +762,21 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.viberHint',
     docUrl: 'https://developers.viber.com/docs/api/rest-bot-api/',
     fields: [
-      { key: 'auth_token', labelKey: 'channels.authToken', type: 'password', placeholderKey: 'channels.placeholderViberAuthToken', value: '', required: true },
-      { key: 'bot_name', labelKey: 'channels.botName', type: 'text', placeholderKey: 'channels.placeholderViberBotName', value: '' },
+      {
+        key: 'auth_token',
+        labelKey: 'channels.authToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderViberAuthToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'bot_name',
+        labelKey: 'channels.botName',
+        type: 'text',
+        placeholderKey: 'channels.placeholderViberBotName',
+        value: '',
+      },
     ],
   },
   {
@@ -455,10 +789,38 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.twitterDMHint',
     docUrl: 'https://developer.twitter.com/en/docs/twitter-api/direct-messages',
     fields: [
-      { key: 'api_key', labelKey: 'channels.apiKey', type: 'password', placeholderKey: 'channels.placeholderTwitterApiKey', value: '', required: true },
-      { key: 'api_secret', labelKey: 'channels.apiSecret', type: 'password', placeholderKey: 'channels.placeholderTwitterApiSecret', value: '', required: true },
-      { key: 'access_token', labelKey: 'channels.accessToken', type: 'password', placeholderKey: 'channels.placeholderTwitterAccessToken', value: '', required: true },
-      { key: 'access_token_secret', labelKey: 'channels.accessTokenSecret', type: 'password', placeholderKey: 'channels.placeholderTwitterAccessTokenSecret', value: '', required: true },
+      {
+        key: 'api_key',
+        labelKey: 'channels.apiKey',
+        type: 'password',
+        placeholderKey: 'channels.placeholderTwitterApiKey',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'api_secret',
+        labelKey: 'channels.apiSecret',
+        type: 'password',
+        placeholderKey: 'channels.placeholderTwitterApiSecret',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'access_token',
+        labelKey: 'channels.accessToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderTwitterAccessToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'access_token_secret',
+        labelKey: 'channels.accessTokenSecret',
+        type: 'password',
+        placeholderKey: 'channels.placeholderTwitterAccessTokenSecret',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -471,8 +833,22 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.instagramDMHint',
     docUrl: 'https://developers.facebook.com/docs/messenger-platform/instagram/',
     fields: [
-      { key: 'page_access_token', labelKey: 'channels.pageAccessToken', type: 'password', placeholderKey: 'channels.placeholderInstagramPageToken', value: '', required: true },
-      { key: 'instagram_account_id', labelKey: 'channels.instagramAccountId', type: 'text', placeholderKey: 'channels.placeholderInstagramAccountId', value: '', required: true },
+      {
+        key: 'page_access_token',
+        labelKey: 'channels.pageAccessToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderInstagramPageToken',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'instagram_account_id',
+        labelKey: 'channels.instagramAccountId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderInstagramAccountId',
+        value: '',
+        required: true,
+      },
     ],
   },
   {
@@ -485,10 +861,37 @@ const channelDefs = shallowRef<ChannelDef[]>([
     hintKey: 'channels.twitchHint',
     docUrl: 'https://dev.twitch.tv/docs/irc/',
     fields: [
-      { key: 'client_id', labelKey: 'channels.clientId', type: 'text', placeholderKey: 'channels.placeholderTwitchClientId', value: '', required: true },
-      { key: 'client_secret', labelKey: 'channels.clientSecret', type: 'password', placeholderKey: 'channels.placeholderTwitchClientSecret', value: '', required: true },
-      { key: 'bot_username', labelKey: 'channels.botUsername', type: 'text', placeholderKey: 'channels.placeholderTwitchBotUsername', value: '', required: true },
-      { key: 'channel_name', labelKey: 'channels.channelName', type: 'text', placeholderKey: 'channels.placeholderTwitchChannelName', value: '' },
+      {
+        key: 'client_id',
+        labelKey: 'channels.clientId',
+        type: 'text',
+        placeholderKey: 'channels.placeholderTwitchClientId',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'client_secret',
+        labelKey: 'channels.clientSecret',
+        type: 'password',
+        placeholderKey: 'channels.placeholderTwitchClientSecret',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'bot_username',
+        labelKey: 'channels.botUsername',
+        type: 'text',
+        placeholderKey: 'channels.placeholderTwitchBotUsername',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'channel_name',
+        labelKey: 'channels.channelName',
+        type: 'text',
+        placeholderKey: 'channels.placeholderTwitchChannelName',
+        value: '',
+      },
     ],
   },
 ])
@@ -505,23 +908,31 @@ const sortedChannels = computed(() => {
   })
 })
 
-// Primary channels (top channels based on locale)
-const primaryChannels = computed(() => {
+const orderedChannels = computed(() => {
   const ids = primaryChannelIds.value
-  const filtered = sortedChannels.value.filter(c => ids.includes(c.id))
+  const prioritized = sortedChannels.value.filter((c) => ids.includes(c.id))
 
   // Sort by the order defined in primaryChannelIds
-  return filtered.sort((a, b) => {
+  prioritized.sort((a, b) => {
     const indexA = ids.indexOf(a.id)
     const indexB = ids.indexOf(b.id)
     return indexA - indexB
   })
+
+  const prioritizedIds = new Set(prioritized.map((channel) => channel.id))
+  const remaining = sortedChannels.value.filter((channel) => !prioritizedIds.has(channel.id))
+
+  return [...prioritized, ...remaining]
+})
+
+// Primary channels (top channels based on locale)
+const primaryChannels = computed(() => {
+  return orderedChannels.value.slice(0, defaultVisibleChannelCount)
 })
 
 // Secondary channels (shown after clicking "Load More")
 const secondaryChannels = computed(() => {
-  const ids = primaryChannelIds.value
-  return sortedChannels.value.filter(c => !ids.includes(c.id))
+  return orderedChannels.value.slice(defaultVisibleChannelCount)
 })
 
 // Channel map for O(1) lookup
@@ -536,18 +947,20 @@ const channelMap = computed(() => {
 const expandedChannel = ref<string | null>(null)
 
 const enabledCount = computed(() => {
-  const channelCount = channelDefs.value.filter(c => c.enabled).length
+  const channelCount = channelDefs.value.filter((c) => c.enabled).length
   const remoteCount = remoteAccessState.value === 'connected' ? 1 : 0
   return channelCount + remoteCount
 })
 const connectedCount = computed(() => {
-  const channelCount = channelDefs.value.filter(c => c.status === 'connected').length
+  const channelCount = channelDefs.value.filter((c) => c.status === 'connected').length
   const remoteCount = remoteAccessState.value === 'connected' ? 1 : 0
   return channelCount + remoteCount
 })
 
+const heroPreviewChannels = computed(() => primaryChannels.value.slice(0, defaultVisibleChannelCount))
+
 const selectedProviderInfo = computed(() => {
-  return tunnelProviders.value.find(p => p.id === selectedProvider.value)
+  return tunnelProviders.value.find((p) => p.id === selectedProvider.value)
 })
 
 const currentProviderToken = computed({
@@ -559,7 +972,7 @@ const currentProviderToken = computed({
   set: (value: string) => {
     if (selectedProvider.value === 'ngrok') ngrokAuthtoken.value = value
     else if (selectedProvider.value === 'cloudflare') cloudflareToken.value = value
-  }
+  },
 })
 
 function toggleChannel(channelId: string) {
@@ -573,7 +986,7 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
 
   // Check if required fields are filled when enabling
   if (enabled) {
-    const missingFields = channelDef.fields.filter(f => f.required && !f.value)
+    const missingFields = channelDef.fields.filter((f) => f.required && !f.value)
     if (missingFields.length > 0) {
       // Expand the channel to show config
       expandedChannel.value = channelId
@@ -624,7 +1037,11 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
       channelDef.status = 'error'
       channelDef.lastError = data.message
       triggerRef(channelDefs)
-      testResult.value = { channelId, success: false, message: data.message || t('channels.toggleFailed') }
+      testResult.value = {
+        channelId,
+        success: false,
+        message: data.message || t('channels.toggleFailed'),
+      }
     }
   } catch {
     // Revert on error
@@ -712,7 +1129,11 @@ async function saveChannel(channelId: string) {
         pollChannelStatus(channelId)
       }
     } else {
-      testResult.value = { channelId, success: false, message: data.message || t('channels.saveFailed') }
+      testResult.value = {
+        channelId,
+        success: false,
+        message: data.message || t('channels.saveFailed'),
+      }
     }
   } catch {
     testResult.value = { channelId, success: false, message: t('channels.saveFailed') }
@@ -839,13 +1260,11 @@ async function testConnection(channelId: string) {
 // Remote Access functions
 async function loadRemoteAccessStatus() {
   try {
-    // Load providers
     const providersRes = await getTunnelProviders()
     if (providersRes.data.providers) {
       tunnelProviders.value = providersRes.data.providers
     }
 
-    // Load saved config (tokens)
     try {
       const configRes = await getRemoteAccessConfig()
       if (configRes.data.config) {
@@ -873,7 +1292,6 @@ async function loadRemoteAccessStatus() {
       selectedProvider.value = statusRes.data.tunnel.provider
     }
 
-    // URL or active = connected (prioritize over connecting)
     if (statusRes.data.tunnel.active || statusRes.data.tunnel.url) {
       remoteAccessState.value = 'connected'
       startRemoteAccessPolling()
@@ -895,7 +1313,6 @@ async function handleRemoteAccessStart() {
   remoteAccessError.value = null
 
   try {
-    // Save token to config if provided
     if (currentProviderToken.value || (selectedProvider.value === 'ngrok' && ngrokDomain.value)) {
       const configUpdate: Record<string, string> = { default_provider: selectedProvider.value }
       if (selectedProvider.value === 'ngrok') {
@@ -917,7 +1334,6 @@ async function handleRemoteAccessStart() {
       selectedProvider.value === 'ngrok' ? ngrokDomain.value : undefined
     )
     if (response.data.success) {
-      // Update from response and fetch latest status (URL may be in status; ensure UI updates)
       if (response.data.tunnel) {
         tunnelStatus.value = response.data.tunnel
         if (response.data.tunnel.active || response.data.tunnel.url) {
@@ -931,7 +1347,7 @@ async function handleRemoteAccessStart() {
           remoteAccessState.value = 'connected'
         }
       } catch {
-        /* polling will retry */
+        // Polling will retry.
       }
       startRemoteAccessPolling()
     } else {
@@ -941,22 +1357,23 @@ async function handleRemoteAccessStart() {
     console.error('Failed to start tunnel:', e)
     const err = e as { response?: { data?: { error?: string } }; message?: string }
     remoteAccessState.value = 'error'
-    remoteAccessError.value = err.response?.data?.error || err.message || t('remoteAccess.startError')
+    remoteAccessError.value =
+      err.response?.data?.error || err.message || t('remoteAccess.startError')
   }
 }
 
 async function handleRemoteAccessStop() {
-  // Detect desktop app
   const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
-  // In non-desktop browsers, confirm before disconnecting.
-  // Skip in desktop — WKWebView silently returns false for confirm() on external URLs.
+
   if (!isDesktop) {
     const tunnelUrl = tunnelStatus.value?.url
     let isAccessingViaTunnel = false
     if (tunnelUrl) {
       try {
         isAccessingViaTunnel = window.location.host === new URL(tunnelUrl).host
-      } catch { /* ignore */ }
+      } catch {
+        // Ignore invalid URL parsing here.
+      }
     }
     const confirmMessage = isAccessingViaTunnel
       ? t('remoteAccess.disconnectConfirmMessageSameHost')
@@ -986,12 +1403,10 @@ function startRemoteAccessPolling() {
       if (response.data.tunnel.active || response.data.tunnel.url) {
         remoteAccessState.value = 'connected'
       } else if (remoteAccessState.value === 'connecting') {
-        // Still waiting for tunnel to start
+        // Still waiting for tunnel to start.
       } else if (!response.data.tunnel.active && !response.data.tunnel.url) {
-        // Only transition to ready when both are gone (connection actually stopped)
         remoteAccessState.value = 'ready'
       }
-      // On API error (catch): stay in current state
     } catch (e) {
       console.error('Failed to poll status:', e)
     }
@@ -1033,298 +1448,717 @@ onUnmounted(() => {
   channelPollIntervals.clear()
 })
 
-// Watch for tunnel becoming active
-watch(() => tunnelStatus.value?.active, (active) => {
-  if (active && remoteAccessState.value === 'connecting') {
-    remoteAccessState.value = 'connected'
+watch(
+  () => tunnelStatus.value?.active,
+  (active) => {
+    if (active && remoteAccessState.value === 'connecting') {
+      remoteAccessState.value = 'connected'
+    }
   }
-})
+)
 </script>
 
 <template>
-  <div class="channels-view p-4 sm:p-6 max-w-4xl mx-auto">
-    <div class="mb-6">
-      <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{{ t('channels.title') }}</h1>
-      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{{ t('channels.subtitle') }}</p>
-    </div>
-
-    <!-- Stats -->
-    <div class="grid grid-cols-2 gap-4 mb-6">
-      <div class="bg-white dark:bg-gray-700/30 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-        <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ enabledCount }}</div>
-        <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('channels.enabledChannels') }}</div>
-      </div>
-      <div class="bg-white dark:bg-gray-700/30 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-        <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ connectedCount }}</div>
-        <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('channels.connectedChannels') }}</div>
-      </div>
-    </div>
-
-    <!-- Loading -->
-    <div v-if="loading" class="text-center py-8">
-      <div class="animate-spin w-8 h-8 border-2 border-gray-900 dark:border-gray-400 border-t-transparent rounded-full mx-auto mb-2"></div>
-      <p class="text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</p>
-    </div>
-
-    <!-- Channel List -->
-    <div v-else class="space-y-3">
-      <!-- Remote Access Card (Recommended) -->
-      <div class="bg-white dark:bg-gray-700/30 rounded-lg border border-gray-900 dark:border-gray-400 overflow-hidden">
-        <!-- Remote Access Header -->
-        <div
-          class="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-          @click="toggleRemoteAccessExpanded"
-        >
-          <div class="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden">
-            <img src="/icons/tunnel/remote-access.svg" alt="Remote Access" class="w-8 h-8" />
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
-              <h3 class="font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.title') }}</h3>
-              <span class="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-full">
-                {{ t('remoteAccess.recommended') }}
-              </span>
-              <span
-                class="w-2 h-2 rounded-full"
-                :class="{
-                  'bg-green-500': remoteAccessState === 'connected',
-                  'bg-yellow-500 animate-pulse': remoteAccessState === 'connecting',
-                  'bg-red-500': remoteAccessState === 'error',
-                  'bg-gray-400': ['loading', 'ready'].includes(remoteAccessState)
-                }"
-              ></span>
-            </div>
-            <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
-              {{ t('remoteAccess.channelDescription') }}
-            </p>
-          </div>
-          <div class="flex items-center gap-3">
-            <!-- Toggle for connected state -->
-            <label v-if="remoteAccessState === 'connected' || remoteAccessState === 'ready'" class="relative inline-flex items-center cursor-pointer" @click.stop.prevent="remoteAccessState === 'connected' ? handleRemoteAccessStop() : handleRemoteAccessStart()">
-              <input
-                :checked="remoteAccessState === 'connected'"
-                type="checkbox"
-                class="sr-only peer"
-              />
-              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"></div>
-            </label>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5 text-gray-400 transition-transform"
-              :class="{ 'rotate-180': remoteAccessExpanded }"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
+  <div class="channels-page config-page-frame">
+    <section class="channels-stage config-page-stage">
+      <section class="channels-header config-page-hero-surface">
+        <div class="channels-header__copy config-page-hero__copy">
+          <p class="config-page-hero__eyebrow">{{ t('nav.configuration') }}</p>
+          <h1 class="channels-page__title config-page-hero__title">{{ t('channels.title') }}</h1>
+          <p class="channels-page__description config-page-hero__description">
+            {{ t('channels.subtitle') }}
+          </p>
         </div>
+      </section>
 
-        <!-- Remote Access Expanded Content -->
-        <div
-          v-if="remoteAccessExpanded"
-          class="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-700/50"
-        >
-          <!-- Loading State -->
-          <div v-if="remoteAccessState === 'loading'" class="flex items-center justify-center py-8">
-            <svg class="animate-spin h-8 w-8 text-gray-900 dark:text-white" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
+      <section class="channels-summary-grid">
+        <article class="dashboard-card-surface channels-summary-card">
+          <span class="channels-summary-label">{{ t('channels.enabledChannels') }}</span>
+          <strong class="channels-summary-value">{{ enabledCount }}</strong>
+          <p class="channels-summary-footnote">
+            {{ connectedCount }} {{ t('channels.connectedChannels') }}
+          </p>
+        </article>
+
+        <article class="dashboard-card-surface channels-summary-card channels-summary-card--connected">
+          <span class="channels-summary-label">{{ t('channels.connectedChannels') }}</span>
+          <strong class="channels-summary-value">{{ connectedCount }}</strong>
+          <p class="channels-summary-footnote">
+            {{ enabledCount }} {{ t('channels.enabledChannels') }}
+          </p>
+        </article>
+
+        <article class="dashboard-card-surface channels-summary-card channels-summary-card--preview">
+          <span class="channels-summary-label">{{ t('channels.title') }}</span>
+          <div class="channels-summary-icon-row">
+            <div
+              v-for="channel in heroPreviewChannels"
+              :key="channel.id"
+              class="channels-summary-icon-pill"
+              :title="channel.nameKey ? t(channel.nameKey) : channel.name || channel.id"
+            >
+              <img
+                :src="channel.icon"
+                :alt="channel.nameKey ? t(channel.nameKey) : channel.name || channel.id"
+                class="w-5 h-5 object-contain"
+              />
+            </div>
+            <div
+              v-if="secondaryChannels.length > 0"
+              class="channels-summary-icon-pill channels-summary-icon-pill--count"
+            >
+              +{{ secondaryChannels.length }}
+            </div>
           </div>
+          <p class="channels-summary-footnote">
+            {{
+              secondaryChannels.length > 0
+                ? `${t('common.loadMore')} (${secondaryChannels.length})`
+                : t('channels.subtitle')
+            }}
+          </p>
+        </article>
+      </section>
 
-          <!-- Ready State -->
-          <div v-else-if="remoteAccessState === 'ready'" class="space-y-4">
-            <!-- Provider Selection -->
-            <div class="space-y-3">
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                {{ t('remoteAccess.selectProvider') }}
-              </label>
-              <div class="grid grid-cols-2 gap-2">
-                <button
-                  v-for="provider in tunnelProviders"
-                  :key="provider.id"
-                  class="p-3 rounded-lg border text-left transition-colors flex items-center gap-3"
-                  :class="selectedProvider === provider.id
-                    ? 'border-gray-600 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/30'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
-                  @click="selectedProvider = provider.id"
+      <div v-if="loading" class="text-center py-8">
+        <div
+          class="animate-spin w-8 h-8 border-2 border-gray-900 dark:border-gray-400 border-t-transparent rounded-full mx-auto mb-2"
+        ></div>
+        <p class="text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</p>
+      </div>
+
+      <div v-else class="channels-board">
+        <div class="bg-white dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div
+            class="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+            @click="toggleRemoteAccessExpanded"
+          >
+            <div
+              class="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden"
+            >
+              <img src="/icons/tunnel/remote-access.svg" alt="Remote Access" class="w-8 h-8" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <h3 class="font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.title') }}</h3>
+                <span
+                  class="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-full"
                 >
-                  <img
-                    v-if="getTunnelProviderIcon(provider.id)"
-                    :src="getTunnelProviderIcon(provider.id)"
-                    :alt="provider.name"
-                    class="w-6 h-6 shrink-0 rounded object-contain"
-                  />
-                  <div v-else class="w-6 h-6 shrink-0 bg-gray-700 dark:bg-gray-500 rounded flex items-center justify-center">
-                    <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                    </svg>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="font-medium text-gray-900 dark:text-white text-sm">{{ provider.name }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {{ provider.requires_key ? t('remoteAccess.requiresKey') : t('remoteAccess.noKeyRequired') }}
-                    </div>
-                  </div>
-                </button>
+                  {{ t('remoteAccess.recommended') }}
+                </span>
+                <span
+                  class="w-2 h-2 rounded-full"
+                  :class="{
+                    'bg-green-500': remoteAccessState === 'connected',
+                    'bg-yellow-500 animate-pulse': remoteAccessState === 'connecting',
+                    'bg-red-500': remoteAccessState === 'error',
+                    'bg-gray-400': ['loading', 'ready'].includes(remoteAccessState),
+                  }"
+                ></span>
               </div>
-            </div>
-
-            <!-- Auth Token Input (if required) -->
-            <div v-if="selectedProviderInfo?.requires_key" class="space-y-2">
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                {{ selectedProviderInfo.key_label || 'Auth Token' }}
-              </label>
-              <input
-                v-model="currentProviderToken"
-                type="password"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                :placeholder="selectedProviderInfo.key_hint || ''"
-              />
-              <a
-                v-if="selectedProviderInfo.doc_url"
-                :href="selectedProviderInfo.doc_url"
-                target="_blank"
-                class="inline-flex items-center gap-1 text-xs text-gray-900 dark:text-white dark:text-white hover:underline"
-              >
-                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-                {{ t('remoteAccess.getToken') }}
-              </a>
-            </div>
-
-            <!-- ngrok Custom Domain Input -->
-            <div v-if="selectedProvider === 'ngrok'" class="space-y-2">
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                {{ t('remoteAccess.ngrokDomain') }}
-                <span class="text-gray-400 text-xs ml-1">({{ t('common.optional') }})</span>
-              </label>
-              <input
-                v-model="ngrokDomain"
-                type="text"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
-              />
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('remoteAccess.ngrokDomainHint') }}
-                <a href="https://dashboard.ngrok.com/domains" target="_blank" class="text-gray-900 dark:text-white dark:text-white hover:underline">
-                  {{ t('remoteAccess.ngrokClaimDomain') }}
-                </a>
+              <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
+                {{ t('remoteAccess.channelDescription') }}
               </p>
             </div>
-
-            <button
-              class="w-full px-4 py-3 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-              :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
-              :class="{ 'opacity-50 cursor-not-allowed': selectedProviderInfo?.requires_key && !currentProviderToken }"
-              @click="handleRemoteAccessStart"
-            >
-              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <div class="flex items-center gap-3">
+              <label
+                v-if="remoteAccessState === 'connected' || remoteAccessState === 'ready'"
+                class="relative inline-flex items-center cursor-pointer"
+                @click.stop.prevent="
+                  remoteAccessState === 'connected'
+                    ? handleRemoteAccessStop()
+                    : handleRemoteAccessStart()
+                "
+              >
+                <input
+                  :checked="remoteAccessState === 'connected'"
+                  type="checkbox"
+                  class="sr-only peer"
+                />
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
+                ></div>
+              </label>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 text-gray-400 transition-transform"
+                :class="{ 'rotate-180': remoteAccessExpanded }"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
-              {{ t('remoteAccess.enable') }}
-            </button>
-            <div class="text-xs text-gray-500 dark:text-gray-400 text-center">
-              {{ t('remoteAccess.securityWarning') }}
             </div>
           </div>
 
-          <!-- Connecting State -->
-          <div v-else-if="remoteAccessState === 'connecting'" class="space-y-4">
-            <div class="flex items-center justify-center py-4">
-              <div class="text-center">
-                <svg class="animate-spin h-8 w-8 text-gray-900 dark:text-white mx-auto mb-4" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                <p class="text-gray-600 dark:text-gray-400">{{ t('remoteAccess.connecting') }}</p>
-              </div>
+          <div
+            v-if="remoteAccessExpanded"
+            class="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-700/50"
+          >
+            <div v-if="remoteAccessState === 'loading'" class="flex items-center justify-center py-8">
+              <svg
+                class="animate-spin h-8 w-8 text-gray-900 dark:text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
             </div>
-            <!-- Diagnostics and Logs (available during connecting) -->
-            <TunnelStatus :status="tunnelStatus || { active: false, connecting: true }" @disconnect="handleRemoteAccessStop" />
-          </div>
 
-          <!-- Connected State -->
-          <div v-else-if="remoteAccessState === 'connected' && tunnelStatus" class="space-y-4">
-            <TunnelStatus :status="tunnelStatus" @disconnect="handleRemoteAccessStop" />
-          </div>
-
-          <!-- Error State -->
-          <div v-else-if="remoteAccessState === 'error'" class="space-y-4">
-            <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
-              <div class="flex items-start gap-3">
-                <svg class="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p class="text-sm text-red-800 dark:text-red-200">{{ remoteAccessError }}</p>
+            <div v-else-if="remoteAccessState === 'ready'" class="space-y-4">
+              <div class="space-y-3">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('remoteAccess.selectProvider') }}
+                </label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    v-for="provider in tunnelProviders"
+                    :key="provider.id"
+                    class="p-3 rounded-lg border text-left transition-colors flex items-center gap-3"
+                    :class="
+                      selectedProvider === provider.id
+                        ? 'border-gray-600 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/30'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    "
+                    @click="selectedProvider = provider.id"
+                  >
+                    <img
+                      v-if="getTunnelProviderIcon(provider.id)"
+                      :src="getTunnelProviderIcon(provider.id)"
+                      :alt="provider.name"
+                      class="w-6 h-6 shrink-0 rounded object-contain"
+                    />
+                    <div
+                      v-else
+                      class="w-6 h-6 shrink-0 bg-gray-700 dark:bg-gray-500 rounded flex items-center justify-center"
+                    >
+                      <svg
+                        class="w-4 h-4 text-gray-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                        />
+                      </svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="font-medium text-gray-900 dark:text-white text-sm">
+                        {{ provider.name }}
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {{
+                          provider.requires_key
+                            ? t('remoteAccess.requiresKey')
+                            : t('remoteAccess.noKeyRequired')
+                        }}
+                      </div>
+                    </div>
+                  </button>
                 </div>
               </div>
+
+              <div v-if="selectedProviderInfo?.requires_key" class="space-y-2">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ selectedProviderInfo.key_label || 'Auth Token' }}
+                </label>
+                <input
+                  v-model="currentProviderToken"
+                  type="password"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                  :placeholder="selectedProviderInfo.key_hint || ''"
+                />
+                <a
+                  v-if="selectedProviderInfo.doc_url"
+                  :href="selectedProviderInfo.doc_url"
+                  target="_blank"
+                  class="inline-flex items-center gap-1 text-xs text-gray-900 dark:text-white hover:underline"
+                >
+                  <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
+                  </svg>
+                  {{ t('remoteAccess.getToken') }}
+                </a>
+              </div>
+
+              <div v-if="selectedProvider === 'ngrok'" class="space-y-2">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('remoteAccess.ngrokDomain') }}
+                  <span class="text-gray-400 text-xs ml-1">({{ t('common.optional') }})</span>
+                </label>
+                <input
+                  v-model="ngrokDomain"
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                  :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
+                />
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('remoteAccess.ngrokDomainHint') }}
+                  <a
+                    href="https://dashboard.ngrok.com/domains"
+                    target="_blank"
+                    class="text-gray-900 dark:text-white hover:underline"
+                  >
+                    {{ t('remoteAccess.ngrokClaimDomain') }}
+                  </a>
+                </p>
+              </div>
+
+              <button
+                class="w-full px-4 py-3 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
+                :class="{
+                  'opacity-50 cursor-not-allowed':
+                    selectedProviderInfo?.requires_key && !currentProviderToken,
+                }"
+                @click="handleRemoteAccessStart"
+              >
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                {{ t('remoteAccess.enable') }}
+              </button>
+              <div class="text-xs text-gray-500 dark:text-gray-400 text-center">
+                {{ t('remoteAccess.securityWarning') }}
+              </div>
             </div>
-            <button
-              class="w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
-              @click="loadRemoteAccessStatus"
-            >
-              {{ t('common.retry') }}
-            </button>
-            <!-- Diagnostics and Logs (available during error) -->
-            <TunnelStatus :status="tunnelStatus || { active: false }" @disconnect="handleRemoteAccessStop" />
+
+            <div v-else-if="remoteAccessState === 'connecting'" class="space-y-4">
+              <div class="flex items-center justify-center py-4">
+                <div class="text-center">
+                  <svg
+                    class="animate-spin h-8 w-8 text-gray-900 dark:text-white mx-auto mb-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    />
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  <p class="text-gray-600 dark:text-gray-400">{{ t('remoteAccess.connecting') }}</p>
+                </div>
+              </div>
+              <TunnelStatus
+                :status="tunnelStatus || { active: false, connecting: true }"
+                @disconnect="handleRemoteAccessStop"
+              />
+            </div>
+
+            <div v-else-if="remoteAccessState === 'connected' && tunnelStatus" class="space-y-4">
+              <TunnelStatus :status="tunnelStatus" @disconnect="handleRemoteAccessStop" />
+            </div>
+
+            <div v-else-if="remoteAccessState === 'error'" class="space-y-4">
+              <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+                <div class="flex items-start gap-3">
+                  <svg
+                    class="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <div>
+                    <p class="text-sm text-red-800 dark:text-red-200">{{ remoteAccessError }}</p>
+                  </div>
+                </div>
+              </div>
+              <button
+                class="w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
+                @click="loadRemoteAccessStatus"
+              >
+                {{ t('common.retry') }}
+              </button>
+              <TunnelStatus
+                :status="tunnelStatus || { active: false }"
+                @disconnect="handleRemoteAccessStop"
+              />
+            </div>
           </div>
         </div>
+
+        <div class="channels-board__stack">
+          <ChannelCard
+            v-for="channel in primaryChannels"
+            :key="channel.id"
+            v-memo="[
+              channel.id,
+              channel.enabled,
+              channel.status,
+              channel.lastError,
+              expandedChannel === channel.id,
+              toggling === channel.id,
+              saving === channel.id,
+              testingConnection === channel.id,
+              testResult,
+              ...channel.fields.map((f) => f.value),
+            ]"
+            :channel="channel"
+            :expanded="expandedChannel === channel.id"
+            :toggling="toggling === channel.id"
+            :saving="saving === channel.id"
+            :testing-connection="testingConnection === channel.id"
+            :test-result="testResult"
+            @toggle="toggleChannel(channel.id)"
+            @toggle-enabled="toggleChannelEnabled(channel.id, $event)"
+            @save="saveChannel(channel.id)"
+            @test-connection="testConnection(channel.id)"
+            @update-field="
+              (fieldIndex: number, value: string) => updateChannelField(channel.id, fieldIndex, value)
+            "
+          />
+        </div>
+
+        <button
+          v-if="!showMoreChannels && secondaryChannels.length > 0"
+          class="channels-load-more"
+          @click="showMoreChannels = true"
+        >
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+          {{ t('common.loadMore') }} ({{ secondaryChannels.length }})
+        </button>
+
+        <div v-if="showMoreChannels" class="channels-board__stack channels-board__stack--secondary">
+          <ChannelCard
+            v-for="channel in secondaryChannels"
+            :key="channel.id"
+            v-memo="[
+              channel.id,
+              channel.enabled,
+              channel.status,
+              channel.lastError,
+              expandedChannel === channel.id,
+              toggling === channel.id,
+              saving === channel.id,
+              testingConnection === channel.id,
+              testResult,
+              ...channel.fields.map((f) => f.value),
+            ]"
+            :channel="channel"
+            :expanded="expandedChannel === channel.id"
+            :toggling="toggling === channel.id"
+            :saving="saving === channel.id"
+            :testing-connection="testingConnection === channel.id"
+            :test-result="testResult"
+            @toggle="toggleChannel(channel.id)"
+            @toggle-enabled="toggleChannelEnabled(channel.id, $event)"
+            @save="saveChannel(channel.id)"
+            @test-connection="testConnection(channel.id)"
+            @update-field="
+              (fieldIndex: number, value: string) => updateChannelField(channel.id, fieldIndex, value)
+            "
+          />
+        </div>
       </div>
-
-      <!-- Other Channels -->
-      <ChannelCard
-        v-for="channel in primaryChannels"
-        :key="channel.id"
-        v-memo="[channel.id, channel.enabled, channel.status, channel.lastError, expandedChannel === channel.id, toggling === channel.id, saving === channel.id, testingConnection === channel.id, testResult, ...channel.fields.map(f => f.value)]"
-        :channel="channel"
-        :expanded="expandedChannel === channel.id"
-        :toggling="toggling === channel.id"
-        :saving="saving === channel.id"
-        :testing-connection="testingConnection === channel.id"
-        :test-result="testResult"
-        @toggle="toggleChannel(channel.id)"
-        @toggle-enabled="toggleChannelEnabled(channel.id, $event)"
-        @save="saveChannel(channel.id)"
-        @test-connection="testConnection(channel.id)"
-        @update-field="(fieldIndex: number, value: string) => updateChannelField(channel.id, fieldIndex, value)"
-      />
-
-      <!-- Load More Button -->
-      <button
-        v-if="!showMoreChannels && secondaryChannels.length > 0"
-        class="w-full py-3 px-4 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium transition-colors flex items-center justify-center gap-2"
-        @click="showMoreChannels = true"
-      >
-        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-        </svg>
-        {{ t('common.loadMore') }} ({{ secondaryChannels.length }})
-      </button>
-
-      <!-- Secondary Channels (shown after Load More) -->
-      <template v-if="showMoreChannels">
-        <ChannelCard
-          v-for="channel in secondaryChannels"
-          :key="channel.id"
-          v-memo="[channel.id, channel.enabled, channel.status, channel.lastError, expandedChannel === channel.id, toggling === channel.id, saving === channel.id, testingConnection === channel.id, testResult, ...channel.fields.map(f => f.value)]"
-          :channel="channel"
-          :expanded="expandedChannel === channel.id"
-          :toggling="toggling === channel.id"
-          :saving="saving === channel.id"
-          :testing-connection="testingConnection === channel.id"
-          :test-result="testResult"
-          @toggle="toggleChannel(channel.id)"
-          @toggle-enabled="toggleChannelEnabled(channel.id, $event)"
-          @save="saveChannel(channel.id)"
-          @test-connection="testConnection(channel.id)"
-          @update-field="(fieldIndex: number, value: string) => updateChannelField(channel.id, fieldIndex, value)"
-        />
-      </template>
-    </div>
+    </section>
   </div>
 </template>
+
+<style scoped>
+.channels-page {
+  --config-page-accent: 8, 145, 178;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 0 0.75rem 1.8rem;
+}
+
+.channels-stage {
+  position: relative;
+  padding: 1.15rem 0 0.25rem;
+}
+
+.channels-stage::before,
+.channels-stage::after {
+  content: none;
+  position: absolute;
+  width: 18rem;
+  height: 18rem;
+  pointer-events: none;
+  opacity: 0.78;
+  background-image: radial-gradient(circle, rgba(37, 99, 235, 0.22) 1px, transparent 1px);
+  background-size: 14px 14px;
+  z-index: 0;
+}
+
+.channels-stage::before {
+  right: 10%;
+  top: 7.5rem;
+}
+
+.channels-stage::after {
+  left: 12%;
+  bottom: -1.25rem;
+}
+
+.channels-header {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.35rem 1.45rem;
+  margin-bottom: 0.88rem;
+}
+
+.channels-header__copy {
+  max-width: 46rem;
+}
+
+.channels-summary-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.88rem;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  margin-bottom: 0.88rem;
+}
+
+.channels-summary-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.72rem;
+  min-height: 8.9rem;
+  padding: 1rem 1.05rem;
+}
+
+.channels-summary-card::after {
+  content: none;
+}
+
+.channels-page .dashboard-card-surface {
+  border-color: rgba(226, 232, 240, 0.92);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.channels-summary-card--connected {
+  color: #15803d;
+}
+
+.channels-summary-card--preview {
+  color: #475569;
+}
+
+.channels-summary-label {
+  position: relative;
+  z-index: 1;
+  display: block;
+  color: #9ca3af;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.channels-summary-value {
+  position: relative;
+  z-index: 1;
+  display: block;
+  color: #111827;
+  font-size: clamp(1.65rem, 1vw + 1rem, 2.2rem);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+}
+
+.channels-summary-footnote {
+  position: relative;
+  z-index: 1;
+  margin: auto 0 0;
+  color: #6b7280;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.channels-summary-icon-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: clamp(0.25rem, 0.12rem + 0.3vw, 0.5rem);
+}
+
+.channels-summary-icon-pill {
+  width: clamp(1.9rem, 1.55rem + 0.75vw, 2.35rem);
+  height: clamp(1.9rem, 1.55rem + 0.75vw, 2.35rem);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: clamp(0.78rem, 0.62rem + 0.35vw, 0.95rem);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.channels-summary-icon-pill img {
+  width: clamp(1rem, 0.88rem + 0.24vw, 1.15rem);
+  height: clamp(1rem, 0.88rem + 0.24vw, 1.15rem);
+}
+
+.channels-summary-icon-pill--count {
+  width: auto;
+  min-width: clamp(2.25rem, 1.95rem + 0.48vw, 2.55rem);
+  padding: 0 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.channels-board {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+}
+
+.channels-board::before {
+  content: none;
+}
+
+.channels-board__stack {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.channels-board__stack--secondary {
+  padding-top: 0.3rem;
+}
+
+.channels-load-more {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(203, 213, 225, 0.96);
+  background: rgba(255, 255, 255, 0.96);
+  color: #475569;
+  font-weight: 700;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease;
+}
+
+.channels-load-more:hover {
+  transform: translateY(-1px);
+  border-color: rgba(148, 163, 184, 0.95);
+}
+
+@media (min-width: 760px) {
+  .channels-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .channels-stage {
+    padding-top: 0.7rem;
+  }
+}
+
+:global(.dark) .channels-summary-label,
+:global(.dark) .channels-summary-footnote {
+  color: #cbd5e1;
+}
+
+:global(.dark) .channels-stage::before,
+:global(.dark) .channels-stage::after {
+  opacity: 0.46;
+  background-image: radial-gradient(circle, rgba(96, 165, 250, 0.28) 1px, transparent 1px);
+}
+
+:global(.dark) .channels-page .dashboard-card-surface {
+  background: rgba(30, 41, 59, 0.96);
+  border-color: rgba(100, 116, 139, 0.56);
+}
+
+:global(.dark) .channels-summary-value,
+:global(.dark) .channels-summary-icon-pill--count {
+  color: #f8fafc;
+}
+
+:global(.dark) .channels-summary-icon-pill {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(100, 116, 139, 0.62);
+}
+
+:global(.dark) .channels-board {
+  background: transparent;
+  border-color: transparent;
+}
+
+:global(.dark) .channels-board::before {
+  content: none;
+}
+
+:global(.dark) .channels-load-more {
+  background: rgba(30, 41, 59, 0.96);
+  border-color: rgba(100, 116, 139, 0.58);
+  color: #cbd5e1;
+}
+</style>

@@ -62,7 +62,12 @@ function applyFilters() {
 }
 
 function clearFilters() {
-  filters.value = { action: undefined, status: undefined, start_time: undefined, end_time: undefined }
+  filters.value = {
+    action: undefined,
+    status: undefined,
+    start_time: undefined,
+    end_time: undefined,
+  }
   page.value = 1
   loadEntries()
 }
@@ -88,10 +93,14 @@ function getStatusColor(status: string): string {
 }
 
 function getActionColor(action: string): string {
-  if (action.includes('login')) return 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
-  if (action.includes('create')) return 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
-  if (action.includes('delete')) return 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
-  if (action.includes('update')) return 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300'
+  if (action.includes('login'))
+    return 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
+  if (action.includes('create'))
+    return 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
+  if (action.includes('delete'))
+    return 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
+  if (action.includes('update'))
+    return 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300'
   return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
 }
 </script>
@@ -99,7 +108,9 @@ function getActionColor(action: string): string {
 <template>
   <div class="audit-view p-4 sm:p-6 max-w-6xl mx-auto">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{{ t('audit.title') }}</h1>
+      <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+        {{ t('audit.title') }}
+      </h1>
       <div class="flex gap-2">
         <button
           class="px-3 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white rounded-lg text-sm transition-colors"
@@ -119,15 +130,23 @@ function getActionColor(action: string): string {
     <!-- Stats -->
     <div v-if="stats" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
       <div class="glass-card p-4">
-        <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ stats.by_status.success }}</div>
-        <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('audit.successfulActions') }}</div>
+        <div class="text-2xl font-bold text-green-600 dark:text-green-400">
+          {{ stats.by_status.success }}
+        </div>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+          {{ t('audit.successfulActions') }}
+        </div>
       </div>
       <div class="glass-card p-4">
-        <div class="text-2xl font-bold text-red-600 dark:text-red-400">{{ stats.by_status.failure }}</div>
+        <div class="text-2xl font-bold text-red-600 dark:text-red-400">
+          {{ stats.by_status.failure }}
+        </div>
         <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('audit.failedActions') }}</div>
       </div>
       <div class="glass-card p-4">
-        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white">{{ stats.by_action.login || 0 }}</div>
+        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white">
+          {{ stats.by_action.login || 0 }}
+        </div>
         <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('audit.logins') }}</div>
       </div>
       <div class="glass-card p-4">
@@ -182,7 +201,10 @@ function getActionColor(action: string): string {
       {{ t('common.loading') }}
     </div>
 
-    <div v-else-if="entries.length === 0" class="text-center py-8 text-gray-500 dark:text-slate-400">
+    <div
+      v-else-if="entries.length === 0"
+      class="text-center py-8 text-gray-500 dark:text-slate-400"
+    >
       {{ t('audit.noEntries') }}
     </div>
 
@@ -190,14 +212,26 @@ function getActionColor(action: string): string {
       <div v-for="entry in entries" :key="entry.id" class="glass-card p-4">
         <div class="flex items-start justify-between mb-2">
           <div class="flex items-center gap-2 flex-wrap">
-            <span :class="['px-2 py-0.5 rounded-full text-xs font-medium', getActionColor(entry.action)]">
+            <span
+              :class="[
+                'px-2 py-0.5 rounded-full text-xs font-medium',
+                getActionColor(entry.action),
+              ]"
+            >
               {{ entry.action }}
             </span>
-            <span :class="['px-2 py-0.5 rounded-full text-xs font-medium', getStatusColor(entry.status)]">
+            <span
+              :class="[
+                'px-2 py-0.5 rounded-full text-xs font-medium',
+                getStatusColor(entry.status),
+              ]"
+            >
               {{ entry.status }}
             </span>
           </div>
-          <span class="text-xs text-gray-400 dark:text-slate-500">{{ formatDate(entry.timestamp) }}</span>
+          <span class="text-xs text-gray-400 dark:text-slate-500">{{
+            formatDate(entry.timestamp)
+          }}</span>
         </div>
         <div class="text-sm text-gray-900 dark:text-white mb-1">
           {{ entry.username || t('audit.anonymous') }}
@@ -218,9 +252,7 @@ function getActionColor(action: string): string {
       >
         {{ t('common.previous') }}
       </button>
-      <span class="text-sm text-gray-500 dark:text-slate-400">
-        {{ page }} / {{ totalPages }}
-      </span>
+      <span class="text-sm text-gray-500 dark:text-slate-400"> {{ page }} / {{ totalPages }} </span>
       <button
         :disabled="page === totalPages"
         class="px-3 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white rounded text-sm disabled:opacity-50"

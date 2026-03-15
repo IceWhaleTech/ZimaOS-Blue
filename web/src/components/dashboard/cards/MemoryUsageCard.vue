@@ -1,7 +1,25 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import DashboardSparkline from '@/components/dashboard/DashboardSparkline.vue'
+import type { SparklinePoint } from '@/components/dashboard/DashboardSparkline.vue'
 import { useSystemStore } from '@/stores/system'
 import Skeleton from '@/components/Skeleton.vue'
+
+const props = withDefaults(
+  defineProps<{
+    metricsHistory?: Array<{
+      timestamp: string
+      cpu_percent: number
+      memory_used_bytes: number
+      goroutines: number
+      heap_alloc_bytes: number
+    }>
+  }>(),
+  {
+    metricsHistory: () => [],
+  }
+)
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
@@ -14,23 +32,43 @@ function formatBytes(bytes: number | undefined | null): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
+
+const allocationTrendData = computed<SparklinePoint[]>(() => {
+  return (props.metricsHistory ?? []).map((entry) => ({
+    timestamp: entry.timestamp,
+    value: Math.max(0, entry.heap_alloc_bytes ?? 0),
+  }))
+})
 </script>
 
 <template>
-  <div class="flex items-center justify-between">
-    <div>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('system.memory') }}</p>
-      <template v-if="systemStore.loading">
-        <Skeleton height="1.75rem" width="70%" rounded="md" />
-      </template>
-      <p v-else class="text-2xl font-bold text-gray-900 dark:text-white">
-        {{ formatBytes(systemStore.health?.mem_alloc_bytes) }}
-      </p>
+  <div class="dashboard-card-stack">
+    <div class="dashboard-card-footer">
+      <div class="dashboard-card-copy">
+        <p class="dashboard-card-label">{{ t('system.heapAllocation') }}</p>
+        <p class="dashboard-card-subtitle mt-2">Current heap alloc</p>
+      </div>
+      <span class="dashboard-card-chip">Now</span>
     </div>
-    <div class="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
-      <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-      </svg>
+
+    <div class="dashboard-card-footer memory-card-main">
+      <div class="dashboard-card-copy">
+        <template v-if="systemStore.loading">
+          <Skeleton height="1.75rem" width="70%" rounded="md" />
+        </template>
+        <p v-else class="dashboard-card-value text-gray-900 dark:text-white">
+          {{ formatBytes(systemStore.health?.mem_alloc_bytes) }}
+        </p>
+        <p class="dashboard-card-footnote mt-3">Live heap allocator footprint</p>
+      </div>
+
+      <DashboardSparkline :data="allocationTrendData" />
     </div>
   </div>
 </template>
+
+<style scoped>
+.memory-card-main {
+  align-items: center;
+}
+</style>

@@ -23,13 +23,17 @@ describe('getUserErrorMessage', () => {
   it('translates known backend password errors', async () => {
     await setLocale('zh-CN')
 
-    expect(getUserErrorMessage('password does not meet requirements', 'preview.upgradeFailed')).toBe('密码不符合要求')
+    expect(
+      getUserErrorMessage('password does not meet requirements', 'preview.upgradeFailed')
+    ).toBe('密码不符合要求')
   })
 
   it('returns the localized fallback when the backend message is empty', async () => {
     await setLocale('en-US')
 
-    expect(getUserErrorMessage(undefined, 'preview.upgradeFailed')).toBe('Failed to create admin account')
+    expect(getUserErrorMessage(undefined, 'preview.upgradeFailed')).toBe(
+      'Failed to create admin account'
+    )
   })
 
   it('passes through unknown backend errors', () => {

@@ -122,7 +122,7 @@ async function mountMessage(content: string) {
 }
 
 function findButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
-  return wrapper.findAll('button').find(button => button.text().includes(text))
+  return wrapper.findAll('button').find((button) => button.text().includes(text))
 }
 
 function createDeferred<T>() {
@@ -155,7 +155,9 @@ describe('ChatMessage card actions', () => {
     mocks.settingsStore.showToolDetails = true
 
     mocks.providerPoolStore.providers = []
-    mocks.providerPoolStore.getProviderDisplayName.mockReset().mockImplementation((providerId: string) => providerId)
+    mocks.providerPoolStore.getProviderDisplayName
+      .mockReset()
+      .mockImplementation((providerId: string) => providerId)
 
     mocks.cardActionSubmit.mockReset()
     mocks.speechGetStatus.mockReset().mockResolvedValue({ data: {} })
@@ -217,11 +219,14 @@ describe('ChatMessage card actions', () => {
         url: WEB_FETCH_URL,
       },
     })
-    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith(`Open ${WEB_FETCH_URL} with the browser tool.`)
+    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith(
+      `Open ${WEB_FETCH_URL} with the browser tool.`
+    )
   })
 
   it('keeps chinese fallback boilerplate and extracted summary text', async () => {
-    const content = '工具执行已完成，但最终总结生成失败。以下是基于工具结果整理的简要摘要：\n\nWeb search fallback results for "OpenClaw 最近动向":\n\n- OpenClaw Release Notes\n\n原始 stdout/stderr/error 字段未包含在这条简要摘要中。如需我重试完整总结，请回复“重试总结”。'
+    const content =
+      '工具执行已完成，但最终总结生成失败。以下是基于工具结果整理的简要摘要：\n\nWeb search fallback results for "OpenClaw 最近动向":\n\n- OpenClaw Release Notes\n\n原始 stdout/stderr/error 字段未包含在这条简要摘要中。如需我重试完整总结，请回复“重试总结”。'
 
     const wrapper = await mountMessage(content)
     const assistant = wrapper.find('.assistant-message')
@@ -465,15 +470,15 @@ describe('ChatMessage card actions', () => {
     const deferred = createDeferred<{ data: { success: boolean; message: string } }>()
     mocks.cardActionSubmit.mockReturnValue(deferred.promise)
 
-    const wrapper = await mountMessage(makeTypelessBlock({
-      type: 'action',
-      id: 'action-card-1',
-      title: 'Choose next step',
-      description: 'Continue with the browser flow.',
-      actions: [
-        { id: 'continue', label: 'Continue', variant: 'primary' },
-      ],
-    }))
+    const wrapper = await mountMessage(
+      makeTypelessBlock({
+        type: 'action',
+        id: 'action-card-1',
+        title: 'Choose next step',
+        description: 'Continue with the browser flow.',
+        actions: [{ id: 'continue', label: 'Continue', variant: 'primary' }],
+      })
+    )
 
     const button = findButtonByText(wrapper, 'Continue')
     expect(button?.exists()).toBe(true)
@@ -502,15 +507,15 @@ describe('ChatMessage card actions', () => {
     const deferred = createDeferred<{ data: { success: boolean; message: string } }>()
     mocks.cardActionSubmit.mockReturnValue(deferred.promise)
 
-    const wrapper = await mountMessage(makeTypelessBlock({
-      type: 'ui-review',
-      id: 'ui-review-1',
-      status: 'error',
-      message: 'Browser start failed',
-      actions: [
-        { id: 'retry', label: 'Retry', variant: 'primary' },
-      ],
-    }))
+    const wrapper = await mountMessage(
+      makeTypelessBlock({
+        type: 'ui-review',
+        id: 'ui-review-1',
+        status: 'error',
+        message: 'Browser start failed',
+        actions: [{ id: 'retry', label: 'Retry', variant: 'primary' }],
+      })
+    )
 
     const button = findButtonByText(wrapper, 'Retry')
     expect(button?.exists()).toBe(true)
@@ -583,23 +588,27 @@ describe('ChatMessage card actions', () => {
     await flushPromises()
 
     expect(mocks.cardActionSubmit).toHaveBeenCalledTimes(2)
-    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith(`Open ${WEB_FETCH_URL} with the browser tool.`)
+    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith(
+      `Open ${WEB_FETCH_URL} with the browser tool.`
+    )
     expect(wrapper.text()).not.toContain('Browser service unavailable')
   })
 
   it('shows an inline error for failed choice submissions', async () => {
     mocks.cardActionSubmit.mockRejectedValueOnce(new Error('Selection failed upstream'))
 
-    const wrapper = await mountMessage(makeTypelessBlock({
-      type: 'choice',
-      id: 'choice-card-1',
-      title: 'Choose a source',
-      multiple: true,
-      options: [
-        { id: 'alpha', label: 'Alpha' },
-        { id: 'beta', label: 'Beta' },
-      ],
-    }))
+    const wrapper = await mountMessage(
+      makeTypelessBlock({
+        type: 'choice',
+        id: 'choice-card-1',
+        title: 'Choose a source',
+        multiple: true,
+        options: [
+          { id: 'alpha', label: 'Alpha' },
+          { id: 'beta', label: 'Beta' },
+        ],
+      })
+    )
 
     const alphaButton = findButtonByText(wrapper, 'Alpha')
     expect(alphaButton?.exists()).toBe(true)
@@ -616,16 +625,18 @@ describe('ChatMessage card actions', () => {
     const deferred = createDeferred<{ data: { success: boolean; message: string } }>()
     mocks.cardActionSubmit.mockReturnValue(deferred.promise)
 
-    const wrapper = await mountMessage(makeTypelessBlock({
-      type: 'choice',
-      id: 'choice-card-1',
-      title: 'Choose a source',
-      multiple: true,
-      options: [
-        { id: 'alpha', label: 'Alpha' },
-        { id: 'beta', label: 'Beta' },
-      ],
-    }))
+    const wrapper = await mountMessage(
+      makeTypelessBlock({
+        type: 'choice',
+        id: 'choice-card-1',
+        title: 'Choose a source',
+        multiple: true,
+        options: [
+          { id: 'alpha', label: 'Alpha' },
+          { id: 'beta', label: 'Beta' },
+        ],
+      })
+    )
 
     const alphaButton = findButtonByText(wrapper, 'Alpha')
     const betaButton = findButtonByText(wrapper, 'Beta')

@@ -3652,6 +3652,141 @@ func TestStreamMessage_ContextCompactionSSEUsesSmartContextCounts(t *testing.T) 
 	}
 }
 
+func TestStreamMessageRetriesContextTooLongWithLargerModel(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create memory store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Stream retry context too long")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+		{ProviderID: "p-context", ModelID: "small-model", ContextWindow: 4096, InputPrice: 5, Priority: 20},
+		{ProviderID: "p-context", ModelID: "large-model", ContextWindow: 8192, InputPrice: 8, Priority: 20},
+	}))
+	fakeProxy := &contextTooLongThenSuccessProxyHandler{
+		providerID:  "p-context",
+		successText: "stream recovered after fallback",
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"hello","model":"small-model","max_tokens":64}`)
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("stream should recover without STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, "data: [DONE]") {
+		t.Fatalf("expected done marker, body=%s", body)
+	}
+
+	events := extractJSONSSEEvents(t, body)
+	if len(events) == 0 {
+		t.Fatalf("expected SSE events, body=%s", body)
+	}
+	if got, _ := events[0]["type"].(string); got != "progressive_compaction" {
+		t.Fatalf("first event type = %q, want progressive_compaction; events=%+v", got, events)
+	}
+	if got, _ := events[0]["fallback_model"].(string); got != "large-model" {
+		t.Fatalf("fallback_model = %q, want large-model; first_event=%+v", got, events[0])
+	}
+
+	sawRecoveredDelta := false
+	for _, event := range events {
+		if delta, _ := event["delta"].(string); strings.Contains(delta, "stream recovered after fallback") {
+			sawRecoveredDelta = true
+			break
+		}
+	}
+	if !sawRecoveredDelta {
+		t.Fatalf("expected recovered delta event, events=%+v", events)
+	}
+
+	models := fakeProxy.RequestModels()
+	if len(models) < 2 {
+		t.Fatalf("request models = %#v, want at least [small-model ... large-model]", models)
+	}
+	if models[0] != "small-model" {
+		t.Fatalf("first request model = %q, want small-model; models=%#v", models[0], models)
+	}
+	if models[len(models)-1] != "large-model" {
+		t.Fatalf("final request model = %q, want large-model; models=%#v", models[len(models)-1], models)
+	}
+	for i := 0; i < len(models)-1; i++ {
+		if models[i] != "small-model" {
+			t.Fatalf("intermediate request model = %q, want small-model before fallback; models=%#v", models[i], models)
+		}
+	}
+}
+
+func TestStreamMessageReturnsBudgetFailureAfterAllUpstreamContextTooLongAttempts(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create memory store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Stream retry context too long failure")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+		{ProviderID: "p-context", ModelID: "small-model", ContextWindow: 4096, InputPrice: 5, Priority: 20},
+		{ProviderID: "p-context", ModelID: "large-model", ContextWindow: 8192, InputPrice: 8, Priority: 20},
+	}))
+	handler.SetProxyBridge(proxybridge.NewBridge(&contextTooLongThenSuccessProxyHandler{
+		providerID: "p-context",
+		failAll:    true,
+	}))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(`{"message":"hello","model":"small-model","max_tokens":64}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if got := rec.Header().Get(echo.HeaderContentType); !strings.Contains(got, echo.MIMEApplicationJSON) {
+		t.Fatalf("content-type = %q, want application/json", got)
+	}
+	if body := rec.Body.String(); strings.Contains(body, "data: ") {
+		t.Fatalf("expected JSON failure body, got SSE payload: %s", body)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v body=%s", err, rec.Body.String())
+	}
+	if exceeded, _ := resp["context_window_exceeded"].(bool); !exceeded {
+		t.Fatalf("context_window_exceeded = %#v, want true", resp["context_window_exceeded"])
+	}
+	if got, _ := resp["original_model"].(string); got != "small-model" {
+		t.Fatalf("original_model = %q, want small-model", got)
+	}
+	if attempted, _ := resp["fallback_attempted"].(bool); !attempted {
+		t.Fatalf("fallback_attempted = %#v, want true", resp["fallback_attempted"])
+	}
+	stages, ok := resp["compression_stages_attempted"].([]interface{})
+	if !ok || len(stages) != 3 {
+		t.Fatalf("compression_stages_attempted = %#v, want 3 entries", resp["compression_stages_attempted"])
+	}
+	if got, _ := resp["model"].(string); got != "large-model" {
+		t.Fatalf("model = %q, want large-model", got)
+	}
+}
+
 func TestStreamMessageAutoContinue_PseudoToolCall_DiscardsMalformedRound(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {

@@ -7,7 +7,6 @@
 export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
-  const THEME_STYLES: typeof import('./stores/settings').THEME_STYLES
   const acceptHMRUpdate: typeof import('pinia').acceptHMRUpdate
   const classifyFeatureIntent: typeof import('./composables/useFeatureIntent').classifyFeatureIntent
   const classifyMediaIntent: typeof import('./composables/useMediaIntent').classifyMediaIntent
@@ -174,7 +173,7 @@ declare global {
   export type { NotificationType, Notification } from './stores/notification'
   import('./stores/notification')
   // @ts-ignore
-  export type { ChatModelInfo, ChatProviderInfo, ProviderModelOption, ThemeStyle, CloseBehavior, MemoryRecallMode } from './stores/settings'
+  export type { ChatModelInfo, ChatProviderInfo, ProviderModelOption, CloseBehavior, MemoryRecallMode } from './stores/settings'
   import('./stores/settings')
   // @ts-ignore
   export type { Theme } from './stores/theme'
@@ -187,7 +186,6 @@ declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
-    readonly THEME_STYLES: UnwrapRef<typeof import('./stores/settings')['THEME_STYLES']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly classifyFeatureIntent: UnwrapRef<typeof import('./composables/useFeatureIntent')['classifyFeatureIntent']>
     readonly classifyMediaIntent: UnwrapRef<typeof import('./composables/useMediaIntent')['classifyMediaIntent']>

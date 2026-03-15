@@ -52,14 +52,12 @@ describe('todo checklist rendering helpers', () => {
   })
 
   it('suppresses duplicate checklist echoes after affirmative continuation turns', () => {
-    const canonical = assistantMessage(
-      'msg-a1',
-      '- [ ] 收集信息\n- [ ] 写总结',
-      { todo_card_id: 'todo-checklist-msg-a1' },
-    )
+    const canonical = assistantMessage('msg-a1', '- [ ] 收集信息\n- [ ] 写总结', {
+      todo_card_id: 'todo-checklist-msg-a1',
+    })
     const duplicate = assistantMessage(
       'msg-a3',
-      '- [x] 收集信息\n- [ ] 写总结\n\n我继续执行第二步。',
+      '- [x] 收集信息\n- [ ] 写总结\n\n我继续执行第二步。'
     )
     const messages = [
       userMessage('msg-u1', '帮我整理一下这个问题'),
@@ -72,18 +70,19 @@ describe('todo checklist rendering helpers', () => {
   })
 
   it('keeps the canonical checklist bubble intact', () => {
-    const canonical = assistantMessage(
-      'msg-a1',
-      '- [x] 收集信息\n- [ ] 写总结',
-      { todo_card_id: 'todo-checklist-msg-a1' },
-    )
+    const canonical = assistantMessage('msg-a1', '- [x] 收集信息\n- [ ] 写总结', {
+      todo_card_id: 'todo-checklist-msg-a1',
+    })
 
     expect(stripDuplicateTodoChecklistForMessage([canonical], canonical)).toBe(canonical.content)
   })
 
   it('does not suppress a new checklist after a non-continuation user turn', () => {
     const oldChecklist = assistantMessage('msg-a1', '- [ ] 收集信息\n- [ ] 写总结')
-    const newChecklist = assistantMessage('msg-a3', '- [x] 收集信息\n- [ ] 写总结\n\n我会重新整理一版。')
+    const newChecklist = assistantMessage(
+      'msg-a3',
+      '- [x] 收集信息\n- [ ] 写总结\n\n我会重新整理一版。'
+    )
     const messages = [
       userMessage('msg-u1', '先查一下'),
       oldChecklist,
@@ -94,4 +93,3 @@ describe('todo checklist rendering helpers', () => {
     expect(stripDuplicateTodoChecklistForMessage(messages, newChecklist)).toBe(newChecklist.content)
   })
 })
-

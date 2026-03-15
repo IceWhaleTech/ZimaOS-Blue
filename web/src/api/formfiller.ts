@@ -100,8 +100,7 @@ export const templateApi = {
 
   get: (id: string) => api.get<FillTemplate>(`/formfiller/templates/${id}`),
 
-  create: (data: CreateTemplateRequest) =>
-    api.post<FillTemplate>('/formfiller/templates', data),
+  create: (data: CreateTemplateRequest) => api.post<FillTemplate>('/formfiller/templates', data),
 
   update: (id: string, data: UpdateTemplateRequest) =>
     api.put<FillTemplate>(`/formfiller/templates/${id}`, data),

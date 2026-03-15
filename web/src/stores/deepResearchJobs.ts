@@ -14,7 +14,11 @@ const EVENT_TO_STATUS: Record<string, string> = {
 }
 
 function isTerminalStatus(status?: string | null) {
-  return TERMINAL_STATUSES.has(String(status || '').trim().toLowerCase())
+  return TERMINAL_STATUSES.has(
+    String(status || '')
+      .trim()
+      .toLowerCase()
+  )
 }
 
 function compareJobsByUpdatedAt(a: DeepResearchJobSummary, b: DeepResearchJobSummary) {
@@ -30,7 +34,9 @@ function normalizeNumber(value: unknown): number {
   return Number.isFinite(next) ? next : 0
 }
 
-function normalizeJobSnapshot(snapshot: Partial<DeepResearchJobSummary> & { id?: string; job_id?: string } | null | undefined): DeepResearchJobSummary | null {
+function normalizeJobSnapshot(
+  snapshot: (Partial<DeepResearchJobSummary> & { id?: string; job_id?: string }) | null | undefined
+): DeepResearchJobSummary | null {
   if (!snapshot) return null
   const jobId = normalizeString(snapshot.job_id || snapshot.id)
   if (!jobId) return null
@@ -60,7 +66,7 @@ export const useDeepResearchJobsStore = defineStore('deepResearchJobs', () => {
 
   const activeJobs = computed(() => {
     return activeJobIds.value
-      .map(jobId => jobMap.value[jobId])
+      .map((jobId) => jobMap.value[jobId])
       .filter((job): job is DeepResearchJobSummary => !!job)
       .sort(compareJobsByUpdatedAt)
   })
@@ -80,10 +86,15 @@ export const useDeepResearchJobsStore = defineStore('deepResearchJobs', () => {
   }
 
   function removeActiveJobId(jobId: string) {
-    activeJobIds.value = activeJobIds.value.filter(id => id !== jobId)
+    activeJobIds.value = activeJobIds.value.filter((id) => id !== jobId)
   }
 
-  function applyJobSnapshot(snapshot: Partial<DeepResearchJobSummary> & { id?: string; job_id?: string } | null | undefined) {
+  function applyJobSnapshot(
+    snapshot:
+      | (Partial<DeepResearchJobSummary> & { id?: string; job_id?: string })
+      | null
+      | undefined
+  ) {
     const normalized = normalizeJobSnapshot(snapshot)
     if (!normalized) return null
 
@@ -152,29 +163,43 @@ export const useDeepResearchJobsStore = defineStore('deepResearchJobs', () => {
     const notificationStore = useNotificationStore()
     const action = job.conversation_id
       ? {
-        label: t('chat.deepResearchBackToTask', 'View result'),
-        labelKey: 'chat.deepResearchBackToTask',
-        handler: () => {
-          void openJob(job.job_id, job.conversation_id)
-        },
-      }
+          label: t('chat.deepResearchBackToTask', 'View result'),
+          labelKey: 'chat.deepResearchBackToTask',
+          handler: () => {
+            void openJob(job.job_id, job.conversation_id)
+          },
+        }
       : undefined
 
     const title = job.query || t('chat.deepResearchTitle', 'Deep Research')
     if (job.status === 'completed') {
-      notificationStore.success(title, t('chat.deepResearchTaskCompleted', 'Research completed'), { action, duration: 8000, messageKey: 'chat.deepResearchTaskCompleted' })
+      notificationStore.success(title, t('chat.deepResearchTaskCompleted', 'Research completed'), {
+        action,
+        duration: 8000,
+        messageKey: 'chat.deepResearchTaskCompleted',
+      })
       return
     }
     if (job.status === 'failed') {
-      notificationStore.error(title, t('chat.deepResearchTaskFailed', 'Research failed'), { action, messageKey: 'chat.deepResearchTaskFailed' })
+      notificationStore.error(title, t('chat.deepResearchTaskFailed', 'Research failed'), {
+        action,
+        messageKey: 'chat.deepResearchTaskFailed',
+      })
       return
     }
     if (job.status === 'cancelled') {
-      notificationStore.info(title, t('chat.deepResearchTaskCancelled', 'Research cancelled'), { action, duration: 6000, messageKey: 'chat.deepResearchTaskCancelled' })
+      notificationStore.info(title, t('chat.deepResearchTaskCancelled', 'Research cancelled'), {
+        action,
+        duration: 6000,
+        messageKey: 'chat.deepResearchTaskCancelled',
+      })
     }
   }
 
-  function handleGlobalEvent(type: string, payload: Partial<DeepResearchJobSummary> & { id?: string; job_id?: string }) {
+  function handleGlobalEvent(
+    type: string,
+    payload: Partial<DeepResearchJobSummary> & { id?: string; job_id?: string }
+  ) {
     const merged = applyJobSnapshot({
       ...payload,
       status: normalizeString(payload.status) || EVENT_TO_STATUS[type] || undefined,

@@ -46,7 +46,7 @@ function parseTableRow(line: string): string[] {
   const trimmed = line.trim()
   const withoutPipes = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed
   const withoutEndPipe = withoutPipes.endsWith('|') ? withoutPipes.slice(0, -1) : withoutPipes
-  return withoutEndPipe.split('|').map(cell => cell.trim())
+  return withoutEndPipe.split('|').map((cell) => cell.trim())
 }
 
 function isTableSeparator(line: string): boolean {
@@ -116,7 +116,11 @@ function parseTypelessContent(content: string): ParsedContent {
   return { text, cards }
 }
 
-function parseMarkdownCodeBlocks(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+function parseMarkdownCodeBlocks(
+  content: string,
+  cards: TypelessCard[],
+  cardIndex: { value: number }
+): string {
   const lines = content.split('\n')
   const result: string[] = []
   let inCodeBlock = false
@@ -163,7 +167,11 @@ function parseMarkdownCodeBlocks(content: string, cards: TypelessCard[], cardInd
   return result.join('\n')
 }
 
-function parseMarkdownTables(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+function parseMarkdownTables(
+  content: string,
+  cards: TypelessCard[],
+  cardIndex: { value: number }
+): string {
   const lines = content.split('\n')
   const result: string[] = []
   let inTable = false
@@ -218,7 +226,11 @@ function parseMarkdownTables(content: string, cards: TypelessCard[], cardIndex: 
   return result.join('\n')
 }
 
-function parseMarkdownLists(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+function parseMarkdownLists(
+  content: string,
+  cards: TypelessCard[],
+  cardIndex: { value: number }
+): string {
   const lines = content.split('\n')
   const result: string[] = []
   let inList = false

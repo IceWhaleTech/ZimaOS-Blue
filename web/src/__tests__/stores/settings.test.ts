@@ -77,6 +77,7 @@ describe('settings store - small model integration', () => {
     expect(store.smallModelSummaryEnabled).toBe(false)
     expect(store.smallModelDocExtractEnabled).toBe(false)
     expect(store.smallModelRerankEnabled).toBe(false)
+    expect(store.smallModelRouteImageQAEnabled).toBe(false)
     expect(store.smallModelRouteShortQAEnabled).toBe(false)
     expect(store.smallModelRouteToolDispatchEnabled).toBe(false)
     expect(store.noLLMDegradeMode).toBe('deepresearch')
@@ -116,11 +117,18 @@ describe('settings store - small model integration', () => {
     const store = useSettingsStore()
     vi.mocked(settingsApi.patch).mockResolvedValue({ data: {} } as never)
 
+    await store.setSmallModelRouteImageQAEnabled(false)
+    expect(settingsApi.patch).toHaveBeenCalledWith({ small_model_route_image_qa_enabled: false })
+
     await store.setSmallModelRouteShortQAEnabled(false)
-    expect(settingsApi.patch).toHaveBeenCalledWith({ small_model_route_short_qa_enabled: false })
+    expect(settingsApi.patch).toHaveBeenNthCalledWith(2, {
+      small_model_route_short_qa_enabled: false,
+    })
 
     await store.setSmallModelRouteToolDispatchEnabled(false)
-    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_route_tool_dispatch_enabled: false })
+    expect(settingsApi.patch).toHaveBeenLastCalledWith({
+      small_model_route_tool_dispatch_enabled: false,
+    })
   })
 
   it('fetches and stores small-model status', async () => {
@@ -175,7 +183,9 @@ describe('settings store - small model integration', () => {
           fallback_reasons: {},
         },
       } as never)
-    vi.mocked(settingsApi.resetSmallModelStats).mockResolvedValue({ data: { success: true } } as never)
+    vi.mocked(settingsApi.resetSmallModelStats).mockResolvedValue({
+      data: { success: true },
+    } as never)
 
     await store.fetchSmallModelStats()
     expect(store.smallModelStats?.ir_takeover_total).toBe(3)

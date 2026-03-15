@@ -39,8 +39,7 @@ export const useThemeStore = defineStore('theme', () => {
   })
 
   function applyTheme() {
-    const isDark =
-      theme.value === 'dark' || (theme.value === 'system' && systemPrefersDark.value)
+    const isDark = theme.value === 'dark' || (theme.value === 'system' && systemPrefersDark.value)
 
     if (isDark) {
       document.documentElement.classList.add('dark')

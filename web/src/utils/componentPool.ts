@@ -19,9 +19,9 @@ interface PooledComponent {
 }
 
 interface PoolConfig {
-  maxPoolSize: number      // Max components per type
-  maxIdleTime: number      // Max time (ms) to keep unused components
-  cleanupInterval: number  // How often to run cleanup
+  maxPoolSize: number // Max components per type
+  maxIdleTime: number // Max time (ms) to keep unused components
+  cleanupInterval: number // How often to run cleanup
 }
 
 // ============================================================================
@@ -111,7 +111,7 @@ class ComponentPool {
       'browser-progress': () => import('@/components/typeless/CardBrowserProgress.vue'),
       'web-fetch': () => import('@/components/typeless/CardWebFetch.vue'),
       'convert-task': () => import('@/components/typeless/CardConvertTask.vue'),
-      'exec': () => import('@/components/typeless/CardExec.vue'),
+      exec: () => import('@/components/typeless/CardExec.vue'),
     }
 
     const loader = componentMap[cardType]
@@ -131,7 +131,7 @@ class ComponentPool {
     if (!pool || pool.length === 0) return null
 
     // Find an unused component
-    const available = pool.find(p => !p.inUse)
+    const available = pool.find((p) => !p.inUse)
     if (available) {
       available.inUse = true
       available.lastUsed = Date.now()
@@ -152,7 +152,7 @@ class ComponentPool {
     }
 
     // Find the component in the pool
-    const existing = pool.find(p => p.component === component)
+    const existing = pool.find((p) => p.component === component)
     if (existing) {
       existing.inUse = false
       existing.lastUsed = Date.now()
@@ -174,7 +174,7 @@ class ComponentPool {
    * Preload components for common card types
    */
   async preload(cardTypes: string[]): Promise<void> {
-    await Promise.all(cardTypes.map(type => this.getComponent(type)))
+    await Promise.all(cardTypes.map((type) => this.getComponent(type)))
   }
 
   /**
@@ -196,7 +196,7 @@ class ComponentPool {
 
     for (const [cardType, pool] of this.pools) {
       // Remove idle components that have exceeded max idle time
-      const activeComponents = pool.filter(p => {
+      const activeComponents = pool.filter((p) => {
         if (p.inUse) return true
         return now - p.lastUsed < this.config.maxIdleTime
       })
@@ -224,7 +224,7 @@ class ComponentPool {
     let totalPooled = 0
 
     for (const [cardType, pool] of this.pools) {
-      const inUse = pool.filter(p => p.inUse).length
+      const inUse = pool.filter((p) => p.inUse).length
       poolsByType[cardType] = { total: pool.length, inUse }
       totalPooled += pool.length
     }
@@ -280,11 +280,11 @@ export function usePooledComponent(cardType: string): {
 
   componentPool
     .getComponent(cardType)
-    .then(comp => {
+    .then((comp) => {
       component.value = comp
       loading.value = false
     })
-    .catch(err => {
+    .catch((err) => {
       error.value = err
       loading.value = false
     })

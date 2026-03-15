@@ -213,8 +213,7 @@ export const securityApi = {
   // Sessions
   listSessions: () => api.get<Session[]>('/security/sessions'),
 
-  revokeSession: (id: string) =>
-    api.delete<{ success: boolean }>(`/security/sessions/${id}`),
+  revokeSession: (id: string) => api.delete<{ success: boolean }>(`/security/sessions/${id}`),
 
   revokeAllSessions: () =>
     api.post<{ success: boolean; revoked_count: number }>('/security/sessions/revoke-all'),
@@ -247,12 +246,10 @@ export const securityApi = {
   getRecentThreats: (limit?: number) =>
     api.get<ThreatEvent[]>('/security/threats', { params: { limit } }),
 
-  scanInput: (request: ScanRequest) =>
-    api.post<ScanResponse>('/security/scan', request),
+  scanInput: (request: ScanRequest) => api.post<ScanResponse>('/security/scan', request),
 
   // Security scan
-  runSecurityScan: () =>
-    api.get<SecurityScanResult>('/security/scan/run'),
+  runSecurityScan: () => api.get<SecurityScanResult>('/security/scan/run'),
 
   previewScanFix: (fixAction: string) =>
     api.post<FixPreviewResponse>('/security/scan/preview', { fix_action: fixAction }),
@@ -261,8 +258,7 @@ export const securityApi = {
     api.post<FixScanIssueResponse>('/security/scan/fix', { fix_action: fixAction }),
 
   // Prompt firewall
-  getPromptFirewall: () =>
-    api.get<PromptFirewallConfig>('/security/firewall'),
+  getPromptFirewall: () => api.get<PromptFirewallConfig>('/security/firewall'),
 
   updatePromptFirewall: (enabled: boolean) =>
     api.put<PromptFirewallConfig>('/security/firewall', { enabled }),
@@ -277,15 +273,12 @@ export const securityApi = {
     api.delete<PromptFirewallConfig>(`/security/firewall/rules/${encodeURIComponent(id)}`),
 
   // CORS configuration
-  getCORSConfig: () =>
-    api.get<CORSConfig>('/security/cors'),
+  getCORSConfig: () => api.get<CORSConfig>('/security/cors'),
 
-  updateCORSConfig: (config: CORSConfigUpdate) =>
-    api.put<CORSConfig>('/security/cors', config),
+  updateCORSConfig: (config: CORSConfigUpdate) => api.put<CORSConfig>('/security/cors', config),
 
   // TLS configuration
-  getTLSConfig: () =>
-    api.get<TLSConfig>('/security/tls'),
+  getTLSConfig: () => api.get<TLSConfig>('/security/tls'),
 
   uploadTLSCert: (certPem: string, keyPem: string) =>
     api.post<TLSConfig>('/security/tls/upload', { cert_pem: certPem, key_pem: keyPem }),
@@ -297,15 +290,27 @@ export const securityApi = {
     api.post<CertificateInfo>('/security/tls/parse', { cert_pem: certPem }),
 
   // ACME certificate
-  getACMEStatus: () =>
-    api.get<ACMEStatus>('/security/tls/acme'),
+  getACMEStatus: () => api.get<ACMEStatus>('/security/tls/acme'),
 
-  requestACMECert: (email: string, domains: string[], provider: string, challengeType?: string, dnsProvider?: string, dnsCredentials?: Record<string, string>) =>
-    api.post<ACMEStatus>('/security/tls/acme', { email, domains, provider, challenge_type: challengeType, dns_provider: dnsProvider, dns_credentials: dnsCredentials }),
+  requestACMECert: (
+    email: string,
+    domains: string[],
+    provider: string,
+    challengeType?: string,
+    dnsProvider?: string,
+    dnsCredentials?: Record<string, string>
+  ) =>
+    api.post<ACMEStatus>('/security/tls/acme', {
+      email,
+      domains,
+      provider,
+      challenge_type: challengeType,
+      dns_provider: dnsProvider,
+      dns_credentials: dnsCredentials,
+    }),
 
   updateTLSSettings: (httpsOnly: boolean, httpsPort: number) =>
     api.put<TLSConfig>('/security/tls/settings', { https_only: httpsOnly, https_port: httpsPort }),
 
-  reloadTLSCert: () =>
-    api.post<TLSConfig>('/security/tls/reload'),
+  reloadTLSCert: () => api.post<TLSConfig>('/security/tls/reload'),
 }

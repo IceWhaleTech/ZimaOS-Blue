@@ -32,16 +32,19 @@ const localStorageMock = (() => {
 })()
 
 vi.stubGlobal('localStorage', localStorageMock)
-vi.stubGlobal('matchMedia', vi.fn().mockImplementation(() => ({
-  matches: false,
-  media: '',
-  onchange: null,
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  addListener: vi.fn(),
-  removeListener: vi.fn(),
-  dispatchEvent: vi.fn(),
-})))
+vi.stubGlobal(
+  'matchMedia',
+  vi.fn().mockImplementation(() => ({
+    matches: false,
+    media: '',
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }))
+)
 
 function createTestRouter() {
   return createRouter({

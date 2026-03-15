@@ -65,7 +65,10 @@ function stubFileReaderWith(content: string) {
 
     readAsText() {
       this.result = content
-      this.onload?.call(this as unknown as FileReader, new Event('load') as ProgressEvent<FileReader>)
+      this.onload?.call(
+        this as unknown as FileReader,
+        new Event('load') as ProgressEvent<FileReader>
+      )
     }
   }
   vi.stubGlobal('FileReader', MockFileReader as unknown as typeof FileReader)
@@ -75,7 +78,10 @@ describe('MemoryManager', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useRealTimers()
-    vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true)
+    )
 
     if (!(URL as unknown as { createObjectURL?: unknown }).createObjectURL) {
       ;(URL as unknown as { createObjectURL: () => string }).createObjectURL = () => 'blob:memory'
@@ -113,6 +119,7 @@ describe('MemoryManager', () => {
     const wrapper = mountManager()
     await flushPromises()
 
+    await byId(wrapper, 'memory-open-recall-settings').trigger('click')
     await byId(wrapper, 'memory-recall-mode-aggressive').trigger('click')
 
     expect(wrapper.emitted('memory-recall-mode-change')).toEqual([['aggressive']])
@@ -200,6 +207,20 @@ describe('MemoryManager', () => {
     wrapper.unmount()
   })
 
+  it('hides the search result area until a search query is entered', async () => {
+    const wrapper = mountManager()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="memory-search-results-panel"]').exists()).toBe(false)
+
+    await byId(wrapper, 'memory-search-input').setValue('query')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="memory-search-results-panel"]').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
   it('localizes match type labels in search results', async () => {
     vi.useFakeTimers()
     vi.mocked(memoryApi.search).mockResolvedValue({
@@ -275,8 +296,7 @@ describe('MemoryManager', () => {
     const wrapper = mountManager()
     await flushPromises()
 
-    await byId(wrapper, 'memory-open-export-import').trigger('click')
-    await byId(wrapper, 'memory-export-button').trigger('click')
+    await byId(wrapper, 'memory-export-button-inline').trigger('click')
     await flushPromises()
 
     expect(memoryApi.exportMarkdown).toHaveBeenCalledTimes(1)
@@ -298,7 +318,7 @@ describe('MemoryManager', () => {
     const wrapper = mountManager()
     await flushPromises()
 
-    await byId(wrapper, 'memory-open-export-import').trigger('click')
+    await byId(wrapper, 'memory-open-import').trigger('click')
     const fileInput = byId(wrapper, 'memory-import-file-input')
     const file = new File(['dummy'], 'memory.md', { type: 'text/markdown' })
     Object.defineProperty(fileInput.element, 'files', {
@@ -327,7 +347,7 @@ describe('MemoryManager', () => {
     const wrapper = mountManager()
     await flushPromises()
 
-    await byId(wrapper, 'memory-open-export-import').trigger('click')
+    await byId(wrapper, 'memory-open-import').trigger('click')
     const fileInput = byId(wrapper, 'memory-import-file-input')
     const file = new File(['dummy'], 'memory.md', { type: 'text/markdown' })
     Object.defineProperty(fileInput.element, 'files', {
@@ -352,6 +372,7 @@ describe('MemoryManager', () => {
     const wrapper = mountManager()
     await flushPromises()
 
+    await byId(wrapper, 'memory-open-cleanup').trigger('click')
     await byId(wrapper, 'memory-open-clear').trigger('click')
     expect(wrapper.find('[data-testid="memory-clear-confirm"]').exists()).toBe(true)
     await byId(wrapper, 'memory-clear-confirm').trigger('click')
@@ -365,10 +386,13 @@ describe('MemoryManager', () => {
   })
 
   it('disables destructive cleanup actions when there are no memories', async () => {
-    vi.mocked(memoryApi.stats).mockResolvedValueOnce(statsPayload({ total_chunks: 0, total_size_bytes: 0 }))
+    vi.mocked(memoryApi.stats).mockResolvedValueOnce(
+      statsPayload({ total_chunks: 0, total_size_bytes: 0 })
+    )
     const wrapper = mountManager()
     await flushPromises()
 
+    await byId(wrapper, 'memory-open-cleanup').trigger('click')
     expect(byId(wrapper, 'memory-prune').attributes('disabled')).toBeDefined()
     expect(byId(wrapper, 'memory-open-clear').attributes('disabled')).toBeDefined()
 
@@ -380,8 +404,7 @@ describe('MemoryManager', () => {
     const wrapper = mountManager()
     await flushPromises()
 
-    await byId(wrapper, 'memory-open-export-import').trigger('click')
-    await byId(wrapper, 'memory-export-button').trigger('click')
+    await byId(wrapper, 'memory-export-button-inline').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('export failed: network down')

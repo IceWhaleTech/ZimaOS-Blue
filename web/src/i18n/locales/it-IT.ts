@@ -93,7 +93,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Origine dei file',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -177,7 +177,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'L\'esecuzione del comando è stata bloccata perché l\'approvazione della directory è scaduta. Approva la directory e riprova.',
+    execDirectoryApprovalTimeout:
+      "L'esecuzione del comando è stata bloccata perché l'approvazione della directory è scaduta. Approva la directory e riprova.",
     streamProgress: {
       requestAccepted: 'Richiesta ricevuta, preparo la risposta...',
       generating: 'Generazione della risposta...',
@@ -290,6 +291,7 @@ export default {
     inputPlaceholderShort: 'Scrivi un messaggio...',
     newLine: 'per nuova riga',
     dragDropHint: 'Trascina e rilascia o incolla file per allegare',
+    conversations: 'Conversazioni',
     searchConversations: 'Cerca conversazioni...',
     noConversationsFound: 'Nessuna conversazione trovata',
     noConversationsYet: 'Ancora nessuna conversazione',
@@ -492,7 +494,8 @@ export default {
   home: {
     ...enUS.home,
     welcome: 'Benvenuto in ZimaOS Blue',
-    description: 'Un runtime stabile, affidabile e neutrale per i tuoi assistenti IA e le automazioni',
+    description:
+      'Un runtime stabile, affidabile e neutrale per i tuoi assistenti IA e le automazioni',
     loadingStatus: 'Caricamento stato del sistema...',
     status: 'Stato',
     version: 'Versione',
@@ -503,6 +506,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Accesso di rete',
+    networkTitle: 'Rete e accesso',
+    releaseTrack: 'Gestione versioni',
+    systemVersion: 'Aggiornamenti e versioni',
     llmApiKeyRequired: 'Configura una chiave API prima di aprire la pagina dei provider LLM.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -1461,8 +1468,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Directory approvate',
+    approvedDirectoriesDesc: 'Directory approvate tramite "Consenti sempre" per exec/convert.',
+    noApprovedDirectories: 'Nessuna directory approvata',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Directory approvate',
       firewall: 'Firewall',
       masking: 'Mascheramento dati',
     },
@@ -2167,6 +2178,7 @@ export default {
       length: 'Almeno {n} caratteri',
       uppercase: 'Una lettera maiuscola',
       lowercase: 'Una lettera minuscola',
+      letter: 'Una lettera',
       number: 'Un numero',
       special: "Un carattere speciale (!{'@'}#$%...)",
     },
@@ -2664,12 +2676,13 @@ export default {
     },
     title: 'Companion',
     subtitle: 'Assistente companion',
-  
+
     toasts: {
       memorySavedTitle: 'Nuovo contenuto memorizzato',
       memorySavedMessage: 'Memoria estratta dalla conversazione',
       manageMemory: 'Gestisci memoria',
-    },},
+    },
+  },
   update: {
     ...enUS.update,
     title: 'Aggiornamento sistema',
@@ -2933,17 +2946,19 @@ export default {
     importSuccess: '{conversations} conversazioni e {messages} messaggi importati',
     importFailed: 'Importazione dati fallita',
     chatDataTitle: 'Dati chat',
-    chatDataDescription: 'Importa, esporta e pulisci la cronologia chat e i dati correlati da un unico punto.',
+    chatDataDescription:
+      'Importa, esporta e pulisci la cronologia chat e i dati correlati da un unico punto.',
     manageData: 'Gestisci dati',
-    cleanupPreviewFailed: 'Impossibile visualizzare l\'anteprima della pulizia',
-    previewFailed: 'Impossibile visualizzare l\'anteprima dei dati',
+    cleanupPreviewFailed: "Impossibile visualizzare l'anteprima della pulizia",
+    previewFailed: "Impossibile visualizzare l'anteprima dei dati",
     hasSettings: 'Contiene impostazioni',
     previewTitle: 'Anteprima importazione',
     chooseFile: 'Scegli file',
-    importPasswordPlaceholder: 'Inserisci la password usata durante l\'esportazione',
+    importPasswordPlaceholder: "Inserisci la password usata durante l'esportazione",
     confirmPasswordPlaceholder: 'Inserisci di nuovo la password',
     formatEncryptedDesc: 'Formato binario completamente crittografato. Maggiore sicurezza.',
-    formatJsonDesc: 'Formato leggibile dall\'uomo. La password viene usata per verificare l\'importazione.',
+    formatJsonDesc:
+      "Formato leggibile dall'uomo. La password viene usata per verificare l'importazione.",
     retentionSaved: 'Impostazioni di conservazione salvate',
     cleanupSuccess: 'Pulizia dati completata',
     cleanupFailed: 'Pulizia dati fallita',
@@ -2960,7 +2975,8 @@ export default {
       eventsRetention: 'Conservazione eventi',
       alertsRetention: 'Conservazione avvisi',
       totalRecords: 'Totale record di monitoraggio',
-      policyHint: 'Ogni tipo di dato supporta da 1 a 365 giorni. Una conservazione più breve riduce lo spazio, mentre una più lunga aiuta audit e risoluzione dei problemi.',
+      policyHint:
+        'Ogni tipo di dato supporta da 1 a 365 giorni. Una conservazione più breve riduce lo spazio, mentre una più lunga aiuta audit e risoluzione dei problemi.',
       daysRange: 'Intervallo consentito: 1-365 giorni',
       sessionsHint: 'Ciclo di vita delle sessioni dell’agent e metadati di runtime.',
       eventsHint: 'Chiamate agli strumenti, tracce di esecuzione ed eventi di audit.',
@@ -2968,7 +2984,8 @@ export default {
       sessionsSuggested: 'Suggerito: 14-30 giorni per le operazioni ordinarie',
       eventsSuggested: 'Suggerito: 7-14 giorni per un volume di audit bilanciato',
       alertsSuggested: 'Suggerito: 30-90 giorni per la revisione degli incidenti',
-      saveHint: 'Le nuove finestre di conservazione si applicheranno alle prossime pulizie automatiche e manuali.',
+      saveHint:
+        'Le nuove finestre di conservazione si applicheranno alle prossime pulizie automatiche e manuali.',
 
       days: 'giorni',
     },

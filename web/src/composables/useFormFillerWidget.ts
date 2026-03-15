@@ -1,14 +1,6 @@
 import { ref, reactive, computed } from 'vue'
-import {
-  templateApi,
-  configApi,
-  type FillTemplate,
-  type FormFillerConfig,
-} from '@/api/formfiller'
-import {
-  parseClipboardData,
-  parseClipboardFields,
-} from '@/utils/clipboardParser'
+import { templateApi, configApi, type FillTemplate, type FormFillerConfig } from '@/api/formfiller'
+import { parseClipboardData, parseClipboardFields } from '@/utils/clipboardParser'
 
 export interface FillHistoryEntry {
   timestamp: number
@@ -78,15 +70,17 @@ const disabledRoutes = ['/chat']
 // Check if current route is disabled
 function isRouteDisabled(): boolean {
   const path = window.location.pathname
-  return disabledRoutes.some(route => path.startsWith(route))
+  return disabledRoutes.some((route) => path.startsWith(route))
 }
 
 export function useFormFillerWidget() {
   // Computed
   const canUndo = computed(() => globalState.fillHistory.length > 0)
   const hasClipboardData = computed(() => globalState.clipboardData.trim().length > 0)
-  const parsedFieldCount = computed(() =>
-    Object.keys(globalState.parsedClipboardFields).length || globalState.parsedClipboardTokens.length
+  const parsedFieldCount = computed(
+    () =>
+      Object.keys(globalState.parsedClipboardFields).length ||
+      globalState.parsedClipboardTokens.length
   )
 
   // Load configuration and templates
@@ -102,15 +96,12 @@ export function useFormFillerWidget() {
     globalState.isLoading = true
     globalState.error = null
     try {
-      const [configRes, templatesRes] = await Promise.all([
-        configApi.get(),
-        templateApi.list(),
-      ])
+      const [configRes, templatesRes] = await Promise.all([configApi.get(), templateApi.list()])
       globalState.config = configRes.data
       globalState.templates = templatesRes.data ?? []
 
       // Select default template
-      const defaultTemplate = globalState.templates.find(t => t.is_default)
+      const defaultTemplate = globalState.templates.find((t) => t.is_default)
       if (defaultTemplate) {
         globalState.selectedTemplate = defaultTemplate
       } else if (globalState.templates.length > 0) {
@@ -127,13 +118,24 @@ export function useFormFillerWidget() {
   }
 
   // Check if element is a fillable form field
-  function isFillableField(el: Element): el is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
+  function isFillableField(
+    el: Element
+  ): el is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
     const tagName = el.tagName.toLowerCase()
     if (tagName === 'select' || tagName === 'textarea') return true
     if (tagName === 'input') {
       const type = (el as HTMLInputElement).type?.toLowerCase()
       // Exclude non-fillable input types
-      const excludedTypes = ['hidden', 'submit', 'button', 'file', 'image', 'reset', 'checkbox', 'radio']
+      const excludedTypes = [
+        'hidden',
+        'submit',
+        'button',
+        'file',
+        'image',
+        'reset',
+        'checkbox',
+        'radio',
+      ]
       return !excludedTypes.includes(type)
     }
     return false
@@ -145,7 +147,16 @@ export function useFormFillerWidget() {
     if (tagName === 'textarea') return true
     if (tagName === 'input') {
       const type = (el as HTMLInputElement).type?.toLowerCase()
-      const excludedTypes = ['hidden', 'submit', 'button', 'file', 'image', 'reset', 'checkbox', 'radio']
+      const excludedTypes = [
+        'hidden',
+        'submit',
+        'button',
+        'file',
+        'image',
+        'reset',
+        'checkbox',
+        'radio',
+      ]
       return !excludedTypes.includes(type)
     }
     return false
@@ -196,7 +207,7 @@ export function useFormFillerWidget() {
       // Check common container elements
       if (['div', 'section', 'article', 'fieldset', 'p'].includes(current.tagName.toLowerCase())) {
         const inputs = current.querySelectorAll('input, textarea')
-        const textInputs = Array.from(inputs).filter(el => isTextInputField(el))
+        const textInputs = Array.from(inputs).filter((el) => isTextInputField(el))
         if (textInputs.length >= 2) {
           return current
         }
@@ -212,7 +223,7 @@ export function useFormFillerWidget() {
     if (!container) return false
 
     const inputs = container.querySelectorAll('input, textarea')
-    const textInputs = Array.from(inputs).filter(el => isTextInputField(el))
+    const textInputs = Array.from(inputs).filter((el) => isTextInputField(el))
     return textInputs.length >= 2
   }
 
@@ -248,7 +259,10 @@ export function useFormFillerWidget() {
     setTimeout(() => {
       const activeElement = document.activeElement
       // Don't hide if focus moved to another form field or to the widget
-      if (activeElement && (isFillableField(activeElement) || activeElement.closest('.formfiller-widget'))) {
+      if (
+        activeElement &&
+        (isFillableField(activeElement) || activeElement.closest('.formfiller-widget'))
+      ) {
         return
       }
       // Don't hide if there's clipboard data being edited
@@ -330,7 +344,10 @@ export function useFormFillerWidget() {
 
   // Extract meaningful parts from a key (split by _ or -)
   function extractKeyParts(key: string): string[] {
-    return key.toLowerCase().split(/[_\-\s]+/).filter(p => p.length > 0)
+    return key
+      .toLowerCase()
+      .split(/[_\-\s]+/)
+      .filter((p) => p.length > 0)
   }
 
   // Calculate match score between a clipboard key and field identifiers
@@ -405,7 +422,7 @@ export function useFormFillerWidget() {
   ): { key: string; value: string } | null {
     const name = element.name || ''
     const id = element.id || ''
-    const placeholder = 'placeholder' in element ? (element.placeholder || '') : ''
+    const placeholder = 'placeholder' in element ? element.placeholder || '' : ''
     const autocomplete = element.autocomplete || ''
 
     // Get label text
@@ -421,7 +438,7 @@ export function useFormFillerWidget() {
       if (parentLabel) {
         // Get only direct text, not nested input values
         const clone = parentLabel.cloneNode(true) as HTMLElement
-        clone.querySelectorAll('input, select, textarea').forEach(el => el.remove())
+        clone.querySelectorAll('input, select, textarea').forEach((el) => el.remove())
         labelText = clone.textContent?.trim() || ''
       }
     }
@@ -467,7 +484,7 @@ export function useFormFillerWidget() {
     // Fall back to template matching
     const name = element.name?.toLowerCase() || ''
     const id = element.id?.toLowerCase() || ''
-    const placeholder = 'placeholder' in element ? (element.placeholder?.toLowerCase() || '') : ''
+    const placeholder = 'placeholder' in element ? element.placeholder?.toLowerCase() || '' : ''
     const type = element.type?.toLowerCase() || ''
     const autocomplete = element.autocomplete?.toLowerCase() || ''
 
@@ -508,8 +525,10 @@ export function useFormFillerWidget() {
         const allPatterns = [...patterns, fieldType]
         for (const pattern of allPatterns) {
           if (
-            name.includes(pattern) || pattern.includes(name) ||
-            id.includes(pattern) || pattern.includes(id) ||
+            name.includes(pattern) ||
+            pattern.includes(name) ||
+            id.includes(pattern) ||
+            pattern.includes(id) ||
             placeholder.includes(pattern) ||
             labelText.includes(pattern) ||
             autocomplete.includes(pattern) ||
@@ -537,7 +556,9 @@ export function useFormFillerWidget() {
     if (globalState.parsedClipboardTokens.length > 0) {
       const inputs = document.querySelectorAll('input, select, textarea')
       const fillableFields: Element[] = []
-      inputs.forEach((el) => { if (isFillableField(el)) fillableFields.push(el) })
+      inputs.forEach((el) => {
+        if (isFillableField(el)) fillableFields.push(el)
+      })
       const idx = fillableFields.indexOf(globalState.focusedElement)
       if (idx >= 0 && idx < globalState.parsedClipboardTokens.length) {
         value = globalState.parsedClipboardTokens[idx]!
@@ -551,7 +572,9 @@ export function useFormFillerWidget() {
 
     if (!value) {
       globalState.error = 'No matching value found for this field'
-      setTimeout(() => { globalState.error = null }, 2000)
+      setTimeout(() => {
+        globalState.error = null
+      }, 2000)
       return
     }
 
@@ -563,19 +586,23 @@ export function useFormFillerWidget() {
     globalState.focusedElement.dispatchEvent(new Event('change', { bubbles: true }))
 
     // Auto-reveal password fields after filling
-    if (globalState.focusedElement instanceof HTMLInputElement &&
-        globalState.focusedElement.type === 'password') {
+    if (
+      globalState.focusedElement instanceof HTMLInputElement &&
+      globalState.focusedElement.type === 'password'
+    ) {
       revealPassword(globalState.focusedElement)
     }
 
     // Save to history
     globalState.fillHistory.push({
       timestamp: Date.now(),
-      fields: [{
-        element: globalState.focusedElement,
-        oldValue,
-        newValue: value,
-      }],
+      fields: [
+        {
+          element: globalState.focusedElement,
+          oldValue,
+          newValue: value,
+        },
+      ],
     })
 
     // Keep only last 20 history entries
@@ -700,12 +727,12 @@ export function useFormFillerWidget() {
     if (isRouteDisabled()) return
 
     const shortcut = globalState.config?.widget.keyboard_shortcut || 'Ctrl+Shift+F'
-    const keys = shortcut.split('+').map(k => k.toLowerCase())
+    const keys = shortcut.split('+').map((k) => k.toLowerCase())
 
     const ctrlRequired = keys.includes('ctrl')
     const shiftRequired = keys.includes('shift')
     const altRequired = keys.includes('alt')
-    const keyRequired = keys.find(k => !['ctrl', 'shift', 'alt'].includes(k))
+    const keyRequired = keys.find((k) => !['ctrl', 'shift', 'alt'].includes(k))
 
     if (
       event.ctrlKey === ctrlRequired &&

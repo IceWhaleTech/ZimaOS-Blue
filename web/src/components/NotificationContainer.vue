@@ -49,13 +49,23 @@ function notificationActionLabel(action: { label: string; labelKey?: string }): 
   return action.label
 }
 
-function notificationTitle(notification: { title: string; titleKey?: string; titleParams?: Record<string, unknown> }): string {
-  if (notification.titleKey && te(notification.titleKey)) return t(notification.titleKey, notification.titleParams || {})
+function notificationTitle(notification: {
+  title: string
+  titleKey?: string
+  titleParams?: Record<string, unknown>
+}): string {
+  if (notification.titleKey && te(notification.titleKey))
+    return t(notification.titleKey, notification.titleParams || {})
   return notification.title
 }
 
-function notificationMessage(notification: { message?: string; messageKey?: string; messageParams?: Record<string, unknown> }): string {
-  if (notification.messageKey && te(notification.messageKey)) return t(notification.messageKey, notification.messageParams || {})
+function notificationMessage(notification: {
+  message?: string
+  messageKey?: string
+  messageParams?: Record<string, unknown>
+}): string {
+  if (notification.messageKey && te(notification.messageKey))
+    return t(notification.messageKey, notification.messageParams || {})
   return notification.message || ''
 }
 </script>

@@ -58,7 +58,10 @@ function handleCancel() {
     </div>
 
     <!-- Progress Details -->
-    <div v-if="progress" class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+    <div
+      v-if="progress"
+      class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400"
+    >
       <div class="flex items-center gap-4">
         <span>{{ downloadedText }}</span>
         <span v-if="downloading && progress.speed_human">

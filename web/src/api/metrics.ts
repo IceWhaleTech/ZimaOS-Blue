@@ -214,8 +214,7 @@ export const metricsApi = {
   getModelStats: (period?: string) =>
     api.get<ModelStatsResponse>('/metrics/models', { params: period ? { period } : undefined }),
 
-  getModelStatsByName: (model: string) =>
-    api.get<ModelStats>(`/metrics/models/${model}`),
+  getModelStatsByName: (model: string) => api.get<ModelStats>(`/metrics/models/${model}`),
 
   // Token usage
   getTokenUsage: (period?: string) =>
@@ -223,7 +222,9 @@ export const metricsApi = {
 
   // User token usage
   getUserTokenUsage: (period?: string) =>
-    api.get<UserTokenUsageResponse>('/metrics/tokens/users', { params: period ? { period } : undefined }),
+    api.get<UserTokenUsageResponse>('/metrics/tokens/users', {
+      params: period ? { period } : undefined,
+    }),
 
   getUserTokenUsageById: (userId: string) =>
     api.get<UserTokenUsage>(`/metrics/tokens/users/${userId}`),
@@ -236,28 +237,21 @@ export const metricsApi = {
   getSpeedStats: (model?: string) =>
     api.get<SpeedResponse>('/metrics/speed', { params: model ? { model } : undefined }),
 
-  getModelSpeedStats: () =>
-    api.get<SpeedResponse[]>('/metrics/speed/models'),
+  getModelSpeedStats: () => api.get<SpeedResponse[]>('/metrics/speed/models'),
 
   // System metrics
-  getSystemMetrics: () =>
-    api.get<SystemResourceMetrics>('/metrics/system'),
+  getSystemMetrics: () => api.get<SystemResourceMetrics>('/metrics/system'),
 
-  getResourceHistory: () =>
-    api.get<ResourceHistory[]>('/metrics/system/history'),
+  getResourceHistory: () => api.get<ResourceHistory[]>('/metrics/system/history'),
 
   // Process metrics
-  getProcessMetrics: () =>
-    api.get<ProcessMetrics>('/metrics/process'),
+  getProcessMetrics: () => api.get<ProcessMetrics>('/metrics/process'),
 
   // Pricing
-  getPricing: () =>
-    api.get<TokenPricing[]>('/metrics/pricing'),
+  getPricing: () => api.get<TokenPricing[]>('/metrics/pricing'),
 
-  getPricingForModel: (model: string) =>
-    api.get<TokenPricing>(`/metrics/pricing/${model}`),
+  getPricingForModel: (model: string) => api.get<TokenPricing>(`/metrics/pricing/${model}`),
 
   // Admin
-  resetMetrics: () =>
-    api.post<{ status: string; message: string }>('/metrics/reset'),
+  resetMetrics: () => api.post<{ status: string; message: string }>('/metrics/reset'),
 }

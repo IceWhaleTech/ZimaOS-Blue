@@ -51,32 +51,40 @@ const steps = computed<ProgressStep[]>(() => {
     return props.card.steps
   }
   if (props.card.step && props.card.name) {
-    return [{
-      step: props.card.step,
-      name: props.card.name,
-      status: props.card.status || 'running',
-      detail: props.card.detail,
-      current: props.card.current,
-      total: props.card.total,
-      source_kind: props.card.source_kind,
-      source_label: props.card.source_label,
-      char_count: props.card.char_count,
-      result_count: props.card.result_count,
-    }]
+    return [
+      {
+        step: props.card.step,
+        name: props.card.name,
+        status: props.card.status || 'running',
+        detail: props.card.detail,
+        current: props.card.current,
+        total: props.card.total,
+        source_kind: props.card.source_kind,
+        source_label: props.card.source_label,
+        char_count: props.card.char_count,
+        result_count: props.card.result_count,
+      },
+    ]
   }
   return []
 })
 
-const isRunning = computed(() => steps.value.some(s => s.status === 'running'))
+const isRunning = computed(() => steps.value.some((s) => s.status === 'running'))
 
 function isDoneStatus(status: string): boolean {
-  return status === 'success' || status === 'failed' || status === 'error' || status === 'completed' || status === 'skipped'
+  return (
+    status === 'success' ||
+    status === 'failed' ||
+    status === 'error' ||
+    status === 'completed' ||
+    status === 'skipped'
+  )
 }
 
 // Overall progress percentage based on completed steps
 const progressPercent = computed(() => {
   if (steps.value.length === 0) return 0
-  const done = steps.value.filter(s => isDoneStatus(s.status)).length
+  const done = steps.value.filter((s) => isDoneStatus(s.status)).length
   return Math.round((done / steps.value.length) * 100)
 })
 
@@ -136,16 +144,34 @@ function stepCount(step: ProgressStep): string {
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
+  <div
+    class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
+  >
     <!-- Header -->
-    <div class="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/50">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+    <div
+      class="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/50"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-4 w-4 text-indigo-400 flex-shrink-0"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+        />
       </svg>
       <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
         {{ t('analyze.analyzing', 'Analyzing') }}
       </span>
-      <span v-if="isRunning" class="ml-auto inline-block w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse flex-shrink-0" />
+      <span
+        v-if="isRunning"
+        class="ml-auto inline-block w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse flex-shrink-0"
+      />
       <span v-else class="ml-auto text-xs text-gray-400 tabular-nums">{{ progressPercent }}%</span>
     </div>
 
@@ -169,12 +195,23 @@ function stepCount(step: ProgressStep): string {
           class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
           :class="[stepColor(step.status), stepBg(step.status)]"
         >
-          <span v-if="step.status === 'running'" class="animate-spin">{{ stepIcon(step.status) }}</span>
+          <span v-if="step.status === 'running'" class="animate-spin">{{
+            stepIcon(step.status)
+          }}</span>
           <span v-else>{{ stepIcon(step.status) }}</span>
         </span>
         <div class="min-w-0 flex-1">
-          <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-normal break-words leading-relaxed">{{ stepLabel(step) }}</div>
-          <div v-if="stepDetail(step)" class="text-xs text-gray-400 whitespace-normal break-words leading-relaxed">{{ stepDetail(step) }}</div>
+          <div
+            class="text-sm text-gray-700 dark:text-gray-300 whitespace-normal break-words leading-relaxed"
+          >
+            {{ stepLabel(step) }}
+          </div>
+          <div
+            v-if="stepDetail(step)"
+            class="text-xs text-gray-400 whitespace-normal break-words leading-relaxed"
+          >
+            {{ stepDetail(step) }}
+          </div>
         </div>
         <span
           v-if="stepCount(step)"

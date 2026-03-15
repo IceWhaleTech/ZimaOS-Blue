@@ -97,11 +97,7 @@ function handleSubmit() {
   <div class="plugin-config-form">
     <form class="space-y-4" @submit.prevent="handleSubmit">
       <template v-if="schema">
-        <div
-          v-for="(prop, key) in schema.properties"
-          :key="key"
-          class="space-y-2"
-        >
+        <div v-for="(prop, key) in schema.properties" :key="key" class="space-y-2">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
             {{ prop.title || key }}
             <span v-if="isRequired(key)" class="text-red-500 dark:text-red-400">*</span>
@@ -118,7 +114,7 @@ function handleSubmit() {
             type="text"
             :required="isRequired(key)"
             class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
-            :placeholder="prop.default as string || ''"
+            :placeholder="(prop.default as string) || ''"
             @input="updateField(key, ($event.target as HTMLInputElement).value)"
           />
 
@@ -242,7 +238,11 @@ function handleSubmit() {
           :disabled="loading"
           class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
         >
-          {{ loading ? t('common.saving', 'Saving...') : t('plugins.configForm.save', 'Save Configuration') }}
+          {{
+            loading
+              ? t('common.saving', 'Saving...')
+              : t('plugins.configForm.save', 'Save Configuration')
+          }}
         </button>
         <button
           type="button"

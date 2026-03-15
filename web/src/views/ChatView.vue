@@ -29,7 +29,6 @@ import { componentPool } from '@/utils/componentPool'
 import { clearConversationIncrementalStates } from '@/utils/typeless'
 import { preloadHljs } from '@/utils/markdown'
 import { streamingTTSManager } from '@/api/voice'
-import { THEME_STYLES, type ThemeStyle } from '@/stores/settings'
 import { formatTokens } from '@/utils/format'
 
 const { t, te, locale } = useI18n()
@@ -49,7 +48,10 @@ const deepResearchEventTypes = [
   'deep_research.job_cancelled',
 ] as const
 const deepResearchEventHandlers: Record<string, (data: unknown) => void> = Object.fromEntries(
-  deepResearchEventTypes.map(type => [type, (data: unknown) => handleDeepResearchEvent(type, data as Record<string, unknown>)]),
+  deepResearchEventTypes.map((type) => [
+    type,
+    (data: unknown) => handleDeepResearchEvent(type, data as Record<string, unknown>),
+  ])
 )
 streamingTTSManager.setLocale(locale.value)
 watch(locale, (newLocale) => {
@@ -60,14 +62,12 @@ watch(locale, (newLocale) => {
 const tokenAnimating = ref(false)
 const previousTokens = ref<number | null>(null)
 
-// Theme style class for chat interface
-const themeStyleClass = computed(() => `theme-style-${settingsStore.themeStyle}`)
 const hasActiveDeepResearchJobs = computed(() => deepResearchJobs.activeJobs.length > 0)
 const messageAreaPaddingClass = computed(() => {
   if (isMobile.value) {
     return hasActiveDeepResearchJobs.value ? 'pb-36' : 'pb-4'
   }
-  return hasActiveDeepResearchJobs.value ? 'pb-56' : 'pb-32'
+  return hasActiveDeepResearchJobs.value ? 'pb-14' : 'pb-6'
 })
 
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -77,59 +77,74 @@ const messageHeightCache = new Map<string, number>()
 const virtualElementToMessageKey = new Map<HTMLElement, string>()
 const virtualItemElements = new Map<string, HTMLElement>()
 const virtualItemHeightUpdaters = new Map<string, (height: number) => void>()
-const virtualItemRefCallbacks = new Map<string, (el: Element | ComponentPublicInstance | null) => void>()
+const virtualItemRefCallbacks = new Map<
+  string,
+  (el: Element | ComponentPublicInstance | null) => void
+>()
 let virtualResizeObserver: ResizeObserver | null = null
 const showSidebar = ref(false) // Default closed on mobile
 // Detect mobile synchronously before first render to avoid layout flash
-const _initMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent)
+const _initMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
+  navigator.userAgent
+)
 const _initConvId = new URLSearchParams(window.location.search).get('conversationId')
 const isMobile = ref(_initMobile)
 const isNarrowScreen = ref(window.innerWidth < 768) // PC narrow screen (<768px)
-const isCompact = computed(() => isNarrowScreen.value) // Compact mode = narrow screen
-const shouldCollapseTopbarControls = computed(() => isMobile.value || isCompact.value)
+const shouldCollapseTopbarControls = computed(() => isMobile.value)
 const isMac = computed(() => navigator.platform.toUpperCase().indexOf('MAC') >= 0)
 // If URL has conversationId on mobile, pre-populate pageStack so we skip list page on first render
 const pageStack = ref<string[]>(_initMobile && _initConvId ? [_initConvId] : [])
 const showListPage = computed(() => isMobile.value && pageStack.value.length === 0)
 const mobileAnimationEnabled = ref(false) // Only animate after user interaction, not on page load
 const showTopbarMenu = ref(false)
+const topbarTooltipVisible = ref(false)
+const topbarTooltipText = ref('')
+const topbarTooltipStyle = ref<{ top: string; right: string }>({ top: '0px', right: '0px' })
 
-// Theme style selector state
-const showStyleSelector = ref(false)
-const styleButtonRef = ref<HTMLElement | null>(null)
 const showRoutingMenu = ref(false)
-const routingButtonRef = ref<HTMLElement | null>(null)
+const routingMenuAnchorEl = ref<HTMLElement | null>(null)
+const routingMenuFloatingRef = ref<HTMLElement | null>(null)
 const routingMenuPosition = ref({ x: 0, y: 0 })
 
 // Context trim indicator with 1-second delay
 const showContextTrim = ref(false)
 let contextTrimTimer: ReturnType<typeof setTimeout> | null = null
-watch(() => chatStore.contextTrimInfo, (info) => {
-  if (contextTrimTimer) { clearTimeout(contextTrimTimer); contextTrimTimer = null }
-  if (info) {
-    // For pruned events, only show when this turn actually saved tokens.
-    if (info.type === 'pruned') {
-      const saved = (info.tokensBefore ?? 0) - (info.tokensAfter ?? 0)
-      if (saved <= 0) {
-        showContextTrim.value = false
-        return
-      }
+watch(
+  () => chatStore.contextTrimInfo,
+  (info) => {
+    if (contextTrimTimer) {
+      clearTimeout(contextTrimTimer)
+      contextTrimTimer = null
     }
-    // Show after 1s delay (only if still streaming)
-    contextTrimTimer = setTimeout(() => {
-      if (chatStore.streaming || info) showContextTrim.value = true
-    }, 1000)
-  } else {
-    showContextTrim.value = false
+    if (info) {
+      // For pruned events, only show when this turn actually saved tokens.
+      if (info.type === 'pruned') {
+        const saved = (info.tokensBefore ?? 0) - (info.tokensAfter ?? 0)
+        if (saved <= 0) {
+          showContextTrim.value = false
+          return
+        }
+      }
+      // Show after 1s delay (only if still streaming)
+      contextTrimTimer = setTimeout(() => {
+        if (chatStore.streaming || info) showContextTrim.value = true
+      }, 1000)
+    } else {
+      showContextTrim.value = false
+    }
   }
-})
+)
 // Auto-hide after streaming ends (with a short delay so user can read it)
-watch(() => chatStore.streaming, (val) => {
-  if (!val && showContextTrim.value) {
-    setTimeout(() => { showContextTrim.value = false }, 3000)
+watch(
+  () => chatStore.streaming,
+  (val) => {
+    if (!val && showContextTrim.value) {
+      setTimeout(() => {
+        showContextTrim.value = false
+      }, 3000)
+    }
   }
-})
-const styleSelectorPosition = ref({ x: 0, y: 0 })
+)
 
 // Talk mode state
 const showTalkMode = ref(false)
@@ -144,7 +159,9 @@ const agentTasks = ref<AgentTask[]>([])
 
 const hasCancelableWork = computed(() => {
   if (chatStore.streaming || mediaGen.generating.value) return true
-  return agentTasks.value.some(task => ['pending', 'planning', 'executing', 'waiting_input'].includes(task.status))
+  return agentTasks.value.some((task) =>
+    ['pending', 'planning', 'executing', 'waiting_input'].includes(task.status)
+  )
 })
 
 async function fetchAgentTasks() {
@@ -168,7 +185,7 @@ async function cancelAgentTask(taskId: string) {
 async function deleteAgentTask(taskId: string) {
   try {
     await agentApi.deleteTask(taskId)
-    agentTasks.value = agentTasks.value.filter(t => t.id !== taskId)
+    agentTasks.value = agentTasks.value.filter((t) => t.id !== taskId)
   } catch (e) {
     console.error('Failed to delete agent task:', e)
   }
@@ -178,32 +195,54 @@ async function deleteAgentTask(taskId: string) {
 function onAgentEvent(data: any) {
   if (!data?.task_id) return
   // Update the matching task in-place, or re-fetch if not found
-  const idx = agentTasks.value.findIndex(t => t.id === data.task_id)
+  const idx = agentTasks.value.findIndex((t) => t.id === data.task_id)
   if (idx >= 0) {
     const task = agentTasks.value[idx]!
     if (data.progress !== undefined) task.progress = data.progress
-    if (data.event_type === 'task_completed') { task.status = 'completed'; task.result = data.message }
+    if (data.event_type === 'task_completed') {
+      task.status = 'completed'
+      task.result = data.message
+    }
     if (data.event_type === 'task_failed') {
       task.status = 'failed'
       task.error = data.message
       if (data.output) task.result = data.output
     }
-    if (data.event_type === 'task_cancelled') { task.status = 'cancelled'; task.error = data.message; task.questions = undefined }
+    if (data.event_type === 'task_cancelled') {
+      task.status = 'cancelled'
+      task.error = data.message
+      task.questions = undefined
+    }
     if (data.event_type === 'task_step_completed' && task.plan?.[data.step_index]) {
       task.plan[data.step_index]!.status = 'completed'
       task.plan[data.step_index]!.output = data.output
-      if (data.duration_ms) task.plan[data.step_index]!.completed_at = new Date(Date.now()).toISOString()
+      if (data.duration_ms)
+        task.plan[data.step_index]!.completed_at = new Date(Date.now()).toISOString()
     }
-    if (data.event_type === 'task_reflection_started' && data.step_index !== undefined && task.plan?.[data.step_index]) {
+    if (
+      data.event_type === 'task_reflection_started' &&
+      data.step_index !== undefined &&
+      task.plan?.[data.step_index]
+    ) {
       task.plan[data.step_index]!.status = 'running'
       task.plan[data.step_index]!.started_at = new Date(Date.now()).toISOString()
     }
-    if (data.event_type === 'task_reflection_completed' && data.step_index !== undefined && task.plan?.[data.step_index]) {
+    if (
+      data.event_type === 'task_reflection_completed' &&
+      data.step_index !== undefined &&
+      task.plan?.[data.step_index]
+    ) {
       task.plan[data.step_index]!.output = data.output || task.plan[data.step_index]!.output
-      task.plan[data.step_index]!.status = String(data.output || '').startsWith('Reflection error:') ? 'failed' : 'completed'
+      task.plan[data.step_index]!.status = String(data.output || '').startsWith('Reflection error:')
+        ? 'failed'
+        : 'completed'
       task.plan[data.step_index]!.completed_at = new Date(Date.now()).toISOString()
     }
-    if (data.event_type === 'task_progress' && data.step_index !== undefined && task.plan?.[data.step_index]) {
+    if (
+      data.event_type === 'task_progress' &&
+      data.step_index !== undefined &&
+      task.plan?.[data.step_index]
+    ) {
       if (task.plan[data.step_index]!.status === 'pending') {
         task.plan[data.step_index]!.status = 'running'
         task.plan[data.step_index]!.started_at = new Date(Date.now()).toISOString()
@@ -226,7 +265,10 @@ function onAgentEvent(data: any) {
       task.status = 'executing'
     }
     // Clear questions when task resumes (any progress/step event after question was answered)
-    if (task.questions?.length && (data.event_type === 'task_progress' || data.event_type === 'task_step_completed')) {
+    if (
+      task.questions?.length &&
+      (data.event_type === 'task_progress' || data.event_type === 'task_step_completed')
+    ) {
       task.questions = undefined
     }
   } else {
@@ -234,7 +276,20 @@ function onAgentEvent(data: any) {
   }
 }
 
-const agentEventTypes = ['task_created', 'task_planning', 'task_progress', 'task_step_completed', 'task_reflection_started', 'task_reflection_completed', 'task_completed', 'task_failed', 'task_cancelled', 'task_user_message', 'task_question', 'task_question_answered']
+const agentEventTypes = [
+  'task_created',
+  'task_planning',
+  'task_progress',
+  'task_step_completed',
+  'task_reflection_started',
+  'task_reflection_completed',
+  'task_completed',
+  'task_failed',
+  'task_cancelled',
+  'task_user_message',
+  'task_question',
+  'task_question_answered',
+]
 
 // Virtual scroll threshold - use virtual scroll when message count exceeds this
 const VIRTUAL_SCROLL_THRESHOLD = 50
@@ -267,7 +322,11 @@ type MessageMemoSource = {
   created_at: string
 }
 
-function getMessageRenderKey(message: { conversation_id: string; id: string; render_key?: string }) {
+function getMessageRenderKey(message: {
+  conversation_id: string
+  id: string
+  render_key?: string
+}) {
   return `${message.conversation_id}:${message.render_key || message.id}`
 }
 
@@ -334,16 +393,16 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
 
   const cached = messageRenderMetaCache.get(cacheKey)
   if (
-    cached
-    && cached.memoDeps[1] === message.content
-    && cached.memoDeps[2] === (message.attachments?.length ?? 0)
-    && cached.memoDeps[3] === memoDepsUpdatedAt
-    && cached.memoDeps[4] === isStreaming
-    && cached.memoDeps[5] === isLastAssistant
-    && cached.memoDeps[6] === showTalkMode.value
-    && cached.memoDeps[7] === isMobile.value
-    && cached.memoDeps[8] === chatStore.isMultiSelectMode
-    && cached.memoDeps[9] === isSelected
+    cached &&
+    cached.memoDeps[1] === message.content &&
+    cached.memoDeps[2] === (message.attachments?.length ?? 0) &&
+    cached.memoDeps[3] === memoDepsUpdatedAt &&
+    cached.memoDeps[4] === isStreaming &&
+    cached.memoDeps[5] === isLastAssistant &&
+    cached.memoDeps[6] === showTalkMode.value &&
+    cached.memoDeps[7] === isMobile.value &&
+    cached.memoDeps[8] === chatStore.isMultiSelectMode &&
+    cached.memoDeps[9] === isSelected
   ) {
     lastRenderMetaLookupKey = cacheKey
     lastRenderMetaLookupMessage = message
@@ -381,7 +440,10 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     bindings,
   }
 
-  if (messageRenderMetaCache.size >= MESSAGE_RENDER_META_CACHE_MAX && !messageRenderMetaCache.has(cacheKey)) {
+  if (
+    messageRenderMetaCache.size >= MESSAGE_RENDER_META_CACHE_MAX &&
+    !messageRenderMetaCache.has(cacheKey)
+  ) {
     messageRenderMetaCache.clear()
   }
   messageRenderMetaCache.set(cacheKey, nextMeta)
@@ -416,16 +478,18 @@ const isClaudeCodeEnabled = computed(() => settingsStore.claudeCodeEnabled)
 
 // Provider status computed properties
 const enabledLlmProviders = computed(() =>
-  providerPoolStore.enabledProviders.filter(provider => provider.type !== 'media')
+  providerPoolStore.enabledProviders.filter((provider) => provider.type !== 'media')
 )
 const activeLlmProviders = computed(() =>
-  enabledLlmProviders.value.filter(provider => provider.status === 'active')
+  enabledLlmProviders.value.filter((provider) => provider.status === 'active')
 )
 const hasConfiguredProviders = computed(() => enabledLlmProviders.value.length > 0)
 const hasActiveProviders = computed(() => activeLlmProviders.value.length > 0)
-const allProvidersFailed = computed(() =>
-  hasConfiguredProviders.value && !hasActiveProviders.value &&
-  enabledLlmProviders.value.every(provider => provider.status === 'error')
+const allProvidersFailed = computed(
+  () =>
+    hasConfiguredProviders.value &&
+    !hasActiveProviders.value &&
+    enabledLlmProviders.value.every((provider) => provider.status === 'error')
 )
 
 // Provider status indicator
@@ -443,48 +507,49 @@ const providerStatus = computed(() => {
   return { status: 'pending', color: 'yellow', message: t('chat.providerPending') }
 })
 
-const showAwaitingConfirmation = computed(() =>
-  chatStore.awaitingConfirmation
-  || !!chatStore.pendingQuestion
-  || !!chatStore.pendingApproval
-  || !!chatStore.pendingExecApproval
+const showAwaitingConfirmation = computed(
+  () =>
+    chatStore.awaitingConfirmation ||
+    !!chatStore.pendingQuestion ||
+    !!chatStore.pendingApproval ||
+    !!chatStore.pendingExecApproval
 )
 
 // Routing mode display info
 const routingModeInfo = computed(() => {
   const mode = providerPoolStore.routingMode
-  const cloudCount = providerPoolStore.cloudProviders.filter(p => p.status === 'active').length
-  const localCount = providerPoolStore.localProviders.filter(p => p.status === 'active').length
+  const cloudCount = providerPoolStore.cloudProviders.filter((p) => p.status === 'active').length
+  const localCount = providerPoolStore.localProviders.filter((p) => p.status === 'active').length
 
   if (mode === 'cloud') {
     return {
       icon: 'cloud',
       label: t('chat.routingMode.cloud'),
       count: cloudCount,
-      color: 'gray'
+      color: 'gray',
     }
   } else if (mode === 'local') {
     return {
       icon: 'local',
       label: t('chat.routingMode.local'),
       count: localCount,
-      color: 'green'
+      color: 'green',
     }
   } else {
     return {
       icon: 'auto',
       label: t('chat.routingMode.auto'),
       count: cloudCount + localCount,
-      color: 'accent'
+      color: 'accent',
     }
   }
 })
 
-const cloudActiveCount = computed(() =>
-  providerPoolStore.cloudProviders.filter(p => p.status === 'active').length
+const cloudActiveCount = computed(
+  () => providerPoolStore.cloudProviders.filter((p) => p.status === 'active').length
 )
-const localActiveCount = computed(() =>
-  providerPoolStore.localProviders.filter(p => p.status === 'active').length
+const localActiveCount = computed(
+  () => providerPoolStore.localProviders.filter((p) => p.status === 'active').length
 )
 const totalActiveProviderCount = computed(() => cloudActiveCount.value + localActiveCount.value)
 const isSingleModelMode = computed(() => chatStore.modelPreference !== 'auto')
@@ -492,8 +557,8 @@ const isSingleModelMode = computed(() => chatStore.modelPreference !== 'auto')
 const fixedModelOptions = computed(() => {
   const enabledProviderIds = new Set(
     providerPoolStore.enabledProviders
-      .filter(provider => provider.type !== 'media')
-      .map(provider => provider.id)
+      .filter((provider) => provider.type !== 'media')
+      .map((provider) => provider.id)
   )
 
   const modelIds = new Set<string>()
@@ -504,7 +569,7 @@ const fixedModelOptions = computed(() => {
   }
   return Array.from(modelIds)
     .sort((a, b) => a.localeCompare(b))
-    .map(id => ({ id }))
+    .map((id) => ({ id }))
 })
 
 const fixedModelLabel = computed(() => {
@@ -513,36 +578,16 @@ const fixedModelLabel = computed(() => {
 })
 
 const routingStrategyLabel = computed(() =>
-  isSingleModelMode.value ? t('chat.routingMode.fixedModel') : t('chat.routingMode.highAvailability')
+  isSingleModelMode.value
+    ? t('chat.routingMode.fixedModel')
+    : t('chat.routingMode.highAvailability')
 )
 
-const currentThemeStyleLabel = computed(() => {
-  const current = THEME_STYLES.find(style => style.id === settingsStore.themeStyle)
-  if (!current) return settingsStore.themeStyle
-  return te(current.labelKey) ? t(current.labelKey) : current.id
-})
-
-function themeStyleLabel(style: { id: string; labelKey: string }): string {
-  return te(style.labelKey) ? t(style.labelKey) : style.id
-}
-
-const currentThemeStyleIconColor = computed(() => {
-  switch (settingsStore.themeStyle) {
-    case 'bubble':
-      return '#a855f7'
-    case 'minimal':
-      return '#64748b'
-    case 'gradient':
-      return '#f97316'
-    case 'ocean':
-      return '#0284c7'
-    case 'default':
-    default:
-      return '#0ea5e9'
-  }
-})
-
-function getMessageHeightKey(message: { conversation_id: string; id: string; render_key?: string }) {
+function getMessageHeightKey(message: {
+  conversation_id: string
+  id: string
+  render_key?: string
+}) {
   return getMessageRenderKey(message)
 }
 
@@ -578,7 +623,7 @@ function clearVirtualItemObservers() {
 
 function bindVirtualItemHeight(
   message: { conversation_id: string; id: string },
-  updateHeight: (height: number) => void,
+  updateHeight: (height: number) => void
 ) {
   const key = getMessageHeightKey(message)
   virtualItemHeightUpdaters.set(key, updateHeight)
@@ -650,9 +695,19 @@ function checkMobile() {
   const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua)
   isMobile.value = isMobileUA
   isNarrowScreen.value = window.innerWidth < 768
+  if (topbarTooltipVisible.value) {
+    hideTopbarTooltip()
+  }
   // Auto-show sidebar on desktop wide screen, hide on narrow
   if (!isMobile.value) {
     showSidebar.value = !isNarrowScreen.value
+  }
+  if (isMobile.value && showRoutingMenu.value) {
+    showRoutingMenu.value = false
+    return
+  }
+  if (showRoutingMenu.value) {
+    updateRoutingMenuPosition()
   }
 }
 
@@ -663,6 +718,23 @@ useChatShortcuts({
   onToggleSidebar: () => toggleSidebar(),
   onCancelStream: () => hasCancelableWork.value && handleCancel(),
 })
+
+function showTopbarTooltip(event: MouseEvent | FocusEvent, text: string) {
+  const anchor = event.currentTarget
+  if (!(anchor instanceof HTMLElement)) return
+
+  const rect = anchor.getBoundingClientRect()
+  topbarTooltipText.value = text
+  topbarTooltipStyle.value = {
+    top: `${Math.round(rect.bottom + 8)}px`,
+    right: `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`,
+  }
+  topbarTooltipVisible.value = true
+}
+
+function hideTopbarTooltip() {
+  topbarTooltipVisible.value = false
+}
 
 // Scroll to bottom when messages change
 let autoScrollRafId: number | null = null
@@ -795,17 +867,20 @@ function handleScroll() {
     ) {
       normalLoadMoreInFlight = true
       const previousHeight = messagesContainer.value.scrollHeight
-      chatStore.loadMoreMessages().then(() => {
-        // Maintain scroll position after loading more
-        nextTick(() => {
-          if (messagesContainer.value) {
-            const newHeight = messagesContainer.value.scrollHeight
-            messagesContainer.value.scrollTop = newHeight - previousHeight
-          }
+      chatStore
+        .loadMoreMessages()
+        .then(() => {
+          // Maintain scroll position after loading more
+          nextTick(() => {
+            if (messagesContainer.value) {
+              const newHeight = messagesContainer.value.scrollHeight
+              messagesContainer.value.scrollTop = newHeight - previousHeight
+            }
+          })
         })
-      }).finally(() => {
-        normalLoadMoreInFlight = false
-      })
+        .finally(() => {
+          normalLoadMoreInFlight = false
+        })
     }
   })
 }
@@ -824,7 +899,12 @@ function handleVisibleRangeChange(start: number, _end: number) {
   // Load more when scrolled near the top in virtual scroll mode.
   // Add a short cooldown + in-flight lock to avoid duplicate triggers
   // caused by visible range jitter near the boundary.
-  if (start >= 5 || !chatStore.hasMoreMessages || chatStore.loadingMore || virtualLoadMoreInFlight) {
+  if (
+    start >= 5 ||
+    !chatStore.hasMoreMessages ||
+    chatStore.loadingMore ||
+    virtualLoadMoreInFlight
+  ) {
     return
   }
 
@@ -848,14 +928,15 @@ function handleVisibleRangeChange(start: number, _end: number) {
 }
 
 async function handleSend(message: string, attachments?: FileAttachment[]) {
-  if (!await ensureLlmProviderConfigured(message)) {
+  if (!(await ensureLlmProviderConfigured(message))) {
     return
   }
 
   // Check for media generation intent before sending to chat
   const hasImages = attachments?.some((a) => a.type.startsWith('image/')) || false
   const imageCount = attachments?.filter((a) => a.type.startsWith('image/')).length || 0
-  const imageFiles = attachments?.filter((a) => a.type.startsWith('image/')).map((a) => a.file) || []
+  const imageFiles =
+    attachments?.filter((a) => a.type.startsWith('image/')).map((a) => a.file) || []
   const detected = await mediaGen.classify(message, hasImages, imageCount, locale.value, imageFiles)
   if (detected) {
     // Media intent detected — show param panel instead of sending to chat.
@@ -875,7 +956,7 @@ async function handleMediaDismiss() {
   // User chose "No, just chat" — send the original message to chat instead.
   const prompt = mediaGen.intent.value?.prompt
   mediaGen.reset()
-  if (prompt && await ensureLlmProviderConfigured(prompt)) {
+  if (prompt && (await ensureLlmProviderConfigured(prompt))) {
     chatStore.sendMessage(prompt)
   }
   nextTick(() => chatInputRef.value?.focus?.())
@@ -893,7 +974,7 @@ async function handleMediaConfirm() {
 
 // Handle voice transcript from TalkMode - auto send to AI
 async function handleVoiceTranscript(text: string) {
-  if (text.trim() && await ensureLlmProviderConfigured(text)) {
+  if (text.trim() && (await ensureLlmProviderConfigured(text))) {
     await chatStore.sendMessage(text)
   }
 }
@@ -901,7 +982,9 @@ async function handleVoiceTranscript(text: string) {
 function handleCancel() {
   const hadMediaGen = mediaGen.generating.value
   const mediaType = mediaGen.task.value?.type // 'image' | 'video'
-  const runningAgents = agentTasks.value.filter(at => at.status === 'executing' || at.status === 'planning' || at.status === 'pending')
+  const runningAgents = agentTasks.value.filter(
+    (at) => at.status === 'executing' || at.status === 'planning' || at.status === 'pending'
+  )
 
   // 1. Cancel chat streaming
   chatStore.cancelStreaming()
@@ -926,7 +1009,7 @@ function handleCancel() {
       parts.push(t('chat.agentTaskStopped', { goal: at.goal }))
     }
 
-    const cleaned = chatStore.messages.filter(m => !m.id.startsWith('streaming-'))
+    const cleaned = chatStore.messages.filter((m) => !m.id.startsWith('streaming-'))
     cleaned.push({
       id: `stop-${Date.now()}`,
       conversation_id: chatStore.currentConversationId || '',
@@ -958,7 +1041,7 @@ async function submitAgentAnswer(taskId: string, answers: AgentQuestionAnswer[])
   try {
     await agentApi.submitAnswers(taskId, answers)
     // Clear questions locally after successful submit
-    const task = agentTasks.value.find(t => t.id === taskId)
+    const task = agentTasks.value.find((t) => t.id === taskId)
     if (task) task.questions = undefined
   } catch (e) {
     console.error('Failed to submit agent answers:', e)
@@ -969,7 +1052,7 @@ async function handleSelectConversation(id: string) {
   if (isMobile.value) {
     mobileAnimationEnabled.value = true
     pageStack.value.push(id)
-    // Set query param to trigger AppHeader hide
+    // Keep query param for deep-link restore on reload.
     await router.push({ query: { conversationId: id } })
   }
   await chatStore.selectConversation(id)
@@ -1009,7 +1092,7 @@ function toggleSidebar() {
     // Mobile: return to list page
     pageStack.value = []
     chatStore.currentConversationId = null
-    // Clear query param to show AppHeader
+    // Clear conversation query on return to list.
     router.push({ query: {} })
   } else {
     showSidebar.value = !showSidebar.value
@@ -1020,21 +1103,49 @@ function openAppSidebar() {
   toggleAppSidebar()
 }
 
-function toggleRoutingMenu() {
+function positionRoutingMenu(trigger: HTMLElement | null = routingMenuAnchorEl.value) {
+  if (!trigger) return
+
+  const rect = trigger.getBoundingClientRect()
+  const menuWidth = routingMenuFloatingRef.value?.offsetWidth ?? 320
+  const menuHeight = routingMenuFloatingRef.value?.offsetHeight ?? 420
+  const viewportPadding = 8
+  const menuGap = 12
+  const maxX = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding)
+  const maxY = Math.max(viewportPadding, window.innerHeight - menuHeight - viewportPadding)
+  const x = Math.min(Math.max(viewportPadding, rect.right - menuWidth), maxX)
+  const preferredTop = rect.top - menuHeight - menuGap
+  const fallbackTop = rect.bottom + menuGap
+  const y =
+    preferredTop >= viewportPadding
+      ? preferredTop
+      : Math.max(viewportPadding, Math.min(fallbackTop, maxY))
+
+  routingMenuPosition.value = { x, y }
+}
+
+function updateRoutingMenuPosition() {
+  if (isMobile.value || !showRoutingMenu.value) return
+  nextTick(() => {
+    positionRoutingMenu()
+  })
+}
+
+function toggleRoutingMenu(trigger?: HTMLElement | null) {
   showTopbarMenu.value = false
-  showStyleSelector.value = false
-  if (!showRoutingMenu.value && !isMobile.value && routingButtonRef.value) {
-    const rect = routingButtonRef.value.getBoundingClientRect()
-    const menuWidth = 320 // w-80
-    const horizontalPadding = 8
-    const x = Math.min(
-      Math.max(horizontalPadding, rect.right - menuWidth),
-      window.innerWidth - menuWidth - horizontalPadding
-    )
-    const y = rect.bottom + 8
-    routingMenuPosition.value = { x, y }
+  if (trigger) {
+    routingMenuAnchorEl.value = trigger
   }
-  showRoutingMenu.value = !showRoutingMenu.value
+  if (showRoutingMenu.value) {
+    showRoutingMenu.value = false
+    return
+  }
+  showRoutingMenu.value = true
+  updateRoutingMenuPosition()
+}
+
+function handleRoutingMenuTrigger(trigger: HTMLElement) {
+  toggleRoutingMenu(trigger)
 }
 
 function selectRoutingMode(mode: 'auto' | 'cloud' | 'local') {
@@ -1062,42 +1173,27 @@ function enableSingleModelMode() {
   }
 }
 
-// Theme style selector functions
-function toggleStyleSelector() {
-  showTopbarMenu.value = false
-  showRoutingMenu.value = false
-  // On mobile, no need to calculate position (bottom sheet)
-  if (!showStyleSelector.value && !isMobile.value && styleButtonRef.value) {
-    const rect = styleButtonRef.value.getBoundingClientRect()
-    styleSelectorPosition.value = {
-      x: rect.right,
-      y: rect.bottom + 8
-    }
-  }
-  showStyleSelector.value = !showStyleSelector.value
-}
-
-function selectThemeStyle(style: ThemeStyle) {
-  settingsStore.setThemeStyle(style)
-  showStyleSelector.value = false
-  showTopbarMenu.value = false
-}
-
-function toggleDeepResearch() {
-  chatStore.setDeepResearchEnabled(!chatStore.deepResearchEnabled)
-}
-
-function toggleAgentMode() {
-  settingsStore.setAgentMode(!settingsStore.agentMode)
-}
-
 function toggleToolDetails() {
   settingsStore.setShowToolDetails(!settingsStore.showToolDetails)
 }
 
+watch(
+  () =>
+    [
+      showRoutingMenu.value,
+      isMobile.value,
+      isSingleModelMode.value,
+      fixedModelOptions.value.length,
+      chatStore.modelPreference,
+    ] as const,
+  ([open, mobile]) => {
+    if (!open || mobile) return
+    updateRoutingMenuPosition()
+  }
+)
+
 function toggleTopbarMenu() {
   showRoutingMenu.value = false
-  showStyleSelector.value = false
   showTopbarMenu.value = !showTopbarMenu.value
 }
 
@@ -1107,17 +1203,17 @@ function handleClickOutside(event: MouseEvent) {
   if (!target.closest('.topbar-more-container') && !target.closest('.topbar-sheet')) {
     showTopbarMenu.value = false
   }
-  if (!target.closest('.routing-menu-container') && !target.closest('.routing-menu-floating')) {
+  if (
+    !target.closest('.routing-menu-container') &&
+    !target.closest('.routing-menu-floating') &&
+    !target.closest('.routing-menu-anchor')
+  ) {
     showRoutingMenu.value = false
   }
 
-  // On mobile, style sheets handle their own click-outside via backdrop
+  // On mobile, sheets handle their own click-outside via backdrop
   if (isMobile.value) {
     return
-  }
-  // Close style selector when clicking outside
-  if (!target.closest('.style-selector-container')) {
-    showStyleSelector.value = false
   }
   // Close context menu when clicking outside
   if (!target.closest('.context-menu') && !contextMenuJustOpened.value) {
@@ -1157,25 +1253,29 @@ function handleMessageContextMenu(event: MouseEvent, messageId: string) {
   if (isMobile.value) return
 
   const eventTarget = event.target
-  const messageElement = eventTarget instanceof Element
-    ? eventTarget.closest('.message') as HTMLElement | null
-    : eventTarget instanceof Node
-      ? eventTarget.parentElement?.closest('.message') as HTMLElement | null
-      : null
+  const messageElement =
+    eventTarget instanceof Element
+      ? (eventTarget.closest('.message') as HTMLElement | null)
+      : eventTarget instanceof Node
+        ? (eventTarget.parentElement?.closest('.message') as HTMLElement | null)
+        : null
   contextMenuSelectedText.value = getSelectedTextWithinElement(messageElement)
   contextMenuMessageId.value = messageId
   contextMenuPosition.value = { x: event.clientX, y: event.clientY }
   showContextMenu.value = true
   // Prevent the subsequent click event from immediately closing the menu
   contextMenuJustOpened.value = true
-  setTimeout(() => { contextMenuJustOpened.value = false }, 200)
+  setTimeout(() => {
+    contextMenuJustOpened.value = false
+  }, 200)
 }
 
 async function handleContextCopy() {
   const selectedText = contextMenuSelectedText.value
   const hasSelectedText = selectedText.trim().length > 0
   const fallbackMessageContent = contextMenuMessageId.value
-    ? (chatStore.messages.find(message => message.id === contextMenuMessageId.value)?.content ?? '')
+    ? (chatStore.messages.find((message) => message.id === contextMenuMessageId.value)?.content ??
+      '')
     : ''
   const textToCopy = hasSelectedText ? selectedText : fallbackMessageContent
   showContextMenu.value = false
@@ -1222,6 +1322,16 @@ function handleMessageRegenerate() {
   chatStore.regenerateMessage()
 }
 
+function handleStreamRetry() {
+  chatStore.clearStreamError()
+  chatStore.regenerateMessage()
+}
+
+function handleOpenProviderSettings() {
+  showProviderConfigDialog.value = false
+  void router.push('/settings?tab=llm')
+}
+
 async function handleDeleteSelectedMessages() {
   if (chatStore.selectedMessageIds.size === 0) return
 
@@ -1257,10 +1367,13 @@ function findDeepResearchJobElement(jobId: string): HTMLElement | null {
 
   const container = messagesContainer.value || document
   const nodes = Array.from(container.querySelectorAll<HTMLElement>('[id]'))
-  return nodes.find(node =>
-    node.id.startsWith(`deep-research-event-${normalizedJobId}-`)
-    || node.id.startsWith(`deep-research-event-${encodedJobId}-`)
-  ) || null
+  return (
+    nodes.find(
+      (node) =>
+        node.id.startsWith(`deep-research-event-${normalizedJobId}-`) ||
+        node.id.startsWith(`deep-research-event-${encodedJobId}-`)
+    ) || null
+  )
 }
 
 async function focusPendingDeepResearchJob() {
@@ -1283,12 +1396,17 @@ async function handleOpenDeepResearchJob(job: DeepResearchJobSummary) {
 }
 
 watch(
-  () => [deepResearchJobs.pendingFocusJobId, chatStore.currentConversationId, chatStore.messages.length] as const,
+  () =>
+    [
+      deepResearchJobs.pendingFocusJobId,
+      chatStore.currentConversationId,
+      chatStore.messages.length,
+    ] as const,
   async ([jobId]) => {
     if (!jobId) return
     await focusPendingDeepResearchJob()
   },
-  { flush: 'post' },
+  { flush: 'post' }
 )
 
 async function ensureLlmProviderConfigured(messageToRestore?: string) {
@@ -1300,7 +1418,9 @@ async function ensureLlmProviderConfigured(messageToRestore?: string) {
     }
   }
 
-  const hasLlmProviders = providerPoolStore.enabledProviders.some(provider => provider.type !== 'media')
+  const hasLlmProviders = providerPoolStore.enabledProviders.some(
+    (provider) => provider.type !== 'media'
+  )
   if (hasLlmProviders) {
     return true
   }
@@ -1329,7 +1449,16 @@ onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
 
   // Preload common card components for better UX
-  componentPool.preload(['progress', 'chart', 'gallery', 'link', 'file', 'deep-research', 'deep-research-progress', 'deep-research-event'])
+  componentPool.preload([
+    'progress',
+    'chart',
+    'gallery',
+    'link',
+    'file',
+    'deep-research',
+    'deep-research-progress',
+    'deep-research-event',
+  ])
   deepResearchJobs.fetchActiveJobs().catch(() => {})
 
   // Initialize speech services lazily (TTS/STT)
@@ -1343,24 +1472,29 @@ onMounted(async () => {
   // Fetch conversations and (if URL has conversationId) messages in parallel.
   // selectConversation only needs the ID, not the conversation list.
   if (_initConvId) {
-    await Promise.all([
-      chatStore.fetchConversations(),
-      chatStore.selectConversation(_initConvId),
-    ])
+    await Promise.all([chatStore.fetchConversations(), chatStore.selectConversation(_initConvId)])
   } else {
     await chatStore.fetchConversations()
     // Auto-select first conversation if available and none selected (desktop only)
-    if (!isMobile.value && !chatStore.currentConversationId && chatStore.sortedConversations.length > 0 && chatStore.sortedConversations[0]) {
+    if (
+      !isMobile.value &&
+      !chatStore.currentConversationId &&
+      chatStore.sortedConversations.length > 0 &&
+      chatStore.sortedConversations[0]
+    ) {
       await chatStore.selectConversation(chatStore.sortedConversations[0].id)
     }
   }
 
   // Fire secondary data fetches in background — skip if App.vue already loaded them
   if (providerPoolStore.providers.length === 0) {
-    providerPoolStore.fetchProviders().then(() => {
-      const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
-      settingsStore.updateFromPoolProviders(llmProviders)
-    }).catch(() => {})
+    providerPoolStore
+      .fetchProviders()
+      .then(() => {
+        const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
+        settingsStore.updateFromPoolProviders(llmProviders)
+      })
+      .catch(() => {})
   }
   settingsStore.fetchTools().catch(() => {})
   providerPoolStore.fetchRoutingMode().catch(() => {})
@@ -1395,7 +1529,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="chat-view ui-density-standard flex relative" :class="[themeStyleClass, { 'mobile-view': isMobile && !showListPage }]">
+  <div
+    class="chat-view ui-density-standard flex relative"
+    :class="{ 'mobile-view': isMobile && !showListPage, 'chat-desktop-shell': !isMobile }"
+  >
     <!-- Overlay for narrow screen sidebar -->
     <div
       v-if="!isMobile && isNarrowScreen && showSidebar"
@@ -1403,1213 +1540,1585 @@ onUnmounted(() => {
       @click="toggleSidebar"
     />
 
-    <!-- Sidebar / Conversation List -->
-    <aside
-      v-show="isMobile ? showListPage : showSidebar"
-      class="conversation-sidebar chat-sidebar-shell flex-shrink-0 border-r border-glass-border transition-transform duration-300 glass-sidebar"
-      :class="{
-        'w-[22rem]': !isMobile,
-        'z-40': !isMobile,
-        'fixed left-0 top-0 h-full': !isMobile && isNarrowScreen,
-        '-translate-x-full': !isMobile && isNarrowScreen && !showSidebar,
-        'mobile-list-page': isMobile && showListPage,
-      }"
-    >
-      <ConversationList
-        :conversations="chatStore.sortedConversations"
-        :current-id="chatStore.currentConversationId"
-        :executing-conversation-ids="chatStore.executingConversationIds"
-        :loading="chatStore.loading"
-        :searching="chatStore.searching"
-        @select="handleSelectConversation"
-        @create="handleCreateConversation"
-        @delete="handleDeleteConversation"
-        @search="handleSearch"
-        @pin="handlePinConversation"
-        @unpin="handleUnpinConversation"
-      />
-    </aside>
-
-    <!-- Main chat area -->
-    <main
-      :class="isMobile ? ['mobile-chat', { 'mobile-chat-offscreen': showListPage, 'mobile-chat-animated': mobileAnimationEnabled }] : ''"
-      class="flex-1 flex flex-col min-w-0 min-h-0 h-full relative"
-      @dragover.prevent="chatInputRef?.handleDragOver($event)"
-      @dragleave="chatInputRef?.handleDragLeave()"
-      @drop.prevent="chatInputRef?.handleDrop($event)"
-    >
-      <!-- Chat header -->
-      <header class="chat-topbar relative z-50 flex items-center justify-between px-4 py-3 sm:p-4 border-b border-gray-200 dark:border-glass-border gap-2"
-        :class="isMobile ? 'bg-white dark:bg-gray-900' : 'glass-header'"
-      >
-        <div class="chat-title-wrap flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-          <button
-            v-if="isMobile && !showListPage"
-            class="chat-nav-btn flex-shrink-0 p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white rounded-lg transition-all duration-200 cursor-pointer"
-            :title="t('nav.expandSidebar')"
-            @click="openAppSidebar"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            </svg>
-          </button>
-          <!-- Back/Sidebar toggle button -->
-          <button
-            class="chat-nav-btn flex-shrink-0 p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white rounded-lg transition-all duration-200 cursor-pointer"
-            :class="{ 'md:hidden': !isMobile }"
-            @click="toggleSidebar"
-            :title="showSidebar ? '关闭会话列表' : '打开会话列表'"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          </button>
-          <h2 class="chat-title text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">
-            {{ chatStore.currentConversation?.title || t('chat.newChat') }}
-          </h2>
-          <!-- Enhanced Mode badge -->
-          <span
-            v-if="isClaudeCodeEnabled"
-            class="relative group hidden sm:inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full flex-shrink-0 cursor-default"
-            :class="isCompact || isMobile ? 'px-1.5 py-0.5' : 'px-2 py-0.5'"
-          >
-            <svg :class="isCompact || isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-            </svg>
-            <span v-if="!isCompact && !isMobile">{{ t('chat.enhancedMode') }}</span>
-            <!-- Tooltip (positioned right to avoid sidebar clipping) -->
-            <span class="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max max-w-xs px-3 py-2 rounded-lg text-xs font-normal text-white bg-gray-800 dark:bg-gray-700 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50">
-              {{ t('chat.enhancedModeDesc') }}
-            </span>
-          </span>
-          <!-- Enable Enhanced Mode prompt -->
-          <router-link
-            v-else
-            to="/settings?tab=llm#claude-code-settings"
-            class="relative group hidden sm:inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
-            :class="isCompact || isMobile ? 'px-1.5 py-0.5' : 'px-2 py-0.5'"
-          >
-            <svg :class="isCompact || isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-            </svg>
-            <span v-if="!isCompact && !isMobile">{{ t('chat.enableEnhancedMode') }}</span>
-            <!-- Tooltip (positioned right to avoid sidebar clipping) -->
-            <span class="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max max-w-xs px-3 py-2 rounded-lg text-xs font-normal text-white bg-gray-800 dark:bg-gray-700 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50">
-              {{ t('chat.enableEnhancedModeDesc') }}
-            </span>
-          </router-link>
-        </div>
-
-        <!-- Routing Mode Switch & Provider Status -->
-        <div class="chat-tools ml-auto flex items-center gap-2 flex-shrink-0">
-          <button
-            v-if="!shouldCollapseTopbarControls"
-            class="topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer"
-            :class="chatStore.deepResearchEnabled
-              ? 'text-emerald-500 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30'
-              : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'"
-            :title="t('ui.deepResearchTitle')"
-            @click="toggleDeepResearch"
-          >
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.483 9.246 5 7.5 5S4.168 5.483 3 6.253v13C4.168 18.483 5.754 18 7.5 18s3.332.483 4.5 1.253m0-13C13.168 5.483 14.754 5 16.5 5s3.332.483 4.5 1.253v13C19.832 18.483 18.246 18 16.5 18s-3.332.483-4.5 1.253" />
-            </svg>
-          </button>
-
-          <!-- Agent mode toggle (click: on/off, right-click: toggle auto-confirm) -->
-          <div class="relative">
+    <div class="chat-workspace flex min-h-0 flex-1 flex-col">
+      <header v-if="!isMobile" class="chat-page-header">
+        <div class="chat-page-header-inner">
+          <div class="chat-page-heading">
             <button
-              v-if="!shouldCollapseTopbarControls"
-              class="topbar-icon-btn p-2 rounded-lg transition-colors"
-              :class="settingsStore.agentMode
-                ? 'text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
-                : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'"
-              :title="settingsStore.agentMode
-                ? (settingsStore.agentAutoConfirm ? t('agent.mode') + ' (Auto)' : t('agent.mode') + ' (Confirm)')
-                : t('agent.mode')"
-              @click="settingsStore.setAgentMode(!settingsStore.agentMode)"
-              @contextmenu.prevent="settingsStore.agentMode && settingsStore.setAgentAutoConfirm(!settingsStore.agentAutoConfirm)"
+              v-if="isNarrowScreen"
+              class="chat-nav-btn text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-all duration-200 cursor-pointer"
+              :title="showSidebar ? '关闭会话列表' : '打开会话列表'"
+              @click="toggleSidebar"
             >
-              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
               </svg>
             </button>
-            <!-- Auto-confirm dot indicator -->
-            <span
-              v-if="settingsStore.agentMode && settingsStore.agentAutoConfirm"
-              class="absolute top-0.5 right-0.5 w-2 h-2 bg-orange-400 rounded-full pointer-events-none"
-            />
-          </div>
-
-          <!-- Tool details toggle (brain icon) -->
-          <button
-            v-if="!shouldCollapseTopbarControls"
-            class="topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer"
-            :class="settingsStore.showToolDetails
-              ? 'text-purple-500 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30'
-              : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'"
-            :title="settingsStore.showToolDetails ? t('chat.hideToolDetails') : t('chat.showToolDetails')"
-            @click="settingsStore.setShowToolDetails(!settingsStore.showToolDetails)"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <!-- Brain shape -->
-              <path d="M12 2a5 5 0 00-4.78 3.56A3.5 3.5 0 004 9a3.5 3.5 0 00.68 2.07A3.5 3.5 0 004 13.5 3.5 3.5 0 006.5 17h.28A5 5 0 0012 20" />
-              <path d="M12 2a5 5 0 014.78 3.56A3.5 3.5 0 0120 9a3.5 3.5 0 01-.68 2.07A3.5 3.5 0 0120 13.5a3.5 3.5 0 01-2.5 3.5h-.28A5 5 0 0112 20" />
-              <path d="M12 2v18" />
-            </svg>
-          </button>
-
-          <!-- Routing mode + model preference (dropdown) -->
-          <div class="routing-menu-container relative">
-            <button
-              v-if="!isMobile"
-              ref="routingButtonRef"
-              class="routing-trigger-btn topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer"
-              :class="{
-                'is-error': providerStatus.status === 'error',
-                'is-pending': providerStatus.status === 'pending',
-                'is-none': providerStatus.status === 'none',
-              }"
-              :title="`${t('chat.routingMode.title')} · ${routingModeInfo.label} · ${fixedModelLabel}`"
-              @click.stop="toggleRoutingMenu"
-            >
-              <svg v-if="routingModeInfo.icon === 'cloud'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-              </svg>
-              <svg v-else-if="routingModeInfo.icon === 'local'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              <svg v-else class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
-          </div>
-
-          <!-- Theme style selector -->
-          <div class="style-selector-container relative">
-            <button
-              v-if="!shouldCollapseTopbarControls"
-              ref="styleButtonRef"
-              class="routing-trigger-btn topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer"
-              :title="t('theme.styles.title')"
-              @click.stop="toggleStyleSelector"
-            >
-              <svg class="h-5 w-5" :style="{ color: currentThemeStyleIconColor }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-              </svg>
-            </button>
-          </div>
-
-          <!-- Mobile: collapsed topbar actions trigger -->
-          <div v-if="shouldCollapseTopbarControls" class="topbar-more-container relative">
-            <button
-              class="topbar-icon-btn p-2 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors cursor-pointer"
-              :class="{ 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-white': showTopbarMenu }"
-              :title="t('chat.moreActions')"
-              @click.stop="toggleTopbarMenu"
-            >
-              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm9 0a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1V5zM4 14a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1v-5zm9 0a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1v-5z" />
-              </svg>
-            </button>
+            <h1 class="chat-page-title text-gray-900 dark:text-white">
+              {{ t('nav.chat') }}
+            </h1>
           </div>
         </div>
       </header>
-      <Teleport to="body">
-        <Transition
-          enter-active-class="transition ease-out duration-150"
-          enter-from-class="opacity-0 translate-y-1"
-          enter-to-class="opacity-100 translate-y-0"
-          leave-active-class="transition ease-in duration-100"
-          leave-from-class="opacity-100 translate-y-0"
-          leave-to-class="opacity-0 translate-y-1"
+
+      <div
+        class="chat-body-shell flex min-h-0 flex-1"
+        :class="{ 'chat-body-shell-mobile': isMobile }"
+      >
+        <!-- Sidebar / Conversation List -->
+        <aside
+          v-show="isMobile ? showListPage : showSidebar"
+          class="conversation-sidebar chat-sidebar-shell flex-shrink-0 transition-transform duration-300"
+          :class="{
+            'w-[16.75rem]': !isMobile,
+            'z-40': !isMobile,
+            'absolute inset-y-0 left-0': !isMobile && isNarrowScreen,
+            '-translate-x-full': !isMobile && isNarrowScreen && !showSidebar,
+            'mobile-list-page': isMobile && showListPage,
+            'chat-sidebar-mobile': isMobile,
+          }"
         >
-          <div
-            v-if="showRoutingMenu && !isMobile"
-            class="routing-menu-floating fixed w-80 rounded-2xl shadow-2xl border overflow-hidden z-[20000] bg-white dark:bg-slate-900 border-gray-300 dark:border-slate-500"
-            :style="{ left: `${routingMenuPosition.x}px`, top: `${routingMenuPosition.y}px` }"
+          <ConversationList
+            :conversations="chatStore.sortedConversations"
+            :current-id="chatStore.currentConversationId"
+            :executing-conversation-ids="chatStore.executingConversationIds"
+            :loading="chatStore.loading"
+            :searching="chatStore.searching"
+            @select="handleSelectConversation"
+            @create="handleCreateConversation"
+            @delete="handleDeleteConversation"
+            @search="handleSearch"
+            @pin="handlePinConversation"
+            @unpin="handleUnpinConversation"
+          />
+        </aside>
+
+        <!-- Main chat area -->
+        <main
+          :class="
+            isMobile
+              ? [
+                  'mobile-chat',
+                  {
+                    'mobile-chat-offscreen': showListPage,
+                    'mobile-chat-animated': mobileAnimationEnabled,
+                  },
+                ]
+              : ''
+          "
+          class="chat-main-shell flex-1 flex flex-col min-w-0 min-h-0 h-full relative"
+          @dragover.prevent="chatInputRef?.handleDragOver($event)"
+          @dragleave="chatInputRef?.handleDragLeave()"
+          @drop.prevent="chatInputRef?.handleDrop($event)"
+        >
+          <!-- Chat header -->
+          <header
+            v-if="isMobile"
+            class="chat-topbar relative z-50 flex items-center justify-between border-b"
+            :class="
+              isMobile
+                ? 'chat-topbar-mobile bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-700'
+                : 'border-gray-200/80 dark:border-slate-700/80'
+            "
           >
-            <div class="px-3 py-2 border-b border-gray-200 dark:border-slate-700">
-              <div class="text-xs font-medium text-gray-700 dark:text-slate-300">
-                {{ providerStatus.message }}
+            <div class="chat-title-wrap flex items-center min-w-0 flex-1">
+              <!-- Back/Sidebar toggle button -->
+              <button
+                class="chat-nav-btn flex-shrink-0 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-all duration-200 cursor-pointer"
+                :class="{ 'md:hidden': !isMobile }"
+                @click="toggleSidebar"
+                :title="showSidebar ? '关闭会话列表' : '打开会话列表'"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+              </button>
+              <div class="chat-title-stack min-w-0">
+                <span class="chat-section-label">{{ t('nav.chat') }}</span>
+                <h2 class="chat-title text-gray-900 dark:text-white truncate">
+                  {{ chatStore.currentConversation?.title || t('chat.newChat') }}
+                </h2>
               </div>
             </div>
 
-            <router-link
-              v-if="providerStatus.status === 'none'"
-              to="/settings?tab=llm"
-              class="routing-manage-row w-full px-4 py-3 flex items-center justify-between text-sm text-gray-900 dark:text-slate-100 transition-colors"
-              @click="showRoutingMenu = false"
-            >
-              <span class="inline-flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5h2m-6 0h2m6 0h2m-5 0v2m0 10v2m0-2h2m-2 0h-2m6-10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2h10z" />
-                </svg>
-                {{ t('chat.addProvider') }}
-              </span>
-              <span class="text-xs text-gray-600 dark:text-slate-400">{{ t('chat.manageProviders') }}</span>
-            </router-link>
-
-            <template v-else>
-              <div class="p-3 space-y-1.5">
-                <button
-                  class="routing-option-row w-full"
-                  :class="{ 'is-active': providerPoolStore.routingMode === 'auto' }"
-                  @click="selectRoutingMode('auto')"
-                >
-                  <div class="routing-option-main">
-                    <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    <div class="routing-option-copy">
-                      <div class="routing-option-title">{{ t('chat.routingMode.auto') }}</div>
-                      <div class="routing-option-desc">{{ t('chat.routingMode.autoDesc') }}</div>
-                    </div>
-                  </div>
-                  <div class="routing-option-side">
-                    <span class="routing-option-count">{{ totalActiveProviderCount }}</span>
-                    <span v-if="providerPoolStore.routingMode === 'auto'" class="routing-option-status-chip">
-                      {{ routingStrategyLabel }}
-                    </span>
-                  </div>
-                </button>
-
-                <button
-                  class="routing-option-row w-full"
-                  :class="{
-                    'is-active': providerPoolStore.routingMode === 'cloud',
-                    'is-disabled': !providerPoolStore.hasCloudProviders,
-                  }"
-                  :disabled="!providerPoolStore.hasCloudProviders"
-                  @click="selectRoutingMode('cloud')"
-                >
-                  <div class="routing-option-main">
-                    <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                    </svg>
-                    <div class="routing-option-copy">
-                      <div class="routing-option-title">{{ t('chat.routingMode.cloud') }}</div>
-                      <div class="routing-option-desc">{{ t('chat.routingMode.cloudDesc') }}</div>
-                    </div>
-                  </div>
-                  <div class="routing-option-side">
-                    <span class="routing-option-count">{{ cloudActiveCount }}</span>
-                    <span v-if="providerPoolStore.routingMode === 'cloud'" class="routing-option-status-chip">
-                      {{ routingStrategyLabel }}
-                    </span>
-                  </div>
-                </button>
-
-                <button
-                  class="routing-option-row w-full"
-                  :class="{
-                    'is-active': providerPoolStore.routingMode === 'local',
-                    'is-disabled': !providerPoolStore.hasLocalProviders,
-                  }"
-                  :disabled="!providerPoolStore.hasLocalProviders"
-                  @click="selectRoutingMode('local')"
-                >
-                  <div class="routing-option-main">
-                    <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    <div class="routing-option-copy">
-                      <div class="routing-option-title">{{ t('chat.routingMode.local') }}</div>
-                      <div class="routing-option-desc">{{ t('chat.routingMode.localDesc') }}</div>
-                    </div>
-                  </div>
-                  <div class="routing-option-side">
-                    <span class="routing-option-count">{{ localActiveCount }}</span>
-                    <span v-if="providerPoolStore.routingMode === 'local'" class="routing-option-status-chip">
-                      {{ routingStrategyLabel }}
-                    </span>
-                  </div>
-                </button>
-              </div>
-
-              <div class="px-3 pt-1 pb-3 border-t border-gray-200 dark:border-slate-700">
-                <div class="grid grid-cols-2 gap-2">
-                  <button
-                    class="routing-strategy-chip"
-                    :class="{ 'is-active-ha': !isSingleModelMode }"
-                    @click="setAutoModelPreference"
-                  >
-                    {{ t('chat.routingMode.highAvailability') }}
-                  </button>
-                  <button
-                    class="routing-strategy-chip"
-                    :class="{ 'is-active-fixed': isSingleModelMode }"
-                    :disabled="fixedModelOptions.length === 0"
-                    @click="enableSingleModelMode"
-                  >
-                    {{ t('chat.routingMode.fixedModel') }}
-                  </button>
-                </div>
-                <div v-if="!isSingleModelMode" class="mt-2 text-xs text-gray-600 dark:text-slate-400">
-                  {{ t('chat.routingMode.modelAuto') }}
-                </div>
-                <div v-else class="mt-2 max-h-40 overflow-y-auto space-y-1">
-                  <button
-                    v-for="option in fixedModelOptions"
-                    :key="option.id"
-                    class="routing-model-row w-full"
-                    :class="{ 'is-selected': chatStore.modelPreference === option.id }"
-                    @click="selectFixedModel(option.id)"
-                  >
-                    <span class="truncate pr-3" :title="option.id">{{ option.id }}</span>
-                    <svg v-if="chatStore.modelPreference === option.id" class="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div class="border-t border-gray-200 dark:border-slate-700" />
-              <router-link
-                to="/settings?tab=llm"
-                class="routing-manage-row w-full px-4 py-3 flex items-center justify-between text-sm text-gray-800 dark:text-slate-200 transition-colors"
-                @click="showRoutingMenu = false"
+            <!-- Topbar actions -->
+            <div class="chat-tools flex items-center flex-shrink-0">
+              <button
+                v-if="isMobile && !showListPage"
+                class="topbar-icon-btn text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors cursor-pointer"
+                :title="t('nav.expandSidebar')"
+                @click="openAppSidebar"
               >
-                <span class="inline-flex items-center gap-2">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.983 5.5a1.75 1.75 0 0 1 3.034 0l.25.433a1.75 1.75 0 0 0 1.514.875h.5a1.75 1.75 0 0 1 1.517 2.625l-.25.433a1.75 1.75 0 0 0 0 1.75l.25.433a1.75 1.75 0 0 1-1.517 2.625h-.5a1.75 1.75 0 0 0-1.514.875l-.25.433a1.75 1.75 0 0 1-3.034 0l-.25-.433a1.75 1.75 0 0 0-1.514-.875h-.5a1.75 1.75 0 0 1-1.517-2.625l.25-.433a1.75 1.75 0 0 0 0-1.75l-.25-.433a1.75 1.75 0 0 1 1.517-2.625h.5a1.75 1.75 0 0 0 1.514-.875l.25-.433Z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
-                  </svg>
-                  {{ t('chat.manageProviders') }}
-                </span>
-                <span class="text-xs text-gray-500 dark:text-slate-500">→</span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+              </button>
+
+              <span
+                v-if="isClaudeCodeEnabled && !shouldCollapseTopbarControls"
+                class="chat-mode-pill chat-mode-pill-enabled relative group inline-flex items-center gap-1 flex-shrink-0 cursor-default"
+                @mouseenter="showTopbarTooltip($event, t('chat.enhancedModeDesc'))"
+                @mouseleave="hideTopbarTooltip"
+              >
+                <svg
+                  class="w-3 h-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                <span>{{ t('chat.enhancedMode') }}</span>
+              </span>
+              <router-link
+                v-else-if="!shouldCollapseTopbarControls"
+                to="/settings?tab=llm#claude-code-settings"
+                class="chat-mode-pill chat-mode-pill-muted relative group inline-flex items-center gap-1 flex-shrink-0 transition-colors cursor-pointer"
+                @mouseenter="showTopbarTooltip($event, t('chat.enableEnhancedModeDesc'))"
+                @mouseleave="hideTopbarTooltip"
+                @focusin="showTopbarTooltip($event, t('chat.enableEnhancedModeDesc'))"
+                @focusout="hideTopbarTooltip"
+              >
+                <svg
+                  class="w-3 h-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                <span>{{ t('chat.enableEnhancedMode') }}</span>
               </router-link>
-            </template>
-          </div>
-        </Transition>
-      </Teleport>
-      <Teleport to="body">
-        <Transition name="sheet">
-          <div
-            v-if="showRoutingMenu && isMobile"
-            class="routing-sheet fixed inset-0 z-[9999] flex items-end"
-            @click="showRoutingMenu = false"
-          >
-            <div class="absolute inset-0 bg-black/60" />
+
+              <!-- Mobile: collapsed topbar actions trigger -->
+              <div v-if="shouldCollapseTopbarControls" class="topbar-more-container relative">
+                <button
+                  class="topbar-icon-btn text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors cursor-pointer"
+                  :class="{
+                    'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-white': showTopbarMenu,
+                  }"
+                  :title="t('chat.moreActions')"
+                  @click.stop="toggleTopbarMenu"
+                >
+                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.8"
+                      d="M4 5a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm9 0a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1V5zM4 14a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1v-5zm9 0a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1v-5z"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </header>
+          <Teleport to="body">
             <div
-              class="routing-sheet-panel relative w-full rounded-t-2xl shadow-2xl"
-              @click.stop
+              v-if="topbarTooltipVisible"
+              class="topbar-hover-tooltip"
+              :style="topbarTooltipStyle"
             >
-              <div class="flex justify-center pt-3 pb-2">
-                <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
-              </div>
-              <div class="px-4 pb-2">
-                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('chat.routingMode.title') }}</h3>
-              </div>
-              <div class="p-4 space-y-2">
+              {{ topbarTooltipText }}
+            </div>
+          </Teleport>
+          <Teleport to="body">
+            <Transition
+              enter-active-class="transition ease-out duration-150"
+              enter-from-class="opacity-0 translate-y-1"
+              enter-to-class="opacity-100 translate-y-0"
+              leave-active-class="transition ease-in duration-100"
+              leave-from-class="opacity-100 translate-y-0"
+              leave-to-class="opacity-0 translate-y-1"
+            >
+              <div
+                v-if="showRoutingMenu && !isMobile"
+                ref="routingMenuFloatingRef"
+                class="routing-menu-floating fixed w-80 rounded-2xl shadow-2xl border overflow-hidden z-[20000] bg-white dark:bg-slate-900 border-gray-300 dark:border-slate-500"
+                :style="{ left: `${routingMenuPosition.x}px`, top: `${routingMenuPosition.y}px` }"
+              >
+                <div class="px-3 py-2 border-b border-gray-200 dark:border-slate-700">
+                  <div class="text-xs font-medium text-gray-700 dark:text-slate-300">
+                    {{ providerStatus.message }}
+                  </div>
+                </div>
+
                 <router-link
                   v-if="providerStatus.status === 'none'"
                   to="/settings?tab=llm"
-                  class="w-full px-4 py-3 flex items-center justify-between rounded-xl text-sm text-gray-800 dark:text-slate-100 border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800"
+                  class="routing-manage-row w-full px-4 py-3 flex items-center justify-between text-sm text-gray-900 dark:text-slate-100 transition-colors"
                   @click="showRoutingMenu = false"
                 >
-                  <span>{{ t('chat.addProvider') }}</span>
-                  <span class="text-xs text-gray-600 dark:text-slate-300">{{ t('chat.manageProviders') }}</span>
+                  <span class="inline-flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M11 5h2m-6 0h2m6 0h2m-5 0v2m0 10v2m0-2h2m-2 0h-2m6-10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2h10z"
+                      />
+                    </svg>
+                    {{ t('chat.addProvider') }}
+                  </span>
+                  <span class="text-xs text-gray-600 dark:text-slate-400">{{
+                    t('chat.manageProviders')
+                  }}</span>
                 </router-link>
 
                 <template v-else>
-                  <div class="text-xs text-gray-700 dark:text-slate-300 px-1 pb-1">
-                    {{ providerStatus.message }}
-                  </div>
-
-                  <button
-                    class="routing-option-row w-full"
-                    :class="{ 'is-active': providerPoolStore.routingMode === 'auto' }"
-                    @click="selectRoutingMode('auto')"
-                  >
-                    <div class="routing-option-main">
-                      <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      <div class="routing-option-copy">
-                        <div class="routing-option-title">{{ t('chat.routingMode.auto') }}</div>
-                        <div class="routing-option-desc">{{ t('chat.routingMode.autoDesc') }}</div>
-                      </div>
-                    </div>
-                    <div class="routing-option-side">
-                      <span class="routing-option-count">{{ totalActiveProviderCount }}</span>
-                      <span v-if="providerPoolStore.routingMode === 'auto'" class="routing-option-status-chip">
-                        {{ routingStrategyLabel }}
-                      </span>
-                    </div>
-                  </button>
-
-                  <button
-                    class="routing-option-row w-full"
-                    :class="{
-                      'is-active': providerPoolStore.routingMode === 'cloud',
-                      'is-disabled': !providerPoolStore.hasCloudProviders,
-                    }"
-                    :disabled="!providerPoolStore.hasCloudProviders"
-                    @click="selectRoutingMode('cloud')"
-                  >
-                    <div class="routing-option-main">
-                      <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                      </svg>
-                      <div class="routing-option-copy">
-                        <div class="routing-option-title">{{ t('chat.routingMode.cloud') }}</div>
-                        <div class="routing-option-desc">{{ t('chat.routingMode.cloudDesc') }}</div>
-                      </div>
-                    </div>
-                    <div class="routing-option-side">
-                      <span class="routing-option-count">{{ cloudActiveCount }}</span>
-                      <span v-if="providerPoolStore.routingMode === 'cloud'" class="routing-option-status-chip">
-                        {{ routingStrategyLabel }}
-                      </span>
-                    </div>
-                  </button>
-
-                  <button
-                    class="routing-option-row w-full"
-                    :class="{
-                      'is-active': providerPoolStore.routingMode === 'local',
-                      'is-disabled': !providerPoolStore.hasLocalProviders,
-                    }"
-                    :disabled="!providerPoolStore.hasLocalProviders"
-                    @click="selectRoutingMode('local')"
-                  >
-                    <div class="routing-option-main">
-                      <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
-                      <div class="routing-option-copy">
-                        <div class="routing-option-title">{{ t('chat.routingMode.local') }}</div>
-                        <div class="routing-option-desc">{{ t('chat.routingMode.localDesc') }}</div>
-                      </div>
-                    </div>
-                    <div class="routing-option-side">
-                      <span class="routing-option-count">{{ localActiveCount }}</span>
-                      <span v-if="providerPoolStore.routingMode === 'local'" class="routing-option-status-chip">
-                        {{ routingStrategyLabel }}
-                      </span>
-                    </div>
-                  </button>
-
-                  <div class="grid grid-cols-2 gap-2 pt-2">
+                  <div class="p-3 space-y-1.5">
                     <button
-                      class="routing-strategy-chip"
-                      :class="{ 'is-active-ha': !isSingleModelMode }"
-                      @click="setAutoModelPreference"
+                      class="routing-option-row w-full"
+                      :class="{ 'is-active': providerPoolStore.routingMode === 'auto' }"
+                      @click="selectRoutingMode('auto')"
                     >
-                      {{ t('chat.routingMode.highAvailability') }}
+                      <div class="routing-option-main">
+                        <svg
+                          class="routing-option-icon"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                        <div class="routing-option-copy">
+                          <div class="routing-option-title">{{ t('chat.routingMode.auto') }}</div>
+                          <div class="routing-option-desc">
+                            {{ t('chat.routingMode.autoDesc') }}
+                          </div>
+                        </div>
+                      </div>
+                      <div class="routing-option-side">
+                        <span class="routing-option-count">{{ totalActiveProviderCount }}</span>
+                        <span
+                          v-if="providerPoolStore.routingMode === 'auto'"
+                          class="routing-option-status-chip"
+                        >
+                          {{ routingStrategyLabel }}
+                        </span>
+                      </div>
                     </button>
+
                     <button
-                      class="routing-strategy-chip"
-                      :class="{ 'is-active-fixed': isSingleModelMode }"
-                      :disabled="fixedModelOptions.length === 0"
-                      @click="enableSingleModelMode"
+                      class="routing-option-row w-full"
+                      :class="{
+                        'is-active': providerPoolStore.routingMode === 'cloud',
+                        'is-disabled': !providerPoolStore.hasCloudProviders,
+                      }"
+                      :disabled="!providerPoolStore.hasCloudProviders"
+                      @click="selectRoutingMode('cloud')"
                     >
-                      {{ t('chat.routingMode.fixedModel') }}
+                      <div class="routing-option-main">
+                        <svg
+                          class="routing-option-icon"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                          />
+                        </svg>
+                        <div class="routing-option-copy">
+                          <div class="routing-option-title">{{ t('chat.routingMode.cloud') }}</div>
+                          <div class="routing-option-desc">
+                            {{ t('chat.routingMode.cloudDesc') }}
+                          </div>
+                        </div>
+                      </div>
+                      <div class="routing-option-side">
+                        <span class="routing-option-count">{{ cloudActiveCount }}</span>
+                        <span
+                          v-if="providerPoolStore.routingMode === 'cloud'"
+                          class="routing-option-status-chip"
+                        >
+                          {{ routingStrategyLabel }}
+                        </span>
+                      </div>
+                    </button>
+
+                    <button
+                      class="routing-option-row w-full"
+                      :class="{
+                        'is-active': providerPoolStore.routingMode === 'local',
+                        'is-disabled': !providerPoolStore.hasLocalProviders,
+                      }"
+                      :disabled="!providerPoolStore.hasLocalProviders"
+                      @click="selectRoutingMode('local')"
+                    >
+                      <div class="routing-option-main">
+                        <svg
+                          class="routing-option-icon"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                          />
+                        </svg>
+                        <div class="routing-option-copy">
+                          <div class="routing-option-title">{{ t('chat.routingMode.local') }}</div>
+                          <div class="routing-option-desc">
+                            {{ t('chat.routingMode.localDesc') }}
+                          </div>
+                        </div>
+                      </div>
+                      <div class="routing-option-side">
+                        <span class="routing-option-count">{{ localActiveCount }}</span>
+                        <span
+                          v-if="providerPoolStore.routingMode === 'local'"
+                          class="routing-option-status-chip"
+                        >
+                          {{ routingStrategyLabel }}
+                        </span>
+                      </div>
                     </button>
                   </div>
 
-                  <div v-if="!isSingleModelMode" class="px-1 pt-2 text-xs text-gray-600 dark:text-slate-400">
-                    {{ t('chat.routingMode.modelAuto') }}
-                  </div>
-                  <div v-else class="max-h-44 overflow-y-auto space-y-1 pt-2">
-                    <button
-                      v-for="option in fixedModelOptions"
-                      :key="option.id"
-                      class="routing-model-row w-full"
-                      :class="{ 'is-selected': chatStore.modelPreference === option.id }"
-                      @click="selectFixedModel(option.id)"
+                  <div class="px-3 pt-1 pb-3 border-t border-gray-200 dark:border-slate-700">
+                    <div class="grid grid-cols-2 gap-2">
+                      <button
+                        class="routing-strategy-chip"
+                        :class="{ 'is-active-ha': !isSingleModelMode }"
+                        @click="setAutoModelPreference"
+                      >
+                        {{ t('chat.routingMode.highAvailability') }}
+                      </button>
+                      <button
+                        class="routing-strategy-chip"
+                        :class="{ 'is-active-fixed': isSingleModelMode }"
+                        :disabled="fixedModelOptions.length === 0"
+                        @click="enableSingleModelMode"
+                      >
+                        {{ t('chat.routingMode.fixedModel') }}
+                      </button>
+                    </div>
+                    <div
+                      v-if="!isSingleModelMode"
+                      class="mt-2 text-xs text-gray-600 dark:text-slate-400"
                     >
-                      <span class="truncate pr-3" :title="option.id">{{ option.id }}</span>
-                      <svg v-if="chatStore.modelPreference === option.id" class="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-                      </svg>
-                    </button>
+                      {{ t('chat.routingMode.modelAuto') }}
+                    </div>
+                    <div v-else class="mt-2 max-h-40 overflow-y-auto space-y-1">
+                      <button
+                        v-for="option in fixedModelOptions"
+                        :key="option.id"
+                        class="routing-model-row w-full"
+                        :class="{ 'is-selected': chatStore.modelPreference === option.id }"
+                        @click="selectFixedModel(option.id)"
+                      >
+                        <span class="truncate pr-3" :title="option.id">{{ option.id }}</span>
+                        <svg
+                          v-if="chatStore.modelPreference === option.id"
+                          class="w-4 h-4 text-emerald-500 flex-shrink-0"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2.5"
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
 
+                  <div class="border-t border-gray-200 dark:border-slate-700" />
                   <router-link
                     to="/settings?tab=llm"
-                    class="routing-manage-row w-full px-4 py-3 mt-1 flex items-center justify-between rounded-xl text-sm text-gray-800 dark:text-slate-200 border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800"
+                    class="routing-manage-row w-full px-4 py-3 flex items-center justify-between text-sm text-gray-800 dark:text-slate-200 transition-colors"
                     @click="showRoutingMenu = false"
                   >
                     <span class="inline-flex items-center gap-2">
                       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.983 5.5a1.75 1.75 0 0 1 3.034 0l.25.433a1.75 1.75 0 0 0 1.514.875h.5a1.75 1.75 0 0 1 1.517 2.625l-.25.433a1.75 1.75 0 0 0 0 1.75l.25.433a1.75 1.75 0 0 1-1.517 2.625h-.5a1.75 1.75 0 0 0-1.514.875l-.25.433a1.75 1.75 0 0 1-3.034 0l-.25-.433a1.75 1.75 0 0 0-1.514-.875h-.5a1.75 1.75 0 0 1-1.517-2.625l.25-.433a1.75 1.75 0 0 0 0-1.75l-.25-.433a1.75 1.75 0 0 1 1.517-2.625h.5a1.75 1.75 0 0 0 1.514-.875l.25-.433Z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M11.983 5.5a1.75 1.75 0 0 1 3.034 0l.25.433a1.75 1.75 0 0 0 1.514.875h.5a1.75 1.75 0 0 1 1.517 2.625l-.25.433a1.75 1.75 0 0 0 0 1.75l.25.433a1.75 1.75 0 0 1-1.517 2.625h-.5a1.75 1.75 0 0 0-1.514.875l-.25.433a1.75 1.75 0 0 1-3.034 0l-.25-.433a1.75 1.75 0 0 0-1.514-.875h-.5a1.75 1.75 0 0 1-1.517-2.625l.25-.433a1.75 1.75 0 0 0 0-1.75l-.25-.433a1.75 1.75 0 0 1 1.517-2.625h.5a1.75 1.75 0 0 0 1.514-.875l.25-.433Z"
+                        />
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"
+                        />
                       </svg>
                       {{ t('chat.manageProviders') }}
                     </span>
-                    <span class="text-xs text-gray-500 dark:text-slate-400">→</span>
+                    <span class="text-xs text-gray-500 dark:text-slate-500">→</span>
                   </router-link>
                 </template>
               </div>
-              <div class="h-[env(safe-area-inset-bottom)]" />
-            </div>
-          </div>
-        </Transition>
-      </Teleport>
-      <Teleport to="body">
-        <Transition name="sheet">
-          <div
-            v-if="showTopbarMenu"
-            class="topbar-sheet fixed inset-0 z-[9999] flex items-end"
-            @click="showTopbarMenu = false"
-          >
-            <div class="absolute inset-0 bg-black/50" />
-            <div
-              class="relative w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl"
-              @click.stop
-            >
-              <div class="flex justify-center pt-3 pb-2">
-                <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
-              </div>
-              <div class="px-4 pb-2">
-                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('chat.moreActions') }}</h3>
-              </div>
-              <div class="p-4">
-                <div class="grid grid-cols-2 gap-3">
-                  <button
-                    class="quick-action-tile"
-                    :class="{ 'is-active': chatStore.deepResearchEnabled }"
-                    @click="toggleDeepResearch"
-                  >
-                    <div class="flex items-center justify-between">
-                      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.483 9.246 5 7.5 5S4.168 5.483 3 6.253v13C4.168 18.483 5.754 18 7.5 18s3.332.483 4.5 1.253m0-13C13.168 5.483 14.754 5 16.5 5s3.332.483 4.5 1.253v13C19.832 18.483 18.246 18 16.5 18s-3.332.483-4.5 1.253" />
-                      </svg>
-                      <span class="quick-action-pill">{{ chatStore.deepResearchEnabled ? t('common.enabled') : t('common.disabled') }}</span>
-                    </div>
-                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('ui.deepResearchTitle') }}</div>
-                  </button>
+            </Transition>
+          </Teleport>
+          <Teleport to="body">
+            <Transition name="sheet">
+              <div
+                v-if="showRoutingMenu && isMobile"
+                class="routing-sheet fixed inset-0 z-[9999] flex items-end"
+                @click="showRoutingMenu = false"
+              >
+                <div class="absolute inset-0 bg-black/60" />
+                <div
+                  class="routing-sheet-panel relative w-full rounded-t-2xl shadow-2xl"
+                  @click.stop
+                >
+                  <div class="flex justify-center pt-3 pb-2">
+                    <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+                  </div>
+                  <div class="px-4 pb-2">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                      {{ t('chat.routingMode.title') }}
+                    </h3>
+                  </div>
+                  <div class="p-4 space-y-2">
+                    <router-link
+                      v-if="providerStatus.status === 'none'"
+                      to="/settings?tab=llm"
+                      class="w-full px-4 py-3 flex items-center justify-between rounded-xl text-sm text-gray-800 dark:text-slate-100 border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800"
+                      @click="showRoutingMenu = false"
+                    >
+                      <span>{{ t('chat.addProvider') }}</span>
+                      <span class="text-xs text-gray-600 dark:text-slate-300">{{
+                        t('chat.manageProviders')
+                      }}</span>
+                    </router-link>
 
-                  <button
-                    class="quick-action-tile"
-                    :class="{ 'is-active': settingsStore.agentMode }"
-                    @click="toggleAgentMode"
-                  >
-                    <div class="flex items-center justify-between">
-                      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      <span class="quick-action-pill">{{ settingsStore.agentMode ? t('common.enabled') : t('common.disabled') }}</span>
-                    </div>
-                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('agent.mode') }}</div>
-                  </button>
+                    <template v-else>
+                      <div class="text-xs text-gray-700 dark:text-slate-300 px-1 pb-1">
+                        {{ providerStatus.message }}
+                      </div>
 
-                  <button
-                    class="quick-action-tile"
-                    :class="{ 'is-active': settingsStore.showToolDetails }"
-                    @click="toggleToolDetails"
-                  >
-                    <div class="flex items-center justify-between">
-                      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 2a5 5 0 00-4.78 3.56A3.5 3.5 0 004 9a3.5 3.5 0 00.68 2.07A3.5 3.5 0 004 13.5 3.5 3.5 0 006.5 17h.28A5 5 0 0012 20" />
-                        <path d="M12 2a5 5 0 014.78 3.56A3.5 3.5 0 0120 9a3.5 3.5 0 01-.68 2.07A3.5 3.5 0 0120 13.5a3.5 3.5 0 01-2.5 3.5h-.28A5 5 0 0112 20" />
-                        <path d="M12 2v18" />
-                      </svg>
-                      <span class="quick-action-pill">{{ settingsStore.showToolDetails ? t('common.enabled') : t('common.disabled') }}</span>
-                    </div>
-                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('chat.showToolDetails') }}</div>
-                  </button>
+                      <button
+                        class="routing-option-row w-full"
+                        :class="{ 'is-active': providerPoolStore.routingMode === 'auto' }"
+                        @click="selectRoutingMode('auto')"
+                      >
+                        <div class="routing-option-main">
+                          <svg
+                            class="routing-option-icon"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            />
+                          </svg>
+                          <div class="routing-option-copy">
+                            <div class="routing-option-title">{{ t('chat.routingMode.auto') }}</div>
+                            <div class="routing-option-desc">
+                              {{ t('chat.routingMode.autoDesc') }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="routing-option-side">
+                          <span class="routing-option-count">{{ totalActiveProviderCount }}</span>
+                          <span
+                            v-if="providerPoolStore.routingMode === 'auto'"
+                            class="routing-option-status-chip"
+                          >
+                            {{ routingStrategyLabel }}
+                          </span>
+                        </div>
+                      </button>
 
-                  <button
-                    class="quick-action-tile"
-                    @click="toggleRoutingMenu"
-                  >
-                    <div class="flex items-center justify-between">
-                      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      <span class="quick-action-pill">{{ routingModeInfo.label }}</span>
-                    </div>
-                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('chat.routingMode.title') }}</div>
-                  </button>
+                      <button
+                        class="routing-option-row w-full"
+                        :class="{
+                          'is-active': providerPoolStore.routingMode === 'cloud',
+                          'is-disabled': !providerPoolStore.hasCloudProviders,
+                        }"
+                        :disabled="!providerPoolStore.hasCloudProviders"
+                        @click="selectRoutingMode('cloud')"
+                      >
+                        <div class="routing-option-main">
+                          <svg
+                            class="routing-option-icon"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                            />
+                          </svg>
+                          <div class="routing-option-copy">
+                            <div class="routing-option-title">
+                              {{ t('chat.routingMode.cloud') }}
+                            </div>
+                            <div class="routing-option-desc">
+                              {{ t('chat.routingMode.cloudDesc') }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="routing-option-side">
+                          <span class="routing-option-count">{{ cloudActiveCount }}</span>
+                          <span
+                            v-if="providerPoolStore.routingMode === 'cloud'"
+                            class="routing-option-status-chip"
+                          >
+                            {{ routingStrategyLabel }}
+                          </span>
+                        </div>
+                      </button>
 
-                  <button
-                    class="quick-action-tile"
-                    @click="toggleStyleSelector"
-                  >
-                    <div class="flex items-center justify-between">
-                      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                      </svg>
-                      <span class="quick-action-pill">{{ currentThemeStyleLabel }}</span>
-                    </div>
-                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('theme.styles.title') }}</div>
-                  </button>
+                      <button
+                        class="routing-option-row w-full"
+                        :class="{
+                          'is-active': providerPoolStore.routingMode === 'local',
+                          'is-disabled': !providerPoolStore.hasLocalProviders,
+                        }"
+                        :disabled="!providerPoolStore.hasLocalProviders"
+                        @click="selectRoutingMode('local')"
+                      >
+                        <div class="routing-option-main">
+                          <svg
+                            class="routing-option-icon"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                            />
+                          </svg>
+                          <div class="routing-option-copy">
+                            <div class="routing-option-title">
+                              {{ t('chat.routingMode.local') }}
+                            </div>
+                            <div class="routing-option-desc">
+                              {{ t('chat.routingMode.localDesc') }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="routing-option-side">
+                          <span class="routing-option-count">{{ localActiveCount }}</span>
+                          <span
+                            v-if="providerPoolStore.routingMode === 'local'"
+                            class="routing-option-status-chip"
+                          >
+                            {{ routingStrategyLabel }}
+                          </span>
+                        </div>
+                      </button>
+
+                      <div class="grid grid-cols-2 gap-2 pt-2">
+                        <button
+                          class="routing-strategy-chip"
+                          :class="{ 'is-active-ha': !isSingleModelMode }"
+                          @click="setAutoModelPreference"
+                        >
+                          {{ t('chat.routingMode.highAvailability') }}
+                        </button>
+                        <button
+                          class="routing-strategy-chip"
+                          :class="{ 'is-active-fixed': isSingleModelMode }"
+                          :disabled="fixedModelOptions.length === 0"
+                          @click="enableSingleModelMode"
+                        >
+                          {{ t('chat.routingMode.fixedModel') }}
+                        </button>
+                      </div>
+
+                      <div
+                        v-if="!isSingleModelMode"
+                        class="px-1 pt-2 text-xs text-gray-600 dark:text-slate-400"
+                      >
+                        {{ t('chat.routingMode.modelAuto') }}
+                      </div>
+                      <div v-else class="max-h-44 overflow-y-auto space-y-1 pt-2">
+                        <button
+                          v-for="option in fixedModelOptions"
+                          :key="option.id"
+                          class="routing-model-row w-full"
+                          :class="{ 'is-selected': chatStore.modelPreference === option.id }"
+                          @click="selectFixedModel(option.id)"
+                        >
+                          <span class="truncate pr-3" :title="option.id">{{ option.id }}</span>
+                          <svg
+                            v-if="chatStore.modelPreference === option.id"
+                            class="w-4 h-4 text-emerald-500 flex-shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2.5"
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+
+                      <router-link
+                        to="/settings?tab=llm"
+                        class="routing-manage-row w-full px-4 py-3 mt-1 flex items-center justify-between rounded-xl text-sm text-gray-800 dark:text-slate-200 border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800"
+                        @click="showRoutingMenu = false"
+                      >
+                        <span class="inline-flex items-center gap-2">
+                          <svg
+                            class="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M11.983 5.5a1.75 1.75 0 0 1 3.034 0l.25.433a1.75 1.75 0 0 0 1.514.875h.5a1.75 1.75 0 0 1 1.517 2.625l-.25.433a1.75 1.75 0 0 0 0 1.75l.25.433a1.75 1.75 0 0 1-1.517 2.625h-.5a1.75 1.75 0 0 0-1.514.875l-.25.433a1.75 1.75 0 0 1-3.034 0l-.25-.433a1.75 1.75 0 0 0-1.514-.875h-.5a1.75 1.75 0 0 1-1.517-2.625l.25-.433a1.75 1.75 0 0 0 0-1.75l-.25-.433a1.75 1.75 0 0 1 1.517-2.625h.5a1.75 1.75 0 0 0 1.514-.875l.25-.433Z"
+                            />
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"
+                            />
+                          </svg>
+                          {{ t('chat.manageProviders') }}
+                        </span>
+                        <span class="text-xs text-gray-500 dark:text-slate-400">→</span>
+                      </router-link>
+                    </template>
+                  </div>
+                  <div class="h-[env(safe-area-inset-bottom)]" />
                 </div>
               </div>
-              <div class="h-[env(safe-area-inset-bottom)]" />
-            </div>
-          </div>
-        </Transition>
-      </Teleport>
-
-      <!-- Trial Quota Banner (show when trial provider is active and quota not exhausted) -->
-      <Transition name="slide-fade">
-        <div
-          v-if="providerPoolStore.trialQuota && providerPoolStore.trialProviders?.length > 0 && !providerPoolStore.trialQuota.is_exhausted"
-          class="px-4 py-2 flex items-center justify-between text-sm border-b bg-gray-100 dark:bg-gray-700/20 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-white"
-          :class="{ 'trial-quota-pulse': tokenAnimating }"
-        >
-          <div class="flex items-center gap-2">
-            <span :class="{ 'animate-bounce': tokenAnimating }">🎁</span>
-            <span
-              class="tabular-nums transition-all duration-300 font-medium"
-              :class="{ 'token-change-animation': tokenAnimating }"
-              :title="providerPoolStore.trialQuota.tokens_remaining.toLocaleString() + ' tokens'"
-            >{{ t('chat.trialQuota.remaining', { tokens: formatTokens(providerPoolStore.trialQuota.tokens_remaining) }) }}</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="relative w-20 h-4 bg-gray-300 dark:bg-gray-700 rounded-full overflow-hidden">
+            </Transition>
+          </Teleport>
+          <Teleport to="body">
+            <Transition name="sheet">
               <div
-                class="h-full rounded-full transition-all duration-500 ease-out bg-gray-700 dark:bg-gray-400"
-                :style="{ width: `${Math.max(3, Math.min(100, (providerPoolStore.trialQuota.tokens_remaining / providerPoolStore.trialQuota.token_limit) * 100))}%` }"
-              ></div>
-              <span class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white drop-shadow-sm">
-                {{ Math.round((providerPoolStore.trialQuota.tokens_remaining / providerPoolStore.trialQuota.token_limit) * 100) }}%
-              </span>
-            </div>
-            <router-link
-              to="/settings?tab=llm"
-              class="text-xs underline hover:no-underline"
-            >
-              {{ t('chat.trialQuota.configure') }}
-            </router-link>
-          </div>
-        </div>
-      </Transition>
-
-      <!-- Messages area -->
-      <div
-        ref="messagesContainer"
-        class="flex-1 min-h-0 overflow-y-auto overscroll-contain chat-messages-area bg-surface-base"
-        :class="messageAreaPaddingClass"
-        @scroll.passive="handleScroll"
-      >
-        <!-- Load more indicator -->
-        <div
-          v-if="chatStore.loadingMore"
-          class="flex justify-center py-4"
-        >
-          <div class="flex items-center gap-2 text-gray-500 dark:text-slate-400 text-sm">
-            <div class="w-4 h-4 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full animate-spin"></div>
-            {{ t('chat.loadingOlderMessages') }}
-          </div>
-        </div>
-
-        <!-- Load more button -->
-        <div
-          v-else-if="chatStore.hasMoreMessages && chatStore.messages.length > 0"
-          class="flex justify-center py-4"
-        >
-          <button
-            class="text-sm text-gray-900 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 px-4 py-2 transition-colors cursor-pointer"
-            @click="chatStore.loadMoreMessages()"
-          >
-            {{ t('chat.loadOlderMessages') }}
-          </button>
-        </div>
-
-        <!-- Empty state -->
-        <div
-          v-if="chatStore.messages.length === 0 && !chatStore.loading"
-          class="h-full flex flex-col items-center justify-center p-4"
-        >
-          <div class="text-center text-gray-500 dark:text-slate-400 max-w-md mb-8">
-            <img src="/logo.svg" alt="Logo" class="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-4 opacity-80 dark:opacity-60" />
-            <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-1">{{ t('chat.startConversation') }}</h3>
-            <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('chat.startConversationDesc') }}</p>
-          </div>
-
-          <!-- Preset Questions -->
-          <PresetQuestions @select="handlePresetQuestionSelect" />
-
-          <div v-if="!isMobile" class="mt-8 text-xs text-gray-400 dark:text-slate-500 text-center">
-            <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
-            <p class="space-x-4">
-              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">{{ isMac ? '⌘N' : 'Alt+N' }}</span> {{ t('chat.newChatShortcut') }}
-              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">/</span> {{ t('chat.focusInputShortcut') }}
-              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">{{ isMac ? '⌘B' : 'Alt+B' }}</span> {{ t('chat.toggleSidebarShortcut') }}
-            </p>
-            <p class="mt-3 text-gray-400 dark:text-slate-500">
-              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Enter</span> {{ t('chat.sendMessage') }}
-              <span class="ml-4 px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Shift+Enter</span> {{ t('chat.newLine') }}
-            </p>
-            <p class="mt-2 text-gray-400 dark:text-slate-500">
-              {{ t('chat.dragDropHint') }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Messages list - Virtual scroll for large lists -->
-        <template v-if="chatStore.messages.length > 0">
-          <!-- Use virtual scroll for large message lists -->
-          <VirtualScroll
-            v-if="useVirtualScroll"
-            ref="virtualScrollRef"
-            :item-count="chatStore.messages.length"
-            :items="chatStore.messages"
-            :estimated-item-height="120"
-            :overscan="5"
-            class="h-full pb-4"
-            @visible-range-change="handleVisibleRangeChange"
-          >
-            <template #default="{ item: message, updateHeight }">
-              <div
-                v-if="message"
-                :key="getMessageRenderKey(message)"
-                :ref="bindVirtualItemHeight(message, updateHeight)"
+                v-if="showTopbarMenu"
+                class="topbar-sheet fixed inset-0 z-[9999] flex items-end"
+                @click="showTopbarMenu = false"
               >
-                <ChatMessage
-                  v-memo="messageMemoDeps(message)"
-                  :message="message"
-                  v-bind="messageRenderBindings(message)"
-                  @contextmenu="handleMessageContextMenu"
-                  @continue="handleMessageContinue"
-                  @regenerate="handleMessageRegenerate"
-                />
+                <div class="absolute inset-0 bg-black/50" />
+                <div
+                  class="relative w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl"
+                  @click.stop
+                >
+                  <div class="flex justify-center pt-3 pb-2">
+                    <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+                  </div>
+                  <div class="px-4 pb-2">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                      {{ t('chat.moreActions') }}
+                    </h3>
+                  </div>
+                  <div class="p-4">
+                    <div class="grid grid-cols-2 gap-3">
+                      <router-link
+                        to="/settings?tab=llm#claude-code-settings"
+                        class="quick-action-tile"
+                        :class="{ 'is-active': isClaudeCodeEnabled }"
+                        @click="showTopbarMenu = false"
+                      >
+                        <div class="flex items-center justify-between">
+                          <svg
+                            class="w-5 h-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M13 10V3L4 14h7v7l9-11h-7z"
+                            />
+                          </svg>
+                          <span class="quick-action-pill">{{
+                            isClaudeCodeEnabled ? t('common.enabled') : t('common.disabled')
+                          }}</span>
+                        </div>
+                        <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">
+                          {{ t('chat.enhancedMode') }}
+                        </div>
+                      </router-link>
+
+                      <button
+                        class="quick-action-tile"
+                        :class="{ 'is-active': settingsStore.showToolDetails }"
+                        @click="toggleToolDetails"
+                      >
+                        <div class="flex items-center justify-between">
+                          <svg
+                            class="w-5 h-5"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path
+                              d="M12 2a5 5 0 00-4.78 3.56A3.5 3.5 0 004 9a3.5 3.5 0 00.68 2.07A3.5 3.5 0 004 13.5 3.5 3.5 0 006.5 17h.28A5 5 0 0012 20"
+                            />
+                            <path
+                              d="M12 2a5 5 0 014.78 3.56A3.5 3.5 0 0120 9a3.5 3.5 0 01-.68 2.07A3.5 3.5 0 0120 13.5a3.5 3.5 0 01-2.5 3.5h-.28A5 5 0 0112 20"
+                            />
+                            <path d="M12 2v18" />
+                          </svg>
+                          <span class="quick-action-pill">{{
+                            settingsStore.showToolDetails
+                              ? t('common.enabled')
+                              : t('common.disabled')
+                          }}</span>
+                        </div>
+                        <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">
+                          {{ t('chat.showToolDetails') }}
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="h-[env(safe-area-inset-bottom)]" />
+                </div>
               </div>
-            </template>
-          </VirtualScroll>
+            </Transition>
+          </Teleport>
 
-          <!-- Regular rendering for small lists -->
-          <div v-else class="pb-4">
+          <!-- Trial Quota Banner (show when trial provider is active and quota not exhausted) -->
+          <Transition name="slide-fade">
             <div
-              v-for="message in chatStore.messages"
-              :key="getMessageRenderKey(message)"
+              v-if="
+                providerPoolStore.trialQuota &&
+                providerPoolStore.trialProviders?.length > 0 &&
+                !providerPoolStore.trialQuota.is_exhausted
+              "
+              class="px-4 py-2 flex items-center justify-between text-sm border-b bg-gray-100 dark:bg-gray-700/20 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-white"
+              :class="{ 'trial-quota-pulse': tokenAnimating }"
             >
-              <ChatMessage
-                v-memo="messageMemoDeps(message)"
-                :message="message"
-                v-bind="messageRenderBindings(message)"
-                @contextmenu="handleMessageContextMenu"
-                @continue="handleMessageContinue"
-                @regenerate="handleMessageRegenerate"
-              />
-            </div>
-          </div>
-
-          <!-- Agent task panels -->
-          <div v-if="agentTasks.length > 0" class="px-4">
-            <AgentTaskPanel
-              v-for="task in agentTasks"
-              :key="task.id"
-              :task="task"
-              @cancel="cancelAgentTask"
-              @delete="deleteAgentTask"
-              @message="sendAgentMessage"
-              @answer="submitAgentAnswer"
-            />
-          </div>
-
-          <!-- Context trim indicator (pruning/compaction) -->
-          <Transition name="fade">
-            <div
-              v-if="showContextTrim"
-              class="flex justify-center py-2"
-            >
-              <div class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400/70 dark:text-gray-500/70 bg-gray-100/30 dark:bg-gray-800/30 rounded-full">
-                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
-                </svg>
-                <span v-if="chatStore.contextTrimInfo?.type === 'pruned'">
-                  {{ t('chat.contextPruned', { tokens: formatTokens((chatStore.contextTrimInfo.tokensBefore ?? 0) - (chatStore.contextTrimInfo.tokensAfter ?? 0)) }) }}
-                </span>
-                <span v-else-if="chatStore.contextTrimInfo?.type === 'compacted'">
-                  {{ t('chat.contextCompacted', { before: chatStore.contextTrimInfo.before ?? 0, after: chatStore.contextTrimInfo.after ?? 0 }) }}
-                </span>
+              <div class="flex items-center gap-2">
+                <span :class="{ 'animate-bounce': tokenAnimating }">🎁</span>
+                <span
+                  class="tabular-nums transition-all duration-300 font-medium"
+                  :class="{ 'token-change-animation': tokenAnimating }"
+                  :title="
+                    providerPoolStore.trialQuota.tokens_remaining.toLocaleString() + ' tokens'
+                  "
+                  >{{
+                    t('chat.trialQuota.remaining', {
+                      tokens: formatTokens(providerPoolStore.trialQuota.tokens_remaining),
+                    })
+                  }}</span
+                >
+              </div>
+              <div class="flex items-center gap-2">
+                <div
+                  class="relative w-20 h-4 bg-gray-300 dark:bg-gray-700 rounded-full overflow-hidden"
+                >
+                  <div
+                    class="h-full rounded-full transition-all duration-500 ease-out bg-gray-700 dark:bg-gray-400"
+                    :style="{
+                      width: `${Math.max(3, Math.min(100, (providerPoolStore.trialQuota.tokens_remaining / providerPoolStore.trialQuota.token_limit) * 100))}%`,
+                    }"
+                  ></div>
+                  <span
+                    class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white drop-shadow-sm"
+                  >
+                    {{
+                      Math.round(
+                        (providerPoolStore.trialQuota.tokens_remaining /
+                          providerPoolStore.trialQuota.token_limit) *
+                          100
+                      )
+                    }}%
+                  </span>
+                </div>
+                <router-link to="/settings?tab=llm" class="text-xs underline hover:no-underline">
+                  {{ t('chat.trialQuota.configure') }}
+                </router-link>
               </div>
             </div>
           </Transition>
 
-          <!-- Stream error display (shown in chat area with gray text) -->
-          <div
-            v-if="chatStore.streamError"
-            class="flex justify-center py-4"
+          <section
+            class="chat-thread-shell flex min-h-0 flex-1 flex-col"
+            :class="{ 'chat-thread-shell-desktop': !isMobile }"
           >
-            <div class="flex items-center gap-2 px-4 py-2 text-gray-400 dark:text-gray-500 text-sm">
-              <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <span class="break-all">{{
-                chatStore.streamError === 'streamEmpty' ? t('chat.streamEmpty') :
-                chatStore.streamError === 'streamError' ? t('chat.streamError') :
-                chatStore.streamError === 'providerNoResponse' ? t('chat.providerNoResponse') :
-                chatStore.streamError === 'providerReturnedEmpty' ? t('chat.providerReturnedEmpty') :
-                chatStore.streamError === 'noResponseBody' ? t('chat.noResponseBody') :
-                chatStore.streamError === 'trial_service_busy' ? t('chat.trialServiceBusy') :
-                chatStore.streamError === 'provider_tool_unsupported' ? t('chat.providerToolUnsupported') :
-                chatStore.streamError === 'provider_unavailable' ? t('chat.providerUnavailable') :
-                chatStore.streamError === 'provider_auth_error' ? t('chat.providerAuthError') :
-                chatStore.streamError === 'provider_rate_limited' ? t('chat.providerRateLimited') :
-                chatStore.streamError === 'provider_openrouter_privacy_policy' ? t('chat.providerOpenRouterPrivacyPolicy') :
-                chatStore.streamError === 'execDirectoryApprovalTimeout' ? t('chat.execDirectoryApprovalTimeout') :
-                chatStore.streamError
-              }}</span>
-              <button
-                class="ml-1 px-2 py-0.5 rounded text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 cursor-pointer transition-colors text-xs"
-                @click="chatStore.clearStreamError(); chatStore.regenerateMessage()"
-              >
-                {{ t('common.retry') }}
-              </button>
-              <button
-                class="text-gray-400 hover:text-gray-300 cursor-pointer"
-                @click="chatStore.clearStreamError"
-              >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div
-            v-else-if="chatStore.streamProgress"
-            class="flex justify-center py-3"
-          >
-            <div class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400/80 dark:text-gray-500/80 bg-gray-100/30 dark:bg-gray-800/30 rounded-full">
-              <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12a8 8 0 018-8m8 8a8 8 0 01-8 8" />
-              </svg>
-              <span>{{ chatStore.streamProgress }}</span>
-            </div>
-          </div>
-
-          <!-- Awaiting-user-input indicator -->
-          <div
-            v-if="showAwaitingConfirmation"
-            class="flex justify-center py-2"
-          >
-            <div class="flex items-center gap-2 px-3 py-1.5 text-xs text-amber-500 dark:text-amber-300 bg-amber-500/10 rounded-full">
-              <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M7 4h10l3 5v11H4V9l3-5z" />
-              </svg>
-              <span>{{ t('chat.awaitingConfirmation', 'Waiting for your confirmation to continue') }}</span>
-            </div>
-          </div>
-
-          <!-- "I'm listening" indicator (shown when pre-TTFT cancel is active) -->
-          <div
-            v-if="chatStore.preTTFTCancelActive"
-            class="flex justify-center py-3"
-          >
-            <div class="flex items-center gap-2 px-4 py-2 glass-card rounded-lg text-sm text-blue-400">
-              <span class="flex gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style="animation-delay: 0ms" />
-                <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style="animation-delay: 150ms" />
-                <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style="animation-delay: 300ms" />
-              </span>
-              {{ t('chat.stillListening') }}
-            </div>
-          </div>
-
-          <!-- Streaming action buttons -->
-          <div
-            v-if="chatStore.messages.length > 0 && !chatStore.isMultiSelectMode"
-            class="flex justify-center gap-2 py-4"
-          >
-            <!-- Stop button (shown during streaming or async tasks) -->
-            <button
-              v-if="chatStore.streaming || mediaGen.generating.value || agentTasks.some(at => at.status === 'executing' || at.status === 'planning')"
-              class="flex items-center gap-2 px-4 py-2 glass-card text-red-400 hover:bg-red-500/10 rounded-lg text-sm transition-colors cursor-pointer"
-              @click="handleCancel"
-            >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-              </svg>
-              {{ t('chat.stopGenerating') }}
-            </button>
-
-            <!-- Continue/Regenerate buttons removed — will be replaced by suggested follow-up prompts -->
-          </div>
-        </template>
-      </div>
-
-      <!-- Context menu -->
-      <Teleport to="body">
-        <!-- Desktop: Floating menu -->
-        <div
-          v-if="showContextMenu && !isMobile"
-          class="context-menu fixed z-[100] glass-card shadow-xl py-1 min-w-[160px]"
-          :style="{ left: `${contextMenuPosition.x}px`, top: `${contextMenuPosition.y}px` }"
-        >
-          <button
-            class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
-            @click="handleContextCopy"
-          >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            {{ t('chat.copyMessage') }}
-          </button>
-          <button
-            class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
-            @click="handleSelectMessage"
-          >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-            {{ t('chat.selectMessage') }}
-          </button>
-          <!-- Continue / Regenerate — only for last assistant message, not while streaming -->
-          <template v-if="isContextMenuLastAssistant && !chatStore.streaming">
-            <div class="border-t border-white/10 my-1" />
-            <button
-              class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
-              @click="handleContextContinue"
-            >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {{ t('chat.continueGenerating') }}
-            </button>
-            <button
-              class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
-              @click="handleContextRegenerate"
-            >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              {{ t('chat.regenerate') }}
-            </button>
-          </template>
-        </div>
-
-      </Teleport>
-
-      <!-- Theme style selector (teleported to body for proper z-index) -->
-      <Teleport to="body">
-        <!-- Desktop: Dropdown menu -->
-        <div
-          v-if="showStyleSelector && !isMobile"
-          class="style-selector-container fixed z-[100] glass-card shadow-xl p-3 min-w-[180px]"
-          :style="{ left: `${Math.max(8, styleSelectorPosition.x - 180)}px`, top: `${styleSelectorPosition.y}px` }"
-        >
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">{{ t('theme.styles.title') }}</div>
-          <div class="flex flex-col gap-1">
-            <button
-              v-for="style in THEME_STYLES"
-              :key="style.id"
-              class="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer"
-              :class="settingsStore.themeStyle === style.id ? 'bg-gray-100 dark:bg-gray-700/30 text-gray-900 dark:text-gray-300' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
-              @click="selectThemeStyle(style.id)"
-            >
-              <span
-                class="theme-style-btn flex-shrink-0"
-                :class="`theme-style-btn-${style.id}`"
-              />
-              <span>{{ themeStyleLabel(style) }}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Mobile: Bottom sheet -->
-        <Transition name="sheet">
-          <div
-            v-if="showStyleSelector && isMobile"
-            class="fixed inset-0 z-[9999] flex items-end"
-            @click="showStyleSelector = false"
-          >
-            <!-- Backdrop -->
-            <div class="absolute inset-0 bg-black/50" />
-
-            <!-- Sheet content -->
             <div
-              class="relative w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl"
-              @click.stop
+              v-if="!isMobile"
+              class="chat-thread-header flex items-center justify-between gap-4 border-b border-gray-200/80 dark:border-slate-700/80"
             >
-              <!-- Handle bar -->
-              <div class="flex justify-center pt-3 pb-2">
-                <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+              <div class="chat-thread-heading min-w-0">
+                <h2 class="chat-thread-title text-gray-900 dark:text-white truncate">
+                  {{ chatStore.currentConversation?.title || t('chat.newChat') }}
+                </h2>
               </div>
 
-              <!-- Title -->
-              <div class="px-4 pb-2">
-                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('theme.styles.title') }}</h3>
-              </div>
-
-              <!-- Actions -->
-              <div class="p-4 space-y-2">
-                <button
-                  v-for="style in THEME_STYLES"
-                  :key="style.id"
-                  class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors border border-gray-200 dark:border-gray-700"
-                  :class="settingsStore.themeStyle === style.id ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-gray-700/40 text-gray-700 dark:text-gray-300'"
-                  @click="selectThemeStyle(style.id)"
+              <div class="chat-thread-actions flex items-center gap-2 flex-shrink-0">
+                <span
+                  v-if="isClaudeCodeEnabled"
+                  class="chat-mode-pill chat-mode-pill-enabled relative group inline-flex items-center gap-1 flex-shrink-0 cursor-default"
+                  @mouseenter="showTopbarTooltip($event, t('chat.enhancedModeDesc'))"
+                  @mouseleave="hideTopbarTooltip"
                 >
-                  <span
-                    class="theme-style-btn flex-shrink-0"
-                    :class="`theme-style-btn-${style.id}`"
-                  />
-                  <span class="font-medium">{{ themeStyleLabel(style) }}</span>
+                  <svg
+                    class="w-3 h-3"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                  <span>{{ t('chat.enhancedMode') }}</span>
+                </span>
+                <router-link
+                  v-else
+                  to="/settings?tab=llm#claude-code-settings"
+                  class="chat-mode-pill chat-mode-pill-muted relative group inline-flex items-center gap-1 flex-shrink-0 transition-colors cursor-pointer"
+                  @mouseenter="showTopbarTooltip($event, t('chat.enableEnhancedModeDesc'))"
+                  @mouseleave="hideTopbarTooltip"
+                  @focusin="showTopbarTooltip($event, t('chat.enableEnhancedModeDesc'))"
+                  @focusout="hideTopbarTooltip"
+                >
+                  <svg
+                    class="w-3 h-3"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                  <span>{{ t('chat.enableEnhancedMode') }}</span>
+                </router-link>
+                <button
+                  class="chat-thread-detail-btn inline-flex items-center gap-2 transition-colors cursor-pointer"
+                  :class="{ 'is-active': settingsStore.showToolDetails }"
+                  :aria-pressed="settingsStore.showToolDetails"
+                  :title="
+                    settingsStore.showToolDetails
+                      ? t('chat.hideToolDetails')
+                      : t('chat.showToolDetails')
+                  "
+                  @click="toggleToolDetails"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path
+                      d="M12 2a5 5 0 00-4.78 3.56A3.5 3.5 0 004 9a3.5 3.5 0 00.68 2.07A3.5 3.5 0 004 13.5 3.5 3.5 0 006.5 17h.28A5 5 0 0012 20"
+                    />
+                    <path
+                      d="M12 2a5 5 0 014.78 3.56A3.5 3.5 0 0120 9a3.5 3.5 0 01-.68 2.07A3.5 3.5 0 0120 13.5a3.5 3.5 0 01-2.5 3.5h-.28A5 5 0 0112 20"
+                    />
+                    <path d="M12 2v18" />
+                  </svg>
+                  <span>{{
+                    settingsStore.showToolDetails
+                      ? t('chat.hideToolDetails')
+                      : t('chat.showToolDetails')
+                  }}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Messages area -->
+            <div
+              ref="messagesContainer"
+              class="flex-1 min-h-0 overflow-y-auto overscroll-contain chat-messages-area bg-surface-base px-2 sm:px-3 md:px-4"
+              :class="messageAreaPaddingClass"
+              @scroll.passive="handleScroll"
+            >
+              <!-- Load more indicator -->
+              <div v-if="chatStore.loadingMore" class="flex justify-center py-4">
+                <div class="flex items-center gap-2 text-gray-500 dark:text-slate-400 text-sm">
+                  <div
+                    class="w-4 h-4 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full animate-spin"
+                  ></div>
+                  {{ t('chat.loadingOlderMessages') }}
+                </div>
+              </div>
+
+              <!-- Load more button -->
+              <div
+                v-else-if="chatStore.hasMoreMessages && chatStore.messages.length > 0"
+                class="flex justify-center py-4"
+              >
+                <button
+                  class="text-sm text-gray-900 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 px-4 py-2 transition-colors cursor-pointer"
+                  @click="chatStore.loadMoreMessages()"
+                >
+                  {{ t('chat.loadOlderMessages') }}
                 </button>
               </div>
 
-              <!-- Safe area padding -->
-              <div class="h-[env(safe-area-inset-bottom)]" />
+              <!-- Empty state -->
+              <div
+                v-if="chatStore.messages.length === 0 && !chatStore.loading"
+                class="h-full flex flex-col items-center justify-center p-4"
+              >
+                <div class="text-center text-gray-500 dark:text-slate-400 max-w-md mb-8">
+                  <img
+                    src="/logo.svg"
+                    alt="Logo"
+                    class="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-4 opacity-80 dark:opacity-60"
+                  />
+                  <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-1">
+                    {{ t('chat.startConversation') }}
+                  </h3>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">
+                    {{ t('chat.startConversationDesc') }}
+                  </p>
+                </div>
+
+                <!-- Preset Questions -->
+                <PresetQuestions @select="handlePresetQuestionSelect" />
+
+                <div
+                  v-if="!isMobile"
+                  class="mt-8 text-xs text-gray-400 dark:text-slate-500 text-center"
+                >
+                  <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
+                  <p class="space-x-4">
+                    <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">{{
+                      isMac ? '⌘N' : 'Alt+N'
+                    }}</span>
+                    {{ t('chat.newChatShortcut') }}
+                    <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">/</span>
+                    {{ t('chat.focusInputShortcut') }}
+                    <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">{{
+                      isMac ? '⌘B' : 'Alt+B'
+                    }}</span>
+                    {{ t('chat.toggleSidebarShortcut') }}
+                  </p>
+                  <p class="mt-3 text-gray-400 dark:text-slate-500">
+                    <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300"
+                      >Enter</span
+                    >
+                    {{ t('chat.sendMessage') }}
+                    <span class="ml-4 px-2 py-1 glass rounded text-gray-600 dark:text-slate-300"
+                      >Shift+Enter</span
+                    >
+                    {{ t('chat.newLine') }}
+                  </p>
+                  <p class="mt-2 text-gray-400 dark:text-slate-500">
+                    {{ t('chat.dragDropHint') }}
+                  </p>
+                </div>
+              </div>
+
+              <!-- Messages list - Virtual scroll for large lists -->
+              <template v-if="chatStore.messages.length > 0">
+                <!-- Use virtual scroll for large message lists -->
+                <VirtualScroll
+                  v-if="useVirtualScroll"
+                  ref="virtualScrollRef"
+                  :item-count="chatStore.messages.length"
+                  :items="chatStore.messages"
+                  :estimated-item-height="120"
+                  :overscan="5"
+                  class="h-full pb-4"
+                  @visible-range-change="handleVisibleRangeChange"
+                >
+                  <template #default="{ item: message, updateHeight }">
+                    <div
+                      v-if="message"
+                      :key="getMessageRenderKey(message)"
+                      :ref="bindVirtualItemHeight(message, updateHeight)"
+                    >
+                      <ChatMessage
+                        v-memo="messageMemoDeps(message)"
+                        :message="message"
+                        v-bind="messageRenderBindings(message)"
+                        @contextmenu="handleMessageContextMenu"
+                        @continue="handleMessageContinue"
+                        @regenerate="handleMessageRegenerate"
+                      />
+                    </div>
+                  </template>
+                </VirtualScroll>
+
+                <!-- Regular rendering for small lists -->
+                <div v-else class="pb-4">
+                  <div v-for="message in chatStore.messages" :key="getMessageRenderKey(message)">
+                    <ChatMessage
+                      v-memo="messageMemoDeps(message)"
+                      :message="message"
+                      v-bind="messageRenderBindings(message)"
+                      @contextmenu="handleMessageContextMenu"
+                      @continue="handleMessageContinue"
+                      @regenerate="handleMessageRegenerate"
+                    />
+                  </div>
+                </div>
+
+                <!-- Agent task panels -->
+                <div v-if="agentTasks.length > 0" class="px-4">
+                  <AgentTaskPanel
+                    v-for="task in agentTasks"
+                    :key="task.id"
+                    :task="task"
+                    @cancel="cancelAgentTask"
+                    @delete="deleteAgentTask"
+                    @message="sendAgentMessage"
+                    @answer="submitAgentAnswer"
+                  />
+                </div>
+
+                <!-- Context trim indicator (pruning/compaction) -->
+                <Transition name="fade">
+                  <div v-if="showContextTrim" class="flex justify-center py-2">
+                    <div
+                      class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400/70 dark:text-gray-500/70 bg-gray-100/30 dark:bg-gray-800/30 rounded-full"
+                    >
+                      <svg
+                        class="w-3.5 h-3.5 flex-shrink-0"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"
+                        />
+                      </svg>
+                      <span v-if="chatStore.contextTrimInfo?.type === 'pruned'">
+                        {{
+                          t('chat.contextPruned', {
+                            tokens: formatTokens(
+                              (chatStore.contextTrimInfo.tokensBefore ?? 0) -
+                                (chatStore.contextTrimInfo.tokensAfter ?? 0)
+                            ),
+                          })
+                        }}
+                      </span>
+                      <span v-else-if="chatStore.contextTrimInfo?.type === 'compacted'">
+                        {{
+                          t('chat.contextCompacted', {
+                            before: chatStore.contextTrimInfo.before ?? 0,
+                            after: chatStore.contextTrimInfo.after ?? 0,
+                          })
+                        }}
+                      </span>
+                    </div>
+                  </div>
+                </Transition>
+
+                <!-- Stream error display (shown in chat area with gray text) -->
+                <div v-if="chatStore.streamError" class="flex justify-center py-4">
+                  <div
+                    class="flex items-center gap-2 px-4 py-2 text-gray-400 dark:text-gray-500 text-sm"
+                  >
+                    <svg
+                      class="w-4 h-4 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                    <span class="break-all">{{
+                      chatStore.streamError === 'streamEmpty'
+                        ? t('chat.streamEmpty')
+                        : chatStore.streamError === 'streamError'
+                          ? t('chat.streamError')
+                          : chatStore.streamError === 'providerNoResponse'
+                            ? t('chat.providerNoResponse')
+                            : chatStore.streamError === 'providerReturnedEmpty'
+                              ? t('chat.providerReturnedEmpty')
+                              : chatStore.streamError === 'noResponseBody'
+                                ? t('chat.noResponseBody')
+                                : chatStore.streamError === 'trial_service_busy'
+                                  ? t('chat.trialServiceBusy')
+                                  : chatStore.streamError === 'provider_tool_unsupported'
+                                    ? t('chat.providerToolUnsupported')
+                                    : chatStore.streamError === 'provider_unavailable'
+                                      ? t('chat.providerUnavailable')
+                                      : chatStore.streamError === 'provider_auth_error'
+                                        ? t('chat.providerAuthError')
+                                        : chatStore.streamError === 'provider_rate_limited'
+                                          ? t('chat.providerRateLimited')
+                                          : chatStore.streamError ===
+                                              'provider_openrouter_privacy_policy'
+                                            ? t('chat.providerOpenRouterPrivacyPolicy')
+                                            : chatStore.streamError ===
+                                                'execDirectoryApprovalTimeout'
+                                              ? t('chat.execDirectoryApprovalTimeout')
+                                              : chatStore.streamError
+                    }}</span>
+                    <button
+                      class="ml-1 px-2 py-0.5 rounded text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 cursor-pointer transition-colors text-xs"
+                      @click="handleStreamRetry"
+                    >
+                      {{ t('common.retry') }}
+                    </button>
+                    <button
+                      class="text-gray-400 hover:text-gray-300 cursor-pointer"
+                      @click="chatStore.clearStreamError"
+                    >
+                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div v-else-if="chatStore.streamProgress" class="flex justify-center py-3">
+                  <div
+                    class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400/80 dark:text-gray-500/80 bg-gray-100/30 dark:bg-gray-800/30 rounded-full"
+                  >
+                    <svg
+                      class="w-3.5 h-3.5 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M4 12a8 8 0 018-8m8 8a8 8 0 01-8 8"
+                      />
+                    </svg>
+                    <span>{{ chatStore.streamProgress }}</span>
+                  </div>
+                </div>
+
+                <!-- Awaiting-user-input indicator -->
+                <div v-if="showAwaitingConfirmation" class="flex justify-center py-2">
+                  <div
+                    class="flex items-center gap-2 px-3 py-1.5 text-xs text-amber-500 dark:text-amber-300 bg-amber-500/10 rounded-full"
+                  >
+                    <svg
+                      class="w-3.5 h-3.5 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M12 8v4m0 4h.01M7 4h10l3 5v11H4V9l3-5z"
+                      />
+                    </svg>
+                    <span>{{
+                      t('chat.awaitingConfirmation', 'Waiting for your confirmation to continue')
+                    }}</span>
+                  </div>
+                </div>
+
+                <!-- "I'm listening" indicator (shown when pre-TTFT cancel is active) -->
+                <div v-if="chatStore.preTTFTCancelActive" class="flex justify-center py-3">
+                  <div
+                    class="flex items-center gap-2 px-4 py-2 glass-card rounded-lg text-sm text-blue-400"
+                  >
+                    <span class="flex gap-1">
+                      <span
+                        class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce"
+                        style="animation-delay: 0ms"
+                      />
+                      <span
+                        class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce"
+                        style="animation-delay: 150ms"
+                      />
+                      <span
+                        class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce"
+                        style="animation-delay: 300ms"
+                      />
+                    </span>
+                    {{ t('chat.stillListening') }}
+                  </div>
+                </div>
+
+                <!-- Streaming action buttons -->
+                <div
+                  v-if="chatStore.messages.length > 0 && !chatStore.isMultiSelectMode"
+                  class="flex justify-center gap-2 py-4"
+                >
+                  <!-- Stop button (shown during streaming or async tasks) -->
+                  <button
+                    v-if="
+                      chatStore.streaming ||
+                      mediaGen.generating.value ||
+                      agentTasks.some((at) => at.status === 'executing' || at.status === 'planning')
+                    "
+                    class="flex items-center gap-2 px-4 py-2 glass-card text-red-400 hover:bg-red-500/10 rounded-lg text-sm transition-colors cursor-pointer"
+                    @click="handleCancel"
+                  >
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
+                      />
+                    </svg>
+                    {{ t('chat.stopGenerating') }}
+                  </button>
+
+                  <!-- Continue/Regenerate buttons removed — will be replaced by suggested follow-up prompts -->
+                </div>
+              </template>
             </div>
-          </div>
-        </Transition>
-      </Teleport>
 
-      <!-- Multi-select action bar -->
-      <Transition name="slide-up">
-        <div
-          v-if="chatStore.isMultiSelectMode"
-          class="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 glass-card shadow-xl px-4 py-3 flex items-center gap-4"
-        >
-          <span class="text-sm text-gray-600 dark:text-gray-300">
-            {{ chatStore.selectedMessageIds.size }} {{ t('chat.messagesSelected') }}
-          </span>
-          <div class="flex items-center gap-2">
-            <button
-              class="px-3 py-1.5 text-sm bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
-              :disabled="chatStore.selectedMessageIds.size === 0"
-              @click="handleDeleteSelectedMessages"
+            <!-- Context menu -->
+            <Teleport to="body">
+              <!-- Desktop: Floating menu -->
+              <div
+                v-if="showContextMenu && !isMobile"
+                class="context-menu fixed z-[100] glass-card shadow-xl py-1 min-w-[160px]"
+                :style="{ left: `${contextMenuPosition.x}px`, top: `${contextMenuPosition.y}px` }"
+              >
+                <button
+                  class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                  @click="handleContextCopy"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
+                  </svg>
+                  {{ t('chat.copyMessage') }}
+                </button>
+                <button
+                  class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                  @click="handleSelectMessage"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                    />
+                  </svg>
+                  {{ t('chat.selectMessage') }}
+                </button>
+                <!-- Continue / Regenerate — only for last assistant message, not while streaming -->
+                <template v-if="isContextMenuLastAssistant && !chatStore.streaming">
+                  <div class="border-t border-white/10 my-1" />
+                  <button
+                    class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                    @click="handleContextContinue"
+                  >
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                      />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    {{ t('chat.continueGenerating') }}
+                  </button>
+                  <button
+                    class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                    @click="handleContextRegenerate"
+                  >
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                    {{ t('chat.regenerate') }}
+                  </button>
+                </template>
+              </div>
+            </Teleport>
+
+            <!-- Multi-select action bar -->
+            <Transition name="slide-up">
+              <div
+                v-if="chatStore.isMultiSelectMode"
+                class="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 glass-card shadow-xl px-4 py-3 flex items-center gap-4"
+              >
+                <span class="text-sm text-gray-600 dark:text-gray-300">
+                  {{ chatStore.selectedMessageIds.size }} {{ t('chat.messagesSelected') }}
+                </span>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="px-3 py-1.5 text-sm bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                    :disabled="chatStore.selectedMessageIds.size === 0"
+                    @click="handleDeleteSelectedMessages"
+                  >
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                    {{ t('common.delete') }}
+                  </button>
+                  <button
+                    class="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg transition-colors cursor-pointer"
+                    @click="handleCancelSelection"
+                  >
+                    {{ t('common.cancel') }}
+                  </button>
+                </div>
+              </div>
+            </Transition>
+
+            <!-- Error message -->
+            <div
+              v-if="chatStore.error"
+              class="px-3 sm:px-4 py-3 bg-red-500/10 border-t border-red-500/30 text-red-400 text-xs sm:text-sm flex items-center justify-between gap-2"
             >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              {{ t('common.delete') }}
-            </button>
-            <button
-              class="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg transition-colors cursor-pointer"
-              @click="handleCancelSelection"
+              <span class="truncate">{{
+                chatStore.error === 'trial_service_busy'
+                  ? t('chat.trialServiceBusy')
+                  : chatStore.error === 'provider_tool_unsupported'
+                    ? t('chat.providerToolUnsupported')
+                    : chatStore.error === 'provider_unavailable'
+                      ? t('chat.providerUnavailable')
+                      : chatStore.error === 'provider_auth_error'
+                        ? t('chat.providerAuthError')
+                        : chatStore.error === 'provider_rate_limited'
+                          ? t('chat.providerRateLimited')
+                          : chatStore.error === 'provider_openrouter_privacy_policy'
+                            ? t('chat.providerOpenRouterPrivacyPolicy')
+                            : chatStore.error === 'execDirectoryApprovalTimeout'
+                              ? t('chat.execDirectoryApprovalTimeout')
+                              : chatStore.error
+              }}</span>
+              <button
+                class="text-red-400 hover:text-red-300 flex-shrink-0 px-3 py-1 rounded hover:bg-red-500/10 transition-colors cursor-pointer"
+                @click="chatStore.clearError"
+              >
+                {{ t('chat.dismiss') }}
+              </button>
+            </div>
+
+            <!-- Security blocked warning -->
+            <div
+              v-if="chatStore.securityBlocked"
+              class="px-3 sm:px-4 py-3 bg-yellow-500/10 border-t border-yellow-500/30 text-yellow-400 text-xs sm:text-sm flex items-center justify-between gap-2"
             >
-              {{ t('common.cancel') }}
-            </button>
-          </div>
-        </div>
-      </Transition>
+              <div class="flex items-center gap-2">
+                <svg
+                  class="w-4 h-4 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+                <span class="truncate">{{ chatStore.securityBlocked.message }}</span>
+                <span class="text-yellow-500/70 text-xs"
+                  >({{ t('chat.threatLevel') }}: {{ chatStore.securityBlocked.threatLevel }})</span
+                >
+              </div>
+              <button
+                class="text-yellow-400 hover:text-yellow-300 flex-shrink-0 px-3 py-1 rounded hover:bg-yellow-500/10 transition-colors cursor-pointer"
+                @click="chatStore.clearSecurityBlocked"
+              >
+                {{ t('chat.dismissWarning') }}
+              </button>
+            </div>
 
-      <!-- Error message -->
-      <div
-        v-if="chatStore.error"
-        class="px-3 sm:px-4 py-3 bg-red-500/10 border-t border-red-500/30 text-red-400 text-xs sm:text-sm flex items-center justify-between gap-2"
-      >
-        <span class="truncate">{{
-          chatStore.error === 'trial_service_busy' ? t('chat.trialServiceBusy') :
-          chatStore.error === 'provider_tool_unsupported' ? t('chat.providerToolUnsupported') :
-          chatStore.error === 'provider_unavailable' ? t('chat.providerUnavailable') :
-          chatStore.error === 'provider_auth_error' ? t('chat.providerAuthError') :
-          chatStore.error === 'provider_rate_limited' ? t('chat.providerRateLimited') :
-          chatStore.error === 'provider_openrouter_privacy_policy' ? t('chat.providerOpenRouterPrivacyPolicy') :
-          chatStore.error === 'execDirectoryApprovalTimeout' ? t('chat.execDirectoryApprovalTimeout') :
-          chatStore.error
-        }}</span>
-        <button
-          class="text-red-400 hover:text-red-300 flex-shrink-0 px-3 py-1 rounded hover:bg-red-500/10 transition-colors cursor-pointer"
-          @click="chatStore.clearError"
-        >
-          {{ t('chat.dismiss') }}
-        </button>
-      </div>
+            <!-- Trial Exhausted Banner -->
+            <div
+              v-if="chatStore.trialExhausted"
+              class="px-3 sm:px-4 py-3 bg-gray-500/10 border-t border-gray-500/30 text-gray-400 text-xs sm:text-sm flex items-center justify-between gap-2"
+            >
+              <div class="flex items-center gap-2">
+                <svg
+                  class="w-4 h-4 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span>{{ t('chat.trialExhausted') }}</span>
+              </div>
+              <router-link
+                to="/settings?tab=llm"
+                class="text-gray-900 dark:text-white hover:text-gray-900 dark:text-white flex-shrink-0 px-3 py-1 rounded hover:bg-gray-100 dark:bg-gray-600/10 transition-colors"
+              >
+                {{ t('chat.configureProvider') }}
+              </router-link>
+            </div>
 
-      <!-- Security blocked warning -->
-      <div
-        v-if="chatStore.securityBlocked"
-        class="px-3 sm:px-4 py-3 bg-yellow-500/10 border-t border-yellow-500/30 text-yellow-400 text-xs sm:text-sm flex items-center justify-between gap-2"
-      >
-        <div class="flex items-center gap-2">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <span class="truncate">{{ chatStore.securityBlocked.message }}</span>
-          <span class="text-yellow-500/70 text-xs">({{ t('chat.threatLevel') }}: {{ chatStore.securityBlocked.threatLevel }})</span>
-        </div>
-        <button
-          class="text-yellow-400 hover:text-yellow-300 flex-shrink-0 px-3 py-1 rounded hover:bg-yellow-500/10 transition-colors cursor-pointer"
-          @click="chatStore.clearSecurityBlocked"
-        >
-          {{ t('chat.dismissWarning') }}
-        </button>
-      </div>
+            <!-- Input area - floating at bottom (desktop), flex at bottom (mobile) -->
+            <div
+              class="chat-input-dock"
+              :class="
+                isMobile
+                  ? 'flex-shrink-0 border-t border-gray-200 dark:border-glass-border'
+                  : 'flex-shrink-0 border-t border-glass-border'
+              "
+            >
+              <div
+                v-if="hasActiveDeepResearchJobs"
+                class="max-w-5xl mx-auto px-3 sm:px-4 pt-3 pb-2"
+              >
+                <DeepResearchTaskDock @view="handleOpenDeepResearchJob" />
+              </div>
+              <!-- Media generation param panel -->
+              <div v-if="mediaGen.showPanel.value" class="max-w-4xl mx-auto px-3 sm:px-4">
+                <MediaParamPanel
+                  :intent="mediaGen.intent.value!"
+                  :models="mediaGen.models.value"
+                  :selected-model="mediaGen.selectedModel.value"
+                  :generating="mediaGen.generating.value"
+                  :ambiguous="mediaGen.ambiguous.value"
+                  @update:selected-model="mediaGen.selectedModel.value = $event"
+                  @generate="handleMediaGenerate"
+                  @dismiss="handleMediaDismiss"
+                  @close="handleMediaClose"
+                  @confirm="handleMediaConfirm"
+                  @switch-category="mediaGen.switchCategory($event)"
+                />
+              </div>
+              <ChatInput
+                ref="chatInputRef"
+                :disabled="chatStore.sending && !chatStore.isPreTTFT"
+                :streaming="chatStore.streaming"
+                :can-cancel="hasCancelableWork"
+                :routing-status="providerStatus.status"
+                :routing-icon="routingModeInfo.icon"
+                :routing-title="`${t('chat.routingMode.title')} · ${routingModeInfo.label} · ${fixedModelLabel}`"
+                @send="handleSend"
+                @inject="handleInject"
+                @cancel="handleCancel"
+                @cancel-pre-ttft="chatStore.cancelPreTTFT()"
+                @warmup="chatStore.warmupConversation()"
+                @open-talk-mode="showTalkMode = true"
+                @toggle-routing-menu="handleRoutingMenuTrigger"
+              />
+            </div>
+          </section>
 
-      <!-- Trial Exhausted Banner -->
-      <div
-        v-if="chatStore.trialExhausted"
-        class="px-3 sm:px-4 py-3 bg-gray-500/10 border-t border-gray-500/30 text-gray-400 text-xs sm:text-sm flex items-center justify-between gap-2"
-      >
-        <div class="flex items-center gap-2">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>{{ t('chat.trialExhausted') }}</span>
-        </div>
-        <router-link
-          to="/settings?tab=llm"
-          class="text-gray-900 dark:text-white hover:text-gray-900 dark:text-white flex-shrink-0 px-3 py-1 rounded hover:bg-gray-100 dark:bg-gray-600/10 transition-colors"
-        >
-          {{ t('chat.configureProvider') }}
-        </router-link>
-      </div>
-
-      <!-- Input area - floating at bottom (desktop), flex at bottom (mobile) -->
-      <div :class="isMobile ? 'flex-shrink-0 border-t border-gray-200 dark:border-glass-border' : 'absolute bottom-0 left-0 right-0 z-10'">
-        <div v-if="hasActiveDeepResearchJobs" class="max-w-5xl mx-auto px-3 sm:px-4 pt-3 pb-2">
-          <DeepResearchTaskDock @view="handleOpenDeepResearchJob" />
-        </div>
-        <!-- Media generation param panel -->
-        <div v-if="mediaGen.showPanel.value" class="max-w-4xl mx-auto px-3 sm:px-4">
-          <MediaParamPanel
-            :intent="mediaGen.intent.value!"
-            :models="mediaGen.models.value"
-            :selected-model="mediaGen.selectedModel.value"
-            :generating="mediaGen.generating.value"
-            :ambiguous="mediaGen.ambiguous.value"
-            @update:selected-model="mediaGen.selectedModel.value = $event"
-            @generate="handleMediaGenerate"
-            @dismiss="handleMediaDismiss"
-            @close="handleMediaClose"
-            @confirm="handleMediaConfirm"
-            @switch-category="mediaGen.switchCategory($event)"
+          <!-- Talk Mode -->
+          <TalkMode
+            v-model="showTalkMode"
+            :conversation-id="chatStore.currentConversationId || undefined"
+            @transcript="handleVoiceTranscript"
           />
-        </div>
-        <ChatInput
-          ref="chatInputRef"
-          :disabled="chatStore.sending && !chatStore.isPreTTFT"
-          :streaming="chatStore.streaming"
-          :can-cancel="hasCancelableWork"
-          @send="handleSend"
-          @inject="handleInject"
-          @cancel="handleCancel"
-          @cancel-pre-ttft="chatStore.cancelPreTTFT()"
-          @warmup="chatStore.warmupConversation()"
-          @open-talk-mode="showTalkMode = true"
-        />
+        </main>
       </div>
-
-      <!-- Talk Mode -->
-      <TalkMode
-        v-model="showTalkMode"
-        :conversation-id="chatStore.currentConversationId || undefined"
-        @transcript="handleVoiceTranscript"
-      />
-    </main>
+    </div>
 
     <!-- Tool call approval dialog -->
     <ToolApprovalDialog />
@@ -2625,11 +3134,25 @@ onUnmounted(() => {
           class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
           @click.self="showProviderConfigDialog = false"
         >
-          <div class="w-full max-w-sm mx-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden">
+          <div
+            class="w-full max-w-sm mx-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden"
+          >
             <div class="p-6 text-center">
-              <div class="w-14 h-14 mx-auto mb-4 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                <svg class="w-7 h-7 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              <div
+                class="w-14 h-14 mx-auto mb-4 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center"
+              >
+                <svg
+                  class="w-7 h-7 text-amber-600 dark:text-amber-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
               </div>
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
@@ -2638,7 +3161,10 @@ onUnmounted(() => {
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
                 {{ t('chat.noProvider.description') }}
               </p>
-              <p v-if="te('chat.noProvider.draftSaved')" class="text-xs text-gray-500 dark:text-gray-400 mb-6">
+              <p
+                v-if="te('chat.noProvider.draftSaved')"
+                class="text-xs text-gray-500 dark:text-gray-400 mb-6"
+              >
                 {{ t('chat.noProvider.draftSaved') }}
               </p>
               <div class="flex gap-3">
@@ -2650,7 +3176,7 @@ onUnmounted(() => {
                 </button>
                 <button
                   class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
-                  @click="showProviderConfigDialog = false; router.push('/settings?tab=llm')"
+                  @click="handleOpenProviderSettings"
                 >
                   {{ t('chat.noProvider.configure') }}
                 </button>
@@ -2674,28 +3200,34 @@ onUnmounted(() => {
 }
 
 .chat-view {
-  --ct-border-soft: rgba(148, 163, 184, 0.22);
-  --ct-border-strong: rgba(56, 189, 248, 0.55);
-  --ct-chip-bg: rgba(15, 23, 42, 0.12);
-  --ui-gap: 0.5rem;
-  --ui-chip-h: 2rem;
-  --ui-icon-size: 2rem;
-  --ui-radius: 0.5rem;
+  --chat-pane-pad-x: 1rem;
+  --chat-pane-pad-y: 0.96rem;
+  --ct-border-soft: rgba(148, 163, 184, 0.3);
+  --ct-border-strong: rgba(59, 130, 246, 0.45);
+  --ct-chip-bg: rgba(255, 255, 255, 0.84);
+  --ui-gap: 0.34rem;
+  --ui-chip-h: 1.7rem;
+  --ui-icon-size: 1.72rem;
+  --ui-radius: 0.4rem;
   min-height: 0;
   flex: 1;
   height: 100%;
   overflow: hidden;
-  background: radial-gradient(circle at 20% -20%, rgba(14, 165, 233, 0.16), transparent 42%), radial-gradient(circle at 100% 0%, rgba(20, 184, 166, 0.12), transparent 36%), var(--color-bg-base);
+  background: transparent;
 }
 
 .chat-view.ui-density-compact {
+  --chat-pane-pad-x: 0.82rem;
+  --chat-pane-pad-y: 0.78rem;
   --ui-gap: 0.35rem;
-  --ui-chip-h: 1.8rem;
-  --ui-icon-size: 1.8rem;
-  --ui-radius: 0.45rem;
+  --ui-chip-h: 1.58rem;
+  --ui-icon-size: 1.6rem;
+  --ui-radius: 0.36rem;
 }
 
 .chat-view.ui-density-comfortable {
+  --chat-pane-pad-x: 1.12rem;
+  --chat-pane-pad-y: 1.02rem;
   --ui-gap: 0.65rem;
   --ui-chip-h: 2.2rem;
   --ui-icon-size: 2.2rem;
@@ -2703,27 +3235,20 @@ onUnmounted(() => {
 }
 
 .chat-view::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
-  background-size: 28px 28px;
-  opacity: 0.25;
-  pointer-events: none;
-  z-index: 0;
+  content: none;
 }
 
-:root.light .chat-view,
-[data-theme="light"] .chat-view {
-  --ct-border-soft: rgba(148, 163, 184, 0.35);
-  --ct-border-strong: rgba(2, 132, 199, 0.45);
-  --ct-chip-bg: rgba(255, 255, 255, 0.72);
-  background: radial-gradient(circle at 15% -15%, rgba(14, 165, 233, 0.12), transparent 40%), radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.1), transparent 34%), #f8fbff;
+:root.dark .chat-view,
+[data-theme='dark'] .chat-view {
+  --ct-border-soft: rgba(71, 85, 105, 0.42);
+  --ct-border-strong: rgba(56, 189, 248, 0.56);
+  --ct-chip-bg: rgba(15, 23, 42, 0.48);
+  background: transparent;
 }
 
-:root.light .chat-view::before,
-[data-theme="light"] .chat-view::before {
-  opacity: 0.4;
+:root.dark .chat-view::before,
+[data-theme='dark'] .chat-view::before {
+  content: none;
 }
 
 .conversation-sidebar,
@@ -2734,23 +3259,140 @@ header,
   z-index: 1;
 }
 
-.glass-sidebar {
-  background: var(--chat-sidebar-bg, rgba(15, 23, 42, 0.82));
-  backdrop-filter: blur(18px);
+.chat-desktop-shell {
+  height: 100%;
 }
 
-.glass-header {
-  background: rgba(15, 23, 42, 0.74);
-  backdrop-filter: blur(14px);
+.chat-workspace {
+  min-height: 0;
+}
+
+.chat-desktop-shell .chat-workspace {
+  border: 1px solid rgba(186, 203, 223, 0.78);
+  border-radius: 1.55rem;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 24px 40px -34px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+}
+
+.chat-body-shell {
+  min-height: 0;
+  position: relative;
+}
+
+.chat-main-shell {
+  background: transparent;
 }
 
 .chat-sidebar-shell {
-  box-shadow: inset -1px 0 0 var(--chat-sidebar-border-soft, rgba(148, 163, 184, 0.22)), 14px 0 26px rgba(2, 6, 23, 0.16);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.chat-desktop-shell .chat-sidebar-shell {
+  border-right: 1px solid rgba(226, 232, 240, 0.92);
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.chat-page-header {
+  position: relative;
+  z-index: 3;
+  padding: 0 1.2rem 0 1.35rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.chat-page-header::after {
+  content: none;
+}
+
+.chat-page-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 3.7rem;
+}
+
+.chat-page-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-width: 0;
+}
+
+.chat-page-title {
+  font-size: clamp(1.15rem, 1.15vw, 1.45rem);
+  line-height: 1.08;
+  font-weight: 760;
+  letter-spacing: -0.035em;
+}
+
+.chat-thread-shell-desktop {
+  overflow: hidden;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.chat-thread-header {
+  padding: 0.95rem 1.5rem;
+  background: transparent;
+}
+
+.chat-thread-title {
+  font-size: clamp(1.08rem, 1.15vw, 1.34rem);
+  line-height: 1.18;
+  font-weight: 720;
+  letter-spacing: -0.028em;
+}
+
+.chat-thread-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 0.7rem;
+}
+
+.chat-thread-detail-btn {
+  min-height: 2.1rem;
+  padding: 0 0.88rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.88);
+  color: rgb(71, 85, 105);
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.chat-thread-detail-btn:hover {
+  border-color: rgba(125, 211, 252, 0.38);
+  background: rgba(248, 250, 252, 0.98);
+  color: rgb(51, 65, 85);
+}
+
+.chat-thread-detail-btn.is-active {
+  border-color: rgba(56, 189, 248, 0.48);
+  background: rgba(224, 242, 254, 0.92);
+  color: rgb(3, 105, 161);
+  box-shadow:
+    inset 0 0 0 1px rgba(186, 230, 253, 0.78),
+    0 10px 22px -20px rgba(14, 165, 233, 0.42);
 }
 
 .chat-topbar {
-  background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.52), rgba(15, 23, 42, 0.28));
-  box-shadow: 0 8px 22px rgba(2, 6, 23, 0.18);
+  --chat-header-pad-x: var(--chat-pane-pad-x);
+  --chat-header-pad-y: var(--chat-pane-pad-y);
+  padding: var(--chat-header-pad-y) var(--chat-header-pad-x);
+  gap: 0.85rem;
+  min-height: 5rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(249, 250, 251, 0.95));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: none;
   overflow: visible;
 }
 
@@ -2761,51 +3403,66 @@ header,
   right: 0;
   bottom: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.4), transparent);
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.3), transparent);
   pointer-events: none;
 }
 
 .chat-topbar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(110deg, transparent 0%, rgba(125, 211, 252, 0.08) 42%, transparent 70%);
-  transform: translateX(-120%);
-  animation: topbar-sheen 6s ease-in-out infinite;
-  pointer-events: none;
+  content: none;
 }
 
 .chat-title-wrap {
   position: relative;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.chat-title-stack {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.34rem;
+}
+
+.chat-section-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(100, 116, 139);
 }
 
 .chat-title {
-  letter-spacing: 0.01em;
-  text-shadow: 0 1px 0 rgba(2, 6, 23, 0.12);
+  font-size: clamp(1.12rem, 1.25vw, 1.5rem);
+  line-height: 1.18;
+  font-weight: 720;
+  letter-spacing: -0.03em;
+  text-shadow: none;
 }
 
 .chat-title::before {
-  content: '';
-  display: inline-block;
-  width: 0.38rem;
-  height: 0.38rem;
-  margin-right: 0.55rem;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #38bdf8, #2dd4bf);
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
-  vertical-align: middle;
+  content: none;
 }
 
 .chat-nav-btn,
-.topbar-icon-btn,
+.topbar-icon-btn {
+  padding: 0.45rem;
+  border: 1px solid transparent;
+}
+
 .topbar-chip {
+  padding: 0.45rem;
   border: 1px solid transparent;
 }
 
 .chat-nav-btn:hover,
 .topbar-icon-btn:hover {
   border-color: rgba(148, 163, 184, 0.3);
-  transform: translateY(-1px);
+  background: rgba(241, 245, 249, 0.74);
 }
 
 .topbar-chip {
@@ -2818,22 +3475,25 @@ header,
 
 .topbar-chip:hover {
   border-color: rgba(125, 211, 252, 0.42);
-  transform: translateY(-1px);
 }
 
 .chat-tools {
   margin-left: auto;
   justify-content: flex-end;
-  padding-left: calc(var(--ui-gap) * 0.5);
+  align-self: stretch;
+  padding-left: 0.95rem;
+  margin-left: 0.95rem;
   border-left: 1px solid rgba(148, 163, 184, 0.16);
-  gap: var(--ui-gap);
+  gap: 0.55rem;
 }
 
 .topbar-icon-btn {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  min-width: var(--ui-icon-size);
-  min-height: var(--ui-icon-size);
-  border-radius: var(--ui-radius);
+  box-shadow: none;
+  background: transparent;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  border-radius: 0.9rem;
+  border-color: transparent;
 }
 
 .topbar-icon-btn:active,
@@ -2846,37 +3506,284 @@ header,
 .topbar-chip:focus-visible,
 .chat-nav-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+  box-shadow: 0 0 0 1.5px rgba(56, 189, 248, 0.32);
   border-color: var(--ct-border-strong);
 }
 
+.topbar-icon-btn.topbar-icon-active {
+  border-color: rgba(125, 211, 252, 0.3);
+  background: rgba(241, 245, 249, 0.56);
+}
+
+.topbar-icon-btn.topbar-icon-active-research {
+  color: rgb(6, 120, 95);
+}
+
+.topbar-icon-btn.topbar-icon-active-agent {
+  color: rgb(29, 78, 216);
+}
+
+.topbar-icon-btn.topbar-icon-active-tools {
+  color: rgb(3, 105, 161);
+}
+
+.chat-mode-pill {
+  min-height: 2.1rem;
+  padding-inline: 0.82rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(248, 250, 252, 0.7);
+  color: rgb(71, 85, 105);
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.topbar-hover-tooltip {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: max-content;
+  max-width: min(18rem, calc(100vw - 1rem));
+  border-radius: 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(31, 41, 55, 0.98);
+  padding: 0.6rem 0.75rem;
+  color: rgb(255, 255, 255);
+  font-size: 0.76rem;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.22);
+  z-index: 20010;
+}
+
+.chat-mode-pill.chat-mode-pill-enabled {
+  border-color: rgba(16, 185, 129, 0.24);
+  background: rgba(236, 253, 245, 0.64);
+  color: rgb(5, 150, 105);
+}
+
+.chat-mode-pill.chat-mode-pill-muted:hover {
+  border-color: rgba(148, 163, 184, 0.34);
+  background: rgba(241, 245, 249, 0.86);
+}
+
+.chat-mode-pill.chat-mode-pill-tools {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.88);
+  color: rgb(71, 85, 105);
+}
+
+.chat-mode-pill.chat-mode-pill-tools:hover {
+  border-color: rgba(125, 211, 252, 0.34);
+  background: rgba(248, 250, 252, 0.98);
+  color: rgb(51, 65, 85);
+}
+
+.chat-mode-pill.chat-mode-pill-tools.is-active {
+  border-color: rgba(56, 189, 248, 0.46);
+  background: rgba(239, 246, 255, 0.96);
+  color: rgb(3, 105, 161);
+}
+
 .bg-surface-base {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.08), transparent 32%);
+  background: transparent;
+}
+
+.chat-messages-area {
+  scroll-padding-top: 1rem;
+  scroll-padding-bottom: 9.75rem;
+  padding-inline: clamp(0.45rem, 1.3vw, 1.2rem);
+}
+
+.chat-thread-shell-desktop .chat-messages-area {
+  scroll-padding-bottom: 1.5rem;
+}
+
+.chat-input-dock {
+  background: transparent;
 }
 
 .border-glass-border {
-  border-color: rgba(148, 163, 184, 0.22);
+  border-color: rgba(186, 203, 223, 0.76);
 }
 
-:root.light .glass-sidebar,
-[data-theme="light"] .glass-sidebar {
-  background: var(--chat-sidebar-bg, rgba(255, 255, 255, 0.95));
+:root.dark .chat-desktop-shell,
+[data-theme='dark'] .chat-desktop-shell {
+  background: transparent;
 }
 
-:root.light .glass-header,
-[data-theme="light"] .glass-header {
-  background: rgba(255, 255, 255, 0.93);
+:root.dark .chat-desktop-shell .chat-workspace,
+[data-theme='dark'] .chat-desktop-shell .chat-workspace {
+  border-color: rgba(71, 85, 105, 0.78);
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 28px 44px -34px rgba(2, 6, 23, 0.72);
 }
 
-:root.light .chat-sidebar-shell,
-[data-theme="light"] .chat-sidebar-shell {
-  box-shadow: inset -1px 0 0 var(--chat-sidebar-border-soft, rgba(186, 203, 223, 0.65)), 10px 0 20px rgba(30, 41, 59, 0.08);
+:root.dark .chat-main-shell,
+[data-theme='dark'] .chat-main-shell {
+  background: transparent;
 }
 
-:root.light .chat-topbar,
-[data-theme="light"] .chat-topbar {
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.93), rgba(248, 250, 252, 0.8));
-  box-shadow: 0 8px 20px rgba(30, 41, 59, 0.08);
+:root.dark .chat-sidebar-shell,
+[data-theme='dark'] .chat-sidebar-shell {
+  background: transparent;
+}
+
+:root.dark .chat-desktop-shell .chat-sidebar-shell,
+[data-theme='dark'] .chat-desktop-shell .chat-sidebar-shell {
+  border-right-color: rgba(71, 85, 105, 0.76);
+  background: rgba(15, 23, 42, 0.78);
+}
+
+:root.dark .chat-page-header,
+[data-theme='dark'] .chat-page-header {
+  border-bottom-color: rgba(71, 85, 105, 0.76);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+:root.dark .chat-topbar,
+[data-theme='dark'] .chat-topbar {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.93), rgba(15, 23, 42, 0.86));
+  box-shadow: none;
+}
+
+:root.dark .chat-page-header::after,
+[data-theme='dark'] .chat-page-header::after {
+  content: none;
+}
+
+:root.dark .chat-thread-shell-desktop,
+[data-theme='dark'] .chat-thread-shell-desktop {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+:root.dark .chat-thread-header,
+[data-theme='dark'] .chat-thread-header {
+  background: transparent;
+}
+
+:root.dark .bg-surface-base,
+[data-theme='dark'] .bg-surface-base {
+  background: transparent;
+}
+
+:root.dark .chat-input-dock,
+[data-theme='dark'] .chat-input-dock {
+  background: transparent;
+}
+
+:root.dark .topbar-icon-btn,
+[data-theme='dark'] .topbar-icon-btn {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+:root.dark .chat-nav-btn:hover,
+:root.dark .topbar-icon-btn:hover,
+[data-theme='dark'] .chat-nav-btn:hover,
+[data-theme='dark'] .topbar-icon-btn:hover {
+  background: rgba(30, 41, 59, 0.74);
+  border-color: rgba(100, 116, 139, 0.5);
+}
+
+:root.dark .topbar-icon-btn.topbar-icon-active,
+[data-theme='dark'] .topbar-icon-btn.topbar-icon-active {
+  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(8, 47, 73, 0.3);
+}
+
+:root.dark .topbar-icon-btn.topbar-icon-active-research,
+[data-theme='dark'] .topbar-icon-btn.topbar-icon-active-research {
+  color: rgb(134, 239, 172);
+}
+
+:root.dark .topbar-icon-btn.topbar-icon-active-agent,
+[data-theme='dark'] .topbar-icon-btn.topbar-icon-active-agent {
+  color: rgb(125, 211, 252);
+}
+
+:root.dark .topbar-icon-btn.topbar-icon-active-tools,
+[data-theme='dark'] .topbar-icon-btn.topbar-icon-active-tools {
+  color: rgb(103, 232, 249);
+}
+
+:root.dark .chat-mode-pill,
+[data-theme='dark'] .chat-mode-pill {
+  border-color: rgba(71, 85, 105, 0.48);
+  background: rgba(30, 41, 59, 0.52);
+  color: rgb(148, 163, 184);
+}
+
+:root.dark .chat-thread-detail-btn,
+[data-theme='dark'] .chat-thread-detail-btn {
+  border-color: rgba(71, 85, 105, 0.58);
+  background: rgba(30, 41, 59, 0.76);
+  color: rgb(203, 213, 225);
+}
+
+:root.dark .chat-thread-detail-btn:hover,
+[data-theme='dark'] .chat-thread-detail-btn:hover {
+  border-color: rgba(100, 116, 139, 0.68);
+  background: rgba(30, 41, 59, 0.96);
+  color: rgb(241, 245, 249);
+}
+
+:root.dark .chat-thread-detail-btn.is-active,
+[data-theme='dark'] .chat-thread-detail-btn.is-active {
+  border-color: rgba(56, 189, 248, 0.58);
+  background: rgba(8, 47, 73, 0.92);
+  color: rgb(125, 211, 252);
+  box-shadow:
+    inset 0 0 0 1px rgba(14, 165, 233, 0.28),
+    0 12px 24px -22px rgba(14, 165, 233, 0.42);
+}
+
+:root.dark .topbar-hover-tooltip,
+[data-theme='dark'] .topbar-hover-tooltip {
+  border-color: rgba(71, 85, 105, 0.76);
+  background: rgba(15, 23, 42, 0.98);
+  color: rgb(241, 245, 249);
+  box-shadow: 0 22px 40px rgba(2, 6, 23, 0.42);
+}
+
+:root.dark .chat-mode-pill.chat-mode-pill-enabled,
+[data-theme='dark'] .chat-mode-pill.chat-mode-pill-enabled {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(6, 78, 59, 0.24);
+  color: rgb(110, 231, 183);
+}
+
+:root.dark .chat-mode-pill.chat-mode-pill-tools,
+[data-theme='dark'] .chat-mode-pill.chat-mode-pill-tools {
+  border-color: rgba(71, 85, 105, 0.58);
+  background: rgba(30, 41, 59, 0.62);
+  color: rgb(203, 213, 225);
+}
+
+:root.dark .chat-mode-pill.chat-mode-pill-tools:hover,
+[data-theme='dark'] .chat-mode-pill.chat-mode-pill-tools:hover {
+  border-color: rgba(100, 116, 139, 0.68);
+  background: rgba(30, 41, 59, 0.92);
+  color: rgb(241, 245, 249);
+}
+
+:root.dark .chat-mode-pill.chat-mode-pill-tools.is-active,
+[data-theme='dark'] .chat-mode-pill.chat-mode-pill-tools.is-active {
+  border-color: rgba(56, 189, 248, 0.46);
+  background: rgba(8, 47, 73, 0.38);
+  color: rgb(103, 232, 249);
+}
+
+:root.dark .chat-section-label,
+[data-theme='dark'] .chat-section-label {
+  color: rgb(148, 163, 184);
 }
 
 .quick-action-tile {
@@ -2885,7 +3792,11 @@ header,
   border-radius: 0.9rem;
   padding: 0.75rem;
   text-align: left;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease;
 }
 
 .quick-action-tile:active {
@@ -2911,34 +3822,34 @@ header,
 }
 
 :root.dark .quick-action-tile,
-[data-theme="dark"] .quick-action-tile {
+[data-theme='dark'] .quick-action-tile {
   background: rgba(30, 41, 59, 0.92);
   border-color: rgba(100, 116, 139, 0.45);
 }
 
 :root.dark .quick-action-tile.is-active,
-[data-theme="dark"] .quick-action-tile.is-active {
+[data-theme='dark'] .quick-action-tile.is-active {
   border-color: rgba(56, 189, 248, 0.62);
   background: rgba(15, 23, 42, 0.94);
   box-shadow: 0 8px 18px rgba(2, 132, 199, 0.22);
 }
 
 :root.dark .quick-action-pill,
-[data-theme="dark"] .quick-action-pill {
+[data-theme='dark'] .quick-action-pill {
   color: rgb(203, 213, 225);
   background: rgba(51, 65, 85, 0.88);
 }
 
 .routing-trigger-btn {
   color: rgb(71, 85, 105);
-  border-color: transparent;
-  background: transparent;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border-color: rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
 .routing-trigger-btn:hover {
   border-color: rgba(148, 163, 184, 0.35);
-  background: rgba(241, 245, 249, 0.95);
+  background: rgba(241, 245, 249, 0.98);
   color: rgb(51, 65, 85);
 }
 
@@ -2961,36 +3872,38 @@ header,
 }
 
 :root.dark .routing-trigger-btn,
-[data-theme="dark"] .routing-trigger-btn {
+[data-theme='dark'] .routing-trigger-btn {
   color: rgb(148, 163, 184);
-  border-color: transparent;
-  background: transparent;
-  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.12), 0 1px 3px rgba(2, 6, 23, 0.45);
+  border-color: rgba(71, 85, 105, 0.58);
+  background: rgba(15, 23, 42, 0.74);
+  box-shadow:
+    inset 0 1px 0 rgba(148, 163, 184, 0.12),
+    0 1px 3px rgba(2, 6, 23, 0.45);
 }
 
 :root.dark .routing-trigger-btn:hover,
-[data-theme="dark"] .routing-trigger-btn:hover {
+[data-theme='dark'] .routing-trigger-btn:hover {
   color: rgb(226, 232, 240);
   border-color: rgba(100, 116, 139, 0.48);
   background: rgba(30, 41, 59, 0.92);
 }
 
 :root.dark .routing-trigger-btn.is-error,
-[data-theme="dark"] .routing-trigger-btn.is-error {
+[data-theme='dark'] .routing-trigger-btn.is-error {
   color: rgb(252, 165, 165);
   border-color: rgba(248, 113, 113, 0.58);
   background: rgba(69, 10, 10, 0.42);
 }
 
 :root.dark .routing-trigger-btn.is-pending,
-[data-theme="dark"] .routing-trigger-btn.is-pending {
+[data-theme='dark'] .routing-trigger-btn.is-pending {
   color: rgb(253, 224, 71);
   border-color: rgba(250, 204, 21, 0.54);
   background: rgba(113, 63, 18, 0.42);
 }
 
 :root.dark .routing-trigger-btn.is-none,
-[data-theme="dark"] .routing-trigger-btn.is-none {
+[data-theme='dark'] .routing-trigger-btn.is-none {
   color: rgb(203, 213, 225);
   border-color: rgba(100, 116, 139, 0.55);
   background: rgba(30, 41, 59, 0.92);
@@ -3007,7 +3920,11 @@ header,
   background: #fff;
   padding: 0.68rem 0.72rem;
   color: rgb(31, 41, 55);
-  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
 }
 
 .routing-option-row:hover {
@@ -3173,7 +4090,7 @@ header,
 }
 
 :root.dark .routing-menu-floating,
-[data-theme="dark"] .routing-menu-floating {
+[data-theme='dark'] .routing-menu-floating {
   background: rgb(15, 23, 42);
   border-color: rgba(100, 116, 139, 0.72);
   box-shadow: 0 22px 54px rgba(2, 6, 23, 0.62);
@@ -3181,137 +4098,170 @@ header,
 }
 
 :root.dark .routing-sheet-panel,
-[data-theme="dark"] .routing-sheet-panel {
+[data-theme='dark'] .routing-sheet-panel {
   background: rgb(15, 23, 42);
   border-top-color: rgba(100, 116, 139, 0.5);
   box-shadow: 0 -16px 40px rgba(2, 6, 23, 0.72);
 }
 
 :root.dark .routing-option-row,
-[data-theme="dark"] .routing-option-row {
+[data-theme='dark'] .routing-option-row {
   border-color: rgba(71, 85, 105, 0.75);
   background: rgba(30, 41, 59, 0.96);
   color: rgb(226, 232, 240);
 }
 
 :root.dark .routing-option-row:hover,
-[data-theme="dark"] .routing-option-row:hover {
+[data-theme='dark'] .routing-option-row:hover {
   border-color: rgba(56, 189, 248, 0.42);
   background: rgba(30, 41, 59, 1);
 }
 
 :root.dark .routing-option-row.is-active,
-[data-theme="dark"] .routing-option-row.is-active {
+[data-theme='dark'] .routing-option-row.is-active {
   border-color: rgba(56, 189, 248, 0.66);
   background: rgba(8, 47, 73, 0.72);
 }
 
 :root.dark .routing-option-icon,
-[data-theme="dark"] .routing-option-icon {
+[data-theme='dark'] .routing-option-icon {
   color: rgb(148, 163, 184);
 }
 
 :root.dark .routing-option-title,
-[data-theme="dark"] .routing-option-title {
+[data-theme='dark'] .routing-option-title {
   color: rgb(241, 245, 249);
 }
 
 :root.dark .routing-option-desc,
-[data-theme="dark"] .routing-option-desc {
+[data-theme='dark'] .routing-option-desc {
   color: rgb(148, 163, 184);
 }
 
 :root.dark .routing-option-count,
-[data-theme="dark"] .routing-option-count {
+[data-theme='dark'] .routing-option-count {
   color: rgb(134, 239, 172);
   background: rgba(6, 78, 59, 0.78);
 }
 
 :root.dark .routing-option-status-chip,
-[data-theme="dark"] .routing-option-status-chip {
+[data-theme='dark'] .routing-option-status-chip {
   color: rgb(186, 230, 253);
   background: rgba(12, 74, 110, 0.82);
 }
 
 :root.dark .routing-strategy-chip,
-[data-theme="dark"] .routing-strategy-chip {
+[data-theme='dark'] .routing-strategy-chip {
   border-color: rgba(71, 85, 105, 0.8);
   color: rgb(203, 213, 225);
   background: rgba(30, 41, 59, 0.95);
 }
 
 :root.dark .routing-strategy-chip.is-active-ha,
-[data-theme="dark"] .routing-strategy-chip.is-active-ha {
+[data-theme='dark'] .routing-strategy-chip.is-active-ha {
   color: rgb(186, 230, 253);
   border-color: rgba(56, 189, 248, 0.68);
   background: rgba(12, 74, 110, 0.52);
 }
 
 :root.dark .routing-strategy-chip.is-active-fixed,
-[data-theme="dark"] .routing-strategy-chip.is-active-fixed {
+[data-theme='dark'] .routing-strategy-chip.is-active-fixed {
   color: rgb(167, 243, 208);
   border-color: rgba(16, 185, 129, 0.66);
   background: rgba(6, 78, 59, 0.5);
 }
 
 :root.dark .routing-model-row,
-[data-theme="dark"] .routing-model-row {
+[data-theme='dark'] .routing-model-row {
   border-color: rgba(71, 85, 105, 0.75);
   color: rgb(226, 232, 240);
   background: rgba(30, 41, 59, 0.95);
 }
 
 :root.dark .routing-model-row.is-selected,
-[data-theme="dark"] .routing-model-row.is-selected {
+[data-theme='dark'] .routing-model-row.is-selected {
   border-color: rgba(16, 185, 129, 0.66);
   background: rgba(6, 78, 59, 0.5);
 }
 
 :root.dark .routing-manage-row:hover,
-[data-theme="dark"] .routing-manage-row:hover {
+[data-theme='dark'] .routing-manage-row:hover {
   background: rgba(30, 41, 59, 0.92);
 }
 
 :root.light .chat-title::before,
-[data-theme="light"] .chat-title::before {
+[data-theme='light'] .chat-title::before {
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
 }
 
 :root.light .chat-nav-btn:hover,
 :root.light .topbar-icon-btn:hover,
-[data-theme="light"] .chat-nav-btn:hover,
-[data-theme="light"] .topbar-icon-btn:hover {
+[data-theme='light'] .chat-nav-btn:hover,
+[data-theme='light'] .topbar-icon-btn:hover {
   border-color: rgba(148, 163, 184, 0.35);
 }
 
 :root.light .topbar-chip,
-[data-theme="light"] .topbar-chip {
+[data-theme='light'] .topbar-chip {
   border-color: var(--ct-border-soft);
   background: var(--ct-chip-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 :root.light .topbar-icon-btn,
-[data-theme="light"] .topbar-icon-btn {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+[data-theme='light'] .topbar-icon-btn {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 :root.light .chat-tools,
-[data-theme="light"] .chat-tools {
+[data-theme='light'] .chat-tools {
   border-left-color: rgba(148, 163, 184, 0.22);
 }
 
 :root.light .bg-surface-base,
-[data-theme="light"] .bg-surface-base {
-  background: linear-gradient(180deg, rgba(236, 246, 255, 0.75), rgba(255, 255, 255, 0.7) 32%, rgba(255, 255, 255, 0.35));
+[data-theme='light'] .bg-surface-base {
+  background: transparent;
+}
+
+:root.light .chat-input-dock,
+[data-theme='light'] .chat-input-dock {
+  background: transparent;
 }
 
 :root.light .border-glass-border,
-[data-theme="light"] .border-glass-border {
+[data-theme='light'] .border-glass-border {
   border-color: rgba(186, 203, 223, 0.65);
 }
 
+@media (max-width: 1024px) {
+  .chat-page-header {
+    padding-inline: 1rem;
+  }
+
+  .chat-thread-header {
+    padding-inline: 1rem;
+  }
+}
+
 @media (max-width: 640px) {
+  .chat-topbar {
+    --chat-header-pad-x: 0.82rem;
+    --chat-header-pad-y: 0.72rem;
+    min-height: auto;
+  }
+
+  .chat-title-stack {
+    gap: 0.22rem;
+  }
+
+  .chat-section-label {
+    font-size: 0.68rem;
+  }
+
+  .chat-title {
+    font-size: 1rem;
+  }
+
   .chat-tools {
     margin-left: 0;
     padding-left: 0.1rem;
@@ -3348,166 +4298,15 @@ header,
   }
 }
 
-/* Theme style presets */
-.theme-style-btn {
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-}
-
-.theme-style-btn-default {
-  background: linear-gradient(135deg, #0ea5e9, #14b8a6);
-}
-
-.theme-style-btn-bubble {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-}
-
-.theme-style-btn-minimal {
-  background: linear-gradient(135deg, #64748b, #94a3b8);
-}
-
-.theme-style-btn-gradient {
-  background: linear-gradient(135deg, #f43f5e, #f59e0b, #22c55e);
-}
-
-.theme-style-btn-ocean {
-  background: linear-gradient(135deg, #0ea5e9, #0284c7, #0369a1);
-}
-
-.chat-view.theme-style-bubble :deep(.chat-user-bubble) {
-  border-radius: 1.1rem 1.1rem 0.45rem 1.1rem;
-  background: var(--chat-user-bg);
-  box-shadow: 0 12px 24px rgba(139, 92, 246, 0.24);
-}
-
-.chat-view.theme-style-bubble {
-  background: radial-gradient(circle at 8% -18%, rgba(139, 92, 246, 0.28), transparent 36%), radial-gradient(circle at 100% 0%, rgba(236, 72, 153, 0.22), transparent 34%), #121426;
-}
-
-:root.light .chat-view.theme-style-bubble,
-[data-theme="light"] .chat-view.theme-style-bubble {
-  background: radial-gradient(circle at 8% -18%, rgba(139, 92, 246, 0.18), transparent 36%), radial-gradient(circle at 100% 0%, rgba(236, 72, 153, 0.14), transparent 34%), #fdf4ff;
-}
-
-.chat-view.theme-style-bubble :deep(.assistant-message) {
-  border-radius: 1.1rem;
-  background: var(--chat-assistant-bg);
-  border: var(--chat-assistant-border);
-}
-
-.chat-view.theme-style-bubble :deep(.avatar) {
-  background: var(--chat-avatar-bg);
-}
-
-.chat-view.theme-style-bubble :deep(.chat-input-container) {
-  border-color: rgba(192, 132, 252, 0.4);
-}
-
-.chat-view.theme-style-bubble :deep(.chat-textarea:focus) {
-  border-color: rgba(168, 85, 247, 0.5);
-  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.16);
-}
-
-.chat-view.theme-style-minimal::before {
-  display: none;
-}
-
-.chat-view.theme-style-minimal {
-  background: var(--color-bg-base);
-}
-
-:root.light .chat-view.theme-style-minimal,
-[data-theme="light"] .chat-view.theme-style-minimal {
-  background: #f8fafc;
-}
-
-.chat-view.theme-style-minimal :deep(.glass-header),
-.chat-view.theme-style-minimal :deep(.glass-sidebar) {
-  backdrop-filter: none;
-}
-
-.chat-view.theme-style-minimal :deep(.chat-user-bubble) {
-  background: var(--chat-user-bg);
-  color: var(--chat-user-text);
-  border: var(--chat-user-border);
-  box-shadow: none;
-  border-radius: 0.75rem;
-}
-
-.chat-view.theme-style-minimal :deep(.assistant-message) {
-  background: transparent;
-  box-shadow: none;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-}
-
-:root.light .chat-view.theme-style-minimal :deep(.chat-user-bubble),
-[data-theme="light"] .chat-view.theme-style-minimal :deep(.chat-user-bubble) {
-  background: var(--chat-user-bg);
-  color: var(--chat-user-text);
-  border: var(--chat-user-border);
-}
-
-:root.light .chat-view.theme-style-minimal :deep(.assistant-message),
-[data-theme="light"] .chat-view.theme-style-minimal :deep(.assistant-message) {
-  background: #ffffff;
-}
-
-.chat-view.theme-style-gradient {
-  background: radial-gradient(circle at -10% -20%, rgba(244, 63, 94, 0.2), transparent 36%), radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.18), transparent 34%), radial-gradient(circle at 100% 100%, rgba(34, 197, 94, 0.14), transparent 42%), var(--color-bg-base);
-}
-
-.chat-view.theme-style-gradient :deep(.chat-user-bubble) {
-  background: linear-gradient(135deg, #f43f5e, #f59e0b);
-  box-shadow: 0 12px 24px rgba(244, 63, 94, 0.26);
-}
-
-.chat-view.theme-style-gradient :deep(.avatar) {
-  background: linear-gradient(135deg, #f97316, #22c55e);
-}
-
-.chat-view.theme-style-gradient :deep(.assistant-message) {
-  border-color: rgba(251, 191, 36, 0.26);
-}
-
-.chat-view.theme-style-gradient :deep(.chat-textarea:focus) {
-  border-color: rgba(244, 114, 182, 0.5);
-  box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.16);
-}
-
-.chat-view.theme-style-ocean {
-  background: radial-gradient(circle at 15% -20%, rgba(56, 189, 248, 0.24), transparent 40%), radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.18), transparent 36%), #12314a;
-}
-
-:root.light .chat-view.theme-style-ocean,
-[data-theme="light"] .chat-view.theme-style-ocean {
-  background: radial-gradient(circle at 15% -20%, rgba(14, 116, 144, 0.12), transparent 38%), radial-gradient(circle at 100% 0%, rgba(14, 165, 233, 0.14), transparent 34%), #f0f9ff;
-}
-
-.chat-view.theme-style-ocean :deep(.chat-user-bubble) {
-  background: linear-gradient(135deg, #0284c7, #0369a1);
-}
-
-.chat-view.theme-style-ocean :deep(.assistant-message) {
-  background: var(--chat-assistant-bg);
-  border: var(--chat-assistant-border);
-}
-
-.chat-view.theme-style-ocean :deep(.avatar) {
-  background: linear-gradient(135deg, #0284c7, #0ea5e9);
-}
-
 /* Mobile view styles */
 .mobile-view {
   position: fixed;
   inset: 0;
   z-index: 10;
-  background: var(--color-bg-base);
+  background: transparent;
 }
 
 /* Mobile conversation list page */
-/* Mobile conversation list page - stay in normal flow so AppHeader shows above */
 .mobile-list-page {
   width: 100%;
   height: 100%;
@@ -3519,18 +4318,23 @@ header,
   background: transparent;
 }
 
+.chat-sidebar-mobile {
+  padding-top: max(env(safe-area-inset-top), 0px);
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+
 /* Mobile main chat area */
 .mobile-chat {
   position: fixed !important;
   inset: 0;
   z-index: 20;
-  background: var(--color-bg-base);
+  background: var(--chat-bg);
   flex-direction: column !important;
   transform: translateX(0);
 }
 
 .mobile-chat-animated {
-  transition: transform 0.3s ease-out;
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .mobile-chat-offscreen {
@@ -3545,12 +4349,22 @@ header,
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  scroll-padding-bottom: 7.4rem;
 }
 
 /* Mobile input area - stick to bottom */
-.mobile-chat > div:last-child {
+.mobile-chat .chat-input-dock {
   position: relative !important;
   bottom: auto !important;
+  background: transparent;
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+
+.chat-topbar-mobile {
+  padding-top: calc(max(env(safe-area-inset-top), 0px) + var(--chat-header-pad-y));
+  padding-bottom: 0.78rem;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 /* Slide animation for mobile chat */
@@ -3665,7 +4479,9 @@ header,
   20% {
     transform: scale(1.3);
     color: #ef4444;
-    text-shadow: 0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.5);
+    text-shadow:
+      0 0 10px rgba(239, 68, 68, 0.8),
+      0 0 20px rgba(239, 68, 68, 0.5);
   }
   50% {
     transform: scale(1.15);
@@ -3685,7 +4501,8 @@ header,
 }
 
 @keyframes banner-pulse {
-  0%, 100% {
+  0%,
+  100% {
     background-color: rgb(239 246 255 / var(--tw-bg-opacity, 1));
   }
   30% {
@@ -3698,7 +4515,8 @@ header,
 }
 
 @keyframes banner-pulse-dark {
-  0%, 100% {
+  0%,
+  100% {
     background-color: rgb(30 58 138 / 0.2);
   }
   30% {

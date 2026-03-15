@@ -49,7 +49,9 @@ const newBackupType = ref<BackupType>('full')
 const newBackupName = ref('')
 
 function mapToDisplay(b: BackupInfo): BackupDisplay {
-  const type = (b.type === 'full' || b.type === 'config' || b.type === 'data' ? b.type : 'full') as BackupType
+  const type = (
+    b.type === 'full' || b.type === 'config' || b.type === 'data' ? b.type : 'full'
+  ) as BackupType
   const checkpointReason = b.checkpoint_reason || 'pre_restore'
   const isCheckpoint = !!b.is_checkpoint
   return {
@@ -61,7 +63,9 @@ function mapToDisplay(b: BackupInfo): BackupDisplay {
     status: 'completed' as BackupStatus,
     isCheckpoint,
     checkpointReason,
-    description: isCheckpoint ? t('backup.checkpointDescription', { reason: checkpointReason }) : undefined,
+    description: isCheckpoint
+      ? t('backup.checkpointDescription', { reason: checkpointReason })
+      : undefined,
   }
 }
 
@@ -152,8 +156,12 @@ function confirmDelete(backup: BackupDisplay) {
 </script>
 
 <template>
-  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden">
-    <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+  <div
+    class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden"
+  >
+    <div
+      class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
+    >
       <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('backup.title') }}</h2>
       <button
         class="px-3.5 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
@@ -164,68 +172,115 @@ function confirmDelete(backup: BackupDisplay) {
     </div>
 
     <!-- Restore in progress banner -->
-    <div v-if="restoring" class="px-5 py-2.5 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
+    <div
+      v-if="restoring"
+      class="px-5 py-2.5 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800"
+    >
       <div class="flex items-center gap-3 mb-2">
-        <div class="animate-spin h-5 w-5 border-2 border-yellow-600 border-t-transparent rounded-full"></div>
+        <div
+          class="animate-spin h-5 w-5 border-2 border-yellow-600 border-t-transparent rounded-full"
+        ></div>
         <span class="text-yellow-800 dark:text-yellow-200">{{ t('backup.restoringWarning') }}</span>
       </div>
       <div v-if="progress && progress.operation === 'restore'">
-        <div class="flex items-center justify-between text-sm text-yellow-700 dark:text-yellow-300 mb-1">
+        <div
+          class="flex items-center justify-between text-sm text-yellow-700 dark:text-yellow-300 mb-1"
+        >
           <span>{{ progress.current_file || t('backup.processing') }}</span>
           <span>{{ progress.progress }}%</span>
         </div>
         <div class="h-2 bg-yellow-200 dark:bg-yellow-800 rounded-full overflow-hidden">
-          <div class="h-full bg-yellow-500 transition-all duration-300" :style="{ width: `${progress.progress}%` }"></div>
+          <div
+            class="h-full bg-yellow-500 transition-all duration-300"
+            :style="{ width: `${progress.progress}%` }"
+          ></div>
         </div>
-        <div class="flex items-center justify-between text-xs text-yellow-600 dark:text-yellow-400 mt-1">
-          <span>{{ progress.files_processed }} / {{ progress.total_files }} {{ t('backup.files') }}</span>
-          <span>{{ formatSize(progress.bytes_processed) }} / {{ formatSize(progress.total_bytes) }}</span>
+        <div
+          class="flex items-center justify-between text-xs text-yellow-600 dark:text-yellow-400 mt-1"
+        >
+          <span
+            >{{ progress.files_processed }} / {{ progress.total_files }}
+            {{ t('backup.files') }}</span
+          >
+          <span
+            >{{ formatSize(progress.bytes_processed) }} /
+            {{ formatSize(progress.total_bytes) }}</span
+          >
         </div>
       </div>
     </div>
 
     <!-- Creating backup progress banner -->
-    <div v-if="creating && progress" class="px-5 py-2.5 bg-gray-700 dark:bg-gray-500/20 border-b border-gray-900 dark:border-white dark:border-gray-900 dark:border-white">
+    <div
+      v-if="creating && progress"
+      class="px-5 py-2.5 bg-gray-700 dark:bg-gray-500/20 border-b border-gray-900 dark:border-white dark:border-gray-900 dark:border-white"
+    >
       <div class="flex items-center gap-3 mb-2">
-        <div class="animate-spin h-5 w-5 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full"></div>
-        <span class="text-gray-900 dark:text-white dark:text-white">{{ t('backup.creatingBackup') }}</span>
+        <div
+          class="animate-spin h-5 w-5 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full"
+        ></div>
+        <span class="text-gray-900 dark:text-white dark:text-white">{{
+          t('backup.creatingBackup')
+        }}</span>
       </div>
-      <div class="flex items-center justify-between text-sm text-gray-900 dark:text-white dark:text-white mb-1">
+      <div
+        class="flex items-center justify-between text-sm text-gray-900 dark:text-white dark:text-white mb-1"
+      >
         <span>{{ progress.current_file || t('backup.processing') }}</span>
         <span>{{ progress.progress }}%</span>
       </div>
       <div class="h-2 bg-gray-700 dark:bg-gray-500 dark:bg-gray-500 rounded-full overflow-hidden">
-        <div class="h-full bg-gray-700 dark:bg-gray-500 transition-all duration-300" :style="{ width: `${progress.progress}%` }"></div>
+        <div
+          class="h-full bg-gray-700 dark:bg-gray-500 transition-all duration-300"
+          :style="{ width: `${progress.progress}%` }"
+        ></div>
       </div>
-      <div class="flex items-center justify-between text-xs text-gray-900 dark:text-white dark:text-white mt-1">
-        <span>{{ progress.files_processed }} / {{ progress.total_files }} {{ t('backup.files') }}</span>
-        <span>{{ formatSize(progress.bytes_processed) }} / {{ formatSize(progress.total_bytes) }}</span>
+      <div
+        class="flex items-center justify-between text-xs text-gray-900 dark:text-white dark:text-white mt-1"
+      >
+        <span
+          >{{ progress.files_processed }} / {{ progress.total_files }} {{ t('backup.files') }}</span
+        >
+        <span
+          >{{ formatSize(progress.bytes_processed) }} / {{ formatSize(progress.total_bytes) }}</span
+        >
       </div>
     </div>
 
     <div v-if="loading" class="p-5 text-center">
-      <div class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"></div>
+      <div
+        class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"
+      ></div>
       <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('backup.loading') }}</p>
     </div>
 
     <div v-else-if="displayBackups.length === 0" class="p-5 text-center">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-12 w-12 mx-auto text-gray-400"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
+        />
       </svg>
       <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('backup.noBackups') }}</p>
       <p class="text-sm text-gray-400 dark:text-gray-500">{{ t('backup.noBackupsHint') }}</p>
     </div>
 
     <div v-else class="divide-y divide-gray-200 dark:divide-gray-700">
-      <div
-        v-for="backup in sortedBackups"
-        :key="backup.id"
-        class="px-5 py-3.5"
-      >
+      <div v-for="backup in sortedBackups" :key="backup.id" class="px-5 py-3.5">
         <div class="flex items-start justify-between">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <span class="font-medium text-gray-900 dark:text-white">{{ formatBackupName(backup) }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{
+                formatBackupName(backup)
+              }}</span>
               <span
                 class="px-2 py-0.5 text-xs font-medium rounded-full"
                 :class="getTypeColor(backup.type)"
@@ -246,7 +301,12 @@ function confirmDelete(backup: BackupDisplay) {
                 viewBox="0 0 24 24"
                 stroke="currentColor"
               >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getStatusIcon(backup.status)" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  :d="getStatusIcon(backup.status)"
+                />
               </svg>
             </div>
             <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -264,8 +324,19 @@ function confirmDelete(backup: BackupDisplay) {
               :disabled="backup.status !== 'completed'"
               @click="emit('download', backup.id)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
               </svg>
             </button>
             <button
@@ -274,8 +345,19 @@ function confirmDelete(backup: BackupDisplay) {
               :disabled="backup.status !== 'completed' || restoring"
               @click="confirmRestore(backup)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
               </svg>
             </button>
             <button
@@ -283,8 +365,19 @@ function confirmDelete(backup: BackupDisplay) {
               title="Delete"
               @click="confirmDelete(backup)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
               </svg>
             </button>
           </div>
@@ -301,7 +394,9 @@ function confirmDelete(backup: BackupDisplay) {
       >
         <div class="bg-white dark:bg-gray-700/30 rounded-lg shadow-xl max-w-md w-full mx-4">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('backup.create') }}</h3>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('backup.create') }}
+            </h3>
           </div>
 
           <div class="p-6 space-y-4">
@@ -317,13 +412,21 @@ function confirmDelete(backup: BackupDisplay) {
               />
             </div>
 
-            <div class="p-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-              <div class="font-medium text-gray-900 dark:text-white">{{ t('backup.fullBackup') }}</div>
-              <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ t('backup.fullBackupDesc') }}</p>
+            <div
+              class="p-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50"
+            >
+              <div class="font-medium text-gray-900 dark:text-white">
+                {{ t('backup.fullBackup') }}
+              </div>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ t('backup.fullBackupDesc') }}
+              </p>
             </div>
           </div>
 
-          <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
+          <div
+            class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3"
+          >
             <button
               class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
               @click="closeModal"

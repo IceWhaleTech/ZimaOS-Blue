@@ -22,14 +22,51 @@ const goroutinesChartData = computed<DataPoint[]>(() => {
     value: m.goroutines ?? 0,
   }))
 })
+
+const currentGoroutines = computed<number | null>(() => {
+  const latest = props.metricsHistory[props.metricsHistory.length - 1]
+  if (!latest) return null
+  return Math.max(0, latest.goroutines ?? 0)
+})
+
+const averageGoroutines = computed<number | null>(() => {
+  if (goroutinesChartData.value.length === 0) return null
+  const total = goroutinesChartData.value.reduce((sum, point) => sum + point.value, 0)
+  return total / goroutinesChartData.value.length
+})
+
+const peakGoroutines = computed<number | null>(() => {
+  if (goroutinesChartData.value.length === 0) return null
+  return Math.max(...goroutinesChartData.value.map((point) => point.value))
+})
+
+const goroutinesSummaryItems = computed(() => [
+  {
+    label: t('system.latest'),
+    value: currentGoroutines.value == null ? '-' : currentGoroutines.value.toFixed(0),
+  },
+  {
+    label: t('resourceChart.avg', 'Avg'),
+    value: averageGoroutines.value == null ? '-' : averageGoroutines.value.toFixed(0),
+  },
+  {
+    label: t('metrics.max', 'Max'),
+    value: peakGoroutines.value == null ? '-' : peakGoroutines.value.toFixed(0),
+  },
+])
 </script>
 
 <template>
   <ResourceChart
     :title="t('system.goroutines')"
+    subtitle="Scheduler concurrency over the latest 5 minutes"
     :data="goroutinesChartData"
+    variant="dashboard"
     unit=""
     color="purple"
+    badge="5m"
+    caption="Concurrent runtime work and scheduler pressure across the latest sample window"
     :format-value="(v: number) => v.toFixed(0)"
+    :summary-items="goroutinesSummaryItems"
   />
 </template>

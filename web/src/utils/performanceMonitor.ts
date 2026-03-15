@@ -119,7 +119,9 @@ class PerformanceMonitor {
       const avg = list.reduce((a, b) => a + b, 0) / list.length
       const min = Math.min(...list)
       const max = Math.max(...list)
-      console.log(`${name}: avg=${avg.toFixed(2)}ms, min=${min.toFixed(2)}ms, max=${max.toFixed(2)}ms, count=${list.length}`)
+      console.log(
+        `${name}: avg=${avg.toFixed(2)}ms, min=${min.toFixed(2)}ms, max=${max.toFixed(2)}ms, count=${list.length}`
+      )
     }
     console.groupEnd()
   }
@@ -150,7 +152,8 @@ export function usePerformanceTracking(componentName: string) {
 
   return {
     trackOperation,
-    getAverage: (operationName: string) => performanceMonitor.getAverage(`${componentName}:${operationName}`),
+    getAverage: (operationName: string) =>
+      performanceMonitor.getAverage(`${componentName}:${operationName}`),
     logSummary: () => performanceMonitor.logSummary(),
   }
 }

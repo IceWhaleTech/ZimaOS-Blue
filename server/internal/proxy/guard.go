@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
 )
 
 // GuardResult represents the result of a prompt guard check
@@ -43,7 +45,7 @@ func DefaultGuardConfig() *GuardConfig {
 		Enabled:          true,
 		BlockOnDetection: false,
 		LogDetections:    true,
-		MaxPromptLength:  500000,
+		MaxPromptLength:  promptguard.DefaultMaxInputLengthChars,
 	}
 }
 

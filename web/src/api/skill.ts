@@ -200,17 +200,14 @@ export const skillApi = {
 
   getContent: (id: string) => api.get<SkillContentResponse>(`/skills/${id}/content`),
 
-  enable: (id: string) =>
-    api.post<{ success: boolean; message: string }>(`/skills/${id}/enable`),
+  enable: (id: string) => api.post<{ success: boolean; message: string }>(`/skills/${id}/enable`),
 
-  disable: (id: string) =>
-    api.post<{ success: boolean; message: string }>(`/skills/${id}/disable`),
+  disable: (id: string) => api.post<{ success: boolean; message: string }>(`/skills/${id}/disable`),
 
   // Local skill discovery (v0.10.8)
   listLocal: () => api.get<LocalSkillsResponse>('/skills/local'),
 
-  scanLocal: () =>
-    api.post<{ success: boolean; skills_found: number }>('/skills/local/scan'),
+  scanLocal: () => api.post<{ success: boolean; skills_found: number }>('/skills/local/scan'),
 
   verify: (id: string) => api.get<VerifyResponse>(`/skills/verify/${id}`),
 
@@ -223,35 +220,53 @@ export const skillApi = {
   removeSource: (id: string) =>
     api.delete<{ success: boolean; message: string }>(`/skill-store/sources/${id}`),
 
-  browse: (params?: BrowseParams) =>
-    api.get<BrowseResponse>('/skill-store/browse', { params }),
+  browse: (params?: BrowseParams) => api.get<BrowseResponse>('/skill-store/browse', { params }),
 
   // Featured skills (v0.10.8)
   featured: (category?: string) =>
-    api.get<RemoteSkill[]>('/skill-store/featured', { params: category ? { category } : undefined }),
+    api.get<RemoteSkill[]>('/skill-store/featured', {
+      params: category ? { category } : undefined,
+    }),
 
   install: (id: string) =>
-    api.post<{ success: boolean; message: string; skill?: RemoteSkill }>(`/skill-store/install/${id}`),
+    api.post<{ success: boolean; message: string; skill?: RemoteSkill }>(
+      `/skill-store/install/${id}`
+    ),
 
   // Install from URL (v0.10.8)
   installFromURL: (req: InstallFromURLRequest) =>
-    api.post<{ success: boolean; skill?: { id: string; name: string; version: string; description: string } }>('/skill-store/install-url', req),
+    api.post<{
+      success: boolean
+      skill?: { id: string; name: string; version: string; description: string }
+    }>('/skill-store/install-url', req),
 
   uninstall: (id: string) =>
     api.post<{ success: boolean; message: string }>(`/skill-store/uninstall/${id}`),
 
   refresh: () =>
-    api.post<{ success: boolean; skills_count?: number; message?: string; syncing?: boolean; sync_status?: SyncStatus[] }>('/skill-store/refresh'),
+    api.post<{
+      success: boolean
+      skills_count?: number
+      message?: string
+      syncing?: boolean
+      sync_status?: SyncStatus[]
+    }>('/skill-store/refresh'),
 
   // Sync (v0.10.8)
   sync: (sourceId?: string) =>
-    api.post<{ success: boolean; message: string }>('/skill-store/sync', null, { params: sourceId ? { source: sourceId } : undefined }),
+    api.post<{ success: boolean; message: string }>('/skill-store/sync', null, {
+      params: sourceId ? { source: sourceId } : undefined,
+    }),
 
   // Upload skill package
   upload: (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
-    return api.post<{ success: boolean; message?: string; skill?: { id: string; name: string; version: string } }>('/skills/upload', formData, {
+    return api.post<{
+      success: boolean
+      message?: string
+      skill?: { id: string; name: string; version: string }
+    }>('/skills/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
@@ -259,11 +274,13 @@ export const skillApi = {
   // Stats and categories
   categories: () => api.get<string[]>('/skill-store/categories'),
 
-  stats: () => api.get<{ total_skills: number; installed: number; by_source: Record<string, number> }>('/skill-store/stats'),
+  stats: () =>
+    api.get<{ total_skills: number; installed: number; by_source: Record<string, number> }>(
+      '/skill-store/stats'
+    ),
 
   // Search (v0.10.14)
-  search: (params?: SearchParams) =>
-    api.get<SearchResponse>('/skill-store/search', { params }),
+  search: (params?: SearchParams) => api.get<SearchResponse>('/skill-store/search', { params }),
 
   // Popular and recent (v0.10.14)
   popular: (limit?: number) =>

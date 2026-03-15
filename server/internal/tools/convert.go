@@ -16,17 +16,18 @@ import (
 type ConvertTool struct {
 	service   *convertpkg.Service
 	approvals *ApprovalManager
+	dirStore  *DirAllowlistStore
 }
 
-func NewConvertTool(service *convertpkg.Service, approvals *ApprovalManager) *ConvertTool {
-	return &ConvertTool{service: service, approvals: approvals}
+func NewConvertTool(service *convertpkg.Service, approvals *ApprovalManager, dirStore *DirAllowlistStore) *ConvertTool {
+	return &ConvertTool{service: service, approvals: approvals, dirStore: dirStore}
 }
 
-func RegisterConvertTool(registry *Registry, service *convertpkg.Service, approvals *ApprovalManager) {
+func RegisterConvertTool(registry *Registry, service *convertpkg.Service, approvals *ApprovalManager, dirStore *DirAllowlistStore) {
 	if registry == nil || service == nil {
 		return
 	}
-	registry.Register(NewConvertTool(service, approvals))
+	registry.Register(NewConvertTool(service, approvals, dirStore))
 }
 
 func (t *ConvertTool) Definition() ToolDefinition {
@@ -154,6 +155,11 @@ func (t *ConvertTool) requestLocalPathApproval(ctx context.Context, sources []st
 	}
 	userID := strings.TrimSpace(GetUserID(ctx))
 	for _, dir := range dirs {
+		if t.dirStore != nil {
+			if entry := t.dirStore.Match(dir); entry != nil {
+				continue
+			}
+		}
 		decision, err := t.approvals.RequestApproval(ctx, ApprovalRequest{
 			Type:      "directory",
 			Directory: dir,
@@ -165,6 +171,11 @@ func (t *ConvertTool) requestLocalPathApproval(ctx context.Context, sources []st
 		}
 		if decision != ApprovalAllowOnce && decision != ApprovalAllowAlways {
 			return fmt.Errorf("access denied for local path: %s", dir)
+		}
+		if decision == ApprovalAllowAlways && t.dirStore != nil {
+			if err := t.dirStore.Add(dir, userID); err != nil {
+				return fmt.Errorf("persist approved directory: %w", err)
+			}
 		}
 	}
 	return nil

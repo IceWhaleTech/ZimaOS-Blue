@@ -59,8 +59,10 @@ const stageLabel = computed(() => {
 
 const statusClass = computed(() => {
   if (isFailed.value) return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
-  if (isCancelled.value) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
-  if (isDone.value) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+  if (isCancelled.value)
+    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+  if (isDone.value)
+    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
   return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'
 })
 
@@ -113,28 +115,46 @@ async function handleCancel() {
 </script>
 
 <template>
-  <div class="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/80 shadow-sm overflow-hidden">
-    <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60">
+  <div
+    class="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/80 shadow-sm overflow-hidden"
+  >
+    <div
+      class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60"
+    >
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <span class="rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            <span
+              class="rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            >
               {{ t('chat.deepResearchProgress', 'Deep Research Running') }}
             </span>
             <span class="rounded-full px-2.5 py-1" :class="statusClass">{{ stageLabel }}</span>
-            <span class="rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 capitalize dark:bg-slate-800 dark:text-slate-300">{{ mode }}</span>
+            <span
+              class="rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 capitalize dark:bg-slate-800 dark:text-slate-300"
+              >{{ mode }}</span
+            >
           </div>
-          <div v-if="query" class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100 break-words">
+          <div
+            v-if="query"
+            class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100 break-words"
+          >
             {{ query }}
           </div>
-          <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+          <div
+            class="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400"
+          >
             <span>{{ progress }}%</span>
-            <span v-if="iteration">{{ t('chat.deepResearchIteration', 'Iteration') }} {{ iteration }}</span>
+            <span v-if="iteration"
+              >{{ t('chat.deepResearchIteration', 'Iteration') }} {{ iteration }}</span
+            >
             <span v-if="latestAction">{{ latestActionLabel(latestAction) }}</span>
           </div>
         </div>
         <div class="flex flex-col items-end gap-2">
-          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">{{ progress }}%</span>
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300"
+            >{{ progress }}%</span
+          >
           <div class="flex items-center gap-2">
             <button
               v-if="conversationId"
@@ -149,7 +169,11 @@ async function handleCancel() {
               :disabled="cancelling"
               @click="handleCancel"
             >
-              {{ cancelling ? t('common.loading', 'Loading...') : t('chat.deepResearchCancelTask', 'Cancel') }}
+              {{
+                cancelling
+                  ? t('common.loading', 'Loading...')
+                  : t('chat.deepResearchCancelTask', 'Cancel')
+              }}
             </button>
           </div>
         </div>
@@ -158,22 +182,33 @@ async function handleCancel() {
 
     <div class="px-4 py-3 space-y-3">
       <div class="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-        <div class="h-full transition-all duration-500 ease-out" :class="progressClass" :style="{ width: `${progress}%` }" />
+        <div
+          class="h-full transition-all duration-500 ease-out"
+          :class="progressClass"
+          :style="{ width: `${progress}%` }"
+        />
       </div>
 
       <div class="grid gap-2 md:grid-cols-2 text-xs text-slate-500 dark:text-slate-400">
         <div v-if="latestAction" class="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
-          <div class="font-medium text-slate-600 dark:text-slate-300">{{ t('chat.deepResearchLatestAction', 'Latest action') }}</div>
+          <div class="font-medium text-slate-600 dark:text-slate-300">
+            {{ t('chat.deepResearchLatestAction', 'Latest action') }}
+          </div>
           <div class="mt-1 break-words">{{ latestActionLabel(latestAction) }}</div>
         </div>
-        <div v-if="latestGap" class="rounded-xl bg-amber-50 px-3 py-2 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+        <div
+          v-if="latestGap"
+          class="rounded-xl bg-amber-50 px-3 py-2 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
+        >
           <div class="font-medium">{{ t('chat.deepResearchLatestGap', 'Latest gap') }}</div>
           <div class="mt-1 break-words">{{ latestGap }}</div>
         </div>
       </div>
 
       <div v-if="!conversationId" class="text-xs text-slate-500 dark:text-slate-400">
-        {{ t('chat.deepResearchRunningElsewhere', 'This research task is running in the background.') }}
+        {{
+          t('chat.deepResearchRunningElsewhere', 'This research task is running in the background.')
+        }}
       </div>
     </div>
   </div>

@@ -350,7 +350,8 @@ func runServer() {
 	// Initialize tools registry and register built-in tools
 	toolRegistry := tools.NewRegistry()
 	webSearchConfig, webFetchConfig := buildBuiltinToolConfigs(cfg)
-	tools.RegisterBuiltinToolsWithConfig(toolRegistry, webSearchConfig, webFetchConfig, nil, 0)
+	workspaceRoot := filepath.Join(dataDir, "workspace")
+	tools.RegisterBuiltinToolsWithConfig(toolRegistry, webSearchConfig, webFetchConfig, []string{workspaceRoot}, 0)
 	tools.RegisterFactoryToolDefinitions(toolRegistry)
 	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 

@@ -101,7 +101,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Origen de archivos',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -185,7 +185,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'La ejecución del comando se bloqueó porque la aprobación del directorio caducó. Aprueba el directorio y vuelve a intentarlo.',
+    execDirectoryApprovalTimeout:
+      'La ejecución del comando se bloqueó porque la aprobación del directorio caducó. Aprueba el directorio y vuelve a intentarlo.',
     streamProgress: {
       requestAccepted: 'Solicitud recibida, preparando respuesta...',
       generating: 'Generando respuesta...',
@@ -308,6 +309,7 @@ export default {
     inputPlaceholderShort: 'Escribe un mensaje...',
     newLine: 'para nueva línea',
     dragDropHint: 'Arrastra y suelta o pega archivos para adjuntar',
+    conversations: 'Conversaciones',
     searchConversations: 'Buscar conversaciones...',
     noConversationsFound: 'No se encontraron conversaciones',
     noConversationsYet: 'Aún no hay conversaciones',
@@ -513,7 +515,8 @@ export default {
   home: {
     ...enUS.home,
     welcome: 'Bienvenido a ZimaOS Blue',
-    description: 'Un runtime estable, confiable y neutral para tus asistentes de IA y automatizaciones',
+    description:
+      'Un runtime estable, confiable y neutral para tus asistentes de IA y automatizaciones',
     loadingStatus: 'Cargando estado del sistema...',
     status: 'Estado',
     version: 'Versión',
@@ -524,6 +527,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Acceso de red',
+    networkTitle: 'Red y acceso',
+    releaseTrack: 'Gestión de versiones',
+    systemVersion: 'Actualizaciones y versiones',
     llmApiKeyRequired: 'Configura una API Key antes de abrir la página de proveedores LLM.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -1740,8 +1747,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Directorios aprobados',
+    approvedDirectoriesDesc: 'Directorios aprobados mediante «Permitir siempre» para exec/convert.',
+    noApprovedDirectories: 'No hay directorios aprobados',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Directorios aprobados',
       firewall: 'Cortafuegos',
       masking: 'Enmascarado de datos',
     },
@@ -2165,12 +2176,13 @@ export default {
       error: 'Error',
       unknown: 'Desconocido',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Nuevo contenido recordado',
       memorySavedMessage: 'Memoria extraída de la conversación',
       manageMemory: 'Gestionar memoria',
-    },},
+    },
+  },
   channels: {
     ...enUS.channels,
     title: 'Integraciones',
@@ -2400,6 +2412,7 @@ export default {
       length: 'Al menos {n} caracteres',
       uppercase: 'Una letra mayúscula',
       lowercase: 'Una letra minúscula',
+      letter: 'Una letra',
       number: 'Un número',
       special: "Un carácter especial (!{'@'}#$%...)",
     },
@@ -3178,7 +3191,8 @@ export default {
     importSuccess: '{conversations} conversaciones y {messages} mensajes importados',
     importFailed: 'Error al importar datos',
     chatDataTitle: 'Datos del chat',
-    chatDataDescription: 'Importa, exporta y limpia el historial del chat y los datos relacionados desde un solo lugar.',
+    chatDataDescription:
+      'Importa, exporta y limpia el historial del chat y los datos relacionados desde un solo lugar.',
     manageData: 'Gestionar datos',
     cleanupPreviewFailed: 'No se pudo previsualizar la limpieza',
     previewFailed: 'No se pudo previsualizar los datos',
@@ -3188,7 +3202,8 @@ export default {
     importPasswordPlaceholder: 'Introduce la contraseña utilizada durante la exportación',
     confirmPasswordPlaceholder: 'Vuelve a introducir la contraseña',
     formatEncryptedDesc: 'Formato binario totalmente cifrado. Mayor seguridad.',
-    formatJsonDesc: 'Formato legible para humanos. La contraseña se usa para verificar la importación.',
+    formatJsonDesc:
+      'Formato legible para humanos. La contraseña se usa para verificar la importación.',
     retentionSaved: 'Configuración de retención guardada',
     cleanupSuccess: 'Limpieza de datos completada',
     cleanupFailed: 'Error en la limpieza de datos',
@@ -3205,7 +3220,8 @@ export default {
       eventsRetention: 'Retención de eventos',
       alertsRetention: 'Retención de alertas',
       totalRecords: 'Total de registros de monitorización',
-      policyHint: 'Cada tipo de dato admite de 1 a 365 días. Una retención más corta reduce el almacenamiento; una más larga ayuda en auditorías y resolución de problemas.',
+      policyHint:
+        'Cada tipo de dato admite de 1 a 365 días. Una retención más corta reduce el almacenamiento; una más larga ayuda en auditorías y resolución de problemas.',
       daysRange: 'Rango permitido: 1-365 días',
       sessionsHint: 'Ciclo de vida de las sesiones del agent y metadatos de ejecución.',
       eventsHint: 'Llamadas a herramientas, trazas de ejecución y eventos de auditoría.',
@@ -3213,7 +3229,8 @@ export default {
       sessionsSuggested: 'Sugerido: 14-30 días para operaciones rutinarias',
       eventsSuggested: 'Sugerido: 7-14 días para equilibrar auditoría y almacenamiento',
       alertsSuggested: 'Sugerido: 30-90 días para revisar incidentes',
-      saveHint: 'Las nuevas ventanas de retención se aplicarán a las próximas limpiezas automáticas y manuales.',
+      saveHint:
+        'Las nuevas ventanas de retención se aplicarán a las próximas limpiezas automáticas y manuales.',
 
       days: 'días',
     },

@@ -19,19 +19,33 @@ export interface PendingRequest {
   created_at: string
 }
 
+export interface ApprovedDirectoryEntry {
+  id: string
+  path: string
+  added_at: string
+  last_used: string
+  approved_by?: string
+}
+
 export const approvalApi = {
   getConfig: () => api.get<ApprovalConfig>('/approval/config'),
 
-  updateConfig: (config: ApprovalConfig) =>
-    api.put<ApprovalConfig>('/approval/config', config),
+  updateConfig: (config: ApprovalConfig) => api.put<ApprovalConfig>('/approval/config', config),
 
-  listPending: (sessionId?: string) => api.get<PendingRequest[]>('/approval/pending', {
-    params: sessionId ? { session_id: sessionId } : undefined,
-  }),
+  listPending: (sessionId?: string) =>
+    api.get<PendingRequest[]>('/approval/pending', {
+      params: sessionId ? { session_id: sessionId } : undefined,
+    }),
 
   resolve: (requestId: string, decision: Decision | ExecDecision) =>
     api.post<{ status: string }>('/approval/resolve', {
       request_id: requestId,
       decision,
     }),
+
+  listApprovedDirectories: () =>
+    api.get<{ entries: ApprovedDirectoryEntry[] }>('/exec/approvals/directories'),
+
+  revokeApprovedDirectory: (id: string) =>
+    api.delete<{ deleted: boolean }>(`/exec/approvals/directories/${encodeURIComponent(id)}`),
 }

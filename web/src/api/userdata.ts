@@ -5,7 +5,6 @@ export interface UserSettings {
   selected_provider_model?: string
   temperature: number
   max_tokens: number
-  theme_style?: string
   theme?: string
   locale?: string
   timezone?: string
@@ -68,7 +67,6 @@ export interface ImportPreview {
   has_settings?: boolean
   settings_preview?: {
     theme?: string
-    theme_style?: string
     locale?: string
   }
   has_chat_history?: boolean
@@ -95,8 +93,7 @@ export const userDataApi = {
     api.post<UserDataExport | EncryptedExport>('/userdata/export', request),
 
   // Import user data
-  import: (request: ImportRequest) =>
-    api.post<ImportResult>('/userdata/import', request),
+  import: (request: ImportRequest) => api.post<ImportResult>('/userdata/import', request),
 
   // Preview import data
   importPreview: (request: ImportRequest) =>

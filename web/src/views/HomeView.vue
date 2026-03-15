@@ -1,48 +1,33 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { onMounted, onUnmounted, shallowRef, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
 import { useMetricsStore } from '@/stores/metrics'
 import { systemApi } from '@/api/index'
-import type { SystemMetrics, DetailedSystemInfo } from '@/api/system'
-import { storeToRefs } from 'pinia'
-import ProgressBar from '@/components/ProgressBar.vue'
-import DonutChart from '@/components/DonutChart.vue'
-import { ConfigurableDashboard } from '@/components/dashboard'
+import type { SystemMetrics } from '@/api/system'
+import { ConfigurableDashboard, SystemStatusCard } from '@/components/dashboard'
+import DashboardCustomizer from '@/components/dashboard/DashboardCustomizer.vue'
+import UptimeCard from '@/components/dashboard/cards/UptimeCard.vue'
+import CpuChartCard from '@/components/dashboard/cards/CpuChartCard.vue'
+import MemoryUsageCard from '@/components/dashboard/cards/MemoryUsageCard.vue'
+import GoroutinesCard from '@/components/dashboard/cards/GoroutinesCard.vue'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
 const metricsStore = useMetricsStore()
-const { health: _health, loading: _loading } = storeToRefs(systemStore)
+
+const dashboardPrimaryCardIds = ['uptime', 'cpu-chart', 'memory-usage', 'goroutines']
+const dashboardSecondaryExcludedCardIds = ['system-status', ...dashboardPrimaryCardIds]
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null
-const autoRefresh = ref(true)
-
-// AbortController for request cancellation
 let abortController: AbortController | null = null
 
-// Metrics history for dashboard (use shallowRef for performance)
 const metricsHistory = shallowRef<SystemMetrics[]>([])
-
-// Detailed system info
-const detailedInfo = ref<DetailedSystemInfo | null>(null)
-const detailedInfoLoading = ref(false)
-const showDetailedInfo = ref(false)
-
-// Visibility API support
+const manualRefreshing = ref(false)
 const isPageVisible = ref(true)
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
 
 async function fetchMetricsHistory() {
   try {
-    // Cancel previous request if still pending
     if (abortController) {
       abortController.abort()
     }
@@ -51,7 +36,6 @@ async function fetchMetricsHistory() {
     const response = await systemApi.getMetricsHistory('5m')
     metricsHistory.value = response.data.metrics || []
   } catch (error: unknown) {
-    // Don't update state if request was aborted
     const err = error as { name?: string }
     if (err?.name !== 'AbortError' && err?.name !== 'CanceledError') {
       metricsHistory.value = []
@@ -59,400 +43,766 @@ async function fetchMetricsHistory() {
   }
 }
 
-async function fetchDetailedInfo() {
-  detailedInfoLoading.value = true
+async function refreshAll(forceRefresh = false) {
+  await Promise.all([
+    systemStore.fetchAll(forceRefresh),
+    metricsStore.fetchAll(),
+    fetchMetricsHistory(),
+  ])
+}
+
+async function refreshNow() {
+  if (manualRefreshing.value) return
+  manualRefreshing.value = true
   try {
-    const response = await systemApi.getInfo(true)
-    detailedInfo.value = response.data.system || null
-  } catch {
-    detailedInfo.value = null
+    await refreshAll(true)
   } finally {
-    detailedInfoLoading.value = false
+    manualRefreshing.value = false
   }
 }
 
-function toggleDetailedInfo() {
-  showDetailedInfo.value = !showDetailedInfo.value
-  if (showDetailedInfo.value && !detailedInfo.value) {
-    fetchDetailedInfo()
-  }
-}
-
-// Handle visibility change to pause/resume polling
 function handleVisibilityChange() {
   isPageVisible.value = !document.hidden
 }
 
-// Debounced refresh function
-let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
-function debouncedRefresh() {
-  if (refreshDebounceTimer) {
-    clearTimeout(refreshDebounceTimer)
-  }
-  refreshDebounceTimer = setTimeout(() => {
-    if (autoRefresh.value && isPageVisible.value) {
-      systemStore.fetchAll()
-      fetchMetricsHistory()
-    }
-  }, 100)
-}
-
-// Watch autoRefresh changes with debouncing
-watch(autoRefresh, (newValue) => {
-  if (newValue && isPageVisible.value) {
-    debouncedRefresh()
-  }
-})
-
 onMounted(async () => {
-  await systemStore.fetchAll()
-  await metricsStore.fetchAll()
-  await fetchMetricsHistory()
+  await refreshAll()
 
-  // Add visibility change listener
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
-  // Optimized polling interval: 15 seconds (reduced from 5s = 66% fewer API calls)
   refreshInterval = setInterval(() => {
-    if (autoRefresh.value && isPageVisible.value) {
-      systemStore.fetchAll()
-      metricsStore.fetchAll()
-      fetchMetricsHistory()
-    }
+    if (!isPageVisible.value) return
+    void refreshAll()
   }, 15000)
 })
 
 onUnmounted(() => {
-  // Cleanup interval
   if (refreshInterval) {
     clearInterval(refreshInterval)
     refreshInterval = null
   }
 
-  // Cleanup debounce timer
-  if (refreshDebounceTimer) {
-    clearTimeout(refreshDebounceTimer)
-    refreshDebounceTimer = null
-  }
-
-  // Cancel pending requests
   if (abortController) {
     abortController.abort()
     abortController = null
   }
 
-  // Remove visibility listener
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
 <template>
   <div class="home-page">
-    <!-- Hero Section -->
-    <div class="hero-section">
-      <div class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-700/60 shadow-sm">
-        <img
-          src="/logo.svg"
-          alt="Logo"
-          class="h-9 w-9 object-contain dark:brightness-150"
-        />
-      </div>
-      <h1 class="hero-title">{{ t('home.welcome') }}</h1>
-      <p class="hero-description">{{ t('home.description') }}</p>
-      <div class="hero-cta">
-        <router-link
-          to="/chat"
-          class="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-100 dark:bg-gray-700/40 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600/50 rounded-full text-sm font-medium transition-colors"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-          {{ t('nav.chat') }}
-        </router-link>
-      </div>
-    </div>
-
-    <!-- Dashboard Section -->
-    <div class="dashboard-section">
-      <ConfigurableDashboard :metrics-history="metricsHistory">
-        <template #header-left>
-          <label class="toggle-label">
-            <input v-model="autoRefresh" type="checkbox" class="toggle-checkbox" />
-            <span class="toggle-text">{{ t('dashboard.autoRefresh') }}</span>
-          </label>
-        </template>
-      </ConfigurableDashboard>
-    </div>
-
-    <!-- Detailed System Info Toggle -->
-    <div class="glass-card p-6 mb-4">
-      <div class="flex items-center justify-between">
-        <h3 class="text-lg font-semibold text-gray-700 dark:text-white">{{ t('system.detailedSystemInfo') }}</h3>
-        <button
-          class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-500 hover:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-lg transition-colors"
-          @click="toggleDetailedInfo"
-        >
-          {{ showDetailedInfo ? t('common.close') : t('system.detailedInfo') }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Detailed System Info -->
-    <div v-if="showDetailedInfo" class="details-section space-y-4">
-      <div v-if="detailedInfoLoading" class="glass-card p-6 text-center text-gray-500 dark:text-gray-400">
-        {{ t('system.loadingDetailedInfo') }}
-      </div>
-      <template v-else-if="detailedInfo">
-        <!-- OS Info -->
-        <div class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-700 dark:text-white mb-4">{{ t('system.osInfo') }}</h4>
-          <div class="grid md:grid-cols-3 gap-4 text-sm">
-            <div>
-              <span class="text-gray-500 dark:text-gray-400">{{ t('system.osVersion') }}:</span>
-              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.version || '-' }}</span>
-            </div>
-            <div>
-              <span class="text-gray-500 dark:text-gray-400">{{ t('system.kernel') }}:</span>
-              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.kernel || '-' }}</span>
-            </div>
-            <div>
-              <span class="text-gray-500 dark:text-gray-400">{{ t('system.architecture') }}:</span>
-              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.architecture || '-' }}</span>
-            </div>
-            <div>
-              <span class="text-gray-500 dark:text-gray-400">{{ t('system.hostname') }}:</span>
-              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.hostname || '-' }}</span>
-            </div>
-            <div>
-              <span class="text-gray-500 dark:text-gray-400">{{ t('system.uptime') }}:</span>
-              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.uptime_human || '-' }}</span>
-            </div>
-            <div>
-              <span class="text-gray-500 dark:text-gray-400">{{ t('system.bootTime') }}:</span>
-              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.boot_time ? new Date(detailedInfo.os.boot_time * 1000).toLocaleString() : '-' }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- CPU Info -->
-        <div class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-700 dark:text-white mb-4">{{ t('system.cpuInfo') }}</h4>
-          <div class="flex flex-col md:flex-row gap-6">
-            <div class="flex-shrink-0 flex justify-center">
-              <DonutChart
-                :value="detailedInfo.hardware.cpu.usage || 0"
-                :max="100"
-                :label="t('system.cpuUsage')"
-                color="auto"
-                :size="140"
-              />
-            </div>
-            <div class="flex-1 grid sm:grid-cols-2 gap-4 text-sm">
-              <div class="sm:col-span-2">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuModel') }}:</span>
-                <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.model || '-' }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuCores') }}:</span>
-                <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.cores || '-' }} {{ t('system.cores') }} / {{ detailedInfo.hardware.cpu.threads || '-' }} {{ t('system.threads') }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuFrequency') }}:</span>
-                <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.frequency ? `${detailedInfo.hardware.cpu.frequency.toFixed(0)} MHz` : '-' }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Memory Info -->
-        <div class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-700 dark:text-white mb-4">{{ t('system.memoryInfo') }}</h4>
-          <div class="flex flex-col md:flex-row gap-6">
-            <div class="flex-shrink-0 flex gap-6 justify-center">
-              <DonutChart
-                :value="detailedInfo.hardware.memory.used"
-                :max="detailedInfo.hardware.memory.total"
-                :label="t('system.ram')"
-                :value-label="formatBytes(detailedInfo.hardware.memory.used)"
-                color="auto"
-                :size="120"
-              />
-              <DonutChart
-                v-if="detailedInfo.hardware.memory.swap_total > 0"
-                :value="detailedInfo.hardware.memory.swap_used"
-                :max="detailedInfo.hardware.memory.swap_total"
-                :label="t('system.swap')"
-                :value-label="formatBytes(detailedInfo.hardware.memory.swap_used)"
-                color="purple"
-                :size="120"
-              />
-            </div>
-            <div class="flex-1 space-y-4">
-              <div>
-                <div class="flex justify-between text-sm mb-1">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.ram') }}</span>
-                  <span class="text-gray-700 dark:text-white">{{ formatBytes(detailedInfo.hardware.memory.used) }} / {{ formatBytes(detailedInfo.hardware.memory.total) }}</span>
-                </div>
-                <ProgressBar
-                  :value="detailedInfo.hardware.memory.used"
-                  :max="detailedInfo.hardware.memory.total"
-                  :show-percent="false"
-                  color="auto"
-                  size="md"
-                />
-              </div>
-              <div v-if="detailedInfo.hardware.memory.swap_total > 0">
-                <div class="flex justify-between text-sm mb-1">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.swap') }}</span>
-                  <span class="text-gray-700 dark:text-white">{{ formatBytes(detailedInfo.hardware.memory.swap_used) }} / {{ formatBytes(detailedInfo.hardware.memory.swap_total) }}</span>
-                </div>
-                <ProgressBar
-                  :value="detailedInfo.hardware.memory.swap_used"
-                  :max="detailedInfo.hardware.memory.swap_total"
-                  :show-percent="false"
-                  color="purple"
-                  size="md"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Disk Info -->
-        <div v-if="detailedInfo.hardware.disk?.length" class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-700 dark:text-white mb-4">{{ t('system.diskInfo') }}</h4>
-          <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div
-              v-for="disk in detailedInfo.hardware.disk.slice(0, 6)"
-              :key="disk.device"
-              class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4"
+    <section class="dashboard-stage">
+      <section class="dashboard-hero">
+        <div class="dashboard-control-rail">
+          <button
+            class="dashboard-refresh-button"
+            :disabled="manualRefreshing"
+            :title="t('common.refresh')"
+            :aria-label="t('common.refresh')"
+            @click="refreshNow"
+          >
+            <svg
+              class="h-4 w-4"
+              :class="{ 'animate-spin': manualRefreshing }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <div class="flex items-center justify-between mb-2">
-                <span class="font-medium text-gray-700 dark:text-white text-sm truncate" :title="disk.mount_point">{{ disk.mount_point }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ disk.fs_type }}</span>
-              </div>
-              <ProgressBar
-                :value="disk.used"
-                :max="disk.total"
-                :show-percent="false"
-                color="auto"
-                size="lg"
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
               />
-              <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2">
-                <span>{{ formatBytes(disk.used) }} {{ t('system.used') }}</span>
-                <span>{{ formatBytes(disk.available) }} {{ t('system.free') }}</span>
-              </div>
-            </div>
+            </svg>
+          </button>
+
+          <div class="dashboard-customizer-compact">
+            <DashboardCustomizer />
           </div>
         </div>
 
-        <!-- Network Info -->
-        <div v-if="detailedInfo.network?.interfaces?.length" class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-700 dark:text-white mb-4">{{ t('system.networkInfo') }}</h4>
-          <div class="space-y-4">
-            <div v-for="iface in detailedInfo.network.interfaces.filter(i => !i.is_loopback && i.is_up)" :key="iface.name" class="border-b border-gray-100 dark:border-gray-700/50 pb-4 last:border-0 last:pb-0">
-              <div class="flex items-center gap-2 mb-2">
-                <span class="font-medium text-gray-700 dark:text-white">{{ iface.name }}</span>
-                <span class="px-2 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                  {{ t('system.interfaceUp') }}
-                </span>
-              </div>
-              <div class="grid md:grid-cols-3 gap-2 text-sm">
-                <div v-if="iface.mac">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.macAddress') }}:</span>
-                  <span class="text-gray-700 dark:text-white ml-2 font-mono text-xs">{{ iface.mac }}</span>
-                </div>
-                <div v-if="iface.ipv4?.length">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.ipv4Address') }}:</span>
-                  <span class="text-gray-700 dark:text-white ml-2 font-mono text-xs">{{ iface.ipv4.join(', ') }}</span>
-                </div>
-                <div>
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.mtu') }}:</span>
-                  <span class="text-gray-700 dark:text-white ml-2">{{ iface.mtu }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="dashboard-hero-copy">
+          <h1 class="dashboard-welcome-title">{{ t('home.welcome') }}</h1>
+          <p class="dashboard-description">{{ t('home.description') }}</p>
         </div>
-      </template>
-      <div v-else class="glass-card p-6 text-center text-gray-500 dark:text-gray-400">
-        {{ t('system.noDetailedInfo') }}
-      </div>
-    </div>
+      </section>
+
+      <section class="dashboard-shell">
+        <section class="dashboard-status-row">
+          <div class="dashboard-card-surface dashboard-status-shell p-4">
+            <SystemStatusCard compact />
+          </div>
+        </section>
+
+        <section class="dashboard-primary-grid">
+          <div class="dashboard-card-surface dashboard-small-card-shell p-4">
+            <UptimeCard />
+          </div>
+          <div class="dashboard-card-surface dashboard-small-card-shell p-4">
+            <CpuChartCard :metrics-history="metricsHistory" compact />
+          </div>
+          <div class="dashboard-card-surface dashboard-small-card-shell p-4">
+            <MemoryUsageCard :metrics-history="metricsHistory" />
+          </div>
+          <div class="dashboard-card-surface dashboard-small-card-shell p-4">
+            <GoroutinesCard :metrics-history="metricsHistory" />
+          </div>
+        </section>
+
+        <ConfigurableDashboard
+          :metrics-history="metricsHistory"
+          :show-header="false"
+          :disable-hero-layout="true"
+          :exclude-card-ids="dashboardSecondaryExcludedCardIds"
+        />
+      </section>
+    </section>
   </div>
 </template>
 
 <style scoped>
 .home-page {
-  max-width: 1200px;
+  max-width: 1480px;
   margin: 0 auto;
-  padding: 0 16px;
+  padding: 0 0.75rem 1.8rem;
 }
 
-/* Hero Section */
-.hero-section {
-  text-align: center;
-  margin-bottom: 24px;
-  padding-top: 48px;
+.dashboard-stage {
+  position: relative;
+  padding: 1.15rem 0 0.25rem;
 }
 
-.hero-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin: 0 0 8px;
+.dashboard-stage::before,
+.dashboard-stage::after {
+  content: '';
+  position: absolute;
+  width: 19rem;
+  height: 19rem;
+  pointer-events: none;
+  opacity: 0.8;
+  background-image: radial-gradient(circle, rgba(37, 99, 235, 0.18) 1px, transparent 1px);
+  background-size: 14px 14px;
 }
 
-.hero-description {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  max-width: 480px;
-  margin: 0 auto;
-  line-height: 1.5;
+.dashboard-stage::before {
+  right: 18%;
+  top: 10.5rem;
 }
 
-.hero-cta {
-  margin: 24px auto 0;
-  text-align: center;
+.dashboard-stage::after {
+  left: 24%;
+  bottom: -1.6rem;
 }
 
-.toggle-label {
+.dashboard-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0.15rem 0 1.2rem;
+}
+
+.dashboard-control-rail {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
+  gap: 0.5rem;
+  z-index: 2;
 }
 
-.toggle-checkbox {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-bg);
-  cursor: pointer;
-  accent-color: var(--color-gray-900);
+.dashboard-hero-copy {
+  max-width: 42rem;
+  padding-top: 0.1rem;
 }
 
-.toggle-text {
-  font-size: 13px;
-  color: var(--color-text-secondary);
+.dashboard-welcome-title {
+  margin: 0;
+  font-size: clamp(1.34rem, 0.7vw + 0.95rem, 1.9rem);
+  line-height: 1.06;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+  color: #111827;
 }
 
-/* Sections */
-.dashboard-section,
-.details-section {
-  margin-bottom: 24px;
+.dashboard-description {
+  margin: 0.42rem 0 0;
+  max-width: 34rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: #9ca3af;
 }
 
-.glass-card {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
+.dashboard-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 0;
+  border-radius: 999px;
+  color: #6b7280;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 36px -32px rgba(15, 23, 42, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    background-color 0.18s ease,
+    color 0.18s ease;
 }
 
-/* Light mode adjustments */
-:root.light .glass-card {
-  background: rgba(255, 255, 255, 0.8);
-  border-color: rgba(0, 0, 0, 0.08);
+.dashboard-control-rail:hover .dashboard-refresh-button,
+.dashboard-refresh-button:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.dashboard-refresh-button:hover {
+  color: #1d4ed8;
+  background: #fff;
+}
+
+.dashboard-refresh-button:disabled {
+  cursor: not-allowed;
+}
+
+.dashboard-customizer-compact {
+  display: inline-flex;
+}
+
+:deep(.dashboard-customizer-compact .dashboard-customize-trigger) {
+  width: 2.4rem;
+  min-width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border-radius: 999px;
+  justify-content: center;
+  gap: 0;
+  border: 0;
+  background: rgba(255, 255, 255, 0.92);
+  color: #6b7280;
+  box-shadow: 0 18px 36px -32px rgba(15, 23, 42, 0.32);
+}
+
+:deep(.dashboard-customizer-compact .dashboard-customize-trigger:hover) {
+  background: #fff;
+  color: #111827;
+}
+
+:deep(.dashboard-customizer-compact .dashboard-customize-trigger > span) {
+  display: none;
+}
+
+.dashboard-shell {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-status-row {
+  margin-bottom: 0.78rem;
+}
+
+.dashboard-primary-grid {
+  display: grid;
+  gap: 0.88rem;
+  margin-bottom: 0.88rem;
+}
+
+.dashboard-status-shell {
+  min-height: 0;
+  padding: 0.92rem 1rem;
+}
+
+:deep(.dashboard-shell .dashboard-grid-stack) {
+  gap: 0.9rem;
+}
+
+:deep(.dashboard-shell .dashboard-grid-wrap),
+:deep(.dashboard-shell .dashboard-grid-cluster),
+:deep(.dashboard-shell .dashboard-grid-wrap-hero) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:deep(.dashboard-shell .dashboard-grid-wrap.with-divider) {
+  padding-top: 0;
+  border-top: 0;
+}
+
+:deep(.dashboard-shell .dashboard-grid),
+:deep(.dashboard-shell .dashboard-grid-hero),
+:deep(.dashboard-shell .dashboard-grid-small),
+:deep(.dashboard-shell .dashboard-grid-featured),
+:deep(.dashboard-shell .dashboard-grid-large) {
+  gap: 0.88rem;
+}
+
+:deep(.dashboard-primary-grid .dashboard-card-stack) {
+  justify-content: space-between;
+  gap: 0.62rem;
+}
+
+:deep(.dashboard-primary-grid .dashboard-card-footer:last-child) {
+  align-items: center;
+  min-height: 3.7rem;
+}
+
+:deep(.dashboard-primary-grid .dashboard-card-label) {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #a3a3a3;
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:deep(.dashboard-primary-grid .dashboard-card-subtitle) {
+  margin-top: 0.2rem;
+  color: #111827;
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+:deep(.dashboard-primary-grid .dashboard-card-footnote) {
+  margin-top: 0.22rem;
+  color: #9ca3af;
+  font-size: 0.67rem;
+  line-height: 1.3;
+}
+
+:deep(.dashboard-primary-grid .dashboard-card-value) {
+  color: #111827;
+  font-size: clamp(1.38rem, 0.72vw + 0.85rem, 1.72rem);
+  line-height: 1.04;
+}
+
+:deep(.dashboard-primary-grid .dashboard-card-chip) {
+  border: 0;
+  background: rgba(15, 23, 42, 0.06);
+  color: #6b7280;
+  min-height: 1.1rem;
+  padding: 0.12rem 0.4rem;
+  font-size: 0.58rem;
+}
+
+:deep(.dashboard-primary-grid .cpu-ring-wrap) {
+  width: 3.8rem;
+  height: 3.8rem;
+}
+
+:deep(.dashboard-primary-grid .dashboard-mini-sparkline) {
+  width: 4.4rem;
+  height: 3.8rem;
+}
+
+:deep(.dashboard-primary-grid .dashboard-mini-bars) {
+  width: 4.8rem;
+  height: 3.3rem;
+}
+
+:deep(.dashboard-shell .dashboard-grid-small) {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+:deep(.dashboard-shell .dashboard-grid-item-small) {
+  min-height: 8.55rem;
+}
+
+:deep(.dashboard-shell .dashboard-grid-item-featured) {
+  min-height: 10.6rem;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell) {
+  min-height: 100%;
+  padding: 0.88rem 0.95rem;
+}
+
+:deep(.dashboard-shell .dashboard-card-surface) {
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 1.5rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 22px 36px -34px rgba(15, 23, 42, 0.2);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+:deep(.dashboard-shell .dashboard-card-surface:hover) {
+  border-color: rgba(255, 255, 255, 0.98);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 24px 38px -34px rgba(15, 23, 42, 0.24);
+}
+
+:deep(.dashboard-shell .dashboard-card-subsurface) {
+  border: 0;
+  background: rgba(243, 246, 249, 0.92);
+  box-shadow: none;
+}
+
+:deep(.dashboard-shell .dashboard-card-stack) {
+  gap: 0.72rem;
+}
+
+:deep(.dashboard-shell .dashboard-card-footer) {
+  gap: 0.6rem;
+}
+
+:deep(.dashboard-status-shell .dashboard-card-stack) {
+  gap: 0.68rem;
+}
+
+:deep(.dashboard-shell .dashboard-card-label) {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #a3a3a3;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:deep(.dashboard-shell .dashboard-card-chip) {
+  border: 0;
+  background: rgba(15, 23, 42, 0.06);
+  color: #6b7280;
+  min-height: 1.1rem;
+  padding: 0.12rem 0.4rem;
+  font-size: 0.6rem;
+}
+
+:deep(.dashboard-shell .dashboard-card-subtitle) {
+  color: #111827;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+:deep(.dashboard-shell .dashboard-card-footnote) {
+  color: #9ca3af;
+  font-size: 0.72rem;
+}
+
+:deep(.dashboard-shell .dashboard-card-value) {
+  color: #111827;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell .dashboard-card-stack) {
+  justify-content: space-between;
+  gap: 0.62rem;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell .dashboard-card-footer:last-child) {
+  align-items: center;
+  min-height: 3.7rem;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell .dashboard-card-label) {
+  font-size: 0.65rem;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell .dashboard-card-subtitle) {
+  margin-top: 0.2rem;
+  font-size: 0.74rem;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell .dashboard-card-value) {
+  font-size: clamp(1.38rem, 0.72vw + 0.85rem, 1.72rem);
+  line-height: 1.04;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell .dashboard-card-footnote) {
+  margin-top: 0.22rem;
+  font-size: 0.67rem;
+  line-height: 1.3;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell .dashboard-card-chip) {
+  font-size: 0.58rem;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell .cpu-ring-wrap) {
+  width: 3.8rem;
+  height: 3.8rem;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell .dashboard-mini-sparkline) {
+  width: 4.4rem;
+  height: 3.8rem;
+}
+
+:deep(.dashboard-shell .dashboard-small-card-shell .dashboard-mini-bars) {
+  width: 4.8rem;
+  height: 3.3rem;
+}
+
+:deep(.dashboard-shell .dashboard-hero-card .dashboard-card-value) {
+  font-size: clamp(1.7rem, 0.9vw + 0.9rem, 2.05rem);
+}
+
+:deep(.dashboard-shell .dashboard-hero-card-featured .dashboard-card-value) {
+  font-size: clamp(1.9rem, 1vw + 1rem, 2.3rem);
+}
+
+:deep(.dashboard-shell .dashboard-hero-card .dashboard-mini-bars) {
+  width: 5.6rem;
+  height: 3.7rem;
+}
+
+:deep(.dashboard-shell .dashboard-hero-card) {
+  min-height: 9.8rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1.5rem;
+}
+
+:deep(.dashboard-shell .dashboard-hero-card-featured) {
+  min-height: 10rem;
+  padding: 1rem 1.05rem;
+  box-shadow: 0 22px 36px -34px rgba(15, 23, 42, 0.2);
+}
+
+:root.dark .dashboard-welcome-title,
+[data-theme='dark'] .dashboard-welcome-title,
+html.dark .dashboard-welcome-title {
+  color: rgb(241 245 249);
+}
+
+:root.dark .dashboard-description,
+[data-theme='dark'] .dashboard-description,
+html.dark .dashboard-description {
+  color: rgb(148 163 184);
+}
+
+:root.dark .dashboard-refresh-button,
+[data-theme='dark'] .dashboard-refresh-button,
+html.dark .dashboard-refresh-button {
+  color: rgb(148 163 184);
+  background: rgba(30, 41, 59, 0.88);
+  box-shadow: 0 18px 36px -28px rgba(2, 6, 23, 0.72);
+}
+
+:root.dark :deep(.dashboard-customizer-compact .dashboard-customize-trigger),
+[data-theme='dark'] :deep(.dashboard-customizer-compact .dashboard-customize-trigger),
+html.dark :deep(.dashboard-customizer-compact .dashboard-customize-trigger) {
+  color: rgb(148 163 184);
+  background: rgba(30, 41, 59, 0.88);
+  box-shadow: 0 18px 36px -28px rgba(2, 6, 23, 0.72);
+}
+
+:root.dark :deep(.dashboard-customizer-compact .dashboard-customize-trigger:hover),
+[data-theme='dark'] :deep(.dashboard-customizer-compact .dashboard-customize-trigger:hover),
+html.dark :deep(.dashboard-customizer-compact .dashboard-customize-trigger:hover) {
+  color: rgb(226 232 240);
+  background: rgba(51, 65, 85, 0.92);
+}
+
+:root.dark .dashboard-refresh-button:hover,
+[data-theme='dark'] .dashboard-refresh-button:hover,
+html.dark .dashboard-refresh-button:hover {
+  color: rgb(191 219 254);
+  background: rgba(51, 65, 85, 0.92);
+}
+
+:root.dark .dashboard-stage::before,
+[data-theme='dark'] .dashboard-stage::before,
+html.dark .dashboard-stage::before,
+:root.dark .dashboard-stage::after,
+[data-theme='dark'] .dashboard-stage::after,
+html.dark .dashboard-stage::after {
+  background-image: radial-gradient(circle, rgba(96, 165, 250, 0.22) 1px, transparent 1px);
+  opacity: 0.56;
+}
+
+:root.dark :deep(.dashboard-shell .dashboard-card-surface),
+[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-surface),
+html.dark :deep(.dashboard-shell .dashboard-card-surface) {
+  border: 1px solid rgba(71, 85, 105, 0.42);
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.96) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(148, 163, 184, 0.06),
+    0 24px 38px -34px rgba(2, 6, 23, 0.72);
+}
+
+:root.dark :deep(.dashboard-shell .dashboard-card-subsurface),
+[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-subsurface),
+html.dark :deep(.dashboard-shell .dashboard-card-subsurface) {
+  border: 1px solid rgba(71, 85, 105, 0.26);
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.64) 0%, rgba(15, 23, 42, 0.76) 100%);
+}
+
+:root.dark :deep(.dashboard-shell .dashboard-card-label),
+[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-label),
+html.dark :deep(.dashboard-shell .dashboard-card-label),
+:root.dark :deep(.dashboard-shell .dashboard-card-footnote),
+[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-footnote),
+html.dark :deep(.dashboard-shell .dashboard-card-footnote) {
+  color: rgb(148 163 184);
+}
+
+:root.dark :deep(.dashboard-shell .dashboard-card-subtitle),
+[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-subtitle),
+html.dark :deep(.dashboard-shell .dashboard-card-subtitle),
+:root.dark :deep(.dashboard-shell .dashboard-card-value),
+[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-value),
+html.dark :deep(.dashboard-shell .dashboard-card-value) {
+  color: rgb(241 245 249);
+}
+
+:root.dark :deep(.dashboard-shell .dashboard-card-chip),
+[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-chip),
+html.dark :deep(.dashboard-shell .dashboard-card-chip) {
+  border: 0;
+  background: rgba(148, 163, 184, 0.12);
+  color: rgb(203 213 225);
+}
+
+:root.dark :deep(.dashboard-primary-grid .dashboard-card-label),
+[data-theme='dark'] :deep(.dashboard-primary-grid .dashboard-card-label),
+html.dark :deep(.dashboard-primary-grid .dashboard-card-label),
+:root.dark :deep(.dashboard-primary-grid .dashboard-card-footnote),
+[data-theme='dark'] :deep(.dashboard-primary-grid .dashboard-card-footnote),
+html.dark :deep(.dashboard-primary-grid .dashboard-card-footnote) {
+  color: rgb(148 163 184);
+}
+
+:root.dark :deep(.dashboard-primary-grid .dashboard-card-subtitle),
+[data-theme='dark'] :deep(.dashboard-primary-grid .dashboard-card-subtitle),
+html.dark :deep(.dashboard-primary-grid .dashboard-card-subtitle),
+:root.dark :deep(.dashboard-primary-grid .dashboard-card-value),
+[data-theme='dark'] :deep(.dashboard-primary-grid .dashboard-card-value),
+html.dark :deep(.dashboard-primary-grid .dashboard-card-value) {
+  color: rgb(241 245 249);
+}
+
+:root.dark :deep(.dashboard-primary-grid .dashboard-card-chip),
+[data-theme='dark'] :deep(.dashboard-primary-grid .dashboard-card-chip),
+html.dark :deep(.dashboard-primary-grid .dashboard-card-chip) {
+  background: rgba(148, 163, 184, 0.12);
+  color: rgb(203 213 225);
+}
+
+@media (max-width: 1100px) {
+  .home-page {
+    padding-top: 4rem;
+  }
+}
+
+@media (min-width: 700px) {
+  .dashboard-primary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  :deep(.dashboard-shell .dashboard-grid-small) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .dashboard-primary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  :deep(.dashboard-shell .dashboard-grid-small) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .home-page {
+    padding-inline: 0;
+    padding-bottom: 1rem;
+  }
+
+  .dashboard-stage {
+    padding-top: 0.7rem;
+  }
+
+  .dashboard-stage::before,
+  .dashboard-stage::after {
+    width: 12rem;
+    height: 12rem;
+    background-size: 12px 12px;
+  }
+
+  .dashboard-stage::before {
+    right: 0.2rem;
+    top: 10rem;
+  }
+
+  .dashboard-stage::after {
+    left: 0;
+    bottom: 0.4rem;
+  }
+
+  .dashboard-hero {
+    gap: 0.82rem;
+    padding-bottom: 1rem;
+  }
+
+  .dashboard-control-rail {
+    gap: 0.42rem;
+  }
+
+  .dashboard-welcome-title {
+    font-size: 1.5rem;
+  }
+
+  .dashboard-description {
+    font-size: 0.86rem;
+  }
+
+  .dashboard-refresh-button {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  :deep(.dashboard-shell .dashboard-grid),
+  :deep(.dashboard-shell .dashboard-grid-hero),
+  :deep(.dashboard-shell .dashboard-grid-small),
+  :deep(.dashboard-shell .dashboard-grid-featured),
+  :deep(.dashboard-shell .dashboard-grid-large) {
+    gap: 0.78rem;
+  }
+
+  :deep(.dashboard-shell .dashboard-card-surface),
+  :deep(.dashboard-shell .dashboard-hero-card) {
+    border-radius: 1.3rem;
+  }
+
+  :deep(.dashboard-shell .dashboard-grid-item-small),
+  :deep(.dashboard-shell .dashboard-hero-card) {
+    min-height: 8.7rem;
+  }
+
+  :deep(.dashboard-shell .dashboard-grid-item-featured),
+  :deep(.dashboard-shell .dashboard-hero-card-featured) {
+    min-height: 9.6rem;
+  }
+
+  .dashboard-status-shell {
+    padding: 0.88rem 0.92rem;
+  }
+
+  :deep(.dashboard-shell .dashboard-small-card-shell) {
+    padding: 0.84rem 0.9rem;
+  }
 }
 </style>

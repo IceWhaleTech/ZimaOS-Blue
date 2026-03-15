@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"net/http"
 	"strings"
 	"time"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ToolCallingSupport represents the level of tool calling support.
@@ -93,7 +93,7 @@ func getKnownCapabilities() map[string]ProviderCapability {
 			Streaming:       true,
 			Vision:          false,
 			MaxTokens:       8192,
-			MaxContextSize:  64000,
+			MaxContextSize:  128000,
 			SupportedModels: []string{"deepseek-chat", "deepseek-coder"},
 			AdapterRequired: false,
 		},

@@ -2,7 +2,12 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TunnelStatus as TunnelStatusType } from '@/api/remote-access'
-import { getRemoteAccessDiagnostics, getRemoteAccessLogs, getRemoteAccessQRCode, type RemoteAccessLog } from '@/api/remote-access'
+import {
+  getRemoteAccessDiagnostics,
+  getRemoteAccessLogs,
+  getRemoteAccessQRCode,
+  type RemoteAccessLog,
+} from '@/api/remote-access'
 import { getTunnelProviderIcon } from '@/utils/channelIcons'
 import { useTauri } from '@/composables/useTauri'
 
@@ -106,7 +111,6 @@ async function loadQRCode() {
   }
 }
 
-
 async function loadDiagnostics() {
   if (diagnosticsLoading.value) return
   diagnosticsLoading.value = true
@@ -199,7 +203,10 @@ watch(
       <div class="flex items-center gap-2">
         <span>{{ statusIcon }}</span>
         <span :class="statusColor" class="font-medium">{{ statusText }}</span>
-        <span v-if="status.provider" class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full">
+        <span
+          v-if="status.provider"
+          class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full"
+        >
           <img
             v-if="getTunnelProviderIcon(status.provider)"
             :src="getTunnelProviderIcon(status.provider)"
@@ -220,7 +227,9 @@ watch(
         {{ t('remoteAccess.accessUrl') }}
       </div>
       <div class="flex items-center gap-2">
-        <code class="flex-1 text-sm bg-white dark:bg-gray-700 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
+        <code
+          class="flex-1 text-sm bg-white dark:bg-gray-700 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto"
+        >
           {{ status.url }}
         </code>
         <button
@@ -229,7 +238,12 @@ watch(
           @click="copyUrl"
         >
           <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+            />
           </svg>
         </button>
         <button
@@ -238,7 +252,12 @@ watch(
           @click="openUrl"
         >
           <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+            />
           </svg>
         </button>
         <button
@@ -247,7 +266,12 @@ watch(
           @click="loadQRCode"
         >
           <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+            />
           </svg>
         </button>
       </div>
@@ -255,9 +279,24 @@ watch(
       <!-- QR Code Display (auto-show when URL available) -->
       <div v-if="status.url" class="mt-3 flex justify-center">
         <div v-if="qrCodeLoading" class="py-4">
-          <svg class="animate-spin h-8 w-8 text-gray-900 dark:text-white" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          <svg
+            class="animate-spin h-8 w-8 text-gray-900 dark:text-white"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            />
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
           </svg>
         </div>
         <img
@@ -299,8 +338,18 @@ watch(
         class="w-full px-4 py-3 text-sm font-medium rounded-lg border transition-colors flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 cursor-pointer"
         @click.stop="handleDisconnect"
       >
-        <svg class="h-5 w-5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+        <svg
+          class="h-5 w-5 pointer-events-none"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+          />
         </svg>
         {{ status.connecting ? t('remoteAccess.cancel') : t('remoteAccess.disconnect') }}
       </button>
@@ -310,25 +359,39 @@ watch(
     <div class="flex gap-2 mb-4">
       <button
         class="flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
-        :class="showDiagnostics
-          ? 'bg-blue-100 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-          : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+        :class="
+          showDiagnostics
+            ? 'bg-blue-100 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+            : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+        "
         @click="toggleDiagnostics"
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+          />
         </svg>
         {{ t('remoteAccess.diagnostics') }}
       </button>
       <button
         class="flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
-        :class="showLogs
-          ? 'bg-blue-100 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-          : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+        :class="
+          showLogs
+            ? 'bg-blue-100 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+            : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+        "
         @click="toggleLogs"
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          />
         </svg>
         {{ t('remoteAccess.logs') }}
       </button>
@@ -337,22 +400,50 @@ watch(
     <!-- Diagnostics Panel -->
     <div v-if="showDiagnostics" class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
       <div class="flex items-center justify-between mb-3">
-        <h4 class="font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.diagnosticsTitle') }}</h4>
+        <h4 class="font-medium text-gray-900 dark:text-white">
+          {{ t('remoteAccess.diagnosticsTitle') }}
+        </h4>
         <button
           class="p-1 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
           :title="t('common.refresh')"
           @click="loadDiagnostics"
         >
-          <svg class="h-4 w-4" :class="{ 'animate-spin': diagnosticsLoading }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          <svg
+            class="h-4 w-4"
+            :class="{ 'animate-spin': diagnosticsLoading }"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
           </svg>
         </button>
       </div>
 
       <div v-if="diagnosticsLoading && !diagnostics" class="flex items-center justify-center py-4">
-        <svg class="animate-spin h-6 w-6 text-gray-900 dark:text-white" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        <svg
+          class="animate-spin h-6 w-6 text-gray-900 dark:text-white"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            class="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="4"
+          />
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
         </svg>
       </div>
 
@@ -363,13 +454,17 @@ watch(
             <span :class="diagnostics.tunnel_running ? 'text-green-500' : 'text-gray-400'">
               {{ diagnostics.tunnel_running ? '✓' : '✗' }}
             </span>
-            <span class="text-gray-700 dark:text-gray-300">{{ t('remoteAccess.tunnelRunning') }}</span>
+            <span class="text-gray-700 dark:text-gray-300">{{
+              t('remoteAccess.tunnelRunning')
+            }}</span>
           </div>
           <div class="flex items-center gap-2">
             <span :class="diagnostics.firewall_exception ? 'text-green-500' : 'text-amber-500'">
               {{ diagnostics.firewall_exception ? '✓' : '!' }}
             </span>
-            <span class="text-gray-700 dark:text-gray-300">{{ t('remoteAccess.firewallException') }}</span>
+            <span class="text-gray-700 dark:text-gray-300">{{
+              t('remoteAccess.firewallException')
+            }}</span>
           </div>
           <div v-if="diagnostics.ssh_available !== undefined" class="flex items-center gap-2">
             <span :class="diagnostics.ssh_available ? 'text-green-500' : 'text-amber-500'">
@@ -377,7 +472,10 @@ watch(
             </span>
             <span class="text-gray-700 dark:text-gray-300">SSH</span>
           </div>
-          <div v-if="diagnostics.cloudflared_installed !== undefined" class="flex items-center gap-2">
+          <div
+            v-if="diagnostics.cloudflared_installed !== undefined"
+            class="flex items-center gap-2"
+          >
             <span :class="diagnostics.cloudflared_installed ? 'text-green-500' : 'text-gray-400'">
               {{ diagnostics.cloudflared_installed ? '✓' : '✗' }}
             </span>
@@ -387,7 +485,10 @@ watch(
 
         <!-- Active Provider -->
         <div v-if="diagnostics.active_provider" class="text-sm text-gray-600 dark:text-gray-400">
-          {{ t('remoteAccess.provider') }}: <span class="font-medium text-gray-900 dark:text-white">{{ diagnostics.active_provider }}</span>
+          {{ t('remoteAccess.provider') }}:
+          <span class="font-medium text-gray-900 dark:text-white">{{
+            diagnostics.active_provider
+          }}</span>
         </div>
 
         <!-- Platform Info -->
@@ -396,13 +497,28 @@ watch(
         </div>
 
         <!-- Hints -->
-        <div v-if="diagnostics.hints && diagnostics.hints.length > 0" class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 border border-amber-200 dark:border-amber-800">
+        <div
+          v-if="diagnostics.hints && diagnostics.hints.length > 0"
+          class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 border border-amber-200 dark:border-amber-800"
+        >
           <div class="flex items-start gap-2">
-            <svg class="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <svg
+              class="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
             </svg>
             <div class="text-sm">
-              <p class="font-medium text-amber-800 dark:text-amber-200 mb-1">{{ t('remoteAccess.troubleshootingHints') }}</p>
+              <p class="font-medium text-amber-800 dark:text-amber-200 mb-1">
+                {{ t('remoteAccess.troubleshootingHints') }}
+              </p>
               <ul class="text-amber-700 dark:text-amber-300 list-disc list-inside space-y-1">
                 <li v-for="(hint, index) in diagnostics.hints" :key="index">{{ hint }}</li>
               </ul>
@@ -412,7 +528,9 @@ watch(
 
         <!-- Recent Errors -->
         <div v-if="diagnostics.recent_errors && diagnostics.recent_errors.length > 0">
-          <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('remoteAccess.recentErrors') }}</p>
+          <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            {{ t('remoteAccess.recentErrors') }}
+          </p>
           <div class="space-y-2 max-h-40 overflow-y-auto">
             <div
               v-for="error in diagnostics.recent_errors"
@@ -420,8 +538,12 @@ watch(
               class="text-xs bg-red-50 dark:bg-red-900/20 rounded p-2 border border-red-200 dark:border-red-800"
             >
               <div class="flex items-center justify-between mb-1">
-                <span class="font-medium text-red-700 dark:text-red-300">{{ error.event_type }}</span>
-                <span class="text-red-500 dark:text-red-400">{{ formatTime(error.created_at) }}</span>
+                <span class="font-medium text-red-700 dark:text-red-300">{{
+                  error.event_type
+                }}</span>
+                <span class="text-red-500 dark:text-red-400">{{
+                  formatTime(error.created_at)
+                }}</span>
               </div>
               <p class="text-red-600 dark:text-red-300 break-all">{{ error.message }}</p>
             </div>
@@ -430,24 +552,40 @@ watch(
 
         <!-- Active Session -->
         <div v-if="diagnostics.active_session">
-          <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('remoteAccess.activeSession') }}</p>
-          <div class="text-xs bg-white dark:bg-gray-700 rounded p-2 border border-gray-200 dark:border-gray-700">
+          <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            {{ t('remoteAccess.activeSession') }}
+          </p>
+          <div
+            class="text-xs bg-white dark:bg-gray-700 rounded p-2 border border-gray-200 dark:border-gray-700"
+          >
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <span class="text-gray-500 dark:text-gray-400">ID:</span>
-                <span class="ml-1 text-gray-700 dark:text-gray-300 font-mono">{{ diagnostics.active_session.id.slice(0, 8) }}...</span>
+                <span class="ml-1 text-gray-700 dark:text-gray-300 font-mono"
+                  >{{ diagnostics.active_session.id.slice(0, 8) }}...</span
+                >
               </div>
               <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('remoteAccess.status') }}:</span>
-                <span class="ml-1 text-gray-700 dark:text-gray-300">{{ diagnostics.active_session.status }}</span>
+                <span class="text-gray-500 dark:text-gray-400"
+                  >{{ t('remoteAccess.status') }}:</span
+                >
+                <span class="ml-1 text-gray-700 dark:text-gray-300">{{
+                  diagnostics.active_session.status
+                }}</span>
               </div>
               <div class="col-span-2">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('remoteAccess.startedAt') }}:</span>
-                <span class="ml-1 text-gray-700 dark:text-gray-300">{{ formatTime(diagnostics.active_session.started_at) }}</span>
+                <span class="text-gray-500 dark:text-gray-400"
+                  >{{ t('remoteAccess.startedAt') }}:</span
+                >
+                <span class="ml-1 text-gray-700 dark:text-gray-300">{{
+                  formatTime(diagnostics.active_session.started_at)
+                }}</span>
               </div>
               <div v-if="diagnostics.active_session.error_message" class="col-span-2">
                 <span class="text-red-500 dark:text-red-400">{{ t('remoteAccess.error') }}:</span>
-                <span class="ml-1 text-red-600 dark:text-red-300">{{ diagnostics.active_session.error_message }}</span>
+                <span class="ml-1 text-red-600 dark:text-red-300">{{
+                  diagnostics.active_session.error_message
+                }}</span>
               </div>
             </div>
           </div>
@@ -464,20 +602,52 @@ watch(
           :title="t('common.refresh')"
           @click="loadLogs"
         >
-          <svg class="h-4 w-4" :class="{ 'animate-spin': logsLoading }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          <svg
+            class="h-4 w-4"
+            :class="{ 'animate-spin': logsLoading }"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
           </svg>
         </button>
       </div>
 
-      <div v-if="logsLoading && (!logs || logs.length === 0)" class="flex items-center justify-center py-4">
-        <svg class="animate-spin h-6 w-6 text-gray-900 dark:text-white" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+      <div
+        v-if="logsLoading && (!logs || logs.length === 0)"
+        class="flex items-center justify-center py-4"
+      >
+        <svg
+          class="animate-spin h-6 w-6 text-gray-900 dark:text-white"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            class="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="4"
+          />
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
         </svg>
       </div>
 
-      <div v-else-if="!logs || logs.length === 0" class="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
+      <div
+        v-else-if="!logs || logs.length === 0"
+        class="text-center py-4 text-sm text-gray-500 dark:text-gray-400"
+      >
         {{ t('remoteAccess.noLogs') }}
       </div>
 
@@ -489,7 +659,10 @@ watch(
           :class="getEventTypeColor(log.event_type)"
         >
           <div class="flex items-center justify-between mb-1">
-            <span class="font-medium px-1.5 py-0.5 rounded text-xs" :class="getEventTypeColor(log.event_type)">
+            <span
+              class="font-medium px-1.5 py-0.5 rounded text-xs"
+              :class="getEventTypeColor(log.event_type)"
+            >
               {{ log.event_type }}
             </span>
             <span class="text-gray-500 dark:text-gray-400">{{ formatTime(log.created_at) }}</span>

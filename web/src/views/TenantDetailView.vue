@@ -66,7 +66,12 @@
             <div v-if="isAdmin && member.role !== 'owner'" class="member-actions">
               <select
                 :value="member.role"
-                @change="updateMemberRole(member.user_id, ($event.target as HTMLSelectElement).value as MemberRole)"
+                @change="
+                  updateMemberRole(
+                    member.user_id,
+                    ($event.target as HTMLSelectElement).value as MemberRole
+                  )
+                "
               >
                 <option value="admin">{{ t('tenants.members.roles.admin') }}</option>
                 <option value="member">{{ t('tenants.members.roles.member') }}</option>
@@ -100,7 +105,10 @@
               </span>
             </div>
             <div class="invitation-meta">
-              <span>{{ t('tenants.invitations.expires') }} {{ formatDate(invitation.expires_at) }}</span>
+              <span
+                >{{ t('tenants.invitations.expires') }}
+                {{ formatDate(invitation.expires_at) }}</span
+              >
             </div>
             <button
               v-if="isAdmin"
@@ -134,8 +142,12 @@
             <label for="timezone">{{ t('tenants.settings.timezone') }}</label>
             <select id="timezone" v-model="settingsForm.timezone" :disabled="!isAdmin">
               <option value="UTC">{{ t('tenants.settings.timezones.utc') }}</option>
-              <option value="America/New_York">{{ t('tenants.settings.timezones.eastern') }}</option>
-              <option value="America/Los_Angeles">{{ t('tenants.settings.timezones.pacific') }}</option>
+              <option value="America/New_York">
+                {{ t('tenants.settings.timezones.eastern') }}
+              </option>
+              <option value="America/Los_Angeles">
+                {{ t('tenants.settings.timezones.pacific') }}
+              </option>
               <option value="Europe/London">{{ t('tenants.settings.timezones.london') }}</option>
               <option value="Asia/Shanghai">{{ t('tenants.settings.timezones.shanghai') }}</option>
               <option value="Asia/Tokyo">{{ t('tenants.settings.timezones.tokyo') }}</option>
@@ -144,7 +156,9 @@
 
           <div v-if="isAdmin" class="form-actions">
             <button class="btn btn-primary" :disabled="savingSettings" @click="saveSettings">
-              {{ savingSettings ? t('tenants.settings.saving') : t('tenants.settings.saveSettings') }}
+              {{
+                savingSettings ? t('tenants.settings.saving') : t('tenants.settings.saveSettings')
+              }}
             </button>
           </div>
         </div>
@@ -207,12 +221,10 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showInviteModal = false">{{ t('tenants.cancel') }}</button>
-          <button
-            class="btn btn-primary"
-            :disabled="!canInvite || inviting"
-            @click="handleInvite"
-          >
+          <button class="btn btn-secondary" @click="showInviteModal = false">
+            {{ t('tenants.cancel') }}
+          </button>
+          <button class="btn btn-primary" :disabled="!canInvite || inviting" @click="handleInvite">
             {{ inviting ? t('tenants.invite.sending') : t('tenants.invite.sendInvitation') }}
           </button>
         </div>
@@ -230,7 +242,9 @@
           <p v-html="t('tenants.members.removeConfirm', { username: removingMember.username })"></p>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="removingMember = null">{{ t('tenants.cancel') }}</button>
+          <button class="btn btn-secondary" @click="removingMember = null">
+            {{ t('tenants.cancel') }}
+          </button>
           <button class="btn btn-danger" :disabled="removing" @click="handleRemoveMember">
             {{ removing ? t('tenants.members.removing') : t('tenants.members.remove') }}
           </button>
@@ -245,7 +259,13 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTenantStore } from '@/stores/tenant'
-import type { TenantMember, TenantInvitation, MemberRole, TenantSettings, TenantLimits } from '@/api/tenant'
+import type {
+  TenantMember,
+  TenantInvitation,
+  MemberRole,
+  TenantSettings,
+  TenantLimits,
+} from '@/api/tenant'
 import { getRoleColor, formatStorageSize } from '@/api/tenant'
 import * as tenantApi from '@/api/tenant'
 

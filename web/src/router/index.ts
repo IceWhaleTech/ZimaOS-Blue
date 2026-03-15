@@ -9,8 +9,7 @@ import { hasConfiguredLlmApiKey } from '@/utils/providerAccess'
 // Desktop detection: __BLUE_DESKTOP__ is injected by the Tauri on_page_load handler.
 // In desktop mode, the page is loaded from http://localhost:{port} (same-origin as the
 // Go server), so all API calls use relative URLs — no special URL construction needed.
-const isDesktop =
-  typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
 
 // Preview mode state (cached to avoid repeated API calls)
 let previewModeChecked = false

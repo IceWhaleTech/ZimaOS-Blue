@@ -93,7 +93,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Origem dos arquivos',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -177,7 +177,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'A execução do comando foi bloqueada porque a aprovação do diretório expirou. Aprove o diretório e tente novamente.',
+    execDirectoryApprovalTimeout:
+      'A execução do comando foi bloqueada porque a aprovação do diretório expirou. Aprove o diretório e tente novamente.',
     streamProgress: {
       requestAccepted: 'Solicitação recebida, preparando resposta...',
       generating: 'Gerando resposta...',
@@ -298,6 +299,7 @@ export default {
     inputPlaceholderShort: 'Digite uma mensagem...',
     newLine: 'para nova linha',
     dragDropHint: 'Arraste e solte ou cole arquivos para anexar',
+    conversations: 'Conversas',
     searchConversations: 'Buscar conversas...',
     noConversationsFound: 'Nenhuma conversa encontrada',
     noConversationsYet: 'Ainda não há conversas',
@@ -513,6 +515,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Acesso de rede',
+    networkTitle: 'Rede e acesso',
+    releaseTrack: 'Gerenciamento de versões',
+    systemVersion: 'Atualizações e versões',
     llmApiKeyRequired: 'Configure uma chave de API antes de abrir a página de provedores LLM.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -1500,8 +1506,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Diretórios aprovados',
+    approvedDirectoriesDesc: 'Diretórios aprovados via "Permitir sempre" para exec/convert.',
+    noApprovedDirectories: 'Nenhum diretório aprovado',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Diretórios aprovados',
       firewall: 'Firewall',
       masking: 'Mascaramento de dados',
     },
@@ -2215,6 +2225,7 @@ export default {
       length: 'Pelo menos {n} caracteres',
       uppercase: 'Uma letra maiúscula',
       lowercase: 'Uma letra minúscula',
+      letter: 'Uma letra',
       number: 'Um número',
       special: "Um caractere especial (!{'@'}#$%...)",
     },
@@ -2861,7 +2872,8 @@ export default {
     importSuccess: '{conversations} conversas e {messages} mensagens importadas',
     importFailed: 'Falha ao importar dados',
     chatDataTitle: 'Dados de chat',
-    chatDataDescription: 'Importe, exporte e limpe o histórico de chat e dados relacionados em um só lugar.',
+    chatDataDescription:
+      'Importe, exporte e limpe o histórico de chat e dados relacionados em um só lugar.',
     manageData: 'Gerenciar dados',
     cleanupPreviewFailed: 'Falha ao visualizar limpeza',
     previewFailed: 'Falha ao visualizar dados',
@@ -2887,7 +2899,8 @@ export default {
       eventsRetention: 'Retenção de eventos',
       alertsRetention: 'Retenção de alertas',
       totalRecords: 'Total de registros de monitoramento',
-      policyHint: 'Cada tipo de dado suporta de 1 a 365 dias. Uma retenção menor reduz o armazenamento, enquanto uma retenção maior ajuda em auditorias e resolução de problemas.',
+      policyHint:
+        'Cada tipo de dado suporta de 1 a 365 dias. Uma retenção menor reduz o armazenamento, enquanto uma retenção maior ajuda em auditorias e resolução de problemas.',
       daysRange: 'Faixa permitida: 1-365 dias',
       sessionsHint: 'Ciclo de vida das sessões do agent e metadados de runtime.',
       eventsHint: 'Chamadas de ferramentas, rastros de execução e eventos de auditoria.',
@@ -2895,7 +2908,8 @@ export default {
       sessionsSuggested: 'Sugerido: 14-30 dias para operações rotineiras',
       eventsSuggested: 'Sugerido: 7-14 dias para equilibrar auditoria e armazenamento',
       alertsSuggested: 'Sugerido: 30-90 dias para revisão de incidentes',
-      saveHint: 'As novas janelas de retenção serão aplicadas nas próximas limpezas automáticas e manuais.',
+      saveHint:
+        'As novas janelas de retenção serão aplicadas nas próximas limpezas automáticas e manuais.',
 
       days: 'dias',
     },
@@ -3796,12 +3810,13 @@ export default {
       jsonDesc: 'JSON format, suitable for backup and analysis',
       csvDesc: 'CSV format, suitable for spreadsheets',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Novo conteúdo lembrado',
       memorySavedMessage: 'Memória extraída da conversa',
       manageMemory: 'Gerenciar memória',
-    },},
+    },
+  },
   cron: {
     title: 'Scheduled Tasks',
     create: 'Criar Tarefa',

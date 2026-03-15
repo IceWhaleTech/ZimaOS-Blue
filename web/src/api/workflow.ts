@@ -2,7 +2,15 @@ import api from './client'
 
 export type WorkflowStatus = 'draft' | 'active' | 'disabled' | 'error'
 export type ExecutionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-export type NodeType = 'trigger' | 'action' | 'condition' | 'loop' | 'delay' | 'switch' | 'merge' | 'subflow'
+export type NodeType =
+  | 'trigger'
+  | 'action'
+  | 'condition'
+  | 'loop'
+  | 'delay'
+  | 'switch'
+  | 'merge'
+  | 'subflow'
 
 export interface WorkflowNode {
   id: string
@@ -139,8 +147,7 @@ export const workflowApi = {
   create: (data: CreateWorkflowRequest) => api.post<Workflow>('/workflows', data),
 
   // Update workflow
-  update: (id: string, data: UpdateWorkflowRequest) =>
-    api.put<Workflow>(`/workflows/${id}`, data),
+  update: (id: string, data: UpdateWorkflowRequest) => api.put<Workflow>(`/workflows/${id}`, data),
 
   // Delete workflow
   delete: (id: string) => api.delete(`/workflows/${id}`),
@@ -176,8 +183,14 @@ export const workflowApi = {
     api.post<WorkflowExecution>(`/workflows/${workflowId}/executions/${executionId}/retry`),
 
   // Get execution logs
-  getExecutionLogs: (workflowId: string, executionId: string, params?: { offset?: number; limit?: number }) =>
-    api.get<ListLogsResponse>(`/workflows/${workflowId}/executions/${executionId}/logs`, { params }),
+  getExecutionLogs: (
+    workflowId: string,
+    executionId: string,
+    params?: { offset?: number; limit?: number }
+  ) =>
+    api.get<ListLogsResponse>(`/workflows/${workflowId}/executions/${executionId}/logs`, {
+      params,
+    }),
 
   // Get stats
   getStats: () => api.get<WorkflowStats>('/workflows/stats'),

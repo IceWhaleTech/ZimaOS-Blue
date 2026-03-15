@@ -17,9 +17,7 @@ export const usePluginStore = defineStore('plugin', () => {
   const refreshing = ref(false)
 
   // Computed
-  const selectedPlugin = computed(() =>
-    plugins.value.find((p) => p.id === selectedPluginId.value)
-  )
+  const selectedPlugin = computed(() => plugins.value.find((p) => p.id === selectedPluginId.value))
 
   const enabledPlugins = computed(() => plugins.value.filter((p) => p.enabled))
 
@@ -40,9 +38,7 @@ export const usePluginStore = defineStore('plugin', () => {
     return grouped
   })
 
-  const availablePlugins = computed(() =>
-    remotePlugins.value.filter((p) => !p.installed)
-  )
+  const availablePlugins = computed(() => remotePlugins.value.filter((p) => !p.installed))
 
   // Actions
   async function fetchPlugins() {

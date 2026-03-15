@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Źródła plików',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -565,6 +565,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Dostęp sieciowy',
+    networkTitle: 'Sieć i dostęp',
+    releaseTrack: 'Zarządzanie wersjami',
+    systemVersion: 'Aktualizacje i wersje',
     llmApiKeyRequired: 'Skonfiguruj klucz API przed otwarciem strony dostawców LLM.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -697,8 +701,13 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Zatwierdzone katalogi',
+    approvedDirectoriesDesc:
+      'Katalogi zatwierdzone przez opcję „Zawsze zezwalaj” dla exec/convert.',
+    noApprovedDirectories: 'Brak zatwierdzonych katalogów',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Zatwierdzone katalogi',
       firewall: 'Zapora',
       masking: 'Maskowanie danych',
     },
@@ -1366,6 +1375,7 @@ export default {
       length: 'Co najmniej {n} znaków',
       uppercase: 'Jedna wielka litera',
       lowercase: 'Jedna mała litera',
+      letter: 'Jedna litera',
       number: 'Jedna cyfra',
       special: "Jeden znak specjalny (!{'@'}#$%...)",
     },
@@ -1437,6 +1447,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    conversations: 'Rozmowy',
     execDirectoryApprovalTimeout:
       'Wykonanie polecenia zostało zablokowane, ponieważ upłynął limit czasu zatwierdzenia katalogu. Zatwierdź katalog i spróbuj ponownie.',
     streamProgress: {

@@ -19,11 +19,13 @@ function closeLightbox() {
 
 function getGridCols(): string {
   const cols = props.card.columns || 2
-  return {
-    2: 'grid-cols-2',
-    3: 'grid-cols-3',
-    4: 'grid-cols-4',
-  }[cols] || 'grid-cols-2'
+  return (
+    {
+      2: 'grid-cols-2',
+      3: 'grid-cols-3',
+      4: 'grid-cols-4',
+    }[cols] || 'grid-cols-2'
+  )
 }
 
 function isHorizontalLayout(): boolean {
@@ -49,7 +51,9 @@ function scrollRight() {
 </script>
 
 <template>
-  <div class="gallery-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="gallery-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -63,8 +67,19 @@ function scrollRight() {
         class="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
         @click="scrollLeft"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M15 19l-7-7 7-7"
+          />
         </svg>
       </button>
       <button
@@ -72,7 +87,13 @@ function scrollRight() {
         class="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
         @click="scrollRight"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
       </button>
@@ -96,7 +117,9 @@ function scrollRight() {
             :class="card.images.length === 1 ? 'max-h-80' : ''"
           />
           <!-- Overlay on hover -->
-          <div class="absolute inset-0 bg-black/0 group-hover/item:bg-black/30 transition-colors flex items-center justify-center">
+          <div
+            class="absolute inset-0 bg-black/0 group-hover/item:bg-black/30 transition-colors flex items-center justify-center"
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               class="h-8 w-8 text-white opacity-0 group-hover/item:opacity-100 transition-opacity"
@@ -113,7 +136,10 @@ function scrollRight() {
             </svg>
           </div>
           <!-- Caption -->
-          <div v-if="image.caption" class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
+          <div
+            v-if="image.caption"
+            class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
+          >
             <p class="text-xs text-white truncate">{{ image.caption }}</p>
           </div>
         </div>
@@ -128,9 +154,15 @@ function scrollRight() {
         class="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
         @click="openLightbox(image)"
       >
-        <img :src="getImageSrc(image)" :alt="image.alt || ''" class="w-full h-full object-cover transition-transform group-hover:scale-105" />
+        <img
+          :src="getImageSrc(image)"
+          :alt="image.alt || ''"
+          class="w-full h-full object-cover transition-transform group-hover:scale-105"
+        />
         <!-- Overlay on hover -->
-        <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+        <div
+          class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center"
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             class="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity"
@@ -147,7 +179,10 @@ function scrollRight() {
           </svg>
         </div>
         <!-- Caption -->
-        <div v-if="image.caption" class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
+        <div
+          v-if="image.caption"
+          class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
+        >
           <p class="text-xs text-white truncate">{{ image.caption }}</p>
         </div>
       </div>
@@ -164,13 +199,30 @@ function scrollRight() {
           class="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
           @click.stop="closeLightbox"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </button>
         <div class="max-w-4xl max-h-[90vh] p-4" @click.stop>
-          <img :src="selectedImage.src" :alt="selectedImage.alt || ''" class="max-w-full max-h-[80vh] object-contain rounded-lg" />
-          <p v-if="selectedImage.caption" class="mt-3 text-center text-white">{{ selectedImage.caption }}</p>
+          <img
+            :src="selectedImage.src"
+            :alt="selectedImage.alt || ''"
+            class="max-w-full max-h-[80vh] object-contain rounded-lg"
+          />
+          <p v-if="selectedImage.caption" class="mt-3 text-center text-white">
+            {{ selectedImage.caption }}
+          </p>
         </div>
       </div>
     </Teleport>

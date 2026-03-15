@@ -14,8 +14,10 @@ const props = defineProps<{
 const { openFullscreen } = useFullscreen()
 const expanded = ref(props.card.defaultExpanded ?? false)
 const copied = ref(false)
-const isMarkdown = computed(() => !props.card.language || props.card.language.toLowerCase() === 'markdown')
-const renderedMarkdown = computed(() => isMarkdown.value ? renderMarkdown(props.card.code) : '')
+const isMarkdown = computed(
+  () => !props.card.language || props.card.language.toLowerCase() === 'markdown'
+)
+const renderedMarkdown = computed(() => (isMarkdown.value ? renderMarkdown(props.card.code) : ''))
 
 function handleDoubleClick() {
   openFullscreen({
@@ -87,35 +89,78 @@ function getLanguageDisplay(): string {
 </script>
 
 <template>
-  <div class="collapsible-code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden" :class="isMarkdown ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'" @dblclick="handleDoubleClick">
+  <div
+    class="collapsible-code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
+    :class="isMarkdown ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'"
+    @dblclick="handleDoubleClick"
+  >
     <!-- Header -->
-    <div class="flex items-center justify-between px-3 py-1.5 border-b" :class="isMarkdown ? 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-700' : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700'">
+    <div
+      class="flex items-center justify-between px-3 py-1.5 border-b"
+      :class="
+        isMarkdown
+          ? 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-700'
+          : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+      "
+    >
       <div class="flex items-center gap-2">
         <!-- Markdown icon -->
         <span v-if="isMarkdown" class="text-base">📄</span>
         <!-- Filename or title -->
-        <span v-if="card.filename || card.title" class="text-xs" :class="isMarkdown ? 'text-gray-700 dark:text-gray-300 font-medium' : 'text-gray-500 dark:text-gray-400'">
+        <span
+          v-if="card.filename || card.title"
+          class="text-xs"
+          :class="
+            isMarkdown
+              ? 'text-gray-700 dark:text-gray-300 font-medium'
+              : 'text-gray-500 dark:text-gray-400'
+          "
+        >
           {{ card.filename || card.title }}
         </span>
         <!-- Language badge -->
-        <span v-if="card.language && !isMarkdown && !(card.filename || card.title)" class="text-xs text-gray-500 dark:text-gray-400">
+        <span
+          v-if="card.language && !isMarkdown && !(card.filename || card.title)"
+          class="text-xs text-gray-500 dark:text-gray-400"
+        >
           {{ getLanguageDisplay() }}
         </span>
         <!-- Fallback label -->
-        <span v-if="!isMarkdown && !card.filename && !card.title && !card.language" class="text-xs text-gray-500 dark:text-gray-400">{{ t('codeBlock.code', 'code') }}</span>
+        <span
+          v-if="!isMarkdown && !card.filename && !card.title && !card.language"
+          class="text-xs text-gray-500 dark:text-gray-400"
+          >{{ t('codeBlock.code', 'code') }}</span
+        >
         <!-- Lines count -->
-        <span v-if="!isMarkdown" class="text-xs text-gray-400 dark:text-gray-500">{{ lines.length }} {{ t('execCard.lines', 'lines') }}</span>
+        <span v-if="!isMarkdown" class="text-xs text-gray-400 dark:text-gray-500"
+          >{{ lines.length }} {{ t('execCard.lines', 'lines') }}</span
+        >
       </div>
       <div class="flex items-center gap-2">
         <!-- Fullscreen hint -->
-        <span class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline" :title="t('media.fullscreen', 'Full Screen')">⤢</span>
+        <span
+          class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline"
+          :title="t('media.fullscreen', 'Full Screen')"
+          >⤢</span
+        >
         <!-- Copy button -->
         <button
           class="flex items-center gap-1 px-1.5 py-0.5 text-xs transition-colors rounded"
-          :class="isMarkdown ? 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700' : 'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'"
+          :class="
+            isMarkdown
+              ? 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              : 'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+          "
           @click.stop="copyCode"
         >
-          <svg v-if="!copied" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            v-if="!copied"
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-3.5 w-3.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -123,8 +168,20 @@ function getLanguageDisplay(): string {
               d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
             />
           </svg>
-          <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+          <svg
+            v-else
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-3.5 w-3.5 text-green-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M5 13l4 4L19 7"
+            />
           </svg>
           <span>{{ copied ? t('common.copied', 'Copied') : t('common.copy', 'Copy') }}</span>
         </button>
@@ -147,7 +204,9 @@ function getLanguageDisplay(): string {
     <!-- Code content -->
     <div v-else class="relative">
       <div class="overflow-x-auto">
-        <pre class="p-4 text-sm leading-relaxed"><code class="text-gray-800 dark:text-gray-100"><template v-for="(line, index) in displayedLines" :key="index"><span class="inline-block w-full"><span
+        <pre
+          class="p-4 text-sm leading-relaxed"
+        ><code class="text-gray-800 dark:text-gray-100"><template v-for="(line, index) in displayedLines" :key="index"><span class="inline-block w-full"><span
               v-if="card.showLineNumbers !== false"
               class="inline-block w-8 text-right mr-4 text-gray-400 dark:text-gray-600 select-none"
             >{{ index + 1 }}</span>{{ line }}
@@ -162,10 +221,20 @@ function getLanguageDisplay(): string {
     </div>
 
     <!-- Expand/Collapse button -->
-    <div v-if="shouldCollapse" class="border-t" :class="isMarkdown ? 'border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-700'">
+    <div
+      v-if="shouldCollapse"
+      class="border-t"
+      :class="
+        isMarkdown ? 'border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-700'
+      "
+    >
       <button
         class="w-full px-4 py-2 text-sm transition-colors flex items-center justify-center gap-2"
-        :class="isMarkdown ? 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'"
+        :class="
+          isMarkdown
+            ? 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+            : 'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+        "
         @click.stop="toggleExpand"
       >
         <svg
@@ -176,9 +245,17 @@ function getLanguageDisplay(): string {
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M19 9l-7 7-7-7"
+          />
         </svg>
-        <span v-if="!expanded">{{ t('execCard.expand', 'Show more') }} {{ hiddenLinesCount }} {{ t('execCard.lines', 'lines') }}</span>
+        <span v-if="!expanded"
+          >{{ t('execCard.expand', 'Show more') }} {{ hiddenLinesCount }}
+          {{ t('execCard.lines', 'lines') }}</span
+        >
         <span v-else>{{ t('execCard.collapse', 'Collapse') }}</span>
       </button>
     </div>

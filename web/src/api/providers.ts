@@ -40,6 +40,5 @@ export const providerSettingsApi = {
     api.put<ProviderConfigResponse>(`/providers/settings/${name}`, config),
 
   // Test connection for a provider
-  test: (name: string) =>
-    api.post<TestConnectionResponse>(`/providers/settings/${name}/test`),
+  test: (name: string) => api.post<TestConnectionResponse>(`/providers/settings/${name}/test`),
 }

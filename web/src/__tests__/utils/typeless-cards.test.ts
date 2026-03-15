@@ -96,7 +96,7 @@ describe('Typeless Card Parsing', () => {
     const result = parseTypelessContent(content)
 
     expect(result.cards.length).toBeGreaterThanOrEqual(2)
-    const execCard = result.cards.find(c => c.type === 'exec')
+    const execCard = result.cards.find((c) => c.type === 'exec')
     expect(execCard).toBeTruthy()
     expect(result.text).toContain('[[TYPELESS_CARD:fc-0]]')
     expect(result.text).toContain('[[TYPELESS_CARD:card-0]]')
@@ -117,12 +117,12 @@ describe('Typeless Card Parsing', () => {
     ].join('\n')
 
     const partial = parseTypelessContentIncremental(chunk1, 'msg-streaming-1', 'conv-1')
-    const partialExec = partial.cards.find(c => c.type === 'exec')
+    const partialExec = partial.cards.find((c) => c.type === 'exec')
     expect(partialExec).toBeTruthy()
 
     const chunk2 = chunk1 + ' 最新消息 2026\\nprovider: duckduckgo"}\n```'
     const full = parseTypelessContentIncremental(chunk2, 'msg-streaming-1', 'conv-1')
-    const fullExec = full.cards.find(c => c.type === 'exec')
+    const fullExec = full.cards.find((c) => c.type === 'exec')
     expect(fullExec).toBeTruthy()
 
     expect(full.text).toContain('[[TYPELESS_CARD:fc-0]]')
@@ -154,16 +154,16 @@ describe('Typeless Card Parsing', () => {
     const initial = parseTypelessContent(
       '- [ ] gather facts\n- [ ] write summary',
       'render-msg-1',
-      'conv-1',
+      'conv-1'
     )
     const updated = parseTypelessContent(
       '- [x] gather facts\n- [ ] write summary',
       'render-msg-1',
-      'conv-1',
+      'conv-1'
     )
 
-    const initialChecklist = initial.cards.find(card => card.type === 'list') as any
-    const updatedChecklist = updated.cards.find(card => card.type === 'list') as any
+    const initialChecklist = initial.cards.find((card) => card.type === 'list') as any
+    const updatedChecklist = updated.cards.find((card) => card.type === 'list') as any
 
     expect(initialChecklist).toBeTruthy()
     expect(updatedChecklist).toBeTruthy()
@@ -178,15 +178,14 @@ describe('Typeless Card Parsing', () => {
       '- [ ] gather facts\n- [ ] write summary',
       'render-msg-1',
       'conv-1',
-      'todo-checklist-msg-assistant-current',
+      'todo-checklist-msg-assistant-current'
     )
 
-    const checklist = result.cards.find(card => card.type === 'list') as any
+    const checklist = result.cards.find((card) => card.type === 'list') as any
 
     expect(checklist.id).toBe('todo-checklist-msg-assistant-current')
     expect(checklist.variant).toBe('checklist')
   })
-
 
   it('keeps non-checklist card ids stable when an explicit todo card id arrives later', () => {
     const content = [
@@ -198,21 +197,17 @@ describe('Typeless Card Parsing', () => {
       '- [ ] write summary',
     ].join('\n')
 
-    const initial = parseTypelessContent(
-      content,
-      'render-msg-1',
-      'conv-1',
-    )
+    const initial = parseTypelessContent(content, 'render-msg-1', 'conv-1')
     const updated = parseTypelessContent(
       content,
       'render-msg-1',
       'conv-1',
-      'todo-checklist-msg-assistant-current',
+      'todo-checklist-msg-assistant-current'
     )
 
-    const initialCode = initial.cards.find(card => card.type === 'code') as any
-    const updatedCode = updated.cards.find(card => card.type === 'code') as any
-    const updatedChecklist = updated.cards.find(card => card.type === 'list') as any
+    const initialCode = initial.cards.find((card) => card.type === 'code') as any
+    const updatedCode = updated.cards.find((card) => card.type === 'code') as any
+    const updatedChecklist = updated.cards.find((card) => card.type === 'list') as any
 
     expect(initialCode).toBeTruthy()
     expect(updatedCode).toBeTruthy()
@@ -224,16 +219,16 @@ describe('Typeless Card Parsing', () => {
     const first = parseTypelessContent(
       '- [ ] gather facts\n- [ ] write summary',
       'render-msg-1',
-      'conv-1',
+      'conv-1'
     )
     const second = parseTypelessContent(
       '- [ ] gather facts\n- [ ] write summary',
       'render-msg-2',
-      'conv-1',
+      'conv-1'
     )
 
-    const firstChecklist = first.cards.find(card => card.type === 'list') as any
-    const secondChecklist = second.cards.find(card => card.type === 'list') as any
+    const firstChecklist = first.cards.find((card) => card.type === 'list') as any
+    const secondChecklist = second.cards.find((card) => card.type === 'list') as any
 
     expect(firstChecklist.id).not.toBe(secondChecklist.id)
   })
@@ -244,8 +239,12 @@ describe('Typeless Card Parsing', () => {
       '{"type":"web-fetch","id":"card-inner-fence","title":"Doc","status":"success","content":"介绍如下：\\n\\n```mermaid\\ngraph TD\\nA-->B\\n```"}',
     ].join('\n')
 
-    const partial = parseTypelessContentIncremental(chunk1, 'msg-streaming-inner-fence', 'conv-inner-fence')
-    const partialCard = partial.cards.find(c => c.id === 'card-inner-fence') as any
+    const partial = parseTypelessContentIncremental(
+      chunk1,
+      'msg-streaming-inner-fence',
+      'conv-inner-fence'
+    )
+    const partialCard = partial.cards.find((c) => c.id === 'card-inner-fence') as any
 
     expect(partialCard).toBeTruthy()
     expect(partialCard.type).toBe('web-fetch')
@@ -254,8 +253,12 @@ describe('Typeless Card Parsing', () => {
     expect(partial.text).not.toContain('```typeless')
 
     const chunk2 = `${chunk1}\n\`\`\``
-    const full = parseTypelessContentIncremental(chunk2, 'msg-streaming-inner-fence', 'conv-inner-fence')
-    const fullCard = full.cards.find(c => c.id === 'card-inner-fence') as any
+    const full = parseTypelessContentIncremental(
+      chunk2,
+      'msg-streaming-inner-fence',
+      'conv-inner-fence'
+    )
+    const fullCard = full.cards.find((c) => c.id === 'card-inner-fence') as any
 
     expect(fullCard).toBeTruthy()
     expect(fullCard.type).toBe('web-fetch')
@@ -280,8 +283,8 @@ describe('Typeless Card Parsing', () => {
     ].join('\n')
 
     const result = parseTypelessContent(content)
-    const progressCards = result.cards.filter(c => c.type === 'ui-review-progress')
-    const reviewCards = result.cards.filter(c => c.type === 'ui-review')
+    const progressCards = result.cards.filter((c) => c.type === 'ui-review-progress')
+    const reviewCards = result.cards.filter((c) => c.type === 'ui-review')
 
     expect(progressCards).toHaveLength(2)
     expect(reviewCards).toHaveLength(1)
@@ -289,7 +292,7 @@ describe('Typeless Card Parsing', () => {
     expect(result.text).not.toContain('```typeless')
 
     const segments = splitIntoSegments(result.text, result.cards)
-    const cardSegments = segments.filter(s => s.type === 'card')
+    const cardSegments = segments.filter((s) => s.type === 'card')
     expect(cardSegments.length).toBe(2) // merged progress + ui-review
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -348,12 +351,20 @@ describe('Typeless Card Parsing', () => {
 
     const second = `${first}继续说明`
 
-    const initial = parseTypelessContentIncremental(first, 'msg-streaming-small-delta', 'conv-small-delta')
-    const updated = parseTypelessContentIncremental(second, 'msg-streaming-small-delta', 'conv-small-delta')
+    const initial = parseTypelessContentIncremental(
+      first,
+      'msg-streaming-small-delta',
+      'conv-small-delta'
+    )
+    const updated = parseTypelessContentIncremental(
+      second,
+      'msg-streaming-small-delta',
+      'conv-small-delta'
+    )
 
-    expect(initial.cards.find(card => (card as any).id === 'card-1')).toBeTruthy()
+    expect(initial.cards.find((card) => (card as any).id === 'card-1')).toBeTruthy()
     expect(initial.text).toContain('已完成，接下来')
-    expect(updated.cards.find(card => (card as any).id === 'card-1')).toBeTruthy()
+    expect(updated.cards.find((card) => (card as any).id === 'card-1')).toBeTruthy()
     expect(updated.text).toContain('已完成，接下来继续说明')
   })
 
@@ -408,8 +419,21 @@ describe('Typeless Card Parsing', () => {
 
   it('preserves browser progress recipe metadata when merging steps', () => {
     const cards = [
-      { type: 'browser-progress', id: 'bp1', step: 'screenshot', name: 'Capturing screenshot', status: 'success' },
-      { type: 'browser-progress', id: 'bp2', step: 'recipe', name: 'Running login recipe', status: 'running', recipe_name: 'login recipe' },
+      {
+        type: 'browser-progress',
+        id: 'bp1',
+        step: 'screenshot',
+        name: 'Capturing screenshot',
+        status: 'success',
+      },
+      {
+        type: 'browser-progress',
+        id: 'bp2',
+        step: 'recipe',
+        name: 'Running login recipe',
+        status: 'running',
+        recipe_name: 'login recipe',
+      },
     ] as any
 
     const segments = splitIntoSegments('[[TYPELESS_CARD:bp1]][[TYPELESS_CARD:bp2]]', cards)
@@ -424,12 +448,41 @@ describe('Typeless Card Parsing', () => {
 
   it('keeps the latest analyze-progress step state and metadata when merging duplicates', () => {
     const cards = [
-      { type: 'analyze-progress', id: 'ap1', step: 'url_fetch_1', name: 'Fetching URL 1/2', status: 'running', current: 1, total: 2, source_label: 'https://example.com' },
-      { type: 'analyze-progress', id: 'ap2', step: 'url_fetch_1', name: 'Fetching URL 1/2', status: 'success', current: 1, total: 2, source_label: 'https://example.com', detail: 'Page content extracted', char_count: 1200 },
-      { type: 'analyze-progress', id: 'ap3', step: 'analysis', name: 'Analyzing content', status: 'running' },
+      {
+        type: 'analyze-progress',
+        id: 'ap1',
+        step: 'url_fetch_1',
+        name: 'Fetching URL 1/2',
+        status: 'running',
+        current: 1,
+        total: 2,
+        source_label: 'https://example.com',
+      },
+      {
+        type: 'analyze-progress',
+        id: 'ap2',
+        step: 'url_fetch_1',
+        name: 'Fetching URL 1/2',
+        status: 'success',
+        current: 1,
+        total: 2,
+        source_label: 'https://example.com',
+        detail: 'Page content extracted',
+        char_count: 1200,
+      },
+      {
+        type: 'analyze-progress',
+        id: 'ap3',
+        step: 'analysis',
+        name: 'Analyzing content',
+        status: 'running',
+      },
     ] as any
 
-    const segments = splitIntoSegments('[[TYPELESS_CARD:ap1]][[TYPELESS_CARD:ap2]][[TYPELESS_CARD:ap3]]', cards)
+    const segments = splitIntoSegments(
+      '[[TYPELESS_CARD:ap1]][[TYPELESS_CARD:ap2]][[TYPELESS_CARD:ap3]]',
+      cards
+    )
 
     expect(segments).toHaveLength(1)
     expect(segments[0]?.type).toBe('card')

@@ -86,7 +86,10 @@ export async function getTasks(): Promise<BrowserTask[]> {
   try {
     const response = await api.get('/browser/tasks', { baseURL: '/api' })
     return response.data
-  } catch (e) { if (isNotFound(e)) return []; throw e }
+  } catch (e) {
+    if (isNotFound(e)) return []
+    throw e
+  }
 }
 
 export async function getTask(taskId: string): Promise<BrowserTask> {
@@ -115,7 +118,10 @@ export async function getSessions(): Promise<BrowserSession[]> {
   try {
     const response = await api.get('/browser/sessions', { baseURL: '/api' })
     return response.data
-  } catch (e) { if (isNotFound(e)) return []; throw e }
+  } catch (e) {
+    if (isNotFound(e)) return []
+    throw e
+  }
 }
 
 export async function getSession(sessionId: string): Promise<BrowserSession> {
@@ -133,7 +139,9 @@ export async function closeSession(sessionId: string): Promise<void> {
 }
 
 export async function takeScreenshot(sessionId: string): Promise<string> {
-  const response = await api.post(`/browser/sessions/${sessionId}/screenshot`, null, { baseURL: '/api' })
+  const response = await api.post(`/browser/sessions/${sessionId}/screenshot`, null, {
+    baseURL: '/api',
+  })
   return response.data.screenshot
 }
 
@@ -141,8 +149,13 @@ export async function navigateTo(sessionId: string, url: string): Promise<void> 
   await api.post(`/browser/sessions/${sessionId}/navigate`, { url }, { baseURL: '/api' })
 }
 
-export async function executeStep(sessionId: string, step: Omit<TaskStep, 'id' | 'status'>): Promise<StepResult> {
-  const response = await api.post(`/browser/sessions/${sessionId}/execute`, step, { baseURL: '/api' })
+export async function executeStep(
+  sessionId: string,
+  step: Omit<TaskStep, 'id' | 'status'>
+): Promise<StepResult> {
+  const response = await api.post(`/browser/sessions/${sessionId}/execute`, step, {
+    baseURL: '/api',
+  })
   return response.data
 }
 
@@ -268,7 +281,10 @@ export async function getSecurityConfig(): Promise<BrowserSecurityConfig> {
   try {
     const response = await api.get('/browser/security', { baseURL: '/api' })
     return response.data
-  } catch (e) { if (isNotFound(e)) return { allowed_domains: [], blocked_domains: [] }; throw e }
+  } catch (e) {
+    if (isNotFound(e)) return { allowed_domains: [], blocked_domains: [] }
+    throw e
+  }
 }
 
 export async function updateSecurityConfig(config: BrowserSecurityConfig): Promise<void> {

@@ -89,7 +89,13 @@ const statusToneClass = computed(() => {
       class="tool-detail-card__toggle"
       :title="expanded ? t('chat.toolDetailCollapse') : t('chat.toolDetailExpand')"
     >
-      <svg class="w-3 h-3 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg
+        class="w-3 h-3 transition-transform"
+        :class="{ 'rotate-180': expanded }"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
       </svg>
     </button>

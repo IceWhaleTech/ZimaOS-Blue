@@ -221,7 +221,7 @@ async function revealOutputLocation(output: ConvertTaskOutput) {
   try {
     const resp = await fetch(`/api/v1/convert/tasks/${taskID}/outputs/${outputID}/location`)
     if (!resp.ok) return
-    const data = await resp.json() as ConvertOutputLocationResponse
+    const data = (await resp.json()) as ConvertOutputLocationResponse
     const path = String(data.path || '').trim()
     if (!path) return
     const revealed = await revealInFileManager(path)

@@ -58,7 +58,7 @@ export default {
   nav: {
     ...ptBR.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Origem dos ficheiros',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -110,7 +110,9 @@ export default {
   },
   chat: {
     ...ptBR.chat,
-    execDirectoryApprovalTimeout: 'A execução do comando foi bloqueada porque a aprovação do diretório expirou. Aprove o diretório e tente novamente.',
+    conversations: 'Conversas',
+    execDirectoryApprovalTimeout:
+      'A execução do comando foi bloqueada porque a aprovação do diretório expirou. Aprove o diretório e tente novamente.',
     streamProgress: {
       requestAccepted: 'Pedido recebido, a preparar resposta...',
       generating: 'A gerar resposta...',
@@ -214,10 +216,15 @@ export default {
   },
   home: {
     ...ptBR.home,
-    description: 'Um runtime estável, fiável e neutro para os seus assistentes de IA e automatizações',
+    description:
+      'Um runtime estável, fiável e neutro para os seus assistentes de IA e automatizações',
   },
   settings: {
     ...ptBR.settings,
+    networkSurface: 'Acesso à rede',
+    networkTitle: 'Rede e acesso',
+    releaseTrack: 'Gestão de versões',
+    systemVersion: 'Atualizações e versões',
     llmApiKeyRequired: 'Configure uma chave de API antes de abrir a página de fornecedores LLM.',
     agentReflection: {
       ...ptBR.settings.agentReflection,
@@ -439,8 +446,12 @@ export default {
   features: { ...ptBR.features },
   security: {
     ...ptBR.security,
+    approvedDirectories: 'Diretórios aprovados',
+    approvedDirectoriesDesc: 'Diretórios aprovados através de "Permitir sempre" para exec/convert.',
+    noApprovedDirectories: 'Sem diretórios aprovados',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Diretórios aprovados',
       firewall: 'Firewall',
       masking: 'Mascaramento de dados',
     },
@@ -579,6 +590,12 @@ export default {
     ...ptBR.preview,
     passwordCheck: {
       ...ptBR.preview.passwordCheck,
+      length: 'Pelo menos {n} caracteres',
+      uppercase: 'Uma letra maiúscula',
+      lowercase: 'Uma letra minúscula',
+      letter: 'Uma letra',
+      number: 'Um número',
+      special: "Um carácter especial (!{'@'}#$%...)",
     },
   },
   onboarding: { ...ptBR.onboarding },
@@ -734,6 +751,7 @@ export default {
   },
   remoteAccess: {
     ...ptBR.remoteAccess,
+    channelDescription: 'Aceda ao Blue a partir de qualquer lugar - sem configurar bot',
   },
   skillStore: {
     ...ptBR.skillStore,
@@ -857,7 +875,8 @@ export default {
   userdata: {
     ...ptBR.userdata,
     chatDataTitle: 'Dados de chat',
-    chatDataDescription: 'Importe, exporte e limpe o histórico de chat e os dados relacionados num único local.',
+    chatDataDescription:
+      'Importe, exporte e limpe o histórico de chat e os dados relacionados num único local.',
     manageData: 'Gerir dados',
     cleanupPreviewFailed: 'Falha ao pré-visualizar limpeza',
     cleanupFailed: 'Falha ao limpar dados',
@@ -875,7 +894,8 @@ export default {
     importPasswordPlaceholder: 'Introduza a palavra-passe usada durante a exportação',
     confirmPasswordPlaceholder: 'Introduza novamente a palavra-passe',
     formatEncryptedDesc: 'Formato binário totalmente encriptado. Maior segurança.',
-    formatJsonDesc: 'Formato legível por humanos. A palavra-passe é usada para verificar a importação.',
+    formatJsonDesc:
+      'Formato legível por humanos. A palavra-passe é usada para verificar a importação.',
     retentionSaved: 'Definições de retenção guardadas',
     password: 'Palavra-passe',
     confirmPassword: 'Confirmar palavra-passe',
@@ -885,7 +905,8 @@ export default {
     retention: {
       ...ptBR.userdata.retention,
       totalRecords: 'Total de registos de monitorização',
-      policyHint: 'Cada tipo de dados suporta 1 a 365 dias. Uma retenção mais curta reduz o armazenamento, enquanto uma retenção mais longa ajuda em auditorias e resolução de problemas.',
+      policyHint:
+        'Cada tipo de dados suporta 1 a 365 dias. Uma retenção mais curta reduz o armazenamento, enquanto uma retenção mais longa ajuda em auditorias e resolução de problemas.',
       daysRange: 'Intervalo permitido: 1-365 dias',
       sessionsHint: 'Ciclo de vida das sessões do agent e metadados de execução.',
       eventsHint: 'Chamadas de ferramentas, rastos de execução e eventos de auditoria.',
@@ -893,7 +914,8 @@ export default {
       sessionsSuggested: 'Sugerido: 14-30 dias para operações de rotina',
       eventsSuggested: 'Sugerido: 7-14 dias para equilibrar auditoria e armazenamento',
       alertsSuggested: 'Sugerido: 30-90 dias para revisão de incidentes',
-      saveHint: 'As novas janelas de retenção aplicar-se-ão às próximas limpezas automáticas e manuais.',
+      saveHint:
+        'As novas janelas de retenção aplicar-se-ão às próximas limpezas automáticas e manuais.',
     },
     cleanup: {
       ...ptBR.userdata.cleanup,
@@ -904,7 +926,7 @@ export default {
       typeToConfirmPlaceholder: 'Escreva "{confirmText}" para confirmar',
       deleting: 'A eliminar...',
     },
-  
+
     memory: {
       ...ptBR.userdata.memory,
       title: 'Memória',
@@ -912,7 +934,8 @@ export default {
       totalMemories: 'Total de memórias',
       backend: 'Backend',
       exportSection: 'Exportar memórias',
-      exportDesc: 'Transfira todas as memórias como ficheiro Markdown para cópia de segurança ou edição.',
+      exportDesc:
+        'Transfira todas as memórias como ficheiro Markdown para cópia de segurança ou edição.',
       exportButton: 'Exportar como Markdown',
       exportSuccess: 'Memórias exportadas com sucesso',
       exportFailed: 'Falha ao exportar memórias',
@@ -927,7 +950,7 @@ export default {
       modeAppendDesc: 'Adicionar memórias importadas às existentes',
       modeReplaceDesc: 'Limpar todas as memórias existentes antes de importar',
     },
-},
+  },
   connections: { ...ptBR.connections },
   mermaid: { ...ptBR.mermaid },
   browser: { ...ptBR.browser, request: 'Pedido do navegador' },
@@ -1734,12 +1757,13 @@ export default {
       jsonDesc: 'JSON format, suitable for backup and analysis',
       csvDesc: 'CSV format, suitable for spreadsheets',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Novo conteúdo memorizado',
       memorySavedMessage: 'Memória extraída da conversa',
       manageMemory: 'Gerir memória',
-    },},
+    },
+  },
   consent: 'Consent',
   contextmenu: 'Context menu',
   cron: {

@@ -176,20 +176,21 @@ onUnmounted(() => {
 })
 
 // Sync paste text with state
-watch(() => state.clipboardData, (newVal) => {
-  if (newVal !== pasteText.value) {
-    pasteText.value = newVal
+watch(
+  () => state.clipboardData,
+  (newVal) => {
+    if (newVal !== pasteText.value) {
+      pasteText.value = newVal
+    }
   }
-})
+)
 </script>
 
 <template>
   <Teleport to="body">
     <div
       v-if="state.isVisible"
-      class="formfiller-widget fixed z-[99999] w-[280px] rounded-lg shadow-lg overflow-hidden font-sans text-[13px]
-             bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100
-             border border-gray-200 dark:border-gray-700"
+      class="formfiller-widget fixed z-[99999] w-[280px] rounded-lg shadow-lg overflow-hidden font-sans text-[13px] bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-700"
       :style="positionStyle"
       @mousedown="preventFocusLoss"
     >
@@ -201,11 +202,12 @@ watch(() => state.clipboardData, (newVal) => {
         <span class="text-sm">📝</span>
         <span class="flex-1 font-medium text-[13px]">{{ t('formFiller.widget.title') }}</span>
         <button
-          class="w-5 h-5 rounded flex items-center justify-center text-sm leading-none
-                 bg-white/20 hover:bg-white/30 border-none text-white cursor-pointer"
+          class="w-5 h-5 rounded flex items-center justify-center text-sm leading-none bg-white/20 hover:bg-white/30 border-none text-white cursor-pointer"
           :title="t('common.close')"
           @click="hideWidget"
-        >×</button>
+        >
+          ×
+        </button>
       </div>
 
       <!-- Main Content -->
@@ -230,13 +232,15 @@ watch(() => state.clipboardData, (newVal) => {
         <div v-if="state.templates.length > 1" class="mb-2">
           <select
             :value="state.selectedTemplate?.id"
-            class="w-full px-2 py-1.5 rounded text-xs cursor-pointer
-                   bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100
-                   border border-gray-300 dark:border-gray-600"
-            @change="(e) => {
-              const template = state.templates.find(t => t.id === (e.target as HTMLSelectElement).value)
-              if (template) selectTemplate(template)
-            }"
+            class="w-full px-2 py-1.5 rounded text-xs cursor-pointer bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 border border-gray-300 dark:border-gray-600"
+            @change="
+              (e) => {
+                const template = state.templates.find(
+                  (t) => t.id === (e.target as HTMLSelectElement).value
+                )
+                if (template) selectTemplate(template)
+              }
+            "
           >
             <option v-for="template in state.templates" :key="template.id" :value="template.id">
               {{ template.name }}
@@ -248,48 +252,44 @@ watch(() => state.clipboardData, (newVal) => {
         <div class="mb-2">
           <button
             v-if="!showPasteArea"
-            class="w-full px-2 py-2 rounded text-xs cursor-pointer transition-colors
-                   bg-gray-100 dark:bg-gray-700 border border-dashed border-gray-300 dark:border-gray-600
-                   text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-gray-700 dark:hover:text-gray-200"
+            class="w-full px-2 py-2 rounded text-xs cursor-pointer transition-colors bg-gray-100 dark:bg-gray-700 border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-gray-700 dark:hover:text-gray-200"
             @click="handleSmartPaste"
           >
             📋 {{ t('formFiller.widget.pasteData') }}
           </button>
 
           <!-- Expanded Paste Area -->
-          <div
-            v-else
-            class="rounded overflow-hidden border border-gray-200 dark:border-gray-600"
-          >
+          <div v-else class="rounded overflow-hidden border border-gray-200 dark:border-gray-600">
             <div
-class="flex justify-between items-center px-2 py-1.5 text-[11px]
-                        bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+              class="flex justify-between items-center px-2 py-1.5 text-[11px] bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+            >
               <span>{{ t('formFiller.widget.pasteDataHint') }}</span>
               <button
                 class="p-0.5 text-sm opacity-70 hover:opacity-100 bg-transparent border-none cursor-pointer"
                 :title="t('formFiller.widget.readClipboard')"
                 @click="handleReadClipboard"
-              >📋</button>
+              >
+                📋
+              </button>
             </div>
             <textarea
               v-model="pasteText"
               :placeholder="t('formFiller.widget.pasteExample')"
-              class="w-full p-2 text-[11px] font-mono resize-none outline-none
-                     bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100
-                     border-t border-gray-200 dark:border-gray-600
-                     placeholder:text-gray-400 dark:placeholder:text-gray-500"
+              class="w-full p-2 text-[11px] font-mono resize-none outline-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 border-t border-gray-200 dark:border-gray-600 placeholder:text-gray-400 dark:placeholder:text-gray-500"
               rows="4"
               @input="handlePasteInput"
             ></textarea>
             <div
-class="flex justify-between items-center px-2 py-1
-                        bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
-              <span v-if="parsedFieldCount > 0" class="text-[11px] text-emerald-600 dark:text-emerald-400">
+              class="flex justify-between items-center px-2 py-1 bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600"
+            >
+              <span
+                v-if="parsedFieldCount > 0"
+                class="text-[11px] text-emerald-600 dark:text-emerald-400"
+              >
                 {{ t('formFiller.widget.parsedFields', { count: parsedFieldCount }) }}
               </span>
               <button
-                class="px-1.5 py-0.5 text-[11px] bg-transparent border-none cursor-pointer
-                       text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                class="px-1.5 py-0.5 text-[11px] bg-transparent border-none cursor-pointer text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                 @click="handleClearPaste"
               >
                 {{ t('common.clear') }}
@@ -301,11 +301,7 @@ class="flex justify-between items-center px-2 py-1
         <!-- Action Buttons -->
         <div class="flex gap-1.5">
           <button
-            class="flex-1 px-2.5 py-2 rounded text-xs font-medium cursor-pointer transition-colors
-                   bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200
-                   border border-gray-300 dark:border-gray-600
-                   hover:bg-gray-200 dark:hover:bg-gray-600
-                   disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex-1 px-2.5 py-2 rounded text-xs font-medium cursor-pointer transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="!state.focusedElement"
             :title="currentFieldName"
             @click="handleFillCurrent"
@@ -315,19 +311,18 @@ class="flex justify-between items-center px-2 py-1
           <!-- Password visibility toggle -->
           <button
             v-if="isPasswordField"
-            class="w-9 px-2 py-2 rounded text-sm cursor-pointer transition-colors
-                   bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200
-                   border border-gray-300 dark:border-gray-600
-                   hover:bg-gray-200 dark:hover:bg-gray-600"
-            :title="isCurrentPasswordRevealed ? t('formFiller.widget.hidePassword') : t('formFiller.widget.showPassword')"
+            class="w-9 px-2 py-2 rounded text-sm cursor-pointer transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600"
+            :title="
+              isCurrentPasswordRevealed
+                ? t('formFiller.widget.hidePassword')
+                : t('formFiller.widget.showPassword')
+            "
             @click="handleTogglePassword"
           >
             {{ isCurrentPasswordRevealed ? '🙈' : '👁️' }}
           </button>
           <button
-            class="flex-1 px-2.5 py-2 rounded text-xs font-medium cursor-pointer transition-colors
-                   bg-gray-700 dark:bg-gray-500 text-white border-none
-                   hover:bg-gray-700 dark:bg-gray-500"
+            class="flex-1 px-2.5 py-2 rounded text-xs font-medium cursor-pointer transition-colors bg-gray-700 dark:bg-gray-500 text-white border-none hover:bg-gray-700 dark:bg-gray-500"
             @click="handleFillAll"
           >
             {{ t('formFiller.widget.fillAll') }}
@@ -337,10 +332,7 @@ class="flex justify-between items-center px-2 py-1
         <!-- Undo -->
         <button
           v-if="canUndo"
-          class="w-full mt-1.5 px-2 py-1.5 rounded text-[11px] cursor-pointer transition-colors
-                 bg-transparent text-gray-500 dark:text-gray-400
-                 border border-dashed border-gray-300 dark:border-gray-600
-                 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200"
+          class="w-full mt-1.5 px-2 py-1.5 rounded text-[11px] cursor-pointer transition-colors bg-transparent text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200"
           @click="undoLastFill"
         >
           ↩ {{ t('formFiller.widget.undo') }}

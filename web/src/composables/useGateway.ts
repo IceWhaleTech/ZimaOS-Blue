@@ -72,8 +72,7 @@ export function useGateway(autoConnect = true) {
     onAny,
 
     // Convenience methods
-    chatSend: (conversationId: string, content: string) =>
-      client.chatSend(conversationId, content),
+    chatSend: (conversationId: string, content: string) => client.chatSend(conversationId, content),
     chatAbort: (conversationId: string) => client.chatAbort(conversationId),
     browserRequest: (action: string, params?: Record<string, unknown>) =>
       client.browserRequest(action, params),

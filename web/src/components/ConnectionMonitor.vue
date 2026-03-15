@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getActiveConnections, getConnectionStats, type Connection, type ConnectionStats, type ConnectionType } from '@/api/connections'
+import {
+  getActiveConnections,
+  getConnectionStats,
+  type Connection,
+  type ConnectionStats,
+  type ConnectionType,
+} from '@/api/connections'
 
 const { t } = useI18n()
 
@@ -15,7 +21,7 @@ const refreshInterval = ref<ReturnType<typeof setInterval> | null>(null)
 // Computed
 const filteredConnections = computed(() => {
   if (!filterType.value) return connections.value
-  return connections.value.filter(c => c.type === filterType.value)
+  return connections.value.filter((c) => c.type === filterType.value)
 })
 
 const httpCount = computed(() => stats.value?.active_http ?? 0)
@@ -29,7 +35,7 @@ async function fetchData() {
     error.value = null
     const [connResponse, statsResponse] = await Promise.all([
       getActiveConnections(filterType.value || undefined),
-      getConnectionStats()
+      getConnectionStats(),
     ])
     connections.value = connResponse.connections || []
     stats.value = statsResponse
@@ -44,7 +50,7 @@ function getTypeColor(type: ConnectionType): string {
   const colors: Record<ConnectionType, string> = {
     http: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300',
     websocket: 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300',
-    sse: 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
+    sse: 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300',
   }
   return colors[type] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
 }
@@ -54,7 +60,7 @@ function getStatusColor(status: string): string {
     active: 'bg-green-500',
     idle: 'bg-yellow-500',
     completed: 'bg-gray-600',
-    closed: 'bg-gray-500'
+    closed: 'bg-gray-500',
   }
   return colors[status] || 'bg-gray-500'
 }
@@ -97,7 +103,9 @@ onUnmounted(() => {
     <!-- Stats Cards -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
       <div class="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
-        <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats?.total_connections ?? 0 }}</div>
+        <div class="text-2xl font-bold text-gray-900 dark:text-white">
+          {{ stats?.total_connections ?? 0 }}
+        </div>
         <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('connections.total') }}</div>
       </div>
       <div class="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
@@ -129,13 +137,17 @@ onUnmounted(() => {
         <div class="text-lg font-semibold text-gray-900 dark:text-white">
           {{ formatBytes(stats?.total_bytes_sent ?? 0) }}
         </div>
-        <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('connections.bytesSent') }}</div>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+          {{ t('connections.bytesSent') }}
+        </div>
       </div>
       <div class="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
         <div class="text-lg font-semibold text-gray-900 dark:text-white">
           {{ formatBytes(stats?.total_bytes_recv ?? 0) }}
         </div>
-        <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('connections.bytesRecv') }}</div>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+          {{ t('connections.bytesRecv') }}
+        </div>
       </div>
     </div>
 
@@ -146,7 +158,9 @@ onUnmounted(() => {
         <button
           :class="[
             'px-3 py-1 text-sm rounded-md transition-colors',
-            filterType === '' ? 'bg-white dark:bg-slate-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-600'
+            filterType === ''
+              ? 'bg-white dark:bg-slate-600 shadow-sm'
+              : 'hover:bg-gray-200 dark:hover:bg-slate-600',
           ]"
           @click="filterType = ''"
         >
@@ -155,7 +169,9 @@ onUnmounted(() => {
         <button
           :class="[
             'px-3 py-1 text-sm rounded-md transition-colors',
-            filterType === 'http' ? 'bg-white dark:bg-slate-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-600'
+            filterType === 'http'
+              ? 'bg-white dark:bg-slate-600 shadow-sm'
+              : 'hover:bg-gray-200 dark:hover:bg-slate-600',
           ]"
           @click="filterType = 'http'"
         >
@@ -164,7 +180,9 @@ onUnmounted(() => {
         <button
           :class="[
             'px-3 py-1 text-sm rounded-md transition-colors',
-            filterType === 'websocket' ? 'bg-white dark:bg-slate-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-600'
+            filterType === 'websocket'
+              ? 'bg-white dark:bg-slate-600 shadow-sm'
+              : 'hover:bg-gray-200 dark:hover:bg-slate-600',
           ]"
           @click="filterType = 'websocket'"
         >
@@ -173,7 +191,9 @@ onUnmounted(() => {
         <button
           :class="[
             'px-3 py-1 text-sm rounded-md transition-colors',
-            filterType === 'sse' ? 'bg-white dark:bg-slate-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-600'
+            filterType === 'sse'
+              ? 'bg-white dark:bg-slate-600 shadow-sm'
+              : 'hover:bg-gray-200 dark:hover:bg-slate-600',
           ]"
           @click="filterType = 'sse'"
         >
@@ -193,7 +213,10 @@ onUnmounted(() => {
         </h3>
       </div>
 
-      <div v-if="loading && connections.length === 0" class="p-8 text-center text-gray-500 dark:text-slate-400">
+      <div
+        v-if="loading && connections.length === 0"
+        class="p-8 text-center text-gray-500 dark:text-slate-400"
+      >
         {{ t('common.loading') }}
       </div>
 
@@ -201,7 +224,10 @@ onUnmounted(() => {
         {{ error }}
       </div>
 
-      <div v-else-if="filteredConnections.length === 0" class="p-8 text-center text-gray-500 dark:text-slate-400">
+      <div
+        v-else-if="filteredConnections.length === 0"
+        class="p-8 text-center text-gray-500 dark:text-slate-400"
+      >
         {{ t('connections.noConnections') }}
       </div>
 
@@ -214,7 +240,12 @@ onUnmounted(() => {
           <div class="flex items-center justify-between mb-2">
             <div class="flex items-center gap-2">
               <span :class="['w-2 h-2 rounded-full', getStatusColor(conn.status)]"></span>
-              <span :class="['px-2 py-0.5 rounded text-xs font-medium uppercase', getTypeColor(conn.type)]">
+              <span
+                :class="[
+                  'px-2 py-0.5 rounded text-xs font-medium uppercase',
+                  getTypeColor(conn.type),
+                ]"
+              >
                 {{ conn.type }}
               </span>
               <span class="text-sm font-mono text-gray-600 dark:text-slate-300">

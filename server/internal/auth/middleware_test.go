@@ -11,6 +11,15 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+type stubPreviewModeChecker struct {
+	active bool
+	err    error
+}
+
+func (s stubPreviewModeChecker) IsPreviewMode(context.Context) (bool, error) {
+	return s.active, s.err
+}
+
 func TestAuthMiddleware_JWT(t *testing.T) {
 	jwtCfg := &JWTConfig{
 		Secret:            "test-secret-key-at-least-32-chars",
@@ -297,4 +306,76 @@ func TestAuthMiddleware_Optional(t *testing.T) {
 			t.Errorf("expected status 200, got %d", rec.Code)
 		}
 	})
+}
+
+func TestAuthMiddleware_RejectsPreviewTokenWhenPreviewDisabled(t *testing.T) {
+	jwtCfg := &JWTConfig{
+		Secret:            "test-secret-key-at-least-32-chars",
+		Expiration:        time.Hour,
+		RefreshExpiration: 24 * time.Hour,
+		Issuer:            "zimaos-blue",
+	}
+	jwtSvc := NewJWTService(jwtCfg)
+	middleware := NewAuthMiddleware(jwtSvc, nil)
+	middleware.SetPreviewModeChecker(stubPreviewModeChecker{active: false})
+
+	e := echo.New()
+	e.Use(middleware.Authenticate())
+	e.GET("/protected", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	previewToken, err := jwtSvc.GenerateAccessToken(&UserClaims{
+		UserID:   "preview-user",
+		Username: "preview",
+		Role:     "user",
+	})
+	if err != nil {
+		t.Fatalf("GenerateAccessToken: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+previewToken)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestAuthMiddleware_AllowsPreviewTokenWhenPreviewEnabled(t *testing.T) {
+	jwtCfg := &JWTConfig{
+		Secret:            "test-secret-key-at-least-32-chars",
+		Expiration:        time.Hour,
+		RefreshExpiration: 24 * time.Hour,
+		Issuer:            "zimaos-blue",
+	}
+	jwtSvc := NewJWTService(jwtCfg)
+	middleware := NewAuthMiddleware(jwtSvc, nil)
+	middleware.SetPreviewModeChecker(stubPreviewModeChecker{active: true})
+
+	e := echo.New()
+	e.Use(middleware.Authenticate())
+	e.GET("/protected", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	previewToken, err := jwtSvc.GenerateAccessToken(&UserClaims{
+		UserID:   "preview-user",
+		Username: "preview",
+		Role:     "user",
+	})
+	if err != nil {
+		t.Fatalf("GenerateAccessToken: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+previewToken)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
 }

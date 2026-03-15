@@ -61,7 +61,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Původ souborů',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -563,6 +563,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Přístup k síti',
+    networkTitle: 'Síť a přístup',
+    releaseTrack: 'Správa verzí',
+    systemVersion: 'Aktualizace a verze',
     llmApiKeyRequired: 'Před otevřením stránky poskytovatelů LLM nejprve nastavte API klíč.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -695,8 +699,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Schválené adresáře',
+    approvedDirectoriesDesc: 'Adresáře schválené pomocí možnosti „Vždy povolit“ pro exec/convert.',
+    noApprovedDirectories: 'Žádné schválené adresáře',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Schválené adresáře',
       firewall: 'Firewall',
       masking: 'Maskování dat',
     },
@@ -1267,6 +1275,7 @@ export default {
       length: 'Alespoň {n} znaků',
       uppercase: 'Jedno velké písmeno',
       lowercase: 'Jedno malé písmeno',
+      letter: 'Jedno písmeno',
       number: 'Jedna číslice',
       special: "Jeden speciální znak (!{'@'}#$%...)",
     },
@@ -1338,7 +1347,9 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Spuštění příkazu bylo zablokováno, protože schválení adresáře vypršelo. Schvalte adresář a zkuste to znovu.',
+    conversations: 'Konverzace',
+    execDirectoryApprovalTimeout:
+      'Spuštění příkazu bylo zablokováno, protože schválení adresáře vypršelo. Schvalte adresář a zkuste to znovu.',
     streamProgress: {
       requestAccepted: 'Požadavek přijat, připravuji odpověď...',
       generating: 'Generuji odpověď...',
@@ -1793,7 +1804,8 @@ export default {
     exportSuccess: 'Data úspěšně exportována',
     importSuccess: 'Importováno {conversations} konverzací a {messages} zpráv',
     chatDataTitle: 'Data chatu',
-    chatDataDescription: 'Importujte, exportujte a vyčistěte historii chatu a související data na jednom místě.',
+    chatDataDescription:
+      'Importujte, exportujte a vyčistěte historii chatu a související data na jednom místě.',
     manageData: 'Spravovat data',
     cleanupPreviewFailed: 'Nepodařilo se zobrazit náhled čištění',
     cleanupFailed: 'Čištění dat se nepodařilo',
@@ -1827,7 +1839,8 @@ export default {
       alerts: 'Upozornění',
       policy: 'Zásady uchovávání',
       totalRecords: 'Celkový počet monitorovacích záznamů',
-      policyHint: 'Každý typ dat podporuje 1 až 365 dnů. Kratší uchovávání šetří úložiště, delší pomáhá při auditu a řešení problémů.',
+      policyHint:
+        'Každý typ dat podporuje 1 až 365 dnů. Kratší uchovávání šetří úložiště, delší pomáhá při auditu a řešení problémů.',
       daysRange: 'Povolený rozsah: 1-365 dnů',
       sessionsHint: 'Životní cyklus relací agenta a metadata běhu.',
       eventsHint: 'Volání nástrojů, stopy provádění a auditní události.',
@@ -1847,7 +1860,8 @@ export default {
       title: 'Čištění dat',
       description: 'Trvale smažte vybraná data. Tuto akci nelze vrátit zpět.',
       warning: 'Destruktivní akce',
-      warningDetail: 'Smazaná data nelze obnovit. Pokud potřebujete zálohu, nejprve data exportujte.',
+      warningDetail:
+        'Smazaná data nelze obnovit. Pokud potřebujete zálohu, nejprve data exportujte.',
       selectData: 'Vyberte data k odstranění',
       chatHistory: 'Historie chatu',
       chatHistoryDesc: 'Všechny konverzace a zprávy',
@@ -1866,7 +1880,8 @@ export default {
       willReset: 'Bude resetováno',
       willClear: 'Bude vymazáno',
       authorizationStep: 'Vyžadováno potvrzení',
-      authorizationHint: 'Zkontrolujte data, která budou odstraněna. Tento krok slouží jako potvrzení autorizace.',
+      authorizationHint:
+        'Zkontrolujte data, která budou odstraněna. Tento krok slouží jako potvrzení autorizace.',
       proceedToConfirm: 'Pokračovat k potvrzení',
       confirmStep: 'Konečné potvrzení',
       confirmHint: 'Zadejte heslo pro potvrzení této destruktivní akce.',
@@ -1874,7 +1889,8 @@ export default {
       confirmText: 'POTVRDIT SMAZÁNÍ',
       typeToConfirm: 'Napište pro potvrzení',
       typeToConfirmPlaceholder: 'Napište "{confirmText}" pro potvrzení',
-      productionHint: 'V produkčním prostředí mohou být vyžadovány další přihlašovací údaje (MFA, schválení správcem).',
+      productionHint:
+        'V produkčním prostředí mohou být vyžadovány další přihlašovací údaje (MFA, schválení správcem).',
       enterPassword: 'Zadejte heslo',
       passwordPlaceholder: 'Zadejte heslo pro potvrzení',
       confirmDelete: 'Potvrdit smazání',
@@ -1984,12 +2000,13 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Nový obsah zapamatován',
       memorySavedMessage: 'Paměť extrahována z konverzace',
       manageMemory: 'Spravovat paměť',
-    },},
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },

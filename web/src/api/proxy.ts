@@ -148,6 +148,8 @@ export interface MaskingRule {
   enabled: boolean
 }
 
+export interface CreateMaskingRulePayload extends MaskingRule {}
+
 export interface MaskingStats {
   enabled: boolean
   rule_count: number
@@ -222,8 +224,7 @@ export const proxyApi = {
 
   getAPIKeys: () => apiClient.get<{ keys: APIKey[] }>('/proxy/auth/keys'),
 
-  addAPIKey: (key: string) =>
-    apiClient.post<{ message: string }>('/proxy/auth/keys', { key }),
+  addAPIKey: (key: string) => apiClient.post<{ message: string }>('/proxy/auth/keys', { key }),
 
   removeAPIKey: (key: string) =>
     apiClient.delete<{ message: string }>(`/proxy/auth/keys?key=${encodeURIComponent(key)}`),
@@ -245,18 +246,23 @@ export const proxyApi = {
   }) => apiClient.post('/proxy/mock', endpoint),
 
   // Config
-  reloadConfig: () => apiClient.post<{ message: string; reloaded_at: string }>('/proxy/config/reload', {}),
+  reloadConfig: () =>
+    apiClient.post<{ message: string; reloaded_at: string }>('/proxy/config/reload', {}),
 
   // Data Masking (reserved for future implementation)
   getMaskingStats: () => apiClient.get<MaskingStats>('/proxy/masking/stats'),
 
-  getMaskingRules: () => apiClient.get<{ rules: MaskingRule[]; default_rules: MaskingRule[] }>('/proxy/masking/rules'),
+  getMaskingRules: () =>
+    apiClient.get<{ rules: MaskingRule[]; default_rules: MaskingRule[] }>('/proxy/masking/rules'),
 
-  addMaskingRule: (rule: Omit<MaskingRule, 'id'>) =>
+  addMaskingRule: (rule: CreateMaskingRulePayload) =>
     apiClient.post<{ message: string; rule: MaskingRule }>('/proxy/masking/rules', rule),
 
   updateMaskingRule: (id: string, patch: { enabled: boolean }) =>
-    apiClient.put<UpdateMaskingRuleResponse>(`/proxy/masking/rules/${encodeURIComponent(id)}`, patch),
+    apiClient.put<UpdateMaskingRuleResponse>(
+      `/proxy/masking/rules/${encodeURIComponent(id)}`,
+      patch
+    ),
 
   removeMaskingRule: (id: string) =>
     apiClient.delete<{ message: string }>(`/proxy/masking/rules?id=${encodeURIComponent(id)}`),

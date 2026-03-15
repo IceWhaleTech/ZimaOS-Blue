@@ -19,11 +19,19 @@ const editorRef = ref<HTMLTextAreaElement | null>(null)
 const fileInfo: Record<string, { icon: string; labelKey: string; descKey: string }> = {
   'SOUL.md': { icon: '🧠', labelKey: 'workspace.label.soul', descKey: 'workspace.desc.soul' },
   'USER.md': { icon: '👤', labelKey: 'workspace.label.user', descKey: 'workspace.desc.user' },
-  'IDENTITY.md': { icon: '🏷️', labelKey: 'workspace.label.identity', descKey: 'workspace.desc.identity' },
+  'IDENTITY.md': {
+    icon: '🏷️',
+    labelKey: 'workspace.label.identity',
+    descKey: 'workspace.desc.identity',
+  },
   'MEMORY.md': { icon: '💾', labelKey: 'workspace.label.memory', descKey: 'workspace.desc.memory' },
   'AGENTS.md': { icon: '📋', labelKey: 'workspace.label.agents', descKey: 'workspace.desc.agents' },
   'TOOLS.md': { icon: '🧰', labelKey: 'workspace.label.tools', descKey: 'workspace.desc.tools' },
-  'HEARTBEAT.md': { icon: '💗', labelKey: 'workspace.label.heartbeat', descKey: 'workspace.desc.heartbeat' },
+  'HEARTBEAT.md': {
+    icon: '💗',
+    labelKey: 'workspace.label.heartbeat',
+    descKey: 'workspace.desc.heartbeat',
+  },
 }
 
 const editableFileNames = new Set(Object.keys(fileInfo))
@@ -40,7 +48,7 @@ async function fetchFiles() {
       workspaceApi.listFiles(),
       workspaceApi.getStats(),
     ])
-    files.value = (filesRes.data.files || []).filter(f => editableFileNames.has(f.name))
+    files.value = (filesRes.data.files || []).filter((f) => editableFileNames.has(f.name))
     stats.value = statsRes.data
   } catch (e) {
     console.error('Failed to fetch workspace files:', e)
@@ -71,14 +79,19 @@ async function saveEdit(name: string) {
   saving.value = true
   try {
     await workspaceApi.putFile(name, editDraft.value)
-    const f = files.value.find(f => f.name === name)
+    const f = files.value.find((f) => f.name === name)
     if (f) {
       f.content = editDraft.value
       f.missing = false
     }
     editingFile.value = null
     emit('status-change', t('workspace.saved', { name }))
-    workspaceApi.getStats().then(res => { stats.value = res.data }).catch(() => {})
+    workspaceApi
+      .getStats()
+      .then((res) => {
+        stats.value = res.data
+      })
+      .catch(() => {})
   } catch (e) {
     console.error('Failed to save workspace file:', e)
   } finally {
@@ -107,27 +120,39 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('workspace.title') }}</h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ t('workspace.description') }}</p>
+        <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+          {{ t('workspace.title') }}
+        </h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          {{ t('workspace.description') }}
+        </p>
       </div>
       <span
         v-if="stats"
         class="text-xs px-2 py-1 rounded-full flex-shrink-0"
-        :class="stats.total_tokens > 4096
-          ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-          : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'"
+        :class="
+          stats.total_tokens > 4096
+            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+            : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+        "
       >
         {{ t('workspace.tokens', { count: stats.total_tokens.toLocaleString() }) }}
       </span>
     </div>
 
     <!-- Loading -->
-    <div v-if="loading && files.length === 0" class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
+    <div
+      v-if="loading && files.length === 0"
+      class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center"
+    >
       {{ t('common.loading') }}
     </div>
 
     <!-- Empty state -->
-    <div v-else-if="files.length === 0" class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
+    <div
+      v-else-if="files.length === 0"
+      class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center"
+    >
       {{ t('workspace.noFiles') }}
     </div>
 
@@ -135,19 +160,25 @@ onUnmounted(() => {
     <div v-else class="relative">
       <!-- Grid of cards -->
       <Transition name="ws-grid">
-        <div
-          v-if="!editingFile"
-          class="grid grid-cols-2 sm:grid-cols-3 gap-2"
-        >
+        <div v-if="!editingFile" class="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <button
             v-for="file in files"
             :key="file.name"
             class="ws-card group flex flex-col items-center gap-1 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm transition-all duration-150 cursor-pointer text-center"
             @click="startEdit(file)"
           >
-            <span class="text-2xl leading-none">{{ (fileInfo[file.name] || { icon: '📄' }).icon }}</span>
-            <span class="text-xs font-medium text-gray-900 dark:text-white truncate w-full">{{ fileInfo[file.name]?.labelKey ? tr(fileInfo[file.name]?.labelKey, file.name.replace('.md', '')) : file.name.replace('.md', '') }}</span>
-            <span v-if="fileInfo[file.name]" class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
+            <span class="text-2xl leading-none">{{
+              (fileInfo[file.name] || { icon: '📄' }).icon
+            }}</span>
+            <span class="text-xs font-medium text-gray-900 dark:text-white truncate w-full">{{
+              fileInfo[file.name]?.labelKey
+                ? tr(fileInfo[file.name]?.labelKey, file.name.replace('.md', ''))
+                : file.name.replace('.md', '')
+            }}</span>
+            <span
+              v-if="fileInfo[file.name]"
+              class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight"
+            >
               {{ tr(fileInfo[file.name]?.descKey, '') }}
             </span>
           </button>
@@ -161,11 +192,22 @@ onUnmounted(() => {
           class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/80 overflow-hidden"
         >
           <!-- Editor header -->
-          <div class="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-gray-700">
+          <div
+            class="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-gray-700"
+          >
             <div class="flex items-center gap-2 min-w-0">
-              <span class="text-lg flex-shrink-0">{{ (fileInfo[editingFile] || { icon: '📄' }).icon }}</span>
-              <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ fileInfo[editingFile]?.labelKey ? tr(fileInfo[editingFile]?.labelKey, editingFile || '') : editingFile }}</span>
-              <span v-if="fileInfo[editingFile]" class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline flex-shrink-0">
+              <span class="text-lg flex-shrink-0">{{
+                (fileInfo[editingFile] || { icon: '📄' }).icon
+              }}</span>
+              <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{{
+                fileInfo[editingFile]?.labelKey
+                  ? tr(fileInfo[editingFile]?.labelKey, editingFile || '')
+                  : editingFile
+              }}</span>
+              <span
+                v-if="fileInfo[editingFile]"
+                class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline flex-shrink-0"
+              >
                 {{ tr(fileInfo[editingFile]?.descKey, '') }}
               </span>
             </div>
@@ -195,7 +237,9 @@ onUnmounted(() => {
             @keydown.meta.enter="saveEdit(editingFile!)"
             @keydown.ctrl.enter="saveEdit(editingFile!)"
           />
-          <div class="px-4 py-1.5 text-[10px] text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 flex justify-between">
+          <div
+            class="px-4 py-1.5 text-[10px] text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 flex justify-between"
+          >
             <span>Esc {{ t('common.cancel') }} · ⌘↵ {{ t('common.save') }}</span>
             <span>{{ t('workspace.chars', { count: editDraft.length.toLocaleString() }) }}</span>
           </div>

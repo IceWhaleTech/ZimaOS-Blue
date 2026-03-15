@@ -79,12 +79,15 @@ const resetDefaults = () => {
 }
 
 const saveSettings = () => {
-  localStorage.setItem('tts-voice-settings', JSON.stringify({
-    voice: selectedVoice.value,
-    rate: rate.value,
-    pitch: pitch.value,
-    volume: volume.value,
-  }))
+  localStorage.setItem(
+    'tts-voice-settings',
+    JSON.stringify({
+      voice: selectedVoice.value,
+      rate: rate.value,
+      pitch: pitch.value,
+      volume: volume.value,
+    })
+  )
 }
 </script>
 

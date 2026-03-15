@@ -18,9 +18,31 @@ export function preloadHljs(): Promise<void> {
   if (hljsLoading) return hljsLoading
   hljsLoading = (async () => {
     const [
-      javascript, typescript, python, go, bash, json, yaml, xml, css, sql,
-      rust, java, cpp, markdown, php, ruby, swift, kotlin, csharp, scala,
-      dockerfile, nginx, ini, diff, plaintext,
+      javascript,
+      typescript,
+      python,
+      go,
+      bash,
+      json,
+      yaml,
+      xml,
+      css,
+      sql,
+      rust,
+      java,
+      cpp,
+      markdown,
+      php,
+      ruby,
+      swift,
+      kotlin,
+      csharp,
+      scala,
+      dockerfile,
+      nginx,
+      ini,
+      diff,
+      plaintext,
     ] = await Promise.all([
       import('highlight.js/lib/languages/javascript'),
       import('highlight.js/lib/languages/typescript'),
@@ -136,11 +158,11 @@ export function parseInline(text: string, options: ParseInlineOptions = {}): str
   }
 
   if (
-    !text.includes('*')
-    && (!allowUnderscoreEmphasis || !text.includes('_'))
-    && !text.includes('~')
-    && !text.includes('`')
-    && !text.includes('[')
+    !text.includes('*') &&
+    (!allowUnderscoreEmphasis || !text.includes('_')) &&
+    !text.includes('~') &&
+    !text.includes('`') &&
+    !text.includes('[')
   ) {
     const escaped = escapeHtml(text)
     if (shouldUseCache) {
@@ -208,7 +230,9 @@ export function markdownToText(markdown: string): string {
   let text = markdown.replace(/\r\n/g, '\n')
 
   // Fenced code blocks: keep code content, drop fences and language marker.
-  text = text.replace(/```[\t ]*([\w-]+)?\n([\s\S]*?)```/g, (_m, _lang: string, code: string) => code.trim())
+  text = text.replace(/```[\t ]*([\w-]+)?\n([\s\S]*?)```/g, (_m, _lang: string, code: string) =>
+    code.trim()
+  )
   // Inline code.
   text = text.replace(/`([^`]+)`/g, '$1')
 
@@ -287,7 +311,7 @@ function parseTableRow(line: string): string[] {
   const trimmed = line.trim()
   const withoutPipes = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed
   const withoutEndPipe = withoutPipes.endsWith('|') ? withoutPipes.slice(0, -1) : withoutPipes
-  return withoutEndPipe.split('|').map(cell => cell.trim())
+  return withoutEndPipe.split('|').map((cell) => cell.trim())
 }
 
 // Check if a line is a table separator (e.g., |---|---|)
@@ -325,7 +349,7 @@ function isTableRow(line: string): boolean {
   if (parts.length < 2) return false
 
   // Check that we have actual content (not just whitespace) in at least 2 cells
-  const nonEmptyCells = parts.filter(p => p.trim().length > 0)
+  const nonEmptyCells = parts.filter((p) => p.trim().length > 0)
   return nonEmptyCells.length >= 2
 }
 
@@ -339,22 +363,30 @@ function isTreeLine(line: string): boolean {
 // Render a process code block as a simple wireframe card (command above, output below)
 function renderProcessCard(code: string): string {
   try {
-    const items = JSON.parse(code) as Array<{ cmd: string; tool: string; icon: string; status: string; output: string }>
-    const rows = items.map(item => {
-      // Command/Input section
-      const commandHtml = item.cmd
-        ? `<div class="process-card__command"><span class="process-card__command-label">$</span><span class="process-card__command-text">${escapeHtml(item.cmd)}</span></div>`
-        : ''
+    const items = JSON.parse(code) as Array<{
+      cmd: string
+      tool: string
+      icon: string
+      status: string
+      output: string
+    }>
+    const rows = items
+      .map((item) => {
+        // Command/Input section
+        const commandHtml = item.cmd
+          ? `<div class="process-card__command"><span class="process-card__command-label">$</span><span class="process-card__command-text">${escapeHtml(item.cmd)}</span></div>`
+          : ''
 
-      // Output section
-      let outputHtml = ''
-      if (item.output) {
-        const outputText = escapeHtml(item.output)
-        outputHtml = `<div class="process-card__output"><pre>${outputText}</pre></div>`
-      }
+        // Output section
+        let outputHtml = ''
+        if (item.output) {
+          const outputText = escapeHtml(item.output)
+          outputHtml = `<div class="process-card__output"><pre>${outputText}</pre></div>`
+        }
 
-      return `<div class="process-card__item">${commandHtml}${outputHtml}</div>`
-    }).join('')
+        return `<div class="process-card__item">${commandHtml}${outputHtml}</div>`
+      })
+      .join('')
     return `<div class="process-card my-2 rounded border border-gray-200 dark:border-gray-700 px-2 py-1.5">${rows}</div>`
   } catch {
     return `<pre class="text-xs opacity-60 my-2">${escapeHtml(code)}</pre>`
@@ -390,19 +422,21 @@ function canUsePlainTextFastPath(markdown: string): boolean {
   if (RE_MARKDOWN_HR.test(trimmed)) return false
   if (RE_MARKDOWN_ORDERED_ITEM.test(trimmed)) return false
 
-  return !markdown.includes('`')
-    && !markdown.includes('*')
-    && !markdown.includes('_')
-    && !markdown.includes('~')
-    && !markdown.includes('[')
-    && !markdown.includes(']')
-    && !markdown.includes('#')
-    && !markdown.includes('>')
-    && !markdown.includes('|')
-    && !markdown.includes('!')
-    && !markdown.includes('<')
-    && !markdown.includes('- ')
-    && !markdown.includes('+ ')
+  return (
+    !markdown.includes('`') &&
+    !markdown.includes('*') &&
+    !markdown.includes('_') &&
+    !markdown.includes('~') &&
+    !markdown.includes('[') &&
+    !markdown.includes(']') &&
+    !markdown.includes('#') &&
+    !markdown.includes('>') &&
+    !markdown.includes('|') &&
+    !markdown.includes('!') &&
+    !markdown.includes('<') &&
+    !markdown.includes('- ') &&
+    !markdown.includes('+ ')
+  )
 }
 
 function canUseMultilinePlainTextFastPath(markdown: string): boolean {
@@ -412,19 +446,19 @@ function canUseMultilinePlainTextFastPath(markdown: string): boolean {
   // Keep this path conservative: only use when markdown punctuation/features
   // are clearly absent from the whole text.
   if (
-    markdown.includes('`')
-    || markdown.includes('*')
-    || markdown.includes('_')
-    || markdown.includes('~')
-    || markdown.includes('[')
-    || markdown.includes(']')
-    || markdown.includes('#')
-    || markdown.includes('>')
-    || markdown.includes('|')
-    || markdown.includes('!')
-    || markdown.includes('<')
-    || markdown.includes('- ')
-    || markdown.includes('+ ')
+    markdown.includes('`') ||
+    markdown.includes('*') ||
+    markdown.includes('_') ||
+    markdown.includes('~') ||
+    markdown.includes('[') ||
+    markdown.includes(']') ||
+    markdown.includes('#') ||
+    markdown.includes('>') ||
+    markdown.includes('|') ||
+    markdown.includes('!') ||
+    markdown.includes('<') ||
+    markdown.includes('- ') ||
+    markdown.includes('+ ')
   ) {
     return false
   }
@@ -499,13 +533,10 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
   // Pre-process: convert XML-like error/status tags into styled blocks before line splitting
   // Matches <tool_use_error>...</tool_use_error> and similar tags (may span multiple lines)
   if (markdown.includes('<')) {
-    markdown = markdown.replace(
-      RE_ERROR_BLOCK_TAG,
-      (_match, _tag: string, body: string) => {
-        const escaped = escapeHtml(body.trim())
-        return `\n\`\`\`error-block\n${escaped}\n\`\`\`\n`
-      }
-    )
+    markdown = markdown.replace(RE_ERROR_BLOCK_TAG, (_match, _tag: string, body: string) => {
+      const escaped = escapeHtml(body.trim())
+      return `\n\`\`\`error-block\n${escaped}\n\`\`\`\n`
+    })
   }
 
   const lines = markdown.split('\n')
@@ -534,22 +565,28 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
   const flushTable = () => {
     if (inTable && tableRows.length > 0) {
       result.push('<div class="overflow-x-auto my-3">')
-      result.push('<table class="min-w-full border-collapse border border-gray-300 dark:border-gray-600">')
+      result.push(
+        '<table class="min-w-full border-collapse border border-gray-300 dark:border-gray-600">'
+      )
 
       tableRows.forEach((row, rowIndex) => {
         if (rowIndex === 0 && hasTableHeader) {
           result.push('<thead class="bg-gray-100 dark:bg-gray-700">')
           result.push('<tr>')
-          row.forEach(cell => {
-            result.push(`<th class="border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold">${parseInline(cell, MARKDOWN_INLINE_OPTIONS)}</th>`)
+          row.forEach((cell) => {
+            result.push(
+              `<th class="border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold">${parseInline(cell, MARKDOWN_INLINE_OPTIONS)}</th>`
+            )
           })
           result.push('</tr>')
           result.push('</thead>')
           result.push('<tbody>')
         } else {
           result.push('<tr class="even:bg-gray-50 dark:even:bg-gray-700/50">')
-          row.forEach(cell => {
-            result.push(`<td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${parseInline(cell, MARKDOWN_INLINE_OPTIONS)}</td>`)
+          row.forEach((cell) => {
+            result.push(
+              `<td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${parseInline(cell, MARKDOWN_INLINE_OPTIONS)}</td>`
+            )
           })
           result.push('</tr>')
         }
@@ -570,8 +607,10 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
   const flushTree = () => {
     if (inTree && treeLines.length > 0) {
       // Render tree structure with preserved whitespace
-      const treeContent = treeLines.map(line => escapeHtml(line)).join('\n')
-      result.push(`<pre class="tree-structure my-2 font-mono text-sm whitespace-pre">${treeContent}</pre>`)
+      const treeContent = treeLines.map((line) => escapeHtml(line)).join('\n')
+      result.push(
+        `<pre class="tree-structure my-2 font-mono text-sm whitespace-pre">${treeContent}</pre>`
+      )
       treeLines = []
       inTree = false
     }
@@ -603,16 +642,16 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
           // Render tool execution results as a compact process card
           result.push(renderProcessCard(code))
         } else {
-        const highlighted = highlightCode(code, codeBlockLang)
-        result.push(
-          `<div class="code-block my-3 rounded-lg overflow-hidden bg-gray-700">` +
-            `<div class="code-header flex justify-between items-center px-4 py-2 bg-gray-700 text-gray-400 text-sm">` +
-            `<span>${codeBlockLang || t('codeBlock.code', 'code')}</span>` +
-            `<button class="copy-btn hover:text-white" data-code="${escapeHtml(code)}">${t('common.copy', 'Copy')}</button>` +
-            `</div>` +
-            `<pre class="p-4 overflow-x-auto"><code class="text-sm font-mono text-gray-100">${highlighted}</code></pre>` +
-            `</div>`
-        )
+          const highlighted = highlightCode(code, codeBlockLang)
+          result.push(
+            `<div class="code-block my-3 rounded-lg overflow-hidden bg-gray-700">` +
+              `<div class="code-header flex justify-between items-center px-4 py-2 bg-gray-700 text-gray-400 text-sm">` +
+              `<span>${codeBlockLang || t('codeBlock.code', 'code')}</span>` +
+              `<button class="copy-btn hover:text-white" data-code="${escapeHtml(code)}">${t('common.copy', 'Copy')}</button>` +
+              `</div>` +
+              `<pre class="p-4 overflow-x-auto"><code class="text-sm font-mono text-gray-100">${highlighted}</code></pre>` +
+              `</div>`
+          )
         }
         inCodeBlock = false
         codeBlockLang = ''
@@ -744,7 +783,9 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
           ? '<input type="checkbox" checked disabled class="mr-1.5 accent-current opacity-60 pointer-events-none" />'
           : '<input type="checkbox" disabled class="mr-1.5 opacity-60 pointer-events-none" />'
         const textClass = checked ? 'line-through opacity-50' : ''
-        listItems.push(`<li class="list-none">${cbHtml}<span class="${textClass}">${parseInline(cbMatch[2] ?? '', MARKDOWN_INLINE_OPTIONS)}</span></li>`)
+        listItems.push(
+          `<li class="list-none">${cbHtml}<span class="${textClass}">${parseInline(cbMatch[2] ?? '', MARKDOWN_INLINE_OPTIONS)}</span></li>`
+        )
       } else {
         listItems.push(`<li>${parseInline(itemContent, MARKDOWN_INLINE_OPTIONS)}</li>`)
       }
@@ -789,15 +830,15 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
           `</div>`
       )
     } else {
-    const highlighted = highlightCode(code, codeBlockLang)
-    result.push(
-      `<div class="code-block my-3 rounded-lg overflow-hidden bg-gray-700">` +
-        `<div class="code-header flex justify-between items-center px-4 py-2 bg-gray-700 text-gray-400 text-sm">` +
-        `<span>${codeBlockLang || 'code'}</span>` +
-        `</div>` +
-        `<pre class="p-4 overflow-x-auto"><code class="text-sm font-mono text-gray-100">${highlighted}</code></pre>` +
-        `</div>`
-    )
+      const highlighted = highlightCode(code, codeBlockLang)
+      result.push(
+        `<div class="code-block my-3 rounded-lg overflow-hidden bg-gray-700">` +
+          `<div class="code-header flex justify-between items-center px-4 py-2 bg-gray-700 text-gray-400 text-sm">` +
+          `<span>${codeBlockLang || 'code'}</span>` +
+          `</div>` +
+          `<pre class="p-4 overflow-x-auto"><code class="text-sm font-mono text-gray-100">${highlighted}</code></pre>` +
+          `</div>`
+      )
     }
   }
 
@@ -811,7 +852,10 @@ const MARKDOWN_SCOPE_FAST_PATH_CACHE = new Map<string, MarkdownFastPathState>()
 const MARKDOWN_SCOPE_FAST_PATH_CACHE_MAX = 64
 
 function setMarkdownScopeFastPathState(scope: string, state: MarkdownFastPathState) {
-  if (MARKDOWN_SCOPE_FAST_PATH_CACHE.size >= MARKDOWN_SCOPE_FAST_PATH_CACHE_MAX && !MARKDOWN_SCOPE_FAST_PATH_CACHE.has(scope)) {
+  if (
+    MARKDOWN_SCOPE_FAST_PATH_CACHE.size >= MARKDOWN_SCOPE_FAST_PATH_CACHE_MAX &&
+    !MARKDOWN_SCOPE_FAST_PATH_CACHE.has(scope)
+  ) {
     evictOldestMapEntry(MARKDOWN_SCOPE_FAST_PATH_CACHE)
   }
   MARKDOWN_SCOPE_FAST_PATH_CACHE.set(scope, state)
@@ -821,7 +865,11 @@ function clearMarkdownScopeFastPathState(scope: string) {
   MARKDOWN_SCOPE_FAST_PATH_CACHE.delete(scope)
 }
 
-function tryRenderAppendFastPath(markdown: string, scope: string, mode: MarkdownFastPathMode): MarkdownFastPathState | null {
+function tryRenderAppendFastPath(
+  markdown: string,
+  scope: string,
+  mode: MarkdownFastPathMode
+): MarkdownFastPathState | null {
   const previous = MARKDOWN_SCOPE_FAST_PATH_CACHE.get(scope)
   if (!previous || previous.mode !== mode) {
     return null
@@ -871,9 +919,8 @@ function tryRenderAppendFastPath(markdown: string, scope: string, mode: Markdown
 
   // Lines before the previous last line are stable for append-only updates.
   const stableRenderedCount = Math.max(previousRenderedLines.length - 1, 0)
-  const nextRenderedLines = stableRenderedCount > 0
-    ? previousRenderedLines.slice(0, stableRenderedCount)
-    : []
+  const nextRenderedLines =
+    stableRenderedCount > 0 ? previousRenderedLines.slice(0, stableRenderedCount) : []
 
   for (let index = stableRenderedCount; index < nextLines.length; index++) {
     nextRenderedLines.push(renderPlainTextLine(nextLines[index] || ''))
@@ -888,7 +935,10 @@ function tryRenderAppendFastPath(markdown: string, scope: string, mode: Markdown
   }
 }
 
-function buildMarkdownFastPathState(markdown: string, mode: MarkdownFastPathMode): MarkdownFastPathState {
+function buildMarkdownFastPathState(
+  markdown: string,
+  mode: MarkdownFastPathMode
+): MarkdownFastPathState {
   if (mode === 'plain') {
     return {
       mode,

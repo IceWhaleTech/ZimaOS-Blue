@@ -37,12 +37,7 @@ const iconColor = computed(() => {
 </script>
 
 <template>
-  <div
-    :class="[
-      'px-4 py-3 rounded-lg border-2 shadow-sm min-w-[200px] max-w-[300px]',
-      bgColor
-    ]"
-  >
+  <div :class="['px-4 py-3 rounded-lg border-2 shadow-sm min-w-[200px] max-w-[300px]', bgColor]">
     <Handle type="target" :position="Position.Top" class="!bg-gray-400" />
 
     <div class="flex items-start gap-3">

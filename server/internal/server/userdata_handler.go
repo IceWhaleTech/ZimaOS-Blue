@@ -36,7 +36,6 @@ type UserSettings struct {
 	SelectedProviderModel string  `json:"selected_provider_model,omitempty"`
 	Temperature           float64 `json:"temperature"`
 	MaxTokens             int     `json:"max_tokens"`
-	ThemeStyle            string  `json:"theme_style,omitempty"`
 	Theme                 string  `json:"theme,omitempty"`
 	Locale                string  `json:"locale,omitempty"`
 	Timezone              string  `json:"timezone,omitempty"`
@@ -430,9 +429,8 @@ func (h *UserDataHandler) buildPreview(export *UserDataExport) map[string]interf
 	if export.Settings != nil {
 		preview["has_settings"] = true
 		preview["settings_preview"] = map[string]interface{}{
-			"theme":       export.Settings.Theme,
-			"theme_style": export.Settings.ThemeStyle,
-			"locale":      export.Settings.Locale,
+			"theme":  export.Settings.Theme,
+			"locale": export.Settings.Locale,
 		}
 	}
 

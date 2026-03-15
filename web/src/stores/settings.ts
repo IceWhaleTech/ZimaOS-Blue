@@ -28,15 +28,15 @@ export interface ChatModelInfo {
 }
 
 export interface ChatProviderInfo {
-  id: string        // Provider ID from Provider Pool
-  name: string      // Display name
+  id: string // Provider ID from Provider Pool
+  name: string // Display name
   models: ChatModelInfo[]
 }
 
 // Combined option for single dropdown: Provider(model)
 export interface ProviderModelOption {
-  value: string       // Format: "providerId:modelId"
-  label: string       // Format: "ProviderName(modelId)"
+  value: string // Format: "providerId:modelId"
+  label: string // Format: "ProviderName(modelId)"
   providerId: string
   providerName: string
   modelId: string
@@ -44,30 +44,13 @@ export interface ProviderModelOption {
   outputPrice?: number
 }
 
-// Theme style types
-export type ThemeStyle = 'default' | 'bubble' | 'minimal' | 'gradient' | 'ocean'
 export type CloseBehavior = 'quit' | 'minimize'
 export type MemoryRecallMode = 'aggressive' | 'balanced' | 'quality'
 
-export const THEME_STYLES: { id: ThemeStyle; labelKey: string }[] = [
-  { id: 'default', labelKey: 'theme.styles.default' },
-  { id: 'bubble', labelKey: 'theme.styles.bubble' },
-  { id: 'minimal', labelKey: 'theme.styles.minimal' },
-  { id: 'gradient', labelKey: 'theme.styles.gradient' },
-  { id: 'ocean', labelKey: 'theme.styles.ocean' },
-]
-
-const THEME_STYLE_SET = new Set<ThemeStyle>(THEME_STYLES.map(s => s.id))
-
-function isThemeStyle(value: unknown): value is ThemeStyle {
-  return typeof value === 'string' && THEME_STYLE_SET.has(value as ThemeStyle)
-}
-
 interface StoredSettings {
-  selectedProviderModel: string  // Format: "providerId:modelId"
+  selectedProviderModel: string // Format: "providerId:modelId"
   temperature: number
   maxTokens: number
-  themeStyle: ThemeStyle
   closeBehavior: CloseBehavior
   showToolDetails: boolean
 }
@@ -128,10 +111,9 @@ export const useSettingsStore = defineStore('settings', () => {
   // State
   const providers = ref<ChatProviderInfo[]>([])
   const tools = ref<ToolDefinition[]>([])
-  const selectedProviderModel = ref(stored.selectedProviderModel || '')  // Format: "providerId:modelId"
+  const selectedProviderModel = ref(stored.selectedProviderModel || '') // Format: "providerId:modelId"
   const temperature = ref(stored.temperature ?? 0.7)
   const maxTokens = ref(stored.maxTokens ?? DEFAULT_MAX_TOKENS)
-  const themeStyle = ref<ThemeStyle>(stored.themeStyle || 'default')
   const closeBehavior = ref<CloseBehavior>(stored.closeBehavior || 'quit')
   const showToolDetails = ref(stored.showToolDetails ?? false)
   const loading = ref(false)
@@ -175,7 +157,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const selectedModel = computed(() => {
     const parts = selectedProviderModel.value.split(':')
-    return parts.slice(1).join(':') || ''  // Handle model IDs that contain ':'
+    return parts.slice(1).join(':') || '' // Handle model IDs that contain ':'
   })
 
   const currentProvider = computed(() =>
@@ -186,13 +168,12 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Watch for changes and persist
   watch(
-    [selectedProviderModel, temperature, maxTokens, themeStyle, closeBehavior, showToolDetails],
+    [selectedProviderModel, temperature, maxTokens, closeBehavior, showToolDetails],
     () => {
       saveSettings({
         selectedProviderModel: selectedProviderModel.value,
         temperature: temperature.value,
         maxTokens: maxTokens.value,
-        themeStyle: themeStyle.value,
         closeBehavior: closeBehavior.value,
         showToolDetails: showToolDetails.value,
       })
@@ -231,11 +212,13 @@ export const useSettingsStore = defineStore('settings', () => {
     const providerInfos: ChatProviderInfo[] = enabledProviders.map((provider: Provider) => ({
       id: provider.id,
       name: provider.name,
-      models: (provider.models || []).filter((m: Model) => m.enabled).map((m: Model) => ({
-        id: m.id,
-        inputPrice: m.input_price,
-        outputPrice: m.output_price,
-      })),
+      models: (provider.models || [])
+        .filter((m: Model) => m.enabled)
+        .map((m: Model) => ({
+          id: m.id,
+          inputPrice: m.input_price,
+          outputPrice: m.output_price,
+        })),
     }))
 
     providers.value = providerInfos
@@ -273,11 +256,13 @@ export const useSettingsStore = defineStore('settings', () => {
       // Fetch models from Provider Pool
       const response = await providerPoolApi.fetchProviderModels(targetProviderId)
       const models = response.data.models || []
-      const chatModels: ChatModelInfo[] = models.filter((m: Model) => m.enabled).map((m: Model) => ({
-        id: m.id,
-        inputPrice: m.input_price,
-        outputPrice: m.output_price,
-      }))
+      const chatModels: ChatModelInfo[] = models
+        .filter((m: Model) => m.enabled)
+        .map((m: Model) => ({
+          id: m.id,
+          inputPrice: m.input_price,
+          outputPrice: m.output_price,
+        }))
 
       // Update the provider's models in the list
       const index = providers.value.findIndex((p) => p.id === targetProviderId)
@@ -294,7 +279,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
       // If current selection is no longer valid, select first model of this provider
       if (targetProviderId === selectedProvider.value) {
-        const modelIds = chatModels.map(m => m.id)
+        const modelIds = chatModels.map((m) => m.id)
         if (modelIds.length > 0 && !modelIds.includes(selectedModel.value)) {
           const firstModel = modelIds[0]
           if (firstModel) {
@@ -303,7 +288,7 @@ export const useSettingsStore = defineStore('settings', () => {
         }
       }
 
-      return { id: targetProviderId, models: chatModels.map(m => m.id) }
+      return { id: targetProviderId, models: chatModels.map((m) => m.id) }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to refresh models'
       throw e
@@ -328,11 +313,11 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Set provider (keeps current model if available, otherwise selects first model)
   function setProvider(providerId: string) {
-    const provider = providers.value.find(p => p.id === providerId)
+    const provider = providers.value.find((p) => p.id === providerId)
     if (provider && provider.models.length > 0) {
       // Try to keep current model if it exists in new provider
       const currentModel = selectedModel.value
-      if (provider.models.some(m => m.id === currentModel)) {
+      if (provider.models.some((m) => m.id === currentModel)) {
         selectedProviderModel.value = `${providerId}:${currentModel}`
       } else {
         // Select first model of new provider
@@ -360,12 +345,6 @@ export const useSettingsStore = defineStore('settings', () => {
     maxTokens.value = Math.max(1, Math.min(128000, value))
   }
 
-  function setThemeStyle(style: ThemeStyle) {
-    themeStyle.value = style
-    // Persist to backend best-effort; local state still updates immediately.
-    updateBackendSettings({ theme_style: style }).catch(() => {})
-  }
-
   function setCloseBehavior(behavior: CloseBehavior) {
     closeBehavior.value = behavior
   }
@@ -381,7 +360,6 @@ export const useSettingsStore = defineStore('settings', () => {
   function resetToDefaults() {
     temperature.value = 0.7
     maxTokens.value = DEFAULT_MAX_TOKENS
-    themeStyle.value = 'default'
     closeBehavior.value = 'quit'
     showToolDetails.value = false
     // Clear stored settings
@@ -394,9 +372,6 @@ export const useSettingsStore = defineStore('settings', () => {
       backendSettingsLoading.value = true
       const response = await settingsApi.get()
       backendSettings.value = response.data
-      if (isThemeStyle(response.data.theme_style)) {
-        themeStyle.value = response.data.theme_style
-      }
     } catch (e) {
       console.error('Failed to fetch backend settings:', e)
     } finally {
@@ -441,8 +416,12 @@ export const useSettingsStore = defineStore('settings', () => {
     return 'balanced'
   })
   const skillRerankEnabled = computed(() => backendSettings.value.skill_rerank_enabled ?? false)
-  const skillRerankONNXEnabled = computed(() => backendSettings.value.skill_rerank_onnx_enabled ?? false)
-  const skillRerankONNXAutoDownload = computed(() => backendSettings.value.skill_rerank_onnx_auto_download ?? false)
+  const skillRerankONNXEnabled = computed(
+    () => backendSettings.value.skill_rerank_onnx_enabled ?? false
+  )
+  const skillRerankONNXAutoDownload = computed(
+    () => backendSettings.value.skill_rerank_onnx_auto_download ?? false
+  )
   const smallModelEnabled = computed(() => backendSettings.value.small_model_enabled ?? false)
   const smallModelRuntime = computed<SmallModelRuntime>(() => {
     const runtime = backendSettings.value.small_model_runtime
@@ -452,10 +431,18 @@ export const useSettingsStore = defineStore('settings', () => {
     const id = backendSettings.value.small_model_id
     return id === 'qwen3.5-0.8b-gguf-q4km' ? id : 'qwen3.5-0.8b-gguf-q4km'
   })
-  const smallModelAutoDownload = computed(() => backendSettings.value.small_model_auto_download ?? true)
-  const smallModelSummaryEnabled = computed(() => backendSettings.value.small_model_summary_enabled ?? false)
-  const smallModelDocExtractEnabled = computed(() => backendSettings.value.small_model_doc_extract_enabled ?? false)
-  const smallModelRerankEnabled = computed(() => backendSettings.value.small_model_rerank_enabled ?? false)
+  const smallModelAutoDownload = computed(
+    () => backendSettings.value.small_model_auto_download ?? true
+  )
+  const smallModelSummaryEnabled = computed(
+    () => backendSettings.value.small_model_summary_enabled ?? false
+  )
+  const smallModelDocExtractEnabled = computed(
+    () => backendSettings.value.small_model_doc_extract_enabled ?? false
+  )
+  const smallModelRerankEnabled = computed(
+    () => backendSettings.value.small_model_rerank_enabled ?? false
+  )
   const smartToolSelection = computed(() => backendSettings.value.smart_tool_selection ?? false)
   const smartSkillSelection = computed(() => backendSettings.value.smart_skill_selection ?? false)
   const skillSelectorMode = computed<'hybrid' | 'ir_only' | 'llm_only'>(() => {
@@ -463,31 +450,66 @@ export const useSettingsStore = defineStore('settings', () => {
     if (mode === 'ir_only' || mode === 'llm_only') return mode
     return 'hybrid'
   })
-  const skillSelectorConfidenceThreshold = computed(() => backendSettings.value.skill_selector_confidence_threshold ?? 0.78)
-  const promptPolicyVersion = computed(() => backendSettings.value.prompt_policy_version ?? '2026-03-04')
+  const skillSelectorConfidenceThreshold = computed(
+    () => backendSettings.value.skill_selector_confidence_threshold ?? 0.78
+  )
+  const promptPolicyVersion = computed(
+    () => backendSettings.value.prompt_policy_version ?? '2026-03-04'
+  )
   const promptPolicyProfile = computed<'default'>(() => {
     const profile = backendSettings.value.prompt_policy_profile
     return profile === 'default' ? profile : 'default'
   })
-  const agentLoopPolicyMaxToolRounds = computed(() => backendSettings.value.agent_loop_policy_max_tool_rounds ?? 48)
-  const agentLoopPolicyMaxAutoContinue = computed(() => backendSettings.value.agent_loop_policy_max_auto_continue ?? 12)
-  const agentLoopPolicyPseudoToolCallBudget = computed(() => backendSettings.value.agent_loop_policy_pseudo_tool_call_budget ?? 3)
-  const agentLoopPolicyActionPledgeBudget = computed(() => backendSettings.value.agent_loop_policy_action_pledge_budget ?? 3)
-  const agentLoopPolicyMissingTodoBudget = computed(() => backendSettings.value.agent_loop_policy_missing_todo_budget ?? 3)
-  const agentLoopPolicyPendingTodoBudget = computed(() => backendSettings.value.agent_loop_policy_pending_todo_budget ?? 3)
-  const smallModelContextPruneEnabled = computed(() => backendSettings.value.small_model_context_prune_enabled ?? false)
-  const smallModelMediaIntentEnabled = computed(() => backendSettings.value.small_model_media_intent_enabled ?? false)
-  const offlineIRFallbackEnabled = computed(() => backendSettings.value.offline_ir_fallback_enabled ?? false)
-  const featureIntentIREnabled = computed(() => backendSettings.value.feature_intent_ir_enabled ?? false)
-  const smallModelIRFeaturesEnabled = computed(() =>
-    smallModelContextPruneEnabled.value
-    && smallModelMediaIntentEnabled.value
-    && smartToolSelection.value
-    && offlineIRFallbackEnabled.value
-    && featureIntentIREnabled.value
+  const agentLoopPolicyMaxToolRounds = computed(
+    () => backendSettings.value.agent_loop_policy_max_tool_rounds ?? 48
   )
-  const smallModelRouteShortQAEnabled = computed(() => backendSettings.value.small_model_route_short_qa_enabled ?? false)
-  const smallModelRouteToolDispatchEnabled = computed(() => backendSettings.value.small_model_route_tool_dispatch_enabled ?? false)
+  const agentLoopPolicyMaxAutoContinue = computed(
+    () => backendSettings.value.agent_loop_policy_max_auto_continue ?? 12
+  )
+  const agentLoopPolicyPseudoToolCallBudget = computed(
+    () => backendSettings.value.agent_loop_policy_pseudo_tool_call_budget ?? 3
+  )
+  const agentLoopPolicyActionPledgeBudget = computed(
+    () => backendSettings.value.agent_loop_policy_action_pledge_budget ?? 3
+  )
+  const agentLoopPolicyMissingTodoBudget = computed(
+    () => backendSettings.value.agent_loop_policy_missing_todo_budget ?? 3
+  )
+  const agentLoopPolicyPendingTodoBudget = computed(
+    () => backendSettings.value.agent_loop_policy_pending_todo_budget ?? 3
+  )
+  const smallModelContextPruneEnabled = computed(
+    () => backendSettings.value.small_model_context_prune_enabled ?? false
+  )
+  const smallModelMediaIntentEnabled = computed(
+    () => backendSettings.value.small_model_media_intent_enabled ?? false
+  )
+  const offlineIRFallbackEnabled = computed(
+    () => backendSettings.value.offline_ir_fallback_enabled ?? false
+  )
+  const featureIntentIREnabled = computed(
+    () => backendSettings.value.feature_intent_ir_enabled ?? false
+  )
+  const smallModelIRFeaturesEnabled = computed(
+    () =>
+      smallModelContextPruneEnabled.value &&
+      smallModelMediaIntentEnabled.value &&
+      smartToolSelection.value &&
+      offlineIRFallbackEnabled.value &&
+      featureIntentIREnabled.value
+  )
+  const smallModelRouteImageQAEnabled = computed(
+    () =>
+      backendSettings.value.small_model_route_image_qa_enabled ??
+      backendSettings.value.small_model_route_short_qa_enabled ??
+      false
+  )
+  const smallModelRouteShortQAEnabled = computed(
+    () => backendSettings.value.small_model_route_short_qa_enabled ?? false
+  )
+  const smallModelRouteToolDispatchEnabled = computed(
+    () => backendSettings.value.small_model_route_tool_dispatch_enabled ?? false
+  )
   const noLLMDegradeMode = computed<NoLLMDegradeMode>(() => {
     return backendSettings.value.no_llm_degrade_mode === 'deepresearch'
       ? backendSettings.value.no_llm_degrade_mode
@@ -625,6 +647,10 @@ export const useSettingsStore = defineStore('settings', () => {
     await updateBackendSettings({ small_model_route_short_qa_enabled: enabled })
   }
 
+  async function setSmallModelRouteImageQAEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_route_image_qa_enabled: enabled })
+  }
+
   async function setSmallModelRouteToolDispatchEnabled(enabled: boolean) {
     await updateBackendSettings({ small_model_route_tool_dispatch_enabled: enabled })
   }
@@ -645,7 +671,8 @@ export const useSettingsStore = defineStore('settings', () => {
       smallModelStatus.value = response.data
       return response.data
     } catch (e) {
-      smallModelStatusError.value = e instanceof Error ? e.message : 'Failed to fetch small model status'
+      smallModelStatusError.value =
+        e instanceof Error ? e.message : 'Failed to fetch small model status'
       throw e
     } finally {
       smallModelStatusLoading.value = false
@@ -670,7 +697,8 @@ export const useSettingsStore = defineStore('settings', () => {
       smallModelStats.value = response.data
       return response.data
     } catch (e) {
-      smallModelStatsError.value = e instanceof Error ? e.message : 'Failed to fetch small-model stats'
+      smallModelStatsError.value =
+        e instanceof Error ? e.message : 'Failed to fetch small-model stats'
       throw e
     } finally {
       smallModelStatsLoading.value = false
@@ -689,7 +717,6 @@ export const useSettingsStore = defineStore('settings', () => {
     selectedProviderModel,
     temperature,
     maxTokens,
-    themeStyle,
     closeBehavior,
     loading,
     refreshing,
@@ -734,6 +761,7 @@ export const useSettingsStore = defineStore('settings', () => {
     offlineIRFallbackEnabled,
     featureIntentIREnabled,
     smallModelIRFeaturesEnabled,
+    smallModelRouteImageQAEnabled,
     smallModelRouteShortQAEnabled,
     smallModelRouteToolDispatchEnabled,
     noLLMDegradeMode,
@@ -757,8 +785,8 @@ export const useSettingsStore = defineStore('settings', () => {
     setModel,
     setTemperature,
     setMaxTokens,
-    setThemeStyle,
     setCloseBehavior,
+    setShowToolDetails,
     clearError,
     resetToDefaults,
     fetchBackendSettings,
@@ -794,6 +822,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setOfflineIRFallbackEnabled,
     setFeatureIntentIREnabled,
     setSmallModelIRFeaturesEnabled,
+    setSmallModelRouteImageQAEnabled,
     setSmallModelRouteShortQAEnabled,
     setSmallModelRouteToolDispatchEnabled,
     setNoLLMDegradeMode,
@@ -803,6 +832,5 @@ export const useSettingsStore = defineStore('settings', () => {
     cancelSmallModelDownload,
     fetchSmallModelStats,
     resetSmallModelStats,
-    setShowToolDetails,
   }
 })

@@ -71,7 +71,7 @@ function makeTypelessBlock(payload: Record<string, unknown>) {
 async function settleAsyncWork() {
   await Promise.resolve()
   await Promise.resolve()
-  await new Promise(resolve => setTimeout(resolve, 0))
+  await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 describe('Chat Store', () => {
@@ -221,6 +221,17 @@ describe('Chat Store', () => {
       expect(messageApi.list).not.toHaveBeenCalled()
     })
 
+    it('should hydrate command state once and reuse it across conversation switches', async () => {
+      const store = useChatStore()
+
+      await store.selectConversation('1')
+      await store.selectConversation('2')
+
+      expect(conversationApi.getCommandState).toHaveBeenCalledTimes(1)
+      expect(conversationApi.getCommandState).toHaveBeenCalledWith('1')
+      expect(store.currentConversationId).toBe('2')
+    })
+
     it('should keep chronological order across multi-page loadMore', async () => {
       const store = useChatStore()
 
@@ -241,26 +252,28 @@ describe('Chat Store', () => {
       const olderPage1 = makePage(21, 70)
       const olderPage2 = makePage(1, 20)
 
-      vi.mocked(messageApi.list).mockImplementation(async (_id: string, _limit = 50, offset = 0) => {
-        if (offset === 0) return { data: latestPage } as never
-        if (offset === 50) return { data: olderPage1 } as never
-        if (offset === 100) return { data: olderPage2 } as never
-        return { data: [] } as never
-      })
+      vi.mocked(messageApi.list).mockImplementation(
+        async (_id: string, _limit = 50, offset = 0) => {
+          if (offset === 0) return { data: latestPage } as never
+          if (offset === 50) return { data: olderPage1 } as never
+          if (offset === 100) return { data: olderPage2 } as never
+          return { data: [] } as never
+        }
+      )
 
       await store.selectConversation('conv-1')
-      expect(store.messages.map(m => m.content)).toEqual(latestPage.map(m => m.content))
+      expect(store.messages.map((m) => m.content)).toEqual(latestPage.map((m) => m.content))
       expect(store.hasMoreMessages).toBe(true)
 
       await store.loadMoreMessages()
       await store.loadMoreMessages()
 
       const expected = [
-        ...olderPage2.map(m => m.content),
-        ...olderPage1.map(m => m.content),
-        ...latestPage.map(m => m.content),
+        ...olderPage2.map((m) => m.content),
+        ...olderPage1.map((m) => m.content),
+        ...latestPage.map((m) => m.content),
       ]
-      const actual = store.messages.map(m => m.content)
+      const actual = store.messages.map((m) => m.content)
 
       expect(actual).toEqual(expected)
       expect(new Set(actual).size).toBe(120)
@@ -309,13 +322,15 @@ describe('Chat Store', () => {
         },
       })
 
-      expect(store.pendingExecApproval).toEqual(expect.objectContaining({
-        id: 'exec-1',
-        type: 'directory',
-        command: rawCommand,
-        directory: '/tmp',
-        session_id: 'conv-1',
-      }))
+      expect(store.pendingExecApproval).toEqual(
+        expect.objectContaining({
+          id: 'exec-1',
+          type: 'directory',
+          command: rawCommand,
+          directory: '/tmp',
+          session_id: 'conv-1',
+        })
+      )
       expect(store.pendingExecApproval?.expires_at).toBeGreaterThan(Date.now())
       expect(store.awaitingConfirmation).toBe(true)
     })
@@ -325,14 +340,16 @@ describe('Chat Store', () => {
       store.currentConversationId = 'conv-1'
 
       vi.mocked(approvalApi.listPending).mockResolvedValue({
-        data: [{
-          id: 'approval-1',
-          tool_name: 'browser',
-          tool_call_id: 'tool-1',
-          arguments: { url: 'https://example.com' },
-          session_id: 'conv-1',
-          created_at: '2026-03-11T00:00:00.000Z',
-        }],
+        data: [
+          {
+            id: 'approval-1',
+            tool_name: 'browser',
+            tool_call_id: 'tool-1',
+            arguments: { url: 'https://example.com' },
+            session_id: 'conv-1',
+            created_at: '2026-03-11T00:00:00.000Z',
+          },
+        ],
       } as never)
 
       await store.checkPendingApprovals()
@@ -364,12 +381,27 @@ describe('Chat Store', () => {
     it('should apply deterministic tie-breakers for same updated_at', () => {
       const store = useChatStore()
       store.conversations = [
-        { id: 'a', title: 'A', created_at: '2024-01-01T00:00:00.000Z', updated_at: '2024-01-03T00:00:00.000Z' },
-        { id: 'c', title: 'C', created_at: '2024-01-02T00:00:00.000Z', updated_at: '2024-01-03T00:00:00.000Z' },
-        { id: 'b', title: 'B', created_at: '2024-01-02T00:00:00.000Z', updated_at: '2024-01-03T00:00:00.000Z' },
+        {
+          id: 'a',
+          title: 'A',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-03T00:00:00.000Z',
+        },
+        {
+          id: 'c',
+          title: 'C',
+          created_at: '2024-01-02T00:00:00.000Z',
+          updated_at: '2024-01-03T00:00:00.000Z',
+        },
+        {
+          id: 'b',
+          title: 'B',
+          created_at: '2024-01-02T00:00:00.000Z',
+          updated_at: '2024-01-03T00:00:00.000Z',
+        },
       ]
 
-      expect(store.sortedConversations.map(c => c.id)).toEqual(['c', 'b', 'a'])
+      expect(store.sortedConversations.map((c) => c.id)).toEqual(['c', 'b', 'a'])
     })
   })
 
@@ -378,8 +410,18 @@ describe('Chat Store', () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'
       store.conversations = [
-        { id: 'conv-1', title: 'Original', created_at: '2026-03-11T00:00:00.000Z', updated_at: '2026-03-11T00:00:00.000Z' },
-        { id: 'conv-2', title: 'Other', created_at: '2026-03-11T00:00:01.000Z', updated_at: '2026-03-11T00:00:01.000Z' },
+        {
+          id: 'conv-1',
+          title: 'Original',
+          created_at: '2026-03-11T00:00:00.000Z',
+          updated_at: '2026-03-11T00:00:00.000Z',
+        },
+        {
+          id: 'conv-2',
+          title: 'Other',
+          created_at: '2026-03-11T00:00:01.000Z',
+          updated_at: '2026-03-11T00:00:01.000Z',
+        },
       ]
 
       vi.mocked(messageApi.list).mockImplementation(async (conversationId: string) => {
@@ -404,11 +446,13 @@ describe('Chat Store', () => {
 
       mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
         expect(_conversationId).toBe('conv-1')
-        expect(request).toEqual(expect.objectContaining({
-          message: 'Need a decision',
-          web_search_enabled: true,
-          deep_research_enabled: false,
-        }))
+        expect(request).toEqual(
+          expect.objectContaining({
+            message: 'Need a decision',
+            web_search_enabled: true,
+            deep_research_enabled: false,
+          })
+        )
         streamOptions = options
         await new Promise<void>((resolve) => {
           resolveStream = resolve
@@ -464,7 +508,12 @@ describe('Chat Store', () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'
       store.conversations = [
-        { id: 'conv-1', title: 'Reddit flow', created_at: '2026-03-08T00:00:00.000Z', updated_at: '2026-03-08T00:00:00.000Z' },
+        {
+          id: 'conv-1',
+          title: 'Reddit flow',
+          created_at: '2026-03-08T00:00:00.000Z',
+          updated_at: '2026-03-08T00:00:00.000Z',
+        },
       ]
 
       const webFetchBlock = makeTypelessBlock({
@@ -538,7 +587,12 @@ describe('Chat Store', () => {
       vi.mocked(messageApi.list).mockResolvedValue({ data: persistedMessages } as never)
       vi.mocked(conversationApi.list).mockResolvedValue({
         data: [
-          { id: 'conv-1', title: 'Reddit flow', created_at: '2026-03-08T00:00:00.000Z', updated_at: '2026-03-08T00:00:02.000Z' },
+          {
+            id: 'conv-1',
+            title: 'Reddit flow',
+            created_at: '2026-03-08T00:00:00.000Z',
+            updated_at: '2026-03-08T00:00:02.000Z',
+          },
         ],
       } as never)
 
@@ -547,28 +601,34 @@ describe('Chat Store', () => {
 
       mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
         expect(_conversationId).toBe('conv-1')
-        expect(request).toEqual(expect.objectContaining({
-          message: 'Inspect https://www.reddit.com/r/test',
-          web_search_enabled: true,
-          deep_research_enabled: false,
-        }))
+        expect(request).toEqual(
+          expect.objectContaining({
+            message: 'Inspect https://www.reddit.com/r/test',
+            web_search_enabled: true,
+            deep_research_enabled: false,
+          })
+        )
 
         options.onMessage({ delta: webFetchBlock, done: false })
         options.onNewMessage?.(1)
-        snapshotAfterSplit.push(...store.messages.map(message => ({
-          id: message.id,
-          role: message.role,
-          content: message.content,
-          todo_card_id: (message as any).todo_card_id,
-        })))
+        snapshotAfterSplit.push(
+          ...store.messages.map((message) => ({
+            id: message.id,
+            role: message.role,
+            content: message.content,
+            todo_card_id: (message as any).todo_card_id,
+          }))
+        )
 
         options.onMessage({ delta: browserBlock, done: false })
         options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
-        snapshotBeforeRefresh.push(...store.messages.map(message => ({
-          id: message.id,
-          role: message.role,
-          content: message.content,
-        })))
+        snapshotBeforeRefresh.push(
+          ...store.messages.map((message) => ({
+            id: message.id,
+            role: message.role,
+            content: message.content,
+          }))
+        )
       })
 
       await store.sendMessage('Inspect https://www.reddit.com/r/test')
@@ -589,7 +649,11 @@ describe('Chat Store', () => {
       expect(conversationApi.list).toHaveBeenCalledTimes(1)
       expect(mocks.providerPoolStore.fetchTrialQuota).toHaveBeenCalledTimes(1)
       expect(store.messages).toEqual(persistedMessages)
-      expect(store.messages.some(message => message.id.startsWith('temp-') || message.id.startsWith('streaming-'))).toBe(false)
+      expect(
+        store.messages.some(
+          (message) => message.id.startsWith('temp-') || message.id.startsWith('streaming-')
+        )
+      ).toBe(false)
       expect(store.streaming).toBe(false)
       expect(store.sending).toBe(false)
     })
@@ -598,7 +662,12 @@ describe('Chat Store', () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'
       store.conversations = [
-        { id: 'conv-1', title: 'Checklist fallback', created_at: '2026-03-10T00:00:00.000Z', updated_at: '2026-03-10T00:00:00.000Z' },
+        {
+          id: 'conv-1',
+          title: 'Checklist fallback',
+          created_at: '2026-03-10T00:00:00.000Z',
+          updated_at: '2026-03-10T00:00:00.000Z',
+        },
       ]
       store.messages = [
         {
@@ -617,21 +686,32 @@ describe('Chat Store', () => {
         },
       ]
 
-      let snapshotAfterTodoUpdate: Array<{ id: string; role: string; content: string; todo_card_id?: string }> = []
+      let snapshotAfterTodoUpdate: Array<{
+        id: string
+        role: string
+        content: string
+        todo_card_id?: string
+      }> = []
 
       mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
         expect(_conversationId).toBe('conv-1')
-        expect(request).toEqual(expect.objectContaining({
-          message: 'Continue the current work',
-          web_search_enabled: true,
-          deep_research_enabled: false,
-        }))
+        expect(request).toEqual(
+          expect.objectContaining({
+            message: 'Continue the current work',
+            web_search_enabled: true,
+            deep_research_enabled: false,
+          })
+        )
 
         options.onMessage({ delta: '- [ ] collect facts\n- [ ] write summary', done: false })
         options.onNewMessage?.(1)
-        options.onTodoUpdated?.('msg-assistant-current', '- [x] collect facts\n- [ ] write summary', 'todo-checklist-msg-assistant-current')
+        options.onTodoUpdated?.(
+          'msg-assistant-current',
+          '- [x] collect facts\n- [ ] write summary',
+          'todo-checklist-msg-assistant-current'
+        )
 
-        snapshotAfterTodoUpdate = store.messages.map(message => ({
+        snapshotAfterTodoUpdate = store.messages.map((message) => ({
           id: message.id,
           role: message.role,
           content: message.content,
@@ -646,12 +726,16 @@ describe('Chat Store', () => {
       expect(snapshotAfterTodoUpdate[1]?.id).toBe('msg-assistant-legacy')
       expect(snapshotAfterTodoUpdate[1]?.content).toBe('- [ ] legacy task\n- [ ] legacy verify')
 
-      const updatedChecklist = snapshotAfterTodoUpdate.find(message => message.content === '- [x] collect facts\n- [ ] write summary')
+      const updatedChecklist = snapshotAfterTodoUpdate.find(
+        (message) => message.content === '- [x] collect facts\n- [ ] write summary'
+      )
       expect(updatedChecklist).toBeTruthy()
       expect(updatedChecklist?.id.startsWith('streaming-')).toBe(true)
       expect(updatedChecklist?.todo_card_id).toBe('todo-checklist-msg-assistant-current')
 
-      const staleLegacyMatches = snapshotAfterTodoUpdate.filter(message => message.content.includes('legacy task'))
+      const staleLegacyMatches = snapshotAfterTodoUpdate.filter((message) =>
+        message.content.includes('legacy task')
+      )
       expect(staleLegacyMatches).toHaveLength(1)
       expect(snapshotAfterTodoUpdate.at(-1)?.content).toBe('')
     })
@@ -663,7 +747,9 @@ describe('Chat Store', () => {
         {
           name: 'exec',
           id: 'exec-cmd',
-          args: JSON.stringify({ cmd: 'mkdir -p /Users/orca/.zimaos-blue/data/workspace/tank-battle' }),
+          args: JSON.stringify({
+            cmd: 'mkdir -p /Users/orca/.zimaos-blue/data/workspace/tank-battle',
+          }),
           result: JSON.stringify({ exit_code: 0, duration_ms: 25 }),
         },
       ])
@@ -762,7 +848,8 @@ describe('Chat Store', () => {
           args: JSON.stringify({ action: 'screenshot', url: 'https://example.com' }),
           result: JSON.stringify({
             message: 'Screenshot captured for https://example.com',
-            screenshot: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII=',
+            screenshot:
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII=',
           }),
         },
       ])
@@ -779,7 +866,8 @@ describe('Chat Store', () => {
           name: 'browser',
           id: 'browser-shot-truncated',
           args: JSON.stringify({ action: 'screenshot', url: 'https://example.com' }),
-          result: '{"message":"Screenshot captured for https://example.com","screenshot":"iVBORw0KGgoAAAANSUhEUg...[truncated]',
+          result:
+            '{"message":"Screenshot captured for https://example.com","screenshot":"iVBORw0KGgoAAAANSUhEUg...[truncated]',
         },
       ])
 
@@ -789,6 +877,4 @@ describe('Chat Store', () => {
       expect(items[0]?.icon).toBe('✓')
     })
   })
-
-
 })

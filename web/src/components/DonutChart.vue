@@ -78,8 +78,12 @@ const colorClass = computed(() => {
       </svg>
       <!-- Center text -->
       <div class="absolute inset-0 flex flex-col items-center justify-center">
-        <span class="text-xl font-bold text-gray-900 dark:text-white">{{ (percent ?? 0).toFixed(0) }}%</span>
-        <span v-if="valueLabel" class="text-xs text-gray-500 dark:text-gray-400">{{ valueLabel }}</span>
+        <span class="text-xl font-bold text-gray-900 dark:text-white"
+          >{{ (percent ?? 0).toFixed(0) }}%</span
+        >
+        <span v-if="valueLabel" class="text-xs text-gray-500 dark:text-gray-400">{{
+          valueLabel
+        }}</span>
       </div>
     </div>
     <span v-if="label" class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ label }}</span>

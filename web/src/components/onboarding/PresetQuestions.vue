@@ -20,14 +20,32 @@ function getLangCode(): string {
   const lang = locale.value
   // Map full locale to short code used by backend
   const mapping: Record<string, string> = {
-    'zh-CN': 'zh', 'zh-TW': 'zh-TW',
-    'ja-JP': 'ja', 'ko-KR': 'ko',
-    'de-DE': 'de', 'fr-FR': 'fr', 'es-ES': 'es', 'it-IT': 'it',
-    'pt-BR': 'pt-BR', 'pt-PT': 'pt-PT', 'ru-RU': 'ru',
-    'nl-NL': 'nl', 'pl-PL': 'pl', 'sv-SE': 'sv', 'da-DK': 'da',
-    'nb-NO': 'nb', 'cs-CZ': 'cs', 'sk-SK': 'sk', 'hu-HU': 'hu',
-    'ro-RO': 'ro', 'hr-HR': 'hr', 'el-GR': 'el', 'ca-ES': 'ca',
-    'ga-IE': 'ga', 'ml-IN': 'ml', 'en-GB': 'en',
+    'zh-CN': 'zh',
+    'zh-TW': 'zh-TW',
+    'ja-JP': 'ja',
+    'ko-KR': 'ko',
+    'de-DE': 'de',
+    'fr-FR': 'fr',
+    'es-ES': 'es',
+    'it-IT': 'it',
+    'pt-BR': 'pt-BR',
+    'pt-PT': 'pt-PT',
+    'ru-RU': 'ru',
+    'nl-NL': 'nl',
+    'pl-PL': 'pl',
+    'sv-SE': 'sv',
+    'da-DK': 'da',
+    'nb-NO': 'nb',
+    'cs-CZ': 'cs',
+    'sk-SK': 'sk',
+    'hu-HU': 'hu',
+    'ro-RO': 'ro',
+    'hr-HR': 'hr',
+    'el-GR': 'el',
+    'ca-ES': 'ca',
+    'ga-IE': 'ga',
+    'ml-IN': 'ml',
+    'en-GB': 'en',
   }
   return mapping[lang] || 'en'
 }
@@ -47,7 +65,9 @@ const sampleFilePaths: Record<string, { path: string; mimeType: string }> = {
 }
 
 // Fetch a real sample file from the public folder
-async function fetchSampleFile(placeholder: string): Promise<{ blob: Blob; preview?: string } | null> {
+async function fetchSampleFile(
+  placeholder: string
+): Promise<{ blob: Blob; preview?: string } | null> {
   const fileInfo = sampleFilePaths[placeholder]
   if (!fileInfo) return null
 
@@ -71,7 +91,9 @@ async function fetchSampleFile(placeholder: string): Promise<{ blob: Blob; previ
 }
 
 // Convert preset question attachments to FileAttachment format
-async function convertAttachments(presetAttachments?: PresetQuestionAttachment[]): Promise<FileAttachment[]> {
+async function convertAttachments(
+  presetAttachments?: PresetQuestionAttachment[]
+): Promise<FileAttachment[]> {
   if (!presetAttachments || presetAttachments.length === 0) {
     return []
   }
@@ -95,7 +117,10 @@ async function convertAttachments(presetAttachments?: PresetQuestionAttachment[]
         preview: sampleFile.preview,
       })
     } else {
-      console.warn('[PresetQuestions] Failed to fetch sample file for placeholder:', att.placeholder)
+      console.warn(
+        '[PresetQuestions] Failed to fetch sample file for placeholder:',
+        att.placeholder
+      )
     }
   }
 

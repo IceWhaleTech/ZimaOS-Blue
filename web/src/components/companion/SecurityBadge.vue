@@ -59,7 +59,7 @@ const iconSize = computed(() => {
     :class="[
       'inline-flex items-center gap-1 rounded-full border font-medium capitalize',
       sizeClasses,
-      colorClasses
+      colorClasses,
     ]"
   >
     <svg :class="iconSize" fill="none" stroke="currentColor" viewBox="0 0 24 24">

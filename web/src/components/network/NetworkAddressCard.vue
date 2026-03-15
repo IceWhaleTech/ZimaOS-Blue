@@ -31,7 +31,9 @@ function getInterfaceTypeLabel(type: NetworkInterface['type']): string {
     class="bg-white dark:bg-gray-700 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden"
   >
     <!-- Header -->
-    <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+    <div
+      class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
+    >
       <div class="flex items-center gap-2">
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -80,10 +82,7 @@ function getInterfaceTypeLabel(type: NetworkInterface['type']): string {
     <!-- Content -->
     <div class="p-4 space-y-4">
       <!-- Error state -->
-      <div
-        v-if="error"
-        class="flex items-center gap-2 text-red-600 dark:text-red-400 text-sm"
-      >
+      <div v-if="error" class="flex items-center gap-2 text-red-600 dark:text-red-400 text-sm">
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             stroke-linecap="round"
@@ -122,7 +121,11 @@ function getInterfaceTypeLabel(type: NetworkInterface['type']): string {
               stroke="currentColor"
               stroke-width="2"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" :d="getInterfaceIcon(iface.type)" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                :d="getInterfaceIcon(iface.type)"
+              />
             </svg>
 
             <!-- Interface type badge -->
@@ -193,7 +196,9 @@ function getInterfaceTypeLabel(type: NetworkInterface['type']): string {
       </template>
 
       <!-- Tip -->
-      <div class="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
+      <div
+        class="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700"
+      >
         <svg
           xmlns="http://www.w3.org/2000/svg"
           class="w-4 h-4 flex-shrink-0 mt-0.5"

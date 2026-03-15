@@ -63,7 +63,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Originea fișierelor',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -568,6 +568,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Acces la rețea',
+    networkTitle: 'Rețea și acces',
+    releaseTrack: 'Gestionarea versiunilor',
+    systemVersion: 'Actualizări și versiuni',
     llmApiKeyRequired: 'Configurați o cheie API înainte de a deschide pagina furnizorilor LLM.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -702,8 +706,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Directoare aprobate',
+    approvedDirectoriesDesc: 'Directoare aprobate prin „Permite întotdeauna” pentru exec/convert.',
+    noApprovedDirectories: 'Niciun director aprobat',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Directoare aprobate',
       firewall: 'Firewall',
       masking: 'Mascarea datelor',
     },
@@ -1066,6 +1074,7 @@ export default {
       length: 'Cel puțin {n} caractere',
       uppercase: 'O literă mare',
       lowercase: 'O literă mică',
+      letter: 'O literă',
       number: 'O cifră',
       special: "Un caracter special (!{'@'}#$%...)",
     },
@@ -1137,6 +1146,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    conversations: 'Conversații',
     execDirectoryApprovalTimeout:
       'Executarea comenzii a fost blocată deoarece aprobarea directorului a expirat. Aprobă directorul și încearcă din nou.',
     streamProgress: {

@@ -146,9 +146,7 @@ describe('Typeless card i18n', () => {
           title: 'Choose',
           multiple: true,
           allowOther: true,
-          options: [
-            { id: 'a', label: 'Alpha' },
-          ],
+          options: [{ id: 'a', label: 'Alpha' }],
         },
         actionLoading: true,
         activeActionId: 'select',

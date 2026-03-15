@@ -613,7 +613,6 @@ export interface DeepResearchCoverageSummary {
   insufficient_count?: number
 }
 
-
 export interface DeepResearchBrief {
   goal?: string
   entity?: string

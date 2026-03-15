@@ -70,14 +70,17 @@ describe('fallback UI i18n', () => {
       template: '<div />',
     })
 
-    const wrapper = mount({
-      components: { ErrorBoundary, Crasher },
-      template: '<ErrorBoundary><Crasher /></ErrorBoundary>',
-    }, {
-      global: {
-        plugins: [i18n],
+    const wrapper = mount(
+      {
+        components: { ErrorBoundary, Crasher },
+        template: '<ErrorBoundary><Crasher /></ErrorBoundary>',
       },
-    })
+      {
+        global: {
+          plugins: [i18n],
+        },
+      }
+    )
 
     await flushPromises()
 

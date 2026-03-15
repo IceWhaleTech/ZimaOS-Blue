@@ -1,6 +1,15 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed, watch, triggerRef } from 'vue'
-import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAttachment, ConversationCommandState, ConversationCommandStatePatch, StreamChunk } from '@/api/chat'
+import type {
+  Conversation,
+  Message,
+  SendMessageRequest,
+  MessageStats,
+  MessageAttachment,
+  ConversationCommandState,
+  ConversationCommandStatePatch,
+  StreamChunk,
+} from '@/api/chat'
 import { conversationApi, messageApi, warmupApi, injectionApi } from '@/api/chat'
 import { approvalApi } from '@/api/approval'
 import type { Decision, ExecDecision } from '@/api/approval'
@@ -22,18 +31,18 @@ const CHAT_DEEP_RESEARCH_ENABLED_KEY = 'chat.deepResearchEnabled'
 export interface ToolResultItem {
   name: string
   id: string
-  command: string       // Extracted command/query/path from args
-  args?: string         // Raw args JSON
+  command: string // Extracted command/query/path from args
+  args?: string // Raw args JSON
   icon: '✓' | '✗' | '⏳'
-  status: string        // Duration, error message, or status text
-  output: string        // Truncated stdout/result
+  status: string // Duration, error message, or status text
+  output: string // Truncated stdout/result
   exitCode?: number
   durationMs?: number
   host?: 'local' | 'sandbox'
   riskLevel?: string
   warning?: string
   warningCode?: string
-  timestamp: number     // When this result was received
+  timestamp: number // When this result was received
 }
 
 function formatToolWarningCode(code: string): string {
@@ -67,13 +76,26 @@ function formatScreenshotCapturedStatus(): string {
 }
 
 /** Parse raw tool results into structured ToolResultItems. */
-export function parseToolResults(results: Array<{ name: string; id: string; args?: string; result?: string }>): ToolResultItem[] {
-  return results.map(r => {
+export function parseToolResults(
+  results: Array<{ name: string; id: string; args?: string; result?: string }>
+): ToolResultItem[] {
+  return results.map((r) => {
     let command = ''
     if (r.args) {
       try {
         const parsed = JSON.parse(r.args)
-        command = parsed.command || parsed.cmd || parsed.query || parsed.url || parsed.href || parsed.path || parsed.name || parsed.action || parsed.sq || parsed.mq || ''
+        command =
+          parsed.command ||
+          parsed.cmd ||
+          parsed.query ||
+          parsed.url ||
+          parsed.href ||
+          parsed.path ||
+          parsed.name ||
+          parsed.action ||
+          parsed.sq ||
+          parsed.mq ||
+          ''
       } catch {
         // If args is not valid JSON, use it directly for ask_user_question
         if (r.name === 'ask') {
@@ -110,7 +132,8 @@ export function parseToolResults(results: Array<{ name: string; id: string; args
             output = `**Q:** ${questionText}`
           }
         } else if (res.error) {
-          icon = '✗'; status = String(res.error)
+          icon = '✗'
+          status = String(res.error)
         } else if (res.exit_code !== undefined) {
           icon = res.exit_code === 0 ? '✓' : '✗'
           exitCode = res.exit_code
@@ -124,13 +147,16 @@ export function parseToolResults(results: Array<{ name: string; id: string; args
           icon = '✓'
         }
         if (typeof res.warning === 'string' && res.warning.trim()) warning = res.warning.trim()
-        if (typeof res.warning_code === 'string' && res.warning_code.trim()) warningCode = res.warning_code.trim()
+        if (typeof res.warning_code === 'string' && res.warning_code.trim())
+          warningCode = res.warning_code.trim()
         const screenshot = typeof res.screenshot === 'string' ? res.screenshot.trim() : ''
         if (screenshot && !status) {
           const message = typeof res.message === 'string' ? res.message.trim() : ''
           status = message || formatScreenshotCapturedStatus()
         }
-        if (res.stdout?.trim() && r.name !== 'ask') { output = res.stdout.trim() }
+        if (res.stdout?.trim() && r.name !== 'ask') {
+          output = res.stdout.trim()
+        }
         if (res.stderr?.trim()) {
           const stderr = res.stderr.trim()
           output = output ? `${output}\n${stderr}` : stderr
@@ -161,7 +187,22 @@ export function parseToolResults(results: Array<{ name: string; id: string; args
         }
       }
     }
-    return { name: r.name, id: r.id, command, args: r.args, icon, status, output, exitCode, durationMs, host, riskLevel, warning, warningCode, timestamp: Date.now() }
+    return {
+      name: r.name,
+      id: r.id,
+      command,
+      args: r.args,
+      icon,
+      status,
+      output,
+      exitCode,
+      durationMs,
+      host,
+      riskLevel,
+      warning,
+      warningCode,
+      timestamp: Date.now(),
+    }
   })
 }
 
@@ -174,7 +215,10 @@ function formatStreamProgress(stage: string): string {
 
   switch (stage) {
     case 'response.created':
-      return resolve('chat.streamProgress.requestAccepted', 'Request received, preparing response...')
+      return resolve(
+        'chat.streamProgress.requestAccepted',
+        'Request received, preparing response...'
+      )
     case 'response.in_progress':
       return resolve('chat.streamProgress.generating', 'Generating response...')
     case 'response.output_text.delta':
@@ -192,7 +236,9 @@ function formatStreamProgress(stage: string): string {
 }
 
 // Store for message metadata (provider, model, stats) - keyed by message ID
-const messageMetadata = ref<Map<string, { provider?: string; model?: string; stats?: MessageStats }>>(new Map())
+const messageMetadata = ref<
+  Map<string, { provider?: string; model?: string; stats?: MessageStats }>
+>(new Map())
 
 interface ActiveConversationStreamState {
   conversationId: string
@@ -273,7 +319,10 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function splitModelPreference(value: string): { selected_provider_id?: string; selected_model_id?: string } {
+  function splitModelPreference(value: string): {
+    selected_provider_id?: string
+    selected_model_id?: string
+  } {
     const trimmed = value.trim()
     if (!trimmed || trimmed === 'auto') return {}
     const slash = trimmed.indexOf('/')
@@ -316,8 +365,21 @@ export const useChatStore = defineStore('chat', () => {
   const toolExecutingCommands = ref<string[]>([]) // Commands being executed (for skill name extraction)
   const toolSandboxAvailable = ref(false) // Sandbox protection available for current exec
   const toolResults = ref<ToolResultItem[]>([]) // Structured tool results for current streaming message
-  watch(toolExecuting, (v) => { if (!v) { toolExecutingNames.value = []; toolExecutingCommands.value = []; toolSandboxAvailable.value = false } })
-  const contextTrimInfo = ref<{ type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number } | null>(null)
+  watch(toolExecuting, (v) => {
+    if (!v) {
+      toolExecutingNames.value = []
+      toolExecutingCommands.value = []
+      toolSandboxAvailable.value = false
+    }
+  })
+  const contextTrimInfo = ref<{
+    type: 'pruned' | 'compacted'
+    messagesPruned?: number
+    tokensBefore?: number
+    tokensAfter?: number
+    before?: number
+    after?: number
+  } | null>(null)
 
   // Pre-TTFT cancel state: when user starts typing before first token arrives
   const preTTFTCancelActive = ref(false)
@@ -325,7 +387,9 @@ export const useChatStore = defineStore('chat', () => {
   const _receivedFirstChunk = ref(false)
 
   // Computed: true when we're waiting for first token (user message sent, no content yet)
-  const isPreTTFT = computed(() => sending.value && !_receivedFirstChunk.value && !preTTFTCancelActive.value)
+  const isPreTTFT = computed(
+    () => sending.value && !_receivedFirstChunk.value && !preTTFTCancelActive.value
+  )
 
   // Pagination state
   const hasMoreMessages = ref(false)
@@ -395,6 +459,8 @@ export const useChatStore = defineStore('chat', () => {
   const deepResearchEnabled = ref<boolean>(loadDeepResearchEnabled())
   const activeStreamId = ref<string | null>(null)
   const activeStreamState = ref<ActiveConversationStreamState | null>(null)
+  const commandStateHydrated = ref(false)
+  let commandStateHydratePromise: Promise<ConversationCommandState> | null = null
 
   // SSE client for streaming
   const sseClient = new SSEClient()
@@ -403,7 +469,9 @@ export const useChatStore = defineStore('chat', () => {
   let pendingRecoveryRetryCount = 0
   let pendingRecoveryRetryTimer: ReturnType<typeof setTimeout> | null = null
 
-  function getActiveStreamState(conversationId?: string | null): ActiveConversationStreamState | null {
+  function getActiveStreamState(
+    conversationId?: string | null
+  ): ActiveConversationStreamState | null {
     const state = activeStreamState.value
     if (!state) return null
     if (conversationId && state.conversationId !== conversationId) return null
@@ -457,14 +525,21 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function updateActiveStreamState(conversationId: string, patch: Partial<ActiveConversationStreamState>) {
+  function updateActiveStreamState(
+    conversationId: string,
+    patch: Partial<ActiveConversationStreamState>
+  ) {
     const current = getActiveStreamState(conversationId)
     if (!current) return
     const next: ActiveConversationStreamState = {
       ...current,
       ...patch,
-      toolExecutingNames: patch.toolExecutingNames ? [...patch.toolExecutingNames] : current.toolExecutingNames,
-      toolExecutingCommands: patch.toolExecutingCommands ? [...patch.toolExecutingCommands] : current.toolExecutingCommands,
+      toolExecutingNames: patch.toolExecutingNames
+        ? [...patch.toolExecutingNames]
+        : current.toolExecutingNames,
+      toolExecutingCommands: patch.toolExecutingCommands
+        ? [...patch.toolExecutingCommands]
+        : current.toolExecutingCommands,
     }
     activeStreamState.value = next
     if (currentConversationId.value === conversationId) {
@@ -513,7 +588,9 @@ export const useChatStore = defineStore('chat', () => {
     toolExecutingStartTime.value = 0
     activeStreamId.value = null
     resetPendingStreamDelta()
-    streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+    streamingContent.value = ''
+    processContentLength.value = 0
+    toolResults.value = []
     _receivedFirstChunk.value = false
   }
 
@@ -537,10 +614,11 @@ export const useChatStore = defineStore('chat', () => {
     resetPendingStreamDelta()
     const previewContent = state.previewContent || ''
     const lastMessage = messages.value[messages.value.length - 1]
-    const canReuseLastAssistant = !!previewContent
-      && !!lastMessage
-      && lastMessage.role === 'assistant'
-      && previewContent.startsWith(lastMessage.content)
+    const canReuseLastAssistant =
+      !!previewContent &&
+      !!lastMessage &&
+      lastMessage.role === 'assistant' &&
+      previewContent.startsWith(lastMessage.content)
 
     if (canReuseLastAssistant && lastMessage) {
       if (lastMessage.content !== previewContent) {
@@ -559,7 +637,11 @@ export const useChatStore = defineStore('chat', () => {
     applyVisibleStreamState(state)
   }
 
-  async function connectConversationStream(conversationId: string, request: SendMessageRequest, options: SSEClientOptions) {
+  async function connectConversationStream(
+    conversationId: string,
+    request: SendMessageRequest,
+    options: SSEClientOptions
+  ) {
     beginActiveStream(conversationId)
 
     await sseClient.connect(conversationId, request, {
@@ -571,7 +653,9 @@ export const useChatStore = defineStore('chat', () => {
       onStreamProgress: (progress) => {
         const current = getActiveStreamState(conversationId)
         if (current && !current.receivedFirstChunk) {
-          updateActiveStreamState(conversationId, { streamProgress: formatStreamProgress(progress) })
+          updateActiveStreamState(conversationId, {
+            streamProgress: formatStreamProgress(progress),
+          })
         }
         options.onStreamProgress?.(progress)
       },
@@ -641,33 +725,56 @@ export const useChatStore = defineStore('chat', () => {
     deepResearchEnabled.value = !!state.deep_research_enabled
   }
 
-  async function fetchCommandState(conversationId: string) {
-    const response = await conversationApi.getCommandState(conversationId)
-    if (currentConversationId.value === conversationId) {
-      applyCommandState(response.data)
-    }
-    return response.data
-  }
-
-  async function patchCommandState(conversationId: string, patch: ConversationCommandStatePatch) {
-    const response = await conversationApi.patchCommandState(conversationId, patch)
-    if (currentConversationId.value === conversationId) {
-      applyCommandState(response.data)
-    }
-    return response.data
-  }
-
-  async function seedConversationCommandState(conversationId: string) {
-    const seed: ConversationCommandStatePatch = {
+  function getLocalCommandStateSeed(): ConversationCommandState {
+    return {
       ...splitModelPreference(loadModelPreference()),
       offline: loadOfflineMode(),
       web_search_enabled: loadWebSearchEnabled(),
       deep_research_enabled: loadDeepResearchEnabled(),
     }
-    const next = await patchCommandState(conversationId, seed)
-    if (currentConversationId.value === conversationId) {
-      applyCommandState(next)
+  }
+
+  async function fetchCommandState(conversationId: string, options?: { force?: boolean }) {
+    const force = !!options?.force
+    if (!force && commandStateHydrated.value) {
+      const cached: ConversationCommandState = {
+        conversation_id: conversationId,
+        selected_provider_id: selectedProviderId.value,
+        selected_model_id: splitModelPreference(modelPreference.value).selected_model_id || '',
+        offline: offlineMode.value,
+        web_search_enabled: webSearchEnabled.value,
+        deep_research_enabled: deepResearchEnabled.value,
+      }
+      return cached
     }
+    if (!force && commandStateHydratePromise) {
+      return commandStateHydratePromise
+    }
+    const req = conversationApi
+      .getCommandState(conversationId)
+      .then((response) => {
+        applyCommandState(response.data)
+        commandStateHydrated.value = true
+        return response.data
+      })
+      .finally(() => {
+        commandStateHydratePromise = null
+      })
+    commandStateHydratePromise = req
+    return req
+  }
+
+  async function patchCommandState(conversationId: string, patch: ConversationCommandStatePatch) {
+    const response = await conversationApi.patchCommandState(conversationId, patch)
+    applyCommandState(response.data)
+    commandStateHydrated.value = true
+    return response.data
+  }
+
+  async function seedConversationCommandState(conversationId: string) {
+    if (commandStateHydrated.value) return
+    const seed = getLocalCommandStateSeed()
+    await patchCommandState(conversationId, seed)
   }
 
   function isSlashCommandText(value: string): boolean {
@@ -721,7 +828,11 @@ export const useChatStore = defineStore('chat', () => {
 
   function flushPendingStreamDelta(expectedConversationId?: string | null) {
     cancelPendingStreamCommit()
-    if (expectedConversationId && pendingStreamConversationId && expectedConversationId !== pendingStreamConversationId) {
+    if (
+      expectedConversationId &&
+      pendingStreamConversationId &&
+      expectedConversationId !== pendingStreamConversationId
+    ) {
       pendingStreamDelta = ''
       pendingStreamConversationId = null
       return
@@ -785,7 +896,9 @@ export const useChatStore = defineStore('chat', () => {
   function findTodoChecklistMessageIndex(messageId?: string): number {
     const normalizedMessageId = messageId?.trim()
     if (normalizedMessageId) {
-      const exactIndex = messages.value.findIndex(m => m.id === normalizedMessageId || m.render_key === normalizedMessageId)
+      const exactIndex = messages.value.findIndex(
+        (m) => m.id === normalizedMessageId || m.render_key === normalizedMessageId
+      )
       if (exactIndex >= 0) return exactIndex
     }
     for (let i = messages.value.length - 1; i >= 0; i--) {
@@ -863,7 +976,8 @@ export const useChatStore = defineStore('chat', () => {
     if (!data || typeof data !== 'object') return ''
     const sessionId = typeof data.session_id === 'string' ? data.session_id.trim() : ''
     if (sessionId) return sessionId
-    const conversationId = typeof data.conversation_id === 'string' ? data.conversation_id.trim() : ''
+    const conversationId =
+      typeof data.conversation_id === 'string' ? data.conversation_id.trim() : ''
     return conversationId
   }
 
@@ -903,7 +1017,7 @@ export const useChatStore = defineStore('chat', () => {
 
     let command = source.command ?? source.cmd
     if (Array.isArray(command)) {
-      command = command.map(v => String(v)).join(' ')
+      command = command.map((v) => String(v)).join(' ')
     } else if (command && typeof command === 'object') {
       try {
         command = JSON.stringify(command)
@@ -1002,42 +1116,45 @@ export const useChatStore = defineStore('chat', () => {
     }
     if (!content) return false
 
-    const lines = content.split('\n').map(line => line.trim()).filter(Boolean)
+    const lines = content
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
     if (lines.length === 0) return false
 
-    const question = lines.find(line =>
-      /[?？]\s*$/.test(line) &&
-      !/^[-*•]\s+/.test(line) &&
-      !/^\d+[.)]\s+/.test(line),
+    const question = lines.find(
+      (line) => /[?？]\s*$/.test(line) && !/^[-*•]\s+/.test(line) && !/^\d+[.)]\s+/.test(line)
     )
     if (!question) return false
 
-    const optionLines = lines.filter(line => /^[-*•]\s+/.test(line) || /^\d+[.)]\s+/.test(line))
+    const optionLines = lines.filter((line) => /^[-*•]\s+/.test(line) || /^\d+[.)]\s+/.test(line))
     if (optionLines.length < 2 || optionLines.length > 8) return false
 
     const seen = new Set<string>()
     const options = optionLines
       .map(extractInlineQuestionLabel)
-      .filter(label => {
+      .filter((label) => {
         if (!label) return false
         const key = label.toLowerCase()
         if (seen.has(key)) return false
         seen.add(key)
         return true
       })
-      .map(label => ({ label, value: label }))
+      .map((label) => ({ label, value: label }))
 
     if (options.length < 2) return false
 
     pendingQuestion.value = {
       id: `inline:${Date.now()}`,
-      questions: [{
-        id: 'q1',
-        question: question.replace(/\*\*/g, '').trim(),
-        header: 'Question',
-        options,
-        multi_select: false,
-      }],
+      questions: [
+        {
+          id: 'q1',
+          question: question.replace(/\*\*/g, '').trim(),
+          header: 'Question',
+          options,
+          multi_select: false,
+        },
+      ],
       expires_at: Date.now() + 10 * 60 * 1000,
     }
     awaitingConfirmation.value = true
@@ -1045,11 +1162,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function recoverPendingConfirmations(allowInlineFallback = false): Promise<void> {
-    await Promise.all([
-      checkPendingApprovals(),
-      checkPendingQuestion(),
-      checkPendingExecApproval(),
-    ])
+    await Promise.all([checkPendingApprovals(), checkPendingQuestion(), checkPendingExecApproval()])
     if (hasPendingConfirmations()) {
       clearPendingRecoveryRetryTimer()
       awaitingConfirmation.value = true
@@ -1132,7 +1245,11 @@ export const useChatStore = defineStore('chat', () => {
         toolExecutingNames: [...toolExecutingNames.value],
         toolExecutingCommands: [...toolExecutingCommands.value],
         toolSandboxAvailable: toolSandboxAvailable.value,
-        awaitingConfirmation: awaitingConfirmation.value || !!pendingQuestion.value || !!pendingApproval.value || !!pendingExecApproval.value,
+        awaitingConfirmation:
+          awaitingConfirmation.value ||
+          !!pendingQuestion.value ||
+          !!pendingApproval.value ||
+          !!pendingExecApproval.value,
         previewContent: streamingContent.value,
       })
     }
@@ -1157,15 +1274,12 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = []
       hasMoreMessages.value = false
       currentPage.value = 0
-      try {
-        await seedConversationCommandState(response.data.id)
-      } catch {
-        applyCommandState({
-          ...splitModelPreference(loadModelPreference()),
-          offline: loadOfflineMode(),
-          web_search_enabled: loadWebSearchEnabled(),
-          deep_research_enabled: loadDeepResearchEnabled(),
-        })
+      if (!commandStateHydrated.value) {
+        try {
+          await seedConversationCommandState(response.data.id)
+        } catch {
+          applyCommandState(getLocalCommandStateSeed())
+        }
       }
       return response.data
     } catch (e) {
@@ -1185,11 +1299,6 @@ export const useChatStore = defineStore('chat', () => {
         messages.value = []
         hasMoreMessages.value = false
         currentPage.value = 0
-        selectedProviderId.value = ''
-        modelPreference.value = loadModelPreference()
-        offlineMode.value = loadOfflineMode()
-        webSearchEnabled.value = loadWebSearchEnabled()
-        deepResearchEnabled.value = loadDeepResearchEnabled()
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to delete conversation'
@@ -1270,7 +1379,8 @@ export const useChatStore = defineStore('chat', () => {
 
   async function fetchMessages(conversationId: string, page = 0) {
     // Save metadata from current messages before refresh (for messages not yet persisted to DB)
-    const savedMetadata: Map<number, { provider?: string; model?: string; stats?: MessageStats }> = new Map()
+    const savedMetadata: Map<number, { provider?: string; model?: string; stats?: MessageStats }> =
+      new Map()
     if (page === 0) {
       // Save metadata by index for the last few assistant messages
       messages.value.forEach((msg, index) => {
@@ -1287,11 +1397,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       loading.value = true
       error.value = null
-      const response = await messageApi.list(
-        conversationId,
-        PAGE_SIZE,
-        page * PAGE_SIZE
-      )
+      const response = await messageApi.list(conversationId, PAGE_SIZE, page * PAGE_SIZE)
       const fetchedMessages = response.data
 
       // Guard: don't overwrite messages if user switched to a different conversation
@@ -1364,16 +1470,28 @@ export const useChatStore = defineStore('chat', () => {
     touchConversationLocal(conversationId)
   }
 
-  async function sendMessage(content: string, fileAttachments?: { id: string; file: File; name: string; size: number; type: string; preview?: string; duration?: number }[]) {
+  async function sendMessage(
+    content: string,
+    fileAttachments?: {
+      id: string
+      file: File
+      name: string
+      size: number
+      type: string
+      preview?: string
+      duration?: number
+    }[]
+  ) {
     if (!currentConversationId.value) {
       // Use the first part of the message as the conversation title
       const title = content.length > 30 ? content.substring(0, 30) + '...' : content
       await createConversation(title)
     }
 
-	const conversationId = currentConversationId.value!
-	const settingsStore = useSettingsStore()
-	const shouldRefreshCommandStateAfterComplete = (!fileAttachments || fileAttachments.length === 0) && isSlashCommandText(content)
+    const conversationId = currentConversationId.value!
+    const settingsStore = useSettingsStore()
+    const shouldRefreshCommandStateAfterComplete =
+      (!fileAttachments || fileAttachments.length === 0) && isSlashCommandText(content)
 
     // Convert file attachments to MessageAttachment format (base64)
     const attachments: MessageAttachment[] = []
@@ -1399,7 +1517,11 @@ export const useChatStore = defineStore('chat', () => {
 
         if (base64Data) {
           attachments.push({
-            type: attachment.type.startsWith('image/') ? 'image' : (attachment.type.startsWith('audio/') ? 'audio' : 'file'),
+            type: attachment.type.startsWith('image/')
+              ? 'image'
+              : attachment.type.startsWith('audio/')
+                ? 'audio'
+                : 'file',
             name: attachment.name,
             mime_type: attachment.type,
             data: base64Data,
@@ -1424,14 +1546,14 @@ export const useChatStore = defineStore('chat', () => {
     }
     messages.value = [...messages.value, userMessage]
 
-	const modelSelection = splitModelPreference(modelPreference.value)
-	const request: SendMessageRequest = {
-	  message: content,
-	  provider: selectedProviderId.value || modelSelection.selected_provider_id || '',
-	  model: modelSelection.selected_model_id || '',
-	  temperature: settingsStore.temperature,
-	  max_tokens: settingsStore.maxTokens,
-	  attachments: attachments.length > 0 ? attachments : undefined,
+    const modelSelection = splitModelPreference(modelPreference.value)
+    const request: SendMessageRequest = {
+      message: content,
+      provider: selectedProviderId.value || modelSelection.selected_provider_id || '',
+      model: modelSelection.selected_model_id || '',
+      temperature: settingsStore.temperature,
+      max_tokens: settingsStore.maxTokens,
+      attachments: attachments.length > 0 ? attachments : undefined,
       web_search_enabled: webSearchEnabled.value,
       deep_research_enabled: deepResearchEnabled.value,
     }
@@ -1442,7 +1564,9 @@ export const useChatStore = defineStore('chat', () => {
       streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
-      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+      streamingContent.value = ''
+      processContentLength.value = 0
+      toolResults.value = []
       awaitingConfirmation.value = false
       error.value = null
       securityBlocked.value = null
@@ -1509,7 +1633,9 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== sendConvId) return
           flushPendingStreamDelta(sendConvId)
           // Server persisted previous round — start a new message bubble
-          streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+          streamingContent.value = ''
+          processContentLength.value = 0
+          toolResults.value = []
           toolExecuting.value = false
           const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
@@ -1524,7 +1650,9 @@ export const useChatStore = defineStore('chat', () => {
           // Server confirmed injection — partial response is preserved in DB,
           // new user message stored. The stream will restart server-side.
           // Reset streaming content for the new response.
-          streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+          streamingContent.value = ''
+          processContentLength.value = 0
+          toolResults.value = []
           toolExecuting.value = false
           // Add a new streaming placeholder for the restarted response
           const newAssistant = createStreamingAssistantMessage(conversationId)
@@ -1540,35 +1668,55 @@ export const useChatStore = defineStore('chat', () => {
           // Map error codes to i18n keys for accurate error messages.
           // Supports exact matches and "contains" matching for enriched HTTP errors.
           const errorMap: Record<string, string> = {
-            'STREAM_EMPTY': 'streamEmpty',
-            'STREAM_ERROR': 'streamError',
-            'PROVIDER_NO_RESPONSE': 'providerNoResponse',
-            'PROVIDER_RETURNED_EMPTY': 'providerReturnedEmpty',
+            STREAM_EMPTY: 'streamEmpty',
+            STREAM_ERROR: 'streamError',
+            PROVIDER_NO_RESPONSE: 'providerNoResponse',
+            PROVIDER_RETURNED_EMPTY: 'providerReturnedEmpty',
             'No response body': 'noResponseBody',
-            'provider_tool_unsupported': 'provider_tool_unsupported',
-            'provider_unavailable': 'provider_unavailable',
-            'provider_auth_error': 'provider_auth_error',
-            'provider_rate_limited': 'provider_rate_limited',
-            'provider_openrouter_privacy_policy': 'provider_openrouter_privacy_policy',
-            'trial_service_busy': 'trial_service_busy',
-            'exec_directory_approval_timeout': 'execDirectoryApprovalTimeout',
+            provider_tool_unsupported: 'provider_tool_unsupported',
+            provider_unavailable: 'provider_unavailable',
+            provider_auth_error: 'provider_auth_error',
+            provider_rate_limited: 'provider_rate_limited',
+            provider_openrouter_privacy_policy: 'provider_openrouter_privacy_policy',
+            trial_service_busy: 'trial_service_busy',
+            exec_directory_approval_timeout: 'execDirectoryApprovalTimeout',
           }
           const resolveErrorKey = (message: string): string | undefined => {
             if (errorMap[message]) return errorMap[message]
             const lower = message.toLowerCase()
-            if (lower.includes('provider_openrouter_privacy_policy')) return 'provider_openrouter_privacy_policy'
-            if (lower.includes('no endpoints found matching your data policy') && lower.includes('free model publication')) return 'provider_openrouter_privacy_policy'
+            if (lower.includes('provider_openrouter_privacy_policy'))
+              return 'provider_openrouter_privacy_policy'
+            if (
+              lower.includes('no endpoints found matching your data policy') &&
+              lower.includes('free model publication')
+            )
+              return 'provider_openrouter_privacy_policy'
             if (lower.includes('provider_tool_unsupported')) return 'provider_tool_unsupported'
-            if (lower.includes('provider_unavailable') || lower.includes('no available provider')) return 'provider_unavailable'
-            if (lower.includes('provider_auth_error') || lower.includes('auth error')) return 'provider_auth_error'
-            if (lower.includes('provider_rate_limited') || lower.includes('429') || lower.includes('throttled')) return 'provider_rate_limited'
+            if (lower.includes('provider_unavailable') || lower.includes('no available provider'))
+              return 'provider_unavailable'
+            if (lower.includes('provider_auth_error') || lower.includes('auth error'))
+              return 'provider_auth_error'
+            if (
+              lower.includes('provider_rate_limited') ||
+              lower.includes('429') ||
+              lower.includes('throttled')
+            )
+              return 'provider_rate_limited'
             if (lower.includes('trial_service_busy')) return 'trial_service_busy'
-            if (lower.includes('exec denied: directory approval') && lower.includes('approval timed out')) return 'execDirectoryApprovalTimeout'
+            if (
+              lower.includes('exec denied: directory approval') &&
+              lower.includes('approval timed out')
+            )
+              return 'execDirectoryApprovalTimeout'
             return undefined
           }
 
           // Transient empty-response errors that can be silently recovered
-          const transientErrors = new Set(['STREAM_EMPTY', 'PROVIDER_NO_RESPONSE', 'PROVIDER_RETURNED_EMPTY'])
+          const transientErrors = new Set([
+            'STREAM_EMPTY',
+            'PROVIDER_NO_RESPONSE',
+            'PROVIDER_RETURNED_EMPTY',
+          ])
 
           // If error happened during tool execution, the server is still processing.
           // Fetch server-persisted content instead of marking as interrupted.
@@ -1587,21 +1735,23 @@ export const useChatStore = defineStore('chat', () => {
           // the stream appeared empty to the frontend.
           if (transientErrors.has(err.message)) {
             streaming.value = false
-            fetchMessages(conversationId).then(() => {
-              if (currentConversationId.value !== sendConvId) return
-              const serverMessages = messages.value.filter((m) => !m.id.startsWith('streaming-'))
-              messages.value = serverMessages
-              // Only show error if server also has no new content
-              const lastMsg = serverMessages[serverMessages.length - 1]
-              if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.content?.trim()) {
+            fetchMessages(conversationId)
+              .then(() => {
+                if (currentConversationId.value !== sendConvId) return
+                const serverMessages = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+                messages.value = serverMessages
+                // Only show error if server also has no new content
+                const lastMsg = serverMessages[serverMessages.length - 1]
+                if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.content?.trim()) {
+                  const errorKey = resolveErrorKey(err.message)
+                  streamError.value = errorKey || err.message
+                }
+              })
+              .catch(() => {
                 const errorKey = resolveErrorKey(err.message)
                 streamError.value = errorKey || err.message
-              }
-            }).catch(() => {
-              const errorKey = resolveErrorKey(err.message)
-              streamError.value = errorKey || err.message
-              messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
-            })
+                messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+              })
             return
           }
 
@@ -1620,7 +1770,10 @@ export const useChatStore = defineStore('chat', () => {
             const newMessages = [...messages.value]
             const idx = newMessages.indexOf(streamingMsg)
             if (idx >= 0) {
-              newMessages[idx] = { ...streamingMsg, content: streamingMsg.content + '\n\n[Response interrupted]' }
+              newMessages[idx] = {
+                ...streamingMsg,
+                content: streamingMsg.content + '\n\n[Response interrupted]',
+              }
               messages.value = newMessages
             }
           } else {
@@ -1679,16 +1832,16 @@ export const useChatStore = defineStore('chat', () => {
               })
             }
           }
-		  if (!finalizedLocally) {
-			fetchMessages(conversationId)
-		  }
-		  // Refresh conversations to get updated title (auto-generated after first message)
-		  fetchConversations()
-		  if (shouldRefreshCommandStateAfterComplete) {
-			void fetchCommandState(conversationId).catch(() => {})
-		  }
-		  // Refresh trial quota to update progress bar
-		  useProviderPoolStore().fetchTrialQuota()
+          if (!finalizedLocally) {
+            fetchMessages(conversationId)
+          }
+          // Refresh conversations to get updated title (auto-generated after first message)
+          fetchConversations()
+          if (shouldRefreshCommandStateAfterComplete) {
+            void fetchCommandState(conversationId, { force: true }).catch(() => {})
+          }
+          // Refresh trial quota to update progress bar
+          useProviderPoolStore().fetchTrialQuota()
           if (awaitingConfirmation.value) {
             void recoverPendingConfirmations(true)
           }
@@ -1703,7 +1856,10 @@ export const useChatStore = defineStore('chat', () => {
         const newMessages = messages.value.filter((m) => !m.id.startsWith('temp-'))
         const idx = newMessages.findIndex((m) => m.id === streamingMsg.id)
         if (idx >= 0) {
-          newMessages[idx] = { ...streamingMsg, content: streamingMsg.content + '\n\n[Response interrupted]' }
+          newMessages[idx] = {
+            ...streamingMsg,
+            content: streamingMsg.content + '\n\n[Response interrupted]',
+          }
         }
         messages.value = newMessages
       } else {
@@ -1803,7 +1959,9 @@ export const useChatStore = defineStore('chat', () => {
       streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
-      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+      streamingContent.value = ''
+      processContentLength.value = 0
+      toolResults.value = []
       awaitingConfirmation.value = false
       _receivedFirstChunk.value = false
 
@@ -1862,7 +2020,9 @@ export const useChatStore = defineStore('chat', () => {
         onNewMessage: () => {
           if (currentConversationId.value !== convId) return
           flushPendingStreamDelta(convId)
-          streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+          streamingContent.value = ''
+          processContentLength.value = 0
+          toolResults.value = []
           toolExecuting.value = false
           const newAssistant = createStreamingAssistantMessage(convId)
           messages.value = [...messages.value, newAssistant]
@@ -1923,7 +2083,10 @@ export const useChatStore = defineStore('chat', () => {
     const settingsStore = useSettingsStore()
 
     if (offlineMode.value) {
-      appendAssistantLocalMessage(conversationId, '离线模式下不支持继续生成，请先执行 `/offline off`。')
+      appendAssistantLocalMessage(
+        conversationId,
+        '离线模式下不支持继续生成，请先执行 `/offline off`。'
+      )
       return
     }
 
@@ -1993,7 +2156,9 @@ export const useChatStore = defineStore('chat', () => {
         onNewMessage: () => {
           if (currentConversationId.value !== conversationId) return
           flushPendingStreamDelta(conversationId)
-          streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+          streamingContent.value = ''
+          processContentLength.value = 0
+          toolResults.value = []
           toolExecuting.value = false
           const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
@@ -2065,7 +2230,10 @@ export const useChatStore = defineStore('chat', () => {
     const settingsStore = useSettingsStore()
 
     if (offlineMode.value) {
-      appendAssistantLocalMessage(conversationId, '离线模式下不支持重新生成，请先执行 `/offline off`。')
+      appendAssistantLocalMessage(
+        conversationId,
+        '离线模式下不支持重新生成，请先执行 `/offline off`。'
+      )
       return
     }
 
@@ -2095,7 +2263,9 @@ export const useChatStore = defineStore('chat', () => {
       streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
-      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+      streamingContent.value = ''
+      processContentLength.value = 0
+      toolResults.value = []
       awaitingConfirmation.value = false
       error.value = null
 
@@ -2155,7 +2325,9 @@ export const useChatStore = defineStore('chat', () => {
         onNewMessage: () => {
           if (currentConversationId.value !== conversationId) return
           flushPendingStreamDelta(conversationId)
-          streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+          streamingContent.value = ''
+          processContentLength.value = 0
+          toolResults.value = []
           toolExecuting.value = false
           const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
@@ -2185,7 +2357,10 @@ export const useChatStore = defineStore('chat', () => {
             const newMessages = [...messages.value]
             const idx = newMessages.indexOf(streamingMsg)
             if (idx >= 0) {
-              newMessages[idx] = { ...streamingMsg, content: streamingMsg.content + '\n\n[Response interrupted]' }
+              newMessages[idx] = {
+                ...streamingMsg,
+                content: streamingMsg.content + '\n\n[Response interrupted]',
+              }
               messages.value = newMessages
             }
           } else {
@@ -2238,7 +2413,10 @@ export const useChatStore = defineStore('chat', () => {
         const newMessages = [...messages.value]
         const idx = newMessages.indexOf(streamingMsg)
         if (idx >= 0) {
-          newMessages[idx] = { ...streamingMsg, content: streamingMsg.content + '\n\n[Response interrupted]' }
+          newMessages[idx] = {
+            ...streamingMsg,
+            content: streamingMsg.content + '\n\n[Response interrupted]',
+          }
           messages.value = newMessages
         }
       } else {
@@ -2267,7 +2445,7 @@ export const useChatStore = defineStore('chat', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to search conversations'
       // Fall back to local filtering on error
-      const localResults = conversations.value.filter(c =>
+      const localResults = conversations.value.filter((c) =>
         c.title.toLowerCase().includes(query.toLowerCase())
       )
       searchResults.value = localResults
@@ -2437,13 +2615,15 @@ export const useChatStore = defineStore('chat', () => {
     console.log('[ChatStore] pendingQuestion.value is now:', pendingQuestion.value)
   }
 
-  async function submitQuestionAnswers(answers: Array<{ question_id: string; selected: string[]; other_text?: string }>) {
+  async function submitQuestionAnswers(
+    answers: Array<{ question_id: string; selected: string[]; other_text?: string }>
+  ) {
     if (!pendingQuestion.value) return
     const id = pendingQuestion.value.id
     if (id.startsWith('inline:')) {
       const parts: string[] = []
       for (const ans of answers) {
-        const selected = (ans.selected || []).map(v => v.trim()).filter(Boolean)
+        const selected = (ans.selected || []).map((v) => v.trim()).filter(Boolean)
         if (selected.length > 0) {
           parts.push(selected.join(', '))
         }
@@ -2494,7 +2674,10 @@ export const useChatStore = defineStore('chat', () => {
       if (currentConversationId.value) {
         params.session_id = currentConversationId.value
       }
-      const res = await api.get<{ pending: boolean; question?: any }>('/ask-user-question/pending', { params })
+      const res = await api.get<{ pending: boolean; question?: any }>(
+        '/ask-user-question/pending',
+        { params }
+      )
       if (res.data.pending && res.data.question) {
         setPendingQuestion(res.data.question)
       } else if (!streaming.value) {
@@ -2530,7 +2713,9 @@ export const useChatStore = defineStore('chat', () => {
       if (currentConversationId.value) {
         params.session_id = currentConversationId.value
       }
-      const res = await api.get<{ pending: boolean; approval?: any }>('/exec/approvals/pending', { params })
+      const res = await api.get<{ pending: boolean; approval?: any }>('/exec/approvals/pending', {
+        params,
+      })
       if (res.data.pending && res.data.approval) {
         setPendingExecApproval(res.data.approval)
       } else if (!streaming.value) {
@@ -2559,7 +2744,7 @@ export const useChatStore = defineStore('chat', () => {
   async function clearAllConversations() {
     try {
       // Delete all conversations one by one
-      const ids = conversations.value.map(c => c.id)
+      const ids = conversations.value.map((c) => c.id)
       for (const id of ids) {
         await conversationApi.delete(id)
       }
@@ -2568,11 +2753,6 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = []
       hasMoreMessages.value = false
       currentPage.value = 0
-      selectedProviderId.value = ''
-      modelPreference.value = loadModelPreference()
-      offlineMode.value = loadOfflineMode()
-      webSearchEnabled.value = loadWebSearchEnabled()
-      deepResearchEnabled.value = loadDeepResearchEnabled()
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to clear conversations'
       throw e

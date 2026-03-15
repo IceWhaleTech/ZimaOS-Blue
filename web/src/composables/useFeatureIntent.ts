@@ -47,11 +47,13 @@ function containsToken(text: string, token: string): boolean {
 }
 
 function containsAny(text: string, tokens: string[]): boolean {
-  return tokens.some(token => containsToken(text, token))
+  return tokens.some((token) => containsToken(text, token))
 }
 
 function isDefinitionQuestion(text: string): boolean {
-  const asksDefinition = featureIntentTerms.definitionPrefixes.some(prefix => text.startsWith(prefix))
+  const asksDefinition = featureIntentTerms.definitionPrefixes.some((prefix) =>
+    text.startsWith(prefix)
+  )
   if (!asksDefinition) return false
   return (
     containsAny(text, featureIntentTerms.deepResearchExplicit) ||
@@ -65,12 +67,16 @@ export function classifyFeatureIntent(message: string): FeatureIntentHint {
   if (isDefinitionQuestion(text)) return { deepResearch: false, agentMode: false }
 
   const deepExplicit = containsAny(text, featureIntentTerms.deepResearchExplicit)
-  const deepComposite = containsAny(text, featureIntentTerms.deepResearchActions) && containsAny(text, featureIntentTerms.deepResearchTargets)
+  const deepComposite =
+    containsAny(text, featureIntentTerms.deepResearchActions) &&
+    containsAny(text, featureIntentTerms.deepResearchTargets)
   const deepNegated = containsAny(text, featureIntentTerms.deepResearchNegations)
   const deepResearch = (deepExplicit || deepComposite) && !deepNegated
 
   const agentExplicit = containsAny(text, featureIntentTerms.agentModeExplicit)
-  const agentComposite = containsAny(text, featureIntentTerms.agentModeActions) && containsAny(text, featureIntentTerms.agentModeTargets)
+  const agentComposite =
+    containsAny(text, featureIntentTerms.agentModeActions) &&
+    containsAny(text, featureIntentTerms.agentModeTargets)
   const agentNegated = containsAny(text, featureIntentTerms.agentModeNegations)
   const agentMode = (agentExplicit || agentComposite) && !agentNegated
 

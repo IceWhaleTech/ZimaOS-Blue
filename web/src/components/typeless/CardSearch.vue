@@ -79,7 +79,9 @@ function onResultMouseLeave() {
 }
 
 function updatePreviewPosition(event: MouseEvent) {
-  const rect = (event.currentTarget as HTMLElement)?.closest('.search-card')?.getBoundingClientRect()
+  const rect = (event.currentTarget as HTMLElement)
+    ?.closest('.search-card')
+    ?.getBoundingClientRect()
   if (rect) {
     previewPosition.value = {
       x: rect.right + 8,
@@ -118,19 +120,41 @@ const currentPreview = computed(() => {
 </script>
 
 <template>
-  <div class="search-card rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm relative">
+  <div
+    class="search-card rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm relative"
+  >
     <!-- Header -->
-    <div class="flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-      <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    <div
+      class="flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
+    >
+      <svg
+        aria-hidden="true"
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-4 w-4 text-gray-400 dark:text-gray-500 flex-shrink-0"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+        />
       </svg>
-      <span v-if="query" class="text-sm text-gray-700 dark:text-gray-200 font-medium truncate flex-1">
+      <span
+        v-if="query"
+        class="text-sm text-gray-700 dark:text-gray-200 font-medium truncate flex-1"
+      >
         {{ query }}
       </span>
       <span v-else class="text-sm text-gray-400 dark:text-gray-500 italic truncate flex-1">
         {{ t('common.searching', 'Searching...') }}
       </span>
-      <span v-if="results.length > 0" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 tabular-nums">
+      <span
+        v-if="results.length > 0"
+        class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 tabular-nums"
+      >
         {{ t('search.resultCount', { count: results.length }) }}
       </span>
       <span v-if="isStreaming" class="flex-shrink-0">
@@ -152,8 +176,20 @@ const currentPreview = computed(() => {
         @mouseleave="onResultMouseLeave"
       >
         <div class="w-4 h-4 mt-0.5 flex-shrink-0 rounded-sm bg-gray-100 dark:bg-gray-700 relative">
-          <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5 text-gray-400 dark:text-gray-500 absolute inset-0 m-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+          <svg
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-2.5 h-2.5 text-gray-400 dark:text-gray-500 absolute inset-0 m-auto"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+            />
           </svg>
           <img
             :src="getFaviconUrl(result.url)"
@@ -170,7 +206,10 @@ const currentPreview = computed(() => {
           <div class="text-xs text-green-700 dark:text-green-500/80 truncate mt-0.5">
             {{ getDomain(result.url) }}
           </div>
-          <p v-if="result.description" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+          <p
+            v-if="result.description"
+            class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-1"
+          >
             {{ result.description }}
           </p>
         </div>
@@ -181,8 +220,19 @@ const currentPreview = computed(() => {
     <div v-else-if="isStreaming" class="px-4 py-6 text-center">
       <div class="inline-flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500">
         <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          <circle
+            class="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="4"
+          />
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
         </svg>
         {{ t('common.searching', 'Searching...') }}
       </div>
@@ -224,10 +274,16 @@ const currentPreview = computed(() => {
                   {{ currentPreview.siteName || getDomain(activePreview) }}
                 </span>
               </div>
-              <div v-if="currentPreview.title" class="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 leading-snug">
+              <div
+                v-if="currentPreview.title"
+                class="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 leading-snug"
+              >
                 {{ currentPreview.title }}
               </div>
-              <p v-if="currentPreview.description" class="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-3 leading-relaxed">
+              <p
+                v-if="currentPreview.description"
+                class="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-3 leading-relaxed"
+              >
                 {{ currentPreview.description }}
               </p>
             </div>
@@ -240,7 +296,9 @@ const currentPreview = computed(() => {
 
 <style scoped>
 .preview-fade-enter-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
 }
 .preview-fade-leave-active {
   transition: opacity 0.1s ease;

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-const localeModules = import.meta.glob('@/i18n/locales/*.ts', { eager: true }) as Record<string, { default: any }>
+const localeModules = import.meta.glob('@/i18n/locales/*.ts', { eager: true }) as Record<
+  string,
+  { default: any }
+>
 const REQUIRED_CARD_ACTION_KEYS = [
   'use_browser',
   'extract_with_web_fetch',

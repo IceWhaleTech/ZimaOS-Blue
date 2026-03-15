@@ -92,7 +92,12 @@ const contentHeight = computed(() => {
   if (nodes.value.length === 0) {
     return 420
   }
-  return NODE_MARGIN_Y * 2 + nodes.value.length * NODE_HEIGHT + (nodes.value.length - 1) * NODE_MARGIN_Y + 96
+  return (
+    NODE_MARGIN_Y * 2 +
+    nodes.value.length * NODE_HEIGHT +
+    (nodes.value.length - 1) * NODE_MARGIN_Y +
+    96
+  )
 })
 
 function updateCanvasSize(rect?: DOMRectReadOnly) {
@@ -118,9 +123,15 @@ function getNodeLabel(event: SessionEvent): string {
     case 'tool_call':
       return sanitizeLabel(event.tool_call?.toolName, 48) || t('companion.eventType.tool_call')
     case 'llm_request':
-      return sanitizeLabel(`${event.llm_request?.provider || 'LLM'}: ${event.llm_request?.model || t('companion.eventType.llm_request')}`, 52)
+      return sanitizeLabel(
+        `${event.llm_request?.provider || 'LLM'}: ${event.llm_request?.model || t('companion.eventType.llm_request')}`,
+        52
+      )
     case 'security_threat':
-      return sanitizeLabel(`${t('companion.eventType.security_threat')}: ${event.security?.threatTypes?.join(', ') || ''}`, 52)
+      return sanitizeLabel(
+        `${t('companion.eventType.security_threat')}: ${event.security?.threatTypes?.join(', ') || ''}`,
+        52
+      )
     case 'session_start':
       return t('companion.eventType.session_start')
     case 'session_end':
@@ -139,7 +150,10 @@ function getNodeSubtitle(event: SessionEvent): string {
       return t('companion.nodes.chars', { count: event.message?.content?.length || 0 })
     case 'tool_call':
       return sanitizeLabel(
-        event.tool_call?.outputPreview || event.tool_call?.inputPreview || event.tool_call?.status || '',
+        event.tool_call?.outputPreview ||
+          event.tool_call?.inputPreview ||
+          event.tool_call?.status ||
+          '',
         56
       )
     case 'llm_request':
@@ -189,7 +203,12 @@ function drawRoundedRect(
 
 // Draw a single node
 type NodeColorSet = { bg: string; border: string; icon: string; text: string }
-function drawNode(ctx: CanvasRenderingContext2D, node: CanvasNode, isSelected: boolean, isHovered: boolean) {
+function drawNode(
+  ctx: CanvasRenderingContext2D,
+  node: CanvasNode,
+  isSelected: boolean,
+  isHovered: boolean
+) {
   const { event, x, y, width, height } = node
   const colors: NodeColorSet = (nodeColors[event.event_type] ?? nodeColors.custom) as NodeColorSet
 
@@ -269,16 +288,26 @@ function drawNode(ctx: CanvasRenderingContext2D, node: CanvasNode, isSelected: b
 
 function getIconChar(eventType: string): string {
   switch (eventType) {
-    case 'message_received': return '↓'
-    case 'message_sent': return '↑'
-    case 'tool_call': return '⚡'
-    case 'llm_request': return '🤖'
-    case 'security_threat': return '⚠'
-    case 'session_start': return '▶'
-    case 'session_end': return '■'
-    case 'sandbox_exec': return '📦'
-    case 'error': return '✕'
-    default: return '•'
+    case 'message_received':
+      return '↓'
+    case 'message_sent':
+      return '↑'
+    case 'tool_call':
+      return '⚡'
+    case 'llm_request':
+      return '🤖'
+    case 'security_threat':
+      return '⚠'
+    case 'session_start':
+      return '▶'
+    case 'session_end':
+      return '■'
+    case 'sandbox_exec':
+      return '📦'
+    case 'error':
+      return '✕'
+    default:
+      return '•'
   }
 }
 
@@ -490,20 +519,26 @@ watch([() => props.events, () => props.selectedEventId], () => {
 })
 
 // Auto scroll to bottom when new events arrive
-watch(() => props.events.length, (newLen, oldLen) => {
-  if (props.autoScroll && newLen > oldLen) {
-    nextTick(() => {
-      const container = containerRef.value
-      if (container) {
-        container.scrollTop = container.scrollHeight
-      }
-    })
+watch(
+  () => props.events.length,
+  (newLen, oldLen) => {
+    if (props.autoScroll && newLen > oldLen) {
+      nextTick(() => {
+        const container = containerRef.value
+        if (container) {
+          container.scrollTop = container.scrollHeight
+        }
+      })
+    }
   }
-})
+)
 </script>
 
 <template>
-  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-auto bg-gray-50 dark:bg-gray-700 rounded-lg">
+  <div
+    ref="containerRef"
+    class="session-flow-canvas relative w-full h-full overflow-auto bg-gray-50 dark:bg-gray-700 rounded-lg"
+  >
     <!-- Canvas fills container -->
     <canvas
       ref="canvasRef"
@@ -513,13 +548,20 @@ watch(() => props.events.length, (newLen, oldLen) => {
     />
 
     <!-- Empty state -->
-    <div
-      v-if="events.length === 0"
-      class="absolute inset-0 flex items-center justify-center"
-    >
+    <div v-if="events.length === 0" class="absolute inset-0 flex items-center justify-center">
       <div class="text-center">
-        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+        <svg
+          class="mx-auto h-12 w-12 text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+          />
         </svg>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ t('companion.flow.empty') }}</p>
       </div>
@@ -532,8 +574,18 @@ watch(() => props.events.length, (newLen, oldLen) => {
         :title="t('companion.flow.zoomIn')"
         @click="scale = Math.min(scale + 0.1, 3); draw()"
       >
-        <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+        <svg
+          class="w-4 h-4 text-gray-600 dark:text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"
+          />
         </svg>
       </button>
       <button
@@ -541,8 +593,18 @@ watch(() => props.events.length, (newLen, oldLen) => {
         :title="t('companion.flow.zoomOut')"
         @click="scale = Math.max(scale - 0.1, 0.3); draw()"
       >
-        <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+        <svg
+          class="w-4 h-4 text-gray-600 dark:text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"
+          />
         </svg>
       </button>
       <button
@@ -550,39 +612,63 @@ watch(() => props.events.length, (newLen, oldLen) => {
         :title="t('companion.flow.reset')"
         @click="scale = 1; offsetX = 0; offsetY = 0; draw()"
       >
-        <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        <svg
+          class="w-4 h-4 text-gray-600 dark:text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          />
         </svg>
       </button>
     </div>
 
     <!-- Legend - moved to bottom right to avoid blocking content -->
     <div class="absolute bottom-4 right-4 bg-white dark:bg-gray-700 rounded-lg shadow-md p-3 z-10">
-      <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">{{ t('companion.flow.legend') }}</div>
+      <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+        {{ t('companion.flow.legend') }}
+      </div>
       <div class="grid grid-cols-2 gap-x-4 gap-y-1.5">
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #3b82f6" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.message_received') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{
+            t('companion.eventType.message_received')
+          }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #22c55e" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.message_sent') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{
+            t('companion.eventType.message_sent')
+          }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #a855f7" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.tool_call') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{
+            t('companion.eventType.tool_call')
+          }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #6366f1" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.llm_request') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{
+            t('companion.eventType.llm_request')
+          }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #ef4444" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.security_threat') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{
+            t('companion.eventType.security_threat')
+          }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #f59e0b" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.sandbox_exec') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{
+            t('companion.eventType.sandbox_exec')
+          }}</span>
         </div>
       </div>
     </div>
@@ -597,10 +683,17 @@ watch(() => props.events.length, (newLen, oldLen) => {
         {{ getNodeLabel(hoveredNode) }}
       </div>
       <div class="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-        <div>{{ t('companion.flow.type') }}: {{ t(`companion.eventType.${hoveredNode.event_type}`) }}</div>
+        <div>
+          {{ t('companion.flow.type') }}: {{ t(`companion.eventType.${hoveredNode.event_type}`) }}
+        </div>
         <div>{{ t('companion.flow.time') }}: {{ formatTime(hoveredNode.timestamp) }}</div>
-        <div v-if="hoveredNode.duration">{{ t('companion.flow.duration') }}: {{ formatDuration(hoveredNode.duration) }}</div>
-        <div v-if="hoveredNode.status">{{ t('companion.flow.status') }}: {{ t(`companion.status.${hoveredNode.status}`, hoveredNode.status) }}</div>
+        <div v-if="hoveredNode.duration">
+          {{ t('companion.flow.duration') }}: {{ formatDuration(hoveredNode.duration) }}
+        </div>
+        <div v-if="hoveredNode.status">
+          {{ t('companion.flow.status') }}:
+          {{ t(`companion.status.${hoveredNode.status}`, hoveredNode.status) }}
+        </div>
       </div>
     </div>
   </div>

@@ -1,9 +1,15 @@
 package tools
 
 import (
+	"context"
+	"database/sql"
+	"path/filepath"
 	"testing"
+	"time"
 
 	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestParseConvertTaskRequestSupportsNestedCamelCaseArgs(t *testing.T) {
@@ -61,5 +67,61 @@ func TestParseConvertTaskRequestSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 	if len(req.Options.Video.Segments) != 1 || req.Options.Video.Segments[0].StartMS != 1 || req.Options.Video.Segments[0].EndMS != 2 {
 		t.Fatalf("unexpected segments: %#v", req.Options.Video.Segments)
+	}
+}
+
+func TestConvertToolRequestLocalPathApprovalAllowAlwaysPersistsDirectory(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "convert_tool_test.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	service, err := convertpkg.NewService(db, t.TempDir())
+	if err != nil {
+		t.Fatalf("new convert service: %v", err)
+	}
+	defer service.Close()
+
+	dirStore, err := NewDirAllowlistStore(db)
+	if err != nil {
+		t.Fatalf("new dir allowlist store: %v", err)
+	}
+
+	broker := sse.NewBroker()
+	approvals := NewApprovalManager(broker)
+	tool := NewConvertTool(service, approvals, dirStore)
+
+	localFile := filepath.Join(t.TempDir(), "outside", "input.txt")
+	localDir := filepath.Dir(localFile)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			if req := approvals.GetPending("default"); req != nil {
+				approvals.ResolveApproval(req.ID, ApprovalAllowAlways)
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := tool.requestLocalPathApproval(ctx, []string{localFile}); err != nil {
+		t.Fatalf("first requestLocalPathApproval() error = %v", err)
+	}
+	<-done
+
+	if entry := dirStore.Match(localDir); entry == nil {
+		t.Fatalf("expected %q to be persisted in dir allowlist", localDir)
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel2()
+	if err := tool.requestLocalPathApproval(ctx2, []string{localFile}); err != nil {
+		t.Fatalf("second requestLocalPathApproval() should skip approval for persisted dir, got %v", err)
 	}
 }

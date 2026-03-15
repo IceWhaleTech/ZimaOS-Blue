@@ -66,11 +66,20 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="audio-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="audio-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <div class="p-4 flex items-center gap-4">
       <!-- Cover image or placeholder -->
-      <div class="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500">
-        <img v-if="card.coverImage" :src="card.coverImage" :alt="card.title" class="w-full h-full object-cover" />
+      <div
+        class="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500"
+      >
+        <img
+          v-if="card.coverImage"
+          :src="card.coverImage"
+          :alt="card.title"
+          class="w-full h-full object-cover"
+        />
         <div v-else class="w-full h-full flex items-center justify-center text-white text-2xl">
           🎵
         </div>
@@ -80,7 +89,9 @@ onUnmounted(() => {
       <div class="flex-1 min-w-0">
         <!-- Title and artist -->
         <div class="mb-2">
-          <h4 v-if="card.title" class="font-medium text-gray-900 dark:text-white truncate">{{ card.title }}</h4>
+          <h4 v-if="card.title" class="font-medium text-gray-900 dark:text-white truncate">
+            {{ card.title }}
+          </h4>
           <p v-if="card.artist" class="text-sm text-gray-500 dark:text-gray-400 truncate">
             {{ card.artist }}
             <span v-if="card.album"> · {{ card.album }}</span>
@@ -96,7 +107,9 @@ onUnmounted(() => {
             class="h-full bg-purple-500 rounded-full relative transition-all"
             :style="{ width: `${progress}%` }"
           >
-            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-purple-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div
+              class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-purple-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+            />
           </div>
         </div>
 
@@ -112,10 +125,22 @@ onUnmounted(() => {
         class="flex-shrink-0 w-12 h-12 rounded-full bg-purple-500 hover:bg-purple-600 text-white flex items-center justify-center transition-colors"
         @click="togglePlay"
       >
-        <svg v-if="!isPlaying" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 ml-1" fill="currentColor" viewBox="0 0 24 24">
+        <svg
+          v-if="!isPlaying"
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-6 w-6 ml-1"
+          fill="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path d="M8 5v14l11-7z" />
         </svg>
-        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+        <svg
+          v-else
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-6 w-6"
+          fill="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
         </svg>
       </button>

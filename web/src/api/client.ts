@@ -4,8 +4,7 @@ import { getErrorMessage } from '@/utils/error'
 // Desktop detection: __BLUE_DESKTOP__ is injected by the Tauri on_page_load handler.
 // In both browser and desktop modes, the page is same-origin with the Go server,
 // so all API calls use relative URLs — no special URL construction needed.
-const isDesktop =
-  typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
 
 async function reacquirePreviewToken(): Promise<string | null> {
   try {
@@ -160,7 +159,8 @@ api.interceptors.response.use(
 
     // Enhance error with translated message
     if (error.response) {
-      ;(error as AxiosError & { translatedMessage?: string }).translatedMessage = getErrorMessage(error)
+      ;(error as AxiosError & { translatedMessage?: string }).translatedMessage =
+        getErrorMessage(error)
     }
 
     return Promise.reject(error)

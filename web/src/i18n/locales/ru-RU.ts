@@ -93,7 +93,7 @@ export default {
   nav: {
     ...enUS.nav,
     workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTab: 'Источники файлов',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -177,7 +177,8 @@ export default {
   },
   chat: {
     ...enUS.chat,
-    execDirectoryApprovalTimeout: 'Выполнение команды заблокировано, так как истекло время ожидания одобрения каталога. Одобрите каталог и попробуйте снова.',
+    execDirectoryApprovalTimeout:
+      'Выполнение команды заблокировано, так как истекло время ожидания одобрения каталога. Одобрите каталог и попробуйте снова.',
     streamProgress: {
       requestAccepted: 'Запрос получен, подготавливаем ответ...',
       generating: 'Генерируем ответ...',
@@ -298,6 +299,7 @@ export default {
     inputPlaceholder: 'Введите сообщение... (Enter для отправки, Shift+Enter для новой строки)',
     newLine: 'для новой строки',
     dragDropHint: 'Перетащите или вставьте файлы для прикрепления',
+    conversations: 'Диалоги',
     searchConversations: 'Поиск разговоров...',
     noConversationsFound: 'Разговоры не найдены',
     noConversationsYet: 'Пока нет разговоров',
@@ -450,7 +452,8 @@ export default {
   home: {
     ...enUS.home,
     welcome: 'Добро пожаловать в ZimaOS Blue',
-    description: 'Стабильный, надёжный и нейтральный runtime для ваших AI-ассистентов и автоматизаций',
+    description:
+      'Стабильный, надёжный и нейтральный runtime для ваших AI-ассистентов и автоматизаций',
     loadingStatus: 'Загрузка статуса системы...',
     status: 'Статус',
     version: 'Версия',
@@ -461,6 +464,10 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    networkSurface: 'Сетевой доступ',
+    networkTitle: 'Сеть и доступ',
+    releaseTrack: 'Управление версиями',
+    systemVersion: 'Обновления и версии',
     llmApiKeyRequired: 'Перед открытием страницы LLM-провайдеров настройте API-ключ.',
     agentReflection: {
       ...enUS.settings.agentReflection,
@@ -1450,8 +1457,12 @@ export default {
   },
   security: {
     ...enUS.security,
+    approvedDirectories: 'Одобренные каталоги',
+    approvedDirectoriesDesc: 'Каталоги, одобренные через «Всегда разрешать» для exec/convert.',
+    noApprovedDirectories: 'Нет одобренных каталогов',
     tabs: {
       ...enUS.security.tabs,
+      approvals: 'Одобренные каталоги',
       firewall: 'Брандмауэр',
       masking: 'Маскирование данных',
     },
@@ -2153,6 +2164,7 @@ export default {
       length: 'Не менее {n} символов',
       uppercase: 'Одна заглавная буква',
       lowercase: 'Одна строчная буква',
+      letter: 'Одна буква',
       number: 'Одна цифра',
       special: "Один специальный символ (!{'@'}#$%...)",
     },
@@ -2800,7 +2812,8 @@ export default {
     importSuccess: 'Импортировано {conversations} диалогов и {messages} сообщений',
     importFailed: 'Не удалось импортировать данные',
     chatDataTitle: 'Данные чата',
-    chatDataDescription: 'Импортируйте, экспортируйте и очищайте историю чатов и связанные данные в одном месте.',
+    chatDataDescription:
+      'Импортируйте, экспортируйте и очищайте историю чатов и связанные данные в одном месте.',
     manageData: 'Управление данными',
     cleanupPreviewFailed: 'Не удалось показать предпросмотр очистки',
     previewFailed: 'Не удалось показать предпросмотр данных',
@@ -2809,8 +2822,10 @@ export default {
     chooseFile: 'Выбрать файл',
     importPasswordPlaceholder: 'Введите пароль, использованный при экспорте',
     confirmPasswordPlaceholder: 'Повторно введите пароль',
-    formatEncryptedDesc: 'Полностью зашифрованный двоичный формат. Более высокий уровень безопасности.',
-    formatJsonDesc: 'Формат, удобный для чтения человеком. Пароль используется для проверки импорта.',
+    formatEncryptedDesc:
+      'Полностью зашифрованный двоичный формат. Более высокий уровень безопасности.',
+    formatJsonDesc:
+      'Формат, удобный для чтения человеком. Пароль используется для проверки импорта.',
     retentionSaved: 'Настройки хранения сохранены',
     cleanupSuccess: 'Очистка данных завершена',
     cleanupFailed: 'Не удалось очистить данные',
@@ -2826,7 +2841,8 @@ export default {
       eventsRetention: 'Хранение событий',
       alertsRetention: 'Хранение оповещений',
       totalRecords: 'Общее количество записей мониторинга',
-      policyHint: 'Для каждого типа данных поддерживается срок от 1 до 365 дней. Более короткое хранение экономит место, а более длинное помогает при аудите и устранении неполадок.',
+      policyHint:
+        'Для каждого типа данных поддерживается срок от 1 до 365 дней. Более короткое хранение экономит место, а более длинное помогает при аудите и устранении неполадок.',
       daysRange: 'Допустимый диапазон: 1-365 дней',
       sessionsHint: 'Жизненный цикл сессий agent и метаданные времени выполнения.',
       eventsHint: 'Вызовы инструментов, трассировки выполнения и события аудита.',
@@ -2834,7 +2850,8 @@ export default {
       sessionsSuggested: 'Рекомендуется: 14-30 дней для обычной эксплуатации',
       eventsSuggested: 'Рекомендуется: 7-14 дней для сбалансированного объёма аудита',
       alertsSuggested: 'Рекомендуется: 30-90 дней для разбора инцидентов',
-      saveHint: 'Новые интервалы хранения будут применяться при следующих автоматических и ручных очистках.',
+      saveHint:
+        'Новые интервалы хранения будут применяться при следующих автоматических и ручных очистках.',
 
       days: 'дней',
     },
@@ -3736,12 +3753,13 @@ export default {
       jsonDesc: 'JSON format, suitable for backup and analysis',
       csvDesc: 'CSV format, suitable for spreadsheets',
     },
-  
+
     toasts: {
       memorySavedTitle: 'Запомнено новое содержимое',
       memorySavedMessage: 'Из разговора извлечена память',
       manageMemory: 'Управлять памятью',
-    },},
+    },
+  },
   cron: {
     title: 'Scheduled Tasks',
     create: 'Создать задачу',

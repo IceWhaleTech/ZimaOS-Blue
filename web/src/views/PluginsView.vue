@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { SkillTab, SkillStoreTab, ToolTab } from '@/components/extensions'
 import { useSkillStore } from '@/stores/skill'
@@ -7,10 +7,8 @@ import { useSkillStore } from '@/stores/skill'
 const { t } = useI18n()
 const skillStore = useSkillStore()
 
-// Main tab state
 const activeMainTab = ref<'skill' | 'store' | 'tool'>('skill')
 
-// Upload modal state
 const showUploadModal = ref(false)
 const uploadType = ref<'skill' | 'plugin'>('skill')
 const installMethod = ref<'url' | 'file'>('url')
@@ -19,24 +17,42 @@ const uploadFile = ref<File | null>(null)
 const uploading = ref(false)
 const uploadError = ref('')
 
-// Tab definitions
 const tabs = computed(() => [
   {
     id: 'skill' as const,
     label: t('extensions.skills'),
+    description: t('plugins.subtitle'),
+    accent: '#38bdf8',
+    soft: 'rgba(56, 189, 248, 0.18)',
     icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
   },
   {
     id: 'store' as const,
     label: t('skillStore.title'),
+    description: t('skillStore.subtitle'),
+    accent: '#f59e0b',
+    soft: 'rgba(245, 158, 11, 0.18)',
     icon: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z',
   },
   {
     id: 'tool' as const,
     label: t('extensions.tools'),
+    description: t('workspace.desc.tools'),
+    accent: '#14b8a6',
+    soft: 'rgba(20, 184, 166, 0.18)',
     icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
   },
 ])
+
+const activeTabMeta = computed(
+  () => tabs.value.find((tab) => tab.id === activeMainTab.value) ?? tabs.value[0]!
+)
+const activeTabIndex = computed(() =>
+  String(Math.max(1, tabs.value.findIndex((tab) => tab.id === activeMainTab.value) + 1)).padStart(
+    2,
+    '0'
+  )
+)
 
 function setActiveTab(tabId: 'skill' | 'store' | 'tool') {
   activeMainTab.value = tabId
@@ -49,6 +65,10 @@ function openUploadModal(type: 'skill' | 'plugin') {
   uploadFile.value = null
   uploadError.value = ''
   showUploadModal.value = true
+}
+
+function closeUploadModal() {
+  showUploadModal.value = false
 }
 
 function handleFileSelect(event: Event) {
@@ -89,7 +109,7 @@ async function installSkill() {
       }
       await skillStore.uploadSkill(uploadFile.value)
     }
-    showUploadModal.value = false
+    closeUploadModal()
     installUrl.value = ''
     uploadFile.value = null
   } catch (err) {
@@ -101,63 +121,118 @@ async function installSkill() {
 </script>
 
 <template>
-  <div class="plugins-page">
-    <!-- Header -->
-    <div class="header">
-      <div class="header-actions">
-        <button class="btn-upload" @click="openUploadModal('skill')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17,8 12,3 7,8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          {{ t('plugins.uploadSkill') }}
-        </button>
-      </div>
-    </div>
+  <div class="plugins-page config-page-frame">
+    <section class="plugins-stage config-page-stage">
+      <section class="plugins-hero dashboard-card-surface">
+        <div class="hero-grid">
+          <div class="hero-copy config-page-hero__copy">
+            <span class="hero-kicker config-page-hero__eyebrow">{{ t('nav.configuration') }}</span>
+            <div class="hero-heading-row">
+              <h1 class="config-page-hero__title">{{ t('plugins.title') }}</h1>
+              <span class="hero-step"
+                >{{ activeTabIndex }}/{{ String(tabs.length).padStart(2, '0') }}</span
+              >
+            </div>
+            <p class="hero-description config-page-hero__description">
+              {{ activeTabMeta.description }}
+            </p>
 
-    <!-- Extension Tabs -->
-    <div class="main-tabs" role="tablist">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        role="tab"
-        :aria-selected="activeMainTab === tab.id"
-        :class="['main-tab', { active: activeMainTab === tab.id }]"
-        @click="setActiveTab(tab.id)"
+            <div class="hero-active-pill" :style="{ '--pill-accent': activeTabMeta.accent }">
+              <span class="hero-pill-dot" aria-hidden="true"></span>
+              <span>{{ activeTabMeta.label }}</span>
+            </div>
+          </div>
+
+          <div class="hero-action-card dashboard-card-subsurface">
+            <div class="hero-action-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17,8 12,3 7,8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </div>
+
+            <div class="hero-action-copy">
+              <span class="hero-action-kicker">{{ t('plugins.installSkillTitle') }}</span>
+              <p>{{ t('plugins.skillUrlHint') }}</p>
+            </div>
+
+            <button class="btn-upload" @click="openUploadModal('skill')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17,8 12,3 7,8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              {{ t('plugins.uploadSkill') }}
+            </button>
+          </div>
+        </div>
+
+        <div class="main-tabs" role="tablist">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            role="tab"
+            :aria-selected="activeMainTab === tab.id"
+            :class="['main-tab dashboard-card-subsurface', { active: activeMainTab === tab.id }]"
+            :style="{ '--tab-accent': tab.accent, '--tab-soft': tab.soft }"
+            @click="setActiveTab(tab.id)"
+          >
+            <span class="main-tab-icon-shell">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path :d="tab.icon" />
+              </svg>
+            </span>
+
+            <span class="main-tab-copy">
+              <span class="main-tab-label">{{ tab.label }}</span>
+              <span class="main-tab-desc">{{ tab.description }}</span>
+            </span>
+
+            <span class="main-tab-state" aria-hidden="true"></span>
+          </button>
+        </div>
+      </section>
+
+      <section
+        class="content-shell dashboard-card-surface"
+        :style="{ '--shell-accent': activeTabMeta.accent, '--shell-soft': activeTabMeta.soft }"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path :d="tab.icon" />
-        </svg>
-        <span>{{ tab.label }}</span>
-      </button>
-    </div>
+        <div class="content-shell-header">
+          <div class="content-shell-copy">
+            <span class="content-shell-kicker">{{ t('plugins.title') }}</span>
+            <h2>{{ activeTabMeta.label }}</h2>
+          </div>
+          <span class="content-shell-count">{{ activeTabIndex }}</span>
+        </div>
 
-    <!-- Tab Content with transition -->
-    <div class="tab-content">
-      <Transition name="tab-fade" mode="out-in">
-        <SkillTab v-if="activeMainTab === 'skill'" key="skill" />
-        <SkillStoreTab v-else-if="activeMainTab === 'store'" key="store" />
-        <ToolTab v-else key="tool" />
-      </Transition>
-    </div>
+        <div class="tab-content">
+          <Transition name="tab-fade" mode="out-in">
+            <SkillTab v-if="activeMainTab === 'skill'" key="skill" />
+            <SkillStoreTab v-else-if="activeMainTab === 'store'" key="store" />
+            <ToolTab v-else key="tool" />
+          </Transition>
+        </div>
+      </section>
+    </section>
 
-    <!-- Upload Modal -->
-    <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
+    <div v-if="showUploadModal" class="modal-overlay" @click.self="closeUploadModal">
       <div class="modal">
         <div class="modal-header">
           <h2>{{ t('plugins.installSkillTitle') }}</h2>
-          <button class="modal-close" @click="showUploadModal = false">×</button>
+          <button class="modal-close" @click="closeUploadModal">&times;</button>
         </div>
+
         <div class="modal-body">
-          <!-- Install Method Tabs -->
           <div class="install-method-tabs">
             <button
               :class="['method-tab', { active: installMethod === 'url' }]"
               @click="installMethod = 'url'"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                <path
+                  d="M13.828 10.172a4 4 0 0 0-5.656 0l-4 4a4 4 0 1 0 5.656 5.656l1.102-1.101m-.758-4.899a4 4 0 0 0 5.656 0l4-4a4 4 0 0 0-5.656-5.656l-1.1 1.1"
+                />
               </svg>
               {{ t('plugins.installFromUrl') }}
             </button>
@@ -174,7 +249,6 @@ async function installSkill() {
             </button>
           </div>
 
-          <!-- URL Input -->
           <div v-if="installMethod === 'url'" class="url-input-section">
             <label>{{ t('plugins.skillUrlLabel') }}</label>
             <input
@@ -187,7 +261,6 @@ async function installSkill() {
             <p class="url-hint">{{ t('plugins.skillUrlHint') }}</p>
           </div>
 
-          <!-- Drop Zone (File Upload) -->
           <div v-else>
             <div
               class="upload-dropzone"
@@ -201,11 +274,26 @@ async function installSkill() {
                 class="file-input"
                 @change="handleFileSelect"
               />
-              <svg v-if="!uploadFile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+              <svg
+                v-if="!uploadFile"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75z"
+                />
               </svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="file-icon">
-                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                v-else
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                class="file-icon"
+              >
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
               </svg>
               <p v-if="!uploadFile">{{ t('plugins.dropFileHere') }}</p>
               <p v-else class="file-name">{{ uploadFile.name }}</p>
@@ -213,12 +301,10 @@ async function installSkill() {
             </div>
           </div>
 
-          <!-- Error -->
           <div v-if="uploadError" class="upload-error">
             {{ uploadError }}
           </div>
 
-          <!-- Info -->
           <div class="upload-info">
             <h4>{{ t('plugins.skillPackageInfo') }}</h4>
             <ul>
@@ -227,8 +313,9 @@ async function installSkill() {
             </ul>
           </div>
         </div>
+
         <div class="modal-footer">
-          <button class="btn-cancel" @click="showUploadModal = false">{{ t('common.cancel') }}</button>
+          <button class="btn-cancel" @click="closeUploadModal">{{ t('common.cancel') }}</button>
           <button
             class="btn-confirm"
             :disabled="(installMethod === 'url' ? !installUrl.trim() : !uploadFile) || uploading"
@@ -245,60 +332,243 @@ async function installSkill() {
 
 <style scoped>
 .plugins-page {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
-  --bg-primary: var(--color-bg-elevated, #1E293B);
+  position: relative;
+  isolation: isolate;
+  padding: 0 0.75rem 1.8rem;
+  --config-page-accent: 56, 189, 248;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: var(--color-text-muted, #64748b);
+  --border: rgba(203, 213, 225, 0.84);
+  --primary: var(--color-accent, #3b82f6);
+  --surface-strong: rgba(255, 255, 255, 0.98);
+  --surface-soft: rgba(243, 246, 250, 0.96);
+  --surface-muted: rgba(243, 246, 249, 0.92);
+  --surface-float: rgba(243, 246, 249, 0.92);
+  --white-tint: rgba(255, 255, 255, 0.72);
+  --hero-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 22px 36px -34px rgba(15, 23, 42, 0.2);
+  --shell-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 22px 36px -34px rgba(15, 23, 42, 0.2);
+}
+
+.plugins-page::before,
+.plugins-page::after {
+  content: none;
+}
+
+.plugins-stage {
+  position: relative;
+  padding: 1.15rem 0 0.35rem;
+}
+
+:root.dark .plugins-page,
+[data-theme='dark'] .plugins-page,
+html.dark .plugins-page {
+  --bg-primary: var(--color-bg-elevated, #1e293b);
   --bg-secondary: var(--color-bg-surface, #334155);
-  --bg-hover: var(--glass-bg-hover, rgba(255, 255, 255, 0.1));
-  --text-primary: var(--color-text-primary, #F8FAFC);
-  --text-secondary: var(--color-text-secondary, #94A3B8);
-  --text-muted: var(--color-text-muted, #64748B);
-  --border: var(--glass-border, rgba(255, 255, 255, 0.1));
-  --primary: var(--color-gray-900, #3B82F6);
+  --text-primary: var(--color-text-primary, #f8fafc);
+  --text-secondary: var(--color-text-secondary, #94a3b8);
+  --text-muted: var(--color-text-muted, #64748b);
+  --border: var(--glass-border, rgba(255, 255, 255, 0.12));
+  --surface-strong: rgba(30, 41, 59, 0.96);
+  --surface-soft: rgba(15, 23, 42, 0.82);
+  --surface-muted: rgba(15, 23, 42, 0.82);
+  --surface-float: rgba(15, 23, 42, 0.82);
+  --white-tint: rgba(255, 255, 255, 0.08);
+  --hero-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 24px 38px -34px rgba(2, 6, 23, 0.64);
+  --shell-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 24px 38px -34px rgba(2, 6, 23, 0.64);
 }
 
-:root.light .plugins-page,
-[data-theme="light"] .plugins-page {
-  --bg-primary: var(--color-bg-elevated, #FFFFFF);
-  --bg-secondary: var(--color-bg-surface, #F1F5F9);
-  --bg-hover: var(--glass-bg-hover, rgba(0, 0, 0, 0.05));
-  --text-primary: var(--color-text-primary, #0F172A);
-  --text-secondary: var(--color-text-secondary, #475569);
-  --text-muted: var(--color-text-muted, #64748B);
-  --border: var(--glass-border, rgba(0, 0, 0, 0.1));
+.plugins-hero {
+  position: relative;
+  overflow: visible;
+  padding: 0.15rem 0 1.2rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
-.header {
+.plugins-hero::before {
+  content: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: none;
+  opacity: 0.6;
+}
+
+.hero-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.85fr);
+  gap: 0.88rem;
+  align-items: start;
+}
+
+.hero-copy {
   display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.header-actions {
-  display: flex;
+  flex-direction: column;
   gap: 12px;
+  max-width: 42rem;
+  padding-top: 0.1rem;
+}
+
+.content-shell-kicker,
+.hero-action-kicker,
+.content-shell-count {
+  letter-spacing: 0.14em;
+}
+
+.content-shell-kicker,
+.hero-action-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hero-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.hero-heading-row h1 {
+  margin: 0;
+  font-size: clamp(1.34rem, 0.7vw + 0.95rem, 1.9rem);
+  line-height: 1.06;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+  color: #111827;
+}
+
+.hero-step {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.1rem;
+  padding: 0.18rem 0.46rem;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(15, 23, 42, 0.06);
+  color: #6b7280;
+  font-size: 0.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-description {
+  margin: 0.42rem 0 0;
+  max-width: 34rem;
+  color: #9ca3af;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.hero-active-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  padding: 0.42rem 0.72rem;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.hero-pill-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--pill-accent);
+  box-shadow: none;
+}
+
+.hero-action-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  padding: 1rem;
+  border-radius: 1.5rem;
+  background: var(--surface-float);
+  box-shadow: none;
+}
+
+.hero-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.06);
+  color: #111827;
+}
+
+.hero-action-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.hero-action-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hero-action-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .btn-upload {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 10px 16px;
-  background: #1f2937;
+  align-self: flex-start;
+  padding: 11px 18px;
+  border: 0;
+  border-radius: 14px;
+  background: #0f172a;
   color: white;
-  border: none;
-  border-radius: 8px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  box-shadow: 0 18px 34px -28px rgba(15, 23, 42, 0.9);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+}
+
+:root.light .btn-upload,
+[data-theme='light'] .btn-upload {
+  background: #0f172a;
 }
 
 .btn-upload:hover {
-  background: #111827;
   transform: translateY(-1px);
+  box-shadow: 0 22px 38px -28px rgba(15, 23, 42, 0.72);
 }
 
 .btn-upload svg {
@@ -307,168 +577,398 @@ async function installSkill() {
 }
 
 .main-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 24px;
-  padding: 8px;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 0.88rem;
 }
 
 .main-tab {
-  flex: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px 20px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 1.5rem;
+  background: var(--surface-strong);
+  color: var(--text-primary);
+  text-align: left;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: 8px;
-  transition: all 0.2s;
-}
-
-.main-tab svg {
-  width: 20px;
-  height: 20px;
+  transition:
+    transform 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    background 0.22s ease;
 }
 
 .main-tab:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shell-shadow);
 }
 
 .main-tab.active {
-  background: #1f2937;
-  color: white;
+  border-color: rgba(255, 255, 255, 0.98);
+  background: var(--surface-soft);
+  box-shadow: var(--shell-shadow);
+  transform: translateY(-1px);
+}
+
+.main-tab-icon-shell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--tab-accent);
+  border: 0;
+}
+
+.main-tab-icon-shell svg {
+  width: 22px;
+  height: 22px;
+}
+
+.main-tab-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.main-tab-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.main-tab-desc {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.main-tab-state {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.4);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.28);
+  transition:
+    background 0.22s ease,
+    box-shadow 0.22s ease;
+}
+
+.main-tab.active .main-tab-state {
+  background: var(--tab-accent);
+  box-shadow: none;
+}
+
+.content-shell {
+  position: relative;
+  margin-top: 0.88rem;
+  overflow: hidden;
+  padding: 1.05rem;
+  border-radius: 1.5rem;
+  background: var(--surface-strong);
+  box-shadow: var(--shell-shadow);
+}
+
+.content-shell::before {
+  content: none;
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: none;
+  opacity: 0.9;
+}
+
+.content-shell-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.content-shell-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.content-shell-copy h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.content-shell-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--shell-soft);
+  color: var(--shell-accent);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .tab-content {
-  min-height: 400px;
+  min-height: 420px;
   position: relative;
 }
 
 .tab-fade-enter-active,
 .tab-fade-leave-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
 }
 
 .tab-fade-enter-from {
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(10px);
 }
 
 .tab-fade-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-10px);
 }
 
-/* Modal */
+:deep(.skill-tab),
+:deep(.skill-store-tab),
+:deep(.tool-tab) {
+  position: relative;
+}
+
+:deep(.overview-grid),
+:deep(.stats) {
+  margin-bottom: 18px;
+}
+
+:deep(.filters) {
+  margin-bottom: 18px;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--surface-float);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+:deep(.search-input),
+:deep(.filter-select),
+:deep(.btn-refresh),
+:deep(.btn-add-source),
+:deep(.overview-item),
+:deep(.meta-entry),
+:deep(.detail-section),
+:deep(.item-card),
+:deep(.skill-detail-panel),
+:deep(.store-detail-panel),
+:deep(.sync-banner),
+:deep(.error-banner) {
+  border-radius: 16px;
+}
+
+:deep(.search-input),
+:deep(.filter-select),
+:deep(.btn-refresh),
+:deep(.btn-add-source) {
+  min-height: 42px;
+  border-color: rgba(148, 163, 184, 0.18);
+  background: var(--surface-float);
+}
+
+:deep(.item-card),
+:deep(.skill-detail-panel),
+:deep(.store-detail-panel) {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: var(--surface-float);
+  box-shadow: 0 22px 42px -36px rgba(15, 23, 42, 0.62);
+}
+
+:deep(.item-card:hover) {
+  transform: translateY(-6px);
+  box-shadow: 0 28px 48px -34px rgba(15, 23, 42, 0.72);
+}
+
+:deep(.skill-detail-panel),
+:deep(.store-detail-panel) {
+  top: 20px;
+}
+
+:deep(.detail-section),
+:deep(.meta-entry),
+:deep(.overview-item) {
+  border-color: rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+:deep(.sync-banner),
+:deep(.error-banner) {
+  border-width: 1px;
+}
+
+:deep(.item-title-meta),
+:deep(.item-tags) {
+  row-gap: 6px;
+}
+
+:deep(.stats) {
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--surface-float);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  padding: 20px;
+  background: rgba(2, 6, 23, 0.62);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .modal {
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  width: 90%;
-  max-width: 500px;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 40px);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  box-shadow: 0 44px 120px -58px rgba(15, 23, 42, 0.95);
 }
 
-.modal-header {
+.modal-header,
+.modal-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  padding: 18px 22px;
+}
+
+.modal-header {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .modal-header h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 1.2rem;
   color: var(--text-primary);
 }
 
 .modal-close {
-  background: none;
-  border: none;
-  font-size: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
   color: var(--text-secondary);
+  font-size: 24px;
   cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.modal-close:hover {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text-primary);
 }
 
 .modal-body {
-  padding: 20px;
+  overflow: auto;
+  padding: 22px;
 }
 
 .install-method-tabs {
   display: flex;
   gap: 8px;
-  margin-bottom: 20px;
+  padding: 4px;
+  margin-bottom: 22px;
+  border-radius: 18px;
+  background: rgba(148, 163, 184, 0.12);
 }
 
 .method-tab {
   flex: 1;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 16px;
-  background: var(--bg-secondary);
-  border: 2px solid var(--border);
-  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .method-tab:hover {
-  border-color: var(--primary);
   color: var(--text-primary);
 }
 
 .method-tab.active {
-  background: #f3f4f6;
-  border-color: #1f2937;
-  color: #1f2937;
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  box-shadow: 0 18px 28px -24px rgba(15, 23, 42, 0.45);
 }
 
 .method-tab svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 .url-input-section {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .url-input-section label {
   display: block;
   margin-bottom: 8px;
-  font-size: 14px;
-  font-weight: 500;
   color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .url-input {
   width: 100%;
-  padding: 12px 16px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  box-sizing: border-box;
+  padding: 13px 15px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
   font-size: 14px;
 }
@@ -476,74 +976,67 @@ async function installSkill() {
 .url-input:focus {
   outline: none;
   border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.16);
 }
 
-.url-hint {
+:root.dark .hero-heading-row h1,
+[data-theme='dark'] .hero-heading-row h1,
+html.dark .hero-heading-row h1 {
+  color: #f8fafc;
+}
+
+:root.dark .hero-step,
+[data-theme='dark'] .hero-step,
+html.dark .hero-step {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+:root.dark .hero-action-icon,
+[data-theme='dark'] .hero-action-icon,
+html.dark .hero-action-icon {
+  background: rgba(148, 163, 184, 0.12);
+  color: #f8fafc;
+}
+
+.url-hint,
+.upload-hint {
   margin-top: 8px;
+  color: var(--text-muted);
   font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border);
-}
-
-.btn-cancel {
-  padding: 10px 20px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.btn-confirm {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: #1f2937;
-  border: none;
-  border-radius: 8px;
-  color: white;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-confirm:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  line-height: 1.5;
 }
 
 .upload-dropzone {
   position: relative;
-  border: 2px dashed var(--border);
-  border-radius: 12px;
-  padding: 32px;
+  padding: 34px 24px;
   text-align: center;
-  transition: all 0.2s;
+  border-radius: 20px;
+  border: 1.5px dashed rgba(148, 163, 184, 0.34);
+  background: rgba(255, 255, 255, 0.04);
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
   cursor: pointer;
 }
 
 .upload-dropzone:hover {
-  border-color: var(--primary);
-  background: rgba(59, 130, 246, 0.05);
+  transform: translateY(-1px);
+  border-color: rgba(56, 189, 248, 0.58);
+  background: rgba(56, 189, 248, 0.08);
 }
 
 .upload-dropzone.has-file {
-  border-color: #22c55e;
-  background: rgba(34, 197, 94, 0.05);
+  border-color: rgba(34, 197, 94, 0.54);
+  background: rgba(34, 197, 94, 0.08);
 }
 
 .upload-dropzone svg {
   width: 48px;
   height: 48px;
-  color: var(--text-muted);
   margin-bottom: 12px;
+  color: var(--text-muted);
 }
 
 .upload-dropzone.has-file svg {
@@ -558,12 +1051,7 @@ async function installSkill() {
 
 .upload-dropzone .file-name {
   color: #22c55e;
-  font-weight: 500;
-}
-
-.upload-hint {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-weight: 600;
 }
 
 .file-input {
@@ -574,49 +1062,165 @@ async function installSkill() {
 }
 
 .upload-error {
-  margin-top: 12px;
-  padding: 10px 12px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
-  color: #ef4444;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
   font-size: 13px;
 }
 
 .upload-info {
-  margin-top: 16px;
-  padding: 12px;
-  background: var(--bg-secondary);
-  border-radius: 8px;
+  margin-top: 18px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .upload-info h4 {
-  margin: 0 0 8px;
-  font-size: 13px;
+  margin: 0 0 10px;
   color: var(--text-primary);
+  font-size: 13px;
 }
 
 .upload-info ul {
   margin: 0;
-  padding-left: 20px;
-  font-size: 12px;
+  padding-left: 18px;
   color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
-.upload-info li {
-  margin-bottom: 4px;
+.modal-footer {
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  justify-content: flex-end;
+}
+
+.btn-cancel,
+.btn-confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 102px;
+  padding: 11px 16px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease,
+    background 0.2s ease;
+}
+
+.btn-cancel {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-primary);
+}
+
+.btn-confirm {
+  border: 0;
+  background: #0f172a;
+  color: white;
+}
+
+.btn-cancel:hover,
+.btn-confirm:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn-confirm:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  border-top-color: currentColor;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1180px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .main-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  :deep(.skill-layout),
+  :deep(.store-layout) {
+    grid-template-columns: 1fr;
+  }
+
+  :deep(.skill-detail-panel),
+  :deep(.store-detail-panel) {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .plugins-page {
+    padding: 0.75rem 0.75rem 1.4rem;
+  }
+
+  .content-shell {
+    padding: 18px;
+    border-radius: 1.5rem;
+  }
+
+  .hero-heading-row h1 {
+    font-size: clamp(1.4rem, 7vw, 1.9rem);
+  }
+
+  .content-shell-header {
+    align-items: flex-start;
+  }
+
+  .content-shell-count {
+    width: 40px;
+    height: 40px;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal {
+    max-height: calc(100vh - 24px);
+    border-radius: 20px;
+  }
+
+  .modal-header,
+  .modal-footer,
+  .modal-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .btn-cancel,
+  .btn-confirm {
+    width: 100%;
+  }
 }
 </style>

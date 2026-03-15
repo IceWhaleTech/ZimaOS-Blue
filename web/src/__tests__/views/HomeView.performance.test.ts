@@ -27,6 +27,10 @@ vi.mock('@/components/dashboard', () => ({
     name: 'ConfigurableDashboard',
     template: '<div><slot name="header-left"></slot></div>',
   },
+  SystemStatusCard: {
+    name: 'SystemStatusCard',
+    template: '<div class="system-status-card-stub"></div>',
+  },
 }))
 
 vi.mock('@/api/metrics', () => ({
@@ -69,16 +73,47 @@ describe('HomeView Performance Optimizations', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(systemApi.getMetricsHistory).mockResolvedValue({ data: { metrics: [] } } as any)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(healthApi.getHealth).mockResolvedValue({ data: { status: 'ok', version: 'test' } } as any)
+    vi.mocked(healthApi.getHealth).mockResolvedValue({
+      data: { status: 'ok', version: 'test' },
+    } as any)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(workerApi.getStats).mockResolvedValue({ data: { pending: 0, completed: 0, failed: 0 } } as any)
+    vi.mocked(workerApi.getStats).mockResolvedValue({
+      data: { pending: 0, completed: 0, failed: 0 },
+    } as any)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(metricsApi.getAll).mockResolvedValue({
       data: {
-        calls: { stats: { total_calls: 0, successful_calls: 0, failed_calls: 0, success_rate: 0, error_rate: 0, errors_by_type: {} } },
+        calls: {
+          stats: {
+            total_calls: 0,
+            successful_calls: 0,
+            failed_calls: 0,
+            success_rate: 0,
+            error_rate: 0,
+            errors_by_type: {},
+          },
+        },
         models: { models: [] },
-        tokens: { usage: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, total_tokens: 0, estimated_cost: 0 } },
-        latency: { min_ms: 0, max_ms: 0, avg_ms: 0, p50_ms: 0, p90_ms: 0, p95_ms: 0, p99_ms: 0, samples: 0 },
+        tokens: {
+          usage: {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            total_tokens: 0,
+            estimated_cost: 0,
+          },
+        },
+        latency: {
+          min_ms: 0,
+          max_ms: 0,
+          avg_ms: 0,
+          p50_ms: 0,
+          p90_ms: 0,
+          p95_ms: 0,
+          p99_ms: 0,
+          samples: 0,
+        },
         speed: { current: { tokens_per_second: 0, time_to_first_token_ms: 0, decode_speed: 0 } },
         pricing: [],
       },
@@ -163,21 +198,18 @@ describe('HomeView Performance Optimizations', () => {
     wrapper.unmount()
   })
 
-  it('should debounce autoRefresh toggle', async () => {
+  it('should support manual refresh without relying on extra toolbar controls', async () => {
     const wrapper = mountHomeView()
 
     await flushPromises()
     vi.clearAllMocks()
 
-    // Toggle autoRefresh multiple times rapidly
-    const checkbox = wrapper.find('input[type="checkbox"]')
-    await checkbox.setValue(false)
-    await checkbox.setValue(true)
-    await checkbox.setValue(false)
-    await checkbox.setValue(true)
+    const refreshButton = wrapper.find('.dashboard-refresh-button')
+    expect(refreshButton.exists()).toBe(true)
 
-    // Should only trigger once after debounce period
-    await vi.advanceTimersByTimeAsync(100)
+    await refreshButton.trigger('click')
+    await flushPromises()
+
     expect(systemApi.getMetricsHistory).toHaveBeenCalledTimes(1)
 
     wrapper.unmount()
@@ -273,7 +305,7 @@ describe('System Store Caching', () => {
     vi.mocked(healthApi.getHealth).mockReturnValue(
       new Promise((resolve) => {
         resolveHealth = resolve
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any
     )
 

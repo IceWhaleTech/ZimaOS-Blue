@@ -29,10 +29,7 @@ function tr(key: string, fallback = ''): string {
 
 onMounted(async () => {
   try {
-    const [configRes, toolsRes] = await Promise.all([
-      approvalApi.getConfig(),
-      toolApi.list(),
-    ])
+    const [configRes, toolsRes] = await Promise.all([approvalApi.getConfig(), toolApi.list()])
     config.value = configRes.data
     tools.value = toolsRes.data || []
   } catch (e) {
@@ -84,7 +81,9 @@ function getToolPolicy(toolName: string): Policy {
           {{ t('approval.settingsTitle', 'Tool Call Approval') }}
         </h3>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-          {{ t('approval.settingsDesc', 'Control which tools require confirmation before execution') }}
+          {{
+            t('approval.settingsDesc', 'Control which tools require confirmation before execution')
+          }}
         </p>
       </div>
       <button
@@ -110,9 +109,11 @@ function getToolPolicy(toolName: string): Policy {
             v-for="opt in policyOptions"
             :key="opt.value"
             class="px-3 py-1.5 text-xs rounded-md transition-colors cursor-pointer"
-            :class="config.default_policy === opt.value
-              ? 'bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
+            :class="
+              config.default_policy === opt.value
+                ? 'bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            "
             @click="setDefaultPolicy(opt.value)"
           >
             {{ tr(opt.labelKey, opt.value) }}
@@ -129,9 +130,16 @@ function getToolPolicy(toolName: string): Policy {
           <svg
             class="w-3 h-3 transition-transform"
             :class="overridesExpanded ? 'rotate-90' : ''"
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 5l7 7-7 7"
+            />
           </svg>
           {{ t('approval.perTool', 'Per-Tool Overrides') }}
           <span class="text-gray-400 dark:text-gray-500">({{ tools.length }})</span>
@@ -143,16 +151,20 @@ function getToolPolicy(toolName: string): Policy {
             class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50"
           >
             <div class="flex-1 min-w-0 mr-3">
-              <span class="text-sm text-gray-800 dark:text-gray-200 truncate">{{ t(`tools.names.${tool.name}`, tool.name) }}</span>
+              <span class="text-sm text-gray-800 dark:text-gray-200 truncate">{{
+                t(`tools.names.${tool.name}`, tool.name)
+              }}</span>
             </div>
             <div class="flex gap-0.5 flex-shrink-0">
               <button
                 v-for="opt in policyOptions"
                 :key="opt.value"
                 class="px-2 py-1 text-[11px] rounded transition-colors cursor-pointer"
-                :class="getToolPolicy(tool.name) === opt.value
-                  ? 'bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'"
+                :class="
+                  getToolPolicy(tool.name) === opt.value
+                    ? 'bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                "
                 @click="setToolPolicy(tool.name, opt.value)"
               >
                 {{ tr(opt.labelKey, opt.value) }}

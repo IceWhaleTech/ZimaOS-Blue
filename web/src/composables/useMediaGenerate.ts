@@ -74,7 +74,13 @@ export function useMediaGenerate() {
    * Returns true if media intent was detected (including ambiguous).
    * When confidence < 0.7, sets ambiguous=true for disambiguation UI.
    */
-  async function classify(message: string, hasImages = false, imageCount = 0, locale = '', imageFiles: File[] = []): Promise<boolean> {
+  async function classify(
+    message: string,
+    hasImages = false,
+    imageCount = 0,
+    locale = '',
+    imageFiles: File[] = []
+  ): Promise<boolean> {
     reset()
 
     // Check if any media providers are active (cached, TTL 60s).
@@ -123,7 +129,9 @@ export function useMediaGenerate() {
         models.value = all.filter((m) => m.category === localIntent.category)
         // Also fetch alternative category models if present
         if (localIntent.alternative_category) {
-          alternativeModels.value = all.filter((m) => m.category === localIntent.alternative_category)
+          alternativeModels.value = all.filter(
+            (m) => m.category === localIntent.alternative_category
+          )
         }
       }
     } catch {
@@ -132,7 +140,9 @@ export function useMediaGenerate() {
         const all = await listModels()
         models.value = all.filter((m) => m.category === localIntent.category)
         if (localIntent.alternative_category) {
-          alternativeModels.value = all.filter((m) => m.category === localIntent.alternative_category)
+          alternativeModels.value = all.filter(
+            (m) => m.category === localIntent.alternative_category
+          )
         }
       } catch {
         // No models available
@@ -174,7 +184,12 @@ export function useMediaGenerate() {
     // Now load models for the confirmed category
     const category = intent.value.category
     try {
-      const resp = await classifyIntent(intent.value.prompt, intent.value.has_image, intent.value.image_count, '')
+      const resp = await classifyIntent(
+        intent.value.prompt,
+        intent.value.has_image,
+        intent.value.image_count,
+        ''
+      )
       if (resp.models?.length) {
         models.value = resp.models
       } else {
@@ -265,8 +280,8 @@ export function useMediaGenerate() {
               const reader = new FileReader()
               reader.onload = () => resolve(reader.result as string)
               reader.readAsDataURL(file)
-            }),
-        ),
+            })
+        )
       )
     }
 

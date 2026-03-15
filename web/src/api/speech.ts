@@ -97,7 +97,6 @@ export interface SpeechStatus {
   }
 }
 
-
 // Speech API
 export const speechApi = {
   // Unified status (includes models in asr.models / tts.models)
@@ -105,7 +104,9 @@ export const speechApi = {
 
   // ASR model management
   downloadASRModel: (modelType: string) =>
-    api.post<{ status: string; message: string }>('/speech/asr/download', { model_type: modelType }),
+    api.post<{ status: string; message: string }>('/speech/asr/download', {
+      model_type: modelType,
+    }),
 
   cancelASRDownload: () =>
     api.post<{ status: string; message: string }>('/speech/asr/download/cancel'),
@@ -114,7 +115,12 @@ export const speechApi = {
     api.post<{ status: string; message: string }>('/speech/asr/switch', { model_type: modelType }),
 
   setASROnDevice: (onDeviceOnly: boolean) =>
-    api.post<{ on_device_only: boolean; on_device_supported: boolean; dictation_available?: boolean; error?: string }>('/speech/asr/on-device', { on_device_only: onDeviceOnly }),
+    api.post<{
+      on_device_only: boolean
+      on_device_supported: boolean
+      dictation_available?: boolean
+      error?: string
+    }>('/speech/asr/on-device', { on_device_only: onDeviceOnly }),
 
   setEditBeforeSend: (enabled: boolean) =>
     api.post<{ edit_before_send: boolean }>('/speech/asr/edit-before-send', { enabled }),
@@ -124,16 +130,25 @@ export const speechApi = {
 
   // TTS provider management
   switchTTSProvider: (provider: string) =>
-    api.post<{ status: string; message: string; provider: string }>('/speech/tts/provider', { provider }),
+    api.post<{ status: string; message: string; provider: string }>('/speech/tts/provider', {
+      provider,
+    }),
 
   getTTSConfig: () =>
     api.get<{ speed: number; pitch: number; volume: number }>('/speech/tts/config'),
 
   setTTSConfig: (speed: number, pitch: number, volume: number) =>
-    api.post<{ status: string; speed: number; pitch: number; volume: number }>('/speech/tts/config', { speed, pitch, volume }),
+    api.post<{ status: string; speed: number; pitch: number; volume: number }>(
+      '/speech/tts/config',
+      { speed, pitch, volume }
+    ),
 
   // Transcription
-  transcribe: async (audio: Blob, format: string, language?: string): Promise<TranscriptionResult> => {
+  transcribe: async (
+    audio: Blob,
+    format: string,
+    language?: string
+  ): Promise<TranscriptionResult> => {
     const formData = new FormData()
     formData.append('audio', audio, `audio.${format}`)
     formData.append('format', format)
@@ -195,7 +210,7 @@ export const speechApi = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify({ text }),
     })

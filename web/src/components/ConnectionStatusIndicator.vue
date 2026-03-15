@@ -28,7 +28,7 @@ async function measureLatency(): Promise<number | null> {
     await fetch('/api/health', {
       method: 'HEAD',
       signal: controller.signal,
-      cache: 'no-store'
+      cache: 'no-store',
     })
 
     clearTimeout(timeoutId)
@@ -114,21 +114,31 @@ function handleOffline() {
 // Computed properties
 const qualityColor = computed(() => {
   switch (connectionQuality.value) {
-    case 'excellent': return 'bg-green-500'
-    case 'good': return 'bg-gray-700 dark:bg-gray-500'
-    case 'poor': return 'bg-yellow-500'
-    case 'offline': return 'bg-red-500'
-    default: return 'bg-gray-500'
+    case 'excellent':
+      return 'bg-green-500'
+    case 'good':
+      return 'bg-gray-700 dark:bg-gray-500'
+    case 'poor':
+      return 'bg-yellow-500'
+    case 'offline':
+      return 'bg-red-500'
+    default:
+      return 'bg-gray-500'
   }
 })
 
 const qualityLabel = computed(() => {
   switch (connectionQuality.value) {
-    case 'excellent': return t('connections.quality.excellent')
-    case 'good': return t('connections.quality.good')
-    case 'poor': return t('connections.quality.poor')
-    case 'offline': return t('connections.quality.offline')
-    default: return ''
+    case 'excellent':
+      return t('connections.quality.excellent')
+    case 'good':
+      return t('connections.quality.good')
+    case 'poor':
+      return t('connections.quality.poor')
+    case 'offline':
+      return t('connections.quality.offline')
+    default:
+      return ''
   }
 })
 
@@ -176,8 +186,20 @@ watch(isOnline, (newVal) => {
       >
         <div class="flex items-center justify-center gap-2">
           <svg v-if="reconnecting" class="animate-spin h-4 w-4" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+              fill="none"
+            />
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
           </svg>
           <span v-if="!isOnline">{{ t('connections.offline') }}</span>
           <span v-else-if="reconnecting">
@@ -205,21 +227,23 @@ watch(isOnline, (newVal) => {
         <div
           :class="[
             'w-1 rounded-sm transition-colors',
-            connectionQuality !== 'offline' ? qualityColor : 'bg-gray-300 dark:bg-gray-600'
+            connectionQuality !== 'offline' ? qualityColor : 'bg-gray-300 dark:bg-gray-600',
           ]"
           style="height: 33%"
         />
         <div
           :class="[
             'w-1 rounded-sm transition-colors',
-            connectionQuality === 'excellent' || connectionQuality === 'good' ? qualityColor : 'bg-gray-300 dark:bg-gray-600'
+            connectionQuality === 'excellent' || connectionQuality === 'good'
+              ? qualityColor
+              : 'bg-gray-300 dark:bg-gray-600',
           ]"
           style="height: 66%"
         />
         <div
           :class="[
             'w-1 rounded-sm transition-colors',
-            connectionQuality === 'excellent' ? qualityColor : 'bg-gray-300 dark:bg-gray-600'
+            connectionQuality === 'excellent' ? qualityColor : 'bg-gray-300 dark:bg-gray-600',
           ]"
           style="height: 100%"
         />
@@ -236,7 +260,9 @@ watch(isOnline, (newVal) => {
 <style scoped>
 .slide-down-enter-active,
 .slide-down-leave-active {
-  transition: transform 0.3s ease, opacity 0.3s ease;
+  transition:
+    transform 0.3s ease,
+    opacity 0.3s ease;
 }
 
 .slide-down-enter-from,

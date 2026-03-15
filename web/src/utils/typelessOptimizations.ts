@@ -35,16 +35,15 @@ class TypelessParserWorker {
     if (!this.worker) {
       try {
         // Create worker using Vite's worker import syntax
-        this.worker = new Worker(
-          new URL('../workers/typelessParser.worker.ts', import.meta.url),
-          { type: 'module' }
-        )
+        this.worker = new Worker(new URL('../workers/typelessParser.worker.ts', import.meta.url), {
+          type: 'module',
+        })
 
         this.worker.onmessage = (event) => {
           const { id, result } = event.data
           const pending = this.pendingRequests.get(id)
           if (pending) {
-            pending.callbacks.forEach(cb => cb(result))
+            pending.callbacks.forEach((cb) => cb(result))
             this.pendingRequests.delete(id)
           }
         }

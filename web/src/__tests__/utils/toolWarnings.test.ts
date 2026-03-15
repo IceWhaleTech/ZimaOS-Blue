@@ -19,7 +19,9 @@ describe('formatToolWarningCodeLabel', () => {
   })
 
   it('keeps raw badge formatting for unknown codes by default', () => {
-    expect(formatToolWarningCodeLabel('custom_warning', translate)).toBe('warning_code=custom_warning')
+    expect(formatToolWarningCodeLabel('custom_warning', translate)).toBe(
+      'warning_code=custom_warning'
+    )
   })
 
   it('formats unknown codes as human labels in label mode', () => {

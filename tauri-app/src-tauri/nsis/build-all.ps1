@@ -19,6 +19,35 @@ function Ensure-Path {
     $env:Path = $currentPath
 }
 
+function Invoke-NpmAuditCheck {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WorkingDirectory,
+        [string[]]$AuditArgs = @("--omit=dev"),
+        [switch]$NoAllowlist
+    )
+
+    $auditScript = "g:\GitHub\ZimaOS-Blue\web\scripts\audit-ci.mjs"
+    if (Test-Path $auditScript) {
+        $args = @($auditScript, "--cwd", $WorkingDirectory)
+        $allowlistPath = Join-Path $WorkingDirectory "audit-allowlist.json"
+        if ($NoAllowlist -or -not (Test-Path $allowlistPath)) {
+            $args += "--no-allowlist"
+        }
+        $args += $AuditArgs
+        node @args
+        return $LASTEXITCODE
+    }
+
+    Push-Location $WorkingDirectory
+    try {
+        npm audit @AuditArgs
+        return $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+}
+
 # Set PATH initially
 Ensure-Path
 
@@ -70,9 +99,13 @@ if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
 
 # Check production dependencies for vulnerabilities (after all deps are installed)
 Write-Host "[STEP 1.2] Checking production dependencies for vulnerabilities..."
-npm audit --omit=dev
-if ($LASTEXITCODE -ne 0) {
+$frontendAuditStatus = Invoke-NpmAuditCheck -WorkingDirectory "g:\GitHub\ZimaOS-Blue\web" -AuditArgs @("--omit=dev")
+if ($frontendAuditStatus -eq 1) {
     Write-Host "[WARN] Production dependencies have vulnerabilities, but continuing build..." -ForegroundColor Yellow
+} elseif ($frontendAuditStatus -eq 2) {
+    Write-Host "[WARN] npm audit could not complete because the npm registry request failed. Continuing build..." -ForegroundColor Yellow
+} elseif ($frontendAuditStatus -ne 0) {
+    Write-Host "[WARN] npm audit failed unexpectedly (exit code: $frontendAuditStatus), but continuing build..." -ForegroundColor Yellow
 }
 
 # Build using npm run build (which uses vite from node_modules/.bin)

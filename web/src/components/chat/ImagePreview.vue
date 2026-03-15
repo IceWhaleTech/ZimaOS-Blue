@@ -81,12 +81,19 @@ function resetZoom() {
           @click="close"
         >
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </button>
 
         <!-- Zoom controls -->
-        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/10 rounded-lg p-2 z-10">
+        <div
+          class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/10 rounded-lg p-2 z-10"
+        >
           <button
             class="p-2 rounded-lg hover:bg-white/20 text-white transition-colors cursor-pointer"
             :title="t('chat.imagePreview.zoomOut')"
@@ -109,7 +116,12 @@ function resetZoom() {
             @click="zoomIn"
           >
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4v16m8-8H4"
+              />
             </svg>
           </button>
         </div>

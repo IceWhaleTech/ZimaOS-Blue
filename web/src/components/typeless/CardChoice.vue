@@ -18,7 +18,9 @@ const emit = defineEmits<{
 const selectedIds = ref<Set<string>>(new Set(props.card.selectedIds || []))
 const otherText = ref('')
 const otherSelected = ref(false)
-const isSubmitting = computed(() => props.actionLoading === true && props.activeActionId === 'select')
+const isSubmitting = computed(
+  () => props.actionLoading === true && props.activeActionId === 'select'
+)
 
 function isSelected(optionId: string): boolean {
   return selectedIds.value.has(optionId)
@@ -70,8 +72,13 @@ function emitSelection() {
 </script>
 
 <template>
-  <div class="choice-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
-    <div v-if="card.title || card.description" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+  <div
+    class="choice-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
+    <div
+      v-if="card.title || card.description"
+      class="px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+    >
       <h4 v-if="card.title" class="font-medium text-gray-900 dark:text-white">
         {{ card.title }}
         <span v-if="card.required" class="text-red-500 ml-1">*</span>
@@ -90,9 +97,13 @@ function emitSelection() {
         :key="option.id"
         class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3 disabled:cursor-wait"
         :class="{
-          'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500/20': isSelected(option.id),
-          'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600': !isSelected(option.id) && !isOptionDisabled(option),
-          'border-gray-100 dark:border-gray-800 opacity-50 cursor-not-allowed': isOptionDisabled(option),
+          'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500/20': isSelected(
+            option.id
+          ),
+          'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600':
+            !isSelected(option.id) && !isOptionDisabled(option),
+          'border-gray-100 dark:border-gray-800 opacity-50 cursor-not-allowed':
+            isOptionDisabled(option),
         }"
         :disabled="isOptionDisabled(option)"
         :aria-busy="isSubmitting ? 'true' : undefined"
@@ -114,7 +125,12 @@ function emitSelection() {
             viewBox="0 0 24 24"
             stroke="currentColor"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="3"
+              d="M5 13l4 4L19 7"
+            />
           </svg>
         </div>
 
@@ -133,7 +149,8 @@ function emitSelection() {
           class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3 disabled:cursor-wait"
           :class="{
             'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500/20': otherSelected,
-            'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600': !otherSelected && !isSubmitting,
+            'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600':
+              !otherSelected && !isSubmitting,
             'border-gray-100 dark:border-gray-800 opacity-50 cursor-not-allowed': isSubmitting,
           }"
           :disabled="isSubmitting"
@@ -156,18 +173,27 @@ function emitSelection() {
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="3"
+                d="M5 13l4 4L19 7"
+              />
             </svg>
           </div>
 
-          <span class="font-medium text-gray-900 dark:text-white">{{ t('askQuestion.other', 'Other') }}</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{
+            t('askQuestion.other', 'Other')
+          }}</span>
         </button>
 
         <div v-if="otherSelected" class="pl-8">
           <input
             v-model="otherText"
             type="text"
-            :placeholder="card.otherPlaceholder || t('askQuestion.otherPlaceholder', 'Type your answer...')"
+            :placeholder="
+              card.otherPlaceholder || t('askQuestion.otherPlaceholder', 'Type your answer...')
+            "
             class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent disabled:opacity-60 disabled:cursor-wait"
             :disabled="isSubmitting"
             @input="handleOtherInput"
@@ -176,8 +202,13 @@ function emitSelection() {
       </div>
     </div>
 
-    <div v-if="isSubmitting" class="px-4 pb-4 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-      <span class="inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent" />
+    <div
+      v-if="isSubmitting"
+      class="px-4 pb-4 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+    >
+      <span
+        class="inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent"
+      />
       <span>{{ t('common.processing', 'Processing...') }}</span>
     </div>
   </div>

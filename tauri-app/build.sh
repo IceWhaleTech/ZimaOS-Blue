@@ -51,6 +51,42 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+run_npm_audit_check() {
+    local audit_dir="$1"
+    local allowlist_mode="$2"
+    shift 2
+
+    if [ -f "$PROJECT_ROOT/web/scripts/audit-ci.mjs" ]; then
+        if [ "$allowlist_mode" = "allowlist" ] && [ -f "$audit_dir/audit-allowlist.json" ]; then
+            node "$PROJECT_ROOT/web/scripts/audit-ci.mjs" --cwd "$audit_dir" "$@"
+        else
+            node "$PROJECT_ROOT/web/scripts/audit-ci.mjs" --cwd "$audit_dir" --no-allowlist "$@"
+        fi
+    else
+        (
+            cd "$audit_dir"
+            npm audit "$@"
+        )
+    fi
+}
+
+handle_npm_audit_failure() {
+    local audit_status="$1"
+    local subject="$2"
+
+    case "$audit_status" in
+        1)
+            print_error "$subject production dependencies have vulnerabilities. Please fix them before building."
+            ;;
+        2)
+            print_error "Unable to complete npm audit for $subject because the npm registry request failed. Check network access and retry."
+            ;;
+        *)
+            print_error "npm audit for $subject failed unexpectedly (exit code: $audit_status)."
+            ;;
+    esac
+}
+
 # Detect platform
 GOOS=$(go env GOOS)
 GOARCH=$(go env GOARCH)
@@ -100,8 +136,11 @@ npm install
 
 # Check production dependencies for vulnerabilities
 print_step "Checking production dependencies for vulnerabilities..."
-if ! npm audit --omit=dev; then
-    print_error "Production dependencies have vulnerabilities. Please fix them before building."
+if run_npm_audit_check "$PROJECT_ROOT/web" allowlist --omit=dev; then
+    :
+else
+    audit_status=$?
+    handle_npm_audit_failure "$audit_status" "Frontend"
     exit 1
 fi
 
@@ -258,8 +297,11 @@ npm install
 
 # Check production dependencies for vulnerabilities
 print_step "Checking Tauri app production dependencies for vulnerabilities..."
-if ! npm audit --omit=dev; then
-    print_error "Tauri app production dependencies have vulnerabilities. Please fix them before building."
+if run_npm_audit_check "$SCRIPT_DIR" no-allowlist --omit=dev; then
+    :
+else
+    audit_status=$?
+    handle_npm_audit_failure "$audit_status" "Tauri app"
     exit 1
 fi
 

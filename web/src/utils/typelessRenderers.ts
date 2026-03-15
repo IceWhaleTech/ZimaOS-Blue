@@ -55,7 +55,7 @@ class RenderCache {
     let hash = 0
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
+      hash = (hash << 5) - hash + char
       hash = hash & hash // Convert to 32bit integer
     }
     return hash.toString(36)
@@ -128,28 +128,28 @@ export const FUNCTIONAL_CARD_TYPES = new Set([
 
 // Card types that require Vue components (complex interactivity, async loading, etc.)
 export const COMPONENT_CARD_TYPES = new Set([
-  'link',      // Needs async link preview fetch
-  'file',      // Has download/preview buttons
-  'gallery',   // Has lightbox, scroll buttons
-  'chart',     // Uses chart library
-  'map',       // Uses map library
-  'action',    // Has interactive buttons
-  'choice',    // Has selection state
-  'progress',  // May have animations
-  'result',    // Has action buttons
+  'link', // Needs async link preview fetch
+  'file', // Has download/preview buttons
+  'gallery', // Has lightbox, scroll buttons
+  'chart', // Uses chart library
+  'map', // Uses map library
+  'action', // Has interactive buttons
+  'choice', // Has selection state
+  'progress', // May have animations
+  'result', // Has action buttons
   'detection', // Complex UI
-  'metric',    // May have animations
-  'comparison',// Complex layout
-  'steps',     // Interactive steps
-  'weather',   // Complex UI
-  'profile',   // Complex UI
+  'metric', // May have animations
+  'comparison', // Complex layout
+  'steps', // Interactive steps
+  'weather', // Complex UI
+  'profile', // Complex UI
   'countdown', // Has timer
-  'rating',    // Interactive
+  'rating', // Interactive
   'accordion', // Has expand/collapse state
-  'audio',     // Has audio player
+  'audio', // Has audio player
   'collapsible-code', // Has expand/collapse state
-  'diff',      // Complex highlighting
-  'mermaid',   // Mermaid diagram rendering
+  'diff', // Complex highlighting
+  'mermaid', // Mermaid diagram rendering
 ])
 
 /**
@@ -235,21 +235,28 @@ function renderTable(card: TypelessCardTable): string {
       </div>`
     : ''
 
-  const headersHtml = card.headers.length > 0
-    ? `<thead>
+  const headersHtml =
+    card.headers.length > 0
+      ? `<thead>
         <tr class="bg-gray-50 dark:bg-gray-700/50">
-          ${card.headers.map(h => `<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">${parseTypelessInline(String(h))}</th>`).join('')}
+          ${card.headers.map((h) => `<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">${parseTypelessInline(String(h))}</th>`).join('')}
         </tr>
       </thead>`
-    : ''
+      : ''
 
-  const rowsHtml = card.rows.map((row, rowIndex) => {
-    const stripedClass = card.striped && rowIndex % 2 === 1 ? 'bg-gray-50 dark:bg-gray-700/30' : ''
-    const cells = row.map(cell =>
-      `<td class="px-4 py-3 text-gray-700 dark:text-gray-300${card.compact ? ' py-2' : ''}">${parseTypelessInline(String(cell))}</td>`
-    ).join('')
-    return `<tr class="${stripedClass} hover:bg-gray-50 dark:hover:bg-gray-700/50">${cells}</tr>`
-  }).join('')
+  const rowsHtml = card.rows
+    .map((row, rowIndex) => {
+      const stripedClass =
+        card.striped && rowIndex % 2 === 1 ? 'bg-gray-50 dark:bg-gray-700/30' : ''
+      const cells = row
+        .map(
+          (cell) =>
+            `<td class="px-4 py-3 text-gray-700 dark:text-gray-300${card.compact ? ' py-2' : ''}">${parseTypelessInline(String(cell))}</td>`
+        )
+        .join('')
+      return `<tr class="${stripedClass} hover:bg-gray-50 dark:hover:bg-gray-700/50">${cells}</tr>`
+    })
+    .join('')
 
   const footerHtml = card.footer
     ? `<div class="px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
@@ -276,14 +283,26 @@ function renderTable(card: TypelessCardTable): string {
  */
 function renderCode(card: TypelessCardCode): string {
   const languageNames: Record<string, string> = {
-    js: 'JavaScript', javascript: 'JavaScript',
-    ts: 'TypeScript', typescript: 'TypeScript',
-    py: 'Python', python: 'Python',
-    go: 'Go', rust: 'Rust', java: 'Java',
-    cpp: 'C++', c: 'C', html: 'HTML', css: 'CSS',
-    json: 'JSON', yaml: 'YAML', sql: 'SQL',
-    bash: 'Bash', shell: 'Shell',
-    md: 'Markdown', markdown: 'Markdown',
+    js: 'JavaScript',
+    javascript: 'JavaScript',
+    ts: 'TypeScript',
+    typescript: 'TypeScript',
+    py: 'Python',
+    python: 'Python',
+    go: 'Go',
+    rust: 'Rust',
+    java: 'Java',
+    cpp: 'C++',
+    c: 'C',
+    html: 'HTML',
+    css: 'CSS',
+    json: 'JSON',
+    yaml: 'YAML',
+    sql: 'SQL',
+    bash: 'Bash',
+    shell: 'Shell',
+    md: 'Markdown',
+    markdown: 'Markdown',
   }
 
   const langDisplay = card.language
@@ -299,24 +318,29 @@ function renderCode(card: TypelessCardCode): string {
   const highlightLines = new Set(card.highlightLines || [])
 
   // Apply syntax highlighting to the entire code block
-  const highlightedCode = card.language ? highlightCode(card.code, langForHighlight) : escapeHtml(card.code)
+  const highlightedCode = card.language
+    ? highlightCode(card.code, langForHighlight)
+    : escapeHtml(card.code)
   const highlightedLines = highlightedCode.split('\n')
-  const configuredMaxCollapsedLines = (card as TypelessCardCode & { maxCollapsedLines?: number }).maxCollapsedLines
+  const configuredMaxCollapsedLines = (card as TypelessCardCode & { maxCollapsedLines?: number })
+    .maxCollapsedLines
   const maxCollapsedLines = Math.max(1, configuredMaxCollapsedLines || DEFAULT_CODE_COLLAPSE_LINES)
   const shouldCollapse = highlightedLines.length > maxCollapsedLines
   const hiddenLinesCount = shouldCollapse ? highlightedLines.length - maxCollapsedLines : 0
   const collapsedMaxHeightPx = maxCollapsedLines * CODE_LINE_HEIGHT_PX
 
-  const linesHtml = highlightedLines.map((line, index) => {
-    const lineNum = index + 1
-    const highlighted = highlightLines.has(lineNum) ? ' bg-yellow-500/20' : ''
-    const lineNumHtml = showLineNumbers
-      ? `<span class="inline-block w-8 text-right mr-4 text-gray-500 select-none">${lineNum}</span>`
-      : ''
-    // Add newline at the end for proper copying
-    const lineContent = index < highlightedLines.length - 1 ? `${line}\n` : line
-    return `<span class="block${highlighted}">${lineNumHtml}${lineContent}</span>`
-  }).join('')
+  const linesHtml = highlightedLines
+    .map((line, index) => {
+      const lineNum = index + 1
+      const highlighted = highlightLines.has(lineNum) ? ' bg-yellow-500/20' : ''
+      const lineNumHtml = showLineNumbers
+        ? `<span class="inline-block w-8 text-right mr-4 text-gray-500 select-none">${lineNum}</span>`
+        : ''
+      // Add newline at the end for proper copying
+      const lineContent = index < highlightedLines.length - 1 ? `${line}\n` : line
+      return `<span class="block${highlighted}">${lineNumHtml}${lineContent}</span>`
+    })
+    .join('')
 
   const titleOrFilename = card.filename || card.title || ''
   const titleHtml = titleOrFilename
@@ -340,11 +364,17 @@ function renderCode(card: TypelessCardCode): string {
 
   // Data for fullscreen — base64-encode to avoid HTML attribute escaping issues
   // (JSON escape sequences like \n get mangled by the browser's HTML parser)
-  const fullscreenDataB64 = btoa(unescape(encodeURIComponent(JSON.stringify({
-    title: titleOrFilename || langDisplay,
-    language: card.language,
-    content: card.code,
-  }))))
+  const fullscreenDataB64 = btoa(
+    unescape(
+      encodeURIComponent(
+        JSON.stringify({
+          title: titleOrFilename || langDisplay,
+          language: card.language,
+          content: card.code,
+        })
+      )
+    )
+  )
 
   return `<div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('code', '${fullscreenDataB64}', true)">
     <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
@@ -380,8 +410,9 @@ function renderCode(card: TypelessCardCode): string {
       <pre class="p-4 text-sm leading-relaxed" style="margin: 0; font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;"><code id="${codeId}" class="text-gray-800 dark:text-gray-100">${linesHtml}</code></pre>
       ${shouldCollapse ? `<div id="${codeFadeId}" class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white dark:from-gray-700 to-transparent pointer-events-none"></div>` : ''}
     </div>
-    ${shouldCollapse
-      ? `<div class="border-t border-gray-200 dark:border-gray-700">
+    ${
+      shouldCollapse
+        ? `<div class="border-t border-gray-200 dark:border-gray-700">
           <button
             id="${codeToggleId}"
             class="w-full px-4 py-2 text-sm transition-colors flex items-center justify-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -393,7 +424,8 @@ function renderCode(card: TypelessCardCode): string {
             onclick="event.stopPropagation(); window.__typelessToggleCodeCollapse && window.__typelessToggleCodeCollapse('${codeToggleId}')"
           >${escapeHtml(expandLabel)}</button>
         </div>`
-      : ''}
+        : ''
+    }
   </div>`
 }
 
@@ -421,7 +453,7 @@ function renderList(card: TypelessCardList): string {
 
     const subItemsHtml = item.subItems?.length
       ? `<ul class="mt-2 ml-4 space-y-1">
-          ${item.subItems.map(sub => renderListItem(sub, true)).join('')}
+          ${item.subItems.map((sub) => renderListItem(sub, true)).join('')}
         </ul>`
       : ''
 
@@ -438,7 +470,7 @@ function renderList(card: TypelessCardList): string {
   if (!card.variant || card.variant === 'default') {
     const tag = card.ordered ? 'ol' : 'ul'
     const listClass = card.ordered ? 'list-decimal list-inside' : ''
-    const itemsHtml = card.items.map(item => renderListItem(item)).join('')
+    const itemsHtml = card.items.map((item) => renderListItem(item)).join('')
 
     return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
       ${titleHtml}
@@ -452,7 +484,7 @@ function renderList(card: TypelessCardList): string {
   if (card.variant === 'checklist') {
     // Count completed items for progress display
     const totalItems = card.items.length
-    const completedItems = card.items.filter(item => item.checked).length
+    const completedItems = card.items.filter((item) => item.checked).length
     const progressPercent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
 
     // Progress header
@@ -471,31 +503,33 @@ function renderList(card: TypelessCardList): string {
       </div>
     </div>`
 
-    const itemsHtml = card.items.map((item, index) => {
-      const checked = item.checked || false
-      const checkboxBg = checked
-        ? 'bg-green-500 border-green-500'
-        : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'
-      const checkIcon = checked
-        ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    const itemsHtml = card.items
+      .map((item, index) => {
+        const checked = item.checked || false
+        const checkboxBg = checked
+          ? 'bg-green-500 border-green-500'
+          : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'
+        const checkIcon = checked
+          ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
           </svg>`
-        : ''
-      const textClass = checked
-        ? 'line-through text-gray-400 dark:text-gray-500'
-        : 'text-gray-700 dark:text-gray-300'
-      const rowBg = checked
-        ? 'bg-green-50/50 dark:bg-green-900/10'
-        : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+          : ''
+        const textClass = checked
+          ? 'line-through text-gray-400 dark:text-gray-500'
+          : 'text-gray-700 dark:text-gray-300'
+        const rowBg = checked
+          ? 'bg-green-50/50 dark:bg-green-900/10'
+          : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
 
-      return `<li class="flex items-center gap-3 px-4 py-2.5 ${rowBg} transition-colors" data-item-index="${index}">
+        return `<li class="flex items-center gap-3 px-4 py-2.5 ${rowBg} transition-colors" data-item-index="${index}">
         <div class="flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${checkboxBg} transition-colors">
           ${checkIcon}
         </div>
         <span class="flex-1 text-sm ${textClass} transition-colors">${parseTypelessInline(item.content)}</span>
         ${checked ? '<span class="text-xs text-green-500 dark:text-green-400">✓</span>' : ''}
       </li>`
-    }).join('')
+      })
+      .join('')
 
     return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
       ${titleHtml}
@@ -508,22 +542,25 @@ function renderList(card: TypelessCardList): string {
 
   // Timeline variant
   if (card.variant === 'timeline') {
-    const itemsHtml = card.items.map((item, index) => {
-      const dotClass = index === 0
-        ? 'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700'
-        : 'border-gray-300 dark:border-gray-600'
-      const timestampHtml = item.timestamp
-        ? `<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">${escapeHtml(item.timestamp)}</p>`
-        : ''
+    const itemsHtml = card.items
+      .map((item, index) => {
+        const dotClass =
+          index === 0
+            ? 'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700'
+            : 'border-gray-300 dark:border-gray-600'
+        const timestampHtml = item.timestamp
+          ? `<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">${escapeHtml(item.timestamp)}</p>`
+          : ''
 
-      return `<div class="relative flex items-start gap-4 pb-4 last:pb-0">
+        return `<div class="relative flex items-start gap-4 pb-4 last:pb-0">
         <div class="absolute left-0 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-700 ${dotClass}"></div>
         <div class="flex-1 min-w-0 ml-6">
           <p class="text-gray-700 dark:text-gray-300">${parseTypelessInline(item.content)}</p>
           ${timestampHtml}
         </div>
       </div>`
-    }).join('')
+      })
+      .join('')
 
     return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
       ${titleHtml}
@@ -546,19 +583,33 @@ function renderList(card: TypelessCardList): string {
  * Render info card
  */
 function renderInfo(card: TypelessCardInfo): string {
-  const defaultStyle = { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', icon: 'text-blue-600 dark:text-blue-300' }
+  const defaultStyle = {
+    bg: 'bg-blue-50 dark:bg-blue-900/20',
+    border: 'border-blue-200 dark:border-blue-800',
+    icon: 'text-blue-600 dark:text-blue-300',
+  }
   const variantStyles: Record<string, { bg: string; border: string; icon: string }> = {
     default: defaultStyle,
-    success: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200 dark:border-green-800', icon: 'text-green-600 dark:text-green-300' },
-    warning: { bg: 'bg-yellow-50 dark:bg-yellow-900/20', border: 'border-yellow-200 dark:border-yellow-800', icon: 'text-yellow-600 dark:text-yellow-300' },
-    error: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', icon: 'text-red-600 dark:text-red-300' },
+    success: {
+      bg: 'bg-green-50 dark:bg-green-900/20',
+      border: 'border-green-200 dark:border-green-800',
+      icon: 'text-green-600 dark:text-green-300',
+    },
+    warning: {
+      bg: 'bg-yellow-50 dark:bg-yellow-900/20',
+      border: 'border-yellow-200 dark:border-yellow-800',
+      icon: 'text-yellow-600 dark:text-yellow-300',
+    },
+    error: {
+      bg: 'bg-red-50 dark:bg-red-900/20',
+      border: 'border-red-200 dark:border-red-800',
+      icon: 'text-red-600 dark:text-red-300',
+    },
   }
 
   const style = variantStyles[card.variant || 'default'] || defaultStyle
 
-  const iconHtml = card.icon
-    ? `<span class="text-2xl">${escapeHtml(card.icon)}</span>`
-    : ''
+  const iconHtml = card.icon ? `<span class="text-2xl">${escapeHtml(card.icon)}</span>` : ''
 
   const titleHtml = card.title
     ? `<h4 class="font-medium text-gray-900 dark:text-white">${escapeHtml(card.title)}</h4>`
@@ -603,35 +654,34 @@ function renderAlert(card: TypelessCardAlert): string {
     bg: 'bg-blue-50 dark:bg-blue-900/20',
     border: 'border-blue-200 dark:border-blue-800',
     text: 'text-blue-800 dark:text-blue-200',
-    icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-600 dark:text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-600 dark:text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
   }
-  const variantStyles: Record<string, { bg: string; border: string; text: string; icon: string }> = {
-    info: defaultStyle,
-    success: {
-      bg: 'bg-green-50 dark:bg-green-900/20',
-      border: 'border-green-200 dark:border-green-800',
-      text: 'text-green-800 dark:text-green-200',
-      icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
-    },
-    warning: {
-      bg: 'bg-yellow-50 dark:bg-yellow-900/20',
-      border: 'border-yellow-200 dark:border-yellow-800',
-      text: 'text-yellow-800 dark:text-yellow-200',
-      icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>`
-    },
-    error: {
-      bg: 'bg-red-50 dark:bg-red-900/20',
-      border: 'border-red-200 dark:border-red-800',
-      text: 'text-red-800 dark:text-red-200',
-      icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
-    },
-  }
+  const variantStyles: Record<string, { bg: string; border: string; text: string; icon: string }> =
+    {
+      info: defaultStyle,
+      success: {
+        bg: 'bg-green-50 dark:bg-green-900/20',
+        border: 'border-green-200 dark:border-green-800',
+        text: 'text-green-800 dark:text-green-200',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
+      },
+      warning: {
+        bg: 'bg-yellow-50 dark:bg-yellow-900/20',
+        border: 'border-yellow-200 dark:border-yellow-800',
+        text: 'text-yellow-800 dark:text-yellow-200',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>`,
+      },
+      error: {
+        bg: 'bg-red-50 dark:bg-red-900/20',
+        border: 'border-red-200 dark:border-red-800',
+        text: 'text-red-800 dark:text-red-200',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
+      },
+    }
 
   const style = variantStyles[card.variant || 'info'] || defaultStyle
 
-  const titleHtml = card.title
-    ? `<h4 class="font-medium">${escapeHtml(card.title)}</h4>`
-    : ''
+  const titleHtml = card.title ? `<h4 class="font-medium">${escapeHtml(card.title)}</h4>` : ''
 
   return `<div class="alert-card rounded-lg border ${style.border} ${style.bg} p-4">
     <div class="flex items-start gap-3 ${style.text}">
@@ -651,23 +701,23 @@ function renderTerminal(card: TypelessCardTerminal): string {
   // ANSI color code to inline style mapping
   const ansiColorStyles: Record<number, string> = {
     // Standard colors (foreground)
-    30: 'color: #1f2937',      // black
-    31: 'color: #dc2626',      // red
-    32: 'color: #16a34a',      // green
-    33: 'color: #ca8a04',      // yellow
-    34: 'color: #2563eb',      // blue
-    35: 'color: #9333ea',      // purple/magenta
-    36: 'color: #0891b2',      // cyan
-    37: 'color: #e5e7eb',      // white/light gray
+    30: 'color: #1f2937', // black
+    31: 'color: #dc2626', // red
+    32: 'color: #16a34a', // green
+    33: 'color: #ca8a04', // yellow
+    34: 'color: #2563eb', // blue
+    35: 'color: #9333ea', // purple/magenta
+    36: 'color: #0891b2', // cyan
+    37: 'color: #e5e7eb', // white/light gray
     // Bright colors (foreground)
-    90: 'color: #6b7280',      // bright black (gray)
-    91: 'color: #ef4444',      // bright red
-    92: 'color: #22c55e',      // bright green
-    93: 'color: #eab308',      // bright yellow
-    94: 'color: #3b82f6',      // bright blue
-    95: 'color: #a855f7',      // bright purple
-    96: 'color: #06b6d4',      // bright cyan
-    97: 'color: #ffffff',      // bright white
+    90: 'color: #6b7280', // bright black (gray)
+    91: 'color: #ef4444', // bright red
+    92: 'color: #22c55e', // bright green
+    93: 'color: #eab308', // bright yellow
+    94: 'color: #3b82f6', // bright blue
+    95: 'color: #a855f7', // bright purple
+    96: 'color: #06b6d4', // bright cyan
+    97: 'color: #ffffff', // bright white
     // Background colors
     40: 'background-color: #000000',
     41: 'background-color: #dc2626',
@@ -691,7 +741,7 @@ function renderTerminal(card: TypelessCardTerminal): string {
   // Text style codes
   const ansiStyleMap: Record<number, string> = {
     1: 'font-weight: bold',
-    2: 'opacity: 0.75',        // Dim
+    2: 'opacity: 0.75', // Dim
     3: 'font-style: italic',
     4: 'text-decoration: underline',
     9: 'text-decoration: line-through',
@@ -720,7 +770,7 @@ function renderTerminal(card: TypelessCardTerminal): string {
       }
 
       // Parse the escape codes
-      const codes = (match[1] || '').split(';').map(c => parseInt(c, 10) || 0)
+      const codes = (match[1] || '').split(';').map((c) => parseInt(c, 10) || 0)
 
       for (const code of codes) {
         if (code === 0) {
@@ -729,7 +779,7 @@ function renderTerminal(card: TypelessCardTerminal): string {
         } else if (ansiColorStyles[code]) {
           // Remove existing color/bg style of same type
           const isBg = code >= 40
-          currentStyles = currentStyles.filter(s => {
+          currentStyles = currentStyles.filter((s) => {
             if (isBg) return !s.startsWith('background-color')
             return !s.startsWith('color')
           })
@@ -767,9 +817,10 @@ function renderTerminal(card: TypelessCardTerminal): string {
     ? `<span class="text-sm text-gray-400">${escapeHtml(card.title)}</span>`
     : ''
 
-  const promptHtml = card.showPrompt && card.prompt
-    ? `<span style="color: #22c55e">${escapeHtml(card.prompt)}</span>`
-    : ''
+  const promptHtml =
+    card.showPrompt && card.prompt
+      ? `<span style="color: #22c55e">${escapeHtml(card.prompt)}</span>`
+      : ''
 
   // Parse content with ANSI codes
   const parsedContent = parseAnsiToHtml(card.content)
@@ -786,10 +837,16 @@ function renderTerminal(card: TypelessCardTerminal): string {
   const maxHeightStyle = card.maxHeight ? `max-height: ${card.maxHeight}px;` : ''
 
   // Data for fullscreen — base64-encode to avoid HTML attribute escaping issues
-  const fullscreenDataB64 = btoa(unescape(encodeURIComponent(JSON.stringify({
-    title: card.title || 'Terminal',
-    content: plainContent,
-  }))))
+  const fullscreenDataB64 = btoa(
+    unescape(
+      encodeURIComponent(
+        JSON.stringify({
+          title: card.title || 'Terminal',
+          content: plainContent,
+        })
+      )
+    )
+  )
 
   return `<div class="terminal-card rounded-lg border border-gray-700 overflow-hidden" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('terminal', '${fullscreenDataB64}', true)">
     <div class="flex items-center justify-between px-3 py-1.5 bg-gray-700 border-b border-gray-700">
@@ -828,31 +885,34 @@ function renderTerminal(card: TypelessCardTerminal): string {
  */
 export function initTypelessCopyHandler(): void {
   // Add global copy handler for code
-  (window as unknown as { __typelessCopyCode?: (codeId: string) => void }).__typelessCopyCode = async (codeId: string) => {
-    const codeElement = document.getElementById(codeId)
-    if (!codeElement) return
+  ;(window as unknown as { __typelessCopyCode?: (codeId: string) => void }).__typelessCopyCode =
+    async (codeId: string) => {
+      const codeElement = document.getElementById(codeId)
+      if (!codeElement) return
 
-    try {
-      // Get text content, removing line numbers
-      const code = codeElement.textContent || ''
-      await navigator.clipboard.writeText(code)
+      try {
+        // Get text content, removing line numbers
+        const code = codeElement.textContent || ''
+        await navigator.clipboard.writeText(code)
 
-      // Find the button and update it
-      const btn = document.querySelector(`[data-code-id="${codeId}"]`)
-      if (btn) {
-        const originalHtml = btn.innerHTML
-        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`
-        setTimeout(() => {
-          btn.innerHTML = originalHtml
-        }, 2000)
+        // Find the button and update it
+        const btn = document.querySelector(`[data-code-id="${codeId}"]`)
+        if (btn) {
+          const originalHtml = btn.innerHTML
+          btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`
+          setTimeout(() => {
+            btn.innerHTML = originalHtml
+          }, 2000)
+        }
+      } catch (err) {
+        console.error('Failed to copy code:', err)
       }
-    } catch (err) {
-      console.error('Failed to copy code:', err)
     }
-  }
 
   // Add global collapse toggle handler for long code cards
-  (window as unknown as { __typelessToggleCodeCollapse?: (toggleButtonId: string) => void }).__typelessToggleCodeCollapse = (toggleButtonId: string) => {
+  ;(
+    window as unknown as { __typelessToggleCodeCollapse?: (toggleButtonId: string) => void }
+  ).__typelessToggleCodeCollapse = (toggleButtonId: string) => {
     const button = document.getElementById(toggleButtonId)
     if (!button) return
 
@@ -886,7 +946,9 @@ export function initTypelessCopyHandler(): void {
   }
 
   // Add global copy handler for terminal
-  (window as unknown as { __typelessCopyTerminal?: (terminalId: string) => void }).__typelessCopyTerminal = async (terminalId: string) => {
+  ;(
+    window as unknown as { __typelessCopyTerminal?: (terminalId: string) => void }
+  ).__typelessCopyTerminal = async (terminalId: string) => {
     const btn = document.querySelector(`[data-terminal-id="${terminalId}"]`)
     if (!btn) return
 
@@ -915,7 +977,11 @@ export function initTypelessCopyHandler(): void {
   // This is called from the ondblclick handler in the rendered HTML
   // The actual fullscreen state is managed by the useFullscreen composable
   // which is imported by the FullscreenModal component
-  (window as unknown as { __typelessOpenFullscreen?: (type: string, dataJson: string, isBase64?: boolean) => void }).__typelessOpenFullscreen = (type: string, dataJson: string, isBase64?: boolean) => {
+  ;(
+    window as unknown as {
+      __typelessOpenFullscreen?: (type: string, dataJson: string, isBase64?: boolean) => void
+    }
+  ).__typelessOpenFullscreen = (type: string, dataJson: string, isBase64?: boolean) => {
     // Decode base64 if flagged (avoids HTML attribute escaping issues with JSON)
     const json = isBase64 ? decodeURIComponent(escape(atob(dataJson))) : dataJson
     // Dispatch a custom event that the FullscreenModal component listens to

@@ -156,6 +156,7 @@ function primeApiMocks() {
       small_model_id: 'qwen3.5-0.8b-gguf-q4km',
       small_model_summary_enabled: true,
       small_model_doc_extract_enabled: true,
+      small_model_route_image_qa_enabled: true,
       small_model_route_short_qa_enabled: true,
       small_model_route_tool_dispatch_enabled: true,
       no_llm_degrade_mode: 'deepresearch',
@@ -167,7 +168,9 @@ function primeApiMocks() {
       feature_intent_ir_enabled: true,
     },
   } as never)
-  vi.mocked(settingsApi.patch).mockImplementation(async (payload: unknown) => ({ data: payload }) as never)
+  vi.mocked(settingsApi.patch).mockImplementation(
+    async (payload: unknown) => ({ data: payload }) as never
+  )
   vi.mocked(settingsApi.getSkillRerankerModelStatus).mockResolvedValue({
     data: { ready: false, downloading: false, state: 'idle' },
   } as never)
@@ -185,6 +188,8 @@ function primeApiMocks() {
     data: {
       short_qa_route_attempts: 12,
       short_qa_route_success: 10,
+      image_qa_route_attempts: 7,
+      image_qa_route_success: 6,
       tool_dispatch_route_attempts: 6,
       tool_dispatch_route_success: 5,
       summary_attempts: 4,
@@ -196,7 +201,9 @@ function primeApiMocks() {
       fallback_reasons: { timeout: 1 },
     },
   } as never)
-  vi.mocked(settingsApi.resetSmallModelStats).mockResolvedValue({ data: { success: true } } as never)
+  vi.mocked(settingsApi.resetSmallModelStats).mockResolvedValue({
+    data: { success: true },
+  } as never)
   vi.mocked(backupApi.list).mockResolvedValue({ data: [] } as never)
   vi.mocked(serviceApi.getInfo).mockResolvedValue({
     data: { installed: false, enabled: false },
@@ -225,8 +232,11 @@ describe('SettingsView small-model controls', () => {
     const irMasterSpy = vi.spyOn(store, 'setSmallModelIRFeaturesEnabled').mockResolvedValue()
     const summarySpy = vi.spyOn(store, 'setSmallModelSummaryEnabled').mockResolvedValue()
     const docExtractSpy = vi.spyOn(store, 'setSmallModelDocExtractEnabled').mockResolvedValue()
+    const imageQASpy = vi.spyOn(store, 'setSmallModelRouteImageQAEnabled').mockResolvedValue()
     const shortQASpy = vi.spyOn(store, 'setSmallModelRouteShortQAEnabled').mockResolvedValue()
-    const toolDispatchSpy = vi.spyOn(store, 'setSmallModelRouteToolDispatchEnabled').mockResolvedValue()
+    const toolDispatchSpy = vi
+      .spyOn(store, 'setSmallModelRouteToolDispatchEnabled')
+      .mockResolvedValue()
     const downloadSpy = vi.spyOn(store, 'startSmallModelDownload').mockResolvedValue({} as never)
     const resetSpy = vi.spyOn(store, 'resetSmallModelStats').mockResolvedValue({} as never)
 
@@ -242,6 +252,13 @@ describe('SettingsView small-model controls', () => {
     expect(wrapper.find('[data-testid="smart-tool-selection-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="small-model-ir-master-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="small-model-rerank-switch"]').exists()).toBe(false)
+    expect(
+      wrapper
+        .get('[data-testid="small-model-ir-section-header"]')
+        .find('[data-testid="small-model-ir-master-switch"]')
+        .exists()
+    ).toBe(true)
+    expect(wrapper.get('[data-testid="small-model-ir-grid"]').classes()).toContain('sm:grid-cols-2')
 
     await wrapper.get('[data-testid="small-model-ir-master-switch"]').trigger('click')
     await flushPromises()
@@ -274,6 +291,10 @@ describe('SettingsView small-model controls', () => {
     await wrapper.get('[data-testid="small-model-doc-extract-switch"]').trigger('click')
     await flushPromises()
     expect(docExtractSpy).toHaveBeenCalledWith(false)
+
+    await wrapper.get('[data-testid="small-model-image-qa-switch"]').trigger('click')
+    await flushPromises()
+    expect(imageQASpy).toHaveBeenCalledWith(false)
 
     await wrapper.get('[data-testid="small-model-short-qa-switch"]').trigger('click')
     await flushPromises()
@@ -330,8 +351,9 @@ describe('SettingsView small-model controls', () => {
     })
     await flushPromises()
 
-    const llmTabButton = wrapper.findAll('button')
-      .find(button => button.text().includes(i18n.global.t('settings.tab.llm')))
+    const llmTabButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes(i18n.global.t('settings.tab.llm')))
     expect(llmTabButton).toBeTruthy()
     await llmTabButton!.trigger('click')
     await flushPromises()
@@ -339,8 +361,9 @@ describe('SettingsView small-model controls', () => {
     expect(wrapper.text()).toContain('请先配置大语言模型提供商。')
     expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(false)
 
-    const setupLink = wrapper.findAll('button')
-      .find(button => button.text().includes('配置大语言模型提供商'))
+    const setupLink = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('配置大语言模型提供商'))
     expect(setupLink).toBeTruthy()
     await setupLink!.trigger('click')
     await flushPromises()

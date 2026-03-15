@@ -41,90 +41,66 @@ function formatLatency(ms: number | undefined | null): string {
 </script>
 
 <template>
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-    <!-- Total Calls Card -->
-    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.totalCalls') }}</p>
-          <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ stats ? formatNumber(stats.totalCalls) : '-' }}
-          </p>
-        </div>
-        <div class="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-          <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+  <div class="dashboard-card-surface p-4">
+    <div class="dashboard-card-stack">
+      <div class="dashboard-card-footer">
+        <div class="dashboard-card-copy">
+          <p class="dashboard-card-label">Metrics</p>
+          <p class="dashboard-card-subtitle mt-2">Usage overview</p>
         </div>
       </div>
-      <div class="mt-2 flex items-center text-sm">
-        <span :class="stats && (stats.successRate ?? 0) >= 95 ? 'text-green-500' : 'text-orange-500'">
-          {{ stats ? (stats.successRate ?? 0).toFixed(1) : '-' }}%
-        </span>
-        <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('metrics.successRate') }}</span>
-      </div>
-    </div>
 
-    <!-- Token Usage Card -->
-    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.tokenUsage') }}</p>
-          <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ stats ? formatNumber(stats.totalTokens) : '-' }}
-          </p>
-        </div>
-        <div class="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
-          <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-          </svg>
-        </div>
+      <div v-if="!stats" class="dashboard-card-empty">
+        {{ t('metrics.noData') }}
       </div>
-      <div class="mt-2 flex items-center text-sm">
-        <span class="text-green-500">{{ stats ? formatCost(stats.estimatedCost) : '-' }}</span>
-        <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('metrics.estimatedCost') }}</span>
-      </div>
-    </div>
 
-    <!-- Latency Card -->
-    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.avgLatency') }}</p>
-          <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ stats ? formatLatency(stats.avgLatency) : '-' }}
+      <div v-else class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div class="dashboard-card-subsurface p-3">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.totalCalls') }}</p>
+          <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+            {{ formatNumber(stats.totalCalls) }}
+          </p>
+          <p class="dashboard-card-footnote mt-2">
+            <span
+              :class="
+                (stats.successRate ?? 0) >= 95
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-orange-600 dark:text-orange-400'
+              "
+            >
+              {{ (stats.successRate ?? 0).toFixed(1) }}%
+            </span>
+            {{ t('metrics.successRate') }}
           </p>
         </div>
-        <div class="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
-          <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-      </div>
-      <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-        <span>P95: {{ stats ? formatLatency(stats.p95Latency) : '-' }}</span>
-        <span class="mx-2">|</span>
-        <span>P99: {{ stats ? formatLatency(stats.p99Latency) : '-' }}</span>
-      </div>
-    </div>
 
-    <!-- Speed Card -->
-    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.speed') }}</p>
-          <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ stats ? (stats.tokensPerSecond ?? 0).toFixed(1) : '-' }}
+        <div class="dashboard-card-subsurface p-3">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.tokenUsage') }}</p>
+          <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+            {{ formatNumber(stats.totalTokens) }}
+          </p>
+          <p class="dashboard-card-footnote mt-2">
+            {{ formatCost(stats.estimatedCost) }} {{ t('metrics.estimatedCost') }}
           </p>
         </div>
-        <div class="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-full">
-          <svg class="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-          </svg>
+
+        <div class="dashboard-card-subsurface p-3">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.avgLatency') }}</p>
+          <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+            {{ formatLatency(stats.avgLatency) }}
+          </p>
+          <p class="dashboard-card-footnote mt-2">
+            P95 {{ formatLatency(stats.p95Latency) }} · P99 {{ formatLatency(stats.p99Latency) }}
+          </p>
         </div>
-      </div>
-      <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-        <span>{{ t('metrics.tokensPerSecond') }}</span>
+
+        <div class="dashboard-card-subsurface p-3">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.speed') }}</p>
+          <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+            {{ (stats.tokensPerSecond ?? 0).toFixed(1) }}
+          </p>
+          <p class="dashboard-card-footnote mt-2">{{ t('metrics.tokensPerSecond') }}</p>
+        </div>
       </div>
     </div>
   </div>

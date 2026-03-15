@@ -47,14 +47,11 @@ export const sandboxApi = {
   getInfo: () => api.get<SandboxInfo>('/sandbox/info'),
 
   // Execute a command in the sandbox
-  execute: (request: ExecuteRequest) =>
-    api.post<ExecutionResult>('/sandbox/execute', request),
+  execute: (request: ExecuteRequest) => api.post<ExecutionResult>('/sandbox/execute', request),
 
   // Get execution status
-  getStatus: (id: string) =>
-    api.get<ExecutionResult>(`/sandbox/status/${id}`),
+  getStatus: (id: string) => api.get<ExecutionResult>(`/sandbox/status/${id}`),
 
   // Kill a running execution
-  kill: (id: string) =>
-    api.post<{ status: string; message: string }>(`/sandbox/kill/${id}`),
+  kill: (id: string) => api.post<{ status: string; message: string }>(`/sandbox/kill/${id}`),
 }

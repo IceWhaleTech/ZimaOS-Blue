@@ -7,7 +7,9 @@ defineProps<{
 </script>
 
 <template>
-  <div class="comparison-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+  <div
+    class="comparison-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
+  >
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -18,7 +20,9 @@ defineProps<{
         <!-- Item headers -->
         <thead>
           <tr>
-            <th class="p-4 text-left text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 w-40">
+            <th
+              class="p-4 text-left text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 w-40"
+            >
               Feature
             </th>
             <th
@@ -32,16 +36,27 @@ defineProps<{
                 <span
                   v-if="item.badge"
                   class="px-2 py-0.5 text-xs font-medium rounded-full"
-                  :class="item.highlighted ? 'bg-gray-700 dark:bg-gray-500 text-white' : 'bg-gray-700 dark:bg-gray-500 text-gray-600 dark:text-gray-300'"
+                  :class="
+                    item.highlighted
+                      ? 'bg-gray-700 dark:bg-gray-500 text-white'
+                      : 'bg-gray-700 dark:bg-gray-500 text-gray-600 dark:text-gray-300'
+                  "
                 >
                   {{ item.badge }}
                 </span>
                 <!-- Image -->
-                <img v-if="item.image" :src="item.image" :alt="item.name" class="w-16 h-16 object-contain" />
+                <img
+                  v-if="item.image"
+                  :src="item.image"
+                  :alt="item.name"
+                  class="w-16 h-16 object-contain"
+                />
                 <!-- Name -->
                 <span class="font-medium text-gray-900 dark:text-white">{{ item.name }}</span>
                 <!-- Price -->
-                <span v-if="item.price" class="text-lg font-bold text-gray-900 dark:text-white">{{ item.price }}</span>
+                <span v-if="item.price" class="text-lg font-bold text-gray-900 dark:text-white">{{
+                  item.price
+                }}</span>
               </div>
             </th>
           </tr>
@@ -49,7 +64,11 @@ defineProps<{
 
         <!-- Features -->
         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-          <tr v-for="(feature, fIndex) in card.features" :key="fIndex" class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+          <tr
+            v-for="(feature, fIndex) in card.features"
+            :key="fIndex"
+            class="hover:bg-gray-50 dark:hover:bg-gray-700/50"
+          >
             <td class="p-4 text-sm text-gray-600 dark:text-gray-400 font-medium">
               {{ feature.name }}
             </td>
@@ -69,7 +88,12 @@ defineProps<{
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                 >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
                 <svg
                   v-else
@@ -79,7 +103,12 @@ defineProps<{
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                 >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </template>
               <!-- String/Number value -->

@@ -18,7 +18,14 @@ interface AgentTask {
   id: string
   goal: string
   plan: PlanStep[]
-  status: 'pending' | 'planning' | 'executing' | 'waiting_input' | 'completed' | 'failed' | 'cancelled'
+  status:
+    | 'pending'
+    | 'planning'
+    | 'executing'
+    | 'waiting_input'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
   current_step: number
   progress: number
   result?: string
@@ -85,7 +92,7 @@ function canSubmitAnswers(): boolean {
 }
 
 function submitAnswers() {
-  const answers: AgentQuestionAnswer[] = questions.value.map(q => ({
+  const answers: AgentQuestionAnswer[] = questions.value.map((q) => ({
     question_id: q.id,
     values: Array.from(selections.value[q.id] ?? []),
     other_text: otherTexts.value[q.id] || undefined,
@@ -122,22 +129,32 @@ function handleQuestionKeydown(e: KeyboardEvent) {
 const statusIcon = computed(() => {
   if (hasQuestions.value) return '?'
   switch (props.task.status) {
-    case 'planning': return '🧠'
-    case 'executing': return '⚡'
-    case 'completed': return '✓'
-    case 'failed': return '✗'
-    case 'cancelled': return '⏹'
-    default: return '⏳'
+    case 'planning':
+      return '🧠'
+    case 'executing':
+      return '⚡'
+    case 'completed':
+      return '✓'
+    case 'failed':
+      return '✗'
+    case 'cancelled':
+      return '⏹'
+    default:
+      return '⏳'
   }
 })
 
 const statusColor = computed(() => {
   if (hasQuestions.value) return 'text-amber-500'
   switch (props.task.status) {
-    case 'completed': return 'text-green-500'
-    case 'failed': return 'text-red-500'
-    case 'cancelled': return 'text-gray-400'
-    default: return 'text-blue-500'
+    case 'completed':
+      return 'text-green-500'
+    case 'failed':
+      return 'text-red-500'
+    case 'cancelled':
+      return 'text-gray-400'
+    default:
+      return 'text-blue-500'
   }
 })
 
@@ -145,9 +162,7 @@ const isRunning = computed(() =>
   ['pending', 'planning', 'executing', 'waiting_input'].includes(props.task.status)
 )
 
-const isDone = computed(() =>
-  ['completed', 'failed', 'cancelled'].includes(props.task.status)
-)
+const isDone = computed(() => ['completed', 'failed', 'cancelled'].includes(props.task.status))
 
 function toggleStep(index: number) {
   if (expandedSteps.value.has(index)) {
@@ -159,21 +174,31 @@ function toggleStep(index: number) {
 
 function stepIcon(status: string) {
   switch (status) {
-    case 'completed': return '✓'
-    case 'running': return '⏳'
-    case 'failed': return '✗'
-    case 'skipped': return '⏭'
-    default: return '○'
+    case 'completed':
+      return '✓'
+    case 'running':
+      return '⏳'
+    case 'failed':
+      return '✗'
+    case 'skipped':
+      return '⏭'
+    default:
+      return '○'
   }
 }
 
 function stepColor(status: string) {
   switch (status) {
-    case 'completed': return 'text-green-500'
-    case 'running': return 'text-blue-500'
-    case 'failed': return 'text-red-500'
-    case 'skipped': return 'text-gray-300 dark:text-gray-600'
-    default: return 'text-gray-400'
+    case 'completed':
+      return 'text-green-500'
+    case 'running':
+      return 'text-blue-500'
+    case 'failed':
+      return 'text-red-500'
+    case 'skipped':
+      return 'text-gray-300 dark:text-gray-600'
+    default:
+      return 'text-gray-400'
   }
 }
 
@@ -186,12 +211,16 @@ function stepDuration(step: PlanStep): string {
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 my-2">
+  <div
+    class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 my-2"
+  >
     <!-- Header -->
     <div class="flex items-center justify-between mb-3">
       <div class="flex items-center gap-2 min-w-0">
         <span :class="statusColor">{{ statusIcon }}</span>
-        <span class="font-medium text-gray-900 dark:text-white text-sm truncate">{{ task.goal }}</span>
+        <span class="font-medium text-gray-900 dark:text-white text-sm truncate">{{
+          task.goal
+        }}</span>
       </div>
       <div class="flex items-center gap-1 shrink-0">
         <button
@@ -233,9 +262,17 @@ function stepDuration(step: PlanStep): string {
           class="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-1 py-0.5"
           @click="toggleStep(step.index)"
         >
-          <span :class="stepColor(step.status)" class="text-xs w-4 text-center">{{ stepIcon(step.status) }}</span>
-          <span class="text-gray-700 dark:text-gray-300 flex-1" :class="{ 'line-through opacity-50': step.status === 'skipped' }">{{ step.description }}</span>
-          <span v-if="stepDuration(step)" class="text-xs text-gray-400 shrink-0">{{ stepDuration(step) }}</span>
+          <span :class="stepColor(step.status)" class="text-xs w-4 text-center">{{
+            stepIcon(step.status)
+          }}</span>
+          <span
+            class="text-gray-700 dark:text-gray-300 flex-1"
+            :class="{ 'line-through opacity-50': step.status === 'skipped' }"
+            >{{ step.description }}</span
+          >
+          <span v-if="stepDuration(step)" class="text-xs text-gray-400 shrink-0">{{
+            stepDuration(step)
+          }}</span>
         </div>
         <div
           v-if="expandedSteps.has(step.index) && step.output"
@@ -247,7 +284,11 @@ function stepDuration(step: PlanStep): string {
     </div>
 
     <!-- Q&A Panel -->
-    <div v-if="hasQuestions" class="mt-3 rounded-lg border-2 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 p-3" @keydown="handleQuestionKeydown">
+    <div
+      v-if="hasQuestions"
+      class="mt-3 rounded-lg border-2 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 p-3"
+      @keydown="handleQuestionKeydown"
+    >
       <div class="text-sm font-medium text-amber-700 dark:text-amber-300 mb-2">
         {{ t('agent.questionTitle') }}
       </div>
@@ -260,7 +301,8 @@ function stepDuration(step: PlanStep): string {
           class="px-3 py-1 text-xs rounded-full whitespace-nowrap transition-colors"
           :class="{
             'bg-amber-500 text-white': activeTab === idx,
-            'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600': activeTab !== idx,
+            'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600':
+              activeTab !== idx,
           }"
           @click="activeTab = idx"
         >
@@ -288,8 +330,12 @@ function stepDuration(step: PlanStep): string {
             :key="opt.value"
             class="w-full p-2 rounded-lg border text-left text-sm transition-all flex items-start gap-2"
             :class="{
-              'border-amber-500 bg-amber-100 dark:bg-amber-800/30': isOptionSelected(q.id, opt.value),
-              'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500': !isOptionSelected(q.id, opt.value),
+              'border-amber-500 bg-amber-100 dark:bg-amber-800/30': isOptionSelected(
+                q.id,
+                opt.value
+              ),
+              'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500':
+                !isOptionSelected(q.id, opt.value),
             }"
             @click="toggleOption(q.id, opt.value, !!q.multi_select)"
           >
@@ -301,13 +347,27 @@ function stepDuration(step: PlanStep): string {
                 'border-gray-300 dark:border-gray-500': !isOptionSelected(q.id, opt.value),
               }"
             >
-              <svg v-if="isOptionSelected(q.id, opt.value)" xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+              <svg
+                v-if="isOptionSelected(q.id, opt.value)"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-2.5 w-2.5 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="3"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
             <div class="flex-1 min-w-0">
               <span class="text-gray-900 dark:text-white">{{ opt.label }}</span>
-              <p v-if="opt.description" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ opt.description }}</p>
+              <p v-if="opt.description" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ opt.description }}
+              </p>
             </div>
           </button>
         </div>
@@ -336,7 +396,10 @@ function stepDuration(step: PlanStep): string {
     </div>
 
     <!-- Result / Error -->
-    <div v-if="task.result" class="mt-2 text-sm text-green-600 dark:text-green-400 whitespace-pre-wrap">
+    <div
+      v-if="task.result"
+      class="mt-2 text-sm text-green-600 dark:text-green-400 whitespace-pre-wrap"
+    >
       {{ task.result }}
     </div>
     <div v-if="task.error" class="mt-2 text-sm text-red-600 dark:text-red-400">

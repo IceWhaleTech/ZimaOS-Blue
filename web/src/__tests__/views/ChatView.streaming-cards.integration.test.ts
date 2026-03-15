@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({
     agentMode: false,
     claudeCodeEnabled: false,
     showToolDetails: true,
-    themeStyle: 'default',
     selectedProvider: 'openai',
     selectedModel: 'gpt-4o-mini',
     temperature: 0.7,
@@ -26,7 +25,6 @@ const mocks = vi.hoisted(() => ({
     setAgentAutoConfirm: vi.fn(),
     setAgentMode: vi.fn(),
     setShowToolDetails: vi.fn(),
-    setThemeStyle: vi.fn(),
   },
   providerPoolStore: {
     activeProviders: [] as unknown[],
@@ -138,10 +136,6 @@ vi.mock('@/api/chat', () => ({
 }))
 
 vi.mock('@/stores/settings', () => ({
-  THEME_STYLES: [
-    { id: 'default', labelKey: 'theme.styles.default' },
-    { id: 'bubble', labelKey: 'theme.styles.bubble' },
-  ],
   useSettingsStore: () => mocks.settingsStore,
 }))
 
@@ -263,7 +257,10 @@ vi.mock('@/components/AgentTaskPanel.vue', () => ({
 }))
 
 vi.mock('@/components/DeepResearchTaskDock.vue', () => ({
-  default: { name: 'DeepResearchTaskDock', template: '<div class="deep-research-task-dock-stub" />' },
+  default: {
+    name: 'DeepResearchTaskDock',
+    template: '<div class="deep-research-task-dock-stub" />',
+  },
 }))
 
 const localStorageMock = (() => {
@@ -283,23 +280,31 @@ const localStorageMock = (() => {
 })()
 
 vi.stubGlobal('localStorage', localStorageMock)
-vi.stubGlobal('matchMedia', vi.fn().mockImplementation(() => ({
-  matches: false,
-  media: '',
-  onchange: null,
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  addListener: vi.fn(),
-  removeListener: vi.fn(),
-  dispatchEvent: vi.fn(),
-})))
-vi.stubGlobal('ResizeObserver', class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
+vi.stubGlobal(
+  'matchMedia',
+  vi.fn().mockImplementation(() => ({
+    matches: false,
+    media: '',
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }))
+)
+vi.stubGlobal(
+  'ResizeObserver',
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+)
 if (typeof window !== 'undefined' && typeof window.requestAnimationFrame !== 'function') {
-  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => setTimeout(() => cb(Date.now()), 0))
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) =>
+    setTimeout(() => cb(Date.now()), 0)
+  )
   vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
 }
 
@@ -318,14 +323,14 @@ function makeTypelessBlock(payload: Record<string, unknown>) {
 }
 
 function findButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
-  return wrapper.findAll('button').find(button => button.text().includes(text))
+  return wrapper.findAll('button').find((button) => button.text().includes(text))
 }
 
 async function settleView() {
   await flushPromises()
   await vi.dynamicImportSettled()
   await flushPromises()
-  await new Promise(resolve => setTimeout(resolve, 0))
+  await new Promise((resolve) => setTimeout(resolve, 0))
   await flushPromises()
 }
 
@@ -358,7 +363,6 @@ async function mountIntegratedChatView() {
   return { wrapper, store: useChatStore() }
 }
 
-
 describe('ChatView streaming card chain integration', () => {
   beforeEach(() => {
     localStorageMock.clear()
@@ -376,7 +380,6 @@ describe('ChatView streaming card chain integration', () => {
     mocks.settingsStore.agentMode = false
     mocks.settingsStore.claudeCodeEnabled = false
     mocks.settingsStore.showToolDetails = true
-    mocks.settingsStore.themeStyle = 'default'
     mocks.settingsStore.selectedProvider = 'openai'
     mocks.settingsStore.selectedModel = 'gpt-4o-mini'
     mocks.settingsStore.temperature = 0.7
@@ -386,7 +389,6 @@ describe('ChatView streaming card chain integration', () => {
     mocks.settingsStore.setAgentAutoConfirm.mockReset()
     mocks.settingsStore.setAgentMode.mockReset()
     mocks.settingsStore.setShowToolDetails.mockReset()
-    mocks.settingsStore.setThemeStyle.mockReset()
 
     mocks.providerPoolStore.activeProviders = []
     mocks.providerPoolStore.cloudProviders = []
@@ -399,7 +401,9 @@ describe('ChatView streaming card chain integration', () => {
     mocks.providerPoolStore.routingMode = 'auto'
     mocks.providerPoolStore.trialProviders = []
     mocks.providerPoolStore.trialQuota = null
-    mocks.providerPoolStore.getProviderDisplayName.mockReset().mockImplementation((providerId: string) => providerId)
+    mocks.providerPoolStore.getProviderDisplayName
+      .mockReset()
+      .mockImplementation((providerId: string) => providerId)
     mocks.providerPoolStore.fetchProviders.mockReset().mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchRoutingMode.mockReset().mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
@@ -451,33 +455,41 @@ describe('ChatView streaming card chain integration', () => {
     mocks.deepResearchJobsStore.cancelJob.mockReset().mockResolvedValue(undefined)
     mocks.deepResearchJobsStore.consumePendingFocusJobId.mockReset()
 
-    vi.mocked(conversationApi.list).mockReset().mockResolvedValue({ data: [CONVERSATION] } as never)
+    vi.mocked(conversationApi.list)
+      .mockReset()
+      .mockResolvedValue({ data: [CONVERSATION] } as never)
     vi.mocked(conversationApi.create).mockReset()
     vi.mocked(conversationApi.get).mockReset()
     vi.mocked(conversationApi.delete).mockReset()
     vi.mocked(conversationApi.search).mockReset()
-    vi.mocked(conversationApi.getCommandState).mockReset().mockResolvedValue({
-      data: {
-        conversation_id: 'conv-1',
-        selected_provider_id: '',
-        selected_model_id: '',
-        offline: false,
-        web_search_enabled: true,
-        deep_research_enabled: false,
-      },
-    } as never)
-    vi.mocked(conversationApi.patchCommandState).mockReset().mockResolvedValue({
-      data: {
-        conversation_id: 'conv-1',
-        selected_provider_id: '',
-        selected_model_id: '',
-        offline: false,
-        web_search_enabled: true,
-        deep_research_enabled: false,
-      },
-    } as never)
+    vi.mocked(conversationApi.getCommandState)
+      .mockReset()
+      .mockResolvedValue({
+        data: {
+          conversation_id: 'conv-1',
+          selected_provider_id: '',
+          selected_model_id: '',
+          offline: false,
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        },
+      } as never)
+    vi.mocked(conversationApi.patchCommandState)
+      .mockReset()
+      .mockResolvedValue({
+        data: {
+          conversation_id: 'conv-1',
+          selected_provider_id: '',
+          selected_model_id: '',
+          offline: false,
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        },
+      } as never)
 
-    vi.mocked(messageApi.list).mockReset().mockResolvedValue({ data: [] } as never)
+    vi.mocked(messageApi.list)
+      .mockReset()
+      .mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.send).mockReset()
     vi.mocked(messageApi.cancelStream).mockReset()
   })
@@ -556,11 +568,13 @@ describe('ChatView streaming card chain integration', () => {
 
     mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
       expect(_conversationId).toBe('conv-1')
-      expect(request).toEqual(expect.objectContaining({
-        message: `Inspect ${WEB_FETCH_URL}`,
-        web_search_enabled: true,
-        deep_research_enabled: false,
-      }))
+      expect(request).toEqual(
+        expect.objectContaining({
+          message: `Inspect ${WEB_FETCH_URL}`,
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        })
+      )
 
       options.onMessage({ delta: webFetchBlock, done: false })
       options.onNewMessage?.(1)
@@ -631,7 +645,10 @@ describe('ChatView streaming card chain integration', () => {
       },
     })
     expect(sendSpy).toHaveBeenNthCalledWith(1, `Open ${WEB_FETCH_URL} with the browser tool.`)
-    expect(sendSpy).toHaveBeenNthCalledWith(2, `Use web_fetch on ${WEB_FETCH_URL} with browser_target_id=tab-42 to extract readable content.`)
+    expect(sendSpy).toHaveBeenNthCalledWith(
+      2,
+      `Use web_fetch on ${WEB_FETCH_URL} with browser_target_id=tab-42 to extract readable content.`
+    )
   })
 
   it('keeps fallback boilerplate when chat history contains extracted tool summaries', async () => {
@@ -696,7 +713,8 @@ describe('ChatView streaming card chain integration', () => {
       content_type: 'text/html',
       extract_mode: 'text',
       extractor: 'html',
-      warning: 'page requires a browser session for readable extraction; switch to browser or reuse browser_target_id',
+      warning:
+        'page requires a browser session for readable extraction; switch to browser or reuse browser_target_id',
       warning_code: 'browser_required',
       actions: [
         {
@@ -730,11 +748,13 @@ describe('ChatView streaming card chain integration', () => {
 
     mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
       expect(_conversationId).toBe('conv-1')
-      expect(request).toEqual(expect.objectContaining({
-        message: 'Inspect ' + WEB_FETCH_URL,
-        web_search_enabled: true,
-        deep_research_enabled: false,
-      }))
+      expect(request).toEqual(
+        expect.objectContaining({
+          message: 'Inspect ' + WEB_FETCH_URL,
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        })
+      )
 
       options.onMessage({ delta: browserRequiredBlock, done: false })
       options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
@@ -787,7 +807,8 @@ describe('ChatView streaming card chain integration', () => {
       content_type: 'text/html',
       extract_mode: 'text',
       extractor: 'html',
-      warning: 'page appears to require a verification challenge; switch to browser or reuse browser_target_id',
+      warning:
+        'page appears to require a verification challenge; switch to browser or reuse browser_target_id',
       warning_code: 'challenge',
       actions: [
         {
@@ -821,11 +842,13 @@ describe('ChatView streaming card chain integration', () => {
 
     mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
       expect(_conversationId).toBe('conv-1')
-      expect(request).toEqual(expect.objectContaining({
-        message: 'Inspect ' + WEB_FETCH_URL,
-        web_search_enabled: true,
-        deep_research_enabled: false,
-      }))
+      expect(request).toEqual(
+        expect.objectContaining({
+          message: 'Inspect ' + WEB_FETCH_URL,
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        })
+      )
 
       options.onMessage({ delta: challengeBlock, done: false })
       options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
@@ -866,7 +889,6 @@ describe('ChatView streaming card chain integration', () => {
     })
     expect(sendSpy).toHaveBeenCalledWith('Open ' + WEB_FETCH_URL + ' with the browser tool.')
   })
-
 
   it('renders persisted knowledge-base deep research cards with workflow and source artifacts', async () => {
     const deepResearchBlock = makeTypelessBlock({
@@ -964,11 +986,11 @@ describe('ChatView streaming card chain integration', () => {
     expect(wrapper.text()).toContain('Need delegated acts publication date')
   })
 
-
   it('opens the app sidebar from mobile chat view when the global header is hidden', async () => {
     Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
     Object.defineProperty(window.navigator, 'userAgent', {
-      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      value:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
       configurable: true,
     })
     Object.defineProperty(window.navigator, 'platform', { value: 'iPhone', configurable: true })
@@ -1002,12 +1024,13 @@ describe('ChatView streaming card chain integration', () => {
 
     await settleView()
 
-    const globalNavButton = wrapper.findAll('button').find((button) => button.attributes('title') === i18n.global.t('nav.expandSidebar'))
+    const globalNavButton = wrapper
+      .findAll('button')
+      .find((button) => button.attributes('title') === i18n.global.t('nav.expandSidebar'))
     expect(globalNavButton?.exists()).toBe(true)
 
     await globalNavButton!.trigger('click')
 
     expect(toggleAppSidebar).toHaveBeenCalledTimes(1)
   })
-
 })

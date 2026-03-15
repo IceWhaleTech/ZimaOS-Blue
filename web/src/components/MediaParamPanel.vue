@@ -33,12 +33,18 @@ const categoryLabel = computed(() => {
 
 const categoryIcon = computed(() => {
   switch (props.intent.category) {
-    case 't2i': return '🎨'
-    case 't2v': return '🎬'
-    case 'i2v': return '🎞️'
-    case 'i2i': return '✏️'
-    case 'kf2v': return '🎥'
-    default: return '✨'
+    case 't2i':
+      return '🎨'
+    case 't2v':
+      return '🎬'
+    case 'i2v':
+      return '🎞️'
+    case 'i2i':
+      return '✏️'
+    case 'kf2v':
+      return '🎥'
+    default:
+      return '✨'
   }
 })
 
@@ -48,11 +54,25 @@ function onModelChange(e: Event) {
 </script>
 
 <template>
-  <div class="mpp" role="region" :aria-label="ambiguous ? t('media.ambiguousPrompt') : t('media.mediaDetected')">
+  <div
+    class="mpp"
+    role="region"
+    :aria-label="ambiguous ? t('media.ambiguousPrompt') : t('media.mediaDetected')"
+  >
     <!-- Close button -->
     <button class="mpp-close" @click="emit('close')" :aria-label="t('common.close')">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
       </svg>
     </button>
 
@@ -97,10 +117,7 @@ function onModelChange(e: Event) {
 
       <!-- Category toggle when alternative exists (e.g. i2v ↔ kf2v) -->
       <div v-if="intent.alternative_category" class="mpp-category-toggle">
-        <button
-          class="mpp-cat-btn active"
-          :disabled="generating"
-        >
+        <button class="mpp-cat-btn active" :disabled="generating">
           {{ translateMediaCategory(intent.category) }}
         </button>
         <button
@@ -146,8 +163,25 @@ function onModelChange(e: Event) {
           :aria-busy="generating"
         >
           <svg v-if="generating" class="mpp-spinner" width="14" height="14" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.2" />
-            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="40 23" />
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              opacity="0.2"
+            />
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-dasharray="40 23"
+            />
           </svg>
           {{ generating ? t('media.generating') : t('media.generate') }}
         </button>
@@ -169,15 +203,21 @@ function onModelChange(e: Event) {
 }
 
 :root.dark .mpp,
-[data-theme="dark"] .mpp {
+[data-theme='dark'] .mpp {
   background: #1e293b;
   border-color: #334155;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 @keyframes mpp-slide-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Close button */
@@ -201,7 +241,7 @@ function onModelChange(e: Event) {
   background: var(--color-bg-hover, #f3f4f6);
 }
 :root.dark .mpp-close:hover,
-[data-theme="dark"] .mpp-close:hover {
+[data-theme='dark'] .mpp-close:hover {
   background: #334155;
   color: #e2e8f0;
 }
@@ -227,7 +267,7 @@ function onModelChange(e: Event) {
   flex-shrink: 0;
 }
 :root.dark .mpp-icon,
-[data-theme="dark"] .mpp-icon {
+[data-theme='dark'] .mpp-icon {
   background: linear-gradient(135deg, #312e81, #1e3a5f);
 }
 
@@ -238,7 +278,7 @@ function onModelChange(e: Event) {
   color: #d97706;
 }
 :root.dark .mpp-icon-warn,
-[data-theme="dark"] .mpp-icon-warn {
+[data-theme='dark'] .mpp-icon-warn {
   background: linear-gradient(135deg, #78350f, #7f1d1d);
   color: #fbbf24;
 }
@@ -275,7 +315,7 @@ function onModelChange(e: Event) {
   color: var(--color-text-primary, #374151);
 }
 :root.dark .mpp-tag,
-[data-theme="dark"] .mpp-tag {
+[data-theme='dark'] .mpp-tag {
   background: #334155;
 }
 
@@ -302,7 +342,7 @@ function onModelChange(e: Event) {
   word-break: break-word;
 }
 :root.dark .mpp-prompt-text,
-[data-theme="dark"] .mpp-prompt-text {
+[data-theme='dark'] .mpp-prompt-text {
   background: #0f172a;
   border-color: #334155;
 }
@@ -338,7 +378,7 @@ function onModelChange(e: Event) {
   box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.15);
 }
 :root.dark .mpp-select,
-[data-theme="dark"] .mpp-select {
+[data-theme='dark'] .mpp-select {
   background: #0f172a;
   border-color: #334155;
   color: #e2e8f0;
@@ -395,12 +435,12 @@ function onModelChange(e: Event) {
   border-color: var(--color-text-tertiary, #9ca3af);
 }
 :root.dark .mpp-btn-secondary,
-[data-theme="dark"] .mpp-btn-secondary {
+[data-theme='dark'] .mpp-btn-secondary {
   border-color: #475569;
   color: #94a3b8;
 }
 :root.dark .mpp-btn-secondary:hover,
-[data-theme="dark"] .mpp-btn-secondary:hover {
+[data-theme='dark'] .mpp-btn-secondary:hover {
   background: #334155;
   color: #e2e8f0;
 }
@@ -410,8 +450,12 @@ function onModelChange(e: Event) {
 }
 
 @keyframes mpp-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Category toggle */
@@ -452,12 +496,12 @@ function onModelChange(e: Event) {
   cursor: not-allowed;
 }
 :root.dark .mpp-cat-btn,
-[data-theme="dark"] .mpp-cat-btn {
+[data-theme='dark'] .mpp-cat-btn {
   border-color: #475569;
   color: #94a3b8;
 }
 :root.dark .mpp-cat-btn.active,
-[data-theme="dark"] .mpp-cat-btn.active {
+[data-theme='dark'] .mpp-cat-btn.active {
   border-color: #818cf8;
   background: rgba(129, 140, 248, 0.12);
   color: #a5b4fc;

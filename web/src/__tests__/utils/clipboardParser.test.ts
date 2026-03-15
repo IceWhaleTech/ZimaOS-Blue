@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { getUrlProbability, getTokenProbability, parseClipboardData, parseClipboardFields } from '@/utils/clipboardParser'
+import {
+  getUrlProbability,
+  getTokenProbability,
+  parseClipboardData,
+  parseClipboardFields,
+} from '@/utils/clipboardParser'
 
 describe('Clipboard Parser', () => {
   describe('getUrlProbability', () => {
@@ -36,7 +41,9 @@ describe('Clipboard Parser', () => {
 
   describe('getTokenProbability', () => {
     it('should return high probability for OpenAI keys', () => {
-      expect(getTokenProbability('sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE')).toBeGreaterThan(0.7)
+      expect(
+        getTokenProbability('sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE')
+      ).toBeGreaterThan(0.7)
       expect(getTokenProbability('sk-proj-abc123def456')).toBeGreaterThan(0.7)
     })
 
@@ -46,7 +53,9 @@ describe('Clipboard Parser', () => {
     })
 
     it('should return high probability for Slack tokens', () => {
-      expect(getTokenProbability('xoxb-180789012-1807890123-abcdefghijklmnopqrstuvwx')).toBeGreaterThan(0.7)
+      expect(
+        getTokenProbability('xoxb-180789012-1807890123-abcdefghijklmnopqrstuvwx')
+      ).toBeGreaterThan(0.7)
     })
 
     it('should return moderate probability for long alphanumeric strings', () => {
@@ -55,7 +64,9 @@ describe('Clipboard Parser', () => {
 
     it('should return high probability for hex strings (MD5/SHA)', () => {
       expect(getTokenProbability('d41d8cd98f00b204e9800998ecf8427e')).toBeGreaterThan(0.5) // MD5
-      expect(getTokenProbability('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')).toBeGreaterThan(0.5) // SHA256
+      expect(
+        getTokenProbability('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+      ).toBeGreaterThan(0.5) // SHA256
     })
 
     it('should return low probability for URLs', () => {
@@ -187,7 +198,7 @@ url: 'https://api.example.com'`
       })
 
       it('should handle Windows line endings', () => {
-        const data = "api_key: sk-abc123\r\nurl: https://api.example.com\r\n"
+        const data = 'api_key: sk-abc123\r\nurl: https://api.example.com\r\n'
         const result = parseClipboardData(data)
         expect(result['api_key']).toBe('sk-abc123')
         expect(result['url']).toBe('https://api.example.com')
@@ -352,7 +363,7 @@ tok_3\ttok_4\ttok_5`
       })
 
       it('should handle Windows line endings', () => {
-        const data = "tok_a\r\ntok_b\r\ntok_c"
+        const data = 'tok_a\r\ntok_b\r\ntok_c'
         const result = parseClipboardFields(data)
         expect(result).toEqual(['tok_a', 'tok_b', 'tok_c'])
       })

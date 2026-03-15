@@ -51,14 +51,23 @@ export function getTunnelProviders() {
 /**
  * Start remote access tunnel
  */
-export function startRemoteAccess(provider?: string, port?: number, authtoken?: string, cloudflareToken?: string, ngrokDomain?: string) {
-  return api.post<{ success: boolean; message: string; tunnel?: TunnelStatus; provider?: string }>('/tunnel/start', {
-    provider: provider || 'auto',
-    port: port || 80,
-    ngrok_authtoken: authtoken,
-    ngrok_domain: ngrokDomain,
-    cloudflare_token: cloudflareToken
-  })
+export function startRemoteAccess(
+  provider?: string,
+  port?: number,
+  authtoken?: string,
+  cloudflareToken?: string,
+  ngrokDomain?: string
+) {
+  return api.post<{ success: boolean; message: string; tunnel?: TunnelStatus; provider?: string }>(
+    '/tunnel/start',
+    {
+      provider: provider || 'auto',
+      port: port || 80,
+      ngrok_authtoken: authtoken,
+      ngrok_domain: ngrokDomain,
+      cloudflare_token: cloudflareToken,
+    }
+  )
 }
 
 /**
@@ -141,4 +150,3 @@ export function getRemoteAccessLogs(limit = 50, offset = 0) {
     offset: number
   }>('/tunnel/logs', { params: { limit, offset } })
 }
-

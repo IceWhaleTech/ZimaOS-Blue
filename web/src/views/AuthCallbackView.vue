@@ -81,7 +81,9 @@ function goToLogin() {
     <div class="max-w-md w-full text-center">
       <!-- Loading State -->
       <div v-if="status === 'loading'" class="space-y-6">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-700 dark:bg-gray-500">
+        <div
+          class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-700 dark:bg-gray-500"
+        >
           <svg
             class="animate-spin h-8 w-8 text-white"
             xmlns="http://www.w3.org/2000/svg"
@@ -104,7 +106,9 @@ function goToLogin() {
           </svg>
         </div>
         <div>
-          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('auth.completingSignIn') }}</h2>
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+            {{ t('auth.completingSignIn') }}
+          </h2>
           <p class="text-gray-500 dark:text-gray-400 mt-2">{{ t('auth.verifyingCredentials') }}</p>
         </div>
       </div>
@@ -128,7 +132,9 @@ function goToLogin() {
           </svg>
         </div>
         <div>
-          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('auth.signInSuccessful') }}</h2>
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+            {{ t('auth.signInSuccessful') }}
+          </h2>
           <p class="text-gray-500 dark:text-gray-400 mt-2">{{ t('auth.redirecting') }}</p>
         </div>
       </div>
@@ -152,7 +158,9 @@ function goToLogin() {
           </svg>
         </div>
         <div>
-          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('auth.signInFailed') }}</h2>
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+            {{ t('auth.signInFailed') }}
+          </h2>
           <p class="text-gray-500 dark:text-gray-400 mt-2">{{ errorMessage }}</p>
         </div>
         <button

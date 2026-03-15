@@ -191,7 +191,8 @@ export function useTauri() {
 
   async function resolveLocalFileDownloadURL(path: string): Promise<string | null> {
     try {
-      const data = await systemApi.resolveLocalFile(path)
+      const response = await systemApi.resolveLocalFile(path)
+      const data = response.data
       const downloadURL = String(data.download_url || '').trim()
       return downloadURL || null
     } catch (e) {

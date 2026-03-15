@@ -13,7 +13,15 @@ export interface ModelParams {
 
 export type ProviderLocation = 'cloud' | 'local'
 export type RoutingMode = 'auto' | 'cloud' | 'local'
-export type APIFormat = 'openai' | 'responses' | 'anthropic' | 'ollama' | 'google' | 'cloudcode' | 'copilot' | ''
+export type APIFormat =
+  | 'openai'
+  | 'responses'
+  | 'anthropic'
+  | 'ollama'
+  | 'google'
+  | 'cloudcode'
+  | 'copilot'
+  | ''
 
 export interface Provider {
   id: string
@@ -364,32 +372,26 @@ export interface FailoverConfig {
 // API functions
 export const providerPoolApi = {
   // Provider operations
-  listProviders: () =>
-    api.get<{ providers: Provider[]; total: number }>('/providers'),
+  listProviders: () => api.get<{ providers: Provider[]; total: number }>('/providers'),
 
   getProvider: (id: string) =>
     api.get<{ provider: Provider; health?: HealthCheckResult }>(`/providers/${id}`),
 
-  addProvider: (provider: Partial<Provider>) =>
-    api.post<Provider>('/providers', provider),
+  addProvider: (provider: Partial<Provider>) => api.post<Provider>('/providers', provider),
 
   updateProvider: (id: string, updates: Partial<Provider>) =>
     api.put<Provider>(`/providers/${id}`, updates),
 
-  deleteProvider: (id: string) =>
-    api.delete(`/providers/${id}`),
+  deleteProvider: (id: string) => api.delete(`/providers/${id}`),
 
-  enableProvider: (id: string) =>
-    api.post<{ status: string }>(`/providers/${id}/enable`),
+  enableProvider: (id: string) => api.post<{ status: string }>(`/providers/${id}/enable`),
 
-  disableProvider: (id: string) =>
-    api.post<{ status: string }>(`/providers/${id}/disable`),
+  disableProvider: (id: string) => api.post<{ status: string }>(`/providers/${id}/disable`),
 
   testProvider: (id: string, keyId?: string) =>
     api.post<HealthCheckResult>(`/providers/${id}/test`, keyId ? { key_id: keyId } : {}),
 
-  clearError: (id: string) =>
-    api.post<{ status: string }>(`/providers/${id}/clear-error`),
+  clearError: (id: string) => api.post<{ status: string }>(`/providers/${id}/clear-error`),
 
   verifyProviderCandidate: (payload: VerifyProviderCandidateRequest) =>
     api.post<ProviderVerificationResult>('/providers/verify', payload),
@@ -401,16 +403,19 @@ export const providerPoolApi = {
     api.put<{ message: string; model_params: ModelParams }>(`/providers/${id}/params`, params),
 
   updateAllowedModels: (id: string, allowedModels: string[]) =>
-    api.put<{ message: string; allowed_models: string[] }>(`/providers/${id}/allowed-models`, { allowed_models: allowedModels }),
+    api.put<{ message: string; allowed_models: string[] }>(`/providers/${id}/allowed-models`, {
+      allowed_models: allowedModels,
+    }),
 
   detectCapabilities: (id: string) =>
-    api.post<{ message: string; detected_max_tokens?: number; detected_at?: number }>(`/providers/${id}/detect`),
+    api.post<{ message: string; detected_max_tokens?: number; detected_at?: number }>(
+      `/providers/${id}/detect`
+    ),
 
   updateProviderIcon: (id: string, icon: string) =>
     api.put<{ message: string; custom_icon: string }>(`/providers/${id}/icon`, { icon }),
 
-  deleteProviderIcon: (id: string) =>
-    api.delete(`/providers/${id}/icon`),
+  deleteProviderIcon: (id: string) => api.delete(`/providers/${id}/icon`),
 
   // Model operations
   listProviderModels: (providerId: string) =>
@@ -425,15 +430,16 @@ export const providerPoolApi = {
       { concurrency }
     ),
 
-  listAllModels: () =>
-    api.get<{ models: Model[]; total: number }>('/models'),
+  listAllModels: () => api.get<{ models: Model[]; total: number }>('/models'),
 
   // Per-key model operations
   listKeyModels: (providerId: string, keyId: string) =>
     api.get<{ models: Model[]; total: number }>(`/providers/${providerId}/keys/${keyId}/models`),
 
   fetchKeyModels: (providerId: string, keyId: string) =>
-    api.post<{ models: Model[]; total: number }>(`/providers/${providerId}/keys/${keyId}/models/fetch`),
+    api.post<{ models: Model[]; total: number }>(
+      `/providers/${providerId}/keys/${keyId}/models/fetch`
+    ),
 
   // API Key operations
   addAPIKey: (providerId: string, key: string, label?: string) =>
@@ -455,15 +461,13 @@ export const providerPoolApi = {
     ),
 
   // Trial quota
-  getTrialQuota: () =>
-    api.get<TrialQuotaStatus>('/providers/trial/quota'),
+  getTrialQuota: () => api.get<TrialQuotaStatus>('/providers/trial/quota'),
 
   // IDE operations
   scanIDEs: () =>
     api.get<{ ides: IDEInfo[]; scan_results: IDEScanResult[]; total: number }>('/ide/scan'),
 
-  connectIDE: (ideType: string) =>
-    api.post<IDEInfo>(`/ide/${ideType}/connect`),
+  connectIDE: (ideType: string) => api.post<IDEInfo>(`/ide/${ideType}/connect`),
 
   getImportableConfigs: () =>
     api.get<{ configs: ImportConfig[]; total: number }>('/ide/importable'),
@@ -472,17 +476,17 @@ export const providerPoolApi = {
     api.post<{ message: string; provider_id: string; ide_type: string }>(`/ide/import/${ideType}`),
 
   importExtensionConfig: (ideType: string) =>
-    api.post<{ message: string; providers: string[]; ide_type: string }>(`/ide/import-ext/${ideType}`),
+    api.post<{ message: string; providers: string[]; ide_type: string }>(
+      `/ide/import-ext/${ideType}`
+    ),
 
   importFromCCSwitch: (output: string) =>
     api.post<{ config: ImportConfig; message: string }>('/ide/import-cc-switch', { output }),
 
-  getEnvHints: () =>
-    api.get<{ hints: EnvHint[] }>('/ide/env-hints'),
+  getEnvHints: () => api.get<{ hints: EnvHint[] }>('/ide/env-hints'),
 
   // Pricing operations
-  getPricingConfig: () =>
-    api.get<PricingConfig>('/pricing'),
+  getPricingConfig: () => api.get<PricingConfig>('/pricing'),
 
   setDefaultPricing: (inputPrice: number, outputPrice: number, cachePrice: number) =>
     api.put<{ message: string; input_price: number; output_price: number; cache_price: number }>(
@@ -490,14 +494,22 @@ export const providerPoolApi = {
       { input_price: inputPrice, output_price: outputPrice, cache_price: cachePrice }
     ),
 
-  listModelPricing: () =>
-    api.get<{ pricing: ModelPricing[]; total: number }>('/pricing/models'),
+  listModelPricing: () => api.get<{ pricing: ModelPricing[]; total: number }>('/pricing/models'),
 
-  setModelPricing: (modelId: string, pricing: { provider_id?: string; input_price: number; output_price: number; cache_price?: number }) =>
-    api.put<ModelPricing>(`/pricing/models/${encodeURIComponent(modelId)}`, pricing),
+  setModelPricing: (
+    modelId: string,
+    pricing: {
+      provider_id?: string
+      input_price: number
+      output_price: number
+      cache_price?: number
+    }
+  ) => api.put<ModelPricing>(`/pricing/models/${encodeURIComponent(modelId)}`, pricing),
 
   removeModelPricing: (modelId: string, providerId?: string) =>
-    api.delete(`/pricing/models/${encodeURIComponent(modelId)}`, { params: { provider_id: providerId } }),
+    api.delete(`/pricing/models/${encodeURIComponent(modelId)}`, {
+      params: { provider_id: providerId },
+    }),
 
   recalculateCosts: (period?: string) =>
     api.post<{
@@ -510,37 +522,36 @@ export const providerPoolApi = {
     }>('/pricing/recalculate', null, { params: { period } }),
 
   // Failover operations
-  getFailoverMetrics: () =>
-    api.get<FailoverMetrics>('/proxy/failover/metrics'),
+  getFailoverMetrics: () => api.get<FailoverMetrics>('/proxy/failover/metrics'),
 
-  getFailoverConfig: () =>
-    api.get<FailoverConfig>('/proxy/failover/config'),
+  getFailoverConfig: () => api.get<FailoverConfig>('/proxy/failover/config'),
 
   updateFailoverConfig: (config: Partial<FailoverConfig>) =>
     api.put<FailoverConfig>('/proxy/failover/config', config),
 
-  resetCircuitBreakers: () =>
-    api.post<{ message: string }>('/proxy/failover/reset'),
+  resetCircuitBreakers: () => api.post<{ message: string }>('/proxy/failover/reset'),
 
   getCircuitBreakerStatus: () =>
-    api.get<Record<string, { state: string; failures: number; last_failure?: string }>>('/proxy/failover/breakers'),
+    api.get<Record<string, { state: string; failures: number; last_failure?: string }>>(
+      '/proxy/failover/breakers'
+    ),
 
   // Config operations
-  getRoutingMode: () =>
-    api.get<{ mode: RoutingMode }>('/config/routing-mode'),
+  getRoutingMode: () => api.get<{ mode: RoutingMode }>('/config/routing-mode'),
 
   setRoutingMode: (mode: RoutingMode) =>
     api.put<{ mode: RoutingMode }>('/config/routing-mode', { mode }),
 
-  getLocationStats: () =>
-    api.get<LocationStats>('/config/location-stats'),
+  getLocationStats: () => api.get<LocationStats>('/config/location-stats'),
 
   // OAuth operations
   startOAuth: (providerId: string) =>
     api.post<OAuthStartResult>(`/providers/${providerId}/oauth/start`),
 
   completeDeviceFlow: (providerId: string, deviceCode: string) =>
-    api.post<{ message: string }>(`/providers/${providerId}/oauth/device-complete`, { device_code: deviceCode }),
+    api.post<{ message: string }>(`/providers/${providerId}/oauth/device-complete`, {
+      device_code: deviceCode,
+    }),
 
   disconnectOAuth: (providerId: string, accountId?: string) =>
     accountId
@@ -559,8 +570,7 @@ export const providerPoolApi = {
   importOAuthToken: (ideType: string) =>
     api.post<{ message: string; provider_id: string }>(`/ide/import-oauth/${ideType}`),
 
-  scanOAuthTokens: () =>
-    api.get<{ results: OAuthScanResult[] }>('/ide/scan-oauth'),
+  scanOAuthTokens: () => api.get<{ results: OAuthScanResult[] }>('/ide/scan-oauth'),
 }
 
 export default providerPoolApi

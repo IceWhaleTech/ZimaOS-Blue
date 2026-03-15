@@ -92,7 +92,9 @@ export const useAuthStore = defineStore('auth', () => {
       return true
     } catch (e) {
       // Import getErrorMessage at the top if not already imported
-      const axiosError = e as { response?: { data?: { error?: string; message?: string }; status?: number } }
+      const axiosError = e as {
+        response?: { data?: { error?: string; message?: string }; status?: number }
+      }
 
       // Extract error message from response
       if (axiosError.response?.data?.message) {

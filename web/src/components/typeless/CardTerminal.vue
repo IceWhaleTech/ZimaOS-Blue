@@ -87,13 +87,13 @@ function parseAnsiToSegments(text: string): ParsedSegment[] {
         segments.push({
           text: segmentText,
           classes: [...currentClasses],
-          isReverse
+          isReverse,
         })
       }
     }
 
     // Parse the escape codes
-    const codes = (match[1] || '').split(';').map(c => parseInt(c, 10) || 0)
+    const codes = (match[1] || '').split(';').map((c) => parseInt(c, 10) || 0)
 
     for (const code of codes) {
       if (code === 0) {
@@ -107,7 +107,7 @@ function parseAnsiToSegments(text: string): ParsedSegment[] {
       } else if (ansiColors[code]) {
         // Remove existing color class of same type (fg or bg)
         const isBg = code >= 40
-        currentClasses = currentClasses.filter(c => {
+        currentClasses = currentClasses.filter((c) => {
           if (isBg) return !c.startsWith('bg-')
           return !c.startsWith('text-')
         })
@@ -127,7 +127,7 @@ function parseAnsiToSegments(text: string): ParsedSegment[] {
     segments.push({
       text: text.slice(lastIndex),
       classes: [...currentClasses],
-      isReverse
+      isReverse,
     })
   }
 
@@ -142,7 +142,7 @@ function stripAnsi(text: string): string {
 
 const parsedLines = computed(() => {
   const lines = props.card.content.split('\n')
-  return lines.map(line => parseAnsiToSegments(line))
+  return lines.map((line) => parseAnsiToSegments(line))
 })
 
 const plainText = computed(() => stripAnsi(props.card.content))
@@ -190,16 +190,21 @@ const themeClasses = computed(() => {
           {{ card.title }}
         </span>
         <!-- Terminal badge -->
-        <span class="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">
-          Terminal
-        </span>
+        <span class="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300"> Terminal </span>
       </div>
       <!-- Copy button -->
       <button
         class="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
         @click="copyContent"
       >
-        <svg v-if="!copied" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          v-if="!copied"
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -207,20 +212,30 @@ const themeClasses = computed(() => {
             d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
           />
         </svg>
-        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+        <svg
+          v-else
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-4 w-4 text-green-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M5 13l4 4L19 7"
+          />
         </svg>
         <span>{{ copied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy') }}</span>
       </button>
     </div>
 
     <!-- Terminal content -->
-    <div
-      class="overflow-auto"
-      :class="themeClasses"
-      :style="containerStyle"
-    >
-      <pre class="p-4 text-sm leading-relaxed whitespace-pre-wrap break-all"><template v-for="(line, lineIndex) in parsedLines" :key="lineIndex"><span v-if="card.showPrompt && card.prompt && lineIndex === 0" class="text-green-400">{{ card.prompt }}</span><template v-for="(segment, segIndex) in line" :key="segIndex"><span
+    <div class="overflow-auto" :class="themeClasses" :style="containerStyle">
+      <pre
+        class="p-4 text-sm leading-relaxed whitespace-pre-wrap break-all"
+      ><template v-for="(line, lineIndex) in parsedLines" :key="lineIndex"><span v-if="card.showPrompt && card.prompt && lineIndex === 0" class="text-green-400">{{ card.prompt }}</span><template v-for="(segment, segIndex) in line" :key="segIndex"><span
             :class="[
               ...segment.classes,
               segment.isReverse ? 'ansi-reverse' : ''
