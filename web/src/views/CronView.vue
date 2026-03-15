@@ -55,11 +55,6 @@ const cronPresets = computed(() => [
 
 const enabledJobsCount = computed(() => jobs.value.filter((job) => job.enabled).length)
 const disabledJobsCount = computed(() => jobs.value.length - enabledJobsCount.value)
-const commandJobsCount = computed(
-  () => jobs.value.filter((job) => job.handler === 'command').length
-)
-const httpJobsCount = computed(() => jobs.value.filter((job) => job.handler === 'http').length)
-
 const sortedJobs = computed(() =>
   [...jobs.value].sort((left, right) => {
     const enabledDiff = Number(right.enabled) - Number(left.enabled)
@@ -88,61 +83,6 @@ const nextUpcomingValue = computed(() => {
 
   return jobs.value.length === 0 ? t('cron.noJobs') : t('cron.calculating')
 })
-
-const activeRate = computed(() => {
-  if (jobs.value.length === 0) return 0
-  return Math.round((enabledJobsCount.value / jobs.value.length) * 100)
-})
-
-const commandRate = computed(() => {
-  if (jobs.value.length === 0) return 0
-  return Math.round((commandJobsCount.value / jobs.value.length) * 100)
-})
-
-function padBarLevels(values: number[], fallback: number[]): number[] {
-  const out = values.slice(-8)
-  while (out.length < 8) {
-    out.unshift(fallback[out.length % fallback.length] ?? 42)
-  }
-  return out.slice(-8)
-}
-
-const upcomingBars = computed(() => {
-  const values = sortedJobs.value.slice(0, 8).map((job, index) => {
-    const base = job.next_run_at ? 44 : 24
-    const priority = index === 0 ? 18 : Math.max(0, 14 - index * 2)
-    return Math.min(82, base + priority + (job.enabled ? 10 : 0))
-  })
-  return padBarLevels(values, [52, 64, 44, 58, 40, 54, 36, 48])
-})
-
-const handlerBars = computed(() => {
-  const values = sortedJobs.value.slice(0, 8).map((job, index) => {
-    const isCommand = job.handler === 'command'
-    const base = isCommand ? 62 : 42
-    const enabledBoost = job.enabled ? 8 : -4
-    const stagger = Math.max(0, 8 - index)
-    return Math.min(84, Math.max(24, base + enabledBoost + stagger))
-  })
-  return padBarLevels(values, [60, 48, 66, 42, 58, 46, 70, 52])
-})
-
-function getJobVisualLevels(job: CronJob): number[] {
-  const base = job.enabled ? 40 : 24
-  const handlerBoost = job.handler === 'command' ? 10 : 2
-  const runBoost = Math.min(14, (job.run_count ?? 0) * 2)
-  const failPenalty = Math.min(16, (job.fail_count ?? 0) * 4)
-  const nextBoost = job.next_run_at ? 12 : 0
-  const pattern =
-    job.handler === 'http' ? [8, 16, 4, 12, 2, 10, 0, 6] : [10, 2, 16, 8, 14, 4, 12, 6]
-
-  return pattern.map((offset) => {
-    return Math.max(
-      20,
-      Math.min(84, base + handlerBoost + runBoost + nextBoost - failPenalty + offset)
-    )
-  })
-}
 
 onMounted(async () => {
   await loadJobs()
@@ -435,127 +375,8 @@ function getJobPreview(job: CronJob): string {
         </div>
       </section>
 
-      <section class="automation-overview-grid">
-        <article
-          class="dashboard-card-surface automation-overview-card automation-overview-card--ratio"
-        >
-          <div class="automation-overview-card__top">
-            <div class="dashboard-card-copy">
-              <p class="dashboard-card-label">{{ t('automation.stats.activeJobs') }}</p>
-              <p class="dashboard-card-subtitle mt-2">{{ enabledJobsCount }} / {{ jobs.length }}</p>
-            </div>
-            <span class="dashboard-card-more" aria-hidden="true">•••</span>
-          </div>
-
-          <div class="automation-overview-card__bottom">
-            <div class="dashboard-card-copy">
-              <p class="dashboard-card-value">{{ activeRate }}%</p>
-              <p class="dashboard-card-footnote">
-                {{ disabledJobsCount }} {{ t('cron.disabled') }}
-              </p>
-            </div>
-
-            <div class="automation-progress-ring" :style="{ '--ring-value': `${activeRate}%` }">
-              <span class="automation-progress-ring__core"></span>
-            </div>
-          </div>
-        </article>
-
-        <article
-          class="dashboard-card-surface automation-overview-card automation-overview-card--next"
-        >
-          <div class="automation-overview-card__top">
-            <div class="dashboard-card-copy">
-              <p class="dashboard-card-label">{{ t('cron.nextRun') }}</p>
-              <p class="dashboard-card-subtitle mt-2">
-                {{ nextUpcomingJob?.name ?? t('automation.tabs.cronDesc') }}
-              </p>
-            </div>
-            <span class="dashboard-card-more" aria-hidden="true">•••</span>
-          </div>
-
-          <div class="automation-overview-card__bottom">
-            <div class="dashboard-card-copy">
-              <p class="dashboard-card-value automation-overview-card__value--time">
-                {{ nextUpcomingValue }}
-              </p>
-              <p class="dashboard-card-footnote">
-                {{ enabledJobsCount }} {{ t('automation.stats.activeJobs') }}
-              </p>
-            </div>
-
-            <div class="dashboard-mini-bars automation-mini-bars">
-              <div
-                v-for="(level, index) in upcomingBars"
-                :key="`upcoming-${index}`"
-                class="dashboard-mini-bar"
-                :style="{ '--bar-level': `${level}%` }"
-              ></div>
-            </div>
-          </div>
-        </article>
-
-        <article
-          class="dashboard-card-surface automation-overview-card automation-overview-card--total"
-        >
-          <div class="automation-overview-card__top">
-            <div class="dashboard-card-copy">
-              <p class="dashboard-card-label">{{ t('automation.stats.totalJobs') }}</p>
-              <p class="dashboard-card-subtitle mt-2">{{ t('cron.handlers.command') }}</p>
-            </div>
-            <span class="dashboard-card-chip">{{ jobs.length }}</span>
-          </div>
-
-          <div class="automation-overview-card__bottom">
-            <div class="dashboard-card-copy">
-              <p class="dashboard-card-value">{{ jobs.length }}</p>
-              <p class="dashboard-card-footnote">
-                {{ commandJobsCount }} {{ t('cron.handlers.command') }}
-              </p>
-            </div>
-
-            <div class="dashboard-mini-bars automation-mini-bars automation-mini-bars--wide">
-              <div
-                v-for="(level, index) in handlerBars"
-                :key="`handler-${index}`"
-                class="dashboard-mini-bar"
-                :style="{ '--bar-level': `${level}%` }"
-              ></div>
-            </div>
-          </div>
-        </article>
-
-        <article
-          class="dashboard-card-surface automation-overview-card automation-overview-card--mix"
-        >
-          <div class="automation-overview-card__top">
-            <div class="dashboard-card-copy">
-              <p class="dashboard-card-label">{{ t('cron.handlers.http') }}</p>
-              <p class="dashboard-card-subtitle mt-2">{{ httpJobsCount }} / {{ jobs.length }}</p>
-            </div>
-            <span class="dashboard-card-more" aria-hidden="true">•••</span>
-          </div>
-
-          <div class="automation-overview-card__bottom">
-            <div class="dashboard-card-copy">
-              <p class="dashboard-card-value">{{ commandRate }}%</p>
-              <p class="dashboard-card-footnote">
-                {{ commandJobsCount }} {{ t('cron.handlers.command') }}
-              </p>
-            </div>
-
-            <div
-              class="automation-progress-ring automation-progress-ring--sky"
-              :style="{ '--ring-value': `${commandRate}%` }"
-            >
-              <span class="automation-progress-ring__core"></span>
-            </div>
-          </div>
-        </article>
-      </section>
-
       <section class="automation-shell">
-        <section class="dashboard-card-surface automation-library-card">
+        <section class="dashboard-card-surface automation-panel-card automation-library-card">
           <div class="automation-list-header">
             <div>
               <p class="dashboard-card-label">{{ t('automation.title') }}</p>
@@ -566,6 +387,13 @@ function getJobPreview(job: CronJob): string {
               <span class="automation-count-chip">{{ sortedJobs.length }}</span>
               <p class="automation-library-card__note">
                 {{ enabledJobsCount }} {{ t('automation.stats.activeJobs') }}
+                <span v-if="disabledJobsCount > 0">
+                  · {{ disabledJobsCount }} {{ t('cron.disabled') }}
+                </span>
+              </p>
+              <p class="automation-library-card__note">
+                {{ t('cron.nextRun') }}:
+                {{ nextUpcomingValue }}
               </p>
             </div>
           </div>
@@ -607,15 +435,13 @@ function getJobPreview(job: CronJob): string {
           <article
             v-for="job in sortedJobs"
             :key="job.id"
-            class="dashboard-card-surface automation-job-card"
+            class="dashboard-card-surface automation-panel-card automation-job-card"
           >
-            <div class="automation-job-topline">
-              <span class="dashboard-card-label">{{ getJobHandlerLabel(job.handler) }}</span>
-              <span class="dashboard-card-more" aria-hidden="true">•••</span>
-            </div>
-
             <div class="automation-job-main">
               <div class="automation-job-badges">
+                <span class="automation-badge automation-badge--handler">
+                  {{ getJobHandlerLabel(job.handler) }}
+                </span>
                 <span
                   class="automation-badge"
                   :class="job.enabled ? 'automation-badge--enabled' : 'automation-badge--disabled'"
@@ -640,48 +466,29 @@ function getJobPreview(job: CronJob): string {
               </p>
             </div>
 
-            <div class="automation-job-visual">
-              <div class="dashboard-card-copy">
-                <p class="automation-meta-label">{{ t('cron.nextRun') }}</p>
-                <p class="automation-job-highlight">{{ getNextRunText(job) }}</p>
-                <p class="automation-job-highlight-note">
+            <div class="automation-job-meta-grid">
+              <div class="dashboard-card-subsurface automation-meta-card">
+                <span class="automation-meta-label">{{ t('cron.schedule') }}</span>
+                <span class="automation-meta-value automation-meta-value--mono">
+                  {{ job.schedule }}
+                </span>
+              </div>
+              <div class="dashboard-card-subsurface automation-meta-card">
+                <span class="automation-meta-label">{{ t('cron.nextRun') }}</span>
+                <span class="automation-meta-value automation-meta-value--strong">
+                  {{ getNextRunText(job) }}
+                </span>
+              </div>
+              <div class="dashboard-card-subsurface automation-meta-card">
+                <span class="automation-meta-label">{{ t('cron.lastRun') }}</span>
+                <span class="automation-meta-value">
                   {{ job.last_run_at ? formatDate(job.last_run_at) : '-' }}
-                </p>
-              </div>
-
-              <div class="dashboard-mini-bars automation-job-bars">
-                <div
-                  v-for="(level, index) in getJobVisualLevels(job)"
-                  :key="`${job.id}-bar-${index}`"
-                  class="dashboard-mini-bar"
-                  :style="{ '--bar-level': `${level}%` }"
-                ></div>
-              </div>
-            </div>
-
-            <div class="dashboard-card-subsurface automation-job-meta-surface">
-              <div class="automation-meta-grid">
-                <div class="automation-meta-block automation-meta-block--schedule">
-                  <span class="automation-meta-label">{{ t('cron.schedule') }}</span>
-                  <span class="automation-meta-value automation-meta-value--mono">
-                    {{ job.schedule }}
-                  </span>
-                </div>
-                <div class="automation-meta-block">
-                  <span class="automation-meta-label">{{ t('cron.lastRun') }}</span>
-                  <span class="automation-meta-value">
-                    {{ job.last_run_at ? formatDate(job.last_run_at) : '-' }}
-                  </span>
-                </div>
-                <div class="automation-meta-block">
-                  <span class="automation-meta-label">{{ t('automation.stats.totalJobs') }}</span>
-                  <span class="automation-meta-value">{{ job.run_count ?? 0 }} runs</span>
-                </div>
+                </span>
               </div>
             </div>
 
             <div class="automation-job-footer">
-              <code class="automation-schedule-chip">{{ job.schedule }}</code>
+              <p class="automation-job-footnote">{{ job.run_count ?? 0 }} runs</p>
 
               <div class="automation-job-actions">
                 <button
@@ -1106,13 +913,6 @@ function getJobPreview(job: CronJob): string {
   bottom: -1.25rem;
 }
 
-.automation-overview-grid {
-  display: grid;
-  gap: 0.88rem;
-  grid-template-columns: repeat(1, minmax(0, 1fr));
-  margin-bottom: 0.88rem;
-}
-
 .automation-hero {
   position: relative;
   display: flex;
@@ -1124,62 +924,6 @@ function getJobPreview(job: CronJob): string {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-}
-
-.automation-overview-card {
-  position: relative;
-  overflow: hidden;
-  min-height: 13rem;
-  padding: 1rem 1.05rem;
-}
-
-.automation-overview-card::before {
-  content: none;
-  position: absolute;
-  inset: auto auto -2rem -1.5rem;
-  width: 7rem;
-  height: 7rem;
-  border-radius: 999px;
-  opacity: 0.16;
-  background: currentColor;
-  filter: blur(24px);
-  pointer-events: none;
-}
-
-.automation-overview-card__top,
-.automation-overview-card__bottom {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.8rem;
-}
-
-.automation-overview-card__bottom {
-  align-items: flex-end;
-  margin-top: 1.2rem;
-}
-
-.automation-overview-card--intro {
-  color: #2563eb;
-  min-height: 14rem;
-}
-
-.automation-overview-card--ratio {
-  color: #047857;
-}
-
-.automation-overview-card--next {
-  color: #b45309;
-}
-
-.automation-overview-card--total {
-  color: #0f172a;
-}
-
-.automation-overview-card--mix {
-  color: #0369a1;
 }
 
 .automation-copy {
@@ -1357,43 +1101,6 @@ function getJobPreview(job: CronJob): string {
   box-shadow: none;
 }
 
-.automation-overview-card__value--time {
-  font-size: clamp(1.04rem, 0.6vw + 0.92rem, 1.34rem);
-  line-height: 1.38;
-}
-
-.automation-mini-bars {
-  width: clamp(5.8rem, 20vw, 9rem);
-}
-
-.automation-mini-bars--wide {
-  width: clamp(8rem, 26vw, 12rem);
-}
-
-.automation-progress-ring {
-  --ring-value: 0%;
-  width: 4.8rem;
-  height: 4.8rem;
-  border-radius: 999px;
-  position: relative;
-  flex-shrink: 0;
-  border: 0.42rem solid #2563eb;
-  background: rgba(226, 232, 240, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
-}
-
-.automation-progress-ring--sky {
-  border-color: #0284c7;
-}
-
-.automation-progress-ring__core {
-  position: absolute;
-  inset: 0.72rem;
-  border-radius: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.92);
-  background: rgba(255, 255, 255, 0.92);
-}
-
 .automation-shell {
   position: relative;
   z-index: 1;
@@ -1402,7 +1109,7 @@ function getJobPreview(job: CronJob): string {
   gap: 0.88rem;
 }
 
-.automation-library-card,
+.automation-panel-card,
 .automation-state-card {
   padding: 1.05rem;
 }
@@ -1427,7 +1134,6 @@ function getJobPreview(job: CronJob): string {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.8rem;
-  margin-bottom: 1rem;
 }
 
 .automation-section-title {
@@ -1503,23 +1209,14 @@ function getJobPreview(job: CronJob): string {
 .automation-job-card {
   display: flex;
   flex-direction: column;
-  gap: 0.95rem;
-  padding: 1rem;
-  min-height: 20rem;
-}
-
-.automation-job-topline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.8rem;
+  gap: 0.9rem;
 }
 
 .automation-job-main {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.3rem;
 }
 
 .automation-job-badges {
@@ -1567,6 +1264,13 @@ function getJobPreview(job: CronJob): string {
   line-height: 1.3;
 }
 
+.automation-job-footnote {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
 .automation-job-description {
   margin: 0.42rem 0 0;
   color: #6b7280;
@@ -1589,47 +1293,18 @@ function getJobPreview(job: CronJob): string {
   font-size: 0.8rem;
 }
 
-.automation-job-visual {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 0.9rem;
-}
-
-.automation-job-highlight {
-  margin: 0.4rem 0 0;
-  color: #0f172a;
-  font-size: 1.02rem;
-  line-height: 1.4;
-  font-weight: 650;
-  word-break: break-word;
-}
-
-.automation-job-highlight-note {
-  margin: 0.38rem 0 0;
-  color: #64748b;
-  font-size: 0.78rem;
-  line-height: 1.45;
-}
-
-.automation-job-bars {
-  width: clamp(6.5rem, 22vw, 9.4rem);
-}
-
-.automation-job-meta-surface {
-  padding: 0.85rem 0.9rem;
-}
-
-.automation-meta-grid {
+.automation-job-meta-grid {
   display: grid;
   gap: 0.78rem;
   grid-template-columns: repeat(1, minmax(0, 1fr));
 }
 
-.automation-meta-block {
+.automation-meta-card {
   display: flex;
   flex-direction: column;
-  gap: 0.34rem;
+  gap: 0.38rem;
+  min-width: 0;
+  padding: 0.85rem 0.9rem;
 }
 
 .automation-meta-label {
@@ -1647,6 +1322,11 @@ function getJobPreview(job: CronJob): string {
   word-break: break-word;
 }
 
+.automation-meta-value--strong {
+  color: #0f172a;
+  font-weight: 650;
+}
+
 .automation-meta-value--mono {
   font-family:
     ui-monospace,
@@ -1658,21 +1338,6 @@ function getJobPreview(job: CronJob): string {
     Courier New,
     monospace;
   font-size: 0.78rem;
-}
-
-.automation-schedule-chip {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  max-width: 100%;
-  padding: 0.46rem 0.72rem;
-  border-radius: 0.9rem;
-  background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
-  font-size: 0.82rem;
-  line-height: 1.4;
-  white-space: nowrap;
-  overflow-x: auto;
 }
 
 .automation-job-footer {
@@ -1953,9 +1618,6 @@ html.dark .automation-empty-title,
 :root.dark .automation-job-name,
 [data-theme='dark'] .automation-job-name,
 html.dark .automation-job-name,
-:root.dark .automation-job-highlight,
-[data-theme='dark'] .automation-job-highlight,
-html.dark .automation-job-highlight,
 :root.dark .automation-modal-title,
 [data-theme='dark'] .automation-modal-title,
 html.dark .automation-modal-title,
@@ -1989,9 +1651,9 @@ html.dark .automation-library-card__note,
 :root.dark .automation-hint,
 [data-theme='dark'] .automation-hint,
 html.dark .automation-hint,
-:root.dark .automation-job-highlight-note,
-[data-theme='dark'] .automation-job-highlight-note,
-html.dark .automation-job-highlight-note {
+:root.dark .automation-job-footnote,
+[data-theme='dark'] .automation-job-footnote,
+html.dark .automation-job-footnote {
   color: rgb(148 163 184);
 }
 
@@ -2112,33 +1774,6 @@ html.dark .automation-count-chip {
   background: rgba(148, 163, 184, 0.12);
 }
 
-:root.dark .automation-progress-ring,
-[data-theme='dark'] .automation-progress-ring,
-html.dark .automation-progress-ring {
-  border-color: #60a5fa;
-  background: rgba(71, 85, 105, 0.78);
-}
-
-:root.dark .automation-progress-ring--sky,
-[data-theme='dark'] .automation-progress-ring--sky,
-html.dark .automation-progress-ring--sky {
-  border-color: #38bdf8;
-}
-
-:root.dark .automation-progress-ring__core,
-[data-theme='dark'] .automation-progress-ring__core,
-html.dark .automation-progress-ring__core {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(15, 23, 42, 0.92);
-}
-
-:root.dark .automation-schedule-chip,
-[data-theme='dark'] .automation-schedule-chip,
-html.dark .automation-schedule-chip {
-  background: rgba(59, 130, 246, 0.14);
-  color: rgb(147 197 253);
-}
-
 :root.dark .automation-error-surface,
 [data-theme='dark'] .automation-error-surface,
 html.dark .automation-error-surface {
@@ -2162,31 +1797,18 @@ html.dark .automation-modal-footer {
 }
 
 @media (min-width: 760px) {
-  .automation-overview-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .automation-job-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .automation-meta-grid {
-    grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1100px) {
-  .automation-overview-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .automation-job-meta-grid {
+    grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 820px) {
   .automation-hero,
-  .automation-overview-card__bottom,
-  .automation-job-visual,
   .automation-job-footer,
-  .automation-job-card,
   .automation-list-header,
   .automation-form-actions {
     flex-direction: column;
@@ -2211,10 +1833,6 @@ html.dark .automation-modal-footer {
     justify-content: flex-start;
   }
 
-  .automation-overview-card {
-    min-height: 11.6rem;
-  }
-
   .automation-handler-grid {
     grid-template-columns: repeat(1, minmax(0, 1fr));
   }
@@ -2232,16 +1850,12 @@ html.dark .automation-modal-footer {
 
   .automation-library-card,
   .automation-state-card,
-  .automation-overview-card,
+  .automation-panel-card,
   .automation-modal-header,
   .automation-modal-body,
   .automation-modal-footer,
   .automation-modal-scroll {
     padding-inline: 0.92rem;
-  }
-
-  .automation-job-card {
-    padding: 0.92rem;
   }
 }
 </style>

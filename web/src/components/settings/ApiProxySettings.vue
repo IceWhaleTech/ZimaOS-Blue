@@ -102,10 +102,7 @@ onMounted(fetchAll)
       <!-- Smart Failover Section -->
       <div v-if="failoverConfig" class="glass-card p-4">
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-            {{ t('apiProxy.failoverTitle') }}
-          </h3>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          <p class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('apiProxy.failoverDesc') }}
           </p>
         </div>

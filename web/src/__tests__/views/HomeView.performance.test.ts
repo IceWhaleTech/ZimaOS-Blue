@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import HomeView from '@/views/HomeView.vue'
 import { useSystemStore } from '@/stores/system'
+import { useDashboardStore } from '@/stores/dashboard'
 import { systemApi, healthApi, workerApi } from '@/api/index'
 import { i18n } from '@/i18n'
 import { metricsApi } from '@/api/metrics'
@@ -48,6 +49,93 @@ vi.mock('@/api/metrics', () => ({
   },
 }))
 
+const localStorageMock = (() => {
+  let store: Record<string, string> = {}
+  return {
+    getItem: (key: string) => (key in store ? store[key] : null),
+    setItem: (key: string, value: string) => {
+      store[key] = String(value)
+    },
+    removeItem: (key: string) => {
+      delete store[key]
+    },
+    clear: () => {
+      store = {}
+    },
+  }
+})()
+
+vi.stubGlobal('localStorage', localStorageMock)
+
+const detailedSystemInfoFixture = {
+  os: {
+    name: 'ZimaOS',
+    version: 'ZimaOS-Test',
+    kernel: '6.8.0',
+    architecture: 'arm64',
+    hostname: 'blue-host',
+    uptime: 3600,
+    uptime_human: '1 hour',
+    boot_time: 1710000000,
+  },
+  hardware: {
+    cpu: {
+      model: 'Test CPU',
+      cores: 8,
+      threads: 16,
+      frequency: 3200,
+      usage: 42,
+      vendor_id: 'Zima Silicon',
+      cache_size: 0,
+    },
+    memory: {
+      total: 16 * 1024 * 1024 * 1024,
+      available: 10 * 1024 * 1024 * 1024,
+      used: 6 * 1024 * 1024 * 1024,
+      used_percent: 37.5,
+      swap_total: 2 * 1024 * 1024 * 1024,
+      swap_used: 512 * 1024 * 1024,
+    },
+    disk: [
+      {
+        device: '/dev/disk1s1',
+        mount_point: '/',
+        fs_type: 'apfs',
+        total: 512 * 1024 * 1024 * 1024,
+        used: 256 * 1024 * 1024 * 1024,
+        available: 256 * 1024 * 1024 * 1024,
+        used_percent: 50,
+      },
+    ],
+    gpu: [],
+  },
+  network: {
+    interfaces: [
+      {
+        name: 'eth0',
+        mac: '00:11:22:33:44:55',
+        ipv4: ['192.168.1.20'],
+        ipv6: [],
+        mtu: 1500,
+        flags: [],
+        is_up: true,
+        is_loopback: false,
+      },
+    ],
+    public_ip: '203.0.113.10',
+  },
+  runtime: {
+    go_version: 'go1.24.0',
+    num_cpu: 8,
+    num_goroutine: 32,
+    gomaxprocs: 8,
+    alloc_mb: 128,
+    total_alloc_mb: 512,
+    sys_mb: 256,
+    num_gc: 12,
+  },
+}
+
 function mountHomeView() {
   return mount(HomeView, {
     global: {
@@ -65,6 +153,7 @@ function mountHomeView() {
 
 describe('HomeView Performance Optimizations', () => {
   beforeEach(() => {
+    localStorageMock.clear()
     setActivePinia(createPinia())
     vi.useFakeTimers()
     vi.clearAllMocks()
@@ -72,6 +161,8 @@ describe('HomeView Performance Optimizations', () => {
     // Setup default mock responses
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(systemApi.getMetricsHistory).mockResolvedValue({ data: { metrics: [] } } as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(systemApi.getInfo).mockResolvedValue({ data: { system: null } } as any)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(healthApi.getHealth).mockResolvedValue({
       data: { status: 'ok', version: 'test' },
@@ -123,6 +214,7 @@ describe('HomeView Performance Optimizations', () => {
   })
 
   afterEach(() => {
+    localStorageMock.clear()
     vi.restoreAllMocks()
     vi.useRealTimers()
   })
@@ -211,6 +303,40 @@ describe('HomeView Performance Optimizations', () => {
     await flushPromises()
 
     expect(systemApi.getMetricsHistory).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+  })
+
+  it('should respect dashboard configuration for homepage cards', async () => {
+    const dashboardStore = useDashboardStore()
+    dashboardStore.toggleCard('system-status')
+    dashboardStore.toggleCard('cpu-chart')
+
+    const wrapper = mountHomeView()
+    await flushPromises()
+
+    expect(wrapper.find('.dashboard-status-row').exists()).toBe(false)
+    expect(wrapper.findAll('.dashboard-primary-grid .dashboard-small-card-shell')).toHaveLength(3)
+
+    wrapper.unmount()
+  })
+
+  it('should load detailed system info on demand', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(systemApi.getInfo).mockResolvedValue({ data: { system: detailedSystemInfoFixture } } as any)
+
+    const wrapper = mountHomeView()
+    await flushPromises()
+
+    expect(systemApi.getInfo).not.toHaveBeenCalled()
+
+    await wrapper.find('.dashboard-details-button').trigger('click')
+    await flushPromises()
+
+    expect(systemApi.getInfo).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain(i18n.global.t('system.osInfo'))
+    expect(wrapper.text()).toContain('ZimaOS-Test')
+    expect(wrapper.text()).toContain('eth0')
 
     wrapper.unmount()
   })

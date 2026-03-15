@@ -2409,7 +2409,7 @@ onUnmounted(() => {
           >
             <div
               v-if="!isMobile"
-              class="chat-thread-header flex items-center justify-between gap-4 border-b border-gray-200/80 dark:border-slate-700/80"
+              class="chat-thread-header flex items-center justify-between gap-4"
             >
               <div class="chat-thread-heading min-w-0">
                 <h2 class="chat-thread-title text-gray-900 dark:text-white truncate">
@@ -3268,10 +3268,10 @@ header,
 }
 
 .chat-desktop-shell .chat-workspace {
-  border: 1px solid rgba(186, 203, 223, 0.78);
-  border-radius: 1.55rem;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 24px 40px -34px rgba(15, 23, 42, 0.22);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -3292,15 +3292,15 @@ header,
 
 .chat-desktop-shell .chat-sidebar-shell {
   border-right: 1px solid rgba(226, 232, 240, 0.92);
-  background: rgba(248, 250, 252, 0.88);
+  background: transparent;
 }
 
 .chat-page-header {
   position: relative;
   z-index: 3;
-  padding: 0 1.2rem 0 1.35rem;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
-  background: rgba(255, 255, 255, 0.96);
+  padding: 0 1rem 0 1.1rem;
+  border-bottom: none;
+  background: transparent;
 }
 
 .chat-page-header::after {
@@ -3311,7 +3311,7 @@ header,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 3.7rem;
+  min-height: 3.45rem;
 }
 
 .chat-page-heading {
@@ -3322,10 +3322,10 @@ header,
 }
 
 .chat-page-title {
-  font-size: clamp(1.15rem, 1.15vw, 1.45rem);
+  font-size: clamp(1.02rem, 1vw, 1.2rem);
   line-height: 1.08;
-  font-weight: 760;
-  letter-spacing: -0.035em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .chat-thread-shell-desktop {
@@ -3339,7 +3339,7 @@ header,
 }
 
 .chat-thread-header {
-  padding: 0.95rem 1.5rem;
+  padding: 0.55rem 1.35rem 0.7rem;
   background: transparent;
 }
 
@@ -3618,9 +3618,8 @@ header,
 
 :root.dark .chat-desktop-shell .chat-workspace,
 [data-theme='dark'] .chat-desktop-shell .chat-workspace {
-  border-color: rgba(71, 85, 105, 0.78);
-  background: rgba(15, 23, 42, 0.9);
-  box-shadow: 0 28px 44px -34px rgba(2, 6, 23, 0.72);
+  background: transparent;
+  box-shadow: none;
 }
 
 :root.dark .chat-main-shell,
@@ -3636,13 +3635,12 @@ header,
 :root.dark .chat-desktop-shell .chat-sidebar-shell,
 [data-theme='dark'] .chat-desktop-shell .chat-sidebar-shell {
   border-right-color: rgba(71, 85, 105, 0.76);
-  background: rgba(15, 23, 42, 0.78);
+  background: transparent;
 }
 
 :root.dark .chat-page-header,
 [data-theme='dark'] .chat-page-header {
-  border-bottom-color: rgba(71, 85, 105, 0.76);
-  background: rgba(15, 23, 42, 0.95);
+  background: transparent;
 }
 
 :root.dark .chat-topbar,

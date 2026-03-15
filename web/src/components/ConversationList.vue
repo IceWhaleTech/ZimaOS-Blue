@@ -451,48 +451,42 @@ watch(searchQuery, (query) => {
 
 <style scoped>
 .conversation-list {
-  --cl-border-soft: rgba(148, 163, 184, 0.22);
-  --cl-border-strong: rgba(14, 165, 233, 0.4);
-  --cl-card-bg: transparent;
-  --cl-card-bg-hover: rgba(241, 245, 249, 0.72);
-  --cl-card-bg-active: rgba(219, 234, 254, 0.42);
-  --cl-header-py: calc(var(--chat-pane-pad-y, 0.96rem) - 0.02rem);
+  --cl-border: rgba(226, 232, 240, 0.92);
+  --cl-border-strong: rgba(59, 130, 246, 0.34);
   --cl-header-px: var(--chat-pane-pad-x, 1rem);
-  --cl-item-py: 0.6rem;
+  --cl-header-py: var(--chat-pane-pad-y, 0.96rem);
   --cl-item-px: 1rem;
-  --cl-actions-width: 2.75rem;
-  --cl-side-width: 4.5rem;
-  --cl-radius: 0.95rem;
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(244, 247, 251, 0.97));
+  --cl-item-py: 1rem;
+  --cl-side-width: 3.75rem;
+  background: rgba(255, 255, 255, 0.98);
   overflow-x: hidden;
 }
 
 :global(.chat-view.ui-density-compact) .conversation-list {
-  --cl-header-py: 0.72rem;
   --cl-header-px: 0.82rem;
-  --cl-item-py: 0.48rem;
+  --cl-header-py: 0.76rem;
   --cl-item-px: 0.82rem;
-  --cl-actions-width: 2.55rem;
-  --cl-side-width: 4.15rem;
-  --cl-radius: 0.8rem;
+  --cl-item-py: 0.8rem;
+  --cl-side-width: 3.4rem;
 }
 
 :global(.chat-view.ui-density-comfortable) .conversation-list {
+  --cl-header-px: 1.1rem;
   --cl-header-py: 1.08rem;
-  --cl-header-px: 1.12rem;
-  --cl-item-py: 0.7rem;
-  --cl-item-px: 1.08rem;
-  --cl-actions-width: 2.9rem;
-  --cl-side-width: 4.8rem;
-  --cl-radius: 1rem;
+  --cl-item-px: 1.1rem;
+  --cl-item-py: 1.08rem;
+  --cl-side-width: 4rem;
 }
 
 .list-header {
-  border-bottom: 1px solid var(--cl-border-soft);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(249, 250, 251, 0.96));
-  backdrop-filter: blur(8px);
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 10;
   padding: var(--cl-header-py) var(--cl-header-px);
+  border-bottom: 1px solid var(--cl-border);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .list-headline {
@@ -500,81 +494,31 @@ watch(searchQuery, (query) => {
   align-items: center;
   justify-content: space-between;
   gap: 0.7rem;
-  margin-bottom: 0.78rem;
-}
-
-.list-header::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.32), transparent);
-  pointer-events: none;
+  margin-bottom: 0.8rem;
 }
 
 .list-title {
-  font-size: 0.76rem;
-  line-height: 1;
+  font-size: 0.96rem;
+  line-height: 1.15;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgb(100, 116, 139);
+  letter-spacing: -0.02em;
+  color: rgb(15, 23, 42);
 }
 
 .list-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.55rem;
-  height: 1.55rem;
-  border-radius: 999px;
-  padding: 0 0.42rem;
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: rgb(71, 85, 105);
-  background: rgba(226, 232, 240, 0.9);
+  display: none;
 }
 
 .search-row {
   display: flex;
   align-items: center;
-  gap: 0.72rem;
-}
-
-.create-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.88rem;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.96), rgba(29, 78, 216, 0.96));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 16px 28px -22px rgba(37, 99, 235, 0.74);
-  color: #eff6ff;
-  border: 1px solid rgba(37, 99, 235, 0.28);
-}
-
-.create-btn-inline {
-  width: 2.7rem;
-  height: 2.7rem;
-  flex-shrink: 0;
-}
-
-.create-btn:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.03);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 18px 30px -22px rgba(37, 99, 235, 0.84);
+  gap: 0.7rem;
 }
 
 .search-input-wrap {
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: var(--cl-radius);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--cl-border);
+  border-radius: 0.72rem;
+  background: rgba(255, 255, 255, 0.98);
   overflow: hidden;
   transition:
     border-color 0.18s ease,
@@ -582,8 +526,8 @@ watch(searchQuery, (query) => {
 }
 
 .search-input-wrap:focus-within {
-  border-color: rgba(56, 189, 248, 0.45);
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.11);
+  border-color: rgba(59, 130, 246, 0.42);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
 }
 
 .search-input {
@@ -591,12 +535,12 @@ watch(searchQuery, (query) => {
   border-radius: inherit;
   background: transparent;
   box-shadow: none;
-  min-height: 2.7rem;
+  min-height: 2.35rem;
   outline: none;
   appearance: none;
   -webkit-appearance: none;
-  padding: 0.76rem 2.35rem 0.76rem 2.65rem;
-  font-size: 0.95rem;
+  padding: 0.66rem 2.15rem 0.66rem 2.45rem;
+  font-size: 0.92rem;
   line-height: 1.2;
 }
 
@@ -607,84 +551,85 @@ watch(searchQuery, (query) => {
 }
 
 .search-input::placeholder {
-  color: rgba(100, 116, 139, 0.95);
+  color: rgba(148, 163, 184, 0.98);
 }
 
-.convo-stack {
-  display: grid;
-  gap: 0.22rem;
-  padding: 0.55rem 0.5rem 0.72rem;
-  padding-right: 0.36rem;
+.create-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.66rem;
+  background: rgb(37, 99, 235);
+  box-shadow: none;
+  color: rgb(255, 255, 255);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.create-btn-inline {
+  width: 2.35rem;
+  height: 2.35rem;
+  flex-shrink: 0;
+}
+
+.create-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
 }
 
 .convo-scroll {
-  scrollbar-gutter: stable;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.convo-stack {
+  display: block;
+  padding: 0;
 }
 
 .conversation-item {
-  animation: convo-fade-in 0.24s ease-out both;
-  animation-delay: calc(var(--item-index, 0) * 14ms);
+  position: relative;
   min-width: 0;
+  border-bottom: 1px solid var(--cl-border);
+  animation: convo-fade-in 0.2s ease-out both;
+  animation-delay: calc(var(--item-index, 0) * 12ms);
 }
 
 .convo-main-btn {
-  background: var(--cl-card-bg);
-  border: 1px solid transparent;
   position: relative;
-  overflow: hidden;
-  border-radius: var(--cl-radius);
-  padding: var(--cl-item-py) var(--cl-item-px);
-  min-height: 3.72rem;
+  width: 100%;
   min-width: 0;
-  max-width: 100%;
-}
-
-.convo-main-btn::before {
-  content: none;
+  min-height: 4rem;
+  padding: 0.88rem var(--cl-item-px) 0.82rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  transition: background-color 0.18s ease;
 }
 
 .convo-main-btn:hover {
-  background: var(--cl-card-bg-hover);
-  border-color: transparent;
+  background: rgba(248, 250, 252, 0.96);
 }
 
 .convo-card-active .convo-main-btn {
-  background: var(--cl-card-bg-active);
-  border-color: rgba(125, 211, 252, 0.28);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 14px 24px -24px rgba(14, 165, 233, 0.36);
+  background: rgba(239, 246, 255, 0.9);
 }
 
 .conversation-item::before {
   content: '';
   position: absolute;
-  left: 0.14rem;
-  top: 0.62rem;
-  bottom: 0.62rem;
+  left: 0;
+  top: 0.72rem;
+  bottom: 0.72rem;
   width: 3px;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.9), rgba(14, 165, 233, 0.75));
+  background: rgb(59, 130, 246);
   opacity: 0;
-  transform: scaleY(0.7);
-  transition: all 0.2s ease;
+  transition: opacity 0.18s ease;
 }
 
 .convo-card-active::before {
-  opacity: 0.62;
-  transform: scaleY(1);
-}
-
-.conversation-item:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  left: 1.08rem;
-  right: 0.92rem;
-  bottom: -0.04rem;
-  height: 1px;
-  background: rgba(203, 213, 225, 0.6);
-  pointer-events: none;
+  opacity: 1;
 }
 
 .convo-title {
@@ -695,8 +640,9 @@ watch(searchQuery, (query) => {
   text-overflow: ellipsis;
   white-space: nowrap;
   letter-spacing: -0.015em;
-  font-size: 1rem;
-  line-height: 1.28;
+  font-size: 0.95rem;
+  line-height: 1.22;
+  font-weight: 600;
 }
 
 .convo-title-scroll {
@@ -708,20 +654,20 @@ watch(searchQuery, (query) => {
 }
 
 .convo-row {
-  align-items: stretch;
-  gap: 0.82rem;
+  align-items: flex-start;
+  gap: 0.8rem;
   height: 100%;
 }
 
 .convo-preview {
-  line-height: 1.28;
-  letter-spacing: 0.01em;
-  opacity: 0.72;
+  margin-top: 0.14rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-top: 0.12rem;
-  font-size: 0.73rem;
+  font-size: 0.72rem;
+  line-height: 1.28;
+  letter-spacing: 0.01em;
+  color: rgb(156, 163, 175);
 }
 
 .convo-side {
@@ -732,7 +678,7 @@ watch(searchQuery, (query) => {
   min-width: var(--cl-side-width);
   align-items: flex-end;
   justify-content: space-between;
-  gap: 0.28rem;
+  gap: 0.24rem;
 }
 
 .convo-time {
@@ -740,75 +686,88 @@ watch(searchQuery, (query) => {
   align-items: center;
   justify-content: flex-end;
   gap: 0.32rem;
-  box-sizing: border-box;
-  padding-top: 0.02rem;
-  font-size: 0.74rem;
+  padding-top: 0.08rem;
+  font-size: 0.72rem;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
+  color: rgb(156, 163, 175);
 }
 
 .convo-actions-slot {
-  width: var(--cl-actions-width);
-  height: 1.28rem;
+  width: 1.8rem;
+  height: 1.35rem;
   flex-shrink: 0;
 }
 
 .convo-card-running .convo-time::before {
   content: '';
-  width: 0.34rem;
-  height: 0.34rem;
+  width: 0.32rem;
+  height: 0.32rem;
   border-radius: 999px;
-  background: rgb(56 189 248);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+  background: rgb(59 130 246);
   flex-shrink: 0;
 }
 
 .convo-actions {
-  right: calc(var(--cl-item-px) - 0.02rem);
-  top: auto;
-  bottom: calc(var(--cl-item-py) - 0.04rem);
-  transform: none;
-  gap: 0.25rem;
+  right: 0.72rem;
+  bottom: 0.72rem;
+  gap: 0.22rem;
   opacity: 0;
+  transition: opacity 0.18s ease;
 }
 
-.group:hover .convo-actions,
-.convo-card-active .convo-actions {
+.group:hover .convo-actions {
   opacity: 1;
 }
 
 .action-btn {
-  border-radius: 0.44rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border-radius: 0.4rem;
+  border: 1px solid var(--cl-border);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: none;
 }
 
 .action-btn:hover {
-  background: rgba(148, 163, 184, 0.1);
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(148, 163, 184, 0.5);
 }
 
 .delete-mask {
-  background: rgba(248, 250, 252, 0.94);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--cl-border);
+  border-radius: 0.8rem;
+  backdrop-filter: blur(8px);
 }
 
 .empty-state {
-  border-radius: 0.85rem;
-  border: 1px dashed rgba(148, 163, 184, 0.34);
-  background: rgba(255, 255, 255, 0.76);
+  margin: 0.8rem;
+  padding: 1.1rem;
+  border-radius: 0.95rem;
+  border: 1px dashed rgba(203, 213, 225, 0.9);
+  background: rgba(248, 250, 252, 0.72);
 }
 
-.conversation-list::-webkit-scrollbar {
-  width: 6px;
+.convo-scroll::-webkit-scrollbar {
+  width: 8px;
 }
 
-.conversation-list::-webkit-scrollbar-track {
+.convo-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.conversation-list::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.36);
-  border-radius: 3px;
+.convo-scroll::-webkit-scrollbar-thumb {
+  background: rgba(203, 213, 225, 0.82);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
 }
 
 @keyframes convo-fade-in {
@@ -822,64 +781,25 @@ watch(searchQuery, (query) => {
   }
 }
 
-:root.light .search-input-wrap,
-[data-theme='light'] .search-input-wrap {
-  background: rgba(255, 255, 255, 0.88);
-  border-color: rgba(148, 163, 184, 0.32);
-}
-
-:root.light .convo-main-btn:hover,
-[data-theme='light'] .convo-main-btn:hover {
-  border-color: rgba(148, 163, 184, 0.35);
-}
-
-:root.light .conversation-list,
-[data-theme='light'] .conversation-list {
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(244, 247, 251, 0.94));
-}
-
-:root.light .list-count,
-[data-theme='light'] .list-count {
-  color: rgb(71, 85, 105);
-  background: rgba(226, 232, 240, 0.9);
-}
-
-:root.light .list-title,
-[data-theme='light'] .list-title {
-  color: rgb(100, 116, 139);
-}
-
 :root.dark .conversation-list,
 [data-theme='dark'] .conversation-list {
-  --cl-border-soft: rgba(71, 85, 105, 0.44);
-  --cl-border-strong: rgba(56, 189, 248, 0.5);
-  --cl-card-bg: transparent;
-  --cl-card-bg-hover: rgba(30, 41, 59, 0.66);
-  --cl-card-bg-active: rgba(8, 47, 73, 0.46);
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.93), rgba(15, 23, 42, 0.91));
+  --cl-border: rgba(51, 65, 85, 0.88);
+  background: rgba(15, 23, 42, 0.96);
 }
 
 :root.dark .list-header,
 [data-theme='dark'] .list-header {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.84));
+  background: rgba(15, 23, 42, 0.92);
 }
 
 :root.dark .list-title,
 [data-theme='dark'] .list-title {
-  color: rgb(148, 163, 184);
-}
-
-:root.dark .list-count,
-[data-theme='dark'] .list-count {
-  color: rgb(203, 213, 225);
-  background: rgba(51, 65, 85, 0.9);
+  color: rgb(241, 245, 249);
 }
 
 :root.dark .search-input-wrap,
 [data-theme='dark'] .search-input-wrap {
-  border-color: rgba(71, 85, 105, 0.68);
-  background: rgba(15, 23, 42, 0.58);
-  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+  background: rgba(30, 41, 59, 0.82);
 }
 
 :root.dark .search-input::placeholder,
@@ -887,31 +807,19 @@ watch(searchQuery, (query) => {
   color: rgba(148, 163, 184, 0.95);
 }
 
-:root.dark .convo-main-btn,
-[data-theme='dark'] .convo-main-btn {
-  border-color: transparent;
+:root.dark .convo-scroll,
+[data-theme='dark'] .convo-scroll {
+  background: rgba(15, 23, 42, 0.96);
 }
 
 :root.dark .convo-main-btn:hover,
 [data-theme='dark'] .convo-main-btn:hover {
-  border-color: transparent;
+  background: rgba(30, 41, 59, 0.76);
 }
 
-:root.dark .conversation-item:not(:last-child)::after,
-[data-theme='dark'] .conversation-item:not(:last-child)::after {
-  background: rgba(51, 65, 85, 0.72);
-}
-
-:root.dark .create-btn,
-[data-theme='dark'] .create-btn {
-  color: rgb(224, 242, 254);
-  border-color: rgba(37, 99, 235, 0.4);
-  background: linear-gradient(135deg, rgba(29, 78, 216, 0.94), rgba(30, 64, 175, 0.94));
-}
-
-:root.dark .create-btn:hover,
-[data-theme='dark'] .create-btn:hover {
-  border-color: rgba(96, 165, 250, 0.56);
+:root.dark .convo-card-active .convo-main-btn,
+[data-theme='dark'] .convo-card-active .convo-main-btn {
+  background: rgba(8, 47, 73, 0.56);
 }
 
 :root.dark .convo-title-row,
@@ -926,44 +834,33 @@ watch(searchQuery, (query) => {
 
 :root.dark .convo-time,
 [data-theme='dark'] .convo-time {
-  color: rgb(100, 116, 139);
+  color: rgb(148, 163, 184);
 }
 
-:root.dark .delete-mask,
-[data-theme='dark'] .delete-mask {
-  background: rgba(15, 23, 42, 0.95);
-  border-color: rgba(71, 85, 105, 0.45);
+:root.dark .action-btn,
+[data-theme='dark'] .action-btn {
+  background: rgba(30, 41, 59, 0.92);
 }
 
 :root.dark .empty-state,
 [data-theme='dark'] .empty-state {
-  border-color: rgba(71, 85, 105, 0.64);
-  background: rgba(15, 23, 42, 0.66);
+  border-color: rgba(71, 85, 105, 0.82);
+  background: rgba(15, 23, 42, 0.68);
 }
 
-:global(.chat-desktop-shell) .conversation-list {
-  background: rgba(248, 250, 252, 0.72);
-}
+@media (max-width: 768px) {
+  .list-header {
+    padding-inline: 0.85rem;
+  }
 
-:global(.chat-desktop-shell) .list-header {
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
-}
+  .convo-main-btn {
+    min-height: 3.8rem;
+  }
 
-:global(.chat-desktop-shell) .empty-state {
-  background: rgba(255, 255, 255, 0.58);
-}
-
-:global([data-theme='dark'] .chat-desktop-shell) .conversation-list {
-  background: rgba(15, 23, 42, 0.44);
-}
-
-:global([data-theme='dark'] .chat-desktop-shell) .list-header {
-  background: rgba(15, 23, 42, 0.86);
-}
-
-:global([data-theme='dark'] .chat-desktop-shell) .empty-state {
-  background: rgba(15, 23, 42, 0.54);
+  .convo-actions {
+    right: 0.7rem;
+    bottom: 0.72rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -972,6 +869,7 @@ watch(searchQuery, (query) => {
   }
 
   .convo-main-btn,
+  .search-input-wrap,
   .create-btn,
   .action-btn {
     transition: none !important;

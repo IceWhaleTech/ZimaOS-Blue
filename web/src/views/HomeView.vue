@@ -1,23 +1,41 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, shallowRef, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
 import { useMetricsStore } from '@/stores/metrics'
+import { useDashboardStore } from '@/stores/dashboard'
 import { systemApi } from '@/api/index'
-import type { SystemMetrics } from '@/api/system'
+import type { DetailedSystemInfo, SystemMetrics } from '@/api/system'
 import { ConfigurableDashboard, SystemStatusCard } from '@/components/dashboard'
 import DashboardCustomizer from '@/components/dashboard/DashboardCustomizer.vue'
 import UptimeCard from '@/components/dashboard/cards/UptimeCard.vue'
 import CpuChartCard from '@/components/dashboard/cards/CpuChartCard.vue'
 import MemoryUsageCard from '@/components/dashboard/cards/MemoryUsageCard.vue'
 import GoroutinesCard from '@/components/dashboard/cards/GoroutinesCard.vue'
+import ProgressBar from '@/components/ProgressBar.vue'
+import DonutChart from '@/components/DonutChart.vue'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
 const metricsStore = useMetricsStore()
+const dashboardStore = useDashboardStore()
 
-const dashboardPrimaryCardIds = ['uptime', 'cpu-chart', 'memory-usage', 'goroutines']
+const dashboardPrimaryCardIds = ['uptime', 'cpu-chart', 'memory-usage', 'goroutines'] as const
 const dashboardSecondaryExcludedCardIds = ['system-status', ...dashboardPrimaryCardIds]
+type DashboardPrimaryCardId = (typeof dashboardPrimaryCardIds)[number]
+
+interface HomePrimaryCard {
+  id: DashboardPrimaryCardId
+  component: Component
+  props: Record<string, unknown>
+}
+
+const primaryCardComponentMap: Record<DashboardPrimaryCardId, Component> = {
+  uptime: UptimeCard,
+  'cpu-chart': CpuChartCard,
+  'memory-usage': MemoryUsageCard,
+  goroutines: GoroutinesCard,
+}
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null
 let abortController: AbortController | null = null
@@ -25,6 +43,101 @@ let abortController: AbortController | null = null
 const metricsHistory = shallowRef<SystemMetrics[]>([])
 const manualRefreshing = ref(false)
 const isPageVisible = ref(true)
+const detailedInfo = ref<DetailedSystemInfo | null>(null)
+const detailedInfoLoading = ref(false)
+const showDetailedInfo = ref(false)
+
+const enabledCardIdSet = computed(() => new Set(dashboardStore.enabledCards.map((card) => card.id)))
+const showStatusCard = computed(() => enabledCardIdSet.value.has('system-status'))
+
+const visiblePrimaryCards = computed<HomePrimaryCard[]>(() =>
+  dashboardPrimaryCardIds
+    .filter((id) => enabledCardIdSet.value.has(id))
+    .map((id) => ({
+      id,
+      component: primaryCardComponentMap[id],
+      props:
+        id === 'cpu-chart'
+          ? { metricsHistory: metricsHistory.value, compact: true }
+          : id === 'uptime'
+            ? {}
+            : { metricsHistory: metricsHistory.value },
+    }))
+)
+
+const osInfoItems = computed(() => {
+  const info = detailedInfo.value
+  if (!info) return []
+
+  return [
+    { label: t('system.osVersion'), value: info.os.version || '-' },
+    { label: t('system.kernel'), value: info.os.kernel || '-' },
+    { label: t('system.architecture'), value: info.os.architecture || '-' },
+    { label: t('system.hostname'), value: info.os.hostname || '-' },
+    { label: t('system.uptime'), value: info.os.uptime_human || '-' },
+    { label: t('system.bootTime'), value: formatDateTime(info.os.boot_time) },
+  ]
+})
+
+const cpuInfoItems = computed(() => {
+  const info = detailedInfo.value
+  if (!info) return []
+
+  return [
+    { label: t('system.cpuModel'), value: info.hardware.cpu.model || '-' },
+    { label: t('system.cpuVendor'), value: info.hardware.cpu.vendor_id || '-' },
+    {
+      label: t('system.cpuCores'),
+      value: `${info.hardware.cpu.cores || '-'} ${t('system.cores')} / ${info.hardware.cpu.threads || '-'} ${t('system.threads')}`,
+    },
+    { label: t('system.cpuFrequency'), value: formatFrequency(info.hardware.cpu.frequency) },
+  ]
+})
+
+const runtimeInfoItems = computed(() => {
+  const info = detailedInfo.value
+  if (!info) return []
+
+  return [
+    { label: t('system.goVersion'), value: info.runtime.go_version || '-' },
+    { label: t('system.numGoroutines'), value: `${info.runtime.num_goroutine ?? '-'}` },
+    { label: t('system.goMaxProcs'), value: `${info.runtime.gomaxprocs ?? '-'}` },
+    { label: t('system.heapAlloc'), value: formatBytes((info.runtime.alloc_mb ?? 0) * 1024 * 1024) },
+    {
+      label: t('system.totalAlloc'),
+      value: formatBytes((info.runtime.total_alloc_mb ?? 0) * 1024 * 1024),
+    },
+    { label: t('system.sysMemory'), value: formatBytes((info.runtime.sys_mb ?? 0) * 1024 * 1024) },
+    { label: t('system.gcCount'), value: `${info.runtime.num_gc ?? '-'}` },
+  ]
+})
+
+const visibleDisks = computed(() => detailedInfo.value?.hardware.disk?.slice(0, 6) ?? [])
+const visibleGpus = computed(() => detailedInfo.value?.hardware.gpu ?? [])
+const visibleNetworkInterfaces = computed(
+  () =>
+    detailedInfo.value?.network.interfaces?.filter((iface) => !iface.is_loopback && iface.is_up) ?? []
+)
+
+function formatBytes(bytes: number | undefined | null): string {
+  if (bytes == null) return '-'
+  if (bytes === 0) return '0 B'
+
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
+}
+
+function formatFrequency(frequency: number | undefined | null): string {
+  if (frequency == null || frequency <= 0) return '-'
+  return `${frequency.toFixed(0)} MHz`
+}
+
+function formatDateTime(timestamp: number | undefined | null): string {
+  if (timestamp == null || timestamp <= 0) return '-'
+  return new Date(timestamp * 1000).toLocaleString()
+}
 
 async function fetchMetricsHistory() {
   try {
@@ -43,12 +156,33 @@ async function fetchMetricsHistory() {
   }
 }
 
+async function fetchDetailedInfo(forceRefresh = false) {
+  if (detailedInfoLoading.value) return
+  if (!forceRefresh && detailedInfo.value) return
+
+  detailedInfoLoading.value = true
+  try {
+    const response = await systemApi.getInfo(true)
+    detailedInfo.value = response.data.system || null
+  } catch {
+    detailedInfo.value = null
+  } finally {
+    detailedInfoLoading.value = false
+  }
+}
+
 async function refreshAll(forceRefresh = false) {
-  await Promise.all([
+  const tasks: Promise<unknown>[] = [
     systemStore.fetchAll(forceRefresh),
     metricsStore.fetchAll(),
     fetchMetricsHistory(),
-  ])
+  ]
+
+  if (forceRefresh && showDetailedInfo.value) {
+    tasks.push(fetchDetailedInfo(true))
+  }
+
+  await Promise.all(tasks)
 }
 
 async function refreshNow() {
@@ -58,6 +192,13 @@ async function refreshNow() {
     await refreshAll(true)
   } finally {
     manualRefreshing.value = false
+  }
+}
+
+async function toggleDetailedInfo() {
+  showDetailedInfo.value = !showDetailedInfo.value
+  if (showDetailedInfo.value) {
+    await fetchDetailedInfo()
   }
 }
 
@@ -131,24 +272,19 @@ onUnmounted(() => {
       </section>
 
       <section class="dashboard-shell">
-        <section class="dashboard-status-row">
+        <section v-if="showStatusCard" class="dashboard-status-row">
           <div class="dashboard-card-surface dashboard-status-shell p-4">
             <SystemStatusCard compact />
           </div>
         </section>
 
-        <section class="dashboard-primary-grid">
-          <div class="dashboard-card-surface dashboard-small-card-shell p-4">
-            <UptimeCard />
-          </div>
-          <div class="dashboard-card-surface dashboard-small-card-shell p-4">
-            <CpuChartCard :metrics-history="metricsHistory" compact />
-          </div>
-          <div class="dashboard-card-surface dashboard-small-card-shell p-4">
-            <MemoryUsageCard :metrics-history="metricsHistory" />
-          </div>
-          <div class="dashboard-card-surface dashboard-small-card-shell p-4">
-            <GoroutinesCard :metrics-history="metricsHistory" />
+        <section v-if="visiblePrimaryCards.length > 0" class="dashboard-primary-grid">
+          <div
+            v-for="card in visiblePrimaryCards"
+            :key="card.id"
+            class="dashboard-card-surface dashboard-small-card-shell p-4"
+          >
+            <component :is="card.component" v-bind="card.props" />
           </div>
         </section>
 
@@ -158,6 +294,322 @@ onUnmounted(() => {
           :disable-hero-layout="true"
           :exclude-card-ids="dashboardSecondaryExcludedCardIds"
         />
+        <section class="dashboard-details-stage">
+          <div class="dashboard-card-surface dashboard-details-toggle">
+            <div class="dashboard-card-copy min-w-0">
+              <p class="dashboard-card-label">{{ t('system.detailedInfo') }}</p>
+              <h2 class="dashboard-card-subtitle mt-2">{{ t('system.detailedSystemInfo') }}</h2>
+            </div>
+            <button class="dashboard-details-button" type="button" @click="toggleDetailedInfo">
+              <span class="dashboard-card-chip">
+                {{ showDetailedInfo ? t('common.close') : t('system.detailedInfo') }}
+              </span>
+            </button>
+          </div>
+
+          <div v-if="showDetailedInfo" class="dashboard-details-grid">
+            <div
+              v-if="detailedInfoLoading"
+              class="dashboard-card-surface dashboard-details-panel dashboard-details-panel-span-full dashboard-details-empty"
+            >
+              <p class="dashboard-card-footnote text-sm">
+                {{ t('system.loadingDetailedInfo') }}
+              </p>
+            </div>
+
+            <template v-else-if="detailedInfo">
+              <div class="dashboard-card-surface dashboard-details-panel">
+                <div class="dashboard-details-panel-head">
+                  <p class="dashboard-card-label">{{ t('system.osInfo') }}</p>
+                </div>
+                <div class="dashboard-details-kv-grid">
+                  <div
+                    v-for="item in osInfoItems"
+                    :key="item.label"
+                    class="dashboard-card-subsurface dashboard-details-kv"
+                  >
+                    <p class="dashboard-card-label dashboard-details-micro-label">
+                      {{ item.label }}
+                    </p>
+                    <p class="dashboard-card-subtitle mt-2 text-sm">
+                      {{ item.value }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dashboard-card-surface dashboard-details-panel">
+                <div class="dashboard-details-panel-head">
+                  <p class="dashboard-card-label">{{ t('system.cpuInfo') }}</p>
+                </div>
+                <div class="dashboard-details-split">
+                  <div class="dashboard-details-visual">
+                    <DonutChart
+                      :value="detailedInfo.hardware.cpu.usage || 0"
+                      :max="100"
+                      :label="t('system.cpuUsage')"
+                      color="auto"
+                      :size="138"
+                    />
+                  </div>
+                  <div class="dashboard-details-kv-grid dashboard-details-kv-grid-compact">
+                    <div
+                      v-for="item in cpuInfoItems"
+                      :key="item.label"
+                      class="dashboard-card-subsurface dashboard-details-kv"
+                    >
+                      <p class="dashboard-card-label dashboard-details-micro-label">
+                        {{ item.label }}
+                      </p>
+                      <p class="dashboard-card-subtitle mt-2 text-sm">
+                        {{ item.value }}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dashboard-card-surface dashboard-details-panel">
+                <div class="dashboard-details-panel-head">
+                  <p class="dashboard-card-label">{{ t('system.memoryInfo') }}</p>
+                </div>
+                <div class="dashboard-details-split">
+                  <div class="dashboard-details-visual">
+                    <DonutChart
+                      :value="detailedInfo.hardware.memory.used || 0"
+                      :max="Math.max(detailedInfo.hardware.memory.total || 0, 1)"
+                      :label="t('system.ram')"
+                      :value-label="formatBytes(detailedInfo.hardware.memory.used)"
+                      color="auto"
+                      :size="120"
+                    />
+                    <DonutChart
+                      v-if="detailedInfo.hardware.memory.swap_total > 0"
+                      :value="detailedInfo.hardware.memory.swap_used || 0"
+                      :max="Math.max(detailedInfo.hardware.memory.swap_total || 0, 1)"
+                      :label="t('system.swap')"
+                      :value-label="formatBytes(detailedInfo.hardware.memory.swap_used)"
+                      color="purple"
+                      :size="120"
+                    />
+                  </div>
+                  <div class="dashboard-details-progress-stack">
+                    <div class="dashboard-card-subsurface dashboard-details-progress-block">
+                      <div class="mb-3 flex items-center justify-between gap-3 text-sm">
+                        <span class="dashboard-card-title">{{ t('system.ram') }}</span>
+                        <span class="dashboard-card-subtitle text-sm">
+                          {{ formatBytes(detailedInfo.hardware.memory.used) }} /
+                          {{ formatBytes(detailedInfo.hardware.memory.total) }}
+                        </span>
+                      </div>
+                      <ProgressBar
+                        :value="detailedInfo.hardware.memory.used || 0"
+                        :max="Math.max(detailedInfo.hardware.memory.total || 0, 1)"
+                        :show-percent="false"
+                        color="auto"
+                        size="md"
+                      />
+                      <p class="dashboard-card-footnote mt-3">
+                        {{ t('system.availableMemory') }}:
+                        {{ formatBytes(detailedInfo.hardware.memory.available) }}
+                      </p>
+                    </div>
+
+                    <div
+                      v-if="detailedInfo.hardware.memory.swap_total > 0"
+                      class="dashboard-card-subsurface dashboard-details-progress-block"
+                    >
+                      <div class="mb-3 flex items-center justify-between gap-3 text-sm">
+                        <span class="dashboard-card-title">{{ t('system.swap') }}</span>
+                        <span class="dashboard-card-subtitle text-sm">
+                          {{ formatBytes(detailedInfo.hardware.memory.swap_used) }} /
+                          {{ formatBytes(detailedInfo.hardware.memory.swap_total) }}
+                        </span>
+                      </div>
+                      <ProgressBar
+                        :value="detailedInfo.hardware.memory.swap_used || 0"
+                        :max="Math.max(detailedInfo.hardware.memory.swap_total || 0, 1)"
+                        :show-percent="false"
+                        color="purple"
+                        size="md"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dashboard-card-surface dashboard-details-panel">
+                <div class="dashboard-details-panel-head">
+                  <p class="dashboard-card-label">{{ t('system.runtimeInfo') }}</p>
+                </div>
+                <div class="dashboard-details-kv-grid">
+                  <div
+                    v-for="item in runtimeInfoItems"
+                    :key="item.label"
+                    class="dashboard-card-subsurface dashboard-details-kv"
+                  >
+                    <p class="dashboard-card-label dashboard-details-micro-label">
+                      {{ item.label }}
+                    </p>
+                    <p class="dashboard-card-subtitle mt-2 text-sm">
+                      {{ item.value }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                v-if="visibleGpus.length > 0"
+                class="dashboard-card-surface dashboard-details-panel dashboard-details-panel-span-full"
+              >
+                <div class="dashboard-details-panel-head">
+                  <p class="dashboard-card-label">{{ t('system.gpuInfo') }}</p>
+                </div>
+                <div class="dashboard-details-resource-grid">
+                  <div
+                    v-for="gpu in visibleGpus"
+                    :key="`${gpu.name}-${gpu.vendor}-${gpu.driver}`"
+                    class="dashboard-card-subsurface dashboard-details-resource-card"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="dashboard-card-subtitle truncate text-sm">
+                          {{ gpu.name || '-' }}
+                        </p>
+                        <p class="dashboard-card-footnote mt-1">
+                          {{ gpu.vendor || '-' }}
+                        </p>
+                      </div>
+                      <span class="dashboard-card-chip">{{ gpu.driver || '-' }}</span>
+                    </div>
+
+                    <div v-if="gpu.memory_total > 0" class="mt-4">
+                      <div class="mb-3 flex items-center justify-between gap-3 text-sm">
+                        <span class="dashboard-card-title">{{ t('system.vram') }}</span>
+                        <span class="dashboard-card-subtitle text-sm">
+                          {{ formatBytes(gpu.memory_used) }} / {{ formatBytes(gpu.memory_total) }}
+                        </span>
+                      </div>
+                      <ProgressBar
+                        :value="gpu.memory_used || 0"
+                        :max="Math.max(gpu.memory_total || 0, 1)"
+                        :show-percent="false"
+                        color="purple"
+                        size="md"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                v-if="visibleDisks.length > 0"
+                class="dashboard-card-surface dashboard-details-panel dashboard-details-panel-span-full"
+              >
+                <div class="dashboard-details-panel-head">
+                  <p class="dashboard-card-label">{{ t('system.diskInfo') }}</p>
+                </div>
+                <div class="dashboard-details-resource-grid">
+                  <div
+                    v-for="disk in visibleDisks"
+                    :key="disk.device"
+                    class="dashboard-card-subsurface dashboard-details-resource-card"
+                  >
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="dashboard-card-subtitle truncate text-sm" :title="disk.mount_point">
+                          {{ disk.mount_point || disk.device }}
+                        </p>
+                        <p class="dashboard-card-footnote mt-1">
+                          {{ disk.device || '-' }}
+                        </p>
+                      </div>
+                      <span class="dashboard-card-chip">{{ disk.fs_type || '-' }}</span>
+                    </div>
+
+                    <ProgressBar
+                      :value="disk.used || 0"
+                      :max="Math.max(disk.total || 0, 1)"
+                      :show-percent="false"
+                      color="auto"
+                      size="md"
+                    />
+
+                    <div class="mt-3 flex items-center justify-between gap-3 text-xs">
+                      <span class="dashboard-card-footnote">
+                        {{ formatBytes(disk.used) }} {{ t('system.used') }}
+                      </span>
+                      <span class="dashboard-card-footnote">
+                        {{ formatBytes(disk.available) }} {{ t('system.free') }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                v-if="visibleNetworkInterfaces.length > 0"
+                class="dashboard-card-surface dashboard-details-panel dashboard-details-panel-span-full"
+              >
+                <div class="dashboard-details-panel-head">
+                  <p class="dashboard-card-label">{{ t('system.networkInfo') }}</p>
+                </div>
+                <div class="dashboard-details-network-list">
+                  <div
+                    v-for="iface in visibleNetworkInterfaces"
+                    :key="iface.name"
+                    class="dashboard-card-subsurface dashboard-details-network-item"
+                  >
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="dashboard-card-subtitle text-sm">
+                        {{ iface.name }}
+                      </span>
+                      <span class="dashboard-details-pill">
+                        {{ t('system.interfaceUp') }}
+                      </span>
+                    </div>
+
+                    <div class="dashboard-details-kv-grid dashboard-details-kv-grid-compact mt-4">
+                      <div v-if="iface.mac" class="dashboard-details-network-field">
+                        <p class="dashboard-card-label dashboard-details-micro-label">
+                          {{ t('system.macAddress') }}
+                        </p>
+                        <p class="mt-2 break-all font-mono text-sm text-gray-900 dark:text-white">
+                          {{ iface.mac }}
+                        </p>
+                      </div>
+
+                      <div v-if="iface.ipv4?.length" class="dashboard-details-network-field">
+                        <p class="dashboard-card-label dashboard-details-micro-label">
+                          {{ t('system.ipv4Address') }}
+                        </p>
+                        <p class="mt-2 break-all font-mono text-sm text-gray-900 dark:text-white">
+                          {{ iface.ipv4.join(', ') }}
+                        </p>
+                      </div>
+
+                      <div class="dashboard-details-network-field">
+                        <p class="dashboard-card-label dashboard-details-micro-label">
+                          {{ t('system.mtu') }}
+                        </p>
+                        <p class="dashboard-card-subtitle mt-2 text-sm">
+                          {{ iface.mtu }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <div
+              v-else
+              class="dashboard-card-surface dashboard-details-panel dashboard-details-panel-span-full dashboard-details-empty"
+            >
+              <p class="dashboard-card-footnote text-sm">{{ t('system.noDetailedInfo') }}</p>
+            </div>
+          </div>
+        </section>
       </section>
     </section>
   </div>
@@ -304,6 +756,139 @@ onUnmounted(() => {
 .dashboard-shell {
   position: relative;
   z-index: 1;
+}
+
+.dashboard-details-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.88rem;
+  margin-top: 0.18rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(203, 213, 225, 0.62);
+}
+
+.dashboard-details-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.94rem 1rem;
+}
+
+.dashboard-details-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  transition:
+    transform 0.18s ease;
+}
+
+.dashboard-details-button:hover {
+  transform: translateY(-1px);
+}
+
+.dashboard-details-button :deep(.dashboard-card-chip) {
+  min-height: 1.65rem;
+  padding-inline: 0.72rem;
+}
+
+.dashboard-details-grid {
+  display: grid;
+  gap: 0.88rem;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.dashboard-details-panel {
+  min-width: 0;
+  padding: 1rem 1.05rem;
+}
+
+.dashboard-details-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.dashboard-details-kv-grid {
+  display: grid;
+  gap: 0.72rem;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.dashboard-details-kv-grid-compact {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.dashboard-details-kv {
+  padding: 0.85rem 0.9rem;
+}
+
+.dashboard-details-micro-label {
+  font-size: 0.54rem;
+  letter-spacing: 0.1em;
+}
+
+.dashboard-details-split {
+  display: grid;
+  gap: 0.88rem;
+}
+
+.dashboard-details-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.88rem;
+  flex-wrap: wrap;
+}
+
+.dashboard-details-progress-stack,
+.dashboard-details-network-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.72rem;
+}
+
+.dashboard-details-progress-block,
+.dashboard-details-network-item,
+.dashboard-details-resource-card {
+  padding: 0.9rem;
+}
+
+.dashboard-details-resource-grid {
+  display: grid;
+  gap: 0.78rem;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.dashboard-details-network-field {
+  min-width: 0;
+}
+
+.dashboard-details-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.4rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.dashboard-details-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 8rem;
+  text-align: center;
 }
 
 .dashboard-status-row {
@@ -620,6 +1205,25 @@ html.dark .dashboard-refresh-button:hover {
   background: rgba(51, 65, 85, 0.92);
 }
 
+:root.dark .dashboard-details-button,
+[data-theme='dark'] .dashboard-details-button,
+html.dark .dashboard-details-button {
+  color: rgb(226 232 240);
+}
+
+:root.dark .dashboard-details-button:hover,
+[data-theme='dark'] .dashboard-details-button:hover,
+html.dark .dashboard-details-button:hover {
+  background: transparent;
+}
+
+:root.dark .dashboard-details-pill,
+[data-theme='dark'] .dashboard-details-pill,
+html.dark .dashboard-details-pill {
+  background: rgba(16, 185, 129, 0.16);
+  color: rgb(110 231 183);
+}
+
 :root.dark .dashboard-stage::before,
 [data-theme='dark'] .dashboard-stage::before,
 html.dark .dashboard-stage::before,
@@ -709,6 +1313,12 @@ html.dark :deep(.dashboard-primary-grid .dashboard-card-chip) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .dashboard-details-kv-grid,
+  .dashboard-details-kv-grid-compact,
+  .dashboard-details-resource-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   :deep(.dashboard-shell .dashboard-grid-small) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -717,6 +1327,26 @@ html.dark :deep(.dashboard-primary-grid .dashboard-card-chip) {
 @media (min-width: 1100px) {
   .dashboard-primary-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dashboard-details-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-details-panel-span-full {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-details-kv-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dashboard-details-kv-grid-compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-details-resource-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   :deep(.dashboard-shell .dashboard-grid-small) {
@@ -758,6 +1388,16 @@ html.dark :deep(.dashboard-primary-grid .dashboard-card-chip) {
 
   .dashboard-control-rail {
     gap: 0.42rem;
+  }
+
+  .dashboard-details-toggle {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-details-button {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .dashboard-welcome-title {
@@ -803,6 +1443,13 @@ html.dark :deep(.dashboard-primary-grid .dashboard-card-chip) {
 
   :deep(.dashboard-shell .dashboard-small-card-shell) {
     padding: 0.84rem 0.9rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .dashboard-details-split {
+    grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+    align-items: center;
   }
 }
 </style>

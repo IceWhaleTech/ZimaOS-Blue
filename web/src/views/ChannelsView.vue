@@ -1952,10 +1952,22 @@ watch(
   gap: 0.9rem;
   padding: 1.35rem 1.45rem;
   margin-bottom: 0.88rem;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.channels-header::after {
+  content: none;
 }
 
 .channels-header__copy {
   max-width: 46rem;
+}
+
+.channels-page__title {
+  font-size: clamp(1.52rem, 0.92vw + 1.02rem, 2.08rem);
+  line-height: 1.02;
 }
 
 .channels-summary-grid {

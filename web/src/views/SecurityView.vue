@@ -903,33 +903,6 @@ onUnmounted(() => {
             </p>
           </div>
 
-          <div class="config-page-hero__actions">
-            <button
-              class="security-hero-action"
-              :disabled="isScanning"
-              :title="isScanning ? t('security.scan.scanning') : t('security.scan.startScan')"
-              :aria-label="isScanning ? t('security.scan.scanning') : t('security.scan.startScan')"
-              @click="startSecurityScan"
-            >
-              <svg
-                class="h-4 w-4"
-                :class="{ 'animate-spin': isScanning }"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                />
-              </svg>
-              <span class="security-hero-action-label">
-                {{ isScanning ? t('security.scan.scanning') : t('security.scan.startScan') }}
-              </span>
-            </button>
-          </div>
         </div>
 
         <div class="security-hero-grid">
@@ -2239,42 +2212,6 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
-.security-hero-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
-  min-height: 2.4rem;
-  padding: 0.55rem 0.9rem;
-  border: 0;
-  border-radius: 999px;
-  color: #6b7280;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 18px 36px -32px rgba(15, 23, 42, 0.32);
-  transition:
-    transform 0.18s ease,
-    background-color 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease;
-}
-
-.security-hero-action:hover {
-  color: #111827;
-  background: #fff;
-  transform: translateY(-1px);
-}
-
-.security-hero-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-  transform: none;
-}
-
-.security-hero-action-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
 .security-hero-copy {
   max-width: 42rem;
   padding-top: 0.1rem;
@@ -3097,21 +3034,6 @@ html.dark .security-description {
   color: rgb(148 163 184);
 }
 
-:root.dark .security-hero-action,
-[data-theme='dark'] .security-hero-action,
-html.dark .security-hero-action {
-  color: rgb(148 163 184);
-  background: rgba(30, 41, 59, 0.88);
-  box-shadow: 0 18px 36px -28px rgba(2, 6, 23, 0.72);
-}
-
-:root.dark .security-hero-action:hover,
-[data-theme='dark'] .security-hero-action:hover,
-html.dark .security-hero-action:hover {
-  color: rgb(226 232 240);
-  background: rgba(51, 65, 85, 0.92);
-}
-
 :root.dark .security-stage::before,
 [data-theme='dark'] .security-stage::before,
 html.dark .security-stage::before,
@@ -3577,10 +3499,6 @@ html.dark .security-scan-inline-note {
 
   .security-panel {
     padding: 1.05rem;
-  }
-
-  .security-hero-action-label {
-    display: none;
   }
 
   .security-tab-button {

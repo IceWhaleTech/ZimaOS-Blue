@@ -318,6 +318,29 @@ describe('SettingsView small-model controls', () => {
     wrapper.unmount()
   })
 
+  it('removes duplicate card titles from optimization section headers', async () => {
+    routeTab = 'proxy'
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    expect(
+      wrapper.get('[data-testid="small-model-ir-section-header"]').find('h3').exists()
+    ).toBe(false)
+    expect(
+      wrapper.get('[data-testid="small-model-main-section-header"]').find('h3').exists()
+    ).toBe(false)
+
+    wrapper.unmount()
+  })
+
   it('defaults auto reflection to enabled on memory tab when unset', async () => {
     routeTab = 'memory'
     const pinia = createPinia()

@@ -790,9 +790,6 @@ onUnmounted(() => {
               class="mb-4 flex items-start justify-between gap-3"
             >
               <div>
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                  {{ t('settings.smallModel.irTitle', 'Assistive Features') }}
-                </h3>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                   {{
                     t(
@@ -1053,11 +1050,11 @@ onUnmounted(() => {
           </div>
 
           <div class="glass-card settings-feature-card p-4">
-            <div class="mb-4 flex items-start justify-between gap-3">
+            <div
+              data-testid="small-model-main-section-header"
+              class="mb-4 flex items-start justify-between gap-3"
+            >
               <div>
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                  {{ t('settings.smallModel.title', 'Lightweight Acceleration') }}
-                </h3>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                   {{
                     t(
