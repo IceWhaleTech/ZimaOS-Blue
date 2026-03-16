@@ -711,6 +711,7 @@ export default {
     noApprovedDirectories: 'Niciun director aprobat',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Controale de securitate',
       approvals: 'Directoare aprobate',
       firewall: 'Firewall',
       masking: 'Mascarea datelor',
@@ -1477,7 +1478,7 @@ export default {
     preview: 'Previzualizare',
     selectFile: 'Selectează fișier',
     confirmPassword: 'Confirmă parola',
-    passwordPlaceholder: 'Introdu parola (minimum 6 caractere)',
+    passwordPlaceholder: 'Introdu parola (minimum 8 caractere)',
     format: 'Format export',
     previewFailed: 'Previzualizarea datelor a eșuat',
     hasSettings: 'Include setări',

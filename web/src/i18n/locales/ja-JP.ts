@@ -2596,6 +2596,7 @@ export default {
     title: 'セキュリティセンター',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'セキュリティ制御',
       approvals: '承認済みディレクトリ',
       overview: '概要',
       monitoring: '監視',
@@ -4818,7 +4819,7 @@ export default {
     formatJsonDesc: '人間が読める形式。パスワードはインポート検証に使用されます。',
     formatEncryptedDesc: '完全暗号化バイナリ形式。より高いセキュリティ。',
     password: 'パスワード',
-    passwordPlaceholder: 'パスワードを入力（6文字以上）',
+    passwordPlaceholder: 'パスワードを入力（8文字以上）',
     confirmPassword: 'パスワード確認',
     confirmPasswordPlaceholder: 'パスワードを再入力',
     passwordMismatch: 'パスワードが一致しません',

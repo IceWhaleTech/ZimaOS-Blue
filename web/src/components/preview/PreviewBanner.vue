@@ -49,6 +49,7 @@ function handleUpgradeSuccess() {
     <!-- Preview mode button -->
     <button
       class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+      data-onboarding-anchor="preview-create-account"
       :class="
         showDropdown
           ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'

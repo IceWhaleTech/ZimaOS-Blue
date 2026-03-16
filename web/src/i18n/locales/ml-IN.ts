@@ -718,6 +718,7 @@ export default {
     noApprovedDirectories: 'അംഗീകരിച്ച ഡയറക്ടറികളൊന്നുമില്ല',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'സുരക്ഷാ നിയന്ത്രണങ്ങൾ',
       approvals: 'അംഗീകൃത ഡയറക്ടറികൾ',
       firewall: 'ഫയർവാൾ',
       masking: 'ഡാറ്റ മാസ്കിംഗ്',
@@ -1482,7 +1483,7 @@ export default {
     preview: 'പ്രിവ്യൂ',
     selectFile: 'ഫയൽ തിരഞ്ഞെടുക്കുക',
     confirmPassword: 'പാസ്‌വേഡ് സ്ഥിരീകരിക്കുക',
-    passwordPlaceholder: 'പാസ്‌വേഡ് നൽകുക (കുറഞ്ഞത് 6 അക്ഷരങ്ങൾ)',
+    passwordPlaceholder: 'പാസ്‌വേഡ് നൽകുക (കുറഞ്ഞത് 8 അക്ഷരങ്ങൾ)',
     format: 'കയറ്റുമതി ഫോർമാറ്റ്',
     previewFailed: 'ഡാറ്റ പ്രിവ്യൂ ചെയ്യാൻ കഴിഞ്ഞില്ല',
     hasSettings: 'ക്രമീകരണങ്ങൾ ഉൾപ്പെടുന്നു',

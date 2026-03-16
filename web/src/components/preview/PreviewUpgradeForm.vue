@@ -27,13 +27,17 @@ const policyLoading = ref(true)
 
 // Password policy from backend
 const policy = ref<PasswordPolicy>({
-  min_length: 6,
+  min_length: 8,
   require_uppercase: true,
   require_lowercase: true,
   require_letter: false,
   require_number: true,
   require_special: true,
 })
+
+const passwordPlaceholder = computed(() =>
+  t('preview.passwordCheck.length', { n: policy.value.min_length })
+)
 
 onMounted(async () => {
   try {
@@ -214,7 +218,7 @@ async function handleSubmit() {
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
                   class="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-                  :placeholder="t('auth.passwordPlaceholder')"
+                  :placeholder="passwordPlaceholder"
                   required
                   :minlength="policy.min_length"
                 />

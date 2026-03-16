@@ -394,8 +394,6 @@ onMounted(async () => {
 
     <!-- ASR Tab Content -->
     <div v-show="activeTab === 'asr'" class="space-y-6">
-      <VoiceWakeSettingsSection />
-
       <!-- macOS Native STT Status -->
       <div
         v-if="status?.asr?.provider === 'macos-native'"
@@ -618,6 +616,8 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+
+      <VoiceWakeSettingsSection />
 
       <!-- Windows Native STT Status -->
       <div

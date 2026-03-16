@@ -1760,6 +1760,7 @@ export default {
     noApprovedDirectories: 'Aucun répertoire approuvé',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Contrôles de sécurité',
       approvals: 'Répertoires approuvés',
       firewall: 'Pare-feu',
       masking: 'Masquage des données',
@@ -3218,7 +3219,7 @@ export default {
     formatJson: 'JSON',
     formatEncrypted: 'Chiffré',
     password: 'Mot de passe',
-    passwordPlaceholder: 'Entrer le mot de passe (min. 6 caractères)',
+    passwordPlaceholder: 'Entrer le mot de passe (min. 8 caractères)',
     confirmPassword: 'Confirmer le mot de passe',
     passwordMismatch: 'Les mots de passe ne correspondent pas',
     selectFile: 'Sélectionner un fichier',

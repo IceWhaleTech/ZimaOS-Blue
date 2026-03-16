@@ -203,6 +203,40 @@ func TestManagerRefreshStateTransitions(t *testing.T) {
 	}
 }
 
+func TestManagerRefreshPreservesProbedPermissionsWhenDisabled(t *testing.T) {
+	previousProbe := probePermissionStatus
+	probePermissionStatus = func() permissionStatus {
+		return permissionStatus{
+			SpeechAuthorized: true,
+			MicrophoneReady:  true,
+		}
+	}
+	defer func() {
+		probePermissionStatus = previousProbe
+	}()
+
+	manager := NewManager(ManagerConfig{
+		Settings: &fakeSettingsSource{
+			enabled: false,
+			target:  "conv-1",
+		},
+		Supported: true,
+		Runtime:   &fakeRuntime{},
+	})
+
+	if err := manager.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	status := manager.Status()
+	if !status.SpeechAuthorized {
+		t.Fatal("expected speech authorization to reflect probed permission state")
+	}
+	if !status.MicrophoneReady {
+		t.Fatal("expected microphone readiness to reflect probed permission state")
+	}
+}
+
 func TestManagerRefreshRestartsWhenConfigChanges(t *testing.T) {
 	settings := &fakeSettingsSource{
 		enabled:  true,

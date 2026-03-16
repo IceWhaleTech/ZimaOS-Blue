@@ -705,6 +705,7 @@ export default {
     noApprovedDirectories: 'Ingen godkjente kataloger',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Sikkerhetskontroller',
       approvals: 'Godkjente kataloger',
       firewall: 'Brannmur',
       masking: 'Datamaskering',
@@ -1247,7 +1248,7 @@ export default {
     preview: 'Forhåndsvisning',
     selectFile: 'Velg fil',
     confirmPassword: 'Bekreft passord',
-    passwordPlaceholder: 'Skriv inn passord (minst 6 tegn)',
+    passwordPlaceholder: 'Skriv inn passord (minst 8 tegn)',
     format: 'Eksportformat',
     previewFailed: 'Kunne ikke forhåndsvise data',
     hasSettings: 'Har innstillinger',

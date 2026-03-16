@@ -294,9 +294,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/backup',
-    name: 'Backup',
-    component: () => import('@/views/BackupView.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true },
+    redirect: { name: 'Settings', query: { tab: 'userdata' } },
   },
   {
     path: '/security',

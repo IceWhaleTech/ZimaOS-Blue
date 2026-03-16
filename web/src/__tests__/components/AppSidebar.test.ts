@@ -6,6 +6,7 @@ import AppSidebar from '@/components/AppSidebar.vue'
 import { i18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
+import { useSystemStore } from '@/stores/system'
 
 vi.mock('@/api/workspace', () => ({
   workspaceApi: {
@@ -207,5 +208,16 @@ describe('AppSidebar', () => {
       wrapper.findAll('.sidebar-footer .sidebar-utility-row-preview .sidebar-utility-button')
     ).toHaveLength(2)
     expect(wrapper.find('.sidebar-footer-meta').exists()).toBe(false)
+  })
+
+  it('keeps the online badge visible before health loads', async () => {
+    const systemStore = useSystemStore()
+    systemStore.$patch({ health: null })
+
+    const { wrapper } = await mountSidebar('/home')
+
+    const statusBadge = wrapper.get('.sidebar-status-badge')
+    expect(statusBadge.text()).toContain('common.online')
+    expect(statusBadge.classes()).toContain('sidebar-status-badge-online')
   })
 })

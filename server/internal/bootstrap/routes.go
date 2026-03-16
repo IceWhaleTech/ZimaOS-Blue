@@ -65,6 +65,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	serviceutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/service"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
@@ -2859,7 +2860,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	settingsHandler.SetSmallModelManager(smManager)
 	var voiceWakeHandler *voicewake.Handler
 	if deps.ChatHandler != nil {
-		supported := runtime.GOOS == "darwin" && cfg != nil && strings.EqualFold(strings.TrimSpace(cfg.Mode), "embedded")
+		mode := ""
+		if cfg != nil {
+			mode = strings.TrimSpace(cfg.Mode)
+		}
+		supported := runtime.GOOS == "darwin" &&
+			(strings.EqualFold(mode, "embedded") || serviceutil.IsInteractive())
 		voiceWakeManager := voicewake.NewManager(voicewake.ManagerConfig{
 			Settings:  settingsHandler,
 			Submitter: deps.ChatHandler,

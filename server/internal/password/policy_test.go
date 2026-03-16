@@ -8,8 +8,8 @@ import (
 func TestDefaultPolicyConfig(t *testing.T) {
 	config := DefaultPolicyConfig()
 
-	if config.MinLength != 6 {
-		t.Errorf("expected MinLength to be 6, got %d", config.MinLength)
+	if config.MinLength != 8 {
+		t.Errorf("expected MinLength to be 8, got %d", config.MinLength)
 	}
 	if config.RequireUppercase {
 		t.Error("expected RequireUppercase to be false")
@@ -41,7 +41,7 @@ func TestPolicy_Validate(t *testing.T) {
 	}{
 		{
 			name:     "valid password",
-			password: "pass1!",
+			password: "pass123!",
 			wantErrs: 0,
 		},
 		{
@@ -144,7 +144,7 @@ func TestPolicy_ValidateWithHistory_EmptyHistory(t *testing.T) {
 	policy := NewPolicy(nil)
 	hasher := NewHasher(nil)
 
-	password := "pass12!"
+	password := "pass123!"
 	errs := policy.ValidateWithHistory(password, nil, hasher)
 	if len(errs) != 0 {
 		t.Errorf("ValidateWithHistory() with empty history got errors: %v", errs)
@@ -159,7 +159,7 @@ func TestPolicy_ValidateWithHistory_EmptyHistory(t *testing.T) {
 func TestPolicy_IsValid(t *testing.T) {
 	policy := NewPolicy(nil)
 
-	if !policy.IsValid("pass1!") {
+	if !policy.IsValid("pass123!") {
 		t.Error("IsValid() should return true for valid password")
 	}
 

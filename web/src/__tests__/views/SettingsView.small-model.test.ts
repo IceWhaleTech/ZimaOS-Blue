@@ -252,6 +252,7 @@ describe('SettingsView small-model controls', () => {
     expect(wrapper.find('[data-testid="smart-tool-selection-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="small-model-ir-master-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="small-model-rerank-switch"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="small-model-advanced-toggle"]').exists()).toBe(false)
     expect(
       wrapper
         .get('[data-testid="small-model-ir-section-header"]')
@@ -259,6 +260,30 @@ describe('SettingsView small-model controls', () => {
         .exists()
     ).toBe(true)
     expect(wrapper.get('[data-testid="small-model-ir-grid"]').classes()).toContain('sm:grid-cols-2')
+    expect(wrapper.get('[data-testid="small-model-resource-status-row"]').text()).toContain(
+      'Resource Footprint'
+    )
+    expect(
+      wrapper
+        .get('[data-testid="small-model-resource-status-row"]')
+        .find('[data-testid="small-model-storage-usage"]')
+        .exists()
+    ).toBe(true)
+    expect(
+      wrapper
+        .get('[data-testid="small-model-resource-status-row"]')
+        .find('[data-testid="small-model-runtime-usage"]')
+        .exists()
+    ).toBe(true)
+    expect(
+      wrapper
+        .get('[data-testid="small-model-resource-status-row"]')
+        .find('[data-testid="small-model-status-badge"]')
+        .exists()
+    ).toBe(true)
+    expect(wrapper.get('[data-testid="small-model-status-badge"]').text()).toContain(
+      i18n.global.t('settings.smallModel.notReady', 'Not Ready')
+    )
 
     await wrapper.get('[data-testid="small-model-ir-master-switch"]').trigger('click')
     await flushPromises()

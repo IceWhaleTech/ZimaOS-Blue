@@ -707,6 +707,7 @@ export default {
     noApprovedDirectories: 'Brak zatwierdzonych katalogów',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Kontrole bezpieczeństwa',
       approvals: 'Zatwierdzone katalogi',
       firewall: 'Zapora',
       masking: 'Maskowanie danych',
@@ -1848,7 +1849,7 @@ export default {
     preview: 'Podgląd',
     selectFile: 'Wybierz plik',
     confirmPassword: 'Potwierdź hasło',
-    passwordPlaceholder: 'Wprowadź hasło (minimum 6 znaków)',
+    passwordPlaceholder: 'Wprowadź hasło (minimum 8 znaków)',
     format: 'Format eksportu',
     previewFailed: 'Podgląd danych nie powiódł się',
     hasSettings: 'Zawiera ustawienia',

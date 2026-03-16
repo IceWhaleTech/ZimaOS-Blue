@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, inject, ref, watch, type ComputedRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Conversation } from '@/api/chat'
 
@@ -11,6 +11,7 @@ defineProps<{
   executingConversationIds?: string[]
   loading?: boolean
   searching?: boolean
+  mobile?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   search: [query: string]
   pin: [id: string]
   unpin: [id: string]
+  'more-actions': []
 }>()
 
 const searchQuery = ref('')
@@ -27,6 +29,11 @@ const showDeleteConfirm = ref<string | null>(null)
 const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const longPressId = ref<string | null>(null)
 const showContextMenu = ref<string | null>(null)
+const toggleAppSidebar = inject<() => void>('toggleAppSidebar', () => {})
+const hasGlobalMobileSidebarToggle = inject<ComputedRef<boolean>>(
+  'hasGlobalMobileSidebarToggle',
+  computed(() => false)
+)
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
@@ -51,6 +58,14 @@ function handleSelect(id: string) {
 
 function handleCreate() {
   emit('create')
+}
+
+function handleOpenAppSidebar() {
+  toggleAppSidebar()
+}
+
+function handleOpenMoreActions() {
+  emit('more-actions')
 }
 
 function handleDelete(id: string) {
@@ -123,11 +138,57 @@ watch(searchQuery, (query) => {
 </script>
 
 <template>
-  <div class="conversation-list h-full flex flex-col">
+  <div class="conversation-list h-full flex flex-col" :class="{ 'conversation-list-mobile': mobile }">
     <div class="list-header sticky top-0 z-10">
-      <div class="list-headline">
-        <h2 class="list-title truncate">{{ t('chat.conversations') }}</h2>
-        <span class="list-count">{{ conversations.length }}</span>
+      <div v-if="mobile" class="list-headline">
+        <h2 class="list-title truncate">{{ t('nav.chat') }}</h2>
+        <div class="list-actions">
+          <button
+            v-if="!hasGlobalMobileSidebarToggle"
+            class="list-menu-btn"
+            type="button"
+            :aria-label="t('nav.expandSidebar')"
+            :title="t('nav.expandSidebar')"
+            @click="handleOpenAppSidebar"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.8"
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </button>
+          <button
+            class="list-menu-btn"
+            type="button"
+            :aria-label="t('chat.moreActions')"
+            :title="t('chat.moreActions')"
+            @click="handleOpenMoreActions"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.8"
+                d="M4.75 5.75h4.5v4.5h-4.5zm10 0h4.5v4.5h-4.5zm-10 10h4.5v4.5h-4.5zm10 0h4.5v4.5h-4.5z"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div class="search-row">
@@ -453,9 +514,9 @@ watch(searchQuery, (query) => {
 .conversation-list {
   --cl-border: rgba(226, 232, 240, 0.92);
   --cl-border-strong: rgba(59, 130, 246, 0.34);
-  --cl-header-px: var(--chat-pane-pad-x, 1rem);
+  --cl-header-px: 0.82rem;
   --cl-header-py: var(--chat-pane-pad-y, 0.96rem);
-  --cl-item-px: 1rem;
+  --cl-item-px: 0.82rem;
   --cl-item-py: 1rem;
   --cl-side-width: 3.75rem;
   background: rgba(255, 255, 255, 0.98);
@@ -463,17 +524,17 @@ watch(searchQuery, (query) => {
 }
 
 :global(.chat-view.ui-density-compact) .conversation-list {
-  --cl-header-px: 0.82rem;
+  --cl-header-px: 0.72rem;
   --cl-header-py: 0.76rem;
-  --cl-item-px: 0.82rem;
+  --cl-item-px: 0.72rem;
   --cl-item-py: 0.8rem;
   --cl-side-width: 3.4rem;
 }
 
 :global(.chat-view.ui-density-comfortable) .conversation-list {
-  --cl-header-px: 1.1rem;
+  --cl-header-px: 0.92rem;
   --cl-header-py: 1.08rem;
-  --cl-item-px: 1.1rem;
+  --cl-item-px: 0.92rem;
   --cl-item-py: 1.08rem;
   --cl-side-width: 4rem;
 }
@@ -482,7 +543,6 @@ watch(searchQuery, (query) => {
   position: sticky;
   top: 0;
   z-index: 10;
-  padding: var(--cl-header-py) var(--cl-header-px);
   border-bottom: 1px solid var(--cl-border);
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
@@ -494,30 +554,66 @@ watch(searchQuery, (query) => {
   align-items: center;
   justify-content: space-between;
   gap: 0.7rem;
-  margin-bottom: 0.8rem;
+  min-height: 3.75rem;
+  padding: calc(max(env(safe-area-inset-top), 0px) + 0.85rem) var(--cl-header-px) 0.9rem;
 }
 
 .list-title {
-  font-size: 0.96rem;
-  line-height: 1.15;
+  font-size: clamp(1.72rem, 6.2vw, 2.16rem);
+  line-height: 0.98;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.045em;
   color: rgb(15, 23, 42);
 }
 
-.list-count {
-  display: none;
+.list-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
+.list-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.94);
+  color: rgb(100, 116, 139);
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.list-menu-btn:hover {
+  background: rgba(248, 250, 252, 0.98);
+  border-color: rgba(148, 163, 184, 0.45);
+  color: rgb(30, 41, 59);
+  transform: translateY(-1px);
 }
 
 .search-row {
   display: flex;
   align-items: center;
   gap: 0.7rem;
+  min-height: 3.85rem;
+  padding: 0.72rem var(--cl-header-px);
+  border-top: none;
+}
+
+.conversation-list-mobile .search-row {
+  border-top: 1px solid var(--cl-border);
 }
 
 .search-input-wrap {
   border: 1px solid var(--cl-border);
-  border-radius: 0.72rem;
+  border-radius: 0.65rem;
   background: rgba(255, 255, 255, 0.98);
   overflow: hidden;
   transition:
@@ -535,12 +631,12 @@ watch(searchQuery, (query) => {
   border-radius: inherit;
   background: transparent;
   box-shadow: none;
-  min-height: 2.35rem;
+  min-height: 2.3rem;
   outline: none;
   appearance: none;
   -webkit-appearance: none;
-  padding: 0.66rem 2.15rem 0.66rem 2.45rem;
-  font-size: 0.92rem;
+  padding: 0.64rem 2.15rem 0.64rem 2.45rem;
+  font-size: 0.88rem;
   line-height: 1.2;
 }
 
@@ -558,7 +654,7 @@ watch(searchQuery, (query) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0.66rem;
+  border-radius: 0.58rem;
   background: rgb(37, 99, 235);
   box-shadow: none;
   color: rgb(255, 255, 255);
@@ -566,8 +662,8 @@ watch(searchQuery, (query) => {
 }
 
 .create-btn-inline {
-  width: 2.35rem;
-  height: 2.35rem;
+  width: 2.3rem;
+  height: 2.3rem;
   flex-shrink: 0;
 }
 
@@ -584,7 +680,7 @@ watch(searchQuery, (query) => {
 
 .convo-stack {
   display: block;
-  padding: 0;
+  padding: 0 0 1rem;
 }
 
 .conversation-item {
@@ -599,8 +695,8 @@ watch(searchQuery, (query) => {
   position: relative;
   width: 100%;
   min-width: 0;
-  min-height: 4rem;
-  padding: 0.88rem var(--cl-item-px) 0.82rem;
+  min-height: 3.55rem;
+  padding: 0.7rem var(--cl-item-px) 0.64rem;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -619,8 +715,8 @@ watch(searchQuery, (query) => {
   content: '';
   position: absolute;
   left: 0;
-  top: 0.72rem;
-  bottom: 0.72rem;
+  top: 0.58rem;
+  bottom: 0.58rem;
   width: 3px;
   border-radius: 999px;
   background: rgb(59, 130, 246);
@@ -640,8 +736,8 @@ watch(searchQuery, (query) => {
   text-overflow: ellipsis;
   white-space: nowrap;
   letter-spacing: -0.015em;
-  font-size: 0.95rem;
-  line-height: 1.22;
+  font-size: 0.9rem;
+  line-height: 1.18;
   font-weight: 600;
 }
 
@@ -660,12 +756,12 @@ watch(searchQuery, (query) => {
 }
 
 .convo-preview {
-  margin-top: 0.14rem;
+  margin-top: 0.08rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.72rem;
-  line-height: 1.28;
+  font-size: 0.69rem;
+  line-height: 1.22;
   letter-spacing: 0.01em;
   color: rgb(156, 163, 175);
 }
@@ -678,7 +774,7 @@ watch(searchQuery, (query) => {
   min-width: var(--cl-side-width);
   align-items: flex-end;
   justify-content: space-between;
-  gap: 0.24rem;
+  gap: 0.16rem;
 }
 
 .convo-time {
@@ -687,7 +783,7 @@ watch(searchQuery, (query) => {
   justify-content: flex-end;
   gap: 0.32rem;
   padding-top: 0.08rem;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -712,7 +808,7 @@ watch(searchQuery, (query) => {
 
 .convo-actions {
   right: 0.72rem;
-  bottom: 0.72rem;
+  bottom: 0.56rem;
   gap: 0.22rem;
   opacity: 0;
   transition: opacity 0.18s ease;
@@ -797,6 +893,20 @@ watch(searchQuery, (query) => {
   color: rgb(241, 245, 249);
 }
 
+:root.dark .list-menu-btn,
+[data-theme='dark'] .list-menu-btn {
+  border-color: rgba(51, 65, 85, 0.88);
+  background: rgba(30, 41, 59, 0.88);
+  color: rgb(148, 163, 184);
+}
+
+:root.dark .list-menu-btn:hover,
+[data-theme='dark'] .list-menu-btn:hover {
+  border-color: rgba(100, 116, 139, 0.72);
+  background: rgba(51, 65, 85, 0.94);
+  color: rgb(241, 245, 249);
+}
+
 :root.dark .search-input-wrap,
 [data-theme='dark'] .search-input-wrap {
   background: rgba(30, 41, 59, 0.82);
@@ -850,16 +960,16 @@ watch(searchQuery, (query) => {
 
 @media (max-width: 768px) {
   .list-header {
-    padding-inline: 0.85rem;
+    --cl-header-px: 0.85rem;
   }
 
   .convo-main-btn {
-    min-height: 3.8rem;
+    min-height: 3.35rem;
   }
 
   .convo-actions {
     right: 0.7rem;
-    bottom: 0.72rem;
+    bottom: 0.5rem;
   }
 }
 
@@ -873,12 +983,6 @@ watch(searchQuery, (query) => {
   .create-btn,
   .action-btn {
     transition: none !important;
-  }
-}
-
-@media (max-width: 640px) {
-  .list-header {
-    padding-top: calc(max(env(safe-area-inset-top), 0px) + 0.85rem);
   }
 }
 

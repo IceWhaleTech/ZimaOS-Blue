@@ -135,7 +135,7 @@ func NewHandler(detector *ThreatDetector) *Handler {
 		events:     make([]SecurityEvent, 0),
 		dataDir:    "./data", // Default data directory
 		settings: SecuritySettings{
-			PasswordMinLength:        6,
+			PasswordMinLength:        8,
 			PasswordRequireUppercase: true,
 			PasswordRequireLowercase: true,
 			PasswordRequireNumbers:   true,

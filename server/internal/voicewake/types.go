@@ -14,7 +14,7 @@ var (
 )
 
 const (
-	DefaultTrigger            = "Blue"
+	DefaultTrigger            = "Hey Blue"
 	DefaultMinPostTriggerGap  = 450 * time.Millisecond
 	DefaultPostTriggerSilence = 2 * time.Second
 	DefaultTriggerOnlySilence = 5 * time.Second

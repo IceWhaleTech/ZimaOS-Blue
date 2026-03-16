@@ -24,7 +24,17 @@ const noPadding = computed(() => route.meta.noPadding === true)
 const hideLayout = computed(() => route.meta.hideLayout === true)
 const isChatRoute = computed(() => route.path.startsWith('/chat'))
 const isHomeRoute = computed(() => route.name === 'Home' || route.path === '/home')
-const showMobileSidebarToggle = computed(() => !isChatRoute.value && !isHomeRoute.value)
+const mobileDevicePattern = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i
+
+function detectMobileDevice() {
+  if (typeof navigator === 'undefined') return false
+  const userAgent = navigator.userAgent.toLowerCase()
+  const isiPadDesktopMode = userAgent.includes('macintosh') && navigator.maxTouchPoints > 1
+  return mobileDevicePattern.test(userAgent) || isiPadDesktopMode
+}
+
+const isMobileDevice = ref(detectMobileDevice())
+const showMobileSidebarToggle = computed(() => isMobileDevice.value)
 
 // Sidebar ref for mobile toggle
 type AppSidebarExposed = InstanceType<typeof AppSidebar> & {
@@ -33,6 +43,7 @@ type AppSidebarExposed = InstanceType<typeof AppSidebar> & {
 
 const sidebarRef = ref<AppSidebarExposed | null>(null)
 const workspacePanelOpen = computed(() => Boolean(sidebarRef.value?.workspacePanelOpen))
+const sidebarCollapsed = computed(() => Boolean(sidebarRef.value?.isCollapsed))
 
 function toggleSidebar() {
   sidebarRef.value?.toggle()
@@ -40,11 +51,13 @@ function toggleSidebar() {
 
 // Provide toggle for child components (e.g. ChatView on mobile)
 provide('toggleAppSidebar', toggleSidebar)
+provide('hasGlobalMobileSidebarToggle', showMobileSidebarToggle)
 
 // Form filler widget - now shows on input focus, no need for route watching
 const { setup, cleanup } = useFormFillerWidget()
 
 onMounted(() => {
+  isMobileDevice.value = detectMobileDevice()
   setup()
   // Sync close behavior setting to Tauri backend on startup
   if (isTauri.value) {
@@ -64,7 +77,13 @@ onUnmounted(() => {
   </div>
   <!-- Default layout with header and sidebar -->
   <div v-else class="app-shell h-screen overflow-hidden" :class="{ 'app-shell-home': isHomeRoute }">
-    <div class="layout-body flex h-full min-h-0">
+    <div
+      class="layout-body flex h-full min-h-0"
+      :class="{
+        'layout-body-chat': isChatRoute,
+        'layout-body-chat-nav-hidden': isChatRoute && sidebarCollapsed,
+      }"
+    >
       <AppSidebar ref="sidebarRef" />
       <div
         class="layout-right flex-1 min-w-0 min-h-0 flex flex-col"
@@ -74,7 +93,7 @@ onUnmounted(() => {
           class="layout-main flex-1 w-full relative z-0"
           :class="[
             isChatRoute ? 'overflow-hidden' : 'overflow-auto',
-            { 'p-4 sm:p-5 lg:p-6': !noPadding },
+            { 'p-[0.9rem] sm:p-[1.125rem] lg:p-[1.35rem]': !noPadding },
           ]"
         >
           <div v-if="showMobileSidebarToggle" class="layout-mobile-nav-bar lg:hidden">
@@ -114,6 +133,8 @@ onUnmounted(() => {
 
 <style scoped>
 .app-shell {
+  --layout-shell-spacing: 0.8rem;
+  --layout-shell-offset: calc(var(--layout-shell-spacing) * 2);
   --workspace-dock-width: 28rem;
   background:
     radial-gradient(circle at 0% 0%, rgba(14, 165, 233, 0.1), transparent 42%),
@@ -180,18 +201,38 @@ html.dark .layout-mobile-nav-button:hover {
 
 @media (min-width: 1024px) {
   .layout-body {
-    padding: 0.9rem;
-    gap: 0.9rem;
+    padding: var(--layout-shell-spacing);
+    gap: var(--layout-shell-spacing);
     align-items: stretch;
   }
 
+  .layout-body.layout-body-chat {
+    padding-bottom: var(--layout-shell-spacing);
+    gap: 0;
+  }
+
+  .layout-body.layout-body-chat.layout-body-chat-nav-hidden {
+    padding-left: 0;
+  }
+
   .layout-right {
-    min-height: calc(100vh - 1.8rem);
-    height: calc(100vh - 1.8rem);
+    min-height: calc(100vh - var(--layout-shell-offset));
+    height: calc(100vh - var(--layout-shell-offset));
+  }
+
+  .layout-body.layout-body-chat .layout-right {
+    min-height: calc(100vh - var(--layout-shell-offset));
+    height: calc(100vh - var(--layout-shell-offset));
+  }
+
+  .layout-body.layout-body-chat :deep(.app-sidebar) {
+    min-height: calc(100vh - var(--layout-shell-offset));
+    height: calc(100vh - var(--layout-shell-offset));
+    max-height: calc(100vh - var(--layout-shell-offset));
   }
 
   .layout-right-with-workspace {
-    padding-right: calc(var(--workspace-dock-width) + 0.9rem);
+    padding-right: calc(var(--workspace-dock-width) + var(--layout-shell-spacing));
   }
 }
 </style>

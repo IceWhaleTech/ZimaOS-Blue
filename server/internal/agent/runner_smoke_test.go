@@ -135,7 +135,7 @@ func TestRunnerSmoke_VerifyRecoverFailure_EndsDone(t *testing.T) {
 		if strings.HasPrefix(step.Description, "Verify the completed work") && step.Status == StepStatusFailed {
 			verifyFailed = true
 		}
-		if strings.HasPrefix(step.Description, "Recovery: retry failed validation") && step.Status == StepStatusFailed {
+		if strings.HasPrefix(step.Description, "Recovery: apply the fallback plan") && step.Status == StepStatusFailed {
 			recoverFailed = true
 		}
 	}

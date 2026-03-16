@@ -724,6 +724,7 @@ export default {
     noApprovedDirectories: 'Nincsenek jóváhagyott könyvtárak',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Biztonsági vezérlők',
       approvals: 'Jóváhagyott könyvtárak',
       firewall: 'Tűzfal',
       masking: 'Adatmaszkolás',
@@ -1418,7 +1419,7 @@ export default {
     preview: 'Előnézet',
     selectFile: 'Fájl kiválasztása',
     confirmPassword: 'Jelszó megerősítése',
-    passwordPlaceholder: 'Adja meg a jelszót (legalább 6 karakter)',
+    passwordPlaceholder: 'Adja meg a jelszót (legalább 8 karakter)',
     format: 'Exportálási formátum',
     previewFailed: 'Az adatelőnézet sikertelen',
     hasSettings: 'Tartalmaz beállításokat',

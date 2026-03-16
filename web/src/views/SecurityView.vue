@@ -22,29 +22,34 @@ import type { LogEntry } from '@/api/system'
 const { t, te } = useI18n()
 
 // Tab definitions
-type TabId = 'overview' | 'approvals' | 'firewall' | 'network' | 'masking' | 'monitoring' | 'logs'
+type TabId = 'overview' | 'controls' | 'network' | 'monitoring' | 'logs'
 const activeTab = ref<TabId>('overview')
 
-const tabs: { id: TabId; labelKey: string; icon: string; fallbackLabel: string }[] = [
-  { id: 'overview', labelKey: 'security.tabs.overview', icon: 'shield', fallbackLabel: 'Overview' },
+interface SecurityTabMeta {
+  id: TabId
+  labelKey: string
+  icon: string
+  fallbackLabel: string
+}
+
+const tabs: SecurityTabMeta[] = [
   {
-    id: 'approvals',
-    labelKey: 'security.tabs.approvals',
-    icon: 'folder-lock',
-    fallbackLabel: 'Approvals',
+    id: 'overview',
+    labelKey: 'security.tabs.overview',
+    icon: 'shield',
+    fallbackLabel: 'Overview',
   },
   {
-    id: 'firewall',
-    labelKey: 'security.tabs.firewall',
-    icon: 'firewall',
-    fallbackLabel: 'Firewall',
+    id: 'controls',
+    labelKey: 'security.tabs.controls',
+    icon: 'controls',
+    fallbackLabel: 'Security Controls',
   },
-  { id: 'network', labelKey: 'security.tabs.network', icon: 'network', fallbackLabel: 'Network' },
   {
-    id: 'masking',
-    labelKey: 'security.tabs.masking',
-    icon: 'masking',
-    fallbackLabel: 'Data Masking',
+    id: 'network',
+    labelKey: 'security.tabs.network',
+    icon: 'network',
+    fallbackLabel: 'Network',
   },
   {
     id: 'monitoring',
@@ -52,7 +57,12 @@ const tabs: { id: TabId; labelKey: string; icon: string; fallbackLabel: string }
     icon: 'activity',
     fallbackLabel: 'Monitoring',
   },
-  { id: 'logs', labelKey: 'security.tabs.logs', icon: 'list', fallbackLabel: 'Logs' },
+  {
+    id: 'logs',
+    labelKey: 'security.tabs.logs',
+    icon: 'list',
+    fallbackLabel: 'Logs',
+  },
 ]
 
 function selectTab(tabId: TabId) {
@@ -64,6 +74,10 @@ function selectTab(tabId: TabId) {
 
 function tr(key: string, fallback = ''): string {
   return te(key) ? t(key) : fallback
+}
+
+function getTabLabel(tab: SecurityTabMeta): string {
+  return tr(tab.labelKey, tab.fallbackLabel)
 }
 
 /** Backend English details string -> security.scan.detailMessages key (for i18n). */
@@ -660,6 +674,19 @@ const scanSummary = computed(() => {
   return { passed, warnings, failed, total: scanResults.value.length }
 })
 
+const visibleScanSummaryMetrics = computed(() => [
+  {
+    key: 'passed',
+    value: scanSummary.value.passed,
+    label: t('security.scan.passed'),
+  },
+  {
+    key: 'failed',
+    value: scanSummary.value.failed,
+    label: t('security.scan.failed'),
+  },
+])
+
 // Get category label
 function getCategoryLabel(category: string): string {
   const labels: Record<string, string> = {
@@ -742,6 +769,8 @@ const securityStatus = computed(() => {
   return 'passed'
 })
 
+const securityStatusBannerVisible = computed(() => securityStatus.value !== 'warning')
+
 const securityStatusTitle = computed(() => {
   switch (securityStatus.value) {
     case 'passed':
@@ -764,10 +793,6 @@ const securityStatusDescription = computed(() => {
       })
     : t('security.scanInProgress')
 })
-
-const firewallStateLabel = computed(() =>
-  firewallConfig.value.enabled ? tr('common.enabled', 'Enabled') : tr('common.disabled', 'Disabled')
-)
 
 // Companion monitoring state
 const companionSessions = ref<CompanionSession[]>([])
@@ -891,59 +916,17 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="security-page config-page-frame">
-    <section class="security-stage config-page-stage">
+  <div class="security-page dashboard-page-frame">
+    <section class="security-stage dashboard-page-stage">
       <section class="security-hero">
-        <div class="security-hero-heading config-page-hero-surface">
-          <div class="security-hero-copy config-page-hero__copy">
-            <p class="security-eyebrow config-page-hero__eyebrow">{{ t('nav.configuration') }}</p>
-            <h1 class="security-title config-page-hero__title">{{ t('security.title') }}</h1>
-            <p class="security-description config-page-hero__description">
+        <div class="security-hero-heading dashboard-page-hero">
+          <div class="security-hero-copy dashboard-page-copy">
+            <p class="security-eyebrow dashboard-page-eyebrow">{{ t('nav.configuration') }}</p>
+            <h1 class="security-title dashboard-page-title">{{ t('security.title') }}</h1>
+            <p class="security-description dashboard-page-description">
               {{ securityStatusDescription }}
             </p>
           </div>
-
-        </div>
-
-        <div class="security-hero-grid">
-          <article class="security-hero-card" :class="`is-${securityStatus}`">
-            <span class="security-hero-card-label">{{
-              tr('security.tabs.overview', 'Overview')
-            }}</span>
-            <p class="security-hero-card-value">{{ securityStatusTitle }}</p>
-            <p class="security-hero-card-footnote">{{ securityStatusDescription }}</p>
-          </article>
-
-          <article class="security-hero-card">
-            <span class="security-hero-card-label">{{ t('security.firewall.title') }}</span>
-            <p class="security-hero-card-value">{{ firewallStateLabel }}</p>
-            <p class="security-hero-card-footnote">
-              {{ firewallSummary || t('security.firewall.description') }}
-            </p>
-          </article>
-
-          <article class="security-hero-card">
-            <span class="security-hero-card-label">
-              {{ tr('security.approvedDirectories', 'Approved Directories') }}
-            </span>
-            <p class="security-hero-card-value">{{ approvedDirs.length }}</p>
-            <p class="security-hero-card-footnote">
-              {{
-                approvedDirs.length > 0
-                  ? tr(
-                      'security.approvedDirectoriesDesc',
-                      'Directories approved via Allow Always for exec/convert.'
-                    )
-                  : tr('security.noApprovedDirectories', 'No approved directories')
-              }}
-            </p>
-          </article>
-
-          <article class="security-hero-card">
-            <span class="security-hero-card-label">{{ t('connections.activeConnections') }}</span>
-            <p class="security-hero-card-value">{{ connectionStats?.total_connections ?? 0 }}</p>
-            <p class="security-hero-card-footnote">{{ t('connections.description') }}</p>
-          </article>
         </div>
       </section>
 
@@ -953,7 +936,7 @@ onUnmounted(() => {
             <button
               v-for="tab in tabs"
               :key="tab.id"
-              class="security-tab-button"
+              class="security-tab-button dashboard-card-subsurface"
               :class="{ 'is-active': activeTab === tab.id }"
               @click="selectTab(tab.id)"
             >
@@ -972,6 +955,24 @@ onUnmounted(() => {
                     stroke-width="2"
                     d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
                   />
+                </svg>
+                <svg
+                  v-else-if="tab.icon === 'controls'"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                  <circle cx="8" cy="6" r="1.5" fill="currentColor" />
+                  <circle cx="15" cy="12" r="1.5" fill="currentColor" />
+                  <circle cx="11" cy="18" r="1.5" fill="currentColor" />
                 </svg>
                 <svg
                   v-else-if="tab.icon === 'firewall'"
@@ -1072,14 +1073,21 @@ onUnmounted(() => {
                   />
                 </svg>
               </span>
-              <span class="security-tab-label">{{ tr(tab.labelKey, tab.fallbackLabel) }}</span>
+              <span class="security-tab-body">
+                <span class="security-tab-label">{{ getTabLabel(tab) }}</span>
+              </span>
+              <span class="security-tab-state" aria-hidden="true"></span>
             </button>
           </nav>
         </div>
 
         <div class="security-content">
           <div v-show="activeTab === 'overview'" class="security-section-stack">
-            <section class="security-status-banner" :class="`is-${securityStatus}`">
+            <section
+              v-if="securityStatusBannerVisible"
+              class="security-status-banner dashboard-card-surface"
+              :class="`is-${securityStatus}`"
+            >
               <div class="security-status-copy">
                 <div class="security-status-icon" :class="`is-${securityStatus}`">
                   <svg
@@ -1150,22 +1158,18 @@ onUnmounted(() => {
               </div>
 
               <div class="security-status-metrics">
-                <div class="security-status-metric">
-                  <div class="security-status-metric-value">{{ scanSummary.passed }}</div>
-                  <div class="security-status-metric-label">{{ t('security.scan.passed') }}</div>
-                </div>
-                <div class="security-status-metric">
-                  <div class="security-status-metric-value">{{ scanSummary.warnings }}</div>
-                  <div class="security-status-metric-label">{{ t('security.scan.warnings') }}</div>
-                </div>
-                <div class="security-status-metric">
-                  <div class="security-status-metric-value">{{ scanSummary.failed }}</div>
-                  <div class="security-status-metric-label">{{ t('security.scan.failed') }}</div>
+                <div
+                  v-for="metric in visibleScanSummaryMetrics"
+                  :key="metric.key"
+                  class="security-status-metric"
+                >
+                  <div class="security-status-metric-value">{{ metric.value }}</div>
+                  <div class="security-status-metric-label">{{ metric.label }}</div>
                 </div>
               </div>
             </section>
 
-            <section class="security-panel security-scan-panel">
+            <section class="security-panel dashboard-card-surface security-scan-panel">
               <div class="security-scan-stack">
                 <div class="security-scan-head">
                   <div class="security-scan-heading">
@@ -1264,17 +1268,14 @@ onUnmounted(() => {
                   </div>
 
                   <div v-if="scanCompleted" class="security-scan-summary-grid">
-                    <div class="security-scan-summary-card is-passed">
-                      <div class="security-scan-summary-value">{{ scanSummary.passed }}</div>
-                      <div class="security-scan-summary-label">{{ t('security.scan.passed') }}</div>
-                    </div>
-                    <div class="security-scan-summary-card is-warning">
-                      <div class="security-scan-summary-value">{{ scanSummary.warnings }}</div>
-                      <div class="security-scan-summary-label">{{ t('security.scan.warnings') }}</div>
-                    </div>
-                    <div class="security-scan-summary-card is-failed">
-                      <div class="security-scan-summary-value">{{ scanSummary.failed }}</div>
-                      <div class="security-scan-summary-label">{{ t('security.scan.failed') }}</div>
+                    <div
+                      v-for="metric in visibleScanSummaryMetrics"
+                      :key="metric.key"
+                      class="security-scan-summary-card"
+                      :class="`is-${metric.key}`"
+                    >
+                      <div class="security-scan-summary-value">{{ metric.value }}</div>
+                      <div class="security-scan-summary-label">{{ metric.label }}</div>
                     </div>
                   </div>
                 </div>
@@ -1536,18 +1537,21 @@ onUnmounted(() => {
             </section>
           </div>
 
-          <div v-show="activeTab === 'approvals'" class="security-section-stack">
-            <section class="security-panel">
+          <div
+            v-show="activeTab === 'controls'"
+            class="security-section-stack security-embedded-stack"
+          >
+            <section class="security-panel dashboard-card-surface">
               <div class="flex items-center justify-between mb-2 gap-3">
                 <div>
                   <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-                    {{ tr('security.approvedDirectories', 'Approved Directories') }}
+                    {{ tr('security.approvedDirectories', 'Authorized Directories') }}
                   </h3>
                   <p class="text-sm text-gray-500 dark:text-slate-400">
                     {{
                       tr(
                         'security.approvedDirectoriesDesc',
-                        'Directories approved via Allow Always for exec/convert.'
+                        'Directories authorized via Allow Always for exec/convert.'
                       )
                     }}
                   </p>
@@ -1571,7 +1575,7 @@ onUnmounted(() => {
                 v-else-if="!approvedDirs.length"
                 class="text-sm text-gray-500 dark:text-slate-400 py-3"
               >
-                {{ tr('security.noApprovedDirectories', 'No approved directories') }}
+                {{ tr('security.noApprovedDirectories', 'No authorized directories') }}
               </div>
               <div v-else class="space-y-2">
                 <div
@@ -1598,17 +1602,8 @@ onUnmounted(() => {
                 </div>
               </div>
             </section>
-          </div>
 
-          <div
-            v-show="activeTab === 'network'"
-            class="security-section-stack security-embedded-stack"
-          >
-            <NetworkSettings :show-port-section="false" :show-security-sections="true" />
-          </div>
-
-          <div v-show="activeTab === 'firewall'" class="security-section-stack">
-            <section class="security-panel">
+            <section class="security-panel dashboard-card-surface">
               <div class="flex flex-wrap items-start justify-between gap-4 mb-6">
                 <div>
                   <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -1765,20 +1760,22 @@ onUnmounted(() => {
                 </div>
               </div>
             </section>
+
+            <DataMaskingSettings />
           </div>
 
           <div
-            v-show="activeTab === 'masking'"
+            v-show="activeTab === 'network'"
             class="security-section-stack security-embedded-stack"
           >
-            <DataMaskingSettings />
+            <NetworkSettings :show-port-section="false" :show-security-sections="true" />
           </div>
 
           <div
             v-show="activeTab === 'monitoring'"
             class="security-section-stack security-embedded-stack"
           >
-            <section class="security-panel">
+            <section class="security-panel dashboard-card-surface">
               <div class="flex items-center justify-between mb-4">
                 <div>
                   <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -1930,7 +1927,7 @@ onUnmounted(() => {
               </div>
             </section>
 
-            <section class="security-panel">
+            <section class="security-panel dashboard-card-surface">
               <div class="flex items-center justify-between mb-4">
                 <div>
                   <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -2015,7 +2012,7 @@ onUnmounted(() => {
           </div>
 
           <div v-show="activeTab === 'logs'" class="security-section-stack">
-            <section class="security-panel">
+            <section class="security-panel dashboard-card-surface">
               <div class="flex flex-wrap gap-4 items-center mb-4">
                 <div class="flex-1 min-w-[200px]">
                   <input
@@ -2159,7 +2156,7 @@ onUnmounted(() => {
 
 <style scoped>
 .security-page {
-  --config-page-accent: 37, 99, 235;
+  --dashboard-page-accent: 37, 99, 235;
   max-width: 1480px;
   margin: 0 auto;
   padding: 0 0.75rem 1.8rem;
@@ -2167,29 +2164,11 @@ onUnmounted(() => {
 
 .security-stage {
   position: relative;
-  padding: 1.15rem 0 0.35rem;
 }
 
 .security-stage::before,
 .security-stage::after {
-  content: none;
-  position: absolute;
-  width: 19rem;
-  height: 19rem;
-  pointer-events: none;
-  opacity: 0.8;
-  background-image: none;
-  background-size: 14px 14px;
-}
-
-.security-stage::before {
-  right: 16%;
-  top: 10rem;
-}
-
-.security-stage::after {
-  left: 22%;
-  bottom: -1.4rem;
+  content: '';
 }
 
 .security-hero {
@@ -2197,19 +2176,11 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.88rem;
-  padding: 0.15rem 0 1.2rem;
+  padding: 0 0 0.2rem;
 }
 
 .security-hero-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0 0 0.1rem;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  padding-bottom: 0.1rem;
 }
 
 .security-hero-copy {
@@ -2218,7 +2189,7 @@ onUnmounted(() => {
 }
 
 .security-title {
-  margin: 0.68rem 0 0;
+  margin: 0;
   font-size: clamp(1.34rem, 0.7vw + 0.95rem, 1.9rem);
   line-height: 1.06;
   letter-spacing: -0.04em;
@@ -2234,64 +2205,6 @@ onUnmounted(() => {
   color: #9ca3af;
 }
 
-.security-hero-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.88rem;
-}
-
-.security-hero-card,
-.security-tab-shell,
-.security-panel,
-.security-status-banner {
-  border: 1px solid rgba(255, 255, 255, 0.92);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 22px 36px -34px rgba(15, 23, 42, 0.2);
-}
-
-.security-hero-card {
-  min-height: 9.6rem;
-  padding: 1rem 1.05rem;
-  border-radius: 1.5rem;
-}
-
-.security-hero-card.is-passed {
-  background: rgba(236, 253, 245, 0.96);
-}
-
-.security-hero-card.is-warning {
-  background: rgba(254, 252, 232, 0.96);
-}
-
-.security-hero-card.is-failed {
-  background: rgba(254, 242, 242, 0.97);
-}
-
-.security-hero-card-label {
-  display: block;
-  color: #a3a3a3;
-  font-size: 0.68rem;
-  font-weight: 500;
-}
-
-.security-hero-card-value {
-  margin: 0.45rem 0 0;
-  color: #111827;
-  font-size: clamp(1.35rem, 0.9vw + 0.9rem, 1.95rem);
-  line-height: 1.05;
-  letter-spacing: -0.04em;
-  font-weight: 700;
-}
-
-.security-hero-card-footnote {
-  margin: 0.72rem 0 0;
-  color: #64748b;
-  font-size: 0.76rem;
-  line-height: 1.55;
-}
-
 .security-shell {
   position: relative;
   z-index: 1;
@@ -2301,60 +2214,91 @@ onUnmounted(() => {
 }
 
 .security-tab-shell {
-  padding: 0.45rem;
-  border-radius: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .security-tab-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .security-tab-button {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.85rem;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: #6b7280;
-  font-size: 0.88rem;
-  font-weight: 600;
+  gap: 12px;
+  padding: 14px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 1.5rem;
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+  text-align: left;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease,
-    transform 0.18s ease;
+    transform 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    background 0.22s ease;
 }
 
 .security-tab-button:hover {
-  color: #111827;
-  background: rgba(15, 23, 42, 0.04);
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 22px 36px -34px rgba(15, 23, 42, 0.2);
 }
 
 .security-tab-button.is-active {
-  color: #111827;
-  background: #fff;
-  box-shadow: 0 18px 34px -30px rgba(15, 23, 42, 0.26);
+  border-color: rgba(255, 255, 255, 0.98);
+  background: rgba(243, 246, 249, 0.96);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 22px 36px -34px rgba(15, 23, 42, 0.2);
 }
 
 .security-tab-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.8rem;
-  height: 1.8rem;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.04);
-  color: currentColor;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.85rem;
+  background: rgba(var(--dashboard-page-accent), 0.12);
+  color: rgb(var(--dashboard-page-accent));
 }
 
-.security-tab-button.is-active .security-tab-icon {
-  color: #1d4ed8;
-  background: rgba(59, 130, 246, 0.1);
+.security-tab-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+}
+
+.security-tab-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.security-tab-state {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.35);
+  transition:
+    transform 0.22s ease,
+    background-color 0.22s ease;
+}
+
+.security-tab-button.is-active .security-tab-state {
+  transform: scale(1.05);
+  background: rgb(var(--dashboard-page-accent));
 }
 
 .security-content,
@@ -2440,7 +2384,7 @@ onUnmounted(() => {
 
 .security-status-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   gap: 0.75rem;
   width: min(20rem, 100%);
 }
@@ -2655,7 +2599,7 @@ onUnmounted(() => {
 
 .security-scan-summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   gap: 0.75rem;
 }
 
@@ -3034,22 +2978,6 @@ html.dark .security-description {
   color: rgb(148 163 184);
 }
 
-:root.dark .security-stage::before,
-[data-theme='dark'] .security-stage::before,
-html.dark .security-stage::before,
-:root.dark .security-stage::after,
-[data-theme='dark'] .security-stage::after,
-html.dark .security-stage::after {
-  background-image: none;
-  opacity: 0.56;
-}
-
-:root.dark .security-hero-card,
-[data-theme='dark'] .security-hero-card,
-html.dark .security-hero-card,
-:root.dark .security-tab-shell,
-[data-theme='dark'] .security-tab-shell,
-html.dark .security-tab-shell,
 :root.dark .security-panel,
 [data-theme='dark'] .security-panel,
 html.dark .security-panel,
@@ -3069,36 +2997,32 @@ html.dark .security-panel :deep(.glass-card) {
     0 24px 38px -34px rgba(2, 6, 23, 0.64);
 }
 
-:root.dark .security-hero-card.is-passed,
-[data-theme='dark'] .security-hero-card.is-passed,
-html.dark .security-hero-card.is-passed,
+:root.dark .security-tab-shell,
+[data-theme='dark'] .security-tab-shell,
+html.dark .security-tab-shell {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
 :root.dark .security-status-banner.is-passed,
 [data-theme='dark'] .security-status-banner.is-passed,
 html.dark .security-status-banner.is-passed {
   background: rgba(6, 78, 59, 0.72);
 }
 
-:root.dark .security-hero-card.is-warning,
-[data-theme='dark'] .security-hero-card.is-warning,
-html.dark .security-hero-card.is-warning,
 :root.dark .security-status-banner.is-warning,
 [data-theme='dark'] .security-status-banner.is-warning,
 html.dark .security-status-banner.is-warning {
   background: rgba(113, 63, 18, 0.68);
 }
 
-:root.dark .security-hero-card.is-failed,
-[data-theme='dark'] .security-hero-card.is-failed,
-html.dark .security-hero-card.is-failed,
 :root.dark .security-status-banner.is-failed,
 [data-theme='dark'] .security-status-banner.is-failed,
 html.dark .security-status-banner.is-failed {
   background: rgba(127, 29, 29, 0.72);
 }
 
-:root.dark .security-hero-card-value,
-[data-theme='dark'] .security-hero-card-value,
-html.dark .security-hero-card-value,
 :root.dark .security-status-title,
 [data-theme='dark'] .security-status-title,
 html.dark .security-status-title,
@@ -3111,12 +3035,6 @@ html.dark .security-tab-button.is-active {
   color: rgb(241 245 249);
 }
 
-:root.dark .security-hero-card-label,
-[data-theme='dark'] .security-hero-card-label,
-html.dark .security-hero-card-label,
-:root.dark .security-hero-card-footnote,
-[data-theme='dark'] .security-hero-card-footnote,
-html.dark .security-hero-card-footnote,
 :root.dark .security-status-text,
 [data-theme='dark'] .security-status-text,
 html.dark .security-status-text,
@@ -3132,28 +3050,38 @@ html.dark .security-tab-button {
 :root.dark .security-tab-button:hover,
 [data-theme='dark'] .security-tab-button:hover,
 html.dark .security-tab-button:hover {
-  color: rgb(226 232 240);
-  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(30, 41, 59, 0.82);
 }
 
 :root.dark .security-tab-button.is-active,
 [data-theme='dark'] .security-tab-button.is-active,
 html.dark .security-tab-button.is-active {
-  background: rgba(15, 23, 42, 0.42);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 22px 36px -34px rgba(2, 6, 23, 0.66);
+}
+
+:root.dark .security-tab-button,
+[data-theme='dark'] .security-tab-button,
+html.dark .security-tab-button {
+  border-color: rgba(71, 85, 105, 0.46);
+  background: rgba(15, 23, 42, 0.78);
 }
 
 :root.dark .security-tab-icon,
 [data-theme='dark'] .security-tab-icon,
 html.dark .security-tab-icon {
-  background: rgba(148, 163, 184, 0.1);
+  color: rgb(191 219 254);
+  background: rgba(96, 165, 250, 0.14);
 }
 
-:root.dark .security-tab-button.is-active .security-tab-icon,
-[data-theme='dark'] .security-tab-button.is-active .security-tab-icon,
-html.dark .security-tab-button.is-active .security-tab-icon {
-  color: rgb(191 219 254);
-  background: rgba(96, 165, 250, 0.18);
+:root.dark .security-tab-state,
+[data-theme='dark'] .security-tab-state,
+html.dark .security-tab-state {
+  background: rgba(148, 163, 184, 0.32);
 }
 
 :root.dark .security-status-metric,
@@ -3414,8 +3342,8 @@ html.dark .security-scan-inline-note {
     padding-top: 4rem;
   }
 
-  .security-hero-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .security-tab-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -3423,6 +3351,10 @@ html.dark .security-scan-inline-note {
   .security-hero-heading {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .security-tab-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .security-status-banner {
@@ -3485,12 +3417,6 @@ html.dark .security-scan-inline-note {
     padding-bottom: 1.1rem;
   }
 
-  .security-hero-grid {
-    grid-template-columns: 1fr;
-    gap: 0.78rem;
-  }
-
-  .security-hero-card,
   .security-tab-shell,
   .security-panel,
   .security-status-banner {
@@ -3501,9 +3427,13 @@ html.dark .security-scan-inline-note {
     padding: 1.05rem;
   }
 
+  .security-tab-nav {
+    grid-template-columns: 1fr;
+  }
+
   .security-tab-button {
-    flex: 1 1 calc(50% - 0.45rem);
-    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: 14px 16px;
   }
 
   .security-scan-actions {

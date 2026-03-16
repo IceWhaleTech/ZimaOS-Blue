@@ -707,6 +707,7 @@ export default {
     noApprovedDirectories: 'Žiadne schválené adresáre',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Bezpečnostné kontroly',
       approvals: 'Schválené adresáre',
       firewall: 'Firewall',
       masking: 'Maskovanie údajov',
@@ -1466,7 +1467,7 @@ export default {
     preview: 'Náhľad',
     selectFile: 'Vybrať súbor',
     confirmPassword: 'Potvrdiť heslo',
-    passwordPlaceholder: 'Zadajte heslo (minimálne 6 znakov)',
+    passwordPlaceholder: 'Zadajte heslo (minimálne 8 znakov)',
     format: 'Formát exportu',
     previewFailed: 'Náhľad dát zlyhal',
     hasSettings: 'Obsahuje nastavenia',

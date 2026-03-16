@@ -710,6 +710,7 @@ export default {
     noApprovedDirectories: 'Geen goedgekeurde mappen',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Beveiligingscontroles',
       approvals: 'Goedgekeurde mappen',
       firewall: 'Firewall',
       masking: 'Gegevensmaskering',
@@ -1794,7 +1795,7 @@ export default {
     preview: 'Voorbeeld',
     selectFile: 'Bestand selecteren',
     confirmPassword: 'Wachtwoord bevestigen',
-    passwordPlaceholder: 'Voer wachtwoord in (minimaal 6 tekens)',
+    passwordPlaceholder: 'Voer wachtwoord in (minimaal 8 tekens)',
     format: 'Exportformaat',
     previewFailed: 'Voorbeeld van gegevens mislukt',
     hasSettings: 'Bevat instellingen',

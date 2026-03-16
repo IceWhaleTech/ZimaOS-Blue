@@ -1756,6 +1756,7 @@ export default {
     noApprovedDirectories: 'Keine genehmigten Verzeichnisse',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Sicherheitskontrollen',
       approvals: 'Genehmigte Verzeichnisse',
       firewall: 'Firewall',
       masking: 'Datenmaskierung',
@@ -3332,7 +3333,7 @@ export default {
     formatJsonDesc: 'Menschenlesbares Format. Passwort wird zur Import-Verifizierung verwendet.',
     formatEncryptedDesc: 'Vollständig verschlüsseltes Binärformat. Höhere Sicherheit.',
     password: 'Passwort',
-    passwordPlaceholder: 'Passwort eingeben (min. 6 Zeichen)',
+    passwordPlaceholder: 'Passwort eingeben (min. 8 Zeichen)',
     confirmPassword: 'Passwort bestätigen',
     confirmPasswordPlaceholder: 'Passwort erneut eingeben',
     passwordMismatch: 'Passwörter stimmen nicht überein',

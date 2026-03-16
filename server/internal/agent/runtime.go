@@ -187,12 +187,8 @@ func parseRuntimePlan(content string) (runtimePlan, error) {
 }
 
 func fillRuntimePlanDefaults(p runtimePlan) runtimePlan {
-	if len(p.SuccessCriteria) == 0 {
-		p.SuccessCriteria = []string{"core task output is produced", "no blocking errors in final result"}
-	}
-	if len(p.FallbackPlan) == 0 {
-		p.FallbackPlan = []string{"retry once with narrower scope", "ask user to choose next recovery strategy"}
-	}
+	p.SuccessCriteria = effectiveSuccessCriteria(p.SuccessCriteria)
+	p.FallbackPlan = effectiveFallbackPlan(p.FallbackPlan)
 	return p
 }
 

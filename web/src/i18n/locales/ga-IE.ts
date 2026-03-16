@@ -713,6 +713,7 @@ export default {
     noApprovedDirectories: 'Níl aon eolairí ceadaithe',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Rialuithe slándála',
       approvals: 'Eolairí ceadaithe',
       firewall: 'Balla Dóiteáin',
       masking: 'Mascáil Sonraí',
@@ -1524,7 +1525,7 @@ export default {
       'Formáid inléite ag an duine. Úsáidtear pasfhocal le haghaidh fíorú iompórtála.',
     formatEncryptedDesc: 'Formáid dhéachomhaid criptithe go hiomlán. Slándáil níos airde.',
     password: 'Pasfhocal',
-    passwordPlaceholder: 'Iontráil pasfhocal (min 6 carachtar)',
+    passwordPlaceholder: 'Iontráil pasfhocal (min 8 carachtar)',
     confirmPassword: 'Deimhnigh Pasfhocal',
     confirmPasswordPlaceholder: 'Iontráil pasfhocal arís',
     passwordMismatch: 'Ní mheaitseálann na pasfhocail',

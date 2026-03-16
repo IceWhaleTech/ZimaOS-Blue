@@ -36,12 +36,16 @@ const selectedLanguage = ref('en')
 const autoPlayResponse = ref(isTtsAutoPlayEnabled())
 const continuousListening = ref(false)
 const isPlaying = ref(false)
+const isDesktopRuntime = computed(
+  () => typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+)
 
 // Wake word state
 const wakeWordEnabled = ref(false)
-const wakeWord = ref('hey echo')
+const wakeWord = ref('Hey Blue')
 const wakeWordListening = ref(false)
 const wakeWordSupported = ref(WakeWordDetector.isSupported())
+const browserWakeWordAvailable = computed(() => wakeWordSupported.value && !isDesktopRuntime.value)
 
 // ASR model download prompt
 const showASRDownloadPrompt = ref(false)
@@ -260,7 +264,7 @@ function clearMessages() {
 
 // Wake word detection
 function initWakeWordDetector() {
-  if (!wakeWordSupported.value) return
+  if (!browserWakeWordAvailable.value) return
 
   wakeWordDetector = new WakeWordDetector({
     wakeWord: wakeWord.value,
@@ -633,7 +637,7 @@ watch(wakeWordEnabled, () => {
       </div>
 
       <!-- Wake Word Settings -->
-      <div v-if="wakeWordSupported" class="border-t border-gray-700 pt-4 mt-4">
+      <div v-if="browserWakeWordAvailable" class="border-t border-gray-700 pt-4 mt-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-medium text-gray-400">{{ t('voiceView.wakeWordTitle') }}</h3>
           <label class="flex items-center gap-2 cursor-pointer">
@@ -669,6 +673,18 @@ watch(wakeWordEnabled, () => {
               }}
             </span>
           </div>
+        </div>
+      </div>
+      <div
+        v-else-if="isDesktopRuntime"
+        data-testid="voicewake-desktop-note"
+        class="border-t border-gray-700 pt-4 mt-4"
+      >
+        <div class="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm">
+          <p class="font-medium text-blue-200">{{ t('speech.voiceWake.title') }}</p>
+          <p class="mt-1 text-blue-100/80">
+            {{ t('speech.voiceWake.desktopNoteDescription') }}
+          </p>
         </div>
       </div>
     </div>

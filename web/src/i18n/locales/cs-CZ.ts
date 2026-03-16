@@ -704,6 +704,7 @@ export default {
     noApprovedDirectories: 'Žádné schválené adresáře',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Bezpečnostní kontroly',
       approvals: 'Schválené adresáře',
       firewall: 'Firewall',
       masking: 'Maskování dat',
@@ -1817,7 +1818,7 @@ export default {
     preview: 'Náhled',
     selectFile: 'Vybrat soubor',
     confirmPassword: 'Potvrdit heslo',
-    passwordPlaceholder: 'Zadejte heslo (min. 6 znaků)',
+    passwordPlaceholder: 'Zadejte heslo (min. 8 znaků)',
     format: 'Formát exportu',
     previewFailed: 'Nepodařilo se zobrazit náhled dat',
     hasSettings: 'Obsahuje nastavení',

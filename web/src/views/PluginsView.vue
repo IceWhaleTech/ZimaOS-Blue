@@ -121,53 +121,37 @@ async function installSkill() {
 </script>
 
 <template>
-  <div class="plugins-page config-page-frame">
-    <section class="plugins-stage config-page-stage">
-      <section class="plugins-hero dashboard-card-surface">
-        <div class="hero-grid">
-          <div class="hero-copy config-page-hero__copy">
-            <span class="hero-kicker config-page-hero__eyebrow">{{ t('nav.configuration') }}</span>
-            <div class="hero-heading-row">
-              <h1 class="config-page-hero__title">{{ t('plugins.title') }}</h1>
-              <span class="hero-step"
-                >{{ activeTabIndex }}/{{ String(tabs.length).padStart(2, '0') }}</span
-              >
-            </div>
-            <p class="hero-description config-page-hero__description">
-              {{ activeTabMeta.description }}
-            </p>
-
-            <div class="hero-active-pill" :style="{ '--pill-accent': activeTabMeta.accent }">
-              <span class="hero-pill-dot" aria-hidden="true"></span>
-              <span>{{ activeTabMeta.label }}</span>
-            </div>
-          </div>
-
-          <div class="hero-action-card dashboard-card-subsurface">
-            <div class="hero-action-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17,8 12,3 7,8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-            </div>
-
-            <div class="hero-action-copy">
-              <span class="hero-action-kicker">{{ t('plugins.installSkillTitle') }}</span>
-              <p>{{ t('plugins.skillUrlHint') }}</p>
-            </div>
-
-            <button class="btn-upload" @click="openUploadModal('skill')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17,8 12,3 7,8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              {{ t('plugins.uploadSkill') }}
-            </button>
-          </div>
+  <div class="plugins-page dashboard-page-frame">
+    <section class="plugins-stage dashboard-page-stage">
+      <section class="plugins-hero dashboard-page-hero">
+        <div class="hero-copy dashboard-page-copy">
+          <span class="dashboard-page-eyebrow">{{ t('nav.configuration') }}</span>
+          <h1 class="plugins-page-title dashboard-page-title">{{ t('plugins.title') }}</h1>
+          <p class="hero-description dashboard-page-description">
+            {{ activeTabMeta.description }}
+          </p>
         </div>
+        <div class="plugins-hero-actions">
+          <button class="plugins-create-button" type="button" @click="openUploadModal('skill')">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            {{ t('plugins.uploadSkill') }}
+          </button>
+        </div>
+      </section>
 
+      <section class="plugins-shell">
         <div class="main-tabs" role="tablist">
           <button
             v-for="tab in tabs"
@@ -192,27 +176,26 @@ async function installSkill() {
             <span class="main-tab-state" aria-hidden="true"></span>
           </button>
         </div>
-      </section>
-
-      <section
-        class="content-shell dashboard-card-surface"
-        :style="{ '--shell-accent': activeTabMeta.accent, '--shell-soft': activeTabMeta.soft }"
-      >
-        <div class="content-shell-header">
-          <div class="content-shell-copy">
-            <span class="content-shell-kicker">{{ t('plugins.title') }}</span>
-            <h2>{{ activeTabMeta.label }}</h2>
+        <section
+          class="content-shell dashboard-card-surface"
+          :style="{ '--shell-accent': activeTabMeta.accent, '--shell-soft': activeTabMeta.soft }"
+        >
+          <div class="content-shell-header">
+            <div class="content-shell-copy">
+              <span class="content-shell-kicker">{{ t('plugins.title') }}</span>
+              <h2>{{ activeTabMeta.label }}</h2>
+            </div>
+            <span class="content-shell-count">{{ activeTabIndex }}</span>
           </div>
-          <span class="content-shell-count">{{ activeTabIndex }}</span>
-        </div>
 
-        <div class="tab-content">
-          <Transition name="tab-fade" mode="out-in">
-            <SkillTab v-if="activeMainTab === 'skill'" key="skill" />
-            <SkillStoreTab v-else-if="activeMainTab === 'store'" key="store" />
-            <ToolTab v-else key="tool" />
-          </Transition>
-        </div>
+          <div class="tab-content">
+            <Transition name="tab-fade" mode="out-in">
+              <SkillTab v-if="activeMainTab === 'skill'" key="skill" />
+              <SkillStoreTab v-else-if="activeMainTab === 'store'" key="store" />
+              <ToolTab v-else key="tool" />
+            </Transition>
+          </div>
+        </section>
       </section>
     </section>
 
@@ -335,7 +318,7 @@ async function installSkill() {
   position: relative;
   isolation: isolate;
   padding: 0 0.75rem 1.8rem;
-  --config-page-accent: 56, 189, 248;
+  --dashboard-page-accent: 56, 189, 248;
   --bg-primary: #ffffff;
   --bg-secondary: #f8fafc;
   --text-primary: #0f172a;
@@ -366,6 +349,14 @@ async function installSkill() {
   padding: 1.15rem 0 0.35rem;
 }
 
+.plugins-shell {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 :root.dark .plugins-page,
 [data-theme='dark'] .plugins-page,
 html.dark .plugins-page {
@@ -388,192 +379,114 @@ html.dark .plugins-page {
     0 24px 38px -34px rgba(2, 6, 23, 0.64);
 }
 
+:root.dark .plugins-create-button,
+[data-theme='dark'] .plugins-create-button,
+html.dark .plugins-create-button {
+  background: rgba(15, 23, 42, 0.92);
+  color: rgb(241 245 249);
+  box-shadow: 0 20px 30px -26px rgba(2, 6, 23, 0.82);
+}
+
+:root.dark .plugins-create-button:hover,
+[data-theme='dark'] .plugins-create-button:hover,
+html.dark .plugins-create-button:hover {
+  box-shadow: 0 24px 32px -24px rgba(2, 6, 23, 0.78);
+}
+
 .plugins-hero {
   position: relative;
   overflow: visible;
-  padding: 0.15rem 0 1.2rem;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.15rem 0 0.2rem;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.plugins-hero::before {
-  content: none;
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: none;
-  opacity: 0.6;
-}
-
-.hero-grid {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.85fr);
-  gap: 0.88rem;
-  align-items: start;
-}
-
 .hero-copy {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 12px;
+  gap: 0.72rem;
   max-width: 42rem;
+  min-width: 0;
   padding-top: 0.1rem;
 }
 
+.plugins-hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding-top: 0.1rem;
+}
+
+.plugins-create-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.65rem;
+  padding: 0.7rem 1.05rem;
+  border: 0;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 20px 30px -26px rgba(15, 23, 42, 0.68);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.plugins-create-button svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.plugins-create-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 24px 32px -24px rgba(15, 23, 42, 0.58);
+}
+
+.plugins-create-button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(56, 189, 248, 0.18),
+    0 24px 32px -24px rgba(15, 23, 42, 0.58);
+}
+
 .content-shell-kicker,
-.hero-action-kicker,
 .content-shell-count {
   letter-spacing: 0.14em;
 }
 
-.content-shell-kicker,
-.hero-action-kicker {
+.content-shell-kicker {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 
-.hero-heading-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.hero-heading-row h1 {
-  margin: 0;
-  font-size: clamp(1.34rem, 0.7vw + 0.95rem, 1.9rem);
-  line-height: 1.06;
-  letter-spacing: -0.04em;
-  font-weight: 700;
-  color: #111827;
-}
-
-.hero-step {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.1rem;
-  padding: 0.18rem 0.46rem;
-  border-radius: 999px;
-  border: 0;
-  background: rgba(15, 23, 42, 0.06);
-  color: #6b7280;
-  font-size: 0.6rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
 .hero-description {
-  margin: 0.42rem 0 0;
+  margin: 0;
   max-width: 34rem;
   color: #9ca3af;
   font-size: 0.92rem;
   line-height: 1.55;
-}
-
-.hero-active-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  width: fit-content;
-  padding: 0.42rem 0.72rem;
-  border-radius: 999px;
-  border: 0;
-  background: rgba(15, 23, 42, 0.06);
-  color: var(--text-primary);
-  font-size: 0.76rem;
-  font-weight: 600;
-}
-
-.hero-pill-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--pill-accent);
-  box-shadow: none;
-}
-
-.hero-action-card {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 0;
-  padding: 1rem;
-  border-radius: 1.5rem;
-  background: var(--surface-float);
-  box-shadow: none;
-}
-
-.hero-action-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 1rem;
-  background: rgba(15, 23, 42, 0.06);
-  color: #111827;
-}
-
-.hero-action-icon svg {
-  width: 22px;
-  height: 22px;
-}
-
-.hero-action-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.hero-action-copy p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.btn-upload {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  align-self: flex-start;
-  padding: 11px 18px;
-  border: 0;
-  border-radius: 14px;
-  background: #0f172a;
-  color: white;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 18px 34px -28px rgba(15, 23, 42, 0.9);
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    opacity 0.2s ease;
-}
-
-:root.light .btn-upload,
-[data-theme='light'] .btn-upload {
-  background: #0f172a;
-}
-
-.btn-upload:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 22px 38px -28px rgba(15, 23, 42, 0.72);
-}
-
-.btn-upload svg {
-  width: 18px;
-  height: 18px;
 }
 
 .main-tabs {
@@ -582,7 +495,7 @@ html.dark .plugins-page {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 0.88rem;
+  margin-top: 0;
 }
 
 .main-tab {
@@ -671,7 +584,7 @@ html.dark .plugins-page {
 
 .content-shell {
   position: relative;
-  margin-top: 0.88rem;
+  margin-top: 0;
   overflow: hidden;
   padding: 1.05rem;
   border-radius: 1.5rem;
@@ -979,26 +892,6 @@ html.dark .plugins-page {
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.16);
 }
 
-:root.dark .hero-heading-row h1,
-[data-theme='dark'] .hero-heading-row h1,
-html.dark .hero-heading-row h1 {
-  color: #f8fafc;
-}
-
-:root.dark .hero-step,
-[data-theme='dark'] .hero-step,
-html.dark .hero-step {
-  background: rgba(148, 163, 184, 0.14);
-  color: #cbd5e1;
-}
-
-:root.dark .hero-action-icon,
-[data-theme='dark'] .hero-action-icon,
-html.dark .hero-action-icon {
-  background: rgba(148, 163, 184, 0.12);
-  color: #f8fafc;
-}
-
 .url-hint,
 .upload-hint {
   margin-top: 8px;
@@ -1154,10 +1047,6 @@ html.dark .hero-action-icon {
 }
 
 @media (max-width: 1180px) {
-  .hero-grid {
-    grid-template-columns: 1fr;
-  }
-
   .main-tabs {
     grid-template-columns: 1fr;
   }
@@ -1179,13 +1068,19 @@ html.dark .hero-action-icon {
     padding: 0.75rem 0.75rem 1.4rem;
   }
 
+  .plugins-hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .plugins-hero-actions {
+    justify-content: flex-start;
+    padding-top: 0;
+  }
+
   .content-shell {
     padding: 18px;
     border-radius: 1.5rem;
-  }
-
-  .hero-heading-row h1 {
-    font-size: clamp(1.4rem, 7vw, 1.9rem);
   }
 
   .content-shell-header {

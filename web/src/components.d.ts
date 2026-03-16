@@ -16,7 +16,6 @@ declare module 'vue' {
     AlertItem: typeof import('./components/companion/AlertItem.vue')['default']
     AlertNotification: typeof import('./components/companion/AlertNotification.vue')['default']
     ApiProxySettings: typeof import('./components/settings/ApiProxySettings.vue')['default']
-    AppHeader: typeof import('./components/AppHeader.vue')['default']
     AppSidebar: typeof import('./components/AppSidebar.vue')['default']
     AskUserQuestionDialog: typeof import('./components/AskUserQuestionDialog.vue')['default']
     AutoReplyRuleCard: typeof import('./components/AutoReplyRuleCard.vue')['default']

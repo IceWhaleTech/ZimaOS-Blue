@@ -1511,6 +1511,7 @@ export default {
     noApprovedDirectories: 'Nenhum diretório aprovado',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Controles de segurança',
       approvals: 'Diretórios aprovados',
       firewall: 'Firewall',
       masking: 'Mascaramento de dados',
@@ -2854,7 +2855,7 @@ export default {
     formatJson: 'JSON',
     formatEncrypted: 'Criptografado',
     password: 'Senha',
-    passwordPlaceholder: 'Inserir senha (mín. 6 caracteres)',
+    passwordPlaceholder: 'Inserir senha (mín. 8 caracteres)',
     confirmPassword: 'Confirmar senha',
     passwordMismatch: 'As senhas não coincidem',
     selectFile: 'Selecionar arquivo',

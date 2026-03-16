@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTauri } from '@/composables/useTauri'
 import PasswordInput from '@/components/ui/PasswordInput.vue'
+import { getChannelIconStyleVars } from '@/utils/channelIcons'
 
 interface ChannelFieldDef {
   key: string
@@ -134,6 +135,7 @@ const cardClasses = computed(() => [
 
 const statusBadgeClass = computed(() => `channel-card__status-badge--${statusTone.value}`)
 const statusPanelClass = computed(() => `channel-card__status-panel--${statusTone.value}`)
+const channelIconStyle = computed(() => getChannelIconStyleVars(props.channel.id))
 
 const feishuAppId = computed(() =>
   props.channel.id === 'feishu'
@@ -208,10 +210,15 @@ function formatRelativeTime(dateStr: string | undefined): string {
     <div class="channel-card__header" @click="emit('toggle')">
       <div class="channel-card__identity">
         <div class="channel-card__icon-shell">
-          <img :src="channel.icon" :alt="translatedChannel.name" class="w-10 h-10 object-contain" />
+          <img
+            :src="channel.icon"
+            :alt="translatedChannel.name"
+            class="channel-card__icon"
+            :style="channelIconStyle"
+          />
         </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex flex-wrap items-center gap-2">
+        <div class="channel-card__copy">
+          <div class="channel-card__title-row">
             <h3 class="channel-card__title">{{ translatedChannel.name }}</h3>
             <span class="channel-card__status-badge" :class="statusBadgeClass" :title="statusTitle">
               <span class="channel-card__status-dot"></span>
@@ -244,12 +251,12 @@ function formatRelativeTime(dateStr: string | undefined): string {
             @change="emit('toggleEnabled', ($event.target as HTMLInputElement).checked)"
           />
           <div
-            class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
+            class="channel-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
           ></div>
         </label>
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          class="h-5 w-5 text-gray-400 transition-transform"
+          class="channel-card__chevron text-gray-400 transition-transform"
           :class="{ 'rotate-180': expanded }"
           fill="none"
           viewBox="0 0 24 24"
@@ -271,7 +278,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full" :class="statusColor"></span>
             <span
-              class="text-sm font-medium"
+              class="channel-card__status-text text-sm font-medium"
               :class="{
                 'text-green-700 dark:text-green-400': channel.status === 'connected',
                 'text-yellow-700 dark:text-yellow-400': channel.status === 'connecting',
@@ -282,7 +289,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
               {{ statusText }}
             </span>
           </div>
-          <p v-if="channel.lastError" class="text-xs text-red-600 dark:text-red-400 mt-1">
+          <p v-if="channel.lastError" class="channel-card__status-error text-xs text-red-600 dark:text-red-400 mt-1">
             {{ channel.lastError }}
           </p>
         </div>
@@ -453,7 +460,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
           {{ translatedChannel.hint }}
         </p>
 
-        <div v-if="translatedChannel.fields.length > 0" class="grid gap-4 md:grid-cols-2">
+        <div v-if="translatedChannel.fields.length > 0" class="channel-card__fields grid gap-4 md:grid-cols-2">
           <div
             v-for="(field, fieldIndex) in translatedChannel.fields"
             :key="field.key"
@@ -477,7 +484,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
               :model-value="channel.fields[fieldIndex]?.value ?? ''"
               :name="field.key"
               :placeholder="field.placeholder"
-              class="channel-card__input"
+              class="channel-card__password-field"
               @update:model-value="emit('updateField', fieldIndex, $event)"
             />
             <input
@@ -648,6 +655,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
 .channel-card {
   position: relative;
   overflow: hidden;
+  color: #0f172a;
   transition:
     transform 180ms ease,
     border-color 180ms ease,
@@ -690,8 +698,9 @@ function formatRelativeTime(dateStr: string | undefined): string {
 .channel-card__header {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.15rem;
+  gap: 1.1rem;
+  min-height: 4.9rem;
+  padding: 0.92rem 1rem;
   cursor: pointer;
   transition: background-color 160ms ease;
 }
@@ -705,16 +714,16 @@ function formatRelativeTime(dateStr: string | undefined): string {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.82rem;
 }
 
 .channel-card__icon-shell {
-  width: 3rem;
-  height: 3rem;
+  width: 2.55rem;
+  height: 2.55rem;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 1rem;
+  border-radius: 0.82rem;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 245, 249, 0.94) 100%);
   border: 1px solid rgba(203, 213, 225, 0.92);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
@@ -724,17 +733,42 @@ function formatRelativeTime(dateStr: string | undefined): string {
     transform 180ms ease;
 }
 
+.channel-card__icon {
+  width: 1.58rem;
+  height: 1.58rem;
+  object-fit: contain;
+  transform: scale(var(--channel-icon-scale, 1));
+  transform-origin: center;
+}
+
+.channel-card__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.channel-card__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.42rem;
+  min-height: 1.3rem;
+}
+
 .channel-card__title {
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 700;
   color: #0f172a;
 }
 
 .channel-card__description {
-  margin: 0.42rem 0 0;
-  font-size: 0.92rem;
-  line-height: 1.5;
+  margin: 0.28rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
   color: #64748b;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .channel-card__description--error {
@@ -744,19 +778,19 @@ function formatRelativeTime(dateStr: string | undefined): string {
 .channel-card__status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.42rem;
-  min-height: 1.7rem;
-  padding: 0.24rem 0.68rem;
+  gap: 0.26rem;
+  min-height: 1.24rem;
+  padding: 0.14rem 0.42rem;
   border-radius: 999px;
   border: 1px solid transparent;
-  font-size: 0.74rem;
+  font-size: 0.58rem;
   font-weight: 700;
   line-height: 1;
 }
 
 .channel-card__status-dot {
-  width: 0.42rem;
-  height: 0.42rem;
+  width: 0.24rem;
+  height: 0.24rem;
   border-radius: 999px;
   background: currentColor;
 }
@@ -790,15 +824,23 @@ function formatRelativeTime(dateStr: string | undefined): string {
 }
 
 .channel-card__body {
-  padding: 0 1.15rem 1.15rem;
+  padding: 0 1rem 1rem;
   border-top: 1px solid rgba(203, 213, 225, 0.78);
   background: rgba(248, 250, 252, 0.52);
   animation: channel-card-body-in 180ms ease;
 }
 
 .channel-card__status-panel {
-  margin-bottom: 1rem;
-  padding: 0.9rem 1rem;
+  margin-bottom: 0.82rem;
+  padding: 0.72rem 0.84rem;
+}
+
+.channel-card__status-text {
+  font-size: 0.72rem;
+}
+
+.channel-card__status-error {
+  font-size: 0.62rem;
 }
 
 .channel-card__status-panel--connected {
@@ -818,16 +860,16 @@ function formatRelativeTime(dateStr: string | undefined): string {
 
 .channel-card__metrics {
   display: grid;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  gap: 0.56rem;
+  margin-bottom: 0.82rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .channel-card__metric {
-  padding: 0.88rem 0.95rem;
+  padding: 0.64rem 0.72rem;
   display: flex;
   flex-direction: column;
-  gap: 0.34rem;
+  gap: 0.26rem;
   transition:
     transform 160ms ease,
     border-color 160ms ease;
@@ -838,7 +880,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
 }
 
 .channel-card__metric-label {
-  font-size: 0.72rem;
+  font-size: 0.58rem;
   line-height: 1.2;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -847,7 +889,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
 }
 
 .channel-card__metric-value {
-  font-size: 1.2rem;
+  font-size: 0.98rem;
   line-height: 1;
   letter-spacing: -0.02em;
   font-weight: 800;
@@ -855,36 +897,59 @@ function formatRelativeTime(dateStr: string | undefined): string {
 }
 
 .channel-card__metric-meta {
-  font-size: 0.86rem;
+  font-size: 0.66rem;
   color: #475569;
 }
 
 .channel-card__hint {
   display: flex;
   align-items: flex-start;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-  padding: 0.95rem 1rem;
-  font-size: 0.84rem;
-  line-height: 1.55;
+  gap: 0.46rem;
+  margin-bottom: 0.82rem;
+  padding: 0.72rem 0.84rem;
+  font-size: 0.7rem;
+  line-height: 1.45;
   color: #475569;
+}
+
+.channel-card__fields {
+  gap: 0.72rem;
 }
 
 .channel-card__field-label {
   display: block;
-  margin-bottom: 0.5rem;
-  font-size: 0.82rem;
+  margin-bottom: 0.34rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: #334155;
 }
 
 .channel-card__input {
   width: 100%;
-  padding: 0.78rem 0.95rem;
-  border-radius: 0.95rem;
+  min-height: 2.2rem;
+  padding: 0.42rem 0.58rem;
+  border-radius: 0.7rem;
   border: 1px solid rgba(203, 213, 225, 0.95);
   background: rgba(255, 255, 255, 0.94);
   color: #0f172a;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.channel-card__password-field :deep(input),
+:deep(input.channel-card__password-field) {
+  width: 100%;
+  min-height: 2.2rem;
+  padding: 0.42rem 0.58rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f172a;
+  font-size: 0.72rem;
+  line-height: 1.45;
   transition:
     border-color 150ms ease,
     box-shadow 150ms ease;
@@ -896,24 +961,33 @@ function formatRelativeTime(dateStr: string | undefined): string {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 
+.channel-card__password-field :deep(input:focus),
+:deep(input.channel-card__password-field:focus) {
+  outline: none;
+  border-color: rgba(37, 99, 235, 0.6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
 textarea.channel-card__input {
-  min-height: 7.2rem;
+  min-height: 5.5rem;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
     monospace;
-  font-size: 0.84rem;
+  padding-top: 0.48rem;
+  padding-bottom: 0.48rem;
+  font-size: 0.68rem;
 }
 
 .channel-card__empty {
-  font-size: 0.92rem;
+  font-size: 0.72rem;
   color: #64748b;
 }
 
 .channel-card__feedback {
-  margin-top: 1rem;
-  padding: 0.88rem 1rem;
-  border-radius: 1rem;
-  font-size: 0.88rem;
+  margin-top: 0.82rem;
+  padding: 0.64rem 0.78rem;
+  border-radius: 0.76rem;
+  font-size: 0.68rem;
   font-weight: 700;
 }
 
@@ -933,8 +1007,8 @@ textarea.channel-card__input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.7rem;
-  margin-top: 1rem;
+  gap: 0.46rem;
+  margin-top: 0.82rem;
 }
 
 .channel-card__actions--links {
@@ -945,10 +1019,10 @@ textarea.channel-card__input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.8rem;
-  padding: 0.72rem 1rem;
-  border-radius: 0.95rem;
-  font-size: 0.9rem;
+  min-height: 2.1rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   flex: 1 1 10rem;
   transition:
@@ -975,13 +1049,31 @@ textarea.channel-card__input {
 .channel-card__link {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  min-height: 2rem;
-  padding: 0.45rem 0.78rem;
+  gap: 0.46rem;
+  min-height: 1.54rem;
+  padding: 0.22rem 0.42rem;
+  font-size: 0.62rem;
   text-decoration: none;
   transition:
     transform 160ms ease,
     border-color 160ms ease;
+}
+
+.channel-card__toggle {
+  width: 2.16rem;
+  height: 1.16rem;
+}
+
+.channel-card__toggle::after {
+  top: 2px;
+  left: 2px;
+  width: 0.82rem;
+  height: 0.82rem;
+}
+
+.channel-card__chevron {
+  width: 0.84rem;
+  height: 0.84rem;
 }
 
 .channel-card__link:hover {
@@ -1044,11 +1136,20 @@ textarea.channel-card__input {
 @media (max-width: 639px) {
   .channel-card__header {
     align-items: flex-start;
+    padding: 0.82rem 0.88rem;
   }
 
   .channel-card__identity {
     align-items: flex-start;
   }
+
+  .channel-card__body {
+    padding: 0 0.88rem 0.88rem;
+  }
+}
+
+:global(.dark) .channel-card {
+  color: #e2e8f0;
 }
 
 :global(.dark) .channel-card__icon-shell {
@@ -1126,6 +1227,13 @@ textarea.channel-card__input {
 }
 
 :global(.dark) .channel-card__input {
+  background: rgba(15, 23, 42, 0.78);
+  color: #f8fafc;
+  border-color: rgba(100, 116, 139, 0.58);
+}
+
+:global(.dark) .channel-card__password-field :deep(input),
+:global(.dark input.channel-card__password-field) {
   background: rgba(15, 23, 42, 0.78);
   color: #f8fafc;
   border-color: rgba(100, 116, 139, 0.58);

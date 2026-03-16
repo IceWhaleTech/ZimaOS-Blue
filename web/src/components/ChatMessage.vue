@@ -3432,8 +3432,8 @@ async function handleMobileDelete() {
   margin-block: 0.38rem;
 }
 
-.assistant-message :deep(ul),
-.assistant-message :deep(ol) {
+.prose-content :deep(ul),
+.prose-content :deep(ol) {
   margin-block: 0.46rem;
   padding: 0.48rem 0.78rem 0.48rem 1.24rem;
   border: 1px solid rgba(203, 213, 225, 0.64);
@@ -3441,10 +3441,10 @@ async function handleMobileDelete() {
   background: rgba(248, 250, 252, 0.62);
 }
 
-:root.dark .assistant-message :deep(ul),
-:root.dark .assistant-message :deep(ol),
-[data-theme='dark'] .assistant-message :deep(ul),
-[data-theme='dark'] .assistant-message :deep(ol) {
+:root.dark .prose-content :deep(ul),
+:root.dark .prose-content :deep(ol),
+[data-theme='dark'] .prose-content :deep(ul),
+[data-theme='dark'] .prose-content :deep(ol) {
   border-color: rgba(71, 85, 105, 0.72);
   background: rgba(15, 23, 42, 0.58);
 }

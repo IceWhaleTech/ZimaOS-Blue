@@ -714,6 +714,7 @@ export default {
     noApprovedDirectories: 'Δεν υπάρχουν εγκεκριμένοι κατάλογοι',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Έλεγχοι ασφαλείας',
       approvals: 'Εγκεκριμένοι κατάλογοι',
       firewall: 'Τείχος προστασίας',
       masking: 'Απόκρυψη δεδομένων',
@@ -1760,7 +1761,7 @@ export default {
     preview: 'Προεπισκόπηση',
     selectFile: 'Επιλογή αρχείου',
     confirmPassword: 'Επιβεβαίωση κωδικού',
-    passwordPlaceholder: 'Εισαγάγετε κωδικό πρόσβασης (τουλάχιστον 6 χαρακτήρες)',
+    passwordPlaceholder: 'Εισαγάγετε κωδικό πρόσβασης (τουλάχιστον 8 χαρακτήρες)',
     format: 'Μορφή εξαγωγής',
     previewFailed: 'Αποτυχία προεπισκόπησης δεδομένων',
     hasSettings: 'Περιέχει ρυθμίσεις',

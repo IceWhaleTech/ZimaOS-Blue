@@ -4,7 +4,9 @@ import { deepMergeMessages, type LocaleMessages } from './merge'
 import priorityLocaleOverrides from './priority-overrides'
 import priorityBillingOverrides from './priority-billing-overrides'
 import prioritySettingsOverrides from './priority-settings-overrides'
+import priorityTranslationOverrides from './priority-translation-overrides'
 import prioritySmallModelOverrides from './priority-small-model-overrides'
+import skillToolOverrides from './skill-tool-overrides'
 
 // Minimal fallback messages for initial render (before locale loads)
 const minimalMessages = {
@@ -173,6 +175,10 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
       (priorityBillingOverrides as Record<string, LocaleMessages>)[locale] || {}
     const settingsOverrides =
       (prioritySettingsOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const translationOverrides =
+      (priorityTranslationOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const localizedSkillToolOverrides =
+      (skillToolOverrides as Record<string, LocaleMessages>)[locale] || {}
     const smallModelOverrides =
       (prioritySmallModelOverrides as Record<string, LocaleMessages>)[locale] || {}
     const i18nGlobal = i18n.global as unknown as LocaleComposerBridge
@@ -192,8 +198,16 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
       withBillingOverrides,
       settingsOverrides
     )
-    const mergedMessages = deepMergeMessages<LocaleMessages>(
+    const withTranslationOverrides = deepMergeMessages<LocaleMessages>(
       withSettingsOverrides,
+      translationOverrides
+    )
+    const withSkillToolOverrides = deepMergeMessages<LocaleMessages>(
+      withTranslationOverrides,
+      localizedSkillToolOverrides
+    )
+    const mergedMessages = deepMergeMessages<LocaleMessages>(
+      withSkillToolOverrides,
       smallModelOverrides
     )
 

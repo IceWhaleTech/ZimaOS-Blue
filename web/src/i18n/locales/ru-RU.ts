@@ -1462,6 +1462,7 @@ export default {
     noApprovedDirectories: 'Нет одобренных каталогов',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Средства защиты',
       approvals: 'Одобренные каталоги',
       firewall: 'Брандмауэр',
       masking: 'Маскирование данных',
@@ -2794,7 +2795,7 @@ export default {
     formatJson: 'JSON',
     formatEncrypted: 'Зашифрованный',
     password: 'Пароль',
-    passwordPlaceholder: 'Введите пароль (мин. 6 символов)',
+    passwordPlaceholder: 'Введите пароль (мин. 8 символов)',
     confirmPassword: 'Подтвердите пароль',
     passwordMismatch: 'Пароли не совпадают',
     selectFile: 'Выбрать файл',

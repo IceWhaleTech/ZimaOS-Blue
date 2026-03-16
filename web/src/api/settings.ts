@@ -47,7 +47,7 @@ export interface Settings {
   no_llm_degrade_mode?: NoLLMDegradeMode // Fixed deepresearch
   small_model_unavailable_policy?: SmallModelUnavailablePolicy // Fixed ir_first
   voice_wake_enabled?: boolean // default false
-  voice_wake_triggers?: string[] // default ["Blue"]
+  voice_wake_triggers?: string[] // default ["Hey Blue"]
   voice_wake_locale?: string // optional locale override
   voice_wake_target_conversation_id?: string // fixed background target conversation
 }

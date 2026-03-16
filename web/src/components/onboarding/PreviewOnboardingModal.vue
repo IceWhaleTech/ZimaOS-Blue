@@ -4,27 +4,128 @@ import { useI18n } from 'vue-i18n'
 import { previewApi } from '@/api/preview'
 
 const { t } = useI18n()
+const DEFAULT_TOOLTIP_WIDTH = 320
+const DEFAULT_TOOLTIP_HEIGHT = 252
+const VIEWPORT_PADDING = 16
+const TOOLTIP_GAP = 12
+const ARROW_SIZE = 16
+const ARROW_PADDING = 20
 
 const emit = defineEmits<{
   close: []
 }>()
 
 const visible = ref(false)
+const tooltipRef = ref<HTMLElement | null>(null)
 const tooltipStyle = ref({
   top: '60px',
-  right: '16px',
+  left: '16px',
 })
+const tooltipArrowStyle = ref({
+  left: '24px',
+})
+const tooltipPlacement = ref<'above' | 'below'>('below')
+let trackingPosition = false
+
+function clamp(value: number, min: number, max: number) {
+  if (max < min) return min
+  return Math.min(Math.max(value, min), max)
+}
+
+function isVisibleAnchor(element: Element): element is HTMLElement {
+  if (!(element instanceof HTMLElement)) return false
+  const rect = element.getBoundingClientRect()
+  const style = window.getComputedStyle(element)
+  return (
+    rect.width > 0 &&
+    rect.height > 0 &&
+    rect.bottom > 0 &&
+    rect.right > 0 &&
+    rect.top < window.innerHeight &&
+    rect.left < window.innerWidth &&
+    style.display !== 'none' &&
+    style.visibility !== 'hidden'
+  )
+}
+
+function getAnchorElement(): HTMLElement | null {
+  const selectors = [
+    '[data-onboarding-anchor="preview-create-account"]',
+    '[data-preview-banner] button',
+    '[data-preview-banner]',
+  ]
+
+  for (const selector of selectors) {
+    const anchor = Array.from(document.querySelectorAll(selector)).find(isVisibleAnchor)
+    if (anchor) return anchor
+  }
+
+  return null
+}
 
 function positionTooltip() {
-  // Find the PreviewBanner button in the header
-  const previewButton = document.querySelector('[data-preview-banner]')
-  if (previewButton) {
-    const rect = previewButton.getBoundingClientRect()
+  const tooltipWidth = tooltipRef.value?.offsetWidth || DEFAULT_TOOLTIP_WIDTH
+  const tooltipHeight = tooltipRef.value?.offsetHeight || DEFAULT_TOOLTIP_HEIGHT
+  const maxLeft = Math.max(VIEWPORT_PADDING, window.innerWidth - tooltipWidth - VIEWPORT_PADDING)
+  const fallbackLeft = clamp(
+    window.innerWidth - tooltipWidth - VIEWPORT_PADDING,
+    VIEWPORT_PADDING,
+    maxLeft
+  )
+  const anchor = getAnchorElement()
+
+  if (!anchor) {
+    tooltipPlacement.value = 'below'
     tooltipStyle.value = {
-      top: `${rect.bottom + 12}px`,
-      right: `${window.innerWidth - rect.right}px`,
+      top: '60px',
+      left: `${fallbackLeft}px`,
     }
+    tooltipArrowStyle.value = {
+      left: `${tooltipWidth - ARROW_PADDING - ARROW_SIZE / 2}px`,
+    }
+    return
   }
+
+  const rect = anchor.getBoundingClientRect()
+  const anchorCenterX = rect.left + rect.width / 2
+  const left = clamp(anchorCenterX - tooltipWidth / 2, VIEWPORT_PADDING, maxLeft)
+  const maxTop = Math.max(VIEWPORT_PADDING, window.innerHeight - tooltipHeight - VIEWPORT_PADDING)
+  const spaceBelow = window.innerHeight - rect.bottom - TOOLTIP_GAP - VIEWPORT_PADDING
+  const spaceAbove = rect.top - TOOLTIP_GAP - VIEWPORT_PADDING
+  const shouldPlaceAbove = spaceBelow < tooltipHeight && spaceAbove > spaceBelow
+
+  tooltipPlacement.value = shouldPlaceAbove ? 'above' : 'below'
+  tooltipStyle.value = {
+    top: `${
+      shouldPlaceAbove
+        ? clamp(rect.top - tooltipHeight - TOOLTIP_GAP, VIEWPORT_PADDING, maxTop)
+        : clamp(rect.bottom + TOOLTIP_GAP, VIEWPORT_PADDING, maxTop)
+    }px`,
+    left: `${left}px`,
+  }
+
+  const arrowLeft = clamp(
+    anchorCenterX - left - ARROW_SIZE / 2,
+    ARROW_PADDING,
+    tooltipWidth - ARROW_SIZE - ARROW_PADDING
+  )
+  tooltipArrowStyle.value = {
+    left: `${arrowLeft}px`,
+  }
+}
+
+function startPositionTracking() {
+  if (trackingPosition) return
+  window.addEventListener('resize', positionTooltip)
+  window.addEventListener('scroll', positionTooltip, true)
+  trackingPosition = true
+}
+
+function stopPositionTracking() {
+  if (!trackingPosition) return
+  window.removeEventListener('resize', positionTooltip)
+  window.removeEventListener('scroll', positionTooltip, true)
+  trackingPosition = false
 }
 
 onMounted(async () => {
@@ -35,19 +136,19 @@ onMounted(async () => {
       visible.value = true
       await nextTick()
       positionTooltip()
-      window.addEventListener('resize', positionTooltip)
+      startPositionTracking()
     }
   } catch {
     // If API fails, show the modal (fail-open for better UX)
     visible.value = true
     await nextTick()
     positionTooltip()
-    window.addEventListener('resize', positionTooltip)
+    startPositionTracking()
   }
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', positionTooltip)
+  stopPositionTracking()
 })
 
 async function handleClose() {
@@ -57,6 +158,7 @@ async function handleClose() {
   } catch {
     // Ignore errors - the modal will close anyway
   }
+  stopPositionTracking()
   visible.value = false
   emit('close')
 }
@@ -68,14 +170,19 @@ async function handleClose() {
       <!-- Semi-transparent backdrop -->
       <div class="absolute inset-0 bg-black/40" @click="handleClose" />
 
-      <!-- Tooltip with arrow pointing up -->
+      <!-- Tooltip -->
       <div
+        ref="tooltipRef"
+        data-testid="preview-onboarding-tooltip"
         class="absolute w-80 bg-white dark:bg-gray-700 rounded-xl shadow-2xl overflow-hidden"
         :style="tooltipStyle"
       >
-        <!-- Arrow pointing up -->
+        <!-- Arrow -->
         <div
-          class="absolute -top-2 right-6 w-4 h-4 bg-white dark:bg-gray-700 transform rotate-45"
+          data-testid="preview-onboarding-tooltip-arrow"
+          class="absolute w-4 h-4 bg-white dark:bg-gray-700 transform rotate-45"
+          :class="tooltipPlacement === 'above' ? '-bottom-2' : '-top-2'"
+          :style="tooltipArrowStyle"
         />
 
         <!-- Content -->

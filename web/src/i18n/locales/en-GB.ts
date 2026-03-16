@@ -3024,6 +3024,7 @@ export default {
     noApprovedDirectories: 'No approved directories',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Security Controls',
       approvals: 'Approved Directories',
       overview: 'Overview',
       firewall: 'Firewall',
@@ -4206,7 +4207,7 @@ export default {
     formatJsonDesc: 'Human-readable format. Password is used for import verification.',
     formatEncryptedDesc: 'Fully encrypted binary format. Higher security.',
     password: 'Password',
-    passwordPlaceholder: 'Enter password (min 6 characters)',
+    passwordPlaceholder: 'Enter password (min 8 characters)',
     confirmPassword: 'Confirm Password',
     confirmPasswordPlaceholder: 'Re-enter password',
     passwordMismatch: 'Passwords do not match',

@@ -77,7 +77,7 @@ type Settings struct {
 	NoLLMDegradeMode                    string   `json:"no_llm_degrade_mode,omitempty"`                       // fixed default deepresearch
 	SmallModelUnavailablePolicy         string   `json:"small_model_unavailable_policy,omitempty"`            // default ir_first
 	VoiceWakeEnabled                    *bool    `json:"voice_wake_enabled,omitempty"`                        // default false
-	VoiceWakeTriggers                   []string `json:"voice_wake_triggers,omitempty"`                       // default ["Blue"]
+	VoiceWakeTriggers                   []string `json:"voice_wake_triggers,omitempty"`                       // default ["Hey Blue"]
 	VoiceWakeLocale                     string   `json:"voice_wake_locale,omitempty"`                         // optional locale override
 	VoiceWakeTargetConversationID       string   `json:"voice_wake_target_conversation_id,omitempty"`         // fixed background target conversation
 }

@@ -68,7 +68,7 @@ const logs = ref<RemoteAccessLog[]>([])
 const statusColor = computed(() => {
   if (props.status.active || props.status.url) return 'text-green-600 dark:text-green-400'
   if (props.status.connecting) return 'text-amber-600 dark:text-amber-400'
-  return 'text-gray-500 dark:text-gray-400'
+  return 'text-gray-500 dark:text-slate-300'
 })
 
 const statusIcon = computed(() => {
@@ -168,9 +168,9 @@ function getEventTypeColor(eventType: string) {
     case 'connected':
       return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
     case 'stopped':
-      return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700'
+      return 'text-gray-600 dark:text-slate-300 bg-gray-100 dark:bg-slate-800/70'
     default:
-      return 'text-gray-900 dark:text-white dark:text-white bg-gray-700 dark:bg-gray-500/20'
+      return 'text-gray-800 dark:text-slate-200 bg-gray-100 dark:bg-slate-800/60'
   }
 }
 
@@ -197,43 +197,49 @@ watch(
 </script>
 
 <template>
-  <div class="tunnel-status">
+  <div class="tunnel-status text-gray-800 dark:text-slate-100">
     <!-- Status Header -->
-    <div class="flex items-center justify-between mb-4">
-      <div class="flex items-center gap-2">
+    <div class="tunnel-status__header flex items-center justify-between mb-4">
+      <div class="tunnel-status__status-row flex items-center gap-2">
         <span>{{ statusIcon }}</span>
-        <span :class="statusColor" class="font-medium">{{ statusText }}</span>
+        <span :class="statusColor" class="tunnel-status__status-text font-medium">{{ statusText }}</span>
         <span
           v-if="status.provider"
-          class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full"
+          class="tunnel-status__provider-badge inline-flex items-center gap-1.5 text-xs px-2 py-0.5 bg-gray-100 dark:bg-slate-800/80 text-gray-600 dark:text-slate-300 rounded-full"
         >
           <img
             v-if="getTunnelProviderIcon(status.provider)"
             :src="getTunnelProviderIcon(status.provider)"
             :alt="status.provider"
-            class="h-3.5 w-3.5 shrink-0"
+            class="tunnel-status__provider-icon h-3.5 w-3.5 shrink-0"
           />
           {{ status.provider }}
         </span>
       </div>
-      <span v-if="status.remaining_time" class="text-sm text-gray-500 dark:text-gray-400">
+      <span
+        v-if="status.remaining_time"
+        class="tunnel-status__remaining text-sm text-gray-500 dark:text-slate-300"
+      >
         {{ t('remoteAccess.remainingTime', { time: status.remaining_time }) }}
       </span>
     </div>
 
     <!-- URL Display (show when URL is available; active or connecting with url) -->
-    <div v-if="status.url" class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
-      <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+    <div
+      v-if="status.url"
+      class="tunnel-status__panel tunnel-status__panel--url bg-gray-50 dark:bg-slate-900/45 border border-gray-200 dark:border-slate-700 rounded-lg p-4 mb-4"
+    >
+      <div class="tunnel-status__caption text-sm text-gray-500 dark:text-slate-300 mb-2">
         {{ t('remoteAccess.accessUrl') }}
       </div>
-      <div class="flex items-center gap-2">
+      <div class="tunnel-status__url-row flex items-center gap-2">
         <code
-          class="flex-1 text-sm bg-white dark:bg-gray-700 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto"
+          class="tunnel-status__url-code flex-1 text-sm bg-white dark:bg-slate-950/70 text-gray-900 dark:text-slate-100 px-3 py-2 rounded border border-gray-200 dark:border-slate-700 overflow-x-auto"
         >
           {{ status.url }}
         </code>
         <button
-          class="p-2 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
+          class="tunnel-status__icon-button p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors"
           :title="t('common.copy')"
           @click="copyUrl"
         >
@@ -247,7 +253,7 @@ watch(
           </svg>
         </button>
         <button
-          class="p-2 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
+          class="tunnel-status__icon-button p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors"
           :title="t('common.openInNewTab')"
           @click="openUrl"
         >
@@ -261,7 +267,7 @@ watch(
           </svg>
         </button>
         <button
-          class="p-2 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
+          class="tunnel-status__icon-button p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors"
           :title="t('remoteAccess.showQRCode')"
           @click="loadQRCode"
         >
@@ -277,7 +283,7 @@ watch(
       </div>
 
       <!-- QR Code Display (auto-show when URL available) -->
-      <div v-if="status.url" class="mt-3 flex justify-center">
+      <div v-if="status.url" class="tunnel-status__qr-wrap mt-3 flex justify-center">
         <div v-if="qrCodeLoading" class="py-4">
           <svg
             class="animate-spin h-8 w-8 text-gray-900 dark:text-white"
@@ -303,30 +309,30 @@ watch(
           v-else-if="qrCodeData"
           :src="qrCodeData"
           alt="QR Code"
-          class="w-48 h-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white p-2"
+          class="tunnel-status__qr w-48 h-48 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-950/70 p-2"
         />
-        <div v-else class="text-sm text-gray-500 dark:text-gray-400 py-4">
+        <div v-else class="tunnel-status__empty text-sm text-gray-500 dark:text-slate-300 py-4">
           {{ t('remoteAccess.qrCodeError') }}
         </div>
       </div>
     </div>
 
     <!-- Session Info -->
-    <div v-if="status.active" class="grid grid-cols-2 gap-4 text-sm mb-4">
+    <div v-if="status.active" class="tunnel-status__session-grid grid grid-cols-2 gap-4 text-sm mb-4">
       <div>
-        <div class="text-gray-500 dark:text-gray-400">{{ t('remoteAccess.startedAt') }}</div>
+        <div class="text-gray-500 dark:text-slate-400">{{ t('remoteAccess.startedAt') }}</div>
         <div class="text-gray-900 dark:text-gray-100">
           {{ status.started_at ? new Date(status.started_at).toLocaleString() : '-' }}
         </div>
       </div>
       <div>
-        <div class="text-gray-500 dark:text-gray-400">{{ t('remoteAccess.expiresAt') }}</div>
+        <div class="text-gray-500 dark:text-slate-400">{{ t('remoteAccess.expiresAt') }}</div>
         <div class="text-gray-900 dark:text-gray-100">
           {{ status.expires_at ? new Date(status.expires_at).toLocaleString() : '-' }}
         </div>
       </div>
       <div v-if="status.renewed_count !== undefined && status.renewed_count > 0">
-        <div class="text-gray-500 dark:text-gray-400">{{ t('remoteAccess.renewedCount') }}</div>
+        <div class="text-gray-500 dark:text-slate-400">{{ t('remoteAccess.renewedCount') }}</div>
         <div class="text-gray-900 dark:text-gray-100">{{ status.renewed_count }}</div>
       </div>
     </div>
@@ -335,7 +341,7 @@ watch(
     <div v-if="status.active || status.connecting || status.url" class="mb-4">
       <button
         type="button"
-        class="w-full px-4 py-3 text-sm font-medium rounded-lg border transition-colors flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 cursor-pointer"
+        class="tunnel-status__danger-action w-full px-4 py-3 text-sm font-medium rounded-lg border transition-colors flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 cursor-pointer"
         @click.stop="handleDisconnect"
       >
         <svg
@@ -356,13 +362,13 @@ watch(
     </div>
 
     <!-- Action Buttons -->
-    <div class="flex gap-2 mb-4">
+    <div class="tunnel-status__action-row flex gap-2 mb-4">
       <button
-        class="flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
+        class="tunnel-status__toggle-button flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
         :class="
           showDiagnostics
             ? 'bg-blue-100 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-            : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+            : 'bg-white dark:bg-slate-900/65 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800/80'
         "
         @click="toggleDiagnostics"
       >
@@ -377,11 +383,11 @@ watch(
         {{ t('remoteAccess.diagnostics') }}
       </button>
       <button
-        class="flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
+        class="tunnel-status__toggle-button flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
         :class="
           showLogs
             ? 'bg-blue-100 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-            : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+            : 'bg-white dark:bg-slate-900/65 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800/80'
         "
         @click="toggleLogs"
       >
@@ -398,13 +404,16 @@ watch(
     </div>
 
     <!-- Diagnostics Panel -->
-    <div v-if="showDiagnostics" class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
+    <div
+      v-if="showDiagnostics"
+      class="tunnel-status__panel bg-gray-50 dark:bg-slate-900/45 border border-gray-200 dark:border-slate-700 rounded-lg p-4 mb-4"
+    >
       <div class="flex items-center justify-between mb-3">
-        <h4 class="font-medium text-gray-900 dark:text-white">
+        <h4 class="tunnel-status__section-title font-medium text-gray-900 dark:text-white">
           {{ t('remoteAccess.diagnosticsTitle') }}
         </h4>
         <button
-          class="p-1 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
+          class="tunnel-status__refresh-button p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors"
           :title="t('common.refresh')"
           @click="loadDiagnostics"
         >
@@ -454,7 +463,7 @@ watch(
             <span :class="diagnostics.tunnel_running ? 'text-green-500' : 'text-gray-400'">
               {{ diagnostics.tunnel_running ? '✓' : '✗' }}
             </span>
-            <span class="text-gray-700 dark:text-gray-300">{{
+            <span class="text-gray-700 dark:text-slate-200">{{
               t('remoteAccess.tunnelRunning')
             }}</span>
           </div>
@@ -462,7 +471,7 @@ watch(
             <span :class="diagnostics.firewall_exception ? 'text-green-500' : 'text-amber-500'">
               {{ diagnostics.firewall_exception ? '✓' : '!' }}
             </span>
-            <span class="text-gray-700 dark:text-gray-300">{{
+            <span class="text-gray-700 dark:text-slate-200">{{
               t('remoteAccess.firewallException')
             }}</span>
           </div>
@@ -470,7 +479,7 @@ watch(
             <span :class="diagnostics.ssh_available ? 'text-green-500' : 'text-amber-500'">
               {{ diagnostics.ssh_available ? '✓' : '!' }}
             </span>
-            <span class="text-gray-700 dark:text-gray-300">SSH</span>
+            <span class="text-gray-700 dark:text-slate-200">SSH</span>
           </div>
           <div
             v-if="diagnostics.cloudflared_installed !== undefined"
@@ -479,12 +488,12 @@ watch(
             <span :class="diagnostics.cloudflared_installed ? 'text-green-500' : 'text-gray-400'">
               {{ diagnostics.cloudflared_installed ? '✓' : '✗' }}
             </span>
-            <span class="text-gray-700 dark:text-gray-300">cloudflared</span>
+            <span class="text-gray-700 dark:text-slate-200">cloudflared</span>
           </div>
         </div>
 
         <!-- Active Provider -->
-        <div v-if="diagnostics.active_provider" class="text-sm text-gray-600 dark:text-gray-400">
+        <div v-if="diagnostics.active_provider" class="text-sm text-gray-600 dark:text-slate-300">
           {{ t('remoteAccess.provider') }}:
           <span class="font-medium text-gray-900 dark:text-white">{{
             diagnostics.active_provider
@@ -492,14 +501,14 @@ watch(
         </div>
 
         <!-- Platform Info -->
-        <div class="text-sm text-gray-500 dark:text-gray-400">
+        <div class="text-sm text-gray-500 dark:text-slate-400">
           {{ t('remoteAccess.platform') }}: {{ diagnostics.os?.platform || 'unknown' }}
         </div>
 
         <!-- Hints -->
         <div
           v-if="diagnostics.hints && diagnostics.hints.length > 0"
-          class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 border border-amber-200 dark:border-amber-800"
+          class="tunnel-status__hint-box bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 border border-amber-200 dark:border-amber-800"
         >
           <div class="flex items-start gap-2">
             <svg
@@ -515,8 +524,8 @@ watch(
                 d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
               />
             </svg>
-            <div class="text-sm">
-              <p class="font-medium text-amber-800 dark:text-amber-200 mb-1">
+            <div class="tunnel-status__hint-body text-sm">
+              <p class="tunnel-status__hint-title font-medium text-amber-800 dark:text-amber-200 mb-1">
                 {{ t('remoteAccess.troubleshootingHints') }}
               </p>
               <ul class="text-amber-700 dark:text-amber-300 list-disc list-inside space-y-1">
@@ -528,7 +537,7 @@ watch(
 
         <!-- Recent Errors -->
         <div v-if="diagnostics.recent_errors && diagnostics.recent_errors.length > 0">
-          <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <p class="tunnel-status__subheading text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">
             {{ t('remoteAccess.recentErrors') }}
           </p>
           <div class="space-y-2 max-h-40 overflow-y-auto">
@@ -552,32 +561,32 @@ watch(
 
         <!-- Active Session -->
         <div v-if="diagnostics.active_session">
-          <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <p class="tunnel-status__subheading text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">
             {{ t('remoteAccess.activeSession') }}
           </p>
           <div
-            class="text-xs bg-white dark:bg-gray-700 rounded p-2 border border-gray-200 dark:border-gray-700"
+            class="text-xs bg-white dark:bg-slate-950/70 rounded p-2 border border-gray-200 dark:border-slate-700"
           >
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <span class="text-gray-500 dark:text-gray-400">ID:</span>
-                <span class="ml-1 text-gray-700 dark:text-gray-300 font-mono"
+                <span class="text-gray-500 dark:text-slate-400">ID:</span>
+                <span class="ml-1 text-gray-700 dark:text-slate-200 font-mono"
                   >{{ diagnostics.active_session.id.slice(0, 8) }}...</span
                 >
               </div>
               <div>
-                <span class="text-gray-500 dark:text-gray-400"
+                <span class="text-gray-500 dark:text-slate-400"
                   >{{ t('remoteAccess.status') }}:</span
                 >
-                <span class="ml-1 text-gray-700 dark:text-gray-300">{{
+                <span class="ml-1 text-gray-700 dark:text-slate-200">{{
                   diagnostics.active_session.status
                 }}</span>
               </div>
               <div class="col-span-2">
-                <span class="text-gray-500 dark:text-gray-400"
+                <span class="text-gray-500 dark:text-slate-400"
                   >{{ t('remoteAccess.startedAt') }}:</span
                 >
-                <span class="ml-1 text-gray-700 dark:text-gray-300">{{
+                <span class="ml-1 text-gray-700 dark:text-slate-200">{{
                   formatTime(diagnostics.active_session.started_at)
                 }}</span>
               </div>
@@ -594,11 +603,14 @@ watch(
     </div>
 
     <!-- Logs Panel -->
-    <div v-if="showLogs" class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+    <div
+      v-if="showLogs"
+      class="tunnel-status__panel bg-gray-50 dark:bg-slate-900/45 border border-gray-200 dark:border-slate-700 rounded-lg p-4"
+    >
       <div class="flex items-center justify-between mb-3">
-        <h4 class="font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.logsTitle') }}</h4>
+        <h4 class="tunnel-status__section-title font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.logsTitle') }}</h4>
         <button
-          class="p-1 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
+          class="tunnel-status__refresh-button p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors"
           :title="t('common.refresh')"
           @click="loadLogs"
         >
@@ -646,26 +658,26 @@ watch(
 
       <div
         v-else-if="!logs || logs.length === 0"
-        class="text-center py-4 text-sm text-gray-500 dark:text-gray-400"
+        class="tunnel-status__empty text-center py-4 text-sm text-gray-500 dark:text-slate-300"
       >
         {{ t('remoteAccess.noLogs') }}
       </div>
 
-      <div v-else class="space-y-2 max-h-60 overflow-y-auto">
+      <div v-else class="tunnel-status__logs space-y-2 max-h-60 overflow-y-auto">
         <div
           v-for="log in logs"
           :key="log.id"
-          class="text-xs rounded p-2 border"
+          class="tunnel-status__log-item text-xs rounded p-2 border"
           :class="getEventTypeColor(log.event_type)"
         >
           <div class="flex items-center justify-between mb-1">
             <span
-              class="font-medium px-1.5 py-0.5 rounded text-xs"
+              class="tunnel-status__log-badge font-medium px-1.5 py-0.5 rounded text-xs"
               :class="getEventTypeColor(log.event_type)"
             >
               {{ log.event_type }}
             </span>
-            <span class="text-gray-500 dark:text-gray-400">{{ formatTime(log.created_at) }}</span>
+            <span class="text-gray-500 dark:text-slate-400">{{ formatTime(log.created_at) }}</span>
           </div>
           <p class="break-all">{{ log.message }}</p>
         </div>
@@ -673,3 +685,162 @@ watch(
     </div>
   </div>
 </template>
+
+<style scoped>
+.tunnel-status {
+  font-size: 0.62rem;
+}
+
+.tunnel-status__header {
+  margin-bottom: 0.5rem;
+}
+
+.tunnel-status__status-row {
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.tunnel-status__status-text {
+  font-size: 0.58rem;
+}
+
+.tunnel-status__provider-badge {
+  gap: 0.16rem;
+  padding: 0.08rem 0.22rem;
+  font-size: 0.44rem;
+  line-height: 1.1;
+}
+
+.tunnel-status__provider-icon {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+.tunnel-status__remaining {
+  font-size: 0.52rem;
+}
+
+.tunnel-status__panel {
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 0.54rem;
+}
+
+.tunnel-status__caption {
+  margin-bottom: 0.2rem;
+  font-size: 0.52rem;
+}
+
+.tunnel-status__url-row {
+  gap: 0.24rem;
+}
+
+.tunnel-status__url-code {
+  padding: 0.28rem 0.36rem;
+  border-radius: 0.42rem;
+  font-size: 0.52rem;
+}
+
+.tunnel-status__icon-button {
+  padding: 0.22rem;
+  border-radius: 0.42rem;
+}
+
+.tunnel-status__qr-wrap {
+  margin-top: 0.38rem;
+}
+
+.tunnel-status__qr {
+  width: 6.8rem;
+  height: 6.8rem;
+  padding: 0.22rem;
+  border-radius: 0.5rem;
+}
+
+.tunnel-status__session-grid {
+  gap: 0.46rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.5rem;
+}
+
+.tunnel-status__danger-action {
+  min-height: 1.8rem;
+  padding: 0.34rem 0.46rem;
+  border-radius: 0.48rem;
+  font-size: 0.56rem;
+}
+
+.tunnel-status__action-row {
+  gap: 0.28rem;
+  margin-bottom: 0.5rem;
+}
+
+.tunnel-status__toggle-button {
+  min-height: 1.58rem;
+  padding: 0.24rem 0.38rem;
+  border-radius: 0.46rem;
+  font-size: 0.52rem;
+}
+
+.tunnel-status__section-title {
+  font-size: 0.58rem;
+}
+
+.tunnel-status__refresh-button {
+  padding: 0.16rem;
+  border-radius: 0.36rem;
+}
+
+.tunnel-status__hint-box {
+  padding: 0.4rem;
+  border-radius: 0.48rem;
+}
+
+.tunnel-status__hint-body {
+  font-size: 0.5rem;
+}
+
+.tunnel-status__hint-title {
+  margin-bottom: 0.12rem;
+  font-size: 0.52rem;
+}
+
+.tunnel-status__subheading {
+  margin-bottom: 0.22rem;
+  font-size: 0.5rem;
+}
+
+.tunnel-status__empty {
+  padding-top: 0.46rem;
+  padding-bottom: 0.46rem;
+  font-size: 0.5rem;
+}
+
+.tunnel-status__logs {
+  gap: 0.22rem;
+  max-height: 9rem;
+}
+
+.tunnel-status__log-item {
+  padding: 0.24rem;
+  border-radius: 0.4rem;
+  font-size: 0.46rem;
+}
+
+.tunnel-status__log-badge {
+  padding: 0.06rem 0.16rem;
+  font-size: 0.42rem;
+}
+
+@media (max-width: 639px) {
+  .tunnel-status__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tunnel-status__url-row,
+  .tunnel-status__action-row {
+    flex-wrap: wrap;
+  }
+}
+</style>

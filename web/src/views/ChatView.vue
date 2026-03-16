@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch, computed, onUnmounted, inject } from 'vue'
+import {
+  ref,
+  onMounted,
+  nextTick,
+  watch,
+  computed,
+  onUnmounted,
+  inject,
+  type ComputedRef,
+} from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import type { ComponentPublicInstance } from 'vue'
@@ -34,6 +43,10 @@ import { formatTokens } from '@/utils/format'
 const { t, te, locale } = useI18n()
 const router = useRouter()
 const toggleAppSidebar = inject<() => void>('toggleAppSidebar', () => {})
+const hasGlobalMobileSidebarToggle = inject<ComputedRef<boolean>>(
+  'hasGlobalMobileSidebarToggle',
+  computed(() => false)
+)
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const providerPoolStore = useProviderPoolStore()
@@ -65,9 +78,9 @@ const previousTokens = ref<number | null>(null)
 const hasActiveDeepResearchJobs = computed(() => deepResearchJobs.activeJobs.length > 0)
 const messageAreaPaddingClass = computed(() => {
   if (isMobile.value) {
-    return hasActiveDeepResearchJobs.value ? 'pb-36' : 'pb-4'
+    return hasActiveDeepResearchJobs.value ? 'pb-40' : 'pb-6'
   }
-  return hasActiveDeepResearchJobs.value ? 'pb-14' : 'pb-6'
+  return hasActiveDeepResearchJobs.value ? 'pb-16' : 'pb-8'
 })
 
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -1197,6 +1210,11 @@ function toggleTopbarMenu() {
   showTopbarMenu.value = !showTopbarMenu.value
 }
 
+function openTopbarMenu() {
+  showRoutingMenu.value = false
+  showTopbarMenu.value = true
+}
+
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
 
@@ -1595,12 +1613,14 @@ onUnmounted(() => {
             :executing-conversation-ids="chatStore.executingConversationIds"
             :loading="chatStore.loading"
             :searching="chatStore.searching"
+            :mobile="isMobile"
             @select="handleSelectConversation"
             @create="handleCreateConversation"
             @delete="handleDeleteConversation"
             @search="handleSearch"
             @pin="handlePinConversation"
             @unpin="handleUnpinConversation"
+            @more-actions="openTopbarMenu"
           />
         </aside>
 
@@ -1666,7 +1686,7 @@ onUnmounted(() => {
             <!-- Topbar actions -->
             <div class="chat-tools flex items-center flex-shrink-0">
               <button
-                v-if="isMobile && !showListPage"
+                v-if="isMobile && !showListPage && !hasGlobalMobileSidebarToggle"
                 class="topbar-icon-btn text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors cursor-pointer"
                 :title="t('nav.expandSidebar')"
                 @click="openAppSidebar"
@@ -2352,6 +2372,7 @@ onUnmounted(() => {
           <Transition name="slide-fade">
             <div
               v-if="
+                isMobile &&
                 providerPoolStore.trialQuota &&
                 providerPoolStore.trialProviders?.length > 0 &&
                 !providerPoolStore.trialQuota.is_exhausted
@@ -2499,6 +2520,66 @@ onUnmounted(() => {
                 </button>
               </div>
             </div>
+            <Transition name="slide-fade">
+              <div
+                v-if="
+                  !isMobile &&
+                  providerPoolStore.trialQuota &&
+                  providerPoolStore.trialProviders?.length > 0 &&
+                  !providerPoolStore.trialQuota.is_exhausted
+                "
+                class="chat-thread-subrow"
+              >
+                <div
+                  class="chat-trial-inline flex items-center gap-3 text-sm text-gray-600 dark:text-slate-300"
+                  :class="{ 'trial-quota-pulse': tokenAnimating }"
+                >
+                  <div class="chat-trial-inline-copy flex items-center gap-2 min-w-0">
+                    <span class="chat-trial-inline-gift" :class="{ 'animate-bounce': tokenAnimating }">
+                      🎁
+                    </span>
+                    <span
+                      class="chat-trial-inline-text tabular-nums transition-all duration-300 font-medium truncate"
+                      :class="{ 'token-change-animation': tokenAnimating }"
+                      :title="
+                        providerPoolStore.trialQuota.tokens_remaining.toLocaleString() + ' tokens'
+                      "
+                    >
+                      {{
+                        t('chat.trialQuota.remaining', {
+                          tokens: formatTokens(providerPoolStore.trialQuota.tokens_remaining),
+                        })
+                      }}
+                    </span>
+                  </div>
+                  <div class="chat-trial-inline-side flex items-center gap-2 flex-shrink-0">
+                    <div class="chat-trial-inline-progress relative overflow-hidden">
+                      <div
+                        class="chat-trial-inline-progress-bar h-full transition-all duration-500 ease-out"
+                        :style="{
+                          width: `${Math.max(3, Math.min(100, (providerPoolStore.trialQuota.tokens_remaining / providerPoolStore.trialQuota.token_limit) * 100))}%`,
+                        }"
+                      />
+                    </div>
+                    <span class="chat-trial-inline-percent tabular-nums">
+                      {{
+                        Math.round(
+                          (providerPoolStore.trialQuota.tokens_remaining /
+                            providerPoolStore.trialQuota.token_limit) *
+                            100
+                        )
+                      }}%
+                    </span>
+                    <router-link
+                      to="/settings?tab=llm"
+                      class="chat-trial-inline-link text-xs underline hover:no-underline"
+                    >
+                      {{ t('chat.trialQuota.configure') }}
+                    </router-link>
+                  </div>
+                </div>
+              </div>
+            </Transition>
 
             <!-- Messages area -->
             <div
@@ -3061,14 +3142,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Input area - floating at bottom (desktop), flex at bottom (mobile) -->
-            <div
-              class="chat-input-dock"
-              :class="
-                isMobile
-                  ? 'flex-shrink-0 border-t border-gray-200 dark:border-glass-border'
-                  : 'flex-shrink-0 border-t border-glass-border'
-              "
-            >
+            <div class="chat-input-dock flex-shrink-0">
               <div
                 v-if="hasActiveDeepResearchJobs"
                 class="max-w-5xl mx-auto px-3 sm:px-4 pt-3 pb-2"
@@ -3202,6 +3276,7 @@ onUnmounted(() => {
 .chat-view {
   --chat-pane-pad-x: 1rem;
   --chat-pane-pad-y: 0.96rem;
+  --chat-thread-pad-x: 0.82rem;
   --ct-border-soft: rgba(148, 163, 184, 0.3);
   --ct-border-strong: rgba(59, 130, 246, 0.45);
   --ct-chip-bg: rgba(255, 255, 255, 0.84);
@@ -3219,6 +3294,7 @@ onUnmounted(() => {
 .chat-view.ui-density-compact {
   --chat-pane-pad-x: 0.82rem;
   --chat-pane-pad-y: 0.78rem;
+  --chat-thread-pad-x: 0.72rem;
   --ui-gap: 0.35rem;
   --ui-chip-h: 1.58rem;
   --ui-icon-size: 1.6rem;
@@ -3228,6 +3304,7 @@ onUnmounted(() => {
 .chat-view.ui-density-comfortable {
   --chat-pane-pad-x: 1.12rem;
   --chat-pane-pad-y: 1.02rem;
+  --chat-thread-pad-x: 0.92rem;
   --ui-gap: 0.65rem;
   --ui-chip-h: 2.2rem;
   --ui-icon-size: 2.2rem;
@@ -3280,6 +3357,10 @@ header,
   position: relative;
 }
 
+.chat-desktop-shell .chat-body-shell {
+  padding-bottom: 0;
+}
+
 .chat-main-shell {
   background: transparent;
 }
@@ -3322,7 +3403,7 @@ header,
 }
 
 .chat-page-title {
-  font-size: clamp(1.02rem, 1vw, 1.2rem);
+  font-size: clamp(0.96rem, 0.92vw, 1.12rem);
   line-height: 1.08;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -3339,15 +3420,83 @@ header,
 }
 
 .chat-thread-header {
-  padding: 0.55rem 1.35rem 0.7rem;
-  background: transparent;
+  height: 3.85rem;
+  min-height: 3.85rem;
+  padding: 0.72rem var(--chat-thread-pad-x);
+  border: none;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: inset 0 -1px 0 rgba(226, 232, 240, 0.92);
+}
+
+.chat-thread-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-thread-subrow {
+  margin-top: -1px;
+  padding: 0.38rem var(--chat-thread-pad-x);
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 0;
+  background: rgba(248, 250, 252, 0.8);
 }
 
 .chat-thread-title {
-  font-size: clamp(1.08rem, 1.15vw, 1.34rem);
-  line-height: 1.18;
+  font-size: clamp(0.98rem, 1.02vw, 1.2rem);
+  line-height: 1.14;
   font-weight: 720;
   letter-spacing: -0.028em;
+}
+
+.chat-trial-inline {
+  min-height: 0;
+  flex-wrap: wrap;
+}
+
+.chat-thread-subrow .chat-trial-inline {
+  width: 100%;
+  justify-content: space-between;
+  gap: 0.4rem 0.85rem;
+}
+
+.chat-trial-inline-copy {
+  min-width: 0;
+}
+
+.chat-trial-inline-gift {
+  flex-shrink: 0;
+}
+
+.chat-trial-inline-text {
+  font-size: 0.75rem;
+  line-height: 1.15;
+}
+
+.chat-trial-inline-side {
+  min-width: 0;
+}
+
+.chat-trial-inline-progress {
+  width: 4.6rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.94);
+}
+
+.chat-trial-inline-progress-bar {
+  border-radius: inherit;
+  background: rgb(37, 99, 235);
+}
+
+.chat-trial-inline-percent {
+  font-size: 0.72rem;
+  color: rgb(148, 163, 184);
+}
+
+.chat-trial-inline-link {
+  color: rgb(100, 116, 139);
 }
 
 .chat-thread-actions {
@@ -3428,7 +3577,7 @@ header,
   display: inline-flex;
   align-items: center;
   min-width: 0;
-  font-size: 0.75rem;
+  font-size: 0.71rem;
   line-height: 1;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -3437,8 +3586,8 @@ header,
 }
 
 .chat-title {
-  font-size: clamp(1.12rem, 1.25vw, 1.5rem);
-  line-height: 1.18;
+  font-size: clamp(1.02rem, 1.12vw, 1.34rem);
+  line-height: 1.14;
   font-weight: 720;
   letter-spacing: -0.03em;
   text-shadow: none;
@@ -3595,16 +3744,27 @@ header,
 
 .chat-messages-area {
   scroll-padding-top: 1rem;
-  scroll-padding-bottom: 9.75rem;
+  scroll-padding-bottom: 10.75rem;
   padding-inline: clamp(0.45rem, 1.3vw, 1.2rem);
 }
 
 .chat-thread-shell-desktop .chat-messages-area {
-  scroll-padding-bottom: 1.5rem;
+  scroll-padding-bottom: 10.75rem;
 }
 
 .chat-input-dock {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: -1.1rem;
+  padding-bottom: 0.85rem;
   background: transparent;
+}
+
+.chat-desktop-shell .chat-input-dock {
+  padding-bottom: 0;
 }
 
 .border-glass-border {
@@ -3643,6 +3803,44 @@ header,
   background: transparent;
 }
 
+:root.dark .chat-thread-header,
+[data-theme='dark'] .chat-thread-header,
+:root.dark .chat-thread-subrow,
+[data-theme='dark'] .chat-thread-subrow {
+  border-color: rgba(51, 65, 85, 0.88);
+}
+
+:root.dark .chat-thread-header,
+[data-theme='dark'] .chat-thread-header {
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: inset 0 -1px 0 rgba(51, 65, 85, 0.88);
+}
+
+:root.dark .chat-thread-subrow,
+[data-theme='dark'] .chat-thread-subrow {
+  background: rgba(15, 23, 42, 0.58);
+}
+
+:root.dark .chat-trial-inline-progress,
+[data-theme='dark'] .chat-trial-inline-progress {
+  background: rgba(51, 65, 85, 0.92);
+}
+
+:root.dark .chat-trial-inline-progress-bar,
+[data-theme='dark'] .chat-trial-inline-progress-bar {
+  background: rgb(96, 165, 250);
+}
+
+:root.dark .chat-trial-inline-percent,
+[data-theme='dark'] .chat-trial-inline-percent {
+  color: rgb(148, 163, 184);
+}
+
+:root.dark .chat-trial-inline-link,
+[data-theme='dark'] .chat-trial-inline-link {
+  color: rgb(148, 163, 184);
+}
+
 :root.dark .chat-topbar,
 [data-theme='dark'] .chat-topbar {
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.93), rgba(15, 23, 42, 0.86));
@@ -3659,11 +3857,6 @@ header,
   background: transparent;
   border: none;
   box-shadow: none;
-}
-
-:root.dark .chat-thread-header,
-[data-theme='dark'] .chat-thread-header {
-  background: transparent;
 }
 
 :root.dark .bg-surface-base,
@@ -4236,8 +4429,8 @@ header,
     padding-inline: 1rem;
   }
 
-  .chat-thread-header {
-    padding-inline: 1rem;
+  .chat-thread-shell-desktop {
+    padding-inline: var(--chat-thread-pad-x);
   }
 }
 
@@ -4347,15 +4540,16 @@ header,
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  scroll-padding-bottom: 7.4rem;
+  scroll-padding-bottom: 8.2rem;
 }
 
 /* Mobile input area - stick to bottom */
 .mobile-chat .chat-input-dock {
   position: relative !important;
   bottom: auto !important;
+  margin-top: -0.85rem;
   background: transparent;
-  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  padding-bottom: calc(max(env(safe-area-inset-bottom), 0px) + 0.75rem);
 }
 
 .chat-topbar-mobile {

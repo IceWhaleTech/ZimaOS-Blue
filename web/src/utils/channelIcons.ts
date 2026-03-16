@@ -44,6 +44,22 @@ export const channelIcons: Record<string, string> = {
   zalouser: '/icons/extensions/zalouser.svg',
 }
 
+interface ChannelIconTuning {
+  scale?: number
+}
+
+// A few logos ship with noticeably more internal whitespace than others.
+// These scale nudges keep their perceived size consistent in shared icon shells.
+const channelIconTuning: Record<string, ChannelIconTuning> = {
+  feishu: { scale: 1.18 },
+  mattermost: { scale: 1.36 },
+  nextcloud: { scale: 1.24 },
+  'nextcloud-talk': { scale: 1.24 },
+  nextcloudtalk: { scale: 1.24 },
+  teams: { scale: 1.12 },
+  webhook: { scale: 1.08 },
+}
+
 /** Tunnel provider icons (remote access: ngrok, Cloudflare, localtunnel, etc.) */
 export const tunnelProviderIcons: Record<string, string> = {
   auto: '/icons/tunnel/auto.svg',
@@ -67,6 +83,13 @@ export function getChannelIconOrDefault(
   defaultIcon = '/icons/channels/default.svg'
 ): string {
   return channelIcons[channelType.toLowerCase()] || defaultIcon
+}
+
+export function getChannelIconStyleVars(channelType: string): Record<string, string> {
+  const tuning = channelIconTuning[channelType?.toLowerCase()] ?? {}
+  return {
+    '--channel-icon-scale': String(tuning.scale ?? 1),
+  }
 }
 
 /**

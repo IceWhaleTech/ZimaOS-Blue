@@ -1,0 +1,154 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mount } from '@vue/test-utils'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import DefaultLayout from '@/layouts/DefaultLayout.vue'
+
+const { setupFormFillerWidget, cleanupFormFillerWidget } = vi.hoisted(() => ({
+  setupFormFillerWidget: vi.fn(),
+  cleanupFormFillerWidget: vi.fn(),
+}))
+
+vi.mock('@/composables/useFormFillerWidget', () => ({
+  useFormFillerWidget: () => ({
+    setup: setupFormFillerWidget,
+    cleanup: cleanupFormFillerWidget,
+  }),
+}))
+
+vi.mock('@/composables/useTauri', () => ({
+  useTauri: () => ({
+    isTauri: { value: false },
+    setCloseBehavior: vi.fn(),
+  }),
+}))
+
+vi.mock('@/stores/preview', () => ({
+  usePreviewStore: () => ({
+    isPreviewMode: false,
+  }),
+}))
+
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => ({
+    closeBehavior: 'quit',
+  }),
+}))
+
+vi.mock('@/components/AppSidebar.vue', () => ({
+  default: {
+    name: 'AppSidebar',
+    template: '<aside class="app-sidebar-stub" />',
+  },
+}))
+
+vi.mock('@/components/formfiller/FormFillerWidget.vue', () => ({
+  default: {
+    name: 'FormFillerWidget',
+    template: '<div class="form-filler-widget-stub" />',
+  },
+}))
+
+vi.mock('@/components/onboarding/PreviewOnboardingModal.vue', () => ({
+  default: {
+    name: 'PreviewOnboardingModal',
+    template: '<div class="preview-onboarding-modal-stub" />',
+  },
+}))
+
+vi.mock('@/components/typeless/FullscreenModal.vue', () => ({
+  default: {
+    name: 'FullscreenModal',
+    template: '<div class="fullscreen-modal-stub" />',
+  },
+}))
+
+function createTestRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/home', name: 'Home', component: { template: '<div>Home</div>' } },
+      { path: '/profile', name: 'Profile', component: { template: '<div>Profile</div>' } },
+      { path: '/chat', name: 'Chat', component: { template: '<div>Chat</div>' } },
+    ],
+  })
+}
+
+function setUserAgent(userAgent: string, maxTouchPoints = 0) {
+  Object.defineProperty(window.navigator, 'userAgent', {
+    configurable: true,
+    value: userAgent,
+  })
+  Object.defineProperty(window.navigator, 'maxTouchPoints', {
+    configurable: true,
+    value: maxTouchPoints,
+  })
+}
+
+async function mountLayout(path: string) {
+  const router = createTestRouter()
+  router.push(path)
+  await router.isReady()
+
+  return mount(DefaultLayout, {
+    global: {
+      plugins: [router],
+    },
+  })
+}
+
+describe('DefaultLayout', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('does not render the mobile nav button for desktop browsers', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+    )
+
+    const wrapper = await mountLayout('/profile')
+
+    expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('renders the mobile nav button for phone browsers on profile routes', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1',
+      5
+    )
+
+    const wrapper = await mountLayout('/profile')
+
+    expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('renders the mobile nav button for phone browsers on the dashboard route', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1',
+      5
+    )
+
+    const wrapper = await mountLayout('/home')
+
+    expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('renders the mobile nav button for phone browsers on the chat route', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1',
+      5
+    )
+
+    const wrapper = await mountLayout('/chat')
+
+    expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+})

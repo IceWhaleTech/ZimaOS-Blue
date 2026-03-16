@@ -712,6 +712,7 @@ export default {
     noApprovedDirectories: 'No hi ha cap directori aprovat',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Controls de seguretat',
       approvals: 'Directoris aprovats',
       firewall: 'Tallafoc',
       masking: 'Emmascarament de dades',
@@ -1955,7 +1956,7 @@ export default {
     formatJson: 'JSON',
     formatEncrypted: 'Xifrat',
     password: 'Contrasenya',
-    passwordPlaceholder: 'Introduir contrasenya (mín. 6 caràcters)',
+    passwordPlaceholder: 'Introduir contrasenya (mín. 8 caràcters)',
     confirmPassword: 'Confirmar contrasenya',
     passwordMismatch: 'Les contrasenyes no coincideixen',
     selectFile: 'Seleccionar fitxer',

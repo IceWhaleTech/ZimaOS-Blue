@@ -43,7 +43,7 @@ const policyLoading = ref(true)
 
 // Password policy from backend
 const policy = ref<PasswordPolicy>({
-  min_length: 6,
+  min_length: 8,
   require_uppercase: true,
   require_lowercase: true,
   require_letter: false,

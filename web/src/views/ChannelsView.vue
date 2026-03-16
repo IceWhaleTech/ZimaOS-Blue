@@ -2,7 +2,11 @@
 import { ref, computed, onMounted, onUnmounted, watch, shallowRef, triggerRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
-import { getChannelIconOrDefault, getTunnelProviderIcon } from '@/utils/channelIcons'
+import {
+  getChannelIconOrDefault,
+  getChannelIconStyleVars,
+  getTunnelProviderIcon,
+} from '@/utils/channelIcons'
 import ChannelCard from '@/components/channels/ChannelCard.vue'
 import {
   getRemoteAccessStatus,
@@ -957,7 +961,9 @@ const connectedCount = computed(() => {
   return channelCount + remoteCount
 })
 
-const heroPreviewChannels = computed(() => primaryChannels.value.slice(0, defaultVisibleChannelCount))
+const heroPreviewChannels = computed(() =>
+  primaryChannels.value.slice(0, defaultVisibleChannelCount)
+)
 
 const selectedProviderInfo = computed(() => {
   return tunnelProviders.value.find((p) => p.id === selectedProvider.value)
@@ -1475,20 +1481,18 @@ watch(
         <article class="dashboard-card-surface channels-summary-card">
           <span class="channels-summary-label">{{ t('channels.enabledChannels') }}</span>
           <strong class="channels-summary-value">{{ enabledCount }}</strong>
-          <p class="channels-summary-footnote">
-            {{ connectedCount }} {{ t('channels.connectedChannels') }}
-          </p>
         </article>
 
-        <article class="dashboard-card-surface channels-summary-card channels-summary-card--connected">
+        <article
+          class="dashboard-card-surface channels-summary-card channels-summary-card--connected"
+        >
           <span class="channels-summary-label">{{ t('channels.connectedChannels') }}</span>
           <strong class="channels-summary-value">{{ connectedCount }}</strong>
-          <p class="channels-summary-footnote">
-            {{ enabledCount }} {{ t('channels.enabledChannels') }}
-          </p>
         </article>
 
-        <article class="dashboard-card-surface channels-summary-card channels-summary-card--preview">
+        <article
+          class="dashboard-card-surface channels-summary-card channels-summary-card--preview"
+        >
           <span class="channels-summary-label">{{ t('channels.title') }}</span>
           <div class="channels-summary-icon-row">
             <div
@@ -1500,7 +1504,8 @@ watch(
               <img
                 :src="channel.icon"
                 :alt="channel.nameKey ? t(channel.nameKey) : channel.name || channel.id"
-                class="w-5 h-5 object-contain"
+                class="channels-summary-icon"
+                :style="getChannelIconStyleVars(channel.id)"
               />
             </div>
             <div
@@ -1510,13 +1515,6 @@ watch(
               +{{ secondaryChannels.length }}
             </div>
           </div>
-          <p class="channels-summary-footnote">
-            {{
-              secondaryChannels.length > 0
-                ? `${t('common.loadMore')} (${secondaryChannels.length})`
-                : t('channels.subtitle')
-            }}
-          </p>
         </article>
       </section>
 
@@ -1524,308 +1522,332 @@ watch(
         <div
           class="animate-spin w-8 h-8 border-2 border-gray-900 dark:border-gray-400 border-t-transparent rounded-full mx-auto mb-2"
         ></div>
-        <p class="text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</p>
+        <p class="text-gray-500 dark:text-slate-300">{{ t('common.loading') }}</p>
       </div>
 
       <div v-else class="channels-board">
-        <div class="bg-white dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div class="channels-board__stack">
           <div
-            class="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-            @click="toggleRemoteAccessExpanded"
+            class="channels-remote-card"
+            :class="{ 'channels-remote-card--expanded': remoteAccessExpanded }"
           >
-            <div
-              class="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden"
-            >
-              <img src="/icons/tunnel/remote-access.svg" alt="Remote Access" class="w-8 h-8" />
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <h3 class="font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.title') }}</h3>
-                <span
-                  class="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-full"
-                >
-                  {{ t('remoteAccess.recommended') }}
-                </span>
-                <span
-                  class="w-2 h-2 rounded-full"
-                  :class="{
-                    'bg-green-500': remoteAccessState === 'connected',
-                    'bg-yellow-500 animate-pulse': remoteAccessState === 'connecting',
-                    'bg-red-500': remoteAccessState === 'error',
-                    'bg-gray-400': ['loading', 'ready'].includes(remoteAccessState),
-                  }"
-                ></span>
-              </div>
-              <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
-                {{ t('remoteAccess.channelDescription') }}
-              </p>
-            </div>
-            <div class="flex items-center gap-3">
-              <label
-                v-if="remoteAccessState === 'connected' || remoteAccessState === 'ready'"
-                class="relative inline-flex items-center cursor-pointer"
-                @click.stop.prevent="
-                  remoteAccessState === 'connected'
-                    ? handleRemoteAccessStop()
-                    : handleRemoteAccessStart()
-                "
-              >
-                <input
-                  :checked="remoteAccessState === 'connected'"
-                  type="checkbox"
-                  class="sr-only peer"
-                />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
-                ></div>
-              </label>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5 text-gray-400 transition-transform"
-                :class="{ 'rotate-180': remoteAccessExpanded }"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </div>
-          </div>
-
-          <div
-            v-if="remoteAccessExpanded"
-            class="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-700/50"
-          >
-            <div v-if="remoteAccessState === 'loading'" class="flex items-center justify-center py-8">
-              <svg
-                class="animate-spin h-8 w-8 text-gray-900 dark:text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                />
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-            </div>
-
-            <div v-else-if="remoteAccessState === 'ready'" class="space-y-4">
-              <div class="space-y-3">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('remoteAccess.selectProvider') }}
-                </label>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    v-for="provider in tunnelProviders"
-                    :key="provider.id"
-                    class="p-3 rounded-lg border text-left transition-colors flex items-center gap-3"
-                    :class="
-                      selectedProvider === provider.id
-                        ? 'border-gray-600 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/30'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                    "
-                    @click="selectedProvider = provider.id"
-                  >
-                    <img
-                      v-if="getTunnelProviderIcon(provider.id)"
-                      :src="getTunnelProviderIcon(provider.id)"
-                      :alt="provider.name"
-                      class="w-6 h-6 shrink-0 rounded object-contain"
-                    />
-                    <div
-                      v-else
-                      class="w-6 h-6 shrink-0 bg-gray-700 dark:bg-gray-500 rounded flex items-center justify-center"
+            <div class="channels-remote-card__header" @click="toggleRemoteAccessExpanded">
+              <div class="channels-remote-card__identity">
+                <div class="channels-remote-card__icon-shell">
+                  <img
+                    src="/icons/tunnel/remote-access.svg"
+                    alt="Remote Access"
+                    class="channels-remote-card__icon"
+                  />
+                </div>
+                <div class="channels-remote-card__copy">
+                  <div class="channels-remote-card__title-row">
+                    <h3 class="channels-remote-card__title text-gray-900 dark:text-white">
+                      {{ t('remoteAccess.title') }}
+                    </h3>
+                    <span
+                      class="channels-remote-card__badge px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-slate-800/80 text-gray-900 dark:text-slate-100 rounded-full"
                     >
-                      <svg
-                        class="w-4 h-4 text-gray-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
-                        />
-                      </svg>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <div class="font-medium text-gray-900 dark:text-white text-sm">
-                        {{ provider.name }}
-                      </div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        {{
-                          provider.requires_key
-                            ? t('remoteAccess.requiresKey')
-                            : t('remoteAccess.noKeyRequired')
-                        }}
-                      </div>
-                    </div>
-                  </button>
+                      {{ t('remoteAccess.recommended') }}
+                    </span>
+                    <span
+                      class="w-2 h-2 rounded-full"
+                      :class="{
+                        'bg-green-500': remoteAccessState === 'connected',
+                        'bg-yellow-500 animate-pulse': remoteAccessState === 'connecting',
+                        'bg-red-500': remoteAccessState === 'error',
+                        'bg-gray-400': ['loading', 'ready'].includes(remoteAccessState),
+                      }"
+                    ></span>
+                  </div>
+                  <p
+                    class="channels-remote-card__description text-gray-500 dark:text-slate-300 truncate"
+                  >
+                    {{ t('remoteAccess.channelDescription') }}
+                  </p>
                 </div>
               </div>
-
-              <div v-if="selectedProviderInfo?.requires_key" class="space-y-2">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ selectedProviderInfo.key_label || 'Auth Token' }}
-                </label>
-                <input
-                  v-model="currentProviderToken"
-                  type="password"
-                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                  :placeholder="selectedProviderInfo.key_hint || ''"
-                />
-                <a
-                  v-if="selectedProviderInfo.doc_url"
-                  :href="selectedProviderInfo.doc_url"
-                  target="_blank"
-                  class="inline-flex items-center gap-1 text-xs text-gray-900 dark:text-white hover:underline"
+              <div class="flex items-center gap-3">
+                <label
+                  v-if="remoteAccessState === 'connected' || remoteAccessState === 'ready'"
+                  class="relative inline-flex items-center cursor-pointer"
+                  @click.stop.prevent="
+                    remoteAccessState === 'connected'
+                      ? handleRemoteAccessStop()
+                      : handleRemoteAccessStart()
+                  "
                 >
-                  <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
-                  {{ t('remoteAccess.getToken') }}
-                </a>
-              </div>
-
-              <div v-if="selectedProvider === 'ngrok'" class="space-y-2">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('remoteAccess.ngrokDomain') }}
-                  <span class="text-gray-400 text-xs ml-1">({{ t('common.optional') }})</span>
+                  <input
+                    :checked="remoteAccessState === 'connected'"
+                    type="checkbox"
+                    class="sr-only peer"
+                  />
+                  <div
+                    class="channels-remote-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
+                  ></div>
                 </label>
-                <input
-                  v-model="ngrokDomain"
-                  type="text"
-                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                  :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
-                />
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('remoteAccess.ngrokDomainHint') }}
-                  <a
-                    href="https://dashboard.ngrok.com/domains"
-                    target="_blank"
-                    class="text-gray-900 dark:text-white hover:underline"
-                  >
-                    {{ t('remoteAccess.ngrokClaimDomain') }}
-                  </a>
-                </p>
-              </div>
-
-              <button
-                class="w-full px-4 py-3 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
-                :class="{
-                  'opacity-50 cursor-not-allowed':
-                    selectedProviderInfo?.requires_key && !currentProviderToken,
-                }"
-                @click="handleRemoteAccessStart"
-              >
-                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="channels-remote-card__chevron text-gray-400 transition-transform"
+                  :class="{ 'rotate-180': remoteAccessExpanded }"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                    d="M19 9l-7 7-7-7"
                   />
                 </svg>
-                {{ t('remoteAccess.enable') }}
-              </button>
-              <div class="text-xs text-gray-500 dark:text-gray-400 text-center">
-                {{ t('remoteAccess.securityWarning') }}
               </div>
             </div>
 
-            <div v-else-if="remoteAccessState === 'connecting'" class="space-y-4">
-              <div class="flex items-center justify-center py-4">
-                <div class="text-center">
-                  <svg
-                    class="animate-spin h-8 w-8 text-gray-900 dark:text-white mx-auto mb-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      class="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      stroke-width="4"
-                    />
-                    <path
-                      class="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  <p class="text-gray-600 dark:text-gray-400">{{ t('remoteAccess.connecting') }}</p>
-                </div>
-              </div>
-              <TunnelStatus
-                :status="tunnelStatus || { active: false, connecting: true }"
-                @disconnect="handleRemoteAccessStop"
-              />
-            </div>
-
-            <div v-else-if="remoteAccessState === 'connected' && tunnelStatus" class="space-y-4">
-              <TunnelStatus :status="tunnelStatus" @disconnect="handleRemoteAccessStop" />
-            </div>
-
-            <div v-else-if="remoteAccessState === 'error'" class="space-y-4">
-              <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
-                <div class="flex items-start gap-3">
-                  <svg
-                    class="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
+            <div v-if="remoteAccessExpanded" class="channels-remote-card__body">
+              <div
+                v-if="remoteAccessState === 'loading'"
+                class="flex items-center justify-center py-8"
+              >
+                <svg
+                  class="animate-spin h-8 w-8 text-gray-900 dark:text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
                     stroke="currentColor"
+                    stroke-width="4"
+                  />
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+              </div>
+
+              <div v-else-if="remoteAccessState === 'ready'" class="space-y-4">
+                <div class="space-y-3">
+                  <label
+                    class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
                   >
+                    {{ t('remoteAccess.selectProvider') }}
+                  </label>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      v-for="provider in tunnelProviders"
+                      :key="provider.id"
+                      class="channels-remote-card__provider-option p-3 rounded-lg border text-left transition-colors flex items-center gap-3"
+                      :class="
+                        selectedProvider === provider.id
+                          ? 'border-gray-600 dark:border-slate-500 bg-gray-100 dark:bg-slate-800/70'
+                          : 'border-gray-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/25 hover:border-gray-300 dark:hover:border-slate-500 hover:bg-white dark:hover:bg-slate-800/45'
+                      "
+                      @click="selectedProvider = provider.id"
+                    >
+                      <img
+                        v-if="getTunnelProviderIcon(provider.id)"
+                        :src="getTunnelProviderIcon(provider.id)"
+                        :alt="provider.name"
+                        class="w-6 h-6 shrink-0 rounded object-contain"
+                      />
+                      <div
+                        v-else
+                        class="w-6 h-6 shrink-0 bg-gray-700 dark:bg-slate-800 rounded flex items-center justify-center"
+                      >
+                        <svg
+                          class="w-4 h-4 text-gray-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                          />
+                        </svg>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div
+                          class="channels-remote-card__provider-name font-medium text-gray-900 dark:text-white text-sm"
+                        >
+                          {{ provider.name }}
+                        </div>
+                        <div
+                          class="channels-remote-card__provider-meta text-xs text-gray-500 dark:text-slate-400 mt-0.5"
+                        >
+                          {{
+                            provider.requires_key
+                              ? t('remoteAccess.requiresKey')
+                              : t('remoteAccess.noKeyRequired')
+                          }}
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="selectedProviderInfo?.requires_key" class="space-y-2">
+                  <label
+                    class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+                  >
+                    {{ selectedProviderInfo.key_label || 'Auth Token' }}
+                  </label>
+                  <input
+                    v-model="currentProviderToken"
+                    type="password"
+                    class="channels-remote-card__input w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                    :placeholder="selectedProviderInfo.key_hint || ''"
+                  />
+                  <a
+                    v-if="selectedProviderInfo.doc_url"
+                    :href="selectedProviderInfo.doc_url"
+                    target="_blank"
+                    class="channels-remote-card__helper-link inline-flex items-center gap-1 text-xs text-gray-900 dark:text-slate-100 hover:underline"
+                  >
+                    <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
+                    </svg>
+                    {{ t('remoteAccess.getToken') }}
+                  </a>
+                </div>
+
+                <div v-if="selectedProvider === 'ngrok'" class="space-y-2">
+                  <label
+                    class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+                  >
+                    {{ t('remoteAccess.ngrokDomain') }}
+                    <span class="text-gray-400 dark:text-slate-500 text-xs ml-1">
+                      ({{ t('common.optional') }})
+                    </span>
+                  </label>
+                  <input
+                    v-model="ngrokDomain"
+                    type="text"
+                    class="channels-remote-card__input w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                    :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
+                  />
+                  <p class="channels-remote-card__note text-xs text-gray-500 dark:text-slate-300">
+                    {{ t('remoteAccess.ngrokDomainHint') }}
+                    <a
+                      href="https://dashboard.ngrok.com/domains"
+                      target="_blank"
+                      class="channels-remote-card__helper-link text-gray-900 dark:text-slate-100 hover:underline"
+                    >
+                      {{ t('remoteAccess.ngrokClaimDomain') }}
+                    </a>
+                  </p>
+                </div>
+
+                <button
+                  class="channels-remote-card__primary-action w-full px-4 py-3 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                  :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
+                  :class="{
+                    'opacity-50 cursor-not-allowed':
+                      selectedProviderInfo?.requires_key && !currentProviderToken,
+                  }"
+                  @click="handleRemoteAccessStart"
+                >
+                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
                     />
                   </svg>
-                  <div>
-                    <p class="text-sm text-red-800 dark:text-red-200">{{ remoteAccessError }}</p>
-                  </div>
+                  {{ t('remoteAccess.enable') }}
+                </button>
+                <div
+                  class="channels-remote-card__note text-xs text-gray-500 dark:text-slate-300 text-center"
+                >
+                  {{ t('remoteAccess.securityWarning') }}
                 </div>
               </div>
-              <button
-                class="w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
-                @click="loadRemoteAccessStatus"
-              >
-                {{ t('common.retry') }}
-              </button>
-              <TunnelStatus
-                :status="tunnelStatus || { active: false }"
-                @disconnect="handleRemoteAccessStop"
-              />
+
+              <div v-else-if="remoteAccessState === 'connecting'" class="space-y-4">
+                <div class="flex items-center justify-center py-4">
+                  <div class="text-center">
+                    <svg
+                      class="animate-spin h-8 w-8 text-gray-900 dark:text-white mx-auto mb-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      />
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    <p class="text-gray-600 dark:text-slate-300">
+                      {{ t('remoteAccess.connecting') }}
+                    </p>
+                  </div>
+                </div>
+                <TunnelStatus
+                  :status="tunnelStatus || { active: false, connecting: true }"
+                  @disconnect="handleRemoteAccessStop"
+                />
+              </div>
+
+              <div v-else-if="remoteAccessState === 'connected' && tunnelStatus" class="space-y-4">
+                <TunnelStatus :status="tunnelStatus" @disconnect="handleRemoteAccessStop" />
+              </div>
+
+              <div v-else-if="remoteAccessState === 'error'" class="space-y-4">
+                <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+                  <div class="flex items-start gap-3">
+                    <svg
+                      class="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <div>
+                      <p class="text-sm text-red-800 dark:text-red-200">{{ remoteAccessError }}</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  class="channels-remote-card__secondary-action w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
+                  @click="loadRemoteAccessStatus"
+                >
+                  {{ t('common.retry') }}
+                </button>
+                <TunnelStatus
+                  :status="tunnelStatus || { active: false }"
+                  @disconnect="handleRemoteAccessStop"
+                />
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="channels-board__stack">
           <ChannelCard
             v-for="channel in primaryChannels"
             :key="channel.id"
@@ -1852,7 +1874,8 @@ watch(
             @save="saveChannel(channel.id)"
             @test-connection="testConnection(channel.id)"
             @update-field="
-              (fieldIndex: number, value: string) => updateChannelField(channel.id, fieldIndex, value)
+              (fieldIndex: number, value: string) =>
+                updateChannelField(channel.id, fieldIndex, value)
             "
           />
         </div>
@@ -1900,7 +1923,8 @@ watch(
             @save="saveChannel(channel.id)"
             @test-connection="testConnection(channel.id)"
             @update-field="
-              (fieldIndex: number, value: string) => updateChannelField(channel.id, fieldIndex, value)
+              (fieldIndex: number, value: string) =>
+                updateChannelField(channel.id, fieldIndex, value)
             "
           />
         </div>
@@ -1914,12 +1938,13 @@ watch(
   --config-page-accent: 8, 145, 178;
   max-width: 1480px;
   margin: 0 auto;
-  padding: 0 0.75rem 1.8rem;
+  padding: 0 0.78rem 1.4rem;
+  color: #0f172a;
 }
 
 .channels-stage {
   position: relative;
-  padding: 1.15rem 0 0.25rem;
+  padding: 0.92rem 0 0.2rem;
 }
 
 .channels-stage::before,
@@ -1949,9 +1974,9 @@ watch(
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
-  padding: 1.35rem 1.45rem;
-  margin-bottom: 0.88rem;
+  gap: 0.64rem;
+  padding: 1rem 1.08rem;
+  margin-bottom: 0.72rem;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -1966,7 +1991,7 @@ watch(
 }
 
 .channels-page__title {
-  font-size: clamp(1.52rem, 0.92vw + 1.02rem, 2.08rem);
+  font-size: clamp(1.18rem, 0.72vw + 0.88rem, 1.68rem);
   line-height: 1.02;
 }
 
@@ -1974,9 +1999,9 @@ watch(
   position: relative;
   z-index: 1;
   display: grid;
-  gap: 0.88rem;
+  gap: 0.62rem;
   grid-template-columns: repeat(1, minmax(0, 1fr));
-  margin-bottom: 0.88rem;
+  margin-bottom: 0.72rem;
 }
 
 .channels-summary-card {
@@ -1984,9 +2009,10 @@ watch(
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 0.72rem;
-  min-height: 8.9rem;
-  padding: 1rem 1.05rem;
+  justify-content: center;
+  gap: 0.36rem;
+  min-height: 4.9rem;
+  padding: 0.78rem 0.88rem;
 }
 
 .channels-summary-card::after {
@@ -2011,7 +2037,7 @@ watch(
   z-index: 1;
   display: block;
   color: #9ca3af;
-  font-size: 0.7rem;
+  font-size: 0.56rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2022,19 +2048,10 @@ watch(
   z-index: 1;
   display: block;
   color: #111827;
-  font-size: clamp(1.65rem, 1vw + 1rem, 2.2rem);
+  font-size: clamp(1.18rem, 0.7vw + 0.92rem, 1.7rem);
   line-height: 1.04;
   letter-spacing: -0.04em;
   font-weight: 700;
-}
-
-.channels-summary-footnote {
-  position: relative;
-  z-index: 1;
-  margin: auto 0 0;
-  color: #6b7280;
-  font-size: 0.78rem;
-  line-height: 1.45;
 }
 
 .channels-summary-icon-row {
@@ -2043,31 +2060,39 @@ watch(
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: clamp(0.25rem, 0.12rem + 0.3vw, 0.5rem);
+  gap: clamp(0.16rem, 0.08rem + 0.16vw, 0.32rem);
 }
 
 .channels-summary-icon-pill {
-  width: clamp(1.9rem, 1.55rem + 0.75vw, 2.35rem);
-  height: clamp(1.9rem, 1.55rem + 0.75vw, 2.35rem);
+  width: clamp(1.34rem, 1.22rem + 0.28vw, 1.6rem);
+  height: clamp(1.34rem, 1.22rem + 0.28vw, 1.6rem);
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  border-radius: clamp(0.78rem, 0.62rem + 0.35vw, 0.95rem);
+  border-radius: clamp(0.46rem, 0.4rem + 0.12vw, 0.56rem);
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid rgba(203, 213, 225, 0.9);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .channels-summary-icon-pill img {
-  width: clamp(1rem, 0.88rem + 0.24vw, 1.15rem);
-  height: clamp(1rem, 0.88rem + 0.24vw, 1.15rem);
+  width: clamp(0.72rem, 0.64rem + 0.12vw, 0.84rem);
+  height: clamp(0.72rem, 0.64rem + 0.12vw, 0.84rem);
+}
+
+.channels-summary-icon {
+  width: clamp(0.72rem, 0.64rem + 0.12vw, 0.84rem);
+  height: clamp(0.72rem, 0.64rem + 0.12vw, 0.84rem);
+  object-fit: contain;
+  transform: scale(var(--channel-icon-scale, 1));
+  transform-origin: center;
 }
 
 .channels-summary-icon-pill--count {
   width: auto;
-  min-width: clamp(2.25rem, 1.95rem + 0.48vw, 2.55rem);
-  padding: 0 0.5rem;
-  font-size: 0.82rem;
+  min-width: clamp(1.54rem, 1.38rem + 0.24vw, 1.76rem);
+  padding: 0 0.3rem;
+  font-size: 0.58rem;
   font-weight: 700;
   color: #475569;
 }
@@ -2076,7 +2101,7 @@ watch(
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.72rem;
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -2090,13 +2115,157 @@ watch(
 .channels-board__stack {
   position: relative;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 0.72rem;
 }
 
 .channels-board__stack--secondary {
-  padding-top: 0.3rem;
+  padding-top: 0.18rem;
+}
+
+.channels-remote-card {
+  overflow: hidden;
+  border-radius: 1.12rem;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 14px 28px -24px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+}
+
+.channels-remote-card__header {
+  display: flex;
+  align-items: center;
+  gap: 0.84rem;
+  min-height: 4.6rem;
+  padding: 0.86rem 0.96rem;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.channels-remote-card__header:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.channels-remote-card__identity {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.74rem;
+}
+
+.channels-remote-card__icon-shell {
+  width: 2.32rem;
+  height: 2.32rem;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 0.74rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 245, 249, 0.94) 100%);
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.channels-remote-card__icon {
+  width: 1.32rem;
+  height: 1.32rem;
+  object-fit: contain;
+}
+
+.channels-remote-card__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.channels-remote-card__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.38rem;
+  min-height: 1.2rem;
+}
+
+.channels-remote-card__title {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.channels-remote-card__description {
+  margin-top: 0.22rem;
+  font-size: 0.74rem;
+  line-height: 1.38;
+}
+
+.channels-remote-card__body {
+  border-top: 1px solid rgba(226, 232, 240, 0.88);
+  padding: 0.92rem;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.channels-remote-card__badge {
+  font-size: 0.56rem;
+  line-height: 1.1;
+}
+
+.channels-remote-card__toggle {
+  width: 2.12rem;
+  height: 1.14rem;
+}
+
+.channels-remote-card__toggle::after {
+  top: 2px;
+  left: 2px;
+  width: 0.78rem;
+  height: 0.78rem;
+}
+
+.channels-remote-card__chevron {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.channels-remote-card__label {
+  font-size: 0.68rem;
+}
+
+.channels-remote-card__provider-option {
+  padding: 0.56rem 0.66rem;
+}
+
+.channels-remote-card__provider-name {
+  font-size: 0.72rem;
+}
+
+.channels-remote-card__provider-meta {
+  font-size: 0.6rem;
+}
+
+.channels-remote-card__input {
+  min-height: 2.08rem;
+  padding: 0.4rem 0.54rem;
+  border-radius: 0.66rem;
+  font-size: 0.7rem;
+}
+
+.channels-remote-card__helper-link {
+  font-size: 0.6rem;
+}
+
+.channels-remote-card__primary-action,
+.channels-remote-card__secondary-action {
+  min-height: 2.14rem;
+  padding: 0.42rem 0.62rem;
+  border-radius: 0.72rem;
+  font-size: 0.7rem;
+}
+
+.channels-remote-card__note {
+  font-size: 0.58rem;
+  line-height: 1.45;
 }
 
 .channels-load-more {
@@ -2105,11 +2274,12 @@ watch(
   align-items: center;
   justify-content: center;
   gap: 0.6rem;
-  padding: 0.9rem 1rem;
-  border-radius: 1rem;
+  padding: 0.68rem 0.82rem;
+  border-radius: 0.72rem;
   border: 1px solid rgba(203, 213, 225, 0.96);
   background: rgba(255, 255, 255, 0.96);
   color: #475569;
+  font-size: 0.72rem;
   font-weight: 700;
   transition:
     transform 160ms ease,
@@ -2127,48 +2297,141 @@ watch(
   }
 }
 
-@media (max-width: 768px) {
-  .channels-stage {
-    padding-top: 0.7rem;
+@media (min-width: 960px) {
+  .channels-board {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .channels-board__stack,
+  .channels-load-more {
+    grid-column: 1 / -1;
+  }
+
+  .channels-board__stack {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .channels-board__stack > .channels-remote-card--expanded,
+  .channels-board__stack :deep(.channel-card--expanded) {
+    grid-column: 1 / -1;
   }
 }
 
-:global(.dark) .channels-summary-label,
-:global(.dark) .channels-summary-footnote {
+@media (max-width: 768px) {
+  .channels-stage {
+    padding-top: 0.82rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .channels-page {
+    padding-left: 0.58rem;
+    padding-right: 0.58rem;
+  }
+
+  .channels-remote-card__header,
+  .channels-remote-card__identity {
+    align-items: flex-start;
+  }
+
+  .channels-remote-card__header {
+    padding: 0.76rem 0.82rem;
+  }
+
+  .channels-remote-card__body {
+    padding: 0.82rem;
+  }
+}
+
+:root.dark .channels-summary-label,
+[data-theme='dark'] .channels-summary-label,
+html.dark .channels-summary-label {
   color: #cbd5e1;
 }
 
-:global(.dark) .channels-stage::before,
-:global(.dark) .channels-stage::after {
+:root.dark .channels-page,
+[data-theme='dark'] .channels-page,
+html.dark .channels-page {
+  color: #e2e8f0;
+}
+
+:root.dark .channels-stage::before,
+[data-theme='dark'] .channels-stage::before,
+html.dark .channels-stage::before,
+:root.dark .channels-stage::after,
+[data-theme='dark'] .channels-stage::after,
+html.dark .channels-stage::after {
   opacity: 0.46;
   background-image: radial-gradient(circle, rgba(96, 165, 250, 0.28) 1px, transparent 1px);
 }
 
-:global(.dark) .channels-page .dashboard-card-surface {
+:root.dark .channels-page :deep(.dashboard-card-surface),
+[data-theme='dark'] .channels-page :deep(.dashboard-card-surface),
+html.dark .channels-page :deep(.dashboard-card-surface),
+:root.dark .channels-remote-card,
+[data-theme='dark'] .channels-remote-card,
+html.dark .channels-remote-card {
   background: rgba(30, 41, 59, 0.96);
   border-color: rgba(100, 116, 139, 0.56);
+  box-shadow:
+    0 16px 30px -28px rgba(2, 6, 23, 0.82),
+    inset 0 1px 0 rgba(148, 163, 184, 0.08);
 }
 
-:global(.dark) .channels-summary-value,
-:global(.dark) .channels-summary-icon-pill--count {
+:root.dark .channels-remote-card__body,
+[data-theme='dark'] .channels-remote-card__body,
+html.dark .channels-remote-card__body {
+  border-top-color: rgba(100, 116, 139, 0.5);
+  background: rgba(15, 23, 42, 0.46);
+}
+
+:root.dark .channels-remote-card__icon-shell,
+[data-theme='dark'] .channels-remote-card__icon-shell,
+html.dark .channels-remote-card__icon-shell {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.92) 0%, rgba(15, 23, 42, 0.88) 100%);
+  border-color: rgba(100, 116, 139, 0.58);
+}
+
+:root.dark .channels-remote-card__header:hover,
+[data-theme='dark'] .channels-remote-card__header:hover,
+html.dark .channels-remote-card__header:hover {
+  background: rgba(51, 65, 85, 0.28);
+}
+
+:root.dark .channels-summary-value,
+[data-theme='dark'] .channels-summary-value,
+html.dark .channels-summary-value,
+:root.dark .channels-summary-icon-pill--count,
+[data-theme='dark'] .channels-summary-icon-pill--count,
+html.dark .channels-summary-icon-pill--count {
   color: #f8fafc;
 }
 
-:global(.dark) .channels-summary-icon-pill {
+:root.dark .channels-summary-icon-pill,
+[data-theme='dark'] .channels-summary-icon-pill,
+html.dark .channels-summary-icon-pill {
   background: rgba(30, 41, 59, 0.92);
   border-color: rgba(100, 116, 139, 0.62);
 }
 
-:global(.dark) .channels-board {
+:root.dark .channels-board,
+[data-theme='dark'] .channels-board,
+html.dark .channels-board {
   background: transparent;
   border-color: transparent;
 }
 
-:global(.dark) .channels-board::before {
+:root.dark .channels-board::before,
+[data-theme='dark'] .channels-board::before,
+html.dark .channels-board::before {
   content: none;
 }
 
-:global(.dark) .channels-load-more {
+:root.dark .channels-load-more,
+[data-theme='dark'] .channels-load-more,
+html.dark .channels-load-more {
   background: rgba(30, 41, 59, 0.96);
   border-color: rgba(100, 116, 139, 0.58);
   color: #cbd5e1;

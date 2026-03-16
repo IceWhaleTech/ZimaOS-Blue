@@ -96,7 +96,6 @@ declare global {
   const useEventStream: typeof import('./composables/useEventStream').useEventStream
   const useFormFillerWidget: typeof import('./composables/useFormFillerWidget').useFormFillerWidget
   const useFullscreen: typeof import('./composables/useFullscreen').useFullscreen
-  const useGateway: typeof import('./composables/useGateway').useGateway
   const useGlobalShortcuts: typeof import('./composables/useKeyboardShortcuts').useGlobalShortcuts
   const useId: typeof import('vue').useId
   const useKeyboardShortcuts: typeof import('./composables/useKeyboardShortcuts').useKeyboardShortcuts
@@ -109,7 +108,6 @@ declare global {
   const useModel: typeof import('vue').useModel
   const useNetwork: typeof import('./composables/useNetwork').useNetwork
   const useNotificationStore: typeof import('./stores/notification').useNotificationStore
-  const usePermissions: typeof import('./composables/usePermissions').usePermissions
   const usePluginStore: typeof import('./stores/plugin').usePluginStore
   const usePreviewStore: typeof import('./stores/preview').usePreviewStore
   const useProviderPoolStore: typeof import('./stores/providerPool').useProviderPoolStore
@@ -275,7 +273,6 @@ declare module 'vue' {
     readonly useEventStream: UnwrapRef<typeof import('./composables/useEventStream')['useEventStream']>
     readonly useFormFillerWidget: UnwrapRef<typeof import('./composables/useFormFillerWidget')['useFormFillerWidget']>
     readonly useFullscreen: UnwrapRef<typeof import('./composables/useFullscreen')['useFullscreen']>
-    readonly useGateway: UnwrapRef<typeof import('./composables/useGateway')['useGateway']>
     readonly useGlobalShortcuts: UnwrapRef<typeof import('./composables/useKeyboardShortcuts')['useGlobalShortcuts']>
     readonly useId: UnwrapRef<typeof import('vue')['useId']>
     readonly useKeyboardShortcuts: UnwrapRef<typeof import('./composables/useKeyboardShortcuts')['useKeyboardShortcuts']>
@@ -288,7 +285,6 @@ declare module 'vue' {
     readonly useModel: UnwrapRef<typeof import('vue')['useModel']>
     readonly useNetwork: UnwrapRef<typeof import('./composables/useNetwork')['useNetwork']>
     readonly useNotificationStore: UnwrapRef<typeof import('./stores/notification')['useNotificationStore']>
-    readonly usePermissions: UnwrapRef<typeof import('./composables/usePermissions')['usePermissions']>
     readonly usePluginStore: UnwrapRef<typeof import('./stores/plugin')['usePluginStore']>
     readonly usePreviewStore: UnwrapRef<typeof import('./stores/preview')['usePreviewStore']>
     readonly useProviderPoolStore: UnwrapRef<typeof import('./stores/providerPool')['useProviderPoolStore']>

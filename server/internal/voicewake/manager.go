@@ -89,18 +89,22 @@ func (m *Manager) Restart(ctx context.Context) error {
 
 func (m *Manager) refreshLocked(_ context.Context, force bool) error {
 	cfg := m.snapshotLocked()
+	permissions := permissionStatus{}
+	if m.supported {
+		permissions = probePermissionStatus()
+	}
 	m.status.Platform = m.platform
 	m.status.Supported = m.supported
 	m.status.Enabled = cfg.Enabled
 	m.status.TargetConversationID = cfg.TargetConversationID
 	m.status.Triggers = append([]string(nil), cfg.Triggers...)
 	m.status.Locale = cfg.Locale
+	m.status.SpeechAuthorized = permissions.SpeechAuthorized
+	m.status.MicrophoneReady = permissions.MicrophoneReady
 
 	if !m.supported {
 		m.status.Running = false
 		m.status.Reason = "unsupported"
-		m.status.SpeechAuthorized = false
-		m.status.MicrophoneReady = false
 		m.activeCfg = managerRuntimeConfig{}
 		_ = m.runtime.Stop()
 		return nil
@@ -109,8 +113,6 @@ func (m *Manager) refreshLocked(_ context.Context, force bool) error {
 		m.status.Running = false
 		m.status.Reason = "disabled"
 		m.status.LastError = ""
-		m.status.SpeechAuthorized = false
-		m.status.MicrophoneReady = false
 		m.activeCfg = managerRuntimeConfig{}
 		_ = m.runtime.Stop()
 		return nil
@@ -119,8 +121,6 @@ func (m *Manager) refreshLocked(_ context.Context, force bool) error {
 		m.status.Running = false
 		m.status.Reason = "target_missing"
 		m.status.LastError = ""
-		m.status.SpeechAuthorized = false
-		m.status.MicrophoneReady = false
 		m.activeCfg = managerRuntimeConfig{}
 		_ = m.runtime.Stop()
 		return nil

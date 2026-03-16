@@ -16,6 +16,97 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
+func isVerificationPrompt(req llm.ChatRequest) bool {
+	if len(req.Messages) == 0 {
+		return false
+	}
+	return strings.Contains(req.Messages[0].Content, "strict verification engine")
+}
+
+func isSummaryPrompt(req llm.ChatRequest) bool {
+	if len(req.Messages) == 0 {
+		return false
+	}
+	return strings.Contains(req.Messages[0].Content, "final user-facing report")
+}
+
+func extractCriteriaFromPrompt(prompt string) []string {
+	lines := strings.Split(prompt, "\n")
+	results := make([]string, 0)
+	inCriteria := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == "Success criteria:":
+			inCriteria = true
+			continue
+		case inCriteria && strings.HasPrefix(trimmed, "- "):
+			results = append(results, strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")))
+		case inCriteria && !strings.HasPrefix(trimmed, "- "):
+			inCriteria = false
+		}
+	}
+	if len(results) == 0 {
+		return []string{"core task output is produced", "no blocking errors in final result"}
+	}
+	return results
+}
+
+func defaultVerificationResponse(req llm.ChatRequest) string {
+	userPrompt := ""
+	if len(req.Messages) > 1 {
+		userPrompt = req.Messages[len(req.Messages)-1].Content
+	}
+	criteria := extractCriteriaFromPrompt(userPrompt)
+	pass := !strings.Contains(userPrompt, "[FAILED]") && !strings.Contains(userPrompt, "[SKIPPED]")
+	result := VerificationResult{
+		Status:         "pass",
+		Summary:        "Verification passed for the current task record.",
+		ExecutedChecks: []string{"review task record against success criteria"},
+	}
+	if !pass {
+		result.Status = "fail"
+		result.Summary = "Verification failed because the task record still contains failed or skipped work."
+		result.SuggestedRecovery = "Address the failed task output before marking the task complete."
+	}
+	for _, criterion := range criteria {
+		item := CriterionResult{
+			Criterion: criterion,
+			Status:    "pass",
+			Evidence:  "Task record shows the criterion is satisfied.",
+		}
+		if !pass {
+			item.Status = "fail"
+			item.Evidence = "Task record still contains failed or skipped work, so this criterion is not satisfied."
+		}
+		result.CriteriaResults = append(result.CriteriaResults, item)
+	}
+	b, _ := json.Marshal(result)
+	return string(b)
+}
+
+func defaultSummaryResponse(req llm.ChatRequest) string {
+	userPrompt := ""
+	if len(req.Messages) > 1 {
+		userPrompt = req.Messages[len(req.Messages)-1].Content
+	}
+	if strings.Contains(userPrompt, "[FAILED]") || strings.Contains(userPrompt, "Failure reason:") {
+		return "Summary: The task ended with remaining failures after verification.\n\nIf you'd like, I can also help with:\n1. If you'd like, I can inspect the failing step outputs.\n2. If you want, I can help narrow the recovery scope."
+	}
+	return "Summary: The task completed and verification passed.\n\nIf you'd like, I can also help with:\n1. If you'd like, I can help verify the deliverable in your environment.\n2. If you want, I can help extend the implementation."
+}
+
+func defaultResponseForRequest(req llm.ChatRequest) string {
+	switch {
+	case isVerificationPrompt(req):
+		return defaultVerificationResponse(req)
+	case isSummaryPrompt(req):
+		return defaultSummaryResponse(req)
+	default:
+		return "Done."
+	}
+}
+
 // --- helpers ---
 
 func testDB(t *testing.T) *sql.DB {
@@ -54,7 +145,7 @@ func (m *mockLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatRespons
 	}
 	// Execution calls: return simple text (no tool calls)
 	return &llm.ChatResponse{
-		Message: llm.Message{Role: llm.RoleAssistant, Content: "Done."},
+		Message: llm.Message{Role: llm.RoleAssistant, Content: defaultResponseForRequest(req)},
 	}, nil
 }
 
@@ -946,7 +1037,7 @@ func (m *failingLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResp
 	}
 	// Remaining calls (verify, summary) succeed
 	return &llm.ChatResponse{
-		Message: llm.Message{Role: llm.RoleAssistant, Content: "Done."},
+		Message: llm.Message{Role: llm.RoleAssistant, Content: defaultResponseForRequest(req)},
 	}, nil
 }
 
@@ -963,7 +1054,7 @@ type scriptedLLM struct {
 func (m *scriptedLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	if m.idx >= len(m.calls) {
 		return &llm.ChatResponse{
-			Message: llm.Message{Role: llm.RoleAssistant, Content: "Done."},
+			Message: llm.Message{Role: llm.RoleAssistant, Content: defaultResponseForRequest(req)},
 		}, nil
 	}
 	call := m.calls[m.idx]
@@ -1278,7 +1369,7 @@ func TestRunner_AutoReflectCompletedTask(t *testing.T) {
 	m := &scriptedLLM{calls: []scriptedLLMCall{
 		{content: `{"goal":"finish parser fix","subtasks":[{"description":"apply parser fix"}],"success_criteria":["verification passes"],"fallback_plan":["inspect the failing step"]}`},
 		{content: "apply parser fix completed"},
-		{content: "verification passed"},
+		{content: `{"status":"pass","summary":"Verification passed for the parser fix.","criteria_results":[{"criterion":"verification passes","status":"pass","evidence":"Focused verification passed after the parser fix."}],"suggested_recovery":"","executed_checks":["review parser fix output","run focused verification"]}`},
 		{content: "Summary: The parser fix completed and verification passed.\n\nLearned:\n- Run focused verification before broader validation.\n\nIf you'd like, I can also help with:\n1. If you'd like, I can help verify the deliverable in your environment.\n2. If you want, I can help run the adjacent parser tests.\n3. If you'd like, I can continue with the next improvement."},
 	}}
 	reflector := &mockReflector{result: &selfreflect.Result{
@@ -1309,6 +1400,9 @@ func TestRunner_AutoReflectCompletedTask(t *testing.T) {
 	}
 	if len(reflector.inputs) != 1 || reflector.inputs[0].FinalStatus != "completed" {
 		t.Fatalf("unexpected reflection input: %#v", reflector.inputs)
+	}
+	if strings.TrimSpace(reflector.inputs[0].ResultSummary) == "" {
+		t.Fatalf("expected reflection input result summary to be populated, got %#v", reflector.inputs[0])
 	}
 	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateVerify, RuntimeStateReflect) {
 		t.Fatal("expected runtime transition VERIFY -> REFLECT")
@@ -1364,6 +1458,9 @@ func TestRunner_AutoReflectFailedTask(t *testing.T) {
 	}
 	if len(reflector.inputs) != 1 || reflector.inputs[0].FinalStatus != "failed" {
 		t.Fatalf("unexpected reflection input: %#v", reflector.inputs)
+	}
+	if strings.TrimSpace(reflector.inputs[0].ResultSummary) == "" {
+		t.Fatalf("expected failed reflection input result summary to be populated, got %#v", reflector.inputs[0])
 	}
 	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateRecover, RuntimeStateReflect) {
 		t.Fatal("expected runtime transition RECOVER -> REFLECT")

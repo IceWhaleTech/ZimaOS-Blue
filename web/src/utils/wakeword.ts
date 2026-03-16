@@ -65,7 +65,7 @@ export class WakeWordDetector {
   private onError: ((error: string) => void) | null = null
 
   constructor(config: Partial<WakeWordConfig> = {}) {
-    this.wakeWord = (config.wakeWord || 'hey echo').toLowerCase()
+    this.wakeWord = (config.wakeWord || 'Hey Blue').toLowerCase()
     this.sensitivity = config.sensitivity || 0.7
 
     // Check for Web Speech API support

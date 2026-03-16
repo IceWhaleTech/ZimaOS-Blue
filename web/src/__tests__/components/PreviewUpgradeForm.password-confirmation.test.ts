@@ -52,7 +52,7 @@ describe('PreviewUpgradeForm password confirmation', () => {
     mocks.login.mockReset().mockResolvedValue(true)
     mocks.getPasswordPolicy.mockReset().mockResolvedValue({
       data: {
-        min_length: 6,
+        min_length: 8,
         require_uppercase: false,
         require_lowercase: false,
         require_letter: true,
@@ -126,7 +126,7 @@ describe('PreviewUpgradeForm password confirmation', () => {
 
     policyRequest.resolve({
       data: {
-        min_length: 6,
+        min_length: 8,
         require_uppercase: false,
         require_lowercase: false,
         require_letter: true,
@@ -145,7 +145,7 @@ describe('PreviewUpgradeForm password confirmation', () => {
   it('respects uppercase and lowercase requirements before submitting', async () => {
     mocks.getPasswordPolicy.mockResolvedValueOnce({
       data: {
-        min_length: 6,
+        min_length: 8,
         require_uppercase: true,
         require_lowercase: true,
         require_letter: true,

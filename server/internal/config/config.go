@@ -648,7 +648,7 @@ func defaults() Config {
 			JWT:        JWTConfig{Secret: defaultJWTSecretPlaceholder, Expiration: 24 * time.Hour, RefreshExpiration: 720 * time.Hour, Issuer: "zimaos-blue"},
 			OIDC:       OIDCConfig{Enabled: true, Issuer: "http://localhost", SigningKeyPath: "./keys/oidc.key", SigningKeyRotationDays: 90, AccessTokenTTL: time.Hour, RefreshTokenTTL: 720 * time.Hour, AuthorizationCodeTTL: 10 * time.Minute},
 			Users:      UsersConfig{DefaultRole: "user"},
-			Password:   PasswordConfig{MinLength: 6, RequireUppercase: true, RequireLowercase: true, RequireNumber: true, RequireSpecial: true, HistoryCount: 5, LockoutThreshold: 5, LockoutDuration: 15 * time.Minute},
+			Password:   PasswordConfig{MinLength: 8, RequireUppercase: true, RequireLowercase: true, RequireNumber: true, RequireSpecial: true, HistoryCount: 5, LockoutThreshold: 5, LockoutDuration: 15 * time.Minute},
 			MFA:        MFAConfig{Enabled: true, Issuer: "ZimaOS-Blue", RecoveryCodesCount: 8},
 			Audit:      AuditConfig{Enabled: true, RetentionDays: 90, ExcludedPaths: []string{"/health", "/metrics"}, CleanupInterval: 24 * time.Hour},
 			Sandbox:    SandboxConfig{Enabled: true, DefaultTimeout: 30 * time.Second, MaxTimeout: 5 * time.Minute, MemoryLimit: "256MB", CPULimit: 1.0, ProcessLimit: 10},

@@ -620,6 +620,27 @@ onUnmounted(() => {
   max-width: 1480px;
   margin: 0 auto;
   padding: 0 0.75rem 1.8rem;
+  --dashboard-card-border: var(--color-border);
+  --dashboard-card-border-hover: var(--glass-border);
+  --dashboard-card-surface-top: var(--color-bg-elevated);
+  --dashboard-card-surface-bottom: var(--color-bg-base);
+  --dashboard-card-subsurface-top: var(--color-bg-surface);
+  --dashboard-card-subsurface-bottom: var(--color-bg-elevated);
+  --dashboard-card-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    var(--shadow-lg);
+  --dashboard-card-shadow-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 30px -28px rgba(15, 23, 42, 0.28);
+  --dashboard-card-label-color: var(--color-text-secondary);
+  --dashboard-card-subtitle-color: var(--color-text);
+  --dashboard-card-footnote-color: var(--color-text-secondary);
+  --dashboard-card-value-color: var(--color-text);
+  --dashboard-card-chip-bg: var(--color-bg-surface);
+  --dashboard-card-chip-color: var(--color-text-primary);
+  --dashboard-card-divider: var(--color-border);
+  --dashboard-details-pill-bg: rgba(16, 185, 129, 0.12);
+  --dashboard-details-pill-color: #047857;
 }
 
 .dashboard-stage {
@@ -764,7 +785,7 @@ onUnmounted(() => {
   gap: 0.88rem;
   margin-top: 0.18rem;
   padding-top: 1rem;
-  border-top: 1px solid rgba(203, 213, 225, 0.62);
+  border-top: 1px solid var(--dashboard-card-divider);
 }
 
 .dashboard-details-toggle {
@@ -877,8 +898,8 @@ onUnmounted(() => {
   min-height: 1.4rem;
   padding: 0 0.5rem;
   border-radius: 999px;
-  background: rgba(16, 185, 129, 0.12);
-  color: #047857;
+  background: var(--dashboard-details-pill-bg);
+  color: var(--dashboard-details-pill-color);
   font-size: 0.72rem;
   font-weight: 600;
 }
@@ -946,7 +967,7 @@ onUnmounted(() => {
   padding: 0;
   border-radius: 0;
   background: transparent;
-  color: #a3a3a3;
+  color: var(--dashboard-card-label-color);
   font-size: 0.65rem;
   font-weight: 500;
   letter-spacing: 0;
@@ -955,28 +976,28 @@ onUnmounted(() => {
 
 :deep(.dashboard-primary-grid .dashboard-card-subtitle) {
   margin-top: 0.2rem;
-  color: #111827;
+  color: var(--dashboard-card-subtitle-color);
   font-size: 0.74rem;
   font-weight: 650;
 }
 
 :deep(.dashboard-primary-grid .dashboard-card-footnote) {
   margin-top: 0.22rem;
-  color: #9ca3af;
+  color: var(--dashboard-card-footnote-color);
   font-size: 0.67rem;
   line-height: 1.3;
 }
 
 :deep(.dashboard-primary-grid .dashboard-card-value) {
-  color: #111827;
+  color: var(--dashboard-card-value-color);
   font-size: clamp(1.38rem, 0.72vw + 0.85rem, 1.72rem);
   line-height: 1.04;
 }
 
 :deep(.dashboard-primary-grid .dashboard-card-chip) {
   border: 0;
-  background: rgba(15, 23, 42, 0.06);
-  color: #6b7280;
+  background: var(--dashboard-card-chip-bg);
+  color: var(--dashboard-card-chip-color);
   min-height: 1.1rem;
   padding: 0.12rem 0.4rem;
   font-size: 0.58rem;
@@ -1015,12 +1036,14 @@ onUnmounted(() => {
 }
 
 :deep(.dashboard-shell .dashboard-card-surface) {
-  border: 1px solid rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--dashboard-card-border);
   border-radius: 1.5rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 22px 36px -34px rgba(15, 23, 42, 0.2);
+  background: linear-gradient(
+    180deg,
+    var(--dashboard-card-surface-top) 0%,
+    var(--dashboard-card-surface-bottom) 100%
+  );
+  box-shadow: var(--dashboard-card-shadow);
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease,
@@ -1029,16 +1052,18 @@ onUnmounted(() => {
 }
 
 :deep(.dashboard-shell .dashboard-card-surface:hover) {
-  border-color: rgba(255, 255, 255, 0.98);
+  border-color: var(--dashboard-card-border-hover);
   transform: translateY(-1px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.94),
-    0 24px 38px -34px rgba(15, 23, 42, 0.24);
+  box-shadow: var(--dashboard-card-shadow-hover);
 }
 
 :deep(.dashboard-shell .dashboard-card-subsurface) {
   border: 0;
-  background: rgba(243, 246, 249, 0.92);
+  background: linear-gradient(
+    180deg,
+    var(--dashboard-card-subsurface-top) 0%,
+    var(--dashboard-card-subsurface-bottom) 100%
+  );
   box-shadow: none;
 }
 
@@ -1058,7 +1083,7 @@ onUnmounted(() => {
   padding: 0;
   border-radius: 0;
   background: transparent;
-  color: #a3a3a3;
+  color: var(--dashboard-card-label-color);
   font-size: 0.68rem;
   font-weight: 500;
   letter-spacing: 0;
@@ -1067,26 +1092,26 @@ onUnmounted(() => {
 
 :deep(.dashboard-shell .dashboard-card-chip) {
   border: 0;
-  background: rgba(15, 23, 42, 0.06);
-  color: #6b7280;
+  background: var(--dashboard-card-chip-bg);
+  color: var(--dashboard-card-chip-color);
   min-height: 1.1rem;
   padding: 0.12rem 0.4rem;
   font-size: 0.6rem;
 }
 
 :deep(.dashboard-shell .dashboard-card-subtitle) {
-  color: #111827;
+  color: var(--dashboard-card-subtitle-color);
   font-size: 0.78rem;
   font-weight: 650;
 }
 
 :deep(.dashboard-shell .dashboard-card-footnote) {
-  color: #9ca3af;
+  color: var(--dashboard-card-footnote-color);
   font-size: 0.72rem;
 }
 
 :deep(.dashboard-shell .dashboard-card-value) {
-  color: #111827;
+  color: var(--dashboard-card-value-color);
 }
 
 :deep(.dashboard-shell .dashboard-small-card-shell .dashboard-card-stack) {
@@ -1183,17 +1208,15 @@ html.dark .dashboard-refresh-button {
   box-shadow: 0 18px 36px -28px rgba(2, 6, 23, 0.72);
 }
 
-:root.dark :deep(.dashboard-customizer-compact .dashboard-customize-trigger),
-[data-theme='dark'] :deep(.dashboard-customizer-compact .dashboard-customize-trigger),
-html.dark :deep(.dashboard-customizer-compact .dashboard-customize-trigger) {
+:global(.dark .dashboard-customizer-compact .dashboard-customize-trigger),
+:global([data-theme='dark'] .dashboard-customizer-compact .dashboard-customize-trigger) {
   color: rgb(148 163 184);
   background: rgba(30, 41, 59, 0.88);
   box-shadow: 0 18px 36px -28px rgba(2, 6, 23, 0.72);
 }
 
-:root.dark :deep(.dashboard-customizer-compact .dashboard-customize-trigger:hover),
-[data-theme='dark'] :deep(.dashboard-customizer-compact .dashboard-customize-trigger:hover),
-html.dark :deep(.dashboard-customizer-compact .dashboard-customize-trigger:hover) {
+:global(.dark .dashboard-customizer-compact .dashboard-customize-trigger:hover),
+:global([data-theme='dark'] .dashboard-customizer-compact .dashboard-customize-trigger:hover) {
   color: rgb(226 232 240);
   background: rgba(51, 65, 85, 0.92);
 }
@@ -1232,74 +1255,6 @@ html.dark .dashboard-stage::before,
 html.dark .dashboard-stage::after {
   background-image: radial-gradient(circle, rgba(96, 165, 250, 0.22) 1px, transparent 1px);
   opacity: 0.56;
-}
-
-:root.dark :deep(.dashboard-shell .dashboard-card-surface),
-[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-surface),
-html.dark :deep(.dashboard-shell .dashboard-card-surface) {
-  border: 1px solid rgba(71, 85, 105, 0.42);
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.96) 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(148, 163, 184, 0.06),
-    0 24px 38px -34px rgba(2, 6, 23, 0.72);
-}
-
-:root.dark :deep(.dashboard-shell .dashboard-card-subsurface),
-[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-subsurface),
-html.dark :deep(.dashboard-shell .dashboard-card-subsurface) {
-  border: 1px solid rgba(71, 85, 105, 0.26);
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.64) 0%, rgba(15, 23, 42, 0.76) 100%);
-}
-
-:root.dark :deep(.dashboard-shell .dashboard-card-label),
-[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-label),
-html.dark :deep(.dashboard-shell .dashboard-card-label),
-:root.dark :deep(.dashboard-shell .dashboard-card-footnote),
-[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-footnote),
-html.dark :deep(.dashboard-shell .dashboard-card-footnote) {
-  color: rgb(148 163 184);
-}
-
-:root.dark :deep(.dashboard-shell .dashboard-card-subtitle),
-[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-subtitle),
-html.dark :deep(.dashboard-shell .dashboard-card-subtitle),
-:root.dark :deep(.dashboard-shell .dashboard-card-value),
-[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-value),
-html.dark :deep(.dashboard-shell .dashboard-card-value) {
-  color: rgb(241 245 249);
-}
-
-:root.dark :deep(.dashboard-shell .dashboard-card-chip),
-[data-theme='dark'] :deep(.dashboard-shell .dashboard-card-chip),
-html.dark :deep(.dashboard-shell .dashboard-card-chip) {
-  border: 0;
-  background: rgba(148, 163, 184, 0.12);
-  color: rgb(203 213 225);
-}
-
-:root.dark :deep(.dashboard-primary-grid .dashboard-card-label),
-[data-theme='dark'] :deep(.dashboard-primary-grid .dashboard-card-label),
-html.dark :deep(.dashboard-primary-grid .dashboard-card-label),
-:root.dark :deep(.dashboard-primary-grid .dashboard-card-footnote),
-[data-theme='dark'] :deep(.dashboard-primary-grid .dashboard-card-footnote),
-html.dark :deep(.dashboard-primary-grid .dashboard-card-footnote) {
-  color: rgb(148 163 184);
-}
-
-:root.dark :deep(.dashboard-primary-grid .dashboard-card-subtitle),
-[data-theme='dark'] :deep(.dashboard-primary-grid .dashboard-card-subtitle),
-html.dark :deep(.dashboard-primary-grid .dashboard-card-subtitle),
-:root.dark :deep(.dashboard-primary-grid .dashboard-card-value),
-[data-theme='dark'] :deep(.dashboard-primary-grid .dashboard-card-value),
-html.dark :deep(.dashboard-primary-grid .dashboard-card-value) {
-  color: rgb(241 245 249);
-}
-
-:root.dark :deep(.dashboard-primary-grid .dashboard-card-chip),
-[data-theme='dark'] :deep(.dashboard-primary-grid .dashboard-card-chip),
-html.dark :deep(.dashboard-primary-grid .dashboard-card-chip) {
-  background: rgba(148, 163, 184, 0.12);
-  color: rgb(203 213 225);
 }
 
 @media (max-width: 1100px) {

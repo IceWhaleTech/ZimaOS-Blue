@@ -704,6 +704,7 @@ export default {
     noApprovedDirectories: 'Ingen godkendte mapper',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Sikkerhedskontroller',
       approvals: 'Godkendte mapper',
       firewall: 'Brandmur',
       masking: 'Datamaskering',
@@ -1736,7 +1737,7 @@ export default {
     preview: 'Forhåndsvisning',
     selectFile: 'Vælg fil',
     confirmPassword: 'Bekræft adgangskode',
-    passwordPlaceholder: 'Indtast adgangskode (min. 6 tegn)',
+    passwordPlaceholder: 'Indtast adgangskode (min. 8 tegn)',
     format: 'Eksportformat',
     previewFailed: 'Kunne ikke forhåndsvise data',
     hasSettings: 'Har indstillinger',

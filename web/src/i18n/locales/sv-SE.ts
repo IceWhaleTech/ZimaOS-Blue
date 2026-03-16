@@ -706,6 +706,7 @@ export default {
     noApprovedDirectories: 'Inga godkända kataloger',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Säkerhetskontroller',
       approvals: 'Godkända kataloger',
       firewall: 'Brandvägg',
       masking: 'Datamaskering',
@@ -1841,7 +1842,7 @@ export default {
     preview: 'Förhandsvisning',
     selectFile: 'Välj fil',
     confirmPassword: 'Bekräfta lösenord',
-    passwordPlaceholder: 'Ange lösenord (minst 6 tecken)',
+    passwordPlaceholder: 'Ange lösenord (minst 8 tecken)',
     format: 'Exportformat',
     previewFailed: 'Det gick inte att förhandsvisa data',
     hasSettings: 'Innehåller inställningar',

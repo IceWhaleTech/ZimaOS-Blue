@@ -1082,11 +1082,13 @@ const isDarkTheme = computed(
   () =>
     themeStore.theme === 'dark' || (themeStore.theme === 'system' && themeStore.systemPrefersDark)
 )
-const sidebarStatusHealthy = computed(() => health.value?.status === 'ok')
+const sidebarStatusHealthy = computed(() => {
+  const status = String(health.value?.status || '').trim().toLowerCase()
+  return !status || status === 'ok'
+})
 const sidebarStatusLabel = computed(() => {
-  if (!health.value) return ''
   if (sidebarStatusHealthy.value) return t('common.online')
-  return String(health.value.status || '').trim()
+  return String(health.value?.status || '').trim()
 })
 const githubButtonTitle = computed(() => tr('brand.githubTooltip', 'Open GitHub'))
 const githubButtonLabel = computed(() => 'GitHub')
@@ -1129,10 +1131,13 @@ function toggleSidebarTheme(): void {
     class="app-sidebar h-full flex flex-col fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out lg:transform-none"
     :class="[
       isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
-      isCollapsed ? 'w-[4.5rem]' : 'w-[14.5rem]',
+      isCollapsed ? 'w-[4.125rem]' : 'w-[13rem]',
     ]"
   >
-    <div class="sidebar-brand-shell" :class="isCollapsed ? 'px-2 pt-4 pb-3' : 'px-4 pt-4 pb-3'">
+    <div
+      class="sidebar-brand-shell"
+      :class="isCollapsed ? 'px-2 pt-3.5 pb-2.5' : 'px-3.5 pt-3.5 pb-2.5'"
+    >
       <div class="sidebar-brand-row flex items-center justify-between gap-2">
         <RouterLink
           to="/"
@@ -1140,7 +1145,7 @@ function toggleSidebarTheme(): void {
           :class="[
             isCollapsed
               ? 'flex-1 justify-center px-1.5 py-1.5'
-              : 'flex-1 justify-between px-1.5 py-1.5 gap-3',
+              : 'flex-1 justify-between px-1.5 py-1.5 gap-2.5',
           ]"
           :title="isCollapsed ? 'Blue' : undefined"
         >
@@ -1158,7 +1163,7 @@ function toggleSidebarTheme(): void {
           </div>
 
           <span
-            v-if="!isCollapsed && health"
+            v-if="!isCollapsed"
             class="sidebar-status-badge"
             :class="
               sidebarStatusHealthy ? 'sidebar-status-badge-online' : 'sidebar-status-badge-alert'
@@ -1177,12 +1182,12 @@ function toggleSidebarTheme(): void {
         </RouterLink>
 
         <button
-          class="sidebar-icon-btn sidebar-mobile-close lg:hidden p-2 rounded-xl text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white"
+          class="sidebar-icon-btn sidebar-mobile-close lg:hidden p-1.5 rounded-lg text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white"
           @click="isOpen = false"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
+            class="h-[1.1rem] w-[1.1rem]"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -1198,16 +1203,16 @@ function toggleSidebarTheme(): void {
       </div>
     </div>
 
-    <nav class="px-4 py-2 flex-1 min-h-0 flex flex-col">
+    <nav class="px-3.5 py-1.5 flex-1 min-h-0 flex flex-col">
       <div class="space-y-1.5 flex-1 min-h-0 overflow-y-auto">
         <button
           v-for="item in primaryNavItems"
           :key="item.id"
           type="button"
-          class="sidebar-nav-item w-full flex items-center px-3.5 py-2.5 rounded-[1.25rem] transition-all duration-200 cursor-pointer group text-left"
+          class="sidebar-nav-item w-full flex items-center px-3 py-[0.6rem] rounded-[1.1rem] transition-all duration-200 cursor-pointer group text-left"
           :class="[
             isNavItemActive(item) ? 'sidebar-nav-item-active' : 'sidebar-nav-item-inactive',
-            isCollapsed ? 'justify-center' : 'gap-3',
+            isCollapsed ? 'justify-center' : 'gap-2.5',
           ]"
           :data-testid="getNavItemTestId(item)"
           :title="isCollapsed ? item.name : undefined"
@@ -1215,7 +1220,7 @@ function toggleSidebarTheme(): void {
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5 transition-transform duration-200 group-hover:scale-110 flex-shrink-0"
+            class="h-[1.1rem] w-[1.1rem] transition-transform duration-200 group-hover:scale-110 flex-shrink-0"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -1227,16 +1232,16 @@ function toggleSidebarTheme(): void {
               :d="item.icon"
             />
           </svg>
-          <span v-if="!isCollapsed" class="text-[1.02rem] font-medium whitespace-nowrap">{{
+          <span v-if="!isCollapsed" class="text-[0.95rem] font-medium whitespace-nowrap">{{
             item.name
           }}</span>
         </button>
 
-        <div v-if="showConfigurationGroup" class="sidebar-section mt-4">
+        <div v-if="showConfigurationGroup" class="sidebar-section mt-3.5">
           <button
             v-if="!isCollapsed"
             type="button"
-            class="sidebar-section-trigger flex w-full items-center justify-between gap-3 px-2 py-1.5 text-left"
+            class="sidebar-section-trigger flex w-full items-center justify-between gap-2.5 px-2 py-1.5 text-left"
             data-testid="sidebar-section-configuration"
             :title="
               isConfigurationGroupExpanded
@@ -1272,16 +1277,16 @@ function toggleSidebarTheme(): void {
           <div
             v-if="(isCollapsed || isConfigurationGroupExpanded) && configurationNavItems.length"
             class="space-y-1.5"
-            :class="isCollapsed ? 'mt-0' : 'mt-2'"
+            :class="isCollapsed ? 'mt-0' : 'mt-1.5'"
           >
             <button
               v-for="item in configurationNavItems"
               :key="item.id"
               type="button"
-              class="sidebar-nav-item w-full flex items-center px-3.5 py-2.5 rounded-[1.25rem] transition-all duration-200 cursor-pointer group text-left"
+              class="sidebar-nav-item w-full flex items-center px-3 py-[0.6rem] rounded-[1.1rem] transition-all duration-200 cursor-pointer group text-left"
               :class="[
                 isNavItemActive(item) ? 'sidebar-nav-item-active' : 'sidebar-nav-item-inactive',
-                isCollapsed ? 'justify-center' : 'gap-3',
+                isCollapsed ? 'justify-center' : 'gap-2.5',
               ]"
               :data-testid="getNavItemTestId(item)"
               :title="isCollapsed ? item.name : undefined"
@@ -1289,7 +1294,7 @@ function toggleSidebarTheme(): void {
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5 transition-transform duration-200 group-hover:scale-110 flex-shrink-0"
+                class="h-[1.1rem] w-[1.1rem] transition-transform duration-200 group-hover:scale-110 flex-shrink-0"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -1301,7 +1306,7 @@ function toggleSidebarTheme(): void {
                   :d="item.icon"
                 />
               </svg>
-              <span v-if="!isCollapsed" class="text-[1.02rem] font-medium whitespace-nowrap">{{
+              <span v-if="!isCollapsed" class="text-[0.95rem] font-medium whitespace-nowrap">{{
                 item.name
               }}</span>
             </button>
@@ -1312,7 +1317,7 @@ function toggleSidebarTheme(): void {
 
     <!-- Bottom section: Version + Collapse toggle -->
     <div
-      class="sidebar-footer px-4 pt-3 pb-4 border-t border-gray-200/45 dark:border-slate-700/60"
+      class="sidebar-footer px-3.5 pt-2.5 pb-3.5 border-t border-gray-200/45 dark:border-slate-700/60"
       :class="{ 'sidebar-footer-preview': isPreviewMode }"
     >
       <div
@@ -1373,16 +1378,16 @@ function toggleSidebarTheme(): void {
           :class="[
             isActive('/profile') ? 'sidebar-account-link-active' : 'sidebar-account-link-inactive',
             isCollapsed
-              ? 'justify-center mx-auto h-10 w-10 rounded-full'
-              : 'gap-2.5 px-2.5 py-2 rounded-[0.95rem]',
+              ? 'justify-center mx-auto h-9 w-9 rounded-full'
+              : 'gap-2 px-[0.5625rem] py-[0.4375rem] rounded-[0.9rem]',
           ]"
           data-testid="sidebar-nav-profile"
           :title="isCollapsed ? profileName : undefined"
         >
           <span class="sidebar-profile-avatar flex-shrink-0">{{ profileInitial }}</span>
           <div v-if="!isCollapsed" class="min-w-0">
-            <div class="text-[0.92rem] font-medium leading-none truncate">{{ profileName }}</div>
-            <div class="text-[11px] text-gray-500 dark:text-slate-400 truncate mt-1">
+            <div class="text-[0.86rem] font-medium leading-none truncate">{{ profileName }}</div>
+            <div class="text-[10px] text-gray-500 dark:text-slate-400 truncate mt-0.5">
               {{ profileRole }}
             </div>
           </div>
@@ -1398,6 +1403,7 @@ function toggleSidebarTheme(): void {
               : 'sidebar-preview-create-btn-expanded',
           ]"
           data-testid="sidebar-preview-create-account"
+          data-onboarding-anchor="preview-create-account"
           :title="t('preview.createAccount')"
           :aria-label="t('preview.createAccount')"
           @click="openPreviewUpgradeModal"
@@ -1941,7 +1947,7 @@ function toggleSidebarTheme(): void {
 }
 
 .sidebar-brand-name {
-  font-size: 0.98rem;
+  font-size: 0.9rem;
   line-height: 1;
   font-weight: 650;
   color: #111827;
@@ -1953,8 +1959,8 @@ function toggleSidebarTheme(): void {
   align-items: center;
   gap: 0.34rem;
   flex-shrink: 0;
-  min-height: 1.58rem;
-  padding: 0 0.54rem;
+  min-height: 1.42rem;
+  padding: 0 0.48rem;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: rgba(255, 255, 255, 0.78);
@@ -1962,7 +1968,7 @@ function toggleSidebarTheme(): void {
 }
 
 .sidebar-status-label {
-  font-size: 0.63rem;
+  font-size: 0.58rem;
   line-height: 1;
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -1970,8 +1976,8 @@ function toggleSidebarTheme(): void {
 }
 
 .sidebar-status-dot {
-  width: 0.38rem;
-  height: 0.38rem;
+  width: 0.34rem;
+  height: 0.34rem;
   border-radius: 999px;
   flex-shrink: 0;
 }
@@ -2044,7 +2050,7 @@ function toggleSidebarTheme(): void {
 }
 
 .sidebar-section-label {
-  font-size: 0.84rem;
+  font-size: 0.76rem;
   line-height: 1;
   font-weight: 650;
   letter-spacing: -0.01em;
@@ -2078,10 +2084,10 @@ function toggleSidebarTheme(): void {
 }
 
 .sidebar-footer-preview {
-  padding-top: 0.55rem;
-  padding-right: 0.6rem;
-  padding-bottom: 0.7rem;
-  padding-left: 0.6rem;
+  padding-top: 0.45rem;
+  padding-right: 0.55rem;
+  padding-bottom: 0.6rem;
+  padding-left: 0.55rem;
   border-top-color: transparent !important;
 }
 
@@ -2122,39 +2128,39 @@ function toggleSidebarTheme(): void {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  gap: 0.45rem;
+  gap: 0.4rem;
 }
 
 .sidebar-footer-actions-preview-collapsed {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.55rem;
 }
 
 .sidebar-utility-row {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.45rem;
 }
 
 .sidebar-utility-row-default {
-  margin-top: 0.75rem;
+  margin-top: 0.65rem;
 }
 
 .sidebar-utility-row-preview {
   margin-left: auto;
   flex-shrink: 0;
   justify-content: flex-end;
-  gap: 0.28rem;
+  gap: 0.22rem;
 }
 
 .sidebar-utility-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.35rem;
-  height: 2.35rem;
+  width: 2.1rem;
+  height: 2.1rem;
   border-radius: 999px;
   border: 1px solid rgba(209, 213, 219, 0.94);
   color: #4b5563;
@@ -2170,8 +2176,8 @@ function toggleSidebarTheme(): void {
   flex: 1 1 0;
   width: auto;
   justify-content: flex-start;
-  gap: 0.5rem;
-  padding: 0 0.8rem;
+  gap: 0.42rem;
+  padding: 0 0.72rem;
   border-radius: 999px;
 }
 
@@ -2183,7 +2189,7 @@ function toggleSidebarTheme(): void {
 }
 
 .sidebar-utility-label {
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
@@ -2196,8 +2202,8 @@ function toggleSidebarTheme(): void {
 }
 
 .sidebar-utility-row-preview .sidebar-utility-button {
-  width: 1.78rem;
-  height: 1.78rem;
+  width: 1.62rem;
+  height: 1.62rem;
   border-color: transparent;
   background: transparent;
   box-shadow: none;
@@ -2228,9 +2234,9 @@ function toggleSidebarTheme(): void {
 }
 
 .sidebar-preview-create-btn-expanded {
-  gap: 0.42rem;
-  min-height: 2.14rem;
-  padding: 0.46rem 0.72rem;
+  gap: 0.36rem;
+  min-height: 1.95rem;
+  padding: 0.4rem 0.65rem;
   border-radius: 999px;
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
   box-shadow:
@@ -2239,8 +2245,8 @@ function toggleSidebarTheme(): void {
 }
 
 .sidebar-preview-create-btn-collapsed {
-  width: 2.14rem;
-  height: 2.14rem;
+  width: 1.95rem;
+  height: 1.95rem;
   border-radius: 999px;
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
   box-shadow:
@@ -2261,16 +2267,16 @@ function toggleSidebarTheme(): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 0.85rem;
+  width: 0.78rem;
   color: #eff6ff;
-  font-size: 0.98rem;
+  font-size: 0.9rem;
   font-weight: 600;
   line-height: 1;
 }
 
 .sidebar-preview-create-label {
   color: #f8fafc;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
@@ -2280,11 +2286,11 @@ function toggleSidebarTheme(): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2rem;
+  height: 2rem;
   border-radius: 999px;
   border: 1px solid rgba(191, 219, 254, 0.18);
-  font-size: 0.82rem;
+  font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.01em;
   color: #eff6ff;
@@ -2532,11 +2538,11 @@ function toggleSidebarTheme(): void {
     position: sticky;
     top: 0;
     align-self: flex-start;
-    min-height: calc(100vh - 1.8rem);
+    min-height: calc(100vh - 1.6rem);
     height: auto;
-    max-height: calc(100vh - 1.8rem);
+    max-height: calc(100vh - 1.6rem);
     border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 2rem;
+    border-radius: 1.75rem;
     overflow: hidden;
   }
 

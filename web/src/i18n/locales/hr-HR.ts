@@ -706,6 +706,7 @@ export default {
     noApprovedDirectories: 'Nema odobrenih direktorija',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Sigurnosne kontrole',
       approvals: 'Odobreni direktoriji',
       firewall: 'Vatrozid',
       masking: 'Maskiranje podataka',
@@ -1225,7 +1226,7 @@ export default {
     exportedAt: 'Izvezeno',
     preview: 'Pregled',
     selectFile: 'Odaberite datoteku',
-    passwordPlaceholder: 'Unesite lozinku (najmanje 6 znakova)',
+    passwordPlaceholder: 'Unesite lozinku (najmanje 8 znakova)',
     format: 'Format izvoza',
     previewFailed: 'Pregled podataka nije uspio',
     hasSettings: 'Sadrži postavke',

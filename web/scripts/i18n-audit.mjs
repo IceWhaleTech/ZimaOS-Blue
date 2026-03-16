@@ -16,6 +16,11 @@ const LOCALES_DIR = path.join(SRC_DIR, 'i18n', 'locales')
 const PRIORITY_OVERRIDES_PATH = path.join(SRC_DIR, 'i18n', 'priority-overrides.ts')
 const PRIORITY_BILLING_OVERRIDES_PATH = path.join(SRC_DIR, 'i18n', 'priority-billing-overrides.ts')
 const PRIORITY_SETTINGS_OVERRIDES_PATH = path.join(SRC_DIR, 'i18n', 'priority-settings-overrides.ts')
+const PRIORITY_TRANSLATION_OVERRIDES_PATH = path.join(
+  SRC_DIR,
+  'i18n',
+  'priority-translation-overrides.ts',
+)
 const PRIORITY_SMALL_MODEL_OVERRIDES_PATH = path.join(SRC_DIR, 'i18n', 'priority-small-model-overrides.ts')
 
 function collectFiles(dir, extensions) {
@@ -640,6 +645,7 @@ function main() {
   const priorityLocaleOverrides = loadExportedObject(PRIORITY_OVERRIDES_PATH)
   const priorityBillingOverrides = loadExportedObject(PRIORITY_BILLING_OVERRIDES_PATH)
   const prioritySettingsOverrides = loadExportedObject(PRIORITY_SETTINGS_OVERRIDES_PATH)
+  const priorityTranslationOverrides = loadExportedObject(PRIORITY_TRANSLATION_OVERRIDES_PATH)
   const prioritySmallModelOverrides = loadExportedObject(PRIORITY_SMALL_MODEL_OVERRIDES_PATH)
   const requiredPriorityOverrides = auditRequiredPriorityOverrides(localeFiles, priorityLocaleOverrides)
   const enUSMap = flattenStringLeaves(enUSObject)
@@ -713,7 +719,14 @@ function main() {
     const withPriorityOverrides = deepMergeMessages(localeBaseObject, priorityLocaleOverrides[locale] || {})
     const withBillingOverrides = deepMergeMessages(withPriorityOverrides, priorityBillingOverrides[locale] || {})
     const withSettingsOverrides = deepMergeMessages(withBillingOverrides, prioritySettingsOverrides[locale] || {})
-    const localeObject = deepMergeMessages(withSettingsOverrides, prioritySmallModelOverrides[locale] || {})
+    const withTranslationOverrides = deepMergeMessages(
+      withSettingsOverrides,
+      priorityTranslationOverrides[locale] || {},
+    )
+    const localeObject = deepMergeMessages(
+      withTranslationOverrides,
+      prioritySmallModelOverrides[locale] || {},
+    )
     const localeMap = flattenStringLeaves(localeObject)
     const missing = []
     const fallbackToEnglish = []

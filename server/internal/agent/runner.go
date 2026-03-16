@@ -908,8 +908,8 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	}
 
 	task.Plan = planSpec.Steps
-	task.SuccessCriteria = planSpec.SuccessCriteria
-	task.FallbackPlan = planSpec.FallbackPlan
+	task.SuccessCriteria = effectiveSuccessCriteria(planSpec.SuccessCriteria)
+	task.FallbackPlan = effectiveFallbackPlan(planSpec.FallbackPlan)
 	if task.Goal == "" && planSpec.Goal != "" {
 		task.Goal = planSpec.Goal
 	}
@@ -940,8 +940,8 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 				return
 			}
 			task.Plan = planSpec.Steps
-			task.SuccessCriteria = planSpec.SuccessCriteria
-			task.FallbackPlan = planSpec.FallbackPlan
+			task.SuccessCriteria = effectiveSuccessCriteria(planSpec.SuccessCriteria)
+			task.FallbackPlan = effectiveFallbackPlan(planSpec.FallbackPlan)
 		case "abort":
 			if err := r.transitionState(ctx, task, RuntimeStateAborted, "user aborted at confirm gate", nil, TaskStatusAborted); err != nil {
 				r.failTask(ctx, task, fmt.Sprintf("runtime transition failed when aborting at confirm gate: %v", err))
@@ -1074,9 +1074,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		Message:   taskVerifyingMessage(),
 	})
 
+	verificationCtx := compileVerificationContext(task)
 	verifyStep := &PlanStep{
 		Index:       len(task.Plan),
-		Description: "Verify the completed work — run build and tests to confirm correctness",
+		Description: verificationStepDescription(verificationCtx.TaskKind, false),
 		Status:      StepStatusRunning,
 	}
 	now := timeutil.NowTime()
@@ -1086,15 +1087,24 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before verify: %v", err))
 		return
 	}
-	verifyOutput, verifyErr := r.executeStep(ctx, task, verifyStep)
+	verifyResult, verifyOutput, verifyErr := r.runVerification(ctx, task, verificationCtx)
 	if errors.Is(ctx.Err(), context.Canceled) {
 		r.cancelTask(task, "task cancelled")
 		return
 	}
 	if verifyErr != nil {
+		r.appendAudit(task, RuntimeAuditEvent{
+			Timestamp: timeutil.NowTime(),
+			Reason:    "verification_failed",
+			Error:     verifyErr.Error(),
+		})
 		verifyStep.Status = StepStatusFailed
-		verifyStep.Output = fmt.Sprintf("Verification error: %v", verifyErr)
+		verifyStep.Output = verifyOutput
 	} else {
+		r.appendAudit(task, RuntimeAuditEvent{
+			Timestamp: timeutil.NowTime(),
+			Reason:    "verification_passed",
+		})
 		verifyStep.Status = StepStatusCompleted
 		verifyStep.Output = verifyOutput
 	}
@@ -1111,14 +1121,19 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before recovery: %v", err))
 			return
 		}
+		r.appendAudit(task, RuntimeAuditEvent{
+			Timestamp: timeutil.NowTime(),
+			Reason:    "recovery_started",
+			Error:     verifyStep.Output,
+		})
 		recoverStep := &PlanStep{
 			Index:       len(task.Plan),
-			Description: "Recovery: retry failed validation with safer fallback path",
+			Description: recoveryStepDescription(verificationCtx.TaskKind),
 			Status:      StepStatusRunning,
 		}
 		start := timeutil.NowTime()
 		recoverStep.StartedAt = &start
-		recoverOut, recoverErr := r.executeStep(ctx, task, recoverStep)
+		recoverOut, recoverErr := r.runRecovery(ctx, task, verificationCtx, verifyResult)
 		if errors.Is(ctx.Err(), context.Canceled) {
 			r.cancelTask(task, "task cancelled")
 			return
@@ -1127,8 +1142,15 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		recoverStep.CompletedAt = &end
 		if recoverErr != nil {
 			recoverStep.Status = StepStatusFailed
-			recoverStep.Output = fmt.Sprintf("Recovery failed: %v", recoverErr)
+			recoverStep.Output = strings.TrimSpace(recoverOut)
+			if recoverStep.Output == "" {
+				recoverStep.Output = fmt.Sprintf("Recovery failed: %v", recoverErr)
+			}
 		} else {
+			r.appendAudit(task, RuntimeAuditEvent{
+				Timestamp: timeutil.NowTime(),
+				Reason:    "recovery_applied_fallback_plan",
+			})
 			recoverStep.Status = StepStatusCompleted
 			recoverStep.Output = truncate(recoverOut, 1200)
 		}
@@ -1142,14 +1164,15 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before re-verify: %v", err))
 			return
 		}
+		retryVerificationCtx := compileVerificationContext(task)
 		verifyRetryStep := &PlanStep{
 			Index:       len(task.Plan),
-			Description: "Verify again after recovery (bounded retry)",
+			Description: verificationStepDescription(retryVerificationCtx.TaskKind, true),
 			Status:      StepStatusRunning,
 		}
 		retryStart := timeutil.NowTime()
 		verifyRetryStep.StartedAt = &retryStart
-		verifyRetryOutput, verifyRetryErr := r.executeStep(ctx, task, verifyRetryStep)
+		_, verifyRetryOutput, verifyRetryErr := r.runVerification(ctx, task, retryVerificationCtx)
 		if errors.Is(ctx.Err(), context.Canceled) {
 			r.cancelTask(task, "task cancelled")
 			return
@@ -1157,9 +1180,18 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		retryEnd := timeutil.NowTime()
 		verifyRetryStep.CompletedAt = &retryEnd
 		if verifyRetryErr != nil {
+			r.appendAudit(task, RuntimeAuditEvent{
+				Timestamp: timeutil.NowTime(),
+				Reason:    "verification_failed",
+				Error:     verifyRetryErr.Error(),
+			})
 			verifyRetryStep.Status = StepStatusFailed
-			verifyRetryStep.Output = fmt.Sprintf("Verification retry error: %v", verifyRetryErr)
+			verifyRetryStep.Output = verifyRetryOutput
 		} else {
+			r.appendAudit(task, RuntimeAuditEvent{
+				Timestamp: timeutil.NowTime(),
+				Reason:    "verification_passed",
+			})
 			verifyRetryStep.Status = StepStatusCompleted
 			verifyRetryStep.Output = verifyRetryOutput
 		}
@@ -1174,6 +1206,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		return
 	}
 
+	task.Result = buildBaseResultSummary(task, TaskStatusCompleted, "")
 	reflection := r.runReflection(ctx, task, TaskStatusCompleted, "")
 	if ctx.Err() != nil {
 		r.cancelTask(task, "task cancelled")
@@ -1320,145 +1353,16 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 	}
 	contextMsg.WriteString(fmt.Sprintf("\nNow execute step %d: %s", step.Index+1, step.Description))
 
-	cachedTools := r.llmTools() // cache once per step — tool list doesn't change mid-execution
-
-	messages := []llm.Message{
-		{Role: llm.RoleSystem, Content: buildStepExecutionSystemPrompt(cachedTools)},
-		{Role: llm.RoleUser, Content: contextMsg.String()},
-	}
-
-	// Tool loop for this step
-	var lastContent string
-	var lastToolSig string // detect repeated identical tool calls
-	var repeatCount int
-	const maxRepeats = 3
-
-	maxRounds := r.resolveMaxToolRoundsPerStep()
-	for round := 0; round < maxRounds; round++ {
-		if ctx.Err() != nil {
-			return lastContent, ctx.Err()
-		}
-
-		// Drain queued user messages and inject into the LLM conversation
-		if injected := r.drainMessages(task.ID); len(injected) > 0 {
-			combined := strings.Join(injected, "\n")
-			messages = append(messages, llm.Message{
-				Role:    llm.RoleUser,
-				Content: "[User message during execution]: " + combined,
-			})
-			r.publishEvent(task.UserID, TaskEvent{
-				TaskID:    task.ID,
-				EventType: "task_user_message",
-				StepIndex: step.Index,
-				Message:   taskUserUpdateMessage(combined),
-			})
-			logger.Info().Str("task_id", task.ID).Int("step", step.Index).Int("round", round).Msg("[agent] injected user messages between tool rounds")
-		}
-
-		resp, err := r.llm.Chat(ctx, llm.ChatRequest{
-			Model:       "auto",
-			Messages:    messages,
-			Tools:       cachedTools,
-			MaxTokens:   2000,
-			Temperature: 0.2,
-		})
-		if err != nil {
-			return lastContent, err
-		}
-
-		lastContent = resp.Message.Content
-
-		// No tool calls — step is done
-		if len(resp.Message.ToolCalls) == 0 {
-			break
-		}
-
-		// Detect repeated identical tool calls to prevent infinite loops
-		sig := ""
-		for _, tc := range resp.Message.ToolCalls {
-			sig += tc.Name + ":" + tc.Arguments + ";"
-		}
-		if sig == lastToolSig {
-			repeatCount++
-			if repeatCount >= maxRepeats {
-				lastContent += "\n[Agent stopped: repeated identical tool calls detected]"
-				break
-			}
-		} else {
-			lastToolSig = sig
-			repeatCount = 0
-		}
-
-		// Execute tool calls
-		messages = append(messages, resp.Message)
-		for _, tc := range resp.Message.ToolCalls {
-			capability := classifyCapability(tc.Name, tc.Arguments)
-			if shouldRequireConfirm(capability, step.Description+" "+lastContent) {
-				if err := r.transitionState(ctx, task, RuntimeStateConfirmGate, "high-risk capability requires confirmation", &capability, TaskStatusWaitingInput); err != nil {
-					return lastContent, err
-				}
-				ans, askErr := r.AskUser(ctx, task.ID, buildHighRiskConfirmationQuestions(tc.Name, capability, step.Description), step.Index)
-				if askErr != nil {
-					return lastContent, askErr
-				}
-				decision := "skip"
-				if len(ans) > 0 && len(ans[0].Values) > 0 {
-					decision = ans[0].Values[0]
-				}
-				if decision == "abort" {
-					if err := r.transitionState(ctx, task, RuntimeStateAborted, "user aborted on high-risk tool call", &capability, TaskStatusAborted); err != nil {
-						return lastContent, err
-					}
-					return lastContent, fmt.Errorf("user aborted task during high-risk confirmation")
-				}
-				if decision == "skip" {
-					if err := r.transitionState(ctx, task, RuntimeStateExecute, "user skipped high-risk tool call", &capability, TaskStatusExecuting); err != nil {
-						return lastContent, err
-					}
-					continue
-				}
-				if err := r.transitionState(ctx, task, RuntimeStateExecute, "high-risk tool call approved", &capability, TaskStatusExecuting); err != nil {
-					return lastContent, err
-				}
-			}
-
-			var content string
-
-			// Intercept ask tool — use agent-specific SSE flow
-			// so the frontend knows which task is asking.
-			if tc.Name == "ask" {
-				content = r.handleAskUser(ctx, task, tc.Arguments)
-			} else {
-				result, execErr := r.executor.ExecuteJSON(ctx, tc.Name, tc.Arguments)
-				if execErr != nil {
-					errObj, _ := json.Marshal(map[string]string{"error": execErr.Error()})
-					content = string(errObj)
-				} else {
-					switch v := result.(type) {
-					case string:
-						content = v
-					default:
-						b, _ := json.Marshal(v)
-						content = string(b)
-					}
-				}
-			}
-			r.appendAudit(ctx, task, RuntimeAuditEvent{
-				Timestamp:  timeutil.NowTime(),
-				Reason:     "tool_call_executed",
-				Capability: &capability,
-			})
-			// Truncate large tool results to prevent context window overflow
-			content = truncate(content, 8000)
-			messages = append(messages, llm.Message{
-				Role:       llm.RoleTool,
-				Content:    content,
-				ToolCallID: tc.ID,
-			})
-		}
-	}
-
-	return lastContent, nil
+	cachedTools := r.llmTools()
+	return r.executeLoopWithTools(
+		ctx,
+		task,
+		step.Index,
+		step.Description,
+		buildStepExecutionSystemPrompt(cachedTools),
+		contextMsg.String(),
+		cachedTools,
+	)
 }
 
 func buildStepExecutionSystemPrompt(tools []llm.Tool) string {
@@ -1516,6 +1420,415 @@ func buildStepExecutionSystemPrompt(tools []llm.Tool) string {
 	return strings.TrimSpace(sb.String())
 }
 
+var errNoProgressAbort = errors.New("agent stopped due to no progress")
+
+func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex int, actionDescription, systemPrompt, userPrompt string, cachedTools []llm.Tool) (string, error) {
+	messages := []llm.Message{
+		{Role: llm.RoleSystem, Content: systemPrompt},
+		{Role: llm.RoleUser, Content: userPrompt},
+	}
+
+	var lastContent string
+	var lastToolSig string
+	var repeatCount int
+	const maxRepeats = 3
+
+	progressState := ProgressSignatureState{}
+	maxRounds := r.resolveMaxToolRoundsPerStep()
+	for round := 0; round < maxRounds; round++ {
+		if ctx.Err() != nil {
+			return lastContent, ctx.Err()
+		}
+
+		if injected := r.drainMessages(task.ID); len(injected) > 0 {
+			combined := strings.Join(injected, "\n")
+			messages = append(messages, llm.Message{
+				Role:    llm.RoleUser,
+				Content: "[User message during execution]: " + combined,
+			})
+			r.publishEvent(task.UserID, TaskEvent{
+				TaskID:    task.ID,
+				EventType: "task_user_message",
+				StepIndex: stepIndex,
+				Message:   taskUserUpdateMessage(combined),
+			})
+			logger.Info().Str("task_id", task.ID).Int("step", stepIndex).Int("round", round).Msg("[agent] injected user messages between tool rounds")
+		}
+
+		resp, err := r.llm.Chat(ctx, llm.ChatRequest{
+			Model:       "auto",
+			Messages:    messages,
+			Tools:       cachedTools,
+			MaxTokens:   2000,
+			Temperature: 0.2,
+		})
+		if err != nil {
+			return lastContent, err
+		}
+
+		lastContent = strings.TrimSpace(resp.Message.Content)
+		if len(resp.Message.ToolCalls) == 0 {
+			break
+		}
+
+		sig := toolCallSignature(resp.Message.ToolCalls)
+		if sig == lastToolSig {
+			repeatCount++
+			if repeatCount >= maxRepeats {
+				r.appendAudit(task, RuntimeAuditEvent{
+					Timestamp: timeutil.NowTime(),
+					Reason:    "no_progress_abort",
+					Error:     "repeated identical tool calls",
+				})
+				lastContent = strings.TrimSpace(lastContent + "\n[Agent stopped: repeated identical tool calls detected]")
+				return lastContent, errNoProgressAbort
+			}
+		} else {
+			lastToolSig = sig
+			repeatCount = 0
+		}
+
+		messages = append(messages, resp.Message)
+		toolSummaries := make([]string, 0, len(resp.Message.ToolCalls))
+		for _, tc := range resp.Message.ToolCalls {
+			capability := classifyCapability(tc.Name, tc.Arguments)
+			if shouldRequireConfirm(capability, actionDescription+" "+lastContent) {
+				if err := r.transitionState(ctx, task, RuntimeStateConfirmGate, "high-risk capability requires confirmation", &capability, TaskStatusWaitingInput); err != nil {
+					return lastContent, err
+				}
+				ans, askErr := r.AskUser(ctx, task.ID, buildHighRiskConfirmationQuestions(tc.Name, capability, actionDescription), stepIndex)
+				if askErr != nil {
+					return lastContent, askErr
+				}
+				decision := "skip"
+				if len(ans) > 0 && len(ans[0].Values) > 0 {
+					decision = ans[0].Values[0]
+				}
+				if decision == "abort" {
+					if err := r.transitionState(ctx, task, RuntimeStateAborted, "user aborted on high-risk tool call", &capability, TaskStatusAborted); err != nil {
+						return lastContent, err
+					}
+					return lastContent, fmt.Errorf("user aborted task during high-risk confirmation")
+				}
+				if decision == "skip" {
+					if err := r.transitionState(ctx, task, RuntimeStateExecute, "user skipped high-risk tool call", &capability, TaskStatusExecuting); err != nil {
+						return lastContent, err
+					}
+					continue
+				}
+				if err := r.transitionState(ctx, task, RuntimeStateExecute, "high-risk tool call approved", &capability, TaskStatusExecuting); err != nil {
+					return lastContent, err
+				}
+			}
+
+			var content string
+			if tc.Name == "ask" {
+				content = r.handleAskUser(ctx, task, tc.Arguments)
+			} else {
+				result, execErr := r.executor.ExecuteJSON(ctx, tc.Name, tc.Arguments)
+				if execErr != nil {
+					errObj, _ := json.Marshal(map[string]string{"error": execErr.Error()})
+					content = string(errObj)
+				} else {
+					switch v := result.(type) {
+					case string:
+						content = v
+					default:
+						b, _ := json.Marshal(v)
+						content = string(b)
+					}
+				}
+			}
+			r.appendAudit(task, RuntimeAuditEvent{
+				Timestamp:  timeutil.NowTime(),
+				Reason:     "tool_call_executed",
+				Capability: &capability,
+			})
+			content = truncate(content, 8000)
+			toolSummaries = append(toolSummaries, normalizeProgressSummary(content))
+			messages = append(messages, llm.Message{
+				Role:       llm.RoleTool,
+				Content:    content,
+				ToolCallID: tc.ID,
+			})
+		}
+
+		if progressState.Observe(sig, lastContent, toolSummaries) {
+			r.appendAudit(task, RuntimeAuditEvent{
+				Timestamp: timeutil.NowTime(),
+				Reason:    "no_progress_abort",
+				Error:     strings.Join(toolSummaries, " | "),
+			})
+			lastContent = strings.TrimSpace(lastContent + "\n[Agent stopped: no progress detected after repeated tool rounds]")
+			return lastContent, errNoProgressAbort
+		}
+	}
+
+	return lastContent, nil
+}
+
+func buildVerificationSystemPrompt(kind TaskKind, tools []llm.Tool) string {
+	var sb strings.Builder
+	sb.WriteString("You are the strict verification engine for ZimaOS Blue.\n\n")
+	sb.WriteString("## Output Contract\n")
+	sb.WriteString("Return ONLY one JSON object in this exact shape:\n")
+	sb.WriteString("{\n")
+	sb.WriteString("  \"status\": \"pass|fail\",\n")
+	sb.WriteString("  \"summary\": \"<brief verification summary>\",\n")
+	sb.WriteString("  \"criteria_results\": [{\"criterion\":\"...\",\"status\":\"pass|fail\",\"evidence\":\"...\"}],\n")
+	sb.WriteString("  \"suggested_recovery\": \"<optional short next action>\",\n")
+	sb.WriteString("  \"executed_checks\": [\"...\"]\n")
+	sb.WriteString("}\n")
+	sb.WriteString("Always include status, summary, criteria_results, and executed_checks. If evidence is missing or uncertain, return fail.\n")
+
+	sb.WriteString("\n## Verification Rules\n")
+	sb.WriteString("- Evaluate every provided success criterion explicitly.\n")
+	sb.WriteString("- Use tools when needed, but stop once you have enough evidence.\n")
+	sb.WriteString("- Do not mark a criterion as pass without concrete evidence from the task record or tool output.\n")
+	switch kind {
+	case TaskKindCode:
+		sb.WriteString("- For code tasks, confirm the intended deliverable landed in files or behavior before running relevant build/test/check commands.\n")
+	case TaskKindDocs:
+		sb.WriteString("- For docs tasks, verify the requested document or copy change exists and covers the requested scope. Do not default to build or tests unless the criteria require them.\n")
+	case TaskKindResearch:
+		sb.WriteString("- For research tasks, verify coverage, evidence quality, and unsupported claims. Do not default to build or tests.\n")
+	case TaskKindOps:
+		sb.WriteString("- For ops tasks, prefer service, process, config, and log validation. Only run build or tests when the criteria require them.\n")
+	default:
+		sb.WriteString("- For generic tasks, verify the requested deliverable and scope coverage first. Do not default to build or tests unless the criteria require them.\n")
+	}
+
+	if len(tools) > 0 {
+		sb.WriteString("\n## Available Tools\n")
+		for _, tool := range tools {
+			sb.WriteString("- ")
+			sb.WriteString(tool.Name)
+			if desc := strings.TrimSpace(tool.Description); desc != "" {
+				sb.WriteString(": ")
+				sb.WriteString(desc)
+			}
+			sb.WriteByte('\n')
+		}
+	}
+
+	sb.WriteString("\n## Constraints\n")
+	sb.WriteString("- No markdown, no code fences, and no prose outside the JSON object.\n")
+	sb.WriteString("- unsupported statuses like unknown/partial are forbidden.\n")
+	sb.WriteString("- executed_checks must describe the real checks you performed.\n")
+	return strings.TrimSpace(sb.String())
+}
+
+func buildVerificationUserPrompt(task *Task, verificationCtx VerificationContext) string {
+	var sb strings.Builder
+	sb.WriteString("Goal: ")
+	sb.WriteString(strings.TrimSpace(verificationCtx.Goal))
+	sb.WriteString("\n")
+	sb.WriteString("Task kind: ")
+	sb.WriteString(string(verificationCtx.TaskKind))
+	sb.WriteString("\n")
+	if len(verificationCtx.SuccessCriteria) > 0 {
+		sb.WriteString("Success criteria:\n")
+		for _, criterion := range verificationCtx.SuccessCriteria {
+			sb.WriteString("- ")
+			sb.WriteString(strings.TrimSpace(criterion))
+			sb.WriteString("\n")
+		}
+	}
+	if len(verificationCtx.FallbackPlan) > 0 {
+		sb.WriteString("Fallback plan:\n")
+		for _, item := range verificationCtx.FallbackPlan {
+			sb.WriteString("- ")
+			sb.WriteString(strings.TrimSpace(item))
+			sb.WriteString("\n")
+		}
+	}
+	sb.WriteString("Task record:\n")
+	for _, step := range task.Plan {
+		status := strings.ToUpper(strings.TrimSpace(string(step.Status)))
+		if status == "" {
+			status = "PENDING"
+		}
+		sb.WriteString("- [")
+		sb.WriteString(status)
+		sb.WriteString("] ")
+		sb.WriteString(strings.TrimSpace(step.Description))
+		if output := strings.TrimSpace(step.Output); output != "" {
+			sb.WriteString(": ")
+			sb.WriteString(truncate(output, 240))
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("Verify every success criterion explicitly and fail if any criterion lacks concrete evidence.")
+	return strings.TrimSpace(sb.String())
+}
+
+func (r *Runner) runVerification(ctx context.Context, task *Task, verificationCtx VerificationContext) (*VerificationResult, string, error) {
+	cachedTools := r.llmTools()
+	rawOutput, loopErr := r.executeLoopWithTools(
+		ctx,
+		task,
+		len(task.Plan),
+		"Verify the completed work",
+		buildVerificationSystemPrompt(verificationCtx.TaskKind, cachedTools),
+		buildVerificationUserPrompt(task, verificationCtx),
+		cachedTools,
+	)
+	if loopErr != nil {
+		synthetic := syntheticVerificationFailure(verificationCtx, "Verification execution failed.", loopErr.Error())
+		ordered, _, missing := evaluateVerificationResult(synthetic, verificationCtx.SuccessCriteria)
+		return synthetic, formatVerificationOutput(verificationCtx, synthetic, ordered, missing), fmt.Errorf("verification loop failed: %w", loopErr)
+	}
+
+	parsed, err := parseVerificationResult(rawOutput)
+	if err != nil {
+		synthetic := syntheticVerificationFailure(verificationCtx, "Verification contract was invalid.", err.Error())
+		ordered, failed, missing := evaluateVerificationResult(synthetic, verificationCtx.SuccessCriteria)
+		_ = failed
+		return synthetic, formatVerificationOutput(verificationCtx, synthetic, ordered, missing), fmt.Errorf("invalid verification result: %w", err)
+	}
+
+	ordered, failed, missing := evaluateVerificationResult(parsed, verificationCtx.SuccessCriteria)
+	output := formatVerificationOutput(verificationCtx, parsed, ordered, missing)
+	if verificationPassed(parsed, failed, missing) {
+		return parsed, output, nil
+	}
+	return parsed, output, fmt.Errorf("verification criteria not satisfied")
+}
+
+func buildRecoverySystemPrompt(kind TaskKind, tools []llm.Tool) string {
+	var sb strings.Builder
+	sb.WriteString("You are the bounded recovery engine for ZimaOS Blue.\n\n")
+	sb.WriteString("## Recovery Rules\n")
+	sb.WriteString("- Make one focused recovery attempt only.\n")
+	sb.WriteString("- Use the fallback plan in the exact order provided.\n")
+	sb.WriteString("- The first fallback item is the primary action. Do not skip it unless it is impossible.\n")
+	sb.WriteString("- If verifier suggested_recovery differs from the first fallback item, treat it as an extra constraint, not a replacement.\n")
+	sb.WriteString("- Focus only on failed verification criteria.\n")
+	sb.WriteString("- Stop after the recovery attempt and summarize what changed or why it could not be applied.\n")
+	switch kind {
+	case TaskKindCode:
+		sb.WriteString("- For code tasks, prefer the smallest change that can satisfy the failed criteria.\n")
+	case TaskKindDocs:
+		sb.WriteString("- For docs tasks, change only the requested document content needed to satisfy the failed criteria.\n")
+	case TaskKindResearch:
+		sb.WriteString("- For research tasks, improve evidence quality or coverage; do not pad the report with unsupported claims.\n")
+	case TaskKindOps:
+		sb.WriteString("- For ops tasks, prioritize safe config, process, or runtime checks before broader actions.\n")
+	default:
+		sb.WriteString("- For generic tasks, prioritize the minimum change needed to satisfy the failed criteria.\n")
+	}
+	if len(tools) > 0 {
+		sb.WriteString("\n## Available Tools\n")
+		for _, tool := range tools {
+			sb.WriteString("- ")
+			sb.WriteString(tool.Name)
+			if desc := strings.TrimSpace(tool.Description); desc != "" {
+				sb.WriteString(": ")
+				sb.WriteString(desc)
+			}
+			sb.WriteByte('\n')
+		}
+	}
+	sb.WriteString("\n## Constraints\n")
+	sb.WriteString("- No markdown headers, no code fences, and no open-ended retry plan.\n")
+	return strings.TrimSpace(sb.String())
+}
+
+func buildRecoveryUserPrompt(task *Task, verificationCtx VerificationContext, verificationResult *VerificationResult) string {
+	var sb strings.Builder
+	sb.WriteString("Goal: ")
+	sb.WriteString(strings.TrimSpace(verificationCtx.Goal))
+	sb.WriteString("\n")
+	sb.WriteString("Task kind: ")
+	sb.WriteString(string(verificationCtx.TaskKind))
+	sb.WriteString("\n")
+	if verificationResult != nil {
+		sb.WriteString("Verification summary: ")
+		sb.WriteString(strings.TrimSpace(verificationResult.Summary))
+		sb.WriteString("\n")
+	}
+	ordered, _, missing := evaluateVerificationResult(verificationResult, verificationCtx.SuccessCriteria)
+	if len(ordered) > 0 {
+		sb.WriteString("Failed criteria:\n")
+		for _, criterion := range ordered {
+			if criterion.Status == "pass" {
+				continue
+			}
+			sb.WriteString("- ")
+			sb.WriteString(strings.TrimSpace(criterion.Criterion))
+			if evidence := strings.TrimSpace(criterion.Evidence); evidence != "" {
+				sb.WriteString(": ")
+				sb.WriteString(truncate(evidence, 220))
+			}
+			sb.WriteString("\n")
+		}
+	}
+	if len(missing) > 0 {
+		sb.WriteString("Missing criteria coverage:\n")
+		for _, criterion := range missing {
+			sb.WriteString("- ")
+			sb.WriteString(strings.TrimSpace(criterion))
+			sb.WriteString("\n")
+		}
+	}
+	if len(verificationCtx.FallbackPlan) > 0 {
+		sb.WriteString("Ordered fallback plan:\n")
+		for i, item := range verificationCtx.FallbackPlan {
+			sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, strings.TrimSpace(item)))
+		}
+	}
+	if verificationResult != nil && strings.TrimSpace(verificationResult.SuggestedRecovery) != "" {
+		sb.WriteString("Verifier suggested recovery (supporting constraint only): ")
+		sb.WriteString(strings.TrimSpace(verificationResult.SuggestedRecovery))
+		sb.WriteString("\n")
+	}
+	if summaries := recentSuccessfulStepSummaries(task, 3); len(summaries) > 0 {
+		sb.WriteString("Recent successful steps:\n")
+		for _, summary := range summaries {
+			sb.WriteString("- ")
+			sb.WriteString(summary)
+			sb.WriteString("\n")
+		}
+	}
+	sb.WriteString("Apply the first fallback item as the primary action and stop after one recovery attempt.")
+	return strings.TrimSpace(sb.String())
+}
+
+func (r *Runner) runRecovery(ctx context.Context, task *Task, verificationCtx VerificationContext, verificationResult *VerificationResult) (string, error) {
+	cachedTools := r.llmTools()
+	return r.executeLoopWithTools(
+		ctx,
+		task,
+		len(task.Plan),
+		"Recovery: retry failed validation with safer fallback path",
+		buildRecoverySystemPrompt(verificationCtx.TaskKind, cachedTools),
+		buildRecoveryUserPrompt(task, verificationCtx, verificationResult),
+		cachedTools,
+	)
+}
+
+func recentSuccessfulStepSummaries(task *Task, limit int) []string {
+	if task == nil || limit <= 0 {
+		return nil
+	}
+	out := make([]string, 0, limit)
+	for i := len(task.Plan) - 1; i >= 0 && len(out) < limit; i-- {
+		step := task.Plan[i]
+		if step.Status != StepStatusCompleted {
+			continue
+		}
+		summary := strings.TrimSpace(step.Description)
+		if output := strings.TrimSpace(step.Output); output != "" {
+			summary += ": " + truncate(output, 160)
+		}
+		out = append(out, summary)
+	}
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out
+}
+
 func hasStepTool(tools []llm.Tool, name string) bool {
 	for _, tool := range tools {
 		if tool.Name == name {
@@ -1523,6 +1836,41 @@ func hasStepTool(tools []llm.Tool, name string) bool {
 		}
 	}
 	return false
+}
+
+func buildBaseResultSummary(task *Task, finalStatus TaskStatus, failureReason string) string {
+	if task == nil {
+		return ""
+	}
+	completed, failed, skipped := 0, 0, 0
+	for _, step := range task.Plan {
+		switch step.Status {
+		case StepStatusCompleted:
+			completed++
+		case StepStatusFailed:
+			failed++
+		case StepStatusSkipped:
+			skipped++
+		}
+	}
+	switch finalStatus {
+	case TaskStatusFailed:
+		return fmt.Sprintf(
+			"Goal %q failed after %d completed step(s), %d failed step(s), and %d skipped step(s). Failure reason: %s",
+			strings.TrimSpace(task.Goal),
+			completed,
+			failed,
+			skipped,
+			strings.TrimSpace(failureReason),
+		)
+	default:
+		return fmt.Sprintf(
+			"Goal %q completed after %d completed step(s); verification passed for %d success criterion/criteria.",
+			strings.TrimSpace(task.Goal),
+			completed,
+			len(effectiveSuccessCriteria(task.SuccessCriteria)),
+		)
+	}
 }
 
 func buildSummarySystemPrompt() string {
@@ -1798,6 +2146,7 @@ func (r *Runner) failTask(ctx context.Context, task *Task, errMsg string) {
 	persistCtx := context.Background()
 	task.Status = TaskStatusFailed
 	task.Error = errMsg
+	task.Result = buildBaseResultSummary(task, TaskStatusFailed, errMsg)
 	reflection := r.runReflection(persistCtx, task, TaskStatusFailed, errMsg)
 	if task.RuntimeState != RuntimeStateReport {
 		if err := r.transitionState(persistCtx, task, RuntimeStateReport, "generating final report", nil, ""); err != nil {
@@ -1856,7 +2205,7 @@ func (r *Runner) transitionState(ctx context.Context, task *Task, to RuntimeStat
 	from := task.RuntimeState
 	if !canTransition(from, to) {
 		err := fmt.Errorf("invalid runtime transition: %s -> %s", from, to)
-		r.appendAudit(ctx, task, RuntimeAuditEvent{
+		r.appendAudit(task, RuntimeAuditEvent{
 			Timestamp:  timeutil.NowTime(),
 			From:       from,
 			To:         to,
@@ -1870,7 +2219,7 @@ func (r *Runner) transitionState(ctx context.Context, task *Task, to RuntimeStat
 	if status != "" {
 		task.Status = status
 	}
-	r.appendAudit(ctx, task, RuntimeAuditEvent{
+	r.appendAudit(task, RuntimeAuditEvent{
 		Timestamp:  timeutil.NowTime(),
 		From:       from,
 		To:         to,
@@ -1888,9 +2237,8 @@ func (r *Runner) transitionState(ctx context.Context, task *Task, to RuntimeStat
 	return nil
 }
 
-func (r *Runner) appendAudit(ctx context.Context, task *Task, ev RuntimeAuditEvent) {
+func (r *Runner) appendAudit(task *Task, ev RuntimeAuditEvent) {
 	task.RuntimeAudit = append(task.RuntimeAudit, ev)
-	_ = r.store.Update(ctx, task)
 }
 
 // publishEvent sends an SSE event to the user.

@@ -3370,6 +3370,7 @@ export default {
     },
     tabs: {
       ...enUS.security.tabs,
+      controls: '安全控制',
       approvals: '已授權目錄',
       overview: '概覽',
       firewall: '防火牆',
@@ -4799,7 +4800,7 @@ export default {
     formatJsonDesc: '人類可讀格式。密碼用於匯入驗證。',
     formatEncryptedDesc: '完全加密的二進位格式。安全性更高。',
     password: '密碼',
-    passwordPlaceholder: '輸入密碼（至少 6 個字元）',
+    passwordPlaceholder: '輸入密碼（至少 8 個字元）',
     confirmPassword: '確認密碼',
     confirmPasswordPlaceholder: '重新輸入密碼',
     passwordMismatch: '密碼不符',

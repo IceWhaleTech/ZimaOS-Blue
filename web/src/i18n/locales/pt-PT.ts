@@ -451,6 +451,7 @@ export default {
     noApprovedDirectories: 'Sem diretórios aprovados',
     tabs: {
       ...enUS.security.tabs,
+      controls: 'Controlos de segurança',
       approvals: 'Diretórios aprovados',
       firewall: 'Firewall',
       masking: 'Mascaramento de dados',

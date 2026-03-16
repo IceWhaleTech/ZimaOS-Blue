@@ -44,4 +44,13 @@ describe('ChatMessage assistant bubble border styles', () => {
     expect(assistantBubbleBlock).not.toContain('border-radius: 0;')
     expect(indicatorOnlyBlock).toContain('border: 0;')
   })
+
+  it('scopes markdown list chrome to prose content so typeless cards do not get nested borders', () => {
+    const componentSource = readSource('src/components/ChatMessage.vue')
+
+    expect(componentSource).toContain('.prose-content :deep(ul),')
+    expect(componentSource).toContain('.prose-content :deep(ol) {')
+    expect(componentSource).not.toContain('.assistant-message :deep(ul),')
+    expect(componentSource).not.toContain('.assistant-message :deep(ol) {')
+  })
 })

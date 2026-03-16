@@ -123,8 +123,8 @@ func TestSettingsHandlerUpdateVoiceWakeClearsFields(t *testing.T) {
 	if reloaded.GetVoiceWakeEnabled() {
 		t.Fatal("expected voice wake disabled")
 	}
-	if got := reloaded.GetVoiceWakeTriggers(); len(got) != 1 || got[0] != "Blue" {
-		t.Fatalf("GetVoiceWakeTriggers() = %#v, want default [Blue]", got)
+	if got := reloaded.GetVoiceWakeTriggers(); len(got) != 1 || got[0] != "Hey Blue" {
+		t.Fatalf("GetVoiceWakeTriggers() = %#v, want default [Hey Blue]", got)
 	}
 	if got := reloaded.GetVoiceWakeLocale(); got != "" {
 		t.Fatalf("GetVoiceWakeLocale() = %q, want empty", got)

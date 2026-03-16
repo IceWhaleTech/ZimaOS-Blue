@@ -102,6 +102,7 @@ const previewImageSrc = ref('')
 const previewImageAlt = ref('')
 
 const DRAFT_STORAGE_KEY = 'zima.chat.input_draft.v1'
+const sendIconPath = 'M12 18.5V5.5m0 0L6.75 10.75M12 5.5l5.25 5.25'
 
 function loadDraftFromStorage(): string {
   try {
@@ -981,18 +982,20 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
   <div
     class="chat-input-wrapper"
     :class="
-      isMobile ? 'px-0 pb-0 pt-0' : isCompact ? 'px-0 pb-0 pt-0' : 'px-3 sm:px-4 pb-0 pt-0.5'
+      isMobile
+        ? 'px-3 pb-0 pt-0'
+        : isCompact
+          ? 'px-3 pb-0 pt-0'
+          : 'px-3 sm:px-4 pb-0 pt-0.5'
     "
   >
     <div
       class="chat-input-container p-2.5 sm:px-3.5 sm:py-2.5 max-w-5xl mx-auto"
       :class="[
-        isMobile
-          ? 'border-t border-gray-200 dark:border-glass-border bg-white dark:bg-gray-800/80'
-          : isCompact
-            ? 'border-t border-gray-200 dark:border-glass-border bg-white dark:bg-gray-800/80'
-            : 'chat-input-desktop-shell rounded-2xl',
-        isCompact ? 'chat-input-container--compact' : 'chat-input-container--desktop',
+        isMobile || isCompact
+          ? 'chat-input-floating-shell'
+          : 'chat-input-desktop-shell rounded-2xl',
+        isMobile || isCompact ? 'chat-input-container--compact' : 'chat-input-container--desktop',
         { 'ring-2 ring-accent': dragOver },
       ]"
     >
@@ -1449,7 +1452,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           <button
             v-if="isCompact && !isMobile"
             :disabled="!canSend"
-            class="chat-send-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            class="chat-send-btn compact-send-btn flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             :class="{ 'chat-send-btn--ready': canSend }"
             :title="t('chat.send')"
             @click="handleSend"
@@ -1464,8 +1467,8 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                stroke-width="1.9"
+                :d="sendIconPath"
               />
             </svg>
           </button>
@@ -1897,8 +1900,8 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                        stroke-width="1.9"
+                        :d="sendIconPath"
                       />
                     </svg>
                   </button>
@@ -1975,6 +1978,10 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
 .chat-input-desktop-shell {
   border-radius: 1.8rem;
+}
+
+.chat-input-floating-shell {
+  border-radius: 1.55rem;
 }
 
 .desktop-composer-root {
@@ -2460,18 +2467,29 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
   outline: none;
 }
 
+.compact-send-btn,
 .desktop-send-btn {
-  color: rgb(248, 250, 252);
-  background: rgb(24, 24, 27);
+  border: 1px solid rgba(96, 165, 250, 0.34);
+  color: rgb(239, 246, 255);
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 16px 28px -18px rgba(37, 99, 235, 0.58);
 }
 
+.compact-send-btn:hover:not(:disabled),
 .desktop-send-btn:hover:not(:disabled) {
-  box-shadow: 0 16px 28px -18px rgba(15, 23, 42, 0.5);
+  border-color: rgba(147, 197, 253, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 22px 36px -20px rgba(37, 99, 235, 0.68);
 }
 
+.compact-send-btn:disabled,
 .desktop-send-btn:disabled {
-  background: rgba(228, 228, 231, 0.94);
-  color: rgba(113, 113, 122, 0.86);
+  background: linear-gradient(180deg, rgba(226, 232, 240, 0.98), rgba(203, 213, 225, 0.98));
+  color: rgba(100, 116, 139, 0.88);
+  border-color: rgba(203, 213, 225, 0.68);
   box-shadow: none;
 }
 
@@ -2530,17 +2548,25 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
   color: rgba(148, 163, 184, 0.72);
 }
 
+:root.dark .compact-send-btn,
 :root.dark .desktop-send-btn,
+[data-theme='dark'] .compact-send-btn,
 [data-theme='dark'] .desktop-send-btn {
-  color: rgb(15, 23, 42);
-  background: rgb(241, 245, 249);
-  box-shadow: 0 10px 18px -16px rgba(148, 163, 184, 0.42);
+  border-color: rgba(147, 197, 253, 0.42);
+  color: rgb(239, 246, 255);
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 18px 32px -20px rgba(37, 99, 235, 0.72);
 }
 
+:root.dark .compact-send-btn:disabled,
 :root.dark .desktop-send-btn:disabled,
+[data-theme='dark'] .compact-send-btn:disabled,
 [data-theme='dark'] .desktop-send-btn:disabled {
-  background: rgba(51, 65, 85, 0.96);
+  background: linear-gradient(180deg, rgba(51, 65, 85, 0.96), rgba(30, 41, 59, 0.96));
   color: rgba(148, 163, 184, 0.88);
+  border-color: rgba(71, 85, 105, 0.72);
   box-shadow: none;
 }
 
@@ -2949,59 +2975,62 @@ textarea::-webkit-scrollbar-thumb:hover {
 .chat-send-btn {
   position: relative;
   overflow: hidden;
-  color: var(--chat-send-fg, var(--chat-user-text, #f8fafc));
+  border: 1px solid rgba(96, 165, 250, 0.34);
+  color: var(--chat-send-fg, rgb(239, 246, 255));
   background: var(
     --chat-send-bg,
-    var(--chat-user-bg, linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%))
+    linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)
   );
-  box-shadow: var(--chat-send-shadow, 0 8px 16px -14px rgba(15, 23, 42, 0.58));
+  box-shadow: var(
+    --chat-send-shadow,
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 16px 28px -18px rgba(37, 99, 235, 0.58)
+  );
   transition:
     transform 0.18s ease,
     box-shadow 0.22s ease,
-    filter 0.18s ease;
+    filter 0.18s ease,
+    border-color 0.18s ease;
 }
 
 .chat-send-btn::before {
-  content: none;
+  content: '';
   position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    115deg,
-    transparent 22%,
-    rgba(255, 255, 255, 0.32) 48%,
-    transparent 74%
-  );
-  transform: translateX(-120%);
-  transition: transform 0.48s ease;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 48%);
+  opacity: 0.95;
+  pointer-events: none;
 }
 
 .chat-send-btn:hover:not(:disabled) {
-  transform: translateY(-0.5px);
+  transform: translateY(-1px) scale(1.01);
+  border-color: rgba(191, 219, 254, 0.56);
   box-shadow: var(
     --chat-send-shadow-hover,
-    0 10px 18px -14px rgba(15, 23, 42, 0.68),
-    0 0 0 1px rgba(148, 163, 184, 0.26)
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    0 22px 36px -20px rgba(37, 99, 235, 0.74)
   );
-  filter: saturate(1.02);
-}
-
-.chat-send-btn:hover:not(:disabled)::before {
-  transform: translateX(120%);
+  filter: saturate(1.05);
 }
 
 .chat-send-btn:active:not(:disabled) {
-  transform: translateY(0) scale(0.985);
+  transform: translateY(0) scale(0.97);
 }
 
 .chat-send-btn:focus-visible {
   outline: none;
   box-shadow:
-    0 0 0 2px var(--chat-send-ring, rgba(148, 163, 184, 0.34)),
-    var(--chat-send-shadow-focus, 0 10px 18px -14px rgba(15, 23, 42, 0.68));
+    0 0 0 3px var(--chat-send-ring, rgba(59, 130, 246, 0.28)),
+    var(
+      --chat-send-shadow-focus,
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      0 20px 34px -20px rgba(37, 99, 235, 0.7)
+    );
 }
 
 .chat-send-btn:disabled {
-  filter: grayscale(0.15);
+  filter: none;
 }
 
 .chat-send-btn__icon {
@@ -3011,7 +3040,7 @@ textarea::-webkit-scrollbar-thumb:hover {
 }
 
 .chat-send-btn:hover:not(:disabled) .chat-send-btn__icon {
-  transform: translateX(0.5px);
+  transform: translateY(-0.8px);
 }
 
 @keyframes send-ready-breathe {

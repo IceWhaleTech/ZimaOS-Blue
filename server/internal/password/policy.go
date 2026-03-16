@@ -49,7 +49,7 @@ type PolicyConfig struct {
 // DefaultPolicyConfig returns the recommended password policy configuration.
 func DefaultPolicyConfig() *PolicyConfig {
 	return &PolicyConfig{
-		MinLength:            6,
+		MinLength:            8,
 		RequireUppercase:     false,
 		RequireLowercase:     false,
 		RequireLetter:        true,

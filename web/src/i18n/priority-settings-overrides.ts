@@ -207,7 +207,7 @@ export default {
       wakeWordTitle: "Detecció de paraula d'activació",
       wakeWordEnable: 'Activa',
       wakeWordLabel: "Paraula d'activació",
-      wakeWordPlaceholder: 'p. ex., hola eco',
+      wakeWordPlaceholder: 'p. ex., Hey Blue',
       wakeWordListening: "Escoltant la paraula d'activació...",
       wakeWordIdle: 'No està escoltant',
       state: {
@@ -702,7 +702,7 @@ export default {
       wakeWordTitle: 'Detekce probouzecího slova',
       wakeWordEnable: 'Povolit',
       wakeWordLabel: 'Probouzecí slovo',
-      wakeWordPlaceholder: 'např. ahoj echo',
+      wakeWordPlaceholder: 'např. Hey Blue',
       wakeWordListening: 'Naslouchá probouzecímu slovu...',
       wakeWordIdle: 'Nenaslouchá',
       state: {
@@ -1194,7 +1194,7 @@ export default {
       wakeWordTitle: 'Registrering af vækkeord',
       wakeWordEnable: 'Aktivér',
       wakeWordLabel: 'Vækkeord',
-      wakeWordPlaceholder: 'f.eks. hej ekko',
+      wakeWordPlaceholder: 'f.eks. Hey Blue',
       wakeWordListening: 'Lytter efter vækkeord...',
       wakeWordIdle: 'Lytter ikke',
       state: {
@@ -1688,7 +1688,7 @@ export default {
       wakeWordTitle: 'Erkennung des Aktivierungsworts',
       wakeWordEnable: 'Aktivieren',
       wakeWordLabel: 'Aktivierungswort',
-      wakeWordPlaceholder: 'z. B. hey echo',
+      wakeWordPlaceholder: 'z. B. Hey Blue',
       wakeWordListening: 'Warte auf Aktivierungswort...',
       wakeWordIdle: 'Hört nicht zu',
       state: {
@@ -2150,7 +2150,7 @@ export default {
       wakeWordTitle: 'Ανίχνευση λέξης αφύπνισης',
       wakeWordEnable: 'Ενεργοποίηση',
       wakeWordLabel: 'Λέξη αφύπνισης',
-      wakeWordPlaceholder: 'π.χ. γεια ηχώ',
+      wakeWordPlaceholder: 'π.χ. Hey Blue',
       wakeWordListening: 'Αναμονή για λέξη αφύπνισης...',
       wakeWordIdle: 'Δεν ακούει',
       state: {
@@ -2694,7 +2694,7 @@ export default {
       wakeWordTitle: 'Wake-word detection',
       wakeWordEnable: 'Switch on',
       wakeWordLabel: 'Wake word',
-      wakeWordPlaceholder: 'e.g. hey echo',
+      wakeWordPlaceholder: 'e.g. Hey Blue',
       wakeWordListening: 'Listening for a wake word…',
       wakeWordIdle: 'Idle',
       state: {
@@ -3046,7 +3046,7 @@ export default {
       wakeWordTitle: 'Detección de palabra de activación',
       wakeWordEnable: 'Activar',
       wakeWordLabel: 'Palabra de activación',
-      wakeWordPlaceholder: 'p. ej., hola eco',
+      wakeWordPlaceholder: 'p. ej., Hey Blue',
       wakeWordListening: 'Escuchando la palabra de activación...',
       wakeWordIdle: 'Sin escuchar',
       state: {
@@ -3506,7 +3506,7 @@ export default {
       wakeWordTitle: "Détection du mot d'activation",
       wakeWordEnable: 'Activer',
       wakeWordLabel: "Mot d'activation",
-      wakeWordPlaceholder: 'ex. : salut écho',
+      wakeWordPlaceholder: 'ex. : Hey Blue',
       wakeWordListening: "Écoute du mot d'activation...",
       wakeWordIdle: 'Aucune écoute',
       state: {
@@ -3969,7 +3969,7 @@ export default {
       wakeWordTitle: 'Braite focail múscailte',
       wakeWordEnable: 'Cumasaigh',
       wakeWordLabel: 'Focal múscailte',
-      wakeWordPlaceholder: 'm.sh., dia dhuit echo',
+      wakeWordPlaceholder: 'm.sh., Hey Blue',
       wakeWordListening: 'Ag éisteacht leis an bhfocal múscailte...',
       wakeWordIdle: 'Gan éisteacht',
       state: {
@@ -4525,7 +4525,7 @@ export default {
       wakeWordTitle: 'Prepoznavanje aktivacijske riječi',
       wakeWordEnable: 'Omogući',
       wakeWordLabel: 'Aktivacijska riječ',
-      wakeWordPlaceholder: 'npr. hej echo',
+      wakeWordPlaceholder: 'npr. Hey Blue',
       wakeWordListening: 'Slušanje aktivacijske riječi...',
       wakeWordIdle: 'Ne sluša',
       state: {
@@ -5081,7 +5081,7 @@ export default {
       wakeWordTitle: 'Ébresztőszó-észlelés',
       wakeWordEnable: 'Engedélyezés',
       wakeWordLabel: 'Ébresztőszó',
-      wakeWordPlaceholder: 'pl. helló echo',
+      wakeWordPlaceholder: 'pl. Hey Blue',
       wakeWordListening: 'Ébresztőszóra figyelés...',
       wakeWordIdle: 'Nem figyel',
       state: {
@@ -5637,7 +5637,7 @@ export default {
       wakeWordTitle: 'Rilevamento parola di attivazione',
       wakeWordEnable: 'Abilita',
       wakeWordLabel: 'Parola di attivazione',
-      wakeWordPlaceholder: 'es. ciao echo',
+      wakeWordPlaceholder: 'es. Hey Blue',
       wakeWordListening: 'In ascolto della parola di attivazione...',
       wakeWordIdle: 'Non in ascolto',
       state: {
@@ -6058,7 +6058,7 @@ export default {
       wakeWordTitle: 'ウェイクワード検出',
       wakeWordEnable: '有効化',
       wakeWordLabel: 'ウェイクワード',
-      wakeWordPlaceholder: '例: hey echo',
+      wakeWordPlaceholder: '例: Hey Blue',
       wakeWordListening: 'ウェイクワードを待機中...',
       wakeWordIdle: '待機していません',
       state: {
@@ -6367,7 +6367,7 @@ export default {
       wakeWordTitle: '웨이크 워드 감지',
       wakeWordEnable: '사용',
       wakeWordLabel: '웨이크 워드',
-      wakeWordPlaceholder: '예: hey echo',
+      wakeWordPlaceholder: '예: Hey Blue',
       wakeWordListening: '웨이크 워드를 듣는 중...',
       wakeWordIdle: '듣고 있지 않음',
       state: {
@@ -6824,7 +6824,7 @@ export default {
       wakeWordTitle: 'വേക്ക് വേഡ് കണ്ടെത്തൽ',
       wakeWordEnable: 'പ്രവർത്തനക്ഷമമാക്കുക',
       wakeWordLabel: 'വേക്ക് വേഡ്',
-      wakeWordPlaceholder: 'ഉദാ., hey echo',
+      wakeWordPlaceholder: 'ഉദാ., Hey Blue',
       wakeWordListening: 'വേക്ക് വേഡ് കേൾക്കുന്നു...',
       wakeWordIdle: 'കേൾക്കുന്നില്ല',
       state: {
@@ -7381,7 +7381,7 @@ export default {
       wakeWordTitle: 'Registrering av vekkeord',
       wakeWordEnable: 'Aktiver',
       wakeWordLabel: 'Vekkeord',
-      wakeWordPlaceholder: 'f.eks. hei echo',
+      wakeWordPlaceholder: 'f.eks. Hey Blue',
       wakeWordListening: 'Lytter etter vekkeord...',
       wakeWordIdle: 'Lytter ikke',
       state: {
@@ -7935,7 +7935,7 @@ export default {
       wakeWordTitle: 'Detectie van wakeword',
       wakeWordEnable: 'Inschakelen',
       wakeWordLabel: 'Wakeword',
-      wakeWordPlaceholder: 'bijv. hey echo',
+      wakeWordPlaceholder: 'bijv. Hey Blue',
       wakeWordListening: 'Luistert naar wakeword...',
       wakeWordIdle: 'Luistert niet',
       state: {
@@ -8433,7 +8433,7 @@ export default {
       wakeWordTitle: 'Wykrywanie słowa wybudzającego',
       wakeWordEnable: 'Włącz',
       wakeWordLabel: 'Słowo wybudzające',
-      wakeWordPlaceholder: 'np. hej echo',
+      wakeWordPlaceholder: 'np. Hey Blue',
       wakeWordListening: 'Nasłuchiwanie słowa wybudzającego...',
       wakeWordIdle: 'Nie nasłuchuje',
       state: {
@@ -8927,7 +8927,7 @@ export default {
       wakeWordTitle: 'Detecção de palavra de ativação',
       wakeWordEnable: 'Ativar',
       wakeWordLabel: 'Palavra de ativação',
-      wakeWordPlaceholder: 'ex.: hey echo',
+      wakeWordPlaceholder: 'ex.: Hey Blue',
       wakeWordListening: 'Ouvindo a palavra de ativação...',
       wakeWordIdle: 'Não está ouvindo',
       state: {
@@ -9418,7 +9418,7 @@ export default {
       wakeWordTitle: 'Deteção da palavra de ativação',
       wakeWordEnable: 'Ativar',
       wakeWordLabel: 'Palavra de ativação',
-      wakeWordPlaceholder: 'ex.: hey echo',
+      wakeWordPlaceholder: 'ex.: Hey Blue',
       wakeWordListening: 'A ouvir a palavra de ativação...',
       wakeWordIdle: 'Não está a ouvir',
       state: {
@@ -9909,7 +9909,7 @@ export default {
       wakeWordTitle: 'Detectarea cuvântului de activare',
       wakeWordEnable: 'Activează',
       wakeWordLabel: 'Cuvânt de activare',
-      wakeWordPlaceholder: 'ex.: hey echo',
+      wakeWordPlaceholder: 'ex.: Hey Blue',
       wakeWordListening: 'Ascultă cuvântul de activare...',
       wakeWordIdle: 'Nu ascultă',
       state: {
@@ -10464,7 +10464,7 @@ export default {
       wakeWordTitle: 'Распознавание кодового слова',
       wakeWordEnable: 'Включить',
       wakeWordLabel: 'Кодовое слово',
-      wakeWordPlaceholder: 'напр., hey echo',
+      wakeWordPlaceholder: 'напр., Hey Blue',
       wakeWordListening: 'Ожидание кодового слова...',
       wakeWordIdle: 'Не прослушивает',
       state: {
@@ -10953,7 +10953,7 @@ export default {
       wakeWordTitle: 'Detekcia zobúdzacieho slova',
       wakeWordEnable: 'Povoliť',
       wakeWordLabel: 'Zobúdzacie slovo',
-      wakeWordPlaceholder: 'napr. ahoj echo',
+      wakeWordPlaceholder: 'napr. Hey Blue',
       wakeWordListening: 'Počúvanie zobúdzacieho slova...',
       wakeWordIdle: 'Nepočúva',
       state: {
@@ -11508,7 +11508,7 @@ export default {
       wakeWordTitle: 'Detektering av väckningsord',
       wakeWordEnable: 'Aktivera',
       wakeWordLabel: 'Väckningsord',
-      wakeWordPlaceholder: 't.ex. hej echo',
+      wakeWordPlaceholder: 't.ex. Hey Blue',
       wakeWordListening: 'Lyssnar efter väckningsord...',
       wakeWordIdle: 'Lyssnar inte',
       state: {
@@ -11925,7 +11925,7 @@ export default {
       wakeWordTitle: '唤醒词检测',
       wakeWordEnable: '启用',
       wakeWordLabel: '唤醒词',
-      wakeWordPlaceholder: '例如：hey echo',
+      wakeWordPlaceholder: '例如：Hey Blue',
       wakeWordListening: '正在监听唤醒词...',
       wakeWordIdle: '未在监听',
       state: {
@@ -12085,7 +12085,7 @@ export default {
       wakeWordTitle: '喚醒詞偵測',
       wakeWordEnable: '啟用',
       wakeWordLabel: '喚醒詞',
-      wakeWordPlaceholder: '例如：hey echo',
+      wakeWordPlaceholder: '例如：Hey Blue',
       wakeWordListening: '正在監聽喚醒詞...',
       wakeWordIdle: '未在監聽',
       state: {
