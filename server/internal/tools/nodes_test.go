@@ -153,3 +153,28 @@ func TestNodesToolSupportsNestedCamelCaseArgs(t *testing.T) {
 		t.Fatalf("unexpected execution: %#v serviceRun=%q", execution, svc.runID)
 	}
 }
+
+func TestNodesToolDefinitionIncludesArrayItems(t *testing.T) {
+	tool := NewNodesTool(&stubNodesService{})
+	props := tool.Definition().Parameters["properties"].(map[string]interface{})
+
+	for _, key := range []string{"nodes", "connections"} {
+		schema := props[key].(map[string]interface{})
+		items, ok := schema["items"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("%s.items missing from schema: %#v", key, schema)
+		}
+		if items["type"] != "object" {
+			t.Fatalf("%s.items.type = %#v, want object", key, items["type"])
+		}
+	}
+
+	tags := props["tags"].(map[string]interface{})
+	tagItems, ok := tags["items"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("tags.items missing from schema: %#v", tags)
+	}
+	if tagItems["type"] != "string" {
+		t.Fatalf("tags.items.type = %#v, want string", tagItems["type"])
+	}
+}

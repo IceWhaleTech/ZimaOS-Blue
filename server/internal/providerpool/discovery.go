@@ -265,7 +265,6 @@ func filterTrialModels(models []*Model) []*Model {
 			strings.Contains(lower, "opus") ||
 			strings.Contains(lower, "haiku") ||
 			strings.Contains(lower, "sonnet") ||
-			strings.Contains(lower, "codex") ||
 			strings.Contains(lower, "glm") ||
 			strings.Contains(lower, "qwen") ||
 			strings.Contains(lower, "k2.5") ||

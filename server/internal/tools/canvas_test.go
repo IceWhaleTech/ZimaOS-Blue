@@ -142,3 +142,37 @@ func TestCanvasToolExecuteAction(t *testing.T) {
 		t.Fatalf("unexpected action result: %#v", actionResult)
 	}
 }
+
+func TestCanvasToolDefinitionIncludesArrayItems(t *testing.T) {
+	tool := NewCanvasTool(a2ui.NewManager(zap.NewNop()))
+	props := tool.Definition().Parameters["properties"].(map[string]interface{})
+	components := props["components"].(map[string]interface{})
+	items, ok := components["items"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("components.items missing from schema: %#v", components)
+	}
+	if items["type"] != "object" {
+		t.Fatalf("components.items.type = %#v, want object", items["type"])
+	}
+}
+
+func TestCanvasToolSchemaCompressionPreservesArrayItems(t *testing.T) {
+	router := DefaultToolRouter()
+	router.DynamicExposure = false
+
+	def := NewCanvasTool(a2ui.NewManager(zap.NewNop())).Definition()
+	routed := router.Route("create canvas", "auto", []ToolDefinition{def})
+	if len(routed) != 1 {
+		t.Fatalf("expected 1 routed tool, got %d", len(routed))
+	}
+
+	props := routed[0].Parameters["properties"].(map[string]interface{})
+	components := props["components"].(map[string]interface{})
+	items, ok := components["items"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("compressed components.items missing from schema: %#v", components)
+	}
+	if items["type"] != "object" {
+		t.Fatalf("compressed components.items.type = %#v, want object", items["type"])
+	}
+}
