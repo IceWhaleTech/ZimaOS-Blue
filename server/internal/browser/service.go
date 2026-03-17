@@ -193,7 +193,7 @@ func (s *RodService) OpenTab(ctx context.Context, url string) (*Tab, error) {
 	}
 
 	// Wait for page to load
-	err = page.WaitLoad()
+	err = page.Timeout(timeout).WaitLoad()
 	if err != nil {
 		s.pool.ReleasePage(page, browser)
 		return nil, err
@@ -340,7 +340,7 @@ func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*Navig
 	case "domcontentloaded":
 		err = tab.page.WaitDOMStable(timeout, 0.5)
 	default: // "load" or empty
-		err = tab.page.WaitLoad()
+		err = tab.page.Timeout(timeout).WaitLoad()
 	}
 	if err != nil {
 		return nil, err
@@ -393,7 +393,7 @@ func (s *RodService) Screenshot(ctx context.Context, req *ScreenshotRequest) (*S
 		return nil, err
 	}
 
-	err = page.WaitLoad()
+	err = page.Timeout(timeout).WaitLoad()
 	if err != nil {
 		return nil, err
 	}
@@ -493,7 +493,7 @@ func (s *RodService) PDF(ctx context.Context, req *PDFRequest) (*PDFResponse, er
 		return nil, err
 	}
 
-	err = page.WaitLoad()
+	err = page.Timeout(timeout).WaitLoad()
 	if err != nil {
 		return nil, err
 	}
@@ -627,7 +627,7 @@ func (s *RodService) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeRes
 		return nil, err
 	}
 
-	err = page.WaitLoad()
+	err = page.Timeout(timeout).WaitLoad()
 	if err != nil {
 		return nil, err
 	}
@@ -833,7 +833,7 @@ func (s *RodService) Automate(ctx context.Context, req *AutomateRequest) (*Autom
 		return nil, err
 	}
 
-	err = page.WaitLoad()
+	err = page.Timeout(timeout).WaitLoad()
 	if err != nil {
 		return nil, err
 	}
