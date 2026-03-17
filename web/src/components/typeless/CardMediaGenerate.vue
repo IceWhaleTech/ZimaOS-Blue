@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { TypelessCardMediaGenerate, GalleryImage } from '@/types/typeless'
 import { useI18n } from 'vue-i18n'
+import { authFetch } from '@/api/client'
 
 const props = defineProps<{
   card: TypelessCardMediaGenerate
@@ -36,7 +37,7 @@ function getImageSrc(image: GalleryImage): string {
 async function pollTask() {
   if (!props.card.task_id || !isGenerating.value) return
   try {
-    const resp = await fetch(`/api/v1/media/tasks/${props.card.task_id}`)
+    const resp = await authFetch(`/api/v1/media/tasks/${props.card.task_id}`)
     if (!resp.ok) return
     const task = await resp.json()
     if (task.status === 'succeeded' && task.response?.data?.length > 0) {

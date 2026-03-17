@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/labstack/echo/v4"
@@ -116,6 +117,7 @@ type Handler struct {
 	events      []SecurityEvent
 	settings    SecuritySettings
 	dataDir     string // Data directory for system checks
+	kv          kvstore.Store
 	promptGuard *promptguard.Detector
 	firewall    PromptFirewallConfig
 
@@ -168,6 +170,13 @@ func (h *Handler) SetDataDir(dataDir string) {
 	h.dataDir = dataDir
 	h.loadPromptFirewallLocked()
 	h.applyPromptFirewallLocked()
+}
+
+// SetKVStore sets the shared kvstore used for persisting security config.
+func (h *Handler) SetKVStore(kv kvstore.Store) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.kv = kv
 }
 
 // SetStorage sets the storage backend for persistence.

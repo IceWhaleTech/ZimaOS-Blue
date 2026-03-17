@@ -2,12 +2,13 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/labstack/echo/v4"
 )
 
 // ConfigHandler handles configuration-related API endpoints
@@ -92,12 +93,12 @@ func (h *ConfigHandler) Reload(c echo.Context) error {
 
 // ConfigStatusResponse represents the config status response
 type ConfigStatusResponse struct {
-	Enabled       bool      `json:"enabled"`
-	ConfigPath    string    `json:"config_path"`
-	LastReload    time.Time `json:"last_reload"`
-	ReloadCount   int64     `json:"reload_count"`
-	IsReloading   bool      `json:"is_reloading"`
-	LastError     string    `json:"last_error,omitempty"`
+	Enabled     bool      `json:"enabled"`
+	ConfigPath  string    `json:"config_path"`
+	LastReload  time.Time `json:"last_reload"`
+	ReloadCount int64     `json:"reload_count"`
+	IsReloading bool      `json:"is_reloading"`
+	LastError   string    `json:"last_error,omitempty"`
 }
 
 // Status handles GET /api/v1/config/status
@@ -145,6 +146,9 @@ func (h *ConfigHandler) GetSection(c echo.Context) error {
 	name := c.Param("name")
 	data, err := h.configStore.GetSection(name)
 	if err != nil {
+		if errors.Is(err, config.ErrInvalidSection) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid config section", "section": name})
+		}
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "section not found", "section": name})
 	}
 	return c.JSONBlob(http.StatusOK, data)
@@ -165,6 +169,9 @@ func (h *ConfigHandler) SetSection(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 	}
 	if err := h.configStore.SetSection(name, body); err != nil {
+		if errors.Is(err, config.ErrInvalidSection) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid config section", "section": name})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"success": true, "section": name})

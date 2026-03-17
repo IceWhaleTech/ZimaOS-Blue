@@ -82,13 +82,18 @@ func getContextString(c echo.Context, key, defaultValue string) string {
 
 // RegisterRoutes registers the companion API routes.
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
-	// Register under /api/v1/companion
-	g := e.Group("/api/v1/companion")
-	h.registerCompanionRoutes(g)
+	h.RegisterGroupRoutes(e.Group("/api/v1"))
+	h.RegisterCompatGroupRoutes(e.Group("/api"))
+}
 
-	// Also register under /api/companion for frontend compatibility
-	g2 := e.Group("/api/companion")
-	h.registerCompanionRoutes(g2)
+// RegisterGroupRoutes registers companion routes on an existing API group.
+func (h *Handler) RegisterGroupRoutes(g *echo.Group) {
+	h.registerCompanionRoutes(g.Group("/companion"))
+}
+
+// RegisterCompatGroupRoutes registers frontend-compatible companion routes.
+func (h *Handler) RegisterCompatGroupRoutes(g *echo.Group) {
+	h.registerCompanionRoutes(g.Group("/companion"))
 }
 
 // registerCompanionRoutes registers companion routes on a group.

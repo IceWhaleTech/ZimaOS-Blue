@@ -3,10 +3,19 @@ import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
-const { setupFormFillerWidget, cleanupFormFillerWidget } = vi.hoisted(() => ({
-  setupFormFillerWidget: vi.fn(),
-  cleanupFormFillerWidget: vi.fn(),
-}))
+const { setupFormFillerWidget, cleanupFormFillerWidget, previewStoreState, settingsStoreState } =
+  vi.hoisted(() => ({
+    setupFormFillerWidget: vi.fn(),
+    cleanupFormFillerWidget: vi.fn(),
+    previewStoreState: {
+      isPreviewMode: false,
+    },
+    settingsStoreState: {
+      closeBehavior: 'quit',
+      claudeCodeEnabled: false,
+      claudeCodeEnabledLoaded: true,
+    },
+  }))
 
 vi.mock('@/composables/useFormFillerWidget', () => ({
   useFormFillerWidget: () => ({
@@ -23,15 +32,11 @@ vi.mock('@/composables/useTauri', () => ({
 }))
 
 vi.mock('@/stores/preview', () => ({
-  usePreviewStore: () => ({
-    isPreviewMode: false,
-  }),
+  usePreviewStore: () => previewStoreState,
 }))
 
 vi.mock('@/stores/settings', () => ({
-  useSettingsStore: () => ({
-    closeBehavior: 'quit',
-  }),
+  useSettingsStore: () => settingsStoreState,
 }))
 
 vi.mock('@/components/AppSidebar.vue', () => ({
@@ -59,6 +64,13 @@ vi.mock('@/components/typeless/FullscreenModal.vue', () => ({
   default: {
     name: 'FullscreenModal',
     template: '<div class="fullscreen-modal-stub" />',
+  },
+}))
+
+vi.mock('@/components/voicewake/GlobalVoiceWakeBanner.vue', () => ({
+  default: {
+    name: 'GlobalVoiceWakeBanner',
+    template: '<div class="global-voicewake-banner-stub" />',
   },
 }))
 
@@ -99,6 +111,9 @@ async function mountLayout(path: string) {
 describe('DefaultLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    previewStoreState.isPreviewMode = false
+    settingsStoreState.claudeCodeEnabled = false
+    settingsStoreState.claudeCodeEnabledLoaded = true
   })
 
   it('does not render the mobile nav button for desktop browsers', async () => {
@@ -148,6 +163,21 @@ describe('DefaultLayout', () => {
     const wrapper = await mountLayout('/chat')
 
     expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('renders preview onboarding on the chat route when preview mode is active and enhanced mode is disabled', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+    )
+    previewStoreState.isPreviewMode = true
+    settingsStoreState.claudeCodeEnabled = false
+    settingsStoreState.claudeCodeEnabledLoaded = true
+
+    const wrapper = await mountLayout('/chat')
+
+    expect(wrapper.find('.preview-onboarding-modal-stub').exists()).toBe(true)
 
     wrapper.unmount()
   })

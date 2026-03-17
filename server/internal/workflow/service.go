@@ -7,21 +7,21 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // WorkflowService implements the Service interface.
 type WorkflowService struct {
-	config     *Config
-	repo       *Repository
-	engine     *Engine
-	cron       *cron.Cron
-	cronJobs   map[string]cron.EntryID
-	cronMu     sync.RWMutex
-	webhooks   map[string]string // path -> workflowID
-	webhookMu  sync.RWMutex
+	config    *Config
+	repo      *Repository
+	engine    *Engine
+	cron      *cron.Cron
+	cronJobs  map[string]cron.EntryID
+	cronMu    sync.RWMutex
+	webhooks  map[string]string // path -> workflowID
+	webhookMu sync.RWMutex
 }
 
 // NewService creates a new workflow service.
@@ -273,6 +273,9 @@ func (s *WorkflowService) GetExecution(ctx context.Context, id string) (*Executi
 	// Try engine first (for running executions)
 	execution, err := s.engine.GetExecution(id)
 	if err == nil {
+		if tenantID := workflowTenantFromContext(ctx); tenantID != "" && execution.TenantID != "" && execution.TenantID != tenantID {
+			return nil, ErrExecutionNotFound
+		}
 		return execution, nil
 	}
 
@@ -287,13 +290,18 @@ func (s *WorkflowService) ListExecutions(ctx context.Context, workflowID string,
 
 // CancelExecution cancels a running execution.
 func (s *WorkflowService) CancelExecution(ctx context.Context, id string) error {
-	err := s.engine.CancelExecution(id)
+	execution, err := s.GetExecution(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	err = s.engine.CancelExecution(id)
 	if err != nil {
 		return err
 	}
 
 	// Update in repository
-	execution, err := s.repo.GetExecution(ctx, id)
+	execution, err = s.repo.GetExecution(ctx, id)
 	if err != nil {
 		return nil // Execution might not be persisted yet
 	}

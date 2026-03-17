@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
+import { nextTick } from 'vue'
 
 import CardBrowserProgress from '@/components/typeless/CardBrowserProgress.vue'
 
@@ -42,6 +43,7 @@ describe('CardBrowserProgress', () => {
   it('translates known browser steps including screenshots and recipes', () => {
     const wrapper = mount(CardBrowserProgress, {
       props: {
+        uiStateKey: 'browser-progress-summary-collapsed',
         card: {
           type: 'browser-progress',
           steps: [
@@ -64,6 +66,38 @@ describe('CardBrowserProgress', () => {
     })
 
     expect(wrapper.text()).toContain('浏览器进度')
+    expect(wrapper.text()).not.toContain('正在启动浏览器')
+    expect(wrapper.text()).not.toContain('正在截取屏幕截图')
+  })
+
+  it('expands to show translated browser steps including screenshots and recipes', async () => {
+    const wrapper = mount(CardBrowserProgress, {
+      props: {
+        uiStateKey: 'browser-progress-summary-expanded',
+        card: {
+          type: 'browser-progress',
+          steps: [
+            { step: 'start', name: 'Starting browser', status: 'success' },
+            { step: 'navigate', name: 'Navigating', status: 'running' },
+            { step: 'snapshot', name: 'Reading page', status: 'pending' },
+            { step: 'screenshot', name: 'Capturing screenshot', status: 'success' },
+            {
+              step: 'recipe',
+              name: 'Running login recipe',
+              status: 'running',
+              recipe_name: 'login recipe',
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    await wrapper.get('button').trigger('click')
+    await nextTick()
+
     expect(wrapper.text()).toContain('正在启动浏览器')
     expect(wrapper.text()).toContain('正在导航')
     expect(wrapper.text()).toContain('正在读取页面')
@@ -73,9 +107,10 @@ describe('CardBrowserProgress', () => {
     expect(wrapper.text()).not.toContain('Capturing screenshot')
   })
 
-  it('translates legacy recipe names by parsing the raw english label', () => {
+  it('translates legacy recipe names by parsing the raw english label', async () => {
     const wrapper = mount(CardBrowserProgress, {
       props: {
+        uiStateKey: 'browser-progress-summary-recipe',
         card: {
           type: 'browser-progress',
           steps: [{ step: 'recipe', name: 'Running login recipe', status: 'running' }],
@@ -86,12 +121,15 @@ describe('CardBrowserProgress', () => {
       },
     })
 
+    await wrapper.get('button').trigger('click')
+    await nextTick()
     expect(wrapper.text()).toContain('正在运行 login recipe')
   })
 
-  it('falls back to raw step names for unknown ids', () => {
+  it('falls back to raw step names for unknown ids', async () => {
     const wrapper = mount(CardBrowserProgress, {
       props: {
+        uiStateKey: 'browser-progress-summary-fallback',
         card: {
           type: 'browser-progress',
           steps: [{ step: 'download', name: 'Downloading assets', status: 'running' }],
@@ -102,6 +140,41 @@ describe('CardBrowserProgress', () => {
       },
     })
 
+    await wrapper.get('button').trigger('click')
+    await nextTick()
     expect(wrapper.text()).toContain('Downloading assets')
+  })
+
+  it('keeps the detailed view expanded across streaming updates', async () => {
+    const wrapper = mount(CardBrowserProgress, {
+      props: {
+        uiStateKey: 'browser-progress-summary-persist',
+        card: {
+          type: 'browser-progress',
+          steps: [{ step: 'navigate', name: 'Navigating', status: 'running' }],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    await wrapper.get('button').trigger('click')
+    await nextTick()
+    expect(wrapper.text()).toContain('正在导航')
+
+    await wrapper.setProps({
+      card: {
+        type: 'browser-progress',
+        steps: [
+          { step: 'navigate', name: 'Navigating', status: 'success' },
+          { step: 'snapshot', name: 'Reading page', status: 'running' },
+        ],
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.text()).toContain('正在读取页面')
+    expect(wrapper.text()).toContain('正在导航')
   })
 })

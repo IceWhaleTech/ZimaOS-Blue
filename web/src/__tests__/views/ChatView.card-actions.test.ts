@@ -58,6 +58,7 @@ const mocks = vi.hoisted(() => ({
     unpinConversation: vi.fn(),
     continueMessage: vi.fn(),
     regenerateMessage: vi.fn(),
+    editMessageAndResubmit: vi.fn(),
     injectMessage: vi.fn(),
     warmupConversation: vi.fn(),
     resetWarmup: vi.fn(),
@@ -384,8 +385,20 @@ function findButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
   return wrapper.findAll('button').find((button) => button.text().includes(text))
 }
 
+async function expandCardById(wrapper: ReturnType<typeof mount>, cardId: string) {
+  const toggle = wrapper.get(`[id="${cardId}"] button`)
+  if (toggle.attributes('aria-expanded') !== 'true') {
+    await toggle.trigger('click')
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+  }
+}
+
 describe('ChatView page-level card actions', () => {
   beforeEach(() => {
+    delete (globalThis as Record<string, unknown>).__zima_chat_card_disclosure_state_v1__
+
     Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true })
     Object.defineProperty(window.navigator, 'userAgent', { value: 'desktop', configurable: true })
     Object.defineProperty(window.navigator, 'platform', { value: 'MacIntel', configurable: true })
@@ -732,6 +745,7 @@ describe('ChatView page-level card actions', () => {
       })
     )
 
+    await expandCardById(wrapper, WEB_FETCH_CARD_ID)
     const button = findButtonByText(wrapper, 'Use browser')
     expect(button?.exists()).toBe(true)
 
@@ -874,6 +888,7 @@ describe('ChatView page-level card actions', () => {
       },
     ])
 
+    await expandCardById(wrapper, WEB_FETCH_CARD_ID)
     const useBrowserButton = findButtonByText(wrapper, 'Use browser')
     const extractButton = findButtonByText(wrapper, 'Extract readable content')
 
@@ -950,6 +965,7 @@ describe('ChatView page-level card actions', () => {
       })
     )
 
+    await expandCardById(wrapper, WEB_FETCH_CARD_ID)
     const useBrowserButton = findButtonByText(wrapper, 'Use browser')
     expect(useBrowserButton?.exists()).toBe(true)
 

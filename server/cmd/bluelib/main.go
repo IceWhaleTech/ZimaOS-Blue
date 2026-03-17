@@ -439,6 +439,15 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if updatedCfg, err := cfgStore.LoadOrImport(cfg); err == nil {
 		cfg = updatedCfg
 	}
+	if result, migrateErr := server.MigrateLegacyProviderSettings(context.Background(), configKV, dataDir); migrateErr != nil {
+		zapLogger.Warn("Failed to migrate legacy provider settings into config store", zap.Error(migrateErr))
+	} else if result != nil {
+		fields := []zap.Field{zap.String("source", result.SourcePath)}
+		if result.ArchivedPath != "" {
+			fields = append(fields, zap.String("archived_path", result.ArchivedPath))
+		}
+		zapLogger.Info("Legacy provider settings imported into config store", fields...)
+	}
 	if cfg.Performance.Database.CheckpointInterval > 0 {
 		dbutil.StartPeriodicWALCheckpoint(
 			ctx,

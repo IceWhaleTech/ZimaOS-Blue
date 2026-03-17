@@ -63,26 +63,9 @@ func NewTunnelHandler(configProvider ngrok.ConfigProvider, serverPort int) *Tunn
 
 // RegisterRoutes registers tunnel routes.
 func (h *TunnelHandler) RegisterRoutes(e *echo.Echo) {
-	g := e.Group("/api/v1/tunnel")
+	h.RegisterGroupRoutes(e.Group("/api/v1"))
 
-	// Provider info
-	g.GET("/providers", h.GetProviders)
-
-	// Tunnel endpoints
-	g.POST("/start", h.StartTunnel)
-	g.POST("/stop", h.StopTunnel)
-	g.GET("/status", h.GetTunnelStatus)
-	g.GET("/qrcode", h.GetQRCode)
-
-	// Configuration endpoints
-	g.GET("/config", h.GetTunnelConfig)
-	g.PUT("/config", h.UpdateTunnelConfig)
-	g.GET("/logs", h.GetTunnelLogs)
-
-	// Diagnostic endpoints
-	g.GET("/diagnostics", h.GetDiagnostics)
-
-	// Also register under old path for backwards compatibility
+	// Also register under old path for backwards compatibility.
 	old := e.Group("/api/v1/remote-access")
 	old.GET("/providers", h.GetProviders)
 	old.POST("/start", h.StartTunnel)
@@ -93,6 +76,28 @@ func (h *TunnelHandler) RegisterRoutes(e *echo.Echo) {
 	old.PUT("/config", h.UpdateTunnelConfig)
 	old.GET("/logs", h.GetTunnelLogs)
 	old.GET("/diagnostics", h.GetDiagnostics)
+}
+
+// RegisterGroupRoutes registers tunnel routes on an existing API group.
+func (h *TunnelHandler) RegisterGroupRoutes(g *echo.Group) {
+	tunnelGroup := g.Group("/tunnel")
+
+	// Provider info
+	tunnelGroup.GET("/providers", h.GetProviders)
+
+	// Tunnel endpoints
+	tunnelGroup.POST("/start", h.StartTunnel)
+	tunnelGroup.POST("/stop", h.StopTunnel)
+	tunnelGroup.GET("/status", h.GetTunnelStatus)
+	tunnelGroup.GET("/qrcode", h.GetQRCode)
+
+	// Configuration endpoints
+	tunnelGroup.GET("/config", h.GetTunnelConfig)
+	tunnelGroup.PUT("/config", h.UpdateTunnelConfig)
+	tunnelGroup.GET("/logs", h.GetTunnelLogs)
+
+	// Diagnostic endpoints
+	tunnelGroup.GET("/diagnostics", h.GetDiagnostics)
 }
 
 // GetProviders returns available tunnel providers.
@@ -507,5 +512,3 @@ func (h *TunnelHandler) GetDiagnostics(c echo.Context) error {
 		"diagnostics": diagnostics,
 	})
 }
-
-

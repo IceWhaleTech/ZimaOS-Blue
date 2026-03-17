@@ -247,7 +247,7 @@ export default {
     dashboard: '대시보드',
     settings: '설정',
     system: '시스템',
-    plugins: '플러그인',
+    plugins: '확장 기능',
     profile: '프로필',
     homeAssistant: 'Home Assistant',
     browserAutomation: '브라우저 자동화',
@@ -307,6 +307,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: '계속하려면 확인을 기다리는 중입니다',
+    assistantStatus: {
+      searchingWeb: '웹을 검색하는 중입니다',
+      browsingWeb: '웹을 탐색하는 중입니다',
+      readingWeb: '웹페이지를 읽는 중입니다',
+      readingWebSite: '{site}를 읽는 중입니다',
+      usingTools: '도구를 사용하는 중입니다',
+    },
     execDirectoryApprovalTimeout:
       '디렉터리 승인 시간이 초과되어 명령 실행이 차단되었습니다. 디렉터리를 승인한 뒤 다시 시도해 주세요.',
     streamProgress: {
@@ -515,9 +523,10 @@ export default {
     },
     // 향상 모드
     enhancedMode: '향상 모드',
-    enhancedModeDesc: '향상 모드: 스킬, 도구 호출, 파일 작업, 코드 실행 등을 지원합니다',
+    enhancedModeDesc: '선택형 향상이 켜졌습니다: 사용 경험이 더 좋습니다.',
     enableEnhancedMode: '향상 모드 활성화',
-    enableEnhancedModeDesc: '향상 모드를 활성화하여 스킬, 도구 호출, 파일 작업 등을 이용하세요',
+    enableEnhancedModeDesc:
+      '이것은 선택형 향상입니다. 꺼도 기본 채팅과 Agent 사용에는 영향이 없고, 켜면 사용 경험이 더 좋아집니다.',
     showToolDetails: '작업 세부 정보 표시',
     hideToolDetails: '작업 세부 정보 숨기기',
     toolDetailExpand: '출력 펼치기',
@@ -803,7 +812,7 @@ export default {
   },
   plugins: {
     ...enUS.plugins,
-    title: '플러그인',
+    title: '확장 기능',
     subtitle: '스킬, 확장 기능 및 도구용 플러그인 관리',
     refresh: '새로고침',
     totalPlugins: '총 플러그인',
@@ -1797,6 +1806,7 @@ export default {
       searchResults: '검색 결과（{count}）',
     },
     search: {
+      summaryTitle: '웹 검색',
       resultsTitle: '검색 결과',
       resultsCount: '「{query}」 결과 {count}건',
       sourceInstalled: '설치됨',
@@ -2939,6 +2949,15 @@ export default {
       loadFailed: '사용자 로드에 실패했습니다',
       passwordResetFailed: '비밀번호 재설정에 실패했습니다',
     },
+
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': '확장 기능 접근',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': '확장 기능',
+    },
   },
   speech: {
     ...enUS.speech,
@@ -3463,6 +3482,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: '사용자 정의 데이터 마스킹 규칙',
+    builtinMaskingRules: '기본 제공 규칙',
+    builtinMaskingEmpty: '기본 제공 규칙이 로드되지 않았습니다.',
+    customMaskingListTitle: '사용자 정의 규칙',
+    customMaskingEmpty:
+      '아직 사용자 정의 규칙이 없습니다. 아래 양식으로 내부 ID 또는 독점 비밀을 보호하세요.',
+    customMaskingDesc:
+      '내부 ID, 비밀값 또는 비즈니스 전용 필드에 대한 정규식 기반 규칙을 추가합니다.',
+    customMaskingNameLabel: '이름',
+    customMaskingNamePlaceholder: '예: 내부 티켓 번호',
+    customMaskingDirectionLabel: '방향',
+    customMaskingPatternLabel: '정규식 패턴',
+    customMaskingPatternPlaceholder: '예: TKT-\\d{6}',
+    customMaskingReplacementLabel: '대체 텍스트',
+    customMaskingReplacementPlaceholder: '예: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      '유효한 정규식을 사용하세요. 대체 텍스트의 {maskLabel} 는 현지화된 마스킹 라벨을 유지합니다.',
+    customMaskingAdd: '규칙 추가',
+    customMaskingAddSuccess: '사용자 정의 마스킹 규칙이 추가되었습니다.',
+    customMaskingAddError: '사용자 정의 마스킹 규칙을 추가하지 못했습니다.',
+    customMaskingDeleteConfirm: '사용자 정의 마스킹 규칙 "{name}"을(를) 삭제할까요?',
+    customMaskingDeleteSuccess: '사용자 정의 마스킹 규칙이 삭제되었습니다.',
+    customMaskingDeleteError: '사용자 정의 마스킹 규칙을 삭제하지 못했습니다.',
     maskingRuleList: '규칙 목록',
     maskingCategories: {
       pii: '개인정보(PII)',
@@ -3819,6 +3861,16 @@ export default {
     otherPlaceholder: '답변을 입력하세요...',
     timeout: '{seconds}초 후 자동 닫힘',
     answered: '답변 완료',
+  },
+  browserProgress: {
+    title: '브라우저 진행 상황',
+    steps: {
+      start: '브라우저를 시작하는 중입니다',
+      navigate: '이동하는 중입니다',
+      snapshot: '페이지를 읽는 중입니다',
+      screenshot: '스크린샷을 캡처하는 중입니다',
+      recipe: '{recipe}를 실행하는 중입니다',
+    },
   },
   thinking: {
     title: '컨텍스트',

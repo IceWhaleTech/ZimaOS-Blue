@@ -1,6 +1,7 @@
 import { ref, readonly, computed } from 'vue'
 import { systemApi } from '@/api/system'
 import { isCurrentHostLoopback, isLocalAbsolutePath } from '@/utils/localPath'
+import { isProtectedResourceUrl, openProtectedResource } from '@/utils/protectedResource'
 
 // Declare the desktop marker type for TypeScript
 declare global {
@@ -81,8 +82,7 @@ export function useTauri() {
       const downloadUrl = await resolveLocalFileDownloadURL(trimmedUrl)
       if (downloadUrl) {
         try {
-          window.open(downloadUrl, '_blank')
-          return true
+          return await openProtectedResource(downloadUrl)
         } catch (e) {
           console.error('Failed to open local file download URL:', e)
         }
@@ -90,6 +90,15 @@ export function useTauri() {
 
       if (!isTauriApp.value) {
         // In web mode, local absolute filesystem paths are not valid browser URLs.
+        return false
+      }
+    }
+
+    if (isProtectedResourceUrl(trimmedUrl)) {
+      try {
+        return await openProtectedResource(trimmedUrl)
+      } catch (e) {
+        console.error('Failed to open protected URL in browser:', e)
         return false
       }
     }

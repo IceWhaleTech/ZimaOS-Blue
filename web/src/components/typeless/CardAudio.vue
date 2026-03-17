@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import type { TypelessCardAudio } from '@/types/typeless'
+import { createProtectedObjectUrl, isProtectedResourceUrl } from '@/utils/protectedResource'
 
 const props = defineProps<{
   card: TypelessCardAudio
@@ -10,6 +11,40 @@ const audioRef = ref<HTMLAudioElement | null>(null)
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(props.card.duration || 0)
+const audioSrc = ref('')
+
+let audioObjectUrl = ''
+let audioLoadSeq = 0
+
+function revokeAudioObjectUrl() {
+  if (!audioObjectUrl) return
+  URL.revokeObjectURL(audioObjectUrl)
+  audioObjectUrl = ''
+}
+
+async function resolveAudioSrc() {
+  const rawSrc = String(props.card.src || '').trim()
+  const seq = ++audioLoadSeq
+
+  audioSrc.value = ''
+  revokeAudioObjectUrl()
+
+  if (!rawSrc) return
+  if (!isProtectedResourceUrl(rawSrc)) {
+    audioSrc.value = rawSrc
+    return
+  }
+
+  const objectUrl = await createProtectedObjectUrl(rawSrc)
+  if (!objectUrl) return
+  if (seq !== audioLoadSeq) {
+    URL.revokeObjectURL(objectUrl)
+    return
+  }
+
+  audioObjectUrl = objectUrl
+  audioSrc.value = objectUrl
+}
 
 function togglePlay() {
   if (!audioRef.value) return
@@ -17,9 +52,18 @@ function togglePlay() {
   if (isPlaying.value) {
     audioRef.value.pause()
   } else {
-    audioRef.value.play()
+    audioRef.value.play().catch(() => {
+      isPlaying.value = false
+    })
   }
-  isPlaying.value = !isPlaying.value
+}
+
+function handlePlay() {
+  isPlaying.value = true
+}
+
+function handlePause() {
+  isPlaying.value = false
 }
 
 function handleTimeUpdate() {
@@ -58,10 +102,19 @@ const progress = computed(() => {
   return (currentTime.value / duration.value) * 100
 })
 
+watch(
+  () => props.card.src,
+  () => {
+    void resolveAudioSrc()
+  },
+  { immediate: true }
+)
+
 onUnmounted(() => {
   if (audioRef.value) {
     audioRef.value.pause()
   }
+  revokeAudioObjectUrl()
 })
 </script>
 
@@ -149,7 +202,9 @@ onUnmounted(() => {
     <!-- Hidden audio element -->
     <audio
       ref="audioRef"
-      :src="card.src"
+      :src="audioSrc"
+      @play="handlePlay"
+      @pause="handlePause"
       @timeupdate="handleTimeUpdate"
       @loadedmetadata="handleLoadedMetadata"
       @ended="handleEnded"

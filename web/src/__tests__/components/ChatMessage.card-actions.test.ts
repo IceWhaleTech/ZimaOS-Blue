@@ -125,6 +125,16 @@ function findButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
   return wrapper.findAll('button').find((button) => button.text().includes(text))
 }
 
+async function expandCardById(wrapper: ReturnType<typeof mount>, cardId: string) {
+  const toggle = wrapper.get(`[id="${cardId}"] button`)
+  if (toggle.attributes('aria-expanded') !== 'true') {
+    await toggle.trigger('click')
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+  }
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (reason?: unknown) => void
@@ -137,6 +147,8 @@ function createDeferred<T>() {
 
 describe('ChatMessage card actions', () => {
   beforeEach(() => {
+    delete (globalThis as Record<string, unknown>).__zima_chat_card_disclosure_state_v1__
+
     mocks.chatStore.messages = []
     mocks.chatStore.selectedMessageIds = new Set<string>()
     mocks.chatStore.isMultiSelectMode = false
@@ -201,6 +213,7 @@ describe('ChatMessage card actions', () => {
     })
 
     const wrapper = await mountMessage(content)
+    await expandCardById(wrapper, WEB_FETCH_CARD_ID)
     const button = findButtonByText(wrapper, 'Use browser')
 
     expect(button?.exists()).toBe(true)
@@ -247,6 +260,7 @@ describe('ChatMessage card actions', () => {
       '',
       makeTypelessBlock({
         type: 'search',
+        id: 'search-openclaw',
         title: 'OpenClaw Release Notes',
         query: 'OpenClaw recent updates',
         results: [
@@ -266,10 +280,12 @@ describe('ChatMessage card actions', () => {
 
     expect(assistant.exists()).toBe(true)
     expect(assistant.text()).toContain('Web search fallback results for "OpenClaw 最近动向"')
-    expect(assistant.text()).toContain('OpenClaw Release Notes')
     expect(assistant.text()).toContain('工具执行已完成，但最终总结生成失败')
     expect(assistant.text()).toContain('简要摘要')
     expect(assistant.text()).toContain('原始 stdout/stderr/error 字段未包含在这条简要摘要中')
+
+    await expandCardById(wrapper, 'search-openclaw')
+    expect(assistant.text()).toContain('OpenClaw Release Notes')
   })
 
   it('submits browser extract action with browser_target_id and sends the mapped follow-up message', async () => {
@@ -356,11 +372,13 @@ describe('ChatMessage card actions', () => {
     })
 
     const wrapper = await mountMessage(content)
-    const button = findButtonByText(wrapper, 'Use browser')
-
-    expect(button?.exists()).toBe(true)
+    expect(wrapper.find(`[id="${WEB_FETCH_CARD_ID}"]`).exists()).toBe(true)
     expect(wrapper.text()).toContain('Sign in')
     expect(wrapper.text()).toContain('reddit.com')
+
+    await expandCardById(wrapper, WEB_FETCH_CARD_ID)
+    const button = findButtonByText(wrapper, 'Use browser')
+    expect(button?.exists()).toBe(true)
   })
 
   it('shows a loading state and prevents duplicate web-fetch submissions while the action is pending', async () => {
@@ -390,6 +408,7 @@ describe('ChatMessage card actions', () => {
     })
 
     const wrapper = await mountMessage(content)
+    await expandCardById(wrapper, WEB_FETCH_CARD_ID)
     const button = findButtonByText(wrapper, 'Use browser')
 
     expect(button?.exists()).toBe(true)
@@ -573,6 +592,7 @@ describe('ChatMessage card actions', () => {
     })
 
     const wrapper = await mountMessage(content)
+    await expandCardById(wrapper, WEB_FETCH_CARD_ID)
     const button = findButtonByText(wrapper, 'Use browser')
 
     expect(button?.exists()).toBe(true)

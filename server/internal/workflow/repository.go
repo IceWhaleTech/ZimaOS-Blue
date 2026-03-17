@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Repository handles workflow persistence.
@@ -153,8 +153,13 @@ func (r *Repository) CreateWorkflow(ctx context.Context, workflow *Workflow) err
 }
 
 func (r *Repository) GetWorkflow(ctx context.Context, id string) (*Workflow, error) {
+	conds := []interface{}{z.Eq("id", id)}
+	if tenantID := workflowTenantFromContext(ctx); tenantID != "" {
+		conds = append(conds, z.Eq("tenant_id", tenantID))
+	}
+
 	var rows []workflowRow
-	_, err := r.wfTable(ctx).Select(&rows, z.Where(z.Eq("id", id)), z.Limit(1))
+	_, err := r.wfTable(ctx).Select(&rows, z.Where(conds...), z.Limit(1))
 	if err != nil {
 		return nil, err
 	}
@@ -167,13 +172,21 @@ func (r *Repository) GetWorkflow(ctx context.Context, id string) (*Workflow, err
 func (r *Repository) UpdateWorkflow(ctx context.Context, workflow *Workflow) error {
 	workflow.UpdatedAt = timeutil.NowTime()
 	workflow.Version++
+
+	conds := []interface{}{z.Eq("id", workflow.ID)}
+	if tenantID := workflowTenantFromContext(ctx); tenantID != "" {
+		conds = append(conds, z.Eq("tenant_id", tenantID))
+	} else if workflow.TenantID != "" {
+		conds = append(conds, z.Eq("tenant_id", workflow.TenantID))
+	}
+
 	n, err := r.wfTable(ctx).Update(z.V{
 		"name": workflow.Name, "description": workflow.Description, "status": workflow.Status,
 		"nodes": marshalJSON(workflow.Nodes), "connections": marshalJSON(workflow.Connections),
 		"variables": marshalJSON(workflow.Variables), "settings": marshalJSON(workflow.Settings),
 		"tags": marshalJSON(workflow.Tags), "version": workflow.Version,
 		"updated_at": workflow.UpdatedAt, "updated_by": workflow.UpdatedBy,
-	}, z.Where(z.Eq("id", workflow.ID)))
+	}, z.Where(conds...))
 	if err != nil {
 		return err
 	}
@@ -184,7 +197,12 @@ func (r *Repository) UpdateWorkflow(ctx context.Context, workflow *Workflow) err
 }
 
 func (r *Repository) DeleteWorkflow(ctx context.Context, id string) error {
-	n, err := r.wfTable(ctx).Delete(z.Where(z.Eq("id", id)))
+	conds := []interface{}{z.Eq("id", id)}
+	if tenantID := workflowTenantFromContext(ctx); tenantID != "" {
+		conds = append(conds, z.Eq("tenant_id", tenantID))
+	}
+
+	n, err := r.wfTable(ctx).Delete(z.Where(conds...))
 	if err != nil {
 		return err
 	}
@@ -288,8 +306,13 @@ func (r *Repository) SaveExecution(ctx context.Context, execution *Execution) er
 }
 
 func (r *Repository) GetExecution(ctx context.Context, id string) (*Execution, error) {
+	conds := []interface{}{z.Eq("id", id)}
+	if tenantID := workflowTenantFromContext(ctx); tenantID != "" {
+		conds = append(conds, z.Eq("tenant_id", tenantID))
+	}
+
 	var rows []execRow
-	_, err := r.execTable(ctx).Select(&rows, z.Where(z.Eq("id", id)), z.Limit(1))
+	_, err := r.execTable(ctx).Select(&rows, z.Where(conds...), z.Limit(1))
 	if err != nil {
 		return nil, err
 	}
@@ -303,15 +326,19 @@ func (r *Repository) ListExecutions(ctx context.Context, workflowID string, opts
 	if opts == nil {
 		opts = &ListOptions{Limit: 20}
 	}
+	conds := []interface{}{z.Eq("workflow_id", workflowID)}
+	if tenantID := workflowTenantFromContext(ctx); tenantID != "" {
+		conds = append(conds, z.Eq("tenant_id", tenantID))
+	}
 	var total int64
-	_, err := r.execTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(z.Eq("workflow_id", workflowID)))
+	_, err := r.execTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(conds...))
 	if err != nil {
 		return nil, 0, err
 	}
 
 	var rows []execRow
 	_, err = r.execTable(ctx).Select(&rows,
-		z.Where(z.Eq("workflow_id", workflowID)),
+		z.Where(conds...),
 		z.OrderBy("started_at DESC"), z.Limit(opts.Limit, opts.Offset),
 	)
 	if err != nil {
@@ -349,6 +376,11 @@ func (r *Repository) SaveExecutionLog(ctx context.Context, log *ExecutionLog) er
 func (r *Repository) GetExecutionLogs(ctx context.Context, executionID string, opts *ListOptions) ([]*ExecutionLog, int, error) {
 	if opts == nil {
 		opts = &ListOptions{Limit: 100}
+	}
+	if tenantID := workflowTenantFromContext(ctx); tenantID != "" {
+		if _, err := r.GetExecution(withWorkflowTenant(ctx, tenantID), executionID); err != nil {
+			return nil, 0, err
+		}
 	}
 	var total int64
 	_, err := r.logTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(z.Eq("execution_id", executionID)))

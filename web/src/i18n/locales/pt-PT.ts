@@ -110,6 +110,14 @@ export default {
   },
   chat: {
     ...ptBR.chat,
+    awaitingConfirmation: 'A aguardar a sua confirmacao para continuar',
+    assistantStatus: {
+      searchingWeb: 'A pesquisar na web',
+      browsingWeb: 'A navegar na web',
+      readingWeb: 'A ler uma pagina web',
+      readingWebSite: 'A ler {site}',
+      usingTools: 'A usar ferramentas',
+    },
     conversations: 'Conversas',
     execDirectoryApprovalTimeout:
       'A execução do comando foi bloqueada porque a aprovação do diretório expirou. Aprove o diretório e tente novamente.',
@@ -123,6 +131,9 @@ export default {
     },
     featureHintTapToEnable:
       'Funcionalidades opcionais detetadas. Toque para assinalar antes de enviar:',
+    enhancedModeDesc: 'A melhoria opcional está ativada: a experiência é melhor.',
+    enableEnhancedModeDesc:
+      'Esta é uma melhoria opcional: desativá-la não afeta a conversa básica nem a utilização do Agent; ativá-la melhora a experiência.',
     send: 'Enviar',
     sendDuringStream: 'Enviar (adicionar à conversa)',
     responseInterrupted: 'Resposta interrompida',
@@ -300,6 +311,8 @@ export default {
     ...ptBR.plugins,
     subtitle: 'Gerir extensões para habilidades, extensões e ferramentas',
     saveConfiguration: 'Guardar configuração',
+
+    title: 'Extensões',
   },
   profile: {
     ...ptBR.profile,
@@ -619,6 +632,15 @@ export default {
       deleteFailed: 'Falha ao eliminar utilizador',
       passwordResetFailed: 'Falha ao repor palavra-passe',
     },
+
+    pagePermissionDesc: {
+      ...ptBR.users.pagePermissionDesc,
+      'page.plugins': 'Acesso às extensões',
+    },
+    pagePermissions: {
+      ...ptBR.users.pagePermissions,
+      'page.plugins': 'Extensões',
+    },
   },
   speech: {
     ...ptBR.speech,
@@ -832,6 +854,29 @@ export default {
   mediaStats: { ...ptBR.mediaStats },
   apiProxy: {
     ...ptBR.apiProxy,
+    customMaskingTitle: 'Regras personalizadas de mascaramento de dados',
+    builtinMaskingRules: 'Regras integradas',
+    builtinMaskingEmpty: 'Nenhuma regra integrada carregada.',
+    customMaskingListTitle: 'Regras personalizadas',
+    customMaskingEmpty:
+      'Ainda não existem regras personalizadas. Use o formulário abaixo para cobrir IDs internos ou segredos proprietários.',
+    customMaskingDesc:
+      'Adicione regras baseadas em regex para IDs internos, segredos ou campos específicos do negócio.',
+    customMaskingNameLabel: 'Nome',
+    customMaskingNamePlaceholder: 'Exemplo: número interno de ticket',
+    customMaskingDirectionLabel: 'Direção',
+    customMaskingPatternLabel: 'Padrão regex',
+    customMaskingPatternPlaceholder: 'Exemplo: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Texto de substituição',
+    customMaskingReplacementPlaceholder: 'Exemplo: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Use uma expressão regular válida. {maskLabel} no texto de substituição mantém o rótulo de mascaramento localizado.',
+    customMaskingAdd: 'Adicionar regra',
+    customMaskingAddSuccess: 'Regra personalizada de mascaramento adicionada.',
+    customMaskingAddError: 'Falha ao adicionar a regra personalizada de mascaramento.',
+    customMaskingDeleteConfirm: 'Eliminar a regra personalizada de mascaramento "{name}"?',
+    customMaskingDeleteSuccess: 'Regra personalizada de mascaramento eliminada.',
+    customMaskingDeleteError: 'Falha ao eliminar a regra personalizada de mascaramento.',
     maskingRuleList: 'Lista de regras',
     maskingCategories: {
       pii: 'Dados pessoais (PII)',
@@ -1061,6 +1106,16 @@ export default {
     timeout: 'Fecho automático em {seconds}s',
     answered: 'Respondido',
   },
+  browserProgress: {
+    title: 'Progresso do navegador',
+    steps: {
+      start: 'A iniciar navegador',
+      navigate: 'A navegar',
+      snapshot: 'A ler pagina',
+      screenshot: 'A capturar ecra',
+      recipe: 'A executar {recipe}',
+    },
+  },
   thinking: {
     title: 'Contexto',
     context: 'Contexto',
@@ -1069,6 +1124,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Pesquisa web',
     resultCount: '{count} resultados',
   },
   workspace: {

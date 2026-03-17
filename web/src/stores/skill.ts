@@ -46,10 +46,11 @@ export const useSkillStore = defineStore('skill', () => {
   const remoteSkillsBySource = computed(() => {
     const grouped: Record<string, RemoteSkill[]> = {}
     remoteSkills.value.forEach((s) => {
-      if (!grouped[s.source_id]) {
-        grouped[s.source_id] = []
+      const sourceId = s.source_id || 'unknown'
+      if (!grouped[sourceId]) {
+        grouped[sourceId] = []
       }
-      grouped[s.source_id]?.push(s)
+      grouped[sourceId].push(s)
     })
     return grouped
   })

@@ -3,7 +3,6 @@ package memory
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -181,11 +180,9 @@ func (s *MarkdownMemoryStore) getContext(lines []string, index, radius int) []st
 
 // ReadFile reads a Markdown file by relative path.
 func (s *MarkdownMemoryStore) ReadFile(ctx context.Context, relPath string, fromLine, numLines int) (string, error) {
-	fullPath := filepath.Join(s.baseDir, relPath)
-
-	// Security check
-	if !strings.HasPrefix(fullPath, s.baseDir) {
-		return "", fmt.Errorf("invalid path")
+	fullPath, err := resolveMemoryPath(s.baseDir, relPath)
+	if err != nil {
+		return "", err
 	}
 
 	content, err := os.ReadFile(fullPath)

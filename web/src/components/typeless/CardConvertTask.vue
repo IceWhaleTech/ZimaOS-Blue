@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardConvertTask, ConvertTaskOutput } from '@/types/typeless'
 import { useTauri } from '@/composables/useTauri'
+import { authFetch } from '@/api/client'
+import {
+  createProtectedObjectUrl,
+  downloadProtectedResource,
+  isProtectedResourceUrl,
+} from '@/utils/protectedResource'
 
 const { t } = useI18n()
 const { revealInFileManager } = useTauri()
@@ -73,6 +79,14 @@ const successMessageKeyByAction: Record<string, string> = {
 const pollTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const task = ref<TypelessCardConvertTask | null>(null)
 const cancelling = ref(false)
+const downloadingOutputId = ref<string | null>(null)
+const primaryAudioSrc = ref('')
+const primaryVideoSrc = ref('')
+
+let audioPreviewObjectUrl = ''
+let videoPreviewObjectUrl = ''
+let audioPreviewSeq = 0
+let videoPreviewSeq = 0
 
 const displayCard = computed(() => task.value || props.card)
 const outputs = computed(() => displayCard.value.outputs || [])
@@ -95,10 +109,79 @@ interface ConvertOutputLocationResponse {
   parent_path?: string
 }
 
+function revokePreviewObjectUrl(kind: 'audio' | 'video') {
+  if (kind === 'audio' && audioPreviewObjectUrl) {
+    URL.revokeObjectURL(audioPreviewObjectUrl)
+    audioPreviewObjectUrl = ''
+  }
+  if (kind === 'video' && videoPreviewObjectUrl) {
+    URL.revokeObjectURL(videoPreviewObjectUrl)
+    videoPreviewObjectUrl = ''
+  }
+}
+
+async function loadPreviewSource(
+  output: ConvertTaskOutput | undefined,
+  kind: 'audio' | 'video'
+) {
+  const rawUrl = String(output?.download_url || '').trim()
+  const target = kind === 'audio' ? primaryAudioSrc : primaryVideoSrc
+  const seq = kind === 'audio' ? ++audioPreviewSeq : ++videoPreviewSeq
+
+  target.value = ''
+  revokePreviewObjectUrl(kind)
+
+  if (!rawUrl) return
+  if (!isProtectedResourceUrl(rawUrl)) {
+    target.value = rawUrl
+    return
+  }
+
+  try {
+    const objectUrl = await createProtectedObjectUrl(rawUrl)
+    if (!objectUrl) return
+
+    if ((kind === 'audio' ? audioPreviewSeq : videoPreviewSeq) !== seq) {
+      URL.revokeObjectURL(objectUrl)
+      return
+    }
+
+    if (kind === 'audio') {
+      audioPreviewObjectUrl = objectUrl
+    } else {
+      videoPreviewObjectUrl = objectUrl
+    }
+    target.value = objectUrl
+  } catch {
+    target.value = ''
+  }
+}
+
+async function downloadOutput(output: ConvertTaskOutput) {
+  const rawUrl = String(output.download_url || '').trim()
+  if (!rawUrl || downloadingOutputId.value === output.output_id) return
+
+  if (!isProtectedResourceUrl(rawUrl)) {
+    window.open(rawUrl, '_blank')
+    return
+  }
+
+  downloadingOutputId.value = output.output_id
+  try {
+    await downloadProtectedResource(rawUrl, String(output.name || 'download').trim() || 'download')
+  } catch {
+    // ignore download errors so the card stays responsive
+  } finally {
+    if (downloadingOutputId.value === output.output_id) {
+      downloadingOutputId.value = null
+    }
+  }
+}
+
 async function pollTask() {
   if (!props.card.task_id) return
   try {
-    const resp = await fetch(`/api/v1/convert/tasks/${props.card.task_id}`)
+    const resp = await authFetch(`/api/v1/convert/tasks/${props.card.task_id}`)
     if (!resp.ok) return
     const nextTask = (await resp.json()) as TypelessCardConvertTask
     task.value = {
@@ -117,7 +200,7 @@ async function cancelTask() {
   if (!props.card.task_id || cancelling.value) return
   cancelling.value = true
   try {
-    const resp = await fetch(`/api/v1/convert/tasks/${props.card.task_id}/cancel`, {
+    const resp = await authFetch(`/api/v1/convert/tasks/${props.card.task_id}/cancel`, {
       method: 'POST',
     })
     if (!resp.ok) return
@@ -219,21 +302,37 @@ async function revealOutputLocation(output: ConvertTaskOutput) {
   if (!taskID || !outputID) return
 
   try {
-    const resp = await fetch(`/api/v1/convert/tasks/${taskID}/outputs/${outputID}/location`)
+    const resp = await authFetch(`/api/v1/convert/tasks/${taskID}/outputs/${outputID}/location`)
     if (!resp.ok) return
     const data = (await resp.json()) as ConvertOutputLocationResponse
     const path = String(data.path || '').trim()
     if (!path) return
     const revealed = await revealInFileManager(path)
     if (!revealed && output.download_url) {
-      window.open(output.download_url, '_blank')
+      await downloadOutput(output)
     }
   } catch {
     if (output.download_url) {
-      window.open(output.download_url, '_blank')
+      await downloadOutput(output)
     }
   }
 }
+
+watch(
+  () => primaryAudio.value,
+  (output) => {
+    void loadPreviewSource(output, 'audio')
+  },
+  { immediate: true }
+)
+
+watch(
+  () => primaryVideo.value,
+  (output) => {
+    void loadPreviewSource(output, 'video')
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   if (isRunning.value && props.card.task_id) {
@@ -243,6 +342,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPolling()
+  revokePreviewObjectUrl('audio')
+  revokePreviewObjectUrl('video')
 })
 </script>
 
@@ -326,18 +427,18 @@ onUnmounted(() => {
       </div>
 
       <audio
-        v-if="primaryAudio?.download_url"
+        v-if="primaryAudioSrc"
         class="w-full"
         controls
         preload="none"
-        :src="primaryAudio.download_url"
+        :src="primaryAudioSrc"
       />
       <video
-        v-if="primaryVideo?.download_url"
+        v-if="primaryVideoSrc"
         class="w-full rounded bg-black"
         controls
         preload="metadata"
-        :src="primaryVideo.download_url"
+        :src="primaryVideoSrc"
       />
 
       <div v-if="outputs.length > 0" class="space-y-2">
@@ -368,15 +469,18 @@ onUnmounted(() => {
             >
               {{ t('common.openLocation', 'Open location') }}
             </button>
-            <a
+            <button
               v-if="output.download_url"
               class="text-xs px-2.5 py-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 whitespace-nowrap"
-              :href="output.download_url"
-              target="_blank"
-              rel="noreferrer"
+              :disabled="downloadingOutputId === output.output_id"
+              @click="downloadOutput(output)"
             >
-              {{ downloadLabel(output) }}
-            </a>
+              {{
+                downloadingOutputId === output.output_id
+                  ? t('common.downloading', 'Downloading...')
+                  : downloadLabel(output)
+              }}
+            </button>
           </div>
         </div>
       </div>

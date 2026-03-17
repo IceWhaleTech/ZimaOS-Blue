@@ -1,624 +1,1171 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { onSSEEvent, offSSEEvent } from '@/composables/useEventStream'
-import { skillApi, type RemoteSkill, type SearchParams, type SyncStatus } from '@/api/skill'
+import {
+  skillApi,
+  type MarketSearchParams,
+  type MarketplaceSkillDetail,
+  type RemoteSkill,
+  type SecurityBadge,
+  type SkillFiltersResponse,
+  type SkillSecurityEvidence,
+} from '@/api/skill'
+import SemanticSearchField from '@/components/ui/SemanticSearchField.vue'
 
 const { t, te } = useI18n()
 
-const skills = ref<RemoteSkill[]>([])
 const loading = ref(false)
 const loadingMore = ref(false)
+const refreshing = ref(false)
 const error = ref<string | null>(null)
-const initializing = ref(false)
-const searchQuery = ref('')
-const filterCategory = ref<string>('all')
-const sortBy = ref<'downloads' | 'stars' | 'updated' | 'name'>('downloads')
-const categories = ref<string[]>([])
-const installing = ref<Set<string>>(new Set())
-const installProgress = ref<Map<string, number>>(new Map())
+
+const skills = ref<RemoteSkill[]>([])
+const filters = ref<SkillFiltersResponse | null>(null)
 const selectedSkillId = ref<string | null>(null)
+const selectedDetail = ref<MarketplaceSkillDetail | null>(null)
+const detailLoading = ref(false)
 
-const syncing = ref(false)
-const syncProgress = ref<SyncStatus | null>(null)
-let syncPollTimer: ReturnType<typeof setInterval> | null = null
+const searchQuery = ref('')
+const selectedCategory = ref('all')
+const selectedSource = ref('all')
+const selectedRisk = ref('all')
+const curatedOnly = ref(false)
+const installableOnly = ref(false)
+const sortMode = ref<'trending' | 'newest' | 'most_used' | 'featured'>('featured')
 
-const pageSize = 20
-const nextCursor = ref<string | null>(null)
-const hasMore = ref(false)
+const page = ref(1)
+const totalPages = ref(1)
+const totalSkills = ref(0)
+const pageSize = 18
 
-const selectedSkill = computed(() => {
+const installingSkillId = ref<string | null>(null)
+const pendingRiskSkill = ref<RemoteSkill | null>(null)
+
+const selectedSkill = computed<RemoteSkill | null>(() => {
   if (!selectedSkillId.value) return null
-  return skills.value.find((s) => s.id === selectedSkillId.value) || null
+  return skills.value.find((skill) => skill.id === selectedSkillId.value) ?? null
 })
+
+const selectedSecurity = computed(() => selectedDetail.value?.security ?? null)
+const catalogCount = computed(() => totalSkills.value || skills.value.length)
+
+const resultSubtitle = computed(() =>
+  marketplaceText('results.skillsCount', '{count} skills', {
+    count: catalogCount.value,
+  })
+)
+
+const sourceCount = computed(() => filters.value?.sources?.length || 0)
+const installableCount = computed(() => filters.value?.installable?.true || 0)
+const greenBadgeCount = computed(() => {
+  const badge = filters.value?.risk_badges?.find((item) => item.value === 'green')
+  return badge?.count || 0
+})
+const syncHint = computed(() =>
+  marketplaceText(
+    'results.syncHint',
+    'The catalog refreshes automatically once per day. Use Refresh sources when you need immediate updates.'
+  )
+)
+const sortPillOptions = computed(() => [
+  { value: 'featured' as const, label: marketplaceText('sort.featured', 'Featured') },
+  { value: 'trending' as const, label: marketplaceText('sort.trending', 'Trending') },
+  { value: 'newest' as const, label: marketplaceText('sort.newest', 'Newest') },
+  { value: 'most_used' as const, label: marketplaceText('sort.mostUsed', 'Most used') },
+])
 
 watch(
   skills,
-  (list) => {
-    if (!list.length) {
+  (items) => {
+    if (!items.length) {
       selectedSkillId.value = null
+      selectedDetail.value = null
       return
     }
-    if (!selectedSkillId.value || !list.some((s) => s.id === selectedSkillId.value)) {
-      selectedSkillId.value = list[0]!.id
+    if (!selectedSkillId.value || !items.some((item) => item.id === selectedSkillId.value)) {
+      selectedSkillId.value = items[0]!.id
     }
   },
   { immediate: true }
 )
 
-function getCategoryIcon(category?: string): string {
-  const icons: Record<string, string> = {
-    integration: '🔗',
-    productivity: '📊',
-    development: '💻',
-    analytics: '📈',
-    extension: '🧩',
-    utility: '🔧',
-    system: '💻',
-    communication: '💬',
-    information: '📰',
+watch(selectedSkillId, (id) => {
+  if (id) {
+    void fetchSkillDetail(id)
+  } else {
+    selectedDetail.value = null
   }
-  const firstCategory = category?.split(',')[0]?.trim() || ''
-  return icons[firstCategory] || '⚡'
+})
+
+function translate(key: string, fallback: string, params?: Record<string, unknown>) {
+  if (!te(key)) return fallback
+  return params ? t(key, params) : t(key)
 }
 
-function getCategoryLabel(category?: string): string {
-  const cat = (category || 'other').trim()
-  const key = `plugins.categories.${cat}`
-  if (te(key)) return t(key)
-  return category || t('plugins.categories.other')
+function commonText(path: string, fallback: string, params?: Record<string, unknown>) {
+  return translate(`common.${path}`, fallback, params)
 }
 
-function getCategories(category?: string): string[] {
-  if (!category) return []
-  return category
+function skillStoreText(path: string, fallback: string, params?: Record<string, unknown>) {
+  return translate(`skillStore.${path}`, fallback, params)
+}
+
+function marketplaceText(path: string, fallback: string, params?: Record<string, unknown>) {
+  return translate(`skillStore.marketplace.${path}`, fallback, params)
+}
+
+function normalizeSearchQuery(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function normalizeTags(skill?: RemoteSkill | null): string[] {
+  if (!skill?.tags) return []
+  if (Array.isArray(skill.tags)) return skill.tags.filter(Boolean)
+  return skill.tags
     .split(',')
-    .map((c) => c.trim())
-    .filter((c) => c)
+    .map((tag) => tag.trim())
+    .filter(Boolean)
 }
 
-function formatNumber(num?: number): string {
-  if (!num) return '0'
-  if (num >= 1000) return `${(num / 1000).toFixed(1)}k`
-  return num.toString()
+function sourceLabel(skill?: RemoteSkill | null): string {
+  return (
+    skill?.source_name ||
+    skill?.source_group ||
+    skill?.source_id ||
+    marketplaceText('defaultSource', 'Marketplace')
+  )
 }
 
-function formatDate(dateStr?: string): string {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
+function badgeLabelByValue(badge?: SecurityBadge | string): string {
+  const normalized = (badge || 'yellow') as SecurityBadge | string
+  if (normalized === 'green') return marketplaceText('badges.green', 'Green shield')
+  if (normalized === 'red') return marketplaceText('badges.red', 'Blocked')
+  return marketplaceText('badges.yellow', 'Warning')
+}
+
+function badgeLabel(skill?: RemoteSkill | null): string {
+  const badge = (skill?.security_badge || 'yellow') as SecurityBadge | string
+  if (badge === 'green') return marketplaceText('badges.green', 'Green shield')
+  if (badge === 'red') return marketplaceText('badges.red', 'Blocked')
+  return marketplaceText('badges.yellow', 'Warning')
+}
+
+function securityBadgeClass(skill?: RemoteSkill | null): string {
+  return `badge-${skill?.security_badge || 'yellow'}`
+}
+
+function riskLabel(skill?: RemoteSkill | null): string {
+  const value = skill?.risk_level || 'unknown'
+  return marketplaceText(`riskLevels.${value}`, value)
+}
+
+function vulnerabilityLabel(value?: string): string {
+  const fallback: Record<string, string> = {
+    none: 'None',
+    unknown: 'Unknown',
+    suspected: 'Suspected',
+    detected: 'Detected',
+    not_applicable: 'Not applicable',
+  }
+  return marketplaceText(
+    `vulnerabilityStatuses.${value || 'unknown'}`,
+    fallback[value || ''] || value || 'Unknown'
+  )
+}
+
+function categoryLabel(value?: string): string {
+  if (!value) return translate('plugins.categories.other', 'Other')
+  const fallback: Record<string, string> = {
+    ai_intelligence: 'AI Intelligence',
+    development_tools: 'Development Tools',
+    productivity: 'Productivity',
+    data_analysis: 'Data Analysis',
+    content_creation: 'Content Creation',
+    security_compliance: 'Security & Compliance',
+    communication_collaboration: 'Communication & Collaboration',
+    development: 'Development Tools',
+    analytics: 'Data Analysis',
+    communication: 'Communication & Collaboration',
+    system: 'Security & Compliance',
+    utility: 'Productivity',
+    information: 'Data Analysis',
+    integration: 'Development Tools',
+    extension: 'Development Tools',
+  }
+  const key = `plugins.categories.${value}`
+  return te(key) ? t(key) : fallback[value] || value
+}
+
+function formatNumber(value?: number): string {
+  if (!value) return '0'
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`
+  return String(value)
+}
+
+function formatDate(value?: string): string {
+  if (!value) return '-'
+  const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '-'
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-function selectSkill(skill: RemoteSkill) {
-  selectedSkillId.value = skill.id
+function skillUpdatedAt(skill?: RemoteSkill | null): string | undefined {
+  return skill?.updated_at || skill?.last_updated || skill?.synced_at
 }
 
-function openSkillHomepage(skill: RemoteSkill) {
-  const url = skill.homepage || skill.download_url
+function cardDescription(skill: RemoteSkill): string {
+  return skill.description || skill.summary || translate('plugins.noDescription', 'No description')
+}
+
+function openSkillSource(skill?: RemoteSkill | null) {
+  const url = skill?.homepage || skill?.download_url || skill?.source_url
   if (url) {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 }
 
-function renderMarkdown(content: string): string {
-  if (!content) return ''
-
-  let html = content
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/\n\n/g, '</p><p>')
-
-  html = '<p>' + html + '</p>'
-  html = html.replace(/(<li>.*?<\/li>)+/gs, '<ul>$&</ul>')
-  return html
+function buildSearchParams(): MarketSearchParams {
+  const params: MarketSearchParams = {
+    q: normalizeSearchQuery(searchQuery.value) || undefined,
+    category: selectedCategory.value !== 'all' ? selectedCategory.value : undefined,
+    categories: selectedCategory.value !== 'all' ? selectedCategory.value : undefined,
+    sources: selectedSource.value !== 'all' ? selectedSource.value : undefined,
+    sort: sortMode.value,
+    page: page.value,
+    page_size: pageSize,
+    semantic: true,
+    risk_badges: selectedRisk.value !== 'all' ? selectedRisk.value : undefined,
+    installable: installableOnly.value ? true : undefined,
+    curated: curatedOnly.value ? true : undefined,
+  }
+  return params
 }
 
-async function fetchSkills(append = false) {
-  if (append) {
-    if (!hasMore.value || loadingMore.value) return
-    loadingMore.value = true
-  } else {
-    loading.value = true
+function normalizeSkill(skill: RemoteSkill): RemoteSkill {
+  return {
+    ...skill,
+    version: skill.version || skill.latest_version,
+    tags: normalizeTags(skill),
+    installed: !!skill.installed,
+  }
+}
+
+async function fetchFilters() {
+  try {
+    const response = await skillApi.filtersMarket()
+    filters.value = response.data
+  } catch (err) {
+    console.warn('Failed to load skill filters', err)
+  }
+}
+
+async function fetchSkills(reset = true) {
+  if (reset) {
+    page.value = 1
+    totalPages.value = 1
     skills.value = []
-    nextCursor.value = null
+    loading.value = true
+  } else {
+    if (loadingMore.value || page.value >= totalPages.value) return
+    loadingMore.value = true
+    page.value += 1
   }
   error.value = null
 
   try {
-    const params: SearchParams = {
-      count: pageSize,
-      sort_by: sortBy.value,
-      sort_order: sortBy.value === 'name' ? 'asc' : 'desc',
-    }
-    if (append && nextCursor.value) {
-      params.cursor = nextCursor.value
-    }
-    if (searchQuery.value) {
-      params.q = searchQuery.value
-    }
-    if (filterCategory.value !== 'all') {
-      params.categories = filterCategory.value
-    }
-    const response = await skillApi.search(params)
-
-    if (response.data.initializing) {
-      initializing.value = true
-      skills.value = []
-      setTimeout(() => fetchSkills(), 3000)
-      return
-    }
-
-    initializing.value = false
-
-    const skillsData = response.data.skills || []
-    const newSkills = skillsData.map((s) => ({
-      ...s,
-      tags: s.tags ? s.tags.split(',').map((t) => t.trim()) : [],
-    })) as unknown as RemoteSkill[]
-
-    if (append) {
-      skills.value = [...skills.value, ...newSkills]
-    } else {
-      skills.value = newSkills
-    }
-    nextCursor.value = response.data.next_cursor || null
-    hasMore.value = response.data.has_more || false
+    const response = await skillApi.searchMarket(buildSearchParams())
+    const payload = response.data
+    const incoming = (payload.skills || []).map((item) => normalizeSkill(item.skill))
+    skills.value = reset ? incoming : [...skills.value, ...incoming]
+    totalSkills.value = payload.total || incoming.length
+    totalPages.value = payload.total_pages || 1
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to fetch skills'
+    error.value =
+      err instanceof Error ? err.message : skillStoreText('fetchError', 'Failed to fetch skills')
   } finally {
     loading.value = false
     loadingMore.value = false
   }
 }
 
-async function fetchCategories() {
+async function fetchSkillDetail(id: string) {
+  detailLoading.value = true
   try {
-    const response = await skillApi.categories()
-    categories.value = response.data
-  } catch {
-    // Ignore category loading failures.
+    const response = await skillApi.getMarketplaceSkill(id)
+    selectedDetail.value = response.data
+  } catch (err) {
+    if (selectedSkill.value?.id === id) {
+      error.value =
+        err instanceof Error ? err.message : skillStoreText('fetchError', 'Failed to fetch skills')
+    }
+  } finally {
+    detailLoading.value = false
   }
 }
 
-async function installSkill(skill: RemoteSkill) {
-  if (installing.value.has(skill.id)) return
+function selectSkill(skill: RemoteSkill) {
+  selectedSkillId.value = skill.id
+}
 
-  installing.value.add(skill.id)
-  installProgress.value.set(skill.id, 0)
-
+async function triggerRefresh() {
+  refreshing.value = true
+  error.value = null
   try {
-    await skillApi.install(skill.id)
-    installProgress.value.set(skill.id, 100)
-    skill.installed = true
+    await skillApi.discoverRefresh()
+    await Promise.all([fetchFilters(), fetchSkills(true)])
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to install skill'
+    error.value =
+      err instanceof Error ? err.message : skillStoreText('fetchError', 'Failed to fetch skills')
   } finally {
-    installing.value.delete(skill.id)
-    setTimeout(() => installProgress.value.delete(skill.id), 800)
+    refreshing.value = false
   }
 }
 
 function handleSearch() {
-  fetchSkills()
+  void fetchSkills(true)
 }
 
-function handleScroll(e: Event) {
-  const target = e.target as HTMLElement
-  const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight
-  if (scrollBottom < 200 && hasMore.value && !loadingMore.value) {
-    fetchSkills(true)
+function resetFilters() {
+  searchQuery.value = ''
+  selectedCategory.value = 'all'
+  selectedSource.value = 'all'
+  selectedRisk.value = 'all'
+  curatedOnly.value = false
+  installableOnly.value = false
+  sortMode.value = 'featured'
+  handleSearch()
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  handleSearch()
+}
+
+async function installSkill(skill: RemoteSkill, ackRisk = false) {
+  if (installingSkillId.value === skill.id) return
+  if (!skill.installable) {
+    openSkillSource(skill)
+    return
   }
-}
+  if (skill.security_badge === 'red') {
+    error.value = marketplaceText(
+      'messages.blockedByPolicy',
+      'This skill is blocked by the security policy.'
+    )
+    return
+  }
+  if (skill.security_badge === 'yellow' && !ackRisk) {
+    pendingRiskSkill.value = skill
+    return
+  }
 
-async function triggerSync() {
+  installingSkillId.value = skill.id
+  error.value = null
+
   try {
-    const res = await skillApi.refresh()
-    if (res.data.syncing) {
-      syncing.value = true
-      const active = res.data.sync_status?.find((s) => s.status === 'in_progress')
-      if (active) syncProgress.value = active
-      startSyncPolling()
-    }
-  } catch {
-    // Ignore sync trigger failures.
-  }
-}
-
-function startSyncPolling() {
-  stopSyncPolling()
-  syncPollTimer = setInterval(async () => {
-    try {
-      const res = await skillApi.syncStatus()
-      const active = res.data.find((s) => s.status === 'in_progress')
-      if (active) {
-        syncProgress.value = active
-      } else {
-        syncing.value = false
-        syncProgress.value = null
-        stopSyncPolling()
-        fetchSkills()
+    await skillApi.installMarket({
+      id: skill.id,
+      ack_risk: ackRisk || skill.security_badge === 'yellow',
+    })
+    const current = skills.value.find((item) => item.id === skill.id)
+    if (current) current.installed = true
+    if (selectedDetail.value?.skill.id === skill.id) {
+      selectedDetail.value = {
+        ...selectedDetail.value,
+        installed: true,
+        skill: {
+          ...selectedDetail.value.skill,
+          installed: true,
+        },
       }
-    } catch {
-      // Ignore polling failures.
     }
-  }, 2000)
-}
-
-function stopSyncPolling() {
-  if (syncPollTimer) {
-    clearInterval(syncPollTimer)
-    syncPollTimer = null
+    pendingRiskSkill.value = null
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : skillStoreText('installError', 'Failed to install skill')
+    if (message.toLowerCase().includes('risk acknowledgement')) {
+      pendingRiskSkill.value = skill
+    } else {
+      error.value = message
+    }
+  } finally {
+    installingSkillId.value = null
   }
 }
 
-function onInstallProgress(data: { id?: string; percent?: number }) {
-  if (data.id && typeof data.percent === 'number') {
-    installProgress.value.set(data.id, data.percent)
+function closeRiskModal() {
+  pendingRiskSkill.value = null
+}
+
+function confirmRiskInstall() {
+  if (!pendingRiskSkill.value) return
+  void installSkill(pendingRiskSkill.value, true)
+}
+
+function evidenceGroupLabel(type: string) {
+  const fallback: Record<string, string> = {
+    dangerous_command: 'Dangerous command',
+    prompt_injection: 'Prompt injection',
+    secret: 'Secrets',
+    permission: 'Permissions',
+    dependency_manifest: 'Dependencies',
+    binary_artifact: 'Binary artifact',
+    data_exfiltration: 'Data exfiltration',
+    cmd_injection: 'Command injection',
   }
+  return marketplaceText(`evidenceTypes.${type}`, fallback[type] || type)
 }
 
-function onInstallComplete(data: { id?: string }) {
-  if (!data.id) return
-  installProgress.value.set(data.id, 100)
-  const s = skills.value.find((skill) => skill.id === data.id)
-  if (s) s.installed = true
+function detailStat(value: boolean | undefined, positive = 'Yes', negative = 'No') {
+  return value ? commonText('yes', positive) : commonText('no', negative)
 }
 
-function onInstallError(data: { id?: string; error?: string }) {
-  if (!data.id) return
-  installing.value.delete(data.id)
-  installProgress.value.delete(data.id)
-  if (data.error) error.value = data.error
+function detailBadgeClass(kind: SecurityBadge | string | undefined) {
+  if (kind === 'green' || kind === 'yellow' || kind === 'red') return `badge-${kind}`
+  return 'badge-neutral'
 }
 
-onMounted(() => {
-  fetchSkills()
-  fetchCategories()
-  triggerSync()
+function optionLabel(
+  options: Array<{ value: string; label: string }> | undefined,
+  value: string
+): string {
+  return options?.find((option) => option.value === value)?.label || value
+}
 
-  onSSEEvent('skill.install.progress', onInstallProgress)
-  onSSEEvent('skill.install.complete', onInstallComplete)
-  onSSEEvent('skill.install.error', onInstallError)
+function installHint(skill?: RemoteSkill | null): string {
+  if (!skill?.installable) {
+    return marketplaceText('detail.sourceOnly', 'Catalog entry only, install from source')
+  }
+  if (skill.installed) {
+    return marketplaceText('detail.installedOnDevice', 'Installed on this device')
+  }
+  if (skill.security_badge === 'red') {
+    return marketplaceText('detail.installBlocked', 'Blocked by security policy')
+  }
+  if (skill.security_badge === 'yellow') {
+    return marketplaceText('detail.reviewRecommended', 'Review security summary before installing')
+  }
+  return marketplaceText('detail.readyToInstall', 'Ready to install')
+}
+
+function activeSkillSignals(skill?: RemoteSkill | null): string[] {
+  if (!skill) return []
+  const items: string[] = []
+  if (
+    skill.vulnerability_status &&
+    skill.vulnerability_status !== 'none' &&
+    skill.vulnerability_status !== 'not_applicable'
+  ) {
+    items.push(
+      `${marketplaceText('filters.vulnerabilities', 'Vulnerabilities')}: ${vulnerabilityLabel(skill.vulnerability_status)}`
+    )
+  }
+  if (skill.has_prompt_injection) {
+    items.push(marketplaceText('filters.promptInjection', 'Prompt injection risk'))
+  }
+  if (skill.has_shell_injection) {
+    items.push(marketplaceText('filters.shellInjection', 'Command injection risk'))
+  }
+  if (skill.has_data_exfiltration) {
+    items.push(marketplaceText('filters.dataExfiltration', 'Data exfiltration risk'))
+  }
+  if (skill.has_binary) {
+    items.push(marketplaceText('security.binary', 'Binary'))
+  }
+  return items
+}
+
+function cardSignalSummary(skill?: RemoteSkill | null): string {
+  const signals = activeSkillSignals(skill)
+  if (!signals.length) return installHint(skill)
+  const visible = signals.slice(0, 2)
+  if (signals.length > visible.length) {
+    visible.push(
+      marketplaceText('detail.moreSignals', '+{count} more', {
+        count: signals.length - visible.length,
+      })
+    )
+  }
+  return visible.join(' · ')
+}
+
+const categoryOptions = computed(() => filters.value?.categories || [])
+const sourceOptions = computed(() => filters.value?.sources || [])
+const riskOptions = computed(() => filters.value?.risk_badges || [])
+const activeFilterLabels = computed(() => {
+  const labels: string[] = []
+  const query = normalizeSearchQuery(searchQuery.value)
+
+  if (query) {
+    labels.push(`${commonText('search', 'Search')}: ${query}`)
+  }
+  if (selectedCategory.value !== 'all') {
+    labels.push(
+      `${marketplaceText('filters.category', 'Category')}: ${categoryLabel(selectedCategory.value)}`
+    )
+  }
+  if (selectedSource.value !== 'all') {
+    labels.push(
+      `${marketplaceText('filters.source', 'Source')}: ${optionLabel(sourceOptions.value, selectedSource.value)}`
+    )
+  }
+  if (selectedRisk.value !== 'all') {
+    labels.push(
+      `${marketplaceText('filters.security', 'Security')}: ${optionLabel(riskOptions.value, selectedRisk.value)}`
+    )
+  }
+  if (curatedOnly.value) {
+    labels.push(marketplaceText('filters.curatedOnly', 'Curated only'))
+  }
+  if (installableOnly.value) {
+    labels.push(marketplaceText('filters.installableOnly', 'Installable only'))
+  }
+  if (sortMode.value !== 'featured') {
+    labels.push(
+      `${marketplaceText('filters.sort', 'Sort')}: ${marketplaceText(`sort.${sortMode.value}`, sortMode.value)}`
+    )
+  }
+
+  return labels
+})
+const pendingRiskSignals = computed(() => {
+  if (!pendingRiskSkill.value) return []
+  return activeSkillSignals(pendingRiskSkill.value)
 })
 
-onUnmounted(() => {
-  stopSyncPolling()
-  offSSEEvent('skill.install.progress', onInstallProgress)
-  offSSEEvent('skill.install.complete', onInstallComplete)
-  offSSEEvent('skill.install.error', onInstallError)
+function toggleCuratedOnly() {
+  curatedOnly.value = !curatedOnly.value
+  handleSearch()
+}
+
+function toggleInstallableOnly() {
+  installableOnly.value = !installableOnly.value
+  handleSearch()
+}
+
+const selectedSecuritySignals = computed(() => {
+  const report = selectedSecurity.value
+  if (!report) return []
+  const items: Array<{ label: string; className: string }> = []
+  if (
+    report.vulnerability_status &&
+    report.vulnerability_status !== 'none' &&
+    report.vulnerability_status !== 'not_applicable'
+  ) {
+    items.push({
+      label: `${marketplaceText('filters.vulnerabilities', 'Vulnerabilities')}: ${vulnerabilityLabel(report.vulnerability_status)}`,
+      className: report.vulnerability_status === 'detected' ? 'signal-detail-alert' : 'signal-detail-warn',
+    })
+  }
+  if (report.has_prompt_injection) {
+    items.push({
+      label: marketplaceText('filters.promptInjection', 'Prompt injection risk'),
+      className: 'signal-detail-alert',
+    })
+  }
+  if (report.has_shell_injection) {
+    items.push({
+      label: marketplaceText('filters.shellInjection', 'Command injection risk'),
+      className: 'signal-detail-alert',
+    })
+  }
+  if (report.has_data_exfiltration) {
+    items.push({
+      label: marketplaceText('filters.dataExfiltration', 'Data exfiltration risk'),
+      className: 'signal-detail-alert',
+    })
+  }
+  if (report.install_surface?.has_binary) {
+    items.push({
+      label: marketplaceText('security.binary', 'Binary'),
+      className: 'signal-detail-warn',
+    })
+  }
+  if (report.install_surface?.has_scripts) {
+    items.push({
+      label: marketplaceText('security.scripts', 'Scripts'),
+      className: 'signal-detail-warn',
+    })
+  }
+  return items
+})
+
+const visibleSecurityEvidence = computed(() => (selectedSecurity.value?.evidence || []).slice(0, 4))
+const hiddenSecurityEvidenceCount = computed(() => {
+  const total = selectedSecurity.value?.evidence?.length || 0
+  return Math.max(0, total - visibleSecurityEvidence.value.length)
+})
+
+onMounted(async () => {
+  await Promise.all([fetchFilters(), fetchSkills(true)])
 })
 </script>
 
 <template>
-  <div class="skill-store-tab skill-store-redesign">
-    <div class="filters">
-      <div class="search-box">
-        <svg
-          class="search-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.35-4.35" />
-        </svg>
-        <input
-          v-model="searchQuery"
-          type="text"
-          :placeholder="t('skillStore.filters.searchSkillsPlaceholder')"
-          class="search-input"
-          @keyup.enter="handleSearch"
-        />
+  <div class="skill-tab skill-store-tab skill-store-aggregator">
+    <section class="toolbar-panel hero-panel">
+      <div class="hero-headline">
+        <div class="hero-copy">
+          <span class="hero-kicker">{{
+            marketplaceText('hero.kicker', 'Skills marketplace')
+          }}</span>
+          <h2>{{ marketplaceText('hero.title', 'Discover, review, and install agent skills') }}</h2>
+          <p>
+            {{
+              marketplaceText(
+                'hero.description',
+                'Browse multi-source skills, inspect security posture, and only install what fits your workspace.'
+              )
+            }}
+          </p>
+        </div>
+
       </div>
 
-      <select v-model="filterCategory" class="filter-select" @change="handleSearch">
-        <option value="all">{{ t('plugins.allCategories') }}</option>
-        <option v-for="cat in categories" :key="cat" :value="cat">
-          {{ getCategoryIcon(cat) }} {{ getCategoryLabel(cat) }}
-        </option>
-      </select>
-
-      <select v-model="sortBy" class="filter-select" @change="handleSearch">
-        <option value="downloads">{{ t('skillStore.sort.downloads') }}</option>
-        <option value="stars">{{ t('skillStore.sort.stars') }}</option>
-        <option value="updated">{{ t('skillStore.sort.updated') }}</option>
-        <option value="name">{{ t('skillStore.sort.name') }}</option>
-      </select>
-
-      <button class="btn-refresh" :disabled="loading" @click="fetchSkills()">
-        <svg v-if="!loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-          <path d="M3 3v5h5" />
-          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-          <path d="M16 21h5v-5" />
-        </svg>
-        <span v-else class="spinner"></span>
-      </button>
-    </div>
-
-    <div v-if="syncing" class="sync-banner">
-      <div class="sync-banner-content">
-        <div class="sync-spinner"></div>
-        <span class="sync-label">{{ t('skillStore.status.syncing') }}</span>
-        <span v-if="syncProgress?.progress" class="sync-detail">
-          {{ t('skillStore.status.skillsSynced', { count: syncProgress.progress.skills_synced }) }}
+      <div class="hero-summary-row">
+        <span class="summary-pill">
+          {{
+            marketplaceText('results.skillsCount', '{count} skills', {
+              count: catalogCount,
+            })
+          }}
         </span>
+        <span class="summary-pill">
+          {{
+            marketplaceText('results.installableCount', '{count} installable', {
+              count: installableCount,
+            })
+          }}
+        </span>
+        <span class="summary-pill">
+          {{
+            marketplaceText('results.safeCount', '{count} green shield', {
+              count: greenBadgeCount,
+            })
+          }}
+        </span>
+        <span class="summary-pill">
+          {{
+            marketplaceText('results.sources', 'Sources {count}', {
+              count: sourceCount,
+            })
+          }}
+        </span>
+        <span class="toolbar-note">{{ syncHint }}</span>
       </div>
-    </div>
+
+      <div class="toolbar-search-row">
+        <SemanticSearchField
+          v-model="searchQuery"
+          class="hero-search-field"
+          :placeholder="
+            translate(
+              'skillStore.filters.searchSkillsPlaceholder',
+              'Search skills, tags, permissions, or risks'
+            )
+          "
+          :clear-label="translate('common.clear', 'Clear')"
+          @clear="clearSearch"
+          @submit-shortcut="handleSearch"
+        />
+        <div class="hero-actions">
+          <button class="btn-primary" :disabled="loading" @click="handleSearch">
+            {{ commonText('search', 'Search') }}
+          </button>
+          <button class="btn-ghost" :disabled="refreshing" @click="triggerRefresh">
+            {{
+              refreshing
+                ? commonText('refreshing', 'Refreshing...')
+                : marketplaceText('actions.refreshSources', 'Refresh sources')
+            }}
+          </button>
+        </div>
+      </div>
+
+      <div class="toolbar-controls">
+        <div class="sort-pills" role="tablist" :aria-label="marketplaceText('filters.sort', 'Sort')">
+          <button
+            v-for="option in sortPillOptions"
+            :key="option.value"
+            type="button"
+            :class="['sort-pill', { active: sortMode === option.value }]"
+            @click="sortMode = option.value; handleSearch()"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+
+        <div class="toolbar-focus-actions">
+          <button
+            type="button"
+            :class="['chip-button chip-button-quiet', { active: curatedOnly }]"
+            @click="toggleCuratedOnly"
+          >
+            {{ marketplaceText('filters.curatedOnly', 'Curated only') }}
+          </button>
+          <button
+            type="button"
+            :class="['chip-button chip-button-quiet', { active: installableOnly }]"
+            @click="toggleInstallableOnly"
+          >
+            {{ marketplaceText('filters.installableOnly', 'Installable only') }}
+          </button>
+          <button
+            v-if="activeFilterLabels.length"
+            type="button"
+            class="btn-text"
+            @click="resetFilters"
+          >
+            {{ marketplaceText('actions.clearFilters', 'Clear filters') }}
+          </button>
+        </div>
+      </div>
+
+      <div class="filter-grid">
+        <label class="filter-field">
+          <span>{{ marketplaceText('filters.category', 'Category') }}</span>
+          <select v-model="selectedCategory" class="filter-select" @change="handleSearch">
+            <option value="all">
+              {{ skillStoreText('filters.allCategories', 'All Categories') }}
+            </option>
+            <option v-for="option in categoryOptions" :key="option.value" :value="option.value">
+              {{ categoryLabel(option.value) }} ({{ option.count }})
+            </option>
+          </select>
+        </label>
+
+        <label class="filter-field">
+          <span>{{ marketplaceText('filters.source', 'Source') }}</span>
+          <select v-model="selectedSource" class="filter-select" @change="handleSearch">
+            <option value="all">{{ skillStoreText('filters.allSources', 'All Sources') }}</option>
+            <option v-for="option in sourceOptions" :key="option.value" :value="option.value">
+              {{ option.label }} ({{ option.count }})
+            </option>
+          </select>
+        </label>
+
+        <label class="filter-field">
+          <span>{{ marketplaceText('filters.security', 'Security') }}</span>
+          <select v-model="selectedRisk" class="filter-select" @change="handleSearch">
+            <option value="all">{{ marketplaceText('filters.allBadges', 'All badges') }}</option>
+            <option v-for="option in riskOptions" :key="option.value" :value="option.value">
+              {{ option.label }} ({{ option.count }})
+            </option>
+          </select>
+        </label>
+      </div>
+
+      <div v-if="activeFilterLabels.length" class="active-filters">
+        <span class="section-label">{{ marketplaceText('results.activeFilters', 'Active filters') }}</span>
+        <div class="chip-row">
+          <span v-for="label in activeFilterLabels" :key="label" class="summary-pill summary-pill-active">
+            {{ label }}
+          </span>
+        </div>
+      </div>
+    </section>
 
     <div v-if="error" class="error-banner">
-      {{ error }}
-      <button @click="error = null">×</button>
+      <span>{{ error }}</span>
+      <button type="button" @click="error = null">×</button>
     </div>
 
-    <div v-if="initializing && !skills.length" class="initializing-state">
-      <svg
-        class="initializing-icon"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-      >
-        <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-      </svg>
-      <div class="initializing-spinner"></div>
-      <h3>{{ t('skillStore.status.initializing') }}</h3>
-      <p>{{ t('skillStore.status.initializingDesc') }}</p>
-    </div>
+    <section class="store-shell">
+      <div class="results-panel">
+        <header class="panel-header">
+          <div>
+            <h3>{{ marketplaceText('results.discover', 'Discover') }}</h3>
+            <p>{{ resultSubtitle }}</p>
+          </div>
+          <span v-if="page < totalPages" class="summary-pill">{{
+            marketplaceText('results.pageState', 'Page {page}/{total}', {
+              page: page,
+              total: totalPages,
+            })
+          }}</span>
+        </header>
 
-    <div v-else-if="loading && !skills.length" class="loading">
-      <div class="spinner"></div>
-      <span>{{ t('common.loading') }}</span>
-    </div>
+        <div v-if="loading && !skills.length" class="loading-state">
+          <div class="spinner"></div>
+          <span>{{ commonText('loading', 'Loading') }}</span>
+        </div>
 
-    <div v-else-if="!loading && skills.length === 0" class="empty-state">
-      <svg
-        class="empty-icon"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <circle cx="11" cy="11" r="8" />
-        <path d="m21 21-4.35-4.35" />
-      </svg>
-      <h3>{{ t('skillStore.noResults') }}</h3>
-      <p>
-        {{ searchQuery ? t('skillStore.noResultsForQuery') : t('skillStore.noSkillsAvailable') }}
-      </p>
-      <button
-        v-if="searchQuery"
-        class="btn-clear-search"
-        @click="searchQuery = ''; handleSearch()"
-      >
-        {{ t('skillStore.clearSearch') }}
-      </button>
-    </div>
+        <div v-else-if="!skills.length" class="empty-state">
+          <h3>{{ translate('skillStore.noResults', 'No matching skills') }}</h3>
+          <p>
+            {{
+              normalizeSearchQuery(searchQuery)
+                ? translate(
+                    'skillStore.marketplace.empty.broadenSearch',
+                    'Try broadening the search or relaxing one of the security filters.'
+                  )
+                : translate(
+                    'skillStore.noSkillsAvailable',
+                    'No skills are available from the configured sources yet.'
+                  )
+            }}
+          </p>
+          <button type="button" class="btn-ghost" @click="clearSearch">
+            {{ skillStoreText('clearSearch', 'Clear Search') }}
+          </button>
+        </div>
 
-    <div v-else class="store-layout">
-      <div class="items-grid-container store-list-panel" @scroll="handleScroll">
-        <div class="items-grid store-grid">
+        <div v-else class="results-grid">
           <article
             v-for="skill in skills"
             :key="skill.id"
-            :class="[
-              'item-card',
-              'store-card',
-              { installed: skill.installed, active: selectedSkillId === skill.id },
-            ]"
+            :class="['skill-card', { active: selectedSkillId === skill.id }]"
             tabindex="0"
             role="button"
             @click="selectSkill(skill)"
             @keydown.enter.prevent="selectSkill(skill)"
             @keydown.space.prevent="selectSkill(skill)"
           >
-            <div class="item-header">
-              <span class="item-icon">{{ getCategoryIcon(skill.category) }}</span>
-              <div class="item-title">
-                <h3 :title="skill.name">{{ skill.name }}</h3>
-                <div class="item-title-meta">
-                  <span v-if="skill.version" class="item-version">v{{ skill.version }}</span>
-                  <span v-if="skill.author" class="author">{{ skill.author }}</span>
-                </div>
+            <div class="card-topline">
+              <div class="card-topline-left">
+                <span class="source-chip">{{ sourceLabel(skill) }}</span>
+                <span class="meta-chip meta-chip-soft">{{ categoryLabel(skill.category) }}</span>
               </div>
-            </div>
-
-            <p class="item-description" :title="skill.description || skill.summary">
-              {{ skill.description || skill.summary || t('plugins.noDescription') }}
-            </p>
-
-            <div class="item-stats">
-              <span class="stat" :title="t('skillStore.downloads')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7,10 12,15 17,10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                {{ formatNumber(skill.downloads) }}
-              </span>
-              <span v-if="skill.stars" class="stat" :title="t('skillStore.stars')">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                  />
-                </svg>
-                {{ formatNumber(skill.stars) }}
-              </span>
-              <span v-if="skill.rating" class="stat" :title="t('skillStore.rating')">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                  />
-                </svg>
-                {{ skill.rating.toFixed(1) }}
+              <span :class="['shield-chip', securityBadgeClass(skill)]">
+                {{ badgeLabel(skill) }}
               </span>
             </div>
 
-            <div v-if="getCategories(skill.category).length" class="item-categories">
-              <span v-for="cat in getCategories(skill.category)" :key="cat" class="category-badge">
-                {{ getCategoryLabel(cat) }}
+            <div class="card-header">
+              <div class="card-title-row">
+                <h4>{{ skill.name }}</h4>
+                <span v-if="skill.installed" class="meta-chip meta-chip-installed">{{
+                  skillStoreText('installed', 'Installed')
+                }}</span>
+              </div>
+              <p>{{ cardDescription(skill) }}</p>
+            </div>
+
+            <div v-if="skill.curated_label || skill.author" class="card-badges">
+              <span v-if="skill.curated_label" class="meta-chip meta-chip-hot">
+                {{ skill.curated_label }}
               </span>
             </div>
 
-            <div class="item-footer">
+            <div class="card-stats">
+              <span>★ {{ formatNumber(skill.stars) }}</span>
+              <span>↓ {{ formatNumber(skill.downloads) }}</span>
+              <span>{{ formatDate(skillUpdatedAt(skill)) }}</span>
+            </div>
+
+            <p class="card-note">{{ cardSignalSummary(skill) }}</p>
+
+            <div class="card-footer">
+              <span class="risk-label">{{ riskLabel(skill) }}</span>
               <button
-                v-if="!skill.installed"
-                :class="['btn-install', { 'btn-installing': installing.has(skill.id) }]"
-                :disabled="installing.has(skill.id)"
+                v-if="skill.installable"
+                :class="[
+                  'install-button',
+                  `install-${skill.security_badge || 'yellow'}`,
+                  { busy: installingSkillId === skill.id },
+                ]"
+                :disabled="installingSkillId === skill.id || skill.security_badge === 'red'"
                 @click.stop="installSkill(skill)"
               >
-                <template v-if="installing.has(skill.id)">
-                  <div class="install-progress-bar">
-                    <div
-                      class="install-progress-fill"
-                      :style="{ width: (installProgress.get(skill.id) || 0) + '%' }"
-                    ></div>
-                  </div>
-                  <span class="install-progress-text"
-                    >{{ installProgress.get(skill.id) || 0 }}%</span
-                  >
-                </template>
-                <span v-else>{{ t('skillStore.install') }}</span>
+                <span v-if="installingSkillId === skill.id">{{
+                  marketplaceText('actions.installing', 'Installing...')
+                }}</span>
+                <span v-else-if="skill.security_badge === 'red'">{{
+                  marketplaceText('actions.blocked', 'Blocked')
+                }}</span>
+                <span v-else-if="skill.installed">{{
+                  skillStoreText('installed', 'Installed')
+                }}</span>
+                <span v-else>{{ skillStoreText('install', 'Install') }}</span>
               </button>
-              <span v-else class="installed-badge">{{ t('skillStore.installed') }}</span>
-
-              <button class="btn-link-small" @click.stop="openSkillHomepage(skill)">
-                {{ t('skillStore.detail.openLink') }}
+              <button v-else class="source-button" @click.stop="openSkillSource(skill)">
+                {{ marketplaceText('actions.viewSource', 'View source') }}
               </button>
             </div>
           </article>
         </div>
 
-        <div v-if="loadingMore" class="loading-more">
-          <div class="spinner-small"></div>
-          <span>{{ t('common.loading') }}</span>
-        </div>
-
-        <div v-if="skills.length > 0 && !hasMore && !loadingMore" class="load-more-info">
-          {{ t('skillStore.allLoaded', { count: skills.length }) }}
+        <div v-if="!loading && page < totalPages" class="load-more">
+          <button
+            type="button"
+            class="btn-ghost"
+            :disabled="loadingMore"
+            @click="fetchSkills(false)"
+          >
+            {{
+              loadingMore
+                ? commonText('loading', 'Loading...')
+                : marketplaceText('actions.loadMore', 'Load more')
+            }}
+          </button>
         </div>
       </div>
 
-      <aside class="store-detail-panel">
-        <div v-if="selectedSkill" class="store-detail-content">
-          <div class="detail-header">
-            <div class="detail-title-row">
-              <span class="detail-icon">{{ getCategoryIcon(selectedSkill.category) }}</span>
+      <aside class="detail-panel">
+        <div v-if="selectedSkill" class="detail-card">
+          <header class="detail-header">
+            <div class="detail-main">
+              <div class="detail-topline">
+                <span class="source-chip">{{ sourceLabel(selectedSkill) }}</span>
+                <span class="meta-chip meta-chip-soft">{{ categoryLabel(selectedSkill.category) }}</span>
+                <span :class="['shield-chip', detailBadgeClass(selectedSkill.security_badge)]">
+                  {{ badgeLabel(selectedSkill) }}
+                </span>
+              </div>
+              <h3>{{ selectedSkill.name }}</h3>
+              <p class="detail-subtitle">{{ cardDescription(selectedSkill) }}</p>
+              <p v-if="selectedSkill.curated_reason" class="detail-callout">
+                {{ selectedSkill.curated_reason }}
+              </p>
+            </div>
+
+            <div class="detail-actions">
+              <button
+                v-if="selectedSkill.installable"
+                :class="['install-button', `install-${selectedSkill.security_badge || 'yellow'}`]"
+                :disabled="
+                  installingSkillId === selectedSkill.id || selectedSkill.security_badge === 'red'
+                "
+                @click="installSkill(selectedSkill)"
+              >
+                <span v-if="selectedSkill.security_badge === 'red'">{{
+                  marketplaceText('actions.blocked', 'Blocked')
+                }}</span>
+                <span v-else-if="selectedSkill.installed">{{
+                  skillStoreText('installed', 'Installed')
+                }}</span>
+                <span v-else>{{ skillStoreText('install', 'Install') }}</span>
+              </button>
+              <button v-else class="source-button" @click="openSkillSource(selectedSkill)">
+                {{ marketplaceText('actions.viewSource', 'View source') }}
+              </button>
+
+              <button class="btn-ghost" @click="openSkillSource(selectedSkill)">
+                {{ skillStoreText('detail.openLink', 'Open Link') }}
+              </button>
+            </div>
+          </header>
+
+          <div class="detail-meta">
+            <div class="meta-item">
+              <span>{{ skillStoreText('detail.meta.version', 'Version') }}</span>
+              <strong>{{
+                selectedDetail?.version?.version || selectedSkill.version || '-'
+              }}</strong>
+            </div>
+            <div class="meta-item">
+              <span>{{ skillStoreText('detail.meta.updated', 'Last Updated') }}</span>
+              <strong>{{
+                formatDate(
+                  selectedSkill.updated_at || selectedSkill.last_updated || selectedSkill.synced_at
+                )
+              }}</strong>
+            </div>
+            <div class="meta-item">
+              <span>{{ skillStoreText('detail.meta.stars', 'Stars') }}</span>
+              <strong>{{ formatNumber(selectedSkill.stars) }}</strong>
+            </div>
+            <div class="meta-item">
+              <span>{{ skillStoreText('detail.meta.downloads', 'Downloads') }}</span>
+              <strong>{{ formatNumber(selectedSkill.downloads) }}</strong>
+            </div>
+            <div class="meta-item">
+              <span>{{ marketplaceText('detail.meta.category', 'Category') }}</span>
+              <strong>{{ categoryLabel(selectedSkill.category) }}</strong>
+            </div>
+            <div v-if="selectedSkill.author" class="meta-item">
+              <span>{{ marketplaceText('detail.meta.author', 'Author') }}</span>
+              <strong>{{ selectedSkill.author }}</strong>
+            </div>
+          </div>
+
+          <section class="detail-section">
+            <div class="section-heading">
               <div>
-                <h2>{{ selectedSkill.name }}</h2>
-                <p>
+                <h4>{{ marketplaceText('security.title', 'Security') }}</h4>
+                <p>{{ installHint(selectedSkill) }}</p>
+              </div>
+              <span :class="['shield-chip', detailBadgeClass(selectedSkill.security_badge)]">
+                {{ riskLabel(selectedSkill) }}
+              </span>
+            </div>
+            <div v-if="detailLoading" class="detail-loading">
+              <div class="spinner"></div>
+              <span>{{ marketplaceText('security.loading', 'Loading security report...') }}</span>
+            </div>
+            <template v-else-if="selectedSecurity">
+              <div class="security-overview">
+                <div class="score-card score-card-emphasis">
+                  <span>{{ marketplaceText('security.score', 'Score') }}</span>
+                  <strong>{{ selectedSecurity.score }}</strong>
+                </div>
+                <div class="security-summary-grid">
+                  <div class="score-card">
+                    <span>{{ marketplaceText('security.badge', 'Badge') }}</span>
+                    <strong>{{ badgeLabelByValue(selectedSecurity.security_badge) }}</strong>
+                  </div>
+                  <div class="score-card">
+                    <span>{{ marketplaceText('filters.vulnerabilities', 'Vulnerabilities') }}</span>
+                    <strong>{{ vulnerabilityLabel(selectedSecurity.vulnerability_status) }}</strong>
+                  </div>
+                  <div class="score-card">
+                    <span>{{ marketplaceText('security.installable', 'Installable') }}</span>
+                    <strong>{{ detailStat(selectedSecurity.install_surface?.installable) }}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div class="list-block">
+                <span class="section-label">{{
+                  marketplaceText('security.signals', 'Risk signals')
+                }}</span>
+                <div v-if="selectedSecuritySignals.length" class="chip-row">
+                  <span
+                    v-for="signal in selectedSecuritySignals"
+                    :key="signal.label"
+                    :class="['signal-chip', signal.className]"
+                  >
+                    {{ signal.label }}
+                  </span>
+                </div>
+                <p v-else class="detail-placeholder detail-placeholder-inline">
+                  {{ marketplaceText('security.noMajorWarnings', 'No major warnings detected.') }}
+                </p>
+              </div>
+
+              <div v-if="selectedSecurity.permissions?.length" class="list-block">
+                <span class="section-label">{{
+                  marketplaceText('security.permissions', 'Permissions')
+                }}</span>
+                <div class="chip-row">
+                  <span
+                    v-for="permission in selectedSecurity.permissions"
+                    :key="permission"
+                    class="meta-chip meta-chip-soft"
+                  >
+                    {{ permission }}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                v-if="selectedSecurity.install_surface?.dependency_manifests?.length"
+                class="list-block"
+              >
+                <span class="section-label">{{
+                  marketplaceText('security.dependencyManifests', 'Dependency manifests')
+                }}</span>
+                <div class="chip-row">
+                  <span
+                    v-for="manifest in selectedSecurity.install_surface.dependency_manifests"
+                    :key="manifest"
+                    class="meta-chip meta-chip-soft"
+                  >
+                    {{ manifest }}
+                  </span>
+                </div>
+              </div>
+
+              <div v-if="visibleSecurityEvidence.length" class="list-block">
+                <span class="section-label">{{
+                  marketplaceText('security.evidence', 'Evidence')
+                }}</span>
+                <div class="evidence-list">
+                  <article
+                    v-for="item in visibleSecurityEvidence as SkillSecurityEvidence[]"
+                    :key="`${item.type}-${item.title}-${item.value}`"
+                    class="evidence-item"
+                  >
+                    <header>
+                      <strong>{{ evidenceGroupLabel(item.type) }}</strong>
+                      <span>{{ item.severity }}</span>
+                    </header>
+                    <p>{{ item.title }}</p>
+                    <small v-if="item.description">{{ item.description }}</small>
+                    <code v-if="item.value">{{ item.value }}</code>
+                  </article>
+                </div>
+                <p v-if="hiddenSecurityEvidenceCount" class="detail-placeholder detail-placeholder-inline">
                   {{
-                    selectedSkill.summary || selectedSkill.description || t('plugins.noDescription')
+                    marketplaceText('security.moreEvidence', '+{count} more evidence items', {
+                      count: hiddenSecurityEvidenceCount,
+                    })
                   }}
                 </p>
               </div>
-            </div>
-            <span class="source-badge">{{
-              selectedSkill.source_name || selectedSkill.source_id
-            }}</span>
-          </div>
-
-          <div class="detail-actions">
-            <button
-              v-if="!selectedSkill.installed"
-              :class="['btn-install', { 'btn-installing': installing.has(selectedSkill.id) }]"
-              :disabled="installing.has(selectedSkill.id)"
-              @click="installSkill(selectedSkill)"
-            >
-              <template v-if="installing.has(selectedSkill.id)">
-                <div class="install-progress-bar">
-                  <div
-                    class="install-progress-fill"
-                    :style="{ width: (installProgress.get(selectedSkill.id) || 0) + '%' }"
-                  ></div>
-                </div>
-                <span class="install-progress-text"
-                  >{{ installProgress.get(selectedSkill.id) || 0 }}%</span
-                >
-              </template>
-              <span v-else>{{ t('skillStore.install') }}</span>
-            </button>
-            <span v-else class="installed-badge">{{ t('skillStore.installed') }}</span>
-
-            <button class="btn-link-light" @click="openSkillHomepage(selectedSkill)">
-              {{ t('skillStore.detail.openLink') }}
-            </button>
-          </div>
-
-          <div class="detail-meta-grid">
-            <div class="meta-entry">
-              <span>{{ t('skillStore.detail.meta.author') }}</span>
-              <strong>{{ selectedSkill.author || '-' }}</strong>
-            </div>
-            <div class="meta-entry">
-              <span>{{ t('skillStore.detail.meta.version') }}</span>
-              <strong>{{ selectedSkill.version || '-' }}</strong>
-            </div>
-            <div class="meta-entry">
-              <span>{{ t('skillStore.detail.meta.updated') }}</span>
-              <strong>{{ formatDate(selectedSkill.updated_at || selectedSkill.synced_at) }}</strong>
-            </div>
-            <div class="meta-entry">
-              <span>{{ t('skillStore.detail.meta.downloads') }}</span>
-              <strong>{{ formatNumber(selectedSkill.downloads) }}</strong>
-            </div>
-            <div class="meta-entry">
-              <span>{{ t('skillStore.detail.meta.stars') }}</span>
-              <strong>{{ formatNumber(selectedSkill.stars) }}</strong>
-            </div>
-            <div class="meta-entry">
-              <span>{{ t('skillStore.detail.meta.rating') }}</span>
-              <strong>{{ selectedSkill.rating ? selectedSkill.rating.toFixed(1) : '-' }}</strong>
-            </div>
-          </div>
-
-          <section class="detail-section" v-if="selectedSkill.description">
-            <h4>{{ t('skillStore.detail.sections.description') }}</h4>
-            <p>{{ selectedSkill.description }}</p>
+            </template>
+            <p v-else class="detail-placeholder">
+              {{ marketplaceText('security.noReport', 'No security report available yet.') }}
+            </p>
           </section>
 
-          <section class="detail-section" v-if="selectedSkill.readme">
-            <h4>{{ t('skillStore.detail.sections.readme') }}</h4>
-            <div
-              class="skill-content markdown-body"
-              v-html="renderMarkdown(selectedSkill.readme)"
-            ></div>
-          </section>
-
-          <section class="detail-section" v-else-if="selectedSkill.changelog">
-            <h4>{{ t('skillStore.detail.sections.changelog') }}</h4>
-            <div
-              class="skill-content markdown-body"
-              v-html="renderMarkdown(selectedSkill.changelog)"
-            ></div>
-          </section>
-
-          <section class="detail-section" v-else>
-            <h4>{{ t('skillStore.detail.sections.details') }}</h4>
-            <p>{{ t('skillStore.detail.noDetails') }}</p>
+          <section class="detail-section">
+            <h4>{{ marketplaceText('detail.title', 'Details') }}</h4>
+            <p>{{ cardDescription(selectedSkill) }}</p>
           </section>
         </div>
 
         <div v-else class="detail-empty">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-          </svg>
-          <h3>{{ t('skillStore.detail.emptyTitle') }}</h3>
-          <p>{{ t('skillStore.detail.emptyDescription') }}</p>
+          <h3>{{ marketplaceText('detail.selectTitle', 'Select a skill') }}</h3>
+          <p>
+            {{
+              marketplaceText(
+                'detail.selectDescription',
+                'Browse the aggregated catalog and inspect the security report before installing.'
+              )
+            }}
+          </p>
         </div>
       </aside>
+    </section>
+
+    <div v-if="pendingRiskSkill" class="risk-modal-backdrop" @click.self="closeRiskModal">
+      <div class="risk-modal">
+        <header>
+          <span class="shield-chip badge-yellow">{{ commonText('warning', 'Warning') }}</span>
+          <h3>
+            {{ marketplaceText('modal.riskAcknowledgementTitle', 'Risk acknowledgement required') }}
+          </h3>
+        </header>
+        <p>
+          {{
+            marketplaceText(
+              'modal.riskAcknowledgementBody',
+              '{name} is marked yellow. It can still be installed, but you should review the security summary first.',
+              { name: pendingRiskSkill.name }
+            )
+          }}
+        </p>
+        <ul>
+          <li>
+            {{ marketplaceText('detail.riskLevel', 'Risk level') }}:
+            {{ riskLabel(pendingRiskSkill) }}
+          </li>
+        </ul>
+        <div v-if="pendingRiskSignals.length" class="modal-signal-block">
+          <span class="section-label">{{
+            marketplaceText('modal.reviewSignals', 'Review these signals')
+          }}</span>
+          <div class="chip-row">
+            <span
+              v-for="signal in pendingRiskSignals"
+              :key="signal"
+              class="signal-chip signal-warn"
+            >
+              {{ signal }}
+            </span>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" type="button" @click="closeRiskModal">
+            {{ commonText('cancel', 'Cancel') }}
+          </button>
+          <button class="btn-primary" type="button" @click="confirmRiskInstall">
+            {{ marketplaceText('modal.confirmInstall', 'Confirm install') }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -626,540 +1173,887 @@ onUnmounted(() => {
 <style scoped>
 @import './extension-tab.css';
 
-.skill-store-redesign {
+.skill-store-aggregator {
+  --panel-bg: var(--glass-bg, rgba(255, 255, 255, 0.05));
+  --panel-bg-strong: var(--glass-bg, rgba(255, 255, 255, 0.08));
+  --panel-border: var(--border);
+  --security-green-bg: rgba(34, 197, 94, 0.14);
+  --security-green-border: rgba(34, 197, 94, 0.24);
+  --security-green-text: #dcfce7;
+  --security-yellow-bg: rgba(245, 158, 11, 0.15);
+  --security-yellow-border: rgba(245, 158, 11, 0.28);
+  --security-yellow-text: #fef3c7;
+  --security-red-bg: rgba(239, 68, 68, 0.14);
+  --security-red-border: rgba(239, 68, 68, 0.28);
+  --security-red-text: #fee2e2;
+  --security-neutral-bg: rgba(148, 163, 184, 0.14);
+  --security-neutral-border: rgba(148, 163, 184, 0.22);
+  --security-neutral-text: #e2e8f0;
+  --card-shadow: 0 18px 36px rgba(15, 23, 42, 0.14);
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.store-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(340px, 1fr);
-  gap: 16px;
-  align-items: start;
+:root.light .skill-store-aggregator,
+[data-theme='light'] .skill-store-aggregator {
+  --security-green-text: #166534;
+  --security-yellow-text: #92400e;
+  --security-red-text: #b91c1c;
+  --security-neutral-text: #475569;
+  --card-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
 }
 
-.store-list-panel {
-  max-height: calc(100vh - 250px);
-  overflow: auto;
-  padding-right: 4px;
+.toolbar-panel,
+.results-panel,
+.detail-card,
+.detail-empty {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: var(--panel-bg-strong);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
-.store-grid {
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-}
-
-.store-card {
-  outline: none;
-}
-
-.store-card.active {
-  border-color: rgba(59, 130, 246, 0.45);
-  box-shadow:
-    0 0 0 1px rgba(59, 130, 246, 0.35),
-    0 10px 22px rgba(59, 130, 246, 0.18);
-}
-
-.item-stats {
-  display: flex;
-  gap: 12px;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.item-stats .stat {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.item-stats svg {
-  width: 14px;
-  height: 14px;
-}
-
-.item-stats .stat:first-child svg {
-  color: var(--color-gray-900);
-}
-
-.item-stats .stat:nth-child(2) svg,
-.item-stats .stat:nth-child(3) svg {
-  color: #fbbf24;
-}
-
-.item-categories {
+.hero-actions,
+.modal-actions,
+.detail-actions,
+.card-badges,
+.chip-row,
+.card-topline-left {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.item-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border);
 }
 
-.item-description {
-  -webkit-line-clamp: 5;
-  min-height: 95px;
-}
-
-.btn-install {
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: white;
-  background: #374151;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 76px;
-  position: relative;
-  overflow: hidden;
-}
-
-.btn-install.btn-installing {
-  padding: 6px 8px;
-  min-width: 98px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: #1f2937;
-}
-
-.install-progress-bar {
-  flex: 1;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.install-progress-fill {
-  height: 100%;
-  background: #22c55e;
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
-
-.install-progress-text {
-  font-size: 11px;
+.btn-primary,
+.btn-ghost,
+.install-button,
+.source-button {
+  appearance: none;
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
   font-weight: 600;
-  min-width: 28px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
 }
 
-.btn-install:hover:not(:disabled) {
-  background: #4b5563;
+.btn-primary {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: white;
 }
 
-.btn-install:disabled {
-  opacity: 0.6;
+.btn-ghost,
+.source-button {
+  border: 1px solid var(--border);
+  background: var(--glass-bg, rgba(255, 255, 255, 0.05));
+  color: var(--text-primary);
+}
+
+.btn-ghost:hover:not(:disabled),
+.install-button:hover:not(:disabled),
+.source-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  box-shadow: var(--card-shadow);
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.92;
+  box-shadow: var(--card-shadow);
+}
+
+.btn-primary:disabled,
+.btn-ghost:disabled,
+.install-button:disabled,
+.source-button:disabled {
+  opacity: 0.58;
   cursor: not-allowed;
 }
 
-.installed-badge {
-  padding: 4px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.1);
-  border-radius: 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-link-small,
-.btn-link-light {
-  border: 1px solid var(--border);
+.btn-text {
+  border: 0;
   background: transparent;
-  color: var(--text-primary);
-  border-radius: 6px;
-  font-size: 12px;
-  padding: 6px 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.btn-link-small:hover,
-.btn-link-light:hover {
-  background: var(--bg-hover);
-  border-color: var(--primary);
   color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
 }
 
-.store-detail-panel {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.05));
-  min-height: 360px;
-  max-height: calc(100vh - 250px);
-  overflow: auto;
-  position: sticky;
-  top: 12px;
+.btn-text:hover {
+  opacity: 0.9;
 }
 
-.store-detail-content {
-  padding: 14px;
+.hero-panel {
+  padding: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.16), transparent 32%),
+    radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.08), transparent 24%),
+    var(--panel-bg-strong);
+}
+
+.hero-headline {
+  display: block;
+}
+
+.hero-copy {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
+.hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 5px 10px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hero-copy h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 26px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.hero-copy p {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.hero-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 12px;
+}
+
+.toolbar-note,
+.section-label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.toolbar-note {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+
+.toolbar-search-row,
+.toolbar-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.hero-search-field {
+  min-width: 0;
+  flex: 1;
+}
+
+.sort-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sort-pill {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.sort-pill:hover {
+  background: var(--bg-hover);
+}
+
+.sort-pill.active {
+  border-color: rgba(59, 130, 246, 0.32);
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--text-primary);
+}
+
+.toolbar-focus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.filter-select {
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.active-filters {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.chip-button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.chip-button small {
+  color: inherit;
+  opacity: 0.8;
+  font-size: 11px;
+}
+
+.chip-button:hover {
+  transform: translateY(-1px);
+  background: var(--bg-hover);
+}
+
+.chip-button.active {
+  border-color: rgba(59, 130, 246, 0.28);
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--text-primary);
+}
+
+.chip-button-quiet {
+  padding: 7px 11px;
+}
+
+.store-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.32fr) minmax(340px, 0.78fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.results-panel,
+.detail-card,
+.detail-empty {
+  padding: 16px;
+  box-shadow: var(--card-shadow);
+}
+
+.panel-header,
 .detail-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
   gap: 12px;
+  align-items: flex-start;
 }
 
-.detail-title-row {
+.panel-header h3,
+.detail-header h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 18px;
+}
+
+.panel-header p,
+.detail-empty p,
+.detail-placeholder {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+.detail-placeholder-inline {
+  margin-top: 8px;
+}
+
+.summary-pill,
+.source-chip,
+.shield-chip,
+.meta-chip,
+.tag-chip,
+.signal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.summary-pill,
+.source-chip {
+  background: var(--panel-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.shield-chip {
+  border: 1px solid transparent;
+}
+
+.badge-green {
+  background: var(--security-green-bg);
+  border-color: var(--security-green-border);
+  color: var(--security-green-text);
+}
+
+.badge-yellow {
+  background: var(--security-yellow-bg);
+  border-color: var(--security-yellow-border);
+  color: var(--security-yellow-text);
+}
+
+.badge-red {
+  background: var(--security-red-bg);
+  border-color: var(--security-red-border);
+  color: var(--security-red-text);
+}
+
+.badge-neutral {
+  background: var(--security-neutral-bg);
+  border-color: var(--security-neutral-border);
+  color: var(--security-neutral-text);
+}
+
+.summary-pill-active {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.2);
+  color: var(--text-primary);
+}
+
+.meta-chip-soft {
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.meta-chip-hot {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--primary);
+  border: 1px solid rgba(59, 130, 246, 0.18);
+}
+
+.meta-chip-installed {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--success);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.tag-chip {
+  background: var(--panel-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.signal-chip {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.signal-warn {
+  color: var(--security-yellow-text);
+  border-color: var(--security-yellow-border);
+  background: var(--security-yellow-bg);
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.skill-card {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  cursor: pointer;
+  min-height: 226px;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.skill-card:hover,
+.skill-card.active {
+  border-color: var(--primary);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--card-shadow);
+}
+
+.card-topline,
+.card-footer,
+.card-stats,
+.detail-topline,
+.evidence-item header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.card-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.card-header h4 {
+  margin: 0 0 4px;
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.card-header p {
+  margin: 0;
+  min-height: 54px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-size: 12.5px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-stats,
+.risk-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.card-stats {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.card-note {
+  margin: 0;
+  min-height: 34px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.card-footer {
+  margin-top: auto;
+  align-items: center;
+}
+
+.risk-label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.install-button.install-green {
+  border: 1px solid var(--security-green-border);
+  background: var(--security-green-bg);
+  color: var(--security-green-text);
+}
+
+.install-button.install-yellow {
+  border: 1px solid var(--security-yellow-border);
+  background: var(--security-yellow-bg);
+  color: var(--security-yellow-text);
+}
+
+.install-button.install-red {
+  border: 1px solid var(--security-red-border);
+  background: var(--security-red-bg);
+  color: var(--security-red-text);
+}
+
+.load-more,
+.loading-state,
+.detail-loading,
+.empty-state,
+.detail-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+  text-align: center;
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  animation: spin 0.9s linear infinite;
+}
+
+.detail-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.detail-panel {
+  position: sticky;
+  top: 12px;
+  align-self: start;
+}
+
+.detail-card {
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+}
+
+.detail-main {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   min-width: 0;
 }
 
-.detail-icon {
-  width: 38px;
-  height: 38px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  flex-shrink: 0;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.05));
-}
-
-.detail-title-row h2 {
-  margin: 0;
-  font-size: 18px;
-  color: var(--text-primary);
-}
-
-.detail-title-row p {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.45;
-}
-
 .detail-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.detail-meta-grid {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-}
-
-.meta-entry {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.04));
-  padding: 9px 10px;
-  display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: stretch;
+  min-width: 156px;
 }
 
-.meta-entry span {
-  font-size: 11px;
+.detail-subtitle,
+.detail-callout,
+.section-heading p {
+  margin: 0;
   color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
-.meta-entry strong {
-  font-size: 12px;
+.detail-callout {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(59, 130, 246, 0.16);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.meta-item,
+.score-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+}
+
+.meta-item {
+  min-height: 72px;
+}
+
+.meta-item span,
+.score-card span,
+.section-label {
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.meta-item strong,
+.score-card strong {
   color: var(--text-primary);
-  word-break: break-word;
+}
+
+.signal-detail-safe {
+  border-color: rgba(34, 197, 94, 0.18);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.signal-detail-alert {
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.signal-detail-warn {
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
 }
 
 .detail-section {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.03));
-  padding: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
 .detail-section h4 {
   margin: 0 0 10px;
-  font-size: 14px;
-  color: var(--text-primary);
-}
-
-.detail-section p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.skill-content {
-  line-height: 1.6;
-  color: var(--text-primary);
-}
-
-.skill-content :deep(h1) {
-  font-size: 20px;
-  margin: 0 0 12px;
-}
-
-.skill-content :deep(h2) {
-  font-size: 17px;
-  margin: 18px 0 10px;
-}
-
-.skill-content :deep(h3) {
-  font-size: 15px;
-  margin: 14px 0 8px;
-}
-
-.skill-content :deep(p) {
-  margin: 0 0 10px;
-}
-
-.skill-content :deep(ul) {
-  margin: 0 0 10px;
-  padding-left: 20px;
-}
-
-.skill-content :deep(code) {
-  background: var(--color-bg-tertiary, var(--color-bg-secondary));
-  color: var(--color-code-text, var(--color-text-primary));
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 12px;
-}
-
-.skill-content :deep(pre) {
-  background: var(--color-bg-tertiary, var(--color-bg-secondary));
-  color: var(--color-text-primary);
-  padding: 12px;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin: 10px 0;
-}
-
-.markdown-body {
-  background: transparent !important;
-  color: var(--color-text-primary) !important;
-}
-
-.skill-content :deep(a) {
-  color: var(--color-gray-900, #3b82f6);
-  text-decoration: none;
-}
-
-.skill-content :deep(a:hover) {
-  text-decoration: underline;
-}
-
-.detail-empty {
-  min-height: 280px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  gap: 8px;
-  padding: 18px;
-  color: var(--text-secondary);
-}
-
-.detail-empty svg {
-  width: 44px;
-  height: 44px;
-  opacity: 0.3;
-}
-
-.detail-empty h3 {
-  margin: 0;
   color: var(--text-primary);
   font-size: 15px;
 }
 
-.detail-empty p {
-  margin: 0;
-  font-size: 13px;
-}
-
-.author {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  text-align: center;
-  color: var(--color-text-secondary);
-}
-
-.empty-icon {
-  width: 64px;
-  height: 64px;
-  margin-bottom: 16px;
-  opacity: 0.3;
-}
-
-.empty-state h3 {
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  color: var(--color-text-primary);
-}
-
-.empty-state p {
-  font-size: 14px;
-  margin-bottom: 16px;
-}
-
-.btn-clear-search {
-  padding: 8px 16px;
-  background: #374151;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: opacity 0.2s;
-}
-
-.btn-clear-search:hover {
-  opacity: 0.9;
-}
-
-.loading-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 16px;
-  color: var(--color-text-secondary);
-}
-
-.spinner-small {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--color-border);
-  border-top-color: var(--color-text-primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.load-more-info {
-  text-align: center;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  padding: 12px 0 2px;
-}
-
-.initializing-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  text-align: center;
-  color: var(--color-text-secondary);
-}
-
-.initializing-icon {
-  width: 72px;
-  height: 72px;
-  margin-bottom: 16px;
-  opacity: 0.25;
-}
-
-.initializing-spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid rgba(107, 114, 128, 0.2);
-  border-top-color: var(--color-text-secondary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin-bottom: 16px;
-}
-
-.initializing-state h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: var(--color-text-primary);
-}
-
-.initializing-state p {
-  font-size: 13px;
-}
-
-.sync-banner {
-  margin-bottom: 2px;
-  padding: 10px 14px;
-  background: rgba(59, 130, 246, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: 8px;
-}
-
-.sync-banner-content {
-  display: flex;
-  align-items: center;
+.security-overview {
+  display: grid;
+  grid-template-columns: minmax(120px, 144px) minmax(0, 1fr);
   gap: 10px;
 }
 
-.sync-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(59, 130, 246, 0.25);
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  flex-shrink: 0;
+.score-card-emphasis {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 120px;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), transparent 42%),
+    var(--panel-bg);
 }
 
-.sync-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-primary);
+.score-card-emphasis strong {
+  font-size: 34px;
+  line-height: 1;
 }
 
-.sync-detail {
+.security-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.list-block {
+  margin-top: 12px;
+}
+
+.evidence-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.evidence-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+}
+
+.evidence-item p,
+.evidence-item small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-secondary);
+}
+
+.evidence-item code {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  overflow-x: auto;
   font-size: 12px;
-  color: var(--color-text-secondary);
+}
+
+.risk-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.54);
+  backdrop-filter: blur(8px);
+}
+
+.risk-modal {
+  width: min(520px, calc(100vw - 32px));
+  padding: 18px;
+  border-radius: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg, 0 10px 15px rgba(0, 0, 0, 0.2));
+}
+
+.risk-modal header h3 {
+  margin: 12px 0 0;
+  color: var(--text-primary);
+}
+
+.risk-modal p,
+.risk-modal li {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.risk-modal ul {
+  padding-left: 20px;
+}
+
+.modal-signal-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.error-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+  font-size: 13px;
+}
+
+.error-banner button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+@media (max-width: 1200px) {
+  .hero-headline,
+  .store-shell,
+  .security-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .security-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .detail-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detail-panel {
+    position: static;
+  }
+
+  .detail-card {
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .toolbar-panel,
+  .results-panel,
+  .detail-card,
+  .detail-empty {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .filter-grid,
+  .detail-meta,
+  .results-grid,
+  .security-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-headline,
+  .toolbar-search-row,
+  .toolbar-controls,
+  .panel-header,
+  .detail-header,
+  .card-topline,
+  .card-footer,
+  .detail-actions,
+  .section-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-@media (max-width: 1180px) {
-  .store-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .store-list-panel,
-  .store-detail-panel {
-    max-height: none;
-    position: static;
   }
 }
 </style>

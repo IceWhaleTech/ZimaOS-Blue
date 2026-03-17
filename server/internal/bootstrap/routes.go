@@ -36,6 +36,7 @@ import (
 	convertsvc "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/gateway"
@@ -68,6 +69,7 @@ import (
 	serviceutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/service"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
@@ -328,6 +330,7 @@ func registerAgentAndMCPRoutes(
 	deps *RoutesDeps,
 	logger *zap.Logger,
 	agentLLMCaller agent.LLMCaller,
+	mcpPermission ...echo.MiddlewareFunc,
 ) *agent.Runner {
 	if protected == nil || v1 == nil || services == nil || cfg == nil || deps == nil || logger == nil {
 		return nil
@@ -391,7 +394,10 @@ func registerAgentAndMCPRoutes(
 		}
 	}
 	mcpHandler := mcp.NewHandler(mcpServer)
-	mcpGroup := v1.Group("/mcp")
+	mcpGroup := protected.Group("/mcp")
+	if len(mcpPermission) > 0 && mcpPermission[0] != nil {
+		mcpGroup = protected.Group("/mcp", mcpPermission[0])
+	}
 	mcpHandler.RegisterRoutes(mcpGroup)
 	logger.Info("MCP server routes registered")
 
@@ -616,6 +622,22 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// fetch password policy and refresh tokens during early startup.
 	registerPublicAuthRoutes(v1, deps.UserHandler)
 
+	permRepo, permErr := permission.NewRepository(s.DB)
+	if permErr != nil {
+		logger.Error("Failed to initialize permission repository", zap.Error(permErr))
+	}
+	permService := permission.NewService(permRepo, s.UserRepo)
+	permHandler := permission.NewHandler(permService, s.UserRepo)
+	requirePagePermission := func(page string) echo.MiddlewareFunc {
+		return permission.RequirePagePermission(permService, page)
+	}
+	authPageV1Group := func(page string) *echo.Group {
+		return v1.Group("", deps.AuthMiddleware.Authenticate(), requirePagePermission(page))
+	}
+	authPageAPIGroup := func(page string) *echo.Group {
+		return api.Group("", deps.AuthMiddleware.Authenticate(), requirePagePermission(page))
+	}
+
 	// Lightweight health endpoint — registered FIRST so the Tauri health poll
 	// can succeed as soon as the HTTP listener starts, before heavy subsystem init.
 	v1.GET("/health", func(c echo.Context) error {
@@ -730,7 +752,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 
 		// One-time migration from provider pool (if media providers were configured there)
-		mediagen.MigrateFromProviderPool(filepath.Join(dataDir, "providerpool"), filepath.Join(dataDir, "media"))
+		mediagen.MigrateFromProviderPool(filepath.Join(dataDir, "providerpool"), mediaConfigStore)
 
 		// Read locale from settings for priority ordering
 		locale := readLocaleFromKV(kv)
@@ -765,7 +787,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			} else {
 				wpSender := webpush.NewSender(wpPriv, wpPub, wpStore, logger)
 				wpHandler := webpush.NewHandler(wpStore, wpPub)
-				wpHandler.RegisterRoutes(v1.Group("/webpush"))
+				wpHandler.RegisterRoutes(v1.Group("/webpush", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageProfile)))
 
 				isCN := strings.HasPrefix(locale, "zh")
 				mediaManager.SetOnTaskDone(func(taskID, status, model, imageURL string) {
@@ -1023,12 +1045,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		return c.JSON(http.StatusOK, s.WorkerPool.Stats())
 	})
 
-	// Public config and templates routes (no auth required)
+	// Templates stay public for lightweight bootstrap flows; config is protected.
 	configHandler := server.NewConfigHandler(deps.HotReloader)
 	if deps.ConfigStore != nil {
 		configHandler.SetConfigStore(deps.ConfigStore)
 	}
-	configHandler.RegisterRoutes(v1)
+	configHandler.RegisterRoutes(authPageV1Group(permission.PageSettings))
 	templatesHandler := server.NewTemplatesHandler()
 	templatesHandler.RegisterRoutes(v1)
 
@@ -1036,13 +1058,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	v1.GET("/users/me", deps.UserHandler.GetCurrentUser)
 	v1.PUT("/users/me", deps.UserHandler.UpdateCurrentUser)
 
-	// Public formfiller routes for preview mode
+	// Formfiller management routes
 	if deps.FormfillerHandler != nil {
-		formfillerGroup := v1.Group("/formfiller")
+		formfillerGroup := v1.Group("/formfiller", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageTools))
 		deps.FormfillerHandler.RegisterRoutes(formfillerGroup)
 	} else {
 		stub := featureDisabled("formfiller")
-		formfillerGroup := v1.Group("/formfiller")
+		formfillerGroup := v1.Group("/formfiller", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageTools))
 		formfillerGroup.GET("/templates", stub)
 		formfillerGroup.GET("/config", stub)
 		formfillerGroup.Any("/*", stub)
@@ -1090,9 +1112,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	mfaHandler.RegisterRoutes(protected)
 
 	// User routes
-	usersGroup := protected.Group("/users")
-	usersGroup.GET("/me", deps.UserHandler.GetCurrentUser)
-	usersGroup.PUT("/me", deps.UserHandler.UpdateCurrentUser)
+	usersGroup := protected.Group("/users", requirePagePermission(permission.PageUsers))
 	usersGroup.GET("", deps.UserHandler.ListUsers)
 	usersGroup.POST("", deps.UserHandler.CreateUser)
 	usersGroup.GET("/:id", deps.UserHandler.GetUser)
@@ -1102,21 +1122,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	usersGroup.POST("/:id/unlock", deps.UserHandler.UnlockUser)
 	usersGroup.POST("/:id/reset-password", deps.UserHandler.ResetPassword)
 
-	// Permission routes
-	permRepo, permErr := permission.NewRepository(s.DB)
-	if permErr != nil {
-		logger.Error("Failed to initialize permission repository", zap.Error(permErr))
-	}
-	permService := permission.NewService(permRepo, s.UserRepo)
-	permHandler := permission.NewHandler(permService, s.UserRepo)
 	permHandler.RegisterRoutes(protected)
 	logger.Info("Permission routes registered")
 
 	// Password change
-	protected.POST("/auth/password", deps.UserHandler.ChangePassword)
+	protected.POST("/auth/password", deps.UserHandler.ChangePassword, requirePagePermission(permission.PageProfile))
 
 	// API Keys routes
-	apiKeysGroup := protected.Group("/apikeys")
+	apiKeysGroup := protected.Group("/apikeys", requirePagePermission(permission.PageProfile))
 	deps.APIKeyHandler.RegisterRoutes(apiKeysGroup)
 
 	// Billing routes (admin-only checks are enforced by the billing handler)
@@ -1221,12 +1234,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Register auto-reply routes
 	if deps.AutoreplyHandler != nil {
-		deps.AutoreplyHandler.RegisterRoutes(v1)
+		deps.AutoreplyHandler.RegisterRoutes(authPageV1Group(permission.PageChannels))
 	}
 
 	// Network routes
 	networkHandler := networkapi.NewNetworkHandler(cfg.Port)
-	networkHandler.RegisterRoutes(e)
+	networkHandler.RegisterGroupRoutes(authPageV1Group(permission.PageSettings))
 	// Add LAN addresses to CORS allowed origins after actual port is known
 	server.OnServerStart(func(port int) {
 		h := networkapi.NewNetworkHandler(port)
@@ -1237,16 +1250,16 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Link preview routes
 	linkPreviewHandler := networkapi.NewLinkPreviewHandler()
-	linkPreviewHandler.RegisterRoutes(v1)
+	linkPreviewHandler.RegisterRoutes(authPageV1Group(permission.PageChat))
 
 	// Metrics routes
 	if deps.MetricsCollector != nil {
 		metricsHandler := server.NewMetricsHandler(deps.MetricsCollector)
-		metricsHandler.RegisterRoutes(v1)
+		metricsHandler.RegisterRoutes(authPageV1Group(permission.PageHome))
 	}
 	if deps.MetricsWriter != nil {
 		detailedMetricsHandler := metrics.NewHandler(deps.MetricsWriter)
-		metricsGroup := v1.Group("/metrics")
+		metricsGroup := v1.Group("/metrics", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageHome))
 		detailedMetricsHandler.RegisterRoutes(metricsGroup)
 
 		// Set metrics recorder on chat handler
@@ -1254,7 +1267,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 	if deps.MetricsCollector == nil && deps.MetricsWriter == nil {
 		stub := featureDisabled("metrics")
-		metricsGroup := v1.Group("/metrics")
+		metricsGroup := v1.Group("/metrics", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageHome))
 		metricsGroup.GET("/summary", stub)
 		metricsGroup.GET("/all", stub)
 		metricsGroup.Any("/*", stub)
@@ -1262,15 +1275,24 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// System routes
 	systemHandler := server.NewSystemHandler(cfg.Version, cfg.BuildTime, cfg.GitCommit, cfg.DataDir)
-	systemHandler.RegisterRoutes(v1)
-	systemHandler.RegisterFileBridgeRoutes(protected)
+	systemHomeGroup := v1.Group("/system", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageHome))
+	systemHomeGroup.GET("/info", systemHandler.GetInfo)
+	systemSettingsGroup := v1.Group("/system", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageSettings))
+	systemSettingsGroup.GET("/config", systemHandler.GetConfig)
+	systemSettingsGroup.PUT("/config", systemHandler.UpdateConfig)
+	systemSettingsGroup.POST("/restart", systemHandler.RestartService)
+	systemSecurityGroup := v1.Group("/system", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageSecurity))
+	systemSecurityGroup.GET("/logs", systemHandler.GetLogs)
+	systemSecurityGroup.POST("/logs", systemHandler.WriteLog)
+	systemSecurityGroup.GET("/certificate", systemHandler.GetCertificate)
+	systemHandler.RegisterFileBridgeRoutes(protected.Group("", requirePagePermission(permission.PageChat)))
 
 	serviceHandler := server.NewServiceHandler()
-	serviceHandler.RegisterRoutes(v1)
+	serviceHandler.RegisterRoutes(authPageV1Group(permission.PageSettings))
 
 	// Connection monitoring routes
 	connHandler := connection.NewHandler(connManager)
-	connGroup := protected.Group("/connections")
+	connGroup := protected.Group("/connections", requirePagePermission(permission.PageSecurity))
 	connHandler.RegisterRoutes(connGroup)
 
 	// API protected routes
@@ -1323,7 +1345,60 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		logger.Info("Local skill scanner initialized", zap.Int("count", localScanner.Count()))
 	}
 
-	skillHandler.RegisterRoutes(v1)
+	// Initialize the authoritative SQLite-backed skills marketplace.
+	if deps.Config == nil || deps.Config.SkillMarket.Enabled {
+		marketCfg := skillmarket.DefaultConfig(cfg.DataDir, skillsDir)
+		marketCfg.GitHubToken = strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
+		if deps.Config != nil {
+			marketCfg.SeedURLs = append([]string{}, deps.Config.SkillMarket.SeedURLs...)
+			marketCfg.ClawHubMirrorBaseURLs = append([]string{}, deps.Config.SkillMarket.ClawHubMirrorBaseURLs...)
+			marketCfg.SkillHubBaseURL = deps.Config.SkillMarket.SkillHubBaseURL
+			marketCfg.SkillHubAPIKey = strings.TrimSpace(deps.Config.SkillMarket.SkillHubAPIKey)
+			marketCfg.SkillStackBaseURL = deps.Config.SkillMarket.SkillStackBaseURL
+			marketCfg.SkillsMPBaseURL = deps.Config.SkillMarket.SkillsMPBaseURL
+			marketCfg.SkillsMPAPIKey = strings.TrimSpace(deps.Config.SkillMarket.SkillsMPAPIKey)
+			marketCfg.LLMSkillsBaseURL = deps.Config.SkillMarket.LLMSkillsBaseURL
+			marketCfg.CuratedConfigPath = deps.Config.SkillMarket.CuratedConfigPath
+			marketCfg.CuratedConfigURLs = append([]string{}, deps.Config.SkillMarket.CuratedConfigURLs...)
+			marketCfg.CrawlIncrementalInterval = deps.Config.SkillMarket.CrawlIncrementalInterval
+			marketCfg.CrawlFullInterval = deps.Config.SkillMarket.CrawlFullInterval
+			marketCfg.UpdateCheckInterval = deps.Config.SkillMarket.UpdateCheckInterval
+			marketCfg.TelemetryRollupInterval = deps.Config.SkillMarket.TelemetryRollupInterval
+			marketCfg.SemanticRatio = deps.Config.SkillMarket.SemanticRatio
+			marketCfg.SearchCandidateLimit = deps.Config.SkillMarket.SearchCandidateLimit
+		}
+
+		var marketEmbedding embedding.Provider
+		if deps.Config != nil && strings.EqualFold(deps.Config.Embedding.Provider, "cybertron") {
+			provider := embedding.NewCybertronProvider(embedding.CybertronConfig{
+				ModelsDir:  filepath.Join(cfg.DataDir, "models", "skillmarket"),
+				Model:      deps.Config.Embedding.Model,
+				Dimensions: deps.Config.Embedding.Dimensions,
+				Timeout:    deps.Config.Embedding.Timeout,
+			})
+			provider.StartAsync()
+			marketEmbedding = provider
+		}
+		market, err := skillmarket.NewService(deps.DB, skillmarket.Options{
+			Config:            marketCfg,
+			Logger:            logger,
+			Registry:          s.SkillRegistry,
+			LocalScanner:      localScanner,
+			EmbeddingProvider: marketEmbedding,
+			HTTPClient:        &http.Client{Timeout: 30 * time.Second},
+			// Keep LLM classification optional; deterministic scanning is always available.
+			Scanner: skillmarket.NewScanner(nil),
+		})
+		if err != nil {
+			logger.Warn("Failed to initialize skill marketplace", zap.Error(err))
+		} else {
+			skillHandler.SetMarketplace(market)
+			market.Start(deps.Ctx)
+			logger.Info("Skill marketplace initialized")
+		}
+	}
+
+	skillHandler.RegisterRoutes(authPageV1Group(permission.PageSkills))
 
 	// Register skill manager IPC handlers (after scanner + store are ready)
 	if ipcSrv != nil {
@@ -1524,6 +1599,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			sbx = &sandboxExecAdapter{mgr: deps.SandboxManager}
 		}
 		tools.RegisterExecTools(s.ToolRegistry, execConfig, execApprovals, deps.SSEBroker, dirStore, sbx)
+		tools.RegisterApprovalAwareFileTools(
+			s.ToolRegistry,
+			[]string{filepath.Join(cfg.DataDir, "workspace")},
+			0,
+			execApprovals,
+			dirStore,
+		)
 		convertService, err := convertsvc.NewService(s.DB, cfg.DataDir)
 		if err != nil {
 			logger.Warn("Failed to initialize convert service", zap.Error(err))
@@ -1614,7 +1696,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			})
 		}
 
-		execGroup := v1.Group("/exec")
+		execGroup := v1.Group("/exec", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageChat))
 
 		// Exec approval REST endpoint (kept for backwards compatibility;
 		// the unified /approval/resolve endpoint also handles exec approvals).
@@ -1723,7 +1805,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Ask-user-question REST endpoints
 	if questionMgr != nil {
-		askGroup := v1.Group("/ask-user-question")
+		askGroup := v1.Group("/ask-user-question", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageChat))
 		askGroup.GET("/pending", func(c echo.Context) error {
 			userID := resolveRequestUserID(c)
 			req := questionMgr.GetPending(userID)
@@ -1780,21 +1862,21 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Plugin routes
 	pluginHandler := server.NewPluginHandler(deps.PluginRegistry)
-	pluginHandler.RegisterRoutes(v1)
+	pluginHandler.RegisterRoutes(authPageV1Group(permission.PagePlugins))
 
 	pluginStoreHandler := server.NewPluginStoreHandler(deps.PluginStore)
-	pluginStoreHandler.RegisterRoutes(v1)
+	pluginStoreHandler.RegisterRoutes(authPageV1Group(permission.PagePlugins))
 
 	// Tool store routes
 	toolStoreHandler := server.NewToolStoreHandler(s.ToolRegistry)
-	toolStoreHandler.RegisterRoutes(v1)
+	toolStoreHandler.RegisterRoutes(authPageV1Group(permission.PageTools))
 
 	// Backup routes
 	if deps.BackupHandler != nil {
-		deps.BackupHandler.RegisterRoutes(v1)
+		deps.BackupHandler.RegisterRoutes(authPageV1Group(permission.PageSettings))
 	} else {
 		stub := featureDisabled("backup")
-		backupGroup := v1.Group("/backup")
+		backupGroup := v1.Group("/backup", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageSettings))
 		backupGroup.GET("", stub)
 		backupGroup.GET("/progress", stub)
 		backupGroup.Any("/*", stub)
@@ -1802,12 +1884,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Security routes (protected)
 	if deps.SecurityHandler != nil {
+		if deps.ConfigKV != nil {
+			deps.SecurityHandler.SetKVStore(deps.ConfigKV)
+		}
 		deps.SecurityHandler.SetDataDir(cfg.DataDir)
-		securityGroup := protected.Group("/security")
+		securityGroup := protected.Group("/security", requirePagePermission(permission.PageSecurity))
 		deps.SecurityHandler.RegisterRoutes(securityGroup)
 	} else {
 		stub := featureDisabled("security")
-		securityGroup := protected.Group("/security")
+		securityGroup := protected.Group("/security", requirePagePermission(permission.PageSecurity))
 		securityGroup.GET("/sessions", stub)
 		securityGroup.GET("/settings", stub)
 		securityGroup.GET("/events", stub)
@@ -1823,21 +1908,21 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Sandbox routes (protected)
 	if deps.SandboxHandler != nil {
-		sandboxGroup := protected.Group("/sandbox")
+		sandboxGroup := protected.Group("/sandbox", requirePagePermission(permission.PageTools))
 		deps.SandboxHandler.RegisterRoutes(sandboxGroup)
 	} else {
 		stub := featureDisabled("sandbox")
-		sandboxGroup := protected.Group("/sandbox")
+		sandboxGroup := protected.Group("/sandbox", requirePagePermission(permission.PageTools))
 		sandboxGroup.GET("/info", stub)
 		sandboxGroup.Any("/*", stub)
 	}
 
 	// Cron routes (protected) - /api/cron/*
 	if deps.CronHandler != nil {
-		deps.CronHandler.RegisterRoutes(apiProtected)
+		deps.CronHandler.RegisterRoutes(apiProtected.Group("", requirePagePermission(permission.PageAutomation)))
 	} else {
 		stub := featureDisabled("cron")
-		cronGroup := apiProtected.Group("/cron")
+		cronGroup := apiProtected.Group("/cron", requirePagePermission(permission.PageAutomation))
 		cronGroup.GET("", stub)
 		cronGroup.Any("/*", stub)
 	}
@@ -1891,11 +1976,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Home Assistant routes (protected) - /api/homeassistant/*
 	if deps.HAHandler != nil {
-		haGroup := apiProtected.Group("/homeassistant")
+		haGroup := apiProtected.Group("/homeassistant", requirePagePermission(permission.PageAutomation))
 		deps.HAHandler.RegisterRoutes(haGroup)
 	} else {
 		stub := featureDisabled("homeassistant")
-		haGroup := apiProtected.Group("/homeassistant")
+		haGroup := apiProtected.Group("/homeassistant", requirePagePermission(permission.PageAutomation))
 		haGroup.GET("/status", stub)
 		haGroup.GET("/entities", stub)
 		haGroup.GET("/scenes", stub)
@@ -1905,11 +1990,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Browser automation routes (protected) - /api/browser/*
 	if deps.BrowserHandler != nil {
-		browserGroup := apiProtected.Group("/browser")
+		browserGroup := apiProtected.Group("/browser", requirePagePermission(permission.PageTools))
 		deps.BrowserHandler.RegisterRoutes(browserGroup)
 	} else {
 		stub := featureDisabled("browser")
-		browserGroup := apiProtected.Group("/browser")
+		browserGroup := apiProtected.Group("/browser", requirePagePermission(permission.PageTools))
 		browserGroup.GET("/tasks", stub)
 		browserGroup.GET("/sessions", stub)
 		browserGroup.GET("/security", stub)
@@ -1918,10 +2003,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Workflow routes
 	if deps.WorkflowHandler != nil {
+		deps.WorkflowHandler.SetRouteMiddlewares(deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageAutomation))
 		deps.WorkflowHandler.RegisterRoutes(e)
 	} else {
 		stub := featureDisabled("workflow")
-		wfGroup := v1.Group("/workflows")
+		wfGroup := v1.Group("/workflows", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageAutomation))
 		wfGroup.GET("", stub)
 		wfGroup.GET("/stats", stub)
 		wfGroup.GET("/templates", stub)
@@ -1930,22 +2016,22 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Deep research routes (protected)
 	deepResearchHandler := deepresearch.NewHandler(deepResearchService)
-	deepResearchHandler.RegisterGroup(protected.Group("/deep-research"))
-	deepResearchHandler.RegisterGroup(apiProtected.Group("/deep-research"))
+	deepResearchHandler.RegisterGroup(protected.Group("/deep-research", requirePagePermission(permission.PageChat)))
+	deepResearchHandler.RegisterGroup(apiProtected.Group("/deep-research", requirePagePermission(permission.PageChat)))
 	logger.Info("Deep research routes registered")
 
 	// Voice routes - /api/v1/voice/*
 	if deps.VoiceHandler != nil {
-		voiceGroup := v1.Group("/voice")
+		voiceGroup := v1.Group("/voice", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageChat))
 		deps.VoiceHandler.RegisterRoutes(voiceGroup)
 		// WebSocket handler for voice streaming (requires auth, supports token in query param)
 		if deps.VoiceWSHandler != nil {
-			voiceWSGroup := protected.Group("/voice")
+			voiceWSGroup := protected.Group("/voice", requirePagePermission(permission.PageChat))
 			deps.VoiceWSHandler.RegisterRoutes(voiceWSGroup)
 		}
 	} else {
 		stub := featureDisabled("voice")
-		voiceGroup := v1.Group("/voice")
+		voiceGroup := v1.Group("/voice", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageChat))
 		voiceGroup.GET("/voices", stub)
 		voiceGroup.GET("/sessions", stub)
 		voiceGroup.POST("/transcribe", stub)
@@ -1955,11 +2041,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Speech routes - /api/v1/speech/*
 	if deps.SpeechHandler != nil {
-		speechGroup := v1.Group("/speech")
+		speechGroup := v1.Group("/speech", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageSettings))
 		deps.SpeechHandler.RegisterRoutes(speechGroup)
 	} else {
 		stub := featureDisabled("speech")
-		speechGroup := v1.Group("/speech")
+		speechGroup := v1.Group("/speech", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageSettings))
 		speechGroup.GET("/status", stub)
 		speechGroup.GET("/models", stub)
 		speechGroup.GET("/asr/status", stub)
@@ -1969,7 +2055,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		speechGroup.Any("/*", stub)
 	}
 	if convertHandler != nil {
-		convertHandler.RegisterRoutes(protected.Group("/convert"))
+		convertHandler.RegisterRoutes(protected.Group("/convert", requirePagePermission(permission.PageChat)))
 		logger.Info("Convert routes registered")
 	}
 
@@ -1977,10 +2063,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Companion routes
 	if deps.CompanionHandler != nil {
-		deps.CompanionHandler.RegisterRoutes(e)
+		deps.CompanionHandler.RegisterGroupRoutes(authPageV1Group(permission.PageSecurity))
+		deps.CompanionHandler.RegisterCompatGroupRoutes(authPageAPIGroup(permission.PageSecurity))
 	}
 	if deps.CompanionWSHandler != nil {
-		deps.CompanionWSHandler.RegisterRoutes(e)
+		deps.CompanionWSHandler.RegisterGroupRoutes(authPageV1Group(permission.PageSecurity))
+		deps.CompanionWSHandler.RegisterCompatGroupRoutes(authPageAPIGroup(permission.PageSecurity))
 	}
 	if deps.CompanionHandler == nil {
 		stub := featureDisabled("companion")
@@ -2047,15 +2135,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			logger.Info("OAuth manager initialized for provider pool")
 		}
 
-		providersGroup := protected.Group("/providers")
+		providersGroup := protected.Group("/providers", requirePagePermission(permission.PageProviders))
 		providerPoolHandler.RegisterRoutes(providersGroup)
-		modelsGroup := protected.Group("/models")
+		modelsGroup := protected.Group("/models", requirePagePermission(permission.PageProviders))
 		providerPoolHandler.RegisterModelRoutes(modelsGroup)
-		ideGroup := protected.Group("/ide")
+		ideGroup := protected.Group("/ide", requirePagePermission(permission.PageProviders))
 		providerPoolHandler.RegisterIDERoutes(ideGroup)
-		pricingGroup := protected.Group("/pricing")
+		pricingGroup := protected.Group("/pricing", requirePagePermission(permission.PageProviders))
 		providerPoolHandler.RegisterPricingRoutes(pricingGroup)
-		configGroup := protected.Group("/config")
+		configGroup := protected.Group("/config", requirePagePermission(permission.PageProviders))
 		providerPoolHandler.RegisterConfigRoutes(configGroup)
 
 		// Proxy failover routes are registered below in the proxy block
@@ -2067,19 +2155,19 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		})
 	} else {
 		stub := featureDisabled("providers")
-		providersGroup := protected.Group("/providers")
+		providersGroup := protected.Group("/providers", requirePagePermission(permission.PageProviders))
 		providersGroup.GET("", stub)
 		providersGroup.Any("/*", stub)
-		modelsGroup := protected.Group("/models")
+		modelsGroup := protected.Group("/models", requirePagePermission(permission.PageProviders))
 		modelsGroup.GET("", stub)
-		ideGroup := protected.Group("/ide")
+		ideGroup := protected.Group("/ide", requirePagePermission(permission.PageProviders))
 		ideGroup.GET("/scan", stub)
 		ideGroup.Any("/*", stub)
-		pricingGroup := protected.Group("/pricing")
+		pricingGroup := protected.Group("/pricing", requirePagePermission(permission.PageProviders))
 		pricingGroup.GET("", stub)
 		pricingGroup.Any("/*", stub)
 		failoverStub := featureDisabled("proxy_failover")
-		failoverGroup := protected.Group("/proxy/failover")
+		failoverGroup := protected.Group("/proxy/failover", requirePagePermission(permission.PageProviders))
 		failoverGroup.GET("/config", failoverStub)
 		failoverGroup.GET("/metrics", failoverStub)
 		failoverGroup.GET("/breakers", failoverStub)
@@ -2089,7 +2177,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Proxy cache routes (deprecated — cache removed)
 	{
 		stub := featureDisabled("proxy_cache")
-		cacheGroup := v1.Group("/proxy/cache")
+		cacheGroup := v1.Group("/proxy/cache", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageProviders))
 		cacheGroup.GET("/stats", stub)
 		cacheGroup.GET("/config", stub)
 		cacheGroup.Any("/*", stub)
@@ -2103,7 +2191,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 	var maskingOnToggle func() // wired later when toggleStore is available
 	{
-		maskingGroup := v1.Group("/proxy/masking")
+		maskingGroup := v1.Group("/proxy/masking", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageSecurity))
 		maskingGroup.GET("/stats", func(c echo.Context) error {
 			return c.JSON(200, dataMasker.Stats())
 		})
@@ -2198,7 +2286,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// Failover API routes — share the same config pointer so API changes take effect
 		failoverAPIHandler := proxy.NewFailoverAPIHandler(smartFailover, &routingConfig.Failover)
-		failoverGroup := protected.Group("/proxy/failover")
+		failoverGroup := protected.Group("/proxy/failover", requirePagePermission(permission.PageProviders))
 		failoverAPIHandler.RegisterRoutes(failoverGroup)
 
 		// Pipeline stats collector: unified async batch persistence for routing/failover
@@ -2341,7 +2429,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// Always register pruner API routes (handler returns disabled status when pruner is off)
 		prunerHandler = pruner.NewAPIHandler(prunerMw, &prunerCfg, prunerModelMgr)
-		prunerGroup := v1.Group("/proxy/pruner")
+		prunerGroup := v1.Group("/proxy/pruner", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageProviders))
 		prunerHandler.RegisterRoutes(prunerGroup)
 
 		// Dynamic tier resolver: classifies models by pricing for smart routing
@@ -2559,7 +2647,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		v1ProxyGroup.Any("/messages", echo.WrapHandler(proxyHandler))
 
 		// Model routing toggle API
-		routingGroup := v1.Group("/proxy/routing")
+		routingGroup := v1.Group("/proxy/routing", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageProviders))
 		routingGroup.GET("/config", func(c echo.Context) error {
 			return c.JSON(200, map[string]interface{}{
 				"enabled": proxyHandler.IsRoutingEnabled(),
@@ -2624,7 +2712,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		})
 
 		// Pipeline stats: unified cache + routing + failover stats
-		v1.GET("/proxy/pipeline/stats", func(c echo.Context) error {
+		authPageV1Group(permission.PageProviders).GET("/proxy/pipeline/stats", func(c echo.Context) error {
 			if pipelineStats != nil {
 				return c.JSON(200, pipelineStats.Snapshot())
 			}
@@ -2632,7 +2720,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		})
 
 		// Prompt cache toggle API
-		promptCacheGroup := v1.Group("/proxy/prompt-cache")
+		promptCacheGroup := v1.Group("/proxy/prompt-cache", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageProviders))
 		promptCacheGroup.GET("/config", func(c echo.Context) error {
 			return c.JSON(200, map[string]interface{}{
 				"enabled": proxyHandler.IsPromptCacheEnabled(),
@@ -2664,10 +2752,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// Provider restriction management (blacklist/throttle clearing)
 		restrictionsHandler := proxy.NewRestrictionsHandler(proxyHandler.GetProviderMemory())
-		restrictionsHandler.RegisterRoutes(v1)
+		restrictionsHandler.RegisterRoutes(authPageV1Group(permission.PageProviders))
 	}
 
-	agentRunnerRef = registerAgentAndMCPRoutes(protected, v1, s, cfg, deps, logger, agentLLMCaller)
+	agentRunnerRef = registerAgentAndMCPRoutes(protected, v1, s, cfg, deps, logger, agentLLMCaller, requirePagePermission(permission.PageTools))
 	reflectService = selfreflect.NewService(auxiliaryLLM, nil)
 	if sk := s.SkillRegistry.Get("self_reflect"); sk != nil {
 		if sr, ok := sk.(*builtin.SelfReflect); ok {
@@ -2682,19 +2770,19 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if deps.NgrokTunnelMgr != nil && deps.NgrokConfigStore != nil {
 		remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(deps.NgrokTunnelMgr, deps.NgrokConfigStore, cfg.Port)
 		remoteAccessHandler.SetJWTService(s.JWTService)
-		remoteAccessHandler.RegisterRoutes(e)
+		remoteAccessHandler.RegisterGroupRoutes(authPageV1Group(permission.PageChannels))
 		tunnelHandler := networkapi.NewTunnelHandler(deps.NgrokConfigStore, cfg.Port)
-		tunnelHandler.RegisterRoutes(e)
+		tunnelHandler.RegisterGroupRoutes(authPageV1Group(permission.PageChannels))
 	}
 
 	// Claude Code CLI routes (protected)
 	if deps.ClaudeCodeHandler != nil {
-		claudeCodeGroup := protected.Group("/claudecode")
+		claudeCodeGroup := protected.Group("/claudecode", requirePagePermission(permission.PageChat))
 		deps.ClaudeCodeHandler.RegisterRoutes(claudeCodeGroup)
 		deps.ChatHandler.SetClaudeCodeHandler(deps.ClaudeCodeHandler)
 	} else {
 		stub := featureDisabled("claudecode")
-		claudeCodeGroup := protected.Group("/claudecode")
+		claudeCodeGroup := protected.Group("/claudecode", requirePagePermission(permission.PageChat))
 		claudeCodeGroup.GET("/version", stub)
 		claudeCodeGroup.GET("/config", stub)
 		claudeCodeGroup.Any("/*", stub)
@@ -2702,7 +2790,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Memory routes
 	if deps.MemoryHandler != nil {
-		deps.MemoryHandler.RegisterRoutes(v1)
+		deps.MemoryHandler.RegisterRoutes(authPageV1Group(permission.PageChat))
 		// Wire layered memory into chat handler when lazy init completes
 		deps.MemoryHandler.SetOnLayeredReady(func(ls *memory.LayeredMemoryService) {
 			deps.ChatHandler.SetLayeredMemory(ls)
@@ -2713,7 +2801,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		})
 	} else {
 		stub := featureDisabled("memory")
-		memGroup := v1.Group("/memory")
+		memGroup := v1.Group("/memory", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageChat))
 		memGroup.GET("/stats", stub)
 		memGroup.GET("/backend", stub)
 		memGroup.POST("/search", stub)
@@ -2722,7 +2810,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Workspace routes (protected) — SOUL.md, USER.md, IDENTITY.md, etc.
 	if deps.WorkspaceHandler != nil {
-		workspaceGroup := protected.Group("/workspace")
+		workspaceGroup := protected.Group("/workspace", requirePagePermission(permission.PageChat))
 		deps.WorkspaceHandler.RegisterRoutes(workspaceGroup)
 		logger.Info("Workspace routes registered")
 	}
@@ -2739,7 +2827,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 	updateHandler := update.NewHandler(cfg.Version, updateCfg)
 	updateHandler.SetResumeRecoverer(buildUpdateResumeRecoverer(deps.CronHandler, logger))
-	updateHandler.RegisterRoutes(v1)
+	updateHandler.RegisterRoutes(authPageV1Group(permission.PageSettings))
 
 	// Wire up OTA background checker so DownloadOTA can find packages
 	otaChecker := update.NewOTAChecker(cfg.Version, cfg.DataDir, "")
@@ -2842,15 +2930,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		channelConfigHandler := server.NewChannelConfigHandler(deps.ChannelConfigStore)
 		channelConfigHandler.SetManager(channelManager)
 		channelConfigHandler.SetFactory(channelFactory)
-		channelConfigHandler.RegisterRoutes(api)
+		channelConfigHandler.RegisterRoutes(authPageAPIGroup(permission.PageChannels))
 	} else {
 		stub := featureDisabled("channels")
-		api.GET("/channels", stub)
+		api.Group("", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageChannels)).GET("/channels", stub)
 	}
 
 	// Provider settings routes (protected)
 	providerSettingsHandler := server.NewProviderSettingsHandler(deps.ChatHandler.GetProviderRegistry(), kv)
-	providerSettingsGroup := protected.Group("/providers/settings")
+	providerSettingsGroup := protected.Group("/providers/settings", requirePagePermission(permission.PageProviders))
 	providerSettingsHandler.RegisterRoutes(providerSettingsGroup)
 
 	// User settings routes (protected)
@@ -2896,9 +2984,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	} else {
 		deps.ChatHandler.SetCompactorMemoryIntegration(nil, deps.Config.Session.MaxTokens)
 	}
-	settingsHandler.RegisterRoutes(protected)
+	settingsHandler.RegisterRoutes(protected.Group("", requirePagePermission(permission.PageSettings)))
 	if voiceWakeHandler != nil {
-		voiceWakeHandler.RegisterRoutes(protected.Group("/voice-wake"))
+		voiceWakeHandler.RegisterRoutes(protected.Group("/voice-wake", requirePagePermission(permission.PageSettings)))
 	}
 	// Also make locale available to provider settings handler
 	providerSettingsHandler.SetSettingsHandler(settingsHandler)
@@ -2988,7 +3076,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// User-level routes (protected) — /api/v1/my/*
-	myGroup := protected.Group("/my")
+	myGroup := protected.Group("/my", requirePagePermission(permission.PageProfile))
 
 	// Per-user provider config
 	userProviderHandler, err := server.NewUserProviderHandler(deps.DB, s.LLMRegistry)

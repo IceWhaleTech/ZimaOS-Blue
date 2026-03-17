@@ -40,12 +40,12 @@ type LayeredMemoryConfig struct {
 // Layer 1: Daily logs - append-only notes for each day
 // Layer 2: Long-term memory - curated persistent knowledge
 type LayeredMemoryService struct {
-	config         LayeredMemoryConfig
-	baseService    *UnifiedMemoryService
-	mu             sync.RWMutex
-	dailyLogPath   string
-	longTermPath   string
-	lastEntryHash  map[string]uint64 // dedup: tag-key → content hash
+	config        LayeredMemoryConfig
+	baseService   *UnifiedMemoryService
+	mu            sync.RWMutex
+	dailyLogPath  string
+	longTermPath  string
+	lastEntryHash map[string]uint64 // dedup: tag-key → content hash
 }
 
 // NewLayeredMemoryService creates a new layered memory service.
@@ -225,11 +225,16 @@ func (s *LayeredMemoryService) GetDailyLog(ctx context.Context, date string) (st
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	logPath := filepath.Join(s.dailyLogPath, date+".md")
+	normalizedDate, err := normalizeDailyLogDate(date)
+	if err != nil {
+		return "", err
+	}
+
+	logPath := filepath.Join(s.dailyLogPath, normalizedDate+".md")
 	content, err := os.ReadFile(logPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("no log found for date: %s", date)
+			return "", fmt.Errorf("no log found for date: %s", normalizedDate)
 		}
 		return "", fmt.Errorf("failed to read daily log: %w", err)
 	}

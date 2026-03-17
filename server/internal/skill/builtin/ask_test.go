@@ -366,3 +366,42 @@ func TestParseAskQuestions_QuestionsSupportsDetail(t *testing.T) {
 		t.Fatalf("detail = %q, want expected text", items[0].Detail)
 	}
 }
+
+func TestParseAskQuestions_QuestionsSupportsTextInput(t *testing.T) {
+	items, err := parseAskQuestions(map[string]any{
+		"questions": []any{
+			map[string]any{
+				"question": "请假时长？",
+				"type":     "text",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseAskQuestions returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1", len(items))
+	}
+	if got := len(items[0].Options); got != 0 {
+		t.Fatalf("options len = %d, want 0", got)
+	}
+	if items[0].MultiSelect {
+		t.Fatalf("MultiSelect = true, want false")
+	}
+}
+
+func TestParseAskQuestions_TopLevelTextQuestionAllowsNoOptions(t *testing.T) {
+	items, err := parseAskQuestions(map[string]any{
+		"question": "请假时长？",
+		"type":     "text",
+	})
+	if err != nil {
+		t.Fatalf("parseAskQuestions returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1", len(items))
+	}
+	if got := len(items[0].Options); got != 0 {
+		t.Fatalf("options len = %d, want 0", got)
+	}
+}

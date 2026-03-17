@@ -20,6 +20,8 @@ type ContextTier int
 const (
 	// TierNoHistory: standalone question, no history needed.
 	TierNoHistory ContextTier = iota
+	// TierFullHistory: continuation detected, but raw history still fits budget.
+	TierFullHistory
 	// TierCompressedMemory: needs older context, inject compressed summary.
 	TierCompressedMemory
 )
@@ -28,6 +30,8 @@ func (t ContextTier) String() string {
 	switch t {
 	case TierNoHistory:
 		return "no_history"
+	case TierFullHistory:
+		return "full_history"
 	case TierCompressedMemory:
 		return "compressed_memory"
 	default:
@@ -51,6 +55,7 @@ type ConversationSummary struct {
 }
 
 const compressedTierRecentRounds = 3
+const smartContextSoftCompressionThreshold = 0.75
 
 const (
 	trimPolicyCharsPerTokenEstimate = 4
@@ -1111,12 +1116,24 @@ func extractLatestTurn(messages []memory.Message) []llm.Message {
 type smartContextParams struct {
 	ConvID       string
 	UserMessage  string
+	Model        string
+	MaxTokens    int
 	IsRegenerate bool
 	// When >0 and tier=no_history, keep last N user-assistant rounds instead of
 	// only the latest user turn.
 	NoHistoryRecentRounds int
 	// If non-nil, use these instead of fetching from DB/cache.
 	PreloadedMessages []memory.Message
+}
+
+func isConversationSummaryFresh(summary *ConversationSummary, messageCount int) bool {
+	if summary == nil {
+		return false
+	}
+	if strings.TrimSpace(summary.Text) == "" {
+		return false
+	}
+	return summary.MessageCount == messageCount
 }
 
 // buildSmartContext applies the context strategy and returns
@@ -1135,7 +1152,7 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 			messages = cached
 		} else {
 			var err error
-			messages, err = h.store.GetRecentMessages(ctx, params.ConvID, 50)
+			messages, err = h.store.GetRecentMessages(ctx, params.ConvID, h.contextHistoryFetchLimit(params.Model))
 			if err != nil {
 				logger.Warn().Err(err).Str("conv_id", params.ConvID).Msg("[context] failed to fetch messages")
 				return ContextStrategyResult{Tier: TierNoHistory}
@@ -1175,6 +1192,15 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 		}
 
 	case TierCompressedMemory:
+		fullHistory := removeOrphanedToolResults(convertToLLMMessages(messages))
+		fullHistoryBudget := h.measurePreparedInputBudget(params.Model, params.MaxTokens, fullHistory)
+		if fullHistoryBudget.MaxInputTokens <= 0 ||
+			float64(fullHistoryBudget.EstimatedInputTokens) <= float64(fullHistoryBudget.MaxInputTokens)*smartContextSoftCompressionThreshold {
+			result.Tier = TierFullHistory
+			result.Messages = fullHistory
+			break
+		}
+
 		// Keep more recent rounds (TrimPolicy-style protected tail) so short-lived
 		// decisions and constraints survive summary compression.
 		recentMessages := extractRecentRounds(messages, compressedTierRecentRounds)
@@ -1183,7 +1209,9 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 		var summaryText string
 		if h.summaryCache != nil {
 			if cached, ok := h.summaryCache.Get(params.ConvID); ok {
-				summaryText = cached.(*ConversationSummary).Text
+				if summary, ok := cached.(*ConversationSummary); ok && isConversationSummaryFresh(summary, len(messages)) {
+					summaryText = strings.TrimSpace(summary.Text)
+				}
 			}
 		}
 
@@ -1249,10 +1277,9 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 
 // summaryCustomInstructions is the prompt for generating compressed summaries.
 const summaryCustomInstructions = "Summarize old conversation for continuation context. " +
-	"Keep important content, omit intermediate reasoning process. " +
-	"Output concise bullet points (max 8) covering: current objective, key decisions, " +
-	"constraints/preferences, confirmed facts, open questions/TODO. " +
-	"Skip empty sections. Keep total length under 120 tokens."
+	"Omit intermediate reasoning, but preserve durable working memory. " +
+	"Output concise bullet points with labels when relevant: Goal, Decisions, Pending Tasks, Preferences, File Paths, External Approvals, Reminders, Confirmed Facts. " +
+	"Include exact filenames, directories, IDs, and dates when they matter. Skip empty sections. Keep the total under 320 tokens."
 
 // generateSummarySync generates a compressed summary for older messages.
 // Called synchronously when no cached summary exists.
@@ -1318,9 +1345,8 @@ func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Messa
 
 	// Check if cached summary is still fresh
 	if cached, ok := h.summaryCache.Get(convID); ok {
-		cs := cached.(*ConversationSummary)
-		if cs.MessageCount >= len(messages)-2 {
-			return // Within 1 round, still fresh
+		if cs, ok := cached.(*ConversationSummary); ok && isConversationSummaryFresh(cs, len(messages)) {
+			return
 		}
 	}
 

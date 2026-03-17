@@ -496,6 +496,16 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 		}
 	})
 
+	t.Run("continues on xml-style tool_call leakage text", func(t *testing.T) {
+		current := `<tool_call>
+{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"format\":\"json\",\"max_results\":10}"}
+</tool_call>`
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if !ok || reason != "pseudo_tool_call" {
+			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
 	t.Run("continues on protocol deliberation leakage text", func(t *testing.T) {
 		current := `{"format":"..."}
 No to field maybe automatically from functions.web_search?
@@ -1838,5 +1848,26 @@ In this interface, I need specify function in message property maybe not possibl
 	}
 	if !strings.Contains(got, "以下是最近一周 BlueAgent 动向") {
 		t.Fatalf("expected user-facing summary retained, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_StripsXMLToolCallLeakage(t *testing.T) {
+	raw := `我先查一下各品牌手机官网。
+
+<tool_call>
+{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"format\":\"json\",\"max_results\":10}"}
+</tool_call>
+
+我整理好后发你。`
+
+	got := sanitizeResponseContentWithProvider(raw, "codex", "codex", "gpt-5.3-codex-spark")
+	if strings.Contains(got, "<tool_call>") || strings.Contains(got, "tzkz0_web_search") {
+		t.Fatalf("expected xml tool_call leakage removed, got=%q", got)
+	}
+	if !strings.Contains(got, "我先查一下各品牌手机官网") {
+		t.Fatalf("expected user-facing preface retained, got=%q", got)
+	}
+	if !strings.Contains(got, "我整理好后发你") {
+		t.Fatalf("expected user-facing follow-up retained, got=%q", got)
 	}
 }

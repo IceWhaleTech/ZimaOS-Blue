@@ -550,7 +550,7 @@ onUnmounted(() => {
 
     <template v-if="props.showSecuritySections">
       <!-- TLS Configuration -->
-      <div class="glass-card p-6">
+      <div class="glass-card security-outlined-card p-6">
         <div class="flex items-center justify-between mb-4">
           <div>
             <h3 class="text-base font-semibold text-gray-900 dark:text-white">
@@ -585,7 +585,7 @@ onUnmounted(() => {
         <!-- Current Certificate Info -->
         <div
           v-if="tlsConfig?.has_cert && tlsConfig.cert_info"
-          class="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg"
+          class="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-900/40 dark:bg-green-900/20"
         >
           <div class="flex items-center gap-2 mb-3">
             <svg
@@ -669,7 +669,10 @@ onUnmounted(() => {
         </div>
 
         <!-- HTTPS-Only Toggle -->
-        <div v-if="tlsConfig?.has_cert" class="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+        <div
+          v-if="tlsConfig?.has_cert"
+          class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-slate-700 dark:bg-slate-800/35"
+        >
           <div class="flex items-center justify-between">
             <div>
               <h4 class="font-medium text-gray-900 dark:text-white">
@@ -695,7 +698,10 @@ onUnmounted(() => {
         </div>
 
         <!-- No Certificate -->
-        <div v-else class="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-center">
+        <div
+          v-else
+          class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center dark:border-slate-700 dark:bg-slate-800/35"
+        >
           <svg
             class="w-12 h-12 mx-auto text-gray-400 mb-2"
             fill="none"
@@ -714,7 +720,7 @@ onUnmounted(() => {
       </div>
 
       <!-- CORS Configuration -->
-      <div class="glass-card p-6">
+      <div class="glass-card security-outlined-card p-6">
         <div class="flex items-center justify-between mb-4">
           <div>
             <h3 class="text-base font-semibold text-gray-900 dark:text-white">
@@ -811,7 +817,7 @@ onUnmounted(() => {
                   (o) => !corsConfig!.dynamic_origins.includes(o)
                 )"
                 :key="origin"
-                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                class="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-slate-700 dark:bg-slate-800/35"
               >
                 <span class="text-sm text-gray-600 dark:text-gray-400 font-mono">{{ origin }}</span>
                 <span class="text-xs text-gray-400 dark:text-gray-500">{{

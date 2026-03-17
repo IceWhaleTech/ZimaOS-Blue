@@ -88,6 +88,8 @@ export default {
     automation: 'Automatisering',
     security: 'Beveiliging',
     companion: 'Companion',
+
+    plugins: 'Extensies',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1458,6 +1460,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Wacht op je bevestiging om door te gaan',
+    assistantStatus: {
+      searchingWeb: 'Zoeken op het web',
+      browsingWeb: 'Op het web bladeren',
+      readingWeb: 'Een webpagina lezen',
+      readingWebSite: '{site} lezen',
+      usingTools: 'Hulpmiddelen gebruiken',
+    },
     conversations: 'Gesprekken',
     execDirectoryApprovalTimeout:
       'De opdrachtuitvoering is geblokkeerd omdat de mapgoedkeuring is verlopen. Keur de map goed en probeer het opnieuw.',
@@ -1542,11 +1552,10 @@ export default {
     },
     // Verbeterde modus
     enhancedMode: 'Verbeterd',
-    enhancedModeDesc:
-      'Verbeterde modus: ondersteunt vaardigheden, tool-aanroepen, bestandsbewerkingen, code-uitvoering en meer',
+    enhancedModeDesc: 'Optionele verbetering staat aan: de ervaring is beter.',
     enableEnhancedMode: 'Verbeterde modus inschakelen',
     enableEnhancedModeDesc:
-      'Schakel de verbeterde modus in voor vaardigheden, tool-aanroepen, bestandsbewerkingen en meer',
+      'Dit is een optionele verbetering: uitzetten heeft geen invloed op basischat of het gebruik van Agent; aanzetten verbetert de ervaring.',
     showToolDetails: 'Werkdetails tonen',
     hideToolDetails: 'Werkdetails verbergen',
     toolDetailExpand: 'Uitvoer uitvouwen',
@@ -1735,6 +1744,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Aangepaste regels voor gegevensmaskering',
+    builtinMaskingRules: 'Ingebouwde regels',
+    builtinMaskingEmpty: 'Er zijn geen ingebouwde regels geladen.',
+    customMaskingListTitle: 'Aangepaste regels',
+    customMaskingEmpty:
+      'Er zijn nog geen aangepaste regels. Gebruik het formulier hieronder voor interne ID’s of bedrijfseigen geheimen.',
+    customMaskingDesc:
+      'Voeg regex-gebaseerde regels toe voor interne ID’s, geheimen of bedrijfsspecifieke velden.',
+    customMaskingNameLabel: 'Naam',
+    customMaskingNamePlaceholder: 'Voorbeeld: intern ticketnummer',
+    customMaskingDirectionLabel: 'Richting',
+    customMaskingPatternLabel: 'Regex-patroon',
+    customMaskingPatternPlaceholder: 'Voorbeeld: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Vervangende tekst',
+    customMaskingReplacementPlaceholder: 'Voorbeeld: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Gebruik een geldige reguliere expressie. {maskLabel} in de vervangende tekst behoudt het gelokaliseerde maskerlabel.',
+    customMaskingAdd: 'Regel toevoegen',
+    customMaskingAddSuccess: 'Aangepaste maskerregel toegevoegd.',
+    customMaskingAddError: 'Aangepaste maskerregel toevoegen mislukt.',
+    customMaskingDeleteConfirm: 'Aangepaste maskerregel "{name}" verwijderen?',
+    customMaskingDeleteSuccess: 'Aangepaste maskerregel verwijderd.',
+    customMaskingDeleteError: 'Aangepaste maskerregel verwijderen mislukt.',
     maskingRuleList: 'Regellijst',
     maskingCategories: {
       pii: 'Persoonsgegevens (PII)',
@@ -2060,6 +2092,8 @@ export default {
   },
   plugins: {
     ...enUS.plugins,
+
+    title: 'Extensies',
   },
   profile: {
     ...enUS.profile,
@@ -2265,6 +2299,15 @@ export default {
   },
   users: {
     ...enUS.users,
+
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Toegang tot extensies',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Extensies',
+    },
   },
 
   // Flat keys in Dutch
@@ -2414,6 +2457,16 @@ export default {
     timeout: 'Sluit automatisch over {seconds}s',
     answered: 'Beantwoord',
   },
+  browserProgress: {
+    title: 'Browservoortgang',
+    steps: {
+      start: 'Browser starten',
+      navigate: 'Navigeren',
+      snapshot: 'Pagina lezen',
+      screenshot: 'Screenshot maken',
+      recipe: '{recipe} uitvoeren',
+    },
+  },
   thinking: {
     title: 'Context',
     context: 'Context',
@@ -2422,6 +2475,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Zoeken op het web',
     resultCount: '{count} resultaten',
   },
   cardActions: {

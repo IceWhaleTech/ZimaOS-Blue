@@ -88,6 +88,8 @@ export default {
     automation: 'Αυτοματισμός',
     security: 'Ασφάλεια',
     companion: 'Companion',
+
+    plugins: 'Επεκτάσεις',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1351,6 +1353,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Αναμονη για την επιβεβαιωση σας για συνεχεια',
+    assistantStatus: {
+      searchingWeb: 'Αναζητηση στον ιστο',
+      browsingWeb: 'Πλοηγηση στον ιστο',
+      readingWeb: 'Αναγνωση ιστοσελιδας',
+      readingWebSite: 'Αναγνωση {site}',
+      usingTools: 'Χρηση εργαλειων',
+    },
     conversations: 'Συνομιλίες',
     execDirectoryApprovalTimeout:
       'Η εκτέλεση εντολής αποκλείστηκε επειδή έληξε η έγκριση του καταλόγου. Εγκρίνετε τον κατάλογο και δοκιμάστε ξανά.',
@@ -1434,11 +1444,10 @@ export default {
     },
     // Ενισχυμένη λειτουργία
     enhancedMode: 'Ενισχυμένη',
-    enhancedModeDesc:
-      'Ενισχυμένη λειτουργία: υποστηρίζει δεξιότητες, κλήσεις εργαλείων, λειτουργίες αρχείων, εκτέλεση κώδικα και άλλα',
+    enhancedModeDesc: 'Η προαιρετική ενίσχυση είναι ενεργή: η εμπειρία είναι καλύτερη.',
     enableEnhancedMode: 'Ενεργοποίηση ενισχυμένης λειτουργίας',
     enableEnhancedModeDesc:
-      'Ενεργοποιήστε την ενισχυμένη λειτουργία για δεξιότητες, κλήσεις εργαλείων, λειτουργίες αρχείων και άλλα',
+      'Αυτή είναι μια προαιρετική ενίσχυση: η απενεργοποίηση δεν επηρεάζει τη βασική συνομιλία ούτε τη χρήση του Agent· η ενεργοποίηση βελτιώνει την εμπειρία.',
     showToolDetails: 'Εμφάνιση λεπτομερειών εργασίας',
     hideToolDetails: 'Απόκρυψη λεπτομερειών εργασίας',
     toolDetailExpand: 'Ανάπτυξη εξόδου',
@@ -1700,6 +1709,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Προσαρμοσμένοι κανόνες απόκρυψης δεδομένων',
+    builtinMaskingRules: 'Ενσωματωμένοι κανόνες',
+    builtinMaskingEmpty: 'Δεν φορτώθηκαν ενσωματωμένοι κανόνες.',
+    customMaskingListTitle: 'Προσαρμοσμένοι κανόνες',
+    customMaskingEmpty:
+      'Δεν υπάρχουν ακόμη προσαρμοσμένοι κανόνες. Χρησιμοποιήστε την παρακάτω φόρμα για εσωτερικά αναγνωριστικά ή ιδιόκτητα μυστικά.',
+    customMaskingDesc:
+      'Προσθέστε κανόνες βασισμένους σε regex για εσωτερικά ID, μυστικά ή πεδία ειδικά για την επιχείρηση.',
+    customMaskingNameLabel: 'Όνομα',
+    customMaskingNamePlaceholder: 'Παράδειγμα: εσωτερικός αριθμός ticket',
+    customMaskingDirectionLabel: 'Κατεύθυνση',
+    customMaskingPatternLabel: 'Μοτίβο regex',
+    customMaskingPatternPlaceholder: 'Παράδειγμα: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Κείμενο αντικατάστασης',
+    customMaskingReplacementPlaceholder: 'Παράδειγμα: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Χρησιμοποιήστε έγκυρη κανονική έκφραση. Το {maskLabel} στο κείμενο αντικατάστασης διατηρεί την τοπικοποιημένη ετικέτα απόκρυψης.',
+    customMaskingAdd: 'Προσθήκη κανόνα',
+    customMaskingAddSuccess: 'Ο προσαρμοσμένος κανόνας απόκρυψης προστέθηκε.',
+    customMaskingAddError: 'Αποτυχία προσθήκης προσαρμοσμένου κανόνα απόκρυψης.',
+    customMaskingDeleteConfirm: 'Διαγραφή προσαρμοσμένου κανόνα απόκρυψης "{name}";',
+    customMaskingDeleteSuccess: 'Ο προσαρμοσμένος κανόνας απόκρυψης διαγράφηκε.',
+    customMaskingDeleteError: 'Αποτυχία διαγραφής προσαρμοσμένου κανόνα απόκρυψης.',
     maskingRuleList: 'Λίστα κανόνων',
     maskingCategories: {
       pii: 'Προσωπικά δεδομένα (PII)',
@@ -2054,7 +2086,7 @@ export default {
     checkpoint: 'Σημείο ελέγχου',
     checkpointDescription: 'Σημείο ελέγχου πριν από την επαναφορά ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Επεκτάσεις' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -2079,7 +2111,17 @@ export default {
       'Ένα σταθερό, αξιόπιστο και ουδέτερο runtime για τους AI βοηθούς και τους αυτοματισμούς σας',
   },
   brand: { ...enUS.brand },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Πρόσβαση στις επεκτάσεις',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Επεκτάσεις',
+    },
+  },
 
   // Flat keys in Greek
   accept: 'Αποδοχή',
@@ -2223,6 +2265,16 @@ export default {
     timeout: 'Αυτόματο κλείσιμο σε {seconds}δ',
     answered: 'Απαντήθηκε',
   },
+  browserProgress: {
+    title: 'Προοδος προγραμματος περιηγησης',
+    steps: {
+      start: 'Εκκινηση προγραμματος περιηγησης',
+      navigate: 'Πλοηγηση',
+      snapshot: 'Αναγνωση σελιδας',
+      screenshot: 'Ληψη στιγμιοτυπου',
+      recipe: 'Εκτελεση {recipe}',
+    },
+  },
   thinking: {
     title: 'Πλαίσιο',
     context: 'Πλαίσιο',
@@ -2231,6 +2283,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Αναζητηση στον ιστο',
     resultCount: '{count} αποτελέσματα',
   },
   cardActions: {

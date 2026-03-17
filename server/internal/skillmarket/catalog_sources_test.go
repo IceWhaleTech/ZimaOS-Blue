@@ -1,0 +1,164 @@
+package skillmarket
+
+import (
+	"context"
+	"database/sql"
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
+)
+
+func TestDiscoverFromHTMLCatalogFindsInstallableAndCatalogOnlySkills(t *testing.T) {
+	rawSkill := `---
+id: git-expert
+name: Git Expert
+version: 1.0.0
+description: Git workflow helper
+---
+Help with rebase, review, and branch cleanup.
+`
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/catalog", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`
+<html>
+  <head><title>SkillHub Fixture</title><meta name="description" content="fixture catalog"></head>
+  <body>
+    <a href="/skills/git-expert">Git Expert</a>
+    <a href="/skills/manual-only">Manual Only</a>
+  </body>
+</html>`))
+	})
+	mux.HandleFunc("/skills/git-expert", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`
+<html>
+  <head><title>Git Expert</title><meta name="description" content="Installable git helper"></head>
+  <body><a href="https://github.com/demo/git-expert">repo</a></body>
+</html>`))
+	})
+	mux.HandleFunc("/skills/manual-only", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`
+<html>
+  <head><title>Manual Only Skill</title><meta name="description" content="Directory listing only"></head>
+  <body><p>Read the external instructions to install this skill manually.</p></body>
+</html>`))
+	})
+	mux.HandleFunc("/github/repos/demo/git-expert", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"html_url":         "https://github.com/demo/git-expert",
+			"default_branch":   "main",
+			"updated_at":       "2026-03-01T00:00:00Z",
+			"stargazers_count": 42,
+		})
+	})
+	mux.HandleFunc("/github/repos/demo/git-expert/contents/", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"name": "SKILL.md",
+				"path": "SKILL.md",
+				"type": "file",
+				"url":  server.URL + "/github/blob/git-expert",
+			},
+		})
+	})
+	mux.HandleFunc("/github/blob/git-expert", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"encoding": "base64",
+			"content":  base64.StdEncoding.EncodeToString([]byte(rawSkill)),
+		})
+	})
+
+	tempDir := t.TempDir()
+	db, err := sql.Open("sqlite3", filepath.Join(tempDir, "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	cfg := DefaultConfig(tempDir, filepath.Join(tempDir, "active"))
+	cfg.CacheRoot = filepath.Join(tempDir, "cache")
+	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.SeedURLs = nil
+	cfg.GitHubAPIBaseURL = server.URL + "/github"
+
+	svc, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(filepath.Join(tempDir, "active")),
+		Scanner:      NewScanner(nil),
+		HTTPClient:   server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	run := &CrawlRun{}
+	source := Source{
+		ID:          "skillhub-club",
+		Type:        "html_catalog",
+		BaseURL:     server.URL + "/catalog",
+		DisplayName: "SkillHub Club",
+		SourceGroup: "skillhub",
+		Enabled:     true,
+	}
+	if err := svc.discoverFromHTMLCatalog(context.Background(), source, run); err != nil {
+		t.Fatalf("discover html catalog: %v", err)
+	}
+	if run.Discovered != 3 {
+		t.Fatalf("discovered = %d, want 3", run.Discovered)
+	}
+
+	result, err := svc.Search(context.Background(), SearchQuery{Page: 1, PageSize: 20})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	var foundInstallable bool
+	var foundCatalogOnly bool
+	for _, item := range result.Skills {
+		switch {
+		case strings.EqualFold(item.Skill.Name, "Git Expert"):
+			foundInstallable = true
+			if !item.Skill.Installable {
+				t.Fatal("expected Git Expert to be installable")
+			}
+			if item.Skill.SourceGroup != "github" {
+				t.Fatalf("source group = %q, want github", item.Skill.SourceGroup)
+			}
+			if item.Skill.InstallType != InstallTypeGitRepo {
+				t.Fatalf("install type = %q, want %q", item.Skill.InstallType, InstallTypeGitRepo)
+			}
+		case strings.EqualFold(item.Skill.Name, "Manual Only Skill"):
+			foundCatalogOnly = true
+			if item.Skill.Installable {
+				t.Fatal("expected Manual Only Skill to be catalog-only")
+			}
+			if item.Skill.InstallType != InstallTypeManualExternal {
+				t.Fatalf("install type = %q, want %q", item.Skill.InstallType, InstallTypeManualExternal)
+			}
+			if item.Skill.SourceGroup != "skillhub" {
+				t.Fatalf("source group = %q, want skillhub", item.Skill.SourceGroup)
+			}
+		}
+	}
+
+	if !foundInstallable {
+		t.Fatal("expected installable GitHub-backed skill to be indexed")
+	}
+	if !foundCatalogOnly {
+		t.Fatal("expected catalog-only directory entry to be indexed")
+	}
+}

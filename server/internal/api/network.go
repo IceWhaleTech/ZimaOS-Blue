@@ -23,10 +23,14 @@ func NewNetworkHandler(port int) *NetworkHandler {
 
 // RegisterRoutes registers network routes.
 func (h *NetworkHandler) RegisterRoutes(e *echo.Echo) {
-	g := e.Group("/api/v1/network")
-	g.GET("/addresses", h.GetAddresses)
-	g.GET("/status", h.GetStatus)
-	g.GET("/preferred", h.GetPreferred)
+	h.RegisterGroupRoutes(e.Group("/api/v1"))
+}
+
+// RegisterGroupRoutes registers network routes on an existing API group.
+func (h *NetworkHandler) RegisterGroupRoutes(g *echo.Group) {
+	g.GET("/network/addresses", h.GetAddresses)
+	g.GET("/network/status", h.GetStatus)
+	g.GET("/network/preferred", h.GetPreferred)
 }
 
 // InitializeCORSOrigins detects local network addresses and adds them to CORS allowed origins.

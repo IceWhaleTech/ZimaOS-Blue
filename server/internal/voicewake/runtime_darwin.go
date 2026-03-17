@@ -47,6 +47,8 @@ var (
 	selStop                       objc.SEL
 	selAppendAudioPCMBuffer       objc.SEL
 	selEndAudio                   objc.SEL
+	selRetain                     objc.SEL
+	selRelease                    objc.SEL
 )
 
 func initVoiceWakeSelectors() {
@@ -84,7 +86,23 @@ func initVoiceWakeSelectors() {
 		selStop = objc.RegisterName("stop")
 		selAppendAudioPCMBuffer = objc.RegisterName("appendAudioPCMBuffer:")
 		selEndAudio = objc.RegisterName("endAudio")
+		selRetain = objc.RegisterName("retain")
+		selRelease = objc.RegisterName("release")
 	})
+}
+
+func retainObject(id objc.ID) objc.ID {
+	if id == 0 {
+		return 0
+	}
+	return id.Send(selRetain)
+}
+
+func releaseObject(id objc.ID) {
+	if id == 0 {
+		return
+	}
+	id.Send(selRelease)
 }
 
 func nsString(s string) objc.ID {
@@ -122,6 +140,7 @@ type darwinRuntime struct {
 	stopCh             chan struct{}
 	restartPending     bool
 	generation         int
+	recognizer         objc.ID
 	engine             objc.ID
 	inputNode          objc.ID
 	request            objc.ID
@@ -137,6 +156,7 @@ type darwinRuntime struct {
 }
 
 type startPipelineResult struct {
+	recognizer       objc.ID
 	engine           objc.ID
 	inputNode        objc.ID
 	request          objc.ID
@@ -210,12 +230,16 @@ func (r *darwinRuntime) startPipelineLocked() error {
 		}
 
 		var recognizer objc.ID
+		var nsLocale objc.ID
 		if locale := strings.TrimSpace(cfg.Locale); locale != "" {
 			nsLocaleClass := objc.ID(objc.GetClass("NSLocale"))
-			nsLocale := nsLocaleClass.Send(selAlloc).Send(selInitWithLocaleIdentifier, nsString(locale))
+			nsLocale = nsLocaleClass.Send(selAlloc).Send(selInitWithLocaleIdentifier, nsString(locale))
 			recognizer = recognizerClass.Send(selAlloc).Send(selInitWithLocale, nsLocale)
 		} else {
 			recognizer = recognizerClass.Send(selAlloc).Send(selInit)
+		}
+		if nsLocale != 0 {
+			releaseObject(nsLocale)
 		}
 		if recognizer == 0 {
 			resultCh <- startPipelineResult{err: ErrRecognizerUnavailable}
@@ -274,22 +298,31 @@ func (r *darwinRuntime) startPipelineLocked() error {
 			go r.handleUpdate(generation, text, segments, isFinal, nil)
 		})
 		task := recognizer.Send(selRecognitionTaskWithRequest, request, recognitionBlock)
+		task = retainObject(task)
 		engine.Send(selPrepare)
 		var startErr objc.ID
 		started := objc.Send[bool](engine, selStartAndReturnError, unsafe.Pointer(&startErr))
 		if !started {
 			inputNode.Send(selRemoveTapOnBus, uintptr(0))
-			tapBlock.Release()
-			recognitionBlock.Release()
+			err := ErrMicrophoneUnavailable
 			if startErr != 0 {
-				resultCh <- startPipelineResult{err: mapVoiceWakeError(goString(startErr.Send(selLocalizedDescription)))}
-			} else {
-				resultCh <- startPipelineResult{err: ErrMicrophoneUnavailable}
+				err = mapVoiceWakeError(goString(startErr.Send(selLocalizedDescription)))
 			}
+			releasePipeline(startPipelineResult{
+				recognizer:       recognizer,
+				engine:           engine,
+				inputNode:        inputNode,
+				request:          request,
+				task:             task,
+				tapBlock:         tapBlock,
+				recognitionBlock: recognitionBlock,
+			})
+			resultCh <- startPipelineResult{err: err}
 			return
 		}
 
 		resultCh <- startPipelineResult{
+			recognizer:       recognizer,
 			engine:           engine,
 			inputNode:        inputNode,
 			request:          request,
@@ -303,26 +336,10 @@ func (r *darwinRuntime) startPipelineLocked() error {
 		return result.err
 	}
 	if generation != r.generation || !r.running {
-		if result.inputNode != 0 {
-			result.inputNode.Send(selRemoveTapOnBus, uintptr(0))
-		}
-		if result.engine != 0 {
-			result.engine.Send(selStop)
-		}
-		if result.request != 0 {
-			result.request.Send(selEndAudio)
-		}
-		if result.task != 0 {
-			result.task.Send(selCancel)
-		}
-		if result.tapBlock != 0 {
-			result.tapBlock.Release()
-		}
-		if result.recognitionBlock != 0 {
-			result.recognitionBlock.Release()
-		}
+		cleanupPipeline(result)
 		return nil
 	}
+	r.recognizer = result.recognizer
 	r.engine = result.engine
 	r.inputNode = result.inputNode
 	r.request = result.request
@@ -334,45 +351,67 @@ func (r *darwinRuntime) startPipelineLocked() error {
 
 func (r *darwinRuntime) stopPipelineLocked() error {
 	generation := r.generation
+	recognizer := r.recognizer
 	engine := r.engine
 	inputNode := r.inputNode
 	request := r.request
 	task := r.task
 	tapBlock := r.tapBlock
 	recognitionBlock := r.recognitionBlock
+	r.recognizer = 0
 	r.engine = 0
 	r.inputNode = 0
 	r.request = 0
 	r.task = 0
 	r.tapBlock = 0
 	r.recognitionBlock = 0
-	if generation == 0 && engine == 0 && inputNode == 0 && request == 0 && task == 0 {
+	if generation == 0 && recognizer == 0 && engine == 0 && inputNode == 0 && request == 0 && task == 0 {
 		return nil
 	}
+	cleanupPipeline(startPipelineResult{
+		recognizer:       recognizer,
+		engine:           engine,
+		inputNode:        inputNode,
+		request:          request,
+		task:             task,
+		tapBlock:         tapBlock,
+		recognitionBlock: recognitionBlock,
+	})
+	return nil
+}
+
+func cleanupPipeline(p startPipelineResult) {
 	done := make(chan struct{}, 1)
 	speech.SubmitToMainThread(func() {
-		if inputNode != 0 {
-			inputNode.Send(selRemoveTapOnBus, uintptr(0))
-		}
-		if request != 0 {
-			request.Send(selEndAudio)
-		}
-		if task != 0 {
-			task.Send(selCancel)
-		}
-		if engine != 0 {
-			engine.Send(selStop)
-		}
-		if tapBlock != 0 {
-			tapBlock.Release()
-		}
-		if recognitionBlock != 0 {
-			recognitionBlock.Release()
-		}
+		releasePipeline(p)
 		done <- struct{}{}
 	})
 	<-done
-	return nil
+}
+
+func releasePipeline(p startPipelineResult) {
+	if p.inputNode != 0 {
+		p.inputNode.Send(selRemoveTapOnBus, uintptr(0))
+	}
+	if p.engine != 0 {
+		p.engine.Send(selStop)
+	}
+	if p.request != 0 {
+		p.request.Send(selEndAudio)
+	}
+	if p.task != 0 {
+		p.task.Send(selCancel)
+	}
+	if p.tapBlock != 0 {
+		p.tapBlock.Release()
+	}
+	if p.recognitionBlock != 0 {
+		p.recognitionBlock.Release()
+	}
+	releaseObject(p.task)
+	releaseObject(p.request)
+	releaseObject(p.engine)
+	releaseObject(p.recognizer)
 }
 
 func (r *darwinRuntime) handleUpdate(generation int, transcript string, segments []Segment, isFinal bool, err error) {

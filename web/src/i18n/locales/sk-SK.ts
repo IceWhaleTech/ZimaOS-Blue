@@ -88,6 +88,8 @@ export default {
     automation: 'Automatizácia',
     security: 'Bezpečnosť',
     companion: 'Companion',
+
+    plugins: 'Rozšírenia',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1137,6 +1139,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Cakam na vase potvrdenie pre pokracovanie',
+    assistantStatus: {
+      searchingWeb: 'Vyhladavam na webe',
+      browsingWeb: 'Prehliadam web',
+      readingWeb: 'Citam webovu stranku',
+      readingWebSite: 'Citam {site}',
+      usingTools: 'Pouzivam nastroje',
+    },
     conversations: 'Konverzácie',
     execDirectoryApprovalTimeout:
       'Spustenie príkazu bolo zablokované, pretože schválenie adresára vypršalo. Schváľte adresár a skúste to znova.',
@@ -1219,11 +1229,10 @@ export default {
     },
     // Rozšírený režim
     enhancedMode: 'Rozšírený',
-    enhancedModeDesc:
-      'Rozšírený režim: podporuje zručnosti, volanie nástrojov, súborové operácie, spúšťanie kódu a ďalšie',
+    enhancedModeDesc: 'Voliteľné vylepšenie je zapnuté: zážitok je lepší.',
     enableEnhancedMode: 'Aktivovať rozšírený režim',
     enableEnhancedModeDesc:
-      'Aktivujte rozšírený režim pre zručnosti, volanie nástrojov, súborové operácie a ďalšie',
+      'Toto je voliteľné vylepšenie: vypnutie neovplyvní základný chat ani používanie Agent; zapnutie zlepší zážitok.',
     showToolDetails: 'Zobraziť pracovné detaily',
     hideToolDetails: 'Skryť pracovné detaily',
     toolDetailExpand: 'Rozbaliť výstup',
@@ -1407,6 +1416,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Vlastné pravidlá maskovania údajov',
+    builtinMaskingRules: 'Vstavané pravidlá',
+    builtinMaskingEmpty: 'Nie sú načítané žiadne vstavané pravidlá.',
+    customMaskingListTitle: 'Vlastné pravidlá',
+    customMaskingEmpty:
+      'Zatiaľ neexistujú žiadne vlastné pravidlá. Použite formulár nižšie pre interné ID alebo proprietárne tajomstvá.',
+    customMaskingDesc:
+      'Pridajte pravidlá založené na regexe pre interné ID, tajomstvá alebo polia špecifické pre biznis.',
+    customMaskingNameLabel: 'Názov',
+    customMaskingNamePlaceholder: 'Príklad: interné číslo tiketu',
+    customMaskingDirectionLabel: 'Smer',
+    customMaskingPatternLabel: 'Regex vzor',
+    customMaskingPatternPlaceholder: 'Príklad: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Náhradný text',
+    customMaskingReplacementPlaceholder: 'Príklad: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Použite platný regulárny výraz. {maskLabel} v náhradnom texte zachová lokalizovaný štítok maskovania.',
+    customMaskingAdd: 'Pridať pravidlo',
+    customMaskingAddSuccess: 'Vlastné pravidlo maskovania bolo pridané.',
+    customMaskingAddError: 'Nepodarilo sa pridať vlastné pravidlo maskovania.',
+    customMaskingDeleteConfirm: 'Odstrániť vlastné pravidlo maskovania "{name}"?',
+    customMaskingDeleteSuccess: 'Vlastné pravidlo maskovania bolo odstránené.',
+    customMaskingDeleteError: 'Nepodarilo sa odstrániť vlastné pravidlo maskovania.',
     maskingRuleList: 'Zoznam pravidiel',
     maskingCategories: {
       pii: 'Osobné údaje (PII)',
@@ -1727,7 +1759,7 @@ export default {
     checkpoint: 'Kontrolný bod',
     checkpointDescription: 'Kontrolný bod pred obnovením ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Rozšírenia' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -1912,7 +1944,17 @@ export default {
     volume: 'Hlasitosť',
     voiceSettings: 'Nastavenia hlasu',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Prístup k rozšíreniam',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Rozšírenia',
+    },
+  },
   tools: {
     names: {
       'Web Search': 'Webové vyhľadávanie',
@@ -1980,6 +2022,16 @@ export default {
     timeout: 'Automatické zatvorenie za {seconds}s',
     answered: 'Zodpovedané',
   },
+  browserProgress: {
+    title: 'Priebeh prehliadaca',
+    steps: {
+      start: 'Spustam prehliadac',
+      navigate: 'Navigujem',
+      snapshot: 'Citam stranku',
+      screenshot: 'Zhotovujem snimku obrazovky',
+      recipe: 'Spustam {recipe}',
+    },
+  },
   thinking: {
     title: 'Kontext',
     context: 'Kontext',
@@ -1988,6 +2040,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Vyhladavanie na webe',
     resultCount: '{count} výsledkov',
   },
   cardActions: {

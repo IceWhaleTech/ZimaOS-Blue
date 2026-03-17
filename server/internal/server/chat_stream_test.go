@@ -3593,12 +3593,12 @@ func TestStreamMessage_ContextCompactionSSEUsesSmartContextCounts(t *testing.T) 
 	}
 
 	seed := []memory.Message{
-		{Role: "user", Content: "Q1"},
-		{Role: "assistant", Content: "A1"},
-		{Role: "user", Content: "Q2"},
-		{Role: "assistant", Content: "A2"},
-		{Role: "user", Content: "Q3"},
-		{Role: "assistant", Content: "A3"},
+		{Role: "user", Content: strings.Repeat("Q1 background ", 60)},
+		{Role: "assistant", Content: strings.Repeat("A1 details ", 60)},
+		{Role: "user", Content: strings.Repeat("Q2 background ", 60)},
+		{Role: "assistant", Content: strings.Repeat("A2 details ", 60)},
+		{Role: "user", Content: strings.Repeat("Q3 background ", 60)},
+		{Role: "assistant", Content: strings.Repeat("A3 details ", 60)},
 	}
 	for _, msg := range seed {
 		if _, err := store.AddMessage(context.Background(), conv.ID, msg); err != nil {
@@ -3607,14 +3607,24 @@ func TestStreamMessage_ContextCompactionSSEUsesSmartContextCounts(t *testing.T) 
 	}
 
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
-	handler.SetSystemPromptBuilder(claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{}))
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "gpt-5.3-codex-spark",
+		ContextWindow: 1536,
+	}}))
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	summaryEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	handler.SetSettingsHandler(settings)
+	handler.SetSmallModelRuntime(&smallModelRuntimeMock{respText: "- Goal: preserve the recent thread\n- Pending: answer the continuation"})
 	handler.summaryCache.Put(conv.ID, &ConversationSummary{Text: "Older context summary", MessageCount: len(seed) + 1})
 
 	fakeProxy := &secondTurnTimeoutProxyHandler{}
 	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
 
-	body := runStreamTurn(t, handler, conv.ID, `{"message":"继续","model":"gpt-5.3-codex-spark"}`)
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"继续","model":"gpt-5.3-codex-spark","max_tokens":64}`)
 	events := extractJSONSSEEvents(t, body)
 
 	var compaction map[string]interface{}
@@ -3647,8 +3657,11 @@ func TestStreamMessage_ContextCompactionSSEUsesSmartContextCounts(t *testing.T) 
 	if len(requestCounts) == 0 {
 		t.Fatal("expected proxy to receive at least one request")
 	}
-	if requestCounts[0] <= int(after) {
-		t.Fatalf("expected final request to include extra prompt blocks beyond smart context, request_messages=%d after=%d", requestCounts[0], int(after))
+	if requestCounts[0] < int(after) {
+		t.Fatalf("expected final request to keep at least the compacted history, request_messages=%d after=%d", requestCounts[0], int(after))
+	}
+	if requestCounts[0] > int(before) {
+		t.Fatalf("expected final request to stay within compacted before/after bounds, request_messages=%d before=%d", requestCounts[0], int(before))
 	}
 }
 

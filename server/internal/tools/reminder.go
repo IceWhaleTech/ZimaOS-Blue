@@ -11,7 +11,7 @@ import (
 // PushServiceInterface defines the interface for the reminder delivery service.
 // This avoids circular imports with the push package.
 type PushServiceInterface interface {
-	Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (PushResult, error)
+	Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string, untilAt *time.Time) (PushResult, error)
 	List(ctx context.Context, ownerID string) ([]PushResult, error)
 	Delete(ctx context.Context, ownerID, id string) error
 	Clear(ctx context.Context, ownerID string) (int64, error)
@@ -19,12 +19,13 @@ type PushServiceInterface interface {
 
 // PushResult is the data returned by the reminder delivery service.
 type PushResult struct {
-	ID        string    `json:"id"`
-	Message   string    `json:"message"`
-	FireAt    time.Time `json:"fire_at"`
-	Recurring string    `json:"recurring,omitempty"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string     `json:"id"`
+	Message   string     `json:"message"`
+	FireAt    time.Time  `json:"fire_at"`
+	Recurring string     `json:"recurring,omitempty"`
+	UntilAt   *time.Time `json:"until_at,omitempty"`
+	Status    string     `json:"status"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // PushTool is a native tool for managing reminders.
@@ -42,7 +43,7 @@ func (t *PushTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name: "reminder",
 		Description: `Manage reminders and scheduled alerts. Delivers via SSE, Web Push, and native OS alerts (macOS Notification Center, Linux notify-send, Windows toast). Actions:
-- add: Schedule a reminder (requires message + time)
+- add: Schedule a reminder (requires message + time or every)
 - list: List all scheduled reminders
 - delete: Delete a reminder by ID
 - clear: Delete all reminders`,
@@ -63,6 +64,14 @@ func (t *PushTool) Definition() ToolDefinition {
 					"type":        "string",
 					"description": "When to fire: relative duration (1h, 30m, 2h30m) or absolute (2026-01-04 09:00) or RFC3339",
 				},
+				"every": map[string]interface{}{
+					"type":        "string",
+					"description": "Repeat interval for user reminders, e.g. 2m or 1h30m. Can be combined with time to control the first fire.",
+				},
+				"until": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional end time for repeating reminders, e.g. 2026-03-17 22:00 or 2h",
+				},
 				"id": map[string]interface{}{
 					"type":        "string",
 					"description": "Reminder ID (required for delete)",
@@ -70,7 +79,7 @@ func (t *PushTool) Definition() ToolDefinition {
 				"recurring": map[string]interface{}{
 					"type":        "string",
 					"enum":        []string{"", "daily", "weekly", "monthly"},
-					"description": "Recurring schedule (optional for add)",
+					"description": "Calendar recurrence for reminders (daily, weekly, monthly). Use every for minute/hour intervals.",
 				},
 			},
 			"required": []string{"action"},
@@ -114,19 +123,48 @@ func (t *PushTool) executeAdd(ctx context.Context, userID string, args map[strin
 		return nil, fmt.Errorf("message is required for add")
 	}
 	timeStr := firstCompatString(args, "time", "fire_at", "fireAt", "when")
-	if timeStr == "" {
-		return nil, fmt.Errorf("time is required for add")
-	}
-
-	fireAt, err := parsePushTime(timeStr)
-	if err != nil {
-		return nil, err
-	}
-
+	everyStr := firstCompatString(args, "every", "interval")
 	recurring := firstCompatString(args, "recurring", "repeat", "recurrence")
+	if timeStr == "" && everyStr == "" {
+		return nil, fmt.Errorf("time or every is required for add")
+	}
+	if everyStr != "" && recurring != "" {
+		return nil, fmt.Errorf("every cannot be combined with recurring")
+	}
+
+	var fireAt time.Time
+	var err error
+	if timeStr != "" {
+		fireAt, err = parsePushTime(timeStr)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if everyStr != "" {
+		interval, intervalErr := remindertime.ParseDuration(everyStr)
+		if intervalErr != nil {
+			return nil, intervalErr
+		}
+		if interval < time.Minute {
+			return nil, fmt.Errorf("every must be at least 1 minute")
+		}
+		recurring = "interval:" + interval.String()
+		if timeStr == "" {
+			fireAt = time.Now().Add(interval)
+		}
+	}
+
+	var untilAt *time.Time
+	if untilStr := firstCompatString(args, "until", "until_at", "untilAt"); untilStr != "" {
+		parsedUntil, untilErr := parsePushTime(untilStr)
+		if untilErr != nil {
+			return nil, untilErr
+		}
+		untilAt = &parsedUntil
+	}
 	sessionID := GetSessionID(ctx)
 
-	result, err := t.svc.Add(ctx, userID, message, fireAt, recurring, sessionID)
+	result, err := t.svc.Add(ctx, userID, message, fireAt, recurring, sessionID, untilAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add reminder: %w", err)
 	}

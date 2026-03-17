@@ -3,10 +3,12 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
@@ -103,4 +105,39 @@ func TestConfigHandler_Status(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), `"enabled":true`)
 	})
+}
+
+func TestConfigHandler_GetSectionRejectsInvalidSectionName(t *testing.T) {
+	e := echo.New()
+	h := NewConfigHandler(nil)
+	h.SetConfigStore(config.NewConfigStore(kvstore.NewMemoryStore()))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config/sections/../security", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("name")
+	c.SetParamValues("../security")
+
+	err := h.GetSection(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "invalid config section")
+}
+
+func TestConfigHandler_SetSectionRejectsInvalidSectionName(t *testing.T) {
+	e := echo.New()
+	h := NewConfigHandler(nil)
+	h.SetConfigStore(config.NewConfigStore(kvstore.NewMemoryStore()))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/config/sections/../security", strings.NewReader(`{}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("name")
+	c.SetParamValues("../security")
+
+	err := h.SetSection(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "invalid config section")
 }

@@ -1,6 +1,7 @@
 package formfiller
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -154,6 +155,11 @@ func (h *Handler) GetSiteMapping(c echo.Context) error {
 
 	mapping, err := h.store.GetSiteMapping(domain)
 	if err != nil {
+		if errors.Is(err, ErrInvalidDomain) {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "invalid domain",
+			})
+		}
 		return c.JSON(http.StatusNotFound, map[string]string{
 			"error": err.Error(),
 		})
@@ -176,6 +182,11 @@ func (h *Handler) SaveSiteMapping(c echo.Context) error {
 	mapping.Domain = domain
 
 	if err := h.store.SaveSiteMapping(&mapping); err != nil {
+		if errors.Is(err, ErrInvalidDomain) {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "invalid domain",
+			})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
 		})

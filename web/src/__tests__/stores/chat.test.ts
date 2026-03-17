@@ -26,6 +26,7 @@ vi.mock('@/api/chat', () => ({
   messageApi: {
     list: vi.fn(),
     send: vi.fn(),
+    delete: vi.fn(),
     cancelStream: vi.fn(),
   },
 }))
@@ -83,6 +84,7 @@ describe('Chat Store', () => {
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
     vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+    vi.mocked(messageApi.delete).mockResolvedValue({ data: { success: true, deleted: 0 } } as never)
     vi.mocked(approvalApi.listPending).mockResolvedValue({ data: [] } as never)
     vi.mocked(conversationApi.getCommandState).mockResolvedValue({
       data: {
@@ -467,6 +469,17 @@ describe('Chat Store', () => {
       expect(store.messages.at(-1)?.id.startsWith('streaming-')).toBe(true)
 
       streamOptions.onToolExecuting?.(1, ['ask'], false, ['ask'])
+      streamOptions.onToolResults?.(
+        [
+          {
+            name: 'web_search',
+            id: 'tool-search-1',
+            args: '{"query":"Need a decision"}',
+            result: '{"status":"ok","stdout":"Found 3 results"}',
+          },
+        ],
+        0
+      )
       streamOptions.onMessage({ delta: '', done: false, awaiting_user_input: true })
 
       expect(store.awaitingConfirmation).toBe(true)
@@ -488,6 +501,10 @@ describe('Chat Store', () => {
       expect(store.streaming).toBe(true)
       expect(store.sending).toBe(true)
       expect(store.awaitingConfirmation).toBe(true)
+      expect(store.toolResults).toHaveLength(1)
+      expect(store.toolResults[0]?.id).toBe('tool-search-1')
+      expect(store.statusSummary).toBe('Writing response...')
+      expect(store.statusStartedAt).toBeGreaterThan(0)
       expect(store.messages.at(-1)?.role).toBe('assistant')
       expect(store.messages.at(-1)?.content).toBe('Still working...')
 
@@ -738,6 +755,109 @@ describe('Chat Store', () => {
       )
       expect(staleLegacyMatches).toHaveLength(1)
       expect(snapshotAfterTodoUpdate.at(-1)?.content).toBe('')
+    })
+
+    it('truncates later turns and resubmits when editing a user message', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.messages = [
+        {
+          id: 'msg-user-0',
+          conversation_id: 'conv-1',
+          role: 'user',
+          content: 'Keep this context',
+          created_at: '2026-03-12T00:00:00.000Z',
+        },
+        {
+          id: 'msg-assistant-0',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: 'Earlier answer',
+          created_at: '2026-03-12T00:00:01.000Z',
+        },
+        {
+          id: 'msg-user-1',
+          conversation_id: 'conv-1',
+          role: 'user',
+          content: 'Old prompt',
+          created_at: '2026-03-12T00:00:02.000Z',
+          attachments: [
+            {
+              type: 'image',
+              name: 'diagram.png',
+              mime_type: 'image/png',
+              data: 'ZmFrZS1pbWFnZQ==',
+            },
+          ],
+        },
+        {
+          id: 'msg-assistant-1',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: 'Old answer',
+          created_at: '2026-03-12T00:00:03.000Z',
+        },
+        {
+          id: 'msg-user-2',
+          conversation_id: 'conv-1',
+          role: 'user',
+          content: 'Later follow-up',
+          created_at: '2026-03-12T00:00:04.000Z',
+        },
+        {
+          id: 'msg-assistant-2',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: 'Later answer',
+          created_at: '2026-03-12T00:00:05.000Z',
+        },
+      ]
+      store.enterMultiSelectMode('msg-user-2')
+
+      await store.editMessageAndResubmit('msg-user-1', 'Updated prompt')
+
+      expect(messageApi.delete).toHaveBeenCalledWith('conv-1', [
+        'msg-user-1',
+        'msg-assistant-1',
+        'msg-user-2',
+        'msg-assistant-2',
+      ])
+      expect(mocks.sseConnect).toHaveBeenCalledWith(
+        'conv-1',
+        expect.objectContaining({
+          message: 'Updated prompt',
+          attachments: [
+            {
+              type: 'image',
+              name: 'diagram.png',
+              mime_type: 'image/png',
+              data: 'ZmFrZS1pbWFnZQ==',
+            },
+          ],
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        }),
+        expect.any(Object)
+      )
+
+      expect(store.messages).toHaveLength(4)
+      expect(store.messages[0]?.id).toBe('msg-user-0')
+      expect(store.messages[1]?.id).toBe('msg-assistant-0')
+      expect(store.messages[2]?.role).toBe('user')
+      expect(store.messages[2]?.id.startsWith('temp-')).toBe(true)
+      expect(store.messages[2]?.content).toBe('Updated prompt')
+      expect(store.messages[2]?.attachments).toEqual([
+        {
+          type: 'image',
+          name: 'diagram.png',
+          mime_type: 'image/png',
+          data: 'ZmFrZS1pbWFnZQ==',
+        },
+      ])
+      expect(store.messages[3]?.role).toBe('assistant')
+      expect(store.messages[3]?.id.startsWith('streaming-')).toBe(true)
+      expect(store.selectedMessageIds.size).toBe(0)
+      expect(store.isMultiSelectMode).toBe(false)
     })
   })
 

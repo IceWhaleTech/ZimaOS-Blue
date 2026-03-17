@@ -56,6 +56,10 @@ func getPluginType(p *plugin.PluginInfo) string {
 	return "js"
 }
 
+func validatedPluginID(id string) (string, error) {
+	return plugin.ValidatePluginID(id)
+}
+
 // ListPlugins returns all installed plugins
 func (h *PluginHandler) ListPlugins(c echo.Context) error {
 	plugins := h.registry.ListPlugins()
@@ -91,7 +95,12 @@ func (h *PluginHandler) ListPlugins(c echo.Context) error {
 
 // GetPlugin returns a specific installed plugin
 func (h *PluginHandler) GetPlugin(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedPluginID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
 	p := h.registry.GetPlugin(id)
 	if p == nil || p.Manifest == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{
@@ -117,7 +126,12 @@ func (h *PluginHandler) GetPlugin(c echo.Context) error {
 
 // EnablePlugin enables a plugin
 func (h *PluginHandler) EnablePlugin(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedPluginID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
 	p := h.registry.GetPlugin(id)
 	if p == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{
@@ -149,7 +163,12 @@ func (h *PluginHandler) EnablePlugin(c echo.Context) error {
 
 // DisablePlugin disables a plugin
 func (h *PluginHandler) DisablePlugin(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedPluginID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
 	p := h.registry.GetPlugin(id)
 	if p == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{
@@ -181,7 +200,12 @@ func (h *PluginHandler) DisablePlugin(c echo.Context) error {
 
 // UpdateConfig updates plugin configuration
 func (h *PluginHandler) UpdateConfig(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedPluginID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
 	p := h.registry.GetPlugin(id)
 	if p == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{
@@ -212,7 +236,12 @@ type PluginLog struct {
 
 // GetLogs returns plugin logs
 func (h *PluginHandler) GetLogs(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedPluginID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
 	p := h.registry.GetPlugin(id)
 	if p == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{
@@ -227,7 +256,12 @@ func (h *PluginHandler) GetLogs(c echo.Context) error {
 
 // ReloadPlugin reloads a plugin
 func (h *PluginHandler) ReloadPlugin(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedPluginID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
 	p := h.registry.GetPlugin(id)
 	if p == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{

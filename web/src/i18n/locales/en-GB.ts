@@ -101,6 +101,16 @@ export default {
     timeout: 'Auto-closing in {seconds}s',
     answered: 'Answered',
   },
+  browserProgress: {
+    title: 'Browser progress',
+    steps: {
+      start: 'Starting browser',
+      navigate: 'Navigating',
+      snapshot: 'Reading page',
+      screenshot: 'Capturing screenshot',
+      recipe: 'Running {recipe}',
+    },
+  },
   thinking: {
     title: 'Context',
     context: 'Context',
@@ -109,6 +119,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Web search',
     resultCount: '{count} results',
   },
   ui: {
@@ -116,6 +127,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Waiting for your confirmation to continue',
+    assistantStatus: {
+      searchingWeb: 'Searching the web',
+      browsingWeb: 'Browsing the web',
+      readingWeb: 'Reading a web page',
+      readingWebSite: 'Reading {site}',
+      usingTools: 'Using tools',
+    },
     conversations: 'Conversations',
     execDirectoryApprovalTimeout:
       'Command execution was blocked because directory approval timed out. Please approve the directory and try again.',
@@ -128,6 +147,9 @@ export default {
       completed: 'Done',
     },
     featureHintTapToEnable: 'Optional features detected. Tap to check before sending:',
+    enhancedModeDesc: 'Optional enhancement is on: the experience is better.',
+    enableEnhancedModeDesc:
+      'Optional enhancement: turning it off does not affect core chat/agent usage; turning it on improves the experience.',
     showToolDetails: 'Show work details',
     hideToolDetails: 'Hide work details',
     toolDetailExpand: 'Expand output',
@@ -635,6 +657,29 @@ export default {
     providerRaceCooldownRule:
       'Cooldown when empty-run rate ≥ {threshold} (min {samples} samples), duration {duration}',
     maskingTitle: 'Data Masking',
+    customMaskingTitle: 'Custom Data Masking Rules',
+    builtinMaskingRules: 'Built-in rules',
+    builtinMaskingEmpty: 'No built-in rules loaded.',
+    customMaskingListTitle: 'Custom rules',
+    customMaskingEmpty:
+      'No custom rules yet. Use the form below to cover internal IDs or proprietary secrets.',
+    customMaskingDesc:
+      'Add regex-based rules for internal IDs, secrets, or business-specific fields.',
+    customMaskingNameLabel: 'Name',
+    customMaskingNamePlaceholder: 'Example: Internal ticket number',
+    customMaskingDirectionLabel: 'Direction',
+    customMaskingPatternLabel: 'Regex pattern',
+    customMaskingPatternPlaceholder: 'Example: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Replacement text',
+    customMaskingReplacementPlaceholder: 'Example: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Use a valid regular expression. {maskLabel} in replacement text keeps the localized mask label.',
+    customMaskingAdd: 'Add rule',
+    customMaskingAddSuccess: 'Custom masking rule added.',
+    customMaskingAddError: 'Failed to add custom masking rule.',
+    customMaskingDeleteConfirm: 'Delete custom masking rule "{name}"?',
+    customMaskingDeleteSuccess: 'Custom masking rule deleted.',
+    customMaskingDeleteError: 'Failed to delete custom masking rule.',
     maskingDesc: 'Redact sensitive data (PII, credentials) in LLM requests and responses',
     maskingEnabled: 'Data masking enabled',
     maskingDisabled: 'Data masking disabled',
@@ -2592,7 +2637,7 @@ export default {
     dashboard: 'Dashboard',
     chat: 'Chat',
     settings: 'Settings',
-    plugins: 'Plugins',
+    plugins: 'Extensions',
     profile: 'Profile',
     automation: 'Automation',
     channels: 'Channels',
@@ -4390,7 +4435,7 @@ export default {
       'page.chat': 'Chat',
       'page.channels': 'Channels',
       'page.automation': 'Automation',
-      'page.plugins': 'Plugins',
+      'page.plugins': 'Extensions',
       'page.security': 'Security',
       'page.settings': 'Settings',
       'page.profile': 'Profile',
@@ -4402,7 +4447,7 @@ export default {
       'page.chat': 'Access to chat',
       'page.channels': 'Access to channels',
       'page.automation': 'Access to automation',
-      'page.plugins': 'Access to plugins',
+      'page.plugins': 'Access to extensions',
       'page.security': 'Access to security',
       'page.settings': 'Access to settings',
       'page.profile': 'Access to profile',

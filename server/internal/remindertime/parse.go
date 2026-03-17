@@ -47,6 +47,18 @@ func Parse(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("invalid time format: %s (use duration like '10s'/'10秒', RFC3339, or 'YYYY-MM-DD HH:MM')", s)
 }
 
+// ParseDuration parses an interval string without applying it to the current time.
+func ParseDuration(s string) (time.Duration, error) {
+	raw := strings.TrimSpace(s)
+	if raw == "" {
+		return 0, fmt.Errorf("invalid duration format: empty value")
+	}
+	if d, ok := parseRelativeDuration(raw); ok {
+		return d, nil
+	}
+	return 0, fmt.Errorf("invalid duration format: %s (use duration like '2m', '1h30m', or '2分钟')", s)
+}
+
 func parseRelativeDuration(s string) (time.Duration, bool) {
 	trimmed := strings.TrimSpace(s)
 	if d, err := time.ParseDuration(trimmed); err == nil {

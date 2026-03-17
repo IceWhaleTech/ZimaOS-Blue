@@ -81,6 +81,7 @@ describe('CardWebFetch', () => {
   it('keeps extracted content collapsed by default until toggled open', async () => {
     const wrapper = mount(CardWebFetch, {
       props: {
+        uiStateKey: 'web-fetch-test-collapsed',
         card: {
           type: 'web-fetch',
           title: 'web_fetch',
@@ -94,25 +95,22 @@ describe('CardWebFetch', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('Expand web content')
+    expect(wrapper.text()).toContain('Web fetch')
+    expect(wrapper.text()).toContain('example.com')
     expect(wrapper.text()).not.toContain('Line one')
 
-    const toggleButton = wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('Expand web content'))
-    expect(toggleButton).toBeDefined()
-
-    await toggleButton!.trigger('click')
+    await wrapper.get('button').trigger('click')
     await nextTick()
 
-    expect(wrapper.text()).toContain('Collapse web content')
+    expect(wrapper.text()).toContain('Copy URL')
     expect(wrapper.text()).toContain('Line one')
     expect(wrapper.text()).toContain('Line three')
   })
 
-  it('localizes warning labels and actions for zh-CN', () => {
+  it('localizes warning labels and actions for zh-CN', async () => {
     const wrapper = mount(CardWebFetch, {
       props: {
+        uiStateKey: 'web-fetch-test-zh',
         card: {
           type: 'web-fetch',
           title: 'web_fetch',
@@ -130,15 +128,21 @@ describe('CardWebFetch', () => {
 
     expect(wrapper.text()).toContain('网页抓取')
     expect(wrapper.text()).toContain('需要登录')
+    expect(wrapper.text()).not.toContain('使用浏览器')
+
+    await wrapper.get('button').trigger('click')
+    await nextTick()
+
     expect(wrapper.text()).toContain('使用浏览器')
     expect(wrapper.text()).toContain('复制 URL')
     expect(wrapper.text()).toContain('复制文本')
     expect(wrapper.text()).not.toContain('Use browser')
   })
 
-  it('shows localized processing text for the active action', () => {
+  it('shows localized processing text for the active action', async () => {
     const wrapper = mount(CardWebFetch, {
       props: {
+        uiStateKey: 'web-fetch-test-processing',
         card: {
           type: 'web-fetch',
           title: 'web_fetch',
@@ -154,6 +158,43 @@ describe('CardWebFetch', () => {
       },
     })
 
+    await wrapper.get('button').trigger('click')
+    await nextTick()
     expect(wrapper.text()).toContain('处理中...')
+  })
+
+  it('keeps the detailed view expanded across streaming updates', async () => {
+    const wrapper = mount(CardWebFetch, {
+      props: {
+        uiStateKey: 'web-fetch-test-persist',
+        card: {
+          type: 'web-fetch',
+          title: 'web_fetch',
+          url: 'https://example.com/docs',
+          content: 'Line one',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    await wrapper.get('button').trigger('click')
+    await nextTick()
+    expect(wrapper.text()).toContain('Line one')
+
+    await wrapper.setProps({
+      card: {
+        type: 'web-fetch',
+        title: 'web_fetch',
+        url: 'https://example.com/docs',
+        content: 'Line one\nLine two',
+        _streaming: true,
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.text()).toContain('Line two')
+    expect(wrapper.text()).toContain('Copy URL')
   })
 })

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { memoryApi, type MemorySearchResult, type MemoryStats } from '@/api/memory'
+import SemanticSearchField from '@/components/ui/SemanticSearchField.vue'
 import type { MemoryRecallMode } from '@/stores/settings'
 
 const { t } = useI18n()
@@ -80,7 +81,7 @@ async function loadStats() {
 }
 
 async function searchMemories() {
-  const query = searchQuery.value.trim()
+  const query = searchQuery.value.replace(/\s+/g, ' ').trim()
   if (!query) {
     searchResults.value = []
     searching.value = false
@@ -485,13 +486,15 @@ onBeforeUnmount(() => {
       </div>
 
       <section>
-        <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
-          <input
-            data-testid="memory-search-input"
+        <div class="flex flex-col sm:flex-row gap-2 sm:items-start">
+          <SemanticSearchField
             v-model="searchQuery"
-            type="text"
+            test-id="memory-search-input"
+            class="flex-1"
             :placeholder="t('memory.searchPlaceholder')"
-            class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
+            :clear-label="t('common.clear')"
+            @clear="clearSearch"
+            @submit-shortcut="searchMemories"
           />
           <button
             data-testid="memory-search-submit"

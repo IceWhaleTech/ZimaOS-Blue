@@ -55,6 +55,7 @@ const mocks = vi.hoisted(() => ({
     unpinConversation: vi.fn(),
     continueMessage: vi.fn(),
     regenerateMessage: vi.fn(),
+    editMessageAndResubmit: vi.fn(),
     injectMessage: vi.fn(),
     warmupConversation: vi.fn(),
     resetWarmup: vi.fn(),
@@ -224,7 +225,7 @@ describe('ChatView provider gating', () => {
     Object.defineProperty(window.navigator, 'userAgent', { value: 'desktop', configurable: true })
   })
 
-  it('blocks send, opens provider setup dialog, and restores input draft when no provider is configured', async () => {
+  async function mountChatView() {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -243,6 +244,11 @@ describe('ChatView provider gating', () => {
     })
 
     await flushPromises()
+    return wrapper
+  }
+
+  it('blocks send, opens provider setup dialog, and restores input draft when no provider is configured', async () => {
+    const wrapper = await mountChatView()
     await wrapper.find('.chat-input-send-stub').trigger('click')
     await flushPromises()
 
@@ -251,5 +257,21 @@ describe('ChatView provider gating', () => {
     expect(mocks.mediaGenerate.classify).not.toHaveBeenCalled()
     expect(mocks.chatInputSetInput).toHaveBeenCalledWith('need provider')
     expect(wrapper.text()).toContain('chat.noProvider.title')
+  })
+
+  it('shows the enhanced mode info card on hover when Claude Code CLI is enabled', async () => {
+    mocks.settingsStore.claudeCodeEnabled = true
+
+    const wrapper = await mountChatView()
+    const enhancedPill = wrapper.find('.chat-mode-pill.chat-mode-pill-enabled')
+
+    expect(enhancedPill.exists()).toBe(true)
+    expect(wrapper.find('.enhanced-mode-hover-card').exists()).toBe(false)
+
+    await enhancedPill.trigger('mouseenter')
+    await flushPromises()
+
+    expect(wrapper.find('.enhanced-mode-hover-card').exists()).toBe(true)
+    expect(wrapper.findAll('.enhanced-mode-hover-card__item')).toHaveLength(4)
   })
 })

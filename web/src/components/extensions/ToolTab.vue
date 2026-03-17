@@ -3,54 +3,17 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToolStore } from '@/stores/tool'
 import type { Tool } from '@/api/tool'
+import { getLocalizedToolDescription, getLocalizedToolName } from '@/utils/toolLocalization'
 
 const { t, te } = useI18n()
 const toolStore = useToolStore()
 
-const TOOL_DESCRIPTION_KEY_MAP: Record<string, string> = {
-  calculator: 'skills.builtin.calculator.description',
-  system_info: 'skills.builtin.system-info.description',
-  datetime: 'skills.builtin.datetime.description',
-  weather: 'skills.builtin.weather.description',
-  search: 'skills.builtin.search.description',
-  timer: 'skills.builtin.timer.description',
-  reminder: 'skills.builtin.reminder.description',
-  notes: 'skills.builtin.notes.description',
-  tasks: 'skills.builtin.tasks.description',
-  translate: 'skills.builtin.translate.description',
-  notifications: 'skills.builtin.notifications.description',
-  unit_converter: 'skills.builtin.unit-converter.description',
-  files: 'skills.builtin.files.description',
-  network: 'skills.builtin.network.description',
-  process: 'skills.builtin.processes.description',
-  docker: 'skills.builtin.docker.description',
-  email: 'skills.builtin.email.description',
-  calendar: 'skills.builtin.calendar.description',
-  contacts: 'skills.builtin.contacts.description',
-  news: 'skills.builtin.news.description',
-  stocks: 'skills.builtin.stocks.description',
-  crypto: 'skills.builtin.crypto.description',
-  github: 'skills.builtin.github.description',
-  notion: 'skills.builtin.notion.description',
-  slack: 'skills.builtin.slack-skill.description',
-  discord: 'skills.builtin.discord-skill.description',
-  scheduler: 'skills.builtin.scheduler.description',
-  browser: 'skills.builtin.browser.description',
-  ui_reviewer: 'skills.builtin.ui-reviewer.description',
-}
-
 function getToolName(tool: Tool): string {
-  const key = `tools.names.${tool.name}`
-  if (te(key)) return t(key)
-  return tool.name
+  return getLocalizedToolName(tool.name, t, te)
 }
 
 function getToolDescription(tool: Tool): string {
-  const localizedKey = `tools.descriptions.${tool.name}`
-  if (te(localizedKey)) return t(localizedKey)
-  const key = TOOL_DESCRIPTION_KEY_MAP[tool.name]
-  if (key && te(key)) return t(key)
-  return tool.description || ''
+  return getLocalizedToolDescription(tool.name, tool.description, t, te)
 }
 
 const searchQuery = ref('')

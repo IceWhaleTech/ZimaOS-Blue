@@ -117,7 +117,7 @@ export default {
     dashboard: 'Painel',
     settings: 'Configurações',
     system: 'Sistema',
-    plugins: 'Plugins',
+    plugins: 'Extensões',
     profile: 'Perfil',
     homeAssistant: 'Home Assistant',
     browserAutomation: 'Automação do navegador',
@@ -177,6 +177,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Aguardando sua confirmacao para continuar',
+    assistantStatus: {
+      searchingWeb: 'Pesquisando na web',
+      browsingWeb: 'Navegando na web',
+      readingWeb: 'Lendo uma pagina da web',
+      readingWebSite: 'Lendo {site}',
+      usingTools: 'Usando ferramentas',
+    },
     execDirectoryApprovalTimeout:
       'A execução do comando foi bloqueada porque a aprovação do diretório expirou. Aprove o diretório e tente novamente.',
     streamProgress: {
@@ -389,11 +397,10 @@ export default {
     },
     // Modo aprimorado
     enhancedMode: 'Modo aprimorado',
-    enhancedModeDesc:
-      'Modo aprimorado: suporta habilidades, chamadas de ferramentas, operações de arquivos, execução de código e mais',
+    enhancedModeDesc: 'A melhoria opcional está ativada: a experiência é melhor.',
     enableEnhancedMode: 'Ativar modo aprimorado',
     enableEnhancedModeDesc:
-      'Ative o modo aprimorado para habilidades, chamadas de ferramentas, operações de arquivos e mais',
+      'Esta é uma melhoria opcional: desativá-la não afeta o chat básico nem o uso do Agent; ativá-la melhora a experiência.',
     showToolDetails: 'Mostrar detalhes do trabalho',
     hideToolDetails: 'Ocultar detalhes do trabalho',
     toolDetailExpand: 'Expandir saída',
@@ -683,7 +690,7 @@ export default {
   },
   plugins: {
     ...enUS.plugins,
-    title: 'Plugins',
+    title: 'Extensões',
     subtitle: 'Gerenciar plugins para habilidades, extensões e ferramentas',
     refresh: 'Atualizar',
     totalPlugins: 'Total de plugins',
@@ -2282,6 +2289,15 @@ export default {
       loadFailed: 'Falha ao carregar usuários',
       passwordResetFailed: 'Falha ao redefinir senha',
     },
+
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Acesso às extensões',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Extensões',
+    },
   },
   speech: {
     ...enUS.speech,
@@ -2769,6 +2785,29 @@ export default {
     streamingAnomaly: 'Detecção de anomalias de streaming',
     streamingAnomalyDesc: 'Detectar e recuperar anomalias na saída de streaming',
     maskingTitle: 'Mascaramento de dados',
+    customMaskingTitle: 'Regras personalizadas de mascaramento de dados',
+    builtinMaskingRules: 'Regras integradas',
+    builtinMaskingEmpty: 'Nenhuma regra integrada carregada.',
+    customMaskingListTitle: 'Regras personalizadas',
+    customMaskingEmpty:
+      'Ainda não há regras personalizadas. Use o formulário abaixo para cobrir IDs internos ou segredos proprietários.',
+    customMaskingDesc:
+      'Adicione regras baseadas em regex para IDs internos, segredos ou campos específicos do negócio.',
+    customMaskingNameLabel: 'Nome',
+    customMaskingNamePlaceholder: 'Exemplo: número interno de chamado',
+    customMaskingDirectionLabel: 'Direção',
+    customMaskingPatternLabel: 'Padrão regex',
+    customMaskingPatternPlaceholder: 'Exemplo: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Texto de substituição',
+    customMaskingReplacementPlaceholder: 'Exemplo: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Use uma expressão regular válida. {maskLabel} no texto de substituição mantém o rótulo de mascaramento localizado.',
+    customMaskingAdd: 'Adicionar regra',
+    customMaskingAddSuccess: 'Regra personalizada de mascaramento adicionada.',
+    customMaskingAddError: 'Falha ao adicionar a regra personalizada de mascaramento.',
+    customMaskingDeleteConfirm: 'Excluir a regra personalizada de mascaramento "{name}"?',
+    customMaskingDeleteSuccess: 'Regra personalizada de mascaramento excluída.',
+    customMaskingDeleteError: 'Falha ao excluir a regra personalizada de mascaramento.',
     maskingDesc: 'Ocultar dados sensíveis (PII, credenciais) em solicitações e respostas LLM',
     maskingEnabled: 'Mascaramento ativado',
     maskingDisabled: 'Mascaramento desativado',
@@ -3180,6 +3219,16 @@ export default {
     timeout: 'Fechamento automático em {seconds}s',
     answered: 'Respondido',
   },
+  browserProgress: {
+    title: 'Progresso do navegador',
+    steps: {
+      start: 'Iniciando navegador',
+      navigate: 'Navegando',
+      snapshot: 'Lendo pagina',
+      screenshot: 'Capturando tela',
+      recipe: 'Executando {recipe}',
+    },
+  },
   thinking: {
     title: 'Contexto',
     context: 'Contexto',
@@ -3188,6 +3237,7 @@ export default {
     inProgress: 'Pensando...',
   },
   search: {
+    summaryTitle: 'Pesquisa na web',
     resultCount: '{count} resultados',
   },
   workspace: {

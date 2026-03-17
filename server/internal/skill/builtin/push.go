@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 
 // PushServiceInterface defines the interface for the native reminder delivery service.
 type PushServiceInterface interface {
-	Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (PushInfo, error)
+	Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string, untilAt *time.Time) (PushInfo, error)
 	List(ctx context.Context, ownerID string) ([]PushInfo, error)
 	Delete(ctx context.Context, ownerID, id string) error
 	Clear(ctx context.Context, ownerID string) (int64, error)
@@ -21,13 +22,14 @@ type PushServiceInterface interface {
 
 // PushInfo is the data returned by the reminder delivery service interface.
 type PushInfo struct {
-	ID        string    `json:"id"`
-	Message   string    `json:"message"`
-	FireAt    time.Time `json:"fire_at"`
-	Recurring string    `json:"recurring,omitempty"`
-	SessionID string    `json:"session_id,omitempty"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string     `json:"id"`
+	Message   string     `json:"message"`
+	FireAt    time.Time  `json:"fire_at"`
+	Recurring string     `json:"recurring,omitempty"`
+	UntilAt   *time.Time `json:"until_at,omitempty"`
+	SessionID string     `json:"session_id,omitempty"`
+	Status    string     `json:"status"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // PushItem represents a single reminder (in-memory fallback).
@@ -80,6 +82,18 @@ func NewReminder() *Reminder {
 					Required:    false,
 				},
 				{
+					Name:        "every",
+					Type:        "string",
+					Description: "Repeat interval for user reminders (e.g., '2m', '1h'). Can be combined with time to set the first fire.",
+					Required:    false,
+				},
+				{
+					Name:        "until",
+					Type:        "string",
+					Description: "Optional stop time for repeating reminders (e.g., '2026-03-17 22:00')",
+					Required:    false,
+				},
+				{
 					Name:        "id",
 					Type:        "string",
 					Description: "Reminder ID (required for delete)",
@@ -88,7 +102,7 @@ func NewReminder() *Reminder {
 				{
 					Name:        "recurring",
 					Type:        "string",
-					Description: "Recurring schedule: daily, weekly, monthly (optional for add)",
+					Description: "Recurring schedule: daily, weekly, monthly (optional for add). Use every for minute/hour intervals.",
 					Required:    false,
 				},
 				{
@@ -154,8 +168,10 @@ func (p *Reminder) Validate(input map[string]any) error {
 		if _, ok := input["message"]; !ok {
 			return fmt.Errorf("message is required for add action")
 		}
-		if _, ok := input["time"]; !ok {
-			return fmt.Errorf("time is required for add action")
+		if _, hasTime := input["time"]; !hasTime {
+			if _, hasEvery := input["every"]; !hasEvery {
+				return fmt.Errorf("time or every is required for add action")
+			}
 		}
 	}
 
@@ -219,23 +235,52 @@ func (p *Reminder) executeNative(ctx context.Context, svc PushServiceInterface, 
 
 func (p *Reminder) addNative(ctx context.Context, svc PushServiceInterface, ownerID string, input map[string]any) (*skill.Result, error) {
 	message := input["message"].(string)
-	timeStr := input["time"].(string)
-
-	fireAt, err := parsePushTime(timeStr)
-	if err != nil {
-		return skill.NewErrorResult(err), nil
-	}
-
 	recurring := ""
 	if rec, ok := input["recurring"].(string); ok {
 		recurring = rec
+	}
+	timeStr, _ := input["time"].(string)
+	everyStr, _ := input["every"].(string)
+	if everyStr != "" && recurring != "" {
+		return skill.NewErrorResult(fmt.Errorf("every cannot be combined with recurring")), nil
+	}
+
+	var fireAt time.Time
+	var err error
+	if strings.TrimSpace(timeStr) != "" {
+		fireAt, err = parsePushTime(timeStr)
+		if err != nil {
+			return skill.NewErrorResult(err), nil
+		}
+	}
+	if strings.TrimSpace(everyStr) != "" {
+		interval, intervalErr := remindertime.ParseDuration(everyStr)
+		if intervalErr != nil {
+			return skill.NewErrorResult(intervalErr), nil
+		}
+		if interval < time.Minute {
+			return skill.NewErrorResult(fmt.Errorf("every must be at least 1 minute")), nil
+		}
+		recurring = "interval:" + interval.String()
+		if strings.TrimSpace(timeStr) == "" {
+			fireAt = timeutil.NowTime().Add(interval)
+		}
+	}
+
+	var untilAt *time.Time
+	if untilStr, ok := input["until"].(string); ok && strings.TrimSpace(untilStr) != "" {
+		parsedUntil, untilErr := parsePushTime(untilStr)
+		if untilErr != nil {
+			return skill.NewErrorResult(untilErr), nil
+		}
+		untilAt = &parsedUntil
 	}
 	sessionID := ""
 	if sid, ok := input["session_id"].(string); ok {
 		sessionID = sid
 	}
 
-	info, err := svc.Add(ctx, ownerID, message, fireAt, recurring, sessionID)
+	info, err := svc.Add(ctx, ownerID, message, fireAt, recurring, sessionID, untilAt)
 	if err != nil {
 		return skill.NewErrorResult(fmt.Errorf("failed to add reminder: %w", err)), nil
 	}
@@ -296,11 +341,33 @@ func (p *Reminder) addFallback(input map[string]any) (*skill.Result, error) {
 	defer p.mu.Unlock()
 
 	message := input["message"].(string)
-	timeStr := input["time"].(string)
+	timeStr, _ := input["time"].(string)
+	everyStr, _ := input["every"].(string)
+	recurring, _ := input["recurring"].(string)
+	if everyStr != "" && recurring != "" {
+		return skill.NewErrorResult(fmt.Errorf("every cannot be combined with recurring")), nil
+	}
 
-	notifTime, err := parsePushTime(timeStr)
-	if err != nil {
-		return skill.NewErrorResult(err), nil
+	var notifTime time.Time
+	var err error
+	if strings.TrimSpace(timeStr) != "" {
+		notifTime, err = parsePushTime(timeStr)
+		if err != nil {
+			return skill.NewErrorResult(err), nil
+		}
+	}
+	if strings.TrimSpace(everyStr) != "" {
+		interval, intervalErr := remindertime.ParseDuration(everyStr)
+		if intervalErr != nil {
+			return skill.NewErrorResult(intervalErr), nil
+		}
+		if interval < time.Minute {
+			return skill.NewErrorResult(fmt.Errorf("every must be at least 1 minute")), nil
+		}
+		recurring = "interval:" + interval.String()
+		if strings.TrimSpace(timeStr) == "" {
+			notifTime = timeutil.NowTime().Add(interval)
+		}
 	}
 
 	p.counter++
@@ -312,7 +379,7 @@ func (p *Reminder) addFallback(input map[string]any) (*skill.Result, error) {
 		Time:    notifTime,
 		Created: timeutil.NowTime(),
 	}
-	if recurring, ok := input["recurring"].(string); ok {
+	if recurring != "" {
 		item.Recurring = recurring
 	}
 

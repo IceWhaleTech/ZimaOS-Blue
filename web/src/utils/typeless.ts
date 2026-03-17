@@ -1587,41 +1587,55 @@ function mergeConsecutiveProgressCards(segments: SplitSegment[]): SplitSegment[]
 
   const flushPending = () => {
     if (pendingSteps.length === 0 || !pendingType) return
-    const dedupedByStep = new Map<string, TypelessCard>()
+    const dedupedByStep = new Map<string, Record<string, unknown>>()
     const stepOrder: string[] = []
-    pendingSteps.forEach((stepCard, index) => {
+    const flattenedStepRecords: Record<string, unknown>[] = []
+
+    pendingSteps.forEach((stepCard) => {
       const record = stepCard as unknown as Record<string, unknown>
+      const mergedSteps = Array.isArray(record.steps)
+        ? record.steps.filter(
+            (step): step is Record<string, unknown> => Boolean(step) && typeof step === 'object'
+          )
+        : []
+      if (mergedSteps.length > 0) {
+        flattenedStepRecords.push(...mergedSteps)
+        return
+      }
+      flattenedStepRecords.push(record)
+    })
+
+    flattenedStepRecords.forEach((stepRecord, index) => {
       const rawStep =
-        typeof record.step === 'string' && record.step.trim()
-          ? record.step.trim()
+        typeof stepRecord.step === 'string' && stepRecord.step.trim()
+          ? stepRecord.step.trim()
           : `${pendingType}-${index}`
       if (!dedupedByStep.has(rawStep)) {
         stepOrder.push(rawStep)
       }
-      dedupedByStep.set(rawStep, stepCard)
+      dedupedByStep.set(rawStep, stepRecord)
     })
     const normalizedSteps = stepOrder
       .map((step) => dedupedByStep.get(step))
-      .filter((step): step is TypelessCard => Boolean(step))
-    const first = normalizedSteps[0]!
-    const firstRecord = first as unknown as Record<string, unknown>
+      .filter((step): step is Record<string, unknown> => Boolean(step))
+    const firstPendingRecord = pendingSteps[0] as unknown as Record<string, unknown>
     const merged: TypelessCard = {
       type: pendingType,
-      id: (firstRecord.id as string) || `${pendingType}-merged`,
+      id: (firstPendingRecord.id as string) || `${pendingType}-merged`,
       steps: normalizedSteps.map((s) => ({
-        step: (s as unknown as Record<string, unknown>).step,
-        name: (s as unknown as Record<string, unknown>).name,
-        status: (s as unknown as Record<string, unknown>).status,
-        detail: (s as unknown as Record<string, unknown>).detail,
-        current: (s as unknown as Record<string, unknown>).current,
-        total: (s as unknown as Record<string, unknown>).total,
-        source_kind: (s as unknown as Record<string, unknown>).source_kind,
-        source_label: (s as unknown as Record<string, unknown>).source_label,
-        char_count: (s as unknown as Record<string, unknown>).char_count,
-        result_count: (s as unknown as Record<string, unknown>).result_count,
-        url: (s as unknown as Record<string, unknown>).url,
-        recipe_name: (s as unknown as Record<string, unknown>).recipe_name,
-        score: (s as unknown as Record<string, unknown>).score,
+        step: s.step,
+        name: s.name,
+        status: s.status,
+        detail: s.detail,
+        current: s.current,
+        total: s.total,
+        source_kind: s.source_kind,
+        source_label: s.source_label,
+        char_count: s.char_count,
+        result_count: s.result_count,
+        url: s.url,
+        recipe_name: s.recipe_name,
+        score: s.score,
       })),
       _streaming: pendingSteps.some((s) => s._streaming),
     } as TypelessCard

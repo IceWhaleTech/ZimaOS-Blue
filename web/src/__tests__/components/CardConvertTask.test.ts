@@ -16,6 +16,10 @@ vi.mock('@/composables/useTauri', () => ({
   }),
 }))
 
+vi.mock('@/api/client', () => ({
+  authFetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
+}))
+
 function makeCard(overrides: Partial<TypelessCardConvertTask> = {}): TypelessCardConvertTask {
   return {
     type: 'convert-task',
@@ -39,6 +43,13 @@ function mockResponse(data: unknown, ok = true): Response {
   } as unknown as Response
 }
 
+function mockBlobResponse(body: string, type: string, ok = true): Response {
+  return {
+    ok,
+    blob: vi.fn().mockResolvedValue(new Blob([body], { type })),
+  } as unknown as Response
+}
+
 function applyLocale(locale: 'en-US' | 'zh-CN') {
   if (locale === 'en-US') {
     i18n.global.setLocaleMessage('en-US', enUS as never)
@@ -58,6 +69,10 @@ describe('CardConvertTask', () => {
     global.fetch = fetchMock as typeof fetch
     revealInFileManagerMock.mockReset()
     revealInFileManagerMock.mockResolvedValue(true)
+    ;(URL as unknown as { createObjectURL: (blob: Blob) => string }).createObjectURL = vi
+      .fn()
+      .mockReturnValue('blob:convert-task-1')
+    ;(URL as unknown as { revokeObjectURL: (url: string) => void }).revokeObjectURL = vi.fn()
     applyLocale('en-US')
   })
 
@@ -84,6 +99,7 @@ describe('CardConvertTask', () => {
         ],
       })
     )
+    fetchMock.mockResolvedValueOnce(mockBlobResponse('wav-data', 'audio/wav'))
 
     const wrapper = mount(CardConvertTask, {
       props: {
@@ -96,11 +112,22 @@ describe('CardConvertTask', () => {
 
     await vi.advanceTimersByTimeAsync(2000)
     await flushPromises()
+    await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/convert/tasks/task-1')
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/convert/tasks/task-1',
+      undefined
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/convert/tasks/task-1/download/out-1',
+      undefined
+    )
     expect(wrapper.text()).toContain('Text-to-Speech')
     expect(wrapper.text()).toContain('Speech audio created')
     expect(wrapper.find('audio').exists()).toBe(true)
+    expect(wrapper.find('audio').attributes('src')).toBe('blob:convert-task-1')
     expect(wrapper.text()).toContain('Download audio')
     const hasCancelButton = wrapper
       .findAll('button')
@@ -132,9 +159,10 @@ describe('CardConvertTask', () => {
     await wrapper.get('button').trigger('click')
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/convert/tasks/task-1/cancel', {
-      method: 'POST',
-    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/convert/tasks/task-1/cancel',
+      { method: 'POST' }
+    )
     expect(wrapper.text()).toContain('Task cancelled')
     expect(wrapper.find('button').exists()).toBe(false)
   })
@@ -237,9 +265,12 @@ describe('CardConvertTask', () => {
     await locationButton!.trigger('click')
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/convert/tasks/task-1/outputs/out-1/location')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/convert/tasks/task-1/outputs/out-1/location',
+      undefined
+    )
     expect(revealInFileManagerMock).toHaveBeenCalledWith('/tmp/result.pdf')
-    expect(wrapper.find('a').attributes('href')).toBe('/api/v1/convert/tasks/task-1/download/out-1')
+    expect(wrapper.text()).toContain('Download PDF')
   })
 
   it('falls back to output download when location reveal is unavailable', async () => {
@@ -250,7 +281,8 @@ describe('CardConvertTask', () => {
         parent_path: '/tmp',
       })
     )
-    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    fetchMock.mockResolvedValueOnce(mockBlobResponse('pdf-data', 'application/pdf'))
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
     const wrapper = mount(CardConvertTask, {
       props: {
@@ -282,6 +314,11 @@ describe('CardConvertTask', () => {
     await flushPromises()
 
     expect(revealInFileManagerMock).toHaveBeenCalledWith('/tmp/result.pdf')
-    expect(openSpy).toHaveBeenCalledWith('/api/v1/convert/tasks/task-1/download/out-1', '_blank')
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/convert/tasks/task-1/download/out-1',
+      undefined
+    )
+    expect(clickSpy).toHaveBeenCalled()
   })
 })

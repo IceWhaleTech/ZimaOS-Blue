@@ -100,9 +100,13 @@ func (s *ConfigStore) Config() *Config {
 
 // GetSection returns a config section as JSON.
 func (s *ConfigStore) GetSection(section string) (json.RawMessage, error) {
+	normalized, err := ValidateSectionName(section)
+	if err != nil {
+		return nil, err
+	}
 	ctx := context.Background()
 	var raw json.RawMessage
-	if err := s.kv.GetJSON(ctx, configKeyPrefix+section, &raw); err != nil {
+	if err := s.kv.GetJSON(ctx, configKeyPrefix+normalized, &raw); err != nil {
 		return nil, err
 	}
 	return raw, nil
@@ -110,17 +114,21 @@ func (s *ConfigStore) GetSection(section string) (json.RawMessage, error) {
 
 // SetSection updates a config section in DB and refreshes in-memory config.
 func (s *ConfigStore) SetSection(section string, value json.RawMessage) error {
+	normalized, err := ValidateSectionName(section)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	ctx := context.Background()
-	if err := s.kv.SetJSON(ctx, configKeyPrefix+section, value, 0); err != nil {
+	if err := s.kv.SetJSON(ctx, configKeyPrefix+normalized, value, 0); err != nil {
 		return err
 	}
 
 	// Refresh in-memory config
 	if s.config != nil {
-		applySection(s.config, section, value)
+		applySection(s.config, normalized, value)
 	}
 	return nil
 }

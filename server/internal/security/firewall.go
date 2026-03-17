@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,6 +19,8 @@ import (
 )
 
 const (
+	promptFirewallKVKey = "config:security_firewall"
+
 	promptFirewallRuleTypeBuiltin = "builtin"
 	promptFirewallRuleTypeCustom  = "custom"
 
@@ -454,6 +457,10 @@ func (h *Handler) promptFirewallPathLocked() string {
 }
 
 func (h *Handler) loadPromptFirewallLocked() {
+	if h.loadPromptFirewallFromKVLocked() {
+		return
+	}
+
 	path := h.promptFirewallPathLocked()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -465,10 +472,39 @@ func (h *Handler) loadPromptFirewallLocked() {
 	if err := json.Unmarshal(data, &file); err != nil {
 		return
 	}
-	h.firewall.Rules = normalizePromptFirewallRules(file.Rules)
-	h.firewall.BuiltinRuleState = normalizePromptFirewallBuiltinRuleState(file.BuiltinRuleState)
+	h.applyPromptFirewallFileLocked(&file)
+	changed := h.enforcePromptFirewallAllOnLocked()
+	if h.kv != nil || changed {
+		if err := h.savePromptFirewallLocked(); err == nil && h.kv != nil {
+			archivePromptFirewallLegacyFile(path)
+		}
+	}
+}
+
+func (h *Handler) loadPromptFirewallFromKVLocked() bool {
+	if h.kv == nil {
+		return false
+	}
+
+	var file promptFirewallFile
+	if err := h.kv.GetJSON(context.Background(), promptFirewallKVKey, &file); err != nil {
+		return false
+	}
+	h.applyPromptFirewallFileLocked(&file)
 	if h.enforcePromptFirewallAllOnLocked() {
 		_ = h.savePromptFirewallLocked()
+	}
+	return true
+}
+
+func (h *Handler) applyPromptFirewallFileLocked(file *promptFirewallFile) {
+	if file == nil {
+		return
+	}
+	h.firewall.Rules = normalizePromptFirewallRules(file.Rules)
+	h.firewall.BuiltinRuleState = normalizePromptFirewallBuiltinRuleState(file.BuiltinRuleState)
+	if file.Enabled != nil {
+		h.firewall.Enabled = *file.Enabled
 	}
 }
 
@@ -567,10 +603,6 @@ func (h *Handler) ensurePromptFirewallBuiltinStateLocked() {
 }
 
 func (h *Handler) savePromptFirewallLocked() error {
-	path := h.promptFirewallPathLocked()
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
 	h.ensurePromptFirewallBuiltinStateLocked()
 
 	enabled := h.firewall.Enabled
@@ -584,5 +616,24 @@ func (h *Handler) savePromptFirewallLocked() error {
 		return err
 	}
 
+	if h.kv != nil {
+		return h.kv.SetJSON(context.Background(), promptFirewallKVKey, &payload, 0)
+	}
+
+	path := h.promptFirewallPathLocked()
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
 	return os.WriteFile(path, data, 0o600)
+}
+
+func archivePromptFirewallLegacyFile(path string) {
+	if strings.TrimSpace(path) == "" {
+		return
+	}
+	archivedPath := path + ".migrated"
+	if _, err := os.Stat(archivedPath); err == nil {
+		return
+	}
+	_ = os.Rename(path, archivedPath)
 }

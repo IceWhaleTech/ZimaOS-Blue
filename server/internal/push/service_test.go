@@ -3,6 +3,7 @@ package push
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // mockPublisher captures SSE events for testing.
@@ -97,6 +99,62 @@ func (m *mockWebPushSender) getCalls() []webPushCall {
 	cp := make([]webPushCall, len(m.calls))
 	copy(cp, m.calls)
 	return cp
+}
+
+type mockCronService struct {
+	mu      sync.Mutex
+	created []mockCronJob
+	deleted []string
+	nextID  int
+}
+
+type mockCronJob struct {
+	ID          string
+	Name        string
+	Description string
+	Schedule    string
+	Handler     string
+	Payload     map[string]interface{}
+}
+
+func (m *mockCronService) RegisterHandler(_ string, _ func(ctx context.Context, payload map[string]interface{}) (interface{}, error)) {
+}
+
+func (m *mockCronService) CreateJob(name, description, schedule, handler string, payload map[string]interface{}) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nextID++
+	id := fmt.Sprintf("job-%d", m.nextID)
+	jobPayload := make(map[string]interface{}, len(payload))
+	for k, v := range payload {
+		jobPayload[k] = v
+	}
+	m.created = append(m.created, mockCronJob{
+		ID:          id,
+		Name:        name,
+		Description: description,
+		Schedule:    schedule,
+		Handler:     handler,
+		Payload:     jobPayload,
+	})
+	return id, nil
+}
+
+func (m *mockCronService) DeleteJob(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.deleted = append(m.deleted, id)
+	return nil
+}
+
+func (m *mockCronService) snapshot() ([]mockCronJob, []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	created := make([]mockCronJob, len(m.created))
+	copy(created, m.created)
+	deleted := make([]string, len(m.deleted))
+	copy(deleted, m.deleted)
+	return created, deleted
 }
 
 func testServiceDB(t *testing.T) *sql.DB {
@@ -434,7 +492,7 @@ func TestServiceAdd(t *testing.T) {
 	svc, _ := testService(t)
 
 	ctx := context.Background()
-	r, err := svc.Add(ctx, "user-1", "Take medicine", time.Now().Add(time.Hour), "", "sess-1")
+	r, err := svc.Add(ctx, "user-1", "Take medicine", time.Now().Add(time.Hour), "", "sess-1", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -471,7 +529,7 @@ func TestServiceAdd_FiresAndInjectsIntoTargetSession(t *testing.T) {
 
 	ctx := context.Background()
 	fireAt := time.Now().Add(2 * time.Second)
-	r, err := svc.Add(ctx, "user-1", "10秒后喝水", fireAt, "", "conv-target")
+	r, err := svc.Add(ctx, "user-1", "10秒后喝水", fireAt, "", "conv-target", nil)
 	if err != nil {
 		t.Fatalf("add reminder: %v", err)
 	}
@@ -508,6 +566,76 @@ func TestServiceAdd_FiresAndInjectsIntoTargetSession(t *testing.T) {
 	}
 	if stored.Status != StatusFired {
 		t.Fatalf("stored reminder status = %q, want %q", stored.Status, StatusFired)
+	}
+}
+
+func TestServiceAddIntervalReminderReschedulesAndStopsAtUntil(t *testing.T) {
+	svc, store := testService(t)
+	cronSvc := &mockCronService{}
+	svc.SetCron(cronSvc)
+
+	ctx := context.Background()
+	firstFire := timeutil.NowTime().Add(1 * time.Minute)
+	until := firstFire.Add(1 * time.Minute)
+	r, err := svc.Add(ctx, "user-1", "喝水", firstFire, "interval:1m", "conv-1", &until)
+	if err != nil {
+		t.Fatalf("add interval reminder: %v", err)
+	}
+
+	stored, err := store.Get(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("get stored reminder: %v", err)
+	}
+	if stored == nil || stored.UntilAt == nil {
+		t.Fatalf("expected until_at to persist, got %#v", stored)
+	}
+
+	created, deleted := cronSvc.snapshot()
+	if len(created) != 1 {
+		t.Fatalf("created jobs = %d, want 1", len(created))
+	}
+	if len(deleted) != 0 {
+		t.Fatalf("deleted jobs = %d, want 0 before firing", len(deleted))
+	}
+
+	svc.firePush(ctx, r)
+
+	stored, err = store.Get(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("reload reminder after first fire: %v", err)
+	}
+	if stored.Status != StatusPending {
+		t.Fatalf("status after first fire = %q, want %q", stored.Status, StatusPending)
+	}
+	if stored.FireAt.Before(firstFire) {
+		t.Fatalf("next fire_at = %v, want at or after %v", stored.FireAt, firstFire)
+	}
+	created, deleted = cronSvc.snapshot()
+	if len(created) != 2 {
+		t.Fatalf("created jobs after reschedule = %d, want 2", len(created))
+	}
+	if len(deleted) != 1 {
+		t.Fatalf("deleted jobs after reschedule = %d, want 1", len(deleted))
+	}
+
+	// Simulate the final scheduled interval firing at the until boundary.
+	stored.FireAt = until
+	stored.CronJobID = created[len(created)-1].ID
+	svc.firePush(ctx, stored)
+
+	finalReminder, err := store.Get(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("reload reminder after final fire: %v", err)
+	}
+	if finalReminder.Status != StatusFired {
+		t.Fatalf("final status = %q, want %q", finalReminder.Status, StatusFired)
+	}
+	created, deleted = cronSvc.snapshot()
+	if len(created) != 2 {
+		t.Fatalf("created jobs after completion = %d, want 2", len(created))
+	}
+	if len(deleted) != 2 {
+		t.Fatalf("deleted jobs after completion = %d, want 2", len(deleted))
 	}
 }
 

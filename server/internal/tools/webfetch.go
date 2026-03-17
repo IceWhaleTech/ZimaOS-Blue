@@ -1102,6 +1102,16 @@ func guardWebFetchURL(ctx context.Context, rawURL string, allowPrivate bool) err
 	return guardWebFetchHost(ctx, host, allowPrivate)
 }
 
+// GuardOutboundURL rejects loopback, private, and otherwise internal HTTP targets.
+func GuardOutboundURL(ctx context.Context, rawURL string, allowPrivate bool) error {
+	return guardWebFetchURL(ctx, rawURL, allowPrivate)
+}
+
+// GuardOutboundHost rejects loopback, private, and otherwise internal hostnames.
+func GuardOutboundHost(ctx context.Context, host string, allowPrivate bool) error {
+	return guardWebFetchHost(ctx, host, allowPrivate)
+}
+
 func guardWebFetchHost(ctx context.Context, host string, allowPrivate bool) error {
 	if allowPrivate {
 		return nil

@@ -135,6 +135,15 @@ func (r *Registry) loadProviders() error {
 
 // Register adds a new provider to the registry
 func (r *Registry) Register(provider *Provider) error {
+	if provider == nil {
+		return ErrInvalidConfig
+	}
+	validatedID, err := ValidateProviderID(provider.ID)
+	if err != nil {
+		return err
+	}
+	provider.ID = validatedID
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -169,6 +178,12 @@ func (r *Registry) Register(provider *Provider) error {
 
 // Unregister removes a provider from the registry
 func (r *Registry) Unregister(id string) error {
+	validatedID, err := ValidateProviderID(id)
+	if err != nil {
+		return err
+	}
+	id = validatedID
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -194,6 +209,12 @@ func (r *Registry) Unregister(id string) error {
 
 // Get returns a provider by ID
 func (r *Registry) Get(id string) (*Provider, error) {
+	validatedID, err := ValidateProviderID(id)
+	if err != nil {
+		return nil, err
+	}
+	id = validatedID
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -250,6 +271,15 @@ func (r *Registry) ListHealthy() []*Provider {
 
 // Update updates a provider's configuration
 func (r *Registry) Update(provider *Provider) error {
+	if provider == nil {
+		return ErrInvalidConfig
+	}
+	validatedID, err := ValidateProviderID(provider.ID)
+	if err != nil {
+		return err
+	}
+	provider.ID = validatedID
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -274,6 +304,12 @@ func (r *Registry) Update(provider *Provider) error {
 
 // Enable enables a provider
 func (r *Registry) Enable(id string) error {
+	validatedID, err := ValidateProviderID(id)
+	if err != nil {
+		return err
+	}
+	id = validatedID
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -298,6 +334,12 @@ func (r *Registry) Enable(id string) error {
 
 // Disable disables a provider
 func (r *Registry) Disable(id string) error {
+	validatedID, err := ValidateProviderID(id)
+	if err != nil {
+		return err
+	}
+	id = validatedID
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -323,6 +365,12 @@ func (r *Registry) Disable(id string) error {
 
 // UpdateStatus updates a provider's status
 func (r *Registry) UpdateStatus(id string, status ProviderStatus, lastError string) error {
+	validatedID, err := ValidateProviderID(id)
+	if err != nil {
+		return err
+	}
+	id = validatedID
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -347,6 +395,12 @@ func (r *Registry) UpdateStatus(id string, status ProviderStatus, lastError stri
 
 // GetHealth returns the health status of a provider
 func (r *Registry) GetHealth(id string) (*HealthCheckResult, bool) {
+	validatedID, err := ValidateProviderID(id)
+	if err != nil {
+		return nil, false
+	}
+	id = validatedID
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -356,6 +410,12 @@ func (r *Registry) GetHealth(id string) (*HealthCheckResult, bool) {
 
 // SetHealth updates the health status of a provider
 func (r *Registry) SetHealth(id string, result *HealthCheckResult) {
+	validatedID, err := ValidateProviderID(id)
+	if err != nil {
+		return
+	}
+	id = validatedID
+
 	var statusChanged bool
 	var oldStatus, newStatus ProviderStatus
 
@@ -393,6 +453,12 @@ func (r *Registry) SetHealth(id string, result *HealthCheckResult) {
 
 // ClearError clears the error status of a provider, allowing manual retry
 func (r *Registry) ClearError(id string) error {
+	validatedID, err := ValidateProviderID(id)
+	if err != nil {
+		return err
+	}
+	id = validatedID
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -550,6 +616,12 @@ func enabledHealthCheckKeys(provider *Provider) []APIKey {
 
 // AddAPIKey adds an API key to a provider
 func (r *Registry) AddAPIKey(providerID string, key *APIKey) error {
+	validatedID, err := ValidateProviderID(providerID)
+	if err != nil {
+		return err
+	}
+	providerID = validatedID
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -587,6 +659,12 @@ func (r *Registry) AddAPIKey(providerID string, key *APIKey) error {
 
 // RemoveAPIKey removes an API key from a provider
 func (r *Registry) RemoveAPIKey(providerID, keyID string) error {
+	validatedID, err := ValidateProviderID(providerID)
+	if err != nil {
+		return err
+	}
+	providerID = validatedID
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -622,6 +700,12 @@ func (r *Registry) RemoveAPIKey(providerID, keyID string) error {
 
 // GetAPIKey returns an API key for a provider
 func (r *Registry) GetAPIKey(providerID string) (*APIKey, error) {
+	validatedID, err := ValidateProviderID(providerID)
+	if err != nil {
+		return nil, err
+	}
+	providerID = validatedID
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -646,6 +730,12 @@ func (r *Registry) GetAPIKey(providerID string) (*APIKey, error) {
 
 // GetOAuthConfig returns the OAuth configuration for a provider, if connected.
 func (r *Registry) GetOAuthConfig(providerID string) (*OAuthConfig, error) {
+	validatedID, err := ValidateProviderID(providerID)
+	if err != nil {
+		return nil, err
+	}
+	providerID = validatedID
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

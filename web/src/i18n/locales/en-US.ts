@@ -261,7 +261,7 @@ export default {
     dashboard: 'Dashboard',
     chat: 'Chat',
     settings: 'Settings',
-    plugins: 'Plugins',
+    plugins: 'Extensions',
     profile: 'Profile',
     automation: 'Automation',
     channels: 'Channels',
@@ -518,10 +518,24 @@ export default {
     deepResearchDomains: 'Domains',
     deepResearchObjectMap: 'Object Map',
     deepResearchBackToTask: 'View result',
-    taskLoop: 'Task Loop',
+    taskLoop: 'Ralph Loop',
+    deepResearchHoverDescription:
+      'Launch a structured research workflow with retrieval, verification, and source-backed answers.',
+    ralphLoopHoverDescription:
+      'Let the agent plan, use tools, apply changes, and keep iterating until the task lands cleanly.',
+    ralphLoopHoverPlan: 'Plan',
+    ralphLoopHoverAct: 'Act',
+    ralphLoopHoverCheck: 'Check',
     taskCancelled: 'Task cancelled',
     waitingThinking: 'Thinking...',
     awaitingConfirmation: 'Waiting for your confirmation to continue',
+    assistantStatus: {
+      searchingWeb: 'Searching the web',
+      browsingWeb: 'Browsing the web',
+      readingWeb: 'Reading a web page',
+      readingWebSite: 'Reading {site}',
+      usingTools: 'Using tools',
+    },
     streamProgress: {
       requestAccepted: 'Request received, preparing response...',
       generating: 'Generating response...',
@@ -657,10 +671,20 @@ export default {
     },
     // Enhanced Mode
     enhancedMode: 'Enhanced',
-    enhancedModeDesc: 'Optional enhancement is on: experience may be better.',
+    enhancedModeDesc: 'Optional enhancement is on: the experience is better.',
     enableEnhancedMode: 'Optional CLI Boost',
     enableEnhancedModeDesc:
-      'Optional enhancement: turning it off does not affect core chat/agent usage; turning it on may improve experience.',
+      'Optional enhancement: turning it off does not affect core chat/agent usage; turning it on improves the experience.',
+    enhancedModeHoverPoweredBy: 'Powered by Claude Code CLI',
+    enhancedModeHoverDescription:
+      'Claude Code CLI is active, giving chat and agent work a stronger local coding runtime.',
+    enableEnhancedModeHoverDescription:
+      'Turn on Claude Code CLI to unlock stronger coding workflows and higher-compatibility agent actions.',
+    enhancedModeHoverCapabilitySkills: 'CLI-native coding skills and higher workflow compatibility',
+    enhancedModeHoverCapabilityTools: 'Stronger tool calling and multi-step execution',
+    enhancedModeHoverCapabilityFiles:
+      'Reliable file reads, edits, and patch-based workspace changes',
+    enhancedModeHoverCapabilityCommands: 'Command execution through the Claude Code CLI runtime',
     showToolDetails: 'Show work details',
     hideToolDetails: 'Hide work details',
     toolDetailExpand: 'Expand output',
@@ -724,8 +748,10 @@ export default {
     },
     // Message actions
     copyMessage: 'Copy message',
+    editAndResubmit: 'Edit and resubmit',
     exportMessage: 'Export message',
     filePreviewNotSupported: 'Preview not available for this file type',
+    saveAndResubmit: 'Save and resubmit',
     pinConversation: 'Pin conversation',
     unpinConversation: 'Unpin conversation',
   },
@@ -3643,6 +3669,29 @@ export default {
     providerRaceCooldownRule:
       'Cooldown when empty-run rate ≥ {threshold} (min {samples} samples), duration {duration}',
     maskingTitle: 'Data Masking',
+    customMaskingTitle: 'Custom Data Masking Rules',
+    builtinMaskingRules: 'Built-in rules',
+    builtinMaskingEmpty: 'No built-in rules loaded.',
+    customMaskingListTitle: 'Custom rules',
+    customMaskingEmpty:
+      'No custom rules yet. Use the form below to cover internal IDs or proprietary secrets.',
+    customMaskingDesc:
+      'Add regex-based rules for internal IDs, secrets, or business-specific fields.',
+    customMaskingNameLabel: 'Name',
+    customMaskingNamePlaceholder: 'Example: Internal ticket number',
+    customMaskingDirectionLabel: 'Direction',
+    customMaskingPatternLabel: 'Regex pattern',
+    customMaskingPatternPlaceholder: 'Example: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Replacement text',
+    customMaskingReplacementPlaceholder: 'Example: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Use a valid regular expression. {maskLabel} in replacement text keeps the localized mask label.',
+    customMaskingAdd: 'Add rule',
+    customMaskingAddSuccess: 'Custom masking rule added.',
+    customMaskingAddError: 'Failed to add custom masking rule.',
+    customMaskingDeleteConfirm: 'Delete custom masking rule "{name}"?',
+    customMaskingDeleteSuccess: 'Custom masking rule deleted.',
+    customMaskingDeleteError: 'Failed to delete custom masking rule.',
     maskingDesc: 'Redact sensitive data (PII, credentials) in LLM requests and responses',
     maskingEnabled: 'Data masking enabled',
     maskingDisabled: 'Data masking disabled',
@@ -4011,7 +4060,7 @@ export default {
     installFirst: 'Please install Claude Code CLI first',
     disabledWarningTitle: 'Claude Code CLI is off (optional)',
     disabledWarningDesc:
-      'You are in standard mode, and chat/agent still work normally. Enhanced mode is optional and may improve experience.',
+      'You are in standard mode, and chat/agent still work normally. Enhanced mode is optional and improves the experience.',
     missingSkills: 'Some CLI-first skills may have lower compatibility in this mode',
     missingToolCalling: 'Advanced Tool Calling capabilities',
     missingFileOps: 'Certain CLI-dependent workflows may be limited in some environments',
@@ -4108,6 +4157,8 @@ export default {
     descriptionPlaceholder: 'Optional description',
     schedule: 'Schedule (Cron Expression)',
     handler: 'Action Type',
+    optionalSettings: 'Optional settings',
+    optionalSettingsHint: 'Description, timeout, and handler-specific extras',
     // Handler types
     handlers: {
       command: 'Shell Command',
@@ -4609,6 +4660,14 @@ export default {
       'You can start using Blue right away. All features are available and your data will be saved.',
     createAccountHintDesc:
       "When you're ready, create an admin account to unlock user management and secure your data.",
+    enhancedMode: 'Turn on Enhanced Mode',
+    enhancedModeDesc:
+      'Claude Code CLI unlocks stronger coding workflows, more reliable workspace actions, and better agent compatibility.',
+    enhancedModeHintDesc: 'Open Enhanced Mode here to unlock the full CLI-powered workflow.',
+    enhancedModeMenuHintDesc:
+      'Open this menu, then choose Enhanced Mode to unlock the full CLI-powered workflow.',
+    openEnhancedMode: 'Open Enhanced Mode',
+    skipForNow: 'Skip for now',
     gotIt: "Got it, let's start!",
   },
   remoteAccess: {
@@ -4727,7 +4786,7 @@ export default {
       'page.chat': 'Chat',
       'page.channels': 'Channels',
       'page.automation': 'Automation',
-      'page.plugins': 'Plugins',
+      'page.plugins': 'Extensions',
       'page.security': 'Security',
       'page.settings': 'Settings',
       'page.profile': 'Profile',
@@ -4739,7 +4798,7 @@ export default {
       'page.chat': 'Access to chat',
       'page.channels': 'Access to channels',
       'page.automation': 'Access to automation',
-      'page.plugins': 'Access to plugins',
+      'page.plugins': 'Access to extensions',
       'page.security': 'Access to security',
       'page.settings': 'Access to settings',
       'page.profile': 'Access to profile',
@@ -5362,7 +5421,8 @@ export default {
       wakeWords: 'Wake words',
       wakeWordsHelp: 'You can enter multiple wake words. Separate them with commas or line breaks.',
       listeningTitle: 'Wake words and recognition',
-      listeningDescription: 'Set the wake words first, then choose the recognition language if needed.',
+      listeningDescription:
+        'Set the wake words first, then choose the recognition language if needed.',
       localeOverride: 'Recognition language (optional)',
       localeHelp:
         'Optional. Enter a locale such as zh-CN or en-US. Leave this blank to follow the system default.',
@@ -5777,6 +5837,13 @@ export default {
       web_read: 'Read a web page and return normalized main content',
       web_extract: 'Extract structured fields from webpage HTML or a URL',
       web_crawl: 'Crawl seed URLs with limits and checkpoints',
+      web_search: 'Search the web and return result listings without opening pages',
+      file_read: 'Read a file and return its text content',
+      file_write: 'Write text content to a file',
+      exec: 'Run shell commands and capture their output',
+      analyze: 'Collect data from the web and generate a structured analysis report',
+      ask: 'Ask the user follow-up questions needed to continue the task',
+      mediagen: 'Generate images, videos, and slide decks with AI models',
     },
     params: {
       query: 'Query',
@@ -5923,6 +5990,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Web search',
     resultCount: '{count} results',
   },
   cardActions: {

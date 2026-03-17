@@ -21,28 +21,28 @@ import (
 type StoreSource string
 
 const (
-	SourceMoltbot   StoreSource = "moltbot"
-	SourceClawdHub  StoreSource = "clawdhub"
-	SourceGitHub    StoreSource = "github"
-	SourceCustom    StoreSource = "custom"
+	SourceMoltbot  StoreSource = "moltbot"
+	SourceClawdHub StoreSource = "clawdhub"
+	SourceGitHub   StoreSource = "github"
+	SourceCustom   StoreSource = "custom"
 )
 
 // StorePlugin represents a plugin available in the store
 type StorePlugin struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Version     string            `json:"version"`
-	Author      string            `json:"author"`
-	Source      StoreSource       `json:"source"`
-	RepoURL     string            `json:"repo_url"`
-	DownloadURL string            `json:"download_url"`
-	Manifest    *Manifest         `json:"manifest,omitempty"`
-	Tags        []string          `json:"tags,omitempty"`
-	Downloads   int               `json:"downloads"`
-	Rating      float64           `json:"rating"`
-	UpdatedAt   time.Time         `json:"updated_at"`
-	Installed   bool              `json:"installed"`
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Version     string      `json:"version"`
+	Author      string      `json:"author"`
+	Source      StoreSource `json:"source"`
+	RepoURL     string      `json:"repo_url"`
+	DownloadURL string      `json:"download_url"`
+	Manifest    *Manifest   `json:"manifest,omitempty"`
+	Tags        []string    `json:"tags,omitempty"`
+	Downloads   int         `json:"downloads"`
+	Rating      float64     `json:"rating"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+	Installed   bool        `json:"installed"`
 }
 
 // StoreConfig holds plugin store configuration
@@ -156,6 +156,12 @@ func (s *Store) ListPlugins(ctx context.Context) ([]*StorePlugin, error) {
 
 // GetPlugin returns a specific plugin from the store
 func (s *Store) GetPlugin(ctx context.Context, id string) (*StorePlugin, error) {
+	validatedID, err := ValidatePluginID(id)
+	if err != nil {
+		return nil, err
+	}
+	id = validatedID
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -169,6 +175,12 @@ func (s *Store) GetPlugin(ctx context.Context, id string) (*StorePlugin, error) 
 
 // InstallPlugin downloads and installs a plugin
 func (s *Store) InstallPlugin(ctx context.Context, id string) error {
+	validatedID, err := ValidatePluginID(id)
+	if err != nil {
+		return err
+	}
+	id = validatedID
+
 	plugin, err := s.GetPlugin(ctx, id)
 	if err != nil {
 		return err
@@ -227,6 +239,12 @@ func (s *Store) InstallPlugin(ctx context.Context, id string) error {
 
 // UninstallPlugin removes an installed plugin
 func (s *Store) UninstallPlugin(ctx context.Context, id string) error {
+	validatedID, err := ValidatePluginID(id)
+	if err != nil {
+		return err
+	}
+	id = validatedID
+
 	// Stop the plugin if running
 	if err := s.registry.StopPlugin(ctx, id); err != nil {
 		logger.Warn().Err(err).Str("plugin", id).Msg("Failed to stop plugin before uninstall")

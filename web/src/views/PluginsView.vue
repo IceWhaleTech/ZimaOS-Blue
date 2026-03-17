@@ -47,12 +47,6 @@ const tabs = computed(() => [
 const activeTabMeta = computed(
   () => tabs.value.find((tab) => tab.id === activeMainTab.value) ?? tabs.value[0]!
 )
-const activeTabIndex = computed(() =>
-  String(Math.max(1, tabs.value.findIndex((tab) => tab.id === activeMainTab.value) + 1)).padStart(
-    2,
-    '0'
-  )
-)
 
 function setActiveTab(tabId: 'skill' | 'store' | 'tool') {
   activeMainTab.value = tabId
@@ -122,32 +116,16 @@ async function installSkill() {
 
 <template>
   <div class="plugins-page dashboard-page-frame">
-    <section class="plugins-stage dashboard-page-stage">
-      <section class="plugins-hero dashboard-page-hero">
-        <div class="hero-copy dashboard-page-copy">
+    <section class="plugins-stage dashboard-page-stage configuration-page-stage">
+      <section class="plugins-hero dashboard-page-hero configuration-page-hero">
+        <div class="hero-copy dashboard-page-copy configuration-page-copy">
           <span class="dashboard-page-eyebrow">{{ t('nav.configuration') }}</span>
-          <h1 class="plugins-page-title dashboard-page-title">{{ t('plugins.title') }}</h1>
-          <p class="hero-description dashboard-page-description">
+          <h1 class="plugins-page-title dashboard-page-title configuration-page-title">
+            {{ t('plugins.title') }}
+          </h1>
+          <p class="hero-description dashboard-page-description configuration-page-description">
             {{ activeTabMeta.description }}
           </p>
-        </div>
-        <div class="plugins-hero-actions">
-          <button class="plugins-create-button" type="button" @click="openUploadModal('skill')">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            {{ t('plugins.uploadSkill') }}
-          </button>
         </div>
       </section>
 
@@ -180,17 +158,13 @@ async function installSkill() {
           class="content-shell dashboard-card-surface"
           :style="{ '--shell-accent': activeTabMeta.accent, '--shell-soft': activeTabMeta.soft }"
         >
-          <div class="content-shell-header">
-            <div class="content-shell-copy">
-              <span class="content-shell-kicker">{{ t('plugins.title') }}</span>
-              <h2>{{ activeTabMeta.label }}</h2>
-            </div>
-            <span class="content-shell-count">{{ activeTabIndex }}</span>
-          </div>
-
           <div class="tab-content">
             <Transition name="tab-fade" mode="out-in">
-              <SkillTab v-if="activeMainTab === 'skill'" key="skill" />
+              <SkillTab
+                v-if="activeMainTab === 'skill'"
+                key="skill"
+                @install-skill="openUploadModal('skill')"
+              />
               <SkillStoreTab v-else-if="activeMainTab === 'store'" key="store" />
               <ToolTab v-else key="tool" />
             </Transition>
@@ -379,30 +353,15 @@ html.dark .plugins-page {
     0 24px 38px -34px rgba(2, 6, 23, 0.64);
 }
 
-:root.dark .plugins-create-button,
-[data-theme='dark'] .plugins-create-button,
-html.dark .plugins-create-button {
-  background: rgba(15, 23, 42, 0.92);
-  color: rgb(241 245 249);
-  box-shadow: 0 20px 30px -26px rgba(2, 6, 23, 0.82);
-}
-
-:root.dark .plugins-create-button:hover,
-[data-theme='dark'] .plugins-create-button:hover,
-html.dark .plugins-create-button:hover {
-  box-shadow: 0 24px 32px -24px rgba(2, 6, 23, 0.78);
-}
-
 .plugins-hero {
   position: relative;
   overflow: visible;
   display: flex;
-  flex-direction: row;
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.15rem 0 0.2rem;
+  padding: 0 0 0.2rem;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -410,79 +369,14 @@ html.dark .plugins-create-button:hover {
 }
 
 .hero-copy {
-  display: flex;
   flex: 1;
-  flex-direction: column;
-  gap: 0.72rem;
-  max-width: 42rem;
   min-width: 0;
+  max-width: 42rem;
   padding-top: 0.1rem;
-}
-
-.plugins-hero-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  margin-left: auto;
-  flex-shrink: 0;
-  padding-top: 0.1rem;
-}
-
-.plugins-create-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  min-height: 2.65rem;
-  padding: 0.7rem 1.05rem;
-  border: 0;
-  border-radius: 999px;
-  background: #0f172a;
-  color: #f8fafc;
-  font-size: 0.88rem;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  box-shadow: 0 20px 30px -26px rgba(15, 23, 42, 0.68);
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    background-color 0.18s ease,
-    color 0.18s ease;
-}
-
-.plugins-create-button svg {
-  width: 1rem;
-  height: 1rem;
-  flex: none;
-}
-
-.plugins-create-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 24px 32px -24px rgba(15, 23, 42, 0.58);
-}
-
-.plugins-create-button:focus-visible {
-  outline: none;
-  box-shadow:
-    0 0 0 3px rgba(56, 189, 248, 0.18),
-    0 24px 32px -24px rgba(15, 23, 42, 0.58);
-}
-
-.content-shell-kicker,
-.content-shell-count {
-  letter-spacing: 0.14em;
-}
-
-.content-shell-kicker {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--text-muted);
 }
 
 .hero-description {
-  margin: 0;
+  margin: 0.42rem 0 0;
   max-width: 34rem;
   color: #9ca3af;
   font-size: 0.92rem;
@@ -599,45 +493,6 @@ html.dark .plugins-create-button:hover {
   height: 1px;
   background: none;
   opacity: 0.9;
-}
-
-.content-shell-header {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-}
-
-.content-shell-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.content-shell-copy h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  line-height: 1.15;
-  color: var(--text-primary);
-}
-
-.content-shell-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: var(--shell-soft);
-  color: var(--shell-accent);
-  font-size: 13px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 
 .tab-content {
@@ -1073,23 +928,9 @@ html.dark .plugins-create-button:hover {
     align-items: stretch;
   }
 
-  .plugins-hero-actions {
-    justify-content: flex-start;
-    padding-top: 0;
-  }
-
   .content-shell {
     padding: 18px;
     border-radius: 1.5rem;
-  }
-
-  .content-shell-header {
-    align-items: flex-start;
-  }
-
-  .content-shell-count {
-    width: 40px;
-    height: 40px;
   }
 
   .modal-overlay {

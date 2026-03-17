@@ -654,6 +654,10 @@ func NewHandler(pool *Pool) *Handler {
 	}
 }
 
+func validatedProviderIDParam(c echo.Context) (string, error) {
+	return ValidateProviderID(c.Param("id"))
+}
+
 // poolNotAvailable returns a standard error response when pool is nil
 func (h *Handler) poolNotAvailable(c echo.Context) error {
 	return c.JSON(http.StatusServiceUnavailable, map[string]string{
@@ -1054,6 +1058,12 @@ func (h *Handler) AddProvider(c echo.Context) error {
 	// Generate ID if not provided
 	if provider.ID == "" {
 		provider.ID = GenerateID("prov")
+	} else {
+		validatedID, err := ValidateProviderID(provider.ID)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		provider.ID = validatedID
 	}
 
 	// Set defaults
@@ -1101,7 +1111,10 @@ func (h *Handler) AddProvider(c echo.Context) error {
 
 // GetProvider returns a specific provider
 func (h *Handler) GetProvider(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	provider, err := h.pool.Registry.Get(id)
 	if err != nil {
@@ -1125,7 +1138,10 @@ func (h *Handler) GetProvider(c echo.Context) error {
 
 // UpdateProvider updates a provider
 func (h *Handler) UpdateProvider(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	existing, err := h.pool.Registry.Get(id)
 	if err != nil {
@@ -1194,7 +1210,10 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 
 // DeleteProvider removes a provider
 func (h *Handler) DeleteProvider(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	if err := h.pool.Registry.Unregister(id); err != nil {
 		if err == ErrProviderNotFound {
@@ -1208,7 +1227,10 @@ func (h *Handler) DeleteProvider(c echo.Context) error {
 
 // EnableProvider enables a provider
 func (h *Handler) EnableProvider(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 	if !ResponsesIntegrationEnabled() {
 		provider, err := h.pool.Registry.Get(id)
 		if err == nil {
@@ -1230,7 +1252,10 @@ func (h *Handler) EnableProvider(c echo.Context) error {
 
 // DisableProvider disables a provider
 func (h *Handler) DisableProvider(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	if err := h.pool.Registry.Disable(id); err != nil {
 		if err == ErrProviderNotFound {
@@ -1244,7 +1269,10 @@ func (h *Handler) DisableProvider(c echo.Context) error {
 
 // TestProvider tests a provider connection, optionally with a specific API key.
 func (h *Handler) TestProvider(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	provider, err := h.pool.Registry.Get(id)
 	if err != nil {
@@ -1323,7 +1351,10 @@ func (h *Handler) VerifyProvider(c echo.Context) error {
 
 // VerifyProviderByID verifies an existing provider and can optionally apply recommendations.
 func (h *Handler) VerifyProviderByID(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	provider, err := h.pool.Registry.Get(id)
 	if err != nil {
@@ -1389,7 +1420,10 @@ func (h *Handler) VerifyProviderByID(c echo.Context) error {
 
 // UpdateModelParams updates model parameters for a provider
 func (h *Handler) UpdateModelParams(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	provider, err := h.pool.Registry.Get(id)
 	if err != nil {
@@ -1444,7 +1478,10 @@ func (h *Handler) UpdateModelParams(c echo.Context) error {
 
 // UpdateAllowedModels updates the allowed models for a provider
 func (h *Handler) UpdateAllowedModels(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	provider, err := h.pool.Registry.Get(id)
 	if err != nil {
@@ -1484,7 +1521,10 @@ func (h *Handler) UpdateAllowedModels(c echo.Context) error {
 
 // DetectCapabilities detects server capabilities for a provider
 func (h *Handler) DetectCapabilities(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	provider, err := h.pool.Registry.Get(id)
 	if err != nil {
@@ -1552,7 +1592,10 @@ func (h *Handler) DetectCapabilities(c echo.Context) error {
 
 // UpdateProviderIcon updates the custom icon for a provider
 func (h *Handler) UpdateProviderIcon(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	provider, err := h.pool.Registry.Get(id)
 	if err != nil {
@@ -1598,7 +1641,10 @@ func (h *Handler) UpdateProviderIcon(c echo.Context) error {
 
 // DeleteProviderIcon removes the custom icon for a provider
 func (h *Handler) DeleteProviderIcon(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	provider, err := h.pool.Registry.Get(id)
 	if err != nil {
@@ -1622,7 +1668,10 @@ func (h *Handler) DeleteProviderIcon(c echo.Context) error {
 
 // ListProviderModels returns models for a provider
 func (h *Handler) ListProviderModels(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	models, err := h.pool.Discovery.GetFilteredModels(id)
 	if err != nil {
@@ -1638,7 +1687,10 @@ func (h *Handler) ListProviderModels(c echo.Context) error {
 
 // FetchProviderModels fetches models from a provider
 func (h *Handler) FetchProviderModels(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	// Bound the fetch so it doesn't hang for minutes on unreachable endpoints
 	fetchCtx, cancel := context.WithTimeout(c.Request().Context(), 30*time.Second)
@@ -1666,7 +1718,10 @@ func (h *Handler) FetchProviderModels(c echo.Context) error {
 // This sends a minimal request (max_tokens:1) to each model in parallel and disables
 // models that return "not configured" errors.
 func (h *Handler) ProbeProviderModels(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	var req struct {
 		Concurrency int `json:"concurrency"`
@@ -1736,7 +1791,10 @@ func (h *Handler) ListAllModels(c echo.Context) error {
 
 // AddAPIKey adds an API key to a provider
 func (h *Handler) AddAPIKey(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	var req struct {
 		Key   string `json:"key"`
@@ -1771,7 +1829,10 @@ func (h *Handler) AddAPIKey(c echo.Context) error {
 
 // RemoveAPIKey removes an API key from a provider
 func (h *Handler) RemoveAPIKey(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 	keyID := c.Param("keyId")
 
 	if err := h.pool.Registry.RemoveAPIKey(id, keyID); err != nil {
@@ -1825,7 +1886,10 @@ func (h *Handler) GetUsageStats(c echo.Context) error {
 
 // GetProviderUsage returns usage for a specific provider
 func (h *Handler) GetProviderUsage(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	summary, err := h.pool.UsageTracker.GetWeeklySummary(id)
 	if err != nil {
@@ -2665,7 +2729,10 @@ func (h *Handler) StartOAuth(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "oauth not configured"})
 	}
 
-	providerID := c.Param("id")
+	providerID, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	var req struct {
 		ProviderType string `json:"provider_type"` // "antigravity", "gemini-cli", "copilot"
@@ -2806,7 +2873,10 @@ func (h *Handler) DisconnectOAuth(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "oauth not configured"})
 	}
 
-	providerID := c.Param("id")
+	providerID, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 	accountID := c.Param("accountId")
 
 	if accountID != "" {
@@ -2844,7 +2914,10 @@ func (h *Handler) DisconnectOAuth(c echo.Context) error {
 
 // GetOAuthStatus returns the OAuth status for a provider.
 func (h *Handler) GetOAuthStatus(c echo.Context) error {
-	providerID := c.Param("id")
+	providerID, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	provider, err := h.pool.Registry.Get(providerID)
 	if err != nil {
@@ -2872,9 +2945,12 @@ func (h *Handler) GetOAuthStatus(c echo.Context) error {
 
 // GetOAuthAccounts returns all connected OAuth accounts for a provider.
 func (h *Handler) GetOAuthAccounts(c echo.Context) error {
-	providerID := c.Param("id")
+	providerID, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
-	_, err := h.pool.Registry.Get(providerID)
+	_, err = h.pool.Registry.Get(providerID)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
 	}
@@ -2913,7 +2989,10 @@ func (h *Handler) getOAuthAccountsList(providerID string) []OAuthAccount {
 // GetOAuthQuota returns subscription tier and per-model quota for an OAuth provider.
 // Results are cached for 5 minutes.
 func (h *Handler) GetOAuthQuota(c echo.Context) error {
-	providerID := c.Param("id")
+	providerID, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	// Check cache first
 	if cached, ok := h.quotaCache.Get(providerID); ok {
@@ -3139,9 +3218,12 @@ func (h *Handler) ScanOAuthTokens(c echo.Context) error {
 
 // ClearError clears the error status of a provider, allowing manual retry
 func (h *Handler) ClearError(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
-	err := h.pool.Registry.ClearError(id)
+	err = h.pool.Registry.ClearError(id)
 	if err != nil {
 		if err == ErrProviderNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})

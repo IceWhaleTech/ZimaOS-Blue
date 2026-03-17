@@ -1,6 +1,7 @@
 package providerpool
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,6 +176,26 @@ func TestFileStorage(t *testing.T) {
 		}
 		if loaded[0].ID != "gpt-4" {
 			t.Errorf("Model ID mismatch: got %s, want gpt-4", loaded[0].ID)
+		}
+	})
+
+	t.Run("RejectsInvalidProviderIDs", func(t *testing.T) {
+		err := storage.SaveProvider(&Provider{
+			ID:   "../escape",
+			Name: "Bad Provider",
+			Type: ProviderTypeCustom,
+		})
+		if !errors.Is(err, ErrInvalidProviderID) {
+			t.Fatalf("SaveProvider error = %v, want ErrInvalidProviderID", err)
+		}
+
+		err = storage.SaveModels("../escape", []*Model{})
+		if !errors.Is(err, ErrInvalidProviderID) {
+			t.Fatalf("SaveModels error = %v, want ErrInvalidProviderID", err)
+		}
+
+		if _, err := os.Stat(filepath.Join(tmpDir, "escape.json")); !os.IsNotExist(err) {
+			t.Fatalf("expected no traversal output file, stat err=%v", err)
 		}
 	})
 

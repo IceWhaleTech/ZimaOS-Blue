@@ -7,6 +7,7 @@ import prioritySettingsOverrides from './priority-settings-overrides'
 import priorityTranslationOverrides from './priority-translation-overrides'
 import prioritySmallModelOverrides from './priority-small-model-overrides'
 import skillToolOverrides from './skill-tool-overrides'
+import skillStoreMarketplaceOverrides from './skill-store-marketplace-overrides'
 
 // Minimal fallback messages for initial render (before locale loads)
 const minimalMessages = {
@@ -179,6 +180,8 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
       (priorityTranslationOverrides as Record<string, LocaleMessages>)[locale] || {}
     const localizedSkillToolOverrides =
       (skillToolOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const localizedSkillStoreMarketplaceOverrides =
+      (skillStoreMarketplaceOverrides as Record<string, LocaleMessages>)[locale] || {}
     const smallModelOverrides =
       (prioritySmallModelOverrides as Record<string, LocaleMessages>)[locale] || {}
     const i18nGlobal = i18n.global as unknown as LocaleComposerBridge
@@ -206,8 +209,12 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
       withTranslationOverrides,
       localizedSkillToolOverrides
     )
-    const mergedMessages = deepMergeMessages<LocaleMessages>(
+    const withSkillStoreMarketplaceOverrides = deepMergeMessages<LocaleMessages>(
       withSkillToolOverrides,
+      localizedSkillStoreMarketplaceOverrides
+    )
+    const mergedMessages = deepMergeMessages<LocaleMessages>(
+      withSkillStoreMarketplaceOverrides,
       smallModelOverrides
     )
 

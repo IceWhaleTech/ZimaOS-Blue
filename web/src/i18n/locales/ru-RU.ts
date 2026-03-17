@@ -117,7 +117,7 @@ export default {
     dashboard: 'Панель управления',
     settings: 'Настройки',
     system: 'Система',
-    plugins: 'Плагины',
+    plugins: 'Расширения',
     profile: 'Профиль',
     homeAssistant: 'Home Assistant',
     browserAutomation: 'Автоматизация браузера',
@@ -177,6 +177,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Ожидание вашего подтверждения для продолжения',
+    assistantStatus: {
+      searchingWeb: 'Поиск в интернете',
+      browsingWeb: 'Просмотр интернета',
+      readingWeb: 'Чтение веб-страницы',
+      readingWebSite: 'Чтение {site}',
+      usingTools: 'Использование инструментов',
+    },
     execDirectoryApprovalTimeout:
       'Выполнение команды заблокировано, так как истекло время ожидания одобрения каталога. Одобрите каталог и попробуйте снова.',
     streamProgress: {
@@ -357,11 +365,10 @@ export default {
     },
     // Расширенный режим
     enhancedMode: 'Расширенный',
-    enhancedModeDesc:
-      'Расширенный режим: поддержка навыков, вызова инструментов, файловых операций, выполнения кода и другого',
+    enhancedModeDesc: 'Необязательное улучшение включено: пользоваться удобнее.',
     enableEnhancedMode: 'Включить расширенный режим',
     enableEnhancedModeDesc:
-      'Включите расширенный режим для навыков, вызова инструментов, файловых операций и другого',
+      'Это необязательное улучшение: отключение не влияет на базовый чат и использование Agent; включение улучшает опыт использования.',
     showToolDetails: 'Показать детали работы',
     hideToolDetails: 'Скрыть детали работы',
     toolDetailExpand: 'Развернуть вывод',
@@ -635,7 +642,7 @@ export default {
   },
   plugins: {
     ...enUS.plugins,
-    title: 'Плагины',
+    title: 'Расширения',
     subtitle: 'Управление плагинами для навыков, расширений и инструментов',
     refresh: 'Обновить',
     totalPlugins: 'Всего плагинов',
@@ -2221,6 +2228,15 @@ export default {
       loadFailed: 'Не удалось загрузить пользователей',
       passwordResetFailed: 'Не удалось сбросить пароль',
     },
+
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Доступ к расширениям',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Расширения',
+    },
   },
   speech: {
     ...enUS.speech,
@@ -2710,6 +2726,29 @@ export default {
     streamingAnomaly: 'Обнаружение аномалий потоковой передачи',
     streamingAnomalyDesc: 'Обнаружение и восстановление после аномалий потокового вывода',
     maskingTitle: 'Маскирование данных',
+    customMaskingTitle: 'Пользовательские правила маскирования данных',
+    builtinMaskingRules: 'Встроенные правила',
+    builtinMaskingEmpty: 'Встроенные правила не загружены.',
+    customMaskingListTitle: 'Пользовательские правила',
+    customMaskingEmpty:
+      'Пользовательских правил пока нет. Используйте форму ниже для внутренних идентификаторов или проприетарных секретов.',
+    customMaskingDesc:
+      'Добавляйте правила на основе регулярных выражений для внутренних идентификаторов, секретов или бизнес-специфичных полей.',
+    customMaskingNameLabel: 'Название',
+    customMaskingNamePlaceholder: 'Например: внутренний номер тикета',
+    customMaskingDirectionLabel: 'Направление',
+    customMaskingPatternLabel: 'Регулярное выражение',
+    customMaskingPatternPlaceholder: 'Например: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Текст замены',
+    customMaskingReplacementPlaceholder: 'Например: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Используйте корректное регулярное выражение. {maskLabel} в тексте замены сохраняет локализованную метку маскирования.',
+    customMaskingAdd: 'Добавить правило',
+    customMaskingAddSuccess: 'Пользовательское правило маскирования добавлено.',
+    customMaskingAddError: 'Не удалось добавить пользовательское правило маскирования.',
+    customMaskingDeleteConfirm: 'Удалить пользовательское правило маскирования "{name}"?',
+    customMaskingDeleteSuccess: 'Пользовательское правило маскирования удалено.',
+    customMaskingDeleteError: 'Не удалось удалить пользовательское правило маскирования.',
     maskingDesc: 'Скрытие конфиденциальных данных (PII, учётные данные) в запросах и ответах LLM',
     maskingEnabled: 'Маскирование данных включено',
     maskingDisabled: 'Маскирование данных отключено',
@@ -3123,6 +3162,16 @@ export default {
     timeout: 'Автозакрытие через {seconds}с',
     answered: 'Отвечено',
   },
+  browserProgress: {
+    title: 'Ход работы браузера',
+    steps: {
+      start: 'Запуск браузера',
+      navigate: 'Переход',
+      snapshot: 'Чтение страницы',
+      screenshot: 'Создание снимка экрана',
+      recipe: 'Выполняется {recipe}',
+    },
+  },
   thinking: {
     title: 'Контекст',
     context: 'Контекст',
@@ -3131,6 +3180,7 @@ export default {
     inProgress: 'Размышление...',
   },
   search: {
+    summaryTitle: 'Поиск в интернете',
     resultCount: '{count} результатов',
   },
   workspace: {

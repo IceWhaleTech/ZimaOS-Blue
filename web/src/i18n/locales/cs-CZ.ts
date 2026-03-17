@@ -86,6 +86,8 @@ export default {
     automation: 'Automatizace',
     security: 'Zabezpečení',
     companion: 'Companion',
+
+    plugins: 'Rozšíření',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1348,6 +1350,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Ceka se na vase potvrzeni pro pokracovani',
+    assistantStatus: {
+      searchingWeb: 'Hledam na webu',
+      browsingWeb: 'Prochazim web',
+      readingWeb: 'Ctu webovou stranku',
+      readingWebSite: 'Ctu {site}',
+      usingTools: 'Pouzivam nastroje',
+    },
     conversations: 'Konverzace',
     execDirectoryApprovalTimeout:
       'Spuštění příkazu bylo zablokováno, protože schválení adresáře vypršelo. Schvalte adresář a zkuste to znovu.',
@@ -1430,11 +1440,10 @@ export default {
     },
     // Rozšířený režim
     enhancedMode: 'Rozšířený',
-    enhancedModeDesc:
-      'Rozšířený režim: podporuje dovednosti, volání nástrojů, souborové operace, spouštění kódu a další',
+    enhancedModeDesc: 'Volitelné vylepšení je zapnuté: prostředí je lepší.',
     enableEnhancedMode: 'Aktivovat rozšířený režim',
     enableEnhancedModeDesc:
-      'Aktivujte rozšířený režim pro dovednosti, volání nástrojů, souborové operace a další',
+      'Toto je volitelné vylepšení: vypnutí neovlivní základní chat ani používání Agenta; zapnutí zlepší prostředí.',
     showToolDetails: 'Zobrazit podrobnosti práce',
     hideToolDetails: 'Skrýt podrobnosti práce',
     toolDetailExpand: 'Rozbalit výstup',
@@ -1720,6 +1729,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Vlastní pravidla maskování dat',
+    builtinMaskingRules: 'Předdefinovaná pravidla',
+    builtinMaskingEmpty: 'Nebyla načtena žádná předdefinovaná pravidla.',
+    customMaskingListTitle: 'Vlastní pravidla',
+    customMaskingEmpty:
+      'Zatím nejsou žádná vlastní pravidla. Pomocí formuláře níže pokryjte interní ID nebo proprietární tajemství.',
+    customMaskingDesc:
+      'Přidejte pravidla založená na regexu pro interní ID, tajemství nebo oborově specifická pole.',
+    customMaskingNameLabel: 'Název',
+    customMaskingNamePlaceholder: 'Příklad: interní číslo tiketu',
+    customMaskingDirectionLabel: 'Směr',
+    customMaskingPatternLabel: 'Regex vzor',
+    customMaskingPatternPlaceholder: 'Příklad: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Nahrazovací text',
+    customMaskingReplacementPlaceholder: 'Příklad: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Použijte platný regulární výraz. {maskLabel} v nahrazovacím textu zachová lokalizovaný štítek maskování.',
+    customMaskingAdd: 'Přidat pravidlo',
+    customMaskingAddSuccess: 'Vlastní pravidlo maskování bylo přidáno.',
+    customMaskingAddError: 'Nepodařilo se přidat vlastní pravidlo maskování.',
+    customMaskingDeleteConfirm: 'Odstranit vlastní pravidlo maskování "{name}"?',
+    customMaskingDeleteSuccess: 'Vlastní pravidlo maskování bylo odstraněno.',
+    customMaskingDeleteError: 'Nepodařilo se odstranit vlastní pravidlo maskování.',
     maskingRuleList: 'Seznam pravidel',
     maskingCategories: {
       pii: 'PII',
@@ -2103,7 +2135,7 @@ export default {
     checkpoint: 'Kontrolní bod',
     checkpointDescription: 'Kontrolní bod před obnovením ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Rozšíření' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -2287,7 +2319,17 @@ export default {
     volume: 'Hlasitost',
     voiceSettings: 'Nastavení hlasu',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Přístup k rozšířením',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Rozšíření',
+    },
+  },
 
   // Flat keys in Czech
   accept: 'Přijmout',
@@ -2436,6 +2478,16 @@ export default {
     timeout: 'Automatické zavření za {seconds}s',
     answered: 'Zodpovězeno',
   },
+  browserProgress: {
+    title: 'Prubeh prohlizece',
+    steps: {
+      start: 'Spousteni prohlizece',
+      navigate: 'Prechazeni',
+      snapshot: 'Ctou se stranky',
+      screenshot: 'Porizuji snimek obrazovky',
+      recipe: 'Spousti se {recipe}',
+    },
+  },
   thinking: {
     title: 'Kontext',
     context: 'Kontext',
@@ -2444,6 +2496,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Vyhledavani na webu',
     resultCount: '{count} výsledků',
   },
   cardActions: {

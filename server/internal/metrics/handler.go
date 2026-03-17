@@ -9,11 +9,12 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 )
 
 // Handler handles metrics API endpoints.
 type Handler struct {
-	writer        *MetricsWriter
+	writer *MetricsWriter
 
 	// singleflight for deduplicating concurrent requests
 	sfGroup singleflight.Group
@@ -124,6 +125,34 @@ func (h *Handler) GetUserTokenUsage(c echo.Context) error {
 		period = PeriodDaily
 	}
 
+	claims := auth.GetUserFromContext(c)
+	if claims == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+	}
+
+	if user.Role(claims.Role) != user.RoleAdmin {
+		usage := h.writer.GetUserTokenUsage(claims.UserID)
+		users := []UserTokenUsage{}
+		var totalTokens, totalRequests int64
+		var totalCost float64
+		if usage != nil {
+			users = append(users, *usage)
+			totalTokens = usage.TotalTokens
+			totalCost = usage.EstimatedCost
+			totalRequests = usage.RequestCount
+		}
+		return c.JSON(http.StatusOK, &UserTokenUsageResponse{
+			Period: period,
+			Users:  users,
+			Summary: &UserUsageSummary{
+				TotalUsers:    len(users),
+				TotalTokens:   totalTokens,
+				TotalCost:     totalCost,
+				TotalRequests: totalRequests,
+			},
+		})
+	}
+
 	users := h.writer.GetAllUserUsage()
 
 	// Calculate summary
@@ -154,6 +183,14 @@ func (h *Handler) GetUserTokenUsageByID(c echo.Context) error {
 	userID := c.Param("user_id")
 	if userID == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "user_id is required")
+	}
+
+	claims := auth.GetUserFromContext(c)
+	if claims == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+	}
+	if user.Role(claims.Role) != user.RoleAdmin && claims.UserID != userID {
+		return echo.NewHTTPError(http.StatusForbidden, "insufficient permissions")
 	}
 
 	usage := h.writer.GetUserTokenUsage(userID)
@@ -449,9 +486,17 @@ func (h *Handler) GetAll(c echo.Context) error {
 
 // ResetMetrics handles POST /api/v1/metrics/reset
 func (h *Handler) ResetMetrics(c echo.Context) error {
+	claims := auth.GetUserFromContext(c)
+	if claims == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+	}
+	if user.Role(claims.Role) != user.RoleAdmin {
+		return echo.NewHTTPError(http.StatusForbidden, "insufficient permissions")
+	}
+
 	h.writer.Reset()
 	return c.JSON(http.StatusOK, map[string]string{
-		"status": "ok",
+		"status":  "ok",
 		"message": "metrics reset successfully",
 	})
 }

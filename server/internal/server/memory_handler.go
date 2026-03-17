@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -185,6 +186,9 @@ func (h *MemoryHandler) Get(c echo.Context) error {
 	id = decodedID
 	chunk, err := h.unifiedService.Get(c.Request().Context(), id)
 	if err != nil {
+		if errors.Is(err, memory.ErrInvalidPath) {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -212,6 +216,9 @@ func (h *MemoryHandler) Delete(c echo.Context) error {
 	}
 	id = decodedID
 	if err := h.unifiedService.Forget(c.Request().Context(), id); err != nil {
+		if errors.Is(err, memory.ErrInvalidPath) {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.NoContent(http.StatusNoContent)
@@ -472,6 +479,9 @@ func (h *MemoryHandler) GetDailyLog(c echo.Context) error {
 	}
 	content, err := h.layeredService.GetDailyLog(c.Request().Context(), date)
 	if err != nil {
+		if errors.Is(err, memory.ErrInvalidDailyLogDate) {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
 		return echo.NewHTTPError(http.StatusNotFound, err.Error())
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{

@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
@@ -140,5 +141,18 @@ func TestLoadOrImport_PreservesBrowserSection(t *testing.T) {
 	}
 	if reloaded.Browser.PoolSize != 1 {
 		t.Fatalf("reloaded Browser.PoolSize = %d, want 1", reloaded.Browser.PoolSize)
+	}
+}
+
+func TestConfigStore_RejectsInvalidSectionNames(t *testing.T) {
+	kv := kvstore.NewMemoryStore()
+	store := NewConfigStore(kv)
+
+	if _, err := store.GetSection("../security"); !errors.Is(err, ErrInvalidSection) {
+		t.Fatalf("GetSection() error = %v, want ErrInvalidSection", err)
+	}
+
+	if err := store.SetSection("../security", []byte(`{}`)); !errors.Is(err, ErrInvalidSection) {
+		t.Fatalf("SetSection() error = %v, want ErrInvalidSection", err)
 	}
 }

@@ -446,6 +446,40 @@ describe('Typeless Card Parsing', () => {
     expect(merged.steps[1]?.recipe_name).toBe('login recipe')
   })
 
+  it('preserves pre-merged browser progress steps from persisted cards', () => {
+    const cards = [
+      {
+        type: 'browser-progress',
+        id: 'bp-merged',
+        steps: [
+          {
+            step: 'navigate',
+            name: 'Navigating',
+            status: 'completed',
+            url: 'https://openai.com/blog',
+          },
+          {
+            step: 'snapshot',
+            name: 'Reading page',
+            status: 'running',
+            url: 'https://openai.com/blog',
+          },
+        ],
+      },
+    ] as any
+
+    const segments = splitIntoSegments('[[TYPELESS_CARD:bp-merged]]', cards)
+
+    expect(segments).toHaveLength(1)
+    expect(segments[0]?.type).toBe('card')
+    const merged = segments[0]?.content as any
+    expect(merged.type).toBe('browser-progress')
+    expect(merged.steps).toHaveLength(2)
+    expect(merged.steps[0]?.name).toBe('Navigating')
+    expect(merged.steps[1]?.name).toBe('Reading page')
+    expect(merged.steps[1]?.url).toBe('https://openai.com/blog')
+  })
+
   it('keeps the latest analyze-progress step state and metadata when merging duplicates', () => {
     const cards = [
       {

@@ -125,7 +125,7 @@ export default {
     dashboard: 'Dashboard',
     settings: 'Einstellungen',
     system: 'System',
-    plugins: 'Plugins',
+    plugins: 'Erweiterungen',
     profile: 'Profil',
     homeAssistant: 'Home Assistant',
     browserAutomation: 'Browser-Automatisierung',
@@ -186,6 +186,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Warte auf deine Bestatigung, um fortzufahren',
+    assistantStatus: {
+      searchingWeb: 'Suche im Web',
+      browsingWeb: 'Durchsuche das Web',
+      readingWeb: 'Lese eine Webseite',
+      readingWebSite: 'Lese {site}',
+      usingTools: 'Verwende Werkzeuge',
+    },
     execDirectoryApprovalTimeout:
       'Die Befehlsausführung wurde blockiert, weil die Verzeichnisfreigabe abgelaufen ist. Bitte das Verzeichnis freigeben und erneut versuchen.',
     streamProgress: {
@@ -399,11 +407,10 @@ export default {
     },
     // Erweiterter Modus
     enhancedMode: 'Erweiterter Modus',
-    enhancedModeDesc:
-      'Erweiterter Modus: unterstützt Fähigkeiten, Tool-Aufrufe, Dateioperationen, Codeausführung und mehr',
+    enhancedModeDesc: 'Die optionale Erweiterung ist aktiviert: das Nutzungserlebnis ist besser.',
     enableEnhancedMode: 'Erweiterten Modus aktivieren',
     enableEnhancedModeDesc:
-      'Aktivieren Sie den erweiterten Modus für Fähigkeiten, Tool-Aufrufe, Dateioperationen und mehr',
+      'Dies ist eine optionale Erweiterung: Das Deaktivieren beeinträchtigt weder den grundlegenden Chat noch die Agent-Nutzung; das Aktivieren verbessert das Nutzungserlebnis.',
     showToolDetails: 'Arbeitsdetails anzeigen',
     hideToolDetails: 'Arbeitsdetails ausblenden',
     toolDetailExpand: 'Ausgabe erweitern',
@@ -698,7 +705,7 @@ export default {
   },
   plugins: {
     ...enUS.plugins,
-    title: 'Plugins',
+    title: 'Erweiterungen',
     subtitle: 'Plugins für Skills, Erweiterungen und Tools verwalten',
     refresh: 'Aktualisieren',
     totalPlugins: 'Plugins gesamt',
@@ -2474,6 +2481,15 @@ export default {
       loadFailed: 'Benutzer konnten nicht geladen werden',
       passwordResetFailed: 'Passwort-Zurücksetzen fehlgeschlagen',
     },
+
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Zugriff auf Erweiterungen',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Erweiterungen',
+    },
   },
   speech: {
     ...enUS.speech,
@@ -3212,6 +3228,29 @@ export default {
     streamingAnomaly: 'Streaming-Anomalieerkennung',
     streamingAnomalyDesc: 'Anomalien in der Streaming-Ausgabe erkennen und beheben',
     maskingTitle: 'Datenmaskierung',
+    customMaskingTitle: 'Benutzerdefinierte Regeln zur Datenmaskierung',
+    builtinMaskingRules: 'Vordefinierte Regeln',
+    builtinMaskingEmpty: 'Keine vordefinierten Regeln geladen.',
+    customMaskingListTitle: 'Benutzerdefinierte Regeln',
+    customMaskingEmpty:
+      'Noch keine benutzerdefinierten Regeln. Verwenden Sie das Formular unten für interne IDs oder proprietäre Geheimnisse.',
+    customMaskingDesc:
+      'Fügen Sie regexbasierte Regeln für interne IDs, Geheimnisse oder geschäftsspezifische Felder hinzu.',
+    customMaskingNameLabel: 'Name',
+    customMaskingNamePlaceholder: 'Beispiel: Interne Ticketnummer',
+    customMaskingDirectionLabel: 'Richtung',
+    customMaskingPatternLabel: 'Regex-Muster',
+    customMaskingPatternPlaceholder: 'Beispiel: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Ersetzungstext',
+    customMaskingReplacementPlaceholder: 'Beispiel: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Verwenden Sie einen gültigen regulären Ausdruck. {maskLabel} im Ersetzungstext behält die lokalisierte Maskierungsbezeichnung bei.',
+    customMaskingAdd: 'Regel hinzufügen',
+    customMaskingAddSuccess: 'Benutzerdefinierte Maskierungsregel hinzugefügt.',
+    customMaskingAddError: 'Benutzerdefinierte Maskierungsregel konnte nicht hinzugefügt werden.',
+    customMaskingDeleteConfirm: 'Benutzerdefinierte Maskierungsregel "{name}" löschen?',
+    customMaskingDeleteSuccess: 'Benutzerdefinierte Maskierungsregel gelöscht.',
+    customMaskingDeleteError: 'Benutzerdefinierte Maskierungsregel konnte nicht gelöscht werden.',
     maskingDesc: 'Sensible Daten (PII, Anmeldedaten) in LLM-Anfragen und -Antworten maskieren',
     maskingEnabled: 'Datenmaskierung aktiviert',
     maskingDisabled: 'Datenmaskierung deaktiviert',
@@ -3693,6 +3732,16 @@ export default {
     timeout: 'Automatisches Schließen in {seconds}s',
     answered: 'Beantwortet',
   },
+  browserProgress: {
+    title: 'Browser-Fortschritt',
+    steps: {
+      start: 'Starte Browser',
+      navigate: 'Navigiere',
+      snapshot: 'Lese Seite',
+      screenshot: 'Erstelle Screenshot',
+      recipe: 'Fuhre {recipe} aus',
+    },
+  },
   thinking: {
     title: 'Kontext',
     context: 'Kontext',
@@ -3701,6 +3750,7 @@ export default {
     inProgress: 'Denkt nach...',
   },
   search: {
+    summaryTitle: 'Websuche',
     resultCount: '{count} Ergebnisse',
   },
   cardActions: {

@@ -557,8 +557,8 @@ onUnmounted(() => {
 
 <template>
   <div class="settings-view dashboard-page-frame">
-    <section class="settings-stage dashboard-page-stage">
-      <div class="settings-shell" :data-active-tab="activeTab">
+    <section class="settings-stage dashboard-page-stage configuration-page-stage">
+      <div class="settings-shell">
         <Transition name="notification">
           <div v-if="saveStatus" class="settings-toast">
             <span class="settings-toast__message">{{ saveStatus.message }}</span>
@@ -573,13 +573,15 @@ onUnmounted(() => {
           </div>
         </Transition>
 
-        <header class="settings-hero dashboard-page-hero">
-          <div class="settings-hero__copy dashboard-page-copy">
+        <header class="settings-hero dashboard-page-hero configuration-page-hero">
+          <div class="settings-hero__copy dashboard-page-copy configuration-page-copy">
             <span class="settings-hero__eyebrow dashboard-page-eyebrow">
               {{ t('nav.configuration') }}
             </span>
-            <h1 class="settings-hero__title dashboard-page-title">{{ t('settings.title') }}</h1>
-            <p class="settings-hero__description dashboard-page-description">
+            <h1 class="settings-hero__title dashboard-page-title configuration-page-title">
+              {{ t('settings.title') }}
+            </h1>
+            <p class="settings-hero__description dashboard-page-description configuration-page-description">
               {{ activeTabMeta.description }}
             </p>
           </div>
@@ -1064,7 +1066,7 @@ onUnmounted(() => {
                       {{
                         t('settings.smallModel.irFeatureHintDesc', {
                           deepResearch: t('ui.deepResearchTitle'),
-                          agentMode: t('agent.mode'),
+                          agentMode: t('chat.taskLoop'),
                         })
                       }}
                     </div>
@@ -1973,31 +1975,21 @@ input[type='range']::-moz-range-thumb {
   margin: 0 auto;
 }
 
-.settings-shell[data-active-tab='llm'] {
-  --settings-accent: 8, 145, 178;
-}
-
-.settings-shell[data-active-tab='proxy'] {
-  --settings-accent: 217, 119, 6;
-}
-
-.settings-shell[data-active-tab='speech'] {
-  --settings-accent: 124, 58, 237;
-}
-
-.settings-shell[data-active-tab='userdata'] {
-  --settings-accent: 5, 150, 105;
-}
-
 .settings-surface-card,
 .settings-tab-nav,
 .settings-panel {
   position: relative;
   overflow: hidden;
   border-radius: 1.5rem;
+  box-shadow: none;
 }
 
 .settings-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
   padding-bottom: 0.2rem;
 }
 
@@ -2015,6 +2007,8 @@ input[type='range']::-moz-range-thumb {
 .settings-hero__copy {
   position: relative;
   z-index: 1;
+  flex: 1 1 0%;
+  min-width: 0;
   max-width: 42rem;
   padding-top: 0.1rem;
 }
@@ -2065,33 +2059,28 @@ input[type='range']::-moz-range-thumb {
   gap: 12px;
   min-height: 100%;
   padding: 14px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 1.5rem;
   text-align: left;
-  background: rgba(255, 255, 255, 0.96);
+  background: #ffffff;
   color: #0f172a;
+  box-shadow: none;
   transition:
-    transform 0.22s ease,
     border-color 0.22s ease,
-    box-shadow 0.22s ease,
-    background 0.22s ease;
+    background-color 0.22s ease,
+    color 0.22s ease;
 }
 
 .settings-tab-button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.98);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 22px 36px -34px rgba(15, 23, 42, 0.2);
+  border-color: rgba(148, 163, 184, 0.52);
+  background: #f8fafc;
 }
 
 .settings-tab-button--active {
-  border-color: rgba(255, 255, 255, 0.98);
-  background: rgba(243, 246, 249, 0.96);
+  border-color: rgba(var(--settings-accent), 0.28);
+  background: rgba(var(--settings-accent), 0.08);
   color: #0f172a;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 22px 36px -34px rgba(15, 23, 42, 0.2);
+  box-shadow: none;
 }
 
 .settings-tab-button__icon {
@@ -2146,7 +2135,8 @@ input[type='range']::-moz-range-thumb {
   flex-direction: column;
   gap: 1.25rem;
   padding: 1.1rem;
-  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(203, 213, 225, 0.96);
+  background: #f8fafc;
 }
 
 .settings-module {
@@ -2186,6 +2176,9 @@ input[type='range']::-moz-range-thumb {
 .settings-field-card,
 .settings-feature-card {
   border-radius: 1.25rem;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  background: #ffffff;
+  box-shadow: none;
 }
 
 .settings-field-card {
@@ -2276,7 +2269,7 @@ input[type='range']::-moz-range-thumb {
   border-color: rgba(var(--settings-accent), 0.36);
   background: rgba(var(--settings-accent), 0.14);
   color: #0f172a;
-  box-shadow: 0 18px 32px -28px rgba(var(--settings-accent), 0.62);
+  box-shadow: none;
 }
 
 .settings-tab-beta {
@@ -2297,8 +2290,10 @@ input[type='range']::-moz-range-thumb {
 .settings-panel :deep(.glass-card) {
   border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 1.25rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 247, 250, 0.98) 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  background: #ffffff;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .settings-panel :deep(.glass-card:hover) {
@@ -2318,7 +2313,7 @@ html.dark .settings-tab-nav,
 [data-theme='dark'] .settings-panel,
 html.dark .settings-panel {
   border-color: rgba(71, 85, 105, 0.58);
-  box-shadow: 0 28px 60px -40px rgba(2, 6, 23, 0.82);
+  box-shadow: none;
 }
 
 :root.dark .settings-hero__title,
@@ -2355,7 +2350,10 @@ html.dark .settings-feature-card,
 [data-theme='dark'] .settings-panel :deep(.glass-card),
 html.dark .settings-panel :deep(.glass-card) {
   border-color: rgba(71, 85, 105, 0.46);
-  background: rgba(15, 23, 42, 0.78);
+  background: #111827;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 :root.dark .settings-tab-button,
@@ -2371,13 +2369,20 @@ html.dark .settings-tab-button--active {
   background: rgba(var(--settings-accent), 0.16);
 }
 
+:root.dark .settings-tab-button:hover,
+[data-theme='dark'] .settings-tab-button:hover,
+html.dark .settings-tab-button:hover {
+  border-color: rgba(96, 165, 250, 0.28);
+  background: #1f2937;
+}
+
 :root.dark .settings-tab-nav,
 [data-theme='dark'] .settings-tab-nav,
 html.dark .settings-tab-nav,
 :root.dark .settings-panel,
 [data-theme='dark'] .settings-panel,
 html.dark .settings-panel {
-  background: rgba(30, 41, 59, 0.96);
+  background: #1e293b;
 }
 
 :root.dark .settings-tab-nav,

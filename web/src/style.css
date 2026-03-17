@@ -527,6 +527,51 @@ body {
   color: #9ca3af;
 }
 
+.configuration-page-stage {
+  padding: 1.15rem 0 0.35rem;
+}
+
+.configuration-page-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 0 0.2rem;
+}
+
+.configuration-page-copy {
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: 42rem;
+  padding-top: 0.1rem;
+}
+
+.configuration-page-title {
+  margin: 0;
+  font-size: clamp(1.34rem, 0.7vw + 0.95rem, 1.9rem);
+  line-height: 1.06;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+}
+
+.configuration-page-description {
+  margin: 0.42rem 0 0;
+  max-width: 34rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.configuration-page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding-top: 0.1rem;
+}
+
 .dashboard-page-toolbar {
   position: absolute;
   top: 0;
@@ -860,6 +905,16 @@ html.dark .config-page-hero__description {
 }
 
 @media (max-width: 820px) {
+  .configuration-page-hero {
+    flex-direction: column;
+  }
+
+  .configuration-page-actions {
+    width: 100%;
+    justify-content: flex-start;
+    padding-top: 0;
+  }
+
   .config-page-hero__actions {
     justify-content: flex-start;
   }

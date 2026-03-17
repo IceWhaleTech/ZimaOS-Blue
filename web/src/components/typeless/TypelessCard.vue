@@ -9,6 +9,7 @@ const props = defineProps<{
   actionLoading?: boolean
   activeActionId?: string
   actionError?: string
+  uiStateKey?: string
 }>()
 
 const emit = defineEmits<{
@@ -97,6 +98,7 @@ function handleSelect(selectedIds: string[], otherText?: string) {
         :card="card"
         :action-loading="supportsActionLoading ? actionLoading : undefined"
         :active-action-id="supportsActionLoading ? activeActionId : undefined"
+        :ui-state-key="uiStateKey"
         @action="handleAction"
         @select="handleSelect"
       />

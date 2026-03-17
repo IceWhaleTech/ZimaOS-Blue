@@ -221,6 +221,18 @@ const showFeatureHint = computed(() => {
   return false
 })
 
+const deepResearchInfoTags = computed(() => [
+  t('chat.deepResearchStageRetrieve', 'Retrieve'),
+  t('chat.deepResearchStageVerify', 'Verify'),
+  t('chat.deepResearchCitations', 'Citations'),
+])
+
+const ralphLoopInfoTags = computed(() => [
+  t('chat.ralphLoopHoverPlan', 'Plan'),
+  t('chat.ralphLoopHoverAct', 'Act'),
+  t('chat.ralphLoopHoverCheck', 'Check'),
+])
+
 const routingChipClasses = computed(() => ({
   'is-error': props.routingStatus === 'error',
   'is-pending': props.routingStatus === 'pending',
@@ -403,6 +415,16 @@ function handleRoutingMenuTrigger(event: MouseEvent) {
   if (trigger instanceof HTMLElement) {
     emit('toggle-routing-menu', trigger)
   }
+}
+
+function toggleDeepResearch() {
+  chatStore.setDeepResearchEnabled(!chatStore.deepResearchEnabled)
+}
+
+function toggleAgentMode() {
+  settingsStore.setAgentMode(!settingsStore.agentMode).catch((err) => {
+    console.error('Failed to update Ralph Loop mode:', err)
+  })
 }
 
 function handleCancel() {
@@ -1153,7 +1175,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           :class="{ 'is-active': chatStore.deepResearchEnabled }"
           :aria-pressed="chatStore.deepResearchEnabled"
           :title="t('ui.deepResearchTitle')"
-          @click="chatStore.setDeepResearchEnabled(!chatStore.deepResearchEnabled)"
+          @click="toggleDeepResearch"
         >
           <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
@@ -1171,8 +1193,8 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           class="mode-chip mode-chip-loop"
           :class="{ 'is-active-agent': settingsStore.agentMode }"
           :aria-pressed="settingsStore.agentMode"
-          :title="t('agent.mode')"
-          @click="settingsStore.setAgentMode(!settingsStore.agentMode).catch(() => {})"
+          :title="t('chat.taskLoop')"
+          @click="toggleAgentMode"
         >
           <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
@@ -1721,57 +1743,156 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               </div>
 
               <div class="desktop-toolbar-right">
-                <button
-                  class="mode-chip desktop-mode-chip mode-chip-research"
-                  :class="{ 'is-active': chatStore.deepResearchEnabled }"
-                  :aria-pressed="chatStore.deepResearchEnabled"
-                  :title="t('ui.deepResearchTitle')"
-                  @click="chatStore.setDeepResearchEnabled(!chatStore.deepResearchEnabled)"
-                >
-                  <svg
-                    class="mode-chip__icon"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+                <div class="mode-chip-hover-shell mode-chip-hover-shell--research">
+                  <button
+                    class="mode-chip desktop-mode-chip mode-chip-research"
+                    :class="{ 'is-active': chatStore.deepResearchEnabled }"
+                    :aria-label="t('ui.deepResearchTitle')"
+                    :aria-pressed="chatStore.deepResearchEnabled"
+                    @click="toggleDeepResearch"
                   >
-                    <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.7"
-                      d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
-                    />
-                  </svg>
-                  <span class="mode-chip__label">{{ t('ui.deepResearchTitle') }}</span>
-                </button>
-                <button
-                  class="mode-chip desktop-mode-chip mode-chip-loop"
-                  :class="{ 'is-active-agent': settingsStore.agentMode }"
-                  :aria-pressed="settingsStore.agentMode"
-                  :title="t('agent.mode')"
-                  @click="settingsStore.setAgentMode(!settingsStore.agentMode).catch(() => {})"
-                >
-                  <svg
-                    class="mode-chip__icon"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+                    <svg
+                      class="mode-chip__icon"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.7"
+                        d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
+                      />
+                    </svg>
+                    <span class="mode-chip__label">{{ t('ui.deepResearchTitle') }}</span>
+                  </button>
+                  <div class="mode-info-card mode-info-card--research" aria-hidden="true">
+                    <div class="mode-info-card__hero">
+                      <div class="mode-info-card__hero-orb">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.7"
+                            d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
+                          />
+                        </svg>
+                      </div>
+                      <div class="mode-info-card__hero-meters" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </div>
+                      <span class="mode-info-card__state">
+                        {{
+                          chatStore.deepResearchEnabled
+                            ? t('common.enabled', 'Enabled')
+                            : t('common.disabled', 'Disabled')
+                        }}
+                      </span>
+                    </div>
+                    <div class="mode-info-card__title">{{ t('ui.deepResearchTitle') }}</div>
+                    <p class="mode-info-card__description">
+                      {{
+                        t(
+                          'chat.deepResearchHoverDescription',
+                          'Launch a structured research workflow with retrieval, verification, and source-backed answers.'
+                        )
+                      }}
+                    </p>
+                    <div class="mode-info-card__chips">
+                      <span
+                        v-for="tag in deepResearchInfoTags"
+                        :key="tag"
+                        class="mode-info-card__chip"
+                      >
+                        {{ tag }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div class="mode-chip-hover-shell mode-chip-hover-shell--loop">
+                  <button
+                    class="mode-chip desktop-mode-chip mode-chip-loop"
+                    :class="{ 'is-active-agent': settingsStore.agentMode }"
+                    :aria-label="t('chat.taskLoop')"
+                    :aria-pressed="settingsStore.agentMode"
+                    @click="toggleAgentMode"
                   >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.7"
-                      d="M9 4.75h6a1.75 1.75 0 011.75 1.75v10.75A1.75 1.75 0 0115 19H9a1.75 1.75 0 01-1.75-1.75V6.5A1.75 1.75 0 019 4.75z"
-                    />
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.7"
-                      d="M9.75 3h4.5M10.25 9h4M10.25 12h4M10.25 15h2.5"
-                    />
-                  </svg>
-                  <span class="mode-chip__label">{{ t('chat.taskLoop') }}</span>
-                </button>
+                    <svg
+                      class="mode-chip__icon"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.7"
+                        d="M9 4.75h6a1.75 1.75 0 011.75 1.75v10.75A1.75 1.75 0 0115 19H9a1.75 1.75 0 01-1.75-1.75V6.5A1.75 1.75 0 019 4.75z"
+                      />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.7"
+                        d="M9.75 3h4.5M10.25 9h4M10.25 12h4M10.25 15h2.5"
+                      />
+                    </svg>
+                    <span class="mode-chip__label">{{ t('chat.taskLoop') }}</span>
+                  </button>
+                  <div class="mode-info-card mode-info-card--loop" aria-hidden="true">
+                    <div class="mode-info-card__hero">
+                      <div class="mode-info-card__hero-orb">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.7"
+                            d="M9 4.75h6a1.75 1.75 0 011.75 1.75v10.75A1.75 1.75 0 0115 19H9a1.75 1.75 0 01-1.75-1.75V6.5A1.75 1.75 0 019 4.75z"
+                          />
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.7"
+                            d="M9.75 3h4.5M10.25 9h4M10.25 12h4M10.25 15h2.5"
+                          />
+                        </svg>
+                      </div>
+                      <div class="mode-info-card__hero-meters" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </div>
+                      <span class="mode-info-card__state">
+                        {{
+                          settingsStore.agentMode
+                            ? t('common.enabled', 'Enabled')
+                            : t('common.disabled', 'Disabled')
+                        }}
+                      </span>
+                    </div>
+                    <div class="mode-info-card__title">{{ t('chat.taskLoop') }}</div>
+                    <p class="mode-info-card__description">
+                      {{
+                        t(
+                          'chat.ralphLoopHoverDescription',
+                          'Let the agent plan, use tools, apply changes, and keep iterating until the task lands cleanly.'
+                        )
+                      }}
+                    </p>
+                    <div class="mode-info-card__chips">
+                      <span
+                        v-for="tag in ralphLoopInfoTags"
+                        :key="tag"
+                        class="mode-info-card__chip"
+                      >
+                        {{ tag }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
                 <button
                   class="mode-chip desktop-mode-chip mode-chip-routing routing-menu-anchor"
                   :class="routingChipClasses"
@@ -2052,6 +2173,303 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 .desktop-toolbar-right {
   justify-content: flex-end;
   flex-shrink: 0;
+}
+
+.mode-chip-hover-shell {
+  position: relative;
+  display: inline-flex;
+  isolation: isolate;
+}
+
+.mode-info-card {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.82rem);
+  width: min(22rem, calc(100vw - 3rem));
+  padding: 0.88rem;
+  border-radius: 1.28rem;
+  border: 1px solid rgba(203, 213, 225, 0.84);
+  background:
+    radial-gradient(circle at top right, rgba(var(--mode-card-accent-rgb), 0.16), transparent 46%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  box-shadow:
+    0 24px 46px -32px rgba(15, 23, 42, 0.24),
+    0 14px 24px -20px rgba(var(--mode-card-shadow-rgb), 0.22);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(10px) scale(0.985);
+  transform-origin: bottom right;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    visibility 0.18s ease;
+  z-index: 24;
+}
+
+.mode-info-card::after {
+  content: '';
+  position: absolute;
+  right: 1.2rem;
+  bottom: -0.4rem;
+  width: 0.82rem;
+  height: 0.82rem;
+  border-right: 1px solid rgba(203, 213, 225, 0.84);
+  border-bottom: 1px solid rgba(203, 213, 225, 0.84);
+  background: rgba(255, 255, 255, 0.98);
+  transform: rotate(45deg);
+}
+
+.mode-chip-hover-shell:hover .mode-info-card,
+.mode-chip-hover-shell:focus-within .mode-info-card {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+.mode-info-card--research {
+  --mode-card-accent-rgb: 34, 197, 94;
+  --mode-card-shadow-rgb: 16, 185, 129;
+}
+
+.mode-info-card--loop {
+  --mode-card-accent-rgb: 59, 130, 246;
+  --mode-card-shadow-rgb: 245, 158, 11;
+}
+
+.mode-info-card__hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.82rem;
+  min-height: 5.4rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.64)),
+    linear-gradient(160deg, rgba(var(--mode-card-accent-rgb), 0.14), rgba(255, 255, 255, 0.48));
+  border: 1px solid rgba(226, 232, 240, 0.92);
+}
+
+.mode-info-card__hero::before,
+.mode-info-card__hero::after {
+  content: '';
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.mode-info-card__hero::before {
+  top: -1.4rem;
+  right: -0.6rem;
+  width: 5rem;
+  height: 5rem;
+  background: rgba(var(--mode-card-accent-rgb), 0.16);
+  filter: blur(2px);
+}
+
+.mode-info-card__hero::after {
+  left: 0.9rem;
+  bottom: -1.7rem;
+  width: 6.6rem;
+  height: 3.2rem;
+  background: rgba(var(--mode-card-accent-rgb), 0.1);
+  filter: blur(16px);
+}
+
+.mode-info-card__hero-orb {
+  position: relative;
+  z-index: 1;
+  width: 3.2rem;
+  height: 3.2rem;
+  border-radius: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(var(--mode-card-accent-rgb));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.7)),
+    rgba(var(--mode-card-accent-rgb), 0.12);
+  border: 1px solid rgba(var(--mode-card-accent-rgb), 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    0 12px 28px -20px rgba(var(--mode-card-accent-rgb), 0.34);
+}
+
+.mode-info-card__hero-orb svg {
+  width: 1.46rem;
+  height: 1.46rem;
+}
+
+.mode-info-card__hero-meters {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 0.44rem;
+}
+
+.mode-info-card__hero-meters span {
+  display: block;
+  height: 0.42rem;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(var(--mode-card-accent-rgb), 0.84), rgba(var(--mode-card-accent-rgb), 0.22));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.mode-info-card__hero-meters span:nth-child(1) {
+  width: 78%;
+}
+
+.mode-info-card__hero-meters span:nth-child(2) {
+  width: 62%;
+  opacity: 0.82;
+}
+
+.mode-info-card__hero-meters span:nth-child(3) {
+  width: 88%;
+  opacity: 0.68;
+}
+
+.mode-info-card__state {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 0.34rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  background: rgba(255, 255, 255, 0.78);
+  color: rgba(15, 23, 42, 0.8);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.mode-info-card__title {
+  margin-top: 0.88rem;
+  color: rgba(15, 23, 42, 0.96);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.mode-info-card__description {
+  margin-top: 0.46rem;
+  color: rgba(71, 85, 105, 0.95);
+  font-size: 0.77rem;
+  line-height: 1.55;
+}
+
+.mode-info-card__chips {
+  margin-top: 0.82rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.48rem;
+}
+
+.mode-info-card__chip {
+  padding: 0.38rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 213, 225, 0.88);
+  background: rgba(255, 255, 255, 0.82);
+  color: rgba(30, 41, 59, 0.92);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+:root.dark .mode-info-card,
+[data-theme='dark'] .mode-info-card,
+html.dark .mode-info-card {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background:
+    radial-gradient(circle at top right, rgba(var(--mode-card-accent-rgb), 0.24), transparent 46%),
+    linear-gradient(180deg, rgba(11, 18, 32, 0.98), rgba(15, 23, 42, 0.96));
+  box-shadow:
+    0 24px 46px -32px rgba(15, 23, 42, 0.72),
+    0 14px 24px -20px rgba(var(--mode-card-shadow-rgb), 0.54);
+}
+
+:root.dark .mode-info-card::after,
+[data-theme='dark'] .mode-info-card::after,
+html.dark .mode-info-card::after {
+  border-right: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.98);
+}
+
+:root.dark .mode-info-card__hero,
+[data-theme='dark'] .mode-info-card__hero,
+html.dark .mode-info-card__hero {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+    linear-gradient(160deg, rgba(var(--mode-card-accent-rgb), 0.18), rgba(15, 23, 42, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:root.dark .mode-info-card__hero::after,
+[data-theme='dark'] .mode-info-card__hero::after,
+html.dark .mode-info-card__hero::after {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:root.dark .mode-info-card__hero-orb,
+[data-theme='dark'] .mode-info-card__hero-orb,
+html.dark .mode-info-card__hero-orb {
+  color: rgb(255, 255, 255);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)),
+    rgba(var(--mode-card-accent-rgb), 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 12px 28px -20px rgba(var(--mode-card-accent-rgb), 0.92);
+}
+
+:root.dark .mode-info-card__hero-meters span,
+[data-theme='dark'] .mode-info-card__hero-meters span,
+html.dark .mode-info-card__hero-meters span {
+  background:
+    linear-gradient(90deg, rgba(var(--mode-card-accent-rgb), 0.94), rgba(255, 255, 255, 0.22));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+:root.dark .mode-info-card__state,
+[data-theme='dark'] .mode-info-card__state,
+html.dark .mode-info-card__state {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+:root.dark .mode-info-card__title,
+[data-theme='dark'] .mode-info-card__title,
+html.dark .mode-info-card__title {
+  color: rgba(248, 250, 252, 0.98);
+}
+
+:root.dark .mode-info-card__description,
+[data-theme='dark'] .mode-info-card__description,
+html.dark .mode-info-card__description {
+  color: rgba(203, 213, 225, 0.92);
+}
+
+:root.dark .mode-info-card__chip,
+[data-theme='dark'] .mode-info-card__chip,
+html.dark .mode-info-card__chip {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(241, 245, 249, 0.96);
+}
+
+@media (max-width: 767px) {
+  .mode-info-card {
+    display: none;
+  }
 }
 
 .composer-mode-row {

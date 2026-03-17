@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"golang.org/x/net/html"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // LinkPreviewHandler handles link preview API requests.
@@ -31,16 +34,41 @@ type LinkPreviewResponse struct {
 // NewLinkPreviewHandler creates a new link preview handler.
 func NewLinkPreviewHandler() *LinkPreviewHandler {
 	return &LinkPreviewHandler{
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 5 {
-					return http.ErrUseLastResponse
-				}
-				return nil
-			},
-		},
+		client: newLinkPreviewHTTPClient(),
 	}
+}
+
+func newLinkPreviewHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	baseDial := transport.DialContext
+	if baseDial == nil {
+		dialer := &net.Dialer{Timeout: 10 * time.Second}
+		baseDial = dialer.DialContext
+	}
+
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		host := address
+		if h, _, err := net.SplitHostPort(address); err == nil && h != "" {
+			host = h
+		}
+		if err := tools.GuardOutboundHost(ctx, host, false); err != nil {
+			return nil, err
+		}
+		return baseDial(ctx, network, address)
+	}
+
+	client := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: transport,
+	}
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return http.ErrUseLastResponse
+		}
+		return tools.GuardOutboundHost(req.Context(), req.URL.Hostname(), false)
+	}
+
+	return client
 }
 
 // RegisterRoutes registers link preview routes.
@@ -71,6 +99,11 @@ func (h *LinkPreviewHandler) GetLinkPreview(c echo.Context) error {
 	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "invalid URL",
+		})
+	}
+	if err := tools.GuardOutboundURL(c.Request().Context(), parsedURL.String(), false); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "URL target is not allowed",
 		})
 	}
 

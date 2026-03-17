@@ -25,6 +25,7 @@ type PushNotification struct {
 	Message   string     `json:"message"`
 	FireAt    time.Time  `json:"fire_at"`
 	Recurring string     `json:"recurring,omitempty"` // "", "daily", "weekly", "monthly"
+	UntilAt   *time.Time `json:"until_at,omitempty"`
 	SessionID string     `json:"session_id,omitempty"`
 	CronJobID string     `json:"cron_job_id,omitempty"`
 	Status    string     `json:"status"`
@@ -50,6 +51,7 @@ func (s *Store) migrate() error {
 	// Check if existing table has the expected schema (fire_at column).
 	// If the table exists with an old schema, drop and recreate.
 	var hasFireAt bool
+	var hasUntilAt bool
 	rows, err := s.db.Query(`PRAGMA table_info(push)`)
 	if err == nil {
 		defer rows.Close()
@@ -64,6 +66,9 @@ func (s *Store) migrate() error {
 			}
 			if name == "fire_at" {
 				hasFireAt = true
+			}
+			if name == "until_at" {
+				hasUntilAt = true
 			}
 		}
 		rows.Close()
@@ -81,6 +86,7 @@ func (s *Store) migrate() error {
 			message TEXT NOT NULL,
 			fire_at DATETIME NOT NULL,
 			recurring TEXT DEFAULT '',
+			until_at DATETIME,
 			session_id TEXT DEFAULT '',
 			cron_job_id TEXT DEFAULT '',
 			status TEXT NOT NULL DEFAULT 'pending',
@@ -90,7 +96,15 @@ func (s *Store) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_push_owner ON push(owner_id, status);
 		CREATE INDEX IF NOT EXISTS idx_push_fire_at ON push(fire_at);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	if !hasUntilAt {
+		if _, err := s.db.Exec(`ALTER TABLE push ADD COLUMN until_at DATETIME`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return err
+		}
+	}
+	return nil
 }
 
 func resolveOwnerScope(ownerID []string) string {
@@ -109,9 +123,9 @@ func (s *Store) Create(ctx context.Context, r *PushNotification) error {
 		r.Status = StatusPending
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO push (id, owner_id, message, fire_at, recurring, session_id, cron_job_id, status, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.OwnerID, r.Message, r.FireAt, r.Recurring, r.SessionID, r.CronJobID, r.Status, r.CreatedAt,
+		`INSERT INTO push (id, owner_id, message, fire_at, recurring, until_at, session_id, cron_job_id, status, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.OwnerID, r.Message, r.FireAt, r.Recurring, r.UntilAt, r.SessionID, r.CronJobID, r.Status, r.CreatedAt,
 	)
 	return err
 }
@@ -123,14 +137,14 @@ func (s *Store) Get(ctx context.Context, id string, ownerID ...string) (*PushNot
 	var err error
 	if scopedOwnerID != "" {
 		err = s.db.QueryRowContext(ctx,
-			`SELECT id, owner_id, message, fire_at, recurring, session_id, cron_job_id, status, created_at, fired_at
+			`SELECT id, owner_id, message, fire_at, recurring, until_at, session_id, cron_job_id, status, created_at, fired_at
 			 FROM push WHERE id = ? AND owner_id = ?`, id, scopedOwnerID,
-		).Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt)
+		).Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.UntilAt, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt)
 	} else {
 		err = s.db.QueryRowContext(ctx,
-			`SELECT id, owner_id, message, fire_at, recurring, session_id, cron_job_id, status, created_at, fired_at
+			`SELECT id, owner_id, message, fire_at, recurring, until_at, session_id, cron_job_id, status, created_at, fired_at
 			 FROM push WHERE id = ?`, id,
-		).Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt)
+		).Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.UntilAt, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt)
 	}
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -140,7 +154,7 @@ func (s *Store) Get(ctx context.Context, id string, ownerID ...string) (*PushNot
 
 // ListByOwner returns push notifications for a user, optionally filtered by status.
 func (s *Store) ListByOwner(ctx context.Context, ownerID string, status ...string) ([]*PushNotification, error) {
-	query := `SELECT id, owner_id, message, fire_at, recurring, session_id, cron_job_id, status, created_at, fired_at
+	query := `SELECT id, owner_id, message, fire_at, recurring, until_at, session_id, cron_job_id, status, created_at, fired_at
 	          FROM push WHERE owner_id = ?`
 	args := []any{ownerID}
 
@@ -156,7 +170,7 @@ func (s *Store) ListByOwner(ctx context.Context, ownerID string, status ...strin
 // ListPending returns all pending push notifications (for restart recovery).
 func (s *Store) ListPending(ctx context.Context) ([]*PushNotification, error) {
 	return s.queryPush(ctx,
-		`SELECT id, owner_id, message, fire_at, recurring, session_id, cron_job_id, status, created_at, fired_at
+		`SELECT id, owner_id, message, fire_at, recurring, until_at, session_id, cron_job_id, status, created_at, fired_at
 		 FROM push WHERE status = ? ORDER BY fire_at ASC`, StatusPending)
 }
 
@@ -173,6 +187,14 @@ func (s *Store) UpdateCronJobID(ctx context.Context, id, cronJobID string) error
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE push SET cron_job_id = ? WHERE id = ?`,
 		cronJobID, id)
+	return err
+}
+
+// UpdateSchedule updates the next fire time, cron job ID, and status together.
+func (s *Store) UpdateSchedule(ctx context.Context, id string, fireAt time.Time, cronJobID, status string, firedAt *time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE push SET fire_at = ?, cron_job_id = ?, status = ?, fired_at = ? WHERE id = ?`,
+		fireAt, cronJobID, status, firedAt, id)
 	return err
 }
 
@@ -210,7 +232,7 @@ func (s *Store) queryPush(ctx context.Context, query string, args ...any) ([]*Pu
 	var result []*PushNotification
 	for rows.Next() {
 		r := &PushNotification{}
-		if err := rows.Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.UntilAt, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt); err != nil {
 			return nil, err
 		}
 		result = append(result, r)

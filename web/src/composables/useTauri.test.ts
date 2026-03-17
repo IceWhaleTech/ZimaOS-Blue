@@ -1,16 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-const { revealPathMock, resolveLocalFileMock, isCurrentHostLoopbackMock } = vi.hoisted(() => ({
+const { revealPathMock, resolveLocalFileMock, isCurrentHostLoopbackMock, authFetchMock } =
+  vi.hoisted(() => ({
   revealPathMock: vi.fn(),
   resolveLocalFileMock: vi.fn(),
   isCurrentHostLoopbackMock: vi.fn(),
-}))
+   authFetchMock: vi.fn(),
+ }))
 
 vi.mock('@/api/system', () => ({
   systemApi: {
     revealPath: revealPathMock,
     resolveLocalFile: resolveLocalFileMock,
   },
+}))
+
+vi.mock('@/api/client', () => ({
+  authFetch: authFetchMock,
 }))
 
 vi.mock('@/utils/localPath', async () => {
@@ -30,6 +36,13 @@ declare global {
 }
 
 describe('useTauri', () => {
+  function mockBlobResponse(body: string, type: string, ok = true): Response {
+    return {
+      ok,
+      blob: vi.fn().mockResolvedValue(new Blob([body], { type })),
+    } as unknown as Response
+  }
+
   beforeEach(() => {
     delete window.__TAURI_INTERNALS__
     delete window.__TAURI__
@@ -43,8 +56,14 @@ describe('useTauri', () => {
         download_url: '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt',
       },
     })
+    authFetchMock.mockReset()
+    authFetchMock.mockResolvedValue(mockBlobResponse('report-data', 'text/plain'))
     isCurrentHostLoopbackMock.mockReset()
     isCurrentHostLoopbackMock.mockReturnValue(true)
+    ;(URL as unknown as { createObjectURL: (blob: Blob) => string }).createObjectURL = vi
+      .fn()
+      .mockReturnValue('blob:protected-resource')
+    ;(URL as unknown as { revokeObjectURL: (url: string) => void }).revokeObjectURL = vi.fn()
   })
 
   afterEach(() => {
@@ -125,10 +144,10 @@ describe('useTauri', () => {
       expect(ok).toBe(true)
       expect(invoke).toHaveBeenCalledWith('reveal_path', { path: '/tmp/report.txt' })
       expect(resolveLocalFileMock).toHaveBeenCalledWith('/tmp/report.txt')
-      expect(openSpy).toHaveBeenCalledWith(
+      expect(authFetchMock).toHaveBeenCalledWith(
         '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt',
-        '_blank'
       )
+      expect(openSpy).toHaveBeenCalledWith('blob:protected-resource', '_blank')
       expect(invoke).not.toHaveBeenCalledWith('open_url', { url: '/tmp/report.txt' })
     })
 
@@ -204,10 +223,10 @@ describe('useTauri', () => {
       expect(ok).toBe(true)
       expect(revealPathMock).not.toHaveBeenCalled()
       expect(resolveLocalFileMock).toHaveBeenCalledWith('/tmp/report.txt')
-      expect(openSpy).toHaveBeenCalledWith(
+      expect(authFetchMock).toHaveBeenCalledWith(
         '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt',
-        '_blank'
       )
+      expect(openSpy).toHaveBeenCalledWith('blob:protected-resource', '_blank')
     })
   })
 

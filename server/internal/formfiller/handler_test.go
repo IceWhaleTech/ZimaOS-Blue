@@ -378,6 +378,38 @@ func TestGetSiteMappingHandler_NotFound(t *testing.T) {
 	}
 }
 
+func TestSiteMappingHandler_RejectsInvalidDomain(t *testing.T) {
+	handler, e, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	saveReq := httptest.NewRequest(http.MethodPut, "/sites/../escape", bytes.NewBufferString(`{"field_mappings":{"#email":"email"}}`))
+	saveReq.Header.Set("Content-Type", "application/json")
+	saveRec := httptest.NewRecorder()
+	saveCtx := e.NewContext(saveReq, saveRec)
+	saveCtx.SetParamNames("domain")
+	saveCtx.SetParamValues("../escape")
+
+	if err := handler.SaveSiteMapping(saveCtx); err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+	if saveRec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status %d, got %d", http.StatusBadRequest, saveRec.Code)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/sites/../escape", nil)
+	getRec := httptest.NewRecorder()
+	getCtx := e.NewContext(getReq, getRec)
+	getCtx.SetParamNames("domain")
+	getCtx.SetParamValues("../escape")
+
+	if err := handler.GetSiteMapping(getCtx); err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+	if getRec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status %d, got %d", http.StatusBadRequest, getRec.Code)
+	}
+}
+
 func TestDetectFieldsHandler(t *testing.T) {
 	handler, e, cleanup := setupTestHandler(t)
 	defer cleanup()

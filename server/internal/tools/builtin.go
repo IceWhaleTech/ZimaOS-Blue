@@ -89,7 +89,7 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	maxBytes = fsClamp(maxBytes, 1, int(f.MaxFileSize))
 
-	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, path, false)
+	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, "read", path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 		return nil, errors.New("line must be >= 1")
 	}
 
-	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, path, false)
+	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, "write", path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -427,6 +427,38 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 	registry.Register(NewWebExtractTool(webFetchConfig))
 	registry.Register(NewWebCrawlTool(webFetchConfig))
 	registry.Register(NewMCPTool(registry))
+}
+
+// RegisterApprovalAwareFileTools re-registers filesystem tools with the same
+// scope as the default builtins plus exec-style approval handling for
+// out-of-scope absolute paths.
+func RegisterApprovalAwareFileTools(registry *Registry, allowedPaths []string, maxFileSize int64, approvals *ApprovalManager, dirStore *DirAllowlistStore) {
+	if registry == nil {
+		return
+	}
+	read := NewFileReadTool(allowedPaths, maxFileSize)
+	read.scope = read.scope.withApprovalFlow(approvals, dirStore)
+	registry.Register(read)
+
+	write := NewFileWriteTool(allowedPaths, maxFileSize)
+	write.scope = write.scope.withApprovalFlow(approvals, dirStore)
+	registry.Register(write)
+
+	edit := NewEditTool(allowedPaths, maxFileSize)
+	edit.Scope = edit.Scope.withApprovalFlow(approvals, dirStore)
+	registry.Register(edit)
+
+	grep := NewGrepTool(allowedPaths, maxFileSize)
+	grep.Scope = grep.Scope.withApprovalFlow(approvals, dirStore)
+	registry.Register(grep)
+
+	find := NewFindTool(allowedPaths)
+	find.Scope = find.Scope.withApprovalFlow(approvals, dirStore)
+	registry.Register(find)
+
+	ls := NewLsTool(allowedPaths)
+	ls.Scope = ls.Scope.withApprovalFlow(approvals, dirStore)
+	registry.Register(ls)
 }
 
 // RegisterExecTools registers exec + process tools with shared session state.

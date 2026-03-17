@@ -143,6 +143,47 @@ func TestRepository_DeleteWorkflow(t *testing.T) {
 	}
 }
 
+func TestRepository_GetWorkflowHonorsTenantContext(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo, _ := NewRepository(db)
+	ctx := context.Background()
+
+	tenantOne := &Workflow{
+		TenantID: "tenant-1",
+		Name:     "Tenant One Workflow",
+		Status:   WorkflowStatusDraft,
+		Nodes:    []Node{{ID: "trigger-1", Type: NodeTypeTrigger, Name: "Trigger"}},
+	}
+	tenantTwo := &Workflow{
+		TenantID: "tenant-2",
+		Name:     "Tenant Two Workflow",
+		Status:   WorkflowStatusDraft,
+		Nodes:    []Node{{ID: "trigger-2", Type: NodeTypeTrigger, Name: "Trigger"}},
+	}
+
+	if err := repo.CreateWorkflow(ctx, tenantOne); err != nil {
+		t.Fatalf("create tenant one workflow: %v", err)
+	}
+	if err := repo.CreateWorkflow(ctx, tenantTwo); err != nil {
+		t.Fatalf("create tenant two workflow: %v", err)
+	}
+
+	_, err := repo.GetWorkflow(withWorkflowTenant(ctx, "tenant-1"), tenantTwo.ID)
+	if err != ErrWorkflowNotFound {
+		t.Fatalf("GetWorkflow cross-tenant error = %v, want ErrWorkflowNotFound", err)
+	}
+
+	got, err := repo.GetWorkflow(withWorkflowTenant(ctx, "tenant-1"), tenantOne.ID)
+	if err != nil {
+		t.Fatalf("GetWorkflow tenant-scoped fetch failed: %v", err)
+	}
+	if got.TenantID != "tenant-1" {
+		t.Fatalf("tenant_id = %q, want %q", got.TenantID, "tenant-1")
+	}
+}
+
 func TestRepository_ListWorkflows(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/gorilla/websocket"
+	"github.com/labstack/echo/v4"
 )
 
 // WebSocketHandler handles WebSocket connections for real-time event streaming.
@@ -39,13 +39,20 @@ func NewWebSocketHandler(streamer Streamer, config *Config) *WebSocketHandler {
 
 // RegisterRoutes registers the WebSocket routes.
 func (h *WebSocketHandler) RegisterRoutes(e *echo.Echo) {
-	// Register under /api/v1/companion
-	e.GET("/api/v1/companion/stream", h.HandleStream)
-	e.GET("/api/v1/companion/session/:id", h.HandleSessionStream)
+	h.RegisterGroupRoutes(e.Group("/api/v1"))
+	h.RegisterCompatGroupRoutes(e.Group("/api"))
+}
 
-	// Also register under /api/companion for frontend compatibility
-	e.GET("/api/companion/stream", h.HandleStream)
-	e.GET("/api/companion/session/:id", h.HandleSessionStream)
+// RegisterGroupRoutes registers WebSocket routes on an existing API group.
+func (h *WebSocketHandler) RegisterGroupRoutes(g *echo.Group) {
+	g.GET("/companion/stream", h.HandleStream)
+	g.GET("/companion/session/:id", h.HandleSessionStream)
+}
+
+// RegisterCompatGroupRoutes registers frontend-compatible WebSocket routes.
+func (h *WebSocketHandler) RegisterCompatGroupRoutes(g *echo.Group) {
+	g.GET("/companion/stream", h.HandleStream)
+	g.GET("/companion/session/:id", h.HandleSessionStream)
 }
 
 // HandleStream handles the main event stream WebSocket endpoint.

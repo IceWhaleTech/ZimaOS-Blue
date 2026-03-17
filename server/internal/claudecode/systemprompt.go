@@ -251,6 +251,7 @@ const (
 	agentModeExecutionTail = "Use exec for file ops, installs, builds, tests. For large file creation or edits via the write tool, never send one huge payload: write the first chunk, then continue with smaller chunks using append=true. Do NOT stop early. Do NOT call exec without a concrete command — think first, then execute." +
 		" When facing multiple valid approaches or ambiguous requirements, use ask instead of guessing." +
 		" Prefer ask format: {\"questions\":[{\"question\":\"...\",\"type\":\"radio\",\"options\":[...]}]}." +
+		" Text-input ask format: {\"questions\":[{\"question\":\"...\",\"type\":\"text\"}]}." +
 		" Single-question shorthand: use \"q\" for single-select or \"mq\" for multi-select, with \"a\" as the options array (2-4 strings)." +
 		" Example: {\"q\":\"Which approach?\",\"a\":[\"Option A\",\"Option B\"]}</execution>"
 
@@ -591,7 +592,7 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). For reminders, prefer `blue reminder.add message=\"...\" time=...` (or call tool `reminder` directly); do not use `blue reminder --help` as an execution step. ")
+	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). For reminders, prefer `blue reminder.add message=\"...\" time=...` or repeating `blue reminder.add message=\"...\" every=2m until=\"2026-03-17 22:00\"` (or call tool `reminder` directly); do not use `blue reminder --help` as an execution step. Use `scheduler` for cron-style automation jobs, not ordinary user reminders. ")
 	sb.WriteString("Routing: ask→ask, search→web_search, public URL read→web_fetch, interactive/login URL→browser, UI review→ui_reviewer, PPT/slide visuals→ppt, analyze→analyze, reminder/alert→reminder, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. If web_fetch returns warning_code=login_wall, challenge, or browser_required, switch to browser. ")
 	sb.WriteString("Use progressive skill selection: prefer routed/pinned commands first, then inspect likely SKILL.md files on demand. ")
 	sb.WriteString("More skills in workspace `.claude/skills/` and user default `~/.claude/skills/`.")

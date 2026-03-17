@@ -254,6 +254,25 @@ interface ActiveConversationStreamState {
   toolSandboxAvailable: boolean
   awaitingConfirmation: boolean
   previewContent: string
+  processContentLength: number
+  toolResults: ToolResultItem[]
+  statusStartedAt: number
+  statusSummary: string | null
+}
+
+type SendMessageFileAttachment = {
+  id: string
+  file: File
+  name: string
+  size: number
+  type: string
+  preview?: string
+  duration?: number
+}
+
+interface SendMessageOptions {
+  existingAttachments?: MessageAttachment[]
+  skipConversationCreate?: boolean
 }
 
 export const useChatStore = defineStore('chat', () => {
@@ -357,6 +376,8 @@ export const useChatStore = defineStore('chat', () => {
   const error = ref<string | null>(null)
   const streamError = ref<string | null>(null) // Error from stream (displayed in chat area)
   const streamProgress = ref<string | null>(null) // Upstream metadata progress before first visible delta
+  const statusStartedAt = ref(0)
+  const statusSummary = ref<string | null>(null)
   const securityBlocked = ref<{ message: string; threatLevel: string } | null>(null)
   const trialExhausted = ref(false) // Trial quota exhausted flag
   const toolExecuting = ref(false) // Tool execution in progress
@@ -469,6 +490,70 @@ export const useChatStore = defineStore('chat', () => {
   let pendingRecoveryRetryCount = 0
   let pendingRecoveryRetryTimer: ReturnType<typeof setTimeout> | null = null
 
+  function cloneToolResultItems(items?: ToolResultItem[]): ToolResultItem[] {
+    if (!items || items.length === 0) return []
+    return items.map((item) => ({ ...item }))
+  }
+
+  function extractHostLabelFromText(text: string): string {
+    const match = text.match(/https?:\/\/[^\s"'`]+/i)
+    if (!match) return ''
+    try {
+      return new URL(match[0]).hostname.replace(/^www\./, '')
+    } catch {
+      return ''
+    }
+  }
+
+  function formatAssistantStatusSummaryFromTools(
+    toolNames: string[] = [],
+    toolCommands: string[] = []
+  ): string {
+    const t = i18n.global.t
+    const te = i18n.global.te
+    const resolve = (key: string, fallback: string, named?: Record<string, string>) =>
+      te(key) ? String(named ? t(key, named) : t(key)) : fallback
+
+    const normalizedNames = toolNames.map((value) => value.toLowerCase())
+    const normalizedCommands = toolCommands.map((value) => value.toLowerCase())
+    const combined = [...normalizedNames, ...normalizedCommands]
+    const host =
+      toolCommands.map((command) => extractHostLabelFromText(command)).find(Boolean) || ''
+
+    const hasSearch = combined.some(
+      (value) =>
+        value.includes('search') ||
+        value.includes('find') ||
+        value.includes('query') ||
+        value.includes('lookup')
+    )
+    const hasWebRead = combined.some(
+      (value) =>
+        value.includes('web_fetch') ||
+        value.includes('browser') ||
+        value.includes('navigate') ||
+        value.includes('snapshot') ||
+        value.includes('screenshot') ||
+        value.includes('fetch') ||
+        value.includes('open') ||
+        value.includes('click')
+    )
+
+    if (host && hasWebRead) {
+      return resolve('chat.assistantStatus.readingWebSite', `Reading ${host}`, { site: host })
+    }
+    if (hasSearch && hasWebRead) {
+      return resolve('chat.assistantStatus.browsingWeb', 'Browsing the web')
+    }
+    if (hasSearch) {
+      return resolve('chat.assistantStatus.searchingWeb', 'Searching the web')
+    }
+    if (hasWebRead) {
+      return resolve('chat.assistantStatus.readingWeb', 'Reading a web page')
+    }
+    return resolve('chat.assistantStatus.usingTools', 'Using tools')
+  }
+
   function getActiveStreamState(
     conversationId?: string | null
   ): ActiveConversationStreamState | null {
@@ -483,7 +568,11 @@ export const useChatStore = defineStore('chat', () => {
     streaming.value = !!state?.streaming
     activeStreamId.value = state?.streamId ?? null
     streamProgress.value = state?.receivedFirstChunk ? null : (state?.streamProgress ?? null)
+    statusStartedAt.value = state?.statusStartedAt ?? 0
+    statusSummary.value = state?.statusSummary ?? null
     _receivedFirstChunk.value = !!state?.receivedFirstChunk
+    processContentLength.value = state?.processContentLength ?? 0
+    toolResults.value = cloneToolResultItems(state?.toolResults)
 
     if (state?.toolExecuting) {
       toolExecutingStartTime.value = state.toolExecutingStartTime
@@ -518,6 +607,10 @@ export const useChatStore = defineStore('chat', () => {
       toolSandboxAvailable: false,
       awaitingConfirmation: false,
       previewContent: '',
+      processContentLength: 0,
+      toolResults: [],
+      statusStartedAt: Date.now(),
+      statusSummary: null,
     }
     activeStreamState.value = next
     if (currentConversationId.value === conversationId) {
@@ -540,6 +633,7 @@ export const useChatStore = defineStore('chat', () => {
       toolExecutingCommands: patch.toolExecutingCommands
         ? [...patch.toolExecutingCommands]
         : current.toolExecutingCommands,
+      toolResults: patch.toolResults ? cloneToolResultItems(patch.toolResults) : current.toolResults,
     }
     activeStreamState.value = next
     if (currentConversationId.value === conversationId) {
@@ -551,11 +645,14 @@ export const useChatStore = defineStore('chat', () => {
     if (!delta) return
     const current = getActiveStreamState(conversationId)
     if (!current) return
+    const nextSummary = formatStreamProgress('response.output_text.delta')
     updateActiveStreamState(conversationId, {
       previewContent: current.previewContent + delta,
       receivedFirstChunk: true,
       streamProgress: null,
       toolExecuting: false,
+      statusSummary: nextSummary,
+      statusStartedAt: current.statusSummary === nextSummary ? current.statusStartedAt : Date.now(),
     })
   }
 
@@ -570,6 +667,10 @@ export const useChatStore = defineStore('chat', () => {
       toolSandboxAvailable: false,
       awaitingConfirmation: false,
       previewContent: '',
+      processContentLength: 0,
+      toolResults: [],
+      statusStartedAt: Date.now(),
+      statusSummary: null,
     })
   }
 
@@ -584,6 +685,8 @@ export const useChatStore = defineStore('chat', () => {
     sending.value = false
     streaming.value = false
     streamProgress.value = null
+    statusStartedAt.value = 0
+    statusSummary.value = null
     toolExecuting.value = false
     toolExecutingStartTime.value = 0
     activeStreamId.value = null
@@ -625,15 +728,20 @@ export const useChatStore = defineStore('chat', () => {
         lastMessage.content = previewContent
         triggerRef(messages)
       }
-    } else {
+    } else if (
+      previewContent ||
+      state.toolResults.length > 0 ||
+      state.toolExecuting ||
+      state.awaitingConfirmation ||
+      state.statusSummary ||
+      state.streamProgress
+    ) {
       const assistantMessage = createStreamingAssistantMessage(conversationId)
       assistantMessage.content = previewContent
       messages.value = [...messages.value, assistantMessage]
     }
 
     streamingContent.value = previewContent
-    processContentLength.value = 0
-    toolResults.value = []
     applyVisibleStreamState(state)
   }
 
@@ -653,15 +761,21 @@ export const useChatStore = defineStore('chat', () => {
       onStreamProgress: (progress) => {
         const current = getActiveStreamState(conversationId)
         if (current && !current.receivedFirstChunk) {
+          const nextSummary = formatStreamProgress(progress)
           updateActiveStreamState(conversationId, {
-            streamProgress: formatStreamProgress(progress),
+            streamProgress: nextSummary,
+            statusSummary: nextSummary,
+            statusStartedAt: current.statusSummary === nextSummary ? current.statusStartedAt : Date.now(),
           })
         }
         options.onStreamProgress?.(progress)
       },
       onMessage: (chunk) => {
         if (chunk.awaiting_user_input) {
-          updateActiveStreamState(conversationId, { awaitingConfirmation: true })
+          updateActiveStreamState(conversationId, {
+            awaitingConfirmation: true,
+            statusStartedAt: Date.now(),
+          })
         }
         if (chunk.delta) {
           appendActiveStreamPreview(conversationId, chunk.delta)
@@ -669,16 +783,25 @@ export const useChatStore = defineStore('chat', () => {
         options.onMessage(chunk)
       },
       onToolExecuting: (toolCount, toolNames, sandboxAvailable, toolCommands) => {
+        const nextSummary = formatAssistantStatusSummaryFromTools(toolNames || [], toolCommands || [])
         updateActiveStreamState(conversationId, {
           toolExecuting: true,
           toolExecutingStartTime: Date.now(),
           toolExecutingNames: toolNames || [],
           toolExecutingCommands: toolCommands || [],
           toolSandboxAvailable: !!sandboxAvailable,
+          statusSummary: nextSummary,
+          statusStartedAt: Date.now(),
         })
         options.onToolExecuting?.(toolCount, toolNames, sandboxAvailable, toolCommands)
       },
       onToolResults: (results, toolRound) => {
+        const current = getActiveStreamState(conversationId)
+        if (current) {
+          updateActiveStreamState(conversationId, {
+            toolResults: [...current.toolResults, ...parseToolResults(results)],
+          })
+        }
         options.onToolResults?.(results, toolRound)
       },
       onNewMessage: (toolRound) => {
@@ -1236,8 +1359,8 @@ export const useChatStore = defineStore('chat', () => {
     if (currentConversationId.value) {
       updateActiveStreamState(currentConversationId.value, {
         streamId: activeStreamId.value,
-        sending: true,
-        streaming: true,
+        sending: sending.value,
+        streaming: streaming.value,
         receivedFirstChunk: _receivedFirstChunk.value,
         streamProgress: streamProgress.value,
         toolExecuting: toolExecuting.value,
@@ -1251,6 +1374,10 @@ export const useChatStore = defineStore('chat', () => {
           !!pendingApproval.value ||
           !!pendingExecApproval.value,
         previewContent: streamingContent.value,
+        processContentLength: processContentLength.value,
+        toolResults: cloneToolResultItems(toolResults.value),
+        statusStartedAt: statusStartedAt.value,
+        statusSummary: statusSummary.value,
       })
     }
     pendingQuestion.value = null
@@ -1470,19 +1597,20 @@ export const useChatStore = defineStore('chat', () => {
     touchConversationLocal(conversationId)
   }
 
+  function cloneMessageAttachments(
+    attachments?: MessageAttachment[]
+  ): MessageAttachment[] | undefined {
+    if (!attachments || attachments.length === 0) return undefined
+    return attachments.map((attachment) => ({ ...attachment }))
+  }
+
   async function sendMessage(
     content: string,
-    fileAttachments?: {
-      id: string
-      file: File
-      name: string
-      size: number
-      type: string
-      preview?: string
-      duration?: number
-    }[]
+    fileAttachments?: SendMessageFileAttachment[],
+    options?: SendMessageOptions
   ) {
     if (!currentConversationId.value) {
+      if (options?.skipConversationCreate) return
       // Use the first part of the message as the conversation title
       const title = content.length > 30 ? content.substring(0, 30) + '...' : content
       await createConversation(title)
@@ -1490,12 +1618,15 @@ export const useChatStore = defineStore('chat', () => {
 
     const conversationId = currentConversationId.value!
     const settingsStore = useSettingsStore()
+    const existingAttachments = cloneMessageAttachments(options?.existingAttachments)
+    const hasAnyAttachments =
+      (existingAttachments?.length ?? 0) > 0 || (fileAttachments?.length ?? 0) > 0
     const shouldRefreshCommandStateAfterComplete =
-      (!fileAttachments || fileAttachments.length === 0) && isSlashCommandText(content)
+      !hasAnyAttachments && isSlashCommandText(content)
 
     // Convert file attachments to MessageAttachment format (base64)
-    const attachments: MessageAttachment[] = []
-    if (fileAttachments && fileAttachments.length > 0) {
+    const attachments: MessageAttachment[] = existingAttachments ? [...existingAttachments] : []
+    if (!existingAttachments && fileAttachments && fileAttachments.length > 0) {
       for (const attachment of fileAttachments) {
         // For images, check if preview is a data URL (not blob URL) or read the file
         let base64Data = ''
@@ -1624,10 +1755,8 @@ export const useChatStore = defineStore('chat', () => {
           toolExecutingCommands.value = toolCommands || []
           toolSandboxAvailable.value = !!sandboxAvailable
         },
-        onToolResults: (results, _toolRound) => {
+        onToolResults: (_results, _toolRound) => {
           if (currentConversationId.value !== sendConvId) return
-          // Store structured tool results for detail cards
-          toolResults.value = [...toolResults.value, ...parseToolResults(results)]
         },
         onNewMessage: () => {
           if (currentConversationId.value !== sendConvId) return
@@ -1872,6 +2001,43 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function editMessageAndResubmit(messageId: string, content: string) {
+    if (!currentConversationId.value || streaming.value || sending.value) return
+
+    const conversationId = currentConversationId.value
+    const targetIndex = messages.value.findIndex((message) => message.id === messageId)
+    if (targetIndex < 0) return
+
+    const targetMessage = messages.value[targetIndex]
+    if (!targetMessage || targetMessage.role !== 'user') return
+    if (targetMessage.id.startsWith('temp-') || targetMessage.id.startsWith('streaming-')) return
+
+    const nextContent = content.trim()
+    const nextAttachments = cloneMessageAttachments(targetMessage.attachments)
+    if (!nextContent && (!nextAttachments || nextAttachments.length === 0)) return
+
+    const messagesToReplace = messages.value.slice(targetIndex)
+    const persistedMessageIds = messagesToReplace
+      .map((message) => message.id)
+      .filter((id) => !id.startsWith('temp-') && !id.startsWith('streaming-'))
+
+    try {
+      if (persistedMessageIds.length > 0) {
+        await messageApi.delete(conversationId, persistedMessageIds)
+      }
+
+      messages.value = messages.value.slice(0, targetIndex)
+      clearSelection()
+      await sendMessage(nextContent, undefined, {
+        existingAttachments: nextAttachments,
+        skipConversationCreate: true,
+      })
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to edit message'
+      throw e
+    }
+  }
+
   function cancelStreaming() {
     flushPendingStreamDelta(currentConversationId.value)
     void cancelActiveStreamOnServer(currentConversationId.value)
@@ -2013,9 +2179,8 @@ export const useChatStore = defineStore('chat', () => {
           toolExecutingCommands.value = toolCommands || []
           toolSandboxAvailable.value = !!sandboxAvailable
         },
-        onToolResults: (results, _toolRound) => {
+        onToolResults: (_results, _toolRound) => {
           if (currentConversationId.value !== convId) return
-          toolResults.value = [...toolResults.value, ...parseToolResults(results)]
         },
         onNewMessage: () => {
           if (currentConversationId.value !== convId) return
@@ -2149,9 +2314,8 @@ export const useChatStore = defineStore('chat', () => {
           toolExecutingCommands.value = toolCommands || []
           toolSandboxAvailable.value = !!sandboxAvailable
         },
-        onToolResults: (results, _toolRound) => {
+        onToolResults: (_results, _toolRound) => {
           if (currentConversationId.value !== conversationId) return
-          toolResults.value = [...toolResults.value, ...parseToolResults(results)]
         },
         onNewMessage: () => {
           if (currentConversationId.value !== conversationId) return
@@ -2318,9 +2482,8 @@ export const useChatStore = defineStore('chat', () => {
           toolExecutingCommands.value = toolCommands || []
           toolSandboxAvailable.value = !!sandboxAvailable
         },
-        onToolResults: (results, _toolRound) => {
+        onToolResults: (_results, _toolRound) => {
           if (currentConversationId.value !== conversationId) return
-          toolResults.value = [...toolResults.value, ...parseToolResults(results)]
         },
         onNewMessage: () => {
           if (currentConversationId.value !== conversationId) return
@@ -2836,6 +2999,8 @@ export const useChatStore = defineStore('chat', () => {
     error,
     streamError,
     streamProgress,
+    statusStartedAt,
+    statusSummary,
     securityBlocked,
     trialExhausted,
     toolExecuting,
@@ -2883,6 +3048,7 @@ export const useChatStore = defineStore('chat', () => {
     cancelPreTTFT,
     continueMessage,
     regenerateMessage,
+    editMessageAndResubmit,
     searchConversations,
     clearSearch,
     clearError,

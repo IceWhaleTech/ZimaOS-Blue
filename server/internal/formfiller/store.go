@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 // Store handles persistence for form filler data.
@@ -312,8 +312,13 @@ func (s *Store) UpdatePatterns(patterns map[FieldType][]string) error {
 
 // GetSiteMapping returns a site mapping by domain.
 func (s *Store) GetSiteMapping(domain string) (*SiteMapping, error) {
+	normalized, err := normalizeDomain(domain)
+	if err != nil {
+		return nil, err
+	}
+
 	s.mu.RLock()
-	mapping, ok := s.sites[domain]
+	mapping, ok := s.sites[normalized]
 	s.mu.RUnlock()
 
 	if ok {
@@ -321,16 +326,16 @@ func (s *Store) GetSiteMapping(domain string) (*SiteMapping, error) {
 	}
 
 	// Try to load from disk
-	mapping, err := s.loadSiteMapping(domain)
+	mapping, err = s.loadSiteMapping(normalized)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("site mapping not found: %s", domain)
+			return nil, fmt.Errorf("site mapping not found: %s", normalized)
 		}
 		return nil, err
 	}
 
 	s.mu.Lock()
-	s.sites[domain] = mapping
+	s.sites[normalized] = mapping
 	s.mu.Unlock()
 
 	return mapping, nil
@@ -338,11 +343,17 @@ func (s *Store) GetSiteMapping(domain string) (*SiteMapping, error) {
 
 // SaveSiteMapping saves a site mapping.
 func (s *Store) SaveSiteMapping(mapping *SiteMapping) error {
+	normalized, err := normalizeDomain(mapping.Domain)
+	if err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	mapping.Domain = normalized
 	mapping.LastUsed = timeutil.NowTime()
-	s.sites[mapping.Domain] = mapping
+	s.sites[normalized] = mapping
 
 	return s.saveSiteMapping(mapping)
 }

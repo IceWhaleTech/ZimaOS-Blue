@@ -172,9 +172,6 @@ func (s *Scheduler) Validate(input map[string]any) error {
 
 	switch actionStr {
 	case "create":
-		if _, ok := input["name"]; !ok {
-			return fmt.Errorf("name is required for create action")
-		}
 		if _, ok := input["schedule"]; !ok {
 			return fmt.Errorf("schedule is required for create action")
 		}
@@ -225,13 +222,16 @@ func (s *Scheduler) Execute(ctx context.Context, input map[string]any) (*skill.R
 }
 
 func (s *Scheduler) createJob(ctx context.Context, svc CronServiceInterface, input map[string]any) (*skill.Result, error) {
-	name := input["name"].(string)
+	name, _ := input["name"].(string)
 	schedule := input["schedule"].(string)
 	command := input["command"].(string)
 
 	var description string
 	if d, ok := input["description"].(string); ok {
 		description = d
+	}
+	if strings.TrimSpace(name) == "" {
+		name = fallbackSchedulerName(command, description)
 	}
 
 	payload := map[string]interface{}{
@@ -253,6 +253,26 @@ func (s *Scheduler) createJob(ctx context.Context, svc CronServiceInterface, inp
 		"job":     job,
 		"message": fmt.Sprintf("Scheduled job '%s' created: %s → %s", name, schedule, command),
 	}), nil
+}
+
+func fallbackSchedulerName(command, description string) string {
+	base := strings.TrimSpace(description)
+	if base == "" {
+		base = strings.TrimSpace(command)
+	}
+	if base == "" {
+		return "scheduled-task"
+	}
+	base = strings.ReplaceAll(base, "\n", " ")
+	base = strings.Join(strings.Fields(base), " ")
+	if len(base) > 48 {
+		base = strings.TrimSpace(base[:48])
+	}
+	base = strings.Trim(base, " -_")
+	if base == "" {
+		return "scheduled-task"
+	}
+	return base
 }
 
 func (s *Scheduler) listJobs(svc CronServiceInterface) (*skill.Result, error) {

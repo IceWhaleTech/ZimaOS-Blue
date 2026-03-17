@@ -32,17 +32,18 @@ func toPushResult(r *PushNotification) tools.PushResult {
 		Message:   r.Message,
 		FireAt:    r.FireAt,
 		Recurring: r.Recurring,
+		UntilAt:   r.UntilAt,
 		Status:    r.Status,
 		CreatedAt: r.CreatedAt,
 	}
 }
 
-func (a *ToolsAdapter) Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (tools.PushResult, error) {
+func (a *ToolsAdapter) Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string, untilAt *time.Time) (tools.PushResult, error) {
 	s, err := a.svc()
 	if err != nil {
 		return tools.PushResult{}, err
 	}
-	r, err := s.Add(ctx, ownerID, message, fireAt, recurring, sessionID)
+	r, err := s.Add(ctx, ownerID, message, fireAt, recurring, sessionID, untilAt)
 	if err != nil {
 		return tools.PushResult{}, err
 	}

@@ -42,6 +42,11 @@ describe('CronView', () => {
         },
       ],
     } as never)
+    vi.mocked(cronApi.create).mockResolvedValue({
+      data: {
+        id: 'job-created',
+      },
+    } as never)
     vi.mocked(cronApi.getExecutions).mockResolvedValue({
       data: [
         {
@@ -83,5 +88,59 @@ describe('CronView', () => {
 
     expect(wrapper.text()).toContain('2ms')
     expect(wrapper.text()).toContain('completed')
+  })
+
+  it('keeps optional settings collapsed until expanded in the create modal', async () => {
+    const wrapper = mount(CronView, {
+      global: {
+        plugins: [createPinia(), i18n],
+      },
+    })
+
+    await flushPromises()
+    await wrapper.get('.automation-create-button').trigger('click')
+
+    expect(wrapper.find('.automation-modal-panel--form').exists()).toBe(true)
+    expect(wrapper.find('.automation-modal-scroll--form').exists()).toBe(true)
+    expect(wrapper.find('#cron-optional-settings').exists()).toBe(false)
+
+    await wrapper.get('.automation-disclosure-button').trigger('click')
+
+    expect(wrapper.find('#cron-optional-settings').exists()).toBe(true)
+  })
+
+  it('does not submit the default timeout for http tasks', async () => {
+    const wrapper = mount(CronView, {
+      global: {
+        plugins: [createPinia(), i18n],
+      },
+    })
+
+    await flushPromises()
+    await wrapper.get('.automation-create-button').trigger('click')
+
+    const handlerCards = wrapper.findAll('.automation-handler-card')
+    await handlerCards[1]!.trigger('click')
+
+    const textInputs = wrapper.findAll('input[type="text"]')
+    await textInputs[0]!.setValue('Status webhook')
+    await textInputs[1]!.setValue('0 * * * *')
+    await wrapper.get('input[type="url"]').setValue('https://example.com/hook')
+    await wrapper.get('form.automation-form--modal').trigger('submit')
+    await flushPromises()
+
+    expect(cronApi.create).toHaveBeenCalledTimes(1)
+
+    const request = vi.mocked(cronApi.create).mock.calls[0]?.[0]
+    expect(request).toMatchObject({
+      name: 'Status webhook',
+      schedule: '0 * * * *',
+      handler: 'http',
+      payload: {
+        url: 'https://example.com/hook',
+        method: 'GET',
+      },
+    })
+    expect(request?.payload).not.toHaveProperty('timeout')
   })
 })

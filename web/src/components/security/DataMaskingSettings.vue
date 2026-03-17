@@ -26,8 +26,8 @@ const customRulePattern = ref('')
 const customRuleReplacement = ref('【{MASKED}】[CUSTOM]')
 const customRuleDirection = ref<MaskingRule['direction']>('both')
 
-function tr(key: string, fallback = ''): string {
-  return te(key) ? t(key) : fallback
+function tr(key: string, fallback = '', values?: Record<string, string | number>): string {
+  return te(key) ? t(key, values ?? {}) : fallback
 }
 
 const maskingSummary = computed(() => {
@@ -184,11 +184,11 @@ async function addCustomMaskingRule() {
 
 async function deleteCustomMaskingRule(rule: MaskingRule) {
   if (deletingMaskingRuleId.value) return
+  const ruleLabel = rule.name || rule.id
   const confirmed = window.confirm(
-    tr(
-      'apiProxy.customMaskingDeleteConfirm',
-      `Delete custom masking rule "${rule.name || rule.id}"?`
-    )
+    tr('apiProxy.customMaskingDeleteConfirm', `Delete custom masking rule "${ruleLabel}"?`, {
+      name: ruleLabel,
+    })
   )
   if (!confirmed) return
 
@@ -244,7 +244,7 @@ onMounted(() => {
       <p class="text-gray-400 mt-2 text-sm">{{ t('common.loading') }}</p>
     </div>
 
-    <div v-else-if="maskingStats" class="glass-card p-6 space-y-5">
+    <div v-else-if="maskingStats" class="glass-card security-outlined-card p-6 space-y-5">
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -303,7 +303,7 @@ onMounted(() => {
             <div
               v-for="rule in builtinMaskingRules"
               :key="rule.id"
-              class="rounded-lg bg-gray-50 dark:bg-gray-700/30 px-3 py-3"
+              class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/35"
             >
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
@@ -355,7 +355,7 @@ onMounted(() => {
             <div
               v-for="rule in customMaskingRules"
               :key="rule.id"
-              class="rounded-lg bg-gray-50 dark:bg-gray-700/30 px-3 py-3"
+              class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/35"
             >
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
@@ -417,11 +417,13 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="rounded-xl bg-gray-50 dark:bg-gray-700/20 border border-gray-200 dark:border-white/10 p-4">
+      <div
+        class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-slate-700 dark:bg-slate-800/35"
+      >
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-              {{ tr('apiProxy.customMaskingTitle', 'Custom Masking Rules') }}
+              {{ tr('apiProxy.customMaskingTitle', 'Custom Data Masking Rules') }}
             </h4>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{
@@ -440,7 +442,7 @@ onMounted(() => {
         <div class="mt-4 grid gap-3 md:grid-cols-2">
           <label class="space-y-1">
             <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
-              {{ tr('common.name', 'Name') }}
+              {{ tr('apiProxy.customMaskingNameLabel', 'Name') }}
             </span>
             <input
               v-model="customRuleName"
@@ -497,7 +499,9 @@ onMounted(() => {
               data-testid="masking-custom-replacement"
               class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-mono text-gray-900 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:focus:border-gray-300 dark:focus:ring-gray-300/10"
               :placeholder="
-                tr('apiProxy.customMaskingReplacementPlaceholder', 'Example: 【{MASKED}】[TICKET]')
+                tr('apiProxy.customMaskingReplacementPlaceholder', 'Example: 【{MASKED}】[TICKET]', {
+                  maskLabel: '{MASKED}',
+                })
               "
             />
           </label>
@@ -508,7 +512,8 @@ onMounted(() => {
             {{
               tr(
                 'apiProxy.customMaskingHint',
-                'Use a valid regular expression. {MASKED} in replacement text keeps the localized mask label.'
+                'Use a valid regular expression. {MASKED} in replacement text keeps the localized mask label.',
+                { maskLabel: '{MASKED}' }
               )
             }}
           </p>

@@ -16,6 +16,7 @@ const executions = ref<JobExecution[]>([])
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showExecutionsModal = ref(false)
+const advancedOptionsOpen = ref(false)
 
 // Form
 const jobForm = ref({
@@ -88,6 +89,10 @@ onMounted(async () => {
   await loadJobs()
 })
 
+function getDefaultTimeout(handler: string): number {
+  return handler === 'http' ? 30 : 60
+}
+
 async function loadJobs() {
   try {
     loading.value = true
@@ -109,16 +114,19 @@ function openCreateModal() {
     payload: '{}',
     command: '',
     workdir: '',
-    timeout: 60,
+    timeout: getDefaultTimeout('command'),
     url: '',
     method: 'GET',
   }
+  advancedOptionsOpen.value = false
   showCreateModal.value = true
 }
 
 function openEditModal(job: CronJob) {
   selectedJob.value = job
   const payload = job.payload || {}
+  const timeout =
+    typeof payload.timeout === 'number' ? payload.timeout : getDefaultTimeout(job.handler)
   jobForm.value = {
     name: job.name,
     description: job.description || '',
@@ -128,17 +136,31 @@ function openEditModal(job: CronJob) {
     // Extract command handler fields
     command: (payload.command as string) || '',
     workdir: (payload.workdir as string) || '',
-    timeout: (payload.timeout as number) || 60,
+    timeout,
     // Extract HTTP handler fields
     url: (payload.url as string) || '',
     method: (payload.method as string) || 'GET',
   }
+  advancedOptionsOpen.value =
+    Boolean(job.description) ||
+    (job.handler === 'command' &&
+      (Boolean(payload.workdir) || timeout !== getDefaultTimeout('command'))) ||
+    (job.handler === 'http' &&
+      (jobForm.value.method !== 'GET' || timeout !== getDefaultTimeout('http')))
   showEditModal.value = true
 }
 
 function closeJobModal() {
   showCreateModal.value = false
   showEditModal.value = false
+  advancedOptionsOpen.value = false
+}
+
+function setHandler(handler: string) {
+  if (jobForm.value.handler === handler) return
+
+  jobForm.value.handler = handler
+  jobForm.value.timeout = getDefaultTimeout(handler)
 }
 
 // Build payload based on handler type
@@ -150,7 +172,7 @@ function buildPayload(): Record<string, unknown> {
     if (jobForm.value.workdir) {
       payload.workdir = jobForm.value.workdir
     }
-    if (jobForm.value.timeout && jobForm.value.timeout !== 60) {
+    if (jobForm.value.timeout && jobForm.value.timeout !== getDefaultTimeout('command')) {
       payload.timeout = jobForm.value.timeout
     }
     return payload
@@ -159,7 +181,7 @@ function buildPayload(): Record<string, unknown> {
       url: jobForm.value.url,
       method: jobForm.value.method,
     }
-    if (jobForm.value.timeout && jobForm.value.timeout !== 30) {
+    if (jobForm.value.timeout && jobForm.value.timeout !== getDefaultTimeout('http')) {
       payload.timeout = jobForm.value.timeout
     }
     return payload
@@ -320,63 +342,22 @@ function getJobPreview(job: CronJob): string {
 </script>
 
 <template>
-  <div class="cron-page config-page-frame">
-    <section class="automation-stage config-page-stage">
-      <section class="automation-hero config-page-hero-surface">
-        <div class="automation-copy config-page-hero__copy">
-          <p class="automation-kicker config-page-hero__eyebrow">{{ t('nav.configuration') }}</p>
-          <h1 class="automation-title config-page-hero__title">{{ t('cron.title') }}</h1>
-          <p class="automation-description config-page-hero__description">
+  <div class="cron-page dashboard-page-frame">
+    <section class="automation-stage dashboard-page-stage configuration-page-stage">
+      <section class="automation-hero dashboard-page-hero configuration-page-hero">
+        <div class="automation-copy dashboard-page-copy configuration-page-copy">
+          <p class="automation-kicker dashboard-page-eyebrow">{{ t('nav.configuration') }}</p>
+          <h1 class="automation-title dashboard-page-title configuration-page-title">
+            {{ t('cron.title') }}
+          </h1>
+          <p class="automation-description dashboard-page-description configuration-page-description">
             {{ t('automation.tabs.cronDesc') }}
           </p>
-        </div>
-
-        <div class="automation-actions automation-actions--inline config-page-hero__actions">
-          <button
-            class="automation-refresh-button"
-            :disabled="loading"
-            :title="t('common.refresh')"
-            :aria-label="t('common.refresh')"
-            @click="loadJobs"
-          >
-            <svg
-              class="h-4 w-4"
-              :class="{ 'animate-spin': loading }"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-          </button>
-
-          <button class="automation-create-button" @click="openCreateModal">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            {{ t('cron.create') }}
-          </button>
         </div>
       </section>
 
       <section class="automation-shell">
-        <section class="dashboard-card-surface automation-panel-card automation-library-card">
+        <section class="automation-surface-panel automation-panel-card automation-library-card">
           <div class="automation-list-header">
             <div>
               <p class="dashboard-card-label">{{ t('automation.title') }}</p>
@@ -384,7 +365,51 @@ function getJobPreview(job: CronJob): string {
               <p class="automation-section-description">{{ t('automation.tabs.cronDesc') }}</p>
             </div>
             <div class="automation-library-card__aside">
-              <span class="automation-count-chip">{{ sortedJobs.length }}</span>
+              <div class="automation-library-card__topline">
+                <span class="automation-count-chip">{{ sortedJobs.length }}</span>
+                <div class="automation-library-card__controls">
+                  <button
+                    class="automation-refresh-button"
+                    type="button"
+                    :disabled="loading"
+                    :title="t('common.refresh')"
+                    :aria-label="t('common.refresh')"
+                    @click="loadJobs"
+                  >
+                    <svg
+                      class="h-4 w-4"
+                      :class="{ 'animate-spin': loading }"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                  </button>
+                  <button class="automation-create-button" type="button" @click="openCreateModal">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    {{ t('cron.create') }}
+                  </button>
+                </div>
+              </div>
               <p class="automation-library-card__note">
                 {{ enabledJobsCount }} {{ t('automation.stats.activeJobs') }}
                 <span v-if="disabledJobsCount > 0">
@@ -401,14 +426,14 @@ function getJobPreview(job: CronJob): string {
 
         <section
           v-if="loading"
-          class="dashboard-card-surface automation-state-card automation-state"
+          class="automation-surface-panel automation-state-card automation-state"
         >
           {{ t('common.loading') }}
         </section>
 
         <section
           v-else-if="sortedJobs.length === 0"
-          class="dashboard-card-surface automation-state-card automation-empty"
+          class="automation-surface-panel automation-state-card automation-empty"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -435,7 +460,7 @@ function getJobPreview(job: CronJob): string {
           <article
             v-for="job in sortedJobs"
             :key="job.id"
-            class="dashboard-card-surface automation-panel-card automation-job-card"
+            class="automation-surface-card automation-panel-card automation-job-card"
           >
             <div class="automation-job-main">
               <div class="automation-job-badges">
@@ -467,19 +492,19 @@ function getJobPreview(job: CronJob): string {
             </div>
 
             <div class="automation-job-meta-grid">
-              <div class="dashboard-card-subsurface automation-meta-card">
+              <div class="automation-subsurface-card automation-meta-card">
                 <span class="automation-meta-label">{{ t('cron.schedule') }}</span>
                 <span class="automation-meta-value automation-meta-value--mono">
                   {{ job.schedule }}
                 </span>
               </div>
-              <div class="dashboard-card-subsurface automation-meta-card">
+              <div class="automation-subsurface-card automation-meta-card">
                 <span class="automation-meta-label">{{ t('cron.nextRun') }}</span>
                 <span class="automation-meta-value automation-meta-value--strong">
                   {{ getNextRunText(job) }}
                 </span>
               </div>
-              <div class="dashboard-card-subsurface automation-meta-card">
+              <div class="automation-subsurface-card automation-meta-card">
                 <span class="automation-meta-label">{{ t('cron.lastRun') }}</span>
                 <span class="automation-meta-value">
                   {{ job.last_run_at ? formatDate(job.last_run_at) : '-' }}
@@ -638,16 +663,18 @@ function getJobPreview(job: CronJob): string {
       class="automation-modal-backdrop"
       @click.self="closeJobModal"
     >
-      <div class="dashboard-card-surface automation-modal-panel">
-        <div class="automation-modal-body">
+      <div class="automation-surface-panel automation-modal-panel automation-modal-panel--form">
+        <div class="automation-modal-header">
           <h3 class="automation-modal-title">
             {{ showCreateModal ? t('cron.createNew') : t('cron.edit') }}
           </h3>
+        </div>
 
-          <form
-            class="automation-form"
-            @submit.prevent="showCreateModal ? createJob() : updateJob()"
-          >
+        <form
+          class="automation-form automation-form--modal"
+          @submit.prevent="showCreateModal ? createJob() : updateJob()"
+        >
+          <div class="automation-modal-scroll automation-modal-scroll--form">
             <div class="automation-form-field">
               <label class="automation-label">{{ t('cron.name') }}</label>
               <input
@@ -655,16 +682,6 @@ function getJobPreview(job: CronJob): string {
                 type="text"
                 required
                 :placeholder="t('cron.namePlaceholder')"
-                class="automation-input"
-              />
-            </div>
-
-            <div class="automation-form-field">
-              <label class="automation-label">{{ t('cron.description') }}</label>
-              <input
-                v-model="jobForm.description"
-                type="text"
-                :placeholder="t('cron.descriptionPlaceholder')"
                 class="automation-input"
               />
             </div>
@@ -702,7 +719,7 @@ function getJobPreview(job: CronJob): string {
                     'automation-handler-card',
                     { 'automation-handler-card--active': jobForm.handler === ht.value },
                   ]"
-                  @click="jobForm.handler = ht.value"
+                  @click="setHandler(ht.value)"
                 >
                   <div class="automation-handler-card-title">{{ ht.label }}</div>
                   <div class="automation-handler-card-description">{{ ht.description }}</div>
@@ -723,27 +740,6 @@ function getJobPreview(job: CronJob): string {
                 />
                 <p class="automation-hint">{{ t('cron.commandHint') }}</p>
               </div>
-              <div class="automation-form-field">
-                <label class="automation-label">{{ t('cron.workdir') }}</label>
-                <input
-                  v-model="jobForm.workdir"
-                  type="text"
-                  :placeholder="t('cron.workdirPlaceholder')"
-                  class="automation-input automation-input--mono"
-                />
-              </div>
-              <div class="automation-form-field">
-                <label class="automation-label"
-                  >{{ t('cron.timeout') }} ({{ t('cron.seconds') }})</label
-                >
-                <input
-                  v-model.number="jobForm.timeout"
-                  type="number"
-                  min="1"
-                  max="3600"
-                  class="automation-input"
-                />
-              </div>
             </div>
 
             <!-- HTTP Handler Fields -->
@@ -758,29 +754,109 @@ function getJobPreview(job: CronJob): string {
                   class="automation-input automation-input--mono"
                 />
               </div>
-              <div class="automation-form-field">
-                <label class="automation-label">{{ t('cron.httpMethod') }}</label>
-                <select v-model="jobForm.method" class="automation-input">
-                  <option value="GET">GET</option>
-                  <option value="POST">POST</option>
-                  <option value="PUT">PUT</option>
-                  <option value="DELETE">DELETE</option>
-                </select>
-              </div>
-              <div class="automation-form-field">
-                <label class="automation-label"
-                  >{{ t('cron.timeout') }} ({{ t('cron.seconds') }})</label
-                >
-                <input
-                  v-model.number="jobForm.timeout"
-                  type="number"
-                  min="1"
-                  max="300"
-                  class="automation-input"
-                />
-              </div>
             </div>
 
+            <div class="automation-disclosure">
+              <button
+                type="button"
+                class="automation-disclosure-button"
+                :aria-expanded="advancedOptionsOpen"
+                aria-controls="cron-optional-settings"
+                @click="advancedOptionsOpen = !advancedOptionsOpen"
+              >
+                <span class="automation-disclosure-copy">
+                  <span class="automation-disclosure-title">
+                    {{ t('cron.optionalSettings') }}
+                  </span>
+                  <span class="automation-disclosure-caption">
+                    {{ t('cron.optionalSettingsHint') }}
+                  </span>
+                </span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="automation-disclosure-icon"
+                  :class="{ 'automation-disclosure-icon--open': advancedOptionsOpen }"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.8"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+
+              <div
+                v-if="advancedOptionsOpen"
+                id="cron-optional-settings"
+                class="automation-disclosure-panel"
+              >
+                <div class="automation-form-grid automation-form-grid--compact">
+                  <div class="automation-form-field automation-form-field--full">
+                    <label class="automation-label">{{ t('cron.description') }}</label>
+                    <input
+                      v-model="jobForm.description"
+                      type="text"
+                      :placeholder="t('cron.descriptionPlaceholder')"
+                      class="automation-input"
+                    />
+                  </div>
+
+                  <template v-if="jobForm.handler === 'command'">
+                    <div class="automation-form-field automation-form-field--full">
+                      <label class="automation-label">{{ t('cron.workdir') }}</label>
+                      <input
+                        v-model="jobForm.workdir"
+                        type="text"
+                        :placeholder="t('cron.workdirPlaceholder')"
+                        class="automation-input automation-input--mono"
+                      />
+                    </div>
+                    <div class="automation-form-field">
+                      <label class="automation-label"
+                        >{{ t('cron.timeout') }} ({{ t('cron.seconds') }})</label
+                      >
+                      <input
+                        v-model.number="jobForm.timeout"
+                        type="number"
+                        min="1"
+                        max="3600"
+                        class="automation-input"
+                      />
+                    </div>
+                  </template>
+
+                  <template v-if="jobForm.handler === 'http'">
+                    <div class="automation-form-field">
+                      <label class="automation-label">{{ t('cron.httpMethod') }}</label>
+                      <select v-model="jobForm.method" class="automation-input">
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="DELETE">DELETE</option>
+                      </select>
+                    </div>
+                    <div class="automation-form-field">
+                      <label class="automation-label"
+                        >{{ t('cron.timeout') }} ({{ t('cron.seconds') }})</label
+                      >
+                      <input
+                        v-model.number="jobForm.timeout"
+                        type="number"
+                        min="1"
+                        max="300"
+                        class="automation-input"
+                      />
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="automation-modal-footer">
             <div class="automation-form-actions">
               <button
                 type="submit"
@@ -806,8 +882,8 @@ function getJobPreview(job: CronJob): string {
                 {{ t('common.cancel') }}
               </button>
             </div>
-          </form>
-        </div>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -817,7 +893,7 @@ function getJobPreview(job: CronJob): string {
       class="automation-modal-backdrop"
       @click.self="showExecutionsModal = false"
     >
-      <div class="dashboard-card-surface automation-modal-panel automation-modal-panel--wide">
+      <div class="automation-surface-panel automation-modal-panel automation-modal-panel--wide">
         <div class="automation-modal-header">
           <h3 class="automation-modal-title">
             {{ t('cron.executionsFor', { name: selectedJob.name }) }}
@@ -833,7 +909,7 @@ function getJobPreview(job: CronJob): string {
             <div
               v-for="execution in executions"
               :key="execution.id"
-              class="dashboard-card-subsurface automation-execution-card"
+              class="automation-surface-card automation-execution-card"
             >
               <div class="automation-execution-head">
                 <span
@@ -879,7 +955,7 @@ function getJobPreview(job: CronJob): string {
 
 <style scoped>
 .cron-page {
-  --config-page-accent: 37, 99, 235;
+  --dashboard-page-accent: 37, 99, 235;
   max-width: 1480px;
   margin: 0 auto;
   padding: 0 0.75rem 1.8rem;
@@ -887,7 +963,7 @@ function getJobPreview(job: CronJob): string {
 
 .automation-stage {
   position: relative;
-  padding: 1.15rem 0 0.25rem;
+  padding: 1.15rem 0 0.35rem;
 }
 
 .automation-stage::before,
@@ -916,10 +992,12 @@ function getJobPreview(job: CronJob): string {
 .automation-hero {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  padding: 0.15rem 0 1.2rem;
-  margin-bottom: 0.88rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 0 0.2rem;
+  margin-bottom: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -927,6 +1005,10 @@ function getJobPreview(job: CronJob): string {
 }
 
 .automation-copy {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0%;
+  min-width: 0;
   max-width: 42rem;
   padding-top: 0.1rem;
 }
@@ -936,7 +1018,7 @@ function getJobPreview(job: CronJob): string {
 }
 
 .automation-title {
-  margin: 0.68rem 0 0;
+  margin: 0;
   font-size: clamp(1.34rem, 0.7vw + 0.95rem, 1.9rem);
   line-height: 1.06;
   letter-spacing: -0.04em;
@@ -952,25 +1034,11 @@ function getJobPreview(job: CronJob): string {
   color: #9ca3af;
 }
 
-.automation-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  z-index: 1;
-}
-
-.automation-actions--inline {
-  position: absolute;
-  top: 0;
-  right: 0;
-  flex-wrap: nowrap;
-  align-items: center;
-}
-
 .automation-refresh-button,
 .automation-create-button,
 .automation-create-inline,
 .automation-action-button,
+.automation-disclosure-button,
 .automation-chip-button,
 .automation-submit-button,
 .automation-secondary-button {
@@ -989,17 +1057,18 @@ function getJobPreview(job: CronJob): string {
   justify-content: center;
   width: 2.5rem;
   height: 2.5rem;
-  border: 0;
+  border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 999px;
-  color: #6b7280;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 18px 36px -32px rgba(15, 23, 42, 0.32);
+  color: #475569;
+  background: #ffffff;
+  box-shadow: none;
 }
 
 .automation-refresh-button:hover:not(:disabled),
 .automation-refresh-button:focus-visible {
   color: #1d4ed8;
-  background: #fff;
+  border-color: rgba(37, 99, 235, 0.24);
+  background: #f8fafc;
   transform: translateY(-1px);
 }
 
@@ -1023,26 +1092,26 @@ function getJobPreview(job: CronJob): string {
   color: #f8fafc;
   font-size: 0.88rem;
   font-weight: 600;
-  box-shadow: 0 20px 30px -26px rgba(15, 23, 42, 0.68);
+  box-shadow: none;
 }
 
 .automation-create-button:hover,
 .automation-create-inline:hover,
 .automation-submit-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 24px 32px -24px rgba(15, 23, 42, 0.58);
+  background: #1e293b;
 }
 
 .automation-submit-button {
   flex: 1;
-  border-radius: 1rem;
+  border-radius: 0.95rem;
 }
 
 .automation-submit-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
-  box-shadow: 0 20px 30px -26px rgba(15, 23, 42, 0.3);
+  background: rgba(15, 23, 42, 0.55);
 }
 
 .automation-secondary-button {
@@ -1051,10 +1120,10 @@ function getJobPreview(job: CronJob): string {
   justify-content: center;
   min-height: 2.65rem;
   padding: 0.7rem 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.82);
-  color: #1f2937;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: #475569;
   font-size: 0.88rem;
   font-weight: 600;
 }
@@ -1069,36 +1138,34 @@ function getJobPreview(job: CronJob): string {
   width: 100%;
 }
 
-.dashboard-card-surface,
-.dashboard-card-subsurface {
-  border-radius: 1.5rem;
+.automation-surface-panel,
+.automation-surface-card,
+.automation-subsurface-card {
+  position: relative;
+  overflow: hidden;
   transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s ease,
-    background-color 0.2s ease;
-}
-
-.dashboard-card-surface {
-  border: 1px solid rgba(255, 255, 255, 0.92);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 22px 36px -34px rgba(15, 23, 42, 0.2);
-}
-
-.dashboard-card-surface:hover {
-  border-color: rgba(255, 255, 255, 0.98);
-  transform: translateY(-1px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.94),
-    0 24px 38px -34px rgba(15, 23, 42, 0.24);
-}
-
-.dashboard-card-subsurface {
-  border: 0;
-  background: rgba(243, 246, 249, 0.92);
+    border-color 0.22s ease,
+    background-color 0.22s ease,
+    color 0.22s ease;
   box-shadow: none;
+}
+
+.automation-surface-panel {
+  border: 1px solid rgba(203, 213, 225, 0.96);
+  border-radius: 1.5rem;
+  background: #f8fafc;
+}
+
+.automation-surface-card {
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 1.25rem;
+  background: #ffffff;
+}
+
+.automation-subsurface-card {
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 0.95rem;
+  background: rgba(248, 250, 252, 0.96);
 }
 
 .automation-shell {
@@ -1106,12 +1173,14 @@ function getJobPreview(job: CronJob): string {
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.88rem;
+  gap: 1rem;
+  max-width: 82rem;
+  margin: 0 auto;
 }
 
 .automation-panel-card,
 .automation-state-card {
-  padding: 1.05rem;
+  padding: 1.1rem;
 }
 
 .automation-library-card__aside {
@@ -1121,11 +1190,27 @@ function getJobPreview(job: CronJob): string {
   gap: 0.38rem;
 }
 
+.automation-library-card__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.automation-library-card__controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
 .automation-library-card__note {
   margin: 0;
   color: #64748b;
-  font-size: 0.78rem;
-  line-height: 1.35;
+  font-size: 0.8rem;
+  line-height: 1.45;
   text-align: right;
 }
 
@@ -1137,17 +1222,18 @@ function getJobPreview(job: CronJob): string {
 }
 
 .automation-section-title {
-  margin: 0;
-  color: #111827;
-  font-size: 1rem;
+  margin: 0.35rem 0 0;
+  color: #0f172a;
+  font-size: 1.15rem;
   font-weight: 700;
 }
 
 .automation-section-description {
-  margin: 0.32rem 0 0;
-  color: #9ca3af;
-  font-size: 0.85rem;
-  line-height: 1.5;
+  max-width: 44rem;
+  margin: 0.45rem 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.6;
 }
 
 .automation-count-chip {
@@ -1158,8 +1244,9 @@ function getJobPreview(job: CronJob): string {
   min-height: 2rem;
   padding: 0.35rem 0.68rem;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
-  color: #475569;
+  border: 1px solid rgba(147, 197, 253, 0.55);
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
   font-size: 0.82rem;
   font-weight: 700;
 }
@@ -1171,7 +1258,7 @@ function getJobPreview(job: CronJob): string {
 }
 
 .automation-state {
-  color: #9ca3af;
+  color: #64748b;
   font-size: 0.92rem;
 }
 
@@ -1192,7 +1279,7 @@ function getJobPreview(job: CronJob): string {
 .automation-empty-description {
   max-width: 24rem;
   margin: 0.45rem auto 0;
-  color: #9ca3af;
+  color: #64748b;
   font-size: 0.9rem;
   line-height: 1.55;
 }
@@ -1203,13 +1290,13 @@ function getJobPreview(job: CronJob): string {
 
 .automation-job-grid {
   display: grid;
-  gap: 0.8rem;
+  gap: 1rem;
 }
 
 .automation-job-card {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 1rem;
 }
 
 .automation-job-main {
@@ -1273,7 +1360,7 @@ function getJobPreview(job: CronJob): string {
 
 .automation-job-description {
   margin: 0.42rem 0 0;
-  color: #6b7280;
+  color: #64748b;
   font-size: 0.88rem;
   line-height: 1.55;
   word-break: break-word;
@@ -1304,14 +1391,14 @@ function getJobPreview(job: CronJob): string {
   flex-direction: column;
   gap: 0.38rem;
   min-width: 0;
-  padding: 0.85rem 0.9rem;
+  padding: 0.9rem 0.95rem;
 }
 
 .automation-meta-label {
-  color: #94a3b8;
-  font-size: 0.68rem;
+  color: #64748b;
+  font-size: 0.7rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -1362,30 +1449,34 @@ function getJobPreview(job: CronJob): string {
   justify-content: center;
   width: 2.45rem;
   height: 2.45rem;
-  border: 0;
+  border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 0.95rem;
-  background: rgba(255, 255, 255, 0.78);
-  color: #64748b;
-  box-shadow: 0 14px 26px -24px rgba(15, 23, 42, 0.42);
+  background: #ffffff;
+  color: #475569;
+  box-shadow: none;
 }
 
 .automation-action-button--primary {
-  background: rgba(15, 23, 42, 0.92);
+  border-color: #0f172a;
+  background: #0f172a;
   color: #f8fafc;
 }
 
 .automation-action-button--warning {
-  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.18);
+  background: rgba(245, 158, 11, 0.08);
   color: #b45309;
 }
 
 .automation-action-button--success {
-  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.18);
+  background: rgba(16, 185, 129, 0.08);
   color: #047857;
 }
 
 .automation-action-button--danger {
-  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.18);
+  background: rgba(239, 68, 68, 0.08);
   color: #b91c1c;
 }
 
@@ -1406,6 +1497,12 @@ function getJobPreview(job: CronJob): string {
   width: min(100%, 34rem);
   max-height: 90vh;
   overflow: hidden;
+}
+
+.automation-modal-panel--form {
+  width: min(100%, 38rem);
+  display: flex;
+  flex-direction: column;
 }
 
 .automation-modal-panel--wide {
@@ -1442,6 +1539,12 @@ function getJobPreview(job: CronJob): string {
   padding: 1.05rem 1.1rem;
 }
 
+.automation-modal-scroll--form {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
 .automation-modal-title {
   margin: 0;
   color: #111827;
@@ -1455,14 +1558,29 @@ function getJobPreview(job: CronJob): string {
   gap: 1rem;
 }
 
+.automation-form--modal {
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+.automation-form-grid {
+  display: grid;
+  gap: 1rem;
+}
+
 .automation-form-field {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
 }
 
+.automation-form-field--full {
+  grid-column: 1 / -1;
+}
+
 .automation-label {
-  color: #6b7280;
+  color: #334155;
   font-size: 0.84rem;
   font-weight: 600;
 }
@@ -1470,17 +1588,21 @@ function getJobPreview(job: CronJob): string {
 .automation-input {
   width: 100%;
   min-height: 2.8rem;
-  padding: 0.72rem 0.88rem;
-  border: 1px solid rgba(226, 232, 240, 0.92);
-  border-radius: 1rem;
-  background: rgba(243, 246, 249, 0.9);
-  color: #111827;
+  padding: 0.72rem 0.95rem;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
   outline: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
 }
 
 .automation-input:focus {
-  border-color: rgba(59, 130, 246, 0.32);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }
 
 .automation-input--mono {
@@ -1504,13 +1626,14 @@ function getJobPreview(job: CronJob): string {
 }
 
 .automation-chip-button {
-  min-height: 2rem;
-  padding: 0.36rem 0.65rem;
-  border: 1px solid rgba(226, 232, 240, 0.92);
+  min-height: 2.2rem;
+  padding: 0.4rem 0.72rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 999px;
-  background: rgba(243, 246, 249, 0.9);
+  background: rgba(255, 255, 255, 0.72);
   color: #475569;
   font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .automation-handler-grid {
@@ -1520,16 +1643,20 @@ function getJobPreview(job: CronJob): string {
 }
 
 .automation-handler-card {
-  padding: 0.82rem 0.9rem;
-  border: 1px solid rgba(226, 232, 240, 0.92);
-  border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.78);
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 1.25rem;
+  background: #ffffff;
   text-align: left;
+  transition:
+    border-color 0.22s ease,
+    background-color 0.22s ease,
+    color 0.22s ease;
 }
 
 .automation-handler-card--active {
-  border-color: rgba(37, 99, 235, 0.28);
-  background: rgba(37, 99, 235, 0.06);
+  border-color: rgba(37, 99, 235, 0.36);
+  background: rgba(37, 99, 235, 0.08);
 }
 
 .automation-handler-card-title {
@@ -1549,10 +1676,10 @@ function getJobPreview(job: CronJob): string {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  padding: 0.95rem;
-  border: 1px solid rgba(226, 232, 240, 0.88);
-  border-radius: 1.2rem;
-  background: rgba(243, 246, 249, 0.72);
+  padding: 1rem;
+  border: 1px solid rgba(203, 213, 225, 0.96);
+  border-radius: 1.25rem;
+  background: #f8fafc;
 }
 
 .automation-hint {
@@ -1560,6 +1687,68 @@ function getJobPreview(job: CronJob): string {
   color: #94a3b8;
   font-size: 0.75rem;
   line-height: 1.5;
+}
+
+.automation-disclosure {
+  margin-top: 1rem;
+}
+
+.automation-disclosure-button {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.92rem 1rem;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 1.15rem;
+  background: rgba(248, 250, 252, 0.92);
+  color: #0f172a;
+  text-align: left;
+}
+
+.automation-disclosure-button:hover {
+  border-color: rgba(37, 99, 235, 0.22);
+  background: rgba(239, 246, 255, 0.92);
+}
+
+.automation-disclosure-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.automation-disclosure-title {
+  color: #111827;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.automation-disclosure-caption {
+  color: #64748b;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.automation-disclosure-icon {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.1rem;
+  color: #64748b;
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+
+.automation-disclosure-icon--open {
+  transform: rotate(180deg);
+}
+
+.automation-disclosure-panel {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 1.25rem;
+  background: #f8fafc;
 }
 
 .automation-form-actions {
@@ -1623,7 +1812,10 @@ html.dark .automation-job-name,
 html.dark .automation-modal-title,
 :root.dark .automation-handler-card-title,
 [data-theme='dark'] .automation-handler-card-title,
-html.dark .automation-handler-card-title {
+html.dark .automation-handler-card-title,
+:root.dark .automation-disclosure-title,
+[data-theme='dark'] .automation-disclosure-title,
+html.dark .automation-disclosure-title {
   color: rgb(241 245 249);
 }
 
@@ -1651,6 +1843,9 @@ html.dark .automation-library-card__note,
 :root.dark .automation-hint,
 [data-theme='dark'] .automation-hint,
 html.dark .automation-hint,
+:root.dark .automation-disclosure-caption,
+[data-theme='dark'] .automation-disclosure-caption,
+html.dark .automation-disclosure-caption,
 :root.dark .automation-job-footnote,
 [data-theme='dark'] .automation-job-footnote,
 html.dark .automation-job-footnote {
@@ -1667,22 +1862,53 @@ html.dark .automation-stage::after {
   background-image: none;
 }
 
-:root.dark .dashboard-card-surface,
-[data-theme='dark'] .dashboard-card-surface,
-html.dark .dashboard-card-surface {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(30, 41, 59, 0.96);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 24px 38px -34px rgba(2, 6, 23, 0.64);
+:root.dark .automation-surface-panel,
+[data-theme='dark'] .automation-surface-panel,
+html.dark .automation-surface-panel {
+  border-color: rgba(71, 85, 105, 0.58);
+  background: #1e293b;
 }
 
-:root.dark .dashboard-card-subsurface,
-[data-theme='dark'] .dashboard-card-subsurface,
-html.dark .dashboard-card-subsurface {
-  border-color: rgba(255, 255, 255, 0.06);
-  background: rgba(15, 23, 42, 0.32);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+:root.dark .automation-surface-card,
+[data-theme='dark'] .automation-surface-card,
+html.dark .automation-surface-card,
+:root.dark .automation-handler-card,
+[data-theme='dark'] .automation-handler-card,
+html.dark .automation-handler-card {
+  border-color: rgba(71, 85, 105, 0.46);
+  background: #111827;
+}
+
+:root.dark .automation-subsurface-card,
+[data-theme='dark'] .automation-subsurface-card,
+html.dark .automation-subsurface-card,
+:root.dark .automation-refresh-button,
+[data-theme='dark'] .automation-refresh-button,
+html.dark .automation-refresh-button,
+:root.dark .automation-action-button,
+[data-theme='dark'] .automation-action-button,
+html.dark .automation-action-button,
+:root.dark .automation-secondary-button,
+[data-theme='dark'] .automation-secondary-button,
+html.dark .automation-secondary-button,
+:root.dark .automation-chip-button,
+[data-theme='dark'] .automation-chip-button,
+html.dark .automation-chip-button,
+:root.dark .automation-disclosure-button,
+[data-theme='dark'] .automation-disclosure-button,
+html.dark .automation-disclosure-button,
+:root.dark .automation-input,
+[data-theme='dark'] .automation-input,
+html.dark .automation-input,
+:root.dark .automation-handler-panel,
+[data-theme='dark'] .automation-handler-panel,
+html.dark .automation-handler-panel,
+:root.dark .automation-disclosure-panel,
+[data-theme='dark'] .automation-disclosure-panel,
+html.dark .automation-disclosure-panel {
+  border-color: rgba(71, 85, 105, 0.5);
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: none;
 }
 
 :root.dark .automation-meta-label,
@@ -1720,10 +1946,15 @@ html.dark .automation-input {
 html.dark .automation-refresh-button,
 :root.dark .automation-action-button,
 [data-theme='dark'] .automation-action-button,
-html.dark .automation-action-button {
-  background: rgba(30, 41, 59, 0.88);
-  color: rgb(148 163 184);
-  box-shadow: 0 18px 36px -28px rgba(2, 6, 23, 0.72);
+html.dark .automation-action-button,
+:root.dark .automation-secondary-button:hover,
+[data-theme='dark'] .automation-secondary-button:hover,
+html.dark .automation-secondary-button:hover,
+:root.dark .automation-chip-button:hover,
+[data-theme='dark'] .automation-chip-button:hover,
+html.dark .automation-chip-button:hover {
+  background: #1f2937;
+  color: rgb(226 232 240);
 }
 
 :root.dark .automation-refresh-button:hover:not(:disabled),
@@ -1732,46 +1963,57 @@ html.dark .automation-refresh-button:hover:not(:disabled),
 :root.dark .automation-action-button:hover,
 [data-theme='dark'] .automation-action-button:hover,
 html.dark .automation-action-button:hover,
-:root.dark .automation-secondary-button:hover,
-[data-theme='dark'] .automation-secondary-button:hover,
-html.dark .automation-secondary-button:hover,
-:root.dark .automation-chip-button:hover,
-[data-theme='dark'] .automation-chip-button:hover,
-html.dark .automation-chip-button:hover {
-  background: rgba(51, 65, 85, 0.92);
-  color: rgb(226 232 240);
+:root.dark .automation-disclosure-button:hover,
+[data-theme='dark'] .automation-disclosure-button:hover,
+html.dark .automation-disclosure-button:hover {
+  border-color: rgba(96, 165, 250, 0.28);
 }
 
-:root.dark .automation-secondary-button,
-[data-theme='dark'] .automation-secondary-button,
-html.dark .automation-secondary-button,
-:root.dark .automation-chip-button,
-[data-theme='dark'] .automation-chip-button,
-html.dark .automation-chip-button,
-:root.dark .automation-handler-card,
-[data-theme='dark'] .automation-handler-card,
-html.dark .automation-handler-card,
-:root.dark .automation-input,
-[data-theme='dark'] .automation-input,
-html.dark .automation-input,
-:root.dark .automation-handler-panel,
-[data-theme='dark'] .automation-handler-panel,
-html.dark .automation-handler-panel {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(15, 23, 42, 0.28);
+:root.dark .automation-action-button--primary,
+[data-theme='dark'] .automation-action-button--primary,
+html.dark .automation-action-button--primary {
+  border-color: #e2e8f0;
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+:root.dark .automation-action-button--warning,
+[data-theme='dark'] .automation-action-button--warning,
+html.dark .automation-action-button--warning {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.16);
+  color: rgb(253 186 116);
+}
+
+:root.dark .automation-action-button--success,
+[data-theme='dark'] .automation-action-button--success,
+html.dark .automation-action-button--success {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: rgba(16, 185, 129, 0.16);
+  color: rgb(110 231 183);
+}
+
+:root.dark .automation-action-button--danger,
+[data-theme='dark'] .automation-action-button--danger,
+html.dark .automation-action-button--danger {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.16);
+  color: rgb(252 165 165);
 }
 
 :root.dark .automation-handler-card--active,
 [data-theme='dark'] .automation-handler-card--active,
 html.dark .automation-handler-card--active {
-  border-color: rgba(96, 165, 250, 0.24);
-  background: rgba(30, 64, 175, 0.18);
+  border-color: rgba(147, 197, 253, 0.45);
+  background: rgba(37, 99, 235, 0.18);
 }
 
 :root.dark .automation-count-chip,
 [data-theme='dark'] .automation-count-chip,
 html.dark .automation-count-chip {
-  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(147, 197, 253, 0.45);
+  background: rgba(30, 64, 175, 0.25);
+  color: rgb(191 219 254);
 }
 
 :root.dark .automation-error-surface,
@@ -1804,6 +2046,10 @@ html.dark .automation-modal-footer {
   .automation-job-meta-grid {
     grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr));
   }
+
+  .automation-form-grid--compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 820px) {
@@ -1814,22 +2060,20 @@ html.dark .automation-modal-footer {
     flex-direction: column;
   }
 
-  .automation-actions,
   .automation-job-actions {
     width: 100%;
     justify-content: flex-start;
-  }
-
-  .automation-actions--inline {
-    position: static;
-    flex-wrap: wrap;
   }
 
   .automation-library-card__aside {
     align-items: flex-start;
   }
 
-  .automation-actions {
+  .automation-library-card__topline {
+    justify-content: flex-start;
+  }
+
+  .automation-library-card__controls {
     justify-content: flex-start;
   }
 

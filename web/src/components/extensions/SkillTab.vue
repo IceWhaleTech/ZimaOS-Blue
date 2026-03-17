@@ -7,6 +7,9 @@ import { parseFrontmatter } from '@/utils/frontmatter'
 
 const { t, te } = useI18n()
 const skillStore = useSkillStore()
+const emit = defineEmits<{
+  (e: 'install-skill'): void
+}>()
 
 const searchQuery = ref('')
 const filterCategory = ref<string>('all')
@@ -262,21 +265,35 @@ function renderMarkdown(content: string): string {
         <option value="disabled">{{ t('common.disabled') }}</option>
       </select>
 
-      <button class="btn-refresh" :disabled="skillStore.loading" @click="skillStore.fetchSkills()">
-        <svg
-          v-if="!skillStore.loading"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
+      <div class="filter-actions">
+        <button class="btn-add-source" type="button" @click="emit('install-skill')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 4v16m8-8H4" />
+          </svg>
+          <span>{{ t('plugins.uploadSkill') }}</span>
+        </button>
+
+        <button
+          class="btn-refresh"
+          type="button"
+          :disabled="skillStore.loading"
+          @click="skillStore.fetchSkills()"
         >
-          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-          <path d="M3 3v5h5" />
-          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-          <path d="M16 21h5v-5" />
-        </svg>
-        <span v-else class="spinner"></span>
-      </button>
+          <svg
+            v-if="!skillStore.loading"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+            <path d="M16 21h5v-5" />
+          </svg>
+          <span v-else class="spinner"></span>
+        </button>
+      </div>
     </div>
 
     <div v-if="skillStore.error" class="error-banner">

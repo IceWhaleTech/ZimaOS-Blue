@@ -450,6 +450,11 @@ func (r *Runner) handleAskUser(ctx context.Context, task *Task, argsJSON string)
 			Header:      truncateRunes(qText, 12),
 			MultiSelect: multiSelect,
 		}
+		if multiSelect {
+			q.Type = "checkbox"
+		} else {
+			q.Type = "radio"
+		}
 		if aRaw, ok := raw["a"]; ok {
 			q.Options = parseAgentQuestionOptions(aRaw)
 		}
@@ -579,6 +584,7 @@ func normalizeAgentQuestions(questions []AgentQuestion) ([]AgentQuestion, error)
 		if q.Header == "" {
 			q.Header = truncateRunes(q.Question, 12)
 		}
+		q.Type = strings.ToLower(strings.TrimSpace(q.Type))
 		opts := make([]QuestionOption, 0, len(q.Options))
 		seen := make(map[string]struct{}, len(q.Options))
 		for _, opt := range q.Options {
@@ -604,8 +610,11 @@ func normalizeAgentQuestions(questions []AgentQuestion) ([]AgentQuestion, error)
 				Value:       value,
 			})
 		}
-		// Keep ask protocol deterministic: 2~5 mutually exclusive options.
-		if len(opts) < 2 {
+		// Keep choice questions deterministic while allowing free-text prompts.
+		if len(opts) == 0 && !isAgentTextQuestionType(q.Type) {
+			return nil, fmt.Errorf("question %q must include at least 2 options or set type=text", q.Question)
+		}
+		if len(opts) > 0 && len(opts) < 2 {
 			return nil, fmt.Errorf("question %q must include at least 2 options", q.Question)
 		}
 		if len(opts) > 5 {
@@ -615,6 +624,15 @@ func normalizeAgentQuestions(questions []AgentQuestion) ([]AgentQuestion, error)
 		out = append(out, q)
 	}
 	return out, nil
+}
+
+func isAgentTextQuestionType(qType string) bool {
+	switch strings.ToLower(strings.TrimSpace(qType)) {
+	case "text", "input", "textarea", "freeform", "free-form":
+		return true
+	default:
+		return false
+	}
 }
 
 func buildClarificationQuestions() []AgentQuestion {
@@ -1411,6 +1429,7 @@ func buildStepExecutionSystemPrompt(tools []llm.Tool) string {
 		sb.WriteString("\n## Ask Tool\n")
 		sb.WriteString("When you encounter ambiguity, need user preferences, or face multiple valid options, use the ask tool instead of guessing.\n")
 		sb.WriteString("Preferred format: {\"questions\":[{\"question\":\"Which approach?\",\"type\":\"radio\",\"options\":[\"Option A\",\"Option B\"]}]}\n")
+		sb.WriteString("Text-input format: {\"questions\":[{\"question\":\"What details should I use?\",\"type\":\"text\"}]}\n")
 		sb.WriteString("Single-question shorthand: {\"q\":\"Which approach?\",\"a\":[\"Option A\",\"Option B\"]} or {\"mq\":\"...\",\"a\":[...]}\n")
 		sb.WriteString("Optional extra detail: set \"detail\" and it will be shown with a ❕ marker.\n")
 		sb.WriteString("Inside questions items, use only \"question\"/\"detail\"/\"type\"/\"options\".\n")

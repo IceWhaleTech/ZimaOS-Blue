@@ -92,6 +92,9 @@ func (h *SystemHandler) ResolveLocalFile(c echo.Context) error {
 	if auth.GetUserFromContext(c) == nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
+	if !isLoopbackClientIP(c.RealIP()) {
+		return echo.NewHTTPError(http.StatusForbidden, "local file bridge is only available from loopback clients")
+	}
 
 	resolvedPath, info, err := resolveLocalPath(c.QueryParam("path"), false)
 	if err != nil {
@@ -117,6 +120,9 @@ func (h *SystemHandler) DownloadLocalFile(c echo.Context) error {
 	if auth.GetUserFromContext(c) == nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
+	if !isLoopbackClientIP(c.RealIP()) {
+		return echo.NewHTTPError(http.StatusForbidden, "local file bridge is only available from loopback clients")
+	}
 
 	resolvedPath, _, err := resolveLocalPath(c.QueryParam("path"), false)
 	if err != nil {
@@ -128,6 +134,9 @@ func (h *SystemHandler) DownloadLocalFile(c echo.Context) error {
 func (h *SystemHandler) GetLocalFileThumbnail(c echo.Context) error {
 	if auth.GetUserFromContext(c) == nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+	}
+	if !isLoopbackClientIP(c.RealIP()) {
+		return echo.NewHTTPError(http.StatusForbidden, "local file bridge is only available from loopback clients")
 	}
 
 	resolvedPath, _, err := resolveLocalPath(c.QueryParam("path"), false)

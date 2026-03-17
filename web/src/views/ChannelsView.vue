@@ -1465,468 +1465,482 @@ watch(
 </script>
 
 <template>
-  <div class="channels-page config-page-frame">
-    <section class="channels-stage config-page-stage">
-      <section class="channels-header config-page-hero-surface">
-        <div class="channels-header__copy config-page-hero__copy">
-          <p class="config-page-hero__eyebrow">{{ t('nav.configuration') }}</p>
-          <h1 class="channels-page__title config-page-hero__title">{{ t('channels.title') }}</h1>
-          <p class="channels-page__description config-page-hero__description">
-            {{ t('channels.subtitle') }}
-          </p>
-        </div>
-      </section>
-
-      <section class="channels-summary-grid">
-        <article class="dashboard-card-surface channels-summary-card">
-          <span class="channels-summary-label">{{ t('channels.enabledChannels') }}</span>
-          <strong class="channels-summary-value">{{ enabledCount }}</strong>
-        </article>
-
-        <article
-          class="dashboard-card-surface channels-summary-card channels-summary-card--connected"
-        >
-          <span class="channels-summary-label">{{ t('channels.connectedChannels') }}</span>
-          <strong class="channels-summary-value">{{ connectedCount }}</strong>
-        </article>
-
-        <article
-          class="dashboard-card-surface channels-summary-card channels-summary-card--preview"
-        >
-          <span class="channels-summary-label">{{ t('channels.title') }}</span>
-          <div class="channels-summary-icon-row">
-            <div
-              v-for="channel in heroPreviewChannels"
-              :key="channel.id"
-              class="channels-summary-icon-pill"
-              :title="channel.nameKey ? t(channel.nameKey) : channel.name || channel.id"
-            >
-              <img
-                :src="channel.icon"
-                :alt="channel.nameKey ? t(channel.nameKey) : channel.name || channel.id"
-                class="channels-summary-icon"
-                :style="getChannelIconStyleVars(channel.id)"
-              />
-            </div>
-            <div
-              v-if="secondaryChannels.length > 0"
-              class="channels-summary-icon-pill channels-summary-icon-pill--count"
-            >
-              +{{ secondaryChannels.length }}
-            </div>
+  <div class="channels-page dashboard-page-frame">
+    <section class="channels-stage dashboard-page-stage configuration-page-stage">
+      <div class="channels-shell">
+        <header class="channels-header dashboard-page-hero configuration-page-hero">
+          <div class="channels-header__copy dashboard-page-copy configuration-page-copy">
+            <span class="channels-header__eyebrow dashboard-page-eyebrow">
+              {{ t('nav.configuration') }}
+            </span>
+            <h1 class="channels-page__title dashboard-page-title configuration-page-title">
+              {{ t('channels.title') }}
+            </h1>
+            <p class="channels-page__description dashboard-page-description configuration-page-description">
+              {{ t('channels.subtitle') }}
+            </p>
           </div>
-        </article>
-      </section>
+        </header>
 
-      <div v-if="loading" class="text-center py-8">
-        <div
-          class="animate-spin w-8 h-8 border-2 border-gray-900 dark:border-gray-400 border-t-transparent rounded-full mx-auto mb-2"
-        ></div>
-        <p class="text-gray-500 dark:text-slate-300">{{ t('common.loading') }}</p>
-      </div>
+        <section class="channels-summary-grid">
+          <article class="dashboard-card-surface channels-summary-card">
+            <span class="channels-summary-label">{{ t('channels.enabledChannels') }}</span>
+            <strong class="channels-summary-value">{{ enabledCount }}</strong>
+          </article>
 
-      <div v-else class="channels-board">
-        <div class="channels-board__stack">
-          <div
-            class="channels-remote-card"
-            :class="{ 'channels-remote-card--expanded': remoteAccessExpanded }"
+          <article
+            class="dashboard-card-surface channels-summary-card channels-summary-card--connected"
           >
-            <div class="channels-remote-card__header" @click="toggleRemoteAccessExpanded">
-              <div class="channels-remote-card__identity">
-                <div class="channels-remote-card__icon-shell">
-                  <img
-                    src="/icons/tunnel/remote-access.svg"
-                    alt="Remote Access"
-                    class="channels-remote-card__icon"
-                  />
-                </div>
-                <div class="channels-remote-card__copy">
-                  <div class="channels-remote-card__title-row">
-                    <h3 class="channels-remote-card__title text-gray-900 dark:text-white">
-                      {{ t('remoteAccess.title') }}
-                    </h3>
-                    <span
-                      class="channels-remote-card__badge px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-slate-800/80 text-gray-900 dark:text-slate-100 rounded-full"
-                    >
-                      {{ t('remoteAccess.recommended') }}
-                    </span>
-                    <span
-                      class="w-2 h-2 rounded-full"
-                      :class="{
-                        'bg-green-500': remoteAccessState === 'connected',
-                        'bg-yellow-500 animate-pulse': remoteAccessState === 'connecting',
-                        'bg-red-500': remoteAccessState === 'error',
-                        'bg-gray-400': ['loading', 'ready'].includes(remoteAccessState),
-                      }"
-                    ></span>
-                  </div>
-                  <p
-                    class="channels-remote-card__description text-gray-500 dark:text-slate-300 truncate"
-                  >
-                    {{ t('remoteAccess.channelDescription') }}
-                  </p>
-                </div>
+            <span class="channels-summary-label">{{ t('channels.connectedChannels') }}</span>
+            <strong class="channels-summary-value">{{ connectedCount }}</strong>
+          </article>
+
+          <article
+            class="dashboard-card-surface channels-summary-card channels-summary-card--preview"
+          >
+            <span class="channels-summary-label">{{ t('channels.title') }}</span>
+            <div class="channels-summary-icon-row">
+              <div
+                v-for="channel in heroPreviewChannels"
+                :key="channel.id"
+                class="channels-summary-icon-pill"
+                :title="channel.nameKey ? t(channel.nameKey) : channel.name || channel.id"
+              >
+                <img
+                  :src="channel.icon"
+                  :alt="channel.nameKey ? t(channel.nameKey) : channel.name || channel.id"
+                  class="channels-summary-icon"
+                  :style="getChannelIconStyleVars(channel.id)"
+                />
               </div>
-              <div class="flex items-center gap-3">
-                <label
-                  v-if="remoteAccessState === 'connected' || remoteAccessState === 'ready'"
-                  class="relative inline-flex items-center cursor-pointer"
-                  @click.stop.prevent="
-                    remoteAccessState === 'connected'
-                      ? handleRemoteAccessStop()
-                      : handleRemoteAccessStart()
-                  "
-                >
-                  <input
-                    :checked="remoteAccessState === 'connected'"
-                    type="checkbox"
-                    class="sr-only peer"
-                  />
-                  <div
-                    class="channels-remote-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
-                  ></div>
-                </label>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="channels-remote-card__chevron text-gray-400 transition-transform"
-                  :class="{ 'rotate-180': remoteAccessExpanded }"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
+              <div
+                v-if="secondaryChannels.length > 0"
+                class="channels-summary-icon-pill channels-summary-icon-pill--count"
+              >
+                +{{ secondaryChannels.length }}
               </div>
             </div>
+          </article>
+        </section>
 
-            <div v-if="remoteAccessExpanded" class="channels-remote-card__body">
-              <div
-                v-if="remoteAccessState === 'loading'"
-                class="flex items-center justify-center py-8"
-              >
-                <svg
-                  class="animate-spin h-8 w-8 text-gray-900 dark:text-white"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    class="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    stroke-width="4"
-                  />
-                  <path
-                    class="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-              </div>
+        <div v-if="loading" class="text-center py-8">
+          <div
+            class="animate-spin w-8 h-8 border-2 border-gray-900 dark:border-gray-400 border-t-transparent rounded-full mx-auto mb-2"
+          ></div>
+          <p class="text-gray-500 dark:text-slate-300">{{ t('common.loading') }}</p>
+        </div>
 
-              <div v-else-if="remoteAccessState === 'ready'" class="space-y-4">
-                <div class="space-y-3">
-                  <label
-                    class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
-                  >
-                    {{ t('remoteAccess.selectProvider') }}
-                  </label>
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      v-for="provider in tunnelProviders"
-                      :key="provider.id"
-                      class="channels-remote-card__provider-option p-3 rounded-lg border text-left transition-colors flex items-center gap-3"
-                      :class="
-                        selectedProvider === provider.id
-                          ? 'border-gray-600 dark:border-slate-500 bg-gray-100 dark:bg-slate-800/70'
-                          : 'border-gray-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/25 hover:border-gray-300 dark:hover:border-slate-500 hover:bg-white dark:hover:bg-slate-800/45'
-                      "
-                      @click="selectedProvider = provider.id"
-                    >
-                      <img
-                        v-if="getTunnelProviderIcon(provider.id)"
-                        :src="getTunnelProviderIcon(provider.id)"
-                        :alt="provider.name"
-                        class="w-6 h-6 shrink-0 rounded object-contain"
-                      />
-                      <div
-                        v-else
-                        class="w-6 h-6 shrink-0 bg-gray-700 dark:bg-slate-800 rounded flex items-center justify-center"
+        <div v-else class="channels-board">
+          <div class="channels-board__stack">
+            <div
+              class="channels-remote-card"
+              :class="{ 'channels-remote-card--expanded': remoteAccessExpanded }"
+            >
+              <div class="channels-remote-card__header" @click="toggleRemoteAccessExpanded">
+                <div class="channels-remote-card__identity">
+                  <div class="channels-remote-card__icon-shell">
+                    <img
+                      src="/icons/tunnel/remote-access.svg"
+                      alt="Remote Access"
+                      class="channels-remote-card__icon"
+                    />
+                  </div>
+                  <div class="channels-remote-card__copy">
+                    <div class="channels-remote-card__title-row">
+                      <h3 class="channels-remote-card__title text-gray-900 dark:text-white">
+                        {{ t('remoteAccess.title') }}
+                      </h3>
+                      <span
+                        class="channels-remote-card__badge px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-slate-800/80 text-gray-900 dark:text-slate-100 rounded-full"
                       >
-                        <svg
-                          class="w-4 h-4 text-gray-400"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
-                          />
-                        </svg>
-                      </div>
-                      <div class="flex-1 min-w-0">
-                        <div
-                          class="channels-remote-card__provider-name font-medium text-gray-900 dark:text-white text-sm"
-                        >
-                          {{ provider.name }}
-                        </div>
-                        <div
-                          class="channels-remote-card__provider-meta text-xs text-gray-500 dark:text-slate-400 mt-0.5"
-                        >
-                          {{
-                            provider.requires_key
-                              ? t('remoteAccess.requiresKey')
-                              : t('remoteAccess.noKeyRequired')
-                          }}
-                        </div>
-                      </div>
-                    </button>
+                        {{ t('remoteAccess.recommended') }}
+                      </span>
+                      <span
+                        class="w-2 h-2 rounded-full"
+                        :class="{
+                          'bg-green-500': remoteAccessState === 'connected',
+                          'bg-yellow-500 animate-pulse': remoteAccessState === 'connecting',
+                          'bg-red-500': remoteAccessState === 'error',
+                          'bg-gray-400': ['loading', 'ready'].includes(remoteAccessState),
+                        }"
+                      ></span>
+                    </div>
+                    <p
+                      class="channels-remote-card__description text-gray-500 dark:text-slate-300 truncate"
+                    >
+                      {{ t('remoteAccess.channelDescription') }}
+                    </p>
                   </div>
                 </div>
-
-                <div v-if="selectedProviderInfo?.requires_key" class="space-y-2">
+                <div class="flex items-center gap-3">
                   <label
-                    class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+                    v-if="remoteAccessState === 'connected' || remoteAccessState === 'ready'"
+                    class="relative inline-flex items-center cursor-pointer"
+                    @click.stop.prevent="
+                      remoteAccessState === 'connected'
+                        ? handleRemoteAccessStop()
+                        : handleRemoteAccessStart()
+                    "
                   >
-                    {{ selectedProviderInfo.key_label || 'Auth Token' }}
+                    <input
+                      :checked="remoteAccessState === 'connected'"
+                      type="checkbox"
+                      class="sr-only peer"
+                    />
+                    <div
+                      class="channels-remote-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
+                    ></div>
                   </label>
-                  <input
-                    v-model="currentProviderToken"
-                    type="password"
-                    class="channels-remote-card__input w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                    :placeholder="selectedProviderInfo.key_hint || ''"
-                  />
-                  <a
-                    v-if="selectedProviderInfo.doc_url"
-                    :href="selectedProviderInfo.doc_url"
-                    target="_blank"
-                    class="channels-remote-card__helper-link inline-flex items-center gap-1 text-xs text-gray-900 dark:text-slate-100 hover:underline"
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="channels-remote-card__chevron text-gray-400 transition-transform"
+                    :class="{ 'rotate-180': remoteAccessExpanded }"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
                   >
-                    <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                      />
-                    </svg>
-                    {{ t('remoteAccess.getToken') }}
-                  </a>
-                </div>
-
-                <div v-if="selectedProvider === 'ngrok'" class="space-y-2">
-                  <label
-                    class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
-                  >
-                    {{ t('remoteAccess.ngrokDomain') }}
-                    <span class="text-gray-400 dark:text-slate-500 text-xs ml-1">
-                      ({{ t('common.optional') }})
-                    </span>
-                  </label>
-                  <input
-                    v-model="ngrokDomain"
-                    type="text"
-                    class="channels-remote-card__input w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                    :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
-                  />
-                  <p class="channels-remote-card__note text-xs text-gray-500 dark:text-slate-300">
-                    {{ t('remoteAccess.ngrokDomainHint') }}
-                    <a
-                      href="https://dashboard.ngrok.com/domains"
-                      target="_blank"
-                      class="channels-remote-card__helper-link text-gray-900 dark:text-slate-100 hover:underline"
-                    >
-                      {{ t('remoteAccess.ngrokClaimDomain') }}
-                    </a>
-                  </p>
-                </div>
-
-                <button
-                  class="channels-remote-card__primary-action w-full px-4 py-3 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                  :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
-                  :class="{
-                    'opacity-50 cursor-not-allowed':
-                      selectedProviderInfo?.requires_key && !currentProviderToken,
-                  }"
-                  @click="handleRemoteAccessStart"
-                >
-                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                      d="M19 9l-7 7-7-7"
                     />
                   </svg>
-                  {{ t('remoteAccess.enable') }}
-                </button>
-                <div
-                  class="channels-remote-card__note text-xs text-gray-500 dark:text-slate-300 text-center"
-                >
-                  {{ t('remoteAccess.securityWarning') }}
                 </div>
               </div>
 
-              <div v-else-if="remoteAccessState === 'connecting'" class="space-y-4">
-                <div class="flex items-center justify-center py-4">
-                  <div class="text-center">
-                    <svg
-                      class="animate-spin h-8 w-8 text-gray-900 dark:text-white mx-auto mb-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
+              <div v-if="remoteAccessExpanded" class="channels-remote-card__body">
+                <div
+                  v-if="remoteAccessState === 'loading'"
+                  class="flex items-center justify-center py-8"
+                >
+                  <svg
+                    class="animate-spin h-8 w-8 text-gray-900 dark:text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    />
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                </div>
+
+                <div v-else-if="remoteAccessState === 'ready'" class="space-y-4">
+                  <div class="space-y-3">
+                    <label
+                      class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
                     >
-                      <circle
-                        class="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        stroke-width="4"
-                      />
-                      <path
-                        class="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    <p class="text-gray-600 dark:text-slate-300">
-                      {{ t('remoteAccess.connecting') }}
+                      {{ t('remoteAccess.selectProvider') }}
+                    </label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        v-for="provider in tunnelProviders"
+                        :key="provider.id"
+                        class="channels-remote-card__provider-option p-3 rounded-lg border text-left transition-colors flex items-center gap-3"
+                        :class="
+                          selectedProvider === provider.id
+                            ? 'border-gray-600 dark:border-slate-500 bg-gray-100 dark:bg-slate-800/70'
+                            : 'border-gray-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/25 hover:border-gray-300 dark:hover:border-slate-500 hover:bg-white dark:hover:bg-slate-800/45'
+                        "
+                        @click="selectedProvider = provider.id"
+                      >
+                        <img
+                          v-if="getTunnelProviderIcon(provider.id)"
+                          :src="getTunnelProviderIcon(provider.id)"
+                          :alt="provider.name"
+                          class="w-6 h-6 shrink-0 rounded object-contain"
+                        />
+                        <div
+                          v-else
+                          class="w-6 h-6 shrink-0 bg-gray-700 dark:bg-slate-800 rounded flex items-center justify-center"
+                        >
+                          <svg
+                            class="w-4 h-4 text-gray-400"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                            />
+                          </svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                          <div
+                            class="channels-remote-card__provider-name font-medium text-gray-900 dark:text-white text-sm"
+                          >
+                            {{ provider.name }}
+                          </div>
+                          <div
+                            class="channels-remote-card__provider-meta text-xs text-gray-500 dark:text-slate-400 mt-0.5"
+                          >
+                            {{
+                              provider.requires_key
+                                ? t('remoteAccess.requiresKey')
+                                : t('remoteAccess.noKeyRequired')
+                            }}
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div v-if="selectedProviderInfo?.requires_key" class="space-y-2">
+                    <label
+                      class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+                    >
+                      {{ selectedProviderInfo.key_label || 'Auth Token' }}
+                    </label>
+                    <input
+                      v-model="currentProviderToken"
+                      type="password"
+                      class="channels-remote-card__input w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                      :placeholder="selectedProviderInfo.key_hint || ''"
+                    />
+                    <a
+                      v-if="selectedProviderInfo.doc_url"
+                      :href="selectedProviderInfo.doc_url"
+                      target="_blank"
+                      class="channels-remote-card__helper-link inline-flex items-center gap-1 text-xs text-gray-900 dark:text-slate-100 hover:underline"
+                    >
+                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                        />
+                      </svg>
+                      {{ t('remoteAccess.getToken') }}
+                    </a>
+                  </div>
+
+                  <div v-if="selectedProvider === 'ngrok'" class="space-y-2">
+                    <label
+                      class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+                    >
+                      {{ t('remoteAccess.ngrokDomain') }}
+                      <span class="text-gray-400 dark:text-slate-500 text-xs ml-1">
+                        ({{ t('common.optional') }})
+                      </span>
+                    </label>
+                    <input
+                      v-model="ngrokDomain"
+                      type="text"
+                      class="channels-remote-card__input w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                      :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
+                    />
+                    <p class="channels-remote-card__note text-xs text-gray-500 dark:text-slate-300">
+                      {{ t('remoteAccess.ngrokDomainHint') }}
+                      <a
+                        href="https://dashboard.ngrok.com/domains"
+                        target="_blank"
+                        class="channels-remote-card__helper-link text-gray-900 dark:text-slate-100 hover:underline"
+                      >
+                        {{ t('remoteAccess.ngrokClaimDomain') }}
+                      </a>
                     </p>
                   </div>
-                </div>
-                <TunnelStatus
-                  :status="tunnelStatus || { active: false, connecting: true }"
-                  @disconnect="handleRemoteAccessStop"
-                />
-              </div>
 
-              <div v-else-if="remoteAccessState === 'connected' && tunnelStatus" class="space-y-4">
-                <TunnelStatus :status="tunnelStatus" @disconnect="handleRemoteAccessStop" />
-              </div>
-
-              <div v-else-if="remoteAccessState === 'error'" class="space-y-4">
-                <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
-                  <div class="flex items-start gap-3">
-                    <svg
-                      class="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
+                  <button
+                    class="channels-remote-card__primary-action w-full px-4 py-3 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                    :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
+                    :class="{
+                      'opacity-50 cursor-not-allowed':
+                        selectedProviderInfo?.requires_key && !currentProviderToken,
+                    }"
+                    @click="handleRemoteAccessStart"
+                  >
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
                         stroke-width="2"
-                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
                       />
                     </svg>
-                    <div>
-                      <p class="text-sm text-red-800 dark:text-red-200">{{ remoteAccessError }}</p>
-                    </div>
+                    {{ t('remoteAccess.enable') }}
+                  </button>
+                  <div
+                    class="channels-remote-card__note text-xs text-gray-500 dark:text-slate-300 text-center"
+                  >
+                    {{ t('remoteAccess.securityWarning') }}
                   </div>
                 </div>
-                <button
-                  class="channels-remote-card__secondary-action w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
-                  @click="loadRemoteAccessStatus"
+
+                <div v-else-if="remoteAccessState === 'connecting'" class="space-y-4">
+                  <div class="flex items-center justify-center py-4">
+                    <div class="text-center">
+                      <svg
+                        class="animate-spin h-8 w-8 text-gray-900 dark:text-white mx-auto mb-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          class="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          stroke-width="4"
+                        />
+                        <path
+                          class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                      <p class="text-gray-600 dark:text-slate-300">
+                        {{ t('remoteAccess.connecting') }}
+                      </p>
+                    </div>
+                  </div>
+                  <TunnelStatus
+                    :status="tunnelStatus || { active: false, connecting: true }"
+                    @disconnect="handleRemoteAccessStop"
+                  />
+                </div>
+
+                <div
+                  v-else-if="remoteAccessState === 'connected' && tunnelStatus"
+                  class="space-y-4"
                 >
-                  {{ t('common.retry') }}
-                </button>
-                <TunnelStatus
-                  :status="tunnelStatus || { active: false }"
-                  @disconnect="handleRemoteAccessStop"
-                />
+                  <TunnelStatus :status="tunnelStatus" @disconnect="handleRemoteAccessStop" />
+                </div>
+
+                <div v-else-if="remoteAccessState === 'error'" class="space-y-4">
+                  <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+                    <div class="flex items-start gap-3">
+                      <svg
+                        class="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      <div>
+                        <p class="text-sm text-red-800 dark:text-red-200">
+                          {{ remoteAccessError }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    class="channels-remote-card__secondary-action w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
+                    @click="loadRemoteAccessStatus"
+                  >
+                    {{ t('common.retry') }}
+                  </button>
+                  <TunnelStatus
+                    :status="tunnelStatus || { active: false }"
+                    @disconnect="handleRemoteAccessStop"
+                  />
+                </div>
               </div>
             </div>
+
+            <ChannelCard
+              v-for="channel in primaryChannels"
+              :key="channel.id"
+              v-memo="[
+                channel.id,
+                channel.enabled,
+                channel.status,
+                channel.lastError,
+                expandedChannel === channel.id,
+                toggling === channel.id,
+                saving === channel.id,
+                testingConnection === channel.id,
+                testResult,
+                ...channel.fields.map((f) => f.value),
+              ]"
+              :channel="channel"
+              :expanded="expandedChannel === channel.id"
+              :toggling="toggling === channel.id"
+              :saving="saving === channel.id"
+              :testing-connection="testingConnection === channel.id"
+              :test-result="testResult"
+              @toggle="toggleChannel(channel.id)"
+              @toggle-enabled="toggleChannelEnabled(channel.id, $event)"
+              @save="saveChannel(channel.id)"
+              @test-connection="testConnection(channel.id)"
+              @update-field="
+                (fieldIndex: number, value: string) =>
+                  updateChannelField(channel.id, fieldIndex, value)
+              "
+            />
           </div>
 
-          <ChannelCard
-            v-for="channel in primaryChannels"
-            :key="channel.id"
-            v-memo="[
-              channel.id,
-              channel.enabled,
-              channel.status,
-              channel.lastError,
-              expandedChannel === channel.id,
-              toggling === channel.id,
-              saving === channel.id,
-              testingConnection === channel.id,
-              testResult,
-              ...channel.fields.map((f) => f.value),
-            ]"
-            :channel="channel"
-            :expanded="expandedChannel === channel.id"
-            :toggling="toggling === channel.id"
-            :saving="saving === channel.id"
-            :testing-connection="testingConnection === channel.id"
-            :test-result="testResult"
-            @toggle="toggleChannel(channel.id)"
-            @toggle-enabled="toggleChannelEnabled(channel.id, $event)"
-            @save="saveChannel(channel.id)"
-            @test-connection="testConnection(channel.id)"
-            @update-field="
-              (fieldIndex: number, value: string) =>
-                updateChannelField(channel.id, fieldIndex, value)
-            "
-          />
-        </div>
+          <button
+            v-if="!showMoreChannels && secondaryChannels.length > 0"
+            class="channels-load-more"
+            @click="showMoreChannels = true"
+          >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+            {{ t('common.loadMore') }} ({{ secondaryChannels.length }})
+          </button>
 
-        <button
-          v-if="!showMoreChannels && secondaryChannels.length > 0"
-          class="channels-load-more"
-          @click="showMoreChannels = true"
-        >
-          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M19 9l-7 7-7-7"
+          <div
+            v-if="showMoreChannels"
+            class="channels-board__stack channels-board__stack--secondary"
+          >
+            <ChannelCard
+              v-for="channel in secondaryChannels"
+              :key="channel.id"
+              v-memo="[
+                channel.id,
+                channel.enabled,
+                channel.status,
+                channel.lastError,
+                expandedChannel === channel.id,
+                toggling === channel.id,
+                saving === channel.id,
+                testingConnection === channel.id,
+                testResult,
+                ...channel.fields.map((f) => f.value),
+              ]"
+              :channel="channel"
+              :expanded="expandedChannel === channel.id"
+              :toggling="toggling === channel.id"
+              :saving="saving === channel.id"
+              :testing-connection="testingConnection === channel.id"
+              :test-result="testResult"
+              @toggle="toggleChannel(channel.id)"
+              @toggle-enabled="toggleChannelEnabled(channel.id, $event)"
+              @save="saveChannel(channel.id)"
+              @test-connection="testConnection(channel.id)"
+              @update-field="
+                (fieldIndex: number, value: string) =>
+                  updateChannelField(channel.id, fieldIndex, value)
+              "
             />
-          </svg>
-          {{ t('common.loadMore') }} ({{ secondaryChannels.length }})
-        </button>
-
-        <div v-if="showMoreChannels" class="channels-board__stack channels-board__stack--secondary">
-          <ChannelCard
-            v-for="channel in secondaryChannels"
-            :key="channel.id"
-            v-memo="[
-              channel.id,
-              channel.enabled,
-              channel.status,
-              channel.lastError,
-              expandedChannel === channel.id,
-              toggling === channel.id,
-              saving === channel.id,
-              testingConnection === channel.id,
-              testResult,
-              ...channel.fields.map((f) => f.value),
-            ]"
-            :channel="channel"
-            :expanded="expandedChannel === channel.id"
-            :toggling="toggling === channel.id"
-            :saving="saving === channel.id"
-            :testing-connection="testingConnection === channel.id"
-            :test-result="testResult"
-            @toggle="toggleChannel(channel.id)"
-            @toggle-enabled="toggleChannelEnabled(channel.id, $event)"
-            @save="saveChannel(channel.id)"
-            @test-connection="testConnection(channel.id)"
-            @update-field="
-              (fieldIndex: number, value: string) =>
-                updateChannelField(channel.id, fieldIndex, value)
-            "
-          />
+          </div>
         </div>
       </div>
     </section>
@@ -1935,64 +1949,66 @@ watch(
 
 <style scoped>
 .channels-page {
-  --config-page-accent: 8, 145, 178;
+  --channels-accent: 37, 99, 235;
+  --dashboard-page-accent: var(--channels-accent);
+  width: 100%;
   max-width: 1480px;
   margin: 0 auto;
-  padding: 0 0.78rem 1.4rem;
+  padding: 0 0.75rem 1.8rem;
   color: #0f172a;
 }
 
 .channels-stage {
   position: relative;
-  padding: 0.92rem 0 0.2rem;
+  padding: 1.15rem 0 0.35rem;
 }
 
-.channels-stage::before,
-.channels-stage::after {
-  content: none;
-  position: absolute;
-  width: 18rem;
-  height: 18rem;
-  pointer-events: none;
-  opacity: 0.78;
-  background-image: radial-gradient(circle, rgba(37, 99, 235, 0.22) 1px, transparent 1px);
-  background-size: 14px 14px;
-  z-index: 0;
-}
-
-.channels-stage::before {
-  right: 10%;
-  top: 7.5rem;
-}
-
-.channels-stage::after {
-  left: 12%;
-  bottom: -1.25rem;
+.channels-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 82rem;
+  margin: 0 auto;
 }
 
 .channels-header {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 0.64rem;
-  padding: 1rem 1.08rem;
-  margin-bottom: 0.72rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 0 0.2rem;
+  margin-bottom: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.channels-header::after {
-  content: none;
-}
-
 .channels-header__copy {
-  max-width: 46rem;
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: 42rem;
+  padding-top: 0.1rem;
 }
 
 .channels-page__title {
-  font-size: clamp(1.18rem, 0.72vw + 0.88rem, 1.68rem);
-  line-height: 1.02;
+  font-size: clamp(1.34rem, 0.7vw + 0.95rem, 1.9rem);
+  line-height: 1.06;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+  color: #111827;
+}
+
+.channels-page__description {
+  margin: 0.42rem 0 0;
+  max-width: 34rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: #9ca3af;
 }
 
 .channels-summary-grid {
@@ -2021,7 +2037,8 @@ watch(
 
 .channels-page .dashboard-card-surface {
   border-color: rgba(226, 232, 240, 0.92);
-  background: rgba(255, 255, 255, 0.98);
+  background: #ffffff;
+  box-shadow: none;
 }
 
 .channels-summary-card--connected {
@@ -2127,12 +2144,10 @@ watch(
 
 .channels-remote-card {
   overflow: hidden;
-  border-radius: 1.12rem;
-  border: 1px solid rgba(226, 232, 240, 0.92);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow:
-    0 14px 28px -24px rgba(15, 23, 42, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+  border-radius: 1.25rem;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  background: #ffffff;
+  box-shadow: none;
 }
 
 .channels-remote-card__header {
@@ -2165,9 +2180,9 @@ watch(
   place-items: center;
   overflow: hidden;
   border-radius: 0.74rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 245, 249, 0.94) 100%);
-  border: 1px solid rgba(203, 213, 225, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  background: #f8fafc;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  box-shadow: none;
 }
 
 .channels-remote-card__icon {
@@ -2201,9 +2216,9 @@ watch(
 }
 
 .channels-remote-card__body {
-  border-top: 1px solid rgba(226, 232, 240, 0.88);
+  border-top: 1px solid rgba(226, 232, 240, 0.96);
   padding: 0.92rem;
-  background: rgba(248, 250, 252, 0.9);
+  background: #f8fafc;
 }
 
 .channels-remote-card__badge {
@@ -2357,41 +2372,29 @@ html.dark .channels-page {
   color: #e2e8f0;
 }
 
-:root.dark .channels-stage::before,
-[data-theme='dark'] .channels-stage::before,
-html.dark .channels-stage::before,
-:root.dark .channels-stage::after,
-[data-theme='dark'] .channels-stage::after,
-html.dark .channels-stage::after {
-  opacity: 0.46;
-  background-image: radial-gradient(circle, rgba(96, 165, 250, 0.28) 1px, transparent 1px);
-}
-
 :root.dark .channels-page :deep(.dashboard-card-surface),
 [data-theme='dark'] .channels-page :deep(.dashboard-card-surface),
 html.dark .channels-page :deep(.dashboard-card-surface),
 :root.dark .channels-remote-card,
 [data-theme='dark'] .channels-remote-card,
 html.dark .channels-remote-card {
-  background: rgba(30, 41, 59, 0.96);
-  border-color: rgba(100, 116, 139, 0.56);
-  box-shadow:
-    0 16px 30px -28px rgba(2, 6, 23, 0.82),
-    inset 0 1px 0 rgba(148, 163, 184, 0.08);
+  background: #111827;
+  border-color: rgba(71, 85, 105, 0.46);
+  box-shadow: none;
 }
 
 :root.dark .channels-remote-card__body,
 [data-theme='dark'] .channels-remote-card__body,
 html.dark .channels-remote-card__body {
-  border-top-color: rgba(100, 116, 139, 0.5);
-  background: rgba(15, 23, 42, 0.46);
+  border-top-color: rgba(71, 85, 105, 0.46);
+  background: #1e293b;
 }
 
 :root.dark .channels-remote-card__icon-shell,
 [data-theme='dark'] .channels-remote-card__icon-shell,
 html.dark .channels-remote-card__icon-shell {
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.92) 0%, rgba(15, 23, 42, 0.88) 100%);
-  border-color: rgba(100, 116, 139, 0.58);
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(71, 85, 105, 0.5);
 }
 
 :root.dark .channels-remote-card__header:hover,
@@ -2412,8 +2415,8 @@ html.dark .channels-summary-icon-pill--count {
 :root.dark .channels-summary-icon-pill,
 [data-theme='dark'] .channels-summary-icon-pill,
 html.dark .channels-summary-icon-pill {
-  background: rgba(30, 41, 59, 0.92);
-  border-color: rgba(100, 116, 139, 0.62);
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(71, 85, 105, 0.5);
 }
 
 :root.dark .channels-board,
@@ -2432,8 +2435,8 @@ html.dark .channels-board::before {
 :root.dark .channels-load-more,
 [data-theme='dark'] .channels-load-more,
 html.dark .channels-load-more {
-  background: rgba(30, 41, 59, 0.96);
-  border-color: rgba(100, 116, 139, 0.58);
+  background: #111827;
+  border-color: rgba(71, 85, 105, 0.46);
   color: #cbd5e1;
 }
 </style>

@@ -210,6 +210,30 @@ func TestMemoryHandlerImportMarkdownValidation(t *testing.T) {
 	}
 }
 
+func TestMemoryHandlerRejectsTraversalIDs(t *testing.T) {
+	_, e := newTestMemoryHandler(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/memory/..%2Foutside.md", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestMemoryHandlerRejectsInvalidDailyDate(t *testing.T) {
+	_, e := newTestMemoryHandler(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/memory/daily/..%2F2026-03-17", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
 func TestParseMarkdownImportEntries(t *testing.T) {
 	content := `# ZimaOS-Blue Memory Export
 > Exported at: 2026-03-02 10:00:00

@@ -392,18 +392,23 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Claude Code CLI enhanced mode
   const claudeCodeEnabled = ref(false)
+  const claudeCodeEnabledLoaded = ref(false)
 
   async function fetchClaudeCodeEnabled() {
     try {
+      claudeCodeEnabledLoaded.value = false
       const response = await claudeCodeApi.getConfig()
       claudeCodeEnabled.value = response.data.enabled
     } catch {
       claudeCodeEnabled.value = false
+    } finally {
+      claudeCodeEnabledLoaded.value = true
     }
   }
 
   function setClaudeCodeEnabled(enabled: boolean) {
     claudeCodeEnabled.value = enabled
+    claudeCodeEnabledLoaded.value = true
   }
 
   // Agent mode (from backend settings)
@@ -730,6 +735,7 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelStatsLoading,
     smallModelStatsError,
     claudeCodeEnabled,
+    claudeCodeEnabledLoaded,
     agentMode,
     agentAutoReflect,
     agentAutoConfirm,

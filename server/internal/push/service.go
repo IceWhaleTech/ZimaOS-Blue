@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +42,8 @@ type Service struct {
 	webpush    WebPushSender
 	localeFunc func() string
 }
+
+const intervalRecurringPrefix = "interval:"
 
 // NewService creates a new push notification service.
 func NewService(store *Store, logger *zap.Logger) *Service {
@@ -96,10 +99,22 @@ func (s *Service) SetLocaleFunc(fn func() string) {
 }
 
 // Add creates a new push notification with cron scheduling.
-func (s *Service) Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (*PushNotification, error) {
+func (s *Service) Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string, untilAt *time.Time) (*PushNotification, error) {
 	idBytes := make([]byte, 8)
 	rand.Read(idBytes)
 	id := fmt.Sprintf("push_%x", idBytes)
+
+	recurring = strings.TrimSpace(recurring)
+	if interval, ok := parseIntervalRecurring(recurring); ok {
+		if interval < time.Minute {
+			return nil, fmt.Errorf("interval reminders must be at least 1 minute")
+		}
+	} else if recurring != "" && recurring != "daily" && recurring != "weekly" && recurring != "monthly" {
+		return nil, fmt.Errorf("unsupported recurring value: %s", recurring)
+	}
+	if untilAt != nil && fireAt.After(*untilAt) {
+		return nil, fmt.Errorf("until must be after the first fire time")
+	}
 
 	r := &PushNotification{
 		ID:        id,
@@ -107,6 +122,7 @@ func (s *Service) Add(ctx context.Context, ownerID, message string, fireAt time.
 		Message:   message,
 		FireAt:    fireAt,
 		Recurring: recurring,
+		UntilAt:   untilAt,
 		SessionID: sessionID,
 		Status:    StatusPending,
 		CreatedAt: timeutil.NowTime(),
@@ -187,7 +203,13 @@ func (s *Service) RestorePending(ctx context.Context) error {
 
 	now := timeutil.NowTime()
 	for _, r := range pending {
-		if r.Recurring == "" && r.FireAt.Before(now) {
+		if isIntervalRecurring(r.Recurring) && r.UntilAt != nil && now.After(*r.UntilAt) {
+			s.logger.Info("finishing expired interval reminder", zap.String("id", r.ID))
+			expiredAt := now
+			_ = s.store.UpdateStatus(ctx, r.ID, StatusFired, &expiredAt)
+			continue
+		}
+		if (r.Recurring == "" || isIntervalRecurring(r.Recurring)) && r.FireAt.Before(now) {
 			// Past-due one-shot: fire immediately
 			s.logger.Info("firing past-due push notification", zap.String("id", r.ID))
 			s.firePush(ctx, r)
@@ -212,7 +234,11 @@ func (s *Service) scheduleCronJob(ctx context.Context, r *PushNotification) erro
 		return fmt.Errorf("cron service not available")
 	}
 
-	schedule := timeToCron(r.FireAt, r.Recurring)
+	scheduleRecurring := r.Recurring
+	if isIntervalRecurring(scheduleRecurring) {
+		scheduleRecurring = ""
+	}
+	schedule := timeToCron(r.FireAt, scheduleRecurring)
 	payload := map[string]interface{}{
 		"push_id": r.ID,
 	}
@@ -228,7 +254,8 @@ func (s *Service) scheduleCronJob(ctx context.Context, r *PushNotification) erro
 		return err
 	}
 
-	return s.store.UpdateCronJobID(ctx, r.ID, jobID)
+	r.CronJobID = jobID
+	return s.store.UpdateSchedule(ctx, r.ID, r.FireAt, jobID, StatusPending, nil)
 }
 
 // handlePushFired is the cron handler called when a push notification fires.
@@ -313,11 +340,32 @@ func (s *Service) firePush(ctx context.Context, r *PushNotification) {
 		}
 	}
 
-	// Update status
 	now := timeutil.NowTime()
+	if interval, ok := parseIntervalRecurring(r.Recurring); ok {
+		if r.CronJobID != "" && c != nil {
+			c.DeleteJob(r.CronJobID)
+			r.CronJobID = ""
+		}
+		if r.UntilAt != nil && !r.FireAt.Before(*r.UntilAt) {
+			_ = s.store.UpdateStatus(ctx, r.ID, StatusFired, &now)
+			return
+		}
+		next := now.Add(interval)
+		if r.UntilAt != nil && next.After(*r.UntilAt) {
+			_ = s.store.UpdateStatus(ctx, r.ID, StatusFired, &now)
+			return
+		}
+		r.FireAt = next
+		if err := s.scheduleCronJob(ctx, r); err != nil {
+			s.logger.Warn("failed to reschedule interval reminder", zap.String("id", r.ID), zap.Error(err))
+			_ = s.store.UpdateSchedule(ctx, r.ID, r.FireAt, "", StatusPending, nil)
+		}
+		return
+	}
+
 	if r.Recurring == "" {
 		// One-shot: mark as fired, delete cron job
-		s.store.UpdateStatus(ctx, r.ID, StatusFired, &now)
+		_ = s.store.UpdateStatus(ctx, r.ID, StatusFired, &now)
 		if r.CronJobID != "" && c != nil {
 			c.DeleteJob(r.CronJobID)
 		}
@@ -325,9 +373,26 @@ func (s *Service) firePush(ctx context.Context, r *PushNotification) {
 		// Recurring: update fire_at to next occurrence
 		next := nextOccurrence(r.FireAt, r.Recurring)
 		r.FireAt = next
-		s.store.UpdateStatus(ctx, r.ID, StatusPending, nil)
+		_ = s.store.UpdateSchedule(ctx, r.ID, next, r.CronJobID, StatusPending, nil)
 		// Cron job continues running on its schedule
 	}
+}
+
+func parseIntervalRecurring(recurring string) (time.Duration, bool) {
+	trimmed := strings.TrimSpace(recurring)
+	if !strings.HasPrefix(trimmed, intervalRecurringPrefix) {
+		return 0, false
+	}
+	d, err := time.ParseDuration(strings.TrimPrefix(trimmed, intervalRecurringPrefix))
+	if err != nil || d <= 0 {
+		return 0, false
+	}
+	return d, true
+}
+
+func isIntervalRecurring(recurring string) bool {
+	_, ok := parseIntervalRecurring(recurring)
+	return ok
 }
 
 // timeToCron converts a fire time and recurring pattern to a 6-field cron expression.

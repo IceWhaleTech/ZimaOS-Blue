@@ -1,6 +1,6 @@
 ---
 name: ask
-description: "Ask the user one or more multiple-choice questions and wait for their response. Use when the user explicitly asks to be questioned (e.g. 'ask me question(s)'), when intent is ambiguous and clarification is required, or as a confirmation gate in MCP internal Plan mode."
+description: "Ask the user one or more questions and wait for their response. Supports both multiple-choice and free-text prompts. Use when the user explicitly asks to be questioned (e.g. 'ask me question(s)'), when intent is ambiguous and clarification is required, or as a confirmation gate in MCP internal Plan mode."
 ---
 
 # Ask Skill
@@ -39,11 +39,8 @@ blue ask q="Choose a deploy strategy" a='["Canary","Blue-Green"]'
 blue ask questions='[
   {"question":"How should I address you?","type":"radio","options":["Alex","A."]},
   {"question":"Preferred language?","type":"radio","options":["zh","en"]},
-  {"question":"Timezone?","type":"radio","options":["Asia/Shanghai","UTC-8"]},
-  {"question":"Any other preferences?","type":"checkbox","options":[
-    {"label":"Free-form answer (Recommended)","description":"Reply directly in plain text","value":"free"},
-    {"label":"Template answer","value":"template"}
-  ]}
+  {"question":"请假时长？","type":"text"},
+  {"question":"邮件收件人是？","type":"radio","options":["直属上级","HR","两者都抄送"]}
 ]'
 ```
 
@@ -57,8 +54,8 @@ Each follow-up must be another `blue ask` call.
 | Field | Requirement | Notes |
 |-------|-------------|-------|
 | `questions` | Preferred | Array of question objects |
-| `type` | Required per item | `radio` or `checkbox` |
-| `options` | Required per item | Array of strings or `{label,description?,value?}` |
+| `type` | Required per item | `radio`, `checkbox`, or `text` |
+| `options` | Conditional | Required for `radio`/`checkbox`; omit for `text` |
 | `q` + `a` | Shorthand | Single-question shorthand |
 | `mq` + `a` | Shorthand | Multi-choice shorthand |
 
@@ -72,12 +69,8 @@ Example payload:
     "options": ["Staging", "Production"]
   },
   {
-    "question": "How do you want to respond?",
-    "type": "checkbox",
-    "options": [
-      {"label": "Free-form answer (Recommended)", "description": "Directly answer in plain text", "value": "free"},
-      {"label": "Template answer", "value": "template"}
-    ]
+    "question": "How long is the leave?",
+    "type": "text"
   }
 ]
 ```
@@ -91,7 +84,7 @@ Compatibility note:
 
 - Sends question payload to frontend and blocks until user answers or timeout.
 - Returns structured JSON output containing selected answers.
-- In non-interactive/silent mode, it auto-selects the first option.
+- In non-interactive/silent mode, it auto-selects the first option when options exist.
 - For interviews/surveys, keep interaction in tool calls (`ask`) instead of plain assistant text questions.
 
 ---
@@ -100,8 +93,8 @@ Compatibility note:
 
 | Error | Resolution |
 |-------|------------|
-| Missing options for a question | Add valid `options` and retry |
-| Invalid `type` value | Use only `radio` or `checkbox` |
+| Missing options for a `radio`/`checkbox` question | Add valid `options` and retry |
+| Invalid `type` value | Use only `radio`, `checkbox`, or `text` |
 | Empty/invalid `questions` payload | Provide a non-empty array of valid question objects |
 | User does not answer (timeout/dismiss) | Surface status to user and ask whether to retry or continue with defaults |
 

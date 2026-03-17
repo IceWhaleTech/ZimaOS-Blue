@@ -88,6 +88,8 @@ export default {
     automation: 'Uathoibriú',
     security: 'Slándáil',
     companion: 'Companion',
+
+    plugins: 'Eisínteachtaí',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1148,6 +1150,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Ag feitheamh le do dheimhniu chun leanuint ar aghaidh',
+    assistantStatus: {
+      searchingWeb: 'Ag cuardach an ghréasáin',
+      browsingWeb: 'Ag brabhsail an ghréasáin',
+      readingWeb: 'Ag léamh leathanaigh ghréasáin',
+      readingWebSite: 'Ag léamh {site}',
+      usingTools: 'Ag úsáid uirlisí',
+    },
     conversations: 'Comhráite',
     execDirectoryApprovalTimeout:
       'Cuireadh bac ar fheidhmiú an ordaithe mar chuaigh cead an eolaire in éag. Faomh an eolaire agus bain triail eile as.',
@@ -1230,11 +1240,10 @@ export default {
     },
     // Mód feabhsaithe
     enhancedMode: 'Feabhsaithe',
-    enhancedModeDesc:
-      'Mód feabhsaithe: tacaíonn le scileanna, glaonna uirlisí, oibríochtaí comhad, rith cóid agus tuilleadh',
+    enhancedModeDesc: 'Tá an feabhsúchán roghnach ar siúl: tá an taithí níos fearr.',
     enableEnhancedMode: 'Cumasaigh mód feabhsaithe',
     enableEnhancedModeDesc:
-      'Cumasaigh mód feabhsaithe le haghaidh scileanna, glaonna uirlisí, oibríochtaí comhad agus tuilleadh',
+      'Is feabhsúchán roghnach é seo: ní chuireann é a mhúchadh isteach ar an mbunchomhrá ná ar úsáid Agent; feabhsaíonn é a chur ar siúl an taithí.',
     showToolDetails: 'Taispeáin sonraí oibre',
     hideToolDetails: 'Folaigh sonraí oibre',
     toolDetailExpand: 'Leathnaigh aschur',
@@ -1416,6 +1425,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Rialacha saincheaptha um mhascadh sonraí',
+    builtinMaskingRules: 'Rialacha ionsuite',
+    builtinMaskingEmpty: 'Níl aon rialacha ionsuite luchtaithe.',
+    customMaskingListTitle: 'Rialacha saincheaptha',
+    customMaskingEmpty:
+      'Níl aon rialacha saincheaptha ann fós. Bain úsáid as an bhfoirm thíos le haghaidh aitheantóirí inmheánacha nó rún dílseánaigh.',
+    customMaskingDesc:
+      'Cuir rialacha bunaithe ar regex leis do aitheantóirí inmheánacha, rúin, nó réimsí sainiúla gnó.',
+    customMaskingNameLabel: 'Ainm',
+    customMaskingNamePlaceholder: 'Sampla: uimhir ticéid inmheánaigh',
+    customMaskingDirectionLabel: 'Treo',
+    customMaskingPatternLabel: 'Patrún regex',
+    customMaskingPatternPlaceholder: 'Sampla: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Téacs ionaid',
+    customMaskingReplacementPlaceholder: 'Sampla: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Úsáid slonn rialta bailí. Coinníonn {maskLabel} sa téacs ionaid an lipéad mascaithe logánaithe.',
+    customMaskingAdd: 'Cuir riail leis',
+    customMaskingAddSuccess: 'Cuireadh riail saincheaptha mascaithe leis.',
+    customMaskingAddError: 'Níorbh fhéidir an riail saincheaptha mascaithe a chur leis.',
+    customMaskingDeleteConfirm: 'Scrios riail saincheaptha mascaithe "{name}"?',
+    customMaskingDeleteSuccess: 'Scriosadh an riail saincheaptha mascaithe.',
+    customMaskingDeleteError: 'Níorbh fhéidir an riail saincheaptha mascaithe a scriosadh.',
     maskingRuleList: 'Liosta rialacha',
     maskingCategories: {
       pii: 'PII',
@@ -1817,7 +1849,7 @@ export default {
     checkpoint: 'Pointe seiceála',
     checkpointDescription: 'Pointe seiceála roimh athchóiriú ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Eisínteachtaí' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -1982,7 +2014,17 @@ export default {
     volume: 'Toirt',
     voiceSettings: 'Socruithe gutha',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Rochtain ar eisínteachtaí',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Eisínteachtaí',
+    },
+  },
 
   // Flat keys in Irish
   accept: 'Glac',
@@ -2132,6 +2174,16 @@ export default {
     timeout: 'Ag dúnadh go huathoibríoch i {seconds}s',
     answered: 'Freagartha',
   },
+  browserProgress: {
+    title: 'Dul chun cinn an bhrabhsálaí',
+    steps: {
+      start: 'Ag tosú brabhsálaí',
+      navigate: 'Ag nascleanúint',
+      snapshot: 'Ag léamh leathanaigh',
+      screenshot: 'Ag glacadh seat scáileáin',
+      recipe: 'Ag rith {recipe}',
+    },
+  },
   thinking: {
     title: 'Comhthéacs',
     context: 'Comhthéacs',
@@ -2140,6 +2192,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Cuardach gréasáin',
     resultCount: '{count} toradh',
   },
   cardActions: {

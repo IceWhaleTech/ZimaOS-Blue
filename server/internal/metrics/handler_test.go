@@ -1,11 +1,13 @@
 package metrics
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/labstack/echo/v4"
 )
 
@@ -27,6 +29,10 @@ func setupTestHandler() (*Handler, *echo.Echo) {
 	e := echo.New()
 
 	return handler, e
+}
+
+func withClaims(req *http.Request, claims *auth.UserClaims) *http.Request {
+	return req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, claims))
 }
 
 func TestHandler_GetCallStats(t *testing.T) {
@@ -322,7 +328,10 @@ func TestHandler_ResetMetrics(t *testing.T) {
 	}
 
 	// Reset
-	req := httptest.NewRequest(http.MethodPost, "/metrics/reset", nil)
+	req := withClaims(httptest.NewRequest(http.MethodPost, "/metrics/reset", nil), &auth.UserClaims{
+		UserID: "admin-user",
+		Role:   "admin",
+	})
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 

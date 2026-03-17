@@ -42,6 +42,14 @@ func (t *MessageTool) Definition() ToolDefinition {
 					"type":        "string",
 					"description": "When to fire: relative duration (1h, 30m) or absolute timestamp",
 				},
+				"every": map[string]interface{}{
+					"type":        "string",
+					"description": "Repeat interval for user reminders, e.g. 2m or 1h",
+				},
+				"until": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional end time for repeating reminders",
+				},
 				"id": map[string]interface{}{
 					"type":        "string",
 					"description": "Reminder ID (required for delete)",
@@ -80,6 +88,12 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 	}
 	if timeText != "" {
 		translated["time"] = timeText
+	}
+	if every := firstCompatString(args, "every", "interval"); every != "" {
+		translated["every"] = every
+	}
+	if until := firstCompatString(args, "until", "until_at", "untilAt"); until != "" {
+		translated["until"] = until
 	}
 	if id := firstCompatString(args, "id", "message_id", "reminder_id"); id != "" {
 		translated["id"] = id

@@ -38,6 +38,7 @@ func (t *AskTool) Definition() ToolDefinition {
 		Name: "ask",
 		Description: `Ask the user one or more questions.
 Preferred format: {"questions":[{"question":"...","type":"radio","options":[...]}]}.
+Text-input format: {"questions":[{"question":"...","type":"text"}]}.
 Single-question shorthand: {"q":"...","a":[...]} or {"mq":"...","a":[...]}.
 Option items can be strings or objects: {"label":"...","description":"...","value":"..."}.
 Inside questions items, use only "question"/"detail"/"options"/"type".`,
@@ -61,16 +62,16 @@ Inside questions items, use only "question"/"detail"/"options"/"type".`,
 							},
 							"type": map[string]interface{}{
 								"type":        "string",
-								"enum":        []string{"radio", "checkbox"},
+								"enum":        []string{"radio", "checkbox", "text"},
 								"description": "Selection mode.",
 							},
 							"options": map[string]interface{}{
 								"type":        "array",
 								"items":       optionItemSchema,
-								"description": "Selectable options.",
+								"description": "Selectable options. Required for radio/checkbox, omit for text.",
 							},
 						},
-						"required": []string{"question", "options"},
+						"required": []string{"question"},
 					},
 				},
 				"q": map[string]interface{}{
@@ -132,7 +133,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 				}
 				qType := firstCompatString(m, "type")
 				isMulti, _ := compatBoolArg(m, "multi_select", "multiSelect")
-				if strings.EqualFold(qType, "checkbox") || strings.EqualFold(qType, "multi") {
+				if isAskMultiSelectType(qType) {
 					isMulti = true
 				}
 				qDetail := extractQuestionDetail(m)
@@ -141,8 +142,8 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 				if raw, ok := compatArgValue(m, "options"); ok {
 					qOpts = parseQuestionOptions(raw)
 				}
-				if len(qOpts) == 0 {
-					continue
+				if len(qOpts) == 0 && !askQuestionAllowsEmptyOptions(qType) {
+					return nil, fmt.Errorf("question %d has no options", i+1)
 				}
 
 				questions = append(questions, QuestionItem{
@@ -159,11 +160,11 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 
 	// Fallback to single question format: q/mq + a
 	if len(questions) == 0 {
-		question, detail, multiSelect, options := parseAskArgs(args)
+		question, detail, multiSelect, options, allowEmptyOptions := parseAskArgs(args)
 		if question == "" {
 			return nil, fmt.Errorf("q/mq + a or questions array is required")
 		}
-		if len(options) == 0 {
+		if len(options) == 0 && !allowEmptyOptions {
 			return nil, fmt.Errorf("ask options are required")
 		}
 
@@ -245,7 +246,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 
 // parseAskArgs extracts question text, multi-select flag, and options from args.
 // Supports the primary q/mq/a format and falls back to top-level legacy format.
-func parseAskArgs(args map[string]interface{}) (question string, detail string, multiSelect bool, options []QuestionOption) {
+func parseAskArgs(args map[string]interface{}) (question string, detail string, multiSelect bool, options []QuestionOption, allowEmptyOptions bool) {
 	// Primary format: q/mq + a
 	if q := strings.TrimSpace(firstCompatString(args, "q")); q != "" {
 		question = q
@@ -268,12 +269,12 @@ func parseAskArgs(args map[string]interface{}) (question string, detail string, 
 	}
 
 	// Legacy fallback: "questions" array (question/options only) or "question"/"options" at top level
-	question, detail, multiSelect, options = parseLegacyArgs(args)
+	question, detail, multiSelect, options, allowEmptyOptions = parseLegacyArgs(args)
 	return
 }
 
 // parseLegacyArgs handles the old nested "questions" format for backward compat.
-func parseLegacyArgs(args map[string]interface{}) (question string, detail string, multiSelect bool, options []QuestionOption) {
+func parseLegacyArgs(args map[string]interface{}) (question string, detail string, multiSelect bool, options []QuestionOption, allowEmptyOptions bool) {
 	// Try "question" + "options" at top level
 	if q := strings.TrimSpace(firstCompatString(args, "question")); q != "" {
 		question = q
@@ -282,8 +283,11 @@ func parseLegacyArgs(args map[string]interface{}) (question string, detail strin
 			multiSelect = ms
 		}
 		// "type":"checkbox" compat
-		if typ := firstCompatString(args, "type"); strings.EqualFold(typ, "checkbox") || strings.EqualFold(typ, "multi") {
-			multiSelect = true
+		if typ := firstCompatString(args, "type"); typ != "" {
+			allowEmptyOptions = askQuestionAllowsEmptyOptions(typ)
+			if isAskMultiSelectType(typ) {
+				multiSelect = true
+			}
 		}
 		if raw, ok := compatArgValue(args, "options"); ok {
 			options = parseQuestionOptions(raw)
@@ -323,8 +327,11 @@ func parseLegacyArgs(args map[string]interface{}) (question string, detail strin
 	if ms, ok := compatBoolArg(first, "multi_select", "multiSelect"); ok {
 		multiSelect = ms
 	}
-	if typ := firstCompatString(first, "type"); strings.EqualFold(typ, "checkbox") || strings.EqualFold(typ, "multi") {
-		multiSelect = true
+	if typ := firstCompatString(first, "type"); typ != "" {
+		allowEmptyOptions = askQuestionAllowsEmptyOptions(typ)
+		if isAskMultiSelectType(typ) {
+			multiSelect = true
+		}
 	}
 	if raw, ok := compatArgValue(first, "options"); ok {
 		options = parseQuestionOptions(raw)
@@ -341,6 +348,28 @@ func extractQuestionDetail(obj map[string]interface{}) string {
 		}
 	}
 	return ""
+}
+
+func askQuestionAllowsEmptyOptions(qType string) bool {
+	return isAskTextType(qType)
+}
+
+func isAskTextType(qType string) bool {
+	switch strings.ToLower(strings.TrimSpace(qType)) {
+	case "text", "input", "textarea", "freeform", "free-form":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAskMultiSelectType(qType string) bool {
+	switch strings.ToLower(strings.TrimSpace(qType)) {
+	case "checkbox", "multi":
+		return true
+	default:
+		return false
+	}
 }
 
 func shortHeader(question string) string {

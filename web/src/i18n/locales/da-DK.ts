@@ -86,6 +86,8 @@ export default {
     automation: 'Automatisering',
     security: 'Sikkerhed',
     companion: 'Companion',
+
+    plugins: 'Udvidelser',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1368,6 +1370,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Venter pa din bekraeftelse for at fortsaette',
+    assistantStatus: {
+      searchingWeb: 'Soger pa nettet',
+      browsingWeb: 'Blaadrer pa nettet',
+      readingWeb: 'Laeser en webside',
+      readingWebSite: 'Laeser {site}',
+      usingTools: 'Bruger vaerktojer',
+    },
     conversations: 'Samtaler',
     execDirectoryApprovalTimeout:
       'Kommandoets udførelse blev blokeret, fordi godkendelsen af mappen udløb. Godkend mappen, og prøv igen.',
@@ -1449,11 +1459,10 @@ export default {
     },
     // Forbedret tilstand
     enhancedMode: 'Forbedret',
-    enhancedModeDesc:
-      'Forbedret tilstand: understøtter færdigheder, værktøjskald, filoperationer, kodekørsel og mere',
+    enhancedModeDesc: 'Valgfri forbedring er slået til: oplevelsen er bedre.',
     enableEnhancedMode: 'Aktiver forbedret tilstand',
     enableEnhancedModeDesc:
-      'Aktiver forbedret tilstand for færdigheder, værktøjskald, filoperationer og mere',
+      'Dette er en valgfri forbedring: at slå den fra påvirker ikke grundlæggende chat eller brug af Agent; at slå den til forbedrer oplevelsen.',
     showToolDetails: 'Vis arbejdsdetaljer',
     hideToolDetails: 'Skjul arbejdsdetaljer',
     toolDetailExpand: 'Udvid output',
@@ -1668,6 +1677,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Brugerdefinerede regler for datamaskering',
+    builtinMaskingRules: 'Indbyggede regler',
+    builtinMaskingEmpty: 'Ingen indbyggede regler er indlæst.',
+    customMaskingListTitle: 'Brugerdefinerede regler',
+    customMaskingEmpty:
+      'Der er endnu ingen brugerdefinerede regler. Brug formularen nedenfor til interne IDer eller proprietære hemmeligheder.',
+    customMaskingDesc:
+      'Tilføj regex-baserede regler for interne IDer, hemmeligheder eller forretningsspecifikke felter.',
+    customMaskingNameLabel: 'Navn',
+    customMaskingNamePlaceholder: 'Eksempel: internt billetnummer',
+    customMaskingDirectionLabel: 'Retning',
+    customMaskingPatternLabel: 'Regex-mønster',
+    customMaskingPatternPlaceholder: 'Eksempel: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Erstatningstekst',
+    customMaskingReplacementPlaceholder: 'Eksempel: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Brug et gyldigt regulært udtryk. {maskLabel} i erstatningsteksten bevarer den lokaliserede maskeringsetiket.',
+    customMaskingAdd: 'Tilføj regel',
+    customMaskingAddSuccess: 'Brugerdefineret maskeringsregel blev tilføjet.',
+    customMaskingAddError: 'Kunne ikke tilføje brugerdefineret maskeringsregel.',
+    customMaskingDeleteConfirm: 'Slet brugerdefineret maskeringsregel "{name}"?',
+    customMaskingDeleteSuccess: 'Brugerdefineret maskeringsregel blev slettet.',
+    customMaskingDeleteError: 'Kunne ikke slette brugerdefineret maskeringsregel.',
     maskingRuleList: 'Regelliste',
     maskingCategories: {
       pii: 'Personoplysninger (PII)',
@@ -2009,7 +2041,7 @@ export default {
     checkpoint: 'Kontrolpunkt',
     checkpointDescription: 'Kontrolpunkt før gendannelse ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Udvidelser' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -2197,7 +2229,17 @@ export default {
     espeakNote: 'Offline - letvægts (8,7MB)',
     sherpaNote: 'Offline - premiumkvalitet (kræver download)',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Adgang til udvidelser',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Udvidelser',
+    },
+  },
 
   // Flat keys in Danish
   accept: 'Accepter',
@@ -2346,6 +2388,16 @@ export default {
     timeout: 'Lukker automatisk om {seconds}s',
     answered: 'Besvaret',
   },
+  browserProgress: {
+    title: 'Browserfremskridt',
+    steps: {
+      start: 'Starter browser',
+      navigate: 'Navigerer',
+      snapshot: 'Laeser side',
+      screenshot: 'Tager skærmbillede',
+      recipe: 'Korer {recipe}',
+    },
+  },
   thinking: {
     title: 'Kontekst',
     context: 'Kontekst',
@@ -2354,6 +2406,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Websogning',
     resultCount: '{count} resultater',
   },
   cardActions: {

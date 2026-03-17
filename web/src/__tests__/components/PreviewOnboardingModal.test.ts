@@ -3,9 +3,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import PreviewOnboardingModal from '@/components/onboarding/PreviewOnboardingModal.vue'
 import { i18n } from '@/i18n'
 
-const { getOnboardingStatus, setOnboardingSeen } = vi.hoisted(() => ({
+const { getOnboardingStatus, setOnboardingSeen, routerPush } = vi.hoisted(() => ({
   getOnboardingStatus: vi.fn(),
   setOnboardingSeen: vi.fn(),
+  routerPush: vi.fn(),
 }))
 
 vi.mock('@/api/preview', () => ({
@@ -13,6 +14,12 @@ vi.mock('@/api/preview', () => ({
     getOnboardingStatus,
     setOnboardingSeen,
   },
+}))
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({
+    push: routerPush,
+  }),
 }))
 
 function setViewport(width: number, height: number) {
@@ -26,9 +33,9 @@ function setViewport(width: number, height: number) {
   })
 }
 
-function appendCreateAccountAnchor() {
+function appendEnhancedModeAnchor() {
   const anchor = document.createElement('button')
-  anchor.setAttribute('data-onboarding-anchor', 'preview-create-account')
+  anchor.setAttribute('data-onboarding-anchor', 'enhanced-mode-entry')
   anchor.getBoundingClientRect = () =>
     ({
       x: 96,
@@ -51,6 +58,7 @@ describe('PreviewOnboardingModal', () => {
     setViewport(1280, 900)
     getOnboardingStatus.mockResolvedValue({ data: { seen: false } })
     setOnboardingSeen.mockResolvedValue({ data: { success: true } })
+    routerPush.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -58,8 +66,8 @@ describe('PreviewOnboardingModal', () => {
     vi.clearAllMocks()
   })
 
-  it('positions the tooltip above the visible create-account button and centers the arrow', async () => {
-    appendCreateAccountAnchor()
+  it('positions the tooltip above the visible enhanced-mode entry and centers the arrow', async () => {
+    appendEnhancedModeAnchor()
 
     const wrapper = mount(PreviewOnboardingModal, {
       global: {
@@ -83,6 +91,33 @@ describe('PreviewOnboardingModal', () => {
     expect(arrow).not.toBeNull()
     expect(arrow?.style.left).toBe('152px')
     expect(arrow?.className).toContain('-bottom-2')
+
+    wrapper.unmount()
+  })
+
+  it('marks onboarding as seen and routes to enhanced mode settings', async () => {
+    appendEnhancedModeAnchor()
+
+    const wrapper = mount(PreviewOnboardingModal, {
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const primaryButton = document.body.querySelector(
+      '[data-testid="preview-onboarding-open-enhanced-mode"]'
+    ) as HTMLButtonElement | null
+
+    expect(primaryButton).not.toBeNull()
+
+    primaryButton?.click()
+    await flushPromises()
+
+    expect(setOnboardingSeen).toHaveBeenCalledTimes(1)
+    expect(routerPush).toHaveBeenCalledWith('/settings?tab=llm#claude-code-settings')
 
     wrapper.unmount()
   })

@@ -76,6 +76,7 @@ function createTestI18n() {
           retrying: 'Retrying...',
           save: 'Save',
           saving: 'Saving...',
+          saved: 'Saved',
           refreshing: 'Refreshing...',
           enable: 'Enable',
           unknown: 'Unknown',
@@ -258,7 +259,7 @@ describe('VoiceWakeSettingsSection', () => {
     await flushPromises()
 
     expect(voiceWakeApi.getStatus).toHaveBeenCalledTimes(1)
-    expect(wrapper.find('[data-testid="voicewake-save"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="voicewake-save"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -281,6 +282,21 @@ describe('VoiceWakeSettingsSection', () => {
     expect(wrapper.find('[data-testid="voicewake-section"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('running locally on macOS')
     expect(wrapper.find('[data-testid="voicewake-save"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps the toggle in the header and merges locale into the wake-word card', async () => {
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const wakeWordCard = wrapper.get('[data-testid="voicewake-wakeword-config"]')
+    const localeInline = wrapper.get('[data-testid="voicewake-locale-inline"]')
+
+    expect(wrapper.find('[data-testid="voicewake-header-toggle"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="voicewake-inline-config-grid"]').exists()).toBe(true)
+    expect(wakeWordCard.element.contains(localeInline.element)).toBe(true)
+    expect(wrapper.text()).not.toContain('Background listening')
+    expect(wrapper.text()).not.toContain('Command destination')
     wrapper.unmount()
   })
 
@@ -356,7 +372,7 @@ describe('VoiceWakeSettingsSection', () => {
     wrapper.unmount()
   })
 
-  it('saves wake-word settings and refreshes runtime status', async () => {
+  it('auto-saves wake-word settings and refreshes runtime status', async () => {
     settingsState.backendSettings = {
       voice_wake_enabled: true,
       voice_wake_triggers: ['Hey Blue'],
@@ -396,7 +412,7 @@ describe('VoiceWakeSettingsSection', () => {
 
     await wrapper.get('[data-testid="voicewake-triggers"]').setValue('Hey Blue, Jarvis')
     await wrapper.get('[data-testid="voicewake-locale"]').setValue('en-US')
-    await wrapper.get('[data-testid="voicewake-save"]').trigger('click')
+    vi.advanceTimersByTime(700)
     await flushPromises()
 
     expect(settingsState.updateBackendSettings).toHaveBeenCalledWith({
@@ -409,6 +425,7 @@ describe('VoiceWakeSettingsSection', () => {
     expect(wrapper.get('[data-testid="voicewake-status-message"]').text()).toContain(
       'Listening for wake words'
     )
+    expect(wrapper.get('[data-testid="voicewake-autosave-status"]').text()).toContain('Saved')
     wrapper.unmount()
   })
 
@@ -420,6 +437,58 @@ describe('VoiceWakeSettingsSection', () => {
     await flushPromises()
 
     expect(voiceWakeApi.getStatus).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('surfaces recent wake activity when runtime timestamps change', async () => {
+    vi.setSystemTime(new Date('2026-03-17T10:00:02.000Z'))
+    vi.mocked(voiceWakeApi.getStatus)
+      .mockResolvedValueOnce({
+        data: {
+          supported: true,
+          enabled: true,
+          running: true,
+          platform: 'darwin',
+          speech_authorized: true,
+          microphone_ready: true,
+          reason: 'running',
+          target_conversation_id: 'conv-1',
+          triggers: ['Hey Blue'],
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        data: {
+          supported: true,
+          enabled: true,
+          running: true,
+          platform: 'darwin',
+          speech_authorized: true,
+          microphone_ready: true,
+          reason: 'running',
+          target_conversation_id: 'conv-1',
+          triggers: ['Hey Blue'],
+          last_triggered_at: '2026-03-17T10:00:00.000Z',
+          last_sent_at: '2026-03-17T10:00:01.000Z',
+        },
+      } as never)
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="voicewake-activity-title"]').text()).toContain(
+      'Listening for wake words'
+    )
+
+    vi.advanceTimersByTime(1200)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="voicewake-activity-title"]').text()).toContain('Last sent')
+    expect(wrapper.get('[data-testid="voicewake-activity-meta"]').text()).toContain(
+      'Target conversation: Main conversation'
+    )
+    expect(wrapper.get('[data-testid="voicewake-last-sent-card"]').classes()).toContain(
+      'border-green-200'
+    )
     wrapper.unmount()
   })
 

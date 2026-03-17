@@ -37,7 +37,12 @@ func NewRemoteAccessHandlerWithRepo(tm *ngrok.TunnelManager, repo *ngrok.Reposit
 
 // RegisterRoutes registers remote access routes.
 func (h *RemoteAccessHandler) RegisterRoutes(e *echo.Echo) {
-	g := e.Group("/api/v1/remote-access")
+	h.RegisterGroupRoutes(e.Group("/api/v1"))
+}
+
+// RegisterGroupRoutes registers remote access routes on an existing API group.
+func (h *RemoteAccessHandler) RegisterGroupRoutes(g *echo.Group) {
+	g = g.Group("/remote-access")
 
 	g.GET("/ngrok/status", h.GetNgrokStatus)
 
@@ -150,12 +155,12 @@ func (h *RemoteAccessHandler) GetRemoteAccessStatus(c echo.Context) error {
 		if err == nil && session != nil {
 			// Found an active session in database
 			tunnelStatus = ngrok.TunnelStatus{
-				Active:        true,
-				Connecting:    session.Status == "connecting",
-				URL:           session.TunnelURL,
-				StartedAt:     session.StartedAt,
-				ExpiresAt:     session.ExpiresAt,
-				RenewedCount:  session.RenewedCount,
+				Active:       true,
+				Connecting:   session.Status == "connecting",
+				URL:          session.TunnelURL,
+				StartedAt:    session.StartedAt,
+				ExpiresAt:    session.ExpiresAt,
+				RenewedCount: session.RenewedCount,
 			}
 
 			// Calculate remaining time

@@ -88,6 +88,8 @@ export default {
     automation: 'Automatizacija',
     security: 'Sigurnost',
     companion: 'Companion',
+
+    plugins: 'Proširenja',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1156,6 +1158,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Prilagođena pravila maskiranja podataka',
+    builtinMaskingRules: 'Ugrađena pravila',
+    builtinMaskingEmpty: 'Nijedno ugrađeno pravilo nije učitano.',
+    customMaskingListTitle: 'Prilagođena pravila',
+    customMaskingEmpty:
+      'Još nema prilagođenih pravila. Upotrijebite obrazac ispod za interne ID-ove ili vlasničke tajne.',
+    customMaskingDesc:
+      'Dodajte pravila temeljena na regexu za interne ID-ove, tajne ili poslovno specifična polja.',
+    customMaskingNameLabel: 'Naziv',
+    customMaskingNamePlaceholder: 'Primjer: interni broj ticketa',
+    customMaskingDirectionLabel: 'Smjer',
+    customMaskingPatternLabel: 'Regex uzorak',
+    customMaskingPatternPlaceholder: 'Primjer: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Zamjenski tekst',
+    customMaskingReplacementPlaceholder: 'Primjer: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Upotrijebite ispravan regularni izraz. {maskLabel} u zamjenskom tekstu zadržava lokaliziranu oznaku maskiranja.',
+    customMaskingAdd: 'Dodaj pravilo',
+    customMaskingAddSuccess: 'Prilagođeno pravilo maskiranja je dodano.',
+    customMaskingAddError: 'Dodavanje prilagođenog pravila maskiranja nije uspjelo.',
+    customMaskingDeleteConfirm: 'Obrisati prilagođeno pravilo maskiranja "{name}"?',
+    customMaskingDeleteSuccess: 'Prilagođeno pravilo maskiranja je obrisano.',
+    customMaskingDeleteError: 'Brisanje prilagođenog pravila maskiranja nije uspjelo.',
     maskingRuleList: 'Popis pravila',
     maskingCategories: {
       pii: 'Osobni podaci (PII)',
@@ -1498,7 +1523,7 @@ export default {
     checkpoint: 'Kontrolna točka',
     checkpointDescription: 'Kontrolna točka prije vraćanja ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Proširenja' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -1652,7 +1677,17 @@ export default {
     volume: 'Glasnoća',
     voiceSettings: 'Postavke glasa',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Pristup proširenjima',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Proširenja',
+    },
+  },
   skillStore: {
     ...enUS.skillStore,
     title: 'Trgovina vještina',
@@ -1903,6 +1938,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Cekam tvoju potvrdu za nastavak',
+    assistantStatus: {
+      searchingWeb: 'Pretrazujem web',
+      browsingWeb: 'Pregledavam web',
+      readingWeb: 'Citam web stranicu',
+      readingWebSite: 'Citam {site}',
+      usingTools: 'Koristim alate',
+    },
     conversations: 'Razgovori',
     execDirectoryApprovalTimeout:
       'Izvršavanje naredbe je blokirano jer je odobrenje direktorija isteklo. Odobrite direktorij i pokušajte ponovno.',
@@ -1984,11 +2027,10 @@ export default {
     },
     // Poboljšani način
     enhancedMode: 'Poboljšani',
-    enhancedModeDesc:
-      'Poboljšani način: podržava vještine, pozive alata, operacije s datotekama, izvršavanje koda i više',
+    enhancedModeDesc: 'Opcionalno poboljšanje je uključeno: iskustvo je bolje.',
     enableEnhancedMode: 'Aktiviraj poboljšani način',
     enableEnhancedModeDesc:
-      'Aktivirajte poboljšani način za vještine, pozive alata, operacije s datotekama i više',
+      'Ovo je opcionalno poboljšanje: isključivanje ne utječe na osnovni chat ni korištenje Agenta; uključivanje poboljšava iskustvo.',
     showToolDetails: 'Prikaži detalje rada',
     hideToolDetails: 'Sakrij detalje rada',
     toolDetailExpand: 'Proširi izlaz',
@@ -2127,6 +2169,16 @@ export default {
     timeout: 'Automatsko zatvaranje za {seconds}s',
     answered: 'Odgovoreno',
   },
+  browserProgress: {
+    title: 'Napredak preglednika',
+    steps: {
+      start: 'Pokretanje preglednika',
+      navigate: 'Navigacija',
+      snapshot: 'Citanje stranice',
+      screenshot: 'Snimanje zaslona',
+      recipe: 'Pokretanje {recipe}',
+    },
+  },
   thinking: {
     title: 'Kontekst',
     context: 'Kontekst',
@@ -2135,6 +2187,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Web pretraga',
     resultCount: '{count} rezultata',
   },
   cardActions: {

@@ -229,6 +229,57 @@ func TestSkillVisibility_CCCLIFormat(t *testing.T) {
 	}
 }
 
+func TestSkillVisibility_GetSkillAcceptsHyphenAliasForUnderscoreInstall(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	testSkill := NewRemoteSkillAdapter(&skill.Manifest{
+		ID:          "word_docx",
+		Name:        "Word DOCX",
+		Version:     "1.0.0",
+		Description: "Legacy underscore-backed install",
+	})
+	if err := registry.Register(testSkill, false); err != nil {
+		t.Fatalf("register skill: %v", err)
+	}
+
+	skillDir := filepath.Join(handler.skillsDir, "word_docx")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nid: word_docx\nname: Word DOCX\n---\n"), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	scanner := skillstore.NewLocalSkillScanner(handler.skillsDir)
+	if err := scanner.Scan(); err != nil {
+		t.Fatalf("scan skills: %v", err)
+	}
+	handler.SetLocalScanner(scanner)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/word-docx", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("word-docx")
+
+	if err := handler.GetSkill(c); err != nil {
+		t.Fatalf("GetSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload["id"] != "word_docx" {
+		t.Fatalf("expected canonical id word_docx, got %#v", payload["id"])
+	}
+}
+
 // TestSkillVisibility_RegistrySync verifies that skill registry stays in sync with API operations
 func TestSkillVisibility_RegistrySync(t *testing.T) {
 	registry := skill.NewRegistry()

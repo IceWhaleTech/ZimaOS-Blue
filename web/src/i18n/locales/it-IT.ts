@@ -117,7 +117,7 @@ export default {
     dashboard: 'Dashboard',
     settings: 'Impostazioni',
     system: 'Sistema',
-    plugins: 'Plugin',
+    plugins: 'Estensioni',
     profile: 'Profilo',
     homeAssistant: 'Home Assistant',
     browserAutomation: 'Automazione browser',
@@ -177,6 +177,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'In attesa della tua conferma per continuare',
+    assistantStatus: {
+      searchingWeb: 'Ricerca sul web',
+      browsingWeb: 'Navigazione sul web',
+      readingWeb: 'Lettura di una pagina web',
+      readingWebSite: 'Lettura di {site}',
+      usingTools: 'Uso degli strumenti',
+    },
     execDirectoryApprovalTimeout:
       "L'esecuzione del comando è stata bloccata perché l'approvazione della directory è scaduta. Approva la directory e riprova.",
     streamProgress: {
@@ -380,11 +388,10 @@ export default {
     },
     // Modalità avanzata
     enhancedMode: 'Modalità avanzata',
-    enhancedModeDesc:
-      'Modalità avanzata: supporta abilità, chiamate di strumenti, operazioni sui file, esecuzione di codice e altro',
+    enhancedModeDesc: "Il miglioramento opzionale è attivo: l'esperienza è migliore.",
     enableEnhancedMode: 'Attiva modalità avanzata',
     enableEnhancedModeDesc:
-      'Attiva la modalità avanzata per abilità, chiamate di strumenti, operazioni sui file e altro',
+      "Questo è un miglioramento opzionale: disattivarlo non influisce sulla chat di base né sull'uso di Agent; attivarlo migliora l'esperienza.",
     showToolDetails: 'Mostra dettagli del lavoro',
     hideToolDetails: 'Nascondi dettagli del lavoro',
     toolDetailExpand: 'Espandi output',
@@ -676,7 +683,7 @@ export default {
   },
   plugins: {
     ...enUS.plugins,
-    title: 'Plugin',
+    title: 'Estensioni',
     subtitle: 'Gestisci plugin per abilità, estensioni e strumenti',
     refresh: 'Aggiorna',
     totalPlugins: 'Plugin totali',
@@ -2235,6 +2242,15 @@ export default {
       loadFailed: 'Caricamento utenti fallito',
       passwordResetFailed: 'Reimpostazione password fallita',
     },
+
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Accesso alle estensioni',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Estensioni',
+    },
   },
   speech: {
     ...enUS.speech,
@@ -2846,6 +2862,29 @@ export default {
     streamingAnomaly: 'Rilevamento anomalie streaming',
     streamingAnomalyDesc: "Rilevare e recuperare anomalie nell'output in streaming",
     maskingTitle: 'Mascheramento dati',
+    customMaskingTitle: 'Regole personalizzate di mascheramento dati',
+    builtinMaskingRules: 'Regole predefinite',
+    builtinMaskingEmpty: 'Nessuna regola predefinita caricata.',
+    customMaskingListTitle: 'Regole personalizzate',
+    customMaskingEmpty:
+      'Nessuna regola personalizzata ancora. Usa il modulo qui sotto per coprire ID interni o segreti proprietari.',
+    customMaskingDesc:
+      'Aggiungi regole basate su regex per ID interni, segreti o campi specifici del business.',
+    customMaskingNameLabel: 'Nome',
+    customMaskingNamePlaceholder: 'Esempio: numero ticket interno',
+    customMaskingDirectionLabel: 'Direzione',
+    customMaskingPatternLabel: 'Pattern regex',
+    customMaskingPatternPlaceholder: 'Esempio: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Testo sostitutivo',
+    customMaskingReplacementPlaceholder: 'Esempio: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Usa un’espressione regolare valida. {maskLabel} nel testo sostitutivo mantiene l’etichetta di mascheramento localizzata.',
+    customMaskingAdd: 'Aggiungi regola',
+    customMaskingAddSuccess: 'Regola di mascheramento personalizzata aggiunta.',
+    customMaskingAddError: 'Impossibile aggiungere la regola di mascheramento personalizzata.',
+    customMaskingDeleteConfirm: 'Eliminare la regola di mascheramento personalizzata "{name}"?',
+    customMaskingDeleteSuccess: 'Regola di mascheramento personalizzata eliminata.',
+    customMaskingDeleteError: 'Impossibile eliminare la regola di mascheramento personalizzata.',
     maskingDesc: 'Mascherare dati sensibili (PII, credenziali) nelle richieste e risposte LLM',
     maskingEnabled: 'Mascheramento dati abilitato',
     maskingDisabled: 'Mascheramento dati disabilitato',
@@ -3271,6 +3310,16 @@ export default {
     timeout: 'Chiusura automatica tra {seconds}s',
     answered: 'Risposto',
   },
+  browserProgress: {
+    title: 'Avanzamento del browser',
+    steps: {
+      start: 'Avvio del browser',
+      navigate: 'Navigazione',
+      snapshot: 'Lettura della pagina',
+      screenshot: 'Acquisizione schermata',
+      recipe: 'Esecuzione di {recipe}',
+    },
+  },
   thinking: {
     title: 'Contesto',
     context: 'Contesto',
@@ -3279,6 +3328,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Ricerca web',
     resultCount: '{count} risultati',
   },
   cardActions: {

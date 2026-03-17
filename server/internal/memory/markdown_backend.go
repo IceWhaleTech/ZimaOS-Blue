@@ -102,9 +102,9 @@ func (b *PureMarkdownBackend) Recall(ctx context.Context, query string, limit in
 
 // Forget removes a daily log file by relative path.
 func (b *PureMarkdownBackend) Forget(ctx context.Context, id string) error {
-	path := filepath.Join(b.baseDir, id)
-	if !strings.HasPrefix(path, b.baseDir) {
-		return fmt.Errorf("invalid path")
+	path, err := resolveMemoryPath(b.baseDir, id)
+	if err != nil {
+		return err
 	}
 	return os.Remove(path)
 }

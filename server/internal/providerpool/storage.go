@@ -101,6 +101,15 @@ type oauthSecrets struct {
 
 // SaveProvider saves a provider to storage
 func (s *FileStorage) SaveProvider(provider *Provider) error {
+	if provider == nil {
+		return ErrInvalidConfig
+	}
+	validatedID, err := ValidateProviderID(provider.ID)
+	if err != nil {
+		return err
+	}
+	provider.ID = validatedID
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -137,6 +146,12 @@ func (s *FileStorage) SaveProvider(provider *Provider) error {
 
 // LoadProvider loads a provider from storage
 func (s *FileStorage) LoadProvider(id string) (*Provider, error) {
+	validatedID, err := ValidateProviderID(id)
+	if err != nil {
+		return nil, err
+	}
+	id = validatedID
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -216,6 +231,12 @@ func (s *FileStorage) LoadAllProviders() ([]*Provider, error) {
 
 // DeleteProvider removes a provider from storage
 func (s *FileStorage) DeleteProvider(id string) error {
+	validatedID, err := ValidateProviderID(id)
+	if err != nil {
+		return err
+	}
+	id = validatedID
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -277,6 +298,12 @@ func (s *FileStorage) saveProvidersInternal(storage *providerStorage) error {
 
 // SaveModels saves models for a provider
 func (s *FileStorage) SaveModels(providerID string, models []*Model) error {
+	validatedID, err := ValidateProviderID(providerID)
+	if err != nil {
+		return err
+	}
+	providerID = validatedID
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -290,6 +317,12 @@ func (s *FileStorage) SaveModels(providerID string, models []*Model) error {
 
 // LoadModels loads models for a provider
 func (s *FileStorage) LoadModels(providerID string) ([]*Model, error) {
+	validatedID, err := ValidateProviderID(providerID)
+	if err != nil {
+		return nil, err
+	}
+	providerID = validatedID
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

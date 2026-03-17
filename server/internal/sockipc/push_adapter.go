@@ -17,8 +17,8 @@ func NewPushIPCAdapter(svc *push.Service) *PushIPCAdapter {
 	return &PushIPCAdapter{svc: svc}
 }
 
-func (a *PushIPCAdapter) Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (PushResult, error) {
-	r, err := a.svc.Add(ctx, ownerID, message, fireAt, recurring, sessionID)
+func (a *PushIPCAdapter) Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string, untilAt *time.Time) (PushResult, error) {
+	r, err := a.svc.Add(ctx, ownerID, message, fireAt, recurring, sessionID, untilAt)
 	if err != nil {
 		return PushResult{}, err
 	}
@@ -51,6 +51,7 @@ func toPushResult(r *push.PushNotification) PushResult {
 		Message:   r.Message,
 		FireAt:    r.FireAt,
 		Recurring: r.Recurring,
+		UntilAt:   r.UntilAt,
 		SessionID: r.SessionID,
 		Status:    r.Status,
 		CreatedAt: r.CreatedAt,

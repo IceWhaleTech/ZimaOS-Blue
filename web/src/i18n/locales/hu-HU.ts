@@ -78,6 +78,8 @@ export default {
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
     workspaceTreeRevealFailed: 'Unable to open file location',
+
+    plugins: 'Bővítmények',
   },
 
   errors: {
@@ -1344,6 +1346,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Egyéni adatmaszkolási szabályok',
+    builtinMaskingRules: 'Beépített szabályok',
+    builtinMaskingEmpty: 'Nincsenek betöltött beépített szabályok.',
+    customMaskingListTitle: 'Egyéni szabályok',
+    customMaskingEmpty:
+      'Még nincsenek egyéni szabályok. Az alábbi űrlappal belső azonosítókat vagy saját titkokat fedhet le.',
+    customMaskingDesc:
+      'Regex alapú szabályok hozzáadása belső azonosítókhoz, titkokhoz vagy üzleti specifikus mezőkhöz.',
+    customMaskingNameLabel: 'Név',
+    customMaskingNamePlaceholder: 'Példa: belső jegyszám',
+    customMaskingDirectionLabel: 'Irány',
+    customMaskingPatternLabel: 'Regex minta',
+    customMaskingPatternPlaceholder: 'Példa: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Csere szöveg',
+    customMaskingReplacementPlaceholder: 'Példa: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Használjon érvényes reguláris kifejezést. A csere szövegben szereplő {maskLabel} megtartja a lokalizált maszkolási címkét.',
+    customMaskingAdd: 'Szabály hozzáadása',
+    customMaskingAddSuccess: 'Az egyéni maszkolási szabály hozzáadva.',
+    customMaskingAddError: 'Nem sikerült hozzáadni az egyéni maszkolási szabályt.',
+    customMaskingDeleteConfirm: 'Törli az egyéni maszkolási szabályt: "{name}"?',
+    customMaskingDeleteSuccess: 'Az egyéni maszkolási szabály törölve.',
+    customMaskingDeleteError: 'Nem sikerült törölni az egyéni maszkolási szabályt.',
     maskingRuleList: 'Szabálylista',
     maskingCategories: {
       pii: 'Személyes adatok (PII)',
@@ -1958,6 +1983,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'A folytatashoz a megerositesedre varok',
+    assistantStatus: {
+      searchingWeb: 'Kereses a weben',
+      browsingWeb: 'Bongeszes a weben',
+      readingWeb: 'Weboldal olvasasa',
+      readingWebSite: '{site} olvasasa',
+      usingTools: 'Eszkozok hasznalata',
+    },
     conversations: 'Beszélgetések',
     execDirectoryApprovalTimeout:
       'A parancs végrehajtása blokkolva lett, mert a könyvtár jóváhagyása időtúllépés miatt lejárt. Hagyja jóvá a könyvtárat, majd próbálja újra.',
@@ -2040,11 +2073,10 @@ export default {
     },
     // Bővített mód
     enhancedMode: 'Bővített',
-    enhancedModeDesc:
-      'Bővített mód: támogatja a készségeket, eszközhívásokat, fájlműveleteket, kódfuttatást és egyebeket',
+    enhancedModeDesc: 'Az opcionális fejlesztés be van kapcsolva: a felhasználói élmény jobb.',
     enableEnhancedMode: 'Bővített mód bekapcsolása',
     enableEnhancedModeDesc:
-      'Kapcsolja be a bővített módot a készségek, eszközhívások, fájlműveletek és egyebek használatához',
+      'Ez egy opcionális fejlesztés: a kikapcsolása nem befolyásolja az alapvető chatet vagy az Agent használatát; a bekapcsolása javítja a felhasználói élményt.',
     showToolDetails: 'Munka részleteinek megjelenítése',
     hideToolDetails: 'Munka részleteinek elrejtése',
     toolDetailExpand: 'Kimenet kibontása',
@@ -2210,6 +2242,16 @@ export default {
     timeout: 'Automatikus bezárás {seconds} mp múlva',
     answered: 'Megválaszolva',
   },
+  browserProgress: {
+    title: 'Bongeszo folyamata',
+    steps: {
+      start: 'Bongeszo inditasa',
+      navigate: 'Navigalas',
+      snapshot: 'Oldal olvasasa',
+      screenshot: 'Kepernyokep keszitese',
+      recipe: '{recipe} futtatasa',
+    },
+  },
   thinking: {
     title: 'Kontextus',
     context: 'Kontextus',
@@ -2218,6 +2260,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Webes kereses',
     resultCount: '{count} találat',
   },
   cardActions: {
@@ -2397,5 +2440,21 @@ export default {
       'Destruktív műveleteknél megerősítés kihagyása (jobb kattintás a feladatciklus gombra a váltáshoz)',
     sendMessage: 'Üzenet küldése az ügynöknek...',
     messageQueued: 'Üzenet elküldve az ügynöknek',
+  },
+
+  plugins: {
+    ...enUS.plugins,
+    title: 'Bővítmények',
+  },
+  users: {
+    ...enUS.users,
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Bővítmények',
+    },
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Hozzáférés a bővítményekhez',
+    },
   },
 }

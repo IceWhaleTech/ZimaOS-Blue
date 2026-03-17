@@ -88,6 +88,8 @@ export default {
     automation: 'Automatització',
     security: 'Seguretat',
     companion: 'Companion',
+
+    plugins: 'Extensions',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1470,6 +1472,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Esperant la teva confirmacio per continuar',
+    assistantStatus: {
+      searchingWeb: 'Cercant al web',
+      browsingWeb: 'Navegant pel web',
+      readingWeb: 'Llegint una pagina web',
+      readingWebSite: 'Llegint {site}',
+      usingTools: 'Fent servir eines',
+    },
     conversations: 'Converses',
     execDirectoryApprovalTimeout:
       "L'execució de l'ordre s'ha bloquejat perquè l'aprovació del directori ha expirat. Aprova el directori i torna-ho a provar.",
@@ -1553,11 +1563,10 @@ export default {
     },
     // Mode millorat
     enhancedMode: 'Millorat',
-    enhancedModeDesc:
-      "Mode millorat: admet habilitats, crides d'eines, operacions de fitxers, execució de codi i més",
+    enhancedModeDesc: "La millora opcional està activada: l'experiència és millor.",
     enableEnhancedMode: 'Activar mode millorat',
     enableEnhancedModeDesc:
-      "Activeu el mode millorat per a habilitats, crides d'eines, operacions de fitxers i més",
+      "Aquesta és una millora opcional: desactivar-la no afecta el xat bàsic ni l'ús d'Agent; activar-la millora l'experiència.",
     showToolDetails: 'Mostra els detalls del treball',
     hideToolDetails: 'Amaga els detalls del treball',
     toolDetailExpand: 'Expandeix la sortida',
@@ -1869,6 +1878,29 @@ export default {
     streamingAnomaly: "Detecció d'anomalies de streaming",
     streamingAnomalyDesc: "Detectar i recuperar-se d'anomalies en la sortida de streaming",
     maskingTitle: 'Emmascarament de dades',
+    customMaskingTitle: "Regles personalitzades d'emmascarament de dades",
+    builtinMaskingRules: 'Regles predefinides',
+    builtinMaskingEmpty: "No s'ha carregat cap regla predefinida.",
+    customMaskingListTitle: 'Regles personalitzades',
+    customMaskingEmpty:
+      'Encara no hi ha cap regla personalitzada. Fes servir el formulari de sota per cobrir identificadors interns o secrets propietaris.',
+    customMaskingDesc:
+      'Afegeix regles basades en expressions regulars per a identificadors interns, secrets o camps específics del negoci.',
+    customMaskingNameLabel: 'Nom',
+    customMaskingNamePlaceholder: 'Exemple: número intern de tiquet',
+    customMaskingDirectionLabel: 'Direcció',
+    customMaskingPatternLabel: 'Patró regex',
+    customMaskingPatternPlaceholder: 'Exemple: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Text de reemplaçament',
+    customMaskingReplacementPlaceholder: 'Exemple: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      "Fes servir una expressió regular vàlida. {maskLabel} al text de reemplaçament conserva l'etiqueta de màscara localitzada.",
+    customMaskingAdd: 'Afegeix una regla',
+    customMaskingAddSuccess: "S'ha afegit la regla de màscara personalitzada.",
+    customMaskingAddError: "No s'ha pogut afegir la regla de màscara personalitzada.",
+    customMaskingDeleteConfirm: 'Vols suprimir la regla de màscara personalitzada "{name}"?',
+    customMaskingDeleteSuccess: "S'ha suprimit la regla de màscara personalitzada.",
+    customMaskingDeleteError: "No s'ha pogut suprimir la regla de màscara personalitzada.",
     maskingDesc: 'Ocultar dades sensibles (PII, credencials) en sol·licituds i respostes LLM',
     maskingEnabled: 'Emmascarament activat',
     maskingDisabled: 'Emmascarament desactivat',
@@ -2268,7 +2300,7 @@ export default {
     checkpoint: 'Punt de control',
     checkpointDescription: 'Punt de control abans de la restauració ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Extensions' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -2423,7 +2455,17 @@ export default {
     volume: 'Volum',
     voiceSettings: 'Configuració de veu',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Accés a les extensions',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Extensions',
+    },
+  },
 
   // Claus abreujades
   accept: 'Acceptar',
@@ -2572,6 +2614,16 @@ export default {
     timeout: 'Tancament automàtic en {seconds}s',
     answered: 'Respost',
   },
+  browserProgress: {
+    title: 'Progres del navegador',
+    steps: {
+      start: 'Iniciant el navegador',
+      navigate: 'Navegant',
+      snapshot: 'Llegint la pagina',
+      screenshot: 'Capturant la pantalla',
+      recipe: 'Executant {recipe}',
+    },
+  },
   thinking: {
     title: 'Context',
     context: 'Context',
@@ -2580,6 +2632,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Cerca web',
     resultCount: '{count} resultats',
   },
   cardActions: {

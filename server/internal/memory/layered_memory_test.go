@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -147,6 +148,20 @@ func TestLayeredMemoryService_PruneDailyLogs(t *testing.T) {
 	// Verify old log is gone
 	if _, err := os.Stat(oldLogPath); !os.IsNotExist(err) {
 		t.Error("old log should have been deleted")
+	}
+}
+
+func TestLayeredMemoryServiceGetDailyLogRejectsInvalidDate(t *testing.T) {
+	svc, err := NewLayeredMemoryService(nil, LayeredMemoryConfig{
+		BaseDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("NewLayeredMemoryService returned error: %v", err)
+	}
+
+	_, err = svc.GetDailyLog(context.Background(), "../2026-03-17")
+	if !errors.Is(err, ErrInvalidDailyLogDate) {
+		t.Fatalf("GetDailyLog error = %v, want ErrInvalidDailyLogDate", err)
 	}
 }
 

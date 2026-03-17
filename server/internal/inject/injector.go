@@ -30,6 +30,10 @@ func NewMemoryStoreInjector(store *memory.Store) *MemoryStoreInjector {
 
 // InjectMessage inserts an assistant message into the user's conversation.
 func (m *MemoryStoreInjector) InjectMessage(ctx context.Context, ownerID, sessionID, content string) (string, error) {
+	if m == nil || m.store == nil {
+		return "", fmt.Errorf("memory store injector is not configured")
+	}
+
 	convID := sessionID
 
 	if convID == "" {

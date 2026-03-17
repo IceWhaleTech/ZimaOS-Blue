@@ -276,6 +276,8 @@ var rePseudoDirectiveRecipientFunctions = regexp.MustCompile(`(?i)["']recipient_
 var rePseudoDirectiveCommandWorkdir = regexp.MustCompile(`(?i)\{"command"\s*:\s*"(?:blue [^"]*|\.{3}|…[^"]*)"[^}]*"workdir"\s*:`)
 var rePseudoDirectiveCommandPlaceholder = regexp.MustCompile(`(?i)\{"command"\s*:\s*"(?:\.{3}|…[^"]*)"`)
 var rePseudoDirectivePayloadJSON = regexp.MustCompile(`(?i)^\s*\{"(?:command|parameters|tool_uses)"\s*:`)
+var rePseudoToolCallBlock = regexp.MustCompile(`(?is)<(?:[a-z0-9_.-]+:)?tool_call\b[^>]*>[\s\S]*?</(?:[a-z0-9_.-]+:)?tool_call>`)
+var rePseudoToolCallTag = regexp.MustCompile(`(?is)</?(?:[a-z0-9_.-]+:)?tool_call\b[^>]*>`)
 var rePseudoInlineTokenFunctions = regexp.MustCompile(`(?i)to\s*=\s*functions\.[a-z0-9_.-]+`)
 var rePseudoInlineTokenParallel = regexp.MustCompile(`(?i)to\s*=\s*multi_tool_use\.parallel`)
 var rePseudoInlineTokenRecipient = regexp.MustCompile(`(?i)\brecipient_?name\b|\bwith\s+recipient\b`)
@@ -1978,6 +1980,9 @@ func pseudoDirectiveStartIndex(delta string) int {
 	if loc := rePseudoDirectivePayloadJSON.FindStringIndex(delta); len(loc) == 2 {
 		mark(loc[0])
 	}
+	if loc := rePseudoToolCallTag.FindStringIndex(delta); len(loc) == 2 {
+		mark(loc[0])
+	}
 	mark(strings.Index(lower, `{"tool_uses":`))
 	mark(strings.Index(lower, `{"tooluses":`))
 	if looksLikeLeakedToolExecEnvelope(lower) {
@@ -2048,12 +2053,33 @@ func looksLikeLeakedToolExecEnvelope(lower string) bool {
 	return score >= 3
 }
 
+func looksLikeXMLToolCallLeak(s string) bool {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return false
+	}
+	if rePseudoToolCallBlock.MatchString(trimmed) {
+		return true
+	}
+	if !rePseudoToolCallTag.MatchString(trimmed) {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	return strings.Contains(lower, `"name"`) ||
+		strings.Contains(lower, `"arguments"`) ||
+		strings.Contains(lower, `<invoke `) ||
+		strings.Contains(lower, `<parameter `)
+}
+
 // looksLikeToolProtocolDeliberationLeak detects leaked internal "how to call tools"
 // deliberation text that should not be shown to users.
 func looksLikeToolProtocolDeliberationLeak(s string) bool {
 	trimmed := strings.TrimSpace(s)
 	if trimmed == "" {
 		return false
+	}
+	if looksLikeXMLToolCallLeak(trimmed) {
+		return true
 	}
 	lower := strings.ToLower(trimmed)
 
@@ -2121,6 +2147,9 @@ func isPseudoDirectiveNoiseChunk(delta string) bool {
 			strings.Contains(lower, `"max_results":`) ||
 			strings.Contains(lower, `"region":"`) ||
 			strings.Contains(lower, `"query":"`)) {
+		return true
+	}
+	if looksLikeXMLToolCallLeak(s) {
 		return true
 	}
 	if looksLikeToolProtocolDeliberationLeak(s) {
@@ -2215,7 +2244,8 @@ func shouldAutoContinueForPseudoToolCall(currentContent string) bool {
 	// Strong wrappers frequently seen in malformed toolless replies.
 	if strings.Contains(lower, "```tool") ||
 		strings.Contains(lower, "<exec>") ||
-		strings.Contains(lower, "</exec>") {
+		strings.Contains(lower, "</exec>") ||
+		looksLikeXMLToolCallLeak(s) {
 		return true
 	}
 
@@ -3095,10 +3125,11 @@ func shouldStripPseudoDirectiveArtifacts(trimmed string, profile responseSanitiz
 	hasCmdWithExecWrapper := (strings.Contains(lower, `{"cmd":"`) || strings.Contains(lower, `{"cmd": "`)) &&
 		(strings.Contains(lower, `"tool":"exec"`) || strings.Contains(lower, `"tool": "exec"`) || hasExecWrapper)
 	hasToolProtocolDeliberationLeak := looksLikeToolProtocolDeliberationLeak(trimmed)
+	hasToolCallXML := looksLikeXMLToolCallLeak(trimmed)
 
 	switch profile {
 	case responseSanitizeProfileMinimal:
-		return hasDirectiveScaffold || hasLeakedCommandWorkdir || hasExecEnvelope
+		return hasDirectiveScaffold || hasLeakedCommandWorkdir || hasExecEnvelope || hasToolCallXML
 	case responseSanitizeProfileStrict:
 		return hasDirectiveScaffold ||
 			hasPayloadPrefix ||
@@ -3106,6 +3137,7 @@ func shouldStripPseudoDirectiveArtifacts(trimmed string, profile responseSanitiz
 			hasPlaceholderCommand ||
 			hasExecWrapper ||
 			hasExecEnvelope ||
+			hasToolCallXML ||
 			hasToolProtocolDeliberationLeak ||
 			hasCmdWithExecWrapper ||
 			(hasCommandJSON && (hasBlueCommandJSON || hasWorkdirField || hasParametersJSON))
@@ -3115,6 +3147,7 @@ func shouldStripPseudoDirectiveArtifacts(trimmed string, profile responseSanitiz
 			hasPlaceholderCommand ||
 			hasExecWrapper ||
 			hasExecEnvelope ||
+			hasToolCallXML ||
 			hasCmdWithExecWrapper ||
 			(hasCommandJSON && hasWorkdirField)
 	}
@@ -3130,6 +3163,8 @@ func stripPseudoDirectiveArtifactsWithProfile(s string, profile responseSanitize
 	}
 
 	cleaned := stripMarkedJSONObjectFragments(trimmed)
+	cleaned = rePseudoToolCallBlock.ReplaceAllString(cleaned, " ")
+	cleaned = rePseudoToolCallTag.ReplaceAllString(cleaned, " ")
 	cleaned = rePseudoInlineTokenFunctions.ReplaceAllString(cleaned, " ")
 	cleaned = rePseudoInlineTokenParallel.ReplaceAllString(cleaned, " ")
 	cleaned = rePseudoInlineTokenRecipient.ReplaceAllString(cleaned, " ")
@@ -4100,6 +4135,20 @@ func (h *ChatHandler) resolveContextWindowForModel(model string) int {
 	return claudecode.DefaultContextTokens
 }
 
+func (h *ChatHandler) contextHistoryFetchLimit(model string) int {
+	contextWindow := h.resolveContextWindowForModel(model)
+	switch {
+	case contextWindow >= 128000:
+		return 200
+	case contextWindow >= 32000:
+		return 160
+	case contextWindow >= 12000:
+		return 120
+	default:
+		return 80
+	}
+}
+
 func estimateOutputReserveTokens(contextWindow, requestedMaxTokens int) int {
 	if requestedMaxTokens > 0 {
 		return requestedMaxTokens
@@ -4455,9 +4504,10 @@ func (h *ChatHandler) loadPreparedHistorySummary(ctx context.Context, convID str
 	if len(older) == 0 {
 		return ""
 	}
+	messageCount := len(older) + len(recent)
 	if h != nil && h.summaryCache != nil {
 		if cached, ok := h.summaryCache.Get(convID); ok {
-			if summary, ok := cached.(*ConversationSummary); ok && strings.TrimSpace(summary.Text) != "" {
+			if summary, ok := cached.(*ConversationSummary); ok && isConversationSummaryFresh(summary, messageCount) {
 				return strings.TrimSpace(summary.Text)
 			}
 		}
@@ -4542,6 +4592,21 @@ func buildPreparedBudgetContextTrim(
 		trim.FallbackProvider = strings.TrimSpace(fallbackProvider)
 	}
 	return trim
+}
+
+func smartContextWasCompacted(result ContextStrategyResult) bool {
+	return result.MessageCountBefore > 0 && result.MessageCountAfter > 0 && result.MessageCountAfter < result.MessageCountBefore
+}
+
+func alignContextTrimToSmartContextCounts(trim *ContextTrimInfo, before, after int) *ContextTrimInfo {
+	if trim == nil || before <= 0 || after <= 0 || after >= before {
+		return trim
+	}
+	adjusted := *trim
+	adjusted.Before = before
+	adjusted.After = after
+	adjusted.MessagesPruned = before - after
+	return &adjusted
 }
 
 func appendPreparedBudgetAttempt(
@@ -8193,9 +8258,7 @@ func (h *ChatHandler) CancelConversationStream(conversationID string) (string, b
 	if conversationID == "" {
 		return "", false
 	}
-	h.convStreamMu.RLock()
-	streamID := h.convToStream[conversationID]
-	h.convStreamMu.RUnlock()
+	streamID := h.activeStreamIDForConversation(conversationID)
 	if strings.TrimSpace(streamID) == "" {
 		return "", false
 	}
@@ -8204,6 +8267,17 @@ func (h *ChatHandler) CancelConversationStream(conversationID string) (string, b
 		h.markConversationCancelledForResponsesContinuation(conversationID)
 	}
 	return streamID, cancelled
+}
+
+func (h *ChatHandler) activeStreamIDForConversation(conversationID string) string {
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return ""
+	}
+	h.convStreamMu.RLock()
+	streamID := h.convToStream[conversationID]
+	h.convStreamMu.RUnlock()
+	return strings.TrimSpace(streamID)
 }
 
 // SetSSEBroker sets the SSE broker for pushing conversation_updated events during streaming.
@@ -9875,6 +9949,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	ctxResult := h.buildSmartContext(ctx, smartContextParams{
 		ConvID:                convID,
 		UserMessage:           msg.Content,
+		Model:                 h.defaultModelForCCCLI(h.imModel),
 		NoHistoryRecentRounds: noHistoryRecentRounds,
 		PreloadedMessages:     preloaded,
 	})
@@ -10488,6 +10563,7 @@ func (h *ChatHandler) persistChannelResponseMessage(ctx context.Context, convID,
 		return nil, err
 	}
 	h.conversationCache.Invalidate(convID)
+	h.refreshConversationSummaryAfterPersist(convID, "")
 	return assistantMsg, nil
 }
 
@@ -12927,9 +13003,14 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	ctxResult := h.buildSmartContext(c.Request().Context(), smartContextParams{
 		ConvID:       convID,
 		UserMessage:  req.Message,
+		Model:        model,
+		MaxTokens:    req.MaxTokens,
 		IsRegenerate: req.Regenerate,
 	})
 	compactedMessages := ctxResult.Messages
+	compacted := smartContextWasCompacted(ctxResult)
+	compactedBeforeCount := ctxResult.MessageCountBefore
+	compactedAfterCount := ctxResult.MessageCountAfter
 	if compactedMessages == nil {
 		compactedMessages = []llm.Message{}
 	}
@@ -13019,6 +13100,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	var progressiveContextTrim *ContextTrimInfo
 	if currentBudgetAttempt.ContextTrim != nil {
 		progressiveContextTrim = currentBudgetAttempt.ContextTrim
+		if compacted {
+			progressiveContextTrim = alignContextTrimToSmartContextCounts(progressiveContextTrim, compactedBeforeCount, compactedAfterCount)
+		}
 	}
 
 	// Build chat request
@@ -13788,8 +13872,16 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	// Invalidate cache after storing new message
 	h.conversationCache.Invalidate(convID)
 	h.afterAssistantPersistedHooks(turnHookCtx, assistantMsg)
+	h.refreshConversationSummaryAfterPersist(convID, model)
 
 	contextTrim := progressiveContextTrim
+	if contextTrim == nil && compacted {
+		contextTrim = &ContextTrimInfo{
+			Type:   "compacted",
+			Before: compactedBeforeCount,
+			After:  compactedAfterCount,
+		}
+	}
 	if contextTrim == nil && pruneStats.Pruned {
 		logger.Info().
 			Str("conv_id", convID).
@@ -14178,7 +14270,22 @@ func (h *ChatHandler) storeUserAndAssistantLocal(ctx context.Context, convID, us
 		return nil, err
 	}
 	h.conversationCache.Invalidate(convID)
+	h.refreshConversationSummaryAfterPersist(convID, model)
 	return assistantMsg, nil
+}
+
+func (h *ChatHandler) refreshConversationSummaryAfterPersist(convID, model string) {
+	if h == nil || h.store == nil || h.summaryCache == nil || strings.TrimSpace(convID) == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	messages, err := h.store.GetRecentMessages(ctx, convID, h.contextHistoryFetchLimit(model))
+	if err != nil || len(messages) == 0 {
+		return
+	}
+	h.refreshSummaryAsync(convID, messages)
 }
 
 func (h *ChatHandler) streamLocalResponse(c echo.Context, content, model string) error {
@@ -14288,6 +14395,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to store offline response")
 		}
 		h.conversationCache.Invalidate(convID)
+		h.refreshConversationSummaryAfterPersist(convID, "offline")
 		return h.streamLocalResponse(c, reply, "offline")
 	}
 
@@ -14382,7 +14490,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 		// Resolve the actual last user message from DB so downstream code
 		// (memory recall, tool selection, system prompt) uses real content.
-		histMsgs, err := h.store.GetRecentMessages(c.Request().Context(), convID, 50)
+		histMsgs, err := h.store.GetRecentMessages(c.Request().Context(), convID, h.contextHistoryFetchLimit(model))
 		if err == nil {
 			for i := len(histMsgs) - 1; i >= 0; i-- {
 				if histMsgs[i].Role == "user" {
@@ -14438,6 +14546,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	ctxResult := h.buildSmartContext(c.Request().Context(), smartContextParams{
 		ConvID:            convID,
 		UserMessage:       req.Message,
+		Model:             model,
+		MaxTokens:         req.MaxTokens,
 		IsRegenerate:      req.Regenerate,
 		PreloadedMessages: preloaded,
 	})
@@ -14445,7 +14555,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if compactedMessages == nil {
 		compactedMessages = []llm.Message{}
 	}
-	compacted = ctxResult.Summary != ""
+	compacted = smartContextWasCompacted(ctxResult)
 	compactedBeforeCount = ctxResult.MessageCountBefore
 	compactedAfterCount = ctxResult.MessageCountAfter
 
@@ -14537,6 +14647,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var progressiveContextTrim *ContextTrimInfo
 	if currentBudgetAttempt.ContextTrim != nil {
 		progressiveContextTrim = currentBudgetAttempt.ContextTrim
+		if compacted {
+			progressiveContextTrim = alignContextTrimToSmartContextCounts(progressiveContextTrim, compactedBeforeCount, compactedAfterCount)
+		}
 	}
 
 	// Build chat request
@@ -14971,6 +15084,7 @@ STREAM_LOOP:
 						Str("fallback_provider", progressiveContextTrim.FallbackProvider).
 						Msg("[chat] stream context progressively compacted")
 					emitSSE(map[string]interface{}{
+						"compacted":         true,
 						"type":              progressiveContextTrim.Type,
 						"stage":             progressiveContextTrim.Stage,
 						"messages_pruned":   progressiveContextTrim.MessagesPruned,
@@ -16706,12 +16820,14 @@ STREAM_LOOP:
 				ctxResult := h.buildSmartContext(context.Background(), smartContextParams{
 					ConvID:      convID,
 					UserMessage: injectedMsg,
+					Model:       model,
+					MaxTokens:   req.MaxTokens,
 				})
 				compactedMessages = ctxResult.Messages
 				if compactedMessages == nil {
 					compactedMessages = []llm.Message{}
 				}
-				compacted = ctxResult.Summary != ""
+				compacted = smartContextWasCompacted(ctxResult)
 				compactedBeforeCount = ctxResult.MessageCountBefore
 				compactedAfterCount = ctxResult.MessageCountAfter
 
@@ -17176,6 +17292,7 @@ STREAM_LOOP:
 		}
 		h.conversationCache.Invalidate(convID)
 		h.afterAssistantPersistedHooks(turnHookCtx, assistantMsgForHook)
+		h.refreshConversationSummaryAfterPersist(convID, actualModel)
 		emitFinalStats := map[string]interface{}{
 			"input_tokens":      finalStats.InputTokens,
 			"output_tokens":     finalStats.OutputTokens,
@@ -17480,7 +17597,7 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 	h.smallModelStats.RecordSummaryAttempt()
 	defer h.maybeAutoRollbackSummaryRoute()
 	started := time.Now()
-	resp, err := h.generateWithSmallModelPrefixReuse(smCtx, "smallmodel:summary:v1", prefix, suffix, 96, 0.2)
+	resp, err := h.generateWithSmallModelPrefixReuse(smCtx, "smallmodel:summary:v2", prefix, suffix, 320, 0.2)
 	h.smallModelStats.RecordLatencyWithScene("summary", time.Since(started))
 	if err != nil {
 		h.smallModelStats.RecordFallback(smallModelFallbackReason(err))
@@ -17496,15 +17613,12 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 		h.smallModelStats.RecordFallback(smallmodel.FallbackReasonLowConfidence)
 		return ""
 	}
-	if idx := strings.Index(summary, "\n"); idx >= 0 {
-		summary = strings.TrimSpace(summary[:idx])
-	}
 	if strings.HasPrefix(strings.ToLower(summary), "summary:") {
 		summary = strings.TrimSpace(summary[len("summary:"):])
 	}
 	runes := []rune(summary)
-	if len(runes) > 320 {
-		summary = string(runes[:320]) + "..."
+	if len(runes) > 1400 {
+		summary = string(runes[:1400]) + "..."
 	}
 	h.smallModelStats.RecordSummarySuccess()
 	return summary
@@ -17982,7 +18096,7 @@ func (h *ChatHandler) doWarmupWithToken(convID, token string) {
 		messages = cachedMessages
 	} else {
 		var err error
-		messages, err = h.store.GetRecentMessages(ctx, convID, 50)
+		messages, err = h.store.GetRecentMessages(ctx, convID, h.contextHistoryFetchLimit(model))
 		if err != nil {
 			logger.Warn().Err(err).Str("conv_id", convID).Msg("[warmup] failed to fetch messages")
 			return
@@ -18068,6 +18182,9 @@ func (h *ChatHandler) invalidateWarmup(convID string) {
 // CancelStream cancels an active streaming response.
 func (h *ChatHandler) CancelStream(c echo.Context) error {
 	convID := c.Param("id")
+	if _, err := h.checkConversationOwnership(c, convID); err != nil {
+		return err
+	}
 	var req CancelStreamRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
@@ -18077,11 +18194,20 @@ func (h *ChatHandler) CancelStream(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "stream_id is required")
 	}
 
-	if h.streamController.Cancel(req.StreamID) {
+	activeStreamID := h.activeStreamIDForConversation(convID)
+	if activeStreamID == "" || activeStreamID != strings.TrimSpace(req.StreamID) {
+		return c.JSON(http.StatusNotFound, map[string]interface{}{
+			"success":   false,
+			"stream_id": req.StreamID,
+			"message":   "Stream not found or does not belong to conversation",
+		})
+	}
+
+	if h.streamController.Cancel(activeStreamID) {
 		h.markConversationCancelledForResponsesContinuation(convID)
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success":   true,
-			"stream_id": req.StreamID,
+			"stream_id": activeStreamID,
 			"message":   "Stream cancelled successfully",
 		})
 	}

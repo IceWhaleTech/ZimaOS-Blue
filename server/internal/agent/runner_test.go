@@ -1686,6 +1686,43 @@ func TestRunner_AskUser_SubmitAnswers(t *testing.T) {
 	}
 }
 
+func TestRunner_AskUser_SubmitTextAnswer(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	task := &Task{ID: "ask_text", UserID: "u1", Goal: "test", Status: TaskStatusExecuting}
+	if err := s.Create(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{})
+	r.mu.Lock()
+	r.running["ask_text"] = func() {}
+	r.mu.Unlock()
+
+	questions := []AgentQuestion{
+		{ID: "q1", Question: "请假时长？", Header: "时长", Type: "text"},
+	}
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		ok := r.SubmitAnswers("ask_text", []QuestionAnswer{
+			{QuestionID: "q1", OtherText: "3天"},
+		})
+		if !ok {
+			t.Error("SubmitAnswers returned false")
+		}
+	}()
+
+	answers, err := r.AskUser(ctx, "ask_text", questions, 0)
+	if err != nil {
+		t.Fatalf("AskUser error: %v", err)
+	}
+	if len(answers) != 1 || answers[0].QuestionID != "q1" || answers[0].OtherText != "3天" {
+		t.Errorf("unexpected answers: %+v", answers)
+	}
+}
+
 func TestRunner_AskUser_Timeout(t *testing.T) {
 	s := testStore(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -1905,6 +1942,27 @@ func TestRunner_HandleAskUser_ObjectOptions(t *testing.T) {
 	}
 }
 
+func TestRunner_HandleAskUser_TextQuestion(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	task := &Task{ID: "ask_text_handle", UserID: "u1", Goal: "test", Status: TaskStatusExecuting}
+	if err := s.Create(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{
+		AskTimeout:       20 * time.Millisecond,
+		AskTimeoutAction: "default",
+	})
+
+	result := r.handleAskUser(ctx, task, `{"questions":[{"question":"请假时长？","type":"text"}]}`)
+	if strings.Contains(result, `"error"`) {
+		t.Fatalf("expected success for text question, got: %s", result)
+	}
+	if !strings.Contains(result, `"question_id":"q0"`) {
+		t.Fatalf("expected answer payload in result, got: %s", result)
+	}
+}
+
 func TestRunner_VerifyRecoveryFailure_MarksFailed(t *testing.T) {
 	s := testStore(t)
 	m := &scriptedLLM{
@@ -1947,6 +2005,7 @@ func TestAgentQuestion_JSON(t *testing.T) {
 		ID:          "q1",
 		Question:    "Pick a framework",
 		Header:      "Framework",
+		Type:        "radio",
 		MultiSelect: false,
 		Required:    true,
 		Options: []QuestionOption{
@@ -1962,7 +2021,7 @@ func TestAgentQuestion_JSON(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != "q1" || got.Header != "Framework" || len(got.Options) != 2 {
+	if got.ID != "q1" || got.Header != "Framework" || got.Type != "radio" || len(got.Options) != 2 {
 		t.Errorf("round-trip failed: %+v", got)
 	}
 }

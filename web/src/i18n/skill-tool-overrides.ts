@@ -3720,9 +3720,587 @@ const targetedAdjustments: Record<string, Record<string, unknown>> = {
   },
 }
 
+const supplementalToolTranslations: Record<string, Record<string, unknown>> = {
+  'ca-ES': {
+    tools: {
+      descriptions: {
+        web_search: 'Cerca al web i retorna resultats sense obrir pagines',
+        file_read: 'Llegeix un fitxer i retorna el seu contingut de text',
+        file_write: 'Escriu contingut de text en un fitxer',
+        exec: 'Executa ordres de l shell i en captura la sortida',
+        analyze: 'Recull dades del web i genera un informe d analisi estructurat',
+        ask: 'Fa preguntes de seguiment a l usuari per continuar la tasca',
+        mediagen: 'Genera imatges, videos i presentacions amb models d IA',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Gestio de contenidors Docker' },
+        github: { description: 'Operacions amb repositoris de GitHub' },
+        notion: { description: 'Integracio amb espais de treball de Notion' },
+        'slack-skill': { description: 'Operacions amb espais de treball de Slack' },
+        'discord-skill': { description: 'Operacions amb servidors de Discord' },
+      },
+    },
+  },
+  'cs-CZ': {
+    tools: {
+      descriptions: {
+        web_search: 'Vyhledava web a vraci seznam vysledku bez otevirani stranek',
+        file_read: 'Precte soubor a vrati jeho textovy obsah',
+        file_write: 'Zapise textovy obsah do souboru',
+        exec: 'Spousti prikazy shellu a zachycuje jejich vystup',
+        analyze: 'Shromazdi data z webu a vytvori strukturovanou analytickou zpravu',
+        ask: 'Polozi uzivateli doplnujici otazky potrebne pro pokracovani ukolu',
+        mediagen: 'Generuje obrazky, videa a prezentace pomoci AI modelu',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Sprava Docker kontejneru' },
+        github: { description: 'Operace s repozitari GitHub' },
+        notion: { description: 'Integrace pracovnich prostoru Notion' },
+        'slack-skill': { description: 'Operace v pracovnim prostoru Slack' },
+        'discord-skill': { description: 'Operace na serveru Discord' },
+      },
+    },
+  },
+  'da-DK': {
+    tools: {
+      descriptions: {
+        web_search: 'Soger pa nettet og returnerer resultater uden at abne sider',
+        file_read: 'Laeser en fil og returnerer dens tekstindhold',
+        file_write: 'Skriver tekstindhold til en fil',
+        exec: 'Korer shell-kommandoer og fanger deres output',
+        analyze: 'Indsamler data fra nettet og genererer en struktureret analyserapport',
+        ask: 'Stiller brugeren opfolgende sporgsmal for at fortsaette opgaven',
+        mediagen: 'Genererer billeder, videoer og praesentationer med AI-modeller',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Administration af Docker-containere' },
+        github: { description: 'Handlinger pa GitHub-repositorier' },
+        notion: { description: 'Integration med Notion-arbejdsomrader' },
+        'slack-skill': { description: 'Handlinger i Slack-arbejdsomrader' },
+        'discord-skill': { description: 'Handlinger pa Discord-servere' },
+      },
+    },
+  },
+  'de-DE': {
+    tools: {
+      descriptions: {
+        web_search: 'Durchsucht das Web und liefert Trefferlisten, ohne Seiten zu offnen',
+        file_read: 'Liest eine Datei und gibt ihren Textinhalt zuruck',
+        file_write: 'Schreibt Textinhalt in eine Datei',
+        exec: 'Fuhrt Shell-Befehle aus und erfasst deren Ausgabe',
+        analyze: 'Sammelt Webdaten und erstellt einen strukturierten Analysebericht',
+        ask: 'Stellt dem Nutzer Ruckfragen, um die Aufgabe fortzusetzen',
+        mediagen: 'Erzeugt Bilder, Videos und Praesentationen mit KI-Modellen',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Verwaltung von Docker-Containern' },
+        github: { description: 'Operationen mit GitHub-Repositories' },
+        notion: { description: 'Integration von Notion-Arbeitsbereichen' },
+        'slack-skill': { description: 'Operationen in Slack-Arbeitsbereichen' },
+        'discord-skill': { description: 'Operationen auf Discord-Servern' },
+      },
+    },
+  },
+  'el-GR': {
+    tools: {
+      descriptions: {
+        web_search: 'Αναζητα στον ιστό και επιστρέφει λίστα αποτελεσμάτων χωρίς άνοιγμα σελίδων',
+        file_read: 'Διαβαζει ενα αρχειο και επιστρέφει το κειμενικό του περιεχόμενο',
+        file_write: 'Γραφει κειμενικό περιεχόμενο σε ενα αρχειο',
+        exec: 'Εκτελει εντολες shell και καταγραφει την εξοδο τους',
+        analyze: 'Συλλεγει δεδομενα απο τον ιστό και δημιουργει δομημενη αναφορα αναλυσης',
+        ask: 'Κανει διευκρινιστικες ερωτησεις στον χρηστη για να συνεχιστει η εργασια',
+        mediagen: 'Δημιουργει εικονες, βιντεο και παρουσιάσεις με μοντελα AI',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Διαχειριση κοντέινερ Docker' },
+        github: { description: 'Ενεργειες σε αποθετηρια GitHub' },
+        notion: { description: 'Ενσωματωση χώρων εργασιας Notion' },
+        'slack-skill': { description: 'Ενεργειες σε χώρους εργασιας Slack' },
+        'discord-skill': { description: 'Ενεργειες σε διακομιστες Discord' },
+      },
+    },
+  },
+  'en-GB': {
+    tools: {
+      descriptions: {
+        web_search: 'Search the web and return result listings without opening pages',
+        file_read: 'Read a file and return its text content',
+        file_write: 'Write text content to a file',
+        exec: 'Run shell commands and capture their output',
+        analyze: 'Collect data from the web and generate a structured analysis report',
+        ask: 'Ask the user follow-up questions needed to continue the task',
+        mediagen: 'Generate images, videos, and slide decks with AI models',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Docker container management' },
+        github: { description: 'GitHub repository operations' },
+        notion: { description: 'Notion workspace integration' },
+        'slack-skill': { description: 'Slack workspace operations' },
+        'discord-skill': { description: 'Discord server operations' },
+      },
+    },
+  },
+  'es-ES': {
+    tools: {
+      descriptions: {
+        web_search: 'Busca en la web y devuelve resultados sin abrir paginas',
+        file_read: 'Lee un archivo y devuelve su contenido de texto',
+        file_write: 'Escribe contenido de texto en un archivo',
+        exec: 'Ejecuta comandos del shell y captura su salida',
+        analyze: 'Recopila datos de la web y genera un informe de analisis estructurado',
+        ask: 'Hace preguntas de seguimiento al usuario para continuar la tarea',
+        mediagen: 'Genera imagenes, videos y presentaciones con modelos de IA',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Gestion de contenedores Docker' },
+        github: { description: 'Operaciones con repositorios de GitHub' },
+        notion: { description: 'Integracion con espacios de trabajo de Notion' },
+        'slack-skill': { description: 'Operaciones en espacios de trabajo de Slack' },
+        'discord-skill': { description: 'Operaciones en servidores de Discord' },
+      },
+    },
+  },
+  'fr-FR': {
+    tools: {
+      descriptions: {
+        web_search: 'Recherche sur le Web et renvoie des resultats sans ouvrir les pages',
+        file_read: 'Lit un fichier et renvoie son contenu texte',
+        file_write: 'Ecrit du contenu texte dans un fichier',
+        exec: 'Execute des commandes shell et capture leur sortie',
+        analyze: 'Collecte des donnees sur le Web et genere un rapport d analyse structure',
+        ask: 'Pose a l utilisateur les questions de suivi necessaires pour poursuivre la tache',
+        mediagen: 'Genere des images, des videos et des presentations avec des modeles IA',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Gestion des conteneurs Docker' },
+        github: { description: 'Operations sur les depots GitHub' },
+        notion: { description: 'Integration aux espaces de travail Notion' },
+        'slack-skill': { description: 'Operations sur les espaces de travail Slack' },
+        'discord-skill': { description: 'Operations sur les serveurs Discord' },
+      },
+    },
+  },
+  'ga-IE': {
+    tools: {
+      descriptions: {
+        web_search: 'Cuardaigh an greasan agus fill liosta torthaí gan leathanaigh a oscailt',
+        file_read: 'Leigh comhad agus fill a inneachar téacs',
+        file_write: 'Scríobh inneachar téacs chuig comhad',
+        exec: 'Rith orduithe sliogáin agus gabh a n-aschur',
+        analyze: 'Bailigh sonraí ón ngréasán agus gin tuarascáil anailíse struchtúrtha',
+        ask: 'Cuir ceisteanna leantacha ar an úsáideoir chun leanúint ar aghaidh leis an tasc',
+        mediagen: 'Gin íomhánna, físeáin agus cur i láthair le samhlacha AI',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Bainistíocht coimeádán Docker' },
+        github: { description: 'Oibríochtaí ar stórtha GitHub' },
+        notion: { description: 'Comhtháthú le spásanna oibre Notion' },
+        'slack-skill': { description: 'Oibríochtaí i spásanna oibre Slack' },
+        'discord-skill': { description: 'Oibríochtaí ar fhreastalaithe Discord' },
+      },
+    },
+  },
+  'hr-HR': {
+    tools: {
+      descriptions: {
+        web_search: 'Pretrazuje web i vraca popis rezultata bez otvaranja stranica',
+        file_read: 'Cita datoteku i vraca njezin tekstualni sadrzaj',
+        file_write: 'Upisuje tekstualni sadrzaj u datoteku',
+        exec: 'Pokrece naredbe ljuske i biljezi njihov izlaz',
+        analyze: 'Prikuplja podatke s weba i generira strukturirano analiticko izvjesce',
+        ask: 'Postavlja korisniku dodatna pitanja potrebna za nastavak zadatka',
+        mediagen: 'Generira slike, videozapise i prezentacije pomocu AI modela',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Upravljanje Docker spremnicima' },
+        github: { description: 'Radnje nad GitHub repozitorijima' },
+        notion: { description: 'Integracija s Notion radnim prostorima' },
+        'slack-skill': { description: 'Radnje u Slack radnim prostorima' },
+        'discord-skill': { description: 'Radnje na Discord posluziteljima' },
+      },
+    },
+  },
+  'hu-HU': {
+    tools: {
+      descriptions: {
+        web_search: 'Keres a weben, es talalati listat ad vissza oldalak megnyitasa nelkul',
+        file_read: 'Beolvas egy fajlt, es visszaadja a szoveges tartalmat',
+        file_write: 'Szoveges tartalmat ir fajlba',
+        exec: 'Shell-parancsokat futtat, es rogzitit a kimenetet',
+        analyze: 'Webes adatokat gyujt, es strukturalt elemzesi jelentest keszit',
+        ask: 'A felhasznalonak tovabbi kerdeseket tesz fel a feladat folytatasahoz',
+        mediagen: 'Kepeket, videokat es prezentaciokat general AI-modellekkel',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Docker-konténerek kezelése' },
+        github: { description: 'GitHub-tárolókkal végzett műveletek' },
+        notion: { description: 'Notion-munkaterületek integrációja' },
+        'slack-skill': { description: 'Műveletek Slack-munkaterületeken' },
+        'discord-skill': { description: 'Műveletek Discord-szervereken' },
+      },
+    },
+  },
+  'it-IT': {
+    tools: {
+      descriptions: {
+        web_search: 'Cerca sul web e restituisce risultati senza aprire le pagine',
+        file_read: 'Legge un file e restituisce il suo contenuto testuale',
+        file_write: 'Scrive contenuto testuale in un file',
+        exec: 'Esegue comandi della shell e ne cattura l output',
+        analyze: 'Raccoglie dati dal web e genera un report di analisi strutturato',
+        ask: 'Pone all utente le domande di follow-up necessarie per continuare il compito',
+        mediagen: 'Genera immagini, video e presentazioni con modelli di IA',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Gestione dei container Docker' },
+        github: { description: 'Operazioni sui repository GitHub' },
+        notion: { description: 'Integrazione con gli spazi di lavoro Notion' },
+        'slack-skill': { description: 'Operazioni negli spazi di lavoro Slack' },
+        'discord-skill': { description: 'Operazioni sui server Discord' },
+      },
+    },
+  },
+  'ja-JP': {
+    tools: {
+      descriptions: {
+        web_search: 'ページを開かずに Web を検索して結果一覧を返します',
+        file_read: 'ファイルを読み取り、テキスト内容を返します',
+        file_write: 'テキスト内容をファイルに書き込みます',
+        exec: 'シェルコマンドを実行し、その出力を取得します',
+        analyze: 'Web からデータを集め、構造化された分析レポートを生成します',
+        ask: 'タスクを続けるために必要な確認質問をユーザーに行います',
+        mediagen: 'AI モデルで画像、動画、スライドを生成します',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Docker コンテナの管理' },
+        github: { description: 'GitHub リポジトリの操作' },
+        notion: { description: 'Notion ワークスペース連携' },
+        'slack-skill': { description: 'Slack ワークスペースの操作' },
+        'discord-skill': { description: 'Discord サーバーの操作' },
+      },
+    },
+  },
+  'ko-KR': {
+    tools: {
+      descriptions: {
+        web_search: '페이지를 열지 않고 웹을 검색해 결과 목록을 반환합니다',
+        file_read: '파일을 읽고 텍스트 내용을 반환합니다',
+        file_write: '텍스트 내용을 파일에 씁니다',
+        exec: '셸 명령을 실행하고 출력을 수집합니다',
+        analyze: '웹에서 데이터를 수집하고 구조화된 분석 보고서를 생성합니다',
+        ask: '작업을 계속하기 위해 필요한 후속 질문을 사용자에게 합니다',
+        mediagen: 'AI 모델로 이미지, 비디오, 프레젠테이션을 생성합니다',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Docker 컨테이너 관리' },
+        github: { description: 'GitHub 저장소 작업' },
+        notion: { description: 'Notion 워크스페이스 연동' },
+        'slack-skill': { description: 'Slack 워크스페이스 작업' },
+        'discord-skill': { description: 'Discord 서버 작업' },
+      },
+    },
+  },
+  'ml-IN': {
+    tools: {
+      descriptions: {
+        web_search: 'പേജുകൾ തുറക്കാതെ വെബിൽ തിരഞ്ഞ് ഫലങ്ങളുടെ പട്ടിക തിരികെ നൽകുന്നു',
+        file_read: 'ഒരു ഫയൽ വായിച്ച് അതിലെ എഴുത്ത് ഉള്ളടക്കം തിരികെ നൽകുന്നു',
+        file_write: 'എഴുത്ത് ഉള്ളടക്കം ഒരു ഫയലിലേക്ക് എഴുതുന്നു',
+        exec: 'ഷെൽ കമാൻഡുകൾ പ്രവർത്തിപ്പിച്ച് അവയുടെ ഔട്ട്പുട്ട് കൈപ്പറ്റുന്നു',
+        analyze: 'വെബിൽ നിന്ന് ഡാറ്റ ശേഖരിച്ച് ഘടനാപരമായ വിശകലന റിപ്പോർട്ട് സൃഷ്ടിക്കുന്നു',
+        ask: 'ടാസ്‌ക് തുടരാൻ ആവശ്യമായ അനുബന്ധ ചോദ്യങ്ങൾ ഉപയോക്താവിനോട് ചോദിക്കുന്നു',
+        mediagen: 'AI മോഡലുകൾ ഉപയോഗിച്ച് ചിത്രങ്ങൾ, വീഡിയോകൾ, അവതരണങ്ങൾ സൃഷ്ടിക്കുന്നു',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Docker കണ്ടെയിനർ മാനേജ്മെന്റ്' },
+        github: { description: 'GitHub റെപ്പോസിറ്ററി പ്രവർത്തനങ്ങൾ' },
+        notion: { description: 'Notion പ്രവർത്തനസ്ഥല ഏകീകരണം' },
+        'slack-skill': { description: 'Slack പ്രവർത്തനസ്ഥല പ്രവർത്തനങ്ങൾ' },
+        'discord-skill': { description: 'Discord സർവർ പ്രവർത്തനങ്ങൾ' },
+      },
+    },
+  },
+  'nb-NO': {
+    tools: {
+      descriptions: {
+        web_search: 'Soker pa nettet og returnerer treffliste uten a apne sider',
+        file_read: 'Leser en fil og returnerer tekstinnholdet',
+        file_write: 'Skriver tekstinnhold til en fil',
+        exec: 'Kjorer shell-kommandoer og fanger utdataene',
+        analyze: 'Samler data fra nettet og lager en strukturert analyserapport',
+        ask: 'Stiller brukeren oppfolgingssporsmal som trengs for a fortsette oppgaven',
+        mediagen: 'Genererer bilder, videoer og presentasjoner med AI-modeller',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Administrasjon av Docker-containere' },
+        github: { description: 'Operasjoner pa GitHub-repositorier' },
+        notion: { description: 'Integrasjon med Notion-arbeidsomrader' },
+        'slack-skill': { description: 'Operasjoner i Slack-arbeidsomrader' },
+        'discord-skill': { description: 'Operasjoner pa Discord-servere' },
+      },
+    },
+  },
+  'nl-NL': {
+    tools: {
+      descriptions: {
+        web_search: 'Zoekt op het web en geeft een resultatenlijst terug zonder paginas te openen',
+        file_read: 'Leest een bestand en geeft de tekstinhoud terug',
+        file_write: 'Schrijft tekstinhoud naar een bestand',
+        exec: 'Voert shell-opdrachten uit en legt de uitvoer vast',
+        analyze: 'Verzamelt gegevens van het web en genereert een gestructureerd analyserapport',
+        ask: 'Stelt de gebruiker vervolgvraag om de taak voort te zetten',
+        mediagen: 'Genereert afbeeldingen, videos en presentaties met AI-modellen',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Beheer van Docker-containers' },
+        github: { description: 'Bewerkingen op GitHub-repositories' },
+        notion: { description: 'Integratie met Notion-werkruimtes' },
+        'slack-skill': { description: 'Bewerkingen in Slack-werkruimtes' },
+        'discord-skill': { description: 'Bewerkingen op Discord-servers' },
+      },
+    },
+  },
+  'pl-PL': {
+    tools: {
+      descriptions: {
+        web_search: 'Przeszukuje internet i zwraca liste wynikow bez otwierania stron',
+        file_read: 'Czyta plik i zwraca jego tresc tekstowa',
+        file_write: 'Zapisuje tresc tekstowa do pliku',
+        exec: 'Uruchamia polecenia powloki i przechwytuje ich wynik',
+        analyze: 'Zbiera dane z internetu i generuje uporzadkowany raport analityczny',
+        ask: 'Zadaje uzytkownikowi pytania uzupelniajace potrzebne do kontynuowania zadania',
+        mediagen: 'Generuje obrazy, wideo i prezentacje przy uzyciu modeli AI',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Zarzadzanie kontenerami Docker' },
+        github: { description: 'Operacje na repozytoriach GitHub' },
+        notion: { description: 'Integracja z obszarami roboczymi Notion' },
+        'slack-skill': { description: 'Operacje w obszarach roboczych Slacka' },
+        'discord-skill': { description: 'Operacje na serwerach Discorda' },
+      },
+    },
+  },
+  'pt-BR': {
+    tools: {
+      descriptions: {
+        web_search: 'Pesquisa na web e retorna resultados sem abrir paginas',
+        file_read: 'Le um arquivo e retorna seu conteudo em texto',
+        file_write: 'Escreve conteudo em texto em um arquivo',
+        exec: 'Executa comandos de shell e captura sua saida',
+        analyze: 'Coleta dados da web e gera um relatorio de analise estruturado',
+        ask: 'Faz perguntas de acompanhamento ao usuario para continuar a tarefa',
+        mediagen: 'Gera imagens, videos e apresentacoes com modelos de IA',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Gerenciamento de conteineres Docker' },
+        github: { description: 'Operacoes em repositorios GitHub' },
+        notion: { description: 'Integracao com espacos de trabalho do Notion' },
+        'slack-skill': { description: 'Operacoes em espacos de trabalho do Slack' },
+        'discord-skill': { description: 'Operacoes em servidores do Discord' },
+      },
+    },
+  },
+  'pt-PT': {
+    tools: {
+      descriptions: {
+        web_search: 'Pesquisa na web e devolve resultados sem abrir paginas',
+        file_read: 'Le um ficheiro e devolve o respetivo conteudo em texto',
+        file_write: 'Escreve conteudo em texto num ficheiro',
+        exec: 'Executa comandos de shell e captura a respetiva saida',
+        analyze: 'Recolhe dados da web e gera um relatorio de analise estruturado',
+        ask: 'Faz perguntas de seguimento ao utilizador para continuar a tarefa',
+        mediagen: 'Gera imagens, videos e apresentacoes com modelos de IA',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Gestao de contentores Docker' },
+        github: { description: 'Operacoes em repositorios GitHub' },
+        notion: { description: 'Integracao com espacos de trabalho do Notion' },
+        'slack-skill': { description: 'Operacoes em espacos de trabalho do Slack' },
+        'discord-skill': { description: 'Operacoes em servidores do Discord' },
+      },
+    },
+  },
+  'ro-RO': {
+    tools: {
+      descriptions: {
+        web_search: 'Cauta pe web si returneaza o lista de rezultate fara a deschide pagini',
+        file_read: 'Citeste un fisier si returneaza continutul sau text',
+        file_write: 'Scrie continut text intr-un fisier',
+        exec: 'Executa comenzi shell si captureaza iesirea lor',
+        analyze: 'Colecteaza date de pe web si genereaza un raport de analiza structurat',
+        ask: 'Pune utilizatorului intrebari suplimentare necesare pentru a continua sarcina',
+        mediagen: 'Genereaza imagini, videoclipuri si prezentari cu modele AI',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Administrarea containerelor Docker' },
+        github: { description: 'Operatii pe depozite GitHub' },
+        notion: { description: 'Integrare cu spatiile de lucru Notion' },
+        'slack-skill': { description: 'Operatii in spatiile de lucru Slack' },
+        'discord-skill': { description: 'Operatii pe servere Discord' },
+      },
+    },
+  },
+  'ru-RU': {
+    tools: {
+      descriptions: {
+        web_search: 'Ищет в интернете и возвращает список результатов без открытия страниц',
+        file_read: 'Читает файл и возвращает его текстовое содержимое',
+        file_write: 'Записывает текстовое содержимое в файл',
+        exec: 'Выполняет команды оболочки и сохраняет их вывод',
+        analyze: 'Собирает данные из интернета и формирует структурированный аналитический отчет',
+        ask: 'Задает пользователю уточняющие вопросы, чтобы продолжить задачу',
+        mediagen: 'Создает изображения, видео и презентации с помощью моделей ИИ',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Управление контейнерами Docker' },
+        github: { description: 'Операции с репозиториями GitHub' },
+        notion: { description: 'Интеграция с рабочими пространствами Notion' },
+        'slack-skill': { description: 'Операции в рабочих пространствах Slack' },
+        'discord-skill': { description: 'Операции на серверах Discord' },
+      },
+    },
+  },
+  'sk-SK': {
+    tools: {
+      descriptions: {
+        web_search: 'Vyhladava na webe a vrati zoznam vysledkov bez otvarania stranok',
+        file_read: 'Precita subor a vrati jeho textovy obsah',
+        file_write: 'Zapise textovy obsah do suboru',
+        exec: 'Spusta shell prikazy a zachytava ich vystup',
+        analyze: 'Zhromazdi data z webu a vytvori strukturovanu analyticku spravu',
+        ask: 'Polozi pouzivatelovi doplnujuce otazky potrebne na pokracovanie ulohy',
+        mediagen: 'Generuje obrazky, videa a prezentacie pomocou AI modelov',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Sprava Docker kontajnerov' },
+        github: { description: 'Operacie s GitHub repozitarmi' },
+        notion: { description: 'Integracia pracovnych priestorov Notion' },
+        'slack-skill': { description: 'Operacie v pracovnych priestoroch Slack' },
+        'discord-skill': { description: 'Operacie na Discord serveroch' },
+      },
+    },
+  },
+  'sv-SE': {
+    tools: {
+      descriptions: {
+        web_search: 'Soker pa webben och returnerar en resultatlista utan att oppna sidor',
+        file_read: 'Laser en fil och returnerar dess textinnehall',
+        file_write: 'Skriver textinnehall till en fil',
+        exec: 'Kor shellkommandon och fangar deras utdata',
+        analyze: 'Samlar in data fran webben och genererar en strukturerad analysrapport',
+        ask: 'Staller foljdfragor till anvandaren for att fortsatta uppgiften',
+        mediagen: 'Genererar bilder, videor och presentationer med AI-modeller',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Hantering av Docker-containrar' },
+        github: { description: 'Atgarder for GitHub-arkiv' },
+        notion: { description: 'Integrering med Notion-arbetsytor' },
+        'slack-skill': { description: 'Atgarder i Slack-arbetsytor' },
+        'discord-skill': { description: 'Atgarder pa Discord-servrar' },
+      },
+    },
+  },
+  'zh-CN': {
+    tools: {
+      descriptions: {
+        web_search: '搜索网页并返回结果列表，无需打开页面',
+        file_read: '读取文件并返回其中的文本内容',
+        file_write: '将文本内容写入文件',
+        exec: '执行 shell 命令并捕获其输出',
+        analyze: '从网页收集数据并生成结构化分析报告',
+        ask: '向用户提出继续任务所需的追问问题',
+        mediagen: '使用 AI 模型生成图片、视频和演示文稿',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Docker 容器管理' },
+        github: { description: 'GitHub 仓库操作' },
+        notion: { description: 'Notion 工作区集成' },
+        'slack-skill': { description: 'Slack 工作区操作' },
+        'discord-skill': { description: 'Discord 服务器操作' },
+      },
+    },
+  },
+  'zh-TW': {
+    tools: {
+      descriptions: {
+        web_search: '搜尋網頁並回傳結果列表，無需開啟頁面',
+        file_read: '讀取檔案並回傳其中的文字內容',
+        file_write: '將文字內容寫入檔案',
+        exec: '執行 shell 指令並擷取其輸出',
+        analyze: '從網頁收集資料並產生結構化分析報告',
+        ask: '向使用者提出繼續任務所需的追問問題',
+        mediagen: '使用 AI 模型生成圖片、影片與簡報',
+      },
+    },
+    skills: {
+      builtin: {
+        docker: { description: 'Docker 容器管理' },
+        github: { description: 'GitHub 倉庫操作' },
+        notion: { description: 'Notion 工作區整合' },
+        'slack-skill': { description: 'Slack 工作區操作' },
+        'discord-skill': { description: 'Discord 伺服器操作' },
+      },
+    },
+  },
+}
+
 export default Object.fromEntries(
   Object.entries(localePacks).map(([locale, pack]) => [
     locale,
-    mergeMessages(buildLocaleOverrides(pack), targetedAdjustments[locale] || {}),
+    mergeMessages(
+      mergeMessages(buildLocaleOverrides(pack), targetedAdjustments[locale] || {}),
+      supplementalToolTranslations[locale] || {},
+    ),
   ])
 )

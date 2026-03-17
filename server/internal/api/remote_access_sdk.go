@@ -37,7 +37,12 @@ func (h *SDKRemoteAccessHandler) SetJWTService(jwt *auth.JWTService) {
 
 // RegisterRoutes registers remote access routes.
 func (h *SDKRemoteAccessHandler) RegisterRoutes(e *echo.Echo) {
-	g := e.Group("/api/v1/remote-access")
+	h.RegisterGroupRoutes(e.Group("/api/v1"))
+}
+
+// RegisterGroupRoutes registers remote access routes on an existing API group.
+func (h *SDKRemoteAccessHandler) RegisterGroupRoutes(g *echo.Group) {
+	g = g.Group("/remote-access")
 
 	// Tunnel endpoints
 	g.POST("/start", h.StartRemoteAccess)

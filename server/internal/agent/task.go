@@ -88,6 +88,7 @@ type AgentQuestion struct {
 	Question    string           `json:"question"`
 	Detail      string           `json:"detail,omitempty"`
 	Header      string           `json:"header"` // short tab label (max 12 chars)
+	Type        string           `json:"type,omitempty"`
 	Options     []QuestionOption `json:"options,omitempty"`
 	MultiSelect bool             `json:"multi_select,omitempty"` // true = checkboxes, false = radio
 	Required    bool             `json:"required,omitempty"`

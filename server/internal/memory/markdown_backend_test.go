@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,5 +156,28 @@ func TestPureMarkdownBackendRememberReturnsReadablePath(t *testing.T) {
 	}
 	if err := backend.Forget(ctx, chunk.ID); err != nil {
 		t.Fatalf("Forget returned error: %v", err)
+	}
+}
+
+func TestMarkdownMemoryStoreReadFileRejectsTraversal(t *testing.T) {
+	tmpDir := t.TempDir()
+	store := NewMarkdownMemoryStore(tmpDir)
+
+	_, err := store.ReadFile(context.Background(), "../outside.md", 0, 0)
+	if !errors.Is(err, ErrInvalidPath) {
+		t.Fatalf("ReadFile error = %v, want ErrInvalidPath", err)
+	}
+}
+
+func TestPureMarkdownBackendForgetRejectsTraversal(t *testing.T) {
+	tmpDir := t.TempDir()
+	backend, err := NewPureMarkdownBackend(tmpDir)
+	if err != nil {
+		t.Fatalf("NewPureMarkdownBackend returned error: %v", err)
+	}
+
+	err = backend.Forget(context.Background(), "../memory-escape.md")
+	if !errors.Is(err, ErrInvalidPath) {
+		t.Fatalf("Forget error = %v, want ErrInvalidPath", err)
 	}
 }

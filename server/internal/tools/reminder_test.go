@@ -14,6 +14,7 @@ type mockPushService struct {
 	addMessage   string
 	addRecurring string
 	addSession   string
+	addUntil     *time.Time
 	listResult   []PushResult
 	deletedID    string
 	clearedUser  string
@@ -21,12 +22,13 @@ type mockPushService struct {
 	err          error
 }
 
-func (m *mockPushService) Add(_ context.Context, ownerID, message string, _ time.Time, recurring, sessionID string) (PushResult, error) {
+func (m *mockPushService) Add(_ context.Context, ownerID, message string, _ time.Time, recurring, sessionID string, untilAt *time.Time) (PushResult, error) {
 	m.addCalled = true
 	m.addOwner = ownerID
 	m.addMessage = message
 	m.addRecurring = recurring
 	m.addSession = sessionID
+	m.addUntil = untilAt
 	if m.err != nil {
 		return PushResult{}, m.err
 	}
@@ -173,6 +175,27 @@ func TestPushToolExecuteAdd_MissingTime(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for missing time")
+	}
+}
+
+func TestPushToolExecuteAdd_EveryAndUntil(t *testing.T) {
+	svc := &mockPushService{}
+	tool := NewPushTool(svc)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":  "add",
+		"message": "drink water",
+		"every":   "2m",
+		"until":   "2026-03-17 22:00",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.addRecurring != "interval:2m0s" {
+		t.Fatalf("recurring = %q, want interval:2m0s", svc.addRecurring)
+	}
+	if svc.addUntil == nil {
+		t.Fatal("expected until to be forwarded")
 	}
 }
 

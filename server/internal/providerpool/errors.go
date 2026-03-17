@@ -9,6 +9,9 @@ var (
 	// ErrProviderExists indicates a provider with the same ID already exists
 	ErrProviderExists = errors.New("provider already exists")
 
+	// ErrInvalidProviderID indicates the provider ID is malformed or unsafe.
+	ErrInvalidProviderID = errors.New("invalid provider id")
+
 	// ErrProviderDisabled indicates the provider is disabled
 	ErrProviderDisabled = errors.New("provider is disabled")
 

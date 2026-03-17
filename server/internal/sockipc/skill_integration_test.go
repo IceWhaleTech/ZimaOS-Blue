@@ -100,8 +100,8 @@ func (m *mockUIReviewer) CheckAccessibility(_ context.Context, url, lang string)
 
 type mockPush struct{ items []PushResult }
 
-func (m *mockPush) Add(_ context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (PushResult, error) {
-	r := PushResult{ID: "push-1", Message: message, FireAt: fireAt, Recurring: recurring, SessionID: sessionID, Status: "pending", CreatedAt: time.Now()}
+func (m *mockPush) Add(_ context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string, untilAt *time.Time) (PushResult, error) {
+	r := PushResult{ID: "push-1", Message: message, FireAt: fireAt, Recurring: recurring, UntilAt: untilAt, SessionID: sessionID, Status: "pending", CreatedAt: time.Now()}
 	m.items = append(m.items, r)
 	return r, nil
 }
@@ -314,6 +314,23 @@ func TestSkillIntegration_PushAdd_NaturalChineseTime(t *testing.T) {
 	}
 	if !strings.Contains(resp.Data["reminder"], "10秒后喝水") {
 		t.Errorf("reminder = %q", resp.Data["reminder"])
+	}
+}
+
+func TestSkillIntegration_PushAdd_EveryUntil(t *testing.T) {
+	conn, cleanup := setupAllSkills(t)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "reminder.add", Params: map[string]string{
+		"message": "喝水",
+		"every":   "2m",
+		"until":   "2026-03-17 22:00",
+	}})
+	if resp.Status != "ok" {
+		t.Fatalf("reminder.add every/until: status=%q error=%q", resp.Status, resp.Error)
+	}
+	if !strings.Contains(resp.Data["reminder"], "interval:2m0s") {
+		t.Errorf("reminder = %q, want encoded interval", resp.Data["reminder"])
 	}
 }
 

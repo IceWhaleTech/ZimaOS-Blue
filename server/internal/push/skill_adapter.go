@@ -28,18 +28,19 @@ func toPushInfo(r *PushNotification) builtin.PushInfo {
 		Message:   r.Message,
 		FireAt:    r.FireAt,
 		Recurring: r.Recurring,
+		UntilAt:   r.UntilAt,
 		SessionID: r.SessionID,
 		Status:    r.Status,
 		CreatedAt: r.CreatedAt,
 	}
 }
 
-func (a *SkillAdapter) Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (builtin.PushInfo, error) {
+func (a *SkillAdapter) Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string, untilAt *time.Time) (builtin.PushInfo, error) {
 	s := a.svc()
 	if s == nil {
 		return builtin.PushInfo{}, errServiceUnavailable
 	}
-	r, err := s.Add(ctx, ownerID, message, fireAt, recurring, sessionID)
+	r, err := s.Add(ctx, ownerID, message, fireAt, recurring, sessionID, untilAt)
 	if err != nil {
 		return builtin.PushInfo{}, err
 	}

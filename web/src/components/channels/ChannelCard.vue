@@ -289,7 +289,10 @@ function formatRelativeTime(dateStr: string | undefined): string {
               {{ statusText }}
             </span>
           </div>
-          <p v-if="channel.lastError" class="channel-card__status-error text-xs text-red-600 dark:text-red-400 mt-1">
+          <p
+            v-if="channel.lastError"
+            class="channel-card__status-error text-xs text-red-600 dark:text-red-400 mt-1"
+          >
             {{ channel.lastError }}
           </p>
         </div>
@@ -460,7 +463,10 @@ function formatRelativeTime(dateStr: string | undefined): string {
           {{ translatedChannel.hint }}
         </p>
 
-        <div v-if="translatedChannel.fields.length > 0" class="channel-card__fields grid gap-4 md:grid-cols-2">
+        <div
+          v-if="translatedChannel.fields.length > 0"
+          class="channel-card__fields grid gap-4 md:grid-cols-2"
+        >
           <div
             v-for="(field, fieldIndex) in translatedChannel.fields"
             :key="field.key"
@@ -655,6 +661,10 @@ function formatRelativeTime(dateStr: string | undefined): string {
 .channel-card {
   position: relative;
   overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 1.25rem;
+  background: #ffffff;
+  box-shadow: none;
   color: #0f172a;
   transition:
     transform 180ms ease,
@@ -682,17 +692,17 @@ function formatRelativeTime(dateStr: string | undefined): string {
 
 .channel-card--connected::before {
   opacity: 1;
-  background: linear-gradient(90deg, rgba(34, 197, 94, 0.9) 0%, rgba(37, 99, 235, 0.25) 100%);
+  background: rgba(22, 163, 74, 0.9);
 }
 
 .channel-card--connecting::before {
   opacity: 1;
-  background: linear-gradient(90deg, rgba(234, 179, 8, 0.92) 0%, rgba(249, 115, 22, 0.24) 100%);
+  background: rgba(245, 158, 11, 0.92);
 }
 
 .channel-card--error::before {
   opacity: 1;
-  background: linear-gradient(90deg, rgba(239, 68, 68, 0.92) 0%, rgba(248, 113, 113, 0.24) 100%);
+  background: rgba(239, 68, 68, 0.92);
 }
 
 .channel-card__header {
@@ -724,12 +734,12 @@ function formatRelativeTime(dateStr: string | undefined): string {
   display: grid;
   place-items: center;
   border-radius: 0.82rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 245, 249, 0.94) 100%);
-  border: 1px solid rgba(203, 213, 225, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  background: #f8fafc;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  box-shadow: none;
   transition:
     border-color 180ms ease,
-    box-shadow 180ms ease,
+    background-color 180ms ease,
     transform 180ms ease;
 }
 
@@ -825,8 +835,8 @@ function formatRelativeTime(dateStr: string | undefined): string {
 
 .channel-card__body {
   padding: 0 1rem 1rem;
-  border-top: 1px solid rgba(203, 213, 225, 0.78);
-  background: rgba(248, 250, 252, 0.52);
+  border-top: 1px solid rgba(226, 232, 240, 0.96);
+  background: #f8fafc;
   animation: channel-card-body-in 180ms ease;
 }
 
@@ -845,17 +855,17 @@ function formatRelativeTime(dateStr: string | undefined): string {
 
 .channel-card__status-panel--connected {
   border-color: rgba(134, 239, 172, 0.85);
-  background: linear-gradient(180deg, rgba(240, 253, 244, 0.96) 0%, rgba(220, 252, 231, 0.94) 100%);
+  background: rgba(240, 253, 244, 0.96);
 }
 
 .channel-card__status-panel--connecting {
   border-color: rgba(252, 211, 77, 0.82);
-  background: linear-gradient(180deg, rgba(255, 251, 235, 0.98) 0%, rgba(254, 243, 199, 0.94) 100%);
+  background: rgba(255, 251, 235, 0.98);
 }
 
 .channel-card__status-panel--error {
   border-color: rgba(252, 165, 165, 0.8);
-  background: linear-gradient(180deg, rgba(254, 242, 242, 0.98) 0%, rgba(254, 226, 226, 0.94) 100%);
+  background: rgba(254, 242, 242, 0.98);
 }
 
 .channel-card__metrics {
@@ -1042,7 +1052,8 @@ textarea.channel-card__input {
 }
 
 .channel-card__action--primary {
-  background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+  border: 1px solid #0f172a;
+  background: #0f172a;
   color: #fff;
 }
 
@@ -1082,24 +1093,21 @@ textarea.channel-card__input {
 }
 
 .channel-card--connected .channel-card__icon-shell {
-  border-color: rgba(134, 239, 172, 0.88);
-  box-shadow:
-    0 16px 30px -28px rgba(22, 163, 74, 0.85),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  border-color: rgba(134, 239, 172, 0.8);
+  background: rgba(240, 253, 244, 0.96);
+  box-shadow: none;
 }
 
 .channel-card--connecting .channel-card__icon-shell {
-  border-color: rgba(252, 211, 77, 0.88);
-  box-shadow:
-    0 16px 30px -28px rgba(245, 158, 11, 0.8),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  border-color: rgba(252, 211, 77, 0.82);
+  background: rgba(255, 251, 235, 0.98);
+  box-shadow: none;
 }
 
 .channel-card--error .channel-card__icon-shell {
-  border-color: rgba(252, 165, 165, 0.88);
-  box-shadow:
-    0 16px 30px -28px rgba(239, 68, 68, 0.82),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  border-color: rgba(252, 165, 165, 0.8);
+  background: rgba(254, 242, 242, 0.98);
+  box-shadow: none;
 }
 
 @keyframes channel-card-status-pulse {
@@ -1149,12 +1157,15 @@ textarea.channel-card__input {
 }
 
 :global(.dark) .channel-card {
+  border-color: rgba(71, 85, 105, 0.46);
+  background: #111827;
+  box-shadow: none;
   color: #e2e8f0;
 }
 
 :global(.dark) .channel-card__icon-shell {
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.92) 0%, rgba(15, 23, 42, 0.88) 100%);
-  border-color: rgba(100, 116, 139, 0.58);
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(71, 85, 105, 0.5);
 }
 
 :global(.dark) .channel-card__header:hover {
@@ -1202,23 +1213,23 @@ textarea.channel-card__input {
 }
 
 :global(.dark) .channel-card__body {
-  background: rgba(15, 23, 42, 0.28);
-  border-top-color: rgba(100, 116, 139, 0.5);
+  background: #1e293b;
+  border-top-color: rgba(71, 85, 105, 0.46);
 }
 
 :global(.dark) .channel-card__status-panel--connected {
   border-color: rgba(74, 222, 128, 0.34);
-  background: linear-gradient(180deg, rgba(20, 83, 45, 0.38) 0%, rgba(15, 23, 42, 0.64) 100%);
+  background: rgba(20, 83, 45, 0.32);
 }
 
 :global(.dark) .channel-card__status-panel--connecting {
   border-color: rgba(251, 191, 36, 0.32);
-  background: linear-gradient(180deg, rgba(120, 53, 15, 0.42) 0%, rgba(15, 23, 42, 0.64) 100%);
+  background: rgba(120, 53, 15, 0.32);
 }
 
 :global(.dark) .channel-card__status-panel--error {
   border-color: rgba(248, 113, 113, 0.32);
-  background: linear-gradient(180deg, rgba(127, 29, 29, 0.42) 0%, rgba(15, 23, 42, 0.64) 100%);
+  background: rgba(127, 29, 29, 0.32);
 }
 
 :global(.dark) .channel-card__metric-label,
@@ -1240,24 +1251,21 @@ textarea.channel-card__input {
 }
 
 :global(.dark) .channel-card--connected .channel-card__icon-shell {
-  border-color: rgba(74, 222, 128, 0.48);
-  box-shadow:
-    0 18px 32px -30px rgba(74, 222, 128, 0.7),
-    inset 0 1px 0 rgba(148, 163, 184, 0.08);
+  border-color: rgba(74, 222, 128, 0.32);
+  background: rgba(20, 83, 45, 0.2);
+  box-shadow: none;
 }
 
 :global(.dark) .channel-card--connecting .channel-card__icon-shell {
-  border-color: rgba(251, 191, 36, 0.46);
-  box-shadow:
-    0 18px 32px -30px rgba(251, 191, 36, 0.68),
-    inset 0 1px 0 rgba(148, 163, 184, 0.08);
+  border-color: rgba(251, 191, 36, 0.32);
+  background: rgba(120, 53, 15, 0.2);
+  box-shadow: none;
 }
 
 :global(.dark) .channel-card--error .channel-card__icon-shell {
-  border-color: rgba(248, 113, 113, 0.46);
-  box-shadow:
-    0 18px 32px -30px rgba(248, 113, 113, 0.68),
-    inset 0 1px 0 rgba(148, 163, 184, 0.08);
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(127, 29, 29, 0.2);
+  box-shadow: none;
 }
 
 :global(.dark) .channel-card__feedback--success {
@@ -1279,6 +1287,7 @@ textarea.channel-card__input {
 }
 
 :global(.dark) .channel-card__action--primary {
-  background: linear-gradient(135deg, #1d4ed8 0%, #0f172a 100%);
+  border-color: #2563eb;
+  background: #2563eb;
 }
 </style>

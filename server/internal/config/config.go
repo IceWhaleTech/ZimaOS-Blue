@@ -38,6 +38,7 @@ type Config struct {
 	CCSwitch      CCSwitchConfig      `yaml:"cc_switch"`       // v0.10.3
 	Statistics    StatisticsConfig    `yaml:"statistics"`      // v0.10.3
 	ToolCalling   ToolCallingConfig   `yaml:"tool_calling"`    // v0.10.3
+	SkillMarket   SkillMarketConfig   `yaml:"skill_market"`
 	Browser       browser.Config      `yaml:"browser"`
 	Agents        AgentsConfig        `yaml:"agents"`    // v0.11.0
 	Research      ResearchConfig      `yaml:"research"`  // v0.11.x
@@ -711,6 +712,7 @@ func defaults() Config {
 		CCSwitch:      *DefaultCCSwitchConfig(),
 		Statistics:    *DefaultStatisticsConfig(),
 		ToolCalling:   *DefaultToolCallingConfig(),
+		SkillMarket:   *DefaultSkillMarketConfig(),
 		Browser:       *browser.DefaultConfig(),
 		Agents:        *DefaultAgentsConfig(),
 		Research:      *DefaultResearchConfig(),

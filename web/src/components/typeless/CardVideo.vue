@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
-import type { TypelessCardVideo } from '@/types/typeless'
+import { ref, computed, onUnmounted, watch } from 'vue'
+import type { TypelessCardVideo, VideoSubtitle } from '@/types/typeless'
+import { createProtectedObjectUrl, isProtectedResourceUrl } from '@/utils/protectedResource'
 
 const props = defineProps<{
   card: TypelessCardVideo
@@ -16,6 +17,88 @@ const isMuted = ref(props.card.muted || false)
 const isFullscreen = ref(false)
 const showControls = ref(true)
 const controlsTimeout = ref<number | null>(null)
+const videoSrc = ref('')
+const posterSrc = ref('')
+const subtitleTracks = ref<VideoSubtitle[]>([])
+
+let videoObjectUrl = ''
+let posterObjectUrl = ''
+let subtitleObjectUrls: string[] = []
+let sourceLoadSeq = 0
+
+function revokeResolvedSources() {
+  if (videoObjectUrl) {
+    URL.revokeObjectURL(videoObjectUrl)
+    videoObjectUrl = ''
+  }
+  if (posterObjectUrl) {
+    URL.revokeObjectURL(posterObjectUrl)
+    posterObjectUrl = ''
+  }
+  if (subtitleObjectUrls.length > 0) {
+    for (const objectUrl of subtitleObjectUrls) {
+      URL.revokeObjectURL(objectUrl)
+    }
+    subtitleObjectUrls = []
+  }
+}
+
+async function resolveMaybeProtectedUrl(rawValue?: string): Promise<string> {
+  const trimmed = String(rawValue || '').trim()
+  if (!trimmed) return ''
+  if (!isProtectedResourceUrl(trimmed)) return trimmed
+  return (await createProtectedObjectUrl(trimmed)) || ''
+}
+
+async function resolveVideoSources() {
+  const seq = ++sourceLoadSeq
+  revokeResolvedSources()
+  videoSrc.value = ''
+  posterSrc.value = ''
+  subtitleTracks.value = []
+
+  const resolvedVideo = await resolveMaybeProtectedUrl(props.card.src)
+  if (seq !== sourceLoadSeq) {
+    if (resolvedVideo && resolvedVideo !== props.card.src) {
+      URL.revokeObjectURL(resolvedVideo)
+    }
+    return
+  }
+  if (!resolvedVideo) return
+  if (resolvedVideo !== props.card.src) {
+    videoObjectUrl = resolvedVideo
+  }
+  videoSrc.value = resolvedVideo
+
+  const resolvedPoster = await resolveMaybeProtectedUrl(props.card.poster)
+  if (seq !== sourceLoadSeq) {
+    if (resolvedPoster && resolvedPoster !== props.card.poster) {
+      URL.revokeObjectURL(resolvedPoster)
+    }
+    return
+  }
+  if (resolvedPoster && resolvedPoster !== props.card.poster) {
+    posterObjectUrl = resolvedPoster
+  }
+  posterSrc.value = resolvedPoster
+
+  const nextTracks: VideoSubtitle[] = []
+  for (const subtitle of props.card.subtitles || []) {
+    const resolvedSubtitleSrc = await resolveMaybeProtectedUrl(subtitle.src)
+    if (seq !== sourceLoadSeq) {
+      if (resolvedSubtitleSrc && resolvedSubtitleSrc !== subtitle.src) {
+        URL.revokeObjectURL(resolvedSubtitleSrc)
+      }
+      return
+    }
+    if (!resolvedSubtitleSrc) continue
+    if (resolvedSubtitleSrc !== subtitle.src) {
+      subtitleObjectUrls.push(resolvedSubtitleSrc)
+    }
+    nextTracks.push({ ...subtitle, src: resolvedSubtitleSrc })
+  }
+  subtitleTracks.value = nextTracks
+}
 
 function togglePlay() {
   if (!videoRef.value) return
@@ -131,6 +214,14 @@ const progress = computed(() => {
   return (currentTime.value / duration.value) * 100
 })
 
+watch(
+  () => [props.card.src, props.card.poster, JSON.stringify(props.card.subtitles || [])],
+  () => {
+    void resolveVideoSources()
+  },
+  { immediate: true }
+)
+
 // Listen for fullscreen changes
 if (typeof document !== 'undefined') {
   document.addEventListener('fullscreenchange', handleFullscreenChange)
@@ -143,6 +234,7 @@ onUnmounted(() => {
   if (controlsTimeout.value) {
     clearTimeout(controlsTimeout.value)
   }
+  revokeResolvedSources()
   if (typeof document !== 'undefined') {
     document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }
@@ -173,8 +265,8 @@ onUnmounted(() => {
       <video
         ref="videoRef"
         class="w-full h-full object-contain"
-        :src="card.src"
-        :poster="card.poster"
+        :src="videoSrc"
+        :poster="posterSrc"
         :autoplay="card.autoplay"
         :muted="isMuted"
         :loop="card.loop"
@@ -188,7 +280,7 @@ onUnmounted(() => {
       >
         <!-- Subtitles -->
         <track
-          v-for="(subtitle, index) in card.subtitles"
+          v-for="(subtitle, index) in subtitleTracks"
           :key="index"
           kind="subtitles"
           :src="subtitle.src"

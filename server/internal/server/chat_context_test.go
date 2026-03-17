@@ -779,6 +779,11 @@ func TestBuildSmartContextTierNoHistoryKeepsRecentRoundsWhenConfigured(t *testin
 	defer store.Close()
 
 	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	h.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "tiny-history-model",
+		ContextWindow: 40,
+	}}))
 	preloaded := []memory.Message{
 		{Role: "user", Content: "Q1"},
 		{Role: "assistant", Content: "A1"},
@@ -873,14 +878,19 @@ func TestBuildSmartContextCompressedMemoryTracksComparableMessageCounts(t *testi
 	defer store.Close()
 
 	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	h.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "tiny-history-model",
+		ContextWindow: 128,
+	}}))
 	preloaded := []memory.Message{
-		{Role: "user", Content: "Q1"},
-		{Role: "assistant", Content: "A1"},
-		{Role: "user", Content: "Q2"},
-		{Role: "assistant", Content: "A2"},
-		{Role: "user", Content: "Q3"},
-		{Role: "assistant", Content: "A3"},
-		{Role: "user", Content: "继续"},
+		{Role: "user", Content: strings.Repeat("Q1 background ", 12)},
+		{Role: "assistant", Content: strings.Repeat("A1 details ", 12)},
+		{Role: "user", Content: strings.Repeat("Q2 background ", 12)},
+		{Role: "assistant", Content: strings.Repeat("A2 details ", 12)},
+		{Role: "user", Content: strings.Repeat("Q3 background ", 12)},
+		{Role: "assistant", Content: strings.Repeat("A3 details ", 12)},
+		{Role: "user", Content: strings.Repeat("继续前面的方案 ", 6)},
 	}
 	h.summaryCache.Put("conv-compaction-counts", &ConversationSummary{
 		Text:         "Older context summary",
@@ -890,6 +900,8 @@ func TestBuildSmartContextCompressedMemoryTracksComparableMessageCounts(t *testi
 	got := h.buildSmartContext(context.Background(), smartContextParams{
 		ConvID:            "conv-compaction-counts",
 		UserMessage:       "继续",
+		Model:             "tiny-history-model",
+		MaxTokens:         16,
 		PreloadedMessages: preloaded,
 	})
 
@@ -916,9 +928,121 @@ func TestBuildSmartContextCompressedMemoryTracksComparableMessageCounts(t *testi
 	}
 }
 
+func TestBuildSmartContextContinuationKeepsFullHistoryUnderSoftThreshold(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	h.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "large-history-model",
+		ContextWindow: 32000,
+	}}))
+
+	preloaded := []memory.Message{
+		{Role: "user", Content: "Q1"},
+		{Role: "assistant", Content: "A1"},
+		{Role: "user", Content: "Q2"},
+		{Role: "assistant", Content: "A2"},
+		{Role: "user", Content: "Q3"},
+		{Role: "assistant", Content: "A3"},
+		{Role: "user", Content: "继续"},
+	}
+
+	got := h.buildSmartContext(context.Background(), smartContextParams{
+		ConvID:            "conv-full-history",
+		UserMessage:       "继续",
+		Model:             "large-history-model",
+		MaxTokens:         256,
+		PreloadedMessages: preloaded,
+	})
+
+	if got.Tier != TierFullHistory {
+		t.Fatalf("tier = %v, want %v", got.Tier, TierFullHistory)
+	}
+	if got.Summary != "" {
+		t.Fatalf("summary = %q, want empty when full history fits", got.Summary)
+	}
+	if got.MessageCountAfter != len(got.Messages) {
+		t.Fatalf("MessageCountAfter = %d, want %d", got.MessageCountAfter, len(got.Messages))
+	}
+	if got.MessageCountAfter != len(preloaded) {
+		t.Fatalf("MessageCountAfter = %d, want %d", got.MessageCountAfter, len(preloaded))
+	}
+}
+
+func TestBuildSmartContextIgnoresStaleSummaryCache(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	h.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "tiny-history-model",
+		ContextWindow: 128,
+	}}))
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	summaryEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	h.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{respText: "- Goal: keep recent context\n- Pending: verify fresh summary"}
+	h.SetSmallModelRuntime(sm)
+
+	preloaded := []memory.Message{
+		{Role: "user", Content: strings.Repeat("Investigate login retry ordering ", 12)},
+		{Role: "assistant", Content: strings.Repeat("I am checking middleware ordering and token refresh timing. ", 12)},
+		{Role: "user", Content: strings.Repeat("Also remember the regression test path. ", 10)},
+		{Role: "assistant", Content: strings.Repeat("Noted, I will keep the file path and pending test in memory. ", 10)},
+		{Role: "user", Content: strings.Repeat("Keep the deployment preference and the file path in mind. ", 10)},
+		{Role: "assistant", Content: strings.Repeat("I will preserve those details in the context summary. ", 10)},
+		{Role: "user", Content: strings.Repeat("继续", 4)},
+	}
+	h.summaryCache.Put("conv-stale-summary", &ConversationSummary{
+		Text:         "stale summary should not survive",
+		MessageCount: len(preloaded) - 2,
+	})
+
+	got := h.buildSmartContext(context.Background(), smartContextParams{
+		ConvID:            "conv-stale-summary",
+		UserMessage:       "继续",
+		Model:             "tiny-history-model",
+		MaxTokens:         16,
+		PreloadedMessages: preloaded,
+	})
+
+	if got.Tier != TierCompressedMemory {
+		t.Fatalf("tier = %v, want %v", got.Tier, TierCompressedMemory)
+	}
+	if strings.Contains(got.Summary, "stale summary") {
+		t.Fatalf("expected stale summary to be ignored, got %q", got.Summary)
+	}
+	if !strings.Contains(got.Summary, "Pending") {
+		t.Fatalf("expected regenerated summary, got %q", got.Summary)
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if cached, ok := h.summaryCache.Get("conv-stale-summary"); !ok {
+		t.Fatal("expected refreshed summary cache entry")
+	} else if summary, ok := cached.(*ConversationSummary); !ok || summary.MessageCount != len(preloaded) {
+		t.Fatalf("cached summary = %#v, want refreshed message count %d", cached, len(preloaded))
+	}
+}
+
 func TestContextTierString(t *testing.T) {
 	if TierNoHistory.String() != "no_history" {
 		t.Errorf("TierNoHistory.String() = %q", TierNoHistory.String())
+	}
+	if TierFullHistory.String() != "full_history" {
+		t.Errorf("TierFullHistory.String() = %q", TierFullHistory.String())
 	}
 	if TierCompressedMemory.String() != "compressed_memory" {
 		t.Errorf("TierCompressedMemory.String() = %q", TierCompressedMemory.String())

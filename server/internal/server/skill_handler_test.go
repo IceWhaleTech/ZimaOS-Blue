@@ -395,6 +395,44 @@ func TestSkillHandler_InstallSkill(t *testing.T) {
 	})
 }
 
+func TestSkillHandler_GetSkillContentRejectsTraversalID(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/../../etc/passwd/content", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("../../etc/passwd")
+
+	if err := handler.GetSkillContent(c); err != nil {
+		t.Fatalf("GetSkillContent failed: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestSkillHandler_InstallSkillRejectsTraversalID(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skill-store/install/../escape", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("../escape")
+
+	if err := handler.InstallSkill(c); err != nil {
+		t.Fatalf("InstallSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
 func TestSkillHandler_UninstallSkill(t *testing.T) {
 	registry := skill.NewRegistry()
 	handler := newTestSkillHandler(t, registry)
@@ -556,6 +594,27 @@ func TestGetMockClawHubSkills(t *testing.T) {
 		if s.Homepage != "" && !strings.Contains(s.Homepage, "clawhub.ai") {
 			t.Errorf("expected homepage to contain 'clawhub.ai', got '%s'", s.Homepage)
 		}
+	}
+}
+
+func TestParseSkillContentNormalizesHyphenatedIDForLocalInstall(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	skillID, manifest, err := handler.parseSkillContent(`---
+id: word-docx
+name: Word DOCX
+description: Convert Word documents
+---
+`, "https://example.com/skills/word-docx/SKILL.md", "", "")
+	if err != nil {
+		t.Fatalf("parseSkillContent failed: %v", err)
+	}
+	if skillID != "word_docx" {
+		t.Fatalf("skillID = %q, want word_docx", skillID)
+	}
+	if manifest.ID != "word_docx" {
+		t.Fatalf("manifest.ID = %q, want word_docx", manifest.ID)
 	}
 }
 

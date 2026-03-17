@@ -917,13 +917,15 @@ onUnmounted(() => {
 
 <template>
   <div class="security-page dashboard-page-frame">
-    <section class="security-stage dashboard-page-stage">
+    <section class="security-stage dashboard-page-stage configuration-page-stage">
       <section class="security-hero">
-        <div class="security-hero-heading dashboard-page-hero">
-          <div class="security-hero-copy dashboard-page-copy">
+        <div class="security-hero-heading dashboard-page-hero configuration-page-hero">
+          <div class="security-hero-copy dashboard-page-copy configuration-page-copy">
             <p class="security-eyebrow dashboard-page-eyebrow">{{ t('nav.configuration') }}</p>
-            <h1 class="security-title dashboard-page-title">{{ t('security.title') }}</h1>
-            <p class="security-description dashboard-page-description">
+            <h1 class="security-title dashboard-page-title configuration-page-title">
+              {{ t('security.title') }}
+            </h1>
+            <p class="security-description dashboard-page-description configuration-page-description">
               {{ securityStatusDescription }}
             </p>
           </div>
@@ -2173,17 +2175,21 @@ onUnmounted(() => {
 
 .security-hero {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0.88rem;
   padding: 0 0 0.2rem;
 }
 
 .security-hero-heading {
-  padding-bottom: 0.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0;
 }
 
 .security-hero-copy {
+  flex: 1 1 0%;
+  min-width: 0;
   max-width: 42rem;
   padding-top: 0.1rem;
 }
@@ -2211,6 +2217,16 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.security-page :deep(.dashboard-card-surface) {
+  background: #ffffff;
+  background-image: none;
+}
+
+.security-page :deep(.dashboard-card-subsurface) {
+  background: #f8fafc;
+  background-image: none;
 }
 
 .security-tab-shell {
@@ -2966,6 +2982,14 @@ onUnmounted(() => {
     0 24px 38px -34px rgba(15, 23, 42, 0.24);
 }
 
+.security-embedded-stack :deep(.security-outlined-card) {
+  border-color: rgba(203, 213, 225, 0.96);
+}
+
+.security-embedded-stack :deep(.security-outlined-card:hover) {
+  border-color: rgba(148, 163, 184, 0.8);
+}
+
 :root.dark .security-title,
 [data-theme='dark'] .security-title,
 html.dark .security-title {
@@ -2976,6 +3000,20 @@ html.dark .security-title {
 [data-theme='dark'] .security-description,
 html.dark .security-description {
   color: rgb(148 163 184);
+}
+
+:root.dark .security-page :deep(.dashboard-card-surface),
+[data-theme='dark'] .security-page :deep(.dashboard-card-surface),
+html.dark .security-page :deep(.dashboard-card-surface) {
+  background: #1e293b;
+  background-image: none;
+}
+
+:root.dark .security-page :deep(.dashboard-card-subsurface),
+[data-theme='dark'] .security-page :deep(.dashboard-card-subsurface),
+html.dark .security-page :deep(.dashboard-card-subsurface) {
+  background: #0f172a;
+  background-image: none;
 }
 
 :root.dark .security-panel,
@@ -2995,6 +3033,12 @@ html.dark .security-panel :deep(.glass-card) {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 24px 38px -34px rgba(2, 6, 23, 0.64);
+}
+
+:root.dark .security-embedded-stack :deep(.security-outlined-card),
+[data-theme='dark'] .security-embedded-stack :deep(.security-outlined-card),
+html.dark .security-embedded-stack :deep(.security-outlined-card) {
+  border-color: rgba(71, 85, 105, 0.58);
 }
 
 :root.dark .security-tab-shell,

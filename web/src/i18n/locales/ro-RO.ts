@@ -88,6 +88,8 @@ export default {
     automation: 'Automatizare',
     security: 'Securitate',
     companion: 'Companion',
+
+    plugins: 'Extensii',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1147,6 +1149,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'In asteptarea confirmarii tale pentru a continua',
+    assistantStatus: {
+      searchingWeb: 'Caut pe web',
+      browsingWeb: 'Navighez pe web',
+      readingWeb: 'Citesc o pagina web',
+      readingWebSite: 'Citesc {site}',
+      usingTools: 'Folosesc instrumente',
+    },
     conversations: 'Conversații',
     execDirectoryApprovalTimeout:
       'Executarea comenzii a fost blocată deoarece aprobarea directorului a expirat. Aprobă directorul și încearcă din nou.',
@@ -1229,11 +1239,10 @@ export default {
     },
     // Mod îmbunătățit
     enhancedMode: 'Îmbunătățit',
-    enhancedModeDesc:
-      'Mod îmbunătățit: suportă abilități, apeluri de instrumente, operațiuni cu fișiere, execuție de cod și altele',
+    enhancedModeDesc: 'Îmbunătățirea opțională este activată: experiența este mai bună.',
     enableEnhancedMode: 'Activare mod îmbunătățit',
     enableEnhancedModeDesc:
-      'Activați modul îmbunătățit pentru abilități, apeluri de instrumente, operațiuni cu fișiere și altele',
+      'Aceasta este o îmbunătățire opțională: dezactivarea nu afectează chatul de bază sau utilizarea Agent; activarea îmbunătățește experiența.',
     showToolDetails: 'Afișează detalii de lucru',
     hideToolDetails: 'Ascunde detalii de lucru',
     toolDetailExpand: 'Extinde ieșirea',
@@ -1417,6 +1426,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Reguli personalizate de mascare a datelor',
+    builtinMaskingRules: 'Reguli încorporate',
+    builtinMaskingEmpty: 'Nu au fost încărcate reguli încorporate.',
+    customMaskingListTitle: 'Reguli personalizate',
+    customMaskingEmpty:
+      'Nu există încă reguli personalizate. Folosiți formularul de mai jos pentru ID-uri interne sau secrete proprietare.',
+    customMaskingDesc:
+      'Adăugați reguli bazate pe regex pentru ID-uri interne, secrete sau câmpuri specifice afacerii.',
+    customMaskingNameLabel: 'Nume',
+    customMaskingNamePlaceholder: 'Exemplu: număr intern de tichet',
+    customMaskingDirectionLabel: 'Direcție',
+    customMaskingPatternLabel: 'Model regex',
+    customMaskingPatternPlaceholder: 'Exemplu: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Text de înlocuire',
+    customMaskingReplacementPlaceholder: 'Exemplu: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Folosiți o expresie regulată validă. {maskLabel} din textul de înlocuire păstrează eticheta localizată de mascare.',
+    customMaskingAdd: 'Adaugă regulă',
+    customMaskingAddSuccess: 'Regula personalizată de mascare a fost adăugată.',
+    customMaskingAddError: 'Nu s-a putut adăuga regula personalizată de mascare.',
+    customMaskingDeleteConfirm: 'Ștergeți regula personalizată de mascare "{name}"?',
+    customMaskingDeleteSuccess: 'Regula personalizată de mascare a fost ștearsă.',
+    customMaskingDeleteError: 'Nu s-a putut șterge regula personalizată de mascare.',
     maskingRuleList: 'Listă de reguli',
     maskingCategories: {
       pii: 'Date personale (PII)',
@@ -1741,7 +1773,7 @@ export default {
     checkpoint: 'Punct de control',
     checkpointDescription: 'Punct de control înainte de restaurare ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Extensii' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -1896,7 +1928,17 @@ export default {
     volume: 'Volum',
     voiceSettings: 'Setări voce',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Acces la extensii',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Extensii',
+    },
+  },
   tools: {
     names: {
       'Web Search': 'Căutare web',
@@ -1964,6 +2006,16 @@ export default {
     timeout: 'Închidere automată în {seconds}s',
     answered: 'Răspuns',
   },
+  browserProgress: {
+    title: 'Progresul browserului',
+    steps: {
+      start: 'Pornesc browserul',
+      navigate: 'Navighez',
+      snapshot: 'Citesc pagina',
+      screenshot: 'Capturez ecranul',
+      recipe: 'Rulez {recipe}',
+    },
+  },
   thinking: {
     title: 'Context',
     context: 'Context',
@@ -1972,6 +2024,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Cautare pe web',
     resultCount: '{count} rezultate',
   },
   cardActions: {

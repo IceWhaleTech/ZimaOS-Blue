@@ -17,9 +17,9 @@ import (
 	"unsafe"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 const ProviderMacOSNative stt.ProviderType = "macos-native"
@@ -47,15 +47,18 @@ var (
 	selLocalizedDescription        objc.SEL
 	selStringWithUTF8String        objc.SEL
 	selUTF8String                  objc.SEL
+	selCancel                      objc.SEL
+	selRetain                      objc.SEL
+	selRelease                     objc.SEL
 
 	// AVFoundation selectors for buffer-based recognition
-	selInitWithFormat              objc.SEL // AVAudioPCMBuffer initWithPCMFormat:frameCapacity:
-	selInitStdFormatSR             objc.SEL // AVAudioFormat initStandardFormatWithSampleRate:channels:
-	selAppendAudioPCMBuffer        objc.SEL // SFSpeechAudioBufferRecognitionRequest appendAudioPCMBuffer:
-	selEndAudio                    objc.SEL // SFSpeechAudioBufferRecognitionRequest endAudio
-	selFloatChannelData            objc.SEL // AVAudioPCMBuffer floatChannelData
-	selFrameLength                 objc.SEL // AVAudioPCMBuffer frameLength
-	selSetFrameLength              objc.SEL // AVAudioPCMBuffer setFrameLength:
+	selInitWithFormat       objc.SEL // AVAudioPCMBuffer initWithPCMFormat:frameCapacity:
+	selInitStdFormatSR      objc.SEL // AVAudioFormat initStandardFormatWithSampleRate:channels:
+	selAppendAudioPCMBuffer objc.SEL // SFSpeechAudioBufferRecognitionRequest appendAudioPCMBuffer:
+	selEndAudio             objc.SEL // SFSpeechAudioBufferRecognitionRequest endAudio
+	selFloatChannelData     objc.SEL // AVAudioPCMBuffer floatChannelData
+	selFrameLength          objc.SEL // AVAudioPCMBuffer frameLength
+	selSetFrameLength       objc.SEL // AVAudioPCMBuffer setFrameLength:
 )
 
 func initSTTSelectors() {
@@ -88,6 +91,9 @@ func initSTTSelectors() {
 		selLocalizedDescription = objc.RegisterName("localizedDescription")
 		selStringWithUTF8String = objc.RegisterName("stringWithUTF8String:")
 		selUTF8String = objc.RegisterName("UTF8String")
+		selCancel = objc.RegisterName("cancel")
+		selRetain = objc.RegisterName("retain")
+		selRelease = objc.RegisterName("release")
 
 		// AVFoundation selectors for buffer-based recognition
 		selInitWithFormat = objc.RegisterName("initWithPCMFormat:frameCapacity:")
@@ -139,6 +145,63 @@ func cstring(ptr uintptr) string {
 	return string(unsafe.Slice((*byte)(unsafe.Pointer(ptr)), length))
 }
 
+func retainObject(id objc.ID) objc.ID {
+	if id == 0 {
+		return 0
+	}
+	return id.Send(selRetain)
+}
+
+func releaseObject(id objc.ID) {
+	if id == 0 {
+		return
+	}
+	id.Send(selRelease)
+}
+
+type recognitionResources struct {
+	recognizer objc.ID
+	request    objc.ID
+	task       objc.ID
+	block      objc.Block
+	audioFmt   objc.ID
+	pcmBuf     objc.ID
+}
+
+func cleanupRecognitionResources(resources recognitionResources, endAudio bool) {
+	if resources.recognizer == 0 &&
+		resources.request == 0 &&
+		resources.task == 0 &&
+		resources.block == 0 &&
+		resources.audioFmt == 0 &&
+		resources.pcmBuf == 0 {
+		return
+	}
+	done := make(chan struct{}, 1)
+	SubmitToMainThread(func() {
+		releaseRecognitionResources(resources, endAudio)
+		done <- struct{}{}
+	})
+	<-done
+}
+
+func releaseRecognitionResources(resources recognitionResources, endAudio bool) {
+	if endAudio && resources.request != 0 {
+		resources.request.Send(selEndAudio)
+	}
+	if resources.task != 0 {
+		resources.task.Send(selCancel)
+	}
+	if resources.block != 0 {
+		resources.block.Release()
+	}
+	releaseObject(resources.task)
+	releaseObject(resources.request)
+	releaseObject(resources.pcmBuf)
+	releaseObject(resources.audioFmt)
+	releaseObject(resources.recognizer)
+}
+
 // Package-level authorization state, set by RequestSTTAuthorization() in main().
 var (
 	sttAuthMu     sync.Mutex
@@ -156,9 +219,9 @@ var mainDoneCh = make(chan struct{}, 1)
 // (RunMainRunLoop pumps NSRunLoop which drains GCD main queue) and
 // Tauri mode (Tauri's Cocoa event loop drains GCD main queue).
 var (
-	gcdOnce          sync.Once
+	gcdOnce           sync.Once
 	dispatchMainQueue uintptr // dispatch_queue_t from dispatch_get_main_queue()
-	dispatchAsyncF   func(queue uintptr, context uintptr, work uintptr)
+	dispatchAsyncF    func(queue uintptr, context uintptr, work uintptr)
 )
 
 // pendingWork stores Go closures keyed by an incrementing ID.
@@ -508,8 +571,8 @@ func requestAuthorizationViaNSApp(sfClass objc.ID) (int, error) {
 	}
 }
 
-func (p *MacOSNativeSTT) Name() string             { return "macOS Native" }
-func (p *MacOSNativeSTT) Type() stt.ProviderType    { return ProviderMacOSNative }
+func (p *MacOSNativeSTT) Name() string               { return "macOS Native" }
+func (p *MacOSNativeSTT) Type() stt.ProviderType     { return ProviderMacOSNative }
 func (p *MacOSNativeSTT) Available() bool            { return true }
 func (p *MacOSNativeSTT) MaxDuration() time.Duration { return 60 * time.Second }
 
@@ -780,39 +843,50 @@ func (p *MacOSNativeSTT) recognizeFromBuffer(_ context.Context, pcm []byte, samp
 		err  error
 	}
 	ch := make(chan result, 1)
+	setupDone := make(chan struct{})
+	var resources recognitionResources
 
 	SubmitToMainThread(func() {
+		defer close(setupDone)
 		initSTTSelectors()
+		fail := func(err error) {
+			releaseRecognitionResources(resources, false)
+			resources = recognitionResources{}
+			ch <- result{err: err}
+		}
 
 		// Create SFSpeechRecognizer
 		cls := objc.ID(objc.GetClass("SFSpeechRecognizer"))
-		var recognizer objc.ID
+		var nsLocale objc.ID
 		if locale != "" {
 			nsCls := objc.ID(objc.GetClass("NSLocale"))
-			nsLocale := nsCls.Send(selAlloc).Send(selInitWithLocaleIdentifier, nsString(locale))
-			recognizer = cls.Send(selAlloc).Send(selInitWithLocale, nsLocale)
+			nsLocale = nsCls.Send(selAlloc).Send(selInitWithLocaleIdentifier, nsString(locale))
+			resources.recognizer = cls.Send(selAlloc).Send(selInitWithLocale, nsLocale)
 		} else {
-			recognizer = cls.Send(selAlloc).Send(selInit)
+			resources.recognizer = cls.Send(selAlloc).Send(selInit)
 		}
-		if recognizer == 0 {
-			ch <- result{err: fmt.Errorf("failed to create SFSpeechRecognizer")}
+		if nsLocale != 0 {
+			releaseObject(nsLocale)
+		}
+		if resources.recognizer == 0 {
+			fail(fmt.Errorf("failed to create SFSpeechRecognizer"))
 			return
 		}
-		if !objc.Send[bool](recognizer, selIsAvailable) {
-			ch <- result{err: fmt.Errorf("speech recognizer not available for locale %q", locale)}
+		if !objc.Send[bool](resources.recognizer, selIsAvailable) {
+			fail(fmt.Errorf("speech recognizer not available for locale %q", locale))
 			return
 		}
 
 		// Create AVAudioFormat (standard float32 format)
 		fmtCls := objc.ID(objc.GetClass("AVAudioFormat"))
 		if fmtCls == 0 {
-			ch <- result{err: fmt.Errorf("AVAudioFormat class not found")}
+			fail(fmt.Errorf("AVAudioFormat class not found"))
 			return
 		}
-		audioFmt := fmtCls.Send(selAlloc).Send(selInitStdFormatSR,
+		resources.audioFmt = fmtCls.Send(selAlloc).Send(selInitStdFormatSR,
 			float64(sampleRate), uint32(channels))
-		if audioFmt == 0 {
-			ch <- result{err: fmt.Errorf("failed to create AVAudioFormat")}
+		if resources.audioFmt == 0 {
+			fail(fmt.Errorf("failed to create AVAudioFormat"))
 			return
 		}
 
@@ -824,29 +898,29 @@ func (p *MacOSNativeSTT) recognizeFromBuffer(_ context.Context, pcm []byte, samp
 		// Create AVAudioPCMBuffer
 		bufCls := objc.ID(objc.GetClass("AVAudioPCMBuffer"))
 		if bufCls == 0 {
-			ch <- result{err: fmt.Errorf("AVAudioPCMBuffer class not found")}
+			fail(fmt.Errorf("AVAudioPCMBuffer class not found"))
 			return
 		}
-		pcmBuf := bufCls.Send(selAlloc).Send(selInitWithFormat, audioFmt, uint32(frameCount))
-		if pcmBuf == 0 {
-			ch <- result{err: fmt.Errorf("failed to create AVAudioPCMBuffer")}
+		resources.pcmBuf = bufCls.Send(selAlloc).Send(selInitWithFormat, resources.audioFmt, uint32(frameCount))
+		if resources.pcmBuf == 0 {
+			fail(fmt.Errorf("failed to create AVAudioPCMBuffer"))
 			return
 		}
 
 		// Set frameLength
-		pcmBuf.Send(selSetFrameLength, uint32(frameCount))
+		resources.pcmBuf.Send(selSetFrameLength, uint32(frameCount))
 
 		// Get floatChannelData pointer: float * const *
-		channelDataPtr := objc.Send[uintptr](pcmBuf, selFloatChannelData)
+		channelDataPtr := objc.Send[uintptr](resources.pcmBuf, selFloatChannelData)
 		if channelDataPtr == 0 {
-			ch <- result{err: fmt.Errorf("floatChannelData returned nil")}
+			fail(fmt.Errorf("floatChannelData returned nil"))
 			return
 		}
 
 		// channelDataPtr is float**, dereference to get float* for channel 0
 		ch0Ptr := *(*uintptr)(unsafe.Pointer(channelDataPtr))
 		if ch0Ptr == 0 {
-			ch <- result{err: fmt.Errorf("channel 0 data pointer is nil")}
+			fail(fmt.Errorf("channel 0 data pointer is nil"))
 			return
 		}
 
@@ -865,32 +939,32 @@ func (p *MacOSNativeSTT) recognizeFromBuffer(_ context.Context, pcm []byte, samp
 		// Create SFSpeechAudioBufferRecognitionRequest
 		reqCls := objc.ID(objc.GetClass("SFSpeechAudioBufferRecognitionRequest"))
 		if reqCls == 0 {
-			ch <- result{err: fmt.Errorf("SFSpeechAudioBufferRecognitionRequest class not found")}
+			fail(fmt.Errorf("SFSpeechAudioBufferRecognitionRequest class not found"))
 			return
 		}
-		request := reqCls.Send(selAlloc).Send(selInit)
-		if request == 0 {
-			ch <- result{err: fmt.Errorf("failed to create buffer recognition request")}
+		resources.request = reqCls.Send(selAlloc).Send(selInit)
+		if resources.request == 0 {
+			fail(fmt.Errorf("failed to create buffer recognition request"))
 			return
 		}
-		request.Send(selSetShouldReportPartial, false)
+		resources.request.Send(selSetShouldReportPartial, false)
 
-		onDevice := objc.Send[bool](recognizer, selSupportsOnDeviceRecognition)
+		onDevice := objc.Send[bool](resources.recognizer, selSupportsOnDeviceRecognition)
 		requireOnDevice := p.RequireOnDevice()
 		if requireOnDevice && onDevice {
-			request.Send(selSetRequiresOnDevice, true)
+			resources.request.Send(selSetRequiresOnDevice, true)
 		}
 		slog.Info("[macos-stt] buffer recognition start",
 			"sampleRate", sampleRate, "channels", channels, "frames", frameCount,
 			"locale", locale, "onDevice", onDevice)
 
 		// Append audio buffer and signal end
-		request.Send(selAppendAudioPCMBuffer, pcmBuf)
-		request.Send(selEndAudio)
+		resources.request.Send(selAppendAudioPCMBuffer, resources.pcmBuf)
+		resources.request.Send(selEndAudio)
 
 		// Result handler block
 		var lastText string
-		block := objc.NewBlock(func(_ objc.Block, res objc.ID, nsErr objc.ID) {
+		resources.block = objc.NewBlock(func(_ objc.Block, res objc.ID, nsErr objc.ID) {
 			if res != 0 {
 				transcription := res.Send(selBestTranscription)
 				if transcription != 0 {
@@ -930,19 +1004,24 @@ func (p *MacOSNativeSTT) recognizeFromBuffer(_ context.Context, pcm []byte, samp
 			}
 		})
 
-		recognizer.Send(selRecognitionTaskWithRequest, request, block)
+		resources.task = retainObject(resources.recognizer.Send(selRecognitionTaskWithRequest, resources.request, resources.block))
+		if resources.task == 0 {
+			fail(fmt.Errorf("failed to create speech recognition task"))
+			return
+		}
 
 		go func() {
 			time.Sleep(60 * time.Second)
-			block.Release()
 			select {
 			case ch <- result{err: fmt.Errorf("speech recognition timed out")}:
 			default:
 			}
 		}()
 	})
+	<-setupDone
 
 	r := <-ch
+	cleanupRecognitionResources(resources, true)
 	if r.err != nil {
 		return "", r.err
 	}
@@ -960,28 +1039,39 @@ func (p *MacOSNativeSTT) recognize(_ context.Context, audioPath, locale string) 
 		err  error
 	}
 	ch := make(chan result, 1)
+	setupDone := make(chan struct{})
+	var resources recognitionResources
 
 	SubmitToMainThread(func() {
+		defer close(setupDone)
 		initSTTSelectors()
+		fail := func(err error) {
+			releaseRecognitionResources(resources, false)
+			resources = recognitionResources{}
+			ch <- result{err: err}
+		}
 
 		// Create SFSpeechRecognizer
 		cls := objc.ID(objc.GetClass("SFSpeechRecognizer"))
-		var recognizer objc.ID
+		var nsLocale objc.ID
 		if locale != "" {
 			nsCls := objc.ID(objc.GetClass("NSLocale"))
-			nsLocale := nsCls.Send(selAlloc).Send(selInitWithLocaleIdentifier, nsString(locale))
-			recognizer = cls.Send(selAlloc).Send(selInitWithLocale, nsLocale)
+			nsLocale = nsCls.Send(selAlloc).Send(selInitWithLocaleIdentifier, nsString(locale))
+			resources.recognizer = cls.Send(selAlloc).Send(selInitWithLocale, nsLocale)
 		} else {
-			recognizer = cls.Send(selAlloc).Send(selInit)
+			resources.recognizer = cls.Send(selAlloc).Send(selInit)
 		}
-		if recognizer == 0 {
-			ch <- result{err: fmt.Errorf("failed to create SFSpeechRecognizer")}
+		if nsLocale != 0 {
+			releaseObject(nsLocale)
+		}
+		if resources.recognizer == 0 {
+			fail(fmt.Errorf("failed to create SFSpeechRecognizer"))
 			return
 		}
 
-		avail := objc.Send[bool](recognizer, selIsAvailable)
+		avail := objc.Send[bool](resources.recognizer, selIsAvailable)
 		if !avail {
-			ch <- result{err: fmt.Errorf("speech recognizer not available for locale %q", locale)}
+			fail(fmt.Errorf("speech recognizer not available for locale %q", locale))
 			return
 		}
 
@@ -989,24 +1079,24 @@ func (p *MacOSNativeSTT) recognize(_ context.Context, audioPath, locale string) 
 		urlCls := objc.ID(objc.GetClass("NSURL"))
 		audioURL := urlCls.Send(selFileURLWithPath, nsString(audioPath))
 		if audioURL == 0 {
-			ch <- result{err: fmt.Errorf("failed to create NSURL for %s", audioPath)}
+			fail(fmt.Errorf("failed to create NSURL for %s", audioPath))
 			return
 		}
 
 		// Create SFSpeechURLRecognitionRequest
 		reqCls := objc.ID(objc.GetClass("SFSpeechURLRecognitionRequest"))
-		request := reqCls.Send(selAlloc).Send(selInitWithURL, audioURL)
-		if request == 0 {
-			ch <- result{err: fmt.Errorf("failed to create recognition request")}
+		resources.request = reqCls.Send(selAlloc).Send(selInitWithURL, audioURL)
+		if resources.request == 0 {
+			fail(fmt.Errorf("failed to create recognition request"))
 			return
 		}
-		request.Send(selSetShouldReportPartial, false)
+		resources.request.Send(selSetShouldReportPartial, false)
 
 		// Check on-device support and apply user preference
-		onDevice := objc.Send[bool](recognizer, selSupportsOnDeviceRecognition)
+		onDevice := objc.Send[bool](resources.recognizer, selSupportsOnDeviceRecognition)
 		requireOnDevice := p.RequireOnDevice()
 		if requireOnDevice && onDevice {
-			request.Send(selSetRequiresOnDevice, true)
+			resources.request.Send(selSetRequiresOnDevice, true)
 		}
 		slog.Info("[macos-stt] starting recognition task",
 			"audioPath", audioPath, "locale", locale,
@@ -1014,7 +1104,7 @@ func (p *MacOSNativeSTT) recognize(_ context.Context, audioPath, locale string) 
 
 		// Block callback: ^(SFSpeechRecognitionResult *res, NSError *err)
 		var lastText string
-		block := objc.NewBlock(func(_ objc.Block, res objc.ID, nsErr objc.ID) {
+		resources.block = objc.NewBlock(func(_ objc.Block, res objc.ID, nsErr objc.ID) {
 			slog.Info("[macos-stt] block callback invoked", "res", res, "err", nsErr)
 			if res != 0 {
 				transcription := res.Send(selBestTranscription)
@@ -1060,21 +1150,26 @@ func (p *MacOSNativeSTT) recognize(_ context.Context, audioPath, locale string) 
 
 		// Start recognition task — callbacks fire on GCD queues,
 		// but the main run loop must be active for Speech framework internals.
-		recognizer.Send(selRecognitionTaskWithRequest, request, block)
+		resources.task = retainObject(resources.recognizer.Send(selRecognitionTaskWithRequest, resources.request, resources.block))
+		if resources.task == 0 {
+			fail(fmt.Errorf("failed to create speech recognition task"))
+			return
+		}
 
 		// Set a timeout to release the block and send an error if no result comes
 		go func() {
 			time.Sleep(60 * time.Second)
-			block.Release()
 			select {
 			case ch <- result{err: fmt.Errorf("speech recognition timed out")}:
 			default:
 			}
 		}()
 	})
+	<-setupDone
 
 	// Wait for result from the callback (runs on this goroutine, not thread 0)
 	r := <-ch
+	cleanupRecognitionResources(resources, false)
 	if r.err != nil {
 		return "", r.err
 	}
@@ -1190,7 +1285,6 @@ func langToLocale(lang string) string {
 		return ""
 	}
 }
-
 
 // hasSpeechUsageDescription checks if NSBundle.mainBundle has the
 // NSSpeechRecognitionUsageDescription key in its Info.plist.

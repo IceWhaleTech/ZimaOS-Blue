@@ -88,6 +88,8 @@ export default {
     automation: 'Automatyzacja',
     security: 'Bezpieczeństwo',
     companion: 'Companion',
+
+    plugins: 'Rozszerzenia',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1448,6 +1450,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Oczekiwanie na twoje potwierdzenie, aby kontynuowac',
+    assistantStatus: {
+      searchingWeb: 'Wyszukiwanie w sieci',
+      browsingWeb: 'Przegladanie sieci',
+      readingWeb: 'Czytanie strony internetowej',
+      readingWebSite: 'Czytanie {site}',
+      usingTools: 'Uzywanie narzedzi',
+    },
     conversations: 'Rozmowy',
     execDirectoryApprovalTimeout:
       'Wykonanie polecenia zostało zablokowane, ponieważ upłynął limit czasu zatwierdzenia katalogu. Zatwierdź katalog i spróbuj ponownie.',
@@ -1529,11 +1539,10 @@ export default {
     },
     // Tryb rozszerzony
     enhancedMode: 'Rozszerzony',
-    enhancedModeDesc:
-      'Tryb rozszerzony: obsługuje umiejętności, wywołania narzędzi, operacje na plikach, wykonywanie kodu i więcej',
+    enhancedModeDesc: 'Opcjonalne ulepszenie jest włączone: wrażenia są lepsze.',
     enableEnhancedMode: 'Włącz tryb rozszerzony',
     enableEnhancedModeDesc:
-      'Włącz tryb rozszerzony dla umiejętności, wywołań narzędzi, operacji na plikach i więcej',
+      'To jest opcjonalne ulepszenie: wyłączenie nie wpływa na podstawowy czat ani korzystanie z Agent; włączenie poprawia wrażenia.',
     showToolDetails: 'Pokaż szczegóły pracy',
     hideToolDetails: 'Ukryj szczegóły pracy',
     toolDetailExpand: 'Rozwiń wyjście',
@@ -1774,6 +1783,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Niestandardowe reguły maskowania danych',
+    builtinMaskingRules: 'Wbudowane reguły',
+    builtinMaskingEmpty: 'Nie załadowano żadnych wbudowanych reguł.',
+    customMaskingListTitle: 'Niestandardowe reguły',
+    customMaskingEmpty:
+      'Brak jeszcze niestandardowych reguł. Użyj formularza poniżej dla wewnętrznych identyfikatorów lub zastrzeżonych sekretów.',
+    customMaskingDesc:
+      'Dodaj reguły oparte na regexie dla wewnętrznych identyfikatorów, sekretów lub pól specyficznych dla biznesu.',
+    customMaskingNameLabel: 'Nazwa',
+    customMaskingNamePlaceholder: 'Przykład: wewnętrzny numer zgłoszenia',
+    customMaskingDirectionLabel: 'Kierunek',
+    customMaskingPatternLabel: 'Wzorzec regex',
+    customMaskingPatternPlaceholder: 'Przykład: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Tekst zastępczy',
+    customMaskingReplacementPlaceholder: 'Przykład: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Użyj poprawnego wyrażenia regularnego. {maskLabel} w tekście zastępczym zachowuje zlokalizowaną etykietę maskowania.',
+    customMaskingAdd: 'Dodaj regułę',
+    customMaskingAddSuccess: 'Dodano niestandardową regułę maskowania.',
+    customMaskingAddError: 'Nie udało się dodać niestandardowej reguły maskowania.',
+    customMaskingDeleteConfirm: 'Usunąć niestandardową regułę maskowania "{name}"?',
+    customMaskingDeleteSuccess: 'Usunięto niestandardową regułę maskowania.',
+    customMaskingDeleteError: 'Nie udało się usunąć niestandardowej reguły maskowania.',
     maskingRuleList: 'Lista reguł',
     maskingCategories: {
       pii: 'Dane osobowe (PII)',
@@ -2073,7 +2105,7 @@ export default {
     checkpoint: 'Punkt kontrolny',
     checkpointDescription: 'Punkt kontrolny przed przywróceniem ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Rozszerzenia' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -2260,7 +2292,17 @@ export default {
     volume: 'Głośność',
     voiceSettings: 'Ustawienia głosu',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Dostęp do rozszerzeń',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Rozszerzenia',
+    },
+  },
 
   accept: 'Akceptuj',
   acknowledge: 'Potwierdź',
@@ -2407,6 +2449,16 @@ export default {
     timeout: 'Automatyczne zamknięcie za {seconds}s',
     answered: 'Odpowiedziano',
   },
+  browserProgress: {
+    title: 'Postep przegladarki',
+    steps: {
+      start: 'Uruchamianie przegladarki',
+      navigate: 'Nawigowanie',
+      snapshot: 'Czytanie strony',
+      screenshot: 'Przechwytywanie zrzutu ekranu',
+      recipe: 'Uruchamianie {recipe}',
+    },
+  },
   thinking: {
     title: 'Kontekst',
     context: 'Kontekst',
@@ -2415,6 +2467,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Wyszukiwanie w sieci',
     resultCount: '{count} wyników',
   },
   cardActions: {

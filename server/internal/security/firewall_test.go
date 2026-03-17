@@ -1,11 +1,13 @@
 package security
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
 )
 
@@ -245,5 +247,75 @@ func TestPromptFirewall_LoadFileForcesAllRulesEnabledAndPersists(t *testing.T) {
 		if !file.BuiltinRuleState[builtin.ID] {
 			t.Fatalf("expected migrated firewall file built-in rule %s enabled=true", builtin.ID)
 		}
+	}
+}
+
+func TestPromptFirewall_LoadLegacyFileMigratesToKVStore(t *testing.T) {
+	h := NewHandler(NewThreatDetector())
+	store := kvstore.NewMemoryStore()
+	dataDir := t.TempDir()
+	path := filepath.Join(dataDir, "security", "firewall_rules.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	content := `{
+  "enabled": true,
+  "rules": [
+    {"id":"r1","keyword":"leak prompt","enabled":true}
+  ]
+}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write firewall file failed: %v", err)
+	}
+
+	h.SetKVStore(store)
+	h.SetDataDir(dataDir)
+
+	var payload promptFirewallFile
+	if err := store.GetJSON(context.Background(), promptFirewallKVKey, &payload); err != nil {
+		t.Fatalf("expected firewall payload in kvstore: %v", err)
+	}
+	if len(payload.Rules) != 1 || payload.Rules[0].Keyword != "leak prompt" {
+		t.Fatalf("unexpected kvstore payload: %+v", payload.Rules)
+	}
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy firewall file to be archived, stat err=%v", err)
+	}
+	if _, err := os.Stat(path + ".migrated"); err != nil {
+		t.Fatalf("expected archived firewall file to exist: %v", err)
+	}
+}
+
+func TestPromptFirewall_SaveUsesKVStoreWhenConfigured(t *testing.T) {
+	h := NewHandler(NewThreatDetector())
+	store := kvstore.NewMemoryStore()
+	dataDir := t.TempDir()
+
+	h.SetKVStore(store)
+	h.SetDataDir(dataDir)
+
+	h.mu.Lock()
+	h.firewall.Enabled = true
+	h.firewall.Rules = []PromptFirewallRule{{
+		ID:      "rule-kv",
+		Keyword: "kv only",
+		Enabled: true,
+	}}
+	if err := h.savePromptFirewallLocked(); err != nil {
+		h.mu.Unlock()
+		t.Fatalf("save prompt firewall to kvstore: %v", err)
+	}
+	h.mu.Unlock()
+
+	var payload promptFirewallFile
+	if err := store.GetJSON(context.Background(), promptFirewallKVKey, &payload); err != nil {
+		t.Fatalf("expected saved firewall payload in kvstore: %v", err)
+	}
+	if len(payload.Rules) != 1 || payload.Rules[0].ID != "rule-kv" {
+		t.Fatalf("unexpected kvstore payload after save: %+v", payload.Rules)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "security", "firewall_rules.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no firewall file to be written when kvstore is configured, stat err=%v", err)
 	}
 }

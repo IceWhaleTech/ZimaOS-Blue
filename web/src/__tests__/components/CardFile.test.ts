@@ -4,9 +4,10 @@ import { createI18n } from 'vue-i18n'
 
 import CardFile from '@/components/typeless/CardFile.vue'
 
-const { openInBrowserMock, resolveLocalFileMock } = vi.hoisted(() => ({
+const { openInBrowserMock, resolveLocalFileMock, authFetchMock } = vi.hoisted(() => ({
   openInBrowserMock: vi.fn(),
   resolveLocalFileMock: vi.fn(),
+  authFetchMock: vi.fn(),
 }))
 
 vi.mock('@/composables/useTauri', () => ({
@@ -19,6 +20,10 @@ vi.mock('@/api/system', () => ({
   systemApi: {
     resolveLocalFile: resolveLocalFileMock,
   },
+}))
+
+vi.mock('@/api/client', () => ({
+  authFetch: authFetchMock,
 }))
 
 function createTestI18n() {
@@ -39,6 +44,13 @@ function createTestI18n() {
 }
 
 describe('CardFile', () => {
+  function mockBlobResponse(body: string, type: string, ok = true): Response {
+    return {
+      ok,
+      blob: vi.fn().mockResolvedValue(new Blob([body], { type })),
+    } as unknown as Response
+  }
+
   beforeEach(() => {
     openInBrowserMock.mockReset()
     openInBrowserMock.mockResolvedValue(true)
@@ -55,6 +67,12 @@ describe('CardFile', () => {
           '/api/v1/system/local-file/thumbnail?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf',
       },
     })
+    authFetchMock.mockReset()
+    authFetchMock.mockResolvedValue(mockBlobResponse('report-data', 'application/pdf'))
+    ;(URL as unknown as { createObjectURL: (blob: Blob) => string }).createObjectURL = vi
+      .fn()
+      .mockReturnValue('blob:file-download')
+    ;(URL as unknown as { revokeObjectURL: (url: string) => void }).revokeObjectURL = vi.fn()
   })
 
   afterEach(() => {
@@ -106,11 +124,12 @@ describe('CardFile', () => {
       .find((button) => button.attributes('aria-label') === 'Download')
     expect(thumbnailButton).toBeTruthy()
     await thumbnailButton!.trigger('click')
+    await flushPromises()
 
-    expect(openSpy).toHaveBeenCalledWith(
-      '/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf',
-      '_blank'
+    expect(authFetchMock).toHaveBeenCalledWith(
+      '/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf'
     )
+    expect(openSpy).toHaveBeenCalledWith('blob:file-download', '_blank')
   })
 
   it('uses openInBrowser for local absolute paths', async () => {
@@ -161,11 +180,12 @@ describe('CardFile', () => {
       .find((button) => button.attributes('aria-label') === 'Open location')
     expect(actionButton).toBeTruthy()
     await actionButton!.trigger('click')
+    await flushPromises()
 
-    expect(openSpy).toHaveBeenCalledWith(
-      '/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf',
-      '_blank'
+    expect(authFetchMock).toHaveBeenCalledWith(
+      '/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Freport.pdf'
     )
+    expect(openSpy).toHaveBeenCalledWith('blob:file-download', '_blank')
   })
 
   it('does not open raw local path when openInBrowser fails and no download fallback is available', async () => {

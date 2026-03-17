@@ -296,6 +296,7 @@ export interface AgentQuestion {
   question: string
   detail?: string
   header: string
+  type?: 'radio' | 'checkbox' | 'text'
   options?: AgentQuestionOption[]
   multi_select?: boolean
   required?: boolean

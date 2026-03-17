@@ -2,6 +2,7 @@ package providerpool
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -59,6 +60,11 @@ func TestRegistry(t *testing.T) {
 		_, err = registry.Get("non-existent")
 		if err != ErrProviderNotFound {
 			t.Errorf("Expected ErrProviderNotFound, got %v", err)
+		}
+
+		_, err = registry.Get("../escape")
+		if !errors.Is(err, ErrInvalidProviderID) {
+			t.Errorf("Expected ErrInvalidProviderID, got %v", err)
 		}
 	})
 
@@ -163,6 +169,22 @@ func TestRegistry(t *testing.T) {
 		_, err := registry.Get("test-provider")
 		if err != ErrProviderNotFound {
 			t.Errorf("Expected ErrProviderNotFound, got %v", err)
+		}
+	})
+
+	t.Run("RejectsInvalidProviderID", func(t *testing.T) {
+		err := registry.Register(&Provider{
+			ID:   "../escape",
+			Name: "Bad Provider",
+			Type: ProviderTypeCustom,
+		})
+		if !errors.Is(err, ErrInvalidProviderID) {
+			t.Fatalf("Register error = %v, want ErrInvalidProviderID", err)
+		}
+
+		err = registry.AddAPIKey("../escape", &APIKey{Key: "sk-test", Enabled: true})
+		if !errors.Is(err, ErrInvalidProviderID) {
+			t.Fatalf("AddAPIKey error = %v, want ErrInvalidProviderID", err)
 		}
 	})
 }

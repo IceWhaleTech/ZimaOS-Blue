@@ -88,6 +88,8 @@ export default {
     automation: 'ഓട്ടോമേഷൻ',
     security: 'സുരക്ഷ',
     companion: 'Companion',
+
+    plugins: 'എക്സ്റ്റൻഷനുകൾ',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1153,6 +1155,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'തുടരാന് നിങ്ങളുടെ സ്ഥിരീകരണം കാത്തിരിക്കുന്നു',
+    assistantStatus: {
+      searchingWeb: 'വെബില് തിരയുന്നു',
+      browsingWeb: 'വെബ് ബ്രൗസ് ചെയ്യുന്നു',
+      readingWeb: 'വെബ് പേജ് വായിക്കുന്നു',
+      readingWebSite: '{site} വായിക്കുന്നു',
+      usingTools: 'ഉപകരണങ്ങള് ഉപയോഗിക്കുന്നു',
+    },
     conversations: 'സംഭാഷണങ്ങൾ',
     execDirectoryApprovalTimeout:
       'ഡയറക്ടറി അനുമതി സമയപരിധി കഴിഞ്ഞതിനാൽ കമാൻഡ് പ്രവർത്തനം തടയപ്പെട്ടു. ഡയറക്ടറി അനുമതിപ്പിച്ച് വീണ്ടും ശ്രമിക്കുക.',
@@ -1235,11 +1245,10 @@ export default {
     },
     // മെച്ചപ്പെടുത്തിയ മോഡ്
     enhancedMode: 'മെച്ചപ്പെടുത്തിയത്',
-    enhancedModeDesc:
-      'മെച്ചപ്പെടുത്തിയ മോഡ്: സ്കില്ലുകൾ, ടൂൾ കോളിംഗ്, ഫയൽ ഓപ്പറേഷനുകൾ, കോഡ് എക്സിക്യൂഷൻ എന്നിവ പിന്തുണയ്ക്കുന്നു',
+    enhancedModeDesc: 'ഐച്ഛിക മെച്ചപ്പെടുത്തല്‍ ഓണാണ്: അനുഭവം കൂടുതൽ നല്ലതാണ്.',
     enableEnhancedMode: 'മെച്ചപ്പെടുത്തിയ മോഡ് സജീവമാക്കുക',
     enableEnhancedModeDesc:
-      'സ്കില്ലുകൾ, ടൂൾ കോളിംഗ്, ഫയൽ ഓപ്പറേഷനുകൾ എന്നിവയ്ക്കായി മെച്ചപ്പെടുത്തിയ മോഡ് സജീവമാക്കുക',
+      'ഇത് ഐച്ഛിക മെച്ചപ്പെടുത്തലാണ്: ഇത് ഓഫാക്കിയാലും അടിസ്ഥാന ചാറ്റിനെയും Agent ഉപയോഗത്തിനെയും ബാധിക്കില്ല; ഓണാക്കിയാൽ അനുഭവം കൂടുതൽ നല്ലതാകും.',
     showToolDetails: 'ജോലി വിശദാംശങ്ങൾ കാണിക്കുക',
     hideToolDetails: 'ജോലി വിശദാംശങ്ങൾ മറയ്ക്കുക',
     toolDetailExpand: 'ഔട്ട്പുട്ട് വിപുലീകരിക്കുക',
@@ -1423,6 +1432,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'ഇഷ്ടാനുസൃത ഡാറ്റ മാസ്കിംഗ് നിയമങ്ങൾ',
+    builtinMaskingRules: 'ബിൽറ്റ്-ഇൻ നിയമങ്ങൾ',
+    builtinMaskingEmpty: 'ബിൽറ്റ്-ഇൻ നിയമങ്ങളൊന്നും ലോഡ് ചെയ്തിട്ടില്ല.',
+    customMaskingListTitle: 'ഇഷ്ടാനുസൃത നിയമങ്ങൾ',
+    customMaskingEmpty:
+      'ഇനിയും ഇഷ്ടാനുസൃത നിയമങ്ങളൊന്നുമില്ല. ഉൾകാര്യ ഐഡികളോ സ്വകാര്യ രഹസ്യങ്ങളോ മറയ്ക്കാൻ താഴെയുള്ള ഫോം ഉപയോഗിക്കുക.',
+    customMaskingDesc:
+      'ഉൾകാര്യ ഐഡികൾ, രഹസ്യങ്ങൾ, അല്ലെങ്കിൽ ബിസിനസ്-സവിശേഷ ഫീൽഡുകൾക്കായി regex അടിസ്ഥാനത്തിലുള്ള നിയമങ്ങൾ ചേർക്കുക.',
+    customMaskingNameLabel: 'പേര്',
+    customMaskingNamePlaceholder: 'ഉദാഹരണം: ഉൾകാര്യ ടിക്കറ്റ് നമ്പർ',
+    customMaskingDirectionLabel: 'ദിശ',
+    customMaskingPatternLabel: 'Regex പാറ്റേൺ',
+    customMaskingPatternPlaceholder: 'ഉദാഹരണം: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'പകരംവയ്ക്കൽ ടെക്സ്റ്റ്',
+    customMaskingReplacementPlaceholder: 'ഉദാഹരണം: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'സാധുവായ regular expression ഉപയോഗിക്കുക. പകരംവയ്ക്കൽ ടെക്സ്റ്റിലെ {maskLabel} പ്രാദേശിക മാസ്കിംഗ് ലേബൽ നിലനിർത്തും.',
+    customMaskingAdd: 'നിയമം ചേർക്കുക',
+    customMaskingAddSuccess: 'ഇഷ്ടാനുസൃത മാസ്കിംഗ് നിയമം ചേർത്തു.',
+    customMaskingAddError: 'ഇഷ്ടാനുസൃത മാസ്കിംഗ് നിയമം ചേർക്കാനായില്ല.',
+    customMaskingDeleteConfirm: 'ഇഷ്ടാനുസൃത മാസ്കിംഗ് നിയമം "{name}" നീക്കണോ?',
+    customMaskingDeleteSuccess: 'ഇഷ്ടാനുസൃത മാസ്കിംഗ് നിയമം നീക്കി.',
+    customMaskingDeleteError: 'ഇഷ്ടാനുസൃത മാസ്കിംഗ് നിയമം നീക്കാനായില്ല.',
     maskingRuleList: 'നിയമങ്ങളുടെ പട്ടിക',
     maskingCategories: {
       pii: 'വ്യക്തിഗത വിവരങ്ങൾ (PII)',
@@ -1749,7 +1781,7 @@ export default {
     checkpoint: 'ചെക്ക്പോയിന്റ്',
     checkpointDescription: 'പുനഃസ്ഥാപനത്തിന് മുൻപുള്ള ചെക്ക്പോയിന്റ് ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'എക്സ്റ്റൻഷനുകൾ' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -1904,7 +1936,17 @@ export default {
     volume: 'വോളിയം',
     voiceSettings: 'ശബ്ദ ക്രമീകരണങ്ങൾ',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'എക്സ്റ്റൻഷനുകളിലേക്കുള്ള ആക്‌സസ്',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'എക്സ്റ്റൻഷനുകൾ',
+    },
+  },
   tools: {
     names: {
       'Web Search': 'വെബ് തിരയൽ',
@@ -1972,6 +2014,16 @@ export default {
     timeout: '{seconds} സെക്കൻഡിൽ സ്വയം അടയ്ക്കും',
     answered: 'ഉത്തരം നൽകി',
   },
+  browserProgress: {
+    title: 'ബ്രൗസര് പുരോഗതി',
+    steps: {
+      start: 'ബ്രൗസര് ആരംഭിക്കുന്നു',
+      navigate: 'നാവിഗേറ്റ് ചെയ്യുന്നു',
+      snapshot: 'പേജ് വായിക്കുന്നു',
+      screenshot: 'സ്ക്രീന്‍ഷോട്ട് എടുക്കുന്നു',
+      recipe: '{recipe} നടത്തുന്നു',
+    },
+  },
   thinking: {
     title: 'സന്ദർഭം',
     context: 'സന്ദർഭം',
@@ -1980,6 +2032,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'വെബ് തിരച്ചില്',
     resultCount: '{count} ഫലങ്ങൾ',
   },
   cardActions: {

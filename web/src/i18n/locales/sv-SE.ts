@@ -88,6 +88,8 @@ export default {
     automation: 'Automatisering',
     security: 'Säkerhet',
     companion: 'Companion',
+
+    plugins: 'Tillägg',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1441,6 +1443,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Vantar pa din bekraftelse for att fortsatta',
+    assistantStatus: {
+      searchingWeb: 'Soker pa webben',
+      browsingWeb: 'Surfar pa webben',
+      readingWeb: 'Laser en webbsida',
+      readingWebSite: 'Laser {site}',
+      usingTools: 'Anvander verktyg',
+    },
     conversations: 'Konversationer',
     execDirectoryApprovalTimeout:
       'Kommando körning blockerades eftersom kataloggodkännandet tog för lång tid. Godkänn katalogen och försök igen.',
@@ -1522,11 +1532,10 @@ export default {
     },
     // Förbättrat läge
     enhancedMode: 'Förbättrat',
-    enhancedModeDesc:
-      'Förbättrat läge: stöder färdigheter, verktygsanrop, filoperationer, kodkörning och mer',
+    enhancedModeDesc: 'Valfri förbättring är på: upplevelsen är bättre.',
     enableEnhancedMode: 'Aktivera förbättrat läge',
     enableEnhancedModeDesc:
-      'Aktivera förbättrat läge för färdigheter, verktygsanrop, filoperationer och mer',
+      'Det här är en valfri förbättring: att stänga av den påverkar inte grundläggande chatt eller användningen av Agent; att slå på den förbättrar upplevelsen.',
     showToolDetails: 'Visa arbetsdetaljer',
     hideToolDetails: 'Dölj arbetsdetaljer',
     toolDetailExpand: 'Expandera utdata',
@@ -1766,6 +1775,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Anpassade regler för datamaskering',
+    builtinMaskingRules: 'Inbyggda regler',
+    builtinMaskingEmpty: 'Inga inbyggda regler har lästs in.',
+    customMaskingListTitle: 'Anpassade regler',
+    customMaskingEmpty:
+      'Det finns inga anpassade regler ännu. Använd formuläret nedan för interna ID:n eller proprietära hemligheter.',
+    customMaskingDesc:
+      'Lägg till regex-baserade regler för interna ID:n, hemligheter eller affärsspecifika fält.',
+    customMaskingNameLabel: 'Namn',
+    customMaskingNamePlaceholder: 'Exempel: internt ärendenummer',
+    customMaskingDirectionLabel: 'Riktning',
+    customMaskingPatternLabel: 'Regex-mönster',
+    customMaskingPatternPlaceholder: 'Exempel: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Ersättningstext',
+    customMaskingReplacementPlaceholder: 'Exempel: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Använd ett giltigt reguljärt uttryck. {maskLabel} i ersättningstexten behåller den lokaliserade maskeringsetiketten.',
+    customMaskingAdd: 'Lägg till regel',
+    customMaskingAddSuccess: 'Anpassad maskeringsregel har lagts till.',
+    customMaskingAddError: 'Det gick inte att lägga till anpassad maskeringsregel.',
+    customMaskingDeleteConfirm: 'Ta bort anpassad maskeringsregel "{name}"?',
+    customMaskingDeleteSuccess: 'Anpassad maskeringsregel har tagits bort.',
+    customMaskingDeleteError: 'Det gick inte att ta bort anpassad maskeringsregel.',
     maskingRuleList: 'Regellista',
     maskingCategories: {
       pii: 'Personuppgifter (PII)',
@@ -2061,7 +2093,7 @@ export default {
     checkpoint: 'Kontrollpunkt',
     checkpointDescription: 'Kontrollpunkt före återställning ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Tillägg' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -2251,7 +2283,17 @@ export default {
     espeakNote: 'Offline - lättviktig (8,7MB)',
     sherpaNote: 'Offline - premiumkvalitet (kräver nedladdning)',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Åtkomst till tillägg',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Tillägg',
+    },
+  },
 
   accept: 'Acceptera',
   acknowledge: 'Bekräfta',
@@ -2398,6 +2440,16 @@ export default {
     timeout: 'Stängs automatiskt om {seconds}s',
     answered: 'Besvarad',
   },
+  browserProgress: {
+    title: 'Webblasarens framsteg',
+    steps: {
+      start: 'Startar webblasaren',
+      navigate: 'Navigerar',
+      snapshot: 'Laser sidan',
+      screenshot: 'Tar skarmbild',
+      recipe: 'Kor {recipe}',
+    },
+  },
   thinking: {
     title: 'Kontext',
     context: 'Kontext',
@@ -2406,6 +2458,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Webbsokning',
     resultCount: '{count} resultat',
   },
   cardActions: {

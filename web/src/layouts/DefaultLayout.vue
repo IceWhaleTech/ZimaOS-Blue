@@ -7,14 +7,14 @@ const FormFillerWidget = defineAsyncComponent(
 )
 import PreviewOnboardingModal from '@/components/onboarding/PreviewOnboardingModal.vue'
 import FullscreenModal from '@/components/typeless/FullscreenModal.vue'
+import GlobalVoiceWakeBanner from '@/components/voicewake/GlobalVoiceWakeBanner.vue'
 import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
 import { usePreviewStore } from '@/stores/preview'
 import { useTauri } from '@/composables/useTauri'
 import { useSettingsStore } from '@/stores/settings'
-import { storeToRefs } from 'pinia'
 
 const previewStore = usePreviewStore()
-const { isPreviewMode } = storeToRefs(previewStore)
+const isPreviewMode = computed(() => previewStore.isPreviewMode)
 
 const { isTauri, setCloseBehavior } = useTauri()
 const settingsStore = useSettingsStore()
@@ -24,6 +24,13 @@ const noPadding = computed(() => route.meta.noPadding === true)
 const hideLayout = computed(() => route.meta.hideLayout === true)
 const isChatRoute = computed(() => route.path.startsWith('/chat'))
 const isHomeRoute = computed(() => route.name === 'Home' || route.path === '/home')
+const showPreviewOnboarding = computed(
+  () =>
+    isPreviewMode.value &&
+    isChatRoute.value &&
+    settingsStore.claudeCodeEnabledLoaded &&
+    !settingsStore.claudeCodeEnabled
+)
 const mobileDevicePattern = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i
 
 function detectMobileDevice() {
@@ -124,8 +131,9 @@ onUnmounted(() => {
     </div>
     <!-- Form filler widget - lazy loaded, hidden on chat page -->
     <FormFillerWidget v-if="route.path !== '/chat'" />
+    <GlobalVoiceWakeBanner />
     <!-- Preview mode onboarding tooltip -->
-    <PreviewOnboardingModal v-if="isPreviewMode" />
+    <PreviewOnboardingModal v-if="showPreviewOnboarding" />
     <!-- Fullscreen modal for code/diff/terminal cards -->
     <FullscreenModal />
   </div>

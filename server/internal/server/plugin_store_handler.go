@@ -57,20 +57,20 @@ type PluginSourceResponse struct {
 
 // RemotePluginResponse represents a remote plugin in API responses
 type RemotePluginResponse struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Version     string   `json:"version"`
-	Description string   `json:"description"`
-	Author      string   `json:"author,omitempty"`
-	Type        string   `json:"type"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Version      string   `json:"version"`
+	Description  string   `json:"description"`
+	Author       string   `json:"author,omitempty"`
+	Type         string   `json:"type"`
 	Capabilities []string `json:"capabilities,omitempty"`
-	SourceID    string   `json:"source_id"`
-	SourceName  string   `json:"source_name"`
-	DownloadURL string   `json:"download_url,omitempty"`
-	Homepage    string   `json:"homepage,omitempty"`
-	Stars       int      `json:"stars,omitempty"`
-	Downloads   int      `json:"downloads,omitempty"`
-	Installed   bool     `json:"installed"`
+	SourceID     string   `json:"source_id"`
+	SourceName   string   `json:"source_name"`
+	DownloadURL  string   `json:"download_url,omitempty"`
+	Homepage     string   `json:"homepage,omitempty"`
+	Stars        int      `json:"stars,omitempty"`
+	Downloads    int      `json:"downloads,omitempty"`
+	Installed    bool     `json:"installed"`
 }
 
 // ListSources returns all plugin sources
@@ -171,7 +171,12 @@ func (h *PluginStoreHandler) BrowsePlugins(c echo.Context) error {
 
 // InstallPlugin installs a plugin from the store
 func (h *PluginStoreHandler) InstallPlugin(c echo.Context) error {
-	id := c.Param("id")
+	id, err := plugin.ValidatePluginID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
 	if err := h.store.InstallPlugin(c.Request().Context(), id); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
@@ -185,7 +190,12 @@ func (h *PluginStoreHandler) InstallPlugin(c echo.Context) error {
 
 // UninstallPlugin uninstalls a plugin
 func (h *PluginStoreHandler) UninstallPlugin(c echo.Context) error {
-	id := c.Param("id")
+	id, err := plugin.ValidatePluginID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
 	if err := h.store.UninstallPlugin(c.Request().Context(), id); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),

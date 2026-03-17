@@ -365,6 +365,8 @@ async function mountIntegratedChatView() {
 
 describe('ChatView streaming card chain integration', () => {
   beforeEach(() => {
+    delete (globalThis as Record<string, unknown>).__zima_chat_card_disclosure_state_v1__
+
     localStorageMock.clear()
     Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true })
     Object.defineProperty(window.navigator, 'userAgent', { value: 'desktop', configurable: true })
@@ -610,6 +612,9 @@ describe('ChatView streaming card chain integration', () => {
     expect(wrapper.text()).toContain('Sign in')
     expect(wrapper.text()).toContain('Browser page')
 
+    await wrapper.get(`[id="${WEB_FETCH_CARD_ID}"] button`).trigger('click')
+    await settleView()
+
     const useBrowserButton = findButtonByText(wrapper, 'Use browser')
     const extractButton = findButtonByText(wrapper, 'Extract readable content')
 
@@ -649,6 +654,101 @@ describe('ChatView streaming card chain integration', () => {
       2,
       `Use web_fetch on ${WEB_FETCH_URL} with browser_target_id=tab-42 to extract readable content.`
     )
+  })
+
+  it('keeps web search, browser progress, and web-fetch cards collapsed until expanded', async () => {
+    const searchBlock = makeTypelessBlock({
+      type: 'search',
+      id: 'search-chain',
+      query: 'OpenAI latest updates',
+      results: [
+        {
+          title: 'OpenAI blog',
+          url: 'https://openai.com/blog',
+          description: 'Latest announcements and product updates.',
+        },
+      ],
+    })
+    const browserProgressBlock = makeTypelessBlock({
+      type: 'browser-progress',
+      id: 'browser-progress-chain',
+      steps: [
+        { step: 'navigate', name: 'Navigating', status: 'completed', url: 'https://openai.com/blog' },
+        { step: 'snapshot', name: 'Reading page', status: 'running', url: 'https://openai.com/blog' },
+      ],
+    })
+    const webFetchBlock = makeTypelessBlock({
+      type: 'web-fetch',
+      id: 'web-fetch-chain',
+      title: 'web_fetch',
+      url: 'https://openai.com/blog',
+      status: 'success',
+      content: 'Expanded page content from the OpenAI blog.',
+      actions: [
+        {
+          id: 'use_browser',
+          label: 'Use browser',
+          variant: 'primary',
+        },
+      ],
+    })
+
+    const persistedMessages = [
+      {
+        id: 'msg-user-chain',
+        conversation_id: 'conv-1',
+        role: 'user',
+        content: 'Check the latest OpenAI updates',
+        created_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'msg-assistant-search',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: searchBlock,
+        created_at: '2026-03-08T00:00:01.000Z',
+      },
+      {
+        id: 'msg-assistant-browser',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: browserProgressBlock,
+        created_at: '2026-03-08T00:00:02.000Z',
+      },
+      {
+        id: 'msg-assistant-fetch',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: webFetchBlock,
+        created_at: '2026-03-08T00:00:03.000Z',
+      },
+    ]
+
+    vi.mocked(messageApi.list).mockResolvedValueOnce({ data: persistedMessages } as never)
+
+    const { wrapper } = await mountIntegratedChatView()
+    const searchCard = wrapper.get('#search-chain')
+    const browserProgressCard = wrapper.get('#browser-progress-chain')
+    const webFetchCard = wrapper.get('#web-fetch-chain')
+
+    expect(wrapper.text()).toContain('OpenAI latest updates')
+    expect(wrapper.text()).not.toContain('Latest announcements and product updates.')
+    expect(browserProgressCard.text()).not.toContain('Navigating')
+    expect(webFetchCard.text()).not.toContain('Expanded page content from the OpenAI blog.')
+
+    await searchCard.get('button').trigger('click')
+    await settleView()
+    expect(searchCard.text()).toContain('Latest announcements and product updates.')
+
+    await browserProgressCard.get('button').trigger('click')
+    await settleView()
+    expect(browserProgressCard.text()).toContain('Navigating')
+    expect(browserProgressCard.text()).toContain('Reading page')
+
+    await webFetchCard.get('button').trigger('click')
+    await settleView()
+    expect(webFetchCard.text()).toContain('Expanded page content from the OpenAI blog.')
+    expect(webFetchCard.text()).toContain('Use browser')
   })
 
   it('keeps fallback boilerplate when chat history contains extracted tool summaries', async () => {
@@ -696,10 +796,14 @@ describe('ChatView streaming card chain integration', () => {
 
     expect(store.currentConversationId).toBe('conv-1')
     expect(wrapper.text()).toContain('Web search fallback results for "OpenClaw 最近动向"')
-    expect(wrapper.text()).toContain('OpenClaw Release Notes')
     expect(wrapper.text()).toContain('工具执行已完成，但最终总结生成失败')
     expect(wrapper.text()).toContain('简要摘要')
     expect(wrapper.text()).toContain('原始 stdout/stderr/error 字段未包含在这条简要摘要中')
+
+    await wrapper.get('#search-openclaw button').trigger('click')
+    await settleView()
+
+    expect(wrapper.get('#search-openclaw').text()).toContain('OpenClaw Release Notes')
   })
 
   it('renders a streamed browser_required web-fetch card and still routes use_browser through card actions', async () => {
@@ -773,8 +877,14 @@ describe('ChatView streaming card chain integration', () => {
     await settleView()
 
     expect(store.messages).toEqual(persistedMessages)
-    expect(wrapper.text()).toContain('Protected page')
-    expect(wrapper.text()).toContain('browser session')
+    const browserRequiredCard = wrapper.get(`[id="${WEB_FETCH_CARD_ID}"]`)
+    expect(browserRequiredCard.text()).toContain('Protected page')
+    expect(browserRequiredCard.text()).not.toContain('browser session')
+
+    await browserRequiredCard.get('button').trigger('click')
+    await settleView()
+
+    expect(browserRequiredCard.text()).toContain('browser session')
 
     const useBrowserButton = findButtonByText(wrapper, 'Use browser')
     expect(useBrowserButton?.exists()).toBe(true)
@@ -867,8 +977,14 @@ describe('ChatView streaming card chain integration', () => {
     await settleView()
 
     expect(store.messages).toEqual(persistedMessages)
-    expect(wrapper.text()).toContain('Verification required')
-    expect(wrapper.text()).toContain('verification challenge')
+    const challengeCard = wrapper.get(`[id="${WEB_FETCH_CARD_ID}"]`)
+    expect(challengeCard.text()).toContain('Verification required')
+    expect(challengeCard.text()).not.toContain('verification challenge')
+
+    await challengeCard.get('button').trigger('click')
+    await settleView()
+
+    expect(challengeCard.text()).toContain('verification challenge')
 
     const useBrowserButton = findButtonByText(wrapper, 'Use browser')
     expect(useBrowserButton?.exists()).toBe(true)

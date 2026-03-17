@@ -1,6 +1,7 @@
 package formfiller
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -177,6 +178,36 @@ func TestSiteMappingOperations(t *testing.T) {
 	sitePath := filepath.Join(tmpDir, "sites", "example.com.json")
 	if _, err := os.Stat(sitePath); os.IsNotExist(err) {
 		t.Error("Site mapping file was not created")
+	}
+}
+
+func TestSiteMappingRejectsTraversalDomain(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "formfiller-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	mapping := &SiteMapping{
+		Domain:        "../escape",
+		FieldMappings: map[string]string{"#email": "email"},
+	}
+	if err := store.SaveSiteMapping(mapping); !errors.Is(err, ErrInvalidDomain) {
+		t.Fatalf("SaveSiteMapping() error = %v, want ErrInvalidDomain", err)
+	}
+
+	if _, err := store.GetSiteMapping("../escape"); !errors.Is(err, ErrInvalidDomain) {
+		t.Fatalf("GetSiteMapping() error = %v, want ErrInvalidDomain", err)
+	}
+
+	escapedPath := filepath.Join(tmpDir, "escape.json")
+	if _, err := os.Stat(escapedPath); !os.IsNotExist(err) {
+		t.Fatalf("expected traversal target %s to remain absent, stat err = %v", escapedPath, err)
 	}
 }
 

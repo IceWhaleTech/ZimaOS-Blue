@@ -2337,6 +2337,60 @@ func TestFitPreparedMessagesToBudgetStage2Summary(t *testing.T) {
 	t.Fatal("expected at least one context window to fit at stage 2")
 }
 
+func TestPreparedBudgetStagesIgnoreStaleSummaryCache(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	summaryEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{respText: "- Goal: keep context fresh\n- Pending: regenerate stale summaries"}
+	handler.SetSmallModelRuntime(sm)
+
+	messages := []llm.Message{{Role: llm.RoleSystem, Content: "system prompt"}}
+	for i := 0; i < 4; i++ {
+		messages = append(messages,
+			llm.Message{Role: llm.RoleUser, Content: strings.Repeat(fmt.Sprintf("user-%d background ", i), 40)},
+			llm.Message{Role: llm.RoleAssistant, Content: strings.Repeat(fmt.Sprintf("assistant-%d details ", i), 40)},
+		)
+	}
+	messages = append(messages, llm.Message{Role: llm.RoleUser, Content: "Continue with the latest task"})
+
+	handler.summaryCache.Put("conv-stage-stale", &ConversationSummary{
+		Text:         "stale summary should be ignored",
+		MessageCount: 2,
+	})
+	stage2Messages, stage2Summary := handler.buildPreparedBudgetStage2(context.Background(), "conv-stage-stale", "stage2-model", messages)
+	if strings.Contains(stage2Summary, "stale summary") {
+		t.Fatalf("stage2 reused stale summary: %q", stage2Summary)
+	}
+	if !strings.Contains(stage2Summary, "Pending") {
+		t.Fatalf("stage2 summary = %q, want regenerated multiline summary", stage2Summary)
+	}
+	if len(stage2Messages) == 0 {
+		t.Fatal("expected stage2 to produce messages")
+	}
+
+	handler.summaryCache.Put("conv-stage-stale", &ConversationSummary{
+		Text:         "stale summary should be ignored",
+		MessageCount: 1,
+	})
+	stage3Messages, stage3Summary := handler.buildPreparedBudgetStage3(context.Background(), "conv-stage-stale", "stage2-model", messages, "")
+	if strings.Contains(stage3Summary, "stale summary") {
+		t.Fatalf("stage3 reused stale summary: %q", stage3Summary)
+	}
+	if !strings.Contains(stage3Summary, "Goal") {
+		t.Fatalf("stage3 summary = %q, want regenerated summary", stage3Summary)
+	}
+	if len(stage3Messages) == 0 {
+		t.Fatal("expected stage3 to produce messages")
+	}
+	if sm.calls < 2 {
+		t.Fatalf("small model calls = %d, want >= 2 for stale stage2/stage3 regeneration", sm.calls)
+	}
+}
+
 func TestFitPreparedMessagesToBudgetPrefersSameProviderFallback(t *testing.T) {
 	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
 	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
@@ -4895,6 +4949,32 @@ func TestGenerateConversationSummaryWithSmallModel_NotReadySkipsRuntimeCall(t *t
 	}
 	if sm.calls != 0 {
 		t.Fatalf("small model calls = %d, want 0 when runtime is not ready", sm.calls)
+	}
+}
+
+func TestGenerateConversationSummaryWithSmallModel_PreservesMultilineBullets(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	summaryEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{respText: "- Goal: fix login\n- Pending: add regression test\n- File Paths: auth/middleware.go"}
+	handler.SetSmallModelRuntime(sm)
+
+	summary := handler.generateConversationSummaryWithSmallModel(context.Background(), []llm.Message{
+		{Role: llm.RoleUser, Content: "Login keeps failing after refresh"},
+		{Role: llm.RoleAssistant, Content: "I will inspect the auth middleware ordering."},
+	})
+	if !strings.Contains(summary, "\n") {
+		t.Fatalf("summary = %q, want multiline bullets preserved", summary)
+	}
+	if !strings.Contains(summary, "Pending") || !strings.Contains(summary, "File Paths") {
+		t.Fatalf("summary = %q, want all bullet lines preserved", summary)
 	}
 }
 

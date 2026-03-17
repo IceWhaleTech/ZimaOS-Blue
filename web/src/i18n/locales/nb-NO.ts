@@ -88,6 +88,8 @@ export default {
     automation: 'Automatisering',
     security: 'Sikkerhet',
     companion: 'Companion',
+
+    plugins: 'Utvidelser',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1183,6 +1185,29 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    customMaskingTitle: 'Egendefinerte regler for datamaskering',
+    builtinMaskingRules: 'Innebygde regler',
+    builtinMaskingEmpty: 'Ingen innebygde regler er lastet inn.',
+    customMaskingListTitle: 'Egendefinerte regler',
+    customMaskingEmpty:
+      'Det finnes ingen egendefinerte regler ennå. Bruk skjemaet nedenfor for interne ID-er eller proprietære hemmeligheter.',
+    customMaskingDesc:
+      'Legg til regex-baserte regler for interne ID-er, hemmeligheter eller forretningsspesifikke felt.',
+    customMaskingNameLabel: 'Navn',
+    customMaskingNamePlaceholder: 'Eksempel: internt saksnummer',
+    customMaskingDirectionLabel: 'Retning',
+    customMaskingPatternLabel: 'Regex-mønster',
+    customMaskingPatternPlaceholder: 'Eksempel: TKT-\\d{6}',
+    customMaskingReplacementLabel: 'Erstatningstekst',
+    customMaskingReplacementPlaceholder: 'Eksempel: 【{maskLabel}】[TICKET]',
+    customMaskingHint:
+      'Bruk et gyldig regulært uttrykk. {maskLabel} i erstatningsteksten beholder den lokaliserte maskeringsetiketten.',
+    customMaskingAdd: 'Legg til regel',
+    customMaskingAddSuccess: 'Egendefinert maskeringsregel ble lagt til.',
+    customMaskingAddError: 'Kunne ikke legge til egendefinert maskeringsregel.',
+    customMaskingDeleteConfirm: 'Slette egendefinert maskeringsregel "{name}"?',
+    customMaskingDeleteSuccess: 'Egendefinert maskeringsregel ble slettet.',
+    customMaskingDeleteError: 'Kunne ikke slette egendefinert maskeringsregel.',
     maskingRuleList: 'Regelliste',
     maskingCategories: {
       pii: 'Personopplysninger (PII)',
@@ -1536,7 +1561,7 @@ export default {
     checkpoint: 'Sjekkpunkt',
     checkpointDescription: 'Sjekkpunkt før gjenoppretting ({reason})',
   },
-  plugins: { ...enUS.plugins },
+  plugins: { ...enUS.plugins, title: 'Utvidelser' },
   profile: { ...enUS.profile },
   footer: { ...enUS.footer },
   service: { ...enUS.service },
@@ -1724,7 +1749,17 @@ export default {
     espeakNote: 'Offline - lettvekts (8,7MB)',
     sherpaNote: 'Offline - premiumkvalitet (krever nedlasting)',
   },
-  users: { ...enUS.users },
+  users: {
+    ...enUS.users,
+    pagePermissionDesc: {
+      ...enUS.users.pagePermissionDesc,
+      'page.plugins': 'Tilgang til utvidelser',
+    },
+    pagePermissions: {
+      ...enUS.users.pagePermissions,
+      'page.plugins': 'Utvidelser',
+    },
+  },
   push: {
     ...enUS.push,
     title: 'Varsling',
@@ -1925,6 +1960,14 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    awaitingConfirmation: 'Venter pa bekreftelsen din for a fortsette',
+    assistantStatus: {
+      searchingWeb: 'Soker pa nettet',
+      browsingWeb: 'Blaar gjennom nettet',
+      readingWeb: 'Leser en nettside',
+      readingWebSite: 'Leser {site}',
+      usingTools: 'Bruker verktoy',
+    },
     conversations: 'Samtaler',
     execDirectoryApprovalTimeout:
       'Kjøring av kommando ble blokkert fordi mappegodkjenningen gikk ut på tid. Godkjenn mappen og prøv igjen.',
@@ -2006,11 +2049,10 @@ export default {
     },
     // Forbedret modus
     enhancedMode: 'Forbedret',
-    enhancedModeDesc:
-      'Forbedret modus: støtter ferdigheter, verktøykall, filoperasjoner, kodekjøring og mer',
+    enhancedModeDesc: 'Valgfri forbedring er aktivert: opplevelsen er bedre.',
     enableEnhancedMode: 'Aktiver forbedret modus',
     enableEnhancedModeDesc:
-      'Aktiver forbedret modus for ferdigheter, verktøykall, filoperasjoner og mer',
+      'Dette er en valgfri forbedring: å slå den av påvirker ikke grunnleggende chat eller bruk av Agent; å slå den på forbedrer opplevelsen.',
     showToolDetails: 'Vis arbeidsdetaljer',
     hideToolDetails: 'Skjul arbeidsdetaljer',
     toolDetailExpand: 'Utvid utdata',
@@ -2177,6 +2219,16 @@ export default {
     timeout: 'Lukkes automatisk om {seconds}s',
     answered: 'Besvart',
   },
+  browserProgress: {
+    title: 'Nettleserfremdrift',
+    steps: {
+      start: 'Starter nettleser',
+      navigate: 'Navigerer',
+      snapshot: 'Leser side',
+      screenshot: 'Tar skjermbilde',
+      recipe: 'Kjorer {recipe}',
+    },
+  },
   thinking: {
     title: 'Kontekst',
     context: 'Kontekst',
@@ -2185,6 +2237,7 @@ export default {
     inProgress: 'Thinking...',
   },
   search: {
+    summaryTitle: 'Nettsok',
     resultCount: '{count} resultater',
   },
   cardActions: {

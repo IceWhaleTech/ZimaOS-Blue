@@ -140,7 +140,7 @@ func TestAskExecute_RejectsQAAliasesInsideQuestions(t *testing.T) {
 }
 
 func TestParseAskArgs_ParsesTopLevelDetail(t *testing.T) {
-	question, detail, multi, options := parseAskArgs(map[string]interface{}{
+	question, detail, multi, options, allowEmptyOptions := parseAskArgs(map[string]interface{}{
 		"q":      "Choose one",
 		"detail": "❕ 这是补充说明",
 		"a":      []interface{}{"A", "B"},
@@ -157,10 +157,13 @@ func TestParseAskArgs_ParsesTopLevelDetail(t *testing.T) {
 	if len(options) != 2 {
 		t.Fatalf("len(options) = %d, want 2", len(options))
 	}
+	if allowEmptyOptions {
+		t.Fatalf("allowEmptyOptions = true, want false")
+	}
 }
 
 func TestParseAskArgs_ParsesQuestionsItemDetail(t *testing.T) {
-	question, detail, multi, options := parseAskArgs(map[string]interface{}{
+	question, detail, multi, options, allowEmptyOptions := parseAskArgs(map[string]interface{}{
 		"questions": []interface{}{
 			map[string]interface{}{
 				"question": "Select mode",
@@ -181,5 +184,76 @@ func TestParseAskArgs_ParsesQuestionsItemDetail(t *testing.T) {
 	}
 	if len(options) != 2 {
 		t.Fatalf("len(options) = %d, want 2", len(options))
+	}
+	if allowEmptyOptions {
+		t.Fatalf("allowEmptyOptions = true, want false")
+	}
+}
+
+func TestParseAskArgs_AllowsTextQuestionsWithoutOptions(t *testing.T) {
+	question, detail, multi, options, allowEmptyOptions := parseAskArgs(map[string]interface{}{
+		"questions": []interface{}{
+			map[string]interface{}{
+				"question": "请假时长？",
+				"type":     "text",
+				"detail":   "直接填写数字或日期范围",
+			},
+		},
+	})
+	if question != "请假时长？" {
+		t.Fatalf("question = %q, want expected text", question)
+	}
+	if detail != "直接填写数字或日期范围" {
+		t.Fatalf("detail = %q, want expected text", detail)
+	}
+	if multi {
+		t.Fatalf("multi = true, want false")
+	}
+	if len(options) != 0 {
+		t.Fatalf("len(options) = %d, want 0", len(options))
+	}
+	if !allowEmptyOptions {
+		t.Fatalf("allowEmptyOptions = false, want true")
+	}
+}
+
+func TestAskExecute_AcceptsTextQuestionWithoutOptions(t *testing.T) {
+	mgr := NewQuestionManager(nil, func() bool { return true }, 0)
+	tool := NewAskTool(mgr)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"questions": []interface{}{
+			map[string]interface{}{
+				"question": "请假时长？",
+				"type":     "text",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	outStr, ok := raw.(string)
+	if !ok {
+		t.Fatalf("Execute() type = %T, want string", raw)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(outStr), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+
+	qa, ok := out["qa"].([]interface{})
+	if !ok || len(qa) != 1 {
+		t.Fatalf("qa = %#v, want single item", out["qa"])
+	}
+	first, ok := qa[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("qa[0] type = %T, want object", qa[0])
+	}
+	options, ok := first["o"].([]interface{})
+	if !ok {
+		t.Fatalf("qa[0].o = %#v, want empty array", first["o"])
+	}
+	if len(options) != 0 {
+		t.Fatalf("qa[0].o len = %d, want 0", len(options))
 	}
 }

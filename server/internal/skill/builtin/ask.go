@@ -39,7 +39,7 @@ type AskQuestionAnswerResult struct {
 	OtherText  string   `json:"other_text,omitempty"`
 }
 
-// Ask is a built-in skill that asks one or more multiple-choice questions.
+// Ask is a built-in skill that asks one or more questions.
 type Ask struct {
 	manifest   *skill.Manifest
 	questioner AskQuestioner
@@ -52,7 +52,7 @@ func NewAsk() *Ask {
 			ID:          "ask",
 			Name:        "Ask",
 			Version:     "1.0.0",
-			Description: "Ask the user one or more multiple-choice questions and wait for their response.",
+			Description: "Ask the user one or more questions and wait for their response.",
 			Category:    "system",
 			Icon:        "question",
 			Tags:        []string{"ask", "question", "input", "interaction"},
@@ -60,7 +60,7 @@ func NewAsk() *Ask {
 				{
 					Name:        "questions",
 					Type:        "array",
-					Description: "Preferred. Question array. Each item: {question, detail?, type: radio|checkbox, options: [...]}",
+					Description: "Preferred. Question array. Each item: {question, detail?, type: radio|checkbox|text, options?: [...]}",
 					Required:    false,
 				},
 				{
@@ -186,8 +186,9 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 	if question == "" {
 		return nil, fmt.Errorf("provide questions[] or q/mq + a")
 	}
+	qType := firstNonEmptyString(input, "type")
 	options := parseOptionsFromInput(input, "options")
-	if len(options) == 0 {
+	if len(options) == 0 && !askQuestionAllowsEmptyOptions(qType) {
 		return nil, fmt.Errorf("options must include at least 1 value")
 	}
 
@@ -235,12 +236,12 @@ func parseQuestionsInput(raw any, input map[string]any) ([]AskQuestionItem, erro
 		if question == "" {
 			continue
 		}
+		qType := firstNonEmptyString(obj, "type")
 		options := parseOptionsFromQuestion(obj)
-		if len(options) == 0 {
+		if len(options) == 0 && !askQuestionAllowsEmptyOptions(qType) {
 			return nil, fmt.Errorf("question %d has no options", i+1)
 		}
-		qType := firstNonEmptyString(obj, "type")
-		isMulti := strings.EqualFold(qType, "checkbox") || strings.EqualFold(qType, "multi")
+		isMulti := isAskMultiSelectType(qType)
 		items = append(items, AskQuestionItem{
 			ID:          fmt.Sprintf("q%d", i),
 			Question:    question,
@@ -332,6 +333,28 @@ func parseStringQuestionsInput(list []any, input map[string]any) ([]AskQuestionI
 		})
 	}
 	return items, nil
+}
+
+func askQuestionAllowsEmptyOptions(qType string) bool {
+	return isAskTextType(qType)
+}
+
+func isAskTextType(qType string) bool {
+	switch strings.ToLower(strings.TrimSpace(qType)) {
+	case "text", "input", "textarea", "freeform", "free-form":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAskMultiSelectType(qType string) bool {
+	switch strings.ToLower(strings.TrimSpace(qType)) {
+	case "checkbox", "multi":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseOptionGroupsFromInput(input map[string]any, key string) [][]AskQuestionOption {

@@ -2,7 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/labstack/echo/v4"
@@ -12,6 +15,70 @@ import (
 )
 
 const providerSettingsKVKey = "config:provider_settings"
+const legacyProviderSettingsFilename = "provider_settings.json"
+
+// LegacyProviderSettingsMigrationResult describes a one-time legacy import.
+type LegacyProviderSettingsMigrationResult struct {
+	SourcePath   string
+	ArchivedPath string
+}
+
+// MigrateLegacyProviderSettings imports legacy provider settings JSON into kvstore.
+// It prefers the live legacy file, but also supports previously archived backups.
+func MigrateLegacyProviderSettings(ctx context.Context, kv kvstore.Store, dataDir string) (*LegacyProviderSettingsMigrationResult, error) {
+	if kv == nil || dataDir == "" {
+		return nil, nil
+	}
+
+	exists, err := kv.Exists(ctx, providerSettingsKVKey)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, nil
+	}
+
+	primaryPath := filepath.Join(dataDir, legacyProviderSettingsFilename)
+	candidates := []string{
+		primaryPath,
+		primaryPath + ".migrated",
+		primaryPath + ".bak",
+	}
+
+	for _, path := range candidates {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+
+		var cfg ProvidersConfig
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return nil, err
+		}
+		if cfg.Providers == nil {
+			cfg.Providers = make(map[string]ProviderConfig)
+		}
+		if err := kv.SetJSON(ctx, providerSettingsKVKey, &cfg, 0); err != nil {
+			return nil, err
+		}
+
+		result := &LegacyProviderSettingsMigrationResult{SourcePath: path}
+		if path == primaryPath {
+			archivedPath := primaryPath + ".migrated"
+			if _, statErr := os.Stat(archivedPath); os.IsNotExist(statErr) {
+				if err := os.Rename(primaryPath, archivedPath); err == nil {
+					result.ArchivedPath = archivedPath
+				}
+			}
+		}
+		return result, nil
+	}
+
+	return nil, nil
+}
 
 // ProviderConfig holds the configuration for a single provider.
 type ProviderConfig struct {

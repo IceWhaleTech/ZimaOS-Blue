@@ -12,7 +12,7 @@ import (
 
 // PushBackend defines reminder operations exposed via IPC.
 type PushBackend interface {
-	Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (PushResult, error)
+	Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string, untilAt *time.Time) (PushResult, error)
 	List(ctx context.Context, ownerID string) ([]PushResult, error)
 	Delete(ctx context.Context, ownerID, id string) error
 	Clear(ctx context.Context, ownerID string) (int64, error)
@@ -20,13 +20,14 @@ type PushBackend interface {
 
 // PushResult is the data returned by the push backend.
 type PushResult struct {
-	ID        string    `json:"id"`
-	Message   string    `json:"message"`
-	FireAt    time.Time `json:"fire_at"`
-	Recurring string    `json:"recurring,omitempty"`
-	SessionID string    `json:"session_id,omitempty"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string     `json:"id"`
+	Message   string     `json:"message"`
+	FireAt    time.Time  `json:"fire_at"`
+	Recurring string     `json:"recurring,omitempty"`
+	UntilAt   *time.Time `json:"until_at,omitempty"`
+	SessionID string     `json:"session_id,omitempty"`
+	Status    string     `json:"status"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // RegisterPushHandlers wires up reminder IPC commands.
@@ -49,19 +50,50 @@ func RegisterPushHandlers(srv *Server, backend PushBackend, log *zap.Logger) {
 			return ErrResponse("missing message")
 		}
 		timeStr := req.Params["time"]
-		if timeStr == "" {
-			return ErrResponse("missing time")
-		}
-
-		fireAt, err := parseTime(timeStr)
-		if err != nil {
-			return ErrResponse("invalid time: " + err.Error())
+		everyStr := req.Params["every"]
+		if timeStr == "" && everyStr == "" {
+			return ErrResponse("missing time or every")
 		}
 
 		recurring := req.Params["recurring"]
+		if everyStr != "" && recurring != "" {
+			return ErrResponse("every cannot be combined with recurring")
+		}
+
+		var fireAt time.Time
+		var err error
+		if timeStr != "" {
+			fireAt, err = parseTime(timeStr)
+			if err != nil {
+				return ErrResponse("invalid time: " + err.Error())
+			}
+		}
+		if everyStr != "" {
+			interval, intervalErr := remindertime.ParseDuration(everyStr)
+			if intervalErr != nil {
+				return ErrResponse("invalid every: " + intervalErr.Error())
+			}
+			if interval < time.Minute {
+				return ErrResponse("every must be at least 1 minute")
+			}
+			recurring = "interval:" + interval.String()
+			if timeStr == "" {
+				fireAt = time.Now().Add(interval)
+			}
+		}
+
+		var untilAt *time.Time
+		if untilStr := req.Params["until"]; untilStr != "" {
+			parsedUntil, untilErr := parseTime(untilStr)
+			if untilErr != nil {
+				return ErrResponse("invalid until: " + untilErr.Error())
+			}
+			untilAt = &parsedUntil
+		}
+
 		sessionID := req.Params["session_id"]
 
-		result, err := backend.Add(ctx, userID, message, fireAt, recurring, sessionID)
+		result, err := backend.Add(ctx, userID, message, fireAt, recurring, sessionID, untilAt)
 		if err != nil {
 			log.Warn("sockipc reminder.add failed", zap.Error(err))
 			return ErrResponse("add failed: " + err.Error())

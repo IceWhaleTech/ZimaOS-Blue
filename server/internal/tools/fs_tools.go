@@ -26,7 +26,9 @@ const (
 var errFSToolWalkDone = errors.New("fs_tool_walk_done")
 
 type fsToolScope struct {
-	roots []string
+	roots     []string
+	approvals *ApprovalManager
+	dirStore  *DirAllowlistStore
 }
 
 func newFSToolScope(allowedPaths []string) *fsToolScope {
@@ -54,6 +56,17 @@ func newFSToolScope(allowedPaths []string) *fsToolScope {
 		roots = append(roots, ".")
 	}
 	return &fsToolScope{roots: roots}
+}
+
+func (s *fsToolScope) withApprovalFlow(approvals *ApprovalManager, dirStore *DirAllowlistStore) *fsToolScope {
+	if s == nil {
+		return &fsToolScope{approvals: approvals, dirStore: dirStore}
+	}
+	return &fsToolScope{
+		roots:     append([]string(nil), s.roots...),
+		approvals: approvals,
+		dirStore:  dirStore,
+	}
 }
 
 func (s *fsToolScope) rootsWithContext(ctx context.Context) []string {
@@ -109,19 +122,23 @@ func (s *fsToolScope) aliasesWithContext(ctx context.Context) map[string]string 
 	return out
 }
 
-func (s *fsToolScope) resolvePathWithContext(ctx context.Context, raw string, allowDot bool) (absPath string, relPath string, root string, err error) {
+func (s *fsToolScope) resolvePathWithContext(ctx context.Context, toolName, raw string, allowDot bool) (absPath string, relPath string, root string, err error) {
 	if s == nil {
 		return "", "", "", errors.New("workspace root is not configured")
 	}
 	roots := s.rootsWithContext(ctx)
-	scope := &fsToolScope{roots: roots}
+	scope := &fsToolScope{
+		roots:     roots,
+		approvals: s.approvals,
+		dirStore:  s.dirStore,
+	}
 	candidate := strings.TrimSpace(raw)
 	if aliases := s.aliasesWithContext(ctx); len(aliases) > 0 {
 		if resolved, ok := resolveFSAliasPath(candidate, aliases); ok {
 			candidate = resolved
 		}
 	}
-	return scope.resolvePath(candidate, allowDot)
+	return scope.resolvePathWithApproval(ctx, toolName, candidate, allowDot)
 }
 
 func resolveFSAliasPath(raw string, aliases map[string]string) (string, bool) {
@@ -221,6 +238,67 @@ func (s *fsToolScope) resolvePath(raw string, allowDot bool) (absPath string, re
 		return "", "", "", errors.New("path escapes workspace root")
 	}
 	return candidate, filepath.ToSlash(rel), r, nil
+}
+
+func (s *fsToolScope) resolvePathWithApproval(ctx context.Context, toolName, raw string, allowDot bool) (absPath string, relPath string, root string, err error) {
+	trimmed := strings.TrimSpace(raw)
+	if !filepath.IsAbs(trimmed) {
+		return s.resolvePath(trimmed, allowDot)
+	}
+
+	absPath, relPath, root, err = s.resolvePath(trimmed, allowDot)
+	if err == nil {
+		return absPath, relPath, root, nil
+	}
+	if !strings.Contains(err.Error(), "path escapes workspace root") {
+		return "", "", "", err
+	}
+
+	candidate := filepath.Clean(trimmed)
+	approvalDir := externalApprovalDir(candidate, allowDot)
+	if s.dirStore != nil {
+		if entry := s.dirStore.Match(approvalDir); entry != nil {
+			return candidate, candidate, entry.Path, nil
+		}
+	}
+	if s.approvals == nil {
+		return "", "", "", err
+	}
+
+	userID := GetUserID(ctx)
+	decision, reqErr := s.approvals.RequestApproval(ctx, ApprovalRequest{
+		Type:      "directory",
+		Directory: approvalDir,
+		Command:   strings.TrimSpace(toolName + " " + candidate),
+		UserID:    userID,
+	})
+	if reqErr != nil {
+		return "", "", "", fmt.Errorf("path approval failed: %w", reqErr)
+	}
+
+	switch decision {
+	case ApprovalAllowOnce:
+		return candidate, candidate, approvalDir, nil
+	case ApprovalAllowAlways:
+		if s.dirStore != nil {
+			_ = s.dirStore.Add(approvalDir, userID)
+		}
+		return candidate, candidate, approvalDir, nil
+	default:
+		return "", "", "", fmt.Errorf("path access denied: user denied access to directory %q", approvalDir)
+	}
+}
+
+func externalApprovalDir(candidate string, allowDot bool) string {
+	candidate = filepath.Clean(candidate)
+	if !allowDot {
+		return filepath.Dir(candidate)
+	}
+	info, err := os.Stat(candidate)
+	if err == nil && !info.IsDir() {
+		return filepath.Dir(candidate)
+	}
+	return candidate
 }
 
 func cleanFSToolRelPath(raw string, allowDot bool) (string, error) {
@@ -510,7 +588,7 @@ func (t *EditTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return nil, err
 	}
 
-	absPath, relPath, _, err := t.Scope.resolvePathWithContext(ctx, path, false)
+	absPath, relPath, _, err := t.Scope.resolvePathWithContext(ctx, "edit", path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -644,7 +722,7 @@ func (t *GrepTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return nil, fmt.Errorf("invalid regex pattern: %w", err)
 	}
 
-	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, searchPath, true)
+	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, "grep", searchPath, true)
 	if err != nil {
 		return nil, err
 	}
@@ -676,7 +754,7 @@ func (t *GrepTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
 			return
 		}
-		_, relPath, _, relErr := t.Scope.resolvePathWithContext(ctx, path, false)
+		_, relPath, _, relErr := t.Scope.resolvePathWithContext(ctx, "grep", path, false)
 		if relErr != nil {
 			return
 		}
@@ -814,7 +892,7 @@ func (t *FindTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return nil, errors.New("type must be one of: all, file, dir")
 	}
 
-	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, basePath, true)
+	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, "find", basePath, true)
 	if err != nil {
 		return nil, err
 	}
@@ -973,7 +1051,7 @@ func (t *LsTool) Execute(ctx context.Context, args map[string]interface{}) (inte
 	}
 	maxEntries = fsClamp(maxEntries, 1, maxFSToolEntries)
 
-	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, listPath, true)
+	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, "ls", listPath, true)
 	if err != nil {
 		return nil, err
 	}

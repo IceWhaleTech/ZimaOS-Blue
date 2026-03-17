@@ -20,6 +20,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 )
 
@@ -35,20 +36,112 @@ type SkillSource struct {
 
 // RemoteSkill represents a skill from an external source
 type RemoteSkill struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Version     string   `json:"version"`
-	Description string   `json:"description"`
-	Author      string   `json:"author,omitempty"`
-	Category    string   `json:"category,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	SourceID    string   `json:"source_id"`
-	SourceName  string   `json:"source_name"`
-	DownloadURL string   `json:"download_url,omitempty"`
-	Homepage    string   `json:"homepage,omitempty"`
-	Stars       int      `json:"stars,omitempty"`
-	Downloads   int      `json:"downloads,omitempty"`
-	Installed   bool     `json:"installed"`
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	Version             string   `json:"version"`
+	Description         string   `json:"description"`
+	Author              string   `json:"author,omitempty"`
+	Category            string   `json:"category,omitempty"`
+	Tags                []string `json:"tags,omitempty"`
+	SourceID            string   `json:"source_id"`
+	SourceName          string   `json:"source_name"`
+	SourceGroup         string   `json:"source_group,omitempty"`
+	DownloadURL         string   `json:"download_url,omitempty"`
+	Homepage            string   `json:"homepage,omitempty"`
+	Stars               int      `json:"stars,omitempty"`
+	Downloads           int      `json:"downloads,omitempty"`
+	Installed           bool     `json:"installed"`
+	RiskLevel           string   `json:"risk_level,omitempty"`
+	SecurityBadge       string   `json:"security_badge,omitempty"`
+	Installable         bool     `json:"installable,omitempty"`
+	InstallType         string   `json:"install_type,omitempty"`
+	ArtifactKind        string   `json:"artifact_kind,omitempty"`
+	HasVulnerabilities  bool     `json:"has_vulnerabilities,omitempty"`
+	HasPromptInjection  bool     `json:"has_prompt_injection,omitempty"`
+	HasShellInjection   bool     `json:"has_shell_injection,omitempty"`
+	HasDataExfiltration bool     `json:"has_data_exfiltration,omitempty"`
+	CuratedRank         int      `json:"curated_rank,omitempty"`
+	CuratedLabel        string   `json:"curated_label,omitempty"`
+}
+
+func (h *SkillHandler) remoteSkillFromDocument(doc skillmarket.SkillDocument) *RemoteSkill {
+	return &RemoteSkill{
+		ID:                  doc.ID,
+		Name:                doc.Name,
+		Version:             doc.LatestVersion,
+		Description:         doc.Description,
+		Author:              doc.Author,
+		Category:            doc.Category,
+		Tags:                doc.Tags,
+		SourceID:            doc.SourceID,
+		SourceName:          firstString(doc.SourceName, doc.SourceGroup, doc.SourceID),
+		SourceGroup:         doc.SourceGroup,
+		DownloadURL:         firstString(doc.DownloadURL, doc.RepoURL, doc.Homepage),
+		Homepage:            firstString(doc.Homepage, doc.RepoURL, doc.DownloadURL),
+		Stars:               doc.Stars,
+		Downloads:           doc.Downloads,
+		Installed:           h.registry.Get(doc.ID) != nil,
+		RiskLevel:           doc.RiskLevel,
+		SecurityBadge:       doc.SecurityBadge,
+		Installable:         doc.Installable,
+		InstallType:         doc.InstallType,
+		ArtifactKind:        doc.ArtifactKind,
+		HasVulnerabilities:  doc.HasVulnerabilities,
+		HasPromptInjection:  doc.HasPromptInjection,
+		HasShellInjection:   doc.HasShellInjection,
+		HasDataExfiltration: doc.HasDataExfiltration,
+		CuratedRank:         doc.CuratedRank,
+		CuratedLabel:        doc.CuratedLabel,
+	}
+}
+
+func firstString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func skillIDAliases(id string) []string {
+	validatedID, err := skillmarket.ValidateSkillID(id)
+	if err != nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, 3)
+	aliases := make([]string, 0, 3)
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if _, exists := seen[value]; exists {
+			return
+		}
+		seen[value] = struct{}{}
+		aliases = append(aliases, value)
+	}
+
+	add(validatedID)
+	add(strings.ReplaceAll(validatedID, "-", "_"))
+	add(strings.ReplaceAll(validatedID, "_", "-"))
+	return aliases
+}
+
+func validatedSkillID(id string) (string, error) {
+	return skillmarket.ValidateSkillID(id)
+}
+
+func normalizedSkillID(id string) (string, error) {
+	normalized := skillmarket.NormalizeSkillID(id)
+	if normalized == "" {
+		return "", fmt.Errorf("skill id is required")
+	}
+	// Local skill installs historically used underscores as canonical separators.
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	return skillmarket.ValidateSkillID(normalized)
 }
 
 // SkillEventPublisher publishes events to connected SSE clients.
@@ -60,6 +153,7 @@ type SkillEventPublisher interface {
 type SkillHandler struct {
 	registry            *skill.Registry
 	store               *skillstore.Store                // Local database store for skills (browse/search only)
+	market              *skillmarket.Service             // Authoritative marketplace service
 	syncService         *skillstore.SyncService          // Sync service for periodic updates
 	featuredLoader      *skillstore.FeaturedSkillsLoader // Featured skills fallback
 	localScanner        *skillstore.LocalSkillScanner    // Local skill discovery
@@ -76,8 +170,8 @@ type SkillHandler struct {
 	sfGroup singleflight.Group
 
 	// cache for frequently accessed data
-	browseCache    *cache.GenericCache[string]
-	statsCache     *cache.GenericCache[string]
+	browseCache     *cache.GenericCache[string]
+	statsCache      *cache.GenericCache[string]
 	categoriesCache *cache.GenericCache[string]
 }
 
@@ -123,6 +217,11 @@ func NewSkillHandler(registry *skill.Registry) *SkillHandler {
 // SetStore sets the skill store for database persistence
 func (h *SkillHandler) SetStore(store *skillstore.Store) {
 	h.store = store
+}
+
+// SetMarketplace sets the authoritative marketplace service.
+func (h *SkillHandler) SetMarketplace(market *skillmarket.Service) {
+	h.market = market
 }
 
 // SetSyncService sets the sync service for periodic updates
@@ -187,14 +286,26 @@ func (h *SkillHandler) SetUseFeaturedFallback(enabled bool) {
 func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 	skills := g.Group("/skills")
 	skills.GET("", h.ListSkills)
-	skills.GET("/:id", h.GetSkill)
-	skills.GET("/:id/content", h.GetSkillContent) // Get skill content (SKILL.md)
-	skills.POST("/:id/enable", h.EnableSkill)
-	skills.POST("/:id/disable", h.DisableSkill)
+	skills.GET("/search", h.MarketSearchSkills)
+	skills.GET("/trending", h.MarketTrendingSkills)
+	skills.GET("/featured", h.MarketFeaturedSkills)
+	skills.GET("/filters", h.MarketFilters)
+	skills.GET("/security/:id", h.MarketSecurityReport)
+	skills.POST("/install", h.MarketInstallSkill)
+	skills.GET("/installed", h.MarketInstalledSkills)
+	skills.GET("/discover", h.MarketDiscoverSkills)
+	skills.POST("/discover/refresh", h.MarketDiscoverSkills)
+	skills.GET("/updates", h.MarketListUpdates)
 	skills.GET("/local", h.ListLocalSkills)       // New: List local skills
 	skills.POST("/local/scan", h.ScanLocalSkills) // New: Scan local skills
 	skills.GET("/verify/:id", h.VerifySkill)      // New: Verify skill visibility
 	skills.POST("/upload", h.UploadSkill)         // Upload skill package
+	skills.POST("/:id/uninstall", h.MarketUninstallSkill)
+	skills.POST("/:id/update", h.MarketUpdateSkill)
+	skills.GET("/:id/content", h.GetSkillContent) // Get skill content (SKILL.md)
+	skills.POST("/:id/enable", h.EnableSkill)
+	skills.POST("/:id/disable", h.DisableSkill)
+	skills.GET("/:id", h.GetSkill)
 
 	// Skill store routes
 	store := g.Group("/skill-store")
@@ -300,41 +411,64 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 
 // GetSkill returns a specific skill from the .claude/skills/ directory.
 func (h *SkillHandler) GetSkill(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedSkillID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+	ctx := c.Request().Context()
+
+	if h.market != nil {
+		for _, candidate := range skillIDAliases(id) {
+			if detail, err := h.market.GetSkill(ctx, candidate); err == nil && detail != nil {
+				return c.JSON(http.StatusOK, detail)
+			}
+		}
+	}
 
 	if h.localScanner != nil {
-		for _, ls := range h.localScanner.GetAll() {
-			if ls.ID == id {
-				return c.JSON(http.StatusOK, SkillResponse{
-					ID:          ls.ID,
-					Name:        ls.Name,
-					Version:     ls.Version,
-					Description: ls.Description,
-					Author:      ls.Author,
-					Category:    ls.Category,
-					Tags:        ls.Tags,
-					Enabled:     true,
-				})
+		for _, candidate := range skillIDAliases(id) {
+			if ls := h.localScanner.Get(candidate); ls != nil {
+				return c.JSON(http.StatusOK, marketDetailCompatibilityPayload(&RemoteSkill{
+					ID:            ls.ID,
+					Name:          ls.Name,
+					Version:       ls.Version,
+					Description:   ls.Description,
+					Author:        ls.Author,
+					Category:      ls.Category,
+					Tags:          ls.Tags,
+					SourceID:      "local",
+					SourceName:    "Local",
+					SourceGroup:   "local",
+					Installed:     true,
+					SecurityBadge: skillmarket.BadgeYellow,
+					RiskLevel:     "unknown",
+				}, true, true, false))
 			}
 		}
 	}
 
 	// Compatibility fallback: return registry-backed skill details when scanner
 	// is absent or does not include this skill.
-	if info := h.registry.GetInfo(id); info != nil && info.Manifest != nil {
-		return c.JSON(http.StatusOK, SkillResponse{
-			ID:          info.Manifest.ID,
-			Name:        info.Manifest.Name,
-			Version:     info.Manifest.Version,
-			Description: info.Manifest.Description,
-			Author:      info.Manifest.Author,
-			Category:    info.Manifest.Category,
-			Tags:        info.Manifest.Tags,
-			Enabled:     info.Enabled,
-			Builtin:     info.Builtin,
-			Inputs:      info.Manifest.Inputs,
-			Outputs:     info.Manifest.Outputs,
-		})
+	for _, candidate := range skillIDAliases(id) {
+		if info := h.registry.GetInfo(candidate); info != nil && info.Manifest != nil {
+			return c.JSON(http.StatusOK, marketDetailCompatibilityPayload(&RemoteSkill{
+				ID:            info.Manifest.ID,
+				Name:          info.Manifest.Name,
+				Version:       info.Manifest.Version,
+				Description:   info.Manifest.Description,
+				Author:        info.Manifest.Author,
+				Category:      info.Manifest.Category,
+				Tags:          info.Manifest.Tags,
+				SourceID:      "registry",
+				SourceName:    "Installed",
+				SourceGroup:   "registry",
+				Installed:     true,
+				SecurityBadge: skillmarket.BadgeYellow,
+				RiskLevel:     "unknown",
+			}, true, info.Enabled, info.Builtin))
+		}
 	}
 
 	return c.JSON(http.StatusNotFound, map[string]string{
@@ -342,28 +476,62 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 	})
 }
 
+func marketDetailCompatibilityPayload(skill *RemoteSkill, installed, enabled, builtin bool) map[string]interface{} {
+	if skill == nil {
+		return map[string]interface{}{}
+	}
+	return map[string]interface{}{
+		"id":          skill.ID,
+		"name":        skill.Name,
+		"version":     skill.Version,
+		"description": skill.Description,
+		"author":      skill.Author,
+		"category":    skill.Category,
+		"tags":        skill.Tags,
+		"enabled":     enabled,
+		"builtin":     builtin,
+		"installed":   installed,
+		"skill":       skill,
+	}
+}
+
 // GetSkillContent returns the content (SKILL.md/readme) of a skill
 func (h *SkillHandler) GetSkillContent(c echo.Context) error {
-	id := c.Param("id")
+	id, err := validatedSkillID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
 	ctx := c.Request().Context()
 
 	// First check if skill exists in registry
-	info := h.registry.GetInfo(id)
+	var info *skill.SkillInfo
+	for _, candidate := range skillIDAliases(id) {
+		if info = h.registry.GetInfo(candidate); info != nil {
+			break
+		}
+	}
 
 	// Try to read SKILL.md from directory
 	if h.skillsDir != "" {
-		path := filepath.Join(h.skillsDir, id, "SKILL.md")
-		if data, err := os.ReadFile(path); err == nil {
-			name := id
-			if info != nil {
-				name = info.Manifest.Name
+		for _, candidate := range skillIDAliases(id) {
+			path := filepath.Join(h.skillsDir, candidate, "SKILL.md")
+			if data, err := os.ReadFile(path); err == nil {
+				name := candidate
+				if info == nil {
+					info = h.registry.GetInfo(candidate)
+				}
+				if info != nil {
+					name = info.Manifest.Name
+				}
+				return c.JSON(http.StatusOK, map[string]interface{}{
+					"id":      candidate,
+					"name":    name,
+					"content": string(data),
+					"source":  "directory",
+				})
 			}
-			return c.JSON(http.StatusOK, map[string]interface{}{
-				"id":      id,
-				"name":    name,
-				"content": string(data),
-				"source":  "directory",
-			})
 		}
 	}
 
@@ -375,14 +543,16 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 
 	// Try to get content from database store
 	if h.store != nil {
-		skill, err := h.store.GetSkill(ctx, id)
-		if err == nil && skill != nil && skill.Readme != "" {
-			return c.JSON(http.StatusOK, map[string]interface{}{
-				"id":      id,
-				"name":    info.Manifest.Name,
-				"content": skill.Readme,
-				"source":  "database",
-			})
+		for _, candidate := range skillIDAliases(id) {
+			skill, err := h.store.GetSkill(ctx, candidate)
+			if err == nil && skill != nil && skill.Readme != "" {
+				return c.JSON(http.StatusOK, map[string]interface{}{
+					"id":      candidate,
+					"name":    info.Manifest.Name,
+					"content": skill.Readme,
+					"source":  "database",
+				})
+			}
 		}
 	}
 
@@ -420,7 +590,7 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 			}
 		}
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"id":      id,
+			"id":      m.ID,
 			"name":    m.Name,
 			"content": content,
 			"source":  "builtin",
@@ -429,7 +599,7 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 
 	// No content available
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"id":      id,
+		"id":      info.Manifest.ID,
 		"name":    info.Manifest.Name,
 		"content": "",
 		"source":  "none",
@@ -438,29 +608,43 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 
 // EnableSkill enables a skill
 func (h *SkillHandler) EnableSkill(c echo.Context) error {
-	id := c.Param("id")
-	if err := h.registry.Enable(id); err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{
+	id, err := validatedSkillID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
 		})
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "skill enabled",
+	for _, candidate := range skillIDAliases(id) {
+		if err := h.registry.Enable(candidate); err == nil {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"message": "skill enabled",
+			})
+		}
+	}
+	return c.JSON(http.StatusNotFound, map[string]string{
+		"error": fmt.Sprintf("skill %s not found", id),
 	})
 }
 
 // DisableSkill disables a skill
 func (h *SkillHandler) DisableSkill(c echo.Context) error {
-	id := c.Param("id")
-	if err := h.registry.Disable(id); err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{
+	id, err := validatedSkillID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
 		})
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "skill disabled",
+	for _, candidate := range skillIDAliases(id) {
+		if err := h.registry.Disable(candidate); err == nil {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"message": "skill disabled",
+			})
+		}
+	}
+	return c.JSON(http.StatusNotFound, map[string]string{
+		"error": fmt.Sprintf("skill %s not found", id),
 	})
 }
 
@@ -772,20 +956,26 @@ func (h *SkillHandler) skillToRemoteSkill(s *skillstore.Skill, installedIDs map[
 		tags = strings.Split(s.Tags, ",")
 	}
 	return &RemoteSkill{
-		ID:          s.ID,
-		Name:        s.Name,
-		Version:     s.Version,
-		Description: s.Summary,
-		Author:      s.Author,
-		Category:    s.Category,
-		Tags:        tags,
-		SourceID:    s.SourceID,
-		SourceName:  s.SourceName,
-		DownloadURL: s.DownloadURL,
-		Homepage:    s.Homepage,
-		Stars:       s.Stars,
-		Downloads:   s.Downloads,
-		Installed:   installedIDs[s.ID],
+		ID:            s.ID,
+		Name:          s.Name,
+		Version:       s.Version,
+		Description:   s.Summary,
+		Author:        s.Author,
+		Category:      s.Category,
+		Tags:          tags,
+		SourceID:      s.SourceID,
+		SourceName:    s.SourceName,
+		SourceGroup:   s.SourceID,
+		DownloadURL:   s.DownloadURL,
+		Homepage:      s.Homepage,
+		Stars:         s.Stars,
+		Downloads:     s.Downloads,
+		Installed:     installedIDs[s.ID],
+		RiskLevel:     "unknown",
+		SecurityBadge: skillmarket.BadgeYellow,
+		Installable:   strings.TrimSpace(s.DownloadURL) != "" || strings.TrimSpace(s.Homepage) != "",
+		InstallType:   legacyInstallTypeFromURLs(s.Homepage, s.DownloadURL),
+		ArtifactKind:  skillmarket.ArtifactKindUnknown,
 	}
 }
 
@@ -934,17 +1124,21 @@ func (h *SkillHandler) downloadGitHubDirectory(ctx context.Context, ghURL, destD
 // findRemoteSkill looks up a RemoteSkill by ID from store, memory, or featured.
 func (h *SkillHandler) findRemoteSkill(ctx context.Context, id string) *RemoteSkill {
 	if h.store != nil {
-		sk, err := h.store.GetSkill(ctx, id)
-		if err == nil && sk != nil {
-			installedIDs := h.getInstalledSkillIDs()
-			return h.skillToRemoteSkill(sk, installedIDs)
+		for _, candidate := range skillIDAliases(id) {
+			sk, err := h.store.GetSkill(ctx, candidate)
+			if err == nil && sk != nil {
+				installedIDs := h.getInstalledSkillIDs()
+				return h.skillToRemoteSkill(sk, installedIDs)
+			}
 		}
 	}
-	h.mu.RLock()
-	memSkill, exists := h.remoteSkills[id]
-	h.mu.RUnlock()
-	if exists {
-		return memSkill
+	for _, candidate := range skillIDAliases(id) {
+		h.mu.RLock()
+		memSkill, exists := h.remoteSkills[candidate]
+		h.mu.RUnlock()
+		if exists {
+			return memSkill
+		}
 	}
 	return nil
 }
@@ -953,12 +1147,13 @@ func (h *SkillHandler) findRemoteSkill(ctx context.Context, id string) *RemoteSk
 func (h *SkillHandler) downloadSkillMD(ctx context.Context, id string, rs *RemoteSkill) ([]byte, error) {
 	const maxRetries = 3
 	var lastErr error
+	urls := make([]string, 0, 2)
 
-	urls := []string{
-		fmt.Sprintf("https://www.clawhub.ai/api/v1/skills/%s/skill-md", id),
-	}
 	if rs.DownloadURL != "" {
 		urls = append(urls, rs.DownloadURL)
+	}
+	if rs.SourceID == "clawhub" || rs.SourceGroup == "clawhub" || len(urls) == 0 {
+		urls = append(urls, fmt.Sprintf("https://www.clawhub.ai/api/v1/skills/%s/skill-md", id))
 	}
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
@@ -1006,7 +1201,22 @@ func (h *SkillHandler) downloadSkillMD(ctx context.Context, id string, rs *Remot
 // Supports both single SKILL.md downloads and full GitHub directory downloads.
 // Publishes progress events via the unified SSE broker.
 func (h *SkillHandler) InstallSkill(c echo.Context) error {
-	id := c.Param("id")
+	if h.market != nil {
+		id, err := validatedSkillID(c.Param("id"))
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		result, err := h.market.Install(c.Request().Context(), skillmarket.InstallRequest{ID: id})
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, result)
+	}
+
+	id, err := validatedSkillID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 	userID := getUserIDFromContext(c)
 
 	if h.skillsDir == "" {
@@ -1017,17 +1227,12 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 
 	// Check if already installed (directory exists with SKILL.md) or already
 	// present in registry.
+	if existingID, installed := h.resolveInstalledSkillID(id); installed {
+		return c.JSON(http.StatusConflict, map[string]string{
+			"error": fmt.Sprintf("skill already installed as %s", existingID),
+		})
+	}
 	skillDir := filepath.Join(h.skillsDir, id)
-	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err == nil {
-		return c.JSON(http.StatusConflict, map[string]string{
-			"error": "skill already installed",
-		})
-	}
-	if h.registry.Get(id) != nil {
-		return c.JSON(http.StatusConflict, map[string]string{
-			"error": "skill already installed",
-		})
-	}
 
 	ctx := c.Request().Context()
 	rs := h.findRemoteSkill(ctx, id)
@@ -1120,7 +1325,27 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 
 // UninstallSkill uninstalls a skill by removing its directory.
 func (h *SkillHandler) UninstallSkill(c echo.Context) error {
-	id := c.Param("id")
+	if h.market != nil {
+		id, err := validatedSkillID(c.Param("id"))
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		if err := h.market.Uninstall(c.Request().Context(), id); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":  true,
+			"skill_id": id,
+		})
+	}
+
+	id, err := validatedSkillID(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if resolvedID, ok := h.resolveInstalledSkillID(id); ok {
+		id = resolvedID
+	}
 
 	if h.skillsDir == "" {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -1746,6 +1971,23 @@ func (h *SkillHandler) createManifestFromRemoteSkill(rs *RemoteSkill) *skill.Man
 	}
 }
 
+func (h *SkillHandler) resolveInstalledSkillID(id string) (string, bool) {
+	for _, candidate := range skillIDAliases(id) {
+		if h.registry.Get(candidate) != nil {
+			return candidate, true
+		}
+		if h.localScanner != nil && h.localScanner.Get(candidate) != nil {
+			return candidate, true
+		}
+		if h.skillsDir != "" {
+			if _, err := os.Stat(filepath.Join(h.skillsDir, candidate, "SKILL.md")); err == nil {
+				return candidate, true
+			}
+		}
+	}
+	return strings.TrimSpace(id), false
+}
+
 // RemoteSkillAdapter adapts a remote skill manifest to the Skill interface
 type RemoteSkillAdapter struct {
 	manifest *skill.Manifest
@@ -1778,6 +2020,80 @@ func (r *RemoteSkillAdapter) Execute(ctx context.Context, input map[string]any) 
 
 // SearchSkills performs full-text search on skills in the local database
 func (h *SkillHandler) SearchSkills(c echo.Context) error {
+	if h.market != nil {
+		page, _ := strconv.Atoi(c.QueryParam("page"))
+		pageSize, _ := strconv.Atoi(c.QueryParam("page_size"))
+		if count, _ := strconv.Atoi(c.QueryParam("count")); count > 0 && pageSize == 0 {
+			pageSize = count
+		}
+		result, err := h.market.Search(c.Request().Context(), skillmarket.SearchQuery{
+			Query:               c.QueryParam("q"),
+			Category:            c.QueryParam("category"),
+			Categories:          parseCSV(c.QueryParam("categories")),
+			Sources:             parseCSV(c.QueryParam("sources")),
+			Sort:                firstNonEmpty(c.QueryParam("sort"), c.QueryParam("sort_by")),
+			Page:                page,
+			PageSize:            pageSize,
+			Semantic:            parseTruthy(c.QueryParam("semantic")),
+			RiskBadges:          parseCSV(c.QueryParam("risk_badges")),
+			InstallTypes:        parseCSV(c.QueryParam("install_types")),
+			ArtifactKinds:       parseCSV(c.QueryParam("artifact_kinds")),
+			Installable:         parseBoolPtr(c.QueryParam("installable")),
+			Curated:             parseBoolPtr(c.QueryParam("curated")),
+			OpenSourceOnly:      parseTruthy(c.QueryParam("open_source_only")),
+			HasVulnerabilities:  parseBoolPtr(c.QueryParam("has_vulnerabilities")),
+			HasPromptInjection:  parseBoolPtr(c.QueryParam("has_prompt_injection")),
+			HasShellInjection:   parseBoolPtr(c.QueryParam("has_shell_injection")),
+			HasDataExfiltration: parseBoolPtr(c.QueryParam("has_data_exfiltration")),
+		})
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		legacySkills := make([]map[string]interface{}, 0, len(result.Skills))
+		for _, item := range result.Skills {
+			doc := item.Skill
+			legacySkills = append(legacySkills, map[string]interface{}{
+				"id":                    doc.ID,
+				"name":                  doc.Name,
+				"version":               doc.LatestVersion,
+				"summary":               doc.Description,
+				"description":           doc.Description,
+				"author":                doc.Author,
+				"category":              doc.Category,
+				"tags":                  strings.Join(doc.Tags, ","),
+				"source_id":             doc.SourceID,
+				"source_name":           firstString(doc.SourceName, doc.SourceGroup, doc.SourceID),
+				"homepage":              doc.Homepage,
+				"download_url":          firstString(doc.DownloadURL, doc.RepoURL, doc.Homepage),
+				"stars":                 doc.Stars,
+				"downloads":             doc.Downloads,
+				"installed":             h.registry.Get(doc.ID) != nil,
+				"enabled":               h.registry.Get(doc.ID) != nil,
+				"score":                 item.Score,
+				"updated_at":            doc.LastUpdated,
+				"risk_level":            doc.RiskLevel,
+				"security_badge":        doc.SecurityBadge,
+				"install_type":          doc.InstallType,
+				"artifact_kind":         doc.ArtifactKind,
+				"installable":           doc.Installable,
+				"source_group":          doc.SourceGroup,
+				"curated_rank":          doc.CuratedRank,
+				"curated_label":         doc.CuratedLabel,
+				"has_vulnerabilities":   doc.HasVulnerabilities,
+				"has_prompt_injection":  doc.HasPromptInjection,
+				"has_shell_injection":   doc.HasShellInjection,
+				"has_data_exfiltration": doc.HasDataExfiltration,
+			})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"skills":      legacySkills,
+			"total":       result.Total,
+			"page":        result.Page,
+			"page_size":   result.PageSize,
+			"total_pages": result.TotalPages,
+			"has_more":    result.Page < result.TotalPages,
+		})
+	}
 	if h.store == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"skills":       []interface{}{},
@@ -1855,6 +2171,17 @@ func (h *SkillHandler) SearchSkills(c echo.Context) error {
 
 // GetCategories returns all unique skill categories
 func (h *SkillHandler) GetCategories(c echo.Context) error {
+	if h.market != nil {
+		filters, err := h.market.Filters(c.Request().Context())
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		categories := make([]string, 0, len(filters.Categories))
+		for _, category := range filters.Categories {
+			categories = append(categories, category.Value)
+		}
+		return c.JSON(http.StatusOK, categories)
+	}
 	if h.store == nil {
 		return c.JSON(http.StatusOK, []string{})
 	}
@@ -1923,6 +2250,28 @@ func (h *SkillHandler) GetStats(c echo.Context) error {
 
 // GetPopularSkills returns the most popular skills by downloads
 func (h *SkillHandler) GetPopularSkills(c echo.Context) error {
+	if h.market != nil {
+		limit := 20
+		if l := c.QueryParam("limit"); l != "" {
+			if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 100 {
+				limit = v
+			}
+		}
+		search, err := h.market.Search(c.Request().Context(), skillmarket.SearchQuery{
+			Sort:     "most_used",
+			Page:     1,
+			PageSize: limit,
+			Sources:  parseCSV(c.QueryParam("sources")),
+		})
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		items := make([]*RemoteSkill, 0, len(search.Skills))
+		for _, item := range search.Skills {
+			items = append(items, h.remoteSkillFromDocument(item.Skill))
+		}
+		return c.JSON(http.StatusOK, items)
+	}
 	if h.store == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"skills":       []interface{}{},
@@ -1949,6 +2298,21 @@ func (h *SkillHandler) GetPopularSkills(c echo.Context) error {
 
 // GetRecentSkills returns the most recently updated skills
 func (h *SkillHandler) GetRecentSkills(c echo.Context) error {
+	if h.market != nil {
+		search, err := h.market.Search(c.Request().Context(), skillmarket.SearchQuery{
+			Sort:     "newest",
+			Page:     1,
+			PageSize: 20,
+		})
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		items := make([]*RemoteSkill, 0, len(search.Skills))
+		for _, item := range search.Skills {
+			items = append(items, h.remoteSkillFromDocument(item.Skill))
+		}
+		return c.JSON(http.StatusOK, items)
+	}
 	if h.store == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"skills":       []interface{}{},
@@ -2031,6 +2395,18 @@ func (h *SkillHandler) TriggerSync(c echo.Context) error {
 // GetFeaturedSkills returns the curated list of featured skills
 // This serves as a fallback when external APIs fail
 func (h *SkillHandler) GetFeaturedSkills(c echo.Context) error {
+	if h.market != nil {
+		limit, _ := strconv.Atoi(c.QueryParam("limit"))
+		skills, err := h.market.Featured(c.Request().Context(), c.QueryParam("category"), c.QueryParam("source"), limit)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		result := make([]*RemoteSkill, 0, len(skills))
+		for _, skill := range skills {
+			result = append(result, h.remoteSkillFromDocument(skill))
+		}
+		return c.JSON(http.StatusOK, result)
+	}
 	if h.featuredLoader == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{
 			"error": "featured skills not configured",
@@ -2132,10 +2508,10 @@ func (h *SkillHandler) ScanLocalSkills(c echo.Context) error {
 
 // VerifySkill verifies that a skill is properly registered and visible
 func (h *SkillHandler) VerifySkill(c echo.Context) error {
-	id := c.Param("id")
-	if id == "" {
+	id, err := validatedSkillID(c.Param("id"))
+	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "skill ID is required",
+			"error": err.Error(),
 		})
 	}
 
@@ -2196,6 +2572,14 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 		if req.Name != "" {
 			skillID = strings.ToLower(strings.ReplaceAll(req.Name, " ", "-"))
 		}
+		skillID, err := normalizedSkillID(skillID)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+
+		if existingID, installed := h.resolveInstalledSkillID(skillID); installed {
+			return c.JSON(http.StatusConflict, map[string]string{"error": fmt.Sprintf("skill already installed as %s", existingID)})
+		}
 
 		skillDir := filepath.Join(h.skillsDir, skillID)
 		if _, err := os.Stat(skillDir); err == nil {
@@ -2206,8 +2590,7 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("mkdir: %v", err)})
 		}
 
-		err := h.downloadGitHubDirectory(ctx, req.URL, skillDir, nil)
-		if err != nil {
+		if err := h.downloadGitHubDirectory(ctx, req.URL, skillDir, nil); err != nil {
 			os.RemoveAll(skillDir)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("GitHub download failed: %v", err)})
 		}
@@ -2258,6 +2641,10 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 	skillID, _, err := h.parseSkillContent(string(body), req.URL, req.Name, req.Description)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to parse skill: %v", err)})
+	}
+
+	if existingID, installed := h.resolveInstalledSkillID(skillID); installed {
+		return c.JSON(http.StatusConflict, map[string]string{"error": fmt.Sprintf("skill already installed as %s", existingID)})
 	}
 
 	skillDir := filepath.Join(h.skillsDir, skillID)
@@ -2367,9 +2754,11 @@ func (h *SkillHandler) parseSkillContent(content, sourceURL, overrideName, overr
 	if manifest.ID == "" {
 		return "", nil, fmt.Errorf("could not determine skill ID")
 	}
-
-	// Sanitize ID: use underscores instead of hyphens for tool name compatibility
-	manifest.ID = strings.ReplaceAll(manifest.ID, "-", "_")
+	validatedID, err := normalizedSkillID(manifest.ID)
+	if err != nil {
+		return "", nil, err
+	}
+	manifest.ID = validatedID
 
 	// Store source URL in metadata
 	manifest.Metadata["source_url"] = sourceURL
@@ -2387,20 +2776,36 @@ func (h *SkillHandler) getFeaturedSkillsFallback() []*RemoteSkill {
 	result := make([]*RemoteSkill, 0, len(skills))
 	for _, s := range skills {
 		result = append(result, &RemoteSkill{
-			ID:          s.ID,
-			Name:        s.Name,
-			Version:     s.Version,
-			Description: s.Description,
-			Author:      s.Author,
-			Category:    s.Category,
-			Tags:        s.Tags,
-			SourceID:    "featured",
-			SourceName:  "Featured",
-			Homepage:    s.Homepage,
-			DownloadURL: s.SourceURL,
-			Stars:       s.Stars,
-			Installed:   h.registry.Get(s.ID) != nil,
+			ID:            s.ID,
+			Name:          s.Name,
+			Version:       s.Version,
+			Description:   s.Description,
+			Author:        s.Author,
+			Category:      s.Category,
+			Tags:          s.Tags,
+			SourceID:      "featured",
+			SourceName:    "Featured",
+			SourceGroup:   "featured",
+			Homepage:      s.Homepage,
+			DownloadURL:   s.SourceURL,
+			Stars:         s.Stars,
+			Installed:     h.registry.Get(s.ID) != nil,
+			RiskLevel:     "unknown",
+			SecurityBadge: skillmarket.BadgeYellow,
+			Installable:   strings.TrimSpace(s.SourceURL) != "" || strings.TrimSpace(s.Homepage) != "",
+			InstallType:   legacyInstallTypeFromURLs(s.Homepage, s.SourceURL),
+			ArtifactKind:  skillmarket.ArtifactKindUnknown,
 		})
 	}
 	return result
+}
+
+func legacyInstallTypeFromURLs(homepage, downloadURL string) string {
+	if isGitHubDirURL(firstString(homepage, downloadURL)) {
+		return skillmarket.InstallTypeGitRepo
+	}
+	if strings.TrimSpace(downloadURL) != "" {
+		return skillmarket.InstallTypeRawSkill
+	}
+	return skillmarket.InstallTypeManualExternal
 }

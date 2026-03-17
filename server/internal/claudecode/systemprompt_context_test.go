@@ -255,6 +255,9 @@ func TestBuildAgentModeGuidance_IncludesChecklistAndAskFormat(t *testing.T) {
 	if !strings.Contains(out, "Prefer ask format: {\"questions\":[{\"question\":\"...\",\"type\":\"radio\",\"options\":[...]}]}.") {
 		t.Fatalf("agent mode guidance should include ask questions-format preference: %s", out)
 	}
+	if !strings.Contains(out, "Text-input ask format: {\"questions\":[{\"question\":\"...\",\"type\":\"text\"}]}.") {
+		t.Fatalf("agent mode guidance should include ask text-format preference: %s", out)
+	}
 	if !strings.Contains(out, "Single-question shorthand: use \"q\" for single-select or \"mq\" for multi-select") || !strings.Contains(out, "\"a\" as the options array (2-4 strings)") {
 		t.Fatalf("agent mode guidance should include ask q/mq+a contract: %s", out)
 	}

@@ -120,6 +120,10 @@ function isOtherSelected(qId: string): boolean {
   return answers.value[qId]?.selected.includes('__other__') ?? false
 }
 
+function isTextOnlyQuestion(q: { options?: Array<unknown> } | undefined): boolean {
+  return !!q && (!q.options || q.options.length === 0)
+}
+
 function getOrCreateAnswer(qId: string) {
   if (!answers.value[qId]) {
     answers.value[qId] = { selected: [], otherText: '' }
@@ -149,8 +153,14 @@ function toggleOther(qId: string, multiSelect: boolean) {
   ans.selected = ['__other__']
 }
 
-function isAnswerComplete(ans: { selected: string[]; otherText: string } | undefined): boolean {
+function isAnswerComplete(
+  ans: { selected: string[]; otherText: string } | undefined,
+  q?: { options?: Array<unknown> }
+): boolean {
   if (!ans) return false
+  if (isTextOnlyQuestion(q)) {
+    return ans.otherText.trim() !== ''
+  }
   const hasNormalOption = ans.selected.some((v) => v !== '__other__')
   const hasOther = ans.selected.includes('__other__') && ans.otherText.trim() !== ''
   return hasNormalOption || hasOther
@@ -159,7 +169,7 @@ function isAnswerComplete(ans: { selected: string[]; otherText: string } | undef
 // Check if current question is answered
 const currentQuestionAnswered = computed(() => {
   if (!currentQuestion.value) return false
-  return isAnswerComplete(answers.value[currentQuestion.value.id])
+  return isAnswerComplete(answers.value[currentQuestion.value.id], currentQuestion.value)
 })
 
 const canSubmit = computed(() => {
@@ -170,12 +180,13 @@ const canSubmit = computed(() => {
   }
   // For multiple questions, all must be answered to submit
   return question.value.questions.every((q) => {
-    return isAnswerComplete(answers.value[q.id])
+    return isAnswerComplete(answers.value[q.id], q)
   })
 })
 
 function isTabAnswered(qId: string): boolean {
-  return isAnswerComplete(answers.value[qId])
+  const q = question.value?.questions.find((item) => item.id === qId)
+  return isAnswerComplete(answers.value[qId], q)
 }
 
 // Countdown timer
@@ -208,13 +219,14 @@ function submit() {
     const ans = answers.value[q.id] || { selected: [], otherText: '' }
     // Filter out __other__ and deduplicate (keep only one __other__ if present)
     const otherSelected = ans.selected.includes('__other__')
+    const textOnly = isTextOnlyQuestion(q)
     const selected = ans.selected
       .filter((v) => v !== '__other__')
       .filter((v, idx, arr) => arr.indexOf(v) === idx) // deduplicate regular options
     return {
       question_id: q.id,
       selected,
-      other_text: otherSelected ? ans.otherText : '',
+      other_text: textOnly || otherSelected ? ans.otherText : '',
     }
   })
   chatStore.submitQuestionAnswers(result)
@@ -428,8 +440,21 @@ function dismiss() {
               </label>
 
               <!-- Other option -->
+              <div
+                v-if="!isCheckpointQuestion && isTextOnlyQuestion(currentQuestion)"
+                class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2.5"
+              >
+                <input
+                  v-model="getOrCreateAnswer(currentQuestion.id).otherText"
+                  type="text"
+                  class="w-full px-2.5 py-1 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  :placeholder="t('askQuestion.otherPlaceholder')"
+                  @click.stop
+                />
+              </div>
+
               <label
-                v-if="!isCheckpointQuestion"
+                v-else-if="!isCheckpointQuestion"
                 class="flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors"
                 :class="
                   isOtherSelected(currentQuestion.id)

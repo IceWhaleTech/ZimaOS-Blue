@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/api/chat'
 import { cardActionApi } from '@/api/chat'
@@ -26,6 +26,7 @@ import { ttsAudioManager, streamingTTSManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { useNotificationStore } from '@/stores/notification'
 import { isTtsAutoPlayEnabled, isTtsSpeechMuted } from '@/utils/ttsPreferences'
+import { buildChatCardUiStateKey } from '@/utils/chatCardUiState'
 
 const { t, te } = useI18n()
 const providerPoolStore = useProviderPoolStore()
@@ -51,6 +52,7 @@ const emit = defineEmits<{
   ]
   continue: []
   regenerate: []
+  'edit-resubmit': [messageId: string, content: string]
 }>()
 
 const chatStore = useChatStore()
@@ -81,7 +83,6 @@ const userBubbleClasses = computed(() => [
   'inline-block',
   'chat-user-bubble',
 ])
-const userCopyButtonPositionClass = '-left-8 top-1/2 -translate-y-1/2'
 
 const trackStreamingState = computed(() => isAssistant.value && !!props.isStreaming)
 const hasMediaTask = computed(() => {
@@ -111,6 +112,12 @@ const isVoiceMessage = computed(() => {
   // Voice-only: no text content or placeholder text
   const text = props.message.content?.trim()
   return !text || isPlaceholderContent(text)
+})
+
+const isSpecialUserPlaceholder = computed(() => {
+  if (!isUser.value) return false
+  const content = props.message.content.trim()
+  return content === '[CONTINUE]' || content === '[CONTINUE_AFTER_CANCEL]'
 })
 
 type InlineImageInfo = { alt: string; url: string }
@@ -354,6 +361,29 @@ const copyState = ref<'idle' | 'copied'>('idle')
 const showMobileActions = ref(false)
 const longPressTimer = ref<number | null>(null)
 const longPressThreshold = 500 // ms
+const isEditingUserMessage = ref(false)
+const editedUserMessageContent = ref('')
+const userEditTextareaRef = ref<HTMLTextAreaElement | null>(null)
+
+const canEditUserMessage = computed(() => {
+  if (!isUser.value || props.isStreaming || isMultiSelectMode.value) return false
+  if (props.message.id.startsWith('temp-') || props.message.id.startsWith('streaming-')) return false
+  return !isSpecialUserPlaceholder.value
+})
+
+const canSubmitEditedUserMessage = computed(() => {
+  if (!isEditingUserMessage.value) return false
+  return editedUserMessageContent.value.trim().length > 0 || hasAttachments.value
+})
+
+watch(
+  () => props.message.content,
+  (content) => {
+    if (isEditingUserMessage.value) return
+    editedUserMessageContent.value = content
+  },
+  { immediate: true }
+)
 
 // TTS playback state
 const isSpeaking = ref(false)
@@ -433,58 +463,6 @@ function voiceBubbleWidth(seconds?: number): string {
   return `${Math.round(width)}px`
 }
 
-// Tool execution elapsed timer
-const toolElapsedSeconds = ref('0.0')
-let toolTimerHandle: ReturnType<typeof setInterval> | null = null
-let stopToolExecutingWatch: (() => void) | null = null
-
-function stopToolTimer() {
-  if (toolTimerHandle) {
-    clearInterval(toolTimerHandle)
-    toolTimerHandle = null
-  }
-}
-
-function startToolTimer() {
-  if (toolTimerHandle) return
-  toolElapsedSeconds.value = '0.0'
-  toolTimerHandle = setInterval(() => {
-    if (chatStore.toolExecutingStartTime > 0) {
-      toolElapsedSeconds.value = ((Date.now() - chatStore.toolExecutingStartTime) / 1000).toFixed(1)
-    }
-  }, 100)
-}
-
-function stopToolExecutingStateWatch() {
-  if (stopToolExecutingWatch) {
-    stopToolExecutingWatch()
-    stopToolExecutingWatch = null
-  }
-}
-
-watch(
-  () => trackStreamingState.value,
-  (trackStreaming) => {
-    stopToolTimer()
-    stopToolExecutingStateWatch()
-
-    if (!trackStreaming) return
-
-    stopToolExecutingWatch = watch(
-      () => chatStore.toolExecuting,
-      (executing) => {
-        if (executing) {
-          startToolTimer()
-          return
-        }
-        stopToolTimer()
-      },
-      { immediate: true }
-    )
-  },
-  { immediate: true }
-)
-
 // Derive display names for tool pill: extract skill names from "blue <subcommand>" commands
 const toolDisplayNames = computed(() => {
   if (!trackStreamingState.value || !chatStore.toolExecuting) return []
@@ -500,61 +478,53 @@ const toolDisplayNames = computed(() => {
   return chatStore.toolExecutingNames.map(formatToolName)
 })
 
-// Waiting timer — shows elapsed time when response takes >3s with no content
-const waitingElapsed = ref('')
-const showWaitingTimer = ref(false)
-let waitingTimerHandle: ReturnType<typeof setInterval> | null = null
-let waitingStartTime = 0
-let stopWaitingStateWatch: (() => void) | null = null
-
-function startWaitingTimer() {
-  waitingStartTime = Date.now()
-  showWaitingTimer.value = false
-  waitingElapsed.value = ''
-  waitingTimerHandle = setInterval(() => {
-    const elapsed = (Date.now() - waitingStartTime) / 1000
-    if (elapsed >= 3) {
-      showWaitingTimer.value = true
-      waitingElapsed.value = elapsed.toFixed(1)
-    }
-  }, 100)
-}
-
-function stopWaitingTimer() {
-  showWaitingTimer.value = false
-  if (waitingTimerHandle) {
-    clearInterval(waitingTimerHandle)
-    waitingTimerHandle = null
+const assistantStatusLabel = computed(() => {
+  if (!trackStreamingState.value) return ''
+  if (chatStore.awaitingConfirmation) {
+    return t('chat.awaitingConfirmation', 'Waiting for your confirmation to continue')
   }
-}
+  if (chatStore.statusSummary) return chatStore.statusSummary
+  if (chatStore.streamProgress) return chatStore.streamProgress
+  return t('chat.waitingThinking', 'Thinking...')
+})
 
-function stopWaitingTimerStateWatch() {
-  if (stopWaitingStateWatch) {
-    stopWaitingStateWatch()
-    stopWaitingStateWatch = null
+const showAssistantStatusBar = computed(
+  () => trackStreamingState.value && isAssistant.value && !!assistantStatusLabel.value
+)
+const showAssistantStatusOnly = computed(() => isContentEmpty.value && showAssistantStatusBar.value)
+const assistantStatusVariantClass = computed(() => {
+  if (chatStore.awaitingConfirmation) return 'assistant-status-pill-warn'
+  if (chatStore.toolExecuting) return 'assistant-status-pill-active'
+  return 'assistant-status-pill-idle'
+})
+
+const assistantStatusElapsedSeconds = ref('')
+let assistantStatusTimerHandle: ReturnType<typeof setInterval> | null = null
+
+function syncAssistantStatusElapsed() {
+  if (!chatStore.statusStartedAt) {
+    assistantStatusElapsedSeconds.value = ''
+    return
   }
+  assistantStatusElapsedSeconds.value = ((Date.now() - chatStore.statusStartedAt) / 1000).toFixed(1)
 }
 
-// Start/stop waiting timer only for the active streaming assistant message
+function stopAssistantStatusTimer() {
+  if (!assistantStatusTimerHandle) return
+  clearInterval(assistantStatusTimerHandle)
+  assistantStatusTimerHandle = null
+}
+
 watch(
-  () => trackStreamingState.value,
-  (trackStreaming) => {
-    stopWaitingTimer()
-    stopWaitingTimerStateWatch()
-
-    if (!trackStreaming) return
-
-    stopWaitingStateWatch = watch(
-      () => [props.message.content, chatStore.toolExecuting] as const,
-      ([content, toolExec]) => {
-        if (!content && !toolExec) {
-          if (!waitingTimerHandle) startWaitingTimer()
-          return
-        }
-        stopWaitingTimer()
-      },
-      { immediate: true }
-    )
+  () => [showAssistantStatusBar.value, chatStore.statusStartedAt] as const,
+  ([visible, startedAt]) => {
+    stopAssistantStatusTimer()
+    if (!visible || !startedAt) {
+      assistantStatusElapsedSeconds.value = ''
+      return
+    }
+    syncAssistantStatusElapsed()
+    assistantStatusTimerHandle = setInterval(syncAssistantStatusElapsed, 100)
   },
   { immediate: true }
 )
@@ -905,7 +875,9 @@ const renderedContent = computed(() => assistantTextState.value.html)
 const isContentEmpty = computed(() => {
   return (
     assistantTextState.value.isEmpty &&
-    (!settingsStore.showToolDetails || persistedProcessToolResults.value.length === 0)
+    (!settingsStore.showToolDetails ||
+      (persistedProcessToolResults.value.length === 0 &&
+        (!props.isStreaming || chatStore.toolResults.length === 0)))
   )
 })
 
@@ -1584,6 +1556,16 @@ const effectiveHasCards = computed(() => segmentRenderState.value.hasCards)
 // Card-only: no text segments, only cards — skip assistant bubble wrapper
 const isCardOnly = computed(() => segmentRenderState.value.isCardOnly)
 
+function getCardUiStateKey(card: TypelessCard, fallbackKey: string): string {
+  return buildChatCardUiStateKey({
+    conversationId: props.message.conversation_id,
+    messageId: props.message.render_key || props.message.id,
+    cardType: card.type,
+    cardId: card.id,
+    fallbackKey,
+  })
+}
+
 const formattedTime = computed(() => {
   const date = new Date(props.message.created_at)
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -1685,6 +1667,7 @@ const showAssistantStatsBar = computed(() => messageStatItems.value.length > 0)
 function handleContextMenu(event: MouseEvent) {
   // Don't trigger context menu during streaming
   if (props.isStreaming) return
+  if (isEditingUserMessage.value) return
   // Don't trigger for temp messages
   if (props.message.id.startsWith('temp-') || props.message.id.startsWith('streaming-')) return
 
@@ -1711,6 +1694,42 @@ async function handleCopyMessage() {
   }
 }
 
+function openUserEdit() {
+  if (!canEditUserMessage.value) return
+  editedUserMessageContent.value = props.message.content
+  isEditingUserMessage.value = true
+  nextTick(() => {
+    const textarea = userEditTextareaRef.value
+    if (!textarea) return
+    textarea.focus()
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+  })
+}
+
+function cancelUserEdit() {
+  isEditingUserMessage.value = false
+  editedUserMessageContent.value = props.message.content
+}
+
+function submitUserEdit() {
+  if (!canSubmitEditedUserMessage.value) return
+  const nextContent = editedUserMessageContent.value.trim()
+  isEditingUserMessage.value = false
+  emit('edit-resubmit', props.message.id, nextContent)
+}
+
+function handleUserEditKeydown(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+    event.preventDefault()
+    submitUserEdit()
+    return
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    cancelUserEdit()
+  }
+}
+
 // Export message as markdown file
 function handleExportMessage() {
   const content = props.message.content
@@ -1732,8 +1751,7 @@ onUnmounted(() => {
     window.cancelAnimationFrame(streamingRenderRafId)
     streamingRenderRafId = null
   }
-  stopToolExecutingStateWatch()
-  stopWaitingTimerStateWatch()
+  stopAssistantStatusTimer()
   clearIncrementalState(props.message.render_key || props.message.id, props.message.conversation_id)
   clearSplitSegmentsIncrementalState(
     `${props.message.conversation_id || 'unknown'}:${props.message.id}`
@@ -1741,8 +1759,6 @@ onUnmounted(() => {
   clearStreamingSegmentRenderIncrementalState(
     `${props.message.conversation_id || 'unknown'}:${props.message.id}`
   )
-  stopToolTimer()
-  stopWaitingTimer()
   stopVoiceMessage()
   // Only stop manually-triggered TTS (not auto-play streaming which survives component remount)
   // When streaming ends, the message component remounts with a new server ID —
@@ -2323,6 +2339,11 @@ async function handleMobileTTS() {
   closeMobileActions()
 }
 
+function handleMobileEdit() {
+  openUserEdit()
+  closeMobileActions()
+}
+
 function handleMobileExport() {
   handleExportMessage()
   closeMobileActions()
@@ -2558,78 +2579,124 @@ async function handleMobileDelete() {
                 </div>
               </div>
             </div>
-            <!-- Inline images extracted from message content (e.g. media generation reference images) -->
-            <div v-if="inlineImages.length > 0" class="mb-2 flex flex-wrap gap-2">
-              <img
-                v-for="(img, idx) in inlineImages"
-                :key="idx"
-                :src="img.url"
-                :alt="img.alt"
-                class="rounded-lg max-w-[200px] max-h-[150px] object-cover border border-gray-300 dark:border-white/20"
+            <template v-if="isEditingUserMessage">
+              <textarea
+                ref="userEditTextareaRef"
+                v-model="editedUserMessageContent"
+                class="user-message-edit-input w-full min-h-[5.5rem] rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-gray-400 dark:border-white/15 dark:bg-white/8 dark:text-white"
+                :placeholder="t('common.edit')"
+                @keydown="handleUserEditKeydown"
               />
-            </div>
-            <!-- Text content (hide placeholder patterns like [filename.txt], [Attachments:...]) -->
-            <span v-if="userTextContent && !isPlaceholderContent(userTextContent)">{{
-              userTextContent
-            }}</span>
-            <!-- Show continue icon when content is [CONTINUE] and no attachments -->
-            <span
-              v-else-if="
-                message.content === '[CONTINUE]' &&
-                (!message.attachments || message.attachments.length === 0)
-              "
-              class="flex items-center gap-1 text-gray-500 dark:text-gray-400"
+              <div class="user-message-edit-actions mt-3 flex items-center justify-end gap-2">
+                <button
+                  class="px-3 py-1.5 text-sm text-gray-600 transition hover:text-gray-800 dark:text-gray-300 dark:hover:text-white"
+                  @click.stop="cancelUserEdit"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+                <button
+                  class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+                  :disabled="!canSubmitEditedUserMessage"
+                  @click.stop="submitUserEdit"
+                >
+                  {{ te('chat.saveAndResubmit') ? t('chat.saveAndResubmit') : t('common.save') }}
+                </button>
+              </div>
+            </template>
+            <template v-else>
+              <!-- Inline images extracted from message content (e.g. media generation reference images) -->
+              <div v-if="inlineImages.length > 0" class="mb-2 flex flex-wrap gap-2">
+                <img
+                  v-for="(img, idx) in inlineImages"
+                  :key="idx"
+                  :src="img.url"
+                  :alt="img.alt"
+                  class="rounded-lg max-w-[200px] max-h-[150px] object-cover border border-gray-300 dark:border-white/20"
+                />
+              </div>
+              <!-- Text content (hide placeholder patterns like [filename.txt], [Attachments:...]) -->
+              <span v-if="userTextContent && !isPlaceholderContent(userTextContent)">{{
+                userTextContent
+              }}</span>
+              <!-- Show continue icon when content is [CONTINUE] and no attachments -->
+              <span
+                v-else-if="
+                  message.content === '[CONTINUE]' &&
+                  (!message.attachments || message.attachments.length === 0)
+                "
+                class="flex items-center gap-1 text-gray-500 dark:text-gray-400"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span class="text-sm">{{ t('chat.continueGenerating') }}</span>
+              </span>
+            </template>
+          </div>
+          <div
+            v-if="!isStreaming && !isMultiSelectMode && !isEditingUserMessage"
+            class="user-actions"
+          >
+            <button
+              v-if="canEditUserMessage"
+              class="user-action-btn"
+              :title="te('chat.editAndResubmit') ? t('chat.editAndResubmit') : t('common.edit')"
+              @click.stop="openUserEdit"
             >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                class="w-4 h-4 text-gray-500 dark:text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="2"
-                  d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M16.586 3.586a2 2 0 112.828 2.828L11 14.828 7 16l1.172-4L16.586 3.586z"
                 />
               </svg>
-              <span class="text-sm">{{ t('chat.continueGenerating') }}</span>
-            </span>
+            </button>
+            <button
+              class="copy-message-btn user-action-btn"
+              :title="t('chat.copyMessage')"
+              @click.stop="handleCopyMessage"
+            >
+              <svg
+                v-if="copyState === 'idle'"
+                class="w-4 h-4 text-gray-500 dark:text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
+              </svg>
+              <svg
+                v-else
+                class="w-4 h-4 text-green-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            </button>
           </div>
-          <!-- Copy button for user message -->
-          <button
-            v-if="!isStreaming && !isMultiSelectMode"
-            :class="[
-              'copy-message-btn absolute opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700',
-              userCopyButtonPositionClass,
-            ]"
-            :title="t('chat.copyMessage')"
-            @click.stop="handleCopyMessage"
-          >
-            <svg
-              v-if="copyState === 'idle'"
-              class="w-4 h-4 text-gray-500 dark:text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-              />
-            </svg>
-            <svg
-              v-else
-              class="w-4 h-4 text-green-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-          </button>
         </div>
 
         <!-- Card-only assistant message: render cards directly without bubble wrapper -->
@@ -2641,6 +2708,7 @@ async function handleMobileDelete() {
             :action-loading="isCardActionLoading((segment.content as TypelessCard).id)"
             :active-action-id="activeCardActionId((segment.content as TypelessCard).id)"
             :action-error="cardActionErrorMessage((segment.content as TypelessCard).id)"
+            :ui-state-key="getCardUiStateKey(segment.content as TypelessCard, segment.key)"
             @action="handleCardAction"
             @select="handleCardSelect"
           />
@@ -2769,12 +2837,8 @@ async function handleMobileDelete() {
             :class="[
               'assistant-message chat-copy-bubble chat-assistant-bubble px-4 prose prose-slate dark:prose-invert max-w-none',
               {
-                'assistant-message-indicator-only':
-                  showWaitingTimer || (isContentEmpty && !(isStreaming && chatStore.toolExecuting)),
-                'py-3': !(
-                  showWaitingTimer ||
-                  (isContentEmpty && !(isStreaming && chatStore.toolExecuting))
-                ),
+                'assistant-message-indicator-only': showAssistantStatusOnly,
+                'py-3': !showAssistantStatusOnly,
               },
             ]"
             @click="handleCopyClick"
@@ -2793,6 +2857,9 @@ async function handleMobileDelete() {
                   :action-loading="isCardActionLoading((segment.content as TypelessCard).id)"
                   :active-action-id="activeCardActionId((segment.content as TypelessCard).id)"
                   :action-error="cardActionErrorMessage((segment.content as TypelessCard).id)"
+                  :ui-state-key="
+                    getCardUiStateKey(segment.content as TypelessCard, segment.key)
+                  "
                   class="my-3 -mx-1"
                   @action="handleCardAction"
                   @select="handleCardSelect"
@@ -2824,15 +2891,18 @@ async function handleMobileDelete() {
             >
               <ToolDetailCard v-for="item in chatStore.toolResults" :key="item.id" :item="item" />
             </div>
-            <!-- Tool execution indicator (inside bubble) -->
             <div
-              v-if="isStreaming && chatStore.toolExecuting && settingsStore.showToolDetails"
-              :class="['tool-executing-indicator', { 'mt-0': isContentEmpty }]"
+              v-if="showAssistantStatusBar"
+              :class="['assistant-status-bar', { 'mt-0': showAssistantStatusOnly }]"
             >
-              <div class="tool-pill">
+              <div class="tool-pill assistant-status-pill" :class="assistantStatusVariantClass">
                 <span class="tool-dots"> <span /><span /><span /> </span>
-                <span class="tool-label">{{ t('tools.callingProgress') }}</span>
-                <span class="tool-timer tabular-nums">{{ toolElapsedSeconds }}s</span>
+                <span class="tool-label assistant-status-label">{{ assistantStatusLabel }}</span>
+                <span
+                  v-if="assistantStatusElapsedSeconds"
+                  class="tool-timer assistant-status-timer tabular-nums"
+                  >{{ assistantStatusElapsedSeconds }}s</span
+                >
                 <span
                   v-if="chatStore.toolSandboxAvailable"
                   class="sandbox-badge"
@@ -2852,90 +2922,13 @@ async function handleMobileDelete() {
                   </svg>
                 </span>
               </div>
-              <div v-if="toolDisplayNames.length > 0" class="tool-names">
+              <div v-if="chatStore.toolExecuting && toolDisplayNames.length > 0" class="tool-names">
                 <span v-for="name in toolDisplayNames" :key="name" class="tool-name-tag">{{
                   name
                 }}</span>
               </div>
             </div>
-            <!-- Minimal thinking indicator when tool details hidden -->
-            <div
-              v-else-if="isStreaming && chatStore.toolExecuting && !settingsStore.showToolDetails"
-              class="tool-executing-indicator"
-              :class="{ 'mt-0': isContentEmpty }"
-            >
-              <div class="tool-pill">
-                <span class="tool-dots"> <span /><span /><span /> </span>
-                <span class="tool-timer tabular-nums">{{ toolElapsedSeconds }}s</span>
-              </div>
-            </div>
-            <!-- Waiting timer card (>3s with no content) -->
-            <div
-              v-if="showWaitingTimer"
-              :class="['-mx-1', isContentEmpty ? 'my-0' : 'my-3']"
-              class="waiting-card"
-            >
-              <div class="waiting-card-inner">
-                <div class="waiting-card-header">
-                  <svg class="waiting-card-spinner" width="20" height="20" viewBox="0 0 24 24">
-                    <circle
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      opacity="0.15"
-                    />
-                    <circle
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      fill="none"
-                      stroke="url(#waitGrad)"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-dasharray="40 23"
-                    />
-                    <defs>
-                      <linearGradient id="waitGrad" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stop-color="#818cf8" />
-                        <stop offset="100%" stop-color="#c084fc" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <span class="waiting-card-title">{{
-                    t('chat.waitingThinking', 'Thinking...')
-                  }}</span>
-                  <span class="waiting-card-timer tabular-nums">{{ waitingElapsed }}s</span>
-                </div>
-                <div class="waiting-card-bar">
-                  <div class="waiting-card-bar-fill" />
-                </div>
-              </div>
-            </div>
           </div>
-        </div>
-
-        <!-- Streaming indicator -->
-        <div
-          v-if="isStreaming && isAssistant && !chatStore.toolExecuting && !showWaitingTimer"
-          class="streaming-indicator mt-2"
-        >
-          <span class="inline-flex gap-1">
-            <span
-              class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce"
-              style="animation-delay: 0ms"
-            />
-            <span
-              class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce"
-              style="animation-delay: 150ms"
-            />
-            <span
-              class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce"
-              style="animation-delay: 300ms"
-            />
-          </span>
         </div>
 
         <!-- Timestamp -->
@@ -3093,6 +3086,29 @@ async function handleMobileDelete() {
                 </svg>
                 <span class="text-base font-medium text-gray-900 dark:text-white">{{
                   t('chat.copyMessage')
+                }}</span>
+              </button>
+
+              <button
+                v-if="canEditUserMessage"
+                class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                @click="handleMobileEdit"
+              >
+                <svg
+                  class="w-5 h-5 text-gray-600 dark:text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M16.586 3.586a2 2 0 112.828 2.828L11 14.828 7 16l1.172-4L16.586 3.586z"
+                  />
+                </svg>
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{
+                  te('chat.editAndResubmit') ? t('chat.editAndResubmit') : t('common.edit')
                 }}</span>
               </button>
 
@@ -3520,6 +3536,11 @@ async function handleMobileDelete() {
   background: rgba(148, 163, 184, 0.18);
 }
 
+:root.dark .user-action-btn:hover,
+[data-theme='dark'] .user-action-btn:hover {
+  background: rgba(100, 116, 139, 0.35);
+}
+
 :root.dark .assistant-actions,
 [data-theme='dark'] .assistant-actions {
   border-color: rgba(71, 85, 105, 0.66);
@@ -3587,6 +3608,54 @@ async function handleMobileDelete() {
   display: inline-block;
 }
 
+.user-actions {
+  position: absolute;
+  top: 50%;
+  left: -0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+  padding: 0.22rem;
+  border-radius: 0.62rem;
+  border: 1px solid rgba(203, 213, 225, 0.58);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+  opacity: 0;
+  transform: translate(-100%, -50%);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.message:hover .user-actions,
+.message:focus-within .user-actions {
+  opacity: 1;
+  transform: translate(calc(-100% - 0.18rem), -50%);
+}
+
+.user-action-btn {
+  width: 1.62rem;
+  height: 1.62rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.46rem;
+  background: transparent;
+  transition: background-color 0.12s ease;
+}
+
+.user-action-btn:hover {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+:root.dark .user-actions,
+[data-theme='dark'] .user-actions {
+  border-color: rgba(71, 85, 105, 0.66);
+  background: rgba(30, 41, 59, 0.72);
+  box-shadow: 0 6px 12px rgba(2, 6, 23, 0.28);
+}
+
 /* Response interrupted indicator */
 .assistant-message :deep(.response-interrupted-indicator) {
   display: inline-flex;
@@ -3620,8 +3689,8 @@ async function handleMobileDelete() {
   color: #dc2626;
 }
 
-/* Tool execution indicator */
-.tool-executing-indicator {
+/* Assistant status pill */
+.assistant-status-bar {
   margin-top: 0.625rem;
 }
 
@@ -3633,6 +3702,25 @@ async function handleMobileDelete() {
   border-radius: 999px;
   background: rgba(14, 165, 233, 0.1);
   border: 1px solid rgba(14, 165, 233, 0.2);
+}
+
+.assistant-status-pill {
+  max-width: 100%;
+}
+
+.assistant-status-pill-idle {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.assistant-status-pill-active {
+  background: rgba(14, 165, 233, 0.1);
+  border-color: rgba(14, 165, 233, 0.2);
+}
+
+.assistant-status-pill-warn {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.24);
 }
 
 .sandbox-badge {
@@ -3651,6 +3739,18 @@ async function handleMobileDelete() {
 [data-theme='dark'] .tool-pill {
   background: rgba(56, 189, 248, 0.14);
   border-color: rgba(56, 189, 248, 0.24);
+}
+
+:root.dark .assistant-status-pill-idle,
+[data-theme='dark'] .assistant-status-pill-idle {
+  background: rgba(71, 85, 105, 0.4);
+  border-color: rgba(100, 116, 139, 0.38);
+}
+
+:root.dark .assistant-status-pill-warn,
+[data-theme='dark'] .assistant-status-pill-warn {
+  background: rgba(217, 119, 6, 0.18);
+  border-color: rgba(245, 158, 11, 0.28);
 }
 
 .tool-dots {
@@ -3685,14 +3785,43 @@ async function handleMobileDelete() {
   color: #0284c7;
 }
 
+.assistant-status-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 :root.dark .tool-label,
 [data-theme='dark'] .tool-label {
   color: #7dd3fc;
 }
 
+.assistant-status-pill-idle .assistant-status-label {
+  color: #475569;
+}
+
+.assistant-status-pill-warn .assistant-status-label {
+  color: #b45309;
+}
+
+:root.dark .assistant-status-pill-idle .assistant-status-label,
+[data-theme='dark'] .assistant-status-pill-idle .assistant-status-label {
+  color: #cbd5e1;
+}
+
+:root.dark .assistant-status-pill-warn .assistant-status-label,
+[data-theme='dark'] .assistant-status-pill-warn .assistant-status-label {
+  color: #fcd34d;
+}
+
 .tool-timer {
   font-size: 0.6875rem;
   color: #94a3b8;
+}
+
+.assistant-status-timer {
+  flex-shrink: 0;
 }
 
 :root.dark .tool-timer,
@@ -3736,116 +3865,6 @@ async function handleMobileDelete() {
   background: rgba(56, 189, 248, 0.12);
   color: #7dd3fc;
   border-color: rgba(56, 189, 248, 0.22);
-}
-
-/* Waiting timer pill — appears after 3s of no response */
-/* Waiting timer card */
-.waiting-card {
-  animation: waiting-fade-in 0.3s ease;
-}
-
-.waiting-card-inner {
-  border-radius: 0.75rem;
-  border: 1px solid transparent;
-  background:
-    linear-gradient(#fff, #fff) padding-box,
-    linear-gradient(135deg, #0ea5e9, #14b8a6, #22c55e) border-box;
-  padding: 0.75rem 1rem;
-  box-shadow: 0 1px 3px rgba(129, 140, 248, 0.12);
-}
-
-:root.dark .waiting-card-inner,
-[data-theme='dark'] .waiting-card-inner {
-  background:
-    linear-gradient(#1e293b, #1e293b) padding-box,
-    linear-gradient(135deg, #0ea5e9, #14b8a6, #22c55e) border-box;
-  box-shadow: 0 1px 6px rgba(129, 140, 248, 0.15);
-}
-
-.waiting-card-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.waiting-card-spinner {
-  animation: waiting-spin 1.2s linear infinite;
-  color: #0ea5e9;
-  flex-shrink: 0;
-}
-
-.waiting-card-title {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #0284c7;
-  flex: 1;
-}
-
-:root.dark .waiting-card-title,
-[data-theme='dark'] .waiting-card-title {
-  color: #7dd3fc;
-}
-
-.waiting-card-timer {
-  font-size: 0.75rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: #14b8a6;
-  min-width: 2.5rem;
-  text-align: right;
-}
-
-.waiting-card-bar {
-  margin-top: 0.5rem;
-  height: 3px;
-  border-radius: 2px;
-  background: #e2e8f0;
-  overflow: hidden;
-}
-
-:root.dark .waiting-card-bar,
-[data-theme='dark'] .waiting-card-bar {
-  background: #334155;
-}
-
-.waiting-card-bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: linear-gradient(90deg, #0ea5e9, #14b8a6, #22c55e);
-  animation: waiting-bar-slide 2s ease-in-out infinite;
-  width: 40%;
-}
-
-@keyframes waiting-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes waiting-bar-slide {
-  0% {
-    transform: translateX(-100%);
-  }
-  50% {
-    transform: translateX(150%);
-  }
-  100% {
-    transform: translateX(-100%);
-  }
-}
-
-@keyframes waiting-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* Voice message bubble — WeChat/WhatsApp style */

@@ -5,6 +5,11 @@ import type { TypelessCardFile } from '@/types/typeless'
 import { useTauri } from '@/composables/useTauri'
 import { systemApi, type LocalFileResolveResponse } from '@/api/system'
 import { isLocalAbsolutePath } from '@/utils/localPath'
+import {
+  downloadProtectedResource,
+  isProtectedResourceUrl,
+  openProtectedResource,
+} from '@/utils/protectedResource'
 
 const { t } = useI18n()
 const { openInBrowser } = useTauri()
@@ -113,36 +118,48 @@ async function resolveLocalFileMetadata() {
 async function handleDownload() {
   const path = String(props.card.downloadUrl || '').trim()
   if (!path) return
-  const opened = await openInBrowser(path)
-  if (opened) return
-
-  if (isLocalDownloadPath.value && resolvedDownloadUrl.value) {
-    window.open(resolvedDownloadUrl.value, '_blank')
-    return
-  }
 
   if (isLocalDownloadPath.value) {
+    const opened = await openInBrowser(path)
+    if (opened) return
+
+    if (resolvedDownloadUrl.value) {
+      await openProtectedResource(resolvedDownloadUrl.value)
+    }
     return
   }
+
+  if (isProtectedResourceUrl(path)) {
+    await downloadProtectedResource(path, props.card.filename)
+    return
+  }
+
+  const opened = await openInBrowser(path)
+  if (opened) return
 
   window.open(path, '_blank')
 }
 
-function handlePreview() {
+async function handlePreview() {
   const previewUrl = String(props.card.previewUrl || '').trim()
   if (!previewUrl) return
 
   if (isLocalAbsolutePath(previewUrl) && resolvedDownloadUrl.value) {
-    window.open(resolvedDownloadUrl.value, '_blank')
+    await openProtectedResource(resolvedDownloadUrl.value)
+    return
+  }
+
+  if (isProtectedResourceUrl(previewUrl)) {
+    await openProtectedResource(previewUrl)
     return
   }
 
   window.open(previewUrl, '_blank')
 }
 
-function handleThumbnailClick() {
+async function handleThumbnailClick() {
   if (resolvedDownloadUrl.value) {
-    window.open(resolvedDownloadUrl.value, '_blank')
+    await openProtectedResource(resolvedDownloadUrl.value)
     return
   }
   void handleDownload()
