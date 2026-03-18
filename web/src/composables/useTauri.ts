@@ -276,4 +276,5 @@ function detectPlatform(): void {
  */
 export function refreshTauriDetection(): void {
   detectTauri()
+  detectPlatform()
 }

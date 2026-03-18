@@ -278,6 +278,7 @@ export default {
     deepResearchStageFailed: 'Non riuscito',
     deepResearchStageCancelled: 'Annullato',
     contextPruned: 'Contesto ridotto, {tokens} token risparmiati',
+    contextCompacting: 'Compattazione del contesto...',
     contextCompacted: 'Contesto compattato: {before} → {after} messaggi',
     selectModel: 'Seleziona modello',
     provider: 'Provider',

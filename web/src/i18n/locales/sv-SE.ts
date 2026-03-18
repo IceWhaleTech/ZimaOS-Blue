@@ -1524,6 +1524,7 @@ export default {
     videoGenStopped: 'Videogenereringen har stoppats.',
     agentTaskStopped: 'Uppgiften "{goal}" har stoppats.',
     contextPruned: 'Kontext rensad, {tokens} tokens sparade',
+    contextCompacting: 'Komprimerar kontext...',
     contextCompacted: 'Kontext komprimerad: {before} → {after} meddelanden',
     trialExhausted:
       'Provkvoten har förbrukats. Konfigurera din egen AI-leverantör för att fortsätta.',

@@ -546,7 +546,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   })
   const contextTrimInfo = ref<{
-    type: 'pruned' | 'compacted'
+    type: 'compacting' | 'pruned' | 'compacted'
     messagesPruned?: number
     tokensBefore?: number
     tokensAfter?: number

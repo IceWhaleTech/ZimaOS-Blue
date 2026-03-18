@@ -870,9 +870,6 @@ onMounted(async () => {
           @submit-shortcut="handleSearch"
         />
         <div class="hero-actions">
-          <button class="btn-primary" :disabled="loading" @click="handleSearch">
-            {{ commonText('search', 'Search') }}
-          </button>
           <button class="btn-ghost" :disabled="refreshing" @click="triggerRefresh">
             {{
               refreshing

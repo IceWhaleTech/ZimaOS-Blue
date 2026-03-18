@@ -1542,6 +1542,7 @@ export default {
     videoGenStopped: 'Video genereren is gestopt.',
     agentTaskStopped: 'Taak "{goal}" is gestopt.',
     contextPruned: 'Context opgeschoond, {tokens} tokens bespaard',
+    contextCompacting: 'Context comprimeren...',
     contextCompacted: 'Context gecomprimeerd: {before} → {after} berichten',
     trialExhausted:
       'Het proefquotum is opgebruikt. Configureer uw eigen AI-provider om door te gaan.',

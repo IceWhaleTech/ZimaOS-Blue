@@ -14899,6 +14899,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			progressiveContextTrim = alignContextTrimToSmartContextCounts(progressiveContextTrim, compactedBeforeCount, compactedAfterCount)
 		}
 	}
+	pendingContextCompacting := progressiveContextTrim != nil || compacted
 
 	// Build chat request
 	chatReq := llm.ChatRequest{
@@ -15396,6 +15397,15 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				Str("pinned_model", pinnedModel).
 				Msg("[chat] stream: pinned model for auto-continue")
 		}
+	}
+	emitContextCompacting := func() {
+		emitSSE(map[string]interface{}{
+			"compacting": true,
+			"stream_id":  streamID,
+		})
+	}
+	if pendingContextCompacting {
+		emitContextCompacting()
 	}
 STREAM_LOOP:
 	for toolRound := 0; toolRound < maxToolRoundsForRequest; toolRound++ {

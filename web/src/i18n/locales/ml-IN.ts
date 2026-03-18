@@ -1237,6 +1237,7 @@ export default {
     videoGenStopped: 'വീഡിയോ നിർമ്മാണം നിർത്തി.',
     agentTaskStopped: '"{goal}" ടാസ്‌ക് നിർത്തി.',
     contextPruned: 'സന്ദർഭം ചുരുക്കി, {tokens} ടോക്കണുകൾ ലാഭിച്ചു',
+    contextCompacting: 'സന്ദർഭം കംപാക്റ്റ് ചെയ്യുന്നു...',
     contextCompacted: 'സന്ദർഭം കംപാക്റ്റ് ചെയ്തു: {before} → {after} സന്ദേശങ്ങൾ',
     trialExhausted:
       'ട്രയൽ ക്വോട്ട ശേഷിച്ചിരിക്കുന്നില്ല. തുടരാൻ നിങ്ങളുടെ സ്വന്തം AI പ്രൊവൈഡർ കോൺഫിഗർ ചെയ്യുക.',

@@ -1555,6 +1555,7 @@ export default {
     videoGenStopped: "La generació de vídeo s'ha aturat.",
     agentTaskStopped: "La tasca «{goal}» s'ha aturat.",
     contextPruned: 'Context retallat, {tokens} tokens estalviats',
+    contextCompacting: "S'està compactant el context...",
     contextCompacted: 'Context compactat: {before} → {after} missatges',
     trialExhausted:
       "La quota de prova s'ha esgotat. Si us plau, configureu el vostre propi proveïdor d'IA per continuar.",

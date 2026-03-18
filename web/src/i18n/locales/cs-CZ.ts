@@ -1429,6 +1429,7 @@ export default {
     videoGenStopped: 'Generování videa bylo zastaveno.',
     agentTaskStopped: 'Úloha „{goal}" byla zastavena.',
     contextPruned: 'Kontext oříznut, ušetřeno {tokens} tokenů',
+    contextCompacting: 'Probíhá komprese kontextu...',
     contextCompacted: 'Kontext zkomprimován: {before} → {after} zpráv',
     trialExhausted:
       'Zkušební kvóta byla vyčerpána. Nakonfigurujte prosím vlastního poskytovatele AI pro pokračování.',

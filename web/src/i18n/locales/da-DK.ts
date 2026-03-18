@@ -1449,6 +1449,7 @@ export default {
     videoGenStopped: 'Videogenerering er stoppet.',
     agentTaskStopped: 'Opgaven "{goal}" er stoppet.',
     contextPruned: 'Kontekst beskåret, {tokens} tokens sparet',
+    contextCompacting: 'Komprimerer kontekst...',
     contextCompacted: 'Kontekst komprimeret: {before} → {after} beskeder',
     trialExhausted:
       'Prøvekvoten er opbrugt. Konfigurer venligst din egen AI-udbyder for at fortsætte.',

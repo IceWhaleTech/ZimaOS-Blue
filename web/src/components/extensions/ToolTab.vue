@@ -274,39 +274,34 @@ async function handleToggle(tool: Tool) {
 
 <template>
   <div class="tool-tab tool-gallery">
-    <section class="tools-showcase dashboard-card-surface">
-      <div class="tools-showcase__lead">
-        <div class="tools-showcase__intro">
-          <span class="dashboard-card-label">{{ t('extensions.tools') }}</span>
-          <h2 class="tools-showcase__title">{{ t('plugins.subtitle') }}</h2>
-          <p class="tools-showcase__hint">
-            <span class="tools-showcase__hint-icon" aria-hidden="true">!</span>
-            <span>{{ galleryHint }}</span>
-          </p>
-        </div>
-
-        <div class="tools-showcase__stats">
-          <article class="tools-showcase__stat-card dashboard-card-subsurface">
-            <span>{{ t('plugins.stats.total') }}</span>
-            <strong>{{ toolStats.total }}</strong>
-          </article>
-          <article class="tools-showcase__stat-card dashboard-card-subsurface">
-            <span>{{ t('plugins.stats.enabled') }}</span>
-            <strong>{{ toolStats.enabled }}</strong>
-          </article>
-          <article class="tools-showcase__stat-card dashboard-card-subsurface">
-            <span>{{ t('skillStore.status.local') }}</span>
-            <strong>{{ toolStats.local }}</strong>
-          </article>
-          <article class="tools-showcase__stat-card dashboard-card-subsurface">
-            <span>{{ t('skillStore.status.builtin') }}</span>
-            <strong>{{ toolStats.builtin }}</strong>
-          </article>
-        </div>
+    <section class="extension-market-hero dashboard-card-surface">
+      <div class="extension-market-hero__copy">
+        <span class="extension-market-hero__kicker">{{ t('extensions.tools') }}</span>
+        <h2 class="extension-market-hero__title">{{ t('plugins.subtitle') }}</h2>
+        <p class="extension-market-hero__hint">{{ galleryHint }}</p>
       </div>
 
-      <div class="filters tools-showcase__filters dashboard-card-subsurface">
-        <div class="search-box tools-showcase__search">
+      <div class="extension-market-hero__stats">
+        <span class="extension-market-hero__stat-pill">
+          <span>{{ t('plugins.stats.total') }}</span>
+          <strong>{{ toolStats.total }}</strong>
+        </span>
+        <span class="extension-market-hero__stat-pill">
+          <span>{{ t('plugins.stats.enabled') }}</span>
+          <strong>{{ toolStats.enabled }}</strong>
+        </span>
+        <span class="extension-market-hero__stat-pill">
+          <span>{{ t('skillStore.status.local') }}</span>
+          <strong>{{ toolStats.local }}</strong>
+        </span>
+        <span class="extension-market-hero__stat-pill">
+          <span>{{ t('skillStore.status.builtin') }}</span>
+          <strong>{{ toolStats.builtin }}</strong>
+        </span>
+      </div>
+
+      <div class="filters extension-market-hero__filters">
+        <div class="search-box extension-market-hero__search">
           <svg
             class="search-icon"
             viewBox="0 0 24 24"
@@ -332,8 +327,13 @@ async function handleToggle(tool: Tool) {
           </option>
         </select>
 
-        <div class="filter-actions">
-          <button class="btn-refresh" :disabled="toolStore.loading" @click="toolStore.fetchTools()">
+        <div class="filter-actions extension-market-hero__actions">
+          <button
+            class="btn-refresh"
+            type="button"
+            :disabled="toolStore.loading"
+            @click="toolStore.fetchTools()"
+          >
             <svg
               v-if="!toolStore.loading"
               viewBox="0 0 24 24"

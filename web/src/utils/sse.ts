@@ -10,7 +10,7 @@ export interface SSEClientOptions {
   onBlocked?: (message: string, threatLevel: string) => void
   onTrialExhausted?: (message: string) => void
   onContextTrimmed?: (info: {
-    type: 'pruned' | 'compacted'
+    type: 'compacting' | 'pruned' | 'compacted'
     messagesPruned?: number
     tokensBefore?: number
     tokensAfter?: number
@@ -301,6 +301,13 @@ export class SSEClient {
                 chunk.delta = cleaned
                 if (awaiting) {
                   chunk.awaiting_user_input = true
+                }
+                // Check for context compaction start event (sent before the model responds)
+                if (chunk.compacting) {
+                  options.onContextTrimmed?.({
+                    type: 'compacting',
+                  })
+                  continue
                 }
                 // Check for context pruning event (sent on first content chunk)
                 if (chunk.pruned) {

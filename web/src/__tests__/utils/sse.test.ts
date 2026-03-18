@@ -188,6 +188,66 @@ describe('SSE Client', () => {
       expect(onError).not.toHaveBeenCalled()
     })
 
+    it('should surface context compacting lifecycle events', async () => {
+      const encoder = new TextEncoder()
+      let callCount = 0
+      const mockReader = {
+        read: vi.fn().mockImplementation(() => {
+          callCount++
+          if (callCount === 1) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"compacting":true}\n\n'),
+            })
+          }
+          if (callCount === 2) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"compacted":true,"before":12,"after":5}\n\n'),
+            })
+          }
+          if (callCount === 3) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"delta":"Hello"}\n\n'),
+            })
+          }
+          if (callCount === 4) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: [DONE]\n\n'),
+            })
+          }
+          return Promise.resolve({ done: true, value: undefined })
+        }),
+      }
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: { getReader: () => mockReader },
+      })
+      global.fetch = mockFetch
+
+      const onContextTrimmed = vi.fn()
+      const onMessage = vi.fn()
+      const onComplete = vi.fn()
+
+      await client.connect(
+        'conv-1',
+        { message: 'test', provider: 'openai', model: 'gpt-4o-mini' },
+        { onMessage, onComplete, onContextTrimmed }
+      )
+
+      expect(onContextTrimmed).toHaveBeenNthCalledWith(1, { type: 'compacting' })
+      expect(onContextTrimmed).toHaveBeenNthCalledWith(2, {
+        type: 'compacted',
+        before: 12,
+        after: 5,
+      })
+      expect(onMessage).toHaveBeenCalledWith({ delta: 'Hello', done: false })
+      expect(onComplete).toHaveBeenCalled()
+    })
+
     it('should trigger PROVIDER_RETURNED_EMPTY when stream closes with done:true but no delta', async () => {
       const encoder = new TextEncoder()
       let callCount = 0

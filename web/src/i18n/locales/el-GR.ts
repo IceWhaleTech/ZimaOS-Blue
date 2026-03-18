@@ -1434,6 +1434,7 @@ export default {
     videoGenStopped: 'Η δημιουργία βίντεο σταμάτησε.',
     agentTaskStopped: 'Η εργασία «{goal}» σταμάτησε.',
     contextPruned: 'Το πλαίσιο περικόπηκε, εξοικονομήθηκαν {tokens} tokens',
+    contextCompacting: 'Συμπίεση πλαισίου...',
     contextCompacted: 'Το πλαίσιο συμπιέστηκε: {before} → {after} μηνύματα',
     trialExhausted:
       'Το δοκιμαστικό όριο έχει εξαντληθεί. Παρακαλώ διαμορφώστε τον δικό σας πάροχο AI για να συνεχίσετε.',

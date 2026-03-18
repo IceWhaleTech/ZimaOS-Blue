@@ -2020,6 +2020,7 @@ export default {
     videoGenStopped: 'Generiranje videa je zaustavljeno.',
     agentTaskStopped: 'Zadatak „{goal}" je zaustavljen.',
     contextPruned: 'Kontekst skraćen, ušteđeno {tokens} tokena',
+    contextCompacting: 'Sažimanje konteksta...',
     contextCompacted: 'Kontekst komprimiran: {before} → {after} poruka',
     trialExhausted:
       'Pokusna kvota je iscrpljena. Molimo konfigurujte vlastiti AI pružatelja da nastavite.',

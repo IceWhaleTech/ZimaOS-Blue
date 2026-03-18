@@ -149,7 +149,7 @@ const routingMenuAnchorEl = ref<HTMLElement | null>(null)
 const routingMenuFloatingRef = ref<HTMLElement | null>(null)
 const routingMenuPosition = ref({ x: 0, y: 0 })
 
-// Context trim indicator with 1-second delay
+// Context trim indicator
 const showContextTrim = ref(false)
 let contextTrimTimer: ReturnType<typeof setTimeout> | null = null
 watch(
@@ -167,11 +167,15 @@ watch(
           showContextTrim.value = false
           return
         }
+        // Prune notices are quieter; only show when they persist for a moment.
+        contextTrimTimer = setTimeout(() => {
+          if (chatStore.streaming || info) showContextTrim.value = true
+        }, 1000)
+        return
       }
-      // Show after 1s delay (only if still streaming)
-      contextTrimTimer = setTimeout(() => {
-        if (chatStore.streaming || info) showContextTrim.value = true
-      }, 1000)
+
+      // Compaction status should be visible immediately so users know what is happening.
+      showContextTrim.value = true
     } else {
       showContextTrim.value = false
     }
@@ -3316,6 +3320,7 @@ onUnmounted(() => {
                     >
                       <svg
                         class="w-3.5 h-3.5 flex-shrink-0"
+                        :class="{ 'animate-pulse': chatStore.contextTrimInfo?.type === 'compacting' }"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -3327,7 +3332,10 @@ onUnmounted(() => {
                           d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"
                         />
                       </svg>
-                      <span v-if="chatStore.contextTrimInfo?.type === 'pruned'">
+                      <span v-if="chatStore.contextTrimInfo?.type === 'compacting'">
+                        {{ t('chat.contextCompacting') }}
+                      </span>
+                      <span v-else-if="chatStore.contextTrimInfo?.type === 'pruned'">
                         {{
                           t('chat.contextPruned', {
                             tokens: formatTokens(
@@ -4050,7 +4058,7 @@ header,
 .chat-page-header {
   position: relative;
   z-index: 3;
-  padding: 0 1rem 0 1.1rem;
+  padding: 0 0.9rem 0 0.96rem;
   border-bottom: none;
   background: transparent;
 }
@@ -4063,7 +4071,7 @@ header,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 3rem;
+  height: 2.5rem;
 }
 
 .chat-page-heading {
@@ -4094,6 +4102,43 @@ header,
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
+  border: 1px solid rgba(186, 203, 223, 0.44);
+  border-radius: 1.55rem;
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.66),
+    0 28px 52px -42px rgba(148, 163, 184, 0.44);
+  backdrop-filter: blur(18px) saturate(1.08);
+  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+}
+
+html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-sidebar-shell {
+  border-right-color: rgba(186, 203, 223, 0.48);
+}
+
+html[data-blue-macos-glass='true'] .chat-page-header {
+  padding: 0 0.82rem 0 0.88rem;
+}
+
+html[data-blue-macos-glass='true'] .chat-page-header-inner {
+  height: 2.12rem;
+}
+
+html[data-blue-macos-glass='true'] .chat-page-title {
+  font-size: clamp(0.9rem, 0.88vw, 1.02rem);
+}
+
+@media (min-width: 768px) {
+  html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-page-header {
+    display: none;
+  }
+}
+
+html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-thread-shell-desktop {
+  padding-top: 0.08rem;
 }
 
 .chat-thread-header {
@@ -4817,6 +4862,16 @@ header,
 [data-theme='dark'] .chat-desktop-shell .chat-workspace {
   background: transparent;
   box-shadow: none;
+}
+
+html[data-blue-macos-glass='true']:root.dark .chat-desktop-shell .chat-workspace,
+html[data-blue-macos-glass='true'][data-theme='dark'] .chat-desktop-shell .chat-workspace,
+html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
+  border-color: rgba(71, 85, 105, 0.66);
+  background: rgba(15, 23, 42, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(148, 163, 184, 0.08),
+    0 26px 48px -38px rgba(2, 6, 23, 0.72);
 }
 
 :root.dark .chat-main-shell,

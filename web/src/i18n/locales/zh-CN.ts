@@ -506,6 +506,7 @@ export default {
     },
     contextPruned: '上下文已裁剪，节省 {tokens} tokens',
     contextPrunedLight: '已精简早期对话',
+    contextCompacting: '正在压缩上下文...',
     contextCompacted: '上下文已压缩：{before} → {after} 条消息',
     regenerate: '重新生成',
     startConversation: '开始对话',

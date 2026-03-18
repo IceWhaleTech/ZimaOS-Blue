@@ -182,6 +182,7 @@ export default {
     videoGenStopped: 'A geração de vídeo foi interrompida.',
     agentTaskStopped: 'A tarefa "{goal}" foi interrompida.',
     contextPruned: 'Contexto reduzido, {tokens} tokens poupados',
+    contextCompacting: 'Compactando o contexto...',
     contextCompacted: 'Contexto compactado: {before} → {after} mensagens',
     providerOpenRouterPrivacyPolicy:
       'O OpenRouter bloqueou este pedido devido às definições de privacidade. Aceda a https://openrouter.ai/settings/privacy, ative "Free model publication" e tente novamente.',

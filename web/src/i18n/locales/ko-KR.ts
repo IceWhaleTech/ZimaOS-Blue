@@ -415,6 +415,7 @@ export default {
     deepResearchActionSynthesizing: 'Synthesizing report',
     deepResearchActionCompleted: 'Completed',
     contextPruned: '컨텍스트 정리 완료, {tokens} 토큰 절약',
+    contextCompacting: '컨텍스트 압축 중...',
     contextCompacted: '컨텍스트 압축: {before} → {after} 메시지',
     selectModel: '모델 선택',
     provider: '공급자',

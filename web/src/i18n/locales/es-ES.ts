@@ -296,6 +296,7 @@ export default {
     deepResearchActionSynthesizing: 'Synthesizing report',
     deepResearchActionCompleted: 'Completed',
     contextPruned: 'Contexto recortado, {tokens} tokens ahorrados',
+    contextCompacting: 'Compactando el contexto...',
     contextCompacted: 'Contexto compactado: {before} → {after} mensajes',
     selectModel: 'Seleccionar modelo',
     provider: 'Proveedor',

@@ -145,6 +145,8 @@ export interface StreamChunk {
   messages_pruned?: number
   tokens_before?: number
   tokens_after?: number
+  // Context compaction started (sent before the model begins responding)
+  compacting?: boolean
   // Context compaction info (sent on first content chunk)
   compacted?: boolean
   before?: number

@@ -59,6 +59,13 @@ const MAIN_WINDOW_WIDTH: f64 = 1400.0;
 const MAIN_WINDOW_HEIGHT: f64 = 900.0;
 const MAIN_WINDOW_MIN_WIDTH: f64 = 800.0;
 const MAIN_WINDOW_MIN_HEIGHT: f64 = 600.0;
+const PANEL_WINDOW_LABEL: &str = "panel";
+const PANEL_WINDOW_TITLE: &str = "ZimaOS Blue Quick Panel";
+const PANEL_WINDOW_WIDTH: f64 = 880.0;
+const PANEL_WINDOW_HEIGHT: f64 = 640.0;
+const PANEL_WINDOW_MIN_WIDTH: f64 = 640.0;
+const PANEL_WINDOW_MIN_HEIGHT: f64 = 420.0;
+const PANEL_WINDOW_PATH: &str = "/chat?panel=1";
 const ABOUT_BLANK_SPLASH_SCRIPT: &str = r#"
 document.documentElement.style.background = 'transparent';
 document.body.style.cssText = 'margin:0;background:transparent;display:flex;align-items:center;justify-content:center;height:100vh';
@@ -79,6 +86,7 @@ const MACOS_GLASS_INIT_SCRIPT: &str = r#"
 "#;
 
 /// Stores the tray quit MenuItem so we can update its text dynamically
+struct TrayPanelItem(MenuItem<tauri::Wry>);
 struct TrayQuitItem(MenuItem<tauri::Wry>);
 
 #[cfg(target_os = "macos")]
@@ -110,13 +118,169 @@ fn build_main_window<R: tauri::Runtime, M: Manager<R>>(
     #[cfg(target_os = "macos")]
     let builder = builder
         .transparent(true)
-        .title_bar_style(tauri::TitleBarStyle::Transparent)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .traffic_light_position(tauri::LogicalPosition::new(18.0, 20.0))
         .hidden_title(true)
         .accept_first_mouse(true)
         .effects(main_window_effects())
         .initialization_script(MACOS_GLASS_INIT_SCRIPT);
 
     builder.build()
+}
+
+fn build_panel_window<R: tauri::Runtime, M: Manager<R>>(
+    manager: &M,
+    url: tauri::WebviewUrl,
+) -> tauri::Result<tauri::WebviewWindow<R>> {
+    let builder = tauri::WebviewWindowBuilder::new(manager, PANEL_WINDOW_LABEL, url)
+        .title(PANEL_WINDOW_TITLE)
+        .inner_size(PANEL_WINDOW_WIDTH, PANEL_WINDOW_HEIGHT)
+        .min_inner_size(PANEL_WINDOW_MIN_WIDTH, PANEL_WINDOW_MIN_HEIGHT)
+        .center()
+        .resizable(true)
+        .maximizable(false)
+        .minimizable(false)
+        .skip_taskbar(true)
+        .visible(false);
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .transparent(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .traffic_light_position(tauri::LogicalPosition::new(18.0, 18.0))
+        .hidden_title(true)
+        .accept_first_mouse(true)
+        .effects(main_window_effects())
+        .initialization_script(MACOS_GLASS_INIT_SCRIPT);
+
+    builder.build()
+}
+
+fn about_blank_webview_url() -> tauri::WebviewUrl {
+    tauri::WebviewUrl::CustomProtocol(
+        "about:blank"
+            .parse()
+            .expect("about:blank should be a valid URL"),
+    )
+}
+
+fn server_origin(app_handle: &tauri::AppHandle) -> Option<String> {
+    let state = app_handle.try_state::<AppState>()?;
+    if !*state.server_running.lock().unwrap() {
+        return None;
+    }
+
+    let port = *state.server_port.lock().unwrap();
+    let use_https = *state.use_https.lock().unwrap();
+    let protocol = if use_https { "https" } else { "http" };
+    Some(format!("{}://localhost:{}", protocol, port))
+}
+
+fn webview_url_for_path(app_handle: &tauri::AppHandle, path: &str) -> tauri::WebviewUrl {
+    if let Some(origin) = server_origin(app_handle) {
+        tauri::WebviewUrl::External(
+            format!("{}{}", origin, path)
+                .parse()
+                .expect("server URL should be valid"),
+        )
+    } else {
+        about_blank_webview_url()
+    }
+}
+
+fn show_and_focus_window<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+}
+
+#[cfg(target_os = "macos")]
+fn apply_main_window_macos_style<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    if let Err(err) = window.set_title_bar_style(tauri::TitleBarStyle::Overlay) {
+        error!("Failed to apply macOS title bar style: {}", err);
+    }
+    if let Err(err) = window.set_effects(main_window_effects()) {
+        error!("Failed to apply macOS window effects: {}", err);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn activate_macos_app() {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+
+    if let Some(mtm) = MainThreadMarker::new() {
+        let ns_app = NSApplication::sharedApplication(mtm);
+        ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    }
+}
+
+fn open_or_focus_main_window(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    activate_macos_app();
+
+    if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
+        #[cfg(target_os = "macos")]
+        apply_main_window_macos_style(&window);
+        show_and_focus_window(&window);
+        return Ok(());
+    }
+
+    let window = build_main_window(app_handle, webview_url_for_path(app_handle, ""))?;
+    let _ = window.set_focus();
+    Ok(())
+}
+
+fn open_or_focus_panel_window(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    activate_macos_app();
+
+    if let Some(window) = app_handle.get_webview_window(PANEL_WINDOW_LABEL) {
+        show_and_focus_window(&window);
+        return Ok(());
+    }
+
+    let window = build_panel_window(app_handle, webview_url_for_path(app_handle, PANEL_WINDOW_PATH))?;
+    let _ = window.set_focus();
+    Ok(())
+}
+
+fn navigate_window_to_server_path(
+    app_handle: &tauri::AppHandle,
+    label: &str,
+    path: &str,
+) -> Result<(), String> {
+    let Some(origin) = server_origin(app_handle) else {
+        return Err("Server URL not ready".to_string());
+    };
+    let Some(window) = app_handle.get_webview_window(label) else {
+        return Err(format!("Window {label} not found"));
+    };
+
+    let url = format!("{}{}", origin, path);
+    window
+        .navigate(url.parse().expect("server URL should be valid"))
+        .map_err(|e| e.to_string())
+}
+
+fn show_server_start_error<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, error_message: &str) {
+    let escaped = error_message
+        .replace('\\', "\\\\")
+        .replace('\'', "\\'")
+        .replace('\n', "\\n");
+    let _ = window.eval(&format!(
+        "document.documentElement.style.background='transparent';\
+         document.body.style.cssText='margin:0;background:transparent;color:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:system-ui,sans-serif';\
+         document.body.innerHTML='<div style=\"text-align:center;max-width:520px;margin:16px;padding:2rem;border-radius:28px;background:rgba(15,23,42,0.68);box-shadow:inset 0 1px 0 rgba(255,255,255,0.12),0 32px 80px rgba(2,6,23,0.3);backdrop-filter:blur(28px) saturate(1.12);-webkit-backdrop-filter:blur(28px) saturate(1.12)\">\
+         <div style=\"font-size:48px;margin-bottom:16px\">&#9888;&#65039;</div>\
+         <h2 style=\"margin:0 0 12px;font-size:20px\">Server Failed to Start</h2>\
+         <p style=\"color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px\">{}</p>\
+         <button onclick=\"location.reload()\" style=\"background:#3B82F6;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;cursor:pointer\">Retry</button>\
+         </div>';\
+         document.querySelector(\"style\")?.remove();",
+        escaped
+    ));
+    show_and_focus_window(window);
 }
 
 /// Map locale string to localized "Quit ZimaOS Blue" label
@@ -149,6 +313,36 @@ fn quit_label_for_locale(locale: &str) -> String {
         _ => "Quit",
     };
     format!("{} ZimaOS Blue", verb)
+}
+
+fn quick_panel_label_for_locale(locale: &str) -> &'static str {
+    let prefix = locale.split(&['-', '_'][..]).next().unwrap_or("en");
+    match prefix {
+        "zh" => "打开快捷面板",
+        "ja" => "クイックパネルを開く",
+        "ko" => "빠른 패널 열기",
+        "fr" => "Ouvrir le panneau rapide",
+        "de" => "Schnellpanel öffnen",
+        "es" => "Abrir panel rapido",
+        "it" => "Apri pannello rapido",
+        "pt" => "Abrir painel rapido",
+        "nl" => "Snelpaneel openen",
+        "ca" => "Obre el panell rapid",
+        "sv" => "Oppna snabbpanel",
+        "da" => "Abn hurtigpanel",
+        "nb" | "no" => "Apne hurtigpanel",
+        "ga" => "Oscail an painel tapa",
+        "pl" => "Otworz szybki panel",
+        "cs" => "Otevrit rychly panel",
+        "sk" => "Otvorit rychly panel",
+        "hu" => "Gyorspanel megnyitasa",
+        "ro" => "Deschide panoul rapid",
+        "hr" => "Otvori brzu plocu",
+        "el" => "Ανοιγμα γρηγορου πινακα",
+        "ru" => "Открыть быструю панель",
+        "ml" => "ദ്രുത പാനല് തുറക്കുക",
+        _ => "Open Quick Panel",
+    }
 }
 
 /// Gracefully shut down: close connections, stop Go server, then exit.
@@ -591,11 +785,18 @@ mod tests {
 /// Update tray menu language to match app locale
 #[tauri::command]
 fn set_tray_locale(app: tauri::AppHandle, locale: String) {
-    let label = quit_label_for_locale(&locale);
-    if let Some(quit_item) = app.try_state::<TrayQuitItem>() {
-        let _ = quit_item.0.set_text(&label);
-        info!("Tray menu language updated to: {} ({})", locale, label);
+    let quit_label = quit_label_for_locale(&locale);
+    let panel_label = quick_panel_label_for_locale(&locale);
+    if let Some(panel_item) = app.try_state::<TrayPanelItem>() {
+        let _ = panel_item.0.set_text(panel_label);
     }
+    if let Some(quit_item) = app.try_state::<TrayQuitItem>() {
+        let _ = quit_item.0.set_text(&quit_label);
+    }
+    info!(
+        "Tray menu language updated to: {} (panel: {}, quit: {})",
+        locale, panel_label, quit_label
+    );
 }
 
 /// Set close behavior: "quit" or "minimize"
@@ -992,10 +1193,8 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // When second instance is launched, show and focus the first instance
             info!("Second instance detected, focusing existing window");
-            if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-                let _ = window.show();
-                let _ = window.set_focus();
-                let _ = window.unminimize();
+            if let Err(e) = open_or_focus_main_window(&app) {
+                error!("Failed to focus main window for second instance: {}", e);
             }
         }))
         .plugin(tauri_plugin_shell::init())
@@ -1065,29 +1264,28 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-                    info!("Rebuilding main window with macOS vibrancy styling");
-                    let _ = window.destroy();
+                    info!("Applying macOS styling to existing main window");
+                    apply_main_window_macos_style(&window);
+                } else {
+                    info!(
+                        "Main window is not available during setup yet; macOS styling will be applied after creation"
+                    );
                 }
-
-                let _ = build_main_window(
-                    app.handle(),
-                    tauri::WebviewUrl::CustomProtocol(
-                        "about:blank"
-                            .parse()
-                            .expect("about:blank should be a valid URL"),
-                    ),
-                )?;
             }
 
             // Detect system language for initial tray menu (updated dynamically after webview loads)
-            let quit_label = {
+            let (panel_label, quit_label) = {
                 let lang = sys_locale::get_locale().unwrap_or_else(|| "en".to_string());
-                quit_label_for_locale(&lang)
+                (
+                    quick_panel_label_for_locale(&lang).to_string(),
+                    quit_label_for_locale(&lang),
+                )
             };
 
-            // Create tray menu — quit only (right-click menu)
+            // Create tray menu with a compact panel launcher and quit action.
+            let panel = MenuItem::with_id(app, "open_panel", panel_label, true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", quit_label, true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&quit])?;
+            let menu = Menu::with_items(app, &[&panel, &quit])?;
 
             // Build tray icon with template image (macOS auto-adapts for light/dark mode)
             let icon = Image::from_bytes(include_bytes!("../icons/tray.png"))
@@ -1098,6 +1296,12 @@ pub fn run() {
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open_panel" => {
+                        info!("Quick panel requested from tray");
+                        if let Err(e) = open_or_focus_panel_window(&app.app_handle()) {
+                            error!("Failed to open quick panel: {}", e);
+                        }
+                    }
                     "quit" => {
                         info!("Quit requested from tray");
                         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -1124,38 +1328,8 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        #[cfg(target_os = "macos")]
-                        {
-                            use objc2::MainThreadMarker;
-                            use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-                            if let Some(mtm) = MainThreadMarker::new() {
-                                let ns_app = NSApplication::sharedApplication(mtm);
-                                ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
-                            }
-                        }
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        } else {
-                            // Window was destroyed — recreate it
-                            let (port, use_https) = if let Some(state) = app.try_state::<AppState>() {
-                                (
-                                    *state.server_port.lock().unwrap(),
-                                    *state.use_https.lock().unwrap(),
-                                )
-                            } else {
-                                (80, false)
-                            };
-                            let protocol = if use_https { "https" } else { "http" };
-                            let url = format!("{}://localhost:{}", protocol, port);
-                            if let Ok(window) = build_main_window(
-                                app,
-                                tauri::WebviewUrl::External(url.parse().unwrap()),
-                            ) {
-                                // Window will be shown by frontend after content loads
-                                let _ = window.set_focus();
-                            }
+                        if let Err(e) = open_or_focus_main_window(&tray.app_handle()) {
+                            error!("Failed to open main window from tray: {}", e);
                         }
                     }
                 })
@@ -1163,6 +1337,7 @@ pub fn run() {
 
             // Store tray icon in app state for cleanup on Windows
             app.manage(tray);
+            app.manage(TrayPanelItem(panel));
             app.manage(TrayQuitItem(quit));
 
             // Open devtools in debug builds (must be done in setup, before async tasks)
@@ -1215,23 +1390,10 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
                     Ok(_) => info!("Server started successfully"),
                     Err(e) => {
                         error!("Failed to start server: {}", e);
-                        // Show error page in the webview
-                        if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
-                            let escaped = e.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n");
-                            let _ = window.eval(&format!(
-                                "document.documentElement.style.background='transparent';\
-                                 document.body.style.cssText='margin:0;background:transparent;color:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:system-ui,sans-serif';\
-                                 document.body.innerHTML='<div style=\"text-align:center;max-width:520px;margin:16px;padding:2rem;border-radius:28px;background:rgba(15,23,42,0.68);box-shadow:inset 0 1px 0 rgba(255,255,255,0.12),0 32px 80px rgba(2,6,23,0.3);backdrop-filter:blur(28px) saturate(1.12);-webkit-backdrop-filter:blur(28px) saturate(1.12)\">\
-                                 <div style=\"font-size:48px;margin-bottom:16px\">&#9888;&#65039;</div>\
-                                 <h2 style=\"margin:0 0 12px;font-size:20px\">Server Failed to Start</h2>\
-                                 <p style=\"color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px\">{}</p>\
-                                 <button onclick=\"location.reload()\" style=\"background:#3B82F6;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;cursor:pointer\">Retry</button>\
-                                 </div>';\
-                                 document.querySelector(\"style\")?.remove();",
-                                escaped
-                            ));
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                        for label in [MAIN_WINDOW_LABEL, PANEL_WINDOW_LABEL] {
+                            if let Some(window) = app_handle.get_webview_window(label) {
+                                show_server_start_error(&window, &e);
+                            }
                         }
                         return;
                     }
@@ -1257,13 +1419,28 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
                     });
                 }
 
-                // Navigate the main window to the Go server URL
+                // Navigate windows that may still be showing the startup splash.
                 if let Some(window) = app_handle_for_window.get_webview_window(MAIN_WINDOW_LABEL) {
+                    #[cfg(target_os = "macos")]
+                    apply_main_window_macos_style(&window);
+
                     let protocol = if use_https { "https" } else { "http" };
                     let url = format!("{}://localhost:{}", protocol, port);
-                    info!("Navigating to server at {}", url);
-                    if let Err(e) = window.navigate(url.parse().unwrap()) {
-                        error!("Failed to navigate to server: {}", e);
+                    info!("Navigating main window to server at {}", url);
+                    if let Err(e) =
+                        navigate_window_to_server_path(&app_handle_for_window, MAIN_WINDOW_LABEL, "")
+                    {
+                        error!("Failed to navigate main window to server: {}", e);
+                    }
+
+                    if app_handle_for_window.get_webview_window(PANEL_WINDOW_LABEL).is_some() {
+                        if let Err(e) = navigate_window_to_server_path(
+                            &app_handle_for_window,
+                            PANEL_WINDOW_LABEL,
+                            PANEL_WINDOW_PATH,
+                        ) {
+                            error!("Failed to navigate quick panel to server: {}", e);
+                        }
                     }
 
                     // on_page_load shows the window as soon as the HTML loads (splash visible).
@@ -1299,8 +1476,10 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
                     // Only prevent exit if we're not actually quitting AND minimize-to-tray is enabled
                     if !QUITTING.load(Ordering::SeqCst) && MINIMIZE_TO_TRAY.load(Ordering::SeqCst) {
                         api.prevent_exit();
-                        if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
-                            let _ = window.hide();
+                        for label in [MAIN_WINDOW_LABEL, PANEL_WINDOW_LABEL] {
+                            if let Some(window) = app_handle.get_webview_window(label) {
+                                let _ = window.hide();
+                            }
                         }
                         // On macOS, hide the Dock icon when minimizing to tray
                         #[cfg(target_os = "macos")]

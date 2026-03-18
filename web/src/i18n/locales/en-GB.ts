@@ -228,6 +228,7 @@ export default {
     videoGenStopped: 'Video generation has been stopped.',
     agentTaskStopped: 'Task "{goal}" has been stopped.',
     contextPruned: 'Context pruned, saved {tokens} tokens',
+    contextCompacting: 'Compacting context...',
     contextCompacted: 'Context compacted: {before} → {after} messages',
     providerOpenRouterPrivacyPolicy:
       'OpenRouter blocked this request due to privacy policy settings. Go to the OpenRouter page at https://openrouter.ai/settings/privacy, enable "Free model publication", then try again (this switch is not in this app).',

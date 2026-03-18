@@ -3780,15 +3780,27 @@ func TestStreamMessage_ContextCompactionSSEUsesSmartContextCounts(t *testing.T) 
 	body := runStreamTurn(t, handler, conv.ID, `{"message":"继续","model":"gpt-5.3-codex-spark","max_tokens":64}`)
 	events := extractJSONSSEEvents(t, body)
 
+	compactingIndex := -1
+	compactedIndex := -1
 	var compaction map[string]interface{}
-	for _, event := range events {
+	for i, event := range events {
+		if compacting, _ := event["compacting"].(bool); compacting && compactingIndex < 0 {
+			compactingIndex = i
+		}
 		if compacted, _ := event["compacted"].(bool); compacted {
+			compactedIndex = i
 			compaction = event
 			break
 		}
 	}
+	if compactingIndex < 0 {
+		t.Fatalf("expected compacting SSE event, body=%s", body)
+	}
 	if compaction == nil {
 		t.Fatalf("expected compaction SSE event, body=%s", body)
+	}
+	if compactedIndex <= compactingIndex {
+		t.Fatalf("expected compacted event after compacting event, events=%+v", events)
 	}
 
 	before, ok := compaction["before"].(float64)
@@ -3853,11 +3865,22 @@ func TestStreamMessageRetriesContextTooLongWithLargerModel(t *testing.T) {
 	if len(events) == 0 {
 		t.Fatalf("expected SSE events, body=%s", body)
 	}
-	if got, _ := events[0]["type"].(string); got != "progressive_compaction" {
-		t.Fatalf("first event type = %q, want progressive_compaction; events=%+v", got, events)
+
+	var firstCompacted map[string]interface{}
+	for _, event := range events {
+		if compacted, _ := event["compacted"].(bool); compacted {
+			firstCompacted = event
+			break
+		}
 	}
-	if got, _ := events[0]["fallback_model"].(string); got != "large-model" {
-		t.Fatalf("fallback_model = %q, want large-model; first_event=%+v", got, events[0])
+	if firstCompacted == nil {
+		t.Fatalf("expected compacted SSE event, events=%+v", events)
+	}
+	if got, _ := firstCompacted["type"].(string); got != "progressive_compaction" {
+		t.Fatalf("compacted event type = %q, want progressive_compaction; events=%+v", got, events)
+	}
+	if got, _ := firstCompacted["fallback_model"].(string); got != "large-model" {
+		t.Fatalf("fallback_model = %q, want large-model; compacted_event=%+v", got, firstCompacted)
 	}
 
 	sawRecoveredDelta := false

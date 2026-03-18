@@ -275,6 +275,7 @@ export default {
     deepResearchActionSynthesizing: 'Synthesizing report',
     deepResearchActionCompleted: 'Completed',
     contextPruned: 'Контекст сокращён, сэкономлено {tokens} токенов',
+    contextCompacting: 'Контекст сжимается...',
     contextCompacted: 'Контекст сжат: {before} → {after} сообщений',
     newChat: 'Новый чат',
     newConversation: 'Новый разговор',

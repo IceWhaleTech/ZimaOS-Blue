@@ -318,39 +318,34 @@ async function handleToggle(skill: Skill) {
 
 <template>
   <div class="skill-tab skill-gallery">
-    <section class="skills-showcase dashboard-card-surface">
-      <div class="skills-showcase__lead">
-        <div class="skills-showcase__intro">
-          <span class="dashboard-card-label">{{ t('extensions.skills') }}</span>
-          <h2 class="skills-showcase__title">{{ t('plugins.subtitle') }}</h2>
-          <p class="skills-showcase__hint">
-            <span class="skills-showcase__hint-icon" aria-hidden="true">!</span>
-            <span>{{ galleryHint }}</span>
-          </p>
-        </div>
-
-        <div class="skills-showcase__stats">
-          <article class="skills-showcase__stat-card dashboard-card-subsurface">
-            <span>{{ t('plugins.stats.total') }}</span>
-            <strong>{{ skillStats.total }}</strong>
-          </article>
-          <article class="skills-showcase__stat-card dashboard-card-subsurface">
-            <span>{{ t('plugins.stats.enabled') }}</span>
-            <strong>{{ skillStats.enabled }}</strong>
-          </article>
-          <article class="skills-showcase__stat-card dashboard-card-subsurface">
-            <span>{{ t('skillStore.status.local') }}</span>
-            <strong>{{ skillStats.local }}</strong>
-          </article>
-          <article class="skills-showcase__stat-card dashboard-card-subsurface">
-            <span>{{ t('skillStore.status.builtin') }}</span>
-            <strong>{{ skillStats.builtin }}</strong>
-          </article>
-        </div>
+    <section class="extension-market-hero dashboard-card-surface">
+      <div class="extension-market-hero__copy">
+        <span class="extension-market-hero__kicker">{{ t('extensions.skills') }}</span>
+        <h2 class="extension-market-hero__title">{{ t('plugins.subtitle') }}</h2>
+        <p class="extension-market-hero__hint">{{ galleryHint }}</p>
       </div>
 
-      <div class="filters skills-showcase__filters dashboard-card-subsurface">
-        <div class="search-box skills-showcase__search">
+      <div class="extension-market-hero__stats">
+        <span class="extension-market-hero__stat-pill">
+          <span>{{ t('plugins.stats.total') }}</span>
+          <strong>{{ skillStats.total }}</strong>
+        </span>
+        <span class="extension-market-hero__stat-pill">
+          <span>{{ t('plugins.stats.enabled') }}</span>
+          <strong>{{ skillStats.enabled }}</strong>
+        </span>
+        <span class="extension-market-hero__stat-pill">
+          <span>{{ t('skillStore.status.local') }}</span>
+          <strong>{{ skillStats.local }}</strong>
+        </span>
+        <span class="extension-market-hero__stat-pill">
+          <span>{{ t('skillStore.status.builtin') }}</span>
+          <strong>{{ skillStats.builtin }}</strong>
+        </span>
+      </div>
+
+      <div class="filters extension-market-hero__filters">
+        <div class="search-box extension-market-hero__search">
           <svg
             class="search-icon"
             viewBox="0 0 24 24"
@@ -382,7 +377,7 @@ async function handleToggle(skill: Skill) {
           <option value="disabled">{{ t('common.disabled') }}</option>
         </select>
 
-        <div class="filter-actions">
+        <div class="filter-actions extension-market-hero__actions">
           <button class="btn-add-source" type="button" @click="emit('install-skill')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 4v16m8-8H4" />

@@ -2042,6 +2042,7 @@ export default {
     videoGenStopped: 'Videogenerering er stoppet.',
     agentTaskStopped: 'Oppgaven «{goal}» er stoppet.',
     contextPruned: 'Kontekst beskjært, {tokens} tokens spart',
+    contextCompacting: 'Komprimerer kontekst...',
     contextCompacted: 'Kontekst komprimert: {before} → {after} meldinger',
     trialExhausted:
       'Prøvekvoten er oppbrukt. Vennligst konfigurer din egen AI-leverandør for å fortsette.',

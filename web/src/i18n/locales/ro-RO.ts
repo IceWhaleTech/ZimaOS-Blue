@@ -1231,6 +1231,7 @@ export default {
     videoGenStopped: 'Generarea videoclipului a fost oprită.',
     agentTaskStopped: 'Sarcina „{goal}" a fost oprită.',
     contextPruned: 'Context redus, {tokens} tokeni economisiți',
+    contextCompacting: 'Se compactează contextul...',
     contextCompacted: 'Context compactat: {before} → {after} mesaje',
     trialExhausted:
       'Cota de încercare a fost epuizată. Vă rugăm să configurați propriul furnizor de IA pentru a continua.',

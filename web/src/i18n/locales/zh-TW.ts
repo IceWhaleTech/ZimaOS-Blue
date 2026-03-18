@@ -626,6 +626,7 @@ export default {
     providerRateLimited: 'AI 供應商觸發速率限制，請稍後再試。',
     execDirectoryApprovalTimeout: '命令執行已被阻止：目錄授權審批逾時。請先批准該目錄後再試。',
     contextPruned: '上下文已裁剪，節省 {tokens} tokens',
+    contextCompacting: '正在壓縮上下文...',
     contextCompacted: '上下文已壓縮：{before} → {after} 則訊息',
     newChat: '新對話',
     newConversation: '新對話',

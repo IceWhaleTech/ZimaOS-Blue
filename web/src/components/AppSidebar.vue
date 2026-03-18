@@ -1954,6 +1954,18 @@ function toggleSidebarTheme(): void {
   box-shadow: 18px 0 36px -28px rgba(2, 6, 23, 0.9);
 }
 
+html[data-blue-macos-glass='true'] .app-sidebar {
+  background:
+    radial-gradient(circle at 46% 0%, rgba(56, 189, 248, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.58));
+  backdrop-filter: blur(30px) saturate(1.16);
+  -webkit-backdrop-filter: blur(30px) saturate(1.16);
+  border-right-color: rgba(148, 163, 184, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    18px 0 36px -28px rgba(2, 6, 23, 0.54);
+}
+
 .sidebar-brand-shell {
   position: relative;
 }
@@ -2376,6 +2388,17 @@ function toggleSidebarTheme(): void {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 249, 251, 0.98));
   border-right-color: rgba(209, 213, 219, 0.9);
   box-shadow: 12px 0 26px -24px rgba(15, 23, 42, 0.1);
+}
+
+html.light[data-blue-macos-glass='true'] .app-sidebar,
+html[data-theme='light'][data-blue-macos-glass='true'] .app-sidebar {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(96, 165, 250, 0.18), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(241, 245, 249, 0.72));
+  border-right-color: rgba(186, 203, 223, 0.68);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.76),
+    12px 0 26px -24px rgba(148, 163, 184, 0.24);
 }
 
 :root.light .sidebar-brand,

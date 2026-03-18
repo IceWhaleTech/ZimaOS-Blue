@@ -1531,6 +1531,7 @@ export default {
     videoGenStopped: 'Generowanie wideo zostało zatrzymane.',
     agentTaskStopped: 'Zadanie „{goal}" zostało zatrzymane.',
     contextPruned: 'Kontekst przycięty, zaoszczędzono {tokens} tokenów',
+    contextCompacting: 'Trwa kompresowanie kontekstu...',
     contextCompacted: 'Kontekst skompresowany: {before} → {after} wiadomości',
     trialExhausted:
       'Limit próbny został wyczerpany. Skonfiguruj własnego dostawcę AI, aby kontynuować.',

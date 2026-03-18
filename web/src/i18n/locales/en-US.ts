@@ -547,6 +547,7 @@ export default {
     },
     contextPruned: 'Context pruned, saved {tokens} tokens',
     contextPrunedLight: 'Earlier messages condensed',
+    contextCompacting: 'Compacting context...',
     contextCompacted: 'Context compacted: {before} → {after} messages',
     regenerate: 'Regenerate',
     startConversation: 'Start a conversation',

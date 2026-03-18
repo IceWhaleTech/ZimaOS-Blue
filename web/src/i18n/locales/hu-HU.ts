@@ -2063,6 +2063,7 @@ export default {
     videoGenStopped: 'A videógenerálás leállítva.',
     agentTaskStopped: 'A(z) „{goal}" feladat leállítva.',
     contextPruned: 'Kontextus vágva, {tokens} token megtakarítva',
+    contextCompacting: 'Kontextus tömörítése...',
     contextCompacted: 'Kontextus tömörítve: {before} → {after} üzenet',
     trialExhausted:
       'A próbaverzió kvótája kimerült. Konfiguráljon saját AI-szolgáltatót a folytatáshoz.',

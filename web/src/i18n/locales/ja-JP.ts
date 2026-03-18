@@ -554,6 +554,7 @@ export default {
     deepResearchActionCompleted: 'Completed',
     contextPruned: 'コンテキストを整理しました。{tokens} トークン節約',
     contextPrunedLight: '以前のメッセージを要約しました',
+    contextCompacting: 'コンテキストを圧縮中...',
     contextCompacted: 'コンテキストを圧縮しました：{before} → {after} メッセージ',
     selectModel: 'モデルを選択',
     provider: 'プロバイダー',

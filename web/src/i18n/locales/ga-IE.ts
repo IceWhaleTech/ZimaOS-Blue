@@ -1232,6 +1232,7 @@ export default {
     videoGenStopped: 'Stopadh giniúint an fhíseáin.',
     agentTaskStopped: 'Stopadh an tasc "{goal}".',
     contextPruned: 'Comhthéacs gearrtha, {tokens} comharthaí sábháilte',
+    contextCompacting: 'Comhthéacs á dhlúthú...',
     contextCompacted: 'Comhthéacs dlúthaithe: {before} → {after} teachtaireachtaí',
     trialExhausted:
       'Tá an cuóta triail ídithe. Cuir do sholáthraí AI féin i bhfeidhm le leanúint ar aghaidh.',
