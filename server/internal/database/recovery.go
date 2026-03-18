@@ -335,7 +335,7 @@ func runSQLiteRecover(srcPath, dstPath string) error {
 		if msg := strings.TrimSpace(importStdout.String()); msg != "" {
 			details = append(details, "import stdout: "+msg)
 		}
-		return fmt.Errorf(strings.Join(details, "; "))
+		return fmt.Errorf("%s", strings.Join(details, "; "))
 	}
 
 	return nil

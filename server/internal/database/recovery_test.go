@@ -1,6 +1,7 @@
 package database_test
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,90 @@ func TestOpenSQLiteSimpleWrapsCorruptionError(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "appears corrupted") {
 		t.Fatalf("expected wrapped corruption error, got %v", err)
+	}
+}
+
+func TestOpenSQLiteSimpleRepairsRecoverableCorruption(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "recoverable.db")
+	writeSQLiteEntry(t, path, "hello")
+	corruptSQLiteBytes(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
+
+	db, err := database.OpenSQLiteSimple(path)
+	if err != nil {
+		t.Fatalf("expected recoverable db to open after repair, got %v", err)
+	}
+	defer db.Close()
+
+	var got string
+	if err := db.QueryRow("SELECT value FROM entries WHERE id = 1").Scan(&got); err != nil {
+		t.Fatalf("failed to read repaired db: %v", err)
+	}
+	if got != "hello" {
+		t.Fatalf("unexpected repaired value %q", got)
+	}
+	if err := database.CheckDatabaseIntegrity(path); err != nil {
+		t.Fatalf("repaired db failed integrity check: %v", err)
+	}
+	if matches, err := filepath.Glob(path + ".corrupt.*"); err != nil {
+		t.Fatalf("glob repair backup: %v", err)
+	} else if len(matches) != 1 {
+		t.Fatalf("expected one preserved corrupt backup, got %v", matches)
+	}
+}
+
+func writeSQLiteEntry(t *testing.T, path, value string) {
+	t.Helper()
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("open sqlite db %s: %v", path, err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec("DROP TABLE IF EXISTS entries"); err != nil {
+		t.Fatalf("drop entries table in %s: %v", path, err)
+	}
+	if _, err := db.Exec("CREATE TABLE entries (id INTEGER PRIMARY KEY, value TEXT NOT NULL)"); err != nil {
+		t.Fatalf("create entries table in %s: %v", path, err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin insert transaction for %s: %v", path, err)
+	}
+	stmt, err := tx.Prepare("INSERT INTO entries(id, value) VALUES (?, ?)")
+	if err != nil {
+		t.Fatalf("prepare insert statement for %s: %v", path, err)
+	}
+	defer stmt.Close()
+
+	for i := 1; i <= 2000; i++ {
+		entryValue := value
+		if i > 1 {
+			entryValue = strings.Repeat("x", 200)
+		}
+		if _, err := stmt.Exec(i, entryValue); err != nil {
+			_ = tx.Rollback()
+			t.Fatalf("insert entry %d into %s: %v", i, path, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit inserts for %s: %v", path, err)
+	}
+}
+
+func corruptSQLiteBytes(t *testing.T, path string, offset int64, payload []byte) {
+	t.Helper()
+
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatalf("open sqlite db for corruption %s: %v", path, err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteAt(payload, offset); err != nil {
+		t.Fatalf("corrupt sqlite db %s: %v", path, err)
 	}
 }
 

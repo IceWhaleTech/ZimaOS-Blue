@@ -117,6 +117,8 @@ function mountSection() {
       plugins: [createTestI18n()],
       stubs: {
         teleport: true,
+        RouterLink: true,
+        'router-link': true,
       },
     },
   })

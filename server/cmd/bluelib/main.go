@@ -88,10 +88,6 @@ func applyPendingBackupRestore(dataDir string) error {
 		if err != nil {
 			return err
 		}
-		_, err = mgr.CheckAndAutoRecover(context.Background(), dbPaths)
-		if err != nil {
-			return err
-		}
 		if result, err := mgr.CheckAndAutoRecover(context.Background(), dbPaths); err != nil {
 			return err
 		} else if result != nil && len(result.RepairedDatabases) > 0 {

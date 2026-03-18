@@ -1147,6 +1147,67 @@ func TestCheckAndAutoRecoverRestoresAdditionalDatabase(t *testing.T) {
 	}
 }
 
+func TestCheckAndAutoRecoverPrefersRepairBeforeBackupRestore(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+
+	blueDB := filepath.Join(dataDir, "blue.db")
+	auditDB := filepath.Join(dataDir, "session_audit.db")
+	writeSQLiteValue(t, blueDB, "blue-v1")
+	writeSQLiteValue(t, auditDB, "audit-v1")
+
+	m, err := NewManager(Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+	}, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	if _, err := m.Create(context.Background(), BackupTypeData); err != nil {
+		t.Fatalf("failed to create backup: %v", err)
+	}
+
+	writeSQLiteValue(t, blueDB, "blue-v2")
+	corruptSQLiteBytes(t, auditDB, 200, []byte("garbage"))
+
+	dbPaths, err := DiscoverSQLiteDatabasePaths(dataDir)
+	if err != nil {
+		t.Fatalf("failed to discover database paths: %v", err)
+	}
+
+	result, err := m.CheckAndAutoRecover(context.Background(), dbPaths)
+	if err != nil {
+		t.Fatalf("auto recovery failed: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result")
+	}
+	if result.Recovered {
+		t.Fatalf("expected in-place repair instead of backup restore, got %+v", result)
+	}
+	if !containsString(result.RepairedDatabases, auditDB) {
+		t.Fatalf("expected repaired databases to include %s, got %v", auditDB, result.RepairedDatabases)
+	}
+	if len(result.CorruptedDatabases) != 0 {
+		t.Fatalf("expected no remaining corrupted databases, got %v", result.CorruptedDatabases)
+	}
+
+	if got := readSQLiteValue(t, blueDB); got != "blue-v2" {
+		t.Fatalf("expected blue db to stay at v2, got %q", got)
+	}
+	if got := readSQLiteValue(t, auditDB); got != "audit-v1" {
+		t.Fatalf("expected repaired audit db to retain data, got %q", got)
+	}
+}
+
 func writeSQLiteValue(t *testing.T, path, value string) {
 	t.Helper()
 
@@ -1195,4 +1256,18 @@ func containsString(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func corruptSQLiteBytes(t *testing.T, path string, offset int64, payload []byte) {
+	t.Helper()
+
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatalf("failed to open sqlite db %s for corruption: %v", path, err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteAt(payload, offset); err != nil {
+		t.Fatalf("failed to corrupt sqlite db %s: %v", path, err)
+	}
 }

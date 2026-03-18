@@ -1399,7 +1399,7 @@ async function handleToggle(skill: Skill) {
 
 .skill-detail-modal {
   position: relative;
-  width: min(780px, 100%);
+  width: min(1040px, 100%);
   border-radius: 22px;
   border: 1px solid var(--skills-detail-modal-border);
   background:
@@ -1450,6 +1450,21 @@ async function handleToggle(skill: Skill) {
   flex-direction: column;
   gap: 14px;
   padding: 16px 16px 20px;
+}
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(290px, 0.82fr) minmax(0, 1.48fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.detail-sidebar,
+.detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
 }
 
 .detail-header {
@@ -1536,6 +1551,15 @@ async function handleToggle(skill: Skill) {
   gap: 10px;
 }
 
+.detail-overview-panel {
+  padding: 14px;
+}
+
+.detail-overview-panel .detail-meta-grid {
+  margin-top: 12px;
+  grid-template-columns: 1fr;
+}
+
 .detail-hero-stat {
   display: flex;
   flex-direction: column;
@@ -1610,18 +1634,51 @@ async function handleToggle(skill: Skill) {
     0 18px 26px -28px rgba(2, 6, 23, 0.34);
 }
 
+.detail-section__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .detail-section h4 {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 11px;
   color: var(--text-primary);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
-.param-group + .param-group {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--skills-detail-section-border);
+.detail-section__caption {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: 0;
+  color: var(--skills-detail-label);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.param-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detail-parameters .param-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.param-columns .param-group + .param-group {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .param-title {
@@ -1684,6 +1741,15 @@ async function handleToggle(skill: Skill) {
   justify-content: center;
   gap: 8px;
   color: var(--text-secondary);
+}
+
+.detail-docs__surface {
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--skills-detail-section-border) 92%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--skills-detail-section-bg-strong) 80%, white 2%) 0%, color-mix(in srgb, var(--skills-detail-section-bg) 94%, transparent) 100%);
+  padding: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .list-empty {
@@ -1912,13 +1978,31 @@ async function handleToggle(skill: Skill) {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+
   .detail-header {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .detail-hero-stats {
+  .detail-overview-panel .detail-hero-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .detail-overview-panel .detail-meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .param-columns {
     grid-template-columns: 1fr;
+  }
+
+  .param-group + .param-group {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
   }
 
   .skill-showcase-card__hero,
@@ -1983,12 +2067,28 @@ async function handleToggle(skill: Skill) {
     border-radius: 18px;
   }
 
+  .detail-section__head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .detail-section__caption {
+    text-align: left;
+  }
+
   .detail-title-row {
     gap: 12px;
   }
 
+  .detail-overview-panel .detail-hero-stats,
+  .detail-overview-panel .detail-meta-grid,
   .detail-meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  .detail-docs__surface {
+    padding: 14px;
   }
 
   .detail-title-copy h2 {

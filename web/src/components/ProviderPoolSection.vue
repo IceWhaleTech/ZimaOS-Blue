@@ -118,6 +118,8 @@ const newKey = ref({
   label: '',
 })
 const showNewKeyApiKey = ref(false)
+const selectedKeyId = ref('')
+const fetchingKeyModels = ref<Record<string, boolean>>({})
 
 // Pricing form
 const pricingForm = ref({
@@ -146,6 +148,8 @@ const savingAllowedModels = ref(false)
 
 // Model params collapsible
 const showModelParams = ref(false)
+const showDeleteFor = ref<string | null>(null)
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
 
 // Model drag state
 const draggedModel = ref<Model | null>(null)
@@ -163,6 +167,13 @@ const selectedProviderModels = computed(() => {
 // Models to display: always provider-level (union of all keys)
 const displayModels = computed(() => {
   return selectedProviderModels.value
+})
+
+const selectedKeyModels = computed(() => {
+  const provider = displayProvider.value
+  if (!provider || !selectedKeyId.value) return []
+  const key = provider.api_keys?.find((item) => item.id === selectedKeyId.value)
+  return key?.models || []
 })
 
 const verificationProbeEntries = computed(() => {
@@ -389,8 +400,24 @@ watch(
     verificationResult.value = null
     verificationError.value = ''
     verificationKeyId.value = ''
+    selectedKeyId.value = ''
+    showDeleteFor.value = null
   }
 )
+
+function startLongPress(target: string) {
+  cancelLongPress()
+  longPressTimer = setTimeout(() => {
+    showDeleteFor.value = target
+  }, 450)
+}
+
+function cancelLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
 
 // Methods
 async function loadData() {
