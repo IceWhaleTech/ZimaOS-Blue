@@ -257,6 +257,14 @@ describe('VoiceWakeSettingsSection', () => {
     wrapper.unmount()
   })
 
+  it('does not render a status message while VoiceWake is disabled', async () => {
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="voicewake-status-message"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('stays hidden outside the desktop shell', async () => {
     delete (window as any).__BLUE_DESKTOP__
     const wrapper = mountSection()

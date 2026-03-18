@@ -116,7 +116,7 @@ func NewSQLiteSessionStore(dbPath string, maxTokens int) (*SQLiteSessionStore, e
 		return nil, err
 	}
 
-	return &SQLiteSessionStore{db: db, maxTokens: maxTokens}, nil
+	return &SQLiteSessionStore{db: db, maxTokens: NormalizeTokenBudget(maxTokens)}, nil
 }
 
 func (s *SQLiteSessionStore) table() *z.ZormTable {
@@ -395,7 +395,7 @@ type InMemorySessionStore struct {
 func NewInMemorySessionStore(maxTokens int) *InMemorySessionStore {
 	return &InMemorySessionStore{
 		sessions:  make(map[string]*Session),
-		maxTokens: maxTokens,
+		maxTokens: NormalizeTokenBudget(maxTokens),
 	}
 }
 

@@ -52,7 +52,32 @@ func TestJWTTokenExpirationUsesStableTooLongMessage(t *testing.T) {
 		if item.ID != "auth_token_expiration" {
 			continue
 		}
+		if item.Status != "warning" {
+			t.Fatalf("Status = %q, want %q", item.Status, "warning")
+		}
 		if item.Details != "Token expiration exceeds 8 hours. This increases risk of token theft." {
+			t.Fatalf("Details = %q", item.Details)
+		}
+		return
+	}
+
+	t.Fatal("auth_token_expiration item not found")
+}
+
+func TestHandlerJWTTokenExpirationOverEightHoursIsWarning(t *testing.T) {
+	handler := NewHandler(nil)
+	handler.settings.SessionTimeoutMinutes = 9 * 60
+
+	items := handler.checkJWTSecurity()
+
+	for _, item := range items {
+		if item.ID != "auth_token_expiration" {
+			continue
+		}
+		if item.Status != "warning" {
+			t.Fatalf("Status = %q, want %q", item.Status, "warning")
+		}
+		if item.Details != "Session timeout is too long: 540 minutes" {
 			t.Fatalf("Details = %q", item.Details)
 		}
 		return

@@ -285,7 +285,7 @@ func (s *SecurityScanner) checkJWTSecurity() []SecurityScanItem {
 		item.Status = "warning"
 		item.Details = "Token expiration (" + strconv.Itoa(expirySecs/3600) + " hours) is long. Consider shorter duration for sensitive operations."
 	} else if expirySecs > 0 {
-		item.Status = "failed"
+		item.Status = "warning"
 		item.Details = "Token expiration exceeds 8 hours. This increases risk of token theft."
 	} else {
 		item.Status = "failed"

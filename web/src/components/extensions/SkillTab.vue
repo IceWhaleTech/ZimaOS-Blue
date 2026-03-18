@@ -653,10 +653,6 @@ async function handleToggle(skill: Skill) {
                 <section class="detail-section detail-overview-panel">
                   <div class="detail-hero-stats">
                     <article class="detail-hero-stat">
-                      <span>{{ t('skills.detail.labels.version') }}</span>
-                      <strong>{{ formatSkillVersion(selectedSkill.version) }}</strong>
-                    </article>
-                    <article class="detail-hero-stat">
                       <span>{{ t('skills.detail.sections.inputs') }}</span>
                       <strong>{{ selectedSkill.inputs?.length || 0 }}</strong>
                     </article>
@@ -736,7 +732,6 @@ async function handleToggle(skill: Skill) {
                 <section class="detail-section detail-docs">
                   <div class="detail-section__head">
                     <h4>{{ t('skills.detail.sections.documentation') }}</h4>
-                    <p class="detail-section__caption">{{ formatSkillVersion(selectedSkill.version) }}</p>
                   </div>
 
                   <div class="detail-docs__surface">
@@ -942,12 +937,10 @@ async function handleToggle(skill: Skill) {
 }
 
 .skills-showcase {
-  padding: 16px;
+  padding: 14px;
   border: 1px solid var(--skills-shell-border);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--skill-accent-a, var(--primary)) 14%, transparent), transparent 34%),
-    linear-gradient(180deg, var(--skills-shell-bg-top) 0%, var(--skills-shell-bg-bottom) 100%);
+  border-radius: 20px;
+  background: var(--skills-shell-bg-bottom);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     var(--skills-shell-shadow);
@@ -956,8 +949,8 @@ async function handleToggle(skill: Skill) {
 .skills-showcase__lead {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(420px, 0.92fr);
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .skills-showcase__intro {
@@ -1002,14 +995,14 @@ async function handleToggle(skill: Skill) {
 .skills-showcase__stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
 }
 
 .skills-showcase__stat-card {
-  min-height: 60px;
-  padding: 8px;
+  min-height: 54px;
+  padding: 7px;
   border: 1px solid var(--skills-stat-border);
-  border-radius: 12px;
+  border-radius: 11px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1021,22 +1014,22 @@ async function handleToggle(skill: Skill) {
 }
 
 .skills-showcase__stat-card span {
-  font-size: 7px;
+  font-size: 6.5px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .skills-showcase__stat-card strong {
   color: var(--skills-stat-value);
-  font-size: clamp(0.92rem, 0.45vw + 0.8rem, 1.08rem);
+  font-size: clamp(0.86rem, 0.4vw + 0.76rem, 1rem);
   line-height: 1;
   letter-spacing: -0.03em;
 }
 
 .skills-showcase__filters {
   margin-bottom: 0;
-  padding: 10px;
-  border-radius: 16px;
+  padding: 8px;
+  border-radius: 14px;
   border: none;
   background: color-mix(in srgb, var(--skills-stat-bg) 84%, transparent);
   box-shadow: none;
@@ -1050,17 +1043,17 @@ async function handleToggle(skill: Skill) {
 .skill-gallery__grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 .skill-showcase-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px;
   border: 1px solid var(--skills-card-border);
-  border-radius: 24px;
+  border-radius: 20px;
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--skill-accent-a) 10%, transparent), transparent 32%),
     linear-gradient(180deg, var(--skills-card-bg-top) 0%, var(--skills-card-bg-bottom) 100%);
@@ -1104,7 +1097,7 @@ async function handleToggle(skill: Skill) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .skill-showcase-card__hero {
@@ -1112,7 +1105,7 @@ async function handleToggle(skill: Skill) {
   z-index: 1;
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -1127,9 +1120,9 @@ async function handleToggle(skill: Skill) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 18px;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
   background: var(--skill-icon-bg);
   border: 1px solid var(--skill-icon-border);
   box-shadow:
@@ -1150,14 +1143,14 @@ async function handleToggle(skill: Skill) {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
 }
 
 .skill-showcase-card__orb-image,
 .detail-icon__image {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
   filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.28));
 }
@@ -1168,7 +1161,7 @@ async function handleToggle(skill: Skill) {
 }
 
 .skill-showcase-card__orb-fallback {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1;
   filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.28));
@@ -1185,7 +1178,7 @@ async function handleToggle(skill: Skill) {
 .skill-showcase-card__title-row h3 {
   margin: 0;
   color: var(--skills-card-title);
-  font-size: 1.12rem;
+  font-size: 1.02rem;
   line-height: 1.15;
   letter-spacing: -0.025em;
 }
@@ -1193,12 +1186,12 @@ async function handleToggle(skill: Skill) {
 .skill-showcase-card__id {
   display: inline-flex;
   width: fit-content;
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 999px;
   border: 1px solid var(--skills-detail-code-border);
   background: var(--skills-detail-code-bg);
   color: var(--skills-detail-label);
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1;
 }
 
@@ -1217,10 +1210,10 @@ async function handleToggle(skill: Skill) {
 .skill-showcase-card__hero-copy p {
   margin: 0;
   color: var(--skills-card-text);
-  font-size: 0.92rem;
-  line-height: 1.5;
+  font-size: 0.84rem;
+  line-height: 1.42;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1240,7 +1233,7 @@ async function handleToggle(skill: Skill) {
   border: 1px solid var(--skills-badge-border);
   background: var(--skills-badge-bg);
   color: var(--skills-badge-text);
-  font-size: 8px;
+  font-size: 7.5px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1248,22 +1241,22 @@ async function handleToggle(skill: Skill) {
 .skill-showcase-card__state {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
+  gap: 4px;
+  padding: 3px 7px;
   border-radius: 999px;
   border: 1px solid var(--skills-state-border);
   background: var(--skills-state-bg);
   color: var(--skills-state-text);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  font-size: 8px;
+  font-size: 7.5px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .skill-showcase-card__state-dot {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
   background: currentColor;
 }
@@ -1291,7 +1284,7 @@ async function handleToggle(skill: Skill) {
 .skill-showcase-card__metrics {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .skill-showcase-card__metric {
@@ -1306,25 +1299,25 @@ async function handleToggle(skill: Skill) {
 }
 
 .skill-showcase-card__metrics--rail {
-  row-gap: 4px;
+  row-gap: 3px;
 }
 
 .skill-showcase-card__metric--inline {
   padding: 0;
   color: var(--skills-detail-label);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .skill-showcase-card__metric-icon {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   color: var(--skill-accent-a);
   flex-shrink: 0;
 }
 
 .skill-showcase-card__metric strong {
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.2;
 }
 
@@ -1332,29 +1325,29 @@ async function handleToggle(skill: Skill) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   margin-top: auto;
-  padding-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid var(--skills-meta-border);
 }
 
 .skill-showcase-card__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
 }
 
 .skill-showcase-card__chip {
   display: inline-flex;
   align-items: center;
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   border: 1px solid var(--skills-chip-border);
   background: var(--skills-chip-bg);
   color: var(--skills-chip-text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  font-size: 8px;
+  font-size: 7.5px;
   font-weight: 600;
 }
 
@@ -1372,14 +1365,14 @@ async function handleToggle(skill: Skill) {
   align-items: center;
   gap: 4px;
   color: var(--primary);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .skill-showcase-card__link-hint::after {
   content: '↗';
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1;
 }
 
@@ -1521,7 +1514,7 @@ async function handleToggle(skill: Skill) {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 8px;
   align-items: center;
 }
 
@@ -1548,29 +1541,29 @@ async function handleToggle(skill: Skill) {
 
 .detail-hero-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .detail-overview-panel {
-  padding: 14px;
+  padding: 12px;
 }
 
 .detail-overview-panel .detail-meta-grid {
-  margin-top: 12px;
+  margin-top: 10px;
   grid-template-columns: 1fr;
 }
 
 .detail-hero-stat {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-height: 108px;
+  gap: 4px;
+  min-height: 88px;
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 16px 14px;
-  border-radius: 22px;
+  padding: 12px;
+  border-radius: 18px;
   border: 1px solid var(--skills-detail-section-border);
   background:
     radial-gradient(circle at top right, var(--skill-accent-soft) 0%, transparent 54%),
@@ -1579,14 +1572,14 @@ async function handleToggle(skill: Skill) {
 }
 
 .detail-hero-stat span {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--skills-detail-label);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
 .detail-hero-stat strong {
-  font-size: clamp(1.3rem, 0.8vw + 1.1rem, 2rem);
+  font-size: clamp(1.15rem, 0.7vw + 1rem, 1.65rem);
   line-height: 1;
   color: var(--text-primary);
   letter-spacing: -0.04em;
@@ -1626,8 +1619,8 @@ async function handleToggle(skill: Skill) {
 
 .detail-section {
   border: 1px solid var(--skills-detail-section-border);
-  border-radius: 22px;
-  padding: 14px;
+  border-radius: 20px;
+  padding: 12px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--skills-detail-section-bg) 90%, white 4%) 0%, var(--skills-detail-section-bg) 100%);
   box-shadow:
@@ -1640,7 +1633,7 @@ async function handleToggle(skill: Skill) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .detail-section h4 {
@@ -1995,7 +1988,7 @@ async function handleToggle(skill: Skill) {
   }
 
   .detail-overview-panel .detail-hero-stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .detail-overview-panel .detail-meta-grid {

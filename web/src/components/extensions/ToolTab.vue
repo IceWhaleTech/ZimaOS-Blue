@@ -559,12 +559,10 @@ async function handleToggle(tool: Tool) {
 }
 
 .tools-showcase {
-  padding: 16px;
+  padding: 14px;
   border: 1px solid var(--tools-shell-border);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--tool-accent-a, var(--primary)) 14%, transparent), transparent 34%),
-    linear-gradient(180deg, var(--tools-shell-bg-top) 0%, var(--tools-shell-bg-bottom) 100%);
+  border-radius: 20px;
+  background: var(--tools-shell-bg-bottom);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     var(--tools-shell-shadow);
@@ -573,8 +571,8 @@ async function handleToggle(tool: Tool) {
 .tools-showcase__lead {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(420px, 0.92fr);
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .tools-showcase__intro {
@@ -619,14 +617,14 @@ async function handleToggle(tool: Tool) {
 .tools-showcase__stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
 }
 
 .tools-showcase__stat-card {
-  min-height: 60px;
-  padding: 8px;
+  min-height: 54px;
+  padding: 7px;
   border: 1px solid var(--tools-stat-border);
-  border-radius: 12px;
+  border-radius: 11px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -638,24 +636,25 @@ async function handleToggle(tool: Tool) {
 }
 
 .tools-showcase__stat-card span {
-  font-size: 7px;
+  font-size: 6.5px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .tools-showcase__stat-card strong {
   color: var(--tools-stat-value);
-  font-size: clamp(0.92rem, 0.45vw + 0.8rem, 1.08rem);
+  font-size: clamp(0.86rem, 0.4vw + 0.76rem, 1rem);
   line-height: 1;
   letter-spacing: -0.03em;
 }
 
 .tools-showcase__filters {
   margin-bottom: 0;
-  padding: 10px;
-  border-radius: 16px;
-  border: 1px solid var(--tools-stat-border);
+  padding: 8px;
+  border-radius: 14px;
+  border: none;
   background: color-mix(in srgb, var(--tools-stat-bg) 84%, transparent);
+  box-shadow: none;
 }
 
 .tools-showcase__search {
@@ -666,17 +665,17 @@ async function handleToggle(tool: Tool) {
 .tool-gallery__grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 .tool-showcase-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px;
   border: 1px solid var(--tools-card-border);
-  border-radius: 24px;
+  border-radius: 20px;
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--tool-accent-a) 10%, transparent), transparent 32%),
     linear-gradient(180deg, var(--tools-card-bg-top) 0%, var(--tools-card-bg-bottom) 100%);
@@ -709,19 +708,19 @@ async function handleToggle(tool: Tool) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tool-showcase-card__topline-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tool-showcase-card__hero {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -731,9 +730,9 @@ async function handleToggle(tool: Tool) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 18px;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
   background: var(--tool-icon-bg);
   border: 1px solid var(--tool-icon-border);
   box-shadow:
@@ -744,14 +743,14 @@ async function handleToggle(tool: Tool) {
 }
 
 .tool-showcase-card__orb-image {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
   filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.28));
 }
 
 .tool-showcase-card__orb-fallback {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1;
   filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.28));
@@ -761,7 +760,7 @@ async function handleToggle(tool: Tool) {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
 }
 
@@ -775,7 +774,7 @@ async function handleToggle(tool: Tool) {
 .tool-showcase-card__title-row h3 {
   margin: 0;
   color: var(--tools-card-title);
-  font-size: 1.12rem;
+  font-size: 1.02rem;
   line-height: 1.15;
   letter-spacing: -0.025em;
 }
@@ -783,22 +782,22 @@ async function handleToggle(tool: Tool) {
 .tool-showcase-card__id {
   display: inline-flex;
   width: fit-content;
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 999px;
   border: 1px solid var(--tools-detail-code-border);
   background: var(--tools-detail-code-bg);
   color: var(--tools-detail-label);
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1;
 }
 
 .tool-showcase-card__hero-copy p {
   margin: 0;
   color: var(--tools-card-text);
-  font-size: 0.92rem;
-  line-height: 1.5;
+  font-size: 0.84rem;
+  line-height: 1.42;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -811,7 +810,7 @@ async function handleToggle(tool: Tool) {
   border: 1px solid var(--tools-badge-border);
   background: var(--tools-badge-bg);
   color: var(--tools-badge-text);
-  font-size: 8px;
+  font-size: 7.5px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -819,20 +818,20 @@ async function handleToggle(tool: Tool) {
 .tool-showcase-card__state {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
+  gap: 4px;
+  padding: 3px 7px;
   border-radius: 999px;
   border: 1px solid var(--tools-state-border);
   background: var(--tools-state-bg);
   color: var(--tools-state-text);
-  font-size: 8px;
+  font-size: 7.5px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .tool-showcase-card__state-dot {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
   background: currentColor;
 }
@@ -859,20 +858,20 @@ async function handleToggle(tool: Tool) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   margin-top: auto;
-  padding-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid var(--tools-meta-border);
 }
 
 .tool-showcase-card__metrics {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .tool-showcase-card__metrics--rail {
-  row-gap: 4px;
+  row-gap: 3px;
 }
 
 .tool-showcase-card__metric {
@@ -887,39 +886,39 @@ async function handleToggle(tool: Tool) {
 
 .tool-showcase-card__metric--inline {
   color: var(--tools-detail-label);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .tool-showcase-card__metric-icon {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   color: var(--tool-accent-a);
   flex-shrink: 0;
 }
 
 .tool-showcase-card__metric strong {
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.2;
 }
 
 .tool-showcase-card__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
 }
 
 .tool-showcase-card__chip {
   display: inline-flex;
   align-items: center;
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   border: 1px solid var(--tools-chip-border);
   background: var(--tools-chip-bg);
   color: var(--tools-chip-text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  font-size: 8px;
+  font-size: 7.5px;
   font-weight: 600;
 }
 

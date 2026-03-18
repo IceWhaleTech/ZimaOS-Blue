@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { BackupInfo, BackupProgress } from '@/api'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 type BackupType = 'full' | 'config' | 'data'
 type BackupStatus = 'completed' | 'in_progress' | 'failed'
@@ -64,7 +64,7 @@ function mapToDisplay(b: BackupInfo): BackupDisplay {
     isCheckpoint,
     checkpointReason,
     description: isCheckpoint
-      ? t('backup.checkpointDescription', { reason: checkpointReason })
+      ? t('backup.checkpointDescription', { reason: formatCheckpointReason(checkpointReason) })
       : undefined,
   }
 }
@@ -85,6 +85,14 @@ function formatSize(bytes: number): string {
 function formatBackupName(backup: BackupDisplay): string {
   // Format as date string instead of showing UUID
   return formatDate(backup.createdAt)
+}
+
+function formatCheckpointReason(reason: string): string {
+  const reasonKey = `backup.reason.${reason}`
+  if (te(reasonKey)) {
+    return t(reasonKey)
+  }
+  return reason.replace(/_/g, ' ')
 }
 
 function formatDate(date: Date): string {

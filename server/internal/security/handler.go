@@ -876,7 +876,7 @@ func (h *Handler) checkJWTSecurity() []SecurityScanItem {
 		item.Status = "warning"
 		item.Details = "Session timeout is long: " + strconv.Itoa(h.settings.SessionTimeoutMinutes) + " minutes"
 	} else {
-		item.Status = "failed"
+		item.Status = "warning"
 		item.Details = "Session timeout is too long: " + strconv.Itoa(h.settings.SessionTimeoutMinutes) + " minutes"
 	}
 	items = append(items, item)

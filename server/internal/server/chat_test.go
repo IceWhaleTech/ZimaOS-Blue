@@ -27,6 +27,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -2321,6 +2322,33 @@ func TestChatHandlerStreamMessageRejectsEstimatedContextOverflow(t *testing.T) {
 	}
 	if exceeded, _ := resp["context_window_exceeded"].(bool); !exceeded {
 		t.Fatalf("context_window_exceeded = %#v, want true", resp["context_window_exceeded"])
+	}
+}
+
+func TestResolveSessionTokenBudgetForModelUsesDetectedContextWindow(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModel(t, "large-context-model", 128000))
+	handler.SetCompactorMemoryIntegration(nil, session.LegacyDefaultContextTokenBudget)
+
+	want := 128000 - estimateOutputReserveTokens(128000, 0)
+	if got := handler.resolveSessionTokenBudgetForModel("large-context-model"); got != want {
+		t.Fatalf("resolveSessionTokenBudgetForModel() = %d, want %d", got, want)
+	}
+}
+
+func TestResolveSessionTokenBudgetForModelHonorsExplicitOverride(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModel(t, "large-context-model", 128000))
+	handler.SetCompactorMemoryIntegration(nil, 64000)
+
+	if got := handler.resolveSessionTokenBudgetForModel("large-context-model"); got != 64000 {
+		t.Fatalf("resolveSessionTokenBudgetForModel() = %d, want 64000", got)
 	}
 }
 

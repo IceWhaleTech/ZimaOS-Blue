@@ -103,7 +103,7 @@ func NewSession(id SessionID, maxTokens int) *Session {
 	now := timeutil.NowTime()
 	return &Session{
 		ID:           id,
-		Context:      context.NewConversationContext(maxTokens),
+		Context:      context.NewConversationContext(NormalizeTokenBudget(maxTokens)),
 		Metadata:     SessionMetadata{},
 		State:        SessionStateActive,
 		CreatedAt:    now,
@@ -289,22 +289,22 @@ func (s *Session) GetCustomData(key string) (string, bool) {
 
 // SessionInfo represents session information for API responses.
 type SessionInfo struct {
-	ID           string          `json:"id"`
-	AgentID      string          `json:"agent_id"`
-	ChannelID    string          `json:"channel_id"`
-	PeerID       string          `json:"peer_id"`
-	ThreadID     string          `json:"thread_id,omitempty"`
-	State        string          `json:"state"`
-	Title        string          `json:"title,omitempty"`
-	Summary      string          `json:"summary,omitempty"`
-	MessageCount int             `json:"message_count"`
-	TokenCount   int             `json:"token_count"`
-	MaxTokens    int             `json:"max_tokens"`
-	TokenUsage   float64         `json:"token_usage"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
-	LastActiveAt time.Time       `json:"last_active_at"`
-	CompactedAt  *time.Time      `json:"compacted_at,omitempty"`
+	ID           string     `json:"id"`
+	AgentID      string     `json:"agent_id"`
+	ChannelID    string     `json:"channel_id"`
+	PeerID       string     `json:"peer_id"`
+	ThreadID     string     `json:"thread_id,omitempty"`
+	State        string     `json:"state"`
+	Title        string     `json:"title,omitempty"`
+	Summary      string     `json:"summary,omitempty"`
+	MessageCount int        `json:"message_count"`
+	TokenCount   int        `json:"token_count"`
+	MaxTokens    int        `json:"max_tokens"`
+	TokenUsage   float64    `json:"token_usage"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	LastActiveAt time.Time  `json:"last_active_at"`
+	CompactedAt  *time.Time `json:"compacted_at,omitempty"`
 }
 
 // Info returns session information.

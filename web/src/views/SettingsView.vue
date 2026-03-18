@@ -18,7 +18,7 @@ import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import ApiProxySettings from '@/components/settings/ApiProxySettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import BackupManager from '@/components/BackupManager.vue'
-import { proxyCacheApi, type PrunerConfig, type PrunerStats } from '@/api/proxyCache'
+import { proxyCacheApi, type PrunerConfig } from '@/api/proxyCache'
 import { useTauri } from '@/composables/useTauri'
 import { serviceApi } from '@/api/service'
 import type { ServiceInfo } from '@/api/service'
@@ -198,10 +198,8 @@ const smallModelStatsExpanded = ref(false)
 const smallModelDefaultStorageBytes = Math.round(737.5 * 1024 * 1024)
 const smallModelRecommendedRuntimeBytes = 2 * 1024 * 1024 * 1024
 const globalPrunerConfig = ref<PrunerConfig | null>(null)
-const globalPrunerStats = ref<PrunerStats | null>(null)
 const globalPrunerSaving = ref(false)
 const globalPrunerEnabled = computed(() => globalPrunerConfig.value?.enabled === true)
-const globalPrunerSnapshot = computed(() => globalPrunerStats.value?.stats || null)
 const assistantCapabilitiesEnabled = computed(
   () => settingsStore.smallModelIRFeaturesEnabled && (globalPrunerConfig.value?.enabled ?? true)
 )
@@ -254,15 +252,6 @@ function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
   if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return bytes + ' B'
-}
-
-function formatRatio(value?: number): string {
-  if (typeof value !== 'number') return '-'
-  return `${Math.round(value * 100)}%`
-}
-
-function formatCount(value: number): string {
-  return value.toLocaleString()
 }
 
 const smallModelStorageBytes = computed(() => {
@@ -369,13 +358,6 @@ async function handleFeatureIntentIREnabledChange(next: boolean) {
 async function saveGlobalPrunerEnabled(next: boolean) {
   const res = await proxyCacheApi.updatePrunerConfig({ enabled: next })
   globalPrunerConfig.value = res.data.config
-  const latestStats = await proxyCacheApi.getPrunerStats().catch(() => null)
-  globalPrunerStats.value = latestStats
-    ? latestStats.data
-    : {
-        enabled: next,
-        stats: globalPrunerStats.value?.stats,
-      }
 }
 
 async function handleAssistantCapabilitiesEnabledChange(next: boolean) {
@@ -426,12 +408,8 @@ async function fetchSmallModelStats() {
 }
 
 async function fetchGlobalPrunerState() {
-  const [configRes, statsRes] = await Promise.all([
-    proxyCacheApi.getPrunerConfig().catch(() => null),
-    proxyCacheApi.getPrunerStats().catch(() => null),
-  ])
+  const configRes = await proxyCacheApi.getPrunerConfig().catch(() => null)
   if (configRes) globalPrunerConfig.value = configRes.data
-  if (statsRes) globalPrunerStats.value = statsRes.data
 }
 
 async function handleGlobalPrunerEnabledChange(next: boolean) {
@@ -982,32 +960,6 @@ onUnmounted(() => {
                           'apiProxy.prunerDesc',
                           'Controls the API proxy pruner for proxied /v1 requests. Blue chat may still skip pruning per request when context pressure is low.'
                         )
-                      }}
-                    </div>
-                    <div
-                      class="mt-2 flex flex-wrap gap-1.5 text-[11px] text-gray-500 dark:text-gray-400"
-                    >
-                      <span class="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-gray-700/50">
-                        {{ t('apiProxy.prunerBackend', 'Backend') }}:
-                        {{ globalPrunerConfig.backend || '-' }}
-                      </span>
-                      <span class="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-gray-700/50">
-                        {{ t('apiProxy.prunerThreshold', 'Threshold') }}:
-                        {{ formatRatio(globalPrunerConfig.threshold) }}
-                      </span>
-                      <span class="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-gray-700/50">
-                        {{ t('cache.tokensSaved', 'Tokens Saved') }}:
-                        {{ formatCount(globalPrunerSnapshot?.tokens_saved ?? 0) }}
-                      </span>
-                    </div>
-                    <div class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-                      {{
-                        globalPrunerSnapshot && globalPrunerSnapshot.total_requests > 0
-                          ? t('tokenEconomy.prunerMeta', {
-                              pruned: globalPrunerSnapshot.pruned_requests,
-                              total: globalPrunerSnapshot.total_requests,
-                            })
-                          : t('apiProxy.prunerNoData', 'No pruning requests recorded yet.')
                       }}
                     </div>
                   </div>
@@ -1991,7 +1943,7 @@ onUnmounted(() => {
               </div>
             </div>
             <MemoryManager
-              class="mx-auto w-full max-w-6xl"
+              class="settings-embedded-section mx-auto w-full max-w-6xl"
               :memory-recall-mode="settingsStore.memoryRecallMode"
               @status-change="showSaveStatus"
               @memory-recall-mode-change="handleMemoryRecallModeChange"
@@ -2009,7 +1961,10 @@ onUnmounted(() => {
                 </h2>
               </div>
             </div>
-            <UserDataExport class="mx-auto w-full max-w-6xl" @status-change="showSaveStatus" />
+            <UserDataExport
+              class="settings-embedded-section mx-auto w-full max-w-6xl"
+              @status-change="showSaveStatus"
+            />
           </section>
 
           <section class="settings-module">
@@ -2024,7 +1979,7 @@ onUnmounted(() => {
               </div>
             </div>
             <BackupManager
-              class="mx-auto w-full max-w-6xl"
+              class="settings-embedded-section mx-auto w-full max-w-6xl"
               :backups="backups"
               :loading="backupsLoading"
               :restoring="backupRestoring !== null"
@@ -2421,6 +2376,20 @@ input[type='range']::-moz-range-thumb {
   border-color: rgba(203, 213, 225, 0.96);
 }
 
+.settings-panel :deep(.settings-embedded-section) {
+  border-color: rgba(203, 213, 225, 0.72);
+  border-radius: 1rem;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.settings-panel :deep(.settings-embedded-section:hover) {
+  border-color: rgba(148, 163, 184, 0.36);
+  box-shadow: none;
+}
+
 :root.dark .settings-view,
 [data-theme='dark'] .settings-view,
 html.dark .settings-view {
@@ -2467,11 +2436,14 @@ html.dark .settings-field-card,
 :root.dark .settings-feature-card,
 [data-theme='dark'] .settings-feature-card,
 html.dark .settings-feature-card,
+:root.dark .settings-panel :deep(.settings-embedded-section),
+[data-theme='dark'] .settings-panel :deep(.settings-embedded-section),
+html.dark .settings-panel :deep(.settings-embedded-section),
 :root.dark .settings-panel :deep(.glass-card),
 [data-theme='dark'] .settings-panel :deep(.glass-card),
 html.dark .settings-panel :deep(.glass-card) {
   border-color: rgba(71, 85, 105, 0.46);
-  background: #111827;
+  background: transparent;
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;

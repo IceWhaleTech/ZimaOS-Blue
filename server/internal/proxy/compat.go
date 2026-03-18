@@ -361,10 +361,11 @@ func (mcl *ModelCompatLayer) convertToolsToPrompt(req *ChatRequest) *ChatRequest
 	return req
 }
 
-// truncateContext truncates context to fit model limits
-func (mcl *ModelCompatLayer) truncateContext(req *ChatRequest, maxTokens int) *ChatRequest {
+// truncateContext truncates request history to fit the model's context window.
+// maxContextTokens is a context-length cap, not ChatRequest.MaxTokens.
+func (mcl *ModelCompatLayer) truncateContext(req *ChatRequest, maxContextTokens int) *ChatRequest {
 	// Simple truncation: remove oldest messages
-	for req.TokenCount() > maxTokens && len(req.Messages) > 1 {
+	for req.TokenCount() > maxContextTokens && len(req.Messages) > 1 {
 		req.Messages = req.Messages[1:]
 	}
 	return req

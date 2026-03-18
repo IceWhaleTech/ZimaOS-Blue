@@ -4759,4 +4759,51 @@ for (const [locale, addition] of Object.entries(processTraceExtendedTranslations
   }
 }
 
+const backupReasonTranslations = {
+  'ca-ES': 'Abans de la restauració',
+  'cs-CZ': 'Před obnovením',
+  'da-DK': 'Før gendannelse',
+  'de-DE': 'Vor der Wiederherstellung',
+  'el-GR': 'Πριν από την επαναφορά',
+  'en-GB': 'Pre-restore',
+  'en-US': 'Pre-restore',
+  'es-ES': 'Antes de restaurar',
+  'fr-FR': 'Avant restauration',
+  'ga-IE': 'Roimh athchóiriú',
+  'hr-HR': 'Prije vraćanja',
+  'hu-HU': 'Visszaállítás előtt',
+  'it-IT': 'Prima del ripristino',
+  'ja-JP': '復元前',
+  'ko-KR': '복원 전',
+  'ml-IN': 'പുനഃസ്ഥാപനത്തിന് മുമ്പ്',
+  'nb-NO': 'Før gjenoppretting',
+  'nl-NL': 'Vóór herstellen',
+  'pl-PL': 'Przed przywróceniem',
+  'pt-BR': 'Antes da restauração',
+  'pt-PT': 'Antes da restauração',
+  'ro-RO': 'Înainte de restaurare',
+  'ru-RU': 'Перед восстановлением',
+  'sk-SK': 'Pred obnovením',
+  'sv-SE': 'Före återställning',
+  'zh-CN': '恢复前',
+  'zh-TW': '恢復前',
+} as const
+
+for (const [locale, preRestoreLabel] of Object.entries(backupReasonTranslations)) {
+  const currentLocale = (priorityTranslationOverrides as Record<string, any>)[locale] || {}
+  const currentBackup = currentLocale.backup || {}
+  const currentBackupReason = currentBackup.reason || {}
+
+  ;(priorityTranslationOverrides as Record<string, any>)[locale] = {
+    ...currentLocale,
+    backup: {
+      ...currentBackup,
+      reason: {
+        ...currentBackupReason,
+        pre_restore: preRestoreLabel,
+      },
+    },
+  }
+}
+
 export default priorityTranslationOverrides

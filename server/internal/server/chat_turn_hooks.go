@@ -154,7 +154,7 @@ func (h *MemoryTurnHook) AfterAssistantPersisted(_ context.Context, turn TurnCon
 	if messageID == "" || !h.markSeen(messageID) {
 		return nil
 	}
-	h.handler.extractMemoryAfterTurn(turn.ConversationID, memorySourceTag(turn.Source))
+	h.handler.extractMemoryAfterTurn(turn.ConversationID, memorySourceTag(turn.Source), turn.Model)
 	return nil
 }
 

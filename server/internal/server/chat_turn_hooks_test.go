@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -242,4 +243,59 @@ func TestProcessChannelMessage_FinalReplyTriggersPostTurnSaveOnly(t *testing.T) 
 		t.Fatal("expected non-empty IM response")
 	}
 	waitForRefreshCount(t, refresher, 1)
+}
+
+func TestExtractMemoryAfterTurnUsesResolvedModelSessionBudget(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "memory budget")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	totalEstimatedTokens := 0
+	for i := 0; i < 12; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		content := "marker-" + strconv.Itoa(i) + " " + strings.Repeat("context ", 700)
+		totalEstimatedTokens += estimateTokens(content)
+		if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{Role: role, Content: content}); err != nil {
+			t.Fatalf("AddMessage seed %d: %v", i, err)
+		}
+	}
+	if totalEstimatedTokens <= session.LegacyDefaultContextTokenBudget {
+		t.Fatalf("seeded conversation estimate = %d, want > %d", totalEstimatedTokens, session.LegacyDefaultContextTokenBudget)
+	}
+
+	extractor := &scriptedChatProvider{responses: []llm.ChatResponse{{
+		Message: llm.Message{Role: llm.RoleAssistant, Content: "NO_MEMORY_NEEDED"},
+	}}}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+	handler.SetProviderPool(newProviderPoolWithContextWindowModel(t, "large-context-model", 128000))
+	cfg := session.DefaultMemoryRefreshConfig()
+	cfg.Enabled = true
+	handler.SetCompactorMemoryIntegration(session.NewCompactorMemoryIntegration(nil, newRecordingMemoryRefresher(), extractor, cfg), session.LegacyDefaultContextTokenBudget)
+
+	if !handler.extractMemoryAfterTurn(conv.ID, "web", "large-context-model") {
+		t.Fatal("expected extractMemoryAfterTurn to run")
+	}
+
+	req, ok := extractor.RequestAt(0)
+	if !ok {
+		t.Fatal("expected extraction request")
+	}
+	if len(req.Messages) < 2 {
+		t.Fatalf("request messages = %d, want >= 2", len(req.Messages))
+	}
+	if !strings.Contains(req.Messages[1].Content, "marker-0") {
+		t.Fatalf("expected earliest message to survive model-aware session budget; content=%q", req.Messages[1].Content)
+	}
 }

@@ -184,7 +184,7 @@ const statusMessage = computed(() => {
     case 'running':
       return t('speech.voiceWake.messages.running')
     case 'disabled':
-      return t('speech.voiceWake.messages.disabled')
+      return ''
     case 'target_missing':
       return t('speech.voiceWake.messages.targetMissing')
     case 'target_unavailable':
@@ -208,6 +208,7 @@ const statusMessage = computed(() => {
       return requestError.value || t('speech.voiceWake.messages.unavailable')
   }
 })
+const hasStatusMessage = computed(() => statusMessage.value.trim().length > 0)
 
 const statusIconBgClass = computed(() => {
   if (!supportsConfiguration.value) {
@@ -902,7 +903,12 @@ onUnmounted(() => {
     </div>
 
     <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 space-y-4">
-      <p data-testid="voicewake-status-message" class="text-sm" :class="statusMessageClass">
+      <p
+        v-if="hasStatusMessage"
+        data-testid="voicewake-status-message"
+        class="text-sm"
+        :class="statusMessageClass"
+      >
         {{ statusMessage }}
       </p>
 

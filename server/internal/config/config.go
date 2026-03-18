@@ -662,7 +662,7 @@ func defaults() Config {
 			Metrics:     LLMMetricsConfig{Enabled: true, IncludeLatencyHistogram: true, IncludeTokenCounts: true, IncludeErrorBreakdown: true},
 		},
 		Session: SessionConfig{
-			MaxTokens: 8000, MaxMessages: 100, IdleTimeout: 30 * time.Minute,
+			MaxTokens: 0, MaxMessages: 100, IdleTimeout: 30 * time.Minute,
 			Compaction:  SessionCompactionConfig{Enabled: true, Threshold: 0.8, Strategy: "summarize", SummaryMaxTokens: 500, PreserveRecent: 5, AutoCompact: true, AutoCompactInterval: 5 * time.Minute},
 			Persistence: SessionPersistenceConfig{Enabled: true, Path: "./data/blue.db", Interval: time.Minute, OnMessage: true, OnCompact: true},
 			Isolation:   SessionIsolationConfig{ByAgent: true, ByChannel: true, ByPeer: true},

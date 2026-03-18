@@ -230,6 +230,7 @@ browser:
 
 # Session settings (conversation context + audit trail)
 session:
+  max_tokens: 0                  # 0 = auto-resolve from model context window; use a positive value to force a fixed history budget
   audit:
     enabled: true
     path: ""                      # empty = reuse blue.db; set a file path to isolate audit logs

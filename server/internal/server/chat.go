@@ -4191,6 +4191,17 @@ func (e chatInputBudgetEstimate) NeedsPressureCompaction() bool {
 	return e.ContextUsageRatio() >= smartContextSoftCompressionThreshold
 }
 
+func resolvedSessionHistoryBudget(contextWindow int) int {
+	if contextWindow <= 0 {
+		contextWindow = session.DefaultContextTokenBudget
+	}
+	budget := contextWindow - estimateOutputReserveTokens(contextWindow, 0)
+	if budget < 1 {
+		return contextWindow
+	}
+	return budget
+}
+
 func (h *ChatHandler) resolveContextWindowForModel(model string) int {
 	trimmed := strings.TrimSpace(model)
 	if trimmed != "" && !strings.EqualFold(trimmed, "auto") && h != nil && h.providerPool != nil && h.providerPool.Discovery != nil {
@@ -4202,6 +4213,17 @@ func (h *ChatHandler) resolveContextWindowForModel(model string) int {
 		return h.compactionConfig.MaxContextTokens
 	}
 	return claudecode.DefaultContextTokens
+}
+
+// resolveSessionTokenBudgetForModel returns the conversation-history budget used
+// by session truncation and memory compaction. Unlike ChatRequest.MaxTokens,
+// this budget is derived from the model's context window and reserves headroom
+// for generated output.
+func (h *ChatHandler) resolveSessionTokenBudgetForModel(model string) int {
+	if h != nil && h.memoryMaxTokens > 0 && h.memoryMaxTokens != session.LegacyDefaultContextTokenBudget {
+		return h.memoryMaxTokens
+	}
+	return resolvedSessionHistoryBudget(h.resolveContextWindowForModel(model))
 }
 
 func (h *ChatHandler) contextHistoryFetchLimit(model string) int {
@@ -4218,6 +4240,9 @@ func (h *ChatHandler) contextHistoryFetchLimit(model string) int {
 	}
 }
 
+// estimateOutputReserveTokens reserves part of the model context window for
+// generated output. requestedMaxTokens here is the caller's desired output cap,
+// not the model's total context length.
 func estimateOutputReserveTokens(contextWindow, requestedMaxTokens int) int {
 	if requestedMaxTokens > 0 {
 		return requestedMaxTokens
@@ -4241,12 +4266,12 @@ func estimateOutputReserveTokens(contextWindow, requestedMaxTokens int) int {
 	return reserve
 }
 
-func (h *ChatHandler) measurePreparedInputBudget(model string, maxTokens int, messages []llm.Message) chatInputBudgetEstimate {
+func (h *ChatHandler) measurePreparedInputBudget(model string, requestedMaxOutputTokens int, messages []llm.Message) chatInputBudgetEstimate {
 	contextWindow := h.resolveContextWindowForModel(model)
 	if contextWindow <= 0 {
 		return chatInputBudgetEstimate{Model: strings.TrimSpace(model)}
 	}
-	reservedOutput := estimateOutputReserveTokens(contextWindow, maxTokens)
+	reservedOutput := estimateOutputReserveTokens(contextWindow, requestedMaxOutputTokens)
 	maxInputTokens := contextWindow - reservedOutput
 	if maxInputTokens < 1 {
 		maxInputTokens = 1
@@ -4260,8 +4285,8 @@ func (h *ChatHandler) measurePreparedInputBudget(model string, maxTokens int, me
 	}
 }
 
-func (h *ChatHandler) estimatePreparedInputBudget(model string, maxTokens int, messages []llm.Message) *chatInputBudgetEstimate {
-	estimate := h.measurePreparedInputBudget(model, maxTokens, messages)
+func (h *ChatHandler) estimatePreparedInputBudget(model string, requestedMaxOutputTokens int, messages []llm.Message) *chatInputBudgetEstimate {
+	estimate := h.measurePreparedInputBudget(model, requestedMaxOutputTokens, messages)
 	if !estimate.Exceeds() {
 		return nil
 	}
@@ -4709,7 +4734,7 @@ func appendPreparedBudgetAttempt(
 	return attempts, len(attempts) - 1
 }
 
-func (h *ChatHandler) selectPreparedBudgetFallbackCandidates(messages []llm.Message, maxTokens int, originalModel, explicitProviderID string) ([]preparedBudgetFallbackCandidate, bool) {
+func (h *ChatHandler) selectPreparedBudgetFallbackCandidates(messages []llm.Message, requestedMaxOutputTokens int, originalModel, explicitProviderID string) ([]preparedBudgetFallbackCandidate, bool) {
 	if h == nil || h.providerPool == nil || h.providerPool.Registry == nil || h.providerPool.Discovery == nil {
 		return nil, false
 	}
@@ -4735,7 +4760,7 @@ func (h *ChatHandler) selectPreparedBudgetFallbackCandidates(messages []llm.Mess
 				strings.EqualFold(strings.TrimSpace(candidateModel.ProviderID), strings.TrimSpace(explicitProviderID)) {
 				continue
 			}
-			if h.measurePreparedInputBudget(candidateModel.ID, maxTokens, messages).Exceeds() {
+			if h.measurePreparedInputBudget(candidateModel.ID, requestedMaxOutputTokens, messages).Exceeds() {
 				continue
 			}
 			candidate := preparedBudgetFallbackCandidate{Provider: provider, Model: candidateModel}
@@ -8172,12 +8197,9 @@ func (h *ChatHandler) SetLayeredMemory(svc *memory.LayeredMemoryService) {
 
 // SetCompactorMemoryIntegration enables threshold-triggered memory extraction
 // using session compactor logic on live conversation messages.
-func (h *ChatHandler) SetCompactorMemoryIntegration(integration *session.CompactorMemoryIntegration, maxTokens int) {
+func (h *ChatHandler) SetCompactorMemoryIntegration(integration *session.CompactorMemoryIntegration, sessionMaxTokens int) {
 	h.memoryCompactor = integration
-	if maxTokens <= 0 {
-		maxTokens = 8000
-	}
-	h.memoryMaxTokens = maxTokens
+	h.memoryMaxTokens = sessionMaxTokens
 	if integration == nil {
 		h.memoryRatioMu.Lock()
 		h.memoryRatioByConv = make(map[string]float64)
@@ -12670,15 +12692,15 @@ const (
 // extractMemory extracts important information from conversation messages and saves to daily log.
 // source is "im" or "web" for tagging. Returns true if memory was saved.
 func (h *ChatHandler) extractMemory(convID, source string) bool {
-	return h.extractMemoryWithMode(convID, source, memoryExtractionThreshold)
+	return h.extractMemoryWithMode(convID, source, "", memoryExtractionThreshold)
 }
 
 // extractMemoryAfterTurn captures memory after a final assistant reply has been persisted.
-func (h *ChatHandler) extractMemoryAfterTurn(convID, source string) bool {
-	return h.extractMemoryWithMode(convID, source, memoryExtractionForce)
+func (h *ChatHandler) extractMemoryAfterTurn(convID, source, model string) bool {
+	return h.extractMemoryWithMode(convID, source, model, memoryExtractionForce)
 }
 
-func (h *ChatHandler) extractMemoryWithMode(convID, source string, mode memoryExtractionMode) bool {
+func (h *ChatHandler) extractMemoryWithMode(convID, source, model string, mode memoryExtractionMode) bool {
 	if h.store == nil {
 		return false
 	}
@@ -12694,15 +12716,11 @@ func (h *ChatHandler) extractMemoryWithMode(convID, source string, mode memoryEx
 
 	// Prefer compactor-backed extraction when integration is wired.
 	if h.memoryCompactor != nil {
-		maxTokens := h.memoryMaxTokens
-		if maxTokens <= 0 {
-			maxTokens = 8000
-		}
 		sess := session.NewSession(session.SessionID{
 			AgentID:   "chat",
 			ChannelID: source,
 			PeerID:    convID,
-		}, maxTokens)
+		}, h.resolveSessionTokenBudgetForModel(model))
 		for _, msg := range messages {
 			role := strings.TrimSpace(msg.Role)
 			if role == "" {

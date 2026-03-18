@@ -55,6 +55,9 @@ type LLMMetricsConfig struct {
 
 // SessionConfig holds session management configuration.
 type SessionConfig struct {
+	// MaxTokens limits retained session history for compaction/truncation.
+	// Values <= 0 enable auto budgeting from model context when available, with
+	// a modern large-context fallback for model-agnostic session paths.
 	MaxTokens   int                      `yaml:"max_tokens"`
 	MaxMessages int                      `yaml:"max_messages"`
 	IdleTimeout time.Duration            `yaml:"idle_timeout"`
