@@ -302,8 +302,9 @@ export default {
       userGuideItem3: 'Transfira o modelo antes da primeira utilizacao.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Compactação do contexto do chat',
+      irContextPruneDesc:
+        'Controla como o Blue compacta o histórico do chat quando a pressão de contexto aumenta.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Parametros avancados (normalmente nao e necessario alterar)',
       advancedHint: 'Ajuste apenas para resolucao de problemas ou validacao de rollout controlado.',
@@ -597,6 +598,7 @@ export default {
   },
   claudecode: {
     ...ptBR.claudecode,
+    lastUsed: 'Última utilização',
     disabledWarningDesc:
       'O modo padrão está ativo, o modo melhorado oferece uma experiência melhor.',
     missingToolCalling: 'Capacidades avançadas de Tool Calling',

@@ -942,9 +942,9 @@ async function handleToggle(skill: Skill) {
 }
 
 .skills-showcase {
-  padding: 18px;
+  padding: 16px;
   border: 1px solid var(--skills-shell-border);
-  border-radius: 28px;
+  border-radius: 24px;
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--skill-accent-a, var(--primary)) 14%, transparent), transparent 34%),
     linear-gradient(180deg, var(--skills-shell-bg-top) 0%, var(--skills-shell-bg-bottom) 100%);
@@ -956,8 +956,8 @@ async function handleToggle(skill: Skill) {
 .skills-showcase__lead {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(420px, 0.92fr);
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .skills-showcase__intro {
@@ -1002,14 +1002,14 @@ async function handleToggle(skill: Skill) {
 .skills-showcase__stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .skills-showcase__stat-card {
-  min-height: 68px;
-  padding: 10px;
+  min-height: 60px;
+  padding: 8px;
   border: 1px solid var(--skills-stat-border);
-  border-radius: 14px;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1021,22 +1021,22 @@ async function handleToggle(skill: Skill) {
 }
 
 .skills-showcase__stat-card span {
-  font-size: 8px;
+  font-size: 7px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .skills-showcase__stat-card strong {
   color: var(--skills-stat-value);
-  font-size: clamp(1rem, 0.55vw + 0.85rem, 1.2rem);
+  font-size: clamp(0.92rem, 0.45vw + 0.8rem, 1.08rem);
   line-height: 1;
   letter-spacing: -0.03em;
 }
 
 .skills-showcase__filters {
   margin-bottom: 0;
-  padding: 12px;
-  border-radius: 18px;
+  padding: 10px;
+  border-radius: 16px;
   border: none;
   background: color-mix(in srgb, var(--skills-stat-bg) 84%, transparent);
   box-shadow: none;
@@ -1049,18 +1049,18 @@ async function handleToggle(skill: Skill) {
 
 .skill-gallery__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .skill-showcase-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 20px;
+  gap: 12px;
+  padding: 16px;
   border: 1px solid var(--skills-card-border);
-  border-radius: 28px;
+  border-radius: 24px;
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--skill-accent-a) 10%, transparent), transparent 32%),
     linear-gradient(180deg, var(--skills-card-bg-top) 0%, var(--skills-card-bg-bottom) 100%);
@@ -1112,7 +1112,7 @@ async function handleToggle(skill: Skill) {
   z-index: 1;
   display: flex;
   align-items: flex-start;
-  gap: 16px;
+  gap: 12px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -1127,9 +1127,9 @@ async function handleToggle(skill: Skill) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 22px;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
   background: var(--skill-icon-bg);
   border: 1px solid var(--skill-icon-border);
   box-shadow:
@@ -1150,14 +1150,14 @@ async function handleToggle(skill: Skill) {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
 }
 
 .skill-showcase-card__orb-image,
 .detail-icon__image {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
   filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.28));
 }
@@ -1168,7 +1168,7 @@ async function handleToggle(skill: Skill) {
 }
 
 .skill-showcase-card__orb-fallback {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1;
   filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.28));
@@ -1185,7 +1185,7 @@ async function handleToggle(skill: Skill) {
 .skill-showcase-card__title-row h3 {
   margin: 0;
   color: var(--skills-card-title);
-  font-size: 1.3rem;
+  font-size: 1.12rem;
   line-height: 1.15;
   letter-spacing: -0.025em;
 }
@@ -1193,12 +1193,12 @@ async function handleToggle(skill: Skill) {
 .skill-showcase-card__id {
   display: inline-flex;
   width: fit-content;
-  padding: 3px 7px;
+  padding: 2px 6px;
   border-radius: 999px;
   border: 1px solid var(--skills-detail-code-border);
   background: var(--skills-detail-code-bg);
   color: var(--skills-detail-label);
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1;
 }
 
@@ -1217,8 +1217,8 @@ async function handleToggle(skill: Skill) {
 .skill-showcase-card__hero-copy p {
   margin: 0;
   color: var(--skills-card-text);
-  font-size: 1rem;
-  line-height: 1.62;
+  font-size: 0.92rem;
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -1235,12 +1235,12 @@ async function handleToggle(skill: Skill) {
 .skill-showcase-card__badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 999px;
   border: 1px solid var(--skills-badge-border);
   background: var(--skills-badge-bg);
   color: var(--skills-badge-text);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1249,21 +1249,21 @@ async function handleToggle(skill: Skill) {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 9px;
+  padding: 4px 8px;
   border-radius: 999px;
   border: 1px solid var(--skills-state-border);
   background: var(--skills-state-bg);
   color: var(--skills-state-text);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .skill-showcase-card__state-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: currentColor;
 }
@@ -1291,7 +1291,7 @@ async function handleToggle(skill: Skill) {
 .skill-showcase-card__metrics {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .skill-showcase-card__metric {
@@ -1306,24 +1306,25 @@ async function handleToggle(skill: Skill) {
 }
 
 .skill-showcase-card__metrics--rail {
-  row-gap: 6px;
+  row-gap: 4px;
 }
 
 .skill-showcase-card__metric--inline {
   padding: 0;
   color: var(--skills-detail-label);
+  font-size: 11px;
 }
 
 .skill-showcase-card__metric-icon {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   color: var(--skill-accent-a);
   flex-shrink: 0;
 }
 
 .skill-showcase-card__metric strong {
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.2;
 }
 
@@ -1331,29 +1332,29 @@ async function handleToggle(skill: Skill) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   margin-top: auto;
-  padding-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--skills-meta-border);
 }
 
 .skill-showcase-card__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
   align-items: center;
 }
 
 .skill-showcase-card__chip {
   display: inline-flex;
   align-items: center;
-  padding: 4px 9px;
+  padding: 3px 8px;
   border-radius: 999px;
   border: 1px solid var(--skills-chip-border);
   background: var(--skills-chip-bg);
   color: var(--skills-chip-text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 600;
 }
 
@@ -1371,14 +1372,14 @@ async function handleToggle(skill: Skill) {
   align-items: center;
   gap: 4px;
   color: var(--primary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .skill-showcase-card__link-hint::after {
   content: '↗';
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1;
 }
 
@@ -1969,6 +1970,12 @@ async function handleToggle(skill: Skill) {
   text-decoration: underline;
 }
 
+@media (max-width: 1400px) {
+  .skill-gallery__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 980px) {
   .skills-showcase__lead {
     grid-template-columns: 1fr;
@@ -2015,7 +2022,7 @@ async function handleToggle(skill: Skill) {
   }
 
   .skill-gallery__grid {
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

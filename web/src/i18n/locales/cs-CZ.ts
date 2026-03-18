@@ -602,8 +602,8 @@ export default {
       userGuideItem3: 'Pred prvnim pouzitim stahnete model.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Komprese kontextu chatu',
+      irContextPruneDesc: 'Určuje, jak Blue omezuje historii chatu, když roste tlak na kontext.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Pokrocile parametry (obvykle neni treba menit)',
       advancedHint: 'Upravujte jen pri reseni problemu nebo pri kontrolovanem rolloutu.',
@@ -2183,6 +2183,7 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Naposledy použito',
     disabledWarningDesc:
       'Aktivní je standardní režim, rozšířený režim nabízí lepší uživatelský zážitek.',
     missingToolCalling: 'Pokročilé možnosti Tool Calling',

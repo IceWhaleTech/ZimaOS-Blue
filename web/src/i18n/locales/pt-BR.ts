@@ -576,8 +576,9 @@ export default {
       userGuideItem3: 'Baixe o modelo antes do primeiro uso.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Compactação do contexto do chat',
+      irContextPruneDesc:
+        'Controla como o Blue compacta o histórico do chat quando a pressão de contexto aumenta.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Parametros avancados (normalmente nao e necessario alterar)',
       advancedHint: 'Ajuste apenas para troubleshooting ou validacao de rollout controlado.',
@@ -1947,6 +1948,7 @@ export default {
   },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Último uso',
     // Aviso de desativação
     installFirst: 'Por favor, instale primeiro Claude Code CLI',
     disabledWarningTitle: 'Claude Code CLI está desativado',

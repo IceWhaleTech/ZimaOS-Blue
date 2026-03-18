@@ -215,7 +215,7 @@ function primeApiMocks() {
   } as never)
   vi.mocked(proxyCacheApi.getPrunerConfig).mockResolvedValue({
     data: {
-      enabled: true,
+      enabled: false,
       backend: 'local',
       threshold: 0.5,
       min_lines: 80,
@@ -224,7 +224,7 @@ function primeApiMocks() {
   } as never)
   vi.mocked(proxyCacheApi.getPrunerStats).mockResolvedValue({
     data: {
-      enabled: true,
+      enabled: false,
       stats: {
         total_requests: 10,
         pruned_requests: 3,
@@ -337,20 +337,17 @@ describe('SettingsView small-model controls', () => {
     await wrapper.get('[data-testid="small-model-ir-master-switch"]').trigger('click')
     await flushPromises()
     expect(irMasterSpy).toHaveBeenCalledWith(true)
+    expect(proxyCacheApi.updatePrunerConfig).toHaveBeenNthCalledWith(1, { enabled: true })
 
     await wrapper.get('[data-testid="small-model-context-prune-switch"]').trigger('click')
     await flushPromises()
     expect(contextPruneSpy).toHaveBeenCalledWith(false)
 
-    expect(wrapper.get('[data-testid="proxy-pruner-switch"]').attributes('aria-checked')).toBe(
-      'true'
-    )
+    expect(wrapper.get('[data-testid="proxy-pruner-switch"]').attributes('aria-checked')).toBe('true')
     await wrapper.get('[data-testid="proxy-pruner-switch"]').trigger('click')
     await flushPromises()
-    expect(proxyCacheApi.updatePrunerConfig).toHaveBeenCalledWith({ enabled: false })
-    expect(wrapper.get('[data-testid="proxy-pruner-switch"]').attributes('aria-checked')).toBe(
-      'false'
-    )
+    expect(proxyCacheApi.updatePrunerConfig).toHaveBeenNthCalledWith(2, { enabled: false })
+    expect(wrapper.get('[data-testid="proxy-pruner-switch"]').attributes('aria-checked')).toBe('false')
 
     await wrapper.get('[data-testid="small-model-media-intent-switch"]').trigger('click')
     await flushPromises()

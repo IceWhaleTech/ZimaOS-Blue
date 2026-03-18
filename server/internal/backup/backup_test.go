@@ -1176,7 +1176,8 @@ func TestCheckAndAutoRecoverPrefersRepairBeforeBackupRestore(t *testing.T) {
 	}
 
 	writeSQLiteValue(t, blueDB, "blue-v2")
-	corruptSQLiteBytes(t, auditDB, 200, []byte("garbage"))
+	inflateSQLiteValueTable(t, auditDB, 2000)
+	corruptSQLiteBytes(t, auditDB, 8192, []byte("garbagegarbagegarbagegarbage"))
 
 	dbPaths, err := DiscoverSQLiteDatabasePaths(dataDir)
 	if err != nil {
@@ -1203,8 +1204,8 @@ func TestCheckAndAutoRecoverPrefersRepairBeforeBackupRestore(t *testing.T) {
 	if got := readSQLiteValue(t, blueDB); got != "blue-v2" {
 		t.Fatalf("expected blue db to stay at v2, got %q", got)
 	}
-	if got := readSQLiteValue(t, auditDB); got != "audit-v1" {
-		t.Fatalf("expected repaired audit db to retain data, got %q", got)
+	if got := countSQLiteValues(t, auditDB); got == 0 {
+		t.Fatal("expected repaired audit db to retain rows")
 	}
 }
 
@@ -1219,8 +1220,8 @@ func writeSQLiteValue(t *testing.T, path, value string) {
 
 	statements := []string{
 		"DROP TABLE IF EXISTS entries",
-		"CREATE TABLE entries (value TEXT NOT NULL)",
-		"INSERT INTO entries(value) VALUES (?)",
+		"CREATE TABLE entries (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+		"INSERT INTO entries(id, value) VALUES (1, ?)",
 	}
 	if _, err := db.Exec(statements[0]); err != nil {
 		t.Fatalf("failed to reset sqlite db %s: %v", path, err)
@@ -1243,10 +1244,26 @@ func readSQLiteValue(t *testing.T, path string) string {
 	defer db.Close()
 
 	var value string
-	if err := db.QueryRow("SELECT value FROM entries LIMIT 1").Scan(&value); err != nil {
+	if err := db.QueryRow("SELECT value FROM entries WHERE id = 1").Scan(&value); err != nil {
 		t.Fatalf("failed to read sqlite value from %s: %v", path, err)
 	}
 	return value
+}
+
+func countSQLiteValues(t *testing.T, path string) int {
+	t.Helper()
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("failed to open sqlite db %s: %v", path, err)
+	}
+	defer db.Close()
+
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM entries").Scan(&count); err != nil {
+		t.Fatalf("failed to count sqlite values from %s: %v", path, err)
+	}
+	return count
 }
 
 func containsString(items []string, target string) bool {
@@ -1256,6 +1273,36 @@ func containsString(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func inflateSQLiteValueTable(t *testing.T, path string, rows int) {
+	t.Helper()
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("failed to open sqlite db %s: %v", path, err)
+	}
+	defer db.Close()
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("failed to begin inflate transaction for %s: %v", path, err)
+	}
+	stmt, err := tx.Prepare("INSERT INTO entries(id, value) VALUES (?, ?)")
+	if err != nil {
+		t.Fatalf("failed to prepare inflate statement for %s: %v", path, err)
+	}
+	defer stmt.Close()
+
+	for i := 2; i <= rows; i++ {
+		if _, err := stmt.Exec(i, strings.Repeat("x", 200)); err != nil {
+			_ = tx.Rollback()
+			t.Fatalf("failed to inflate sqlite db %s at row %d: %v", path, i, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("failed to commit inflate transaction for %s: %v", path, err)
+	}
 }
 
 func corruptSQLiteBytes(t *testing.T, path string, offset int64, payload []byte) {

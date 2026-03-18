@@ -617,8 +617,9 @@ export default {
       userGuideItem3: 'ആദ്യ ഉപയോഗത്തിന് മുമ്പ് മോഡൽ ഡൗൺലോഡ് ചെയ്യുക.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'ചാറ്റ് സന്ദർഭ ചുരുക്കൽ',
+      irContextPruneDesc:
+        'സന്ദർഭ സമ്മർദ്ദം ഉയരുമ്പോൾ Blue ചാറ്റ് ചരിത്രം എങ്ങനെ ചുരുക്കണമെന്ന് നിയന്ത്രിക്കുന്നു.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'ഉന്നത പാരാമീറ്ററുകൾ (സാധാരണ മാറ്റേണ്ടതില്ല)',
       advancedHint: 'പ്രശ്നപരിഹാരത്തിനോ നിയന്ത്രിത റോളൗട്ട് പരിശോധനയ്ക്കോ മാത്രമേ ക്രമീകരിക്കാവൂ.',
@@ -1831,6 +1832,7 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'അവസാനം ഉപയോഗിച്ചത്',
     disabledWarningDesc: 'ഇപ്പോൾ സ്റ്റാൻഡേർഡ് മോഡാണ്, എന്ഹാൻസ്ഡ് മോഡിൽ അനുഭവം കൂടുതൽ മികച്ചതാണ്.',
     missingToolCalling: 'ഉന്നത Tool Calling കഴിവുകൾ',
     directoryPathPlaceholderWin: 'ഡയറക്ടറി പാത്ത് (ഉദാ. C:\\Users\\user\\projects)',

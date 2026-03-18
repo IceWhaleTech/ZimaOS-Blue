@@ -559,9 +559,9 @@ async function handleToggle(tool: Tool) {
 }
 
 .tools-showcase {
-  padding: 18px;
+  padding: 16px;
   border: 1px solid var(--tools-shell-border);
-  border-radius: 28px;
+  border-radius: 24px;
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--tool-accent-a, var(--primary)) 14%, transparent), transparent 34%),
     linear-gradient(180deg, var(--tools-shell-bg-top) 0%, var(--tools-shell-bg-bottom) 100%);
@@ -573,8 +573,8 @@ async function handleToggle(tool: Tool) {
 .tools-showcase__lead {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(420px, 0.92fr);
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .tools-showcase__intro {
@@ -619,14 +619,14 @@ async function handleToggle(tool: Tool) {
 .tools-showcase__stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .tools-showcase__stat-card {
-  min-height: 68px;
-  padding: 10px;
+  min-height: 60px;
+  padding: 8px;
   border: 1px solid var(--tools-stat-border);
-  border-radius: 14px;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -638,22 +638,22 @@ async function handleToggle(tool: Tool) {
 }
 
 .tools-showcase__stat-card span {
-  font-size: 8px;
+  font-size: 7px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .tools-showcase__stat-card strong {
   color: var(--tools-stat-value);
-  font-size: clamp(1rem, 0.55vw + 0.85rem, 1.2rem);
+  font-size: clamp(0.92rem, 0.45vw + 0.8rem, 1.08rem);
   line-height: 1;
   letter-spacing: -0.03em;
 }
 
 .tools-showcase__filters {
   margin-bottom: 0;
-  padding: 12px;
-  border-radius: 18px;
+  padding: 10px;
+  border-radius: 16px;
   border: 1px solid var(--tools-stat-border);
   background: color-mix(in srgb, var(--tools-stat-bg) 84%, transparent);
 }
@@ -665,18 +665,18 @@ async function handleToggle(tool: Tool) {
 
 .tool-gallery__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .tool-showcase-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 20px;
+  gap: 12px;
+  padding: 16px;
   border: 1px solid var(--tools-card-border);
-  border-radius: 28px;
+  border-radius: 24px;
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--tool-accent-a) 10%, transparent), transparent 32%),
     linear-gradient(180deg, var(--tools-card-bg-top) 0%, var(--tools-card-bg-bottom) 100%);
@@ -709,19 +709,19 @@ async function handleToggle(tool: Tool) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .tool-showcase-card__topline-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .tool-showcase-card__hero {
   display: flex;
   align-items: flex-start;
-  gap: 16px;
+  gap: 12px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -731,9 +731,9 @@ async function handleToggle(tool: Tool) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 22px;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
   background: var(--tool-icon-bg);
   border: 1px solid var(--tool-icon-border);
   box-shadow:
@@ -744,14 +744,14 @@ async function handleToggle(tool: Tool) {
 }
 
 .tool-showcase-card__orb-image {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
   filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.28));
 }
 
 .tool-showcase-card__orb-fallback {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1;
   filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.28));
@@ -761,7 +761,7 @@ async function handleToggle(tool: Tool) {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
 }
 
@@ -775,7 +775,7 @@ async function handleToggle(tool: Tool) {
 .tool-showcase-card__title-row h3 {
   margin: 0;
   color: var(--tools-card-title);
-  font-size: 1.3rem;
+  font-size: 1.12rem;
   line-height: 1.15;
   letter-spacing: -0.025em;
 }
@@ -783,20 +783,20 @@ async function handleToggle(tool: Tool) {
 .tool-showcase-card__id {
   display: inline-flex;
   width: fit-content;
-  padding: 3px 7px;
+  padding: 2px 6px;
   border-radius: 999px;
   border: 1px solid var(--tools-detail-code-border);
   background: var(--tools-detail-code-bg);
   color: var(--tools-detail-label);
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1;
 }
 
 .tool-showcase-card__hero-copy p {
   margin: 0;
   color: var(--tools-card-text);
-  font-size: 1rem;
-  line-height: 1.62;
+  font-size: 0.92rem;
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -806,12 +806,12 @@ async function handleToggle(tool: Tool) {
 .tool-showcase-card__badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 999px;
   border: 1px solid var(--tools-badge-border);
   background: var(--tools-badge-bg);
   color: var(--tools-badge-text);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -820,19 +820,19 @@ async function handleToggle(tool: Tool) {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 9px;
+  padding: 4px 8px;
   border-radius: 999px;
   border: 1px solid var(--tools-state-border);
   background: var(--tools-state-bg);
   color: var(--tools-state-text);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .tool-showcase-card__state-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: currentColor;
 }
@@ -859,20 +859,20 @@ async function handleToggle(tool: Tool) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   margin-top: auto;
-  padding-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--tools-meta-border);
 }
 
 .tool-showcase-card__metrics {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tool-showcase-card__metrics--rail {
-  row-gap: 6px;
+  row-gap: 4px;
 }
 
 .tool-showcase-card__metric {
@@ -887,38 +887,39 @@ async function handleToggle(tool: Tool) {
 
 .tool-showcase-card__metric--inline {
   color: var(--tools-detail-label);
+  font-size: 11px;
 }
 
 .tool-showcase-card__metric-icon {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   color: var(--tool-accent-a);
   flex-shrink: 0;
 }
 
 .tool-showcase-card__metric strong {
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.2;
 }
 
 .tool-showcase-card__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
   align-items: center;
 }
 
 .tool-showcase-card__chip {
   display: inline-flex;
   align-items: center;
-  padding: 4px 9px;
+  padding: 3px 8px;
   border-radius: 999px;
   border: 1px solid var(--tools-chip-border);
   background: var(--tools-chip-bg);
   color: var(--tools-chip-text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 600;
 }
 
@@ -959,6 +960,12 @@ async function handleToggle(tool: Tool) {
   line-height: 1.5;
 }
 
+@media (max-width: 1400px) {
+  .tool-gallery__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 980px) {
   .tools-showcase__lead {
     grid-template-columns: 1fr;
@@ -969,7 +976,7 @@ async function handleToggle(tool: Tool) {
   }
 
   .tool-gallery__grid {
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .tool-showcase-card__footer {

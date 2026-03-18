@@ -84,7 +84,7 @@
 .filters {
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
   align-items: center;
 }
@@ -107,14 +107,14 @@
 
 .search-input {
   width: 100%;
-  padding: 8px 10px 8px 34px;
+  padding: 7px 10px 7px 34px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  font-size: 13px;
+  font-size: 12px;
   background: var(--glass-bg, rgba(255, 255, 255, 0.05));
   color: var(--text-primary);
   box-sizing: border-box;
-  height: 36px;
+  height: 34px;
 }
 
 .search-input:focus {
@@ -123,15 +123,15 @@
 }
 
 .filter-select {
-  padding: 8px 10px;
+  padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  font-size: 13px;
+  font-size: 12px;
   background: var(--glass-bg, rgba(255, 255, 255, 0.05));
   color: var(--text-primary);
   min-width: 108px;
   box-sizing: border-box;
-  height: 36px;
+  height: 34px;
 }
 
 .filter-actions {
@@ -143,17 +143,17 @@
 .btn-add-source {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: 5px;
+  padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--glass-bg, rgba(255, 255, 255, 0.05));
   color: var(--text-primary);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   transition: all 0.2s;
   box-sizing: border-box;
-  height: 36px;
+  height: 34px;
   white-space: nowrap;
 }
 
@@ -509,7 +509,7 @@
 .toggle-switch {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   cursor: pointer;
 }
 
@@ -518,11 +518,11 @@
 }
 
 .toggle-slider {
-  width: 36px;
-  height: 20px;
+  width: 32px;
+  height: 18px;
   background: #e5e7eb;
   border: 1px solid #d1d5db;
-  border-radius: 10px;
+  border-radius: 999px;
   position: relative;
   transition: all 0.2s;
 }
@@ -532,8 +532,8 @@
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   background: #9ca3af;
   border-radius: 50%;
   transition: all 0.2s;
@@ -545,7 +545,7 @@
 }
 
 .toggle-switch input:checked + .toggle-slider::after {
-  left: 18px;
+  left: 16px;
   background: white;
 }
 
@@ -567,7 +567,7 @@
 }
 
 .toggle-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-secondary);
 }
 

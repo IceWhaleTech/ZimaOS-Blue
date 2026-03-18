@@ -130,6 +130,7 @@ export default {
     upload: 'アップロード',
     uploading: 'アップロード中...',
     send: '送信',
+    revoke: '取り消し',
   },
   theme: {
     styles: {
@@ -853,8 +854,9 @@ export default {
       userGuideItem3: '初回利用前にモデルをダウンロードしてください。',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'チャットコンテキスト圧縮',
+      irContextPruneDesc:
+        'コンテキスト圧力が高まったときに、Blue がチャット履歴をどのように圧縮するかを制御します。',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: '詳細パラメータ（通常は変更不要）',
       advancedHint: 'トラブルシュートや段階的展開の検証時のみ調整してください。',
@@ -2301,6 +2303,7 @@ export default {
   },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: '最終使用',
     title: 'Claude Code CLI',
     statusReady: '準備完了',
     statusNotValidated: '未検証',

@@ -542,8 +542,9 @@ export default {
       userGuideItem3: 'Zagruzite model pered pervym ispolzovaniem.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Сжатие контекста чата',
+      irContextPruneDesc:
+        'Определяет, как Blue сжимает историю чата, когда растет давление на контекстное окно.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Rasshirennye parametry (obychno menyat ne nuzhno)',
       advancedHint: 'Izmenyayte tolko dlya diagnostiki ili proverki kontroliruemogo rollouta.',
@@ -1908,6 +1909,7 @@ export default {
   },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Последнее использование',
     // Предупреждение об отключении
     installFirst: 'Пожалуйста, сначала установите Claude Code CLI',
     disabledWarningTitle: 'Claude Code CLI отключен',

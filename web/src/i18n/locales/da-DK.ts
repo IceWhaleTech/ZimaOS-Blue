@@ -602,8 +602,9 @@ export default {
       userGuideItem3: 'Download modellen for forste brug.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Komprimering af chatkontekst',
+      irContextPruneDesc:
+        'Styrer, hvordan Blue reducerer chathistorikken, når kontekstpresset stiger.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Avancerede parametre (normalt ingen aendring nodvendig)',
       advancedHint: 'Juster kun ved fejlfinding eller kontrolleret rollout-validering.',
@@ -2089,6 +2090,7 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Sidst brugt',
     disabledWarningDesc: 'Standardtilstand er aktiv, forbedret tilstand giver en bedre oplevelse.',
     missingToolCalling: 'Avancerede Tool Calling-funktioner',
     directoryPathPlaceholderWin: 'Mappesti (f.eks. C:\\Users\\user\\projects)',

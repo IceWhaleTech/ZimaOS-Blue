@@ -610,8 +610,9 @@ export default {
       userGuideItem3: 'Descarca modelul inainte de prima utilizare.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Compactarea contextului chatului',
+      irContextPruneDesc:
+        'Controlează cum compactează Blue istoricul chatului când presiunea contextului crește.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Parametri avansati (de obicei nu necesita modificari)',
       advancedHint: 'Ajusteaza doar pentru depanare sau validarea unui rollout controlat.',
@@ -1823,6 +1824,7 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Ultima utilizare',
     disabledWarningDesc:
       'Modul standard este activ, modul îmbunătățit oferă o experiență mai bună.',
     missingToolCalling: 'Capabilități avansate Tool Calling',

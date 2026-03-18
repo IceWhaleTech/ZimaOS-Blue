@@ -622,8 +622,9 @@ export default {
       userGuideItem3: 'Az elso hasznalat elott toltse le a modellt.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Csevegési kontextus tömörítése',
+      irContextPruneDesc:
+        'Azt szabályozza, hogyan tömöríti a Blue a csevegési előzményeket, amikor nő a kontextusnyomás.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Halado parameterek (altalaban nem szukseges modositani)',
       advancedHint: 'Csak hibakereseshez vagy kontrollalt rollout ellenorzeshez allitsa.',
@@ -1706,6 +1707,7 @@ export default {
   autoReply: enUS.autoReply,
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Utoljára használva',
     missingToolCalling: 'Fejlett Tool Calling képességek',
   },
   a2ui: enUS.a2ui,

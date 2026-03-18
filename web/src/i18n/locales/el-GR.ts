@@ -609,8 +609,9 @@ export default {
       userGuideItem3: 'Katevaste to montelo prin apo tin proti xrisi.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Συμπίεση συμφραζομένων συνομιλίας',
+      irContextPruneDesc:
+        'Ελέγχει πώς το Blue συμπιέζει το ιστορικό συνομιλίας όταν αυξάνεται η πίεση συμφραζομένων.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Proigmenes parametroi (sinithos den xreiazetai allagi)',
       advancedHint: 'Allakste tis mono gia antimetopisi provlimaton i elegxomeno rollout.',
@@ -2134,6 +2135,7 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Τελευταία χρήση',
     disabledWarningDesc:
       'Η τυπική λειτουργία είναι ενεργή, η ενισχυμένη λειτουργία προσφέρει καλύτερη εμπειρία.',
     missingToolCalling: 'Προηγμένες δυνατότητες Tool Calling',

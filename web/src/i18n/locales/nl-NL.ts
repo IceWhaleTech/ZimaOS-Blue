@@ -610,8 +610,9 @@ export default {
       userGuideItem3: 'Download het model voor het eerste gebruik.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Chatcontext-compactie',
+      irContextPruneDesc:
+        'Bepaalt hoe Blue de chatgeschiedenis compacteert wanneer de contextdruk oploopt.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Geavanceerde parameters (meestal geen wijziging nodig)',
       advancedHint: 'Alleen aanpassen voor probleemoplossing of gecontroleerde rollout-validatie.',
@@ -2152,6 +2153,7 @@ export default {
   },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Laatst gebruikt',
     disabledWarningDesc: 'Standaardmodus is actief, de verbeterde modus biedt een betere ervaring.',
     missingToolCalling: 'Geavanceerde Tool Calling-mogelijkheden',
     directoryPathPlaceholderWin: 'Mappad (bijv. C:\\Users\\user\\projects)',

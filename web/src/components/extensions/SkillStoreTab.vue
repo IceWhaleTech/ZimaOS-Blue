@@ -1641,10 +1641,10 @@ onMounted(async () => {
 .install-button,
 .source-button {
   appearance: none;
-  min-height: 30px;
+  min-height: 28px;
   border-radius: 7px;
-  padding: 6px 10px;
-  font-size: 11.5px;
+  padding: 5px 9px;
+  font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
   transition:
@@ -1703,7 +1703,7 @@ onMounted(async () => {
 }
 
 .hero-panel {
-  padding: 16px 18px;
+  padding: 14px 16px;
   background: var(--panel-bg-strong);
 }
 
@@ -1735,7 +1735,7 @@ onMounted(async () => {
 .hero-copy h2 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1.12;
   letter-spacing: -0.02em;
 }
@@ -1744,8 +1744,8 @@ onMounted(async () => {
   margin: 0;
   max-width: 62ch;
   color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .hero-summary-row {
@@ -1790,9 +1790,9 @@ onMounted(async () => {
 }
 
 .hero-search-field :deep(.semantic-search-shell) {
-  min-height: 34px;
-  gap: 8px;
-  padding: 7px 10px 7px 11px;
+  min-height: 32px;
+  gap: 7px;
+  padding: 6px 9px 6px 10px;
   border-radius: 12px;
 }
 
@@ -1803,7 +1803,7 @@ onMounted(async () => {
 
 .hero-search-field :deep(.semantic-search-input) {
   height: 18px;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
 }
 
 .hero-search-field :deep(.semantic-search-clear) {
@@ -1823,8 +1823,8 @@ onMounted(async () => {
   background: rgba(255, 255, 255, 0.04);
   color: var(--text-secondary);
   border-radius: 999px;
-  padding: 5px 9px;
-  font-size: 10.5px;
+  padding: 4px 8px;
+  font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   transition:
@@ -1862,18 +1862,18 @@ onMounted(async () => {
   flex-direction: column;
   gap: 4px;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 9px;
 }
 
 .filter-select {
   min-width: 0;
-  height: 30px;
-  padding: 0 8px;
+  height: 28px;
+  padding: 0 7px;
   border-radius: 7px;
   border: 1px solid var(--border);
   background: var(--panel-bg);
   color: var(--text-primary);
-  font-size: 11.5px;
+  font-size: 10.5px;
 }
 
 .active-filters {
@@ -1886,13 +1886,13 @@ onMounted(async () => {
   appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   border: 1px solid var(--border);
   background: var(--panel-bg);
   color: var(--text-secondary);
   border-radius: 999px;
-  padding: 4px 8px;
-  font-size: 10.5px;
+  padding: 3px 7px;
+  font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   transition:
@@ -1905,7 +1905,7 @@ onMounted(async () => {
 .chip-button small {
   color: inherit;
   opacity: 0.8;
-  font-size: 9px;
+  font-size: 8px;
 }
 
 .chip-button:hover {
@@ -1972,8 +1972,8 @@ onMounted(async () => {
   align-items: center;
   gap: 4px;
   border-radius: 999px;
-  padding: 3px 6px;
-  font-size: 9.5px;
+  padding: 2px 6px;
+  font-size: 8.5px;
   font-weight: 600;
 }
 
@@ -2055,17 +2055,17 @@ onMounted(async () => {
 
 .results-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
-  gap: 18px;
-  margin-top: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
 }
 
 .skill-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px 20px;
-  border-radius: 28px;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 24px;
   border: 1px solid var(--border);
   background:
     radial-gradient(circle at top right, var(--market-accent-soft) 0%, transparent 42%),
@@ -2101,7 +2101,7 @@ onMounted(async () => {
 .card-title-row {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   align-items: flex-start;
 }
 
@@ -2109,7 +2109,7 @@ onMounted(async () => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .card-hero {
@@ -2122,7 +2122,7 @@ onMounted(async () => {
 .card-hero-main {
   display: flex;
   align-items: flex-start;
-  gap: 16px;
+  gap: 12px;
 }
 
 .card-icon,
@@ -2130,16 +2130,16 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 22px;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
   background: var(--market-icon-bg);
   border: 1px solid var(--market-icon-border);
   color: var(--market-icon-fg);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 18px 28px -24px var(--market-accent-glow);
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1;
   flex-shrink: 0;
@@ -2155,17 +2155,17 @@ onMounted(async () => {
 .card-hero h4 {
   margin: 0 0 4px;
   color: var(--text-primary);
-  font-size: 1.3rem;
+  font-size: 1.12rem;
   line-height: 1.15;
   letter-spacing: -0.02em;
 }
 
 .card-hero p {
   margin: 0;
-  min-height: 66px;
+  min-height: 54px;
   color: var(--text-secondary);
-  line-height: 1.6;
-  font-size: 1rem;
+  line-height: 1.5;
+  font-size: 0.92rem;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -2181,23 +2181,23 @@ onMounted(async () => {
 
 .card-note {
   margin: 0;
-  min-height: 34px;
+  min-height: 28px;
   color: var(--text-secondary);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .card-footer {
   margin-top: auto;
   align-items: center;
-  padding-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--border);
 }
 
 .card-stats-inline {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 10px;
+  gap: 6px 8px;
 }
 
 .card-stat-inline {
@@ -2205,13 +2205,13 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
 }
 
 .card-stat-inline svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   color: var(--market-accent);
   flex-shrink: 0;
 }
@@ -2939,6 +2939,12 @@ onMounted(async () => {
   cursor: pointer;
 }
 
+@media (max-width: 1400px) {
+  .results-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1200px) {
   .hero-headline,
   .security-overview {
@@ -2965,7 +2971,7 @@ onMounted(async () => {
   }
 
   .results-grid {
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

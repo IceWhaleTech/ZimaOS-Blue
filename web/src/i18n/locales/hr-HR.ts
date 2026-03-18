@@ -604,8 +604,9 @@ export default {
       userGuideItem3: 'Preuzmite model prije prve upotrebe.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Sažimanje konteksta chata',
+      irContextPruneDesc:
+        'Određuje kako Blue sažima povijest chata kada poraste pritisak konteksta.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Napredni parametri (obicno nije potrebno mijenjati)',
       advancedHint:
@@ -1543,6 +1544,7 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Zadnje korišteno',
     disabledWarningDesc:
       'Standardni način rada je aktivan, poboljšani način rada pruža bolje iskustvo.',
     missingToolCalling: 'Napredne mogućnosti Tool Calling',

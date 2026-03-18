@@ -221,6 +221,16 @@ describe('MemoryManager', () => {
     wrapper.unmount()
   })
 
+  it('keeps search fully inline without extra action buttons', async () => {
+    const wrapper = mountManager()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="memory-search-submit"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="memory-search-clear"]').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
   it('localizes match type labels in search results', async () => {
     vi.useFakeTimers()
     vi.mocked(memoryApi.search).mockResolvedValue({
@@ -288,6 +298,43 @@ describe('MemoryManager', () => {
     await flushPromises()
 
     expect(memoryApi.delete).toHaveBeenCalledWith('memory-1')
+
+    wrapper.unmount()
+  })
+
+  it('ignores in-flight search results after the query is cleared', async () => {
+    vi.useFakeTimers()
+    const pending = createDeferred<any>()
+    vi.mocked(memoryApi.search).mockImplementationOnce(() => pending.promise)
+
+    const wrapper = mountManager()
+    await flushPromises()
+
+    await byId(wrapper, 'memory-search-input').setValue('to-clear')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    await byId(wrapper, 'memory-search-input').setValue('')
+    await flushPromises()
+
+    pending.resolve({
+      data: {
+        results: [
+          {
+            id: 'late-result',
+            content: 'SHOULD_NOT_RETURN',
+            score: 0.88,
+            match_types: ['exact'],
+            created_at: '2026-03-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    } as never)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="memory-search-results-panel"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('SHOULD_NOT_RETURN')
 
     wrapper.unmount()
   })

@@ -1452,6 +1452,7 @@ export default {
     binaryPath: 'Binary Path',
     latestVersion: 'Latest Version',
     lastCheck: 'Last Check',
+    lastUsed: 'Last used',
     // Actions
     checkForUpdates: 'Check for Updates',
     checking: 'Checking...',
@@ -1662,6 +1663,7 @@ export default {
     totalTokens: 'Total Tokens',
     upload: 'Upload',
     uploading: 'Uploading...',
+    revoke: 'Revoke',
   },
   companion: {
     // Page
@@ -3629,8 +3631,8 @@ export default {
       userGuideItem3: 'Download the model before first use.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Chat Context Compaction',
+      irContextPruneDesc: 'Controls how Blue compacts chat history when context pressure rises.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Advanced Parameters (Usually no changes needed)',
       advancedHint: 'Adjust only for troubleshooting or controlled rollout validation.',

@@ -568,8 +568,9 @@ export default {
       userGuideItem3: 'Scarica il modello prima del primo utilizzo.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Compattazione del contesto chat',
+      irContextPruneDesc:
+        'Controlla come Blue compatta la cronologia chat quando aumenta la pressione del contesto.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Parametri avanzati (di solito non e necessario modificarli)',
       advancedHint: 'Regola solo per troubleshooting o validazione di rollout controllati.',
@@ -2709,6 +2710,7 @@ export default {
     browseDirectories: 'Sfoglia directory',
     selectDirectory: 'Seleziona questa directory',
     noSubdirectories: 'Nessuna sottodirectory',
+    lastUsed: 'Ultimo utilizzo',
   },
   companion: {
     llmDetails: {

@@ -57,6 +57,7 @@ export default {
     uploading: 'Subiendo...',
     noData: 'Sin datos',
     send: 'Enviar',
+    revoke: 'Revocar',
   },
   theme: {
     styles: {
@@ -586,8 +587,9 @@ export default {
       userGuideItem3: 'Descarga el modelo antes del primer uso.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Compactación del contexto del chat',
+      irContextPruneDesc:
+        'Controla cómo Blue compacta el historial del chat cuando aumenta la presión de contexto.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Parametros avanzados (normalmente no es necesario cambiarlos)',
       advancedHint: 'Ajusta solo para resolver problemas o validar un despliegue controlado.',
@@ -1708,6 +1710,7 @@ export default {
   },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Último uso',
     title: 'Claude Code CLI',
     statusReady: 'Listo',
     statusNotValidated: 'No validado',

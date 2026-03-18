@@ -202,6 +202,12 @@ const globalPrunerStats = ref<PrunerStats | null>(null)
 const globalPrunerSaving = ref(false)
 const globalPrunerEnabled = computed(() => globalPrunerConfig.value?.enabled === true)
 const globalPrunerSnapshot = computed(() => globalPrunerStats.value?.stats || null)
+const assistantCapabilitiesEnabled = computed(
+  () => settingsStore.smallModelIRFeaturesEnabled && (globalPrunerConfig.value?.enabled ?? true)
+)
+const assistantCapabilitiesSaving = computed(
+  () => smallModelSaving.value || globalPrunerSaving.value
+)
 const shortQASuccessRate = computed(() => {
   const stats = settingsStore.smallModelStats
   if (!stats || stats.short_qa_route_attempts <= 0) return 0
@@ -360,8 +366,39 @@ async function handleFeatureIntentIREnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setFeatureIntentIREnabled(next))
 }
 
-async function handleSmallModelIRFeaturesEnabledChange(next: boolean) {
-  await withSmallModelSave(() => settingsStore.setSmallModelIRFeaturesEnabled(next))
+async function saveGlobalPrunerEnabled(next: boolean) {
+  const res = await proxyCacheApi.updatePrunerConfig({ enabled: next })
+  globalPrunerConfig.value = res.data.config
+  const latestStats = await proxyCacheApi.getPrunerStats().catch(() => null)
+  globalPrunerStats.value = latestStats
+    ? latestStats.data
+    : {
+        enabled: next,
+        stats: globalPrunerStats.value?.stats,
+      }
+}
+
+async function handleAssistantCapabilitiesEnabledChange(next: boolean) {
+  if (assistantCapabilitiesSaving.value) return
+  try {
+    smallModelSaving.value = true
+    globalPrunerSaving.value = globalPrunerConfig.value != null
+
+    const writes: Promise<unknown>[] = [settingsStore.setSmallModelIRFeaturesEnabled(next)]
+    if (globalPrunerConfig.value && globalPrunerEnabled.value !== next) {
+      writes.push(saveGlobalPrunerEnabled(next))
+    }
+    const results = await Promise.allSettled(writes)
+    if (results.some((result) => result.status === 'rejected')) {
+      await Promise.allSettled([settingsStore.fetchBackendSettings(), fetchGlobalPrunerState()])
+      showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
+      return
+    }
+    showSaveStatus(t('settings.saved', 'Saved'))
+  } finally {
+    globalPrunerSaving.value = false
+    smallModelSaving.value = false
+  }
 }
 
 async function handleSmallModelRouteShortQAEnabledChange(next: boolean) {
@@ -401,15 +438,7 @@ async function handleGlobalPrunerEnabledChange(next: boolean) {
   if (globalPrunerSaving.value || !globalPrunerConfig.value) return
   try {
     globalPrunerSaving.value = true
-    const res = await proxyCacheApi.updatePrunerConfig({ enabled: next })
-    globalPrunerConfig.value = res.data.config
-    const latestStats = await proxyCacheApi.getPrunerStats().catch(() => null)
-    globalPrunerStats.value = latestStats
-      ? latestStats.data
-      : {
-          enabled: next,
-          stats: globalPrunerStats.value?.stats,
-        }
+    await saveGlobalPrunerEnabled(next)
     showSaveStatus(
       t(
         next ? 'apiProxy.prunerEnabled' : 'apiProxy.prunerDisabled',
@@ -872,26 +901,20 @@ onUnmounted(() => {
                   data-testid="small-model-ir-master-switch"
                   type="button"
                   role="switch"
-                  :aria-checked="settingsStore.smallModelIRFeaturesEnabled"
+                  :aria-checked="assistantCapabilitiesEnabled"
                   :aria-label="t('settings.smallModel.irMasterTitle', 'Master Switch')"
-                  :disabled="smallModelSaving"
+                  :disabled="assistantCapabilitiesSaving"
                   class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
                   :class="
-                    settingsStore.smallModelIRFeaturesEnabled
+                    assistantCapabilitiesEnabled
                       ? 'bg-green-600 dark:bg-green-500'
                       : 'bg-gray-300 dark:bg-gray-600'
                   "
-                  @click="
-                    handleSmallModelIRFeaturesEnabledChange(
-                      !settingsStore.smallModelIRFeaturesEnabled
-                    )
-                  "
+                  @click="handleAssistantCapabilitiesEnabledChange(!assistantCapabilitiesEnabled)"
                 >
                   <span
                     class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                    :class="
-                      settingsStore.smallModelIRFeaturesEnabled ? 'translate-x-5' : 'translate-x-0'
-                    "
+                    :class="assistantCapabilitiesEnabled ? 'translate-x-5' : 'translate-x-0'"
                   />
                 </button>
               </div>
@@ -2144,11 +2167,11 @@ input[type='range']::-moz-range-thumb {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-height: 100%;
-  padding: 14px 14px;
+  padding: 10px 12px;
   border: 1px solid rgba(226, 232, 240, 0.96);
-  border-radius: 1.5rem;
+  border-radius: 1rem;
   text-align: left;
   background: #ffffff;
   color: #0f172a;
@@ -2175,12 +2198,17 @@ input[type='range']::-moz-range-thumb {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.6rem;
-  height: 2.6rem;
+  width: 2rem;
+  height: 2rem;
   flex-shrink: 0;
-  border-radius: 0.85rem;
+  border-radius: 0.65rem;
   background: rgba(148, 163, 184, 0.16);
   color: #64748b;
+}
+
+.settings-tab-button__icon svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .settings-tab-button--active .settings-tab-button__icon {
@@ -2209,8 +2237,8 @@ input[type='range']::-moz-range-thumb {
 }
 
 .settings-tab-button__state {
-  width: 12px;
-  height: 12px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.35);
   transition:

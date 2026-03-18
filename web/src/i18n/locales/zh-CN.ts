@@ -122,6 +122,7 @@ export default {
     upload: '上传',
     uploading: '上传中...',
     send: '发送',
+    revoke: '撤销',
   },
   theme: {
     styles: {
@@ -966,8 +967,7 @@ export default {
       irMasterTitle: '总开关',
       irMasterDesc: '一键控制下面所有辅助功能。',
       irContextPruneTitle: '对话上下文压缩',
-      irContextPruneDesc:
-        '控制 Blue 对话在上下文压力升高时如何缩减历史。',
+      irContextPruneDesc: '控制 Blue 在上下文压力升高时如何压缩对话历史。',
       irMediaIntentDesc: '识别媒体生成意图，帮助系统更准确地分流请求。',
       irOfflineFallbackTitle: '离线本地兜底',
       irOfflineFallbackDesc: '当模型不可用或降级时，优先基于本地上下文召回答复。',
@@ -3902,6 +3902,7 @@ export default {
     binaryPath: '二进制路径',
     latestVersion: '最新版本',
     lastCheck: '上次检查',
+    lastUsed: '最后使用',
     // 操作
     checkForUpdates: '检查更新',
     checking: '检查中...',

@@ -49,6 +49,7 @@ export default {
     allIps: '모든 IP',
     noData: '데이터 없음',
     send: '보내기',
+    revoke: '취소',
   },
   theme: {
     styles: {
@@ -696,8 +697,9 @@ export default {
       userGuideItem3: '처음 사용하기 전에 모델을 다운로드하세요.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: '채팅 컨텍스트 압축',
+      irContextPruneDesc:
+        '컨텍스트 압력이 높아질 때 Blue가 채팅 기록을 어떻게 압축할지 제어합니다.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: '고급 매개변수(보통 변경 불필요)',
       advancedHint: '문제 해결이나 통제된 롤아웃 검증 시에만 조정하세요.',
@@ -1783,6 +1785,7 @@ export default {
   },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: '마지막 사용',
     title: 'Claude Code CLI',
     statusReady: '준비됨',
     statusNotValidated: '검증되지 않음',

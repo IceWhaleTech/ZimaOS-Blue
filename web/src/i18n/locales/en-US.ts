@@ -124,6 +124,7 @@ export default {
     upload: 'Upload',
     uploading: 'Uploading...',
     send: 'Send',
+    revoke: 'Revoke',
   },
   theme: {
     styles: {
@@ -1155,8 +1156,7 @@ export default {
       irMasterTitle: 'Master Switch',
       irMasterDesc: 'Toggle all helper features below at once.',
       irContextPruneTitle: 'Chat Context Compaction',
-      irContextPruneDesc:
-        'Controls how Blue reduces chat history when context pressure rises.',
+      irContextPruneDesc: 'Controls how Blue compacts chat history when context pressure rises.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       irOfflineFallbackTitle: 'Offline Local Fallback',
       irOfflineFallbackDesc:
@@ -4052,6 +4052,7 @@ export default {
     binaryPath: 'Binary Path',
     latestVersion: 'Latest Version',
     lastCheck: 'Last Check',
+    lastUsed: 'Last used',
     // Actions
     checkForUpdates: 'Check for Updates',
     checking: 'Checking...',

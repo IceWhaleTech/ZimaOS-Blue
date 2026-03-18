@@ -809,7 +809,9 @@ const securityStatus = computed(() => {
   return 'passed'
 })
 
-const securityStatusBannerVisible = computed(() => securityStatus.value !== 'warning')
+const securityStatusBannerVisible = computed(() =>
+  securityStatus.value === 'passed' || securityStatus.value === 'scanning'
+)
 
 const securityStatusTitle = computed(() => {
   switch (securityStatus.value) {
@@ -971,7 +973,7 @@ onUnmounted(() => {
 
       <section class="security-shell">
         <div class="security-tab-shell">
-          <nav class="security-tab-nav dashboard-card-surface" aria-label="Security sections">
+          <nav class="security-tab-nav" aria-label="Security sections">
             <button
               v-for="tab in tabs"
               :key="tab.id"
@@ -2362,11 +2364,11 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-height: 100%;
-  padding: 14px 14px;
+  padding: 10px 12px;
   border: 1px solid rgba(226, 232, 240, 0.96);
-  border-radius: 1.5rem;
+  border-radius: 1rem;
   background: transparent;
   box-shadow: none;
   color: #0f172a;
@@ -2380,12 +2382,12 @@ onUnmounted(() => {
 
 .security-tab-button:hover {
   border-color: rgba(148, 163, 184, 0.52);
-  background: rgba(248, 250, 252, 0.9);
+  background: transparent;
 }
 
 .security-tab-button--active {
   border-color: rgba(148, 163, 184, 0.58);
-  background: rgba(241, 245, 249, 0.92);
+  background: transparent;
   color: #0f172a;
 }
 
@@ -2393,17 +2395,17 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.6rem;
-  height: 2.6rem;
+  width: 2rem;
+  height: 2rem;
   flex-shrink: 0;
-  border-radius: 0.85rem;
+  border-radius: 0.65rem;
   background: rgba(148, 163, 184, 0.16);
   color: #64748b;
 }
 
 .security-tab-button__icon svg {
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1rem;
+  height: 1rem;
 }
 
 .security-tab-button--active .security-tab-button__icon {
@@ -2433,8 +2435,8 @@ onUnmounted(() => {
 }
 
 .security-tab-button__state {
-  width: 12px;
-  height: 12px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.35);
   transition:
@@ -3225,14 +3227,14 @@ html.dark .security-tab-button {
 [data-theme='dark'] .security-tab-button:hover,
 html.dark .security-tab-button:hover {
   border-color: rgba(148, 163, 184, 0.28);
-  background: rgba(30, 41, 59, 0.82);
+  background: transparent;
 }
 
 :root.dark .security-tab-button--active,
 [data-theme='dark'] .security-tab-button--active,
 html.dark .security-tab-button--active {
   border-color: rgba(148, 163, 184, 0.4);
-  background: rgba(30, 41, 59, 0.92);
+  background: transparent;
 }
 
 :root.dark .security-tab-button,

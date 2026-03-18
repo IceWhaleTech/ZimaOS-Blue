@@ -55,6 +55,19 @@ let searchDebounceTimer: number | null = null
 let messageTimer: number | null = null
 let searchSequence = 0
 
+function clearSearchDebounce() {
+  if (searchDebounceTimer !== null) {
+    window.clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = null
+  }
+}
+
+function resetSearchState() {
+  searchSequence += 1
+  searchResults.value = []
+  searching.value = false
+}
+
 function setOperationMessage(type: 'success' | 'error', text: string) {
   operationMessage.value = { type, text }
   if (messageTimer !== null) window.clearTimeout(messageTimer)
@@ -81,10 +94,10 @@ async function loadStats() {
 }
 
 async function searchMemories() {
+  clearSearchDebounce()
   const query = searchQuery.value.replace(/\s+/g, ' ').trim()
   if (!query) {
-    searchResults.value = []
-    searching.value = false
+    resetSearchState()
     return
   }
 
@@ -105,9 +118,9 @@ async function searchMemories() {
 }
 
 function clearSearch() {
+  clearSearchDebounce()
   searchQuery.value = ''
-  searchResults.value = []
-  searching.value = false
+  resetSearchState()
 }
 
 function resetComposer() {
@@ -308,16 +321,15 @@ function formatMatchType(type: string): string {
 }
 
 watch(searchQuery, () => {
-  if (searchDebounceTimer !== null) {
-    window.clearTimeout(searchDebounceTimer)
-  }
+  clearSearchDebounce()
 
   if (!searchQuery.value.trim()) {
-    clearSearch()
+    resetSearchState()
     return
   }
 
   searchDebounceTimer = window.setTimeout(() => {
+    searchDebounceTimer = null
     void searchMemories()
   }, 300)
 })
@@ -486,7 +498,7 @@ onBeforeUnmount(() => {
       </div>
 
       <section>
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+        <div>
           <SemanticSearchField
             v-model="searchQuery"
             test-id="memory-search-input"
@@ -496,59 +508,6 @@ onBeforeUnmount(() => {
             @clear="clearSearch"
             @submit-shortcut="searchMemories"
           />
-          <button
-            data-testid="memory-search-submit"
-            type="button"
-            class="memory-search-action memory-search-submit-btn w-full sm:w-auto"
-            :disabled="searching || !searchQuery.trim()"
-            @click="searchMemories"
-          >
-            <svg
-              v-if="!searching"
-              class="memory-search-action-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              aria-hidden="true"
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" />
-            </svg>
-            <svg
-              v-else
-              class="memory-search-spinner"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <circle
-                class="memory-search-spinner-track"
-                cx="12"
-                cy="12"
-                r="9"
-                stroke="currentColor"
-                stroke-width="3"
-              />
-              <path
-                class="memory-search-spinner-head"
-                d="M12 3a9 9 0 0 1 9 9"
-                stroke="currentColor"
-                stroke-width="3"
-                stroke-linecap="round"
-              />
-            </svg>
-            {{ searching ? t('memory.searching') : t('common.search') }}
-          </button>
-          <button
-            data-testid="memory-search-clear"
-            type="button"
-            class="memory-search-action memory-search-clear-btn w-full sm:w-auto"
-            :disabled="!searchQuery.trim()"
-            @click="clearSearch"
-          >
-            {{ t('common.cancel') }}
-          </button>
         </div>
 
         <div
@@ -948,121 +907,5 @@ onBeforeUnmount(() => {
 .memory-search-field :deep(.semantic-search-clear) {
   width: 28px;
   height: 28px;
-}
-
-.memory-search-action {
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 44px;
-  min-height: 44px;
-  padding: 0 18px;
-  border-radius: 18px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1;
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    background-color 0.18s ease,
-    border-color 0.18s ease,
-    color 0.18s ease,
-    opacity 0.18s ease;
-}
-
-.memory-search-action:not(:disabled):hover {
-  transform: translateY(-1px);
-}
-
-.memory-search-action:disabled {
-  cursor: default;
-  opacity: 0.55;
-  box-shadow: none;
-  transform: none;
-}
-
-.memory-search-submit-btn {
-  border: 1px solid rgba(37, 99, 235, 0.16);
-  background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 64, 175, 0.96)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0));
-  color: #fff;
-  box-shadow:
-    0 14px 28px rgba(30, 64, 175, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
-}
-
-.memory-search-submit-btn:not(:disabled):hover {
-  box-shadow:
-    0 18px 34px rgba(30, 64, 175, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-}
-
-.memory-search-clear-btn {
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  background: rgba(255, 255, 255, 0.8);
-  color: rgb(71, 85, 105);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 8px 20px rgba(148, 163, 184, 0.08);
-}
-
-.memory-search-clear-btn:not(:disabled):hover {
-  background: rgba(248, 250, 252, 0.96);
-  border-color: rgba(100, 116, 139, 0.34);
-  color: rgb(51, 65, 85);
-}
-
-.memory-search-action-icon,
-.memory-search-spinner {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.memory-search-spinner {
-  animation: memory-search-spin 0.9s linear infinite;
-}
-
-.memory-search-spinner-track {
-  opacity: 0.3;
-}
-
-.memory-search-spinner-head {
-  opacity: 0.95;
-}
-
-:global(.dark) .memory-search-submit-btn {
-  border-color: rgba(148, 163, 184, 0.18);
-  background:
-    linear-gradient(135deg, rgba(241, 245, 249, 0.96), rgba(125, 211, 252, 0.9)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0));
-  color: rgb(15, 23, 42);
-  box-shadow:
-    0 16px 30px rgba(14, 165, 233, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.38);
-}
-
-:global(.dark) .memory-search-clear-btn {
-  border-color: rgba(100, 116, 139, 0.42);
-  background: rgba(15, 23, 42, 0.5);
-  color: rgba(226, 232, 240, 0.94);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 10px 22px rgba(15, 23, 42, 0.24);
-}
-
-:global(.dark) .memory-search-clear-btn:not(:disabled):hover {
-  background: rgba(30, 41, 59, 0.74);
-  border-color: rgba(148, 163, 184, 0.34);
-  color: rgba(248, 250, 252, 0.96);
-}
-
-@keyframes memory-search-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>

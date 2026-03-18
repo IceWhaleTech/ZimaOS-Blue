@@ -605,8 +605,9 @@ export default {
       userGuideItem3: 'Ladda ner modellen fore forsta anvandning.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Komprimering av chattkontext',
+      irContextPruneDesc:
+        'Styr hur Blue komprimerar chatthistoriken när kontexttrycket ökar.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Avancerade parametrar (behover vanligtvis inte andras)',
       advancedHint: 'Justera endast for felsokning eller validering av kontrollerad rollout.',
@@ -2143,6 +2144,7 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Senast använd',
     disabledWarningDesc: 'Standardläge är aktivt, förbättrat läge ger en bättre upplevelse.',
     missingToolCalling: 'Avancerade Tool Calling-funktioner',
     directoryPathPlaceholderWin: 'Katalogsökväg (t.ex. C:\\Users\\user\\projects)',

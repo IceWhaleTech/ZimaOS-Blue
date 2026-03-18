@@ -610,8 +610,9 @@ export default {
       userGuideItem3: 'Descarrega el model abans del primer us.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Compactació del context del xat',
+      irContextPruneDesc:
+        "Controla com Blue redueix l'historial del xat quan augmenta la pressió de context.",
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Parametres avancats (normalment no cal canviar-los)',
       advancedHint:
@@ -2350,6 +2351,7 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Últim ús',
     disabledWarningDesc:
       'El mode estàndard està actiu, el mode millorat ofereix una experiència millor.',
     missingToolCalling: 'Capacitats avançades de Tool Calling',

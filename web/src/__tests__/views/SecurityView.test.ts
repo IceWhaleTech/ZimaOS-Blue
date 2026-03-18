@@ -215,4 +215,29 @@ describe('SecurityView approved browser sites', () => {
 
     wrapper.unmount()
   })
+
+  it('hides the overview status banner when cached scan results include failures', async () => {
+    localStorageMock.setItem(
+      'security_last_scan_results',
+      JSON.stringify([
+        {
+          id: 'prompt-guard',
+          category: 'ai',
+          name: 'Prompt Guard',
+          description: 'Prompt injection protection',
+          status: 'failed',
+          details: 'Protection is disabled',
+        },
+      ])
+    )
+
+    const wrapper = mountSecurityView()
+
+    await flushPromises()
+
+    expect(wrapper.find('.security-status-banner').exists()).toBe(false)
+    expect(wrapper.find('.security-scan-panel').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
 })

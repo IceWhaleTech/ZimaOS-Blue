@@ -606,8 +606,9 @@ export default {
       userGuideItem3: 'Pobierz model przed pierwszym uzyciem.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Kompresja kontekstu czatu',
+      irContextPruneDesc:
+        'Określa, jak Blue ogranicza historię czatu, gdy rośnie presja kontekstu.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Parametry zaawansowane (zwykle nie wymagaja zmian)',
       advancedHint: 'Zmieniaj tylko podczas diagnostyki lub walidacji kontrolowanego rolloutu.',
@@ -2155,6 +2156,7 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Ostatnio użyte',
     disabledWarningDesc:
       'Aktywny jest tryb standardowy, tryb rozszerzony zapewnia lepsze doświadczenie.',
     missingToolCalling: 'Zaawansowane możliwości Tool Calling',

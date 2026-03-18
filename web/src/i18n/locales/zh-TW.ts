@@ -129,6 +129,7 @@ export default {
     filterByIp: '按 IP 篩選',
     allIps: '所有 IP',
     send: '傳送',
+    revoke: '撤銷',
   },
   theme: {
     styles: {
@@ -837,8 +838,8 @@ export default {
       irDesc: '面向日常使用的上下文控制與工具篩選能力。',
       irMasterTitle: '總開關',
       irMasterDesc: '一鍵控制下方所有輔助功能。',
-      irContextPruneTitle: '上下文裁剪',
-      irContextPruneDesc: '自動裁剪低相關歷史內容，降低 token 消耗。',
+      irContextPruneTitle: '對話上下文壓縮',
+      irContextPruneDesc: '控制 Blue 在上下文壓力升高時如何壓縮對話歷史。',
       irMediaIntentDesc: '識別媒體生成意圖，幫助系統更準確地分流請求。',
       advancedTitle: '高級參數（一般無需調整）',
       advancedHint: '僅在排查問題或做灰度驗證時修改。',
@@ -2336,6 +2337,7 @@ export default {
   },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: '上次使用',
     directoryWhitelist: '目錄白名單',
     directoryWhitelistDesc: 'Claude Code 在沙盒模式下可訪問的目錄',
     directoryPathPlaceholder: '目錄路徑（如 /home/user/projects）',

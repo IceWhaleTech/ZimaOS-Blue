@@ -610,8 +610,9 @@ export default {
       userGuideItem3: 'Ioslodail an tsamhail roimh an gcead usaid.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
-      irContextPruneTitle: 'Context Trimming',
-      irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
+      irContextPruneTitle: 'Comhbhrú comhthéacs an chomhrá',
+      irContextPruneDesc:
+        'Rialaíonn sé conas a laghdaíonn Blue stair an chomhrá nuair a ardaíonn brú an chomhthéacs.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       advancedTitle: 'Paraimedair ardleibhil (de ghnath ni ga iad a athru)',
       advancedHint:
@@ -1899,6 +1900,7 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
+    lastUsed: 'Úsáid dheireanach',
     disabledWarningDesc:
       'Tá an gnáthmhód gníomhach (tá an sceidealóir ionsuite i leagan Béite), agus cuireann an mód feabhsaithe eispéireas níos fearr ar fáil.',
     missingToolCalling: 'Cumais ardleibhéil Tool Calling',

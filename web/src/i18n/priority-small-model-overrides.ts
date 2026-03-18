@@ -59,9 +59,9 @@ export default {
         irFeatureHintTitle: "Detecció d'indicis de funcions",
         irFeatureHintDesc:
           'Per als missatges del canal, detecta indicis i activa automàticament {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Retall del context',
+        irContextPruneTitle: 'Compactació del context del xat',
         irContextPruneDesc:
-          "Retalla automàticament l'historial menys rellevant per reduir l'ús de tokens.",
+          "Controla com Blue redueix l'historial del xat quan augmenta la pressió de context.",
         irMediaIntentDesc:
           'Detecta la intenció de generar contingut multimèdia per encaminar les sol·licituds amb més precisió.',
         irOfflineFallbackTitle: 'Fallback local fora de línia',
@@ -132,9 +132,8 @@ export default {
         irFeatureHintTitle: 'Detekce nápověd funkcí',
         irFeatureHintDesc:
           'U zpráv v kanálu detekuje nápovědy a automaticky zapne {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Ořezání kontextu',
-        irContextPruneDesc:
-          'Automaticky ořezává méně relevantní historii pro snížení využití tokenů.',
+        irContextPruneTitle: 'Komprese kontextu chatu',
+        irContextPruneDesc: 'Určuje, jak Blue omezuje historii chatu, když roste tlak na kontext.',
         irMediaIntentDesc:
           'Detekuje záměr generování médií, aby bylo směrování požadavků přesnější.',
         irOfflineFallbackTitle: 'Offline lokální fallback',
@@ -204,9 +203,9 @@ export default {
         irFeatureHintTitle: 'Registrering af funktionshint',
         irFeatureHintDesc:
           'For kanalbeskeder registreres hints, og {deepResearch} / {agentMode} aktiveres automatisk.',
-        irContextPruneTitle: 'Kontekstbeskæring',
+        irContextPruneTitle: 'Komprimering af chatkontekst',
         irContextPruneDesc:
-          'Beskærer automatisk mindre relevant historik for at reducere tokenforbrug.',
+          'Styrer, hvordan Blue reducerer chathistorikken, når kontekstpresset stiger.',
         irMediaIntentDesc:
           'Registrerer hensigt om mediegenerering for at route forespørgsler mere præcist.',
         irOfflineFallbackTitle: 'Lokal offline-fallback',
@@ -279,9 +278,9 @@ export default {
         irFeatureHintTitle: 'Erkennung von Funktionshinweisen',
         irFeatureHintDesc:
           'Erkennt in Kanalnachrichten Hinweise und aktiviert automatisch {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Kontextkürzung',
+        irContextPruneTitle: 'Chat-Kontextkomprimierung',
         irContextPruneDesc:
-          'Kürzt weniger relevanten Verlauf automatisch, um den Tokenverbrauch zu senken.',
+          'Legt fest, wie Blue den Chatverlauf komprimiert, wenn der Kontextdruck steigt.',
         irMediaIntentDesc:
           'Erkennt die Absicht zur Medienerzeugung, um Anfragen präziser weiterzuleiten.',
         irOfflineFallbackTitle: 'Lokaler Offline-Fallback',
@@ -354,9 +353,9 @@ export default {
         irFeatureHintTitle: 'Ανίχνευση υποδείξεων δυνατοτήτων',
         irFeatureHintDesc:
           'Για τα μηνύματα καναλιού, ανιχνεύει υποδείξεις και ενεργοποιεί αυτόματα το {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Περικοπή συμφραζομένων',
+        irContextPruneTitle: 'Συμπίεση συμφραζομένων συνομιλίας',
         irContextPruneDesc:
-          'Περικόπτει αυτόματα το λιγότερο σχετικό ιστορικό για να μειώσει τη χρήση token.',
+          'Ελέγχει πώς το Blue συμπιέζει το ιστορικό συνομιλίας όταν αυξάνεται η πίεση συμφραζομένων.',
         irMediaIntentDesc:
           'Ανιχνεύει πρόθεση δημιουργίας μέσων για ακριβέστερη δρομολόγηση αιτημάτων.',
         irOfflineFallbackTitle: 'Τοπική εφεδρεία εκτός σύνδεσης',
@@ -431,8 +430,8 @@ export default {
         irFeatureHintTitle: 'Feature hint detection',
         irFeatureHintDesc:
           'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Context trimming',
-        irContextPruneDesc: 'Automatically trims less relevant history to reduce token usage.',
+        irContextPruneTitle: 'Chat Context Compaction',
+        irContextPruneDesc: 'Controls how Blue compacts chat history when context pressure rises.',
         irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
         irOfflineFallbackTitle: 'Offline local fallback',
         irOfflineFallbackDesc:
@@ -503,9 +502,9 @@ export default {
         irFeatureHintTitle: 'Detección de pistas de funciones',
         irFeatureHintDesc:
           'En los mensajes del canal, detecta pistas y activa automáticamente {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Recorte de contexto',
+        irContextPruneTitle: 'Compactación del contexto del chat',
         irContextPruneDesc:
-          'Recorta automáticamente el historial menos relevante para reducir el uso de tokens.',
+          'Controla cómo Blue compacta el historial del chat cuando aumenta la presión de contexto.',
         irMediaIntentDesc:
           'Detecta la intención de generación de medios para enrutar las solicitudes con mayor precisión.',
         irOfflineFallbackTitle: 'Fallback local sin conexión',
@@ -579,9 +578,9 @@ export default {
         irFeatureHintTitle: "Détection d'indices de fonctionnalité",
         irFeatureHintDesc:
           'Pour les messages de canal, détecte les indices et active automatiquement {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Réduction du contexte',
+        irContextPruneTitle: 'Compactage du contexte du chat',
         irContextPruneDesc:
-          "Réduit automatiquement l'historique moins pertinent pour diminuer l'usage des jetons.",
+          "Contrôle la manière dont Blue compacte l'historique du chat lorsque la pression de contexte augmente.",
         irMediaIntentDesc:
           "Détecte l'intention de génération de médias afin d'acheminer les requêtes plus précisément.",
         irOfflineFallbackTitle: 'Repli local hors ligne',
@@ -655,9 +654,9 @@ export default {
         irFeatureHintTitle: 'Braite leideanna gné',
         irFeatureHintDesc:
           'I gcás teachtaireachtaí cainéil, braithtear leideanna agus cumasaítear {deepResearch} / {agentMode} go huathoibríoch.',
-        irContextPruneTitle: 'Bearradh comhthéacs',
+        irContextPruneTitle: 'Comhbhrú comhthéacs an chomhrá',
         irContextPruneDesc:
-          'Gearrtar siar an stair is lú ábhartha go huathoibríoch chun úsáid token a laghdú.',
+          'Rialaíonn sé conas a laghdaíonn Blue stair an chomhrá nuair a ardaíonn brú an chomhthéacs.',
         irMediaIntentDesc: 'Braithíonn sé rún giniúna meán chun iarratais a threorú níos cruinne.',
         irOfflineFallbackTitle: 'Aistriú áitiúil as líne',
         irOfflineFallbackDesc:
@@ -729,9 +728,9 @@ export default {
         irFeatureHintTitle: 'Otkrivanje naznaka značajki',
         irFeatureHintDesc:
           'Za poruke u kanalu otkriva naznake i automatski uključuje {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Skraćivanje konteksta',
+        irContextPruneTitle: 'Sažimanje konteksta chata',
         irContextPruneDesc:
-          'Automatski skraćuje manje relevantnu povijest kako bi smanjio potrošnju tokena.',
+          'Određuje kako Blue sažima povijest chata kada poraste pritisak konteksta.',
         irMediaIntentDesc:
           'Otkriva namjeru generiranja medija za preciznije usmjeravanje zahtjeva.',
         irOfflineFallbackTitle: 'Lokalni izvanmrežni fallback',
@@ -802,9 +801,9 @@ export default {
         irFeatureHintTitle: 'Funkciójelzés-felismerés',
         irFeatureHintDesc:
           'A csatornaüzeneteknél felismeri a jelzéseket, és automatikusan bekapcsolja a {deepResearch} / {agentMode} módot.',
-        irContextPruneTitle: 'Kontextusmetszés',
+        irContextPruneTitle: 'Csevegési kontextus tömörítése',
         irContextPruneDesc:
-          'Automatikusan levágja a kevésbé releváns előzményeket a tokenhasználat csökkentéséhez.',
+          'Azt szabályozza, hogyan tömöríti a Blue a csevegési előzményeket, amikor nő a kontextusnyomás.',
         irMediaIntentDesc:
           'Felismeri a médiagenerálási szándékot a kérések pontosabb irányításához.',
         irOfflineFallbackTitle: 'Helyi offline tartalék',
@@ -877,9 +876,9 @@ export default {
         irFeatureHintTitle: 'Rilevamento degli indizi di funzione',
         irFeatureHintDesc:
           'Per i messaggi del canale rileva gli indizi e abilita automaticamente {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Riduzione del contesto',
+        irContextPruneTitle: 'Compattazione del contesto chat',
         irContextPruneDesc:
-          "Riduce automaticamente la cronologia meno rilevante per diminuire l'uso dei token.",
+          'Controlla come Blue compatta la cronologia chat quando aumenta la pressione del contesto.',
         irMediaIntentDesc:
           "Rileva l'intento di generazione multimediale per instradare le richieste con maggiore precisione.",
         irOfflineFallbackTitle: 'Fallback locale offline',
@@ -950,9 +949,9 @@ export default {
         irFeatureHintTitle: '機能ヒント検出',
         irFeatureHintDesc:
           'チャンネルメッセージでヒントを検出し、{deepResearch} / {agentMode} を自動で有効にします。',
-        irContextPruneTitle: 'コンテキストのトリミング',
+        irContextPruneTitle: 'チャットコンテキスト圧縮',
         irContextPruneDesc:
-          'トークン使用量を減らすため、関連性の低い履歴を自動でトリミングします。',
+          'コンテキスト圧力が高まったときに、Blue がチャット履歴をどのように圧縮するかを制御します。',
         irMediaIntentDesc: 'メディア生成の意図を検出し、リクエストをより正確に振り分けます。',
         irOfflineFallbackTitle: 'オフラインローカルフォールバック',
         irOfflineFallbackDesc:
@@ -1022,8 +1021,9 @@ export default {
         irFeatureHintTitle: '기능 힌트 감지',
         irFeatureHintDesc:
           '채널 메시지에서 힌트를 감지해 {deepResearch} / {agentMode} 를 자동으로 활성화합니다.',
-        irContextPruneTitle: '컨텍스트 정리',
-        irContextPruneDesc: '토큰 사용량을 줄이기 위해 관련성이 낮은 기록을 자동으로 정리합니다.',
+        irContextPruneTitle: '채팅 컨텍스트 압축',
+        irContextPruneDesc:
+          '컨텍스트 압력이 높아질 때 Blue가 채팅 기록을 어떻게 압축할지 제어합니다.',
         irMediaIntentDesc: '미디어 생성 의도를 감지해 요청을 더 정확하게 라우팅합니다.',
         irOfflineFallbackTitle: '오프라인 로컬 폴백',
         irOfflineFallbackDesc: '모델 폴백이 필요하면 먼저 로컬 컨텍스트 회상에서 답변합니다.',
@@ -1092,9 +1092,9 @@ export default {
         irFeatureHintTitle: 'സവിശേഷത സൂചന കണ്ടെത്തൽ',
         irFeatureHintDesc:
           'ചാനൽ സന്ദേശങ്ങളിൽ സൂചനകൾ കണ്ടെത്തി {deepResearch} / {agentMode} സ്വയമേവ സജ്ജമാക്കുന്നു.',
-        irContextPruneTitle: 'സന്ദർഭ ചുരുക്കൽ',
+        irContextPruneTitle: 'ചാറ്റ് സന്ദർഭ ചുരുക്കൽ',
         irContextPruneDesc:
-          'ടോക്കൺ ഉപയോഗം കുറയ്ക്കാൻ കുറച്ച് പ്രസക്തിയുള്ള ചരിത്രം സ്വയമേവ ചുരുക്കുന്നു.',
+          'സന്ദർഭ സമ്മർദ്ദം ഉയരുമ്പോൾ Blue ചാറ്റ് ചരിത്രം എങ്ങനെ ചുരുക്കണമെന്ന് നിയന്ത്രിക്കുന്നു.',
         irMediaIntentDesc:
           'അഭ്യർത്ഥനകൾ കൂടുതൽ കൃത്യമായി റൂട്ടുചെയ്യാൻ മീഡിയ സൃഷ്ടി ഉദ്ദേശം കണ്ടെത്തുന്നു.',
         irOfflineFallbackTitle: 'ഓഫ്‌ലൈൻ പ്രാദേശിക ഫാൾബാക്ക്',
@@ -1164,9 +1164,9 @@ export default {
         irFeatureHintTitle: 'Registrering av funksjonshint',
         irFeatureHintDesc:
           'For kanalbeskjeder oppdages hint, og {deepResearch} / {agentMode} aktiveres automatisk.',
-        irContextPruneTitle: 'Kontekstbeskjæring',
+        irContextPruneTitle: 'Komprimering av chatkontekst',
         irContextPruneDesc:
-          'Beskjærer automatisk mindre relevant historikk for å redusere tokenbruk.',
+          'Styrer hvordan Blue komprimerer chathistorikken når kontekstpresset øker.',
         irMediaIntentDesc:
           'Oppdager hensikt om mediegenerering for å rute forespørsler mer presist.',
         irOfflineFallbackTitle: 'Lokal offline-reserve',
@@ -1239,9 +1239,9 @@ export default {
         irFeatureHintTitle: 'Detectie van functiehints',
         irFeatureHintDesc:
           'Detecteert bij kanaalberichten hints en schakelt {deepResearch} / {agentMode} automatisch in.',
-        irContextPruneTitle: 'Context inkorten',
+        irContextPruneTitle: 'Chatcontext-compactie',
         irContextPruneDesc:
-          'Kort minder relevante geschiedenis automatisch in om tokengebruik te verminderen.',
+          'Bepaalt hoe Blue de chatgeschiedenis compacteert wanneer de contextdruk oploopt.',
         irMediaIntentDesc:
           'Detecteert intentie voor mediageneratie om verzoeken nauwkeuriger te routeren.',
         irOfflineFallbackTitle: 'Lokale offline-terugval',
@@ -1314,9 +1314,9 @@ export default {
         irFeatureHintTitle: 'Wykrywanie podpowiedzi funkcji',
         irFeatureHintDesc:
           'W wiadomościach kanału wykrywa wskazówki i automatycznie włącza {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Przycinanie kontekstu',
+        irContextPruneTitle: 'Kompresja kontekstu czatu',
         irContextPruneDesc:
-          'Automatycznie przycina mniej istotną historię, aby zmniejszyć zużycie tokenów.',
+          'Określa, jak Blue ogranicza historię czatu, gdy rośnie presja kontekstu.',
         irMediaIntentDesc:
           'Wykrywa zamiar generowania multimediów, aby dokładniej kierować żądania.',
         irOfflineFallbackTitle: 'Lokalny fallback offline',
@@ -1388,9 +1388,9 @@ export default {
         irFeatureHintTitle: 'Detecção de pistas de recurso',
         irFeatureHintDesc:
           'Em mensagens de canal, detecta pistas e ativa automaticamente {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Poda de contexto',
+        irContextPruneTitle: 'Compactação do contexto do chat',
         irContextPruneDesc:
-          'Remove automaticamente o histórico menos relevante para reduzir o uso de tokens.',
+          'Controla como o Blue compacta o histórico do chat quando a pressão de contexto aumenta.',
         irMediaIntentDesc:
           'Detecta intenção de geração de mídia para rotear as solicitações com mais precisão.',
         irOfflineFallbackTitle: 'Fallback local offline',
@@ -1464,9 +1464,9 @@ export default {
         irFeatureHintTitle: 'Deteção de pistas de funcionalidade',
         irFeatureHintDesc:
           'Nas mensagens do canal, deteta pistas e ativa automaticamente {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Poda de contexto',
+        irContextPruneTitle: 'Compactação do contexto do chat',
         irContextPruneDesc:
-          'Remove automaticamente o histórico menos relevante para reduzir a utilização de tokens.',
+          'Controla como o Blue compacta o histórico do chat quando a pressão de contexto aumenta.',
         irMediaIntentDesc:
           'Deteta intenção de geração de média para encaminhar pedidos com maior precisão.',
         irOfflineFallbackTitle: 'Fallback local offline',
@@ -1539,9 +1539,9 @@ export default {
         irFeatureHintTitle: 'Detectarea indiciilor de funcții',
         irFeatureHintDesc:
           'Pentru mesajele canalului, detectează indicii și activează automat {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Tăierea contextului',
+        irContextPruneTitle: 'Compactarea contextului chatului',
         irContextPruneDesc:
-          'Taie automat istoricul mai puțin relevant pentru a reduce consumul de tokenuri.',
+          'Controlează cum compactează Blue istoricul chatului când presiunea contextului crește.',
         irMediaIntentDesc:
           'Detectează intenția de generare media pentru a direcționa cererile mai precis.',
         irOfflineFallbackTitle: 'Fallback local offline',
@@ -1611,9 +1611,9 @@ export default {
         irFeatureHintTitle: 'Обнаружение подсказок функций',
         irFeatureHintDesc:
           'Для сообщений канала обнаруживает подсказки и автоматически включает {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Сокращение контекста',
+        irContextPruneTitle: 'Сжатие контекста чата',
         irContextPruneDesc:
-          'Автоматически сокращает менее релевантную историю, чтобы снизить расход токенов.',
+          'Определяет, как Blue сжимает историю чата, когда растет давление на контекстное окно.',
         irMediaIntentDesc:
           'Определяет намерение генерации медиа, чтобы точнее маршрутизировать запросы.',
         irOfflineFallbackTitle: 'Локальный офлайн-фолбэк',
@@ -1686,9 +1686,9 @@ export default {
         irFeatureHintTitle: 'Detekcia indícií funkcií',
         irFeatureHintDesc:
           'Pri správach kanála rozpozná indície a automaticky zapne {deepResearch} / {agentMode}.',
-        irContextPruneTitle: 'Orezanie kontextu',
+        irContextPruneTitle: 'Komprimácia kontextu chatu',
         irContextPruneDesc:
-          'Automaticky orezáva menej relevantnú históriu, aby znížil spotrebu tokenov.',
+          'Určuje, ako Blue komprimuje históriu chatu, keď rastie tlak na kontext.',
         irMediaIntentDesc: 'Rozpozná zámer generovania médií, aby smeroval požiadavky presnejšie.',
         irOfflineFallbackTitle: 'Lokálny offline fallback',
         irOfflineFallbackDesc:
@@ -1757,9 +1757,9 @@ export default {
         irFeatureHintTitle: 'Detektering av funktionsledtrådar',
         irFeatureHintDesc:
           'För kanalmeddelanden upptäcks ledtrådar och {deepResearch} / {agentMode} aktiveras automatiskt.',
-        irContextPruneTitle: 'Kontexttrimning',
+        irContextPruneTitle: 'Komprimering av chattkontext',
         irContextPruneDesc:
-          'Trimmar automatiskt mindre relevant historik för att minska tokenanvändningen.',
+          'Styr hur Blue komprimerar chatthistoriken när kontexttrycket ökar.',
         irMediaIntentDesc:
           'Upptäcker avsikt om mediegenerering för att routa förfrågningar mer exakt.',
         irOfflineFallbackTitle: 'Lokal offline-reserv',
@@ -1834,8 +1834,8 @@ export default {
         irMasterDesc: '一键控制下面所有辅助功能。',
         irFeatureHintTitle: '功能提示检测',
         irFeatureHintDesc: '对频道消息检测提示，并自动启用 {deepResearch} / {agentMode}。',
-        irContextPruneTitle: '上下文裁剪',
-        irContextPruneDesc: '自动裁剪相关性较低的历史记录，以减少 token 使用。',
+        irContextPruneTitle: '对话上下文压缩',
+        irContextPruneDesc: '控制 Blue 在上下文压力升高时如何压缩对话历史。',
         irMediaIntentDesc: '检测媒体生成意图，以更准确地路由请求。',
         irOfflineFallbackTitle: '离线本地回退',
         irOfflineFallbackDesc: '当需要模型回退时，优先从本地上下文召回中回答。',
@@ -1903,8 +1903,8 @@ export default {
         irMasterDesc: '一鍵控制下方所有輔助功能。',
         irFeatureHintTitle: '功能提示偵測',
         irFeatureHintDesc: '對頻道訊息偵測提示，並自動啟用 {deepResearch} / {agentMode}。',
-        irContextPruneTitle: '情境裁剪',
-        irContextPruneDesc: '自動裁剪相關性較低的歷史記錄，以減少 token 使用。',
+        irContextPruneTitle: '對話上下文壓縮',
+        irContextPruneDesc: '控制 Blue 在上下文壓力升高時如何壓縮對話歷史。',
         irMediaIntentDesc: '偵測媒體生成意圖，以更精準地路由請求。',
         irOfflineFallbackTitle: '離線本地回退',
         irOfflineFallbackDesc: '當需要模型回退時，優先從本地情境召回中回答。',

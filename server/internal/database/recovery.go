@@ -72,45 +72,113 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 			return nil, WrapSQLiteOpenError(dbPath, err)
 		}
 
-		if configure == nil {
-			return db, nil
-		}
+		if configure != nil {
+			if err := configure(db); err != nil {
+				_ = db.Close()
+				if IsSQLiteCorruptionError(err) {
+					if !triedCheckpoint {
+						triedCheckpoint = true
+						checkpointErr = CheckpointWALForDatabase(dbPath, CheckpointTruncate)
+						if checkpointErr == nil {
+							continue
+						}
+					}
+					if !triedRepair {
+						triedRepair = true
+						_, repairErr = RepairSQLiteDatabase(dbPath)
+						if repairErr == nil {
+							continue
+						}
+					}
 
-		if err := configure(db); err != nil {
-			_ = db.Close()
-			if IsSQLiteCorruptionError(err) {
-				if !triedCheckpoint {
-					triedCheckpoint = true
-					checkpointErr = CheckpointWALForDatabase(dbPath, CheckpointTruncate)
-					if checkpointErr == nil {
-						continue
+					baseErr := WrapSQLiteOpenError(dbPath, err)
+					switch {
+					case checkpointErr != nil && repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v; failed to repair database: %v)", baseErr, checkpointErr, repairErr)
+					case checkpointErr != nil:
+						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v)", baseErr, checkpointErr)
+					case repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to repair database: %v)", baseErr, repairErr)
+					default:
+						return nil, baseErr
 					}
 				}
-				if !triedRepair {
-					triedRepair = true
-					_, repairErr = RepairSQLiteDatabase(dbPath)
-					if repairErr == nil {
-						continue
-					}
-				}
-
-				baseErr := WrapSQLiteOpenError(dbPath, err)
-				switch {
-				case checkpointErr != nil && repairErr != nil:
-					return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v; failed to repair database: %v)", baseErr, checkpointErr, repairErr)
-				case checkpointErr != nil:
-					return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v)", baseErr, checkpointErr)
-				case repairErr != nil:
-					return nil, fmt.Errorf("%w (failed to repair database: %v)", baseErr, repairErr)
-				default:
-					return nil, baseErr
-				}
+				return nil, WrapSQLiteOpenError(dbPath, err)
 			}
-			return nil, WrapSQLiteOpenError(dbPath, err)
+		}
+		if shouldQuickCheckSQLitePath(dbPath) {
+			if err := quickCheckOpenDatabase(db); err != nil {
+				_ = db.Close()
+				if IsSQLiteCorruptionError(err) {
+					if !triedCheckpoint {
+						triedCheckpoint = true
+						checkpointErr = CheckpointWALForDatabase(dbPath, CheckpointTruncate)
+						if checkpointErr == nil {
+							continue
+						}
+					}
+					if !triedRepair {
+						triedRepair = true
+						_, repairErr = RepairSQLiteDatabase(dbPath)
+						if repairErr == nil {
+							continue
+						}
+					}
+
+					baseErr := WrapSQLiteOpenError(dbPath, err)
+					switch {
+					case checkpointErr != nil && repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v; failed to repair database: %v)", baseErr, checkpointErr, repairErr)
+					case checkpointErr != nil:
+						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v)", baseErr, checkpointErr)
+					case repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to repair database: %v)", baseErr, repairErr)
+					default:
+						return nil, baseErr
+					}
+				}
+				return nil, WrapSQLiteOpenError(dbPath, err)
+			}
 		}
 
 		return db, nil
 	}
+}
+
+func shouldQuickCheckSQLitePath(dbPath string) bool {
+	dbPath = strings.TrimSpace(dbPath)
+	return dbPath != "" && dbPath != ":memory:"
+}
+
+func quickCheckOpenDatabase(db *sql.DB) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, "PRAGMA quick_check")
+	if err != nil {
+		return fmt.Errorf("quick check failed: %w", err)
+	}
+	defer rows.Close()
+
+	var results []string
+	for rows.Next() {
+		var result string
+		if err := rows.Scan(&result); err != nil {
+			return fmt.Errorf("failed to scan quick check result: %w", err)
+		}
+		results = append(results, result)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("quick check error: %w", err)
+	}
+	if len(results) == 1 && results[0] == "ok" {
+		return nil
+	}
+	return fmt.Errorf("database corruption detected: %v", results)
 }
 
 // RepairSQLiteDatabase tries to salvage a corrupted SQLite database using the

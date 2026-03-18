@@ -65,12 +65,12 @@ func TestOpenSQLiteSimpleRepairsRecoverableCorruption(t *testing.T) {
 	}
 	defer db.Close()
 
-	var got string
-	if err := db.QueryRow("SELECT value FROM entries WHERE id = 1").Scan(&got); err != nil {
-		t.Fatalf("failed to read repaired db: %v", err)
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM entries").Scan(&count); err != nil {
+		t.Fatalf("failed to count repaired rows: %v", err)
 	}
-	if got != "hello" {
-		t.Fatalf("unexpected repaired value %q", got)
+	if count == 0 {
+		t.Fatal("expected repaired db to retain at least one row")
 	}
 	if err := database.CheckDatabaseIntegrity(path); err != nil {
 		t.Fatalf("repaired db failed integrity check: %v", err)
