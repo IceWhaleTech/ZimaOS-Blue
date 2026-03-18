@@ -218,6 +218,94 @@ func TestConvertDocumentFallsBackToLowerPriorityEngine(t *testing.T) {
 	}
 }
 
+func TestConvertDocumentFallsBackToHelperPDFWhenNoEngineSupportsSource(t *testing.T) {
+	svc := setupConvertTestService(t)
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.md")
+	if err := os.WriteFile(sourcePath, []byte("# hello\n\nfrom helper fallback"), 0o640); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	helperPath := filepath.Join(tmpDir, "blue-convert-helper")
+	helperScript := "#!/bin/sh\nreq=\"$1\"\noutdir=$(sed -n 's/.*\"output_dir\":\"\\([^\"]*\\)\".*/\\1/p' \"$req\" | head -n 1)\nif [ -z \"$outdir\" ]; then\n  echo '{\"error\":\"missing output_dir\"}'\n  exit 1\nfi\nmkdir -p \"$outdir\"\nout=\"$outdir/source.pdf\"\nprintf 'pdf' > \"$out\"\nprintf '{\"outputs\":[{\"path\":\"%s\",\"name\":\"source.pdf\",\"preview_kind\":\"pdf\"}]}\n' \"$out\"\n"
+	if err := os.WriteFile(helperPath, []byte(helperScript), 0o755); err != nil {
+		t.Fatalf("write helper script: %v", err)
+	}
+	t.Setenv("BLUE_CONVERT_HELPER", helperPath)
+
+	svc.locator = commandLocator{
+		lookPath: func(name string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+		stat: func(path string) (fs.FileInfo, error) {
+			return nil, os.ErrNotExist
+		},
+		runVersion: func(ctx context.Context, name string, args ...string) (string, error) {
+			return "", nil
+		},
+	}
+
+	task := &ConvertTask{ID: "task-helper-fallback"}
+	source := ResolvedSource{Name: filepath.Base(sourcePath), Path: sourcePath, Category: "document"}
+	outputs, message, err := svc.convertDocument(context.Background(), task, source, "pdf")
+	if err != nil {
+		t.Fatalf("convertDocument failed: %v", err)
+	}
+	if message != "Document rendered to PDF" {
+		t.Fatalf("message = %q, want %q", message, "Document rendered to PDF")
+	}
+	if len(outputs) != 1 {
+		t.Fatalf("outputs = %d, want 1", len(outputs))
+	}
+	if !strings.HasSuffix(outputs[0].Name, ".pdf") {
+		t.Fatalf("output name = %q, want .pdf suffix", outputs[0].Name)
+	}
+}
+
+func TestConvertDocumentUsesHelperPDFForSpreadsheetFormats(t *testing.T) {
+	svc := setupConvertTestService(t)
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "sheet.xlsx")
+	if err := os.WriteFile(sourcePath, []byte("dummy spreadsheet"), 0o640); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	helperPath := filepath.Join(tmpDir, "blue-convert-helper")
+	helperScript := "#!/bin/sh\nreq=\"$1\"\noutdir=$(sed -n 's/.*\"output_dir\":\"\\([^\"]*\\)\".*/\\1/p' \"$req\" | head -n 1)\nif [ -z \"$outdir\" ]; then\n  echo '{\"error\":\"missing output_dir\"}'\n  exit 1\nfi\nmkdir -p \"$outdir\"\nout=\"$outdir/sheet.pdf\"\nprintf 'pdf' > \"$out\"\nprintf '{\"outputs\":[{\"path\":\"%s\",\"name\":\"sheet.pdf\",\"preview_kind\":\"pdf\"}]}\n' \"$out\"\n"
+	if err := os.WriteFile(helperPath, []byte(helperScript), 0o755); err != nil {
+		t.Fatalf("write helper script: %v", err)
+	}
+	t.Setenv("BLUE_CONVERT_HELPER", helperPath)
+
+	svc.locator = commandLocator{
+		lookPath: func(name string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+		stat: func(path string) (fs.FileInfo, error) {
+			return nil, os.ErrNotExist
+		},
+		runVersion: func(ctx context.Context, name string, args ...string) (string, error) {
+			return "", nil
+		},
+	}
+
+	task := &ConvertTask{ID: "task-helper-spreadsheet"}
+	source := ResolvedSource{Name: filepath.Base(sourcePath), Path: sourcePath, Category: "document"}
+	outputs, message, err := svc.convertDocument(context.Background(), task, source, "pdf")
+	if err != nil {
+		t.Fatalf("convertDocument failed: %v", err)
+	}
+	if message != "Document rendered to PDF" {
+		t.Fatalf("message = %q, want %q", message, "Document rendered to PDF")
+	}
+	if len(outputs) != 1 {
+		t.Fatalf("outputs = %d, want 1", len(outputs))
+	}
+	if outputs[0].Name != "sheet.pdf" {
+		t.Fatalf("output name = %q, want sheet.pdf", outputs[0].Name)
+	}
+}
+
 func TestSupportedActionsForPlatform(t *testing.T) {
 	linuxActions := supportedActionsForPlatform("linux", true, false, false)
 	if strings.Join(linuxActions, ",") != ActionConvert {

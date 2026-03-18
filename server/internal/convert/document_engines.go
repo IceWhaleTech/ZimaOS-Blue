@@ -249,8 +249,15 @@ func officeOutputPath(outputDir, sourcePath, target string) (string, error) {
 }
 
 var (
-	officeDocumentFormats = []string{"doc", "docx", "odt", "rtf", "txt", "html", "htm", "md", "xls", "xlsx", "ods", "csv", "tsv", "ppt", "pptx", "odp", "pdf"}
-	x2tOfficeFormats      = []string{"doc", "docx", "odt", "rtf", "xls", "xlsx", "ods", "csv", "tsv", "ppt", "pptx", "odp", "pdf"}
-	pandocFormats         = []string{"txt", "md", "html", "htm", "rtf", "docx", "odt", "pdf"}
-	textutilFormats       = []string{"txt", "rtf", "rtfd", "html", "doc", "docx", "odt", "wordml", "webarchive", "pdf"}
+	officeDocumentFormats    = []string{"doc", "docx", "odt", "rtf", "txt", "html", "htm", "md", "xls", "xlsx", "ods", "csv", "tsv", "ppt", "pptx", "odp", "pdf"}
+	x2tOfficeFormats         = []string{"doc", "docx", "odt", "rtf", "xls", "xlsx", "ods", "csv", "tsv", "ppt", "pptx", "odp", "pdf"}
+	pandocFormats            = []string{"txt", "md", "html", "htm", "rtf", "docx", "odt", "pdf"}
+	textutilFormats          = []string{"txt", "rtf", "rtfd", "html", "doc", "docx", "odt", "wordml", "webarchive", "pdf"}
+	helperPDFFallbackFormats = []string{"txt", "md", "rtf", "rtfd", "html", "htm", "doc", "docx", "odt", "wordml", "webarchive", "csv", "tsv", "xls", "xlsx", "ods", "ppt", "pptx", "odp"}
 )
+
+func helperSupportsDocumentPDFFallback(sourceExt, targetExt string) bool {
+	sourceExt = normalizeFormat(sourceExt, "")
+	targetExt = normalizeFormat(targetExt, "")
+	return targetExt == "pdf" && stringInSlice(sourceExt, helperPDFFallbackFormats)
+}

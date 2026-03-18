@@ -195,16 +195,6 @@ func (h *Handler) getTree(c echo.Context) error {
 		})
 	}
 
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Path == entries[j].Path {
-			if entries[i].Type == entries[j].Type {
-				return false
-			}
-			return entries[i].Type == "dir"
-		}
-		return entries[i].Path < entries[j].Path
-	})
-
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"root":    root,
 		"entries": entries,

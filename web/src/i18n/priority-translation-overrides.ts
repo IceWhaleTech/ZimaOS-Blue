@@ -2565,4 +2565,2198 @@ for (const [locale, voiceWake] of Object.entries(voiceWakeTranslations)) {
   }
 }
 
+const processTraceTranslations = {
+  'ca-ES': {
+    events: {
+      requestReady: 'Sol·licitud preparada',
+      requestSent: 'Sol·licitud enviada',
+      waitingForResponse: 'Esperant la resposta',
+      retryScheduled: "S'està tornant a provar la sol·licitud d'aquí a {seconds}s",
+      retryingRequest: "S'està tornant a provar la sol·licitud",
+      retrySucceeded: 'La repetició ha anat bé',
+      retryFailed: 'La repetició ha fallat',
+      recoveringResponse: "S'està recuperant la resposta",
+      recoverySucceeded: 'La recuperació ha anat bé',
+      recoveryFailed: 'La recuperació ha fallat',
+      switchingProvider: "S'està canviant de proveïdor",
+      providerSwitchSucceeded: 'El canvi de proveïdor ha anat bé',
+      providerSwitchFailed: 'El canvi de proveïdor ha fallat',
+      restartingWithLatestMessage: "S'està reiniciant amb el teu últim missatge",
+      waitingForConfirmation: 'Esperant confirmació',
+      waitingForConnectionRecovery: 'Esperant la recuperació de la connexió',
+      processing: "S'està processant",
+    },
+    details: {
+      requestDispatched: 'Esperant que el servidor accepti la sol·licitud i comenci la resposta.',
+      waitingForResponse: "La sol·licitud s'ha acceptat. Esperant la primera sortida visible.",
+      awaitingConfirmation: "L'assistent necessita la teva confirmació abans de continuar.",
+      injectionRestart:
+        "L'assistent està reiniciant la resposta amb la teva interrupció més recent.",
+      networkInterruptWaiting:
+        "La transmissió s'ha interromput després d'haver començat el contingut. Esperant que el backend es recuperi.",
+    },
+    fields: {
+      message: 'Missatge',
+      provider: 'Proveïdor',
+      model: 'Model',
+      webSearch: 'Cerca web',
+      deepResearch: 'Recerca profunda',
+      attachments: 'Fitxers adjunts',
+      attempt: 'Intent',
+      delay: 'Retard',
+      on: 'Activat',
+      off: 'Desactivat',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Continua la resposta anterior',
+      resumePreviousRequest: "Reprèn la sol·licitud anterior",
+    },
+  },
+  'cs-CZ': {
+    events: {
+      requestReady: 'Požadavek připraven',
+      requestSent: 'Požadavek odeslán',
+      waitingForResponse: 'Čekám na odpověď',
+      retryScheduled: 'Opakuji požadavek za {seconds}s',
+      retryingRequest: 'Opakuji požadavek',
+      retrySucceeded: 'Opakování bylo úspěšné',
+      retryFailed: 'Opakování selhalo',
+      recoveringResponse: 'Obnovuji odpověď',
+      recoverySucceeded: 'Obnovení bylo úspěšné',
+      recoveryFailed: 'Obnovení selhalo',
+      switchingProvider: 'Přepínám poskytovatele',
+      providerSwitchSucceeded: 'Přepnutí poskytovatele bylo úspěšné',
+      providerSwitchFailed: 'Přepnutí poskytovatele selhalo',
+      restartingWithLatestMessage: 'Restartuji s vaší poslední zprávou',
+      waitingForConfirmation: 'Čekám na potvrzení',
+      waitingForConnectionRecovery: 'Čekám na obnovení připojení',
+      processing: 'Zpracovávám',
+    },
+    details: {
+      requestDispatched: 'Čekám, až server požadavek přijme a spustí odpověď.',
+      waitingForResponse: 'Požadavek byl přijat. Čekám na první viditelný výstup.',
+      awaitingConfirmation: 'Asistent potřebuje před pokračováním vaše potvrzení.',
+      injectionRestart: 'Asistent restartuje odpověď s vaším nejnovějším přerušením.',
+      networkInterruptWaiting:
+        'Přenos se přerušil po zahájení obsahu. Čekám, až se backend zotaví.',
+    },
+    fields: {
+      message: 'Zpráva',
+      provider: 'Poskytovatel',
+      model: 'Model',
+      webSearch: 'Webové vyhledávání',
+      deepResearch: 'Hloubkový výzkum',
+      attachments: 'Přílohy',
+      attempt: 'Pokus',
+      delay: 'Zpoždění',
+      on: 'Zapnuto',
+      off: 'Vypnuto',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Pokračovat v předchozí odpovědi',
+      resumePreviousRequest: 'Obnovit předchozí požadavek',
+    },
+  },
+  'da-DK': {
+    events: {
+      requestReady: 'Anmodning klar',
+      requestSent: 'Anmodning sendt',
+      waitingForResponse: 'Venter på svar',
+      retryScheduled: 'Prøver anmodningen igen om {seconds}s',
+      retryingRequest: 'Prøver anmodningen igen',
+      retrySucceeded: 'Nyt forsøg lykkedes',
+      retryFailed: 'Nyt forsøg mislykkedes',
+      recoveringResponse: 'Gendanner svar',
+      recoverySucceeded: 'Gendannelse lykkedes',
+      recoveryFailed: 'Gendannelse mislykkedes',
+      switchingProvider: 'Skifter udbyder',
+      providerSwitchSucceeded: 'Skift af udbyder lykkedes',
+      providerSwitchFailed: 'Skift af udbyder mislykkedes',
+      restartingWithLatestMessage: 'Genstarter med din seneste besked',
+      waitingForConfirmation: 'Venter på bekræftelse',
+      waitingForConnectionRecovery: 'Venter på gendannelse af forbindelsen',
+      processing: 'Behandler',
+    },
+    details: {
+      requestDispatched: 'Venter på, at serveren accepterer anmodningen og starter svaret.',
+      waitingForResponse: 'Anmodningen blev accepteret. Venter på det første synlige output.',
+      awaitingConfirmation: 'Assistenten har brug for din bekræftelse, før den kan fortsætte.',
+      injectionRestart: 'Assistenten genstarter svaret med din seneste afbrydelse.',
+      networkInterruptWaiting:
+        'Streamen blev afbrudt, efter at indholdet var startet. Venter på, at backend gendannes.',
+    },
+    fields: {
+      message: 'Besked',
+      provider: 'Udbyder',
+      model: 'Model',
+      webSearch: 'Websøgning',
+      deepResearch: 'Dybdegående research',
+      attachments: 'Vedhæftninger',
+      attempt: 'Forsøg',
+      delay: 'Forsinkelse',
+      on: 'Til',
+      off: 'Fra',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Fortsæt det forrige svar',
+      resumePreviousRequest: 'Genoptag den forrige anmodning',
+    },
+  },
+  'de-DE': {
+    events: {
+      requestReady: 'Anfrage bereit',
+      requestSent: 'Anfrage gesendet',
+      waitingForResponse: 'Warte auf Antwort',
+      retryScheduled: 'Neuer Versuch in {seconds}s',
+      retryingRequest: 'Anfrage wird erneut gesendet',
+      retrySucceeded: 'Neuer Versuch erfolgreich',
+      retryFailed: 'Neuer Versuch fehlgeschlagen',
+      recoveringResponse: 'Antwort wird wiederhergestellt',
+      recoverySucceeded: 'Wiederherstellung erfolgreich',
+      recoveryFailed: 'Wiederherstellung fehlgeschlagen',
+      switchingProvider: 'Anbieter wird gewechselt',
+      providerSwitchSucceeded: 'Anbieterwechsel erfolgreich',
+      providerSwitchFailed: 'Anbieterwechsel fehlgeschlagen',
+      restartingWithLatestMessage: 'Neustart mit Ihrer neuesten Nachricht',
+      waitingForConfirmation: 'Warte auf Bestätigung',
+      waitingForConnectionRecovery: 'Warte auf Wiederherstellung der Verbindung',
+      processing: 'Verarbeitung läuft',
+    },
+    details: {
+      requestDispatched: 'Warte darauf, dass der Server die Anfrage annimmt und die Antwort startet.',
+      waitingForResponse:
+        'Die Anfrage wurde angenommen. Warte auf die erste sichtbare Ausgabe.',
+      awaitingConfirmation:
+        'Der Assistent benötigt Ihre Bestätigung, bevor er fortfahren kann.',
+      injectionRestart:
+        'Der Assistent startet die Antwort mit Ihrer neuesten Unterbrechung neu.',
+      networkInterruptWaiting:
+        'Der Stream wurde unterbrochen, nachdem bereits Inhalt begonnen hatte. Warte auf die Wiederherstellung des Backends.',
+    },
+    fields: {
+      message: 'Nachricht',
+      provider: 'Anbieter',
+      model: 'Modell',
+      webSearch: 'Websuche',
+      deepResearch: 'Tiefenrecherche',
+      attachments: 'Anhänge',
+      attempt: 'Versuch',
+      delay: 'Verzögerung',
+      on: 'Ein',
+      off: 'Aus',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Vorherige Antwort fortsetzen',
+      resumePreviousRequest: 'Vorherige Anfrage fortsetzen',
+    },
+  },
+  'el-GR': {
+    events: {
+      requestReady: 'Το αίτημα είναι έτοιμο',
+      requestSent: 'Το αίτημα στάλθηκε',
+      waitingForResponse: 'Αναμονή απάντησης',
+      retryScheduled: 'Επανάληψη του αιτήματος σε {seconds} δευτ.',
+      retryingRequest: 'Γίνεται επανάληψη του αιτήματος',
+      retrySucceeded: 'Η επανάληψη πέτυχε',
+      retryFailed: 'Η επανάληψη απέτυχε',
+      recoveringResponse: 'Ανάκτηση απάντησης',
+      recoverySucceeded: 'Η ανάκτηση πέτυχε',
+      recoveryFailed: 'Η ανάκτηση απέτυχε',
+      switchingProvider: 'Αλλαγή παρόχου',
+      providerSwitchSucceeded: 'Η αλλαγή παρόχου πέτυχε',
+      providerSwitchFailed: 'Η αλλαγή παρόχου απέτυχε',
+      restartingWithLatestMessage: 'Επανεκκίνηση με το πιο πρόσφατο μήνυμά σας',
+      waitingForConfirmation: 'Αναμονή επιβεβαίωσης',
+      waitingForConnectionRecovery: 'Αναμονή αποκατάστασης της σύνδεσης',
+      processing: 'Επεξεργασία',
+    },
+    details: {
+      requestDispatched:
+        'Αναμονή μέχρι ο διακομιστής να αποδεχτεί το αίτημα και να ξεκινήσει την απάντηση.',
+      waitingForResponse:
+        'Το αίτημα έγινε αποδεκτό. Αναμονή για την πρώτη ορατή έξοδο.',
+      awaitingConfirmation:
+        'Ο βοηθός χρειάζεται την επιβεβαίωσή σας πριν συνεχίσει.',
+      injectionRestart:
+        'Ο βοηθός επανεκκινεί την απάντηση με τη νεότερη διακοπή σας.',
+      networkInterruptWaiting:
+        'Η ροή διακόπηκε αφού είχε ήδη ξεκινήσει το περιεχόμενο. Αναμονή για ανάκαμψη του backend.',
+    },
+    fields: {
+      message: 'Μήνυμα',
+      provider: 'Πάροχος',
+      model: 'Μοντέλο',
+      webSearch: 'Αναζήτηση ιστού',
+      deepResearch: 'Βαθιά έρευνα',
+      attachments: 'Συνημμένα',
+      attempt: 'Προσπάθεια',
+      delay: 'Καθυστέρηση',
+      on: 'Ενεργό',
+      off: 'Ανενεργό',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Συνέχισε την προηγούμενη απάντηση',
+      resumePreviousRequest: 'Συνέχισε το προηγούμενο αίτημα',
+    },
+  },
+  'en-GB': {
+    events: {
+      requestReady: 'Request ready',
+      requestSent: 'Request sent',
+      waitingForResponse: 'Waiting for response',
+      retryScheduled: 'Retrying request in {seconds}s',
+      retryingRequest: 'Retrying request',
+      retrySucceeded: 'Retry succeeded',
+      retryFailed: 'Retry failed',
+      recoveringResponse: 'Recovering response',
+      recoverySucceeded: 'Recovery succeeded',
+      recoveryFailed: 'Recovery failed',
+      switchingProvider: 'Switching provider',
+      providerSwitchSucceeded: 'Provider switch succeeded',
+      providerSwitchFailed: 'Provider switch failed',
+      restartingWithLatestMessage: 'Restarting with your latest message',
+      waitingForConfirmation: 'Waiting for confirmation',
+      waitingForConnectionRecovery: 'Waiting for connection recovery',
+      processing: 'Processing',
+    },
+    details: {
+      requestDispatched: 'Waiting for the server to accept the request and start the response.',
+      waitingForResponse: 'The request was accepted. Waiting for the first visible output.',
+      awaitingConfirmation: 'The assistant needs your confirmation before continuing.',
+      injectionRestart:
+        'The assistant is restarting the response with your latest interruption.',
+      networkInterruptWaiting:
+        'The stream was interrupted after content had started. Waiting for the backend to recover.',
+    },
+    fields: {
+      message: 'Message',
+      provider: 'Provider',
+      model: 'Model',
+      webSearch: 'Web search',
+      deepResearch: 'Deep research',
+      attachments: 'Attachments',
+      attempt: 'Attempt',
+      delay: 'Delay',
+      on: 'On',
+      off: 'Off',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Continue the previous reply',
+      resumePreviousRequest: 'Resume the previous request',
+    },
+  },
+  'en-US': {
+    events: {
+      requestReady: 'Request ready',
+      requestSent: 'Request sent',
+      waitingForResponse: 'Waiting for response',
+      retryScheduled: 'Retrying request in {seconds}s',
+      retryingRequest: 'Retrying request',
+      retrySucceeded: 'Retry succeeded',
+      retryFailed: 'Retry failed',
+      recoveringResponse: 'Recovering response',
+      recoverySucceeded: 'Recovery succeeded',
+      recoveryFailed: 'Recovery failed',
+      switchingProvider: 'Switching provider',
+      providerSwitchSucceeded: 'Provider switch succeeded',
+      providerSwitchFailed: 'Provider switch failed',
+      restartingWithLatestMessage: 'Restarting with your latest message',
+      waitingForConfirmation: 'Waiting for confirmation',
+      waitingForConnectionRecovery: 'Waiting for connection recovery',
+      processing: 'Processing',
+    },
+    details: {
+      requestDispatched: 'Waiting for the server to accept and start the response.',
+      waitingForResponse: 'The request was accepted. Waiting for the first visible output.',
+      awaitingConfirmation: 'The assistant needs your confirmation before continuing.',
+      injectionRestart:
+        'The assistant is restarting the response with your latest interruption.',
+      networkInterruptWaiting:
+        'The stream was interrupted after content started. Waiting for the backend to recover.',
+    },
+    fields: {
+      message: 'Message',
+      provider: 'Provider',
+      model: 'Model',
+      webSearch: 'Web search',
+      deepResearch: 'Deep research',
+      attachments: 'Attachments',
+      attempt: 'Attempt',
+      delay: 'Delay',
+      on: 'On',
+      off: 'Off',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Continue the previous reply',
+      resumePreviousRequest: 'Resume the previous request',
+    },
+  },
+  'es-ES': {
+    events: {
+      requestReady: 'Solicitud lista',
+      requestSent: 'Solicitud enviada',
+      waitingForResponse: 'Esperando respuesta',
+      retryScheduled: 'Reintentando la solicitud en {seconds}s',
+      retryingRequest: 'Reintentando la solicitud',
+      retrySucceeded: 'Reintento completado',
+      retryFailed: 'Reintento fallido',
+      recoveringResponse: 'Recuperando respuesta',
+      recoverySucceeded: 'Recuperación completada',
+      recoveryFailed: 'Recuperación fallida',
+      switchingProvider: 'Cambiando de proveedor',
+      providerSwitchSucceeded: 'Cambio de proveedor completado',
+      providerSwitchFailed: 'Cambio de proveedor fallido',
+      restartingWithLatestMessage: 'Reiniciando con tu mensaje más reciente',
+      waitingForConfirmation: 'Esperando confirmación',
+      waitingForConnectionRecovery: 'Esperando que se recupere la conexión',
+      processing: 'Procesando',
+    },
+    details: {
+      requestDispatched:
+        'Esperando a que el servidor acepte la solicitud e inicie la respuesta.',
+      waitingForResponse:
+        'La solicitud fue aceptada. Esperando la primera salida visible.',
+      awaitingConfirmation:
+        'El asistente necesita tu confirmación antes de continuar.',
+      injectionRestart:
+        'El asistente está reiniciando la respuesta con tu interrupción más reciente.',
+      networkInterruptWaiting:
+        'La transmisión se interrumpió después de que el contenido ya hubiera comenzado. Esperando a que el backend se recupere.',
+    },
+    fields: {
+      message: 'Mensaje',
+      provider: 'Proveedor',
+      model: 'Modelo',
+      webSearch: 'Búsqueda web',
+      deepResearch: 'Investigación profunda',
+      attachments: 'Archivos adjuntos',
+      attempt: 'Intento',
+      delay: 'Retraso',
+      on: 'Activado',
+      off: 'Desactivado',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Continuar la respuesta anterior',
+      resumePreviousRequest: 'Reanudar la solicitud anterior',
+    },
+  },
+  'fr-FR': {
+    events: {
+      requestReady: 'Requête prête',
+      requestSent: 'Requête envoyée',
+      waitingForResponse: 'En attente de réponse',
+      retryScheduled: 'Nouvelle tentative dans {seconds}s',
+      retryingRequest: 'Nouvelle tentative de la requête',
+      retrySucceeded: 'Nouvelle tentative réussie',
+      retryFailed: 'Nouvelle tentative échouée',
+      recoveringResponse: 'Récupération de la réponse',
+      recoverySucceeded: 'Récupération réussie',
+      recoveryFailed: 'Récupération échouée',
+      switchingProvider: 'Changement de fournisseur',
+      providerSwitchSucceeded: 'Changement de fournisseur réussi',
+      providerSwitchFailed: 'Changement de fournisseur échoué',
+      restartingWithLatestMessage: 'Redémarrage avec votre dernier message',
+      waitingForConfirmation: 'En attente de confirmation',
+      waitingForConnectionRecovery: 'En attente du rétablissement de la connexion',
+      processing: 'Traitement en cours',
+    },
+    details: {
+      requestDispatched:
+        'En attente que le serveur accepte la requête et démarre la réponse.',
+      waitingForResponse:
+        'La requête a été acceptée. En attente du premier résultat visible.',
+      awaitingConfirmation:
+        "L'assistant a besoin de votre confirmation avant de continuer.",
+      injectionRestart:
+        "L'assistant redémarre la réponse avec votre interruption la plus récente.",
+      networkInterruptWaiting:
+        'Le flux a été interrompu après le début du contenu. En attente de la récupération du backend.',
+    },
+    fields: {
+      message: 'Message',
+      provider: 'Fournisseur',
+      model: 'Modèle',
+      webSearch: 'Recherche web',
+      deepResearch: 'Recherche approfondie',
+      attachments: 'Pièces jointes',
+      attempt: 'Tentative',
+      delay: 'Délai',
+      on: 'Activé',
+      off: 'Désactivé',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Continuer la réponse précédente',
+      resumePreviousRequest: 'Reprendre la requête précédente',
+    },
+  },
+  'ga-IE': {
+    events: {
+      requestReady: 'Iarratas réidh',
+      requestSent: 'Iarratas seolta',
+      waitingForResponse: 'Ag fanacht le freagra',
+      retryScheduled: 'Ag déanamh iarrachta eile ar an iarratas i gceann {seconds}s',
+      retryingRequest: 'Ag déanamh iarrachta eile ar an iarratas',
+      retrySucceeded: "D'éirigh leis an iarracht eile",
+      retryFailed: 'Theip ar an iarracht eile',
+      recoveringResponse: 'Ag aisghabháil an fhreagra',
+      recoverySucceeded: "D'éirigh leis an aisghabháil",
+      recoveryFailed: 'Theip ar an aisghabháil',
+      switchingProvider: 'Ag athrú soláthraí',
+      providerSwitchSucceeded: "D'éirigh leis an athrú soláthraí",
+      providerSwitchFailed: 'Theip ar an athrú soláthraí',
+      restartingWithLatestMessage: 'Ag atosú le do theachtaireacht is déanaí',
+      waitingForConfirmation: 'Ag fanacht le deimhniú',
+      waitingForConnectionRecovery: 'Ag fanacht le haisghabháil an cheangail',
+      processing: 'Á phróiseáil',
+    },
+    details: {
+      requestDispatched:
+        'Ag fanacht go nglacfaidh an freastalaí leis an iarratas agus go dtosóidh sé an freagra.',
+      waitingForResponse:
+        'Glacadh leis an iarratas. Ag fanacht leis an gcéad aschur infheicthe.',
+      awaitingConfirmation:
+        'Tá do dheimhniú ag teastáil ón gcúntóir sula leanfaidh sé ar aghaidh.',
+      injectionRestart:
+        'Tá an cúntóir ag atosú an fhreagra leis an gcur isteach is déanaí uait.',
+      networkInterruptWaiting:
+        'Cuireadh isteach ar an sruth tar éis don ábhar tosú. Ag fanacht go n-aisghabhfaidh an backend.',
+    },
+    fields: {
+      message: 'Teachtaireacht',
+      provider: 'Soláthraí',
+      model: 'Samhail',
+      webSearch: 'Cuardach gréasáin',
+      deepResearch: 'Taighde domhain',
+      attachments: 'Ceangaltáin',
+      attempt: 'Iarracht',
+      delay: 'Moill',
+      on: 'Ar siúl',
+      off: 'Múchta',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Lean leis an bhfreagra roimhe seo',
+      resumePreviousRequest: 'Atosaigh an t-iarratas roimhe seo',
+    },
+  },
+  'hr-HR': {
+    events: {
+      requestReady: 'Zahtjev je spreman',
+      requestSent: 'Zahtjev je poslan',
+      waitingForResponse: 'Čekam odgovor',
+      retryScheduled: 'Ponovni pokušaj zahtjeva za {seconds}s',
+      retryingRequest: 'Ponovno pokušavam zahtjev',
+      retrySucceeded: 'Ponovni pokušaj je uspio',
+      retryFailed: 'Ponovni pokušaj nije uspio',
+      recoveringResponse: 'Obnavljam odgovor',
+      recoverySucceeded: 'Obnova je uspjela',
+      recoveryFailed: 'Obnova nije uspjela',
+      switchingProvider: 'Mijenjam pružatelja',
+      providerSwitchSucceeded: 'Promjena pružatelja je uspjela',
+      providerSwitchFailed: 'Promjena pružatelja nije uspjela',
+      restartingWithLatestMessage: 'Ponovno pokrećem s vašom zadnjom porukom',
+      waitingForConfirmation: 'Čekam potvrdu',
+      waitingForConnectionRecovery: 'Čekam oporavak veze',
+      processing: 'Obrađujem',
+    },
+    details: {
+      requestDispatched:
+        'Čekam da poslužitelj prihvati zahtjev i započne odgovor.',
+      waitingForResponse:
+        'Zahtjev je prihvaćen. Čekam prvi vidljivi izlaz.',
+      awaitingConfirmation:
+        'Pomoćnik treba vašu potvrdu prije nego nastavi.',
+      injectionRestart:
+        'Pomoćnik ponovno pokreće odgovor s vašim najnovijim prekidom.',
+      networkInterruptWaiting:
+        'Tok je prekinut nakon što je sadržaj već počeo. Čekam da se backend oporavi.',
+    },
+    fields: {
+      message: 'Poruka',
+      provider: 'Pružatelj',
+      model: 'Model',
+      webSearch: 'Web pretraživanje',
+      deepResearch: 'Dubinsko istraživanje',
+      attachments: 'Privici',
+      attempt: 'Pokušaj',
+      delay: 'Kašnjenje',
+      on: 'Uključeno',
+      off: 'Isključeno',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Nastavi prethodni odgovor',
+      resumePreviousRequest: 'Nastavi prethodni zahtjev',
+    },
+  },
+  'hu-HU': {
+    events: {
+      requestReady: 'Kérés előkészítve',
+      requestSent: 'Kérés elküldve',
+      waitingForResponse: 'Várakozás válaszra',
+      retryScheduled: 'A kérés újrapróbálása {seconds} mp múlva',
+      retryingRequest: 'A kérés újrapróbálása',
+      retrySucceeded: 'Az újrapróbálás sikerült',
+      retryFailed: 'Az újrapróbálás sikertelen',
+      recoveringResponse: 'A válasz helyreállítása',
+      recoverySucceeded: 'A helyreállítás sikerült',
+      recoveryFailed: 'A helyreállítás sikertelen',
+      switchingProvider: 'Szolgáltató váltása',
+      providerSwitchSucceeded: 'A szolgáltatóváltás sikerült',
+      providerSwitchFailed: 'A szolgáltatóváltás sikertelen',
+      restartingWithLatestMessage: 'Újraindítás a legutóbbi üzenetével',
+      waitingForConfirmation: 'Megerősítésre vár',
+      waitingForConnectionRecovery: 'Kapcsolathelyreállításra vár',
+      processing: 'Feldolgozás',
+    },
+    details: {
+      requestDispatched:
+        'Várakozás arra, hogy a kiszolgáló elfogadja a kérést és elindítsa a választ.',
+      waitingForResponse:
+        'A kérés elfogadva. Várakozás az első látható kimenetre.',
+      awaitingConfirmation:
+        'Az asszisztensnek szüksége van a megerősítésére a folytatáshoz.',
+      injectionRestart:
+        'Az asszisztens újraindítja a választ az Ön legutóbbi megszakításával.',
+      networkInterruptWaiting:
+        'A stream megszakadt, miután a tartalom már elkezdődött. Várakozás a backend helyreállására.',
+    },
+    fields: {
+      message: 'Üzenet',
+      provider: 'Szolgáltató',
+      model: 'Modell',
+      webSearch: 'Webes keresés',
+      deepResearch: 'Mély kutatás',
+      attachments: 'Mellékletek',
+      attempt: 'Próbálkozás',
+      delay: 'Késleltetés',
+      on: 'Be',
+      off: 'Ki',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Folytassa az előző választ',
+      resumePreviousRequest: 'Folytassa az előző kérést',
+    },
+  },
+  'it-IT': {
+    events: {
+      requestReady: 'Richiesta pronta',
+      requestSent: 'Richiesta inviata',
+      waitingForResponse: 'In attesa di risposta',
+      retryScheduled: 'Nuovo tentativo della richiesta tra {seconds}s',
+      retryingRequest: 'Nuovo tentativo della richiesta',
+      retrySucceeded: 'Nuovo tentativo riuscito',
+      retryFailed: 'Nuovo tentativo non riuscito',
+      recoveringResponse: 'Recupero della risposta',
+      recoverySucceeded: 'Recupero riuscito',
+      recoveryFailed: 'Recupero non riuscito',
+      switchingProvider: 'Cambio provider',
+      providerSwitchSucceeded: 'Cambio provider riuscito',
+      providerSwitchFailed: 'Cambio provider non riuscito',
+      restartingWithLatestMessage: 'Riavvio con il tuo ultimo messaggio',
+      waitingForConfirmation: 'In attesa di conferma',
+      waitingForConnectionRecovery: 'In attesa del ripristino della connessione',
+      processing: 'Elaborazione in corso',
+    },
+    details: {
+      requestDispatched:
+        'In attesa che il server accetti la richiesta e avvii la risposta.',
+      waitingForResponse:
+        'La richiesta è stata accettata. In attesa del primo output visibile.',
+      awaitingConfirmation:
+        "L'assistente ha bisogno della tua conferma prima di continuare.",
+      injectionRestart:
+        "L'assistente sta riavviando la risposta con la tua interruzione più recente.",
+      networkInterruptWaiting:
+        'Il flusso è stato interrotto dopo l’inizio del contenuto. In attesa del ripristino del backend.',
+    },
+    fields: {
+      message: 'Messaggio',
+      provider: 'Provider',
+      model: 'Modello',
+      webSearch: 'Ricerca web',
+      deepResearch: 'Ricerca approfondita',
+      attachments: 'Allegati',
+      attempt: 'Tentativo',
+      delay: 'Ritardo',
+      on: 'Attivo',
+      off: 'Disattivo',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Continua la risposta precedente',
+      resumePreviousRequest: 'Riprendi la richiesta precedente',
+    },
+  },
+  'ja-JP': {
+    events: {
+      requestReady: 'リクエストを準備しました',
+      requestSent: 'リクエストを送信しました',
+      waitingForResponse: '応答を待っています',
+      retryScheduled: '{seconds}秒後にリクエストを再試行します',
+      retryingRequest: 'リクエストを再試行しています',
+      retrySucceeded: '再試行に成功しました',
+      retryFailed: '再試行に失敗しました',
+      recoveringResponse: '応答を復旧しています',
+      recoverySucceeded: '復旧に成功しました',
+      recoveryFailed: '復旧に失敗しました',
+      switchingProvider: 'プロバイダーを切り替えています',
+      providerSwitchSucceeded: 'プロバイダーの切り替えに成功しました',
+      providerSwitchFailed: 'プロバイダーの切り替えに失敗しました',
+      restartingWithLatestMessage: '最新のメッセージで再開しています',
+      waitingForConfirmation: '確認を待っています',
+      waitingForConnectionRecovery: '接続の回復を待っています',
+      processing: '処理中',
+    },
+    details: {
+      requestDispatched:
+        'サーバーがリクエストを受け付け、応答を開始するのを待っています。',
+      waitingForResponse: 'リクエストは受け付けられました。最初の可視出力を待っています。',
+      awaitingConfirmation: '続行する前にアシスタントが確認を必要としています。',
+      injectionRestart:
+        'アシスタントは最新の割り込み内容で応答を再開しています。',
+      networkInterruptWaiting:
+        'コンテンツの開始後にストリームが中断されました。バックエンドの回復を待っています。',
+    },
+    fields: {
+      message: 'メッセージ',
+      provider: 'プロバイダー',
+      model: 'モデル',
+      webSearch: 'ウェブ検索',
+      deepResearch: '詳細調査',
+      attachments: '添付ファイル',
+      attempt: '試行',
+      delay: '遅延',
+      on: 'オン',
+      off: 'オフ',
+    },
+    summaryValues: {
+      continuePreviousReply: '前の返信を続ける',
+      resumePreviousRequest: '前のリクエストを再開する',
+    },
+  },
+  'ko-KR': {
+    events: {
+      requestReady: '요청 준비 완료',
+      requestSent: '요청 전송 완료',
+      waitingForResponse: '응답을 기다리는 중',
+      retryScheduled: '{seconds}초 후 요청을 다시 시도합니다',
+      retryingRequest: '요청을 다시 시도하는 중',
+      retrySucceeded: '재시도에 성공했습니다',
+      retryFailed: '재시도에 실패했습니다',
+      recoveringResponse: '응답을 복구하는 중',
+      recoverySucceeded: '복구에 성공했습니다',
+      recoveryFailed: '복구에 실패했습니다',
+      switchingProvider: '공급자를 전환하는 중',
+      providerSwitchSucceeded: '공급자 전환에 성공했습니다',
+      providerSwitchFailed: '공급자 전환에 실패했습니다',
+      restartingWithLatestMessage: '가장 최근 메시지로 다시 시작하는 중',
+      waitingForConfirmation: '확인을 기다리는 중',
+      waitingForConnectionRecovery: '연결 복구를 기다리는 중',
+      processing: '처리 중',
+    },
+    details: {
+      requestDispatched: '서버가 요청을 수락하고 응답을 시작할 때까지 기다리는 중입니다.',
+      waitingForResponse: '요청이 수락되었습니다. 첫 번째 표시 가능한 출력을 기다리는 중입니다.',
+      awaitingConfirmation: '계속하려면 어시스턴트가 확인을 필요로 합니다.',
+      injectionRestart:
+        '어시스턴트가 가장 최근의 중단 내용을 반영해 응답을 다시 시작하고 있습니다.',
+      networkInterruptWaiting:
+        '콘텐츠가 시작된 뒤 스트림이 중단되었습니다. 백엔드 복구를 기다리는 중입니다.',
+    },
+    fields: {
+      message: '메시지',
+      provider: '공급자',
+      model: '모델',
+      webSearch: '웹 검색',
+      deepResearch: '심층 조사',
+      attachments: '첨부 파일',
+      attempt: '시도',
+      delay: '지연',
+      on: '켬',
+      off: '끔',
+    },
+    summaryValues: {
+      continuePreviousReply: '이전 답변 계속하기',
+      resumePreviousRequest: '이전 요청 다시 이어가기',
+    },
+  },
+  'ml-IN': {
+    events: {
+      requestReady: 'അഭ്യർത്ഥന തയ്യാറായി',
+      requestSent: 'അഭ്യർത്ഥന അയച്ചു',
+      waitingForResponse: 'പ്രതികരണത്തിനായി കാത്തിരിക്കുന്നു',
+      retryScheduled: '{seconds} സെക്കൻഡിൽ അഭ്യർത്ഥനം വീണ്ടും ശ്രമിക്കുന്നു',
+      retryingRequest: 'അഭ്യർത്ഥനം വീണ്ടും ശ്രമിക്കുന്നു',
+      retrySucceeded: 'വീണ്ടും ശ്രമിച്ചത് വിജയിച്ചു',
+      retryFailed: 'വീണ്ടും ശ്രമിച്ചത് പരാജയപ്പെട്ടു',
+      recoveringResponse: 'പ്രതികരണം പുനഃസ്ഥാപിക്കുന്നു',
+      recoverySucceeded: 'പുനഃസ്ഥാപനം വിജയിച്ചു',
+      recoveryFailed: 'പുനഃസ്ഥാപനം പരാജയപ്പെട്ടു',
+      switchingProvider: 'ദാതാവിനെ മാറിക്കുന്നു',
+      providerSwitchSucceeded: 'ദാതാവിനെ മാറ്റൽ വിജയിച്ചു',
+      providerSwitchFailed: 'ദാതാവിനെ മാറ്റൽ പരാജയപ്പെട്ടു',
+      restartingWithLatestMessage: 'താങ്കളുടെ ഏറ്റവും പുതിയ സന്ദേശത്തോടെ വീണ്ടും ആരംഭിക്കുന്നു',
+      waitingForConfirmation: 'സ്ഥിരീകരണത്തിനായി കാത്തിരിക്കുന്നു',
+      waitingForConnectionRecovery: 'കണക്ഷൻ പുനഃസ്ഥാപിക്കപ്പെടാൻ കാത്തിരിക്കുന്നു',
+      processing: 'പ്രോസസ്സ് ചെയ്യുന്നു',
+    },
+    details: {
+      requestDispatched:
+        'സെർവർ അഭ്യർത്ഥന സ്വീകരിച്ച് പ്രതികരണം ആരംഭിക്കുന്നതുവരെ കാത്തിരിക്കുന്നു.',
+      waitingForResponse:
+        'അഭ്യർത്ഥനം സ്വീകരിച്ചു. ആദ്യമായി കാണാനാകുന്ന ഔട്ട്പുട്ടിനായി കാത്തിരിക്കുന്നു.',
+      awaitingConfirmation:
+        'തുടരുന്നതിന് മുമ്പ് സഹായി നിങ്ങളുടെ സ്ഥിരീകരണം ആവശ്യപ്പെടുന്നു.',
+      injectionRestart:
+        'താങ്കളുടെ ഏറ്റവും പുതിയ ഇടപെടൽ ഉപയോഗിച്ച് സഹായി പ്രതികരണം വീണ്ടും ആരംഭിക്കുന്നു.',
+      networkInterruptWaiting:
+        'ഉള്ളടക്കം ആരംഭിച്ചതിന് ശേഷം സ്ട്രീം തടസ്സപ്പെട്ടു. ബാക്ക്എൻഡ് വീണ്ടെടുക്കാൻ കാത്തിരിക്കുന്നു.',
+    },
+    fields: {
+      message: 'സന്ദേശം',
+      provider: 'ദാതാവ്',
+      model: 'മോഡൽ',
+      webSearch: 'വെബ് തിരയൽ',
+      deepResearch: 'ആഴത്തിലുള്ള ഗവേഷണം',
+      attachments: 'അറ്റാച്ച്മെന്റുകൾ',
+      attempt: 'ശ്രമം',
+      delay: 'വൈകം',
+      on: 'ഓൺ',
+      off: 'ഓഫ്',
+    },
+    summaryValues: {
+      continuePreviousReply: 'മുമ്പത്തെ മറുപടി തുടരുക',
+      resumePreviousRequest: 'മുമ്പത്തെ അഭ്യർത്ഥന വീണ്ടും തുടരുക',
+    },
+  },
+  'nb-NO': {
+    events: {
+      requestReady: 'Forespørselen er klar',
+      requestSent: 'Forespørselen er sendt',
+      waitingForResponse: 'Venter på svar',
+      retryScheduled: 'Prøver forespørselen igjen om {seconds}s',
+      retryingRequest: 'Prøver forespørselen igjen',
+      retrySucceeded: 'Nytt forsøk lyktes',
+      retryFailed: 'Nytt forsøk mislyktes',
+      recoveringResponse: 'Gjenoppretter svar',
+      recoverySucceeded: 'Gjenoppretting lyktes',
+      recoveryFailed: 'Gjenoppretting mislyktes',
+      switchingProvider: 'Bytter leverandør',
+      providerSwitchSucceeded: 'Bytte av leverandør lyktes',
+      providerSwitchFailed: 'Bytte av leverandør mislyktes',
+      restartingWithLatestMessage: 'Starter på nytt med den siste meldingen din',
+      waitingForConfirmation: 'Venter på bekreftelse',
+      waitingForConnectionRecovery: 'Venter på at tilkoblingen skal gjenopprettes',
+      processing: 'Behandler',
+    },
+    details: {
+      requestDispatched:
+        'Venter på at serveren skal godta forespørselen og starte svaret.',
+      waitingForResponse:
+        'Forespørselen ble godtatt. Venter på første synlige utdata.',
+      awaitingConfirmation:
+        'Assistenten trenger bekreftelsen din før den kan fortsette.',
+      injectionRestart:
+        'Assistenten starter svaret på nytt med den siste avbrytelsen din.',
+      networkInterruptWaiting:
+        'Strømmen ble avbrutt etter at innholdet hadde startet. Venter på at backend skal gjenopprettes.',
+    },
+    fields: {
+      message: 'Melding',
+      provider: 'Leverandør',
+      model: 'Modell',
+      webSearch: 'Nettsøk',
+      deepResearch: 'Dyp research',
+      attachments: 'Vedlegg',
+      attempt: 'Forsøk',
+      delay: 'Forsinkelse',
+      on: 'På',
+      off: 'Av',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Fortsett forrige svar',
+      resumePreviousRequest: 'Fortsett forrige forespørsel',
+    },
+  },
+  'nl-NL': {
+    events: {
+      requestReady: 'Verzoek klaar',
+      requestSent: 'Verzoek verzonden',
+      waitingForResponse: 'Wachten op antwoord',
+      retryScheduled: 'Nieuwe poging over {seconds}s',
+      retryingRequest: 'Verzoek opnieuw proberen',
+      retrySucceeded: 'Nieuwe poging geslaagd',
+      retryFailed: 'Nieuwe poging mislukt',
+      recoveringResponse: 'Antwoord herstellen',
+      recoverySucceeded: 'Herstel geslaagd',
+      recoveryFailed: 'Herstel mislukt',
+      switchingProvider: 'Provider wisselen',
+      providerSwitchSucceeded: 'Wisselen van provider geslaagd',
+      providerSwitchFailed: 'Wisselen van provider mislukt',
+      restartingWithLatestMessage: 'Opnieuw starten met je nieuwste bericht',
+      waitingForConfirmation: 'Wachten op bevestiging',
+      waitingForConnectionRecovery: 'Wachten op herstel van de verbinding',
+      processing: 'Bezig met verwerken',
+    },
+    details: {
+      requestDispatched:
+        'Wachten tot de server het verzoek accepteert en het antwoord start.',
+      waitingForResponse:
+        'Het verzoek is geaccepteerd. Wachten op de eerste zichtbare uitvoer.',
+      awaitingConfirmation:
+        'De assistent heeft je bevestiging nodig voordat hij verdergaat.',
+      injectionRestart:
+        'De assistent start het antwoord opnieuw met je meest recente onderbreking.',
+      networkInterruptWaiting:
+        'De stream werd onderbroken nadat de inhoud al was gestart. Wachten tot de backend herstelt.',
+    },
+    fields: {
+      message: 'Bericht',
+      provider: 'Provider',
+      model: 'Model',
+      webSearch: 'Webzoekopdracht',
+      deepResearch: 'Diepgaand onderzoek',
+      attachments: 'Bijlagen',
+      attempt: 'Poging',
+      delay: 'Vertraging',
+      on: 'Aan',
+      off: 'Uit',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Ga verder met het vorige antwoord',
+      resumePreviousRequest: 'Hervat het vorige verzoek',
+    },
+  },
+  'pl-PL': {
+    events: {
+      requestReady: 'Żądanie gotowe',
+      requestSent: 'Żądanie wysłane',
+      waitingForResponse: 'Oczekiwanie na odpowiedź',
+      retryScheduled: 'Ponowna próba za {seconds}s',
+      retryingRequest: 'Ponawianie żądania',
+      retrySucceeded: 'Ponowna próba zakończona powodzeniem',
+      retryFailed: 'Ponowna próba nie powiodła się',
+      recoveringResponse: 'Odzyskiwanie odpowiedzi',
+      recoverySucceeded: 'Odzyskiwanie zakończone powodzeniem',
+      recoveryFailed: 'Odzyskiwanie nie powiodło się',
+      switchingProvider: 'Przełączanie dostawcy',
+      providerSwitchSucceeded: 'Przełączenie dostawcy zakończone powodzeniem',
+      providerSwitchFailed: 'Przełączenie dostawcy nie powiodło się',
+      restartingWithLatestMessage: 'Ponowne uruchamianie z Twoją najnowszą wiadomością',
+      waitingForConfirmation: 'Oczekiwanie na potwierdzenie',
+      waitingForConnectionRecovery: 'Oczekiwanie na przywrócenie połączenia',
+      processing: 'Przetwarzanie',
+    },
+    details: {
+      requestDispatched:
+        'Oczekiwanie, aż serwer zaakceptuje żądanie i rozpocznie odpowiedź.',
+      waitingForResponse:
+        'Żądanie zostało zaakceptowane. Oczekiwanie na pierwsze widoczne dane wyjściowe.',
+      awaitingConfirmation:
+        'Asystent potrzebuje Twojego potwierdzenia, zanim będzie mógł kontynuować.',
+      injectionRestart:
+        'Asystent wznawia odpowiedź z uwzględnieniem Twojego najnowszego przerwania.',
+      networkInterruptWaiting:
+        'Strumień został przerwany po rozpoczęciu treści. Oczekiwanie na odzyskanie backendu.',
+    },
+    fields: {
+      message: 'Wiadomość',
+      provider: 'Dostawca',
+      model: 'Model',
+      webSearch: 'Wyszukiwanie w sieci',
+      deepResearch: 'Dogłębne badanie',
+      attachments: 'Załączniki',
+      attempt: 'Próba',
+      delay: 'Opóźnienie',
+      on: 'Włączone',
+      off: 'Wyłączone',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Kontynuuj poprzednią odpowiedź',
+      resumePreviousRequest: 'Wznów poprzednie żądanie',
+    },
+  },
+  'pt-BR': {
+    events: {
+      requestReady: 'Solicitação pronta',
+      requestSent: 'Solicitação enviada',
+      waitingForResponse: 'Aguardando resposta',
+      retryScheduled: 'Tentando novamente em {seconds}s',
+      retryingRequest: 'Tentando novamente a solicitação',
+      retrySucceeded: 'Nova tentativa concluída',
+      retryFailed: 'Nova tentativa falhou',
+      recoveringResponse: 'Recuperando resposta',
+      recoverySucceeded: 'Recuperação concluída',
+      recoveryFailed: 'Recuperação falhou',
+      switchingProvider: 'Trocando de provedor',
+      providerSwitchSucceeded: 'Troca de provedor concluída',
+      providerSwitchFailed: 'Troca de provedor falhou',
+      restartingWithLatestMessage: 'Reiniciando com sua mensagem mais recente',
+      waitingForConfirmation: 'Aguardando confirmação',
+      waitingForConnectionRecovery: 'Aguardando a recuperação da conexão',
+      processing: 'Processando',
+    },
+    details: {
+      requestDispatched:
+        'Aguardando o servidor aceitar a solicitação e iniciar a resposta.',
+      waitingForResponse:
+        'A solicitação foi aceita. Aguardando a primeira saída visível.',
+      awaitingConfirmation:
+        'O assistente precisa da sua confirmação antes de continuar.',
+      injectionRestart:
+        'O assistente está reiniciando a resposta com sua interrupção mais recente.',
+      networkInterruptWaiting:
+        'O stream foi interrompido depois que o conteúdo já tinha começado. Aguardando o backend se recuperar.',
+    },
+    fields: {
+      message: 'Mensagem',
+      provider: 'Provedor',
+      model: 'Modelo',
+      webSearch: 'Busca na web',
+      deepResearch: 'Pesquisa profunda',
+      attachments: 'Anexos',
+      attempt: 'Tentativa',
+      delay: 'Atraso',
+      on: 'Ligado',
+      off: 'Desligado',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Continuar a resposta anterior',
+      resumePreviousRequest: 'Retomar a solicitação anterior',
+    },
+  },
+  'pt-PT': {
+    events: {
+      requestReady: 'Pedido pronto',
+      requestSent: 'Pedido enviado',
+      waitingForResponse: 'A aguardar resposta',
+      retryScheduled: 'A repetir o pedido em {seconds}s',
+      retryingRequest: 'A repetir o pedido',
+      retrySucceeded: 'Repetição concluída com sucesso',
+      retryFailed: 'Repetição falhou',
+      recoveringResponse: 'A recuperar resposta',
+      recoverySucceeded: 'Recuperação concluída com sucesso',
+      recoveryFailed: 'Recuperação falhou',
+      switchingProvider: 'A mudar de fornecedor',
+      providerSwitchSucceeded: 'Mudança de fornecedor concluída com sucesso',
+      providerSwitchFailed: 'Mudança de fornecedor falhou',
+      restartingWithLatestMessage: 'A reiniciar com a sua mensagem mais recente',
+      waitingForConfirmation: 'A aguardar confirmação',
+      waitingForConnectionRecovery: 'A aguardar a recuperação da ligação',
+      processing: 'A processar',
+    },
+    details: {
+      requestDispatched:
+        'A aguardar que o servidor aceite o pedido e inicie a resposta.',
+      waitingForResponse:
+        'O pedido foi aceite. A aguardar a primeira saída visível.',
+      awaitingConfirmation:
+        'O assistente precisa da sua confirmação antes de continuar.',
+      injectionRestart:
+        'O assistente está a reiniciar a resposta com a sua interrupção mais recente.',
+      networkInterruptWaiting:
+        'O fluxo foi interrompido depois de o conteúdo já ter começado. A aguardar que o backend recupere.',
+    },
+    fields: {
+      message: 'Mensagem',
+      provider: 'Fornecedor',
+      model: 'Modelo',
+      webSearch: 'Pesquisa web',
+      deepResearch: 'Investigação profunda',
+      attachments: 'Anexos',
+      attempt: 'Tentativa',
+      delay: 'Atraso',
+      on: 'Ligado',
+      off: 'Desligado',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Continuar a resposta anterior',
+      resumePreviousRequest: 'Retomar o pedido anterior',
+    },
+  },
+  'ro-RO': {
+    events: {
+      requestReady: 'Cerere pregătită',
+      requestSent: 'Cererea a fost trimisă',
+      waitingForResponse: 'În așteptarea răspunsului',
+      retryScheduled: 'Reîncerc cererea în {seconds}s',
+      retryingRequest: 'Reîncerc cererea',
+      retrySucceeded: 'Reîncercarea a reușit',
+      retryFailed: 'Reîncercarea a eșuat',
+      recoveringResponse: 'Recuperez răspunsul',
+      recoverySucceeded: 'Recuperarea a reușit',
+      recoveryFailed: 'Recuperarea a eșuat',
+      switchingProvider: 'Schimb furnizorul',
+      providerSwitchSucceeded: 'Schimbarea furnizorului a reușit',
+      providerSwitchFailed: 'Schimbarea furnizorului a eșuat',
+      restartingWithLatestMessage: 'Repornesc cu cel mai recent mesaj al tău',
+      waitingForConfirmation: 'În așteptarea confirmării',
+      waitingForConnectionRecovery: 'În așteptarea restabilirii conexiunii',
+      processing: 'Se procesează',
+    },
+    details: {
+      requestDispatched:
+        'În așteptarea acceptării cererii de către server și a începerii răspunsului.',
+      waitingForResponse:
+        'Cererea a fost acceptată. În așteptarea primei ieșiri vizibile.',
+      awaitingConfirmation:
+        'Asistentul are nevoie de confirmarea ta înainte de a continua.',
+      injectionRestart:
+        'Asistentul repornește răspunsul folosind cea mai recentă întrerupere a ta.',
+      networkInterruptWaiting:
+        'Fluxul a fost întrerupt după începerea conținutului. În așteptarea recuperării backendului.',
+    },
+    fields: {
+      message: 'Mesaj',
+      provider: 'Furnizor',
+      model: 'Model',
+      webSearch: 'Căutare pe web',
+      deepResearch: 'Cercetare aprofundată',
+      attachments: 'Atașamente',
+      attempt: 'Încercare',
+      delay: 'Întârziere',
+      on: 'Pornit',
+      off: 'Oprit',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Continuă răspunsul anterior',
+      resumePreviousRequest: 'Reia cererea anterioară',
+    },
+  },
+  'ru-RU': {
+    events: {
+      requestReady: 'Запрос готов',
+      requestSent: 'Запрос отправлен',
+      waitingForResponse: 'Ожидание ответа',
+      retryScheduled: 'Повторная попытка через {seconds} с',
+      retryingRequest: 'Повторная отправка запроса',
+      retrySucceeded: 'Повторная попытка выполнена',
+      retryFailed: 'Повторная попытка не удалась',
+      recoveringResponse: 'Восстанавливаю ответ',
+      recoverySucceeded: 'Восстановление выполнено',
+      recoveryFailed: 'Восстановление не удалось',
+      switchingProvider: 'Переключение провайдера',
+      providerSwitchSucceeded: 'Переключение провайдера выполнено',
+      providerSwitchFailed: 'Переключение провайдера не удалось',
+      restartingWithLatestMessage: 'Перезапуск с вашим последним сообщением',
+      waitingForConfirmation: 'Ожидание подтверждения',
+      waitingForConnectionRecovery: 'Ожидание восстановления соединения',
+      processing: 'Обработка',
+    },
+    details: {
+      requestDispatched:
+        'Ожидание, пока сервер примет запрос и начнет формировать ответ.',
+      waitingForResponse:
+        'Запрос принят. Ожидание первого видимого результата.',
+      awaitingConfirmation:
+        'Ассистенту нужно ваше подтверждение, прежде чем продолжить.',
+      injectionRestart:
+        'Ассистент перезапускает ответ с учетом вашего последнего прерывания.',
+      networkInterruptWaiting:
+        'Поток был прерван после начала вывода. Ожидание восстановления backend.',
+    },
+    fields: {
+      message: 'Сообщение',
+      provider: 'Провайдер',
+      model: 'Модель',
+      webSearch: 'Веб-поиск',
+      deepResearch: 'Глубокое исследование',
+      attachments: 'Вложения',
+      attempt: 'Попытка',
+      delay: 'Задержка',
+      on: 'Вкл',
+      off: 'Выкл',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Продолжить предыдущий ответ',
+      resumePreviousRequest: 'Возобновить предыдущий запрос',
+    },
+  },
+  'sk-SK': {
+    events: {
+      requestReady: 'Požiadavka pripravená',
+      requestSent: 'Požiadavka odoslaná',
+      waitingForResponse: 'Čakám na odpoveď',
+      retryScheduled: 'Opakujem požiadavku o {seconds}s',
+      retryingRequest: 'Opakujem požiadavku',
+      retrySucceeded: 'Opakovanie bolo úspešné',
+      retryFailed: 'Opakovanie zlyhalo',
+      recoveringResponse: 'Obnovujem odpoveď',
+      recoverySucceeded: 'Obnova bola úspešná',
+      recoveryFailed: 'Obnova zlyhala',
+      switchingProvider: 'Prepínam poskytovateľa',
+      providerSwitchSucceeded: 'Prepnutie poskytovateľa bolo úspešné',
+      providerSwitchFailed: 'Prepnutie poskytovateľa zlyhalo',
+      restartingWithLatestMessage: 'Reštartujem s vašou najnovšou správou',
+      waitingForConfirmation: 'Čakám na potvrdenie',
+      waitingForConnectionRecovery: 'Čakám na obnovenie pripojenia',
+      processing: 'Spracúvam',
+    },
+    details: {
+      requestDispatched:
+        'Čakám, kým server prijme požiadavku a spustí odpoveď.',
+      waitingForResponse:
+        'Požiadavka bola prijatá. Čakám na prvý viditeľný výstup.',
+      awaitingConfirmation:
+        'Asistent potrebuje vaše potvrdenie pred pokračovaním.',
+      injectionRestart:
+        'Asistent reštartuje odpoveď s vaším najnovším prerušením.',
+      networkInterruptWaiting:
+        'Stream sa prerušil po začiatku obsahu. Čakám na obnovenie backendu.',
+    },
+    fields: {
+      message: 'Správa',
+      provider: 'Poskytovateľ',
+      model: 'Model',
+      webSearch: 'Vyhľadávanie na webe',
+      deepResearch: 'Hĺbkový výskum',
+      attachments: 'Prílohy',
+      attempt: 'Pokus',
+      delay: 'Oneskorenie',
+      on: 'Zapnuté',
+      off: 'Vypnuté',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Pokračovať v predchádzajúcej odpovedi',
+      resumePreviousRequest: 'Obnoviť predchádzajúcu požiadavku',
+    },
+  },
+  'sv-SE': {
+    events: {
+      requestReady: 'Begäran klar',
+      requestSent: 'Begäran skickad',
+      waitingForResponse: 'Väntar på svar',
+      retryScheduled: 'Försöker igen om {seconds}s',
+      retryingRequest: 'Försöker igen',
+      retrySucceeded: 'Nytt försök lyckades',
+      retryFailed: 'Nytt försök misslyckades',
+      recoveringResponse: 'Återställer svar',
+      recoverySucceeded: 'Återställningen lyckades',
+      recoveryFailed: 'Återställningen misslyckades',
+      switchingProvider: 'Byter leverantör',
+      providerSwitchSucceeded: 'Bytet av leverantör lyckades',
+      providerSwitchFailed: 'Bytet av leverantör misslyckades',
+      restartingWithLatestMessage: 'Startar om med ditt senaste meddelande',
+      waitingForConfirmation: 'Väntar på bekräftelse',
+      waitingForConnectionRecovery: 'Väntar på att anslutningen ska återställas',
+      processing: 'Bearbetar',
+    },
+    details: {
+      requestDispatched:
+        'Väntar på att servern ska acceptera begäran och starta svaret.',
+      waitingForResponse:
+        'Begäran accepterades. Väntar på den första synliga utmatningen.',
+      awaitingConfirmation:
+        'Assistenten behöver din bekräftelse innan den kan fortsätta.',
+      injectionRestart:
+        'Assistenten startar om svaret med ditt senaste avbrott.',
+      networkInterruptWaiting:
+        'Strömmen avbröts efter att innehållet hade börjat. Väntar på att backend ska återhämta sig.',
+    },
+    fields: {
+      message: 'Meddelande',
+      provider: 'Leverantör',
+      model: 'Modell',
+      webSearch: 'Webbsökning',
+      deepResearch: 'Djupresearch',
+      attachments: 'Bilagor',
+      attempt: 'Försök',
+      delay: 'Fördröjning',
+      on: 'På',
+      off: 'Av',
+    },
+    summaryValues: {
+      continuePreviousReply: 'Fortsätt det föregående svaret',
+      resumePreviousRequest: 'Återuppta den föregående begäran',
+    },
+  },
+  'zh-CN': {
+    events: {
+      requestReady: '请求已准备就绪',
+      requestSent: '请求已发送',
+      waitingForResponse: '正在等待响应',
+      retryScheduled: '{seconds} 秒后重试请求',
+      retryingRequest: '正在重试请求',
+      retrySucceeded: '重试成功',
+      retryFailed: '重试失败',
+      recoveringResponse: '正在恢复响应',
+      recoverySucceeded: '恢复成功',
+      recoveryFailed: '恢复失败',
+      switchingProvider: '正在切换提供商',
+      providerSwitchSucceeded: '切换提供商成功',
+      providerSwitchFailed: '切换提供商失败',
+      restartingWithLatestMessage: '正在使用你的最新消息重新开始',
+      waitingForConfirmation: '正在等待确认',
+      waitingForConnectionRecovery: '正在等待连接恢复',
+      processing: '处理中',
+    },
+    details: {
+      requestDispatched: '正在等待服务器接受请求并开始响应。',
+      waitingForResponse: '请求已被接受。正在等待第一段可见输出。',
+      awaitingConfirmation: '助手需要先得到你的确认才能继续。',
+      injectionRestart: '助手正在用你最近一次打断的内容重新开始响应。',
+      networkInterruptWaiting: '内容开始输出后流被中断。正在等待后端恢复。',
+    },
+    fields: {
+      message: '消息',
+      provider: '提供商',
+      model: '模型',
+      webSearch: '网页搜索',
+      deepResearch: '深度研究',
+      attachments: '附件',
+      attempt: '尝试次数',
+      delay: '延迟',
+      on: '开启',
+      off: '关闭',
+    },
+    summaryValues: {
+      continuePreviousReply: '继续上一条回复',
+      resumePreviousRequest: '继续上一次请求',
+    },
+  },
+  'zh-TW': {
+    events: {
+      requestReady: '請求已準備就緒',
+      requestSent: '請求已傳送',
+      waitingForResponse: '正在等待回應',
+      retryScheduled: '{seconds} 秒後重試請求',
+      retryingRequest: '正在重試請求',
+      retrySucceeded: '重試成功',
+      retryFailed: '重試失敗',
+      recoveringResponse: '正在恢復回應',
+      recoverySucceeded: '恢復成功',
+      recoveryFailed: '恢復失敗',
+      switchingProvider: '正在切換供應商',
+      providerSwitchSucceeded: '切換供應商成功',
+      providerSwitchFailed: '切換供應商失敗',
+      restartingWithLatestMessage: '正在使用你的最新訊息重新開始',
+      waitingForConfirmation: '正在等待確認',
+      waitingForConnectionRecovery: '正在等待連線恢復',
+      processing: '處理中',
+    },
+    details: {
+      requestDispatched: '正在等待伺服器接受請求並開始回應。',
+      waitingForResponse: '請求已被接受。正在等待第一段可見輸出。',
+      awaitingConfirmation: '助理需要先取得你的確認才能繼續。',
+      injectionRestart: '助理正在用你最近一次打斷的內容重新開始回應。',
+      networkInterruptWaiting: '內容開始輸出後串流被中斷。正在等待後端恢復。',
+    },
+    fields: {
+      message: '訊息',
+      provider: '供應商',
+      model: '模型',
+      webSearch: '網頁搜尋',
+      deepResearch: '深度研究',
+      attachments: '附件',
+      attempt: '嘗試次數',
+      delay: '延遲',
+      on: '開啟',
+      off: '關閉',
+    },
+    summaryValues: {
+      continuePreviousReply: '繼續上一則回覆',
+      resumePreviousRequest: '繼續上一次請求',
+    },
+  },
+} as const
+
+for (const [locale, processTrace] of Object.entries(processTraceTranslations)) {
+  const currentLocale = (priorityTranslationOverrides as Record<string, any>)[locale] || {}
+  const currentChat = currentLocale.chat || {}
+
+  ;(priorityTranslationOverrides as Record<string, any>)[locale] = {
+    ...currentLocale,
+    chat: {
+      ...currentChat,
+      processTrace,
+    },
+  }
+}
+
+const processTraceFieldValueTranslations = {
+  'ca-ES': { auto: 'Automàtic', file: 'fitxer' },
+  'cs-CZ': { auto: 'Automaticky', file: 'soubor' },
+  'da-DK': { auto: 'Automatisk', file: 'fil' },
+  'de-DE': { auto: 'Automatisch', file: 'Datei' },
+  'el-GR': { auto: 'Αυτόματο', file: 'αρχείο' },
+  'en-GB': { auto: 'Auto', file: 'file' },
+  'en-US': { auto: 'Auto', file: 'file' },
+  'es-ES': { auto: 'Automático', file: 'archivo' },
+  'fr-FR': { auto: 'Automatique', file: 'fichier' },
+  'ga-IE': { auto: 'Uathoibríoch', file: 'comhad' },
+  'hr-HR': { auto: 'Automatski', file: 'datoteka' },
+  'hu-HU': { auto: 'Automatikus', file: 'fájl' },
+  'it-IT': { auto: 'Automatico', file: 'file' },
+  'ja-JP': { auto: '自動', file: 'ファイル' },
+  'ko-KR': { auto: '자동', file: '파일' },
+  'ml-IN': { auto: 'സ്വയം', file: 'ഫയൽ' },
+  'nb-NO': { auto: 'Automatisk', file: 'fil' },
+  'nl-NL': { auto: 'Automatisch', file: 'bestand' },
+  'pl-PL': { auto: 'Automatycznie', file: 'plik' },
+  'pt-BR': { auto: 'Automático', file: 'arquivo' },
+  'pt-PT': { auto: 'Automático', file: 'ficheiro' },
+  'ro-RO': { auto: 'Automat', file: 'fișier' },
+  'ru-RU': { auto: 'Авто', file: 'файл' },
+  'sk-SK': { auto: 'Automaticky', file: 'súbor' },
+  'sv-SE': { auto: 'Automatiskt', file: 'fil' },
+  'zh-CN': { auto: '自动', file: '文件' },
+  'zh-TW': { auto: '自動', file: '檔案' },
+} as const
+
+for (const [locale, fields] of Object.entries(processTraceFieldValueTranslations)) {
+  const currentLocale = (priorityTranslationOverrides as Record<string, any>)[locale] || {}
+  const currentChat = currentLocale.chat || {}
+  const currentProcessTrace = currentChat.processTrace || {}
+  const currentFields = currentProcessTrace.fields || {}
+
+  ;(priorityTranslationOverrides as Record<string, any>)[locale] = {
+    ...currentLocale,
+    chat: {
+      ...currentChat,
+      processTrace: {
+        ...currentProcessTrace,
+        fields: {
+          ...currentFields,
+          ...fields,
+        },
+      },
+    },
+  }
+}
+
+const processTraceExtendedTranslations = {
+  'ca-ES': {
+    fields: {
+      format: 'Format',
+      size: 'Mida',
+      duration: 'Durada',
+      upload: 'Pujada',
+      transcript: 'Transcripció',
+      conversation: 'Conversa',
+      mode: 'Mode',
+    },
+    details: {
+      bargeIn: 'La reproducció s’ha aturat perquè puguis continuar parlant.',
+      voiceRequestDispatched: 'Blue està enviant la teva sol·licitud de veu.',
+      voiceInterruptDispatched:
+        'Blue està reiniciant amb la teva interrupció de veu més recent.',
+      voiceWaitingForResponse: 'Esperant la primera resposta de Blue.',
+      transcriptionFailed: 'La transcripció ha fallat.',
+      ttsPlaybackFailed: 'La reproducció TTS ha fallat.',
+      providerFailoverToolFollowUp:
+        'S’està reintentant el seguiment de l’eina sense el proveïdor fixat anteriorment.',
+      providerFailoverContinuationFollowUp:
+        'S’està reintentant el seguiment de continuació sense el proveïdor fixat anteriorment.',
+      recoveryStage1: 'Recuperació silenciosa',
+      recoveryStage2: 'Càrrega de recuperació reduïda',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Interromp la resposta actual',
+      sendNewRequest: 'Envia una sol·licitud nova',
+    },
+  },
+  'cs-CZ': {
+    fields: {
+      format: 'Formát',
+      size: 'Velikost',
+      duration: 'Doba trvání',
+      upload: 'Nahrávání',
+      transcript: 'Přepis',
+      conversation: 'Konverzace',
+      mode: 'Režim',
+    },
+    details: {
+      bargeIn: 'Přehrávání bylo zastaveno, abyste mohli pokračovat v mluvení.',
+      voiceRequestDispatched: 'Blue odesílá váš hlasový požadavek.',
+      voiceInterruptDispatched:
+        'Blue restartuje odpověď s vaším nejnovějším hlasovým přerušením.',
+      voiceWaitingForResponse: 'Čekám na první odpověď od Blue.',
+      transcriptionFailed: 'Přepis se nezdařil.',
+      ttsPlaybackFailed: 'Přehrávání TTS se nezdařilo.',
+      providerFailoverToolFollowUp:
+        'Opakuji navazující požadavek nástroje bez dříve připnutého poskytovatele.',
+      providerFailoverContinuationFollowUp:
+        'Opakuji navazující požadavek pokračování bez dříve připnutého poskytovatele.',
+      recoveryStage1: 'Tichá obnova',
+      recoveryStage2: 'Zmenšený obnovovací payload',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Přerušit aktuální odpověď',
+      sendNewRequest: 'Odeslat nový požadavek',
+    },
+  },
+  'da-DK': {
+    fields: {
+      format: 'Format',
+      size: 'Størrelse',
+      duration: 'Varighed',
+      upload: 'Upload',
+      transcript: 'Transskription',
+      conversation: 'Samtale',
+      mode: 'Tilstand',
+    },
+    details: {
+      bargeIn: 'Afspilningen blev stoppet, så du kan fortsætte med at tale.',
+      voiceRequestDispatched: 'Blue sender din taleanmodning.',
+      voiceInterruptDispatched:
+        'Blue genstarter med din seneste taleafbrydelse.',
+      voiceWaitingForResponse: 'Venter på det første svar fra Blue.',
+      transcriptionFailed: 'Transskription mislykkedes.',
+      ttsPlaybackFailed: 'TTS-afspilning mislykkedes.',
+      providerFailoverToolFollowUp:
+        'Forsøger værktøjsopfølgningen igen uden den tidligere fastgjorte udbyder.',
+      providerFailoverContinuationFollowUp:
+        'Forsøger fortsættelsesopfølgningen igen uden den tidligere fastgjorte udbyder.',
+      recoveryStage1: 'Stille gendannelse',
+      recoveryStage2: 'Reduceret gendannelsespayload',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Afbryd det aktuelle svar',
+      sendNewRequest: 'Send ny anmodning',
+    },
+  },
+  'de-DE': {
+    fields: {
+      format: 'Format',
+      size: 'Größe',
+      duration: 'Dauer',
+      upload: 'Upload',
+      transcript: 'Transkript',
+      conversation: 'Konversation',
+      mode: 'Modus',
+    },
+    details: {
+      bargeIn: 'Die Wiedergabe wurde gestoppt, damit Sie weiter sprechen können.',
+      voiceRequestDispatched: 'Blue sendet Ihre Sprachanfrage.',
+      voiceInterruptDispatched:
+        'Blue startet mit Ihrer neuesten Sprachunterbrechung neu.',
+      voiceWaitingForResponse: 'Warte auf die erste Antwort von Blue.',
+      transcriptionFailed: 'Die Transkription ist fehlgeschlagen.',
+      ttsPlaybackFailed: 'Die TTS-Wiedergabe ist fehlgeschlagen.',
+      providerFailoverToolFollowUp:
+        'Die Werkzeug-Folgeanfrage wird ohne den zuvor angehefteten Anbieter erneut versucht.',
+      providerFailoverContinuationFollowUp:
+        'Die Fortsetzungs-Folgeanfrage wird ohne den zuvor angehefteten Anbieter erneut versucht.',
+      recoveryStage1: 'Stille Wiederherstellung',
+      recoveryStage2: 'Reduzierte Wiederherstellungsnutzlast',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Aktuelle Antwort unterbrechen',
+      sendNewRequest: 'Neue Anfrage senden',
+    },
+  },
+  'el-GR': {
+    fields: {
+      format: 'Μορφή',
+      size: 'Μέγεθος',
+      duration: 'Διάρκεια',
+      upload: 'Μεταφόρτωση',
+      transcript: 'Απομαγνητοφώνηση',
+      conversation: 'Συνομιλία',
+      mode: 'Λειτουργία',
+    },
+    details: {
+      bargeIn: 'Η αναπαραγωγή σταμάτησε ώστε να μπορείτε να συνεχίσετε να μιλάτε.',
+      voiceRequestDispatched: 'Το Blue στέλνει το φωνητικό σας αίτημα.',
+      voiceInterruptDispatched:
+        'Το Blue επανεκκινεί με την πιο πρόσφατη φωνητική σας διακοπή.',
+      voiceWaitingForResponse: 'Αναμονή για την πρώτη απάντηση από το Blue.',
+      transcriptionFailed: 'Η απομαγνητοφώνηση απέτυχε.',
+      ttsPlaybackFailed: 'Η αναπαραγωγή TTS απέτυχε.',
+      providerFailoverToolFollowUp:
+        'Γίνεται νέα προσπάθεια για τη συνέχεια του εργαλείου χωρίς τον προηγουμένως καρφιτσωμένο πάροχο.',
+      providerFailoverContinuationFollowUp:
+        'Γίνεται νέα προσπάθεια για τη συνέχεια της συνέχισης χωρίς τον προηγουμένως καρφιτσωμένο πάροχο.',
+      recoveryStage1: 'Σιωπηλή ανάκτηση',
+      recoveryStage2: 'Μειωμένο φορτίο ανάκτησης',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Διακοπή της τρέχουσας απάντησης',
+      sendNewRequest: 'Αποστολή νέου αιτήματος',
+    },
+  },
+  'en-GB': {
+    fields: {
+      format: 'Format',
+      size: 'Size',
+      duration: 'Duration',
+      upload: 'Upload',
+      transcript: 'Transcript',
+      conversation: 'Conversation',
+      mode: 'Mode',
+    },
+    details: {
+      bargeIn: 'Playback stopped so you can continue speaking.',
+      voiceRequestDispatched: 'Blue is sending your voice request.',
+      voiceInterruptDispatched: 'Blue is restarting with your latest voice interruption.',
+      voiceWaitingForResponse: 'Waiting for the first response from Blue.',
+      transcriptionFailed: 'Transcription failed.',
+      ttsPlaybackFailed: 'TTS playback failed.',
+      providerFailoverToolFollowUp:
+        'Retrying the tool follow-up without the previously pinned provider.',
+      providerFailoverContinuationFollowUp:
+        'Retrying the continuation follow-up without the previously pinned provider.',
+      recoveryStage1: 'Silent recovery',
+      recoveryStage2: 'Reduced recovery payload',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Interrupt current reply',
+      sendNewRequest: 'Send new request',
+    },
+  },
+  'en-US': {
+    fields: {
+      format: 'Format',
+      size: 'Size',
+      duration: 'Duration',
+      upload: 'Upload',
+      transcript: 'Transcript',
+      conversation: 'Conversation',
+      mode: 'Mode',
+    },
+    details: {
+      bargeIn: 'Playback stopped so you can continue speaking.',
+      voiceRequestDispatched: 'Blue is sending your voice request.',
+      voiceInterruptDispatched: 'Blue is restarting with your latest voice interruption.',
+      voiceWaitingForResponse: 'Waiting for the first response from Blue.',
+      transcriptionFailed: 'Transcription failed.',
+      ttsPlaybackFailed: 'TTS playback failed.',
+      providerFailoverToolFollowUp:
+        'Retrying the tool follow-up without the previously pinned provider.',
+      providerFailoverContinuationFollowUp:
+        'Retrying the continuation follow-up without the previously pinned provider.',
+      recoveryStage1: 'Silent recovery',
+      recoveryStage2: 'Reduced recovery payload',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Interrupt current reply',
+      sendNewRequest: 'Send new request',
+    },
+  },
+  'es-ES': {
+    fields: {
+      format: 'Formato',
+      size: 'Tamaño',
+      duration: 'Duración',
+      upload: 'Subida',
+      transcript: 'Transcripción',
+      conversation: 'Conversación',
+      mode: 'Modo',
+    },
+    details: {
+      bargeIn: 'La reproducción se detuvo para que puedas seguir hablando.',
+      voiceRequestDispatched: 'Blue está enviando tu solicitud de voz.',
+      voiceInterruptDispatched:
+        'Blue está reiniciando con tu interrupción de voz más reciente.',
+      voiceWaitingForResponse: 'Esperando la primera respuesta de Blue.',
+      transcriptionFailed: 'La transcripción falló.',
+      ttsPlaybackFailed: 'La reproducción TTS falló.',
+      providerFailoverToolFollowUp:
+        'Reintentando el seguimiento de la herramienta sin el proveedor fijado anteriormente.',
+      providerFailoverContinuationFollowUp:
+        'Reintentando el seguimiento de continuación sin el proveedor fijado anteriormente.',
+      recoveryStage1: 'Recuperación silenciosa',
+      recoveryStage2: 'Carga de recuperación reducida',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Interrumpir la respuesta actual',
+      sendNewRequest: 'Enviar una nueva solicitud',
+    },
+  },
+  'fr-FR': {
+    fields: {
+      format: 'Format',
+      size: 'Taille',
+      duration: 'Durée',
+      upload: 'Téléversement',
+      transcript: 'Transcription',
+      conversation: 'Conversation',
+      mode: 'Mode',
+    },
+    details: {
+      bargeIn: 'La lecture a été arrêtée pour que vous puissiez continuer à parler.',
+      voiceRequestDispatched: 'Blue envoie votre requête vocale.',
+      voiceInterruptDispatched:
+        'Blue redémarre avec votre interruption vocale la plus récente.',
+      voiceWaitingForResponse: 'En attente de la première réponse de Blue.',
+      transcriptionFailed: 'La transcription a échoué.',
+      ttsPlaybackFailed: 'La lecture TTS a échoué.',
+      providerFailoverToolFollowUp:
+        "Nouvelle tentative du suivi d'outil sans le fournisseur précédemment épinglé.",
+      providerFailoverContinuationFollowUp:
+        'Nouvelle tentative du suivi de continuation sans le fournisseur précédemment épinglé.',
+      recoveryStage1: 'Récupération silencieuse',
+      recoveryStage2: 'Charge de récupération réduite',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Interrompre la réponse en cours',
+      sendNewRequest: 'Envoyer une nouvelle requête',
+    },
+  },
+  'ga-IE': {
+    fields: {
+      format: 'Formáid',
+      size: 'Méid',
+      duration: 'Fad',
+      upload: 'Uaslódáil',
+      transcript: 'Tras-scríbhinn',
+      conversation: 'Comhrá',
+      mode: 'Mód',
+    },
+    details: {
+      bargeIn: 'Cuireadh stop leis an athsheinm ionas gur féidir leat leanúint ar aghaidh ag caint.',
+      voiceRequestDispatched: 'Tá Blue ag seoladh d’iarratais ghutha.',
+      voiceInterruptDispatched:
+        'Tá Blue ag atosú leis an mbriseadh gutha is déanaí uait.',
+      voiceWaitingForResponse: 'Ag fanacht leis an gcéad fhreagra ó Blue.',
+      transcriptionFailed: 'Theip ar an tras-scríobh.',
+      ttsPlaybackFailed: 'Theip ar athsheinm TTS.',
+      providerFailoverToolFollowUp:
+        'Ag triail obair leantach na huirlise arís gan an soláthraí a bhí pinnáilte roimhe seo.',
+      providerFailoverContinuationFollowUp:
+        'Ag triail obair leantach na leanúnachais arís gan an soláthraí a bhí pinnáilte roimhe seo.',
+      recoveryStage1: 'Aisghabháil chiúin',
+      recoveryStage2: 'Ualach aisghabhála laghdaithe',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Cur isteach ar an bhfreagra reatha',
+      sendNewRequest: 'Seol iarratas nua',
+    },
+  },
+  'hr-HR': {
+    fields: {
+      format: 'Format',
+      size: 'Veličina',
+      duration: 'Trajanje',
+      upload: 'Prijenos',
+      transcript: 'Transkript',
+      conversation: 'Razgovor',
+      mode: 'Način rada',
+    },
+    details: {
+      bargeIn: 'Reprodukcija je zaustavljena kako biste mogli nastaviti govoriti.',
+      voiceRequestDispatched: 'Blue šalje vaš glasovni zahtjev.',
+      voiceInterruptDispatched:
+        'Blue ponovno pokreće odgovor s vašim najnovijim glasovnim prekidom.',
+      voiceWaitingForResponse: 'Čekam prvi odgovor od Bluea.',
+      transcriptionFailed: 'Transkripcija nije uspjela.',
+      ttsPlaybackFailed: 'TTS reprodukcija nije uspjela.',
+      providerFailoverToolFollowUp:
+        'Ponovno pokušavam nastavak alata bez prethodno prikvačenog pružatelja.',
+      providerFailoverContinuationFollowUp:
+        'Ponovno pokušavam nastavak odgovora bez prethodno prikvačenog pružatelja.',
+      recoveryStage1: 'Tiho oporavljanje',
+      recoveryStage2: 'Smanjeni payload za oporavak',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Prekini trenutni odgovor',
+      sendNewRequest: 'Pošalji novi zahtjev',
+    },
+  },
+  'hu-HU': {
+    fields: {
+      format: 'Formátum',
+      size: 'Méret',
+      duration: 'Időtartam',
+      upload: 'Feltöltés',
+      transcript: 'Leirat',
+      conversation: 'Beszélgetés',
+      mode: 'Mód',
+    },
+    details: {
+      bargeIn: 'A lejátszás leállt, hogy folytathassa a beszédet.',
+      voiceRequestDispatched: 'A Blue elküldi a hangalapú kérését.',
+      voiceInterruptDispatched:
+        'A Blue az Ön legutóbbi hangos megszakításával indul újra.',
+      voiceWaitingForResponse: 'Várakozás a Blue első válaszára.',
+      transcriptionFailed: 'Az átírás sikertelen.',
+      ttsPlaybackFailed: 'A TTS lejátszás sikertelen.',
+      providerFailoverToolFollowUp:
+        'Az eszköz-követőkérés újrapróbálása a korábban rögzített szolgáltató nélkül.',
+      providerFailoverContinuationFollowUp:
+        'A folytatási követőkérés újrapróbálása a korábban rögzített szolgáltató nélkül.',
+      recoveryStage1: 'Csendes helyreállítás',
+      recoveryStage2: 'Csökkentett helyreállítási payload',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Aktuális válasz megszakítása',
+      sendNewRequest: 'Új kérés küldése',
+    },
+  },
+  'it-IT': {
+    fields: {
+      format: 'Formato',
+      size: 'Dimensione',
+      duration: 'Durata',
+      upload: 'Caricamento',
+      transcript: 'Trascrizione',
+      conversation: 'Conversazione',
+      mode: 'Modalità',
+    },
+    details: {
+      bargeIn: 'La riproduzione è stata interrotta così puoi continuare a parlare.',
+      voiceRequestDispatched: 'Blue sta inviando la tua richiesta vocale.',
+      voiceInterruptDispatched:
+        'Blue sta riavviando con la tua interruzione vocale più recente.',
+      voiceWaitingForResponse: 'In attesa della prima risposta da Blue.',
+      transcriptionFailed: 'Trascrizione non riuscita.',
+      ttsPlaybackFailed: 'Riproduzione TTS non riuscita.',
+      providerFailoverToolFollowUp:
+        'Nuovo tentativo del follow-up dello strumento senza il provider precedentemente fissato.',
+      providerFailoverContinuationFollowUp:
+        'Nuovo tentativo del follow-up di continuazione senza il provider precedentemente fissato.',
+      recoveryStage1: 'Recupero silenzioso',
+      recoveryStage2: 'Payload di recupero ridotto',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Interrompi la risposta corrente',
+      sendNewRequest: 'Invia una nuova richiesta',
+    },
+  },
+  'ja-JP': {
+    fields: {
+      format: '形式',
+      size: 'サイズ',
+      duration: '長さ',
+      upload: 'アップロード',
+      transcript: '文字起こし',
+      conversation: '会話',
+      mode: 'モード',
+    },
+    details: {
+      bargeIn: '再生を停止したので、そのまま話し続けられます。',
+      voiceRequestDispatched: 'Blue が音声リクエストを送信しています。',
+      voiceInterruptDispatched:
+        'Blue が最新の音声割り込みで再開しています。',
+      voiceWaitingForResponse: 'Blue からの最初の応答を待っています。',
+      transcriptionFailed: '音声文字起こしに失敗しました。',
+      ttsPlaybackFailed: 'TTS 再生に失敗しました。',
+      providerFailoverToolFollowUp:
+        '以前固定されていたプロバイダーを使わずにツール後続処理を再試行しています。',
+      providerFailoverContinuationFollowUp:
+        '以前固定されていたプロバイダーを使わずに続きの後続処理を再試行しています。',
+      recoveryStage1: 'サイレント回復',
+      recoveryStage2: '縮小された回復ペイロード',
+    },
+    summaryValues: {
+      interruptCurrentReply: '現在の応答を中断',
+      sendNewRequest: '新しいリクエストを送信',
+    },
+  },
+  'ko-KR': {
+    fields: {
+      format: '형식',
+      size: '크기',
+      duration: '길이',
+      upload: '업로드',
+      transcript: '전사문',
+      conversation: '대화',
+      mode: '모드',
+    },
+    details: {
+      bargeIn: '계속 말씀하실 수 있도록 재생을 중지했습니다.',
+      voiceRequestDispatched: 'Blue가 음성 요청을 전송하고 있습니다.',
+      voiceInterruptDispatched:
+        'Blue가 가장 최근의 음성 끼어들기를 반영해 다시 시작하고 있습니다.',
+      voiceWaitingForResponse: 'Blue의 첫 응답을 기다리는 중입니다.',
+      transcriptionFailed: '음성 전사에 실패했습니다.',
+      ttsPlaybackFailed: 'TTS 재생에 실패했습니다.',
+      providerFailoverToolFollowUp:
+        '이전에 고정된 공급자 없이 도구 후속 요청을 다시 시도하는 중입니다.',
+      providerFailoverContinuationFollowUp:
+        '이전에 고정된 공급자 없이 이어쓰기 후속 요청을 다시 시도하는 중입니다.',
+      recoveryStage1: '무음 복구',
+      recoveryStage2: '축소된 복구 페이로드',
+    },
+    summaryValues: {
+      interruptCurrentReply: '현재 응답 중단',
+      sendNewRequest: '새 요청 보내기',
+    },
+  },
+  'ml-IN': {
+    fields: {
+      format: 'ഫോർമാറ്റ്',
+      size: 'വലുപ്പം',
+      duration: 'ദൈർഘ്യം',
+      upload: 'അപ്‌ലോഡ്',
+      transcript: 'ട്രാൻസ്‌ക്രിപ്റ്റ്',
+      conversation: 'സംഭാഷണം',
+      mode: 'മോഡ്',
+    },
+    details: {
+      bargeIn: 'നിങ്ങൾക്ക് തുടരാൻ സംസാരിക്കാനായി പ്ലേബാക്ക് നിർത്തി.',
+      voiceRequestDispatched: 'Blue നിങ്ങളുടെ ശബ്ദ അഭ്യർത്ഥന അയയ്ക്കുകയാണ്.',
+      voiceInterruptDispatched:
+        'നിങ്ങളുടെ ഏറ്റവും പുതിയ ശബ്ദ ഇടപെടലോടെ Blue വീണ്ടും ആരംഭിക്കുന്നു.',
+      voiceWaitingForResponse: 'Blueയിൽ നിന്ന് ആദ്യ മറുപടിക്കായി കാത്തിരിക്കുന്നു.',
+      transcriptionFailed: 'ട്രാൻസ്ക്രിപ്ഷൻ പരാജയപ്പെട്ടു.',
+      ttsPlaybackFailed: 'TTS പ്ലേബാക്ക് പരാജയപ്പെട്ടു.',
+      providerFailoverToolFollowUp:
+        'മുമ്പ് പിനുചെയ്‌ത പ്രൊവൈഡറില്ലാതെ ടൂൾ ഫോളോ-അപ്പ് വീണ്ടും ശ്രമിക്കുന്നു.',
+      providerFailoverContinuationFollowUp:
+        'മുമ്പ് പിനുചെയ്‌ത പ്രൊവൈഡറില്ലാതെ കണ്ടിന്യൂയേഷൻ ഫോളോ-അപ്പ് വീണ്ടും ശ്രമിക്കുന്നു.',
+      recoveryStage1: 'നിശ്ശബ്ദ പുനഃസ്ഥാപനം',
+      recoveryStage2: 'ചുരുക്കിയ റിക്കവറി പേലോഡ്',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'നിലവിലെ മറുപടി തടസ്സപ്പെടുത്തുക',
+      sendNewRequest: 'പുതിയ അഭ്യർത്ഥന അയയ്ക്കുക',
+    },
+  },
+  'nb-NO': {
+    fields: {
+      format: 'Format',
+      size: 'Størrelse',
+      duration: 'Varighet',
+      upload: 'Opplasting',
+      transcript: 'Transkripsjon',
+      conversation: 'Samtale',
+      mode: 'Modus',
+    },
+    details: {
+      bargeIn: 'Avspillingen ble stoppet slik at du kan fortsette å snakke.',
+      voiceRequestDispatched: 'Blue sender taleforespørselen din.',
+      voiceInterruptDispatched:
+        'Blue starter på nytt med den siste taleavbrytelsen din.',
+      voiceWaitingForResponse: 'Venter på det første svaret fra Blue.',
+      transcriptionFailed: 'Transkriberingen mislyktes.',
+      ttsPlaybackFailed: 'TTS-avspilling mislyktes.',
+      providerFailoverToolFollowUp:
+        'Prøver verktøyoppfølgingen på nytt uten den tidligere festede leverandøren.',
+      providerFailoverContinuationFollowUp:
+        'Prøver fortsettelsesoppfølgingen på nytt uten den tidligere festede leverandøren.',
+      recoveryStage1: 'Stille gjenoppretting',
+      recoveryStage2: 'Redusert gjenopprettingspayload',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Avbryt gjeldende svar',
+      sendNewRequest: 'Send ny forespørsel',
+    },
+  },
+  'nl-NL': {
+    fields: {
+      format: 'Indeling',
+      size: 'Grootte',
+      duration: 'Duur',
+      upload: 'Upload',
+      transcript: 'Transcript',
+      conversation: 'Gesprek',
+      mode: 'Modus',
+    },
+    details: {
+      bargeIn: 'De weergave is gestopt zodat je verder kunt praten.',
+      voiceRequestDispatched: 'Blue verstuurt je spraakverzoek.',
+      voiceInterruptDispatched:
+        'Blue start opnieuw met je meest recente gesproken onderbreking.',
+      voiceWaitingForResponse: 'Wachten op de eerste reactie van Blue.',
+      transcriptionFailed: 'Transcriptie mislukt.',
+      ttsPlaybackFailed: 'TTS-weergave mislukt.',
+      providerFailoverToolFollowUp:
+        'De toolvervolgaanvraag wordt opnieuw geprobeerd zonder de eerder vastgepinde provider.',
+      providerFailoverContinuationFollowUp:
+        'De vervolgvervolgaanvraag wordt opnieuw geprobeerd zonder de eerder vastgepinde provider.',
+      recoveryStage1: 'Stil herstel',
+      recoveryStage2: 'Verkleinde herstelpayload',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Huidig antwoord onderbreken',
+      sendNewRequest: 'Nieuw verzoek verzenden',
+    },
+  },
+  'pl-PL': {
+    fields: {
+      format: 'Format',
+      size: 'Rozmiar',
+      duration: 'Czas trwania',
+      upload: 'Przesyłanie',
+      transcript: 'Transkrypcja',
+      conversation: 'Rozmowa',
+      mode: 'Tryb',
+    },
+    details: {
+      bargeIn: 'Odtwarzanie zostało zatrzymane, aby umożliwić Ci dalsze mówienie.',
+      voiceRequestDispatched: 'Blue wysyła Twoje żądanie głosowe.',
+      voiceInterruptDispatched:
+        'Blue wznawia odpowiedź z uwzględnieniem Twojego ostatniego głosowego przerwania.',
+      voiceWaitingForResponse: 'Oczekiwanie na pierwszą odpowiedź od Blue.',
+      transcriptionFailed: 'Transkrypcja nie powiodła się.',
+      ttsPlaybackFailed: 'Odtwarzanie TTS nie powiodło się.',
+      providerFailoverToolFollowUp:
+        'Ponawianie następczego żądania narzędzia bez wcześniej przypiętego dostawcy.',
+      providerFailoverContinuationFollowUp:
+        'Ponawianie następczego żądania kontynuacji bez wcześniej przypiętego dostawcy.',
+      recoveryStage1: 'Ciche odzyskiwanie',
+      recoveryStage2: 'Ograniczony ładunek odzyskiwania',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Przerwij bieżącą odpowiedź',
+      sendNewRequest: 'Wyślij nowe żądanie',
+    },
+  },
+  'pt-BR': {
+    fields: {
+      format: 'Formato',
+      size: 'Tamanho',
+      duration: 'Duração',
+      upload: 'Upload',
+      transcript: 'Transcrição',
+      conversation: 'Conversa',
+      mode: 'Modo',
+    },
+    details: {
+      bargeIn: 'A reprodução foi interrompida para que você possa continuar falando.',
+      voiceRequestDispatched: 'Blue está enviando sua solicitação por voz.',
+      voiceInterruptDispatched:
+        'Blue está reiniciando com sua interrupção de voz mais recente.',
+      voiceWaitingForResponse: 'Aguardando a primeira resposta do Blue.',
+      transcriptionFailed: 'A transcrição falhou.',
+      ttsPlaybackFailed: 'A reprodução TTS falhou.',
+      providerFailoverToolFollowUp:
+        'Tentando novamente o acompanhamento da ferramenta sem o provedor fixado anteriormente.',
+      providerFailoverContinuationFollowUp:
+        'Tentando novamente o acompanhamento da continuação sem o provedor fixado anteriormente.',
+      recoveryStage1: 'Recuperação silenciosa',
+      recoveryStage2: 'Payload de recuperação reduzido',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Interromper a resposta atual',
+      sendNewRequest: 'Enviar nova solicitação',
+    },
+  },
+  'pt-PT': {
+    fields: {
+      format: 'Formato',
+      size: 'Tamanho',
+      duration: 'Duração',
+      upload: 'Carregamento',
+      transcript: 'Transcrição',
+      conversation: 'Conversa',
+      mode: 'Modo',
+    },
+    details: {
+      bargeIn: 'A reprodução foi interrompida para que possas continuar a falar.',
+      voiceRequestDispatched: 'Blue está a enviar o teu pedido por voz.',
+      voiceInterruptDispatched:
+        'Blue está a reiniciar com a tua interrupção de voz mais recente.',
+      voiceWaitingForResponse: 'A aguardar a primeira resposta do Blue.',
+      transcriptionFailed: 'A transcrição falhou.',
+      ttsPlaybackFailed: 'A reprodução TTS falhou.',
+      providerFailoverToolFollowUp:
+        'A repetir o seguimento da ferramenta sem o fornecedor anteriormente fixado.',
+      providerFailoverContinuationFollowUp:
+        'A repetir o seguimento da continuação sem o fornecedor anteriormente fixado.',
+      recoveryStage1: 'Recuperação silenciosa',
+      recoveryStage2: 'Payload de recuperação reduzido',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Interromper a resposta atual',
+      sendNewRequest: 'Enviar novo pedido',
+    },
+  },
+  'ro-RO': {
+    fields: {
+      format: 'Format',
+      size: 'Dimensiune',
+      duration: 'Durată',
+      upload: 'Încărcare',
+      transcript: 'Transcriere',
+      conversation: 'Conversație',
+      mode: 'Mod',
+    },
+    details: {
+      bargeIn: 'Redarea a fost oprită ca să poți continua să vorbești.',
+      voiceRequestDispatched: 'Blue trimite cererea ta vocală.',
+      voiceInterruptDispatched:
+        'Blue repornește folosind cea mai recentă întrerupere vocală a ta.',
+      voiceWaitingForResponse: 'În așteptarea primului răspuns de la Blue.',
+      transcriptionFailed: 'Transcrierea a eșuat.',
+      ttsPlaybackFailed: 'Redarea TTS a eșuat.',
+      providerFailoverToolFollowUp:
+        'Se reîncearcă urmărirea instrumentului fără furnizorul fixat anterior.',
+      providerFailoverContinuationFollowUp:
+        'Se reîncearcă urmărirea continuării fără furnizorul fixat anterior.',
+      recoveryStage1: 'Recuperare silențioasă',
+      recoveryStage2: 'Payload redus pentru recuperare',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Întrerupe răspunsul curent',
+      sendNewRequest: 'Trimite o nouă cerere',
+    },
+  },
+  'ru-RU': {
+    fields: {
+      format: 'Формат',
+      size: 'Размер',
+      duration: 'Длительность',
+      upload: 'Загрузка',
+      transcript: 'Расшифровка',
+      conversation: 'Диалог',
+      mode: 'Режим',
+    },
+    details: {
+      bargeIn: 'Воспроизведение остановлено, чтобы вы могли продолжить говорить.',
+      voiceRequestDispatched: 'Blue отправляет ваш голосовой запрос.',
+      voiceInterruptDispatched:
+        'Blue перезапускается с учетом вашего последнего голосового прерывания.',
+      voiceWaitingForResponse: 'Ожидание первого ответа от Blue.',
+      transcriptionFailed: 'Не удалось выполнить расшифровку.',
+      ttsPlaybackFailed: 'Не удалось воспроизвести TTS.',
+      providerFailoverToolFollowUp:
+        'Повторная попытка продолжения инструмента без ранее закрепленного провайдера.',
+      providerFailoverContinuationFollowUp:
+        'Повторная попытка продолжения ответа без ранее закрепленного провайдера.',
+      recoveryStage1: 'Тихое восстановление',
+      recoveryStage2: 'Уменьшенный пакет восстановления',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Прервать текущий ответ',
+      sendNewRequest: 'Отправить новый запрос',
+    },
+  },
+  'sk-SK': {
+    fields: {
+      format: 'Formát',
+      size: 'Veľkosť',
+      duration: 'Trvanie',
+      upload: 'Nahrávanie',
+      transcript: 'Prepis',
+      conversation: 'Konverzácia',
+      mode: 'Režim',
+    },
+    details: {
+      bargeIn: 'Prehrávanie bolo zastavené, aby ste mohli pokračovať v hovorení.',
+      voiceRequestDispatched: 'Blue odosiela vašu hlasovú požiadavku.',
+      voiceInterruptDispatched:
+        'Blue reštartuje odpoveď s vaším najnovším hlasovým prerušením.',
+      voiceWaitingForResponse: 'Čakám na prvú odpoveď od Blue.',
+      transcriptionFailed: 'Prepis zlyhal.',
+      ttsPlaybackFailed: 'Prehrávanie TTS zlyhalo.',
+      providerFailoverToolFollowUp:
+        'Opakujem následný požiadavok nástroja bez predtým pripnutého poskytovateľa.',
+      providerFailoverContinuationFollowUp:
+        'Opakujem následný požiadavok pokračovania bez predtým pripnutého poskytovateľa.',
+      recoveryStage1: 'Tiché obnovenie',
+      recoveryStage2: 'Zmenšený obnovovací payload',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Prerušiť aktuálnu odpoveď',
+      sendNewRequest: 'Odoslať novú požiadavku',
+    },
+  },
+  'sv-SE': {
+    fields: {
+      format: 'Format',
+      size: 'Storlek',
+      duration: 'Längd',
+      upload: 'Uppladdning',
+      transcript: 'Transkription',
+      conversation: 'Konversation',
+      mode: 'Läge',
+    },
+    details: {
+      bargeIn: 'Uppspelningen stoppades så att du kan fortsätta prata.',
+      voiceRequestDispatched: 'Blue skickar din röstförfrågan.',
+      voiceInterruptDispatched:
+        'Blue startar om med ditt senaste röstavbrott.',
+      voiceWaitingForResponse: 'Väntar på det första svaret från Blue.',
+      transcriptionFailed: 'Transkriberingen misslyckades.',
+      ttsPlaybackFailed: 'TTS-uppspelningen misslyckades.',
+      providerFailoverToolFollowUp:
+        'Försöker verktygsuppföljningen igen utan den tidigare fästa leverantören.',
+      providerFailoverContinuationFollowUp:
+        'Försöker fortsättningsuppföljningen igen utan den tidigare fästa leverantören.',
+      recoveryStage1: 'Tyst återhämtning',
+      recoveryStage2: 'Reducerad återhämtningspayload',
+    },
+    summaryValues: {
+      interruptCurrentReply: 'Avbryt det aktuella svaret',
+      sendNewRequest: 'Skicka ny begäran',
+    },
+  },
+  'zh-CN': {
+    fields: {
+      format: '格式',
+      size: '大小',
+      duration: '时长',
+      upload: '上传',
+      transcript: '转写文本',
+      conversation: '会话',
+      mode: '模式',
+    },
+    details: {
+      bargeIn: '已停止播放，方便你继续说话。',
+      voiceRequestDispatched: 'Blue 正在发送你的语音请求。',
+      voiceInterruptDispatched: 'Blue 正在根据你最新的语音打断重新开始。',
+      voiceWaitingForResponse: '正在等待 Blue 的第一段响应。',
+      transcriptionFailed: '语音转写失败。',
+      ttsPlaybackFailed: 'TTS 播放失败。',
+      providerFailoverToolFollowUp: '正在不使用上一个固定提供商重试这轮工具后续请求。',
+      providerFailoverContinuationFollowUp: '正在不使用上一个固定提供商重试这轮续写后续请求。',
+      recoveryStage1: '静默恢复',
+      recoveryStage2: '精简恢复载荷',
+    },
+    summaryValues: {
+      interruptCurrentReply: '打断当前回复',
+      sendNewRequest: '发送新请求',
+    },
+  },
+  'zh-TW': {
+    fields: {
+      format: '格式',
+      size: '大小',
+      duration: '時長',
+      upload: '上傳',
+      transcript: '轉寫文字',
+      conversation: '會話',
+      mode: '模式',
+    },
+    details: {
+      bargeIn: '已停止播放，方便你繼續說話。',
+      voiceRequestDispatched: 'Blue 正在傳送你的語音請求。',
+      voiceInterruptDispatched: 'Blue 正在根據你最新的語音打斷重新開始。',
+      voiceWaitingForResponse: '正在等待 Blue 的第一段回應。',
+      transcriptionFailed: '語音轉寫失敗。',
+      ttsPlaybackFailed: 'TTS 播放失敗。',
+      providerFailoverToolFollowUp: '正在不使用先前固定的供應商重試這輪工具後續請求。',
+      providerFailoverContinuationFollowUp:
+        '正在不使用先前固定的供應商重試這輪續寫後續請求。',
+      recoveryStage1: '靜默恢復',
+      recoveryStage2: '精簡恢復載荷',
+    },
+    summaryValues: {
+      interruptCurrentReply: '打斷目前回覆',
+      sendNewRequest: '送出新請求',
+    },
+  },
+} as const
+
+for (const [locale, addition] of Object.entries(processTraceExtendedTranslations)) {
+  const currentLocale = (priorityTranslationOverrides as Record<string, any>)[locale] || {}
+  const currentChat = currentLocale.chat || {}
+  const currentProcessTrace = currentChat.processTrace || {}
+  const currentFields = currentProcessTrace.fields || {}
+  const currentDetails = currentProcessTrace.details || {}
+  const currentSummaryValues = currentProcessTrace.summaryValues || {}
+
+  ;(priorityTranslationOverrides as Record<string, any>)[locale] = {
+    ...currentLocale,
+    chat: {
+      ...currentChat,
+      processTrace: {
+        ...currentProcessTrace,
+        fields: {
+          ...currentFields,
+          ...(addition as Record<string, any>).fields,
+        },
+        details: {
+          ...currentDetails,
+          ...(addition as Record<string, any>).details,
+        },
+        summaryValues: {
+          ...currentSummaryValues,
+          ...(addition as Record<string, any>).summaryValues,
+        },
+      },
+    },
+  }
+}
+
 export default priorityTranslationOverrides

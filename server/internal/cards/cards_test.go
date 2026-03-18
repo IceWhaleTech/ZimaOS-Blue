@@ -238,6 +238,47 @@ func TestGenericCard_ShowsDetails(t *testing.T) {
 	}
 }
 
+func TestGenericCard_ExtractsScreenshotPreview(t *testing.T) {
+	base64PNG := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+	card := GenericCard("Browser", `{"message":"Screenshot captured","screenshot":"`+base64PNG+`","foo":"bar"}`)
+	if card["image"] != "data:image/png;base64,"+base64PNG {
+		t.Fatalf("expected screenshot preview image, got %v", card["image"])
+	}
+	details, ok := card["details"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected details list, got %T", card["details"])
+	}
+	if len(details) != 1 || details[0]["label"] != "foo" {
+		t.Fatalf("expected screenshot detail to be omitted, got %+v", details)
+	}
+}
+
+func TestGenericCard_ExtractsScreenshotGallery(t *testing.T) {
+	pngA := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+	pngB := "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAQAAADZc7J/AAAADUlEQVR42mNk+M/wHwAFAgJ/l8V6NwAAAABJRU5ErkJggg=="
+	card := GenericCard("Browser", `{"screenshots":["`+pngA+`","`+pngB+`"],"count":2}`)
+	images, ok := card["images"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected gallery images, got %T", card["images"])
+	}
+	if len(images) != 2 {
+		t.Fatalf("expected 2 gallery images, got %d", len(images))
+	}
+	if images[0]["src"] != "data:image/png;base64,"+pngA {
+		t.Fatalf("unexpected first image: %+v", images[0])
+	}
+	if images[1]["src"] != "data:image/png;base64,"+pngB {
+		t.Fatalf("unexpected second image: %+v", images[1])
+	}
+	details, ok := card["details"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected details list, got %T", card["details"])
+	}
+	if len(details) != 1 || details[0]["label"] != "count" {
+		t.Fatalf("expected only non-image details, got %+v", details)
+	}
+}
+
 func TestGenericCard_ErrorShowsSanitizedMessage(t *testing.T) {
 	card := GenericCard("test", `{"error":"secret stack trace?token=top-secret"}`)
 	if card["status"] != "error" {
@@ -597,6 +638,56 @@ func TestBrowserCard_EmbedsScreenshotImage(t *testing.T) {
 	}
 }
 
+func TestBrowserCard_PreservesLocalScreenshotPath(t *testing.T) {
+	card := ToCard("browser", `{"message":"Screenshot captured","screenshot":"C:\\Users\\orca\\AppData\\Local\\ZimaOS\\browser\\shot.png"}`)
+	if card == nil {
+		t.Fatal("expected browser card")
+	}
+	if card["image"] != `C:\Users\orca\AppData\Local\ZimaOS\browser\shot.png` {
+		t.Fatalf("expected local screenshot path, got %v", card["image"])
+	}
+}
+
+func TestBrowserCard_PreservesAPIScreenshotPath(t *testing.T) {
+	card := ToCard("browser", `{"message":"Screenshot captured","screenshot":"/api/v1/media/browser/screenshot-1724277463.png"}`)
+	if card == nil {
+		t.Fatal("expected browser card")
+	}
+	if card["image"] != "/api/v1/media/browser/screenshot-1724277463.png" {
+		t.Fatalf("expected api screenshot path, got %v", card["image"])
+	}
+}
+
+func TestBrowserCard_NormalizesToolNameVariants(t *testing.T) {
+	base64PNG := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+
+	tests := []string{"Browser", "browser.screenshot"}
+	for _, toolName := range tests {
+		t.Run(toolName, func(t *testing.T) {
+			card := ToCard(toolName, `{"message":"Screenshot captured","screenshot":"`+base64PNG+`"}`)
+			if card == nil {
+				t.Fatal("expected browser screenshot card")
+			}
+			if card["type"] != "result" {
+				t.Fatalf("expected result type, got %v", card["type"])
+			}
+			if card["image"] != "data:image/png;base64,"+base64PNG {
+				t.Fatalf("expected normalized screenshot image, got %v", card["image"])
+			}
+		})
+	}
+}
+
+func TestGenericCard_PreservesAPIImagePath(t *testing.T) {
+	card := ToCard("unknown_tool", `{"screenshot":"/api/v1/media/browser/screenshot-1724277463.png"}`)
+	if card == nil {
+		t.Fatal("expected generic card")
+	}
+	if card["image"] != "/api/v1/media/browser/screenshot-1724277463.png" {
+		t.Fatalf("expected api image path, got %v", card["image"])
+	}
+}
+
 func TestFormatTypeless_ExecInjectsSanitizedCommand(t *testing.T) {
 	calls := []llm.ToolCall{
 		{ID: "1", Name: "exec", Arguments: `{"command":"curl https://example.com?token=raw-secret"}`},
@@ -781,7 +872,7 @@ func TestSandboxCardDispatch_NoHint(t *testing.T) {
 }
 
 func TestConvertTaskCard(t *testing.T) {
-	card := ToCard("convert", `{"task_id":"task-1","status":"processing","action":"tts","source_summary":"hello","target_format":"wav","progress":35,"message":"Processing","outputs":[]}`)
+	card := ToCard("convert", `{"task_id":"task-1","status":"processing","action":"tts","sources":["/tmp/input.md"],"source_summary":"hello","target_format":"wav","progress":35,"message":"Processing","outputs":[]}`)
 	if card == nil {
 		t.Fatal("expected non-nil convert card")
 	}
@@ -793,5 +884,12 @@ func TestConvertTaskCard(t *testing.T) {
 	}
 	if got := card["action"]; got != "tts" {
 		t.Fatalf("action=%v, want tts", got)
+	}
+	sources, ok := card["sources"].([]string)
+	if !ok {
+		t.Fatalf("sources=%T, want []string", card["sources"])
+	}
+	if len(sources) != 1 || sources[0] != "/tmp/input.md" {
+		t.Fatalf("sources=%v, want /tmp/input.md", sources)
 	}
 }

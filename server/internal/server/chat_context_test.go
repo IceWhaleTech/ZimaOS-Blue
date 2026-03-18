@@ -24,41 +24,31 @@ func TestClassifyContext(t *testing.T) {
 		{"first_message", "你好", 0, false, false, TierNoHistory},
 		{"single_message", "Hello", 1, false, false, TierNoHistory},
 
-		// Short conversation
-		{"short_no_ref", "What is Go?", 4, false, false, TierNoHistory},
-		{"short_with_ref", "这个怎么用？", 4, false, false, TierCompressedMemory},
-
-		// Long conversation, no references → fresh question
-		{"long_no_ref", "What is the weather today?", 10, false, false, TierNoHistory},
-		{"long_no_ref_en", "How do I install Docker?", 20, false, false, TierNoHistory},
-		{"long_topic_switch_cn", "换个话题，聊聊 Docker 网络", 10, false, false, TierNoHistory},
-		{"topic_switch_overrides_reference_cues", "对了，换个话题，忽略之前那段", 10, false, false, TierNoHistory},
-		{"topic_switch_overrides_agent_mode", "切换话题，解释一下 HTTP/3", 10, true, false, TierNoHistory},
-
-		// Long conversation, with Chinese references
-		{"long_chinese_ref_this", "这个方案可以吗？", 10, false, false, TierCompressedMemory},
-		{"long_chinese_ref_before", "之前说的那个", 10, false, false, TierCompressedMemory},
-		{"long_chinese_ref_continue", "继续", 10, false, false, TierCompressedMemory},
-		{"long_chinese_ref_then", "然后呢", 10, false, false, TierCompressedMemory},
-		{"long_chinese_ref_also", "还有一个问题", 10, false, false, TierCompressedMemory},
-		{"long_chinese_ref_why", "为什么会这样", 10, false, false, TierCompressedMemory},
-		{"long_chinese_ref_elliptical", "ZIMAOS上呢", 10, false, false, TierCompressedMemory},
-
-		// Long conversation, with English references
-		{"long_english_ref_this", "Can you explain this further?", 10, false, false, TierCompressedMemory},
-		{"long_english_ref_that", "That doesn't work", 10, false, false, TierCompressedMemory},
-		{"long_english_ref_it", "Why did it fail?", 10, false, false, TierCompressedMemory},
-		{"long_english_ref_before", "As I mentioned before", 10, false, false, TierCompressedMemory},
-		{"long_english_ref_continue", "continue", 10, false, false, TierCompressedMemory},
-		{"long_english_ref_previous", "Go back to the previous approach", 10, false, false, TierCompressedMemory},
-
-		// Agent mode
-		{"agent_short", "Run the tests", 4, true, false, TierCompressedMemory},
-		{"agent_long", "Run the tests", 10, true, false, TierCompressedMemory},
-
-		// Regenerate
-		{"regenerate", "Regenerate", 10, false, true, TierCompressedMemory},
-		{"regenerate_keeps_context_even_with_switch_phrase", "换个话题", 10, false, true, TierCompressedMemory},
+		// Once we already have history, cue-based auto switching is disabled.
+		{"short_no_ref", "What is Go?", 4, false, false, TierFullHistory},
+		{"short_with_ref", "这个怎么用？", 4, false, false, TierFullHistory},
+		{"long_no_ref", "What is the weather today?", 10, false, false, TierFullHistory},
+		{"long_no_ref_en", "How do I install Docker?", 20, false, false, TierFullHistory},
+		{"long_topic_switch_cn", "换个话题，聊聊 Docker 网络", 10, false, false, TierFullHistory},
+		{"topic_switch_overrides_reference_cues", "对了，换个话题，忽略之前那段", 10, false, false, TierFullHistory},
+		{"topic_switch_overrides_agent_mode", "切换话题，解释一下 HTTP/3", 10, true, false, TierFullHistory},
+		{"long_chinese_ref_this", "这个方案可以吗？", 10, false, false, TierFullHistory},
+		{"long_chinese_ref_before", "之前说的那个", 10, false, false, TierFullHistory},
+		{"long_chinese_ref_continue", "继续", 10, false, false, TierFullHistory},
+		{"long_chinese_ref_then", "然后呢", 10, false, false, TierFullHistory},
+		{"long_chinese_ref_also", "还有一个问题", 10, false, false, TierFullHistory},
+		{"long_chinese_ref_why", "为什么会这样", 10, false, false, TierFullHistory},
+		{"long_chinese_ref_elliptical", "ZIMAOS上呢", 10, false, false, TierFullHistory},
+		{"long_english_ref_this", "Can you explain this further?", 10, false, false, TierFullHistory},
+		{"long_english_ref_that", "That doesn't work", 10, false, false, TierFullHistory},
+		{"long_english_ref_it", "Why did it fail?", 10, false, false, TierFullHistory},
+		{"long_english_ref_before", "As I mentioned before", 10, false, false, TierFullHistory},
+		{"long_english_ref_continue", "continue", 10, false, false, TierFullHistory},
+		{"long_english_ref_previous", "Go back to the previous approach", 10, false, false, TierFullHistory},
+		{"agent_short", "Run the tests", 4, true, false, TierFullHistory},
+		{"agent_long", "Run the tests", 10, true, false, TierFullHistory},
+		{"regenerate", "Regenerate", 10, false, true, TierFullHistory},
+		{"regenerate_keeps_context_even_with_switch_phrase", "换个话题", 10, false, true, TierFullHistory},
 	}
 
 	for _, tt := range tests {
@@ -129,14 +119,17 @@ func TestHasTopicSwitchCue(t *testing.T) {
 }
 
 func TestShouldUseFreshStandaloneIMContext(t *testing.T) {
-	if !shouldUseFreshStandaloneIMContext("换个话题，解释 Kubernetes", true) {
-		t.Fatalf("expected explicit topic switch to force fresh IM context")
-	}
-	if shouldUseFreshStandaloneIMContext("继续上一个任务", true) {
-		t.Fatalf("expected continuation cue to keep history in IM context")
-	}
-	if shouldUseFreshStandaloneIMContext("换个话题", false) {
-		t.Fatalf("expected agent_mode=false to keep existing behavior")
+	for _, tc := range []struct {
+		msg       string
+		agentMode bool
+	}{
+		{msg: "换个话题，解释 Kubernetes", agentMode: true},
+		{msg: "继续上一个任务", agentMode: true},
+		{msg: "换个话题", agentMode: false},
+	} {
+		if shouldUseFreshStandaloneIMContext(tc.msg, tc.agentMode) {
+			t.Fatalf("expected auto fresh-standalone IM switching to stay disabled for %q", tc.msg)
+		}
 	}
 }
 
@@ -725,39 +718,11 @@ func TestConvertToLLMMessages(t *testing.T) {
 }
 
 func TestBuildSmartContextTierNoHistoryUsesLatestTurnOnly(t *testing.T) {
-	store, err := memory.NewStore(":memory:")
-	if err != nil {
-		t.Fatalf("memory.NewStore: %v", err)
-	}
-	defer store.Close()
-
-	conv, err := store.CreateConversation(context.Background(), "no-history")
-	if err != nil {
-		t.Fatalf("CreateConversation: %v", err)
-	}
-
-	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
-
-	seed := []memory.Message{
-		{Role: "user", Content: "Q1"},
-		{Role: "assistant", Content: "A1"},
-		{Role: "user", Content: "Q2"},
-		{Role: "assistant", Content: "", ToolCalls: []memory.ToolCall{
-			{ID: "tc1", Name: "exec", Arguments: `{"cmd":"pwd"}`},
-		}},
-		{Role: "tool", Content: `{"stdout":"/tmp"}`, ToolCallID: "tc1"},
-		{Role: "assistant", Content: "done"},
-		{Role: "user", Content: "What is Rust?"},
-	}
-	for _, m := range seed {
-		if _, err := store.AddMessage(context.Background(), conv.ID, m); err != nil {
-			t.Fatalf("AddMessage: %v", err)
-		}
-	}
-
+	h := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
 	got := h.buildSmartContext(context.Background(), smartContextParams{
-		ConvID:      conv.ID,
-		UserMessage: "What is Rust?",
+		ConvID:            "first-turn",
+		UserMessage:       "What is Rust?",
+		PreloadedMessages: []memory.Message{{Role: "user", Content: "What is Rust?"}},
 	})
 
 	if got.Tier != TierNoHistory {
@@ -799,20 +764,17 @@ func TestBuildSmartContextTierNoHistoryKeepsRecentRoundsWhenConfigured(t *testin
 		PreloadedMessages:     preloaded,
 	})
 
-	if got.Tier != TierNoHistory {
-		t.Fatalf("tier = %v, want %v", got.Tier, TierNoHistory)
+	if got.Tier != TierFullHistory {
+		t.Fatalf("tier = %v, want %v", got.Tier, TierFullHistory)
 	}
-	if len(got.Messages) != 3 {
-		t.Fatalf("messages len = %d, want 3", len(got.Messages))
+	if len(got.Messages) != len(preloaded) {
+		t.Fatalf("messages len = %d, want %d", len(got.Messages), len(preloaded))
 	}
-	if got.Messages[0].Role != llm.RoleUser || got.Messages[0].Content != "Q2" {
-		t.Fatalf("messages[0] = %+v, want user/Q2", got.Messages[0])
+	if got.Messages[0].Role != llm.RoleUser || got.Messages[0].Content != "Q1" {
+		t.Fatalf("messages[0] = %+v, want user/Q1", got.Messages[0])
 	}
-	if got.Messages[1].Role != llm.RoleAssistant || got.Messages[1].Content != "A2" {
-		t.Fatalf("messages[1] = %+v, want assistant/A2", got.Messages[1])
-	}
-	if got.Messages[2].Role != llm.RoleUser || got.Messages[2].Content != "What is Rust?" {
-		t.Fatalf("messages[2] = %+v, want user/What is Rust?", got.Messages[2])
+	if got.Messages[len(got.Messages)-1].Role != llm.RoleUser || got.Messages[len(got.Messages)-1].Content != "What is Rust?" {
+		t.Fatalf("last message = %+v, want user/What is Rust?", got.Messages[len(got.Messages)-1])
 	}
 }
 
@@ -974,6 +936,118 @@ func TestBuildSmartContextContinuationKeepsFullHistoryUnderSoftThreshold(t *test
 	}
 }
 
+func TestBuildSmartContextCueMessagesStayFullHistoryUnderThreshold(t *testing.T) {
+	h := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	h.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "large-history-model",
+		ContextWindow: 32000,
+	}}))
+
+	preloaded := []memory.Message{
+		{Role: "user", Content: "Q1"},
+		{Role: "assistant", Content: "A1"},
+		{Role: "user", Content: "Q2"},
+		{Role: "assistant", Content: "A2"},
+		{Role: "user", Content: "Q3"},
+		{Role: "assistant", Content: "A3"},
+		{Role: "user", Content: "Q4"},
+	}
+
+	for _, cue := range []string{
+		"换个话题，解释一下 Docker 网络",
+		"忽略之前，直接回答这个问题",
+		"继续",
+		"上一个方案为什么失败",
+	} {
+		got := h.buildSmartContext(context.Background(), smartContextParams{
+			ConvID:            "conv-cue-full-history",
+			UserMessage:       cue,
+			Model:             "large-history-model",
+			MaxTokens:         256,
+			PreloadedMessages: preloaded,
+		})
+		if got.Tier != TierFullHistory {
+			t.Fatalf("cue %q tier = %v, want %v", cue, got.Tier, TierFullHistory)
+		}
+		if len(got.Messages) != len(preloaded) {
+			t.Fatalf("cue %q message count = %d, want %d", cue, len(got.Messages), len(preloaded))
+		}
+	}
+}
+
+func TestBuildSmartContextPressureThresholdControlsCompression(t *testing.T) {
+	h := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	h.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "threshold-model",
+		ContextWindow: 512,
+	}}))
+
+	var belowThreshold []memory.Message
+	var aboveThreshold []memory.Message
+	var belowBudget chatInputBudgetEstimate
+	var aboveBudget chatInputBudgetEstimate
+
+	buildMessages := func(repeat int) []memory.Message {
+		return []memory.Message{
+			{Role: "user", Content: strings.Repeat("Investigate threshold behavior ", repeat)},
+			{Role: "assistant", Content: strings.Repeat("Capturing prior findings and file paths. ", repeat)},
+			{Role: "user", Content: strings.Repeat("Keep the previous plan in mind. ", repeat)},
+			{Role: "assistant", Content: strings.Repeat("Noted, preserving the durable context. ", repeat)},
+			{Role: "user", Content: "继续上一个方案"},
+		}
+	}
+
+	for repeat := 4; repeat <= 80; repeat++ {
+		candidate := buildMessages(repeat)
+		budget := h.measurePreparedInputBudget("threshold-model", 64, removeOrphanedToolResults(convertToLLMMessages(candidate)))
+		switch {
+		case budget.ContextUsageRatio() < smartContextSoftCompressionThreshold:
+			belowThreshold = candidate
+			belowBudget = budget
+		case budget.ContextUsageRatio() >= smartContextSoftCompressionThreshold:
+			aboveThreshold = candidate
+			aboveBudget = budget
+			repeat = 1000
+		}
+	}
+
+	if len(belowThreshold) == 0 || len(aboveThreshold) == 0 {
+		t.Fatalf("failed to find threshold fixtures below/above 75%%: below=%v above=%v", belowBudget.ContextUsageRatio(), aboveBudget.ContextUsageRatio())
+	}
+
+	below := h.buildSmartContext(context.Background(), smartContextParams{
+		ConvID:            "conv-threshold-below",
+		UserMessage:       "继续上一个方案",
+		Model:             "threshold-model",
+		MaxTokens:         64,
+		PreloadedMessages: belowThreshold,
+	})
+	if below.Tier != TierFullHistory {
+		t.Fatalf("below-threshold tier = %v, want %v (ratio=%.3f)", below.Tier, TierFullHistory, belowBudget.ContextUsageRatio())
+	}
+
+	h.summaryCache.Put("conv-threshold-above", &ConversationSummary{
+		Text:         "Goal\n- Keep prior implementation context\n\nAccomplished\n- Preserve recent turns\n\nRelevant Files\n- server/internal/server/chat.go",
+		MessageCount: len(aboveThreshold),
+	})
+
+	above := h.buildSmartContext(context.Background(), smartContextParams{
+		ConvID:            "conv-threshold-above",
+		UserMessage:       "继续上一个方案",
+		Model:             "threshold-model",
+		MaxTokens:         64,
+		PreloadedMessages: aboveThreshold,
+	})
+	if above.Tier != TierCompressedMemory {
+		t.Fatalf("above-threshold tier = %v, want %v (ratio=%.3f)", above.Tier, TierCompressedMemory, aboveBudget.ContextUsageRatio())
+	}
+	if above.Summary == "" {
+		t.Fatalf("expected structured summary above threshold, ratio=%.3f", aboveBudget.ContextUsageRatio())
+	}
+}
+
 func TestBuildSmartContextIgnoresStaleSummaryCache(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -1024,8 +1098,8 @@ func TestBuildSmartContextIgnoresStaleSummaryCache(t *testing.T) {
 	if strings.Contains(got.Summary, "stale summary") {
 		t.Fatalf("expected stale summary to be ignored, got %q", got.Summary)
 	}
-	if !strings.Contains(got.Summary, "Pending") {
-		t.Fatalf("expected regenerated summary, got %q", got.Summary)
+	if !strings.Contains(got.Summary, "Accomplished") {
+		t.Fatalf("expected regenerated canonical summary, got %q", got.Summary)
 	}
 	if sm.calls != 1 {
 		t.Fatalf("small model calls = %d, want 1", sm.calls)
@@ -1070,12 +1144,20 @@ func TestGenerateSummarySync_UsesSmallModelWhenEnabled(t *testing.T) {
 	allMessages := []memory.Message{
 		{Role: "user", Content: "Login keeps failing after password reset"},
 		{Role: "assistant", Content: "I will inspect auth middleware and retry policy."},
+		{Role: "user", Content: "Capture the file path for the fix."},
+		{Role: "assistant", Content: "Noted, I will preserve the middleware path."},
 		{Role: "user", Content: "Now it works but add regression tests."},
 		{Role: "assistant", Content: "I fixed the middleware ordering and prepared tests."},
+		{Role: "user", Content: "Also mention the test file in the summary."},
+		{Role: "assistant", Content: "I will keep the regression test path in context."},
 	}
 	recent := []llm.Message{
+		{Role: llm.RoleUser, Content: "Capture the file path for the fix."},
+		{Role: llm.RoleAssistant, Content: "Noted, I will preserve the middleware path."},
 		{Role: llm.RoleUser, Content: "Now it works but add regression tests."},
 		{Role: llm.RoleAssistant, Content: "I fixed the middleware ordering and prepared tests."},
+		{Role: llm.RoleUser, Content: "Also mention the test file in the summary."},
+		{Role: llm.RoleAssistant, Content: "I will keep the regression test path in context."},
 	}
 
 	got := h.generateSummarySync(context.Background(), "conv-small-summary", allMessages, recent)

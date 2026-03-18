@@ -496,6 +496,30 @@ describe('ChatView streaming card chain integration', () => {
     vi.mocked(messageApi.cancelStream).mockReset()
   })
 
+  it('keeps the active assistant streaming state visible after mid-stream injection appends a temp user message', async () => {
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    store.messages = [
+      {
+        id: 'streaming-1',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: '',
+        created_at: '2026-03-08T00:00:01.000Z',
+      },
+    ]
+    store.streaming = true
+    store.statusStartedAt = Date.now() - 1500
+
+    await store.injectMessage('补充一点背景')
+    await settleView()
+
+    expect(mocks.injectMessage).toHaveBeenCalledWith('conv-1', '补充一点背景')
+    expect(wrapper.text()).toContain('补充一点背景')
+    expect(wrapper.find('.assistant-status-bar').exists()).toBe(true)
+    expect(wrapper.find('.assistant-status-label').exists()).toBe(true)
+  })
+
   it('renders streamed web-fetch and browser cards with the real chat store, then submits both card actions', async () => {
     const webFetchBlock = makeTypelessBlock({
       type: 'web-fetch',
@@ -1146,6 +1170,54 @@ describe('ChatView streaming card chain integration', () => {
     expect(globalNavButton?.exists()).toBe(true)
 
     await globalNavButton!.trigger('click')
+
+    expect(toggleAppSidebar).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens the app sidebar from narrow desktop chat view without using the global layout button', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 760, writable: true, configurable: true })
+    Object.defineProperty(window.navigator, 'userAgent', {
+      value:
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+      configurable: true,
+    })
+    Object.defineProperty(window.navigator, 'platform', { value: 'MacIntel', configurable: true })
+    window.history.replaceState({}, '', '/chat')
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/chat', component: { template: '<div />' } },
+        { path: '/settings', component: { template: '<div />' } },
+      ],
+    })
+    router.push('/chat')
+    await router.isReady()
+
+    const toggleAppSidebar = vi.fn()
+    const wrapper = mount(ChatView, {
+      global: {
+        plugins: [pinia, i18n, router],
+        provide: {
+          toggleAppSidebar,
+        },
+        stubs: {
+          Teleport: true,
+          Transition: true,
+        },
+      },
+    })
+
+    await settleView()
+
+    const appSidebarButton = wrapper
+      .findAll('button')
+      .find((button) => button.attributes('title') === i18n.global.t('nav.expandSidebar'))
+    expect(appSidebarButton?.exists()).toBe(true)
+
+    await appSidebarButton!.trigger('click')
 
     expect(toggleAppSidebar).toHaveBeenCalledTimes(1)
   })

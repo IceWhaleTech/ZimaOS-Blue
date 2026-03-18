@@ -99,6 +99,19 @@ export interface ToolDefinition {
   parameters: Record<string, unknown>
 }
 
+export type StreamProcessEvent =
+  | 'pre_content_retry_scheduled'
+  | 'pre_content_retry_started'
+  | 'pre_content_retry_succeeded'
+  | 'pre_content_retry_failed'
+  | 'continuation_recovery_started'
+  | 'continuation_recovery_succeeded'
+  | 'continuation_recovery_failed'
+  | 'provider_failover'
+  | 'injection_restart'
+
+export type StreamProcessStatus = 'info' | 'pending' | 'active' | 'success' | 'error'
+
 export interface StreamChunk {
   delta: string
   done: boolean
@@ -118,6 +131,15 @@ export interface StreamChunk {
   // Tool results (sent after tool execution completes)
   tool_results?: Array<{ name: string; id: string; args?: string; result?: string }>
   tool_round?: number
+  // Process trace event (sent for retries/recovery/failover/restarts)
+  process_event?: StreamProcessEvent | string
+  process_status?: StreamProcessStatus
+  process_message?: string
+  process_detail?: string
+  process_attempt?: number
+  process_delay_ms?: number
+  process_provider?: string
+  process_model?: string
   // Context pruning info (sent on first content chunk)
   pruned?: boolean
   messages_pruned?: number

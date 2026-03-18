@@ -153,4 +153,88 @@ describe('ChatMessage bubble rendering', () => {
     expect(bubble.classes()).toContain('py-2')
     expect(wrapper.find('.chat-assistant-bubble').exists()).toBe(false)
   })
+
+  it('keeps a completed assistant bubble visible when only local process details remain', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: {
+          ...makeMessage('assistant', ''),
+          local_process_tool_results: [
+            {
+              name: 'web_search',
+              id: 'tool-search-1',
+              command: 'Need sources',
+              icon: '✓',
+              status: 'Found 3 results',
+              output: 'Source A\nSource B',
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: {
+            props: ['item'],
+            template: '<div class="tool-detail-card-stub">{{ item.status }}</div>',
+          },
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.chat-assistant-bubble').exists()).toBe(true)
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Found 3 results')
+  })
+
+  it('keeps an empty assistant bubble visible with a toggle when local process details are collapsed', async () => {
+    settingsStore.showToolDetails = false
+
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: {
+          ...makeMessage('assistant', ''),
+          local_process_tool_results: [
+            {
+              name: 'web_search',
+              id: 'tool-search-2',
+              command: 'Need sources',
+              icon: '✓',
+              status: 'Found 3 results',
+              output: 'Source A\nSource B',
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: {
+            props: ['item'],
+            template: '<div class="tool-detail-card-stub">{{ item.status }}</div>',
+          },
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.chat-assistant-bubble').exists()).toBe(true)
+    expect(wrapper.find('.assistant-process-toggle').exists()).toBe(true)
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(0)
+  })
 })

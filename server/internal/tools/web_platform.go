@@ -307,7 +307,7 @@ func (t *WebCrawlTool) SetPDFService(service PDFService) {
 func (t *WebReadTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "web_read",
-		Description: "Read a webpage and return normalized main content. Supports HTTP first, optional browser fallback, and normalized warnings for login walls or interactive pages.",
+		Description: "Default page-reading tool for a known URL when you want normalized main content. Supports headers/cookies, browser_target_id reuse, lane-aware reading, and warning_codes for login walls or interactive pages. Prefer it over browser when you only need content; if warning_codes include login_wall, challenge, or browser_required, switch to browser.",
 		Icon:        "web-search",
 		Parameters: map[string]interface{}{
 			"type": "object",

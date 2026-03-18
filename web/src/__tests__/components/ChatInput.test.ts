@@ -145,4 +145,27 @@ describe('ChatInput cancel affordance', () => {
     expect(wrapper.emitted('send')).toHaveLength(1)
     expect(localStorage.getItem('zima.chat.input_draft.v1')).toBeNull()
   })
+
+  it('does not show a loading spinner next to send while typed text is ready to send', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(ChatInput, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+        stubs: {
+          ImagePreview: true,
+          ModelDownloadPrompt: true,
+        },
+      },
+    })
+
+    await wrapper.find('textarea').setValue('this should only show the send button')
+
+    expect(wrapper.find('.desktop-textarea-actions .desktop-inline-icon-btn.is-passive').exists()).toBe(
+      false
+    )
+    expect(wrapper.find('.desktop-textarea-actions .chat-send-btn').exists()).toBe(true)
+  })
 })

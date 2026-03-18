@@ -1470,7 +1470,7 @@ func (s *Server) workspaceWriteText(args map[string]interface{}) (string, error)
 	if strings.TrimSpace(relPath) == "" {
 		return "", errors.New("path must be a non-empty string")
 	}
-	contentVal, ok := workspaceCompatValue(args, "content", "text", "body", "value")
+	contentVal, ok := workspaceCompatValue(args, "content", "text", "body", "value", "chunk")
 	if !ok {
 		return "", errors.New("content is required")
 	}
@@ -1806,7 +1806,7 @@ func normalizeWorkspaceWriteTextArgs(args map[string]interface{}) map[string]int
 		}
 	}
 	if _, ok := normalized["content"]; !ok {
-		if content, ok := workspaceCompatValue(normalized, "content", "text", "body", "value"); ok {
+		if content, ok := workspaceCompatValue(normalized, "content", "text", "body", "value", "chunk"); ok {
 			normalized["content"] = content
 		}
 	}

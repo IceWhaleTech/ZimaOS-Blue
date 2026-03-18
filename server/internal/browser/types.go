@@ -223,6 +223,8 @@ const (
 	ActionPress ActionType = "press"
 	// ActionFill fills form fields.
 	ActionFill ActionType = "fill"
+	// ActionUpload uploads one or more local files to a file input.
+	ActionUpload ActionType = "upload"
 )
 
 // AutomateResponse represents the result of an automation task.
@@ -464,6 +466,8 @@ type ActRequest struct {
 	TargetID string `json:"target_id,omitempty"`
 	// Value is the value for type/select actions.
 	Value string `json:"value,omitempty"`
+	// Files are local file paths used by upload actions.
+	Files []string `json:"files,omitempty"`
 	// Text is the text to type.
 	Text string `json:"text,omitempty"`
 	// Key is the key to press.

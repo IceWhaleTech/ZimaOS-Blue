@@ -35,6 +35,9 @@ var (
 	registry   = map[string]CardFunc{}
 )
 
+var genericCardImageURLSuffix = regexp.MustCompile(`(?i)\.(png|jpe?g|gif|webp|bmp|svg)(?:[?#].*)?$`)
+var genericCardWindowsAbsPath = regexp.MustCompile(`^(?:[a-zA-Z]:[\\/]|\\\\)`)
+
 const (
 	noErrorDetailsText = "Operation failed (no error details provided)"
 	sensitiveValueKey  = `(?:api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|session[_-]?token|token|secret|password|passwd|pwd|authorization|cookie|set-cookie|aws_access_key_id|aws_secret_access_key|aws_session_token|openai_api_key|x-api-key)`
@@ -150,12 +153,206 @@ func extractExecCommand(arguments string) string {
 	return strings.TrimSpace(command)
 }
 
+func normalizeCardToolName(toolName string) string {
+	name := strings.ToLower(strings.TrimSpace(toolName))
+	if strings.HasPrefix(name, "browser.") {
+		return "browser"
+	}
+	switch name {
+	case "web-fetch":
+		return "web_fetch"
+	case "deep-research":
+		return "deep_research"
+	case "file-read":
+		return "file_read"
+	case "file-write":
+		return "file_write"
+	case "image-generate":
+		return "image_generate"
+	default:
+		return name
+	}
+}
+
+func normalizeGenericCardFieldKey(input string) string {
+	input = strings.ToLower(strings.TrimSpace(input))
+	input = strings.ReplaceAll(input, "-", "_")
+	input = strings.ReplaceAll(input, " ", "_")
+	return input
+}
+
+func isGenericCardImageField(label string) bool {
+	switch normalizeGenericCardFieldKey(label) {
+	case "image", "images", "media_url", "preview_image", "preview_url", "screenshot", "screenshots", "thumbnail", "thumbnail_url":
+		return true
+	default:
+		return false
+	}
+}
+
+func isGenericCardLocalAbsolutePath(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "/api/") {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+		return false
+	}
+	if genericCardWindowsAbsPath.MatchString(trimmed) {
+		return true
+	}
+	return strings.HasPrefix(trimmed, "/")
+}
+
+func isGenericCardAPIPath(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	return strings.HasPrefix(trimmed, "/api/")
+}
+
+func normalizeEmbeddedImageSource(raw, mimeType string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, "data:image/") ||
+		strings.HasPrefix(trimmed, "http://") ||
+		strings.HasPrefix(trimmed, "https://") ||
+		isGenericCardAPIPath(trimmed) ||
+		isGenericCardLocalAbsolutePath(trimmed) {
+		return trimmed
+	}
+	mimeType = strings.TrimSpace(mimeType)
+	if strings.HasPrefix(mimeType, "image/") {
+		return "data:" + mimeType + ";base64," + trimmed
+	}
+	return "data:image/png;base64," + trimmed
+}
+
+func looksLikeBase64ImagePayload(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) < 64 {
+		return false
+	}
+	for _, r := range trimmed {
+		switch {
+		case r >= 'A' && r <= 'Z':
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '+', r == '/', r == '=', r == '\r', r == '\n':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func looksLikeImageString(raw, label, mimeType string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "data:image/") {
+		return true
+	}
+	if strings.HasPrefix(mimeType, "image/") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "http://") ||
+		strings.HasPrefix(trimmed, "https://") ||
+		isGenericCardAPIPath(trimmed) ||
+		isGenericCardLocalAbsolutePath(trimmed) {
+		return isGenericCardImageField(label) || genericCardImageURLSuffix.MatchString(trimmed)
+	}
+	return isGenericCardImageField(label) && looksLikeBase64ImagePayload(trimmed)
+}
+
+func appendGenericCardImage(images []map[string]interface{}, seen map[string]struct{}, raw, label, mimeType, thumbnail, caption string) []map[string]interface{} {
+	if !looksLikeImageString(raw, label, mimeType) {
+		return images
+	}
+	src := normalizeEmbeddedImageSource(raw, mimeType)
+	if src == "" {
+		return images
+	}
+	if _, exists := seen[src]; exists {
+		return images
+	}
+	seen[src] = struct{}{}
+
+	image := map[string]interface{}{
+		"src": src,
+	}
+	if alt := strings.TrimSpace(label); alt != "" {
+		image["alt"] = alt
+	}
+	if thumb := normalizeEmbeddedImageSource(thumbnail, mimeType); thumb != "" {
+		image["thumbnail"] = thumb
+	}
+	if caption = strings.TrimSpace(caption); caption != "" {
+		image["caption"] = caption
+	}
+	return append(images, image)
+}
+
+func extractGenericCardImages(images []map[string]interface{}, seen map[string]struct{}, value interface{}, label string) []map[string]interface{} {
+	switch v := value.(type) {
+	case string:
+		return appendGenericCardImage(images, seen, v, label, "", "", "")
+	case []interface{}:
+		for _, entry := range v {
+			images = extractGenericCardImages(images, seen, entry, label)
+		}
+		return images
+	case map[string]interface{}:
+		mimeType := strings.TrimSpace(formatValue(v["mime_type"]))
+		if mimeType == "" {
+			mimeType = strings.TrimSpace(formatValue(v["mimeType"]))
+		}
+		thumbnail := strings.TrimSpace(formatValue(v["thumbnail"]))
+		if thumbnail == "" {
+			thumbnail = strings.TrimSpace(formatValue(v["thumbnail_url"]))
+		}
+		caption := strings.TrimSpace(formatValue(v["caption"]))
+		if caption == "" {
+			caption = strings.TrimSpace(formatValue(v["title"]))
+		}
+		for _, key := range []string{"src", "url", "image", "screenshot", "data", "base64"} {
+			raw := strings.TrimSpace(formatValue(v[key]))
+			if raw == "" {
+				continue
+			}
+			images = appendGenericCardImage(images, seen, raw, label, mimeType, thumbnail, caption)
+		}
+		if nested, ok := v["images"].([]interface{}); ok {
+			for _, entry := range nested {
+				images = extractGenericCardImages(images, seen, entry, label)
+			}
+		}
+		if nested, ok := v["screenshots"].([]interface{}); ok {
+			for _, entry := range nested {
+				images = extractGenericCardImages(images, seen, entry, label)
+			}
+		}
+		return images
+	default:
+		return images
+	}
+}
+
 // ToCard converts a single tool result into a typeless card map.
 // Returns nil if no card should be rendered.
 func ToCard(toolName, content string) map[string]interface{} {
+	normalizedToolName := normalizeCardToolName(toolName)
+
 	// Check registered custom formatters first.
 	registryMu.RLock()
 	fn, ok := registry[toolName]
+	if !ok && normalizedToolName != toolName {
+		fn, ok = registry[normalizedToolName]
+	}
 	registryMu.RUnlock()
 	if ok {
 		return fn(content)
@@ -163,14 +360,14 @@ func ToCard(toolName, content string) map[string]interface{} {
 
 	// When the sandbox tool runs a `blue` CLI command, the IPC response
 	// may include a `_card` hint telling us which card formatter to use.
-	if toolName == "sandbox" {
+	if normalizedToolName == "sandbox" {
 		if card := sandboxCardDispatch(content); card != nil {
 			return card
 		}
-		return GenericCard(toolName, content)
+		return GenericCard(normalizedToolName, content)
 	}
 
-	switch toolName {
+	switch normalizedToolName {
 	case "exec":
 		return execCard(content)
 	case "browser":
@@ -210,7 +407,7 @@ func ToCard(toolName, content string) map[string]interface{} {
 	case "convert":
 		return convertTaskCard(content)
 	default:
-		return GenericCard(toolName, content)
+		return GenericCard(normalizedToolName, content)
 	}
 }
 
@@ -233,6 +430,7 @@ func convertTaskCard(content string) map[string]interface{} {
 		"task_id":            taskID,
 		"status":             status,
 		"action":             strings.TrimSpace(formatValue(data["action"])),
+		"sources":            stringSliceValue(data["sources"]),
 		"source_summary":     strings.TrimSpace(formatValue(data["source_summary"])),
 		"target_format":      strings.TrimSpace(formatValue(data["target_format"])),
 		"message":            strings.TrimSpace(formatValue(data["message"])),
@@ -317,14 +515,7 @@ func browserCard(content string) map[string]interface{} {
 		card["message"] = "Browser tab ready"
 	}
 	if screenshot != "" {
-		normalized := screenshot
-		if !strings.HasPrefix(normalized, "data:image/") &&
-			!strings.HasPrefix(normalized, "http://") &&
-			!strings.HasPrefix(normalized, "https://") &&
-			!strings.HasPrefix(normalized, "/") {
-			normalized = "data:image/png;base64," + normalized
-		}
-		card["image"] = normalized
+		card["image"] = normalizeEmbeddedImageSource(screenshot, "image/png")
 	}
 
 	return card
@@ -890,6 +1081,25 @@ func formatValue(v interface{}) string {
 	}
 }
 
+func stringSliceValue(v interface{}) []string {
+	switch typed := v.(type) {
+	case []string:
+		return append([]string(nil), typed...)
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			value := strings.TrimSpace(formatValue(item))
+			if value == "" {
+				continue
+			}
+			out = append(out, value)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
 // GenericCard creates a result card for any unrecognized tool.
 func GenericCard(toolName, content string) map[string]interface{} {
 	var data map[string]interface{}
@@ -907,10 +1117,19 @@ func GenericCard(toolName, content string) map[string]interface{} {
 			card["message"] = message
 		}
 
+		images := make([]map[string]interface{}, 0, 2)
+		imageSeen := map[string]struct{}{}
 		keys := make([]string, 0, len(data))
-		for k := range data {
+		for k, v := range data {
 			if k == "message" || k == "error" {
 				continue
+			}
+			if isGenericCardImageField(k) {
+				before := len(images)
+				images = extractGenericCardImages(images, imageSeen, v, k)
+				if len(images) > before {
+					continue
+				}
 			}
 			keys = append(keys, k)
 		}
@@ -926,8 +1145,15 @@ func GenericCard(toolName, content string) map[string]interface{} {
 		if len(details) > 0 {
 			card["details"] = details
 		}
+		if len(images) == 1 {
+			if src, ok := images[0]["src"].(string); ok && strings.TrimSpace(src) != "" {
+				card["image"] = src
+			}
+		} else if len(images) > 1 {
+			card["images"] = images
+		}
 
-		if _, hasMessage := card["message"]; !hasMessage && len(details) == 0 {
+		if _, hasMessage := card["message"]; !hasMessage && len(details) == 0 && len(images) == 0 {
 			card["message"] = "No result data"
 		}
 

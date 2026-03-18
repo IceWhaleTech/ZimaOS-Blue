@@ -219,6 +219,141 @@ describe('CardResult', () => {
     expect(image.attributes('src')).toBe(`data:image/png;base64,${base64PNG}`)
   })
 
+  it('extracts screenshot details into an image preview and hides raw base64 detail text', () => {
+    const base64PNG =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII='
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'Browser',
+          status: 'success',
+          details: [{ label: 'screenshot', value: base64PNG }],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    const image = wrapper.find('img')
+    expect(image.exists()).toBe(true)
+    expect(image.attributes('src')).toBe(`data:image/png;base64,${base64PNG}`)
+    expect(wrapper.text()).not.toContain(base64PNG)
+    expect(wrapper.text()).not.toContain('screenshot')
+  })
+
+  it('extracts screenshot previews from JSON-encoded message payloads', () => {
+    const base64PNG =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII='
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'browser',
+          status: 'info',
+          message: JSON.stringify({
+            message: 'Screenshot captured for https://example.com',
+            screenshot: base64PNG,
+          }),
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    const image = wrapper.find('img')
+    expect(image.exists()).toBe(true)
+    expect(image.attributes('src')).toBe(`data:image/png;base64,${base64PNG}`)
+    expect(wrapper.text()).toContain('Screenshot captured for https://example.com')
+    expect(wrapper.text()).not.toContain(base64PNG)
+    expect(wrapper.text()).not.toContain('{"message"')
+  })
+
+  it('bridges local screenshot file paths from JSON-encoded message payloads', () => {
+    const screenshotPath = '/Users/orca/.zimaos-blue/data/browser-checkpoints/example-shot.png'
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'browser',
+          status: 'info',
+          message: JSON.stringify({
+            message: 'Screenshot captured for https://example.com',
+            screenshot: screenshotPath,
+          }),
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    const image = wrapper.find('img')
+    expect(image.exists()).toBe(true)
+    expect(image.attributes('src')).toBe(
+      '/api/v1/system/local-file/content?path=%2FUsers%2Forca%2F.zimaos-blue%2Fdata%2Fbrowser-checkpoints%2Fexample-shot.png&inline=1'
+    )
+    expect(wrapper.text()).toContain('Screenshot captured for https://example.com')
+    expect(wrapper.text()).not.toContain(screenshotPath)
+  })
+
+  it('extracts screenshots arrays from detail payloads into a gallery', () => {
+    const pngA =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII='
+    const pngB =
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAQAAADZc7J/AAAADUlEQVR42mNk+M/wHwAFAgJ/l8V6NwAAAABJRU5ErkJggg=='
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'Browser',
+          status: 'success',
+          details: [{ label: 'screenshots', value: JSON.stringify([pngA, pngB]) }],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    const images = wrapper.findAll('img')
+    expect(images).toHaveLength(2)
+    expect(images[0]?.attributes('src')).toBe(`data:image/png;base64,${pngA}`)
+    expect(images[1]?.attributes('src')).toBe(`data:image/png;base64,${pngB}`)
+  })
+
+  it('renders top-level result images as a gallery before falling back to details parsing', () => {
+    const pngA =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII='
+    const pngB =
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAQAAADZc7J/AAAADUlEQVR42mNk+M/wHwAFAgJ/l8V6NwAAAABJRU5ErkJggg=='
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'Browser',
+          status: 'success',
+          images: [
+            { src: `data:image/png;base64,${pngA}`, alt: 'shot-a' },
+            { src: `data:image/png;base64,${pngB}`, alt: 'shot-b' },
+          ],
+          details: [{ label: 'count', value: '2' }],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    const images = wrapper.findAll('img')
+    expect(images).toHaveLength(2)
+    expect(images[0]?.attributes('src')).toBe(`data:image/png;base64,${pngA}`)
+    expect(images[1]?.attributes('src')).toBe(`data:image/png;base64,${pngB}`)
+    expect(wrapper.text()).toContain('2')
+  })
+
   it('renders local absolute detail paths as open-location action', async () => {
     const wrapper = mount(CardResult, {
       props: {

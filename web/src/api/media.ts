@@ -42,6 +42,7 @@ export interface MediaTask {
   message_id?: string
   response?: MediaResponse
   error?: string
+  fallback_info?: MediaFallbackInfo
   created_at: string
   completed_at?: string
 }
@@ -56,6 +57,17 @@ export interface MediaModelInfo {
   supported_sizes?: string[]
   price?: number
   pricing_unit?: string
+  is_fallback?: boolean
+  fallback_strategy?: 'web_canvas' | 'public_space'
+}
+
+export interface MediaFallbackInfo {
+  used: boolean
+  strategy: 'web_canvas' | 'public_space'
+  display_name: string
+  source_urls?: string[]
+  space_url?: string
+  disclosure: string
 }
 
 // IR-based intent classification
@@ -100,6 +112,7 @@ export interface MediaProgressEvent {
   type?: MediaType
   response?: MediaResponse
   error?: string
+  fallback_info?: MediaFallbackInfo
 }
 
 // API functions

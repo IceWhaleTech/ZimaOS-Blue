@@ -256,7 +256,56 @@ describe('ChatView provider gating', () => {
     expect(mocks.chatStore.sendMessage).not.toHaveBeenCalled()
     expect(mocks.mediaGenerate.classify).not.toHaveBeenCalled()
     expect(mocks.chatInputSetInput).toHaveBeenCalledWith('need provider')
-    expect(wrapper.text()).toContain('chat.noProvider.title')
+    expect(wrapper.text()).toContain('Set up an AI provider to start chatting')
+    expect(wrapper.text()).toContain('Your draft has been kept locally so you can continue after setup.')
+  })
+
+  it('shows setup guidance in the empty state when no provider is configured', async () => {
+    const wrapper = await mountChatView()
+
+    expect(wrapper.get('[data-testid="chat-provider-guidance-card"]').text()).toContain(
+      'Set up an AI provider to start chatting'
+    )
+    expect(wrapper.get('[data-testid="chat-provider-guidance-action"]').text()).toContain(
+      'Configure Provider'
+    )
+  })
+
+  it('blocks send when configured providers are unavailable and restores the draft', async () => {
+    mocks.providerPoolStore.providers = [
+      {
+        id: 'openai',
+        type: 'builtin',
+        enabled: true,
+        status: 'error',
+        last_error: 'auth_error:invalid_api_key',
+      } as Record<string, unknown>,
+    ]
+    mocks.providerPoolStore.enabledProviders = [
+      {
+        id: 'openai',
+        type: 'builtin',
+        enabled: true,
+        status: 'error',
+        last_error: 'auth_error:invalid_api_key',
+      } as Record<string, unknown>,
+    ]
+    mocks.providerPoolStore.activeProviders = []
+
+    const wrapper = await mountChatView()
+    await wrapper.find('.chat-input-send-stub').trigger('click')
+    await flushPromises()
+
+    expect(mocks.providerPoolStore.fetchProviders).not.toHaveBeenCalled()
+    expect(mocks.chatStore.sendMessage).not.toHaveBeenCalled()
+    expect(mocks.chatInputSetInput).toHaveBeenCalledWith('need provider')
+    expect(wrapper.text()).toContain('No AI provider is available right now')
+    expect(wrapper.text()).toContain('Review Providers')
+    expect(wrapper.get('[data-testid="chat-provider-guidance-card"]').text()).toContain(
+      'No AI provider is available right now'
+    )
+    expect(wrapper.text()).toContain('openai')
+    expect(wrapper.text()).toContain('Authentication failed. Recheck the API key or OAuth connection.')
   })
 
   it('shows the enhanced mode info card on hover when Claude Code CLI is enabled', async () => {
@@ -273,5 +322,37 @@ describe('ChatView provider gating', () => {
 
     expect(wrapper.find('.enhanced-mode-hover-card').exists()).toBe(true)
     expect(wrapper.findAll('.enhanced-mode-hover-card__item')).toHaveLength(4)
+  })
+
+  it('routes talk-mode transcripts to sendMessage when no stream is active', async () => {
+    mocks.providerPoolStore.providers = [
+      { id: 'openai', enabled: true, status: 'active' } as Record<string, unknown>,
+    ]
+    mocks.providerPoolStore.enabledProviders = [...mocks.providerPoolStore.providers]
+    mocks.providerPoolStore.activeProviders = [...mocks.providerPoolStore.providers]
+    mocks.chatStore.streaming = false
+
+    const wrapper = await mountChatView()
+    wrapper.findComponent({ name: 'TalkMode' }).vm.$emit('transcript', 'hello from talk mode')
+    await flushPromises()
+
+    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith('hello from talk mode')
+    expect(mocks.chatStore.injectMessage).not.toHaveBeenCalled()
+  })
+
+  it('routes talk-mode transcripts to injectMessage while a stream is active', async () => {
+    mocks.providerPoolStore.providers = [
+      { id: 'openai', enabled: true, status: 'active' } as Record<string, unknown>,
+    ]
+    mocks.providerPoolStore.enabledProviders = [...mocks.providerPoolStore.providers]
+    mocks.providerPoolStore.activeProviders = [...mocks.providerPoolStore.providers]
+    mocks.chatStore.streaming = true
+
+    const wrapper = await mountChatView()
+    wrapper.findComponent({ name: 'TalkMode' }).vm.$emit('transcript', 'interrupt now')
+    await flushPromises()
+
+    expect(mocks.chatStore.injectMessage).toHaveBeenCalledWith('interrupt now')
+    expect(mocks.chatStore.sendMessage).not.toHaveBeenCalled()
   })
 })

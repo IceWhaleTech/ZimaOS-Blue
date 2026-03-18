@@ -86,13 +86,13 @@ func TestShouldRetryTransientUpstream5xx(t *testing.T) {
 			want:          false,
 		},
 		{
-			name:          "wrapped 500 overloaded retries when routing is truly single-provider",
+			name:          "wrapped 500 overloaded still retries when routing is truly single-provider",
 			single:        true,
 			routingSingle: true,
 			status:        500,
 			body:          `{"error":{"type":"overloaded_error","message":"构建请求失败"}}`,
 			attempt:       2,
-			want:          false,
+			want:          true,
 		},
 		{
 			name:          "plain overloaded 500 still retries when routing is truly single-provider",
@@ -213,6 +213,11 @@ func TestProxyFailureStatusCode(t *testing.T) {
 			name: "wrapped upstream 404 preserved",
 			err:  errors.New(`upstream 404: {"error":{"message":"Model not found"}}`),
 			want: http.StatusNotFound,
+		},
+		{
+			name: "relay wrapped context window full maps to 400",
+			err:  errors.New(`upstream 502: {"error":{"message":"Context window is full. Reduce conversation history, system prompt, or tools."}}`),
+			want: http.StatusBadRequest,
 		},
 		{
 			name: "generic 500 stays 502",

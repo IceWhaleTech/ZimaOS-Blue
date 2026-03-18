@@ -20,6 +20,12 @@ import { i18n } from '@/i18n'
 import { useSettingsStore } from './settings'
 import { useProviderPoolStore } from './providerPool'
 import { systemApi } from '@/api/system'
+import {
+  cloneProcessTrace,
+  createProcessTraceItem,
+  type ProcessTraceItem,
+  type ProcessTraceStatus,
+} from '@/utils/processTrace'
 
 const PAGE_SIZE = 50
 const CHAT_MODEL_PREF_KEY = 'chat.modelPreference'
@@ -81,21 +87,24 @@ export function parseToolResults(
 ): ToolResultItem[] {
   return results.map((r) => {
     let command = ''
+    let parsedArgs: Record<string, unknown> | null = null
     if (r.args) {
       try {
-        const parsed = JSON.parse(r.args)
-        command =
-          parsed.command ||
-          parsed.cmd ||
-          parsed.query ||
-          parsed.url ||
-          parsed.href ||
-          parsed.path ||
-          parsed.name ||
-          parsed.action ||
-          parsed.sq ||
-          parsed.mq ||
-          ''
+        const parsed = JSON.parse(r.args) as Record<string, unknown>
+        parsedArgs = parsed
+        const commandCandidate = [
+          parsed.command,
+          parsed.cmd,
+          parsed.query,
+          parsed.url,
+          parsed.href,
+          parsed.path,
+          parsed.name,
+          parsed.action,
+          parsed.sq,
+          parsed.mq,
+        ].find((value) => typeof value === 'string' && value.trim())
+        command = typeof commandCandidate === 'string' ? commandCandidate.trim() : ''
       } catch {
         // If args is not valid JSON, use it directly for ask_user_question
         if (r.name === 'ask') {
@@ -103,6 +112,26 @@ export function parseToolResults(
         } else {
           command = r.args.slice(0, 80)
         }
+      }
+    }
+    if (r.name === 'convert' && parsedArgs) {
+      const rawSources = Array.isArray(parsedArgs.sources) ? parsedArgs.sources : []
+      const sources = rawSources
+        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean)
+      const targetFormat =
+        typeof parsedArgs.target_format === 'string'
+          ? parsedArgs.target_format.trim()
+          : typeof parsedArgs.targetFormat === 'string'
+            ? parsedArgs.targetFormat.trim()
+            : ''
+      if (sources.length > 0) {
+        const firstSource = sources[0] ?? ''
+        const sourceLabel =
+          sources.length === 1 ? firstSource : `${firstSource} +${sources.length - 1} more`
+        command = targetFormat ? `${sourceLabel} -> ${targetFormat}` : sourceLabel
+      } else if (targetFormat && command) {
+        command = `${command} -> ${targetFormat}`
       }
     }
     let icon: '✓' | '✗' | '⏳' = '⏳'
@@ -235,6 +264,123 @@ function formatStreamProgress(stage: string): string {
   }
 }
 
+function resolveI18nText(
+  key: string,
+  fallback: string,
+  named?: Record<string, string | number>
+): string {
+  const t = i18n.global.t
+  const te = i18n.global.te
+  return te(key) ? String(named ? t(key, named) : t(key)) : fallback
+}
+
+function resolveProcessTraceText(
+  key: string,
+  fallback: string,
+  named?: Record<string, string | number>
+): string {
+  return resolveI18nText(`chat.processTrace.${key}`, fallback, named)
+}
+
+function resolveProcessTraceField(key: string, fallback: string): string {
+  return resolveProcessTraceText(`fields.${key}`, fallback)
+}
+
+function resolveProcessTraceDetail(_event: string, detail?: string): string {
+  const normalized = detail?.trim() || ''
+  if (!normalized) return ''
+
+  switch (normalized) {
+    case 'Retrying the tool follow-up without the previously pinned provider.':
+      return resolveProcessTraceText(
+        'details.providerFailoverToolFollowUp',
+        'Retrying the tool follow-up without the previously pinned provider.'
+      )
+    case 'Retrying the continuation follow-up without the previously pinned provider.':
+      return resolveProcessTraceText(
+        'details.providerFailoverContinuationFollowUp',
+        'Retrying the continuation follow-up without the previously pinned provider.'
+      )
+    case 'silent_recovery_stage1':
+      return resolveProcessTraceText('details.recoveryStage1', 'Silent recovery')
+    case 'stage2_reduced_payload':
+      return resolveProcessTraceText('details.recoveryStage2', 'Reduced recovery payload')
+    default:
+      return normalized
+  }
+}
+
+function formatProcessTraceSeconds(delayMs?: number): string {
+  if (typeof delayMs !== 'number' || !Number.isFinite(delayMs)) return '0'
+  const seconds = Math.max(0, Math.round(delayMs / 100) / 10)
+  const locale =
+    String((i18n.global as { locale?: { value?: string } }).locale?.value || 'en-US') || 'en-US'
+  const hasFraction = Math.abs(seconds - Math.round(seconds)) >= 0.05
+  return new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: hasFraction ? 1 : 0,
+  }).format(seconds)
+}
+
+function resolveProcessTraceStatusLabel(item: ProcessTraceItem): string {
+  switch (item.event) {
+    case 'pre_content_retry_scheduled':
+      return resolveProcessTraceText(
+        'events.retryScheduled',
+        'Retrying request in {seconds}s',
+        {
+          seconds: formatProcessTraceSeconds(
+            typeof item.metadata?.delay_ms === 'number' ? item.metadata.delay_ms : undefined
+          ),
+        }
+      )
+    case 'pre_content_retry_started':
+      return resolveProcessTraceText('events.retryingRequest', 'Retrying request')
+    case 'pre_content_retry_succeeded':
+      return resolveProcessTraceText('events.retrySucceeded', 'Retry succeeded')
+    case 'pre_content_retry_failed':
+      return resolveProcessTraceText('events.retryFailed', 'Retry failed')
+    case 'continuation_recovery_started':
+      return resolveProcessTraceText('events.recoveringResponse', 'Recovering response')
+    case 'continuation_recovery_succeeded':
+      return resolveProcessTraceText('events.recoverySucceeded', 'Recovery succeeded')
+    case 'continuation_recovery_failed':
+      return resolveProcessTraceText('events.recoveryFailed', 'Recovery failed')
+    case 'provider_failover':
+      if (item.status === 'success') {
+        return resolveProcessTraceText(
+          'events.providerSwitchSucceeded',
+          'Provider switch succeeded'
+        )
+      }
+      if (item.status === 'error') {
+        return resolveProcessTraceText('events.providerSwitchFailed', 'Provider switch failed')
+      }
+      return resolveProcessTraceText('events.switchingProvider', 'Switching provider')
+    case 'injection_restart':
+      return resolveProcessTraceText(
+        'events.restartingWithLatestMessage',
+        'Restarting with your latest message'
+      )
+    case 'request_summary':
+      return resolveProcessTraceText('events.requestReady', 'Request ready')
+    case 'request_dispatched':
+      return resolveProcessTraceText('events.requestSent', 'Request sent')
+    case 'waiting_for_response':
+      return resolveProcessTraceText('events.waitingForResponse', 'Waiting for response')
+    case 'awaiting_confirmation':
+      return resolveProcessTraceText('events.waitingForConfirmation', 'Waiting for confirmation')
+    case 'network_interrupt_waiting':
+      return resolveProcessTraceText(
+        'events.waitingForConnectionRecovery',
+        'Waiting for connection recovery'
+      )
+    default:
+      if (item.label.trim()) return item.label
+      return resolveProcessTraceText('events.processing', 'Processing')
+  }
+}
+
 // Store for message metadata (provider, model, stats) - keyed by message ID
 const messageMetadata = ref<
   Map<string, { provider?: string; model?: string; stats?: MessageStats }>
@@ -256,6 +402,7 @@ interface ActiveConversationStreamState {
   previewContent: string
   processContentLength: number
   toolResults: ToolResultItem[]
+  processTrace: ProcessTraceItem[]
   statusStartedAt: number
   statusSummary: string | null
 }
@@ -273,6 +420,10 @@ type SendMessageFileAttachment = {
 interface SendMessageOptions {
   existingAttachments?: MessageAttachment[]
   skipConversationCreate?: boolean
+}
+
+type RuntimeProcessMessage = Message & {
+  local_process_tool_results?: ToolResultItem[]
 }
 
 export const useChatStore = defineStore('chat', () => {
@@ -378,6 +529,7 @@ export const useChatStore = defineStore('chat', () => {
   const streamProgress = ref<string | null>(null) // Upstream metadata progress before first visible delta
   const statusStartedAt = ref(0)
   const statusSummary = ref<string | null>(null)
+  const processTrace = ref<ProcessTraceItem[]>([])
   const securityBlocked = ref<{ message: string; threatLevel: string } | null>(null)
   const trialExhausted = ref(false) // Trial quota exhausted flag
   const toolExecuting = ref(false) // Tool execution in progress
@@ -452,6 +604,7 @@ export const useChatStore = defineStore('chat', () => {
       step?: string
       action?: string
       url?: string
+      site_origin?: string
       screenshot?: { mime_type?: string; data?: string; url?: string }
     }
     expires_at: number
@@ -493,6 +646,142 @@ export const useChatStore = defineStore('chat', () => {
   function cloneToolResultItems(items?: ToolResultItem[]): ToolResultItem[] {
     if (!items || items.length === 0) return []
     return items.map((item) => ({ ...item }))
+  }
+
+  function formatBytes(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB']
+    let value = bytes
+    let unitIndex = 0
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024
+      unitIndex++
+    }
+    return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`
+  }
+
+  function estimateAttachmentBytes(attachments?: MessageAttachment[]): number {
+    if (!attachments || attachments.length === 0) return 0
+    return attachments.reduce((total, attachment) => {
+      const dataLen = attachment.data?.length || 0
+      return total + Math.max(0, Math.floor((dataLen * 3) / 4))
+    }, 0)
+  }
+
+  function summarizeRequestText(value: string, maxLen = 120): string {
+    const normalized = value.replace(/\s+/g, ' ').trim()
+    if (!normalized) return ''
+    if (normalized === '[CONTINUE]') {
+      return resolveProcessTraceText(
+        'summaryValues.continuePreviousReply',
+        'Continue the previous reply'
+      )
+    }
+    if (normalized === '[CONTINUE_AFTER_CANCEL]') {
+      return resolveProcessTraceText(
+        'summaryValues.resumePreviousRequest',
+        'Resume the previous request'
+      )
+    }
+    if (normalized.length <= maxLen) return normalized
+    return normalized.slice(0, maxLen - 1) + '…'
+  }
+
+  function formatRequestSummaryDetail(request: SendMessageRequest): string {
+    const lines: string[] = []
+    const summary = summarizeRequestText(request.message)
+    const attachments = request.attachments || []
+    const attachmentTypes = Array.from(new Set(attachments.map((attachment) => attachment.type)))
+    const attachmentBytes = estimateAttachmentBytes(attachments)
+    const fieldMessage = resolveProcessTraceField('message', 'Message')
+    const fieldProvider = resolveProcessTraceField('provider', 'Provider')
+    const fieldModel = resolveProcessTraceField('model', 'Model')
+    const fieldWebSearch = resolveProcessTraceField('webSearch', 'Web search')
+    const fieldDeepResearch = resolveProcessTraceField('deepResearch', 'Deep research')
+    const fieldAttachments = resolveProcessTraceField('attachments', 'Attachments')
+    const fieldAuto = resolveProcessTraceField('auto', 'Auto')
+    const fieldFile = resolveProcessTraceField('file', 'file')
+    const enabledLabel = resolveProcessTraceField('on', 'On')
+    const disabledLabel = resolveProcessTraceField('off', 'Off')
+    const provider = request.provider?.trim() || fieldAuto
+    const model = request.model?.trim() || fieldAuto
+
+    if (summary) lines.push(`${fieldMessage}: ${summary}`)
+    lines.push(`${fieldProvider}: ${provider}`)
+    lines.push(`${fieldModel}: ${model}`)
+    lines.push(
+      `${fieldWebSearch}: ${request.web_search_enabled === false ? disabledLabel : enabledLabel} · ${fieldDeepResearch}: ${request.deep_research_enabled ? enabledLabel : disabledLabel}`
+    )
+    if (attachments.length > 0) {
+      lines.push(
+        `${fieldAttachments}: ${attachments.length} (${attachmentTypes.join(', ') || fieldFile}) · ${formatBytes(attachmentBytes)}`
+      )
+    }
+    return lines.join('\n')
+  }
+
+  function createServerProcessTraceItem(chunk: StreamChunk): ProcessTraceItem | null {
+    const event = chunk.process_event?.trim()
+    if (!event) return null
+
+    const attempt =
+      typeof chunk.process_attempt === 'number' && Number.isFinite(chunk.process_attempt)
+        ? chunk.process_attempt
+        : undefined
+    const delayMs =
+      typeof chunk.process_delay_ms === 'number' && Number.isFinite(chunk.process_delay_ms)
+        ? chunk.process_delay_ms
+        : undefined
+    const provider = chunk.process_provider?.trim()
+    const model = chunk.process_model?.trim()
+    const category =
+      event.startsWith('pre_content_retry')
+        ? 'retry'
+        : event.startsWith('continuation_recovery')
+          ? 'recovery'
+          : event === 'provider_failover'
+            ? 'recovery'
+            : 'lifecycle'
+    const status = (chunk.process_status || 'info') as ProcessTraceStatus
+    const details: string[] = []
+    const attemptLabel = resolveProcessTraceField('attempt', 'Attempt')
+    const delayLabel = resolveProcessTraceField('delay', 'Delay')
+    const providerLabel = resolveProcessTraceField('provider', 'Provider')
+    const modelLabel = resolveProcessTraceField('model', 'Model')
+
+    const localizedProcessDetail = resolveProcessTraceDetail(event, chunk.process_detail)
+    if (localizedProcessDetail) details.push(localizedProcessDetail)
+    if (attempt !== undefined) details.push(`${attemptLabel}: ${attempt}`)
+    if (delayMs !== undefined) details.push(`${delayLabel}: ${formatProcessTraceSeconds(delayMs)}s`)
+    if (provider) details.push(`${providerLabel}: ${provider}`)
+    if (model) details.push(`${modelLabel}: ${model}`)
+
+    const fallbackLabel = chunk.process_message?.trim() || ''
+    const metadata = {
+      attempt,
+      delay_ms: delayMs,
+      provider,
+      model,
+    }
+
+    return createProcessTraceItem({
+      source: 'server',
+      event,
+      category,
+      status,
+      label: resolveProcessTraceStatusLabel({
+        id: '',
+        source: 'server',
+        event,
+        category,
+        status,
+        label: fallbackLabel,
+        timestamp: 0,
+        metadata,
+      }),
+      detail: details.join('\n') || undefined,
+      metadata,
+    })
   }
 
   function extractHostLabelFromText(text: string): string {
@@ -563,6 +852,86 @@ export const useChatStore = defineStore('chat', () => {
     return state
   }
 
+  function upsertProcessTraceItem(
+    conversationId: string,
+    item: ProcessTraceItem,
+    options?: { replaceLatestByEvent?: boolean; updateStatusTimer?: boolean }
+  ) {
+    const current = getActiveStreamState(conversationId)
+    if (!current) return
+
+    const nextTrace = cloneProcessTrace(current.processTrace)
+    if (options?.replaceLatestByEvent) {
+      for (let i = nextTrace.length - 1; i >= 0; i--) {
+        const existing = nextTrace[i]
+        if (existing && existing.event === item.event) {
+          nextTrace[i] = item
+          updateActiveStreamState(conversationId, {
+            processTrace: nextTrace,
+            statusStartedAt: options.updateStatusTimer ? item.timestamp : current.statusStartedAt,
+          })
+          return
+        }
+      }
+    }
+
+    nextTrace.push(item)
+    updateActiveStreamState(conversationId, {
+      processTrace: nextTrace,
+      statusStartedAt: options?.updateStatusTimer ? item.timestamp : current.statusStartedAt,
+    })
+  }
+
+  function addLocalProcessTrace(
+    conversationId: string,
+    item: Omit<ProcessTraceItem, 'id' | 'timestamp'>,
+    options?: { replaceLatestByEvent?: boolean; updateStatusTimer?: boolean }
+  ) {
+    upsertProcessTraceItem(conversationId, createProcessTraceItem(item), options)
+  }
+
+  function addRequestProcessTrace(conversationId: string, request: SendMessageRequest) {
+    addLocalProcessTrace(conversationId, {
+      source: 'client',
+      event: 'request_summary',
+      category: 'summary',
+      status: 'info',
+      label: resolveProcessTraceText('events.requestReady', 'Request ready'),
+      command: summarizeRequestText(request.message),
+      detail: formatRequestSummaryDetail(request),
+    })
+    addLocalProcessTrace(
+      conversationId,
+      {
+        source: 'client',
+        event: 'request_dispatched',
+        category: 'lifecycle',
+        status: 'active',
+        label: resolveProcessTraceText('events.requestSent', 'Request sent'),
+        detail: resolveProcessTraceText(
+          'details.requestDispatched',
+          'Waiting for the server to accept and start the response.'
+        ),
+      },
+      { replaceLatestByEvent: true, updateStatusTimer: true }
+    )
+    addLocalProcessTrace(
+      conversationId,
+      {
+        source: 'client',
+        event: 'waiting_for_response',
+        category: 'lifecycle',
+        status: 'active',
+        label: resolveProcessTraceText('events.waitingForResponse', 'Waiting for response'),
+        detail: resolveProcessTraceText(
+          'details.waitingForResponse',
+          'The request was accepted. Waiting for the first visible output.'
+        ),
+      },
+      { replaceLatestByEvent: true }
+    )
+  }
+
   function applyVisibleStreamState(state: ActiveConversationStreamState | null) {
     sending.value = !!state?.sending
     streaming.value = !!state?.streaming
@@ -570,6 +939,7 @@ export const useChatStore = defineStore('chat', () => {
     streamProgress.value = state?.receivedFirstChunk ? null : (state?.streamProgress ?? null)
     statusStartedAt.value = state?.statusStartedAt ?? 0
     statusSummary.value = state?.statusSummary ?? null
+    processTrace.value = cloneProcessTrace(state?.processTrace)
     _receivedFirstChunk.value = !!state?.receivedFirstChunk
     processContentLength.value = state?.processContentLength ?? 0
     toolResults.value = cloneToolResultItems(state?.toolResults)
@@ -609,6 +979,7 @@ export const useChatStore = defineStore('chat', () => {
       previewContent: '',
       processContentLength: 0,
       toolResults: [],
+      processTrace: [],
       statusStartedAt: Date.now(),
       statusSummary: null,
     }
@@ -634,6 +1005,7 @@ export const useChatStore = defineStore('chat', () => {
         ? [...patch.toolExecutingCommands]
         : current.toolExecutingCommands,
       toolResults: patch.toolResults ? cloneToolResultItems(patch.toolResults) : current.toolResults,
+      processTrace: patch.processTrace ? cloneProcessTrace(patch.processTrace) : current.processTrace,
     }
     activeStreamState.value = next
     if (currentConversationId.value === conversationId) {
@@ -669,6 +1041,7 @@ export const useChatStore = defineStore('chat', () => {
       previewContent: '',
       processContentLength: 0,
       toolResults: [],
+      processTrace: [],
       statusStartedAt: Date.now(),
       statusSummary: null,
     })
@@ -687,6 +1060,7 @@ export const useChatStore = defineStore('chat', () => {
     streamProgress.value = null
     statusStartedAt.value = 0
     statusSummary.value = null
+    processTrace.value = []
     toolExecuting.value = false
     toolExecutingStartTime.value = 0
     activeStreamId.value = null
@@ -716,7 +1090,14 @@ export const useChatStore = defineStore('chat', () => {
 
     resetPendingStreamDelta()
     const previewContent = state.previewContent || ''
-    const lastMessage = messages.value[messages.value.length - 1]
+    let lastMessage: Message | undefined
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      const candidate = messages.value[i]
+      if (candidate?.role === 'assistant' && candidate.conversation_id === conversationId) {
+        lastMessage = candidate
+        break
+      }
+    }
     const canReuseLastAssistant =
       !!previewContent &&
       !!lastMessage &&
@@ -731,6 +1112,7 @@ export const useChatStore = defineStore('chat', () => {
     } else if (
       previewContent ||
       state.toolResults.length > 0 ||
+      state.processTrace.length > 0 ||
       state.toolExecuting ||
       state.awaitingConfirmation ||
       state.statusSummary ||
@@ -751,6 +1133,7 @@ export const useChatStore = defineStore('chat', () => {
     options: SSEClientOptions
   ) {
     beginActiveStream(conversationId)
+    addRequestProcessTrace(conversationId, request)
 
     await sseClient.connect(conversationId, request, {
       ...options,
@@ -770,8 +1153,50 @@ export const useChatStore = defineStore('chat', () => {
         }
         options.onStreamProgress?.(progress)
       },
+      onProcessEvent: (chunk) => {
+        const item = createServerProcessTraceItem(chunk)
+        if (item) {
+          const nextSummary = resolveProcessTraceStatusLabel(item)
+          upsertProcessTraceItem(conversationId, item, {
+            replaceLatestByEvent:
+              item.event === 'pre_content_retry_scheduled' ||
+              item.event === 'pre_content_retry_started' ||
+              item.event === 'continuation_recovery_started' ||
+              item.event === 'provider_failover',
+            updateStatusTimer:
+              item.status === 'active' || item.status === 'pending' || item.status === 'error',
+          })
+          const current = getActiveStreamState(conversationId)
+          if (current) {
+            updateActiveStreamState(conversationId, {
+              statusSummary: nextSummary,
+              statusStartedAt:
+                current.statusSummary === nextSummary ? current.statusStartedAt : item.timestamp,
+            })
+          }
+        }
+        options.onProcessEvent?.(chunk)
+      },
       onMessage: (chunk) => {
         if (chunk.awaiting_user_input) {
+          addLocalProcessTrace(
+            conversationId,
+            {
+              source: 'client',
+              event: 'awaiting_confirmation',
+              category: 'confirmation',
+              status: 'active',
+              label: resolveProcessTraceText(
+                'events.waitingForConfirmation',
+                'Waiting for confirmation'
+              ),
+              detail: resolveProcessTraceText(
+                'details.awaitingConfirmation',
+                'The assistant needs your confirmation before continuing.'
+              ),
+            },
+            { replaceLatestByEvent: true, updateStatusTimer: true }
+          )
           updateActiveStreamState(conversationId, {
             awaitingConfirmation: true,
             statusStartedAt: Date.now(),
@@ -796,12 +1221,14 @@ export const useChatStore = defineStore('chat', () => {
         options.onToolExecuting?.(toolCount, toolNames, sandboxAvailable, toolCommands)
       },
       onToolResults: (results, toolRound) => {
+        const parsedResults = parseToolResults(results)
         const current = getActiveStreamState(conversationId)
         if (current) {
           updateActiveStreamState(conversationId, {
-            toolResults: [...current.toolResults, ...parseToolResults(results)],
+            toolResults: [...current.toolResults, ...parsedResults],
           })
         }
+        appendLastAssistantLocalProcessToolResults(conversationId, parsedResults)
         options.onToolResults?.(results, toolRound)
       },
       onNewMessage: (toolRound) => {
@@ -813,6 +1240,22 @@ export const useChatStore = defineStore('chat', () => {
       },
       onInjection: (userMessage) => {
         resetActiveStreamRound(conversationId)
+        addLocalProcessTrace(conversationId, {
+          source: 'client',
+          event: 'injection_restart',
+          category: 'lifecycle',
+          status: 'active',
+          label: resolveProcessTraceText(
+            'events.restartingWithLatestMessage',
+            'Restarting with your latest message'
+          ),
+          detail:
+            summarizeRequestText(userMessage) ||
+            resolveProcessTraceText(
+              'details.injectionRestart',
+              'The assistant is restarting the response with your latest interruption.'
+            ),
+        })
         options.onInjection?.(userMessage)
       },
       onBlocked: (message, threatLevel) => {
@@ -827,6 +1270,24 @@ export const useChatStore = defineStore('chat', () => {
         options.onContextTrimmed?.(info)
       },
       onNetworkInterrupt: () => {
+        addLocalProcessTrace(
+          conversationId,
+          {
+            source: 'client',
+            event: 'network_interrupt_waiting',
+            category: 'recovery',
+            status: 'active',
+            label: resolveProcessTraceText(
+              'events.waitingForConnectionRecovery',
+              'Waiting for connection recovery'
+            ),
+            detail: resolveProcessTraceText(
+              'details.networkInterruptWaiting',
+              'The stream was interrupted after content started. Waiting for the backend to recover.'
+            ),
+          },
+          { replaceLatestByEvent: true, updateStatusTimer: true }
+        )
         options.onNetworkInterrupt?.()
       },
       onError: (err) => {
@@ -946,6 +1407,24 @@ export const useChatStore = defineStore('chat', () => {
     if (!lastMsg || lastMsg.role !== 'assistant') return
     if (lastMsg.content === streamingContent.value) return
     lastMsg.content = streamingContent.value
+    triggerRef(messages)
+  }
+
+  function appendLastAssistantLocalProcessToolResults(
+    conversationId: string,
+    items: ToolResultItem[]
+  ) {
+    if (items.length === 0) return
+    const lastIndex = messages.value.length - 1
+    if (lastIndex < 0) return
+    const lastMsg = messages.value[lastIndex]
+    if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.conversation_id !== conversationId) {
+      return
+    }
+
+    const runtimeMsg = lastMsg as RuntimeProcessMessage
+    const existing = runtimeMsg.local_process_tool_results || []
+    runtimeMsg.local_process_tool_results = [...existing, ...cloneToolResultItems(items)]
     triggerRef(messages)
   }
 
@@ -1376,6 +1855,7 @@ export const useChatStore = defineStore('chat', () => {
         previewContent: streamingContent.value,
         processContentLength: processContentLength.value,
         toolResults: cloneToolResultItems(toolResults.value),
+        processTrace: cloneProcessTrace(processTrace.value),
         statusStartedAt: statusStartedAt.value,
         statusSummary: statusSummary.value,
       })
@@ -3001,6 +3481,7 @@ export const useChatStore = defineStore('chat', () => {
     streamProgress,
     statusStartedAt,
     statusSummary,
+    processTrace,
     securityBlocked,
     trialExhausted,
     toolExecuting,

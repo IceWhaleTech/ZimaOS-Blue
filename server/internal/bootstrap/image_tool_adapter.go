@@ -167,6 +167,21 @@ func imageTaskFromMediaTask(task *mediagen.MediaTask, category string) *tools.Im
 		UpdatedAt: task.UpdatedAt,
 		Request:   request,
 		Outputs:   outputs,
+		Fallback:  imageFallbackFromMediaTask(task),
+	}
+}
+
+func imageFallbackFromMediaTask(task *mediagen.MediaTask) *tools.MediaFallbackInfo {
+	if task == nil || task.FallbackInfo == nil {
+		return nil
+	}
+	return &tools.MediaFallbackInfo{
+		Used:        task.FallbackInfo.Used,
+		Strategy:    task.FallbackInfo.Strategy,
+		DisplayName: task.FallbackInfo.DisplayName,
+		SourceURLs:  append([]string(nil), task.FallbackInfo.SourceURLs...),
+		SpaceURL:    task.FallbackInfo.SpaceURL,
+		Disclosure:  task.FallbackInfo.Disclosure,
 	}
 }
 

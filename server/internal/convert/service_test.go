@@ -3,6 +3,7 @@ package convert
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,33 @@ func TestRecordAttachmentAndPromptSummary(t *testing.T) {
 	}
 	if !strings.Contains(summary, "out:task-1:out-1") {
 		t.Fatalf("summary missing output ref: %s", summary)
+	}
+}
+
+func TestGetTaskRestoresSourcesFromStoredRequest(t *testing.T) {
+	svc := setupConvertTestService(t)
+	task := &ConvertTask{
+		ID:             "task-with-sources",
+		UserID:         "user-1",
+		ConversationID: "conv-1",
+		Action:         ActionConvert,
+		Status:         StatusSucceeded,
+		Request: &TaskRequest{
+			Action:       ActionConvert,
+			Sources:      []string{"/tmp/input.md"},
+			TargetFormat: "pdf",
+		},
+	}
+	if err := svc.store.CreateTask(task); err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+
+	got, err := svc.GetTask(context.Background(), "user-1", "conv-1", task.ID)
+	if err != nil {
+		t.Fatalf("GetTask failed: %v", err)
+	}
+	if len(got.Sources) != 1 || got.Sources[0] != "/tmp/input.md" {
+		t.Fatalf("sources=%v, want /tmp/input.md", got.Sources)
 	}
 }
 
@@ -200,5 +228,47 @@ func TestCancelTaskUpdatesStatus(t *testing.T) {
 	}
 	if cancelled.Status != StatusCancelled {
 		t.Fatalf("status=%s, want %s", cancelled.Status, StatusCancelled)
+	}
+}
+
+func TestCapabilitiesExposeHelperPDFFallback(t *testing.T) {
+	svc := setupConvertTestService(t)
+	helperPath := filepath.Join(t.TempDir(), "blue-convert-helper")
+	if err := os.WriteFile(helperPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write helper: %v", err)
+	}
+	t.Setenv("BLUE_CONVERT_HELPER", helperPath)
+
+	caps := svc.Capabilities(context.Background())
+	formats, ok := caps.Document["helper_pdf_preview"]
+	if !ok {
+		t.Fatalf("expected helper_pdf_preview in capabilities document map: %#v", caps.Document)
+	}
+	if len(formats) == 0 || formats[0] == "" {
+		t.Fatalf("unexpected helper formats: %#v", formats)
+	}
+	foundNote := false
+	for _, note := range caps.Notes {
+		if strings.Contains(note, "helper_pdf_preview") {
+			foundNote = true
+			break
+		}
+	}
+	if !foundNote {
+		t.Fatalf("expected helper note in capabilities notes: %#v", caps.Notes)
+	}
+}
+
+func TestHelperResponseUnmarshalIncludesPath(t *testing.T) {
+	var resp helperResponse
+	raw := []byte(`{"outputs":[{"path":"/tmp/out.pdf","name":"out.pdf","preview_kind":"pdf"}]}`)
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatalf("unmarshal helper response: %v", err)
+	}
+	if len(resp.Outputs) != 1 {
+		t.Fatalf("outputs = %d, want 1", len(resp.Outputs))
+	}
+	if resp.Outputs[0].Path != "/tmp/out.pdf" {
+		t.Fatalf("path = %q, want /tmp/out.pdf", resp.Outputs[0].Path)
 	}
 }

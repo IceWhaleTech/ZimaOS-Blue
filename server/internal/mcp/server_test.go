@@ -823,6 +823,38 @@ func TestWorkspaceWriteText_ContentCoercion(t *testing.T) {
 	}
 }
 
+func TestWorkspaceWriteText_CompatChunkAlias(t *testing.T) {
+	root := t.TempDir()
+	s := testServer(t)
+	s.SetWorkspaceRoot(root)
+	sess := s.CreateSession()
+
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceWriteTextTool,
+		Arguments: map[string]interface{}{
+			"input": map[string]interface{}{
+				"filePath": "src/chunk.txt",
+				"chunk":    "chunk alias works",
+			},
+		},
+	})
+	if resp.Error != nil {
+		t.Fatalf("write tool rpc error: %v", resp.Error)
+	}
+	callResult := parseToolCallResult(t, resp)
+	if callResult.IsError {
+		t.Fatalf("write tool failed: %v", callResult.Content)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "src", "chunk.txt"))
+	if err != nil {
+		t.Fatalf("failed to read written file: %v", err)
+	}
+	if got := string(data); got != "chunk alias works" {
+		t.Fatalf("content = %q, want %q", got, "chunk alias works")
+	}
+}
+
 func TestWorkspaceTools_RejectPathTraversal(t *testing.T) {
 	s := testServer(t)
 	s.SetWorkspaceRoot(t.TempDir())

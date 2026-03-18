@@ -196,10 +196,27 @@ func (t *ImageGenerateSkill) Execute(ctx context.Context, args map[string]interf
 	}
 
 	return map[string]interface{}{
-		"status":     "success",
-		"images":     images,
-		"elapsed_ms": elapsed.Milliseconds(),
+		"status":        "success",
+		"images":        images,
+		"elapsed_ms":    elapsed.Milliseconds(),
+		"fallback_info": task.FallbackInfo,
+		"message":       fallbackSkillMessage(task.FallbackInfo),
 	}, nil
+}
+
+func fallbackSkillMessage(info *MediaFallbackInfo) string {
+	if info == nil || !info.Used || strings.TrimSpace(info.Disclosure) == "" {
+		return ""
+	}
+	return info.Disclosure
+}
+
+func fallbackSkillTaskMessage(taskID string, info *MediaFallbackInfo) string {
+	base := "Video generation started. Check progress at /api/media/tasks/" + taskID
+	if info == nil || !info.Used || strings.TrimSpace(info.Disclosure) == "" {
+		return base
+	}
+	return base + " " + info.Disclosure
 }
 
 var _ tools.Tool = (*ImageGenerateSkill)(nil)

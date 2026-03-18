@@ -132,6 +132,7 @@ type ConvertTask struct {
 	UserID            string          `json:"user_id,omitempty"`
 	Action            string          `json:"action"`
 	Status            TaskStatus      `json:"status"`
+	Sources           []string        `json:"sources,omitempty"`
 	TargetFormat      string          `json:"target_format,omitempty"`
 	SourceSummary     string          `json:"source_summary,omitempty"`
 	Progress          float64         `json:"progress,omitempty"`
@@ -199,9 +200,18 @@ type DocumentEngineInfo struct {
 }
 
 type helperResponse struct {
-	Outputs []ConvertOutput `json:"outputs,omitempty"`
-	Message string          `json:"message,omitempty"`
-	Error   string          `json:"error,omitempty"`
+	Outputs []helperOutput `json:"outputs,omitempty"`
+	Message string         `json:"message,omitempty"`
+	Error   string         `json:"error,omitempty"`
+}
+
+type helperOutput struct {
+	ID          string            `json:"output_id,omitempty"`
+	Name        string            `json:"name,omitempty"`
+	MimeType    string            `json:"mime_type,omitempty"`
+	PreviewKind OutputPreviewKind `json:"preview_kind,omitempty"`
+	PreviewText string            `json:"preview_text,omitempty"`
+	Path        string            `json:"path,omitempty"`
 }
 
 type storedOutput struct {

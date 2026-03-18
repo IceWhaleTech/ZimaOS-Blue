@@ -806,11 +806,14 @@ func TestApplyProviderVerificationRecommendation(t *testing.T) {
 	if !changed {
 		t.Fatal("expected recommendation to normalize custom provider")
 	}
-	if provider.APIFormat != APIFormatOpenAI {
-		t.Fatalf("APIFormat = %q, want %q", provider.APIFormat, APIFormatOpenAI)
+	if provider.APIFormat != APIFormatResponses {
+		t.Fatalf("APIFormat = %q, want %q", provider.APIFormat, APIFormatResponses)
 	}
-	if provider.DetectedFormat != "" {
-		t.Fatalf("DetectedFormat = %q, want empty", provider.DetectedFormat)
+	if provider.APIFormatMode != APIFormatModeAuto {
+		t.Fatalf("APIFormatMode = %q, want %q", provider.APIFormatMode, APIFormatModeAuto)
+	}
+	if provider.DetectedFormat != APIFormatResponses {
+		t.Fatalf("DetectedFormat = %q, want %q", provider.DetectedFormat, APIFormatResponses)
 	}
 	if provider.DetectedEndpoint != "" {
 		t.Fatalf("DetectedEndpoint = %q, want empty", provider.DetectedEndpoint)
@@ -845,14 +848,17 @@ func TestApplyProviderVerificationRecommendation_UpdatesCustomProviderFormat(t *
 	if provider.APIFormat != APIFormatOpenAI {
 		t.Fatalf("APIFormat = %q, want %q", provider.APIFormat, APIFormatOpenAI)
 	}
+	if provider.APIFormatMode != APIFormatModeAuto {
+		t.Fatalf("APIFormatMode = %q, want %q", provider.APIFormatMode, APIFormatModeAuto)
+	}
 	if provider.BaseURL != "https://relay.example.com" {
 		t.Fatalf("BaseURL = %q, want %q", provider.BaseURL, "https://relay.example.com")
 	}
 	if provider.DetectedEndpoint != "" {
 		t.Fatalf("DetectedEndpoint = %q, want empty", provider.DetectedEndpoint)
 	}
-	if provider.DetectedFormat != "" {
-		t.Fatalf("DetectedFormat = %q, want empty", provider.DetectedFormat)
+	if provider.DetectedFormat != APIFormatOpenAI {
+		t.Fatalf("DetectedFormat = %q, want %q", provider.DetectedFormat, APIFormatOpenAI)
 	}
 	if !provider.UpdatedAt.Equal(now) {
 		t.Fatalf("UpdatedAt = %v, want %v", provider.UpdatedAt, now)
@@ -999,8 +1005,11 @@ func TestHandlerVerifyProviderByID_Apply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registry get failed: %v", err)
 	}
-	if updated.APIFormat != APIFormatOpenAI {
-		t.Fatalf("APIFormat = %q, want %q", updated.APIFormat, APIFormatOpenAI)
+	if updated.APIFormat != APIFormatResponses {
+		t.Fatalf("APIFormat = %q, want %q", updated.APIFormat, APIFormatResponses)
+	}
+	if updated.APIFormatMode != APIFormatModeAuto {
+		t.Fatalf("APIFormatMode = %q, want %q", updated.APIFormatMode, APIFormatModeAuto)
 	}
 	if updated.BaseURL != "https://relay.example.com" {
 		t.Fatalf("BaseURL = %q, want %q", updated.BaseURL, "https://relay.example.com")
@@ -1008,8 +1017,8 @@ func TestHandlerVerifyProviderByID_Apply(t *testing.T) {
 	if updated.DetectedEndpoint != "" {
 		t.Fatalf("DetectedEndpoint = %q, want empty", updated.DetectedEndpoint)
 	}
-	if updated.DetectedFormat != "" {
-		t.Fatalf("DetectedFormat = %q, want empty", updated.DetectedFormat)
+	if updated.DetectedFormat != APIFormatResponses {
+		t.Fatalf("DetectedFormat = %q, want %q", updated.DetectedFormat, APIFormatResponses)
 	}
 }
 

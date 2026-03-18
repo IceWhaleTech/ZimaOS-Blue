@@ -128,6 +128,9 @@ func (h *SystemHandler) DownloadLocalFile(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	if wantsInlineLocalFile(c.QueryParam("inline")) {
+		return c.File(resolvedPath)
+	}
 	return c.Attachment(resolvedPath, filepath.Base(resolvedPath))
 }
 
@@ -188,7 +191,47 @@ func resolveLocalPath(rawPath string, allowDir bool) (string, os.FileInfo, error
 	return cleanPath, info, nil
 }
 
+func wantsInlineLocalFile(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "inline":
+		return true
+	default:
+		return false
+	}
+}
+
 func revealPathInFileManager(path string, isDir bool) error {
+	return revealPathInFileManagerWith(path, isDir, revealPathInFileManagerTarget)
+}
+
+func revealPathInFileManagerWith(path string, isDir bool, reveal func(string, bool) error) error {
+	err := reveal(path, isDir)
+	if err == nil || isDir {
+		return err
+	}
+
+	parent := parentDirectoryForRevealFallback(path, isDir)
+	if parent == "" {
+		return err
+	}
+	if parentErr := reveal(parent, true); parentErr != nil {
+		return fmt.Errorf("%v (fallback to parent directory failed: %v)", err, parentErr)
+	}
+	return nil
+}
+
+func parentDirectoryForRevealFallback(path string, isDir bool) string {
+	if isDir {
+		return ""
+	}
+	parent := filepath.Dir(path)
+	if parent == "" || parent == "." || parent == path {
+		return ""
+	}
+	return parent
+}
+
+func revealPathInFileManagerTarget(path string, isDir bool) error {
 	switch runtime.GOOS {
 	case "darwin":
 		if isDir {

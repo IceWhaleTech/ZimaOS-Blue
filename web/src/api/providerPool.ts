@@ -23,6 +23,16 @@ export type APIFormat =
   | 'copilot'
   | ''
 
+export type APIFormatMode = 'auto' | 'pinned' | ''
+
+export type FormatResolutionSource =
+  | 'endpoint_lock'
+  | 'user_pinned'
+  | 'detected'
+  | 'model_memory'
+  | 'family_default'
+  | ''
+
 export interface Provider {
   id: string
   name: string
@@ -33,6 +43,7 @@ export interface Provider {
   base_url?: string
   api_version?: string
   api_format?: APIFormat
+  api_format_mode?: APIFormatMode
   api_keys?: APIKey[]
   priority: number
   model_params?: ModelParams
@@ -104,6 +115,8 @@ export interface ProviderVerificationResult {
   model: string
   detected_format: APIFormat
   recommended_api_format: APIFormat
+  candidate_formats?: APIFormat[]
+  resolution_source?: FormatResolutionSource
   recommended_base_url: string
   responses_only: boolean
   chat_error?: string

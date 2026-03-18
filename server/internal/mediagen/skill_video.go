@@ -102,9 +102,10 @@ func (t *VideoGenerateSkill) Execute(ctx context.Context, args map[string]interf
 	}
 
 	return map[string]interface{}{
-		"task_id": task.ID,
-		"status":  string(task.Status),
-		"message": "Video generation started. Check progress at /api/media/tasks/" + task.ID,
+		"task_id":       task.ID,
+		"status":        string(task.Status),
+		"message":       fallbackSkillTaskMessage(task.ID, task.FallbackInfo),
+		"fallback_info": task.FallbackInfo,
 	}, nil
 }
 

@@ -1,10 +1,13 @@
 package database
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,6 +19,10 @@ var sqliteDatabaseFileExtensions = map[string]struct{}{
 	".sqlite3": {},
 }
 
+const sqliteRecoverTimeout = 2 * time.Minute
+
+var sqliteAuxiliarySuffixes = []string{"", "-wal", "-shm"}
+
 // IsSQLiteCorruptionError reports whether err looks like SQLite file corruption.
 func IsSQLiteCorruptionError(err error) bool {
 	if err == nil {
@@ -25,6 +32,7 @@ func IsSQLiteCorruptionError(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "database disk image is malformed") ||
 		strings.Contains(msg, "database is malformed") ||
+		strings.Contains(msg, "database corruption detected") ||
 		strings.Contains(msg, "sqlite_corrupt") ||
 		strings.Contains(msg, "file is not a database")
 }
@@ -40,14 +48,25 @@ func WrapSQLiteOpenError(dbPath string, err error) error {
 	return err
 }
 
-// OpenSQLiteWithRecovery opens a SQLite database and retries once after a WAL
-// checkpoint when SQLite reports corruption.
+// SQLiteRepairResult describes an in-place repair of a SQLite database file.
+type SQLiteRepairResult struct {
+	BackupPath string `json:"backup_path"`
+	Repaired   bool   `json:"repaired"`
+}
+
+// OpenSQLiteWithRecovery opens a SQLite database and retries after best-effort
+// recovery steps when SQLite reports corruption.
 func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (*sql.DB, error) {
 	if strings.TrimSpace(dbPath) == "" {
 		dbPath = dsn
 	}
 
-	for attempt := 0; attempt < 2; attempt++ {
+	var checkpointErr error
+	var repairErr error
+	triedCheckpoint := false
+	triedRepair := false
+
+	for {
 		db, err := sql.Open("sqlite3", dsn)
 		if err != nil {
 			return nil, WrapSQLiteOpenError(dbPath, err)
@@ -59,11 +78,32 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 
 		if err := configure(db); err != nil {
 			_ = db.Close()
-			if attempt == 0 && IsSQLiteCorruptionError(err) {
-				if checkpointErr := CheckpointWALForDatabase(dbPath, CheckpointTruncate); checkpointErr == nil {
-					continue
-				} else {
-					return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v)", WrapSQLiteOpenError(dbPath, err), checkpointErr)
+			if IsSQLiteCorruptionError(err) {
+				if !triedCheckpoint {
+					triedCheckpoint = true
+					checkpointErr = CheckpointWALForDatabase(dbPath, CheckpointTruncate)
+					if checkpointErr == nil {
+						continue
+					}
+				}
+				if !triedRepair {
+					triedRepair = true
+					_, repairErr = RepairSQLiteDatabase(dbPath)
+					if repairErr == nil {
+						continue
+					}
+				}
+
+				baseErr := WrapSQLiteOpenError(dbPath, err)
+				switch {
+				case checkpointErr != nil && repairErr != nil:
+					return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v; failed to repair database: %v)", baseErr, checkpointErr, repairErr)
+				case checkpointErr != nil:
+					return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v)", baseErr, checkpointErr)
+				case repairErr != nil:
+					return nil, fmt.Errorf("%w (failed to repair database: %v)", baseErr, repairErr)
+				default:
+					return nil, baseErr
 				}
 			}
 			return nil, WrapSQLiteOpenError(dbPath, err)
@@ -71,8 +111,234 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 
 		return db, nil
 	}
+}
 
-	return nil, fmt.Errorf("failed to open sqlite database %s", dbPath)
+// RepairSQLiteDatabase tries to salvage a corrupted SQLite database using the
+// sqlite3 CLI's .recover command, then atomically replaces the original file
+// while preserving the corrupted copy beside it for inspection.
+func RepairSQLiteDatabase(dbPath string) (*SQLiteRepairResult, error) {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" {
+		return nil, fmt.Errorf("database path is empty")
+	}
+	if dbPath == ":memory:" {
+		return nil, fmt.Errorf("sqlite repair requires a filesystem path")
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		return nil, fmt.Errorf("failed to stat database %s: %w", dbPath, err)
+	}
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		return nil, fmt.Errorf("sqlite3 CLI is unavailable: %w", err)
+	}
+
+	suffix := time.Now().UTC().Format("20060102T150405.000000000")
+	snapshotPath := dbPath + ".repair-src." + suffix
+	recoveredPath := dbPath + ".repair-out." + suffix
+	backupPath := dbPath + ".corrupt." + suffix
+	replacedOriginal := false
+	keepBackup := false
+
+	defer removeSQLiteArtifacts(snapshotPath)
+	defer func() {
+		if !replacedOriginal {
+			removeSQLiteArtifacts(recoveredPath)
+		}
+	}()
+	defer func() {
+		if replacedOriginal && !keepBackup {
+			_ = restoreSQLiteArtifacts(backupPath, dbPath)
+		}
+	}()
+
+	if err := copySQLiteArtifacts(dbPath, snapshotPath); err != nil {
+		return nil, fmt.Errorf("failed to snapshot database before repair: %w", err)
+	}
+	if err := runSQLiteRecover(snapshotPath, recoveredPath); err != nil {
+		return nil, fmt.Errorf("failed to recover sqlite database %s: %w", dbPath, err)
+	}
+	if info, err := os.Stat(recoveredPath); err != nil {
+		return nil, fmt.Errorf("sqlite recovery did not produce %s: %w", recoveredPath, err)
+	} else if info.Size() == 0 {
+		return nil, fmt.Errorf("sqlite recovery produced an empty database file")
+	}
+	if err := CheckDatabaseIntegrity(recoveredPath); err != nil {
+		return nil, fmt.Errorf("recovered sqlite database failed integrity check: %w", err)
+	}
+	if err := rotateSQLiteArtifacts(dbPath, backupPath); err != nil {
+		return nil, fmt.Errorf("failed to rotate corrupted database out of the way: %w", err)
+	}
+	replacedOriginal = true
+	if err := os.Rename(recoveredPath, dbPath); err != nil {
+		return nil, fmt.Errorf("failed to install repaired database %s: %w", dbPath, err)
+	}
+	keepBackup = true
+	replacedOriginal = false
+
+	return &SQLiteRepairResult{
+		BackupPath: backupPath,
+		Repaired:   true,
+	}, nil
+}
+
+func copySQLiteArtifacts(srcBase, dstBase string) error {
+	for _, suffix := range sqliteAuxiliarySuffixes {
+		src := srcBase + suffix
+		dst := dstBase + suffix
+		if err := copySQLiteArtifact(src, dst); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copySQLiteArtifact(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", src, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", src)
+	}
+
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", src, err)
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode().Perm())
+	if err != nil {
+		return fmt.Errorf("create %s: %w", dst, err)
+	}
+
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return fmt.Errorf("copy %s to %s: %w", src, dst, err)
+	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", dst, err)
+	}
+	if err := os.Chtimes(dst, info.ModTime(), info.ModTime()); err != nil {
+		return fmt.Errorf("set times for %s: %w", dst, err)
+	}
+	return nil
+}
+
+func rotateSQLiteArtifacts(srcBase, dstBase string) error {
+	moved := make([]string, 0, len(sqliteAuxiliarySuffixes))
+	for _, suffix := range sqliteAuxiliarySuffixes {
+		src := srcBase + suffix
+		dst := dstBase + suffix
+		if _, err := os.Stat(src); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("stat %s: %w", src, err)
+		}
+		if err := os.Rename(src, dst); err != nil {
+			for i := len(moved) - 1; i >= 0; i-- {
+				restoreSrc := dstBase + moved[i]
+				restoreDst := srcBase + moved[i]
+				_ = os.Rename(restoreSrc, restoreDst)
+			}
+			return fmt.Errorf("rename %s to %s: %w", src, dst, err)
+		}
+		moved = append(moved, suffix)
+	}
+	if len(moved) == 0 {
+		return fmt.Errorf("no sqlite files found at %s", srcBase)
+	}
+	return nil
+}
+
+func restoreSQLiteArtifacts(srcBase, dstBase string) error {
+	var errs []error
+	for _, suffix := range sqliteAuxiliarySuffixes {
+		src := srcBase + suffix
+		dst := dstBase + suffix
+		if _, err := os.Stat(src); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			errs = append(errs, fmt.Errorf("stat %s: %w", src, err))
+			continue
+		}
+		if err := os.Rename(src, dst); err != nil {
+			errs = append(errs, fmt.Errorf("rename %s to %s: %w", src, dst, err))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to restore sqlite files: %v", errs)
+	}
+	return nil
+}
+
+func removeSQLiteArtifacts(base string) {
+	for _, suffix := range sqliteAuxiliarySuffixes {
+		_ = os.Remove(base + suffix)
+	}
+}
+
+func runSQLiteRecover(srcPath, dstPath string) error {
+	_ = os.Remove(dstPath)
+
+	ctx, cancel := context.WithTimeout(context.Background(), sqliteRecoverTimeout)
+	defer cancel()
+
+	recoverCmd := exec.CommandContext(ctx, "sqlite3", srcPath, ".recover")
+	importCmd := exec.CommandContext(ctx, "sqlite3", dstPath)
+
+	recoverOut, err := recoverCmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("create recover stdout pipe: %w", err)
+	}
+
+	var recoverStderr bytes.Buffer
+	var importStdout bytes.Buffer
+	var importStderr bytes.Buffer
+	recoverCmd.Stderr = &recoverStderr
+	importCmd.Stdin = recoverOut
+	importCmd.Stdout = &importStdout
+	importCmd.Stderr = &importStderr
+
+	if err := importCmd.Start(); err != nil {
+		return fmt.Errorf("start sqlite import: %w", err)
+	}
+	if err := recoverCmd.Start(); err != nil {
+		_ = importCmd.Process.Kill()
+		_, _ = importCmd.Process.Wait()
+		return fmt.Errorf("start sqlite recover: %w", err)
+	}
+
+	recoverErr := recoverCmd.Wait()
+	importErr := importCmd.Wait()
+	if ctx.Err() != nil {
+		return fmt.Errorf("sqlite recover timed out after %s", sqliteRecoverTimeout)
+	}
+	if recoverErr != nil || importErr != nil {
+		var details []string
+		if recoverErr != nil {
+			details = append(details, fmt.Sprintf("recover command failed: %v", recoverErr))
+		}
+		if msg := strings.TrimSpace(recoverStderr.String()); msg != "" {
+			details = append(details, "recover stderr: "+msg)
+		}
+		if importErr != nil {
+			details = append(details, fmt.Sprintf("import command failed: %v", importErr))
+		}
+		if msg := strings.TrimSpace(importStderr.String()); msg != "" {
+			details = append(details, "import stderr: "+msg)
+		}
+		if msg := strings.TrimSpace(importStdout.String()); msg != "" {
+			details = append(details, "import stdout: "+msg)
+		}
+		return fmt.Errorf(strings.Join(details, "; "))
+	}
+
+	return nil
 }
 
 // CheckpointWAL runs PRAGMA wal_checkpoint(mode) on an already opened DB.

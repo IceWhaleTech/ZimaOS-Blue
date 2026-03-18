@@ -121,7 +121,7 @@ async function installSkill() {
         <div class="hero-copy dashboard-page-copy configuration-page-copy">
           <span class="dashboard-page-eyebrow">{{ t('nav.configuration') }}</span>
           <h1 class="plugins-page-title dashboard-page-title configuration-page-title">
-            {{ t('plugins.title') }}
+            {{ activeTabMeta.label }}
           </h1>
           <p class="hero-description dashboard-page-description configuration-page-description">
             {{ activeTabMeta.description }}
@@ -130,30 +130,34 @@ async function installSkill() {
       </section>
 
       <section class="plugins-shell">
-        <div class="main-tabs" role="tablist">
+        <nav class="plugins-tab-nav dashboard-card-surface" aria-label="Extension sections">
           <button
             v-for="tab in tabs"
             :key="tab.id"
+            type="button"
             role="tab"
             :aria-selected="activeMainTab === tab.id"
-            :class="['main-tab dashboard-card-subsurface', { active: activeMainTab === tab.id }]"
-            :style="{ '--tab-accent': tab.accent, '--tab-soft': tab.soft }"
+            :class="[
+              'plugins-tab-button dashboard-card-subsurface',
+              { 'plugins-tab-button--active': activeMainTab === tab.id },
+            ]"
             @click="setActiveTab(tab.id)"
           >
-            <span class="main-tab-icon-shell">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <span class="plugins-tab-button__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
                 <path :d="tab.icon" />
               </svg>
             </span>
 
-            <span class="main-tab-copy">
-              <span class="main-tab-label">{{ tab.label }}</span>
-              <span class="main-tab-desc">{{ tab.description }}</span>
+            <span class="plugins-tab-button__body">
+              <span class="plugins-tab-button__label-row">
+                <span class="plugins-tab-button__label">{{ tab.label }}</span>
+              </span>
             </span>
 
-            <span class="main-tab-state" aria-hidden="true"></span>
+            <span class="plugins-tab-button__state" aria-hidden="true"></span>
           </button>
-        </div>
+        </nav>
         <section
           class="content-shell dashboard-card-surface"
           :style="{ '--shell-accent': activeTabMeta.accent, '--shell-soft': activeTabMeta.soft }"
@@ -291,7 +295,7 @@ async function installSkill() {
 .plugins-page {
   position: relative;
   isolation: isolate;
-  padding: 0 0.75rem 1.8rem;
+  padding: 0 0.5rem 1rem;
   --dashboard-page-accent: 56, 189, 248;
   --bg-primary: #ffffff;
   --bg-secondary: #f8fafc;
@@ -320,7 +324,7 @@ async function installSkill() {
 
 .plugins-stage {
   position: relative;
-  padding: 1.15rem 0 0.35rem;
+  padding: 0.8rem 0 0.2rem;
 }
 
 .plugins-shell {
@@ -328,7 +332,10 @@ async function installSkill() {
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 82rem;
+  margin: 0 auto;
 }
 
 :root.dark .plugins-page,
@@ -360,7 +367,10 @@ html.dark .plugins-page {
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 82rem;
+  margin: 0 auto;
   padding: 0 0 0.2rem;
   border: 0;
   border-radius: 0;
@@ -371,117 +381,128 @@ html.dark .plugins-page {
 .hero-copy {
   flex: 1;
   min-width: 0;
-  max-width: 42rem;
-  padding-top: 0.1rem;
+  max-width: 34rem;
+  padding-top: 0;
 }
 
 .hero-description {
-  margin: 0.42rem 0 0;
-  max-width: 34rem;
+  margin: 0.28rem 0 0;
+  max-width: 28rem;
   color: #9ca3af;
-  font-size: 0.92rem;
-  line-height: 1.55;
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
-.main-tabs {
+.plugins-tab-nav {
   position: relative;
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
   margin-top: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
-.main-tab {
+.plugins-tab-button {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
-  padding: 16px 18px;
-  border: 1px solid rgba(255, 255, 255, 0.92);
-  border-radius: 1.5rem;
-  background: var(--surface-strong);
-  color: var(--text-primary);
+  gap: 8px;
+  padding: 10px 12px;
+  min-height: 100%;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 1rem;
+  background: #ffffff;
+  color: #0f172a;
   text-align: left;
   cursor: pointer;
+  box-shadow: none;
   transition:
-    transform 0.22s ease,
     border-color 0.22s ease,
-    box-shadow 0.22s ease,
-    background 0.22s ease;
+    background-color 0.22s ease,
+    color 0.22s ease;
 }
 
-.main-tab:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.98);
-  box-shadow: var(--shell-shadow);
+.plugins-tab-button:hover {
+  border-color: rgba(148, 163, 184, 0.52);
+  background: #f8fafc;
 }
 
-.main-tab.active {
-  border-color: rgba(255, 255, 255, 0.98);
-  background: var(--surface-soft);
-  box-shadow: var(--shell-shadow);
-  transform: translateY(-1px);
+.plugins-tab-button--active {
+  border-color: rgba(148, 163, 184, 0.58);
+  background: #f1f5f9;
+  color: #0f172a;
+  box-shadow: none;
 }
 
-.main-tab-icon-shell {
+.plugins-tab-button__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 1rem;
-  background: rgba(15, 23, 42, 0.06);
-  color: var(--tab-accent);
-  border: 0;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border-radius: 0.65rem;
+  background: rgba(148, 163, 184, 0.16);
+  color: #64748b;
 }
 
-.main-tab-icon-shell svg {
-  width: 22px;
-  height: 22px;
+.plugins-tab-button__icon svg {
+  width: 1rem;
+  height: 1rem;
 }
 
-.main-tab-copy {
+.plugins-tab-button--active .plugins-tab-button__icon {
+  background: rgba(148, 163, 184, 0.22);
+  color: #475569;
+}
+
+.plugins-tab-button__body {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  gap: 0.2rem;
 }
 
-.main-tab-label {
-  font-size: 14px;
+.plugins-tab-button__label-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.plugins-tab-button__label {
+  font-size: 0.78rem;
   font-weight: 700;
-  color: var(--text-primary);
+  line-height: 1.25;
 }
 
-.main-tab-desc {
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.main-tab-state {
-  width: 12px;
-  height: 12px;
+.plugins-tab-button__state {
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.4);
-  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.28);
+  background: rgba(148, 163, 184, 0.35);
   transition:
-    background 0.22s ease,
-    box-shadow 0.22s ease;
+    transform 0.22s ease,
+    background-color 0.22s ease;
 }
 
-.main-tab.active .main-tab-state {
-  background: var(--tab-accent);
-  box-shadow: none;
+.plugins-tab-button--active .plugins-tab-button__state {
+  transform: scale(1.05);
+  background: #64748b;
 }
 
 .content-shell {
   position: relative;
   margin-top: 0;
   overflow: hidden;
-  padding: 1.05rem;
-  border-radius: 1.5rem;
+  padding: 0.75rem;
+  border-radius: 1rem;
   background: var(--surface-strong);
   box-shadow: var(--shell-shadow);
 }
@@ -517,6 +538,56 @@ html.dark .plugins-page {
   transform: translateY(-10px);
 }
 
+:root.dark .plugins-tab-button,
+[data-theme='dark'] .plugins-tab-button,
+html.dark .plugins-tab-button {
+  border-color: rgba(71, 85, 105, 0.46);
+  background: #111827;
+  color: #cbd5e1;
+  box-shadow: none;
+}
+
+:root.dark .plugins-tab-button--active,
+[data-theme='dark'] .plugins-tab-button--active,
+html.dark .plugins-tab-button--active {
+  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.4);
+  background: #1f2937;
+}
+
+:root.dark .plugins-tab-button:hover,
+[data-theme='dark'] .plugins-tab-button:hover,
+html.dark .plugins-tab-button:hover {
+  border-color: rgba(148, 163, 184, 0.28);
+  background: #1f2937;
+}
+
+:root.dark .plugins-tab-button__state,
+[data-theme='dark'] .plugins-tab-button__state,
+html.dark .plugins-tab-button__state {
+  background: rgba(148, 163, 184, 0.32);
+}
+
+:root.dark .plugins-tab-button__icon,
+[data-theme='dark'] .plugins-tab-button__icon,
+html.dark .plugins-tab-button__icon {
+  background: rgba(148, 163, 184, 0.18);
+  color: #cbd5e1;
+}
+
+:root.dark .plugins-tab-button--active .plugins-tab-button__icon,
+[data-theme='dark'] .plugins-tab-button--active .plugins-tab-button__icon,
+html.dark .plugins-tab-button--active .plugins-tab-button__icon {
+  background: rgba(148, 163, 184, 0.24);
+  color: #f8fafc;
+}
+
+:root.dark .plugins-tab-button--active .plugins-tab-button__state,
+[data-theme='dark'] .plugins-tab-button--active .plugins-tab-button__state,
+html.dark .plugins-tab-button--active .plugins-tab-button__state {
+  background: #cbd5e1;
+}
+
 :deep(.skill-tab),
 :deep(.skill-store-tab),
 :deep(.tool-tab) {
@@ -525,13 +596,13 @@ html.dark .plugins-page {
 
 :deep(.overview-grid),
 :deep(.stats) {
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 :deep(.filters) {
-  margin-bottom: 18px;
-  padding: 14px;
-  border-radius: 20px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: var(--surface-float);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -556,7 +627,7 @@ html.dark .plugins-page {
 :deep(.filter-select),
 :deep(.btn-refresh),
 :deep(.btn-add-source) {
-  min-height: 42px;
+  min-height: 34px;
   border-color: rgba(148, 163, 184, 0.18);
   background: var(--surface-float);
 }
@@ -597,7 +668,7 @@ html.dark .plugins-page {
 }
 
 :deep(.stats) {
-  padding: 16px;
+  padding: 10px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: var(--surface-float);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -610,19 +681,19 @@ html.dark .plugins-page {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 14px;
   background: rgba(2, 6, 23, 0.62);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
 
 .modal {
-  width: min(560px, 100%);
-  max-height: calc(100vh - 40px);
+  width: min(460px, 100%);
+  max-height: calc(100vh - 28px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-radius: 24px;
+  border-radius: 18px;
   border: 1px solid var(--border);
   background: var(--surface-strong);
   box-shadow: 0 44px 120px -58px rgba(15, 23, 42, 0.95);
@@ -633,8 +704,8 @@ html.dark .plugins-page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 18px 22px;
+  gap: 8px;
+  padding: 14px 16px;
 }
 
 .modal-header {
@@ -643,7 +714,7 @@ html.dark .plugins-page {
 
 .modal-header h2 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1rem;
   color: var(--text-primary);
 }
 
@@ -651,13 +722,13 @@ html.dark .plugins-page {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   border: 0;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.12);
   color: var(--text-secondary);
-  font-size: 24px;
+  font-size: 18px;
   cursor: pointer;
   transition:
     background 0.2s ease,
@@ -671,15 +742,15 @@ html.dark .plugins-page {
 
 .modal-body {
   overflow: auto;
-  padding: 22px;
+  padding: 16px;
 }
 
 .install-method-tabs {
   display: flex;
   gap: 8px;
   padding: 4px;
-  margin-bottom: 22px;
-  border-radius: 18px;
+  margin-bottom: 14px;
+  border-radius: 14px;
   background: rgba(148, 163, 184, 0.12);
 }
 
@@ -688,10 +759,10 @@ html.dark .plugins-page {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 12px 14px;
+  gap: 6px;
+  padding: 8px 10px;
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -714,31 +785,31 @@ html.dark .plugins-page {
 }
 
 .method-tab svg {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
 }
 
 .url-input-section {
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .url-input-section label {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .url-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 13px 15px;
-  border-radius: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .url-input:focus {
@@ -749,17 +820,17 @@ html.dark .plugins-page {
 
 .url-hint,
 .upload-hint {
-  margin-top: 8px;
+  margin-top: 6px;
   color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .upload-dropzone {
   position: relative;
-  padding: 34px 24px;
+  padding: 22px 16px;
   text-align: center;
-  border-radius: 20px;
+  border-radius: 14px;
   border: 1.5px dashed rgba(148, 163, 184, 0.34);
   background: rgba(255, 255, 255, 0.04);
   transition:
@@ -781,9 +852,9 @@ html.dark .plugins-page {
 }
 
 .upload-dropzone svg {
-  width: 48px;
-  height: 48px;
-  margin-bottom: 12px;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 8px;
   color: var(--text-muted);
 }
 
@@ -792,9 +863,9 @@ html.dark .plugins-page {
 }
 
 .upload-dropzone p {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .upload-dropzone .file-name {
@@ -810,35 +881,35 @@ html.dark .plugins-page {
 }
 
 .upload-error {
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
   border: 1px solid rgba(239, 68, 68, 0.28);
   background: rgba(239, 68, 68, 0.12);
   color: #f87171;
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .upload-info {
-  margin-top: 18px;
-  padding: 14px;
-  border-radius: 18px;
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(255, 255, 255, 0.04);
 }
 
 .upload-info h4 {
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .upload-info ul {
   margin: 0;
-  padding-left: 18px;
+  padding-left: 16px;
   color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .modal-footer {
@@ -852,10 +923,10 @@ html.dark .plugins-page {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-width: 102px;
-  padding: 11px 16px;
-  border-radius: 14px;
-  font-size: 14px;
+  min-width: 84px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition:
@@ -887,8 +958,8 @@ html.dark .plugins-page {
 }
 
 .spinner {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border: 2px solid rgba(255, 255, 255, 0.24);
   border-top-color: currentColor;
   border-radius: 50%;
@@ -902,10 +973,6 @@ html.dark .plugins-page {
 }
 
 @media (max-width: 1180px) {
-  .main-tabs {
-    grid-template-columns: 1fr;
-  }
-
   :deep(.skill-layout),
   :deep(.store-layout) {
     grid-template-columns: 1fr;
@@ -918,9 +985,15 @@ html.dark .plugins-page {
   }
 }
 
+@media (max-width: 900px) {
+  .plugins-tab-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   .plugins-page {
-    padding: 0.75rem 0.75rem 1.4rem;
+    padding: 0.5rem 0.5rem 1rem;
   }
 
   .plugins-hero {
@@ -928,9 +1001,17 @@ html.dark .plugins-page {
     align-items: stretch;
   }
 
+  .plugins-tab-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .plugins-tab-button {
+    padding: 10px 12px;
+  }
+
   .content-shell {
-    padding: 18px;
-    border-radius: 1.5rem;
+    padding: 12px;
+    border-radius: 1rem;
   }
 
   .modal-overlay {
@@ -939,7 +1020,7 @@ html.dark .plugins-page {
 
   .modal {
     max-height: calc(100vh - 24px);
-    border-radius: 20px;
+    border-radius: 16px;
   }
 
   .modal-header,

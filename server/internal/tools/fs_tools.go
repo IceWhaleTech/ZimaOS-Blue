@@ -342,7 +342,7 @@ func fsCompatKeys(key string) []string {
 	case "path":
 		return []string{"path", "file_path", "filePath"}
 	case "content":
-		return []string{"content", "text", "body", "value"}
+		return []string{"content", "text", "body", "value", "chunk"}
 	case "old_text":
 		return []string{"old_text", "oldText"}
 	case "new_text":
@@ -357,6 +357,10 @@ func fsCompatKeys(key string) []string {
 		return []string{"max_bytes", "maxBytes"}
 	case "create_dirs":
 		return []string{"create_dirs", "createDirs"}
+	case "session_id":
+		return []string{"session_id", "sessionId", "id"}
+	case "expected_bytes":
+		return []string{"expected_bytes", "expectedBytes"}
 	case "max_depth":
 		return []string{"max_depth", "maxDepth"}
 	case "max_results":

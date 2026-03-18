@@ -17,6 +17,7 @@ const chatStore = reactive({
   streamProgress: null as string | null,
   statusSummary: null as string | null,
   statusStartedAt: 0,
+  processTrace: [] as Array<Record<string, unknown>>,
   awaitingConfirmation: false,
   pendingQuestion: null as unknown,
   pendingApproval: null as unknown,
@@ -28,14 +29,16 @@ const chatStore = reactive({
   deleteSelectedMessages: vi.fn(),
 })
 
+const settingsStore = reactive({
+  showToolDetails: true,
+})
+
 vi.mock('@/stores/chat', () => ({
   useChatStore: () => chatStore,
 }))
 
 vi.mock('@/stores/settings', () => ({
-  useSettingsStore: () => ({
-    showToolDetails: true,
-  }),
+  useSettingsStore: () => settingsStore,
 }))
 
 vi.mock('@/stores/providerPool', () => ({
@@ -120,7 +123,10 @@ async function mountStreamingMessage(content = '') {
       stubs: {
         MediaPlaceholder: true,
         Teleport: true,
-        ToolDetailCard: true,
+        ToolDetailCard: {
+          props: ['item'],
+          template: '<div class="tool-detail-card-stub">{{ item.status }}</div>',
+        },
         Transition: true,
         TypelessCardComponent: true,
       },
@@ -145,10 +151,12 @@ describe('ChatMessage status bar', () => {
     chatStore.streamProgress = null
     chatStore.statusSummary = null
     chatStore.statusStartedAt = 0
+    chatStore.processTrace = []
     chatStore.awaitingConfirmation = false
     chatStore.pendingQuestion = null
     chatStore.pendingApproval = null
     chatStore.pendingExecApproval = null
+    settingsStore.showToolDetails = true
     chatStore.getMessageMetadata.mockReset().mockReturnValue(null)
   })
 
@@ -183,11 +191,71 @@ describe('ChatMessage status bar', () => {
   it('prioritizes confirmation messaging over other restored status summaries', async () => {
     chatStore.statusSummary = 'Reading example.com'
     chatStore.statusStartedAt = Date.now() - 2100
+    chatStore.processTrace = [
+      {
+        id: 'retry-1',
+        source: 'server',
+        event: 'pre_content_retry_started',
+        category: 'retry',
+        status: 'active',
+        label: 'Retrying request',
+        timestamp: Date.now() - 900,
+      },
+    ]
     chatStore.awaitingConfirmation = true
 
     const wrapper = await mountStreamingMessage('')
 
-    expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
-    expect(wrapper.text()).not.toContain('Reading example.com')
+    expect(wrapper.get('.assistant-status-label').text()).toBe(
+      'Waiting for your confirmation to continue'
+    )
+    expect(wrapper.get('.assistant-status-label').text()).not.toContain('Reading example.com')
+  })
+
+  it('prioritizes active recovery traces over generic status summaries', async () => {
+    chatStore.statusSummary = 'Writing response...'
+    chatStore.statusStartedAt = Date.now() - 1700
+    chatStore.processTrace = [
+      {
+        id: 'retry-2',
+        source: 'server',
+        event: 'continuation_recovery_started',
+        category: 'recovery',
+        status: 'active',
+        label: 'Recovering response',
+        timestamp: Date.now() - 500,
+      },
+    ]
+
+    const wrapper = await mountStreamingMessage('')
+
+    expect(wrapper.text()).toContain('Recovering response')
+    expect(wrapper.text()).not.toContain('Writing response...')
+  })
+
+  it('lets users manually expand process details even when default expansion is disabled', async () => {
+    settingsStore.showToolDetails = false
+    chatStore.processTrace = [
+      {
+        id: 'summary-1',
+        source: 'client',
+        event: 'request_summary',
+        category: 'summary',
+        status: 'info',
+        label: 'Request ready',
+        timestamp: Date.now() - 1200,
+        detail: 'message: Need help',
+      },
+    ]
+
+    const wrapper = await mountStreamingMessage('')
+
+    expect(wrapper.find('.assistant-process-toggle').exists()).toBe(true)
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(0)
+
+    await wrapper.get('.assistant-process-toggle').trigger('click')
+
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Request ready')
   })
 })

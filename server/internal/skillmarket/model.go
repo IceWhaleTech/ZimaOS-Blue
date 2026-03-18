@@ -43,28 +43,29 @@ const (
 )
 
 type Config struct {
-	Enabled                  bool
-	GitHubToken              string
-	GitHubAPIBaseURL         string
-	ClawHubBaseURL           string
-	ClawHubMirrorBaseURLs    []string
-	SkillHubBaseURL          string
-	SkillHubAPIKey           string
-	SkillStackBaseURL        string
-	SkillsMPBaseURL          string
-	SkillsMPAPIKey           string
-	LLMSkillsBaseURL         string
-	SeedURLs                 []string
-	CrawlIncrementalInterval time.Duration
-	CrawlFullInterval        time.Duration
-	UpdateCheckInterval      time.Duration
-	TelemetryRollupInterval  time.Duration
-	SemanticRatio            float64
-	SearchCandidateLimit     int
-	CacheRoot                string
-	ActiveSkillsDir          string
-	CuratedConfigPath        string
-	CuratedConfigURLs        []string
+	Enabled                   bool
+	GitHubToken               string
+	GitHubAPIBaseURL          string
+	ClawHubBaseURL            string
+	ClawHubMirrorBaseURLs     []string
+	TencentSkillHubAPIBaseURL string
+	SkillHubBaseURL           string
+	SkillHubAPIKey            string
+	SkillStackBaseURL         string
+	SkillsMPBaseURL           string
+	SkillsMPAPIKey            string
+	LLMSkillsBaseURL          string
+	SeedURLs                  []string
+	CrawlIncrementalInterval  time.Duration
+	CrawlFullInterval         time.Duration
+	UpdateCheckInterval       time.Duration
+	TelemetryRollupInterval   time.Duration
+	SemanticRatio             float64
+	SearchCandidateLimit      int
+	CacheRoot                 string
+	ActiveSkillsDir           string
+	CuratedConfigPath         string
+	CuratedConfigURLs         []string
 }
 
 func DefaultConfig(dataDir, activeSkillsDir string) Config {
@@ -74,24 +75,25 @@ func DefaultConfig(dataDir, activeSkillsDir string) Config {
 		activeSkillsDir = filepath.Join(dataDir, "workspace", ".claude", "skills")
 	}
 	return Config{
-		Enabled:                  true,
-		GitHubAPIBaseURL:         "https://api.github.com",
-		ClawHubBaseURL:           "https://www.clawhub.ai",
-		ClawHubMirrorBaseURLs:    nil,
-		SkillHubBaseURL:          "https://www.skillhub.club",
-		SkillStackBaseURL:        "https://www.skillstack.me",
-		SkillsMPBaseURL:          "https://skillsmp.com",
-		LLMSkillsBaseURL:         "https://llmskills.org",
-		SeedURLs:                 []string{"https://github.com/topics/claude-code", "https://github.com/topics/ai-agent"},
-		CrawlIncrementalInterval: 24 * time.Hour,
-		CrawlFullInterval:        24 * time.Hour,
-		UpdateCheckInterval:      24 * time.Hour,
-		TelemetryRollupInterval:  time.Hour,
-		SemanticRatio:            0.35,
-		SearchCandidateLimit:     100,
-		CacheRoot:                cacheRoot,
-		ActiveSkillsDir:          activeSkillsDir,
-		CuratedConfigPath:        "server/skillmarket_curated.yaml",
+		Enabled:                   true,
+		GitHubAPIBaseURL:          "https://api.github.com",
+		ClawHubBaseURL:            "https://www.clawhub.ai",
+		ClawHubMirrorBaseURLs:     nil,
+		TencentSkillHubAPIBaseURL: "https://lightmake.site",
+		SkillHubBaseURL:           "https://www.skillhub.club",
+		SkillStackBaseURL:         "https://www.skillstack.me",
+		SkillsMPBaseURL:           "https://skillsmp.com",
+		LLMSkillsBaseURL:          "https://llmskills.org",
+		SeedURLs:                  []string{"https://github.com/topics/claude-code", "https://github.com/topics/ai-agent"},
+		CrawlIncrementalInterval:  24 * time.Hour,
+		CrawlFullInterval:         24 * time.Hour,
+		UpdateCheckInterval:       24 * time.Hour,
+		TelemetryRollupInterval:   time.Hour,
+		SemanticRatio:             0.35,
+		SearchCandidateLimit:      100,
+		CacheRoot:                 cacheRoot,
+		ActiveSkillsDir:           activeSkillsDir,
+		CuratedConfigPath:         "server/skillmarket_curated.yaml",
 		CuratedConfigURLs: []string{
 			"https://raw.githubusercontent.com/IceWhaleTech/ZimaOS-Blue/main/server/skillmarket_curated.yaml",
 			"https://raw.gitmirror.com/IceWhaleTech/ZimaOS-Blue/main/server/skillmarket_curated.yaml",
@@ -384,6 +386,14 @@ type DiscoverResult struct {
 	Discovered       int `json:"discovered"`
 	Updated          int `json:"updated"`
 	Failed           int `json:"failed"`
+}
+
+type DiscoverStatus struct {
+	Running    bool            `json:"running"`
+	StartedAt  time.Time       `json:"started_at,omitempty"`
+	FinishedAt time.Time       `json:"finished_at,omitempty"`
+	LastError  string          `json:"last_error,omitempty"`
+	Result     *DiscoverResult `json:"result,omitempty"`
 }
 
 type CurationEntry struct {

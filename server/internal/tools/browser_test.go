@@ -3,6 +3,9 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -11,6 +14,7 @@ type browserCompatBackend struct {
 	navigateTargetID string
 	recipeName       string
 	recipeParams     map[string]string
+	screenshotData   string
 }
 
 func (b *browserCompatBackend) Start(context.Context) error { return nil }
@@ -40,7 +44,12 @@ func (b *browserCompatBackend) ActByRef(context.Context, string, int, map[int]in
 func (b *browserCompatBackend) ActByInteractiveRef(context.Context, string, int, map[int]string, string, string) error {
 	return nil
 }
-func (b *browserCompatBackend) Screenshot(context.Context, string) (string, error)    { return "", nil }
+func (b *browserCompatBackend) Screenshot(context.Context, string) (string, error) {
+	if b.screenshotData != "" {
+		return b.screenshotData, nil
+	}
+	return "", nil
+}
 func (b *browserCompatBackend) ScreenshotTab(context.Context, string) (string, error) { return "", nil }
 func (b *browserCompatBackend) CloseTab(context.Context, string) error                { return nil }
 func (b *browserCompatBackend) Tabs(context.Context) ([]BrowserTabResult, error)      { return nil, nil }
@@ -112,5 +121,70 @@ func TestBrowserToolRecipeSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 	if got := out["recipe"]; got != "search" {
 		t.Fatalf("recipe = %v, want search", got)
+	}
+}
+
+func TestBrowserToolScreenshotSavesMediaURLWhenMediaDirConfigured(t *testing.T) {
+	const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+
+	backend := &browserCompatBackend{screenshotData: pngBase64}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+	mediaDir := t.TempDir()
+	tool.SetMediaDir(mediaDir)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "screenshot",
+		"url":    "https://example.com",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	got, _ := out["screenshot"].(string)
+	if got == "" {
+		t.Fatal("expected screenshot file path")
+	}
+	if !filepath.IsAbs(got) {
+		t.Fatalf("screenshot = %q, want absolute path", got)
+	}
+	if !strings.HasPrefix(got, filepath.Join(mediaDir, "browser")+string(os.PathSeparator)) {
+		t.Fatalf("screenshot = %q, want under media dir %q", got, filepath.Join(mediaDir, "browser"))
+	}
+	if _, err := os.Stat(got); err != nil {
+		t.Fatalf("expected saved screenshot at %s: %v", got, err)
+	}
+}
+
+func TestBrowserToolScreenshotSavesTempFileWhenMediaDirMissing(t *testing.T) {
+	const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+
+	backend := &browserCompatBackend{screenshotData: pngBase64}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "screenshot",
+		"url":    "https://example.com",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	got, _ := out["screenshot"].(string)
+	if got == "" {
+		t.Fatal("expected screenshot file path")
+	}
+	if !filepath.IsAbs(got) {
+		t.Fatalf("screenshot = %q, want absolute path", got)
+	}
+	if _, err := os.Stat(got); err != nil {
+		t.Fatalf("expected saved screenshot at %s: %v", got, err)
 	}
 }

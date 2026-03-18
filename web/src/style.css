@@ -143,6 +143,12 @@ body {
   min-height: 100vh;
 }
 
+html[data-blue-macos-glass='true'],
+html[data-blue-macos-glass='true'] body,
+html[data-blue-macos-glass='true'] #app {
+  background: transparent !important;
+}
+
 /* ============================================
    Glassmorphism Utility Classes
    ============================================ */

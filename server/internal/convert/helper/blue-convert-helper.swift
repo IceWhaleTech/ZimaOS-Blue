@@ -47,6 +47,89 @@ func outputDict(path: String, previewKind: String? = nil, previewText: String? =
     return payload
 }
 
+let plainTextDocumentExtensions: Set<String> = ["txt", "md", "csv", "tsv"]
+
+func readPlainTextDocument(from sourceURL: URL) throws -> NSAttributedString {
+    var encoding = String.Encoding.utf8
+    let text = try String(contentsOf: sourceURL, usedEncoding: &encoding)
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.lineBreakMode = .byWordWrapping
+    return NSAttributedString(
+        string: text,
+        attributes: [
+            .font: NSFont.systemFont(ofSize: 12),
+            .paragraphStyle: paragraph,
+        ]
+    )
+}
+
+func loadAttributedDocument(from sourceURL: URL) throws -> NSAttributedString {
+    let ext = sourceURL.pathExtension.lowercased()
+    do {
+        let attr = try NSAttributedString(url: sourceURL, options: [:], documentAttributes: nil)
+        if attr.length > 0 || !plainTextDocumentExtensions.contains(ext) {
+            return attr
+        }
+    } catch {
+        if !plainTextDocumentExtensions.contains(ext) {
+            throw error
+        }
+    }
+    return try readPlainTextDocument(from: sourceURL)
+}
+
+func runCommand(_ executable: String, _ arguments: [String]) throws {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: executable)
+    process.arguments = arguments
+    let stderr = Pipe()
+    process.standardError = stderr
+    try process.run()
+    process.waitUntilExit()
+    if process.terminationStatus == 0 {
+        return
+    }
+    let message = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? "command failed"
+    throw NSError(domain: "helper", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: message])
+}
+
+func firstQuickLookImage(in directoryURL: URL) -> URL? {
+    guard let enumerator = FileManager.default.enumerator(at: directoryURL, includingPropertiesForKeys: nil) else {
+        return nil
+    }
+    for case let fileURL as URL in enumerator {
+        switch fileURL.pathExtension.lowercased() {
+        case "png", "jpg", "jpeg":
+            return fileURL
+        default:
+            continue
+        }
+    }
+    return nil
+}
+
+func renderQuickLookPreviewPDF(source: String, outputDir: String) throws -> [[String: Any]] {
+    let sourceURL = URL(fileURLWithPath: source)
+    let quickLookDir = URL(fileURLWithPath: outputDir).appendingPathComponent(".quicklook-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: quickLookDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: quickLookDir) }
+
+    try runCommand("/usr/bin/qlmanage", ["-t", "-s", "2048", "-o", quickLookDir.path, source])
+
+    guard let imageURL = firstQuickLookImage(in: quickLookDir), let image = NSImage(contentsOf: imageURL), let page = PDFPage(image: image) else {
+        throw NSError(domain: "helper", code: 6, userInfo: [NSLocalizedDescriptionKey: "Quick Look did not produce a usable preview"])
+    }
+
+    let document = PDFDocument()
+    document.insert(page, at: 0)
+    let outPath = URL(fileURLWithPath: outputDir).appendingPathComponent(sourceURL.deletingPathExtension().lastPathComponent + ".pdf").path
+    if !document.write(toFile: outPath) {
+        throw NSError(domain: "helper", code: 7, userInfo: [NSLocalizedDescriptionKey: "failed to write Quick Look PDF"])
+    }
+    return [outputDict(path: outPath, previewKind: "pdf")]
+}
+
 func writeImage(_ image: NSImage, to path: String, format: String) throws {
     guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else {
         throw NSError(domain: "helper", code: 1, userInfo: [NSLocalizedDescriptionKey: "failed to encode image"])
@@ -109,8 +192,12 @@ func timeRange(from options: [String: Any], asset: AVAsset) -> CMTimeRange? {
 
 func renderDocumentPDF(source: String, outputDir: String) throws -> [[String: Any]] {
     let sourceURL = URL(fileURLWithPath: source)
-    let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [:]
-    let attr = try NSAttributedString(url: sourceURL, options: options, documentAttributes: nil)
+    let attr: NSAttributedString
+    do {
+        attr = try loadAttributedDocument(from: sourceURL)
+    } catch {
+        return try renderQuickLookPreviewPDF(source: source, outputDir: outputDir)
+    }
     let width: CGFloat = 612
     let containerWidth: CGFloat = width - 72
     let storage = NSTextStorage(attributedString: attr)

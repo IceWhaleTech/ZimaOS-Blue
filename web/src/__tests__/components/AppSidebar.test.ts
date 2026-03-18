@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import AppSidebar from '@/components/AppSidebar.vue'
 import { i18n } from '@/i18n'
+import { workspaceApi } from '@/api/workspace'
+import { claudeCodeApi } from '@/api/claudecode'
+import { conversationApi, messageApi } from '@/api/chat'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
 import { useSystemStore } from '@/stores/system'
@@ -11,6 +14,26 @@ import { useSystemStore } from '@/stores/system'
 vi.mock('@/api/workspace', () => ({
   workspaceApi: {
     getMeta: vi.fn().mockResolvedValue({ data: { dir: '/tmp/workspace' } }),
+    getTree: vi.fn().mockResolvedValue({ data: { root: '/tmp/workspace', entries: [] } }),
+    listFiles: vi.fn().mockResolvedValue({ data: { files: [] } }),
+    getStats: vi.fn().mockResolvedValue({ data: { files: [], total_tokens: 0, total_bytes: 0 } }),
+  },
+}))
+
+vi.mock('@/api/claudecode', () => ({
+  claudeCodeApi: {
+    getConfig: vi.fn().mockResolvedValue({
+      data: { whitelist_enabled: false, directory_whitelist: [] },
+    }),
+  },
+}))
+
+vi.mock('@/api/chat', () => ({
+  conversationApi: {
+    list: vi.fn().mockResolvedValue({ data: [] }),
+  },
+  messageApi: {
+    list: vi.fn().mockResolvedValue({ data: [] }),
   },
 }))
 
@@ -113,6 +136,20 @@ describe('AppSidebar', () => {
     setActivePinia(createPinia())
     localStorageMock.clear()
     fetchMock.mockClear()
+    vi.clearAllMocks()
+    vi.mocked(workspaceApi.getMeta).mockResolvedValue({ data: { dir: '/tmp/workspace' } } as never)
+    vi.mocked(workspaceApi.getTree).mockResolvedValue({
+      data: { root: '/tmp/workspace', entries: [] },
+    } as never)
+    vi.mocked(workspaceApi.listFiles).mockResolvedValue({ data: { files: [] } } as never)
+    vi.mocked(workspaceApi.getStats).mockResolvedValue({
+      data: { files: [], total_tokens: 0, total_bytes: 0 },
+    } as never)
+    vi.mocked(claudeCodeApi.getConfig).mockResolvedValue({
+      data: { whitelist_enabled: false, directory_whitelist: [] },
+    } as never)
+    vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
+    vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
   })
 
   it('renders navigation in the reference order with a configuration section', async () => {
@@ -219,5 +256,78 @@ describe('AppSidebar', () => {
     const statusBadge = wrapper.get('.sidebar-status-badge')
     expect(statusBadge.text()).toContain('common.online')
     expect(statusBadge.classes()).toContain('sidebar-status-badge-online')
+  })
+
+  it('links workspace directories from relative generated paths back to the source conversation', async () => {
+    vi.mocked(workspaceApi.getTree).mockResolvedValue({
+      data: {
+        root: '/tmp/workspace',
+        entries: [
+          {
+            path: 'phone_specs_2026',
+            abs_path: '/tmp/workspace/phone_specs_2026',
+            name: 'phone_specs_2026',
+            type: 'dir',
+            depth: 1,
+          },
+          {
+            path: 'phone_specs_2026/完整报告_含截图证据.md',
+            abs_path: '/tmp/workspace/phone_specs_2026/完整报告_含截图证据.md',
+            name: '完整报告_含截图证据.md',
+            type: 'file',
+            depth: 2,
+            size_bytes: 27690,
+          },
+        ],
+      },
+    } as never)
+    vi.mocked(conversationApi.list).mockResolvedValue({
+      data: [
+        {
+          id: 'conv-phone-specs',
+          title: '2026年1月至今（3月17日）已经发布的新手机',
+          created_at: '2026-03-17T15:54:21Z',
+          updated_at: '2026-03-17T17:18:51Z',
+        },
+      ],
+    } as never)
+    vi.mocked(messageApi.list).mockResolvedValue({
+      data: [
+        {
+          id: 'msg-1',
+          conversation_id: 'conv-phone-specs',
+          role: 'assistant',
+          content:
+            '```typeless\n' +
+            '{"details":[{"label":"path","value":"phone_specs_2026/完整报告_含截图证据.md"},{"label":"success","value":"true"}],"status":"success","title":"write_commit","type":"result"}\n' +
+            '```',
+          created_at: '2026-03-17T17:13:00Z',
+        },
+      ],
+    } as never)
+
+    const { wrapper } = await mountSidebar('/chat')
+
+    await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+    await flushPromises()
+
+    const generatedTabLabel = 'File Sources'
+    const generatedTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes(generatedTabLabel))
+    expect(generatedTab).toBeTruthy()
+
+    await generatedTab!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    const jumpLabel = 'Go to conversation'
+    const jumpButtons = wrapper
+      .findAll('button')
+      .filter((button) => button.text().includes(jumpLabel))
+
+    expect(wrapper.text()).toContain('phone_specs_2026')
+    expect(wrapper.text()).toContain('完整报告_含截图证据.md')
+    expect(jumpButtons).toHaveLength(2)
   })
 })

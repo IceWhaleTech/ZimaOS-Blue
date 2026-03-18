@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,10 +26,12 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type requestCaptureProvider struct {
@@ -43,6 +46,7 @@ type contextTooLongThenSuccessProxyHandler struct {
 	providerID    string
 	providerName  string
 	failAll       bool
+	relayWrapped  bool
 }
 
 type scriptedChatProvider struct {
@@ -222,6 +226,11 @@ func (h *contextTooLongThenSuccessProxyHandler) ServeHTTP(w http.ResponseWriter,
 
 	if h.failAll || strings.EqualFold(strings.TrimSpace(body.Model), "small-model") {
 		w.Header().Set("Content-Type", "application/json")
+		if h.relayWrapped {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":{"message":"Context window is full. Reduce conversation history, system prompt, or tools.","type":"upstream_error"}}`))
+			return
+		}
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":{"message":"This model's maximum context length is 4096 tokens. However, your messages resulted in 5000 tokens.","type":"invalid_request_error","code":"context_length_exceeded"}}`))
 		return
@@ -400,6 +409,35 @@ func TestShouldAutoContinueForTodo_StopsOnAwaitingInput(t *testing.T) {
 	current := "- [ ] implement feature\n<awaiting_user_input>true</awaiting_user_input>"
 	if shouldAutoContinueForTodo(current, "") {
 		t.Fatal("auto-continue should stop when awaiting user input marker is present")
+	}
+}
+
+func TestSyncTrackedTodoAfterToollessReply_CompletesSinglePendingSummaryItem(t *testing.T) {
+	tracked := "- [x] 执行导出脚本\n- [ ] 提供最终总结"
+	current := "任务已完成。最终总结：Apple Notes 已全部导出。"
+
+	got, changed := syncTrackedTodoAfterToollessReply(tracked, current)
+	if !changed {
+		t.Fatal("expected implicit final-summary todo completion")
+	}
+	if strings.Contains(got, "- [ ] 提供最终总结") {
+		t.Fatalf("expected summary item to be checked, got %q", got)
+	}
+	if !strings.Contains(got, "- [x] 提供最终总结") {
+		t.Fatalf("expected checked summary item, got %q", got)
+	}
+}
+
+func TestSyncTrackedTodoAfterToollessReply_DoesNotCompleteNonSummaryTodo(t *testing.T) {
+	tracked := "- [x] 执行导出脚本\n- [ ] 验证导出文件存在"
+	current := "任务已完成。最终总结：Apple Notes 已全部导出。"
+
+	got, changed := syncTrackedTodoAfterToollessReply(tracked, current)
+	if changed {
+		t.Fatalf("expected non-summary todo to remain pending, got %q", got)
+	}
+	if got != tracked {
+		t.Fatalf("expected tracked todo unchanged, got %q", got)
 	}
 }
 
@@ -765,6 +803,49 @@ func TestGenerateTitleWithLLM_MarksBackgroundTask(t *testing.T) {
 	}
 }
 
+func TestExtractConversationTitleFromAIResponse(t *testing.T) {
+	t.Run("keeps semantic markdown heading", func(t *testing.T) {
+		content := "## BlueAgent 最新动态\n\n这里是本轮总结。"
+		if got := extractConversationTitleFromAIResponse(content); got != "BlueAgent 最新动态" {
+			t.Fatalf("title = %q, want %q", got, "BlueAgent 最新动态")
+		}
+	})
+
+	t.Run("ignores checklist heading", func(t *testing.T) {
+		content := "## TODO清单\n- [ ] 收集官方资料\n- [ ] 汇总结果"
+		if got := extractConversationTitleFromAIResponse(content); got != "" {
+			t.Fatalf("title = %q, want empty", got)
+		}
+	})
+}
+
+func TestGenerateConversationTitle_IgnoresChecklistHeading(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "新对话")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	userMessage := "查一下 BlueAgent 最新动态"
+	aiResponse := "## TODO清单\n- [ ] 收集官方资料\n- [ ] 汇总关键变化"
+
+	handler.generateConversationTitle(conv.ID, "", userMessage, aiResponse, "zh")
+
+	updatedConv, err := store.GetConversation(context.Background(), conv.ID)
+	if err != nil {
+		t.Fatalf("failed to load conversation: %v", err)
+	}
+	if updatedConv.Title != userMessage {
+		t.Fatalf("conversation title = %q, want %q", updatedConv.Title, userMessage)
+	}
+}
+
 func TestChatOnce_InjectsLocaleFromSettingsToProxyBridge(t *testing.T) {
 	var gotLocale string
 	bridge := proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1045,7 +1126,7 @@ func TestProcessChannelMessage_AutoContinueRetriesToollessPendingTodoInAgentMode
 	}
 }
 
-func TestProcessChannelMessage_FreshStandaloneTopicIgnoresOldIMHistoryInAgentMode(t *testing.T) {
+func TestProcessChannelMessage_FreshStandaloneTopicKeepsOldIMHistoryInAgentMode(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
@@ -1100,23 +1181,28 @@ func TestProcessChannelMessage_FreshStandaloneTopicIgnoresOldIMHistoryInAgentMod
 		t.Fatalf("missing first request capture")
 	}
 	nonSystem := make([]llm.Message, 0, len(firstReq.Messages))
+	foundOldHistory := false
 	for _, msg := range firstReq.Messages {
 		if strings.Contains(msg.Content, "zimaspace.com/zimaos") {
-			t.Fatalf("expected fresh standalone IM topic to exclude old UI-review history, got message=%+v", msg)
+			foundOldHistory = true
 		}
 		if msg.Role != llm.RoleSystem {
 			nonSystem = append(nonSystem, msg)
 		}
 	}
-	if len(nonSystem) != 1 {
-		t.Fatalf("expected only the current user turn in non-system context, got %d messages", len(nonSystem))
+	if !foundOldHistory {
+		t.Fatalf("expected prior IM history to remain when auto fresh-topic switching is disabled, messages=%+v", firstReq.Messages)
 	}
-	if nonSystem[0].Role != llm.RoleUser || nonSystem[0].Content != "帮我查询一下伊朗今天的战况" {
-		t.Fatalf("expected isolated user turn, got %+v", nonSystem[0])
+	if len(nonSystem) < 3 {
+		t.Fatalf("expected prior history plus current user turn in non-system context, got %d messages", len(nonSystem))
+	}
+	last := nonSystem[len(nonSystem)-1]
+	if last.Role != llm.RoleUser || last.Content != "帮我查询一下伊朗今天的战况" {
+		t.Fatalf("expected current user turn at the end, got %+v", last)
 	}
 }
 
-func TestProcessChannelMessage_IMHistoryLimitZeroDisablesRecentRoundsRetention(t *testing.T) {
+func TestProcessChannelMessage_IMHistoryLimitZeroDoesNotForceHistoryDrop(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
@@ -1173,24 +1259,26 @@ func TestProcessChannelMessage_IMHistoryLimitZeroDisablesRecentRoundsRetention(t
 		t.Fatalf("missing first request capture")
 	}
 	nonSystem := make([]llm.Message, 0, len(firstReq.Messages))
+	foundOldHistory := false
 	for _, msg := range firstReq.Messages {
 		if strings.Contains(msg.Content, "Q1 old") || strings.Contains(msg.Content, "Q2 old") ||
 			strings.Contains(msg.Content, "A1 old") || strings.Contains(msg.Content, "A2 old") {
-			t.Fatalf("expected old IM history to be excluded when im_history_limit=0, got message=%+v", msg)
+			foundOldHistory = true
 		}
 		if msg.Role != llm.RoleSystem {
 			nonSystem = append(nonSystem, msg)
 		}
 	}
-	if len(nonSystem) != 1 {
-		t.Fatalf("expected only the current user turn in non-system context, got %d messages", len(nonSystem))
+	if !foundOldHistory {
+		t.Fatalf("expected IM history to remain below the pressure threshold even when im_history_limit=0, messages=%+v", firstReq.Messages)
 	}
-	if nonSystem[0].Role != llm.RoleUser || nonSystem[0].Content != "今天天气怎么样" {
-		t.Fatalf("expected isolated user turn, got %+v", nonSystem[0])
+	last := nonSystem[len(nonSystem)-1]
+	if last.Role != llm.RoleUser || last.Content != "今天天气怎么样" {
+		t.Fatalf("expected current user turn at the end, got %+v", last)
 	}
 }
 
-func TestProcessChannelMessage_IMHistoryLimitMetadataOverrideTakesPrecedence(t *testing.T) {
+func TestProcessChannelMessage_IMHistoryLimitMetadataOverrideDoesNotForceHistoryDrop(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
@@ -1255,17 +1343,17 @@ func TestProcessChannelMessage_IMHistoryLimitMetadataOverrideTakesPrecedence(t *
 			nonSystem = append(nonSystem, msg)
 		}
 	}
-	if len(nonSystem) != 3 {
-		t.Fatalf("expected 3 non-system messages with metadata override, got %d", len(nonSystem))
+	if len(nonSystem) != 5 {
+		t.Fatalf("expected full non-system history to remain with metadata override below threshold, got %d", len(nonSystem))
 	}
-	if nonSystem[0].Role != llm.RoleUser || nonSystem[0].Content != "Q2 old" {
-		t.Fatalf("messages[0] = %+v, want user/Q2 old", nonSystem[0])
+	if nonSystem[0].Role != llm.RoleUser || nonSystem[0].Content != "Q1 old" {
+		t.Fatalf("messages[0] = %+v, want user/Q1 old", nonSystem[0])
 	}
-	if nonSystem[1].Role != llm.RoleAssistant || nonSystem[1].Content != "A2 old" {
-		t.Fatalf("messages[1] = %+v, want assistant/A2 old", nonSystem[1])
+	if nonSystem[1].Role != llm.RoleAssistant || nonSystem[1].Content != "A1 old" {
+		t.Fatalf("messages[1] = %+v, want assistant/A1 old", nonSystem[1])
 	}
-	if nonSystem[2].Role != llm.RoleUser || nonSystem[2].Content != "今天天气怎么样" {
-		t.Fatalf("messages[2] = %+v, want user/current", nonSystem[2])
+	if nonSystem[4].Role != llm.RoleUser || nonSystem[4].Content != "今天天气怎么样" {
+		t.Fatalf("messages[4] = %+v, want user/current", nonSystem[4])
 	}
 }
 
@@ -1347,7 +1435,7 @@ func TestProcessChannelMessage_IMHistoryLimitDynamicBoostForPendingContinuation(
 	}
 }
 
-func TestProcessChannelMessage_FreshStandaloneTopicDropsPreviousResponseID(t *testing.T) {
+func TestProcessChannelMessage_NoAutoFreshStandaloneTopicKeepsPreviousResponseID(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
@@ -1375,6 +1463,7 @@ func TestProcessChannelMessage_FreshStandaloneTopicDropsPreviousResponseID(t *te
 	agentModeOn := true
 	settingsHandler.settings.AgentMode = &agentModeOn
 	handler.SetSettingsHandler(settingsHandler)
+	handler.imModel = "gpt-5.3-codex-spark"
 	handler.setPreviousResponseID(convID, "resp_old_im_1")
 
 	_, err = handler.ProcessChannelMessage(context.Background(), channel.Message{
@@ -1393,8 +1482,8 @@ func TestProcessChannelMessage_FreshStandaloneTopicDropsPreviousResponseID(t *te
 	if !ok {
 		t.Fatalf("missing first request capture")
 	}
-	if firstReq.PreviousResponseID != "" {
-		t.Fatalf("expected fresh standalone IM topic to drop previous_response_id, got %q", firstReq.PreviousResponseID)
+	if firstReq.PreviousResponseID == "" {
+		t.Fatalf("expected previous_response_id to be preserved when auto fresh-topic switching is disabled")
 	}
 }
 
@@ -2337,6 +2426,139 @@ func TestFitPreparedMessagesToBudgetStage2Summary(t *testing.T) {
 	t.Fatal("expected at least one context window to fit at stage 2")
 }
 
+func TestFitPreparedMessagesToBudgetKeepsOriginalBelowPressureThreshold(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	messages := []llm.Message{
+		{Role: llm.RoleSystem, Content: "system prompt"},
+		{Role: llm.RoleUser, Content: "Summarize the last deployment issue"},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("I traced the deploy logs and captured the root cause. ", 16)},
+		{Role: llm.RoleUser, Content: "Keep the answer concise"},
+	}
+
+	for _, window := range []int{4096, 6144, 8192, 12288, 16384} {
+		handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+			ProviderID:    "p-context",
+			ModelID:       "below-threshold-model",
+			ContextWindow: window,
+		}}))
+		budget := handler.measurePreparedInputBudget("below-threshold-model", 64, messages)
+		if budget.Exceeds() || budget.ContextUsageRatio() >= smartContextSoftCompressionThreshold {
+			continue
+		}
+		plan := handler.fitPreparedMessagesToBudget(context.Background(), preparedBudgetFitParams{
+			ConvID:    "conv-below-threshold",
+			Model:     "below-threshold-model",
+			MaxTokens: 64,
+			Messages:  messages,
+		})
+		current := plan.Current()
+		if current == nil {
+			t.Fatalf("expected original attempt below threshold, got failure: %#v", plan.Failure())
+		}
+		if current.Stage != 0 {
+			t.Fatalf("current stage = %d, want 0 below threshold", current.Stage)
+		}
+		if current.ContextTrim != nil {
+			t.Fatalf("context trim = %#v, want nil below threshold", current.ContextTrim)
+		}
+		return
+	}
+	t.Fatal("expected at least one below-threshold fixture")
+}
+
+func TestFitPreparedMessagesToBudgetProactivelyCompactsAtPressureThreshold(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.summaryCache.Put("conv-pressure-stage2", &ConversationSummary{
+		Text:         "Goal\n- Keep the latest ask concise\n\nRelevant Files\n- server/internal/server/chat.go",
+		MessageCount: 8,
+	})
+
+	messages := []llm.Message{{Role: llm.RoleSystem, Content: "system prompt"}}
+	for i := 0; i < 4; i++ {
+		messages = append(messages,
+			llm.Message{Role: llm.RoleUser, Content: strings.Repeat(fmt.Sprintf("user-%d background ", i), 120)},
+			llm.Message{Role: llm.RoleAssistant, Content: strings.Repeat(fmt.Sprintf("assistant-%d details ", i), 140)},
+		)
+	}
+	messages = append(messages, llm.Message{Role: llm.RoleUser, Content: "Answer the latest question briefly"})
+
+	for _, window := range []int{4608, 5120, 5632, 6144, 6656, 7168, 7680, 8192} {
+		handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+			ProviderID:    "p-context",
+			ModelID:       "pressure-stage2-model",
+			ContextWindow: window,
+		}}))
+		originalBudget := handler.measurePreparedInputBudget("pressure-stage2-model", 64, messages)
+		if originalBudget.Exceeds() || originalBudget.ContextUsageRatio() < smartContextSoftCompressionThreshold {
+			continue
+		}
+		plan := handler.fitPreparedMessagesToBudget(context.Background(), preparedBudgetFitParams{
+			ConvID:    "conv-pressure-stage2",
+			Model:     "pressure-stage2-model",
+			MaxTokens: 64,
+			Messages:  messages,
+		})
+		current := plan.Current()
+		if current == nil {
+			t.Fatalf("expected proactive compaction attempt, got failure: %#v", plan.Failure())
+		}
+		if current.Stage != 2 {
+			t.Fatalf("current stage = %d, want 2 when pressure >= 75%% and summary is available", current.Stage)
+		}
+		if current.ContextTrim == nil || current.ContextTrim.Type != "progressive_compaction" || current.ContextTrim.Stage != 2 {
+			t.Fatalf("context trim = %#v, want stage-2 progressive_compaction", current.ContextTrim)
+		}
+		foundSummary := false
+		for _, msg := range current.Messages {
+			if msg.Role == llm.RoleSystem && strings.Contains(msg.Content, "Keep the latest ask concise") {
+				foundSummary = true
+				break
+			}
+		}
+		if !foundSummary {
+			t.Fatalf("expected stage2 summary to be injected under pressure, messages=%#v", current.Messages)
+		}
+		return
+	}
+	t.Fatal("expected at least one >=75% fixture that still fits without hard overflow")
+}
+
+func TestPreparedBudgetStagesDoNotTrimToolResultsBeforeFinalFallback(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.summaryCache.Put("conv-stage-no-trim", &ConversationSummary{
+		Text:         "Goal\n- Preserve the current task\n\nRelevant Files\n- auth/middleware.go",
+		MessageCount: 4,
+	})
+
+	longTool := strings.Repeat("tool-output ", 1200)
+	messages := []llm.Message{
+		{Role: llm.RoleSystem, Content: "system prompt"},
+		{Role: llm.RoleUser, Content: "Inspect the deployment logs"},
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{{ID: "call-1", Name: "web_search", Arguments: `{"query":"deploy logs"}`}}},
+		{Role: llm.RoleTool, ToolCallID: "call-1", ToolName: "web_search", Content: longTool},
+		{Role: llm.RoleUser, Content: "Now answer briefly"},
+	}
+
+	stage1Messages := handler.buildPreparedBudgetStage1("stage-no-trim-model", messages)
+	stage2Messages, _ := handler.buildPreparedBudgetStage2(context.Background(), "conv-stage-no-trim", "stage-no-trim-model", messages)
+	stage3Messages, _ := handler.buildPreparedBudgetStage3(context.Background(), "conv-stage-no-trim", "stage-no-trim-model", messages, "")
+
+	for _, stageMsgs := range [][]llm.Message{stage1Messages, stage2Messages, stage3Messages} {
+		found := false
+		for _, msg := range stageMsgs {
+			if msg.Role == llm.RoleTool && msg.ToolCallID == "call-1" {
+				found = true
+				if !strings.Contains(msg.Content, "tool-output") {
+					t.Fatalf("tool result was trimmed too early: %q", msg.Content)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("expected tool result to remain present before final trim fallback: %#v", stageMsgs)
+		}
+	}
+}
+
 func TestPreparedBudgetStagesIgnoreStaleSummaryCache(t *testing.T) {
 	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
@@ -2365,8 +2587,8 @@ func TestPreparedBudgetStagesIgnoreStaleSummaryCache(t *testing.T) {
 	if strings.Contains(stage2Summary, "stale summary") {
 		t.Fatalf("stage2 reused stale summary: %q", stage2Summary)
 	}
-	if !strings.Contains(stage2Summary, "Pending") {
-		t.Fatalf("stage2 summary = %q, want regenerated multiline summary", stage2Summary)
+	if !strings.Contains(stage2Summary, "Accomplished") {
+		t.Fatalf("stage2 summary = %q, want regenerated canonical summary", stage2Summary)
 	}
 	if len(stage2Messages) == 0 {
 		t.Fatal("expected stage2 to produce messages")
@@ -2380,8 +2602,8 @@ func TestPreparedBudgetStagesIgnoreStaleSummaryCache(t *testing.T) {
 	if strings.Contains(stage3Summary, "stale summary") {
 		t.Fatalf("stage3 reused stale summary: %q", stage3Summary)
 	}
-	if !strings.Contains(stage3Summary, "Goal") {
-		t.Fatalf("stage3 summary = %q, want regenerated summary", stage3Summary)
+	if !strings.Contains(stage3Summary, "Goal") || !strings.Contains(stage3Summary, "Accomplished") {
+		t.Fatalf("stage3 summary = %q, want regenerated canonical summary", stage3Summary)
 	}
 	if len(stage3Messages) == 0 {
 		t.Fatal("expected stage3 to produce messages")
@@ -2581,6 +2803,69 @@ func TestChatHandlerSendMessageRetriesContextTooLongWithLargerModel(t *testing.T
 		if models[i] != "small-model" {
 			t.Fatalf("intermediate request model = %q, want small-model before fallback; models=%#v", models[i], models)
 		}
+	}
+}
+
+func TestChatHandlerSendMessageRetriesRelayWrappedContextTooLongWithLargerModel(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Retry relay-wrapped context too long")
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+		{ProviderID: "p-context", ModelID: "small-model", ContextWindow: 4096, InputPrice: 5, Priority: 20},
+		{ProviderID: "p-context", ModelID: "large-model", ContextWindow: 8192, InputPrice: 8, Priority: 20},
+	}))
+	fakeProxy := &contextTooLongThenSuccessProxyHandler{
+		providerID:   "p-context",
+		relayWrapped: true,
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"hello","model":"small-model","max_tokens":64}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp SendMessageResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v body=%s", err, rec.Body.String())
+	}
+	if resp.Model != "large-model" {
+		t.Fatalf("response model = %q, want large-model", resp.Model)
+	}
+	if resp.ContextTrim == nil {
+		t.Fatal("expected context trim metadata")
+	}
+	if resp.ContextTrim.FallbackModel != "large-model" {
+		t.Fatalf("fallback_model = %q, want large-model", resp.ContextTrim.FallbackModel)
+	}
+	models := fakeProxy.RequestModels()
+	if len(models) < 2 {
+		t.Fatalf("request models = %#v, want at least [small-model ... large-model]", models)
+	}
+	if models[0] != "small-model" {
+		t.Fatalf("first request model = %q, want small-model; models=%#v", models[0], models)
+	}
+	if models[len(models)-1] != "large-model" {
+		t.Fatalf("final request model = %q, want large-model; models=%#v", models[len(models)-1], models)
 	}
 }
 
@@ -4973,8 +5258,8 @@ func TestGenerateConversationSummaryWithSmallModel_PreservesMultilineBullets(t *
 	if !strings.Contains(summary, "\n") {
 		t.Fatalf("summary = %q, want multiline bullets preserved", summary)
 	}
-	if !strings.Contains(summary, "Pending") || !strings.Contains(summary, "File Paths") {
-		t.Fatalf("summary = %q, want all bullet lines preserved", summary)
+	if !strings.Contains(summary, "Goal") || !strings.Contains(summary, "Accomplished") || !strings.Contains(summary, "Relevant Files") {
+		t.Fatalf("summary = %q, want canonical structured sections preserved", summary)
 	}
 }
 
@@ -5023,8 +5308,13 @@ func TestChatHandlerShouldDisableProxyPruner(t *testing.T) {
 		t.Fatal("expected pruner enabled by default")
 	}
 
-	smallModelEnabled := true
 	contextPruneEnabled := false
+	settings.settings.SmallModelContextPruneEnabled = &contextPruneEnabled
+	if !handler.shouldDisableProxyPruner() {
+		t.Fatal("expected pruner disabled when context prune switch is explicitly off")
+	}
+
+	smallModelEnabled := true
 	settings.settings.SmallModelEnabled = &smallModelEnabled
 	settings.settings.SmallModelContextPruneEnabled = &contextPruneEnabled
 	if !handler.shouldDisableProxyPruner() {
@@ -5035,6 +5325,156 @@ func TestChatHandlerShouldDisableProxyPruner(t *testing.T) {
 	settings.settings.SmallModelContextPruneEnabled = &contextPruneEnabled
 	if handler.shouldDisableProxyPruner() {
 		t.Fatal("expected pruner enabled when context prune switch on")
+	}
+}
+
+func TestChatHandlerShouldDisableProxyPrunerForAttempt(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	handler.SetSettingsHandler(settings)
+
+	belowPressure := &preparedBudgetAttempt{
+		Budget: chatInputBudgetEstimate{
+			ContextWindow:        32000,
+			EstimatedInputTokens: 12000,
+		},
+	}
+	if !handler.shouldDisableProxyPrunerForAttempt(belowPressure) {
+		t.Fatal("expected proxy pruner disabled below pressure threshold when no explicit setting is present")
+	}
+
+	abovePressure := &preparedBudgetAttempt{
+		Budget: chatInputBudgetEstimate{
+			ContextWindow:        32000,
+			EstimatedInputTokens: 26000,
+		},
+	}
+	if handler.shouldDisableProxyPrunerForAttempt(abovePressure) {
+		t.Fatal("expected proxy pruner enabled near pressure threshold when no explicit setting is present")
+	}
+
+	contextPruneEnabled := true
+	settings.settings.SmallModelContextPruneEnabled = &contextPruneEnabled
+	if handler.shouldDisableProxyPrunerForAttempt(belowPressure) {
+		t.Fatal("expected explicit context prune enable to keep proxy pruner active")
+	}
+}
+
+func TestChatHandlerSendMessageDisablesProxyPrunerBelowPressureThreshold(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Below-pressure pruner disable")
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "below-threshold-model",
+		ContextWindow: 32000,
+	}}))
+
+	var gotPrunerDisabled bool
+	var gotRequestModel string
+	handler.SetProxyBridge(proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPrunerDisabled = pruner.IsPrunerDisabled(r.Context())
+		var body struct {
+			Model string `json:"model"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotRequestModel = strings.TrimSpace(body.Model)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"resp-below-pressure","model":%q,"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}`, gotRequestModel)))
+	})))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"hello","model":"below-threshold-model","max_tokens":64}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if gotRequestModel != "below-threshold-model" {
+		t.Fatalf("request model = %q, want below-threshold-model", gotRequestModel)
+	}
+	if !gotPrunerDisabled {
+		t.Fatal("expected proxy pruner disabled to be propagated to proxy bridge below pressure threshold")
+	}
+
+	var resp SendMessageResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v body=%s", err, rec.Body.String())
+	}
+	if resp.ContextTrim != nil {
+		t.Fatalf("context trim = %#v, want nil when request stays below pressure threshold", resp.ContextTrim)
+	}
+}
+
+func TestChatHandlerSendMessageKeepsProxyPrunerWhenExplicitlyEnabledBelowPressureThreshold(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Below-pressure explicit pruner enable")
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	contextPruneEnabled := true
+	settings.settings.SmallModelContextPruneEnabled = &contextPruneEnabled
+	handler.SetSettingsHandler(settings)
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "below-threshold-model",
+		ContextWindow: 32000,
+	}}))
+
+	var gotPrunerDisabled bool
+	handler.SetProxyBridge(proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPrunerDisabled = pruner.IsPrunerDisabled(r.Context())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp-explicit-enable","model":"below-threshold-model","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}`))
+	})))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"hello","model":"below-threshold-model","max_tokens":64}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if gotPrunerDisabled {
+		t.Fatal("expected explicit context prune enable to keep proxy pruner active below pressure threshold")
 	}
 }
 
@@ -6068,6 +6508,7 @@ func TestBrowserCheckpointRequesterWeb_DismissDenies(t *testing.T) {
 
 func TestBrowserCheckpointRequesterWeb_ContinueApproves(t *testing.T) {
 	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
 	handler.SetBrowserCheckpointManager(tools.NewBrowserCheckpointManager(2 * time.Minute))
 
 	broker := sse.NewBroker()
@@ -6123,6 +6564,168 @@ func TestBrowserCheckpointRequesterWeb_ContinueApproves(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for requester result")
+	}
+}
+
+func TestBrowserCheckpointRequesterWeb_TrustedSiteAutoApproves(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+	handler.SetBrowserCheckpointManager(tools.NewBrowserCheckpointManager(2 * time.Minute))
+
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	siteStore, err := tools.NewBrowserSiteAllowlistStore(db)
+	if err != nil {
+		t.Fatalf("new browser site allowlist store: %v", err)
+	}
+	if err := siteStore.Add("https://example.com/login", "user-site"); err != nil {
+		t.Fatalf("seed allowlist: %v", err)
+	}
+	handler.SetBrowserSiteAllowlistStore(siteStore)
+
+	broker := sse.NewBroker()
+	client := broker.Subscribe("user-site")
+	defer broker.Unsubscribe("user-site", client)
+
+	questionMgr := tools.NewQuestionManager(broker, func() bool { return false }, 2*time.Minute)
+	handler.SetQuestionManager(questionMgr)
+
+	requester := handler.buildBrowserCheckpointRequester(
+		context.Background(),
+		"web",
+		"user-site",
+		"session-site",
+		"",
+		"",
+		i18n.DefaultLanguage,
+	)
+	if requester == nil {
+		t.Fatal("expected browser checkpoint requester")
+	}
+
+	result, err := requester(context.Background(), tools.BrowserCheckpointRequest{
+		Required:  true,
+		RiskLevel: "high",
+		Step:      "recipe",
+		Action:    "login",
+		URL:       "https://example.com/account",
+	})
+	if err != nil {
+		t.Fatalf("requester returned error: %v", err)
+	}
+	if result.Decision != tools.BrowserCheckpointApprove {
+		t.Fatalf("decision = %s, want %s", result.Decision, tools.BrowserCheckpointApprove)
+	}
+	if pending := questionMgr.GetPending("user-site"); pending != nil {
+		t.Fatalf("expected no pending question for trusted site, got %+v", pending)
+	}
+}
+
+func TestBrowserCheckpointRequesterWeb_AllowSitePersistsFutureApproval(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+	handler.SetBrowserCheckpointManager(tools.NewBrowserCheckpointManager(2 * time.Minute))
+
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	siteStore, err := tools.NewBrowserSiteAllowlistStore(db)
+	if err != nil {
+		t.Fatalf("new browser site allowlist store: %v", err)
+	}
+	handler.SetBrowserSiteAllowlistStore(siteStore)
+
+	broker := sse.NewBroker()
+	client := broker.Subscribe("user-allow")
+	defer broker.Unsubscribe("user-allow", client)
+
+	questionMgr := tools.NewQuestionManager(broker, func() bool { return false }, 2*time.Minute)
+	handler.SetQuestionManager(questionMgr)
+
+	requester := handler.buildBrowserCheckpointRequester(
+		context.Background(),
+		"web",
+		"user-allow",
+		"session-allow",
+		"",
+		"",
+		i18n.DefaultLanguage,
+	)
+	if requester == nil {
+		t.Fatal("expected browser checkpoint requester")
+	}
+
+	resultCh := make(chan tools.BrowserCheckpointResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := requester(context.Background(), tools.BrowserCheckpointRequest{
+			Required:  true,
+			RiskLevel: "high",
+			Step:      "recipe",
+			Action:    "login",
+			URL:       "https://example.com/login",
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resultCh <- result
+	}()
+
+	pending := waitPendingQuestionForUser(t, questionMgr, "user-allow", 2*time.Second)
+	if len(pending.Questions) != 1 {
+		t.Fatalf("questions len = %d, want 1", len(pending.Questions))
+	}
+	if len(pending.Questions[0].Options) != 3 {
+		t.Fatalf("options len = %d, want 3", len(pending.Questions[0].Options))
+	}
+	if got := pending.Questions[0].Options[1].Value; got != "allow_site" {
+		t.Fatalf("site allow option value = %q, want allow_site", got)
+	}
+	if !questionMgr.ResolveAnswer(pending.ID, []tools.QuestionAnswerResult{{
+		QuestionID: "browser_checkpoint",
+		Selected:   []string{"allow_site"},
+	}}) {
+		t.Fatalf("failed to resolve question id=%s", pending.ID)
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("requester returned error: %v", err)
+	case result := <-resultCh:
+		if result.Decision != tools.BrowserCheckpointApprove {
+			t.Fatalf("decision = %s, want %s", result.Decision, tools.BrowserCheckpointApprove)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for requester result")
+	}
+
+	if matched := siteStore.Match("https://example.com/account", "user-allow"); matched == nil {
+		t.Fatal("expected trusted site to be persisted after allow_site answer")
+	}
+
+	result, err := requester(context.Background(), tools.BrowserCheckpointRequest{
+		Required:  true,
+		RiskLevel: "high",
+		Step:      "recipe",
+		Action:    "login",
+		URL:       "https://example.com/account",
+	})
+	if err != nil {
+		t.Fatalf("second requester returned error: %v", err)
+	}
+	if result.Decision != tools.BrowserCheckpointApprove {
+		t.Fatalf("second decision = %s, want %s", result.Decision, tools.BrowserCheckpointApprove)
+	}
+	if pending := questionMgr.GetPending("user-allow"); pending != nil {
+		t.Fatalf("expected no pending question after allowlist hit, got %+v", pending)
 	}
 }
 
@@ -6575,7 +7178,7 @@ func TestBrowserCheckpointRequesterWeb_LocalizesPendingQuestion(t *testing.T) {
 	if got := pending.Questions[0].Detail; got != "步骤: 交互 | 动作: 点击" {
 		t.Fatalf("detail = %q", got)
 	}
-	if got := pending.Questions[0].Options[0].Label; got != "取消" {
+	if got := pending.Questions[0].Options[0].Label; got != "继续" {
 		t.Fatalf("first option = %q", got)
 	}
 	if got, _ := pending.Context["step"].(string); got != "交互" {

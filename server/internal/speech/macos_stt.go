@@ -61,6 +61,12 @@ var (
 	selSetFrameLength       objc.SEL // AVAudioPCMBuffer setFrameLength:
 )
 
+var (
+	hasSpeechUsageDescriptionFunc     = hasSpeechUsageDescription
+	hasMicrophoneUsageDescriptionFunc = hasMicrophoneUsageDescription
+	verifyCodeSignatureFunc           = verifyCodeSignature
+)
+
 func initSTTSelectors() {
 	sttOnce.Do(func() {
 		// Load Speech framework so ObjC runtime knows about SFSpeechRecognizer
@@ -338,22 +344,18 @@ func RequestSTTAuthorization() (int, error) {
 		return 0, sttAuthErr
 	}
 
+	if err := CheckSpeechRecognitionAccess(); err != nil {
+		sttAuthErr = err
+		return 0, sttAuthErr
+	}
+
 	// Check current status first
 	status := objc.Send[int](objc.ID(cls), selAuthorizationStatus)
 	slog.Info("[macos-stt] authorization status", "status", status)
 
 	if status == 0 {
-		// Preflight checks
-		if !hasSpeechUsageDescription() {
-			slog.Warn("[macos-stt] NSSpeechRecognitionUsageDescription not found")
-			sttAuthErr = fmt.Errorf("macOS native speech recognition unavailable: " +
-				"NSSpeechRecognitionUsageDescription missing from Info.plist")
-			return 0, sttAuthErr
-		}
-		if !verifyCodeSignature() {
-			slog.Warn("[macos-stt] no valid code signature")
-			sttAuthErr = fmt.Errorf("macOS native speech recognition unavailable: " +
-				"no valid code signature. Sign the binary with codesign")
+		if err := checkSpeechRecognitionAuthorizationRequest(); err != nil {
+			sttAuthErr = err
 			return 0, sttAuthErr
 		}
 
@@ -443,22 +445,18 @@ func RequestSTTAuthorizationEmbedded() (int, error) {
 		return 0, sttAuthErr
 	}
 
+	if err := CheckSpeechRecognitionAccess(); err != nil {
+		sttAuthErr = err
+		return 0, sttAuthErr
+	}
+
 	// Check current status
 	status := objc.Send[int](objc.ID(cls), selAuthorizationStatus)
 	slog.Info("[macos-stt] embedded authorization status", "status", status)
 
 	if status == 0 {
-		// Preflight checks
-		if !hasSpeechUsageDescription() {
-			slog.Warn("[macos-stt] NSSpeechRecognitionUsageDescription not found")
-			sttAuthErr = fmt.Errorf("macOS native speech recognition unavailable: " +
-				"NSSpeechRecognitionUsageDescription missing from Info.plist")
-			return 0, sttAuthErr
-		}
-		if !verifyCodeSignature() {
-			slog.Warn("[macos-stt] no valid code signature")
-			sttAuthErr = fmt.Errorf("macOS native speech recognition unavailable: " +
-				"no valid code signature. Sign the binary with codesign")
+		if err := checkSpeechRecognitionAuthorizationRequest(); err != nil {
+			sttAuthErr = err
 			return 0, sttAuthErr
 		}
 
@@ -1286,12 +1284,57 @@ func langToLocale(lang string) string {
 	}
 }
 
+func checkSpeechRecognitionAuthorizationRequest() error {
+	if err := CheckSpeechRecognitionAccess(); err != nil {
+		return err
+	}
+	if !verifyCodeSignatureFunc() {
+		slog.Warn("[macos-stt] no valid code signature")
+		return fmt.Errorf("macOS native speech recognition unavailable: " +
+			"no valid code signature. Sign the binary with codesign")
+	}
+	return nil
+}
+
+// CheckSpeechRecognitionAccess verifies that the current process declares
+// speech recognition usage before touching SFSpeechRecognizer APIs. Without
+// this, TCC can abort the process during even a status probe.
+func CheckSpeechRecognitionAccess() error {
+	initSTTSelectors()
+	if !hasSpeechUsageDescriptionFunc() {
+		slog.Warn("[macos-stt] NSSpeechRecognitionUsageDescription not found")
+		return fmt.Errorf("macOS native speech recognition unavailable: " +
+			"NSSpeechRecognitionUsageDescription missing from Info.plist")
+	}
+	return nil
+}
+
+// CheckMicrophoneAccess verifies that the current process declares microphone
+// usage before touching AVFoundation capture authorization APIs.
+func CheckMicrophoneAccess() error {
+	initSTTSelectors()
+	if !hasMicrophoneUsageDescriptionFunc() {
+		slog.Warn("[macos-stt] NSMicrophoneUsageDescription not found")
+		return fmt.Errorf("macOS native microphone unavailable: " +
+			"NSMicrophoneUsageDescription missing from Info.plist")
+	}
+	return nil
+}
+
 // hasSpeechUsageDescription checks if NSBundle.mainBundle has the
 // NSSpeechRecognitionUsageDescription key in its Info.plist.
 // TCC reads this from the bundle (or embedded __TEXT,__info_plist) and will
 // abort() the process if it's missing when requestAuthorization: is called.
 // This preflight lets us fail gracefully instead of crashing.
 func hasSpeechUsageDescription() bool {
+	return hasUsageDescription("NSSpeechRecognitionUsageDescription")
+}
+
+func hasMicrophoneUsageDescription() bool {
+	return hasUsageDescription("NSMicrophoneUsageDescription")
+}
+
+func hasUsageDescription(keyName string) bool {
 	cls := objc.GetClass("NSBundle")
 	if cls == 0 {
 		return false
@@ -1302,9 +1345,9 @@ func hasSpeechUsageDescription() bool {
 	if bundle == 0 {
 		return false
 	}
-	key := nsString("NSSpeechRecognitionUsageDescription")
+	key := nsString(keyName)
 	val := bundle.Send(selObjectForKey, key)
-	slog.Info("[macos-stt] preflight NSSpeechRecognitionUsageDescription", "found", val != 0)
+	slog.Info("[macos-stt] preflight usage description", "key", keyName, "found", val != 0)
 	return val != 0
 }
 

@@ -5,6 +5,7 @@ package voicewake
 import (
 	"sync"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
 )
@@ -34,12 +35,16 @@ func defaultProbePermissionStatus() permissionStatus {
 
 	out := permissionStatus{}
 
-	if recognizerClass := objc.ID(objc.GetClass("SFSpeechRecognizer")); recognizerClass != 0 {
-		out.SpeechAuthorized = objc.Send[int](recognizerClass, selAuthorizationStatus) == speechAuthorizationAuthorized
+	if speech.CheckSpeechRecognitionAccess() == nil {
+		if recognizerClass := objc.ID(objc.GetClass("SFSpeechRecognizer")); recognizerClass != 0 {
+			out.SpeechAuthorized = objc.Send[int](recognizerClass, selAuthorizationStatus) == speechAuthorizationAuthorized
+		}
 	}
 
-	if captureClass := objc.ID(objc.GetClass("AVCaptureDevice")); captureClass != 0 {
-		out.MicrophoneReady = objc.Send[int](captureClass, selAuthorizationStatusForMediaType, nsString(audioMediaType)) == avAuthorizationAuthorized
+	if speech.CheckMicrophoneAccess() == nil {
+		if captureClass := objc.ID(objc.GetClass("AVCaptureDevice")); captureClass != 0 {
+			out.MicrophoneReady = objc.Send[int](captureClass, selAuthorizationStatusForMediaType, nsString(audioMediaType)) == avAuthorizationAuthorized
+		}
 	}
 
 	return out

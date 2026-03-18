@@ -6,11 +6,13 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	_ "github.com/mattn/go-sqlite3"
@@ -162,6 +164,57 @@ func TestMarketSearchSkillsFallbackUsesLegacyStore(t *testing.T) {
 	}
 }
 
+func TestMarketSearchSkillsFallbackPaginatesBeyondFirstHundred(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "legacy-skill-store-paginated.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	store, err := skillstore.NewStore(db)
+	if err != nil {
+		t.Fatalf("new legacy store: %v", err)
+	}
+	for i := 1; i <= 150; i++ {
+		id := fmt.Sprintf("skill-%03d", i)
+		if err := store.UpsertSkill(context.Background(), &skillstore.Skill{
+			ID:            id,
+			Name:          fmt.Sprintf("Skill %03d", i),
+			Version:       "1.0.0",
+			Summary:       "Pagination fixture",
+			Description:   "Pagination fixture",
+			Author:        "tester",
+			Category:      "development",
+			Tags:          "pagination",
+			SourceID:      "clawhub",
+			SourceName:    "ClawHub",
+			Homepage:      "https://example.com/" + id,
+			DownloadURL:   "https://example.com/" + id + "/SKILL.md",
+			Stars:         i,
+			Downloads:     1000 - i,
+			SearchContent: "pagination fixture",
+		}); err != nil {
+			t.Fatalf("upsert legacy skill %s: %v", id, err)
+		}
+	}
+
+	handler := NewSkillHandler(skill.NewRegistry())
+	handler.SetStore(store)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/search", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	results, err := handler.collectFallbackMarketResults(c.Request().Context(), skillmarket.SearchQuery{})
+	if err != nil {
+		t.Fatalf("collectFallbackMarketResults() error = %v", err)
+	}
+	if len(results) != 150 {
+		t.Fatalf("len(results) = %d, want 150", len(results))
+	}
+}
+
 func TestMarketFeaturedAndFilters(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "market.db"))
 	if err != nil {
@@ -275,6 +328,123 @@ Featured fixture.`
 	if len(filters.Sources) == 0 {
 		t.Fatal("expected source filters to be populated")
 	}
+}
+
+func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
+	requestStarted := make(chan struct{}, 1)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/skills":
+			select {
+			case requestStarted <- struct{}{}:
+			default:
+			}
+			<-release
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"total":0,"skills":[]}}`))
+		case "/search/code":
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		case "/api/v1/skills":
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		case "/":
+			_, _ = w.Write([]byte(`<html><body>empty catalog</body></html>`))
+		default:
+			http.NotFound(w, r)
+			return
+		}
+	}))
+	defer server.Close()
+
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "market.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := skillmarket.DefaultConfig(t.TempDir(), activeDir)
+	cfg.TencentSkillHubAPIBaseURL = server.URL
+	cfg.GitHubAPIBaseURL = server.URL
+	cfg.ClawHubBaseURL = server.URL
+	cfg.SkillHubBaseURL = server.URL
+	cfg.SkillStackBaseURL = server.URL
+	cfg.SkillsMPBaseURL = server.URL
+	cfg.LLMSkillsBaseURL = server.URL
+	cfg.SeedURLs = nil
+	market, err := skillmarket.NewService(db, skillmarket.Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		HTTPClient:   server.Client(),
+		Scanner:      skillmarket.NewScanner(nil),
+	})
+	if err != nil {
+		t.Fatalf("new market: %v", err)
+	}
+
+	handler := NewSkillHandler(skill.NewRegistry())
+	handler.SetMarketplace(market)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPost, "/skills/discover/refresh", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	if err := handler.MarketDiscoverSkills(c); err != nil {
+		t.Fatalf("MarketDiscoverSkills() error = %v", err)
+	}
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusAccepted)
+	}
+	var startPayload struct {
+		Accepted bool `json:"accepted"`
+		Running  bool `json:"running"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &startPayload); err != nil {
+		t.Fatalf("decode start payload: %v", err)
+	}
+	if !startPayload.Accepted || !startPayload.Running {
+		t.Fatalf("unexpected start payload: %s", rec.Body.String())
+	}
+
+	<-requestStarted
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/skills/discover/status", nil)
+	statusRec := httptest.NewRecorder()
+	statusCtx := e.NewContext(statusReq, statusRec)
+	if err := handler.MarketDiscoverStatus(statusCtx); err != nil {
+		t.Fatalf("MarketDiscoverStatus() error = %v", err)
+	}
+	if statusRec.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", statusRec.Code, http.StatusOK)
+	}
+	var statusPayload struct {
+		Running bool `json:"running"`
+	}
+	if err := json.Unmarshal(statusRec.Body.Bytes(), &statusPayload); err != nil {
+		t.Fatalf("decode status payload: %v", err)
+	}
+	if !statusPayload.Running {
+		t.Fatalf("expected running status, payload=%s", statusRec.Body.String())
+	}
+
+	close(release)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		statusRec = httptest.NewRecorder()
+		statusCtx = e.NewContext(statusReq, statusRec)
+		if err := handler.MarketDiscoverStatus(statusCtx); err != nil {
+			t.Fatalf("MarketDiscoverStatus() error = %v", err)
+		}
+		if err := json.Unmarshal(statusRec.Body.Bytes(), &statusPayload); err != nil {
+			t.Fatalf("decode final status payload: %v", err)
+		}
+		if !statusPayload.Running {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for discover status to complete")
 }
 
 func TestMarketFeaturedAndFiltersFallback(t *testing.T) {

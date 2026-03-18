@@ -13,39 +13,40 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channelconfig"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 )
 
 type Config struct {
-	Server        ServerConfig        `yaml:"server"`
-	Log           LogConfig           `yaml:"log"`
-	Worker        WorkerConfig        `yaml:"worker"`
-	Resources     ResourcesConfig     `yaml:"resources"`
-	Cgroup        CgroupConfig        `yaml:"cgroup"`
-	Channels      channel.Config      `yaml:"channels"`
-	Performance   PerformanceConfig   `yaml:"performance"`
-	Security      SecurityConfig      `yaml:"security"`
-	LLM           LLMConfig           `yaml:"llm"`
-	Session       SessionConfig       `yaml:"session"`
-	Embedding     EmbeddingConfig     `yaml:"embedding"`
-	Memory        MemoryConfig        `yaml:"memory"`
-	Grayscale     GrayscaleConfig     `yaml:"grayscale"`
-	Companion     CompanionConfig     `yaml:"companion"`
-	ClaudeCodeCLI ClaudeCodeCLIConfig `yaml:"claude_code_cli"` // v0.10.3: Separated from LLM
-	FirstRun      FirstRunConfig      `yaml:"first_run"`       // v0.10.3
-	CCSwitch      CCSwitchConfig      `yaml:"cc_switch"`       // v0.10.3
-	Statistics    StatisticsConfig    `yaml:"statistics"`      // v0.10.3
-	ToolCalling   ToolCallingConfig   `yaml:"tool_calling"`    // v0.10.3
-	SkillMarket   SkillMarketConfig   `yaml:"skill_market"`
-	Browser       browser.Config      `yaml:"browser"`
-	Agents        AgentsConfig        `yaml:"agents"`    // v0.11.0
-	Research      ResearchConfig      `yaml:"research"`  // v0.11.x
-	Proxy         *proxy.ProxyConfig  `yaml:"proxy"`     // v0.10.5.1: API Proxy
-	Pruner        *pruner.Config      `yaml:"pruner"`    // v0.10.27: Context Pruner
-	Update        UpdateConfig        `yaml:"update"`    // OTA Update
-	Heartbeat     HeartbeatConfig     `yaml:"heartbeat"` // Heartbeat agent polling
+	Server        ServerConfig         `yaml:"server"`
+	Log           LogConfig            `yaml:"log"`
+	Worker        WorkerConfig         `yaml:"worker"`
+	Resources     ResourcesConfig      `yaml:"resources"`
+	Cgroup        CgroupConfig         `yaml:"cgroup"`
+	Channels      channelconfig.Config `yaml:"channels"`
+	Performance   PerformanceConfig    `yaml:"performance"`
+	Security      SecurityConfig       `yaml:"security"`
+	LLM           LLMConfig            `yaml:"llm"`
+	Session       SessionConfig        `yaml:"session"`
+	Embedding     EmbeddingConfig      `yaml:"embedding"`
+	Memory        MemoryConfig         `yaml:"memory"`
+	Grayscale     GrayscaleConfig      `yaml:"grayscale"`
+	Companion     CompanionConfig      `yaml:"companion"`
+	ClaudeCodeCLI ClaudeCodeCLIConfig  `yaml:"claude_code_cli"` // v0.10.3: Separated from LLM
+	FirstRun      FirstRunConfig       `yaml:"first_run"`       // v0.10.3
+	CCSwitch      CCSwitchConfig       `yaml:"cc_switch"`       // v0.10.3
+	Statistics    StatisticsConfig     `yaml:"statistics"`      // v0.10.3
+	ToolCalling   ToolCallingConfig    `yaml:"tool_calling"`    // v0.10.3
+	Media         MediaConfig          `yaml:"media"`
+	SkillMarket   SkillMarketConfig    `yaml:"skill_market"`
+	Browser       browser.Config       `yaml:"browser"`
+	Agents        AgentsConfig         `yaml:"agents"`    // v0.11.0
+	Research      ResearchConfig       `yaml:"research"`  // v0.11.x
+	Proxy         *proxy.ProxyConfig   `yaml:"proxy"`     // v0.10.5.1: API Proxy
+	Pruner        *pruner.Config       `yaml:"pruner"`    // v0.10.27: Context Pruner
+	Update        UpdateConfig         `yaml:"update"`    // OTA Update
+	Heartbeat     HeartbeatConfig      `yaml:"heartbeat"` // Heartbeat agent polling
 
 	// Deprecated: Use ClaudeCodeCLI instead. Kept for backward compatibility.
 	ClaudeCode ClaudeCodeConfig `yaml:"claudecode"`
@@ -625,7 +626,7 @@ func defaults() Config {
 			CPU: CgroupCPUConfig{Weight: 100},
 		},
 
-		Channels: channel.Config{DefaultTimeoutSeconds: 30, MaxMessageLength: 4096},
+		Channels: channelconfig.Config{DefaultTimeoutSeconds: 30, MaxMessageLength: 4096},
 		Performance: PerformanceConfig{
 			Database: DatabasePerfConfig{
 				PoolSize: 10, MaxIdleConns: 5, ConnMaxLifetime: time.Hour, WALMode: true,
@@ -712,6 +713,7 @@ func defaults() Config {
 		CCSwitch:      *DefaultCCSwitchConfig(),
 		Statistics:    *DefaultStatisticsConfig(),
 		ToolCalling:   *DefaultToolCallingConfig(),
+		Media:         *DefaultMediaConfig(),
 		SkillMarket:   *DefaultSkillMarketConfig(),
 		Browser:       *browser.DefaultConfig(),
 		Agents:        *DefaultAgentsConfig(),

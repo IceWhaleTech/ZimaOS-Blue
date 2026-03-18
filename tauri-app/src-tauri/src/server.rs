@@ -74,9 +74,7 @@ fn kill_existing_echo_servers() {
 
     #[cfg(unix)]
     {
-        let _ = Command::new("pkill")
-            .args(["-f", "blue-server"])
-            .output();
+        let _ = Command::new("pkill").args(["-f", "blue-server"]).output();
         std::thread::sleep(Duration::from_millis(100));
     }
 
@@ -91,8 +89,8 @@ fn kill_existing_echo_servers() {
 
 /// Get the sidecar binary path
 fn get_sidecar_path() -> Result<std::path::PathBuf, String> {
-    let exe_path = std::env::current_exe()
-        .map_err(|e| format!("Failed to get current exe path: {}", e))?;
+    let exe_path =
+        std::env::current_exe().map_err(|e| format!("Failed to get current exe path: {}", e))?;
     let exe_dir = exe_path
         .parent()
         .ok_or_else(|| "Failed to get exe directory".to_string())?;
@@ -121,7 +119,10 @@ fn get_sidecar_path() -> Result<std::path::PathBuf, String> {
         }
     }
 
-    Err(format!("Sidecar binary not found. Checked: {:?}", sidecar_path))
+    Err(format!(
+        "Sidecar binary not found. Checked: {:?}",
+        sidecar_path
+    ))
 }
 
 /// Start the Echo server as a sidecar process
@@ -194,7 +195,8 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let child = cmd.spawn()
+    let child = cmd
+        .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
     let pid = child.id();
@@ -215,9 +217,9 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
 
     // Wait for server to be ready with exponential backoff (optimized for faster startup)
     let url = format!("http://localhost:{}/api/v1/health", port);
-    let mut delay_ms = 20u64;   // 优化: 更快的首次检查 (20ms)
-    let max_delay_ms = 100u64;  // 优化: 最大延迟 100ms
-    let max_attempts = 6;       // 优化: 6 次尝试 (~200ms 总时间)
+    let mut delay_ms = 20u64; // 优化: 更快的首次检查 (20ms)
+    let max_delay_ms = 100u64; // 优化: 最大延迟 100ms
+    let max_attempts = 6; // 优化: 6 次尝试 (~200ms 总时间)
 
     for i in 0..max_attempts {
         sleep(Duration::from_millis(delay_ms)).await;
@@ -241,7 +243,10 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
 /// Start the Echo server as a sidecar process with CLI arguments
 /// The sidecar is the Go `blue` binary which supports cobra flags natively
 #[allow(dead_code)]
-pub async fn start_sidecar_server_with_args(app: &AppHandle, args: Option<&str>) -> Result<(), String> {
+pub async fn start_sidecar_server_with_args(
+    app: &AppHandle,
+    args: Option<&str>,
+) -> Result<(), String> {
     info!("Starting Echo server sidecar with args: {:?}", args);
 
     let mut process_guard = SERVER_PROCESS.lock().await;
@@ -259,7 +264,10 @@ pub async fn start_sidecar_server_with_args(app: &AppHandle, args: Option<&str>)
     let default_port = cli_port.unwrap_or(80u16);
 
     if check_existing_server(default_port).await {
-        info!("Found existing healthy server on port {}, reusing it", default_port);
+        info!(
+            "Found existing healthy server on port {}, reusing it",
+            default_port
+        );
         if let Some(state) = app.try_state::<AppState>() {
             *state.server_port.lock().unwrap() = default_port;
             *state.server_running.lock().unwrap() = true;
@@ -303,7 +311,8 @@ pub async fn start_sidecar_server_with_args(app: &AppHandle, args: Option<&str>)
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let child = cmd.spawn()
+    let child = cmd
+        .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
     let pid = child.id();

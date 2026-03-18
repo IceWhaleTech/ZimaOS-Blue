@@ -79,6 +79,7 @@ describe('Chat Store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    i18n.global.locale.value = 'en-US'
     mocks.sseConnect.mockReset().mockResolvedValue(undefined)
     mocks.sseDisconnect.mockReset()
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
@@ -521,6 +522,220 @@ describe('Chat Store', () => {
       expect(store.sending).toBe(false)
     })
 
+    it('records process traces from local and server events and restores them after conversation switches', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Original',
+          created_at: '2026-03-11T00:00:00.000Z',
+          updated_at: '2026-03-11T00:00:00.000Z',
+        },
+        {
+          id: 'conv-2',
+          title: 'Other',
+          created_at: '2026-03-11T00:00:01.000Z',
+          updated_at: '2026-03-11T00:00:01.000Z',
+        },
+      ]
+
+      vi.mocked(messageApi.list).mockImplementation(async (conversationId: string) => {
+        if (conversationId === 'conv-1') {
+          return {
+            data: [
+              {
+                id: 'msg-user-1',
+                conversation_id: 'conv-1',
+                role: 'user',
+                content: 'Need a decision',
+                created_at: '2026-03-11T00:00:00.000Z',
+              },
+            ],
+          } as never
+        }
+        return { data: [] } as never
+      })
+
+      let streamOptions: any
+      let resolveStream: (() => void) | null = null
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+        streamOptions = options
+        await new Promise<void>((resolve) => {
+          resolveStream = resolve
+        })
+      })
+
+      const sendPromise = store.sendMessage('Need a decision')
+      await settleAsyncWork()
+
+      expect(store.processTrace.map((item) => item.event)).toEqual([
+        'request_summary',
+        'request_dispatched',
+        'waiting_for_response',
+      ])
+
+      streamOptions.onProcessEvent?.({
+        delta: '',
+        done: false,
+        process_event: 'pre_content_retry_started',
+        process_status: 'active',
+        process_message: 'Retrying request',
+        process_attempt: 1,
+      })
+      streamOptions.onMessage?.({ delta: '', done: false, awaiting_user_input: true })
+      await settleAsyncWork()
+
+      expect(store.processTrace.some((item) => item.event === 'pre_content_retry_started')).toBe(
+        true
+      )
+      expect(store.processTrace.some((item) => item.event === 'awaiting_confirmation')).toBe(true)
+      expect(store.statusSummary).toBe('Retrying request')
+
+      await store.selectConversation('conv-2')
+      expect(store.processTrace).toHaveLength(0)
+
+      await store.selectConversation('conv-1')
+      expect(store.processTrace.some((item) => item.event === 'request_summary')).toBe(true)
+      expect(store.processTrace.some((item) => item.event === 'pre_content_retry_started')).toBe(
+        true
+      )
+      expect(store.processTrace.some((item) => item.event === 'awaiting_confirmation')).toBe(true)
+
+      streamOptions.onComplete?.({ done: true })
+      resolveStream?.()
+      await sendPromise
+    })
+
+    it('localizes process trace labels from known events', async () => {
+      i18n.global.setLocaleMessage('zh-CN', {
+        chat: {
+          processTrace: {
+            events: {
+              requestReady: '请求已准备就绪',
+              requestSent: '请求已发送',
+              waitingForResponse: '正在等待响应',
+              retryingRequest: '正在重试请求',
+            },
+            details: {
+              requestDispatched: '正在等待服务器接受请求并开始响应。',
+              waitingForResponse: '请求已被接受。正在等待第一段可见输出。',
+              providerFailoverToolFollowUp: '正在不使用上一个固定提供商重试这轮工具后续请求。',
+              recoveryStage1: '静默恢复',
+            },
+            fields: {
+              message: '消息',
+              provider: '提供商',
+              model: '模型',
+              webSearch: '网页搜索',
+              deepResearch: '深度研究',
+              on: '开启',
+              off: '关闭',
+              auto: '自动',
+            },
+            summaryValues: {
+              continuePreviousReply: '继续上一条回复',
+            },
+          },
+        },
+      } as never)
+      i18n.global.locale.value = 'zh-CN'
+
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Localized progress',
+          created_at: '2026-03-11T00:00:00.000Z',
+          updated_at: '2026-03-11T00:00:00.000Z',
+        },
+      ]
+
+      vi.mocked(messageApi.list).mockResolvedValue({
+        data: [
+          {
+            id: 'msg-user-1',
+            conversation_id: 'conv-1',
+            role: 'user',
+            content: 'Need a decision',
+            created_at: '2026-03-11T00:00:00.000Z',
+          },
+        ],
+      } as never)
+
+      let streamOptions: any
+      let resolveStream: (() => void) | null = null
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+        streamOptions = options
+        await new Promise<void>((resolve) => {
+          resolveStream = resolve
+        })
+      })
+
+      const sendPromise = store.sendMessage('[CONTINUE]')
+      await settleAsyncWork()
+
+      expect(store.processTrace.map((item) => item.label)).toEqual([
+        '请求已准备就绪',
+        '请求已发送',
+        '正在等待响应',
+      ])
+      expect(store.processTrace[0]?.detail).toContain('消息: 继续上一条回复')
+      expect(store.processTrace[0]?.detail).toContain('提供商: 自动')
+      expect(store.processTrace[0]?.detail).toContain('模型: 自动')
+      expect(store.processTrace[0]?.detail).toContain('网页搜索: 开启')
+      expect(store.processTrace[1]?.detail).toBe('正在等待服务器接受请求并开始响应。')
+      expect(store.processTrace[2]?.detail).toBe('请求已被接受。正在等待第一段可见输出。')
+
+      streamOptions.onProcessEvent?.({
+        delta: '',
+        done: false,
+        process_event: 'pre_content_retry_started',
+        process_status: 'active',
+        process_message: 'Retrying request',
+        process_attempt: 1,
+      })
+      await settleAsyncWork()
+
+      expect(
+        store.processTrace.find((item) => item.event === 'pre_content_retry_started')?.label
+      ).toBe('正在重试请求')
+      expect(store.statusSummary).toBe('正在重试请求')
+
+      streamOptions.onProcessEvent?.({
+        delta: '',
+        done: false,
+        process_event: 'provider_failover',
+        process_status: 'active',
+        process_message: 'Switching provider',
+        process_detail: 'Retrying the tool follow-up without the previously pinned provider.',
+      })
+      streamOptions.onProcessEvent?.({
+        delta: '',
+        done: false,
+        process_event: 'continuation_recovery_started',
+        process_status: 'active',
+        process_message: 'Recovering response',
+        process_detail: 'silent_recovery_stage1',
+      })
+      await settleAsyncWork()
+
+      expect(
+        store.processTrace.find((item) => item.event === 'provider_failover')?.detail
+      ).toContain('正在不使用上一个固定提供商重试这轮工具后续请求。')
+      expect(
+        store.processTrace.find((item) => item.event === 'continuation_recovery_started')?.detail
+      ).toContain('静默恢复')
+
+      streamOptions.onComplete?.({ delta: '', done: true })
+      resolveStream?.()
+      await sendPromise
+      i18n.global.locale.value = 'en-US'
+    })
+
     it('should split streamed Reddit follow-up cards into separate assistant messages before persistence refresh', async () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'
@@ -673,6 +888,60 @@ describe('Chat Store', () => {
       ).toBe(false)
       expect(store.streaming).toBe(false)
       expect(store.sending).toBe(false)
+    })
+
+    it('keeps tool result details attached to the completed split bubble until persistence refresh catches up', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Tool split flow',
+          created_at: '2026-03-18T00:00:00.000Z',
+          updated_at: '2026-03-18T00:00:00.000Z',
+        },
+      ]
+
+      vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+
+      let splitSnapshot: Array<{
+        id: string
+        role: string
+        content: string
+        localToolResultCount: number
+      }> = []
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+        options.onToolResults?.(
+          [
+            {
+              name: 'web_search',
+              id: 'tool-search-1',
+              args: '{"query":"Need sources"}',
+              result: '{"status":"ok","stdout":"Found 3 results"}',
+            },
+          ],
+          1
+        )
+        options.onNewMessage?.(1)
+        splitSnapshot = store.messages.map((message) => ({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          localToolResultCount: ((message as any).local_process_tool_results || []).length,
+        }))
+        options.onComplete?.({ done: true })
+      })
+
+      await store.sendMessage('Need sources')
+      await settleAsyncWork()
+
+      expect(splitSnapshot).toHaveLength(3)
+      expect(splitSnapshot[0]?.role).toBe('user')
+      expect(splitSnapshot[1]?.id.startsWith('streaming-')).toBe(true)
+      expect(splitSnapshot[1]?.localToolResultCount).toBe(1)
+      expect(splitSnapshot[2]?.localToolResultCount).toBe(0)
+      expect(splitSnapshot[2]?.content).toBe('')
     })
 
     it('updates the most recent checklist bubble when todo_updated cannot match a local message id', async () => {
@@ -877,6 +1146,33 @@ describe('Chat Store', () => {
       expect(items).toHaveLength(1)
       expect(items[0]?.command).toBe('mkdir -p /Users/orca/.zimaos-blue/data/workspace/tank-battle')
       expect(items[0]?.status).toBe('25ms')
+      expect(items[0]?.icon).toBe('✓')
+    })
+
+    it('formats convert tool commands from source refs and target format', () => {
+      const items = parseToolResults([
+        {
+          name: 'convert',
+          id: 'convert-1',
+          args: JSON.stringify({
+            action: 'convert',
+            sources: ['/Users/orca/.zimaos-blue/data/workspace/phone_specs_2026/完整汇总表格.md'],
+            target_format: 'pdf',
+          }),
+          result: JSON.stringify({
+            task_id: 'task-1',
+            status: 'succeeded',
+            source_summary: '完整汇总表格.md',
+            target_format: 'pdf',
+          }),
+        },
+      ])
+
+      expect(items).toHaveLength(1)
+      expect(items[0]?.command).toBe(
+        '/Users/orca/.zimaos-blue/data/workspace/phone_specs_2026/完整汇总表格.md -> pdf'
+      )
+      expect(items[0]?.status).toBe('succeeded')
       expect(items[0]?.icon).toBe('✓')
     })
 

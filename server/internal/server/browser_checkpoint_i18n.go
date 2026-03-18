@@ -65,6 +65,17 @@ func browserCheckpointLocale(lang i18n.Language) browserCheckpointLocaleStrings 
 	return browserCheckpointStrings[i18n.DefaultLanguage]
 }
 
+func browserCheckpointAllowSiteLabel(lang i18n.Language) string {
+	switch i18n.ParseLanguage(string(lang)) {
+	case i18n.LangZhCN:
+		return "始终允许此网站"
+	case i18n.LangZhTW:
+		return "永遠允許此網站"
+	default:
+		return "Always allow this site"
+	}
+}
+
 func localizedBrowserCheckpointStep(lang i18n.Language, step string) string {
 	localized := browserCheckpointLocale(lang)
 	switch strings.ToLower(strings.TrimSpace(step)) {

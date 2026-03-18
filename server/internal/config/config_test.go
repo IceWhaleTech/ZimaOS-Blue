@@ -7,7 +7,26 @@ import (
 	"time"
 )
 
+func isolateConfigDiscovery(t *testing.T) {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir(%q) error = %v", tmpDir, err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(cwd)
+	})
+	t.Setenv("HOME", tmpDir)
+}
+
 func TestLoad_Defaults(t *testing.T) {
+	isolateConfigDiscovery(t)
+
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -60,6 +79,8 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_DefaultPasswordMinLength(t *testing.T) {
+	isolateConfigDiscovery(t)
+
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -118,6 +139,8 @@ browser:
 }
 
 func TestLoad_FromEnv(t *testing.T) {
+	isolateConfigDiscovery(t)
+
 	// Set environment variables
 	os.Setenv("BLUE_SERVER_PORT", "7070")
 	os.Setenv("BLUE_LOG_LEVEL", "warn")

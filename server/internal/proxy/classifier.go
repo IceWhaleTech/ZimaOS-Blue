@@ -83,6 +83,23 @@ type APIErrorClassifier struct {
 	patterns map[string][]ErrorPattern
 }
 
+// IsContextWindowExceededMessage returns true when an error message clearly
+// indicates input/context overflow, including relay-wrapped variants that may
+// be surfaced with a generic 5xx status code.
+func IsContextWindowExceededMessage(msg string) bool {
+	msg = strings.TrimSpace(strings.ToLower(msg))
+	if msg == "" {
+		return false
+	}
+
+	return strings.Contains(msg, "context too long") ||
+		strings.Contains(msg, "maximum context length") ||
+		strings.Contains(msg, "context_length_exceeded") ||
+		strings.Contains(msg, "prompt is too long") ||
+		strings.Contains(msg, "context window is full") ||
+		strings.Contains(msg, "reduce conversation history")
+}
+
 // NewAPIErrorClassifier creates a new error classifier with default patterns
 func NewAPIErrorClassifier() *APIErrorClassifier {
 	c := &APIErrorClassifier{
@@ -322,6 +339,19 @@ func (c *APIErrorClassifier) ClassifyError(
 ) *ErrorClassification {
 	// Parse error response - try multiple formats
 	message := c.extractErrorMessage(responseBody)
+	if statusCode >= 400 && IsContextWindowExceededMessage(message) {
+		classification := &ErrorClassification{
+			Type:               ErrorTypeContextTooLong,
+			Category:           ErrorCategoryFailover,
+			Message:            message,
+			Retryable:          true,
+			ShouldFailover:     true,
+			OriginalStatusCode: statusCode,
+		}
+		c.extractContextSize(message, classification)
+		c.extractRetryAfter(responseBody, classification)
+		return classification
+	}
 
 	// Try provider-specific patterns first
 	if patterns, ok := c.patterns[strings.ToLower(provider)]; ok {

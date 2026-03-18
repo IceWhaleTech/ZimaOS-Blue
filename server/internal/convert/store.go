@@ -408,6 +408,9 @@ func scanTaskCommon(row interface {
 		var request TaskRequest
 		if err := json.Unmarshal([]byte(requestJSON), &request); err == nil {
 			task.Request = &request
+			if len(request.Sources) > 0 {
+				task.Sources = append([]string(nil), request.Sources...)
+			}
 		}
 	}
 	outputs, err := unmarshalStoredOutputs(outputsJSON)

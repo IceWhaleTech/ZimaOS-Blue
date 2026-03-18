@@ -96,6 +96,14 @@ function setUserAgent(userAgent: string, maxTouchPoints = 0) {
   })
 }
 
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    writable: true,
+    value: width,
+  })
+}
+
 async function mountLayout(path: string) {
   const router = createTestRouter()
   router.push(path)
@@ -114,9 +122,10 @@ describe('DefaultLayout', () => {
     previewStoreState.isPreviewMode = false
     settingsStoreState.claudeCodeEnabled = false
     settingsStoreState.claudeCodeEnabledLoaded = true
+    setViewportWidth(1440)
   })
 
-  it('does not render the mobile nav button for desktop browsers', async () => {
+  it('does not render the nav button when the sidebar stays visible on wide desktop screens', async () => {
     setUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
     )
@@ -128,11 +137,25 @@ describe('DefaultLayout', () => {
     wrapper.unmount()
   })
 
+  it('renders the nav button for desktop browsers when the window is too narrow to show the sidebar', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+    )
+    setViewportWidth(900)
+
+    const wrapper = await mountLayout('/profile')
+
+    expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
   it('renders the mobile nav button for phone browsers on profile routes', async () => {
     setUserAgent(
       'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1',
       5
     )
+    setViewportWidth(390)
 
     const wrapper = await mountLayout('/profile')
 
@@ -146,6 +169,7 @@ describe('DefaultLayout', () => {
       'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1',
       5
     )
+    setViewportWidth(390)
 
     const wrapper = await mountLayout('/home')
 
@@ -154,15 +178,16 @@ describe('DefaultLayout', () => {
     wrapper.unmount()
   })
 
-  it('renders the mobile nav button for phone browsers on the chat route', async () => {
+  it('does not render the global nav button on the chat route because chat owns its own entry points', async () => {
     setUserAgent(
       'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1',
       5
     )
+    setViewportWidth(390)
 
     const wrapper = await mountLayout('/chat')
 
-    expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(true)
+    expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(false)
 
     wrapper.unmount()
   })

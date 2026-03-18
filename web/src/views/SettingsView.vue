@@ -7,10 +7,8 @@ import { type MemoryRecallMode } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore } from '@/stores/theme'
 import { backupApi } from '@/api/index'
-import { providerPoolApi } from '@/api/providerPool'
 import type { LocaleKey } from '@/i18n'
 import type { BackupInfo } from '@/api/index'
-import { hasConfiguredLlmApiKey } from '@/utils/providerAccess'
 import ClaudeCodeSettings from '@/components/ClaudeCodeSettings.vue'
 import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
@@ -20,6 +18,7 @@ import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import ApiProxySettings from '@/components/settings/ApiProxySettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import BackupManager from '@/components/BackupManager.vue'
+import { proxyCacheApi, type PrunerConfig, type PrunerStats } from '@/api/proxyCache'
 import { useTauri } from '@/composables/useTauri'
 import { serviceApi } from '@/api/service'
 import type { ServiceInfo } from '@/api/service'
@@ -62,8 +61,7 @@ const hasInitialTabQuery =
 const requestedInitialTab: TabType = hasInitialTabQuery
   ? (normalizedInitialTab as TabType)
   : 'general'
-const activeTab = ref<TabType>(requestedInitialTab === 'llm' ? 'general' : requestedInitialTab)
-const llmTabAccessChecking = ref(false)
+const activeTab = ref<TabType>(requestedInitialTab)
 
 // Tab icons (heroicons outline, 16x16)
 const tabIcons: Record<TabType, string> = {
@@ -160,11 +158,6 @@ function showSaveStatus(message: string, action?: SaveStatusAction) {
   )
 }
 
-function openLlmTabFromToast() {
-  activeTab.value = 'llm'
-  clearSaveStatus()
-}
-
 async function handleLocaleChange(locale: string) {
   await localeStore.changeLocale(locale as LocaleKey)
   showSaveStatus(t('settings.languageSaved'))
@@ -204,6 +197,11 @@ const smallModelStatsResetting = ref(false)
 const smallModelStatsExpanded = ref(false)
 const smallModelDefaultStorageBytes = Math.round(737.5 * 1024 * 1024)
 const smallModelRecommendedRuntimeBytes = 2 * 1024 * 1024 * 1024
+const globalPrunerConfig = ref<PrunerConfig | null>(null)
+const globalPrunerStats = ref<PrunerStats | null>(null)
+const globalPrunerSaving = ref(false)
+const globalPrunerEnabled = computed(() => globalPrunerConfig.value?.enabled === true)
+const globalPrunerSnapshot = computed(() => globalPrunerStats.value?.stats || null)
 const shortQASuccessRate = computed(() => {
   const stats = settingsStore.smallModelStats
   if (!stats || stats.short_qa_route_attempts <= 0) return 0
@@ -250,6 +248,15 @@ function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
   if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return bytes + ' B'
+}
+
+function formatRatio(value?: number): string {
+  if (typeof value !== 'number') return '-'
+  return `${Math.round(value * 100)}%`
+}
+
+function formatCount(value: number): string {
+  return value.toLocaleString()
 }
 
 const smallModelStorageBytes = computed(() => {
@@ -381,6 +388,41 @@ async function fetchSmallModelStats() {
   }
 }
 
+async function fetchGlobalPrunerState() {
+  const [configRes, statsRes] = await Promise.all([
+    proxyCacheApi.getPrunerConfig().catch(() => null),
+    proxyCacheApi.getPrunerStats().catch(() => null),
+  ])
+  if (configRes) globalPrunerConfig.value = configRes.data
+  if (statsRes) globalPrunerStats.value = statsRes.data
+}
+
+async function handleGlobalPrunerEnabledChange(next: boolean) {
+  if (globalPrunerSaving.value || !globalPrunerConfig.value) return
+  try {
+    globalPrunerSaving.value = true
+    const res = await proxyCacheApi.updatePrunerConfig({ enabled: next })
+    globalPrunerConfig.value = res.data.config
+    const latestStats = await proxyCacheApi.getPrunerStats().catch(() => null)
+    globalPrunerStats.value = latestStats
+      ? latestStats.data
+      : {
+          enabled: next,
+          stats: globalPrunerStats.value?.stats,
+        }
+    showSaveStatus(
+      t(
+        next ? 'apiProxy.prunerEnabled' : 'apiProxy.prunerDisabled',
+        next ? 'Context pruner enabled' : 'Context pruner disabled'
+      )
+    )
+  } catch {
+    showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
+  } finally {
+    globalPrunerSaving.value = false
+  }
+}
+
 async function resetSmallModelStats() {
   if (smallModelStatsResetting.value) return
   try {
@@ -423,37 +465,7 @@ async function toggleAutoStart() {
   }
 }
 
-async function canOpenLLMTab(): Promise<boolean> {
-  if (llmTabAccessChecking.value) return false
-  llmTabAccessChecking.value = true
-  try {
-    const response = await providerPoolApi.listProviders()
-    return hasConfiguredLlmApiKey(response.data.providers || [])
-  } catch {
-    return false
-  } finally {
-    llmTabAccessChecking.value = false
-  }
-}
-
 async function switchTab(tab: TabType) {
-  if (tab === 'llm') {
-    const allowed = await canOpenLLMTab()
-    if (!allowed) {
-      showSaveStatus(t('settings.llmApiKeyRequired', '请先配置大语言模型提供商。'), {
-        label: t('settings.llmProviderSetupLink', '配置大语言模型提供商'),
-        handler: openLlmTabFromToast,
-      })
-      activeTab.value = 'general'
-      const rawCurrentTab = route.query.tab
-      const currentTab = Array.isArray(rawCurrentTab) ? rawCurrentTab[0] : rawCurrentTab
-      if (currentTab === 'llm') {
-        await router.replace({ query: { ...route.query, tab: 'general' } })
-      }
-      return
-    }
-  }
-
   activeTab.value = tab
   router.replace({ query: { ...route.query, tab } })
 
@@ -461,8 +473,13 @@ async function switchTab(tab: TabType) {
   if (tab === 'userdata' && backups.value.length === 0) {
     fetchBackups()
   }
-  if (tab === 'proxy' && settingsStore.smallModelStats == null) {
-    void fetchSmallModelStats()
+  if (tab === 'proxy') {
+    if (settingsStore.smallModelStats == null) {
+      void fetchSmallModelStats()
+    }
+    if (globalPrunerConfig.value == null) {
+      void fetchGlobalPrunerState()
+    }
   }
 }
 
@@ -541,6 +558,9 @@ onMounted(async () => {
   await settingsStore.fetchBackendSettings()
   await fetchSmallModelStatus()
   await fetchSmallModelStats()
+  if (requestedInitialTab === 'proxy') {
+    await fetchGlobalPrunerState()
+  }
   fetchServiceInfo()
 
   // Load data based on initial tab
@@ -581,7 +601,9 @@ onUnmounted(() => {
             <h1 class="settings-hero__title dashboard-page-title configuration-page-title">
               {{ t('settings.title') }}
             </h1>
-            <p class="settings-hero__description dashboard-page-description configuration-page-description">
+            <p
+              class="settings-hero__description dashboard-page-description configuration-page-description"
+            >
               {{ activeTabMeta.description }}
             </p>
           </div>
@@ -883,13 +905,13 @@ onUnmounted(() => {
                 >
                   <div class="min-w-0 flex-1">
                     <div class="text-sm text-gray-800 dark:text-gray-100">
-                      {{ t('settings.smallModel.irContextPruneTitle', 'Context Trimming') }}
+                      {{ t('settings.smallModel.irContextPruneTitle', 'Chat Context Compaction') }}
                     </div>
                     <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {{
                         t(
                           'settings.smallModel.irContextPruneDesc',
-                          'Automatically trims less relevant history to reduce token use.'
+                          'Controls how Blue reduces chat history when context pressure rises.'
                         )
                       }}
                     </div>
@@ -919,6 +941,70 @@ onUnmounted(() => {
                           ? 'translate-x-5'
                           : 'translate-x-0'
                       "
+                    />
+                  </button>
+                </div>
+
+                <div
+                  v-if="globalPrunerConfig"
+                  class="flex h-full items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-gray-700 dark:bg-slate-800/50"
+                >
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm text-gray-800 dark:text-gray-100">
+                      {{ t('apiProxy.prunerTitle', 'Global Context Pruner') }}
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {{
+                        t(
+                          'apiProxy.prunerDesc',
+                          'Controls the API proxy pruner for proxied /v1 requests. Blue chat may still skip pruning per request when context pressure is low.'
+                        )
+                      }}
+                    </div>
+                    <div
+                      class="mt-2 flex flex-wrap gap-1.5 text-[11px] text-gray-500 dark:text-gray-400"
+                    >
+                      <span class="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-gray-700/50">
+                        {{ t('apiProxy.prunerBackend', 'Backend') }}:
+                        {{ globalPrunerConfig.backend || '-' }}
+                      </span>
+                      <span class="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-gray-700/50">
+                        {{ t('apiProxy.prunerThreshold', 'Threshold') }}:
+                        {{ formatRatio(globalPrunerConfig.threshold) }}
+                      </span>
+                      <span class="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-gray-700/50">
+                        {{ t('cache.tokensSaved', 'Tokens Saved') }}:
+                        {{ formatCount(globalPrunerSnapshot?.tokens_saved ?? 0) }}
+                      </span>
+                    </div>
+                    <div class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                      {{
+                        globalPrunerSnapshot && globalPrunerSnapshot.total_requests > 0
+                          ? t('tokenEconomy.prunerMeta', {
+                              pruned: globalPrunerSnapshot.pruned_requests,
+                              total: globalPrunerSnapshot.total_requests,
+                            })
+                          : t('apiProxy.prunerNoData', 'No pruning requests recorded yet.')
+                      }}
+                    </div>
+                  </div>
+                  <button
+                    data-testid="proxy-pruner-switch"
+                    type="button"
+                    role="switch"
+                    :aria-checked="globalPrunerEnabled"
+                    :disabled="globalPrunerSaving"
+                    class="relative mt-0.5 inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                    :class="
+                      globalPrunerEnabled
+                        ? 'bg-green-600 dark:bg-green-500'
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    "
+                    @click="handleGlobalPrunerEnabledChange(!globalPrunerEnabled)"
+                  >
+                    <span
+                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                      :class="globalPrunerEnabled ? 'translate-x-5' : 'translate-x-0'"
                     />
                   </button>
                 </div>
@@ -1156,7 +1242,9 @@ onUnmounted(() => {
                       class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
                     >
                       <span data-testid="small-model-storage-usage">
-                        {{ t('settings.smallModel.storageUsage', { storage: smallModelStorageText }) }}
+                        {{
+                          t('settings.smallModel.storageUsage', { storage: smallModelStorageText })
+                        }}
                       </span>
                       <span data-testid="small-model-runtime-usage">
                         {{
@@ -2077,8 +2165,8 @@ input[type='range']::-moz-range-thumb {
 }
 
 .settings-tab-button--active {
-  border-color: rgba(var(--settings-accent), 0.28);
-  background: rgba(var(--settings-accent), 0.08);
+  border-color: rgba(148, 163, 184, 0.58);
+  background: #f1f5f9;
   color: #0f172a;
   box-shadow: none;
 }
@@ -2091,8 +2179,13 @@ input[type='range']::-moz-range-thumb {
   height: 2.6rem;
   flex-shrink: 0;
   border-radius: 0.85rem;
-  background: rgba(var(--settings-accent), 0.12);
-  color: rgb(var(--settings-accent));
+  background: rgba(148, 163, 184, 0.16);
+  color: #64748b;
+}
+
+.settings-tab-button--active .settings-tab-button__icon {
+  background: rgba(148, 163, 184, 0.22);
+  color: #475569;
 }
 
 .settings-tab-button__body {
@@ -2127,7 +2220,7 @@ input[type='range']::-moz-range-thumb {
 
 .settings-tab-button--active .settings-tab-button__state {
   transform: scale(1.05);
-  background: rgb(var(--settings-accent));
+  background: #64748b;
 }
 
 .settings-panel {
@@ -2366,13 +2459,14 @@ html.dark .settings-tab-button {
 [data-theme='dark'] .settings-tab-button--active,
 html.dark .settings-tab-button--active {
   color: #f8fafc;
-  background: rgba(var(--settings-accent), 0.16);
+  border-color: rgba(148, 163, 184, 0.4);
+  background: #1f2937;
 }
 
 :root.dark .settings-tab-button:hover,
 [data-theme='dark'] .settings-tab-button:hover,
 html.dark .settings-tab-button:hover {
-  border-color: rgba(96, 165, 250, 0.28);
+  border-color: rgba(148, 163, 184, 0.28);
   background: #1f2937;
 }
 
@@ -2429,6 +2523,26 @@ html.dark .settings-tab-beta {
 [data-theme='dark'] .settings-tab-button__state,
 html.dark .settings-tab-button__state {
   background: rgba(148, 163, 184, 0.32);
+}
+
+:root.dark .settings-tab-button__icon,
+[data-theme='dark'] .settings-tab-button__icon,
+html.dark .settings-tab-button__icon {
+  background: rgba(148, 163, 184, 0.18);
+  color: #cbd5e1;
+}
+
+:root.dark .settings-tab-button--active .settings-tab-button__icon,
+[data-theme='dark'] .settings-tab-button--active .settings-tab-button__icon,
+html.dark .settings-tab-button--active .settings-tab-button__icon {
+  background: rgba(148, 163, 184, 0.24);
+  color: #f8fafc;
+}
+
+:root.dark .settings-tab-button--active .settings-tab-button__state,
+[data-theme='dark'] .settings-tab-button--active .settings-tab-button__state,
+html.dark .settings-tab-button--active .settings-tab-button__state {
+  background: #cbd5e1;
 }
 
 .settings-toast {

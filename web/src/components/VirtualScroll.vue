@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onUpdated, watch } from 'vue'
 
 interface Props {
   // Total number of items
@@ -12,6 +12,8 @@ interface Props {
   overscan?: number
   // Container height (if not using parent height)
   height?: number | string
+  // External scroll container to reuse instead of creating a nested scrollbar
+  scrollContainer?: HTMLElement | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -128,10 +130,12 @@ class FenwickTree {
 
 // Refs
 const containerRef = ref<HTMLElement | null>(null)
+const activeScrollContainer = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
 const containerHeight = ref(0)
 const layoutVersion = ref(0)
 let layoutVersionRafId: number | null = null
+const usesExternalScroll = computed(() => Boolean(props.scrollContainer))
 
 // Item height cache (for variable height items)
 const itemHeights = ref<number[]>([])
@@ -254,7 +258,8 @@ const visibleCount = computed(() => Math.max(0, visibleRange.value.end - visible
 let emitRangeRafId: number | null = null
 let pendingRange: { start: number; end: number } | null = null
 let scrollRafId: number | null = null
-let pendingScrollTop = 0
+let pendingScrollContainer: HTMLElement | null = null
+const SCROLL_ANCHOR_EPSILON = 1
 
 function scheduleEmitVisibleRange(start: number, end: number) {
   pendingRange = { start, end }
@@ -269,15 +274,30 @@ function scheduleEmitVisibleRange(start: number, end: number) {
 
 // Handle scroll
 function handleScroll(event: Event) {
-  const target = event.target as HTMLElement
-  pendingScrollTop = target.scrollTop
+  pendingScrollContainer = event.target as HTMLElement
   if (scrollRafId !== null) return
   scrollRafId = window.requestAnimationFrame(() => {
     scrollRafId = null
-    if (scrollTop.value !== pendingScrollTop) {
-      scrollTop.value = pendingScrollTop
-    }
+    syncScrollMetrics(pendingScrollContainer)
+    pendingScrollContainer = null
   })
+}
+
+function applyScrollAnchorDelta(
+  delta: number,
+  scrollContainer: HTMLElement | null = getScrollContainer()
+) {
+  if (!scrollContainer || delta === 0) return
+
+  const nextScrollTop = Math.max(0, scrollContainer.scrollTop + delta)
+  if (scrollContainer.scrollTop !== nextScrollTop) {
+    scrollContainer.scrollTop = nextScrollTop
+  }
+
+  const nextViewportTop = Math.max(0, scrollTop.value + delta)
+  if (scrollTop.value !== nextViewportTop) {
+    scrollTop.value = nextViewportTop
+  }
 }
 
 // Update item height (called from slot)
@@ -285,30 +305,91 @@ function updateItemHeight(index: number, height: number) {
   if (index < 0 || index >= props.itemCount) return
   const prev = getItemHeight(index)
   if (prev === height) return
+  const delta = height - prev
+  const itemTop = heightTree.sum(index)
+  const itemBottom = itemTop + prev
+  const shouldPreserveAnchor = itemBottom <= scrollTop.value + SCROLL_ANCHOR_EPSILON
+
   itemHeights.value[index] = height
-  heightTree.add(index, height - prev)
+  heightTree.add(index, delta)
+  if (shouldPreserveAnchor) {
+    applyScrollAnchorDelta(delta)
+  }
   scheduleLayoutVersionBump()
 }
 
 // Scroll to item
 function scrollToItem(index: number, behavior: 'auto' | 'smooth' = 'auto') {
-  if (!containerRef.value) return
-
+  const scrollContainer = getScrollContainer()
+  if (!scrollContainer) return
   const offset = heightTree.sum(index)
-  pendingScrollTop = offset
+  if (scrollContainer === containerRef.value) {
+    scrollContainer.scrollTo({ top: offset, behavior })
+    return
+  }
 
-  containerRef.value.scrollTo({ top: offset, behavior })
+  scrollContainer.scrollTo({ top: getContainerOffset(scrollContainer) + offset, behavior })
 }
 
 // Scroll to bottom
 function scrollToBottom(behavior: 'auto' | 'smooth' = 'auto') {
-  if (!containerRef.value) return
-  pendingScrollTop = totalHeight.value
-  containerRef.value.scrollTo({ top: totalHeight.value, behavior })
+  const scrollContainer = getScrollContainer()
+  if (!scrollContainer) return
+  if (scrollContainer === containerRef.value) {
+    scrollContainer.scrollTo({ top: totalHeight.value, behavior })
+    return
+  }
+
+  scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior })
 }
 
 function getContainer() {
-  return containerRef.value
+  return getScrollContainer()
+}
+
+function getScrollContainer() {
+  return props.scrollContainer ?? containerRef.value
+}
+
+function getContainerOffset(scrollContainer: HTMLElement) {
+  if (!containerRef.value || scrollContainer === containerRef.value) return 0
+
+  const containerRect = containerRef.value.getBoundingClientRect()
+  const scrollRect = scrollContainer.getBoundingClientRect()
+  return containerRect.top - scrollRect.top + scrollContainer.scrollTop
+}
+
+function syncScrollMetrics(scrollContainer: HTMLElement | null = getScrollContainer()) {
+  if (!scrollContainer) {
+    if (scrollTop.value !== 0) scrollTop.value = 0
+    if (containerHeight.value !== 0) containerHeight.value = 0
+    return
+  }
+
+  if (scrollContainer === containerRef.value) {
+    if (scrollTop.value !== scrollContainer.scrollTop) {
+      scrollTop.value = scrollContainer.scrollTop
+    }
+    if (containerHeight.value !== scrollContainer.clientHeight) {
+      containerHeight.value = scrollContainer.clientHeight
+    }
+    return
+  }
+
+  const topOffset = getContainerOffset(scrollContainer)
+  const viewportTop = Math.max(0, scrollContainer.scrollTop - topOffset)
+  const viewportBottom = Math.max(
+    0,
+    scrollContainer.scrollTop + scrollContainer.clientHeight - topOffset
+  )
+  const nextContainerHeight = Math.max(0, viewportBottom - viewportTop)
+
+  if (scrollTop.value !== viewportTop) {
+    scrollTop.value = viewportTop
+  }
+  if (containerHeight.value !== nextContainerHeight) {
+    containerHeight.value = nextContainerHeight
+  }
 }
 
 // Expose methods
@@ -330,19 +411,55 @@ watch(
 
 // Setup resize observer
 let resizeObserver: ResizeObserver | null = null
+const observedResizeTargets = new Set<HTMLElement>()
+
+function syncResizeObserverTargets() {
+  if (!resizeObserver) return
+
+  const nextTargets = new Set<HTMLElement>()
+  if (containerRef.value) nextTargets.add(containerRef.value)
+  if (activeScrollContainer.value) nextTargets.add(activeScrollContainer.value)
+
+  for (const target of observedResizeTargets) {
+    if (!nextTargets.has(target)) {
+      resizeObserver.unobserve(target)
+    }
+  }
+  for (const target of nextTargets) {
+    if (!observedResizeTargets.has(target)) {
+      resizeObserver.observe(target)
+    }
+  }
+
+  observedResizeTargets.clear()
+  nextTargets.forEach((target) => observedResizeTargets.add(target))
+}
+
+function syncScrollContainerBinding() {
+  const nextContainer = getScrollContainer()
+  if (activeScrollContainer.value !== nextContainer) {
+    activeScrollContainer.value?.removeEventListener('scroll', handleScroll)
+    activeScrollContainer.value = nextContainer
+    activeScrollContainer.value?.addEventListener('scroll', handleScroll, { passive: true })
+  }
+
+  syncResizeObserverTargets()
+  syncScrollMetrics(nextContainer)
+}
 
 onMounted(() => {
-  if (containerRef.value) {
-    containerHeight.value = containerRef.value.clientHeight
-    scrollTop.value = containerRef.value.scrollTop
+  resizeObserver = new ResizeObserver(() => {
+    syncScrollMetrics()
+  })
+  syncScrollContainerBinding()
+})
 
-    resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        containerHeight.value = entry.contentRect.height
-      }
-    })
-    resizeObserver.observe(containerRef.value)
-  }
+onUpdated(() => {
+  syncScrollMetrics()
+})
+
+watch([containerRef, () => props.scrollContainer], () => {
+  syncScrollContainerBinding()
 })
 
 onUnmounted(() => {
@@ -358,11 +475,25 @@ onUnmounted(() => {
     window.cancelAnimationFrame(emitRangeRafId)
     emitRangeRafId = null
   }
+  activeScrollContainer.value?.removeEventListener('scroll', handleScroll)
   pendingRange = null
+  pendingScrollContainer = null
   updateHeightHandlers.clear()
+  observedResizeTargets.clear()
   if (resizeObserver) {
     resizeObserver.disconnect()
   }
+})
+
+const containerStyle = computed(() => {
+  if (usesExternalScroll.value) return undefined
+  if (typeof props.height === 'number') {
+    return { height: `${props.height}px` }
+  }
+  if (props.height !== undefined) {
+    return { height: props.height }
+  }
+  return undefined
 })
 </script>
 
@@ -370,8 +501,8 @@ onUnmounted(() => {
   <div
     ref="containerRef"
     class="virtual-scroll-container"
-    :style="{ height: typeof height === 'number' ? `${height}px` : height }"
-    @scroll.passive="handleScroll"
+    :class="{ 'virtual-scroll-container-external': usesExternalScroll }"
+    :style="containerStyle"
   >
     <!-- Spacer for total height -->
     <div class="virtual-scroll-spacer" :style="{ height: `${totalHeight}px` }">
@@ -393,10 +524,17 @@ onUnmounted(() => {
 .virtual-scroll-container {
   overflow-y: auto;
   position: relative;
+  overflow-anchor: none;
+}
+
+.virtual-scroll-container-external {
+  overflow: visible;
+  height: auto !important;
 }
 
 .virtual-scroll-spacer {
   position: relative;
+  overflow-anchor: none;
 }
 
 .virtual-scroll-content {
@@ -404,5 +542,6 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   right: 0;
+  overflow-anchor: none;
 }
 </style>

@@ -492,6 +492,9 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function verifyProviderRecommendation(providerId: string, apply = false, keyId?: string) {
     try {
+      if (isMediaProvider(providerId)) {
+        throw new Error('Provider verification is not available for media providers')
+      }
       const response = await providerPoolApi.verifyProviderByID(providerId, {
         apply,
         key_id: keyId || undefined,

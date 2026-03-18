@@ -79,3 +79,5 @@ blue browser.tabs
 
 - Use `browser` for real page interaction, not keyword discovery.
 - For simple keyword lookup, prefer `web_search` first.
+- For known public URLs that only need content, prefer `web_fetch` or `web_read`.
+- Treat `browser` as the final fallback when lighter web tools are insufficient.

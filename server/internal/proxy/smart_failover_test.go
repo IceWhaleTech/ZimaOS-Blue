@@ -109,6 +109,15 @@ func TestAPIErrorClassifier_ClassifyError(t *testing.T) {
 			shouldFailover: true,
 		},
 		{
+			name:           "Relay wrapped context window full",
+			provider:       "unknown",
+			statusCode:     502,
+			responseBody:   `{"error":{"message":"Context window is full. Reduce conversation history, system prompt, or tools."}}`,
+			expectedType:   ErrorTypeContextTooLong,
+			expectedCat:    ErrorCategoryFailover,
+			shouldFailover: true,
+		},
+		{
 			name:           "Generic 503 error",
 			provider:       "unknown",
 			statusCode:     503,

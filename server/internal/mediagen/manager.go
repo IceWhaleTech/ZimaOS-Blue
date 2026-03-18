@@ -50,6 +50,7 @@ type Manager struct {
 	providerOrder []string                 // provider names sorted by priority (ascending)
 	modelMap      map[string]string        // modelID -> provider name
 	storage       *MediaStorage
+	fallback      *FallbackEngine
 	tasks         sync.Map // taskID -> *MediaTask
 	taskStore     *TaskStore
 	mu            sync.RWMutex
@@ -354,9 +355,25 @@ func (m *Manager) RegisterProvider(p MediaProvider) {
 	defer m.mu.Unlock()
 
 	m.providers[p.Name()] = p
-	for _, model := range p.SupportedModels() {
-		m.modelMap[model.ID] = p.Name()
+	m.rebuildProviderOrderLocked()
+}
+
+// SetFallbackEngine installs the built-in no-key fallback executor.
+func (m *Manager) SetFallbackEngine(engine *FallbackEngine) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fallback = engine
+}
+
+// RenderFallbackPage returns a temporary internal HTML page used by the screenshot fallback.
+func (m *Manager) RenderFallbackPage(token string) (string, bool) {
+	m.mu.RLock()
+	fallback := m.fallback
+	m.mu.RUnlock()
+	if fallback == nil {
+		return "", false
 	}
+	return fallback.RenderPage(token)
 }
 
 // HasActiveProviders returns true if at least one media generation provider is registered.
@@ -366,24 +383,54 @@ func (m *Manager) HasActiveProviders() bool {
 	return len(m.providers) > 0
 }
 
+// HasAvailableModels reports whether either a real provider or the built-in fallback can generate media.
+func (m *Manager) HasAvailableModels() bool {
+	return len(m.Models()) > 0
+}
+
 // Models returns all available media models across providers, ordered by provider priority.
 func (m *Manager) Models() []MediaModelInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var models []MediaModelInfo
-	for _, name := range m.providerOrder {
-		if p, ok := m.providers[name]; ok {
-			models = append(models, p.SupportedModels()...)
+	models := m.realModelsLocked()
+	if m.fallback != nil && m.fallback.Enabled() {
+		missing := map[MediaCategory]bool{
+			CategoryT2I:  true,
+			CategoryI2I:  true,
+			CategoryT2V:  true,
+			CategoryI2V:  true,
+			CategoryKF2V: true,
+		}
+		for _, model := range models {
+			if model.Category != CategoryNone {
+				missing[model.Category] = false
+			}
+		}
+		for _, model := range m.fallback.SupportedModels() {
+			if missing[model.Category] {
+				models = append(models, model)
+			}
 		}
 	}
 	EnrichModelPricing(models)
 	return models
 }
 
+func (m *Manager) realModelsLocked() []MediaModelInfo {
+	var models []MediaModelInfo
+	for _, name := range m.providerOrder {
+		if p, ok := m.providers[name]; ok {
+			models = append(models, p.SupportedModels()...)
+		}
+	}
+	return models
+}
+
 // Generate starts a media generation task.
 func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, error) {
-	provider, err := m.findProvider(req.Model)
+	category := inferCategoryFromRequest(req)
+	provider, resolvedModel, err := m.resolveExecutor(req, string(category))
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +439,11 @@ func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, 
 		return nil, fmt.Errorf("%w: provider %s does not support %s", ErrUnsupportedType, provider.Name(), req.Type)
 	}
 
-	task, err := provider.Generate(ctx, req)
+	effectiveReq := cloneMediaRequest(req)
+	effectiveReq.Model = resolvedModel
+	req.Model = resolvedModel
+
+	task, err := provider.Generate(ctx, effectiveReq)
 	if err != nil {
 		return nil, err
 	}
@@ -402,8 +453,14 @@ func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, 
 		task.ID = uuid.New().String()
 	}
 	task.Provider = provider.Name()
-	task.Model = req.Model
+	task.Model = resolvedModel
 	task.Type = req.Type
+	if task.Category == "" && category != CategoryNone {
+		task.Category = string(category)
+	}
+	if task.Request == nil {
+		task.Request = cloneMediaRequest(effectiveReq)
+	}
 	task.CreatedAt = timeutil.NowTime()
 	if task.UserID == "" {
 		task.UserID = extractMediaTaskUserID(ctx)
@@ -518,26 +575,7 @@ func (m *Manager) isTaskCancelled(taskID string) bool {
 func (m *Manager) findProvider(modelID string) (MediaProvider, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-
-	if modelID == "" {
-		// Pick highest-priority provider (providerOrder is sorted ascending)
-		for _, name := range m.providerOrder {
-			if p, ok := m.providers[name]; ok {
-				return p, nil
-			}
-		}
-		return nil, ErrProviderNotFound
-	}
-
-	providerName, ok := m.modelMap[modelID]
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, modelID)
-	}
-	p, ok := m.providers[providerName]
-	if !ok {
-		return nil, fmt.Errorf("%w: provider %s not registered", ErrProviderNotFound, providerName)
-	}
-	return p, nil
+	return m.findProviderLocked(modelID)
 }
 
 // pollTask polls an async provider until the task completes.
@@ -587,6 +625,9 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 		updated.MessageID = task.MessageID
 		updated.Category = task.Category
 		updated.Source = task.Source
+		if updated.FallbackInfo == nil {
+			updated.FallbackInfo = cloneFallbackInfo(task.FallbackInfo)
+		}
 		if m.isTaskCancelled(taskID) {
 			return
 		}
@@ -603,6 +644,9 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 			m.tasks.Store(taskID, updated)
 			if m.taskStore != nil {
 				_ = m.taskStore.UpdateStatus(taskID, TaskStatusFailed, updated.Progress, updated.Error, "")
+				if updated.FallbackInfo != nil {
+					_ = m.taskStore.UpdateFallbackInfo(taskID, updated.FallbackInfo)
+				}
 			}
 			m.publishTaskEvent(updated)
 			return
@@ -611,6 +655,9 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 			// Persist progress
 			if m.taskStore != nil {
 				_ = m.taskStore.UpdateStatus(taskID, updated.Status, updated.Progress, "", "")
+				if updated.FallbackInfo != nil {
+					_ = m.taskStore.UpdateFallbackInfo(taskID, updated.FallbackInfo)
+				}
 			}
 			m.publishTaskEvent(updated)
 		}
@@ -695,6 +742,9 @@ func (m *Manager) cacheResults(task *MediaTask) {
 			}
 		}
 		_ = m.taskStore.UpdateStatus(task.ID, TaskStatusSucceeded, 1.0, "", respJSON)
+		if task.FallbackInfo != nil {
+			_ = m.taskStore.UpdateFallbackInfo(task.ID, task.FallbackInfo)
+		}
 	}
 
 	if m.onTaskDone != nil {
@@ -732,6 +782,9 @@ func (m *Manager) updateTaskError(taskID, errMsg string) {
 	// Persist to DB
 	if m.taskStore != nil {
 		_ = m.taskStore.UpdateStatus(taskID, TaskStatusFailed, task.Progress, errMsg, "")
+		if task.FallbackInfo != nil {
+			_ = m.taskStore.UpdateFallbackInfo(taskID, task.FallbackInfo)
+		}
 	}
 
 	if m.onTaskDone != nil {
@@ -843,6 +896,9 @@ func (m *Manager) publishTaskEvent(task *MediaTask) {
 	if task.Response != nil {
 		evt["response"] = task.Response
 	}
+	if task.FallbackInfo != nil {
+		evt["fallback_info"] = task.FallbackInfo
+	}
 	userID := strings.TrimSpace(task.UserID)
 	if userID == "" {
 		userID = "default"
@@ -868,23 +924,28 @@ func (m *Manager) DefaultModelForCategory(category string) string {
 			}
 		}
 	}
+	if m.fallback != nil && m.fallback.Enabled() {
+		return m.fallback.DefaultModelForCategory(cat)
+	}
 	return ""
 }
 
 // CreateTask creates a persistent media generation task and starts async execution.
 // Returns immediately with the task ID — the caller polls for status.
 func (m *Manager) CreateTask(ctx context.Context, req *MediaRequest, messageID, category, source string) (*MediaTask, error) {
-	// Resolve default model when not specified (e.g. from IR classifier)
-	if req.Model == "" && category != "" {
-		req.Model = m.DefaultModelForCategory(category)
-	}
-
-	provider, err := m.findProvider(req.Model)
+	provider, resolvedModel, err := m.resolveExecutor(req, category)
 	if err != nil {
 		return nil, err
 	}
 	if !provider.SupportsType(req.Type) {
 		return nil, fmt.Errorf("%w: provider %s does not support %s", ErrUnsupportedType, provider.Name(), req.Type)
+	}
+
+	effectiveReq := cloneMediaRequest(req)
+	effectiveReq.Model = resolvedModel
+	req.Model = resolvedModel
+	if category == "" {
+		category = string(inferCategoryFromRequest(effectiveReq))
 	}
 
 	taskID := uuid.New().String()
@@ -896,9 +957,12 @@ func (m *Manager) CreateTask(ctx context.Context, req *MediaRequest, messageID, 
 		Type:      req.Type,
 		Category:  category,
 		Provider:  provider.Name(),
-		Model:     req.Model,
-		Request:   req,
+		Model:     resolvedModel,
+		Request:   effectiveReq,
 		Source:    source,
+	}
+	if m.fallback != nil {
+		task.FallbackInfo = m.fallback.PendingInfoForModel(resolvedModel)
 	}
 
 	// Persist to DB first (survives power failure)
@@ -936,6 +1000,15 @@ func (m *Manager) executeTask(task *MediaTask, provider MediaProvider) {
 
 	// Update with upstream info
 	task.UpstreamID = upstream.UpstreamID
+	if upstream.FallbackInfo != nil {
+		task.FallbackInfo = cloneFallbackInfo(upstream.FallbackInfo)
+	}
+	if upstream.Category != "" {
+		task.Category = upstream.Category
+	}
+	if m.taskStore != nil && task.FallbackInfo != nil {
+		_ = m.taskStore.UpdateFallbackInfo(task.ID, task.FallbackInfo)
+	}
 	if m.taskStore != nil {
 		_ = m.taskStore.UpdateUpstreamID(task.ID, upstream.UpstreamID)
 	}
@@ -1001,12 +1074,15 @@ func (m *Manager) RecoverTasks() {
 		task := pt.ToMediaTask()
 		m.tasks.Store(task.ID, task)
 
-		// Find the provider to resume polling
-		provider, err := m.findProvider(task.Model)
+		// Find the provider or fallback executor to resume.
+		provider, resolvedModel, err := m.resolveExecutor(task.Request, task.Category)
 		if err != nil {
 			log.Printf("[mediagen] recovery: provider not found for task %s model %s: %v", task.ID, task.Model, err)
 			m.updateTaskError(task.ID, "provider not available after restart")
 			continue
+		}
+		if task.Model == "" {
+			task.Model = resolvedModel
 		}
 
 		if task.UpstreamID != "" {
@@ -1023,6 +1099,100 @@ func (m *Manager) RecoverTasks() {
 			go m.executeTask(task, provider)
 		}
 	}
+}
+
+func (m *Manager) resolveExecutor(req *MediaRequest, category string) (MediaProvider, string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	cat := MediaCategory(strings.TrimSpace(category))
+	if cat == CategoryNone {
+		cat = inferCategoryFromRequest(req)
+	}
+	modelID := strings.TrimSpace(req.Model)
+	if modelID != "" {
+		if m.fallback != nil && m.fallback.Enabled() && m.fallback.IsFallbackModel(modelID) {
+			return m.fallback, modelID, nil
+		}
+		provider, err := m.findProviderLocked(modelID)
+		return provider, modelID, err
+	}
+
+	if cat != CategoryNone {
+		if provider, model := m.firstRealProviderForCategoryLocked(cat); provider != nil {
+			return provider, model, nil
+		}
+		if m.fallback != nil && m.fallback.Enabled() {
+			if fallbackModel := m.fallback.ModelForRequest(req, cat); fallbackModel != "" {
+				return m.fallback, fallbackModel, nil
+			}
+		}
+	}
+
+	if req.Type != "" {
+		if provider, model := m.firstRealProviderForTypeLocked(req.Type); provider != nil {
+			return provider, model, nil
+		}
+		if m.fallback != nil && m.fallback.Enabled() {
+			if fallbackModel := m.fallback.ModelForRequest(req, inferCategoryFromRequest(req)); fallbackModel != "" {
+				return m.fallback, fallbackModel, nil
+			}
+		}
+	}
+
+	return nil, "", ErrProviderNotFound
+}
+
+func (m *Manager) firstRealProviderForCategoryLocked(category MediaCategory) (MediaProvider, string) {
+	for _, name := range m.providerOrder {
+		provider, ok := m.providers[name]
+		if !ok {
+			continue
+		}
+		for _, model := range provider.SupportedModels() {
+			if model.Category == category {
+				return provider, model.ID
+			}
+		}
+	}
+	return nil, ""
+}
+
+func (m *Manager) firstRealProviderForTypeLocked(mediaType MediaType) (MediaProvider, string) {
+	for _, name := range m.providerOrder {
+		provider, ok := m.providers[name]
+		if !ok || !provider.SupportsType(mediaType) {
+			continue
+		}
+		for _, model := range provider.SupportedModels() {
+			if model.Type == mediaType {
+				return provider, model.ID
+			}
+		}
+		return provider, ""
+	}
+	return nil, ""
+}
+
+func (m *Manager) findProviderLocked(modelID string) (MediaProvider, error) {
+	if modelID == "" {
+		for _, name := range m.providerOrder {
+			if p, ok := m.providers[name]; ok {
+				return p, nil
+			}
+		}
+		return nil, ErrProviderNotFound
+	}
+
+	providerName, ok := m.modelMap[modelID]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, modelID)
+	}
+	p, ok := m.providers[providerName]
+	if !ok {
+		return nil, fmt.Errorf("%w: provider %s not registered", ErrProviderNotFound, providerName)
+	}
+	return p, nil
 }
 
 // createProvider creates a concrete MediaProvider from config.

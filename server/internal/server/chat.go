@@ -1286,20 +1286,9 @@ func deriveContinuationContext(userMessage string, messages []llm.Message) conti
 }
 
 func shouldUseFreshStandaloneIMContext(userMessage string, agentMode bool) bool {
-	if !agentMode {
-		return false
-	}
-	trimmed := strings.TrimSpace(userMessage)
-	if trimmed == "" {
-		return false
-	}
-	if hasTopicSwitchCue(trimmed) {
-		return true
-	}
-	if hasReference(trimmed) || hasMemoryCue(trimmed) {
-		return false
-	}
-	return true
+	_ = userMessage
+	_ = agentMode
+	return false
 }
 
 func clampIMHistoryLimit(limit int) int {
@@ -2485,6 +2474,75 @@ func shouldAutoContinueForMissingTodo(currentContent, trackedTodoContent string,
 		return false
 	}
 	return true
+}
+
+func isImplicitSummaryTodoItem(title string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(title)), " "))
+	if normalized == "" {
+		return false
+	}
+
+	enCues := []string{
+		"final summary",
+		"provide final summary",
+		"share final summary",
+		"deliver final summary",
+		"summary",
+	}
+	for _, cue := range enCues {
+		if strings.Contains(normalized, cue) {
+			return true
+		}
+	}
+
+	zhCues := []string{
+		"提供最终总结",
+		"给出最终总结",
+		"输出最终总结",
+		"最终总结",
+		"收尾总结",
+		"最终答复",
+		"最终回复",
+	}
+	for _, cue := range zhCues {
+		if strings.Contains(title, cue) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func syncTrackedTodoAfterToollessReply(trackedTodoContent, currentContent string) (string, bool) {
+	if strings.TrimSpace(trackedTodoContent) == "" || !isLikelyTaskCompletionResponse(currentContent) {
+		return trackedTodoContent, false
+	}
+
+	lines := strings.Split(trackedTodoContent, "\n")
+	pendingSummaryLineIdx := -1
+	pendingCount := 0
+	for i, line := range lines {
+		match := reTodoAnyItem.FindStringSubmatch(line)
+		if len(match) < 3 || strings.EqualFold(match[1], "x") {
+			continue
+		}
+		pendingCount++
+		if !isImplicitSummaryTodoItem(strings.TrimSpace(match[2])) {
+			return trackedTodoContent, false
+		}
+		pendingSummaryLineIdx = i
+	}
+	if pendingCount != 1 || pendingSummaryLineIdx < 0 {
+		return trackedTodoContent, false
+	}
+
+	updatedLine := strings.Replace(lines[pendingSummaryLineIdx], "[ ]", "[x]", 1)
+	if updatedLine == lines[pendingSummaryLineIdx] {
+		return trackedTodoContent, false
+	}
+	lines[pendingSummaryLineIdx] = updatedLine
+	updated := strings.Join(lines, "\n")
+	return updated, updated != trackedTodoContent
 }
 
 func isLikelyTaskCompletionResponse(content string) bool {
@@ -4122,6 +4180,17 @@ func (e chatInputBudgetEstimate) Exceeds() bool {
 	return e.ContextWindow > 0 && e.EstimatedInputTokens > e.MaxInputTokens
 }
 
+func (e chatInputBudgetEstimate) ContextUsageRatio() float64 {
+	if e.ContextWindow <= 0 {
+		return 0
+	}
+	return float64(e.EstimatedInputTokens) / float64(e.ContextWindow)
+}
+
+func (e chatInputBudgetEstimate) NeedsPressureCompaction() bool {
+	return e.ContextUsageRatio() >= smartContextSoftCompressionThreshold
+}
+
 func (h *ChatHandler) resolveContextWindowForModel(model string) int {
 	trimmed := strings.TrimSpace(model)
 	if trimmed != "" && !strings.EqualFold(trimmed, "auto") && h != nil && h.providerPool != nil && h.providerPool.Discovery != nil {
@@ -4522,7 +4591,7 @@ func (h *ChatHandler) buildPreparedBudgetStage1(model string, original []llm.Mes
 	out = append(out, leadingSystem...)
 	out = append(out, compactPreparedHistoricalMessages(historical)...)
 	out = append(out, currentTurn...)
-	return h.applyPreparedTrimPolicy(model, out)
+	return removeOrphanedToolResults(out)
 }
 
 func (h *ChatHandler) buildPreparedBudgetStage2(ctx context.Context, convID, model string, original []llm.Message) ([]llm.Message, string) {
@@ -4539,7 +4608,7 @@ func (h *ChatHandler) buildPreparedBudgetStage2(ctx context.Context, convID, mod
 	}
 	out = append(out, compactPreparedHistoricalMessages(recent)...)
 	out = append(out, currentTurn...)
-	return h.applyPreparedTrimPolicy(model, out), summaryText
+	return removeOrphanedToolResults(out), summaryText
 }
 
 func (h *ChatHandler) buildPreparedBudgetStage3(ctx context.Context, convID, model string, original []llm.Message, summaryText string) ([]llm.Message, string) {
@@ -4547,7 +4616,7 @@ func (h *ChatHandler) buildPreparedBudgetStage3(ctx context.Context, convID, mod
 	combined := make([]llm.Message, 0, len(historical)+len(currentTurn))
 	combined = append(combined, cloneLLMMessages(historical)...)
 	combined = append(combined, cloneLLMMessages(currentTurn)...)
-	older, recent := splitPreparedHistoryByRecentUserTurns(combined, 2)
+	older, recent := splitPreparedHistoryByRecentUserTurns(combined, compressedTierRecentRounds)
 	if summaryText == "" {
 		summaryText = h.loadPreparedHistorySummary(ctx, convID, older, recent)
 	}
@@ -4560,7 +4629,7 @@ func (h *ChatHandler) buildPreparedBudgetStage3(ctx context.Context, convID, mod
 		})
 	}
 	out = append(out, recent...)
-	return h.applyPreparedTrimPolicy(model, out), summaryText
+	return removeOrphanedToolResults(out), summaryText
 }
 
 func buildPreparedBudgetContextTrim(
@@ -4617,16 +4686,16 @@ func appendPreparedBudgetAttempt(
 	messages []llm.Message,
 	budget chatInputBudgetEstimate,
 	contextTrim *ContextTrimInfo,
-) []preparedBudgetAttempt {
+) ([]preparedBudgetAttempt, int) {
 	if budget.Exceeds() {
-		return attempts
+		return attempts, -1
 	}
 	if len(attempts) > 0 {
 		last := attempts[len(attempts)-1]
 		if strings.EqualFold(strings.TrimSpace(last.Model), strings.TrimSpace(model)) &&
 			strings.EqualFold(strings.TrimSpace(last.ProviderID), strings.TrimSpace(providerID)) &&
 			llmMessagesEqual(last.Messages, messages) {
-			return attempts
+			return attempts, len(attempts) - 1
 		}
 	}
 	attempts = append(attempts, preparedBudgetAttempt{
@@ -4637,7 +4706,7 @@ func appendPreparedBudgetAttempt(
 		Budget:      budget,
 		ContextTrim: contextTrim,
 	})
-	return attempts
+	return attempts, len(attempts) - 1
 }
 
 func (h *ChatHandler) selectPreparedBudgetFallbackCandidates(messages []llm.Message, maxTokens int, originalModel, explicitProviderID string) ([]preparedBudgetFallbackCandidate, bool) {
@@ -4702,6 +4771,28 @@ func (h *ChatHandler) selectPreparedBudgetFallbackCandidates(messages []llm.Mess
 	return all, true
 }
 
+func selectPreparedBudgetTrimBase(
+	originalMessages []llm.Message,
+	originalBudget chatInputBudgetEstimate,
+	stage1Messages []llm.Message,
+	stage1Budget chatInputBudgetEstimate,
+	stage2Messages []llm.Message,
+	stage2Budget chatInputBudgetEstimate,
+	stage3Messages []llm.Message,
+	stage3Budget chatInputBudgetEstimate,
+) (int, []llm.Message, chatInputBudgetEstimate) {
+	if len(stage3Messages) > 0 && !llmMessagesEqual(originalMessages, stage3Messages) {
+		return 3, stage3Messages, stage3Budget
+	}
+	if len(stage2Messages) > 0 && !llmMessagesEqual(originalMessages, stage2Messages) {
+		return 2, stage2Messages, stage2Budget
+	}
+	if len(stage1Messages) > 0 && !llmMessagesEqual(originalMessages, stage1Messages) {
+		return 1, stage1Messages, stage1Budget
+	}
+	return 0, originalMessages, originalBudget
+}
+
 func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params preparedBudgetFitParams) *preparedBudgetFitPlan {
 	model := strings.TrimSpace(params.Model)
 	if model == "" {
@@ -4709,15 +4800,18 @@ func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params pr
 	}
 	originalMessages := cloneLLMMessages(params.Messages)
 	originalBudget := h.measurePreparedInputBudget(model, params.MaxTokens, originalMessages)
-	attempts := make([]preparedBudgetAttempt, 0, 6)
+	preferPressureCompaction := originalBudget.NeedsPressureCompaction()
+	attempts := make([]preparedBudgetAttempt, 0, 8)
+	originalIdx := -1
 	if !originalBudget.Exceeds() {
-		attempts = appendPreparedBudgetAttempt(attempts, 0, model, "", originalMessages, originalBudget, nil)
+		attempts, originalIdx = appendPreparedBudgetAttempt(attempts, 0, model, "", originalMessages, originalBudget, nil)
 	}
 
 	stage1Messages := h.buildPreparedBudgetStage1(model, originalMessages)
 	stage1Budget := h.measurePreparedInputBudget(model, params.MaxTokens, stage1Messages)
+	stage1Idx := -1
 	if !llmMessagesEqual(originalMessages, stage1Messages) {
-		attempts = appendPreparedBudgetAttempt(
+		attempts, stage1Idx = appendPreparedBudgetAttempt(
 			attempts,
 			1,
 			model,
@@ -4730,8 +4824,10 @@ func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params pr
 
 	stage2Messages, summaryText := h.buildPreparedBudgetStage2(ctx, params.ConvID, model, originalMessages)
 	stage2Budget := h.measurePreparedInputBudget(model, params.MaxTokens, stage2Messages)
+	stage2HasSummary := strings.TrimSpace(summaryText) != ""
+	stage2Idx := -1
 	if !llmMessagesEqual(originalMessages, stage2Messages) {
-		attempts = appendPreparedBudgetAttempt(
+		attempts, stage2Idx = appendPreparedBudgetAttempt(
 			attempts,
 			2,
 			model,
@@ -4744,8 +4840,10 @@ func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params pr
 
 	stage3Messages, summaryText := h.buildPreparedBudgetStage3(ctx, params.ConvID, model, originalMessages, summaryText)
 	stage3Budget := h.measurePreparedInputBudget(model, params.MaxTokens, stage3Messages)
+	stage3HasSummary := strings.TrimSpace(summaryText) != ""
+	stage3Idx := -1
 	if !llmMessagesEqual(originalMessages, stage3Messages) {
-		attempts = appendPreparedBudgetAttempt(
+		attempts, stage3Idx = appendPreparedBudgetAttempt(
 			attempts,
 			3,
 			model,
@@ -4756,32 +4854,97 @@ func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params pr
 		)
 	}
 
-	fallbackCandidates, fallbackAttempted := h.selectPreparedBudgetFallbackCandidates(stage3Messages, params.MaxTokens, model, strings.TrimSpace(params.ExplicitProviderID))
+	fallbackBaseStage, fallbackBaseMessages, fallbackBaseBudget := selectPreparedBudgetTrimBase(
+		originalMessages,
+		originalBudget,
+		stage1Messages,
+		stage1Budget,
+		stage2Messages,
+		stage2Budget,
+		stage3Messages,
+		stage3Budget,
+	)
+
+	fallbackCandidates, fallbackAttempted := h.selectPreparedBudgetFallbackCandidates(fallbackBaseMessages, params.MaxTokens, model, strings.TrimSpace(params.ExplicitProviderID))
+	fallbackIdxs := make([]int, 0, len(fallbackCandidates))
+	fallbackStage := fallbackBaseStage
+	if fallbackStage < 3 {
+		fallbackStage = 3
+	}
 	for _, candidate := range fallbackCandidates {
-		budget := h.measurePreparedInputBudget(candidate.Model.ID, params.MaxTokens, stage3Messages)
+		budget := h.measurePreparedInputBudget(candidate.Model.ID, params.MaxTokens, fallbackBaseMessages)
 		if budget.Exceeds() {
 			continue
 		}
-		attempts = appendPreparedBudgetAttempt(
+		var idx int
+		attempts, idx = appendPreparedBudgetAttempt(
 			attempts,
-			3,
+			fallbackStage,
 			candidate.Model.ID,
 			candidate.Provider.ID,
-			stage3Messages,
+			fallbackBaseMessages,
 			budget,
-			buildPreparedBudgetContextTrim(model, 3, originalMessages, originalBudget, stage3Messages, budget, candidate.Model.ID, candidate.Provider.ID),
+			buildPreparedBudgetContextTrim(model, fallbackStage, originalMessages, originalBudget, fallbackBaseMessages, budget, candidate.Model.ID, candidate.Provider.ID),
 		)
-	}
-
-	if len(attempts) > 0 {
-		return &preparedBudgetFitPlan{
-			OriginalModel: model,
-			attempts:      attempts,
-			current:       0,
+		if idx >= 0 {
+			fallbackIdxs = append(fallbackIdxs, idx)
 		}
 	}
 
-	finalBudget := stage3Budget
+	trimBaseStage, trimBaseMessages, trimBaseBudget := fallbackBaseStage, fallbackBaseMessages, fallbackBaseBudget
+	trimMessages := h.applyPreparedTrimPolicy(model, trimBaseMessages)
+	trimBudget := h.measurePreparedInputBudget(model, params.MaxTokens, trimMessages)
+	trimIdx := -1
+	if !llmMessagesEqual(trimBaseMessages, trimMessages) {
+		trimStage := trimBaseStage
+		if trimStage < 3 {
+			trimStage = 3
+		}
+		attempts, trimIdx = appendPreparedBudgetAttempt(
+			attempts,
+			trimStage,
+			model,
+			"",
+			trimMessages,
+			trimBudget,
+			buildPreparedBudgetContextTrim(model, trimStage, originalMessages, originalBudget, trimMessages, trimBudget, "", ""),
+		)
+	}
+
+	currentIdx := -1
+	switch {
+	case !preferPressureCompaction && !originalBudget.Exceeds() && originalIdx >= 0:
+		currentIdx = originalIdx
+	case stage2Idx >= 0 && stage2HasSummary:
+		currentIdx = stage2Idx
+	case stage3Idx >= 0 && stage3HasSummary:
+		currentIdx = stage3Idx
+	case stage1Idx >= 0:
+		currentIdx = stage1Idx
+	case stage2Idx >= 0:
+		currentIdx = stage2Idx
+	case stage3Idx >= 0:
+		currentIdx = stage3Idx
+	case len(fallbackIdxs) > 0:
+		currentIdx = fallbackIdxs[0]
+	case trimIdx >= 0:
+		currentIdx = trimIdx
+	case originalIdx >= 0:
+		currentIdx = originalIdx
+	}
+
+	if currentIdx >= 0 {
+		return &preparedBudgetFitPlan{
+			OriginalModel: model,
+			attempts:      attempts,
+			current:       currentIdx,
+		}
+	}
+
+	finalBudget := trimBudget
+	if finalBudget.ContextWindow <= 0 {
+		finalBudget = trimBaseBudget
+	}
 	if finalBudget.ContextWindow <= 0 {
 		finalBudget = originalBudget
 	}
@@ -4871,11 +5034,7 @@ func (h *ChatHandler) isPreparedBudgetContextTooLongError(err error, providerNam
 	if classification.Type == proxy.ErrorTypeContextTooLong {
 		return true
 	}
-	errLower := strings.ToLower(body)
-	return strings.Contains(errLower, "context too long") ||
-		strings.Contains(errLower, "maximum context length") ||
-		strings.Contains(errLower, "context_length_exceeded") ||
-		strings.Contains(errLower, "prompt is too long")
+	return proxy.IsContextWindowExceededMessage(body)
 }
 
 func (h *ChatHandler) rejectIfPreparedInputExceedsBudget(c echo.Context, model string, maxTokens int, messages []llm.Message) error {
@@ -5185,6 +5344,8 @@ type ChatHandler struct {
 	questionManager *tools.QuestionManager
 	// Browser checkpoint store for web/IM/voice confirmation flow.
 	browserCheckpointMgr *tools.BrowserCheckpointManager
+	// Persistent browser-site approvals for skipping future checkpoint prompts.
+	browserSiteAllowlist *tools.BrowserSiteAllowlistStore
 	// Optional convert source provider for att:/out: references in web chat.
 	convertSourceProvider convertSourceProvider
 	// Optional channel sender for IM intermediate updates.
@@ -5770,19 +5931,20 @@ func preContentRetrySkipReason(err error) string {
 		return ""
 	}
 
-	bodyLower := strings.ToLower(pe.Body)
+	body := strings.TrimSpace(pe.Body)
+	if body == "" {
+		body = err.Error()
+	}
+	bodyLower := strings.ToLower(body)
 	switch {
+	case proxy.IsContextWindowExceededMessage(body):
+		return "context_too_long"
 	case pe.IsClientError():
 		return "client_error"
 	case pe.IsOverloaded():
 		return "overloaded"
 	case pe.IsNoProvider():
 		return "no_provider"
-	case strings.Contains(bodyLower, "context too long"),
-		strings.Contains(bodyLower, "maximum context length"),
-		strings.Contains(bodyLower, "context_length_exceeded"),
-		strings.Contains(bodyLower, "prompt is too long"):
-		return "context_too_long"
 	case strings.Contains(bodyLower, "context canceled"),
 		strings.Contains(bodyLower, "context cancelled"),
 		strings.Contains(bodyLower, "deadline exceeded"):
@@ -6542,10 +6704,31 @@ func (h *ChatHandler) shouldDisableProxyPruner() bool {
 	if h == nil || h.settingsHandler == nil {
 		return false
 	}
+	if enabled, ok := h.settingsHandler.GetSmallModelContextPruneExplicit(); ok {
+		return !enabled
+	}
 	if !h.settingsHandler.GetSmallModelEnabled() {
 		return false
 	}
 	return !h.settingsHandler.GetSmallModelContextPruneEnabled()
+}
+
+func (h *ChatHandler) shouldDisableProxyPrunerForAttempt(attempt *preparedBudgetAttempt) bool {
+	if h.shouldDisableProxyPruner() {
+		return true
+	}
+	if h != nil && h.settingsHandler != nil {
+		if _, ok := h.settingsHandler.GetSmallModelContextPruneExplicit(); ok {
+			return false
+		}
+	}
+	if attempt == nil {
+		return false
+	}
+	if attempt.Budget.ContextWindow <= 0 {
+		return false
+	}
+	return !attempt.Budget.NeedsPressureCompaction()
 }
 
 func (h *ChatHandler) trySmallModelToolDispatch(ctx context.Context, routingMessage string, selectedTools []tools.ToolDefinition) ([]tools.ToolDefinition, error) {
@@ -8113,6 +8296,11 @@ func (h *ChatHandler) SetBrowserCheckpointManager(mgr *tools.BrowserCheckpointMa
 	}
 }
 
+// SetBrowserSiteAllowlistStore wires persistent browser-site approvals.
+func (h *ChatHandler) SetBrowserSiteAllowlistStore(store *tools.BrowserSiteAllowlistStore) {
+	h.browserSiteAllowlist = store
+}
+
 func (h *ChatHandler) cleanupStaleIMCheckpointStates(mgr *tools.BrowserCheckpointManager) int {
 	h.imCheckpointMu.Lock()
 	defer h.imCheckpointMu.Unlock()
@@ -9314,6 +9502,19 @@ func (h *ChatHandler) buildBrowserCheckpointRequester(baseCtx context.Context, c
 		if req.SessionID == "" {
 			req.SessionID = sessionID
 		}
+		siteOrigin := tools.NormalizeBrowserSiteOrigin(req.URL)
+		if siteOrigin != "" && h.browserSiteAllowlist != nil {
+			if entry := h.browserSiteAllowlist.Match(siteOrigin, req.UserID); entry != nil {
+				logger.Info().
+					Str("user_id", req.UserID).
+					Str("session_id", req.SessionID).
+					Str("site_origin", siteOrigin).
+					Msg("browser checkpoint auto-approved by trusted site")
+				return tools.BrowserCheckpointResult{
+					Decision: tools.BrowserCheckpointApprove,
+				}, nil
+			}
+		}
 		record := h.browserCheckpointMgr.Create(req)
 		logger.Info().
 			Str("checkpoint_id", record.ID).
@@ -9335,6 +9536,7 @@ func (h *ChatHandler) buildBrowserCheckpointRequester(baseCtx context.Context, c
 			"step":          stepDisplay,
 			"action":        actionDisplay,
 			"url":           record.URL,
+			"site_origin":   siteOrigin,
 		}
 		if screenshot != nil {
 			contextPayload["screenshot"] = screenshot
@@ -9353,10 +9555,23 @@ func (h *ChatHandler) buildBrowserCheckpointRequester(baseCtx context.Context, c
 				Header:   localizedCheckpoint.Header,
 				Question: localizedCheckpoint.Question,
 				Detail:   formatBrowserCheckpointDetail(lang, stepDisplay, actionDisplay),
-				Options: []tools.QuestionOption{
-					{Label: localizedCheckpoint.Cancel, Value: "cancel"},
-					{Label: localizedCheckpoint.Continue, Value: "continue"},
-				},
+				Options: func() []tools.QuestionOption {
+					options := []tools.QuestionOption{
+						{Label: localizedCheckpoint.Continue, Value: "continue"},
+					}
+					if siteOrigin != "" {
+						options = append(options, tools.QuestionOption{
+							Label:       browserCheckpointAllowSiteLabel(lang),
+							Description: siteOrigin,
+							Value:       "allow_site",
+						})
+					}
+					options = append(options, tools.QuestionOption{
+						Label: localizedCheckpoint.Cancel,
+						Value: "cancel",
+					})
+					return options
+				}(),
 			}}
 			answers, silent, err := h.questionManager.AskQuestionsWithContext(ctx, req.UserID, req.SessionID, question, contextPayload)
 			if err != nil {
@@ -9378,6 +9593,7 @@ func (h *ChatHandler) buildBrowserCheckpointRequester(baseCtx context.Context, c
 				}, nil
 			}
 			decision := tools.BrowserCheckpointDeny
+			persistSiteApproval := false
 			if len(answers) > 0 {
 				for _, v := range answers[0].Selected {
 					v = strings.ToLower(strings.TrimSpace(v))
@@ -9385,6 +9601,20 @@ func (h *ChatHandler) buildBrowserCheckpointRequester(baseCtx context.Context, c
 						decision = tools.BrowserCheckpointApprove
 						break
 					}
+					if v == "allow_site" {
+						decision = tools.BrowserCheckpointApprove
+						persistSiteApproval = true
+						break
+					}
+				}
+			}
+			if decision == tools.BrowserCheckpointApprove && persistSiteApproval && siteOrigin != "" && h.browserSiteAllowlist != nil {
+				if err := h.browserSiteAllowlist.Add(siteOrigin, req.UserID); err != nil {
+					logger.Warn().
+						Err(err).
+						Str("site_origin", siteOrigin).
+						Str("user_id", req.UserID).
+						Msg("failed to persist trusted browser site approval")
 				}
 			}
 			_ = h.browserCheckpointMgr.Resolve(record.ID, decision)
@@ -13217,12 +13447,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	// Attach prune stats slot so the proxy pruner can populate it (non-streaming path).
 	pruneStats := &pruner.RequestPruneStats{}
 	llmBaseCtx = pruner.WithPruneStats(llmBaseCtx, pruneStats)
-	if h.shouldDisableProxyPruner() {
-		llmBaseCtx = pruner.WithPrunerDisabled(llmBaseCtx, true)
-	}
 	buildLLMCtxForBudgetAttempt := func(attempt *preparedBudgetAttempt) context.Context {
 		resolvedRoute = proxy.ResolvedRoute{}
 		ctx := llmBaseCtx
+		if h.shouldDisableProxyPrunerForAttempt(attempt) {
+			ctx = pruner.WithPrunerDisabled(ctx, true)
+		}
 		ctx = proxy.WithPinnedProvider(ctx, resolvePreparedBudgetAttemptProvider(defaultPinnedProviderID, attempt))
 		if shouldDisablePreparedBudgetContinuation(budgetPlan.OriginalModel, defaultPinnedProviderID, attempt) {
 			ctx = proxy.WithDisableResponsesContinuation(ctx)
@@ -14757,9 +14987,6 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	pruneStats := &pruner.RequestPruneStats{}
 	ctx = withProxySession(ctx, convID)
 	ctx = pruner.WithPruneStats(ctx, pruneStats)
-	if h.shouldDisableProxyPruner() {
-		ctx = pruner.WithPrunerDisabled(ctx, true)
-	}
 
 	// Attach ResolvedRoute slot so the bridge can populate it with actual provider/model.
 	// This serves as a fallback when stream chunks don't carry provider info.
@@ -14785,6 +15012,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	buildStreamCtxForBudgetAttempt := func(attempt *preparedBudgetAttempt) context.Context {
 		resolvedRoute = proxy.ResolvedRoute{}
 		attemptCtx := streamBaseCtx
+		if h.shouldDisableProxyPrunerForAttempt(attempt) {
+			attemptCtx = pruner.WithPrunerDisabled(attemptCtx, true)
+		}
 		attemptCtx = proxy.WithPinnedProvider(attemptCtx, resolvePreparedBudgetAttemptProvider(defaultPinnedProviderID, attempt))
 		disableForAttempt := shouldDisablePreparedBudgetContinuation(budgetPlan.OriginalModel, defaultPinnedProviderID, attempt)
 		if disableResponsesContinuation || disableForAttempt {
@@ -14820,6 +15050,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	sseBuffer := bytes.NewBuffer(make([]byte, 0, 512))
 	streamSeq := int64(0)
 	streamHeadersFlushed := false
+	pendingProcessEvents := make([]map[string]interface{}, 0, 4)
 	flushStreamHeaders := func() {
 		if streamHeadersFlushed {
 			return
@@ -14828,11 +15059,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		flusher.Flush()
 		streamHeadersFlushed = true
 	}
-	emitSSE := func(payload map[string]interface{}) {
+	writeSSEPayload := func(payload map[string]interface{}) {
 		if payload == nil {
 			return
 		}
-		flushStreamHeaders()
 		if raw, ok := payload["stream_id"]; !ok || strings.TrimSpace(fmt.Sprintf("%v", raw)) == "" {
 			payload["stream_id"] = streamID
 		}
@@ -14848,6 +15078,47 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		sseBuffer.WriteString("\n\n")
 		_, _ = c.Response().Write(sseBuffer.Bytes())
 		flusher.Flush()
+	}
+	drainPendingProcessEvents := func() {
+		if !streamHeadersFlushed || len(pendingProcessEvents) == 0 {
+			return
+		}
+		for _, payload := range pendingProcessEvents {
+			writeSSEPayload(payload)
+		}
+		pendingProcessEvents = pendingProcessEvents[:0]
+	}
+	emitSSE := func(payload map[string]interface{}) {
+		flushStreamHeaders()
+		drainPendingProcessEvents()
+		writeSSEPayload(payload)
+	}
+	emitProcessEvent := func(name, status, message, detail string, extra map[string]interface{}) {
+		if strings.TrimSpace(name) == "" {
+			return
+		}
+		payload := map[string]interface{}{
+			"process_event":  name,
+			"process_status": strings.TrimSpace(status),
+			"stream_id":      streamID,
+		}
+		if strings.TrimSpace(message) != "" {
+			payload["process_message"] = strings.TrimSpace(message)
+		}
+		if strings.TrimSpace(detail) != "" {
+			payload["process_detail"] = strings.TrimSpace(detail)
+		}
+		for key, value := range extra {
+			if value == nil {
+				continue
+			}
+			payload[key] = value
+		}
+		if !streamHeadersFlushed {
+			pendingProcessEvents = append(pendingProcessEvents, payload)
+			return
+		}
+		writeSSEPayload(payload)
 	}
 
 	// Inject card emitter so tools (e.g. ui_reviewer) can push streaming
@@ -14985,6 +15256,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var streamingMsgID string
 	var finalPersistedMsgID string
 	var lastFlushLen int
+	pendingInjectionRestartOnChunk := h.hasPendingInjection(convID)
 	const flushInterval = 64 // flush to DB every N new chars (low for near-real-time cross-tab sync)
 
 	// TODO checklist tracking: when the first message contains `- [ ]` items,
@@ -15012,6 +15284,55 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	isAgentMode = h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	agentModeAutoContinue := isAgentMode
 	maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
+	maybeCompleteImplicitSummaryTodo := func(currentContent string) {
+		candidateMsgID := todoMsgID
+		candidateTodoContent, changed := syncTrackedTodoAfterToollessReply(todoContent, currentContent)
+		if !changed {
+			if !isLikelyTaskCompletionResponse(currentContent) {
+				return
+			}
+			messages, err := h.store.GetMessages(context.Background(), convID, 64, 0)
+			if err != nil {
+				return
+			}
+			for i := len(messages) - 1; i >= 0; i-- {
+				if messages[i].Role != "assistant" {
+					continue
+				}
+				checklist, ok := extractFirstTodoChecklist(messages[i].Content)
+				if !ok {
+					continue
+				}
+				updated, ok := syncTrackedTodoAfterToollessReply(checklist, currentContent)
+				if !ok {
+					continue
+				}
+				candidateMsgID = messages[i].ID
+				candidateTodoContent = updated
+				changed = true
+				break
+			}
+		}
+		if !changed || candidateMsgID == "" {
+			return
+		}
+		todoMsgID = candidateMsgID
+		todoContent = candidateTodoContent
+		planCompletedByTool = !hasPendingTodo(todoContent)
+		if err := h.store.UpdateMessageContent(context.Background(), todoMsgID, todoContent, nil); err != nil {
+			logger.Warn().Err(err).Str("conv_id", convID).Str("todo_msg_id", todoMsgID).
+				Msg("[chat] stream: failed to sync implicit summary todo completion")
+			return
+		}
+		h.conversationCache.Invalidate(convID)
+		emitSSE(map[string]interface{}{
+			"todo_updated": true,
+			"message_id":   todoMsgID,
+			"todo_card_id": todoChecklistCardID(todoMsgID),
+			"content":      todoContent,
+			"stream_id":    streamID,
+		})
+	}
 	dropPendingVisibleDelta := func() int {
 		dropped := pendingDeltaBuffer.Len()
 		if dropped == 0 {
@@ -15132,6 +15453,13 @@ STREAM_LOOP:
 					})
 					contextTrimSent = true
 				}
+			}
+
+			if pendingInjectionRestartOnChunk {
+				pendingInjectionRestartOnChunk = false
+				h.markConversationCancelledForResponsesContinuation(convID)
+				h.streamController.Cancel(streamID)
+				return context.Canceled
 			}
 
 			chunk.Delta = trimLeadingReplyNewlines(fullContent, chunk.Delta)
@@ -15372,6 +15700,9 @@ STREAM_LOOP:
 							Int("min_search_rounds", deepSearchState.minRounds).
 							Msg("[chat] stream: deep-search guard fail-open before min rounds")
 					}
+				}
+				if len(streamToolCalls) == 0 && fullContent != "" {
+					maybeCompleteImplicitSummaryTodo(fullContent)
 				}
 
 				// Auto-continue: if LLM stopped without tool calls but the content
@@ -15619,6 +15950,16 @@ STREAM_LOOP:
 					retryLog = retryLog.Int("proxy_status", pe.StatusCode).Str("proxy_body", pe.Body)
 				}
 				retryLog.Msg("[chat] retrying stream after pre-content error")
+				emitProcessEvent(
+					"pre_content_retry_scheduled",
+					"pending",
+					fmt.Sprintf("Retrying request in %.1fs", delay.Seconds()),
+					err.Error(),
+					map[string]interface{}{
+						"process_attempt":  retryAttempt + 1,
+						"process_delay_ms": delay.Milliseconds(),
+					},
+				)
 				select {
 				case <-ctx.Done():
 					break
@@ -15634,7 +15975,27 @@ STREAM_LOOP:
 					retryCtx = proxy.WithDisableResponsesContinuation(retryCtx)
 					retryReq.PreviousResponseID = ""
 				}
+				emitProcessEvent(
+					"pre_content_retry_started",
+					"active",
+					"Retrying request",
+					"",
+					map[string]interface{}{
+						"process_attempt": retryAttempt + 1,
+					},
+				)
 				err = h.proxyBridge.ChatStream(retryCtx, retryReq, streamCb)
+				if err == nil {
+					emitProcessEvent(
+						"pre_content_retry_succeeded",
+						"success",
+						"Retry succeeded",
+						"",
+						map[string]interface{}{
+							"process_attempt": retryAttempt + 1,
+						},
+					)
+				}
 			}
 			if err != nil && fullContent == "" && !streamErrorHandled {
 				endLog := logger.Info().
@@ -15647,6 +16008,13 @@ STREAM_LOOP:
 					endLog = endLog.Int("proxy_status", pe.StatusCode).Str("proxy_body", pe.Body)
 				}
 				endLog.Msg("[chat] pre-content retries ended with error")
+				emitProcessEvent(
+					"pre_content_retry_failed",
+					"error",
+					"Retry failed",
+					err.Error(),
+					nil,
+				)
 			}
 
 			// Tool-round resilience: if a follow-up round fails pre-content on a
@@ -15664,6 +16032,15 @@ STREAM_LOOP:
 						Int("tool_round", toolRound).
 						Str("pinned_provider_id", pinnedProviderID).
 						Msg("[chat] tool round pre-content failed — retrying once without pinned provider")
+					emitProcessEvent(
+						"provider_failover",
+						"active",
+						"Switching provider",
+						"Retrying the tool follow-up without the previously pinned provider.",
+						map[string]interface{}{
+							"process_provider": pinnedProviderID,
+						},
+					)
 					unpinnedCtx := proxy.WithPinnedProvider(ctx, "")
 					unpinnedCtx = proxy.WithExcludedProviders(unpinnedCtx, append(proxy.GetExcludedProviders(ctx), pinnedProviderID)...)
 					unpinnedReq := chatReq
@@ -15679,12 +16056,30 @@ STREAM_LOOP:
 					if err == nil {
 						ctx = unpinnedCtx
 						chatReq = unpinnedReq
+						emitProcessEvent(
+							"provider_failover",
+							"success",
+							"Provider switch succeeded",
+							"",
+							map[string]interface{}{
+								"process_provider": pinnedProviderID,
+							},
+						)
 						logger.Info().
 							Int("tool_round", toolRound).
 							Str("previous_pinned_provider_id", pinnedProviderID).
 							Bool("dropped_previous_response_id", droppedPreviousResponseID).
 							Msg("[chat] tool round pre-content retry without pinned provider succeeded")
 					} else {
+						emitProcessEvent(
+							"provider_failover",
+							"error",
+							"Provider switch failed",
+							err.Error(),
+							map[string]interface{}{
+								"process_provider": pinnedProviderID,
+							},
+						)
 						retryLog := logger.Warn().
 							Err(err).
 							Int("tool_round", toolRound).
@@ -15711,6 +16106,15 @@ STREAM_LOOP:
 						Int("tool_round", toolRound).
 						Str("pinned_provider_id", pinnedProviderID).
 						Msg("[chat] auto-continue pre-content failed — retrying once without pinned provider")
+					emitProcessEvent(
+						"provider_failover",
+						"active",
+						"Switching provider",
+						"Retrying the continuation follow-up without the previously pinned provider.",
+						map[string]interface{}{
+							"process_provider": pinnedProviderID,
+						},
+					)
 					unpinnedCtx := proxy.WithPinnedProvider(ctx, "")
 					unpinnedCtx = proxy.WithExcludedProviders(unpinnedCtx, append(proxy.GetExcludedProviders(ctx), pinnedProviderID)...)
 					unpinnedReq := chatReq
@@ -15722,11 +16126,29 @@ STREAM_LOOP:
 					err = h.proxyBridge.ChatStream(unpinnedCtx, unpinnedReq, streamCb)
 					if err == nil {
 						ctx = unpinnedCtx
+						emitProcessEvent(
+							"provider_failover",
+							"success",
+							"Provider switch succeeded",
+							"",
+							map[string]interface{}{
+								"process_provider": pinnedProviderID,
+							},
+						)
 						logger.Info().
 							Int("tool_round", toolRound).
 							Str("previous_pinned_provider_id", pinnedProviderID).
 							Msg("[chat] auto-continue pre-content retry without pinned provider succeeded")
 					} else {
+						emitProcessEvent(
+							"provider_failover",
+							"error",
+							"Provider switch failed",
+							err.Error(),
+							map[string]interface{}{
+								"process_provider": pinnedProviderID,
+							},
+						)
 						retryLog := logger.Warn().
 							Err(err).
 							Int("tool_round", toolRound).
@@ -16135,9 +16557,23 @@ STREAM_LOOP:
 						Str("store_policy", storePolicy).
 						Str("recovery_stage", continuationRecoveryStage).
 						Msg(recoveryMsg)
+					emitProcessEvent(
+						"continuation_recovery_started",
+						"active",
+						"Recovering response",
+						continuationRecoveryStage,
+						nil,
+					)
 					if recoveryErr := h.proxyBridge.ChatStream(recoveryCtx, recoveryReq, streamCb); recoveryErr == nil {
 						h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage, true, continuationErr)
 						err = nil
+						emitProcessEvent(
+							"continuation_recovery_succeeded",
+							"success",
+							"Recovery succeeded",
+							continuationRecoveryStage,
+							nil,
+						)
 						logger.Info().
 							Int("tool_round", toolRound).
 							Bool("has_prev_response_id", hasPrevResponseID).
@@ -16159,6 +16595,13 @@ STREAM_LOOP:
 							Str("store_policy", storePolicy).
 							Str("recovery_stage", continuationRecoveryStage).
 							Msg("[chat] stream: silent continuation recovery failed")
+						emitProcessEvent(
+							"continuation_recovery_failed",
+							"error",
+							"Recovery failed",
+							continuationRecoveryStage,
+							nil,
+						)
 						if ctx.Err() == nil {
 							continuationRecoveryStage = continuationRecoveryStage2
 							reducedRecoveryReq := buildReducedContinuationRecoveryRequest(chatReq)
@@ -16173,9 +16616,23 @@ STREAM_LOOP:
 								Str("store_policy", storePolicy).
 								Str("recovery_stage", continuationRecoveryStage).
 								Msg("[chat] stream: attempting reduced continuation recovery payload")
+							emitProcessEvent(
+								"continuation_recovery_started",
+								"active",
+								"Recovering response",
+								continuationRecoveryStage,
+								nil,
+							)
 							if reducedErr := h.proxyBridge.ChatStream(recoveryCtx, reducedRecoveryReq, streamCb); reducedErr == nil {
 								h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage, true, continuationErr)
 								err = nil
+								emitProcessEvent(
+									"continuation_recovery_succeeded",
+									"success",
+									"Recovery succeeded",
+									continuationRecoveryStage,
+									nil,
+								)
 								logger.Info().
 									Int("tool_round", toolRound).
 									Bool("has_prev_response_id", hasPrevResponseID).
@@ -16197,6 +16654,13 @@ STREAM_LOOP:
 									Str("store_policy", storePolicy).
 									Str("recovery_stage", continuationRecoveryStage).
 									Msg("[chat] stream: reduced continuation recovery failed")
+								emitProcessEvent(
+									"continuation_recovery_failed",
+									"error",
+									"Recovery failed",
+									continuationRecoveryStage,
+									nil,
+								)
 							}
 						}
 					}
@@ -16384,6 +16848,9 @@ STREAM_LOOP:
 			prevToollessAutoContinueSig = ""
 			consecutiveToollessAutoContinueDups = 0
 			continue
+		}
+		if streamCompleted && fullContent != "" && len(streamToolCalls) == 0 {
+			maybeCompleteImplicitSummaryTodo(fullContent)
 		}
 
 		// Auto-continue: when LLM stopped without tool calls but the content
@@ -16760,6 +17227,13 @@ STREAM_LOOP:
 					"user_message": injectedMsg,
 					"stream_id":    streamID,
 				})
+				emitProcessEvent(
+					"injection_restart",
+					"active",
+					"Restarting with your latest message",
+					"",
+					nil,
+				)
 
 				// Create new cancellable context for the restarted stream
 				h.streamController.Unregister(streamID)
@@ -16776,7 +17250,7 @@ STREAM_LOOP:
 				// Re-attach context values
 				pruneStats = &pruner.RequestPruneStats{}
 				ctx = pruner.WithPruneStats(ctx, pruneStats)
-				if h.shouldDisableProxyPruner() {
+				if h.shouldDisableProxyPrunerForAttempt(currentBudgetAttempt) {
 					ctx = pruner.WithPrunerDisabled(ctx, true)
 				}
 				resolvedRoute = proxy.ResolvedRoute{}
@@ -17293,6 +17767,48 @@ STREAM_LOOP:
 		h.conversationCache.Invalidate(convID)
 		h.afterAssistantPersistedHooks(turnHookCtx, assistantMsgForHook)
 		h.refreshConversationSummaryAfterPersist(convID, actualModel)
+		implicitSummaryTodoMsgID := ""
+		implicitSummaryTodoContent := ""
+		if isLikelyTaskCompletionResponse(fullContent) {
+			if messages, lookupErr := h.store.GetMessages(context.Background(), convID, 64, 0); lookupErr == nil {
+				for i := len(messages) - 1; i >= 0; i-- {
+					if finalPersistedMsgID != "" && messages[i].ID == finalPersistedMsgID {
+						continue
+					}
+					if messages[i].Role != "assistant" {
+						continue
+					}
+					checklist, ok := extractFirstTodoChecklist(messages[i].Content)
+					if !ok {
+						continue
+					}
+					updatedChecklist, ok := syncTrackedTodoAfterToollessReply(checklist, fullContent)
+					if !ok {
+						continue
+					}
+					if updErr := h.store.UpdateMessageContent(context.Background(), messages[i].ID, updatedChecklist, nil); updErr != nil {
+						logger.Warn().Err(updErr).Str("conv_id", convID).Str("todo_msg_id", messages[i].ID).
+							Msg("[chat] stream: failed final implicit summary todo sync")
+						break
+					}
+					implicitSummaryTodoMsgID = messages[i].ID
+					implicitSummaryTodoContent = updatedChecklist
+					todoMsgID = messages[i].ID
+					todoContent = updatedChecklist
+					h.conversationCache.Invalidate(convID)
+					break
+				}
+			}
+		}
+		if implicitSummaryTodoMsgID != "" {
+			emitSSE(map[string]interface{}{
+				"todo_updated": true,
+				"message_id":   implicitSummaryTodoMsgID,
+				"todo_card_id": todoChecklistCardID(implicitSummaryTodoMsgID),
+				"content":      implicitSummaryTodoContent,
+				"stream_id":    streamID,
+			})
+		}
 		emitFinalStats := map[string]interface{}{
 			"input_tokens":      finalStats.InputTokens,
 			"output_tokens":     finalStats.OutputTokens,
@@ -17415,8 +17931,8 @@ func (h *ChatHandler) generateConversationTitle(convID, userID, userMessage, aiR
 		}
 	}
 
-	// Check if AI response starts with a markdown heading
-	if title := extractMarkdownHeading(aiResponse); title != "" {
+	// Prefer semantic markdown headings, but ignore checklist/planning replies.
+	if title := extractConversationTitleFromAIResponse(aiResponse); title != "" {
 		h.updateTitleAndNotify(convID, userID, title)
 		return
 	}
@@ -17557,7 +18073,7 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 	var transcript strings.Builder
 	total := 0
 	for _, msg := range messages {
-		content := strings.TrimSpace(msg.Content)
+		content := strings.TrimSpace(flattenLLMMessageForSummary(msg))
 		if content == "" {
 			continue
 		}
@@ -17587,7 +18103,7 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 		return ""
 	}
 
-	prefix := summaryCustomInstructions +
+	prefix := claudecode.StructuredSummaryInstructions(summaryCustomFocus) +
 		"\nOutput ONLY the summary text.\n\nConversation snippets:\n"
 	suffix := transcript.String() + "\nSummary:"
 
@@ -17597,7 +18113,7 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 	h.smallModelStats.RecordSummaryAttempt()
 	defer h.maybeAutoRollbackSummaryRoute()
 	started := time.Now()
-	resp, err := h.generateWithSmallModelPrefixReuse(smCtx, "smallmodel:summary:v2", prefix, suffix, 320, 0.2)
+	resp, err := h.generateWithSmallModelPrefixReuse(smCtx, "smallmodel:summary:v3", prefix, suffix, 320, 0.2)
 	h.smallModelStats.RecordLatencyWithScene("summary", time.Since(started))
 	if err != nil {
 		h.smallModelStats.RecordFallback(smallModelFallbackReason(err))
@@ -17619,6 +18135,11 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 	runes := []rune(summary)
 	if len(runes) > 1400 {
 		summary = string(runes[:1400]) + "..."
+	}
+	summary = claudecode.NormalizeStructuredSummary(summary, "", messages)
+	if summary == "" {
+		h.smallModelStats.RecordFallback(smallmodel.FallbackReasonLowConfidence)
+		return ""
 	}
 	h.smallModelStats.RecordSummarySuccess()
 	return summary
@@ -17785,6 +18306,22 @@ func extractMarkdownHeading(content string) string {
 	}
 
 	return sanitizeTitle(title)
+}
+
+// extractConversationTitleFromAIResponse derives a heading-based title from the
+// assistant response when the reply starts with a semantic markdown heading.
+// Agent/checklist replies often begin with headings such as "TODO清单"; those
+// are poor conversation titles, so skip heading extraction when the response
+// also contains a markdown checkbox checklist.
+func extractConversationTitleFromAIResponse(content string) string {
+	title := extractMarkdownHeading(content)
+	if title == "" {
+		return ""
+	}
+	if reTodoChecklistBlock.MatchString(content) {
+		return ""
+	}
+	return title
 }
 
 // decodeBase64Content decodes base64 content to string for text files.
@@ -18254,6 +18791,13 @@ func (h *ChatHandler) InjectMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "message is required")
 	}
 
+	if _, ok := h.activeConversationStreamID(convID); !ok {
+		return c.JSON(http.StatusNotFound, map[string]interface{}{
+			"success": false,
+			"message": "no active stream for this conversation",
+		})
+	}
+
 	streamID, injected := h.enqueueConversationInjection(convID, req.Message)
 	if !injected {
 		return c.JSON(http.StatusNotFound, map[string]interface{}{
@@ -18269,18 +18813,30 @@ func (h *ChatHandler) InjectMessage(c echo.Context) error {
 	})
 }
 
+func (h *ChatHandler) activeConversationStreamID(convID string) (string, bool) {
+	h.convStreamMu.RLock()
+	streamID, hasStream := h.convToStream[convID]
+	h.convStreamMu.RUnlock()
+	return streamID, hasStream
+}
+
+func (h *ChatHandler) hasPendingInjection(convID string) bool {
+	h.injectionsMu.Lock()
+	defer h.injectionsMu.Unlock()
+	ch, exists := h.injections[convID]
+	if !exists {
+		return false
+	}
+	return len(ch) > 0
+}
+
 func (h *ChatHandler) enqueueConversationInjection(convID, message string) (string, bool) {
 	message = strings.TrimSpace(message)
 	if convID == "" || message == "" {
 		return "", false
 	}
 
-	h.convStreamMu.RLock()
-	streamID, hasStream := h.convToStream[convID]
-	h.convStreamMu.RUnlock()
-	if !hasStream {
-		return "", false
-	}
+	streamID, hasStream := h.activeConversationStreamID(convID)
 
 	// Create or reuse injection channel
 	h.injectionsMu.Lock()
@@ -18303,9 +18859,11 @@ func (h *ChatHandler) enqueueConversationInjection(convID, message string) (stri
 		ch <- message
 	}
 
-	// Cancel the active stream — StreamMessage will detect the injection
-	h.markConversationCancelledForResponsesContinuation(convID)
-	h.streamController.Cancel(streamID)
+	if hasStream {
+		// Cancel the active stream — StreamMessage will detect the injection.
+		h.markConversationCancelledForResponsesContinuation(convID)
+		h.streamController.Cancel(streamID)
+	}
 
 	return streamID, true
 }
@@ -18372,8 +18930,10 @@ func (h *ChatHandler) SubmitVoiceWakeMessage(ctx context.Context, conversationID
 		}
 		return err
 	}
-	if _, injected := h.enqueueConversationInjection(conversationID, text); injected {
-		return nil
+	if _, active := h.activeConversationStreamID(conversationID); active {
+		if _, injected := h.enqueueConversationInjection(conversationID, text); injected {
+			return nil
+		}
 	}
 	return h.invokeInternalSendMessage(ctx, conv, SendMessageRequest{Message: text})
 }

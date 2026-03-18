@@ -27,6 +27,7 @@ import { speechApi } from '@/api/speech'
 import { useNotificationStore } from '@/stores/notification'
 import { isTtsAutoPlayEnabled, isTtsSpeechMuted } from '@/utils/ttsPreferences'
 import { buildChatCardUiStateKey } from '@/utils/chatCardUiState'
+import type { ProcessTraceItem } from '@/utils/processTrace'
 
 const { t, te } = useI18n()
 const providerPoolStore = useProviderPoolStore()
@@ -122,6 +123,9 @@ const isSpecialUserPlaceholder = computed(() => {
 
 type InlineImageInfo = { alt: string; url: string }
 type InlineImageParseResult = { images: InlineImageInfo[]; strippedText: string }
+type RuntimeProcessMessage = Message & {
+  local_process_tool_results?: ToolResultItem[]
+}
 const INLINE_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g
 const INLINE_IMAGE_STRIP_RE = /\n*!\[[^\]]*\]\([^)]+\)/g
 const INLINE_IMAGE_CACHE_KEY = '__zima_chat_inline_image_cache_v1__'
@@ -478,13 +482,106 @@ const toolDisplayNames = computed(() => {
   return chatStore.toolExecutingNames.map(formatToolName)
 })
 
+const processDetailsExpanded = ref(settingsStore.showToolDetails)
+
+watch(
+  () => settingsStore.showToolDetails,
+  (show) => {
+    if (show) {
+      processDetailsExpanded.value = true
+    }
+  }
+)
+
+function getLatestProcessTraceByPriority(
+  categories: Array<ProcessTraceItem['category']>,
+  statuses: Array<ProcessTraceItem['status']> = ['active', 'pending', 'error']
+): ProcessTraceItem | null {
+  for (let i = chatStore.processTrace.length - 1; i >= 0; i--) {
+    const item = chatStore.processTrace[i]
+    if (!item) continue
+    if (!categories.includes(item.category)) continue
+    if (!statuses.includes(item.status)) continue
+    return item
+  }
+  return null
+}
+
+const activeRecoveryProcessTrace = computed(() =>
+  trackStreamingState.value
+    ? getLatestProcessTraceByPriority(['retry', 'recovery'])
+    : null
+)
+
+const activeLifecycleProcessTrace = computed(() =>
+  trackStreamingState.value
+    ? getLatestProcessTraceByPriority(['lifecycle', 'confirmation'])
+    : null
+)
+
+function processTraceToCardItem(item: ProcessTraceItem, index: number): ToolResultItem {
+  let icon: ToolResultItem['icon'] = '✓'
+  if (item.status === 'pending' || item.status === 'active') {
+    icon = '⏳'
+  } else if (item.status === 'error') {
+    icon = '✗'
+  }
+  return {
+    name: item.event,
+    id: `${item.id}:${index}`,
+    command: item.command || '',
+    icon,
+    status: item.label,
+    output: item.detail || '',
+    timestamp: item.timestamp,
+  }
+}
+
+const streamingProcessTraceCards = computed(() => {
+  if (!trackStreamingState.value || !isAssistant.value) return []
+  const ranked = [...chatStore.processTrace].sort((a, b) => {
+    const rankA = a.category === 'summary' ? 0 : 1
+    const rankB = b.category === 'summary' ? 0 : 1
+    if (rankA !== rankB) return rankA - rankB
+    return a.timestamp - b.timestamp
+  })
+  return ranked.map(processTraceToCardItem)
+})
+
+const hasStreamingProcessDetails = computed(
+  () => trackStreamingState.value && (streamingProcessTraceCards.value.length > 0 || chatStore.toolResults.length > 0)
+)
+
+const hasPersistedProcessDetails = computed(
+  () => !props.isStreaming && effectiveProcessToolResults.value.length > 0
+)
+
+const showProcessDetailsToggle = computed(
+  () => isAssistant.value && (hasStreamingProcessDetails.value || hasPersistedProcessDetails.value)
+)
+
+const showStreamingProcessPanel = computed(
+  () => hasStreamingProcessDetails.value && processDetailsExpanded.value
+)
+
+const showPersistedProcessPanel = computed(
+  () => hasPersistedProcessDetails.value && processDetailsExpanded.value
+)
+
 const assistantStatusLabel = computed(() => {
   if (!trackStreamingState.value) return ''
   if (chatStore.awaitingConfirmation) {
     return t('chat.awaitingConfirmation', 'Waiting for your confirmation to continue')
   }
+  if (activeRecoveryProcessTrace.value?.label) {
+    return activeRecoveryProcessTrace.value.label
+  }
+  if (chatStore.toolExecuting && chatStore.statusSummary) return chatStore.statusSummary
   if (chatStore.statusSummary) return chatStore.statusSummary
   if (chatStore.streamProgress) return chatStore.streamProgress
+  if (activeLifecycleProcessTrace.value?.label) {
+    return activeLifecycleProcessTrace.value.label
+  }
   return t('chat.waitingThinking', 'Thinking...')
 })
 
@@ -494,9 +591,14 @@ const showAssistantStatusBar = computed(
 const showAssistantStatusOnly = computed(() => isContentEmpty.value && showAssistantStatusBar.value)
 const assistantStatusVariantClass = computed(() => {
   if (chatStore.awaitingConfirmation) return 'assistant-status-pill-warn'
+  if (activeRecoveryProcessTrace.value) return 'assistant-status-pill-active'
   if (chatStore.toolExecuting) return 'assistant-status-pill-active'
   return 'assistant-status-pill-idle'
 })
+
+function toggleProcessDetails() {
+  processDetailsExpanded.value = !processDetailsExpanded.value
+}
 
 const assistantStatusElapsedSeconds = ref('')
 let assistantStatusTimerHandle: ReturnType<typeof setInterval> | null = null
@@ -769,6 +871,18 @@ const persistedProcessToolResults = computed(() => {
   )
 })
 
+const localProcessToolResults = computed(() => {
+  if (isUser.value || props.isStreaming) return []
+  const runtimeMsg = props.message as RuntimeProcessMessage
+  return runtimeMsg.local_process_tool_results || []
+})
+
+const effectiveProcessToolResults = computed(() =>
+  persistedProcessToolResults.value.length > 0
+    ? persistedProcessToolResults.value
+    : localProcessToolResults.value
+)
+
 const contentWithoutProcessBlocks = computed(() => {
   if (isUser.value) return renderSourceContent.value
   return stripProcessBlocks(strippedContent.value)
@@ -875,9 +989,8 @@ const renderedContent = computed(() => assistantTextState.value.html)
 const isContentEmpty = computed(() => {
   return (
     assistantTextState.value.isEmpty &&
-    (!settingsStore.showToolDetails ||
-      (persistedProcessToolResults.value.length === 0 &&
-        (!props.isStreaming || chatStore.toolResults.length === 0)))
+    !showProcessDetailsToggle.value &&
+    (!props.isStreaming || chatStore.toolResults.length === 0)
   )
 })
 
@@ -2868,25 +2981,37 @@ async function handleMobileDelete() {
             </template>
             <!-- Render without typeless cards -->
             <div v-else-if="!isContentEmpty" class="prose-content" v-html="renderedContent" />
+            <div v-if="showProcessDetailsToggle" class="assistant-process-toggle-row">
+              <button class="assistant-process-toggle" @click.stop="toggleProcessDetails">
+                {{
+                  processDetailsExpanded
+                    ? t('chat.hideToolDetails')
+                    : t('chat.showToolDetails')
+                }}
+              </button>
+            </div>
             <div
-              v-if="
-                !isStreaming &&
-                persistedProcessToolResults.length > 0 &&
-                settingsStore.showToolDetails
-              "
+              v-if="showPersistedProcessPanel"
               class="tool-detail-cards my-2 -mx-1"
             >
               <ToolDetailCard
-                v-for="item in persistedProcessToolResults"
+                v-for="item in effectiveProcessToolResults"
                 :key="item.id"
                 :item="item"
               />
             </div>
-            <!-- Tool detail cards (collapsible, shown when toggle is on) -->
             <div
-              v-if="
-                isStreaming && chatStore.toolResults.length > 0 && settingsStore.showToolDetails
-              "
+              v-if="showStreamingProcessPanel && streamingProcessTraceCards.length > 0"
+              class="tool-detail-cards my-2 -mx-1"
+            >
+              <ToolDetailCard
+                v-for="item in streamingProcessTraceCards"
+                :key="item.id"
+                :item="item"
+              />
+            </div>
+            <div
+              v-if="showStreamingProcessPanel && chatStore.toolResults.length > 0"
               class="tool-detail-cards my-2 -mx-1"
             >
               <ToolDetailCard v-for="item in chatStore.toolResults" :key="item.id" :item="item" />
@@ -3694,6 +3819,33 @@ async function handleMobileDelete() {
   margin-top: 0.625rem;
 }
 
+.assistant-process-toggle-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.625rem;
+}
+
+.assistant-process-toggle {
+  font-size: 0.76rem;
+  line-height: 1.2;
+  color: #475569;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(248, 250, 252, 0.92);
+  border-radius: 999px;
+  padding: 0.28rem 0.62rem;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.assistant-process-toggle:hover {
+  background: rgba(241, 245, 249, 1);
+  border-color: rgba(100, 116, 139, 0.3);
+  color: #334155;
+}
+
 .tool-pill {
   display: inline-flex;
   align-items: center;
@@ -3745,6 +3897,20 @@ async function handleMobileDelete() {
 [data-theme='dark'] .assistant-status-pill-idle {
   background: rgba(71, 85, 105, 0.4);
   border-color: rgba(100, 116, 139, 0.38);
+}
+
+:root.dark .assistant-process-toggle,
+[data-theme='dark'] .assistant-process-toggle {
+  color: rgba(226, 232, 240, 0.9);
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(30, 41, 59, 0.55);
+}
+
+:root.dark .assistant-process-toggle:hover,
+[data-theme='dark'] .assistant-process-toggle:hover {
+  color: #fff;
+  border-color: rgba(148, 163, 184, 0.36);
+  background: rgba(51, 65, 85, 0.8);
 }
 
 :root.dark .assistant-status-pill-warn,

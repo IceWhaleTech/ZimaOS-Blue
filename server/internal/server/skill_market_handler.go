@@ -244,11 +244,37 @@ func (h *SkillHandler) MarketDiscoverSkills(c echo.Context) error {
 			"failed":            0,
 		})
 	}
-	result, err := h.market.Discover(c.Request().Context())
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	status, started := h.market.StartDiscoverAsync()
+	code := http.StatusAccepted
+	message := "discover started"
+	if !started {
+		message = "discover already running"
 	}
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(code, map[string]interface{}{
+		"accepted":    started,
+		"running":     status.Running,
+		"started_at":  status.StartedAt,
+		"finished_at": status.FinishedAt,
+		"last_error":  status.LastError,
+		"result":      status.Result,
+		"message":     message,
+	})
+}
+
+func (h *SkillHandler) MarketDiscoverStatus(c echo.Context) error {
+	if h.market == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"running": false,
+		})
+	}
+	status := h.market.GetDiscoverStatus()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"running":     status.Running,
+		"started_at":  status.StartedAt,
+		"finished_at": status.FinishedAt,
+		"last_error":  status.LastError,
+		"result":      status.Result,
+	})
 }
 
 func (h *SkillHandler) MarketListUpdates(c echo.Context) error {
@@ -393,23 +419,29 @@ func (h *SkillHandler) collectFallbackMarketResults(ctx context.Context, query s
 		default:
 			opts.SortBy = "relevance"
 		}
-		search, err := h.store.Search(ctx, opts)
-		if err != nil {
-			return nil, err
-		}
-		results := make([]fallbackMarketSearchResult, 0, len(search.Skills))
+		results := make([]fallbackMarketSearchResult, 0, opts.PageSize)
 		installedIDs := h.getInstalledSkillIDs()
-		for _, item := range search.Skills {
-			skill := h.skillToRemoteSkill(&item.Skill, installedIDs)
-			if !matchesFallbackMarketFilters(skill, query) {
-				continue
+		for {
+			search, err := h.store.Search(ctx, opts)
+			if err != nil {
+				return nil, err
 			}
-			results = append(results, fallbackMarketSearchResult{
-				Skill:        skill,
-				Score:        item.Score,
-				KeywordScore: item.Score,
-				MatchSource:  "keyword",
-			})
+			for _, item := range search.Skills {
+				skill := h.skillToRemoteSkill(&item.Skill, installedIDs)
+				if !matchesFallbackMarketFilters(skill, query) {
+					continue
+				}
+				results = append(results, fallbackMarketSearchResult{
+					Skill:        skill,
+					Score:        item.Score,
+					KeywordScore: item.Score,
+					MatchSource:  "keyword",
+				})
+			}
+			if search.TotalPages <= 0 || opts.Page >= search.TotalPages || len(search.Skills) == 0 {
+				break
+			}
+			opts.Page++
 		}
 		sortFallbackMarketResults(results, query.Sort)
 		return results, nil

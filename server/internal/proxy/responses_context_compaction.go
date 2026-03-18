@@ -417,6 +417,14 @@ func compactOverflowForContinuationItem(raw string, item gjson.Result) string {
 		if !args.Exists() || args.Type != gjson.String {
 			return raw
 		}
+		name := strings.ToLower(strings.TrimSpace(item.Get("name").String()))
+		if compacted, ok := compactWriteFunctionCallArguments(name, args.String()); ok {
+			out, err := sjson.SetBytes([]byte(raw), "arguments", compacted)
+			if err != nil {
+				return raw
+			}
+			return strings.TrimSpace(string(out))
+		}
 		trimmed := truncateContinuationRunes(args.String(), responsesContinuationToolArgumentsMaxRunes, responsesContinuationToolTrimMarker)
 		if trimmed == args.String() {
 			return raw
@@ -428,6 +436,44 @@ func compactOverflowForContinuationItem(raw string, item gjson.Result) string {
 		return strings.TrimSpace(string(out))
 	default:
 		return raw
+	}
+}
+
+func compactWriteFunctionCallArguments(name, rawArgs string) (string, bool) {
+	if !isContinuationWriteToolName(name) {
+		return "", false
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(rawArgs), &payload); err != nil {
+		return "", false
+	}
+
+	content, ok := payload["content"].(string)
+	if !ok {
+		return "", false
+	}
+	if len([]rune(rawArgs)) <= responsesContinuationToolArgumentsMaxRunes && len(content) <= responsesContinuationToolArgumentsMaxRunes/2 {
+		return "", false
+	}
+
+	payload["content"] = "[omitted large write payload already executed]"
+	payload["content_chars"] = len([]rune(content))
+	payload["content_bytes"] = len(content)
+
+	normalized, err := json.Marshal(payload)
+	if err != nil {
+		return "", false
+	}
+	return string(normalized), true
+}
+
+func isContinuationWriteToolName(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "write", "file_write", "write_begin", "write_chunk", "write_commit", "write_abort":
+		return true
+	default:
+		return false
 	}
 }
 

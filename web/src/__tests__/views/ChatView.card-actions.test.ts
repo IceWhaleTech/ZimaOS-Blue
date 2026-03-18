@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     pendingExecApproval: null,
     pendingQuestion: null,
     contextTrimInfo: null,
+    processTrace: [] as Array<Record<string, unknown>>,
     currentConversation: {
       id: 'conv-1',
       title: 'Test conversation',
@@ -34,6 +35,8 @@ const mocks = vi.hoisted(() => ({
     sending: false,
     streamError: null,
     streamProgress: null,
+    statusStartedAt: 0,
+    statusSummary: null,
     streaming: false,
     streamingContent: '',
     sortedConversations: [] as Array<Record<string, unknown>>,
@@ -332,13 +335,14 @@ const WEB_FETCH_URL = 'https://www.reddit.com/r/test'
 const WEB_FETCH_CARD_ID = 'web-fetch-https%3A%2F%2Fwww.reddit.com%2Fr%2Ftest'
 const BROWSER_CARD_ID = 'browser-https%3A%2F%2Fwww.reddit.com%2Fr%2Ftest'
 
-function makeAssistantMessage(content: string, id = 'msg-1') {
+function makeAssistantMessage(content: string, id = 'msg-1', extra: Record<string, unknown> = {}) {
   return {
     id,
     conversation_id: 'conv-1',
     role: 'assistant' as const,
     content,
     created_at: '2026-03-08T00:00:00.000Z',
+    ...extra,
   }
 }
 
@@ -346,10 +350,22 @@ function makeTypelessBlock(payload: Record<string, unknown>) {
   return ['```typeless', JSON.stringify(payload), '```'].join('\n')
 }
 
-async function mountChatViewWithMessages(messages: Array<{ id: string; content: string }>) {
-  mocks.chatStore.messages = messages.map((message) =>
-    makeAssistantMessage(message.content, message.id)
-  )
+async function mountChatViewWithMessages(
+  messages: Array<{
+    id: string
+    content: string
+    role?: 'assistant' | 'user'
+    todo_card_id?: string
+  }>
+) {
+  mocks.chatStore.messages = messages.map((message) => ({
+    id: message.id,
+    conversation_id: 'conv-1',
+    role: message.role ?? 'assistant',
+    content: message.content,
+    created_at: '2026-03-08T00:00:00.000Z',
+    ...(message.todo_card_id ? { todo_card_id: message.todo_card_id } : {}),
+  }))
 
   const router = createRouter({
     history: createMemoryHistory(),
@@ -412,6 +428,7 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.pendingExecApproval = null
     mocks.chatStore.pendingQuestion = null
     mocks.chatStore.contextTrimInfo = null
+    mocks.chatStore.processTrace = []
     mocks.chatStore.currentConversation = {
       id: 'conv-1',
       title: 'Test conversation',
@@ -434,6 +451,8 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.sending = false
     mocks.chatStore.streamError = null
     mocks.chatStore.streamProgress = null
+    mocks.chatStore.statusStartedAt = 0
+    mocks.chatStore.statusSummary = null
     mocks.chatStore.streaming = false
     mocks.chatStore.streamingContent = ''
     mocks.chatStore.sortedConversations = []
@@ -567,6 +586,64 @@ describe('ChatView page-level card actions', () => {
     expect(mocks.settingsStore.setShowToolDetails).toHaveBeenCalledWith(true)
   })
 
+  it('renders the latest todo checklist status above the composer', async () => {
+    const scrollIntoViewMock = vi.fn()
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      value: scrollIntoViewMock,
+      configurable: true,
+    })
+
+    const wrapper = await mountChatViewWithMessages([
+      {
+        id: 'msg-old',
+        content: '- [ ] 旧任务\n- [ ] 旧验证',
+        todo_card_id: 'todo-checklist-msg-old',
+      },
+      {
+        id: 'msg-latest',
+        content:
+          '- [x] 梳理 ChatView/ChatInput 与 todo 状态来源\n- [ ] 实现输入框上方的活跃 todo 状态展示与样式\n- [ ] 补上或更新前端测试，验证状态展示逻辑\n\n继续执行第二步。',
+      },
+    ])
+
+    const panel = wrapper.get('[data-testid="active-todo-panel"]')
+    expect(panel.text()).toContain('1 out of 3 tasks completed')
+    expect(panel.text()).toContain('梳理 ChatView/ChatInput 与 todo 状态来源')
+    expect(panel.text()).toContain('实现输入框上方的活跃 todo 状态展示与样式')
+    expect(panel.text()).toContain('补上或更新前端测试，验证状态展示逻辑')
+    expect(panel.text()).not.toContain('旧任务')
+    expect(wrapper.find('.active-todo-panel__list').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="active-todo-panel-jump"]').trigger('click')
+    await flushPromises()
+
+    expect(scrollIntoViewMock).toHaveBeenCalled()
+    expect(wrapper.get('[data-message-id="msg-latest"]').classes()).toContain('is-todo-focused')
+
+    await wrapper.get('[data-testid="active-todo-panel-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.active-todo-panel__list').exists()).toBe(false)
+    expect(localStorageMock.getItem('zima.chat.active_todo_collapsed.v1')).toBe('1')
+
+    await wrapper.get('[data-testid="active-todo-panel-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.active-todo-panel__list').exists()).toBe(true)
+    expect(localStorageMock.getItem('zima.chat.active_todo_collapsed.v1')).toBeNull()
+
+    const dockChildren = Array.from(wrapper.get('.chat-input-dock').element.children)
+    const panelIndex = dockChildren.findIndex(
+      (child) => child instanceof HTMLElement && child.dataset.testid === 'active-todo-panel'
+    )
+    const inputIndex = dockChildren.findIndex(
+      (child) => child instanceof HTMLElement && child.classList.contains('chat-input-stub')
+    )
+
+    expect(panelIndex).toBeGreaterThanOrEqual(0)
+    expect(inputIndex).toBeGreaterThan(panelIndex)
+  })
+
   it('toggles waiting indicator, stop button, and input disabled state across conversation switches', async () => {
     mocks.chatStore.messages = [makeAssistantMessage('Streaming answer', 'msg-streaming')]
     mocks.chatStore.streaming = true
@@ -579,6 +656,7 @@ describe('ChatView page-level card actions', () => {
 
     expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
     expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(wrapper.get('.chat-streaming-actions').classes()).toContain('pt-4')
     expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
     expect(wrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
@@ -628,6 +706,28 @@ describe('ChatView page-level card actions', () => {
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
+  })
+
+  it('uses tighter stop-button spacing when the last streaming assistant message only contains cards', async () => {
+    const cardOnlyMessage = makeTypelessBlock({
+      type: 'result',
+      id: 'card-only-result',
+      title: 'Quick result',
+      content: 'Ready',
+    })
+
+    mocks.chatStore.messages = [makeAssistantMessage(cardOnlyMessage, 'msg-streaming-card-only')]
+    mocks.chatStore.streaming = true
+    mocks.chatStore.sending = true
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-streaming-card-only', content: cardOnlyMessage },
+    ])
+
+    const actionRow = wrapper.get('.chat-streaming-actions')
+    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(actionRow.classes()).toContain('pt-1')
+    expect(actionRow.classes()).not.toContain('pt-4')
   })
 
   it('switches conversation through ConversationList click and updates streaming controls', async () => {

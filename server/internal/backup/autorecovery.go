@@ -51,6 +51,8 @@ func DiscoverSQLiteDatabasePaths(dataDir string) ([]string, error) {
 type AutoRecoveryResult struct {
 	// Recovered indicates if recovery was performed
 	Recovered bool `json:"recovered"`
+	// RepairedDatabases lists databases salvaged in place without backup rollback.
+	RepairedDatabases []string `json:"repaired_databases,omitempty"`
 	// BackupID is the ID of the backup used for recovery
 	BackupID string `json:"backup_id,omitempty"`
 	// BackupTime is the timestamp of the backup used
@@ -86,6 +88,14 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 
 		// Check database integrity
 		if err := database.QuickCheckDatabase(dbPath); err != nil {
+			if database.IsSQLiteCorruptionError(err) {
+				if _, repairErr := database.RepairSQLiteDatabase(dbPath); repairErr == nil {
+					result.RepairedDatabases = append(result.RepairedDatabases, dbPath)
+					continue
+				} else {
+					fmt.Printf("Warning: failed to repair sqlite database %s: %v\n", dbPath, repairErr)
+				}
+			}
 			corruptedDBs = append(corruptedDBs, dbPath)
 			result.CorruptedDatabases = append(result.CorruptedDatabases, dbPath)
 		}
@@ -139,6 +149,7 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 
 		if restoreResult.Success {
 			result.Recovered = true
+			result.RepairedDatabases = nil
 			result.BackupID = backup.ID
 			result.BackupTime = backup.CreatedAt
 			result.FilesRecovered = restoreResult.FilesRestored

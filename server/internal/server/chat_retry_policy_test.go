@@ -85,6 +85,14 @@ func TestShouldSkipPreContentRetry(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "relay wrapped context window full skips retry",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       `{"error":{"message":"Context window is full. Reduce conversation history, system prompt, or tools."}}`,
+			},
+			want: true,
+		},
+		{
 			name: "empty streaming response keeps retry",
 			err: &proxybridge.ProxyError{
 				StatusCode: 502,

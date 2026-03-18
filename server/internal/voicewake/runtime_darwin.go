@@ -224,6 +224,14 @@ func (r *darwinRuntime) startPipelineLocked() error {
 			resultCh <- startPipelineResult{err: ErrRecognizerUnavailable}
 			return
 		}
+		if err := speech.CheckSpeechRecognitionAccess(); err != nil {
+			resultCh <- startPipelineResult{err: fmt.Errorf("%w: %v", ErrSpeechUnauthorized, err)}
+			return
+		}
+		if err := speech.CheckMicrophoneAccess(); err != nil {
+			resultCh <- startPipelineResult{err: fmt.Errorf("%w: %v", ErrMicrophoneUnavailable, err)}
+			return
+		}
 		if status := objc.Send[int](recognizerClass, selAuthorizationStatus); status != 3 {
 			resultCh <- startPipelineResult{err: ErrSpeechUnauthorized}
 			return

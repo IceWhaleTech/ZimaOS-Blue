@@ -294,6 +294,7 @@ func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 	skills.POST("/install", h.MarketInstallSkill)
 	skills.GET("/installed", h.MarketInstalledSkills)
 	skills.GET("/discover", h.MarketDiscoverSkills)
+	skills.GET("/discover/status", h.MarketDiscoverStatus)
 	skills.POST("/discover/refresh", h.MarketDiscoverSkills)
 	skills.GET("/updates", h.MarketListUpdates)
 	skills.GET("/local", h.ListLocalSkills)       // New: List local skills

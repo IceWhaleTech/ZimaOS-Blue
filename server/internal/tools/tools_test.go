@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1151,6 +1152,319 @@ func TestFileWriteToolAppend(t *testing.T) {
 	}
 }
 
+func TestTransactionalWriteToolsCommit(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "nested", "large.txt")
+	manager := NewWriteSessionManager(0)
+	beginTool := NewFileWriteBeginTool([]string{tmpDir}, manager)
+	chunkTool := NewFileWriteChunkTool(manager)
+	commitTool := NewFileWriteCommitTool(manager)
+
+	beginResult, err := beginTool.Execute(context.Background(), map[string]interface{}{
+		"path": target,
+	})
+	if err != nil {
+		t.Fatalf("write_begin failed: %v", err)
+	}
+
+	var beginPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(beginResult.(string)), &beginPayload); err != nil {
+		t.Fatalf("parse write_begin payload: %v", err)
+	}
+	sessionID, _ := beginPayload["session_id"].(string)
+	if strings.TrimSpace(sessionID) == "" {
+		t.Fatalf("write_begin returned empty session_id: %#v", beginPayload)
+	}
+
+	chunks := []string{"Hello", ", ", "transactional world!"}
+	for _, chunk := range chunks {
+		if _, err := chunkTool.Execute(context.Background(), map[string]interface{}{
+			"session_id": sessionID,
+			"content":    chunk,
+		}); err != nil {
+			t.Fatalf("write_chunk failed for %q: %v", chunk, err)
+		}
+	}
+
+	want := strings.Join(chunks, "")
+	wantSHA := fmt.Sprintf("%x", sha256.Sum256([]byte(want)))
+	commitResult, err := commitTool.Execute(context.Background(), map[string]interface{}{
+		"session_id":      sessionID,
+		"expected_bytes":  len(want),
+		"expected_sha256": wantSHA,
+	})
+	if err != nil {
+		t.Fatalf("write_commit failed: %v", err)
+	}
+
+	var commitPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(commitResult.(string)), &commitPayload); err != nil {
+		t.Fatalf("parse write_commit payload: %v", err)
+	}
+	if got, _ := commitPayload["sha256"].(string); got != wantSHA {
+		t.Fatalf("write_commit sha256 = %q, want %q", got, wantSHA)
+	}
+
+	got, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("read committed file: %v", err)
+	}
+	if got != want {
+		t.Fatalf("committed file content = %q, want %q", got, want)
+	}
+}
+
+func TestTransactionalWriteToolsRejectOversizedChunk(t *testing.T) {
+	tmpDir := t.TempDir()
+	manager := NewWriteSessionManager(0)
+	beginTool := NewFileWriteBeginTool([]string{tmpDir}, manager)
+	chunkTool := NewFileWriteChunkTool(manager)
+
+	beginResult, err := beginTool.Execute(context.Background(), map[string]interface{}{
+		"path": filepath.Join(tmpDir, "oversized.txt"),
+	})
+	if err != nil {
+		t.Fatalf("write_begin failed: %v", err)
+	}
+
+	var beginPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(beginResult.(string)), &beginPayload); err != nil {
+		t.Fatalf("parse write_begin payload: %v", err)
+	}
+	sessionID, _ := beginPayload["session_id"].(string)
+
+	_, err = chunkTool.Execute(context.Background(), map[string]interface{}{
+		"session_id": sessionID,
+		"content":    strings.Repeat("x", maxFileWriteChunkBytes+1),
+	})
+	if err == nil {
+		t.Fatal("expected oversized write_chunk to fail")
+	}
+	if !strings.Contains(err.Error(), "write_chunk") && !strings.Contains(err.Error(), "smaller chunks") {
+		t.Fatalf("expected chunk guidance error, got %v", err)
+	}
+}
+
+func TestTransactionalWriteToolsAbort(t *testing.T) {
+	tmpDir := t.TempDir()
+	manager := NewWriteSessionManager(0)
+	beginTool := NewFileWriteBeginTool([]string{tmpDir}, manager)
+	chunkTool := NewFileWriteChunkTool(manager)
+	abortTool := NewFileWriteAbortTool(manager)
+
+	beginResult, err := beginTool.Execute(context.Background(), map[string]interface{}{
+		"path": filepath.Join(tmpDir, "abort.txt"),
+	})
+	if err != nil {
+		t.Fatalf("write_begin failed: %v", err)
+	}
+
+	var beginPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(beginResult.(string)), &beginPayload); err != nil {
+		t.Fatalf("parse write_begin payload: %v", err)
+	}
+	sessionID, _ := beginPayload["session_id"].(string)
+
+	if _, err := chunkTool.Execute(context.Background(), map[string]interface{}{
+		"session_id": sessionID,
+		"content":    "partial",
+	}); err != nil {
+		t.Fatalf("write_chunk failed: %v", err)
+	}
+
+	if _, err := abortTool.Execute(context.Background(), map[string]interface{}{
+		"session_id": sessionID,
+	}); err != nil {
+		t.Fatalf("write_abort failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(tmpDir, "abort.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected no committed file after abort, stat err=%v", err)
+	}
+}
+
+func TestTransactionalWriteToolsFallbackToSingleActiveSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "single-session.txt")
+	manager := NewWriteSessionManager(0)
+	beginTool := NewFileWriteBeginTool([]string{tmpDir}, manager)
+	chunkTool := NewFileWriteChunkTool(manager)
+	commitTool := NewFileWriteCommitTool(manager)
+
+	if _, err := beginTool.Execute(context.Background(), map[string]interface{}{
+		"path": target,
+	}); err != nil {
+		t.Fatalf("write_begin failed: %v", err)
+	}
+
+	if _, err := chunkTool.Execute(context.Background(), map[string]interface{}{
+		"content": "hello fallback",
+	}); err != nil {
+		t.Fatalf("write_chunk without session_id failed: %v", err)
+	}
+
+	commitResult, err := commitTool.Execute(context.Background(), map[string]interface{}{
+		"expected_bytes": len("hello fallback"),
+	})
+	if err != nil {
+		t.Fatalf("write_commit without session_id failed: %v", err)
+	}
+
+	var commitPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(commitResult.(string)), &commitPayload); err != nil {
+		t.Fatalf("parse write_commit payload: %v", err)
+	}
+	if got, _ := commitPayload["size"].(float64); int(got) != len("hello fallback") {
+		t.Fatalf("write_commit size = %v, want %d", commitPayload["size"], len("hello fallback"))
+	}
+
+	got, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("read committed file: %v", err)
+	}
+	if got != "hello fallback" {
+		t.Fatalf("committed file content = %q, want %q", got, "hello fallback")
+	}
+}
+
+func TestTransactionalWriteToolsMissingSessionIDAmbiguousWithMultipleActiveSessions(t *testing.T) {
+	tmpDir := t.TempDir()
+	manager := NewWriteSessionManager(0)
+	beginTool := NewFileWriteBeginTool([]string{tmpDir}, manager)
+	chunkTool := NewFileWriteChunkTool(manager)
+
+	targets := []string{
+		filepath.Join(tmpDir, "first.txt"),
+		filepath.Join(tmpDir, "second.txt"),
+	}
+	for _, target := range targets {
+		if _, err := beginTool.Execute(context.Background(), map[string]interface{}{
+			"path": target,
+		}); err != nil {
+			t.Fatalf("write_begin failed for %q: %v", target, err)
+		}
+	}
+
+	_, err := chunkTool.Execute(context.Background(), map[string]interface{}{
+		"content": "ambiguous",
+	})
+	if err == nil {
+		t.Fatal("expected missing session_id with multiple sessions to fail")
+	}
+	if !strings.Contains(err.Error(), "multiple active write sessions exist") {
+		t.Fatalf("expected ambiguity guidance error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "first.txt") || !strings.Contains(err.Error(), "second.txt") {
+		t.Fatalf("expected error to mention active session paths, got %v", err)
+	}
+}
+
+func TestExecutorTransactionalWriteFlowWithCompatArgs(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "nested", "executor.txt")
+
+	registry := NewRegistry()
+	RegisterBuiltinToolsWithConfig(registry, WebSearchConfig{}, WebFetchConfig{}, []string{tmpDir}, 0)
+	executor := NewExecutor(registry)
+
+	beginArgs := fmt.Sprintf(`{"input":{"filePath":%q,"createDirs":true}}`, target)
+	beginResult, err := executor.ExecuteJSON(context.Background(), "write_begin", beginArgs)
+	if err != nil {
+		t.Fatalf("executor write_begin failed: %v", err)
+	}
+
+	var beginPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(beginResult.(string)), &beginPayload); err != nil {
+		t.Fatalf("parse write_begin payload: %v", err)
+	}
+	sessionID, _ := beginPayload["session_id"].(string)
+	if strings.TrimSpace(sessionID) == "" {
+		t.Fatalf("write_begin returned empty session_id: %#v", beginPayload)
+	}
+
+	chunks := []struct {
+		name string
+		args string
+	}{
+		{
+			name: "arguments+text",
+			args: fmt.Sprintf(`{"arguments":{"sessionId":%q,"text":%q}}`, sessionID, "Hello"),
+		},
+		{
+			name: "payload+body",
+			args: fmt.Sprintf(`{"payload":{"session_id":%q,"body":%q}}`, sessionID, " via "),
+		},
+		{
+			name: "top-level content",
+			args: fmt.Sprintf(`{"sessionId":%q,"content":%q}`, sessionID, "executor"),
+		},
+		{
+			name: "input+chunk",
+			args: fmt.Sprintf(`{"input":{"sessionId":%q,"chunk":%q}}`, sessionID, "!"),
+		},
+	}
+	for _, chunk := range chunks {
+		if _, err := executor.ExecuteJSON(context.Background(), "write_chunk", chunk.args); err != nil {
+			t.Fatalf("executor write_chunk failed for %s: %v", chunk.name, err)
+		}
+	}
+
+	want := "Hello via executor!"
+	wantSHA := fmt.Sprintf("%x", sha256.Sum256([]byte(want)))
+	commitArgs := fmt.Sprintf(`{"input":{"sessionId":%q,"expectedBytes":%d,"expectedSha256":%q}}`, sessionID, len(want), wantSHA)
+	commitResult, err := executor.ExecuteJSON(context.Background(), "write_commit", commitArgs)
+	if err != nil {
+		t.Fatalf("executor write_commit failed: %v", err)
+	}
+
+	var commitPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(commitResult.(string)), &commitPayload); err != nil {
+		t.Fatalf("parse write_commit payload: %v", err)
+	}
+	if got, _ := commitPayload["sha256"].(string); got != wantSHA {
+		t.Fatalf("write_commit sha256 = %q, want %q", got, wantSHA)
+	}
+
+	got, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("read committed file: %v", err)
+	}
+	if got != want {
+		t.Fatalf("committed file content = %q, want %q", got, want)
+	}
+}
+
+func TestExecutorTransactionalWriteAbortWithCompatArgs(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "abort-via-executor.txt")
+
+	registry := NewRegistry()
+	RegisterBuiltinToolsWithConfig(registry, WebSearchConfig{}, WebFetchConfig{}, []string{tmpDir}, 0)
+	executor := NewExecutor(registry)
+
+	beginResult, err := executor.ExecuteJSON(context.Background(), "write_begin", fmt.Sprintf(`{"path":%q}`, target))
+	if err != nil {
+		t.Fatalf("executor write_begin failed: %v", err)
+	}
+
+	var beginPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(beginResult.(string)), &beginPayload); err != nil {
+		t.Fatalf("parse write_begin payload: %v", err)
+	}
+	sessionID, _ := beginPayload["session_id"].(string)
+
+	if _, err := executor.ExecuteJSON(context.Background(), "write_chunk", fmt.Sprintf(`{"input":{"sessionId":%q,"text":"partial"}}`, sessionID)); err != nil {
+		t.Fatalf("executor write_chunk failed: %v", err)
+	}
+	if _, err := executor.ExecuteJSON(context.Background(), "write_abort", fmt.Sprintf(`{"arguments":{"sessionId":%q}}`, sessionID)); err != nil {
+		t.Fatalf("executor write_abort failed: %v", err)
+	}
+
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("expected no committed file after abort, stat err=%v", err)
+	}
+}
+
 func TestFileWriteToolContentCoercion(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "coerce.json")
@@ -1860,7 +2174,7 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
 
-	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl", "mcp"}
+	expectedTools := []string{"read", "write", "write_begin", "write_chunk", "write_commit", "write_abort", "edit", "grep", "find", "ls", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl", "mcp"}
 	for _, name := range expectedTools {
 		if registry.Get(name) == nil {
 			t.Errorf("expected tool '%s' to be registered", name)

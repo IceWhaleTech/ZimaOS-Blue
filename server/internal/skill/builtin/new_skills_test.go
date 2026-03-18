@@ -3,6 +3,9 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -119,9 +122,11 @@ func (m *mockCronService) GetExecutions(jobID string, limit int) ([]CronJobExecu
 // --- Mock BrowserService ---
 
 type mockBrowserService struct {
-	started          bool
-	tabs             []BrowserTabInfo
-	interactiveCount int // configurable for auto-snapshot tests
+	started           bool
+	tabs              []BrowserTabInfo
+	interactiveCount  int // configurable for auto-snapshot tests
+	screenshotData    string
+	screenshotTabData string
 }
 
 func newMockBrowserService() *mockBrowserService {
@@ -179,10 +184,16 @@ func (m *mockBrowserService) ActByInteractiveRef(_ context.Context, _ string, re
 }
 
 func (m *mockBrowserService) Screenshot(_ context.Context, _ string) (string, error) {
+	if m.screenshotData != "" {
+		return m.screenshotData, nil
+	}
 	return "base64data", nil
 }
 
 func (m *mockBrowserService) ScreenshotTab(_ context.Context, _ string) (string, error) {
+	if m.screenshotTabData != "" {
+		return m.screenshotTabData, nil
+	}
 	return "base64tabdata", nil
 }
 
@@ -484,15 +495,54 @@ func TestBrowserSkill(t *testing.T) {
 	})
 
 	t.Run("screenshot", func(t *testing.T) {
+		mock.screenshotData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
 		result, err := br.Execute(context.Background(), map[string]any{
 			"action": "screenshot", "url": "https://example.com",
 		})
 		if err != nil || !result.Success {
 			t.Fatalf("screenshot failed: err=%v", err)
 		}
-		if result.Data.(map[string]any)["screenshot"] != "base64data" {
-			t.Error("expected base64data")
+		got, _ := result.Data.(map[string]any)["screenshot"].(string)
+		if got == "" {
+			t.Fatal("expected screenshot path")
 		}
+		if !filepath.IsAbs(got) {
+			t.Fatalf("screenshot = %q, want absolute path", got)
+		}
+		if _, err := os.Stat(got); err != nil {
+			t.Fatalf("expected saved screenshot at %s: %v", got, err)
+		}
+		mock.screenshotData = "base64data"
+	})
+
+	t.Run("screenshot_persists_file_when_media_dir_configured", func(t *testing.T) {
+		const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+		mock.screenshotData = pngBase64
+		fresh := NewBrowser()
+		fresh.SetBrowserService(mock)
+		mediaDir := t.TempDir()
+		fresh.SetMediaDir(mediaDir)
+
+		result, err := fresh.Execute(context.Background(), map[string]any{
+			"action": "screenshot", "url": "https://example.com",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("screenshot failed: err=%v", err)
+		}
+		got, _ := result.Data.(map[string]any)["screenshot"].(string)
+		if got == "" {
+			t.Fatal("expected screenshot file path")
+		}
+		if !filepath.IsAbs(got) {
+			t.Fatalf("screenshot = %q, want absolute path", got)
+		}
+		if !strings.HasPrefix(got, filepath.Join(mediaDir, "browser")+string(os.PathSeparator)) {
+			t.Fatalf("screenshot = %q, want under media dir %q", got, filepath.Join(mediaDir, "browser"))
+		}
+		if _, err := os.Stat(got); err != nil {
+			t.Fatalf("expected saved screenshot at %s: %v", got, err)
+		}
+		mock.screenshotData = ""
 	})
 
 	t.Run("tabs", func(t *testing.T) {

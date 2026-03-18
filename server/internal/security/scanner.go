@@ -281,12 +281,15 @@ func (s *SecurityScanner) checkJWTSecurity() []SecurityScanItem {
 	if expirySecs > 0 && expirySecs <= 3600 { // 1 hour or less
 		item.Status = "passed"
 		item.Details = "Token expires in " + strconv.Itoa(expirySecs/60) + " minutes"
-	} else if expirySecs <= 28800 { // 8 hours or less
+	} else if expirySecs > 0 && expirySecs <= 28800 { // 8 hours or less
 		item.Status = "warning"
 		item.Details = "Token expiration (" + strconv.Itoa(expirySecs/3600) + " hours) is long. Consider shorter duration for sensitive operations."
+	} else if expirySecs > 0 {
+		item.Status = "failed"
+		item.Details = "Token expiration exceeds 8 hours. This increases risk of token theft."
 	} else {
 		item.Status = "failed"
-		item.Details = "Token expiration is too long or not set. This increases risk of token theft."
+		item.Details = "Token expiration is not set. Check security.jwt.expiration in the loaded security configuration."
 	}
 	items = append(items, item)
 
@@ -414,6 +417,12 @@ func (s *SecurityScanner) checkInputValidation() []SecurityScanItem {
 // checkAISecurity performs real AI security checks.
 func (s *SecurityScanner) checkAISecurity() []SecurityScanItem {
 	items := []SecurityScanItem{}
+	promptGuardEnabled := s.config.PromptGuardEnabled
+	if s.handler != nil {
+		s.handler.mu.RLock()
+		promptGuardEnabled = s.handler.promptGuard != nil
+		s.handler.mu.RUnlock()
+	}
 
 	// Prompt Injection Protection
 	item := SecurityScanItem{
@@ -425,7 +434,7 @@ func (s *SecurityScanner) checkAISecurity() []SecurityScanItem {
 		Impact:      "Attackers could extract sensitive data, execute unauthorized actions, or compromise system integrity",
 		Remediation: "Enable PromptGuard to detect and block prompt injection attempts",
 	}
-	if s.config.PromptGuardEnabled {
+	if promptGuardEnabled {
 		item.Status = "passed"
 		item.Details = "Prompt injection detection is active"
 	} else {
@@ -519,13 +528,23 @@ func (s *SecurityScanner) checkNetworkSecurity() []SecurityScanItem {
 		Impact:      "Attackers could overwhelm the system, causing service outages or resource exhaustion",
 		Remediation: "Enable rate limiting with appropriate thresholds (e.g., 100 requests/second per client)",
 	}
-	if s.config.RateLimitEnabled {
-		if s.config.RateLimitRPS <= 100 {
+	rateLimitEnabled := s.config.RateLimitEnabled
+	rateLimitRPS := s.config.RateLimitRPS
+	if s.handler != nil {
+		s.handler.mu.RLock()
+		if s.handler.settings.APIRateLimit > 0 {
+			rateLimitEnabled = true
+			rateLimitRPS = s.handler.settings.APIRateLimit
+		}
+		s.handler.mu.RUnlock()
+	}
+	if rateLimitEnabled {
+		if rateLimitRPS <= 100 {
 			item.Status = "passed"
-			item.Details = "Rate limiting is enabled at " + strconv.Itoa(s.config.RateLimitRPS) + " requests/second"
+			item.Details = "Rate limiting is enabled at " + strconv.Itoa(rateLimitRPS) + " requests/second"
 		} else {
 			item.Status = "warning"
-			item.Details = "Rate limit (" + strconv.Itoa(s.config.RateLimitRPS) + " RPS) is high. Consider lowering for better protection."
+			item.Details = "Rate limit (" + strconv.Itoa(rateLimitRPS) + " RPS) is high. Consider lowering for better protection."
 		}
 	} else {
 		item.Status = "failed"
@@ -594,7 +613,7 @@ func (s *SecurityScanner) checkNetworkSecurity() []SecurityScanItem {
 		}
 	} else {
 		if s.config.Environment == "production" {
-			item.Status = "failed"
+			item.Status = "warning"
 			item.Details = "TLS is disabled in production. All traffic is unencrypted."
 			item.AutoFixable = false
 		} else {
@@ -623,8 +642,11 @@ func (s *SecurityScanner) checkNetworkSecurity() []SecurityScanItem {
 		Name:        "Network Interface Binding",
 		Description: "Check server network binding configuration",
 	}
-	// Try to detect if server is bound to 0.0.0.0
-	conn, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(s.httpPort), time.Second)
+	port := GetServerPort()
+	if port <= 0 {
+		port = s.httpPort
+	}
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(port), time.Second)
 	if err == nil {
 		conn.Close()
 		item.Status = "passed"
@@ -766,6 +788,13 @@ func (s *SecurityScanner) checkDataProtection() []SecurityScanItem {
 		Remediation: "Set directory permissions to 0750 (owner: rwx, group: r-x, others: none)",
 	}
 	dataDir := "./data"
+	if s.handler != nil {
+		s.handler.mu.RLock()
+		if strings.TrimSpace(s.handler.dataDir) != "" {
+			dataDir = s.handler.dataDir
+		}
+		s.handler.mu.RUnlock()
+	}
 	if info, err := os.Stat(dataDir); err == nil {
 		mode := info.Mode().Perm()
 		if mode&0077 == 0 { // No group/other permissions
@@ -867,7 +896,7 @@ func (s *SecurityScanner) checkSystemSecurity() []SecurityScanItem {
 		item.Details = "Running in staging mode"
 	} else {
 		item.Status = "warning"
-		item.Details = "Running in " + env + " mode. Ensure production settings before deployment."
+		item.Details = "Running in development mode. Ensure production settings before deployment."
 	}
 	items = append(items, item)
 

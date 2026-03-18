@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { conversationApi, type Conversation } from '@/api/chat'
+import { speechApi } from '@/api/speech'
 import { voiceWakeApi, type VoiceWakeStatus } from '@/api/voiceWake'
 import { useTauri } from '@/composables/useTauri'
 import { useChatStore } from '@/stores/chat'
@@ -11,7 +12,7 @@ import { isCurrentHostLoopback } from '@/utils/localPath'
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const { openInBrowser, platform } = useTauri()
-const { t } = useI18n()
+const { t, te, locale } = useI18n()
 
 const IDLE_STATUS_POLL_INTERVAL_MS = 5000
 const ACTIVE_STATUS_POLL_INTERVAL_MS = 1200
@@ -27,10 +28,10 @@ const isLocalMacLoopback = computed(
 const canManageVoiceWake = computed(() => isDesktop.value || isLocalMacLoopback.value)
 const loading = ref(false)
 const saving = ref(false)
-const restarting = ref(false)
 const requestError = ref('')
 const status = ref<VoiceWakeStatus | null>(null)
 const conversations = ref<Conversation[]>([])
+const offlineLanguages = ref<string[]>([])
 const targetSelect = ref<HTMLSelectElement | null>(null)
 const syncingFormFromStore = ref(false)
 const autoSaveState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -62,8 +63,19 @@ const runtimeTriggers = computed(() =>
   status.value?.triggers?.length ? status.value.triggers.join(', ') : DEFAULT_WAKE_TRIGGER
 )
 const statusReason = computed(() => status.value?.reason?.trim() || '')
+const offlineLanguageOptions = computed(() => {
+  const seen = new Set<string>()
+  return offlineLanguages.value.flatMap((value) => {
+    const trimmed = normalizeLocaleCode(value)
+    if (!trimmed || seen.has(trimmed)) return []
+    seen.add(trimmed)
+    return [trimmed]
+  })
+})
+const hasOfflineLanguageOptions = computed(() => offlineLanguageOptions.value.length > 0)
 type ConversationOption = Conversation & { source?: 'current' | 'saved' }
 const requestedConversationIDs = new Set<string>()
+const langDisplayNames = computed(() => new Intl.DisplayNames([locale.value], { type: 'language' }))
 
 function createSyntheticConversation(id: string, title = ''): Conversation {
   return {
@@ -134,6 +146,8 @@ const activityState = computed<'idle' | 'listening' | 'triggered' | 'sent'>(() =
   if (recentActivityType.value === 'sent') return 'sent'
   if (recentActivityType.value === 'triggered') return 'triggered'
   if (status.value?.running) return 'listening'
+  if (status.value?.last_sent_at) return 'sent'
+  if (status.value?.last_triggered_at) return 'triggered'
   return 'idle'
 })
 const activityTitle = computed(() => {
@@ -195,15 +209,6 @@ const statusMessage = computed(() => {
   }
 })
 
-const statusBadgeClass = computed(() => {
-  if (!supportsConfiguration.value) {
-    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-  }
-  if (status.value?.running) {
-    return 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
-  }
-  return 'bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200'
-})
 const statusIconBgClass = computed(() => {
   if (!supportsConfiguration.value) {
     return 'bg-amber-100 dark:bg-amber-900/30'
@@ -234,16 +239,6 @@ const statusMessageClass = computed(() => {
   }
   return 'text-amber-700 dark:text-amber-300'
 })
-const speechStatusChipClass = computed(() =>
-  status.value?.speech_authorized
-    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-)
-const microphoneStatusChipClass = computed(() =>
-  status.value?.microphone_ready
-    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-)
 const activityPanelClass = computed(() => {
   switch (activityState.value) {
     case 'sent':
@@ -301,13 +296,30 @@ const activityMetaClass = computed(() => {
   }
 })
 const showActivityPulse = computed(() => activityState.value !== 'idle')
-const platformLabel = computed(() => {
-  if (status.value?.platform) return status.value.platform
-  if (isDesktop.value) return 'desktop'
-  if (isLocalMacLoopback.value) return 'localhost'
-  return 'browser'
+const showActivityPanel = computed(
+  () =>
+    supportsConfiguration.value &&
+    (status.value?.running ||
+      !!status.value?.last_triggered_at ||
+      !!status.value?.last_sent_at ||
+      recentActivityType.value !== null)
+)
+const showGuidanceActions = computed(
+  () =>
+    supportsConfiguration.value &&
+    [
+      'speech_permission_denied',
+      'microphone_unavailable',
+      'target_missing',
+      'target_unavailable',
+    ].includes(statusReason.value)
+)
+const selectedLocaleOption = computed({
+  get: () => resolveVoiceWakeLocale(form.locale),
+  set: (value: string) => {
+    form.locale = normalizeLocaleCode(value)
+  },
 })
-const showPlatformLabel = computed(() => platformLabel.value.trim().toLowerCase() !== 'darwin')
 const autoSaveFeedbackText = computed(() => {
   if (autoSaveState.value === 'saving') return t('common.saving')
   if (autoSaveState.value === 'saved') return t('common.saved')
@@ -327,6 +339,52 @@ const autoSaveFeedbackClass = computed(() => {
 function normalizeTriggers(triggers?: string[]): string {
   if (!triggers || triggers.length === 0) return DEFAULT_WAKE_TRIGGER
   return triggers.join(', ')
+}
+
+function normalizeLocaleCode(value?: string): string {
+  return String(value || '').trim()
+}
+
+function localeBase(value?: string): string {
+  return normalizeLocaleCode(value).split('-')[0]?.toLowerCase() || ''
+}
+
+function findLocaleMatch(preferred: string, available: string[]): string {
+  const normalizedPreferred = normalizeLocaleCode(preferred)
+  if (!normalizedPreferred) return ''
+  const exactMatch = available.find(
+    (candidate) => candidate.toLowerCase() === normalizedPreferred.toLowerCase()
+  )
+  if (exactMatch) return exactMatch
+  const preferredBase = localeBase(normalizedPreferred)
+  if (!preferredBase) return ''
+  return available.find((candidate) => localeBase(candidate) === preferredBase) || ''
+}
+
+function resolveVoiceWakeLocale(preferred?: string): string {
+  const available = offlineLanguageOptions.value
+  const normalizedPreferred = normalizeLocaleCode(preferred)
+  if (available.length === 0) return normalizedPreferred
+  const firstInstalledLocale = available.find((candidate) => normalizeLocaleCode(candidate) !== '')
+  const fallbackLocale = firstInstalledLocale ?? (normalizedPreferred || 'en-US')
+
+  return (
+    findLocaleMatch(normalizedPreferred, available) ||
+    findLocaleMatch(locale.value, available) ||
+    findLocaleMatch('en-US', available) ||
+    fallbackLocale
+  )
+}
+
+function langName(code: string): string {
+  const normalizedCode = normalizeLocaleCode(code)
+  const i18nKey = `speech.langName.${normalizedCode}`
+  if (te(i18nKey)) return t(i18nKey)
+  try {
+    return langDisplayNames.value.of(normalizedCode) ?? normalizedCode
+  } catch {
+    return normalizedCode
+  }
 }
 
 function sameStringArray(left: string[], right: string[]): boolean {
@@ -472,6 +530,18 @@ async function loadConversations() {
   }
 }
 
+async function loadOfflineLanguages() {
+  if (!canManageVoiceWake.value) return
+  try {
+    const response = await speechApi.getOfflineLanguages()
+    offlineLanguages.value = Array.isArray(response.data?.offline_languages)
+      ? response.data.offline_languages
+      : []
+  } catch {
+    offlineLanguages.value = []
+  }
+}
+
 function upsertConversation(conversation: Conversation) {
   const id = conversation.id?.trim()
   if (!id) return
@@ -540,11 +610,14 @@ async function persistSettings(
   }
 
   saving.value = true
+  const nextLocale = hasOfflineLanguageOptions.value
+    ? resolveVoiceWakeLocale(String(overrides.locale ?? form.locale))
+    : normalizeLocaleCode(String(overrides.locale ?? form.locale))
   try {
     await settingsStore.updateBackendSettings({
       voice_wake_enabled: nextEnabled && !!nextTargetConversationID,
       voice_wake_triggers: parseTriggerInput(String(overrides.triggers ?? form.triggers)),
-      voice_wake_locale: String(overrides.locale ?? form.locale).trim(),
+      voice_wake_locale: nextLocale,
       voice_wake_target_conversation_id: nextTargetConversationID,
     })
     normalizeSettingsFromStore()
@@ -570,24 +643,6 @@ async function persistSettingsWithFeedback(
   const ok = await persistSettings(overrides, options)
   setAutoSaveState(ok ? 'saved' : 'error')
   return ok
-}
-
-async function restartVoiceWake() {
-  if (!canManageVoiceWake.value) return
-  restarting.value = true
-  try {
-    const response = await voiceWakeApi.restart()
-    status.value = response.data
-    requestError.value = ''
-  } catch (error) {
-    requestError.value = extractErrorMessage(error)
-  } finally {
-    restarting.value = false
-  }
-}
-
-async function recheckVoiceWake() {
-  await refreshStatus()
 }
 
 async function openSpeechSettings() {
@@ -664,18 +719,6 @@ function markRecentActivity(type: 'triggered' | 'sent') {
 function isRecentTimestamp(value?: string): boolean {
   const ms = Date.parse(String(value || ''))
   return Number.isFinite(ms) && Date.now() - ms <= RECENT_ACTIVITY_WINDOW_MS
-}
-
-function runtimeMetricCardClass(kind: 'triggered' | 'sent'): string {
-  const base =
-    'rounded-lg border bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800 transition-colors'
-  if (recentActivityType.value !== kind) {
-    return `${base} border-gray-200`
-  }
-  if (kind === 'sent') {
-    return `${base} border-green-200 bg-green-50/80 dark:border-green-800/60 dark:bg-green-900/20`
-  }
-  return `${base} border-sky-200 bg-sky-50/80 dark:border-sky-800/60 dark:bg-sky-900/20`
 }
 
 let statusPollTimer: ReturnType<typeof setTimeout> | null = null
@@ -781,7 +824,7 @@ onMounted(async () => {
   if (Object.keys(settingsStore.backendSettings).length === 0) {
     await settingsStore.fetchBackendSettings()
   }
-  await Promise.all([refreshStatus(), loadConversations()])
+  await Promise.all([refreshStatus(), loadConversations(), loadOfflineLanguages()])
   startStatusPolling()
 })
 
@@ -800,7 +843,7 @@ onUnmounted(() => {
     class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm space-y-4"
   >
     <div class="flex items-start justify-between gap-4">
-      <div class="flex items-start gap-3">
+      <div class="flex min-w-0 items-start gap-3">
         <div class="w-8 h-8 rounded-lg flex items-center justify-center" :class="statusIconBgClass">
           <svg
             class="w-4 h-4"
@@ -820,137 +863,75 @@ onUnmounted(() => {
             <path d="M19 11v2" />
           </svg>
         </div>
-        <div class="space-y-1">
-          <div class="flex flex-wrap items-center gap-3">
-            <h4 class="text-base font-semibold leading-5 text-gray-900 dark:text-white">
-              {{ t('speech.voiceWake.title') }}
-            </h4>
-            <label
-              v-if="supportsConfiguration"
-              data-testid="voicewake-header-toggle"
-              class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-2.5 py-1 dark:border-gray-600 dark:bg-gray-800"
-            >
-              <span class="text-xs font-medium text-gray-700 dark:text-gray-200">
-                {{ t('common.enable') }}
-              </span>
-              <span
-                class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-                :class="
-                  form.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-                "
-              >
-                <input
-                  v-model="form.enabled"
-                  data-testid="voicewake-enabled"
-                  type="checkbox"
-                  class="peer sr-only"
-                  :disabled="enableBlocked || saving"
-                  @change="handleEnabledChange"
-                />
-                <span
-                  class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                  :class="form.enabled ? 'translate-x-5' : 'translate-x-0.5'"
-                />
-              </span>
-            </label>
-            <span
-              data-testid="voicewake-speech-status"
-              class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-5 whitespace-nowrap"
-              :class="speechStatusChipClass"
-            >
-              {{ t('speech.voiceWake.speechStatusLabel') }}:
-              {{
-                status?.speech_authorized
-                  ? t('speech.voiceWake.statusReady')
-                  : t('speech.voiceWake.statusMissing')
-              }}
-            </span>
-            <span
-              data-testid="voicewake-mic-status"
-              class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-5 whitespace-nowrap"
-              :class="microphoneStatusChipClass"
-            >
-              {{ t('speech.voiceWake.microphoneStatusLabel') }}:
-              {{
-                status?.microphone_ready
-                  ? t('speech.voiceWake.statusReady')
-                  : t('speech.voiceWake.statusNotReady')
-              }}
-            </span>
-          </div>
+        <div class="min-w-0 space-y-1">
+          <h4
+            data-testid="voicewake-title"
+            class="text-sm font-semibold leading-5 text-gray-900 dark:text-white"
+          >
+            {{ t('speech.voiceWake.title') }}
+          </h4>
           <p class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('speech.voiceWake.description') }}
           </p>
         </div>
       </div>
-      <div class="flex flex-wrap items-center justify-end gap-2">
-        <span class="text-xs px-2 py-1 rounded-full font-medium" :class="statusBadgeClass">
-          {{
-            status?.running ? t('speech.voiceWake.statusRunning') : t('speech.voiceWake.statusIdle')
-          }}
-        </span>
-        <button
-          v-if="supportsConfiguration"
-          data-testid="voicewake-restart"
-          class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-          :disabled="restarting || loading"
-          @click="restartVoiceWake"
+      <label
+        v-if="supportsConfiguration"
+        data-testid="voicewake-header-toggle"
+        class="shrink-0"
+      >
+        <span class="sr-only">{{ `${t('common.enable')} ${t('speech.voiceWake.title')}` }}</span>
+        <span
+          class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+          :class="form.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
         >
-          {{ restarting ? t('common.retrying') : t('common.retry') }}
-        </button>
-      </div>
+          <input
+            v-model="form.enabled"
+            data-testid="voicewake-enabled"
+            type="checkbox"
+            class="peer sr-only"
+            :disabled="enableBlocked || saving"
+            @change="handleEnabledChange"
+          />
+          <span
+            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+            :class="form.enabled ? 'translate-x-5' : 'translate-x-0.5'"
+          />
+        </span>
+      </label>
     </div>
 
     <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 space-y-4">
-      <div v-if="showPlatformLabel" class="flex flex-wrap items-center gap-2">
-        <span
-          data-testid="voicewake-platform-status"
-          class="inline-flex items-center rounded-full px-2 py-0.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
-        >
-          {{ platformLabel }}
-        </span>
-      </div>
-
       <p data-testid="voicewake-status-message" class="text-sm" :class="statusMessageClass">
         {{ statusMessage }}
       </p>
 
       <div
-        v-if="supportsConfiguration"
+        v-if="showActivityPanel"
         data-testid="voicewake-activity-panel"
         :class="activityPanelClass"
       >
-        <div class="flex items-start justify-between gap-3">
-          <div class="flex items-start gap-3">
-            <span class="relative mt-1 inline-flex h-3 w-3 flex-none">
-              <span
-                v-if="showActivityPulse"
-                class="absolute inline-flex h-full w-full rounded-full opacity-70 animate-ping"
-                :class="activityPingClass"
-              />
-              <span class="relative inline-flex h-3 w-3 rounded-full" :class="activityDotClass" />
-            </span>
-            <div class="space-y-1">
-              <p
-                data-testid="voicewake-activity-title"
-                class="text-sm font-medium"
-                :class="activityTitleClass"
-              >
-                {{ activityTitle }}
-              </p>
-              <p data-testid="voicewake-activity-meta" class="text-xs" :class="activityMetaClass">
-                {{ activityMeta }}
-              </p>
-            </div>
-          </div>
-          <span
-            class="rounded-full px-2 py-0.5 text-[11px] font-medium"
-            :class="statusBadgeClass"
-          >
-            {{
-              status?.running ? t('speech.voiceWake.statusRunning') : t('speech.voiceWake.statusIdle')
-            }}
+        <div class="flex items-start gap-3">
+          <span class="relative mt-1 inline-flex h-3 w-3 flex-none">
+            <span
+              v-if="showActivityPulse"
+              class="absolute inline-flex h-full w-full rounded-full opacity-70 animate-ping"
+              :class="activityPingClass"
+            />
+            <span class="relative inline-flex h-3 w-3 rounded-full" :class="activityDotClass" />
           </span>
+          <div class="space-y-1">
+            <p
+              data-testid="voicewake-activity-title"
+              class="text-sm font-medium"
+              :class="activityTitleClass"
+            >
+              {{ activityTitle }}
+            </p>
+            <p data-testid="voicewake-activity-meta" class="text-xs" :class="activityMetaClass">
+              {{ activityMeta }}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -975,7 +956,7 @@ onUnmounted(() => {
           <div class="flex flex-col gap-3 lg:flex-row lg:items-start">
             <label class="min-w-0 flex-1 space-y-2">
               <span class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('speech.voiceWake.activeTriggers') }}
+                {{ t('speech.voiceWake.wakeWords') }}
               </span>
               <textarea
                 v-model="form.triggers"
@@ -991,23 +972,28 @@ onUnmounted(() => {
             </label>
 
             <label
+              v-if="hasOfflineLanguageOptions"
               data-testid="voicewake-locale-inline"
-              class="w-full space-y-2 lg:w-40 lg:flex-none"
+              class="w-full space-y-2 lg:w-48 lg:flex-none"
             >
               <span class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('speech.voiceWake.localeOverride') }}
               </span>
-              <input
-                v-model="form.locale"
+              <select
+                v-model="selectedLocaleOption"
                 data-testid="voicewake-locale"
-                type="text"
                 class="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white"
-                placeholder="zh-CN"
-                @blur="flushDraftSettings"
-              />
-              <p class="text-[11px] text-gray-500 dark:text-gray-400">
-                {{ t('speech.voiceWake.localeHelp') }}
-              </p>
+                :disabled="saving"
+                @change="flushDraftSettings"
+              >
+                <option
+                  v-for="lang in offlineLanguageOptions"
+                  :key="lang"
+                  :value="lang"
+                >
+                  {{ langName(lang) }}
+                </option>
+              </select>
             </label>
           </div>
         </div>
@@ -1072,30 +1058,6 @@ onUnmounted(() => {
           </p>
         </div>
       </div>
-      <div v-if="supportsConfiguration" class="grid gap-3 sm:grid-cols-2">
-        <div
-          data-testid="voicewake-last-triggered-card"
-          :class="runtimeMetricCardClass('triggered')"
-        >
-          <p class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('speech.voiceWake.lastTriggered') }}
-          </p>
-          <p class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-            {{ formatTimestamp(status?.last_triggered_at) }}
-          </p>
-        </div>
-        <div
-          data-testid="voicewake-last-sent-card"
-          :class="runtimeMetricCardClass('sent')"
-        >
-          <p class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('speech.voiceWake.lastSent') }}
-          </p>
-          <p class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-            {{ formatTimestamp(status?.last_sent_at) }}
-          </p>
-        </div>
-      </div>
     </div>
 
     <div
@@ -1124,10 +1086,7 @@ onUnmounted(() => {
       </span>
     </div>
 
-    <div
-      v-if="supportsConfiguration && statusReason !== 'running' && (statusReason || requestError)"
-      class="flex flex-wrap items-center gap-2 pt-1"
-    >
+    <div v-if="showGuidanceActions" class="flex flex-wrap items-center gap-2 pt-1">
       <button
         v-if="statusReason === 'speech_permission_denied'"
         data-testid="voicewake-open-speech-settings"
@@ -1151,27 +1110,6 @@ onUnmounted(() => {
         @click="focusTargetConversation"
       >
         {{ t('speech.voiceWake.chooseConversation') }}
-      </button>
-      <button
-        data-testid="voicewake-recheck"
-        class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-        @click="recheckVoiceWake"
-      >
-        {{ t('cardActions.recheck') }}
-      </button>
-      <button
-        v-if="
-          statusReason === 'start_failed' ||
-          statusReason === 'runtime_error' ||
-          statusReason === 'send_failed' ||
-          statusReason === 'microphone_unavailable'
-        "
-        data-testid="voicewake-inline-retry"
-        class="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-medium hover:bg-gray-800 disabled:opacity-50"
-        :disabled="restarting || loading"
-        @click="restartVoiceWake"
-      >
-        {{ restarting ? t('common.retrying') : t('common.retry') }}
       </button>
     </div>
   </section>

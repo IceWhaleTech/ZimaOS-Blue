@@ -13,6 +13,7 @@ mod blue_ffi;
 
 use clap::Parser;
 use log::{error, info};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     image::Image,
@@ -52,8 +53,71 @@ static QUITTING: AtomicBool = AtomicBool::new(false);
 /// Close behavior: false = quit, true = minimize to tray
 static MINIMIZE_TO_TRAY: AtomicBool = AtomicBool::new(false);
 
+const MAIN_WINDOW_LABEL: &str = "main";
+const MAIN_WINDOW_TITLE: &str = "ZimaOS Blue";
+const MAIN_WINDOW_WIDTH: f64 = 1400.0;
+const MAIN_WINDOW_HEIGHT: f64 = 900.0;
+const MAIN_WINDOW_MIN_WIDTH: f64 = 800.0;
+const MAIN_WINDOW_MIN_HEIGHT: f64 = 600.0;
+const ABOUT_BLANK_SPLASH_SCRIPT: &str = r#"
+document.documentElement.style.background = 'transparent';
+document.body.style.cssText = 'margin:0;background:transparent;display:flex;align-items:center;justify-content:center;height:100vh';
+document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:96px;height:96px;border-radius:28px;background:rgba(15,23,42,0.34);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14),0 24px 60px rgba(2,6,23,0.22);backdrop-filter:blur(26px) saturate(1.12);-webkit-backdrop-filter:blur(26px) saturate(1.12)"><div style="width:36px;height:36px;border:3px solid rgba(148,163,184,0.72);border-top-color:#3B82F6;border-radius:50%;animation:s .8s linear infinite"></div></div><style>@keyframes s{to{transform:rotate(360deg)}}@media(prefers-color-scheme:light){body>div{background:rgba(255,255,255,0.52)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.68),0 24px 60px rgba(148,163,184,0.22)!important}body>div>div{border-color:rgba(100,116,139,0.56)!important;border-top-color:#3B82F6!important}}</style>';
+"#;
+
+#[cfg(target_os = "macos")]
+const MACOS_GLASS_INIT_SCRIPT: &str = r#"
+(() => {
+  const isLocalDesktopPage =
+    window.location.href === 'about:blank' ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1';
+  if (!isLocalDesktopPage) return;
+  window.__BLUE_DESKTOP__ = true;
+  window.__BLUE_MACOS_GLASS__ = true;
+})();
+"#;
+
 /// Stores the tray quit MenuItem so we can update its text dynamically
 struct TrayQuitItem(MenuItem<tauri::Wry>);
+
+#[cfg(target_os = "macos")]
+fn main_window_effects() -> tauri::utils::config::WindowEffectsConfig {
+    use tauri::{
+        utils::config::WindowEffectsConfig,
+        window::{Effect, EffectState},
+    };
+
+    WindowEffectsConfig {
+        effects: vec![Effect::HudWindow],
+        state: Some(EffectState::FollowsWindowActiveState),
+        radius: Some(18.0),
+        color: None,
+    }
+}
+
+fn build_main_window<R: tauri::Runtime, M: Manager<R>>(
+    manager: &M,
+    url: tauri::WebviewUrl,
+) -> tauri::Result<tauri::WebviewWindow<R>> {
+    let builder = tauri::WebviewWindowBuilder::new(manager, MAIN_WINDOW_LABEL, url)
+        .title(MAIN_WINDOW_TITLE)
+        .inner_size(MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT)
+        .min_inner_size(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT)
+        .center()
+        .visible(false);
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .transparent(true)
+        .title_bar_style(tauri::TitleBarStyle::Transparent)
+        .hidden_title(true)
+        .accept_first_mouse(true)
+        .effects(main_window_effects())
+        .initialization_script(MACOS_GLASS_INIT_SCRIPT);
+
+    builder.build()
+}
 
 /// Map locale string to localized "Quit ZimaOS Blue" label
 fn quit_label_for_locale(locale: &str) -> String {
@@ -135,6 +199,47 @@ impl Default for AppState {
     }
 }
 
+fn parse_bool_env_flag(raw: &str) -> Option<bool> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn stt_auth_startup_enabled(
+    debug_build: bool,
+    cli_dev_mode: bool,
+    env_override: Option<&str>,
+) -> bool {
+    if let Some(raw) = env_override {
+        if let Some(value) = parse_bool_env_flag(raw) {
+            return value;
+        }
+    }
+
+    !(debug_build || cli_dev_mode)
+}
+
+#[cfg(target_os = "macos")]
+fn should_request_stt_authorization_on_startup(cli_args: &CliArgs) -> bool {
+    let env_override = std::env::var("ZIMAOS_STT_AUTH_ON_STARTUP").ok();
+    if let Some(raw) = env_override.as_deref() {
+        if parse_bool_env_flag(raw).is_none() {
+            info!(
+                "Ignoring invalid ZIMAOS_STT_AUTH_ON_STARTUP value {:?}; expected one of 1/0/true/false/yes/no/on/off",
+                raw
+            );
+        }
+    }
+
+    stt_auth_startup_enabled(
+        cfg!(debug_assertions),
+        cli_args.dev,
+        env_override.as_deref(),
+    )
+}
+
 /// Get the server URL for the current port
 #[tauri::command]
 fn get_server_url(state: tauri::State<AppState>) -> String {
@@ -184,6 +289,33 @@ fn resolve_reveal_target(raw_path: &str) -> Result<(std::path::PathBuf, bool), S
     Ok((path, metadata.is_dir()))
 }
 
+fn parent_directory_for_reveal_fallback(path: &Path, is_dir: bool) -> Option<PathBuf> {
+    if is_dir {
+        return None;
+    }
+    let parent = path.parent()?;
+    if parent == path {
+        return None;
+    }
+    Some(parent.to_path_buf())
+}
+
+fn reveal_path_with_fallback<F>(target: &Path, is_dir: bool, reveal: F) -> Result<(), String>
+where
+    F: Fn(&Path, bool) -> Result<(), String>,
+{
+    if let Err(err) = reveal(target, is_dir) {
+        if let Some(parent) = parent_directory_for_reveal_fallback(target, is_dir) {
+            return reveal(&parent, true).map_err(|parent_err| {
+                format!("{err} (fallback to parent directory failed: {parent_err})")
+            });
+        }
+        return Err(err);
+    }
+
+    Ok(())
+}
+
 #[cfg(target_os = "macos")]
 fn reveal_path_macos(path: &std::path::Path, is_dir: bool) -> Result<(), String> {
     if is_dir {
@@ -231,7 +363,9 @@ fn reveal_path_windows(path: &std::path::Path, is_dir: bool) -> Result<(), Strin
     use windows_sys::Win32::System::Com::{
         CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED,
     };
-    use windows_sys::Win32::UI::Shell::{ITEMIDLIST, SHOpenFolderAndSelectItems, SHParseDisplayName};
+    use windows_sys::Win32::UI::Shell::{
+        SHOpenFolderAndSelectItems, SHParseDisplayName, ITEMIDLIST,
+    };
 
     unsafe {
         let mut should_uninitialize = false;
@@ -239,7 +373,10 @@ fn reveal_path_windows(path: &std::path::Path, is_dir: bool) -> Result<(), Strin
         if hr_init >= 0 {
             should_uninitialize = true;
         } else if hr_init != RPC_E_CHANGED_MODE {
-            return Err(format!("failed to initialize COM: 0x{:08X}", hr_init as u32));
+            return Err(format!(
+                "failed to initialize COM: 0x{:08X}",
+                hr_init as u32
+            ));
         }
 
         let mut item_pidl: *mut ITEMIDLIST = null_mut();
@@ -259,7 +396,10 @@ fn reveal_path_windows(path: &std::path::Path, is_dir: bool) -> Result<(), Strin
             if is_dir {
                 let hr = SHOpenFolderAndSelectItems(item_pidl as *const ITEMIDLIST, 0, null(), 0);
                 if hr < 0 {
-                    return Err(format!("failed to open directory in Explorer: 0x{:08X}", hr as u32));
+                    return Err(format!(
+                        "failed to open directory in Explorer: 0x{:08X}",
+                        hr as u32
+                    ));
                 }
                 return Ok(());
             }
@@ -292,7 +432,10 @@ fn reveal_path_windows(path: &std::path::Path, is_dir: bool) -> Result<(), Strin
             );
             CoTaskMemFree(folder_pidl as *const _);
             if hr_open < 0 {
-                return Err(format!("failed to reveal file in Explorer: 0x{:08X}", hr_open as u32));
+                return Err(format!(
+                    "failed to reveal file in Explorer: 0x{:08X}",
+                    hr_open as u32
+                ));
             }
             Ok(())
         })();
@@ -316,20 +459,133 @@ fn reveal_path_windows(path: &std::path::Path, is_dir: bool) -> Result<(), Strin
 async fn reveal_path(path: String) -> Result<(), String> {
     let (target, is_dir) = resolve_reveal_target(&path)?;
 
-    #[cfg(target_os = "macos")]
-    {
-        return reveal_path_macos(&target, is_dir);
+    reveal_path_with_fallback(&target, is_dir, |path, is_dir| {
+        #[cfg(target_os = "macos")]
+        {
+            return reveal_path_macos(path, is_dir);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            return reveal_path_windows(path, is_dir);
+        }
+        #[cfg(target_os = "linux")]
+        {
+            return reveal_path_linux(path, is_dir);
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+        {
+            let _ = (path, is_dir);
+            Err("reveal_path is not supported on this platform".to_string())
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        parent_directory_for_reveal_fallback, parse_bool_env_flag, reveal_path_with_fallback,
+        stt_auth_startup_enabled,
+    };
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn parse_bool_env_flag_recognizes_common_truthy_and_falsy_values() {
+        assert_eq!(parse_bool_env_flag("1"), Some(true));
+        assert_eq!(parse_bool_env_flag("true"), Some(true));
+        assert_eq!(parse_bool_env_flag("YES"), Some(true));
+        assert_eq!(parse_bool_env_flag("on"), Some(true));
+        assert_eq!(parse_bool_env_flag("0"), Some(false));
+        assert_eq!(parse_bool_env_flag("false"), Some(false));
+        assert_eq!(parse_bool_env_flag("No"), Some(false));
+        assert_eq!(parse_bool_env_flag("off"), Some(false));
+        assert_eq!(parse_bool_env_flag("maybe"), None);
     }
-    #[cfg(target_os = "windows")]
-    {
-        return reveal_path_windows(&target, is_dir);
+
+    #[test]
+    fn stt_auth_startup_enabled_defaults_to_disabled_for_debug_or_dev_mode() {
+        assert!(!stt_auth_startup_enabled(true, false, None));
+        assert!(!stt_auth_startup_enabled(false, true, None));
+        assert!(stt_auth_startup_enabled(false, false, None));
     }
-    #[cfg(target_os = "linux")]
-    {
-        return reveal_path_linux(&target, is_dir);
+
+    #[test]
+    fn stt_auth_startup_enabled_honors_environment_override() {
+        assert!(stt_auth_startup_enabled(true, true, Some("1")));
+        assert!(!stt_auth_startup_enabled(false, false, Some("0")));
+        assert!(stt_auth_startup_enabled(false, false, Some("invalid")));
     }
-    #[allow(unreachable_code)]
-    Err("reveal_path is not supported on this platform".to_string())
+
+    #[test]
+    fn parent_directory_fallback_returns_parent_for_file_path() {
+        let file = std::env::temp_dir().join("report.txt");
+        let expected = file.parent().map(|path| path.to_path_buf());
+        assert_eq!(parent_directory_for_reveal_fallback(&file, false), expected);
+    }
+
+    #[test]
+    fn parent_directory_fallback_skips_directory_paths() {
+        let dir = std::env::temp_dir();
+        assert_eq!(parent_directory_for_reveal_fallback(&dir, true), None);
+    }
+
+    #[test]
+    fn parent_directory_fallback_skips_root_paths() {
+        let root = std::env::temp_dir()
+            .ancestors()
+            .last()
+            .expect("temp dir should have a filesystem root")
+            .to_path_buf();
+        assert_eq!(parent_directory_for_reveal_fallback(&root, false), None);
+    }
+
+    #[test]
+    fn reveal_path_with_fallback_uses_parent_directory_when_file_reveal_fails() {
+        let dir = std::env::temp_dir();
+        let file = dir.join("report.txt");
+        let calls = Arc::new(Mutex::new(Vec::<(PathBuf, bool)>::new()));
+        let recorded_calls = Arc::clone(&calls);
+        let dir_for_closure = dir.clone();
+        let file_for_closure = file.clone();
+
+        let result = reveal_path_with_fallback(&file, false, move |path: &Path, is_dir| {
+            recorded_calls
+                .lock()
+                .expect("calls lock poisoned")
+                .push((path.to_path_buf(), is_dir));
+            if path == file_for_closure.as_path() {
+                return Err("direct file reveal unsupported".to_string());
+            }
+            assert_eq!(path, dir_for_closure.as_path());
+            assert!(is_dir);
+            Ok(())
+        });
+
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            calls.lock().expect("calls lock poisoned").clone(),
+            vec![(file.clone(), false), (dir.clone(), true)]
+        );
+    }
+
+    #[test]
+    fn reveal_path_with_fallback_returns_combined_error_when_parent_reveal_fails() {
+        let dir = std::env::temp_dir();
+        let file = dir.join("report.txt");
+
+        let result = reveal_path_with_fallback(&file, false, |path: &Path, is_dir| {
+            if path == file.as_path() {
+                return Err("direct file reveal unsupported".to_string());
+            }
+            assert_eq!(path, dir.as_path());
+            assert!(is_dir);
+            Err("parent reveal failed".to_string())
+        });
+
+        let err = result.expect_err("fallback reveal should fail");
+        assert!(err.contains("direct file reveal unsupported"));
+        assert!(err.contains("parent reveal failed"));
+    }
 }
 
 /// Update tray menu language to match app locale
@@ -384,7 +640,10 @@ async fn start_server_with_args(app: tauri::AppHandle, args: Option<String>) -> 
 
 /// Start the server using platform-specific approach with optional command-line arguments
 /// - macOS & Windows: Uses CGO library (FFI to Go static library) for faster startup
-async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<String>) -> Result<(), String> {
+async fn start_server_platform_with_args(
+    app: &tauri::AppHandle,
+    args: Option<String>,
+) -> Result<(), String> {
     // Merge explicit args with CLI args from AppState
     let cli_args_str = if let Some(state) = app.try_state::<AppState>() {
         build_args_string(&state.cli_args, args.as_deref())
@@ -401,14 +660,18 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        info!("Starting Blue server via CGO library with args: {:?}", cli_args_str);
+        info!(
+            "Starting Blue server via CGO library with args: {:?}",
+            cli_args_str
+        );
 
         // Get data directory: CLI --data-dir > default
         let data_dir = if let Some(state) = app.try_state::<AppState>() {
             state.cli_args.data_dir.clone()
         } else {
             None
-        }.unwrap_or_else(|| {
+        }
+        .unwrap_or_else(|| {
             // For Tauri app, use data directory next to executable
             std::env::current_exe()
                 .ok()
@@ -506,13 +769,19 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
             *state.use_https.lock().unwrap() = use_https;
         }
 
-        info!("Server protocol detected: {}", if use_https { "HTTPS" } else { "HTTP" });
+        info!(
+            "Server protocol detected: {}",
+            if use_https { "HTTPS" } else { "HTTP" }
+        );
         Ok(())
     }
 
     #[cfg(target_os = "linux")]
     {
-        info!("Starting Blue server via sidecar process with args: {:?}", cli_args_str);
+        info!(
+            "Starting Blue server via sidecar process with args: {:?}",
+            cli_args_str
+        );
         server::start_sidecar_server_with_args(app, cli_args_str.as_deref()).await
     }
 }
@@ -620,11 +889,14 @@ async fn listen_push_sse(app: tauri::AppHandle, port: u16, use_https: bool) {
 
                         if line.is_empty() {
                             if event_type == "push" && !data_buf.is_empty() {
-                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data_buf) {
+                                if let Ok(val) =
+                                    serde_json::from_str::<serde_json::Value>(&data_buf)
+                                {
                                     let title = val["title"].as_str().unwrap_or("Blue");
                                     let body = val["message"].as_str().unwrap_or("");
                                     if !body.is_empty() {
-                                        let _ = app.notification()
+                                        let _ = app
+                                            .notification()
                                             .builder()
                                             .title(title)
                                             .body(body)
@@ -646,7 +918,10 @@ async fn listen_push_sse(app: tauri::AppHandle, port: u16, use_https: bool) {
                 }
             }
             Ok(resp) => {
-                info!("SSE push stream returned {}, server-side notifier handles push instead", resp.status());
+                info!(
+                    "SSE push stream returned {}, server-side notifier handles push instead",
+                    resp.status()
+                );
             }
             Err(e) => {
                 info!("SSE push connection failed: {}", e);
@@ -690,7 +965,12 @@ pub fn run() {
         .init();
 
     info!("Starting ZimaOS Blue desktop application");
-    if cli_args.port.is_some() || cli_args.config.is_some() || cli_args.data_dir.is_some() || cli_args.dev || cli_args.verbose {
+    if cli_args.port.is_some()
+        || cli_args.config.is_some()
+        || cli_args.data_dir.is_some()
+        || cli_args.dev
+        || cli_args.verbose
+    {
         info!("CLI args: {:?}", cli_args);
     }
 
@@ -712,7 +992,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // When second instance is launched, show and focus the first instance
             info!("Second instance detected, focusing existing window");
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 let _ = window.show();
                 let _ = window.set_focus();
                 let _ = window.unminimize();
@@ -747,11 +1027,7 @@ pub fn run() {
             // For about:blank, inject a splash spinner and show the window immediately.
             // This gives instant visual feedback while the Go server boots.
             if url == "about:blank" {
-                let _ = webview.eval(
-                    "document.body.style.cssText='margin:0;background:#0F172A;display:flex;align-items:center;justify-content:center;height:100vh';\
-                     document.body.innerHTML='<div style=\"width:36px;height:36px;border:3px solid #94A3B8;border-top-color:#3B82F6;border-radius:50%;animation:s .8s linear infinite\"></div>\
-                     <style>@keyframes s{to{transform:rotate(360deg)}}@media(prefers-color-scheme:light){body{background:#F8FAFC!important}div{border-color:#64748B!important;border-top-color:#3B82F6!important}}</style>';"
-                );
+                let _ = webview.eval(ABOUT_BLANK_SPLASH_SCRIPT);
                 let _ = webview.window().show();
                 let _ = webview.window().set_focus();
             }
@@ -768,13 +1044,40 @@ pub fn run() {
             // from an external origin (http://localhost) where Tauri IPC is unavailable.
             // The frontend should use relative URLs (same-origin) for all API calls.
             if url.contains("localhost") {
+                #[cfg(target_os = "macos")]
                 let _ = webview.eval(
-                    "window.__BLUE_DESKTOP__=true"
+                    "window.__BLUE_DESKTOP__=true;\
+                     window.__BLUE_MACOS_GLASS__=true;\
+                     document.documentElement.dataset.blueDesktop='true';\
+                     document.documentElement.dataset.blueMacosGlass='true';"
+                );
+
+                #[cfg(not(target_os = "macos"))]
+                let _ = webview.eval(
+                    "window.__BLUE_DESKTOP__=true;\
+                     document.documentElement.dataset.blueDesktop='true';"
                 );
             }
         })
         .setup(|app| {
             info!("Setting up application");
+
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+                    info!("Rebuilding main window with macOS vibrancy styling");
+                    let _ = window.destroy();
+                }
+
+                let _ = build_main_window(
+                    app.handle(),
+                    tauri::WebviewUrl::CustomProtocol(
+                        "about:blank"
+                            .parse()
+                            .expect("about:blank should be a valid URL"),
+                    ),
+                )?;
+            }
 
             // Detect system language for initial tray menu (updated dynamically after webview loads)
             let quit_label = {
@@ -831,7 +1134,7 @@ pub fn run() {
                             }
                         }
                         let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
+                        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                             let _ = window.show();
                             let _ = window.set_focus();
                         } else {
@@ -846,18 +1149,10 @@ pub fn run() {
                             };
                             let protocol = if use_https { "https" } else { "http" };
                             let url = format!("{}://localhost:{}", protocol, port);
-                            if let Ok(window) = tauri::WebviewWindowBuilder::new(
+                            if let Ok(window) = build_main_window(
                                 app,
-                                "main",
                                 tauri::WebviewUrl::External(url.parse().unwrap()),
-                            )
-                            .title("ZimaOS Blue")
-                            .inner_size(1400.0, 900.0)
-                            .min_inner_size(800.0, 600.0)
-                            .center()
-                            .visible(false) // Start hidden to prevent flash
-                            .build()
-                            {
+                            ) {
                                 // Window will be shown by frontend after content loads
                                 let _ = window.set_focus();
                             }
@@ -872,7 +1167,7 @@ pub fn run() {
 
             // Open devtools in debug builds (must be done in setup, before async tasks)
             #[cfg(debug_assertions)]
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 window.open_devtools();
             }
 
@@ -886,18 +1181,32 @@ pub fn run() {
             // Use run_on_main_thread to defer until the run loop is active.
             #[cfg(target_os = "macos")]
             {
-                let stt_app_handle = app.handle().clone();
-                let _ = stt_app_handle.run_on_main_thread(move || {
-                    info!("Requesting macOS speech recognition authorization...");
-                    let status = blue_ffi::request_stt_authorization();
-                    match status {
-                        3 => info!("Speech recognition authorized"),
-                        1 => info!("Speech recognition denied by user"),
-                        2 => info!("Speech recognition restricted"),
-                        0 => info!("Speech recognition not determined"),
-                        _ => info!("Speech recognition status: {}", status),
-                    }
-                });
+                let should_request_stt_auth = app
+                    .try_state::<AppState>()
+                    .map(|state| should_request_stt_authorization_on_startup(&state.cli_args))
+                    .unwrap_or_else(|| {
+                        should_request_stt_authorization_on_startup(&CliArgs::default())
+                    });
+
+                if should_request_stt_auth {
+                    let stt_app_handle = app.handle().clone();
+                    let _ = stt_app_handle.run_on_main_thread(move || {
+                        info!("Requesting macOS speech recognition authorization...");
+                        let status = blue_ffi::request_stt_authorization();
+                        match status {
+                            3 => info!("Speech recognition authorized"),
+                            1 => info!("Speech recognition denied by user"),
+                            2 => info!("Speech recognition restricted"),
+                            0 => info!("Speech recognition not determined"),
+                            _ => info!("Speech recognition status: {}", status),
+                        }
+                    });
+                } else {
+                    info!(
+                        "Skipping automatic macOS speech recognition authorization during startup. \
+Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
+                    );
+                }
             }
 
             tauri::async_runtime::spawn(async move {
@@ -907,11 +1216,12 @@ pub fn run() {
                     Err(e) => {
                         error!("Failed to start server: {}", e);
                         // Show error page in the webview
-                        if let Some(window) = app_handle.get_webview_window("main") {
+                        if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
                             let escaped = e.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n");
                             let _ = window.eval(&format!(
-                                "document.body.style.cssText='margin:0;background:#0F172A;color:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:system-ui,sans-serif';\
-                                 document.body.innerHTML='<div style=\"text-align:center;max-width:480px;padding:2rem\">\
+                                "document.documentElement.style.background='transparent';\
+                                 document.body.style.cssText='margin:0;background:transparent;color:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:system-ui,sans-serif';\
+                                 document.body.innerHTML='<div style=\"text-align:center;max-width:520px;margin:16px;padding:2rem;border-radius:28px;background:rgba(15,23,42,0.68);box-shadow:inset 0 1px 0 rgba(255,255,255,0.12),0 32px 80px rgba(2,6,23,0.3);backdrop-filter:blur(28px) saturate(1.12);-webkit-backdrop-filter:blur(28px) saturate(1.12)\">\
                                  <div style=\"font-size:48px;margin-bottom:16px\">&#9888;&#65039;</div>\
                                  <h2 style=\"margin:0 0 12px;font-size:20px\">Server Failed to Start</h2>\
                                  <p style=\"color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px\">{}</p>\
@@ -948,7 +1258,7 @@ pub fn run() {
                 }
 
                 // Navigate the main window to the Go server URL
-                if let Some(window) = app_handle_for_window.get_webview_window("main") {
+                if let Some(window) = app_handle_for_window.get_webview_window(MAIN_WINDOW_LABEL) {
                     let protocol = if use_https { "https" } else { "http" };
                     let url = format!("{}://localhost:{}", protocol, port);
                     info!("Navigating to server at {}", url);
@@ -989,7 +1299,7 @@ pub fn run() {
                     // Only prevent exit if we're not actually quitting AND minimize-to-tray is enabled
                     if !QUITTING.load(Ordering::SeqCst) && MINIMIZE_TO_TRAY.load(Ordering::SeqCst) {
                         api.prevent_exit();
-                        if let Some(window) = app_handle.get_webview_window("main") {
+                        if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
                             let _ = window.hide();
                         }
                         // On macOS, hide the Dock icon when minimizing to tray

@@ -1182,6 +1182,18 @@ func (h *SettingsHandler) GetSmallModelContextPruneEnabled() bool {
 	return *h.settings.SmallModelContextPruneEnabled
 }
 
+// GetSmallModelContextPruneExplicit returns the context-prune preference and
+// whether the user explicitly set it, so callers can distinguish "unset" from
+// "off".
+func (h *SettingsHandler) GetSmallModelContextPruneExplicit() (bool, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelContextPruneEnabled == nil {
+		return false, false
+	}
+	return *h.settings.SmallModelContextPruneEnabled, true
+}
+
 func (h *SettingsHandler) GetSmallModelContextPruneToolAllow() []string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

@@ -36,6 +36,8 @@ export interface SSEClientOptions {
   onInjection?: (userMessage: string) => void
   /** Called when backend emits upstream stream progress metadata. */
   onStreamProgress?: (progress: string) => void
+  /** Called when backend emits a process-trace event. */
+  onProcessEvent?: (chunk: StreamChunk) => void
   /** Called when the stream was interrupted mid-content by a network error.
    *  The store should auto-recover (fetch persisted content + continue). */
   onNetworkInterrupt?: () => void
@@ -362,6 +364,10 @@ export class SSEClient {
                 }
                 if (chunk.stream_progress) {
                   options.onStreamProgress?.(chunk.stream_progress)
+                  continue
+                }
+                if (chunk.process_event) {
+                  options.onProcessEvent?.(chunk)
                   continue
                 }
                 // Mark that we received actual content

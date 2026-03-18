@@ -1,3 +1,4 @@
+import type { AxiosProgressEvent } from 'axios'
 import api from './index'
 import { authFetch } from './client'
 import { isTtsSpeechMuted } from '../utils/ttsPreferences'
@@ -97,6 +98,10 @@ export interface SpeechStatus {
   }
 }
 
+export interface TranscribeOptions {
+  onUploadProgress?: (progress: number, event: AxiosProgressEvent) => void
+}
+
 // Speech API
 export const speechApi = {
   // Unified status (includes models in asr.models / tts.models)
@@ -147,7 +152,8 @@ export const speechApi = {
   transcribe: async (
     audio: Blob,
     format: string,
-    language?: string
+    language?: string,
+    options?: TranscribeOptions
   ): Promise<TranscriptionResult> => {
     const formData = new FormData()
     formData.append('audio', audio, `audio.${format}`)
@@ -159,32 +165,38 @@ export const speechApi = {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 20000)
 
-    let response: Response
     try {
-      response = await authFetch('/api/v1/speech/transcribe', {
-        method: 'POST',
-        body: formData,
+      const response = await api.post<TranscriptionResult>('/speech/transcribe', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 0,
         signal: controller.signal,
+        onUploadProgress: (event) => {
+          const total = event.total || audio.size || 0
+          const loaded = event.loaded || 0
+          const progress = total > 0 ? Math.min(1, loaded / total) : 0
+          options?.onUploadProgress?.(progress, event)
+        },
       })
+      options?.onUploadProgress?.(1, { loaded: audio.size, total: audio.size } as AxiosProgressEvent)
+      return response.data
     } catch (e: any) {
-      clearTimeout(timer)
       if (e.name === 'AbortError') {
         const err = new Error('Transcription timed out') as any
         err.error_code = 'timeout'
         throw err
       }
+      const errorCode = e?.response?.data?.error_code
+      const message = e?.response?.data?.error || e?.response?.data?.message
+      if (message || errorCode) {
+        const err = new Error(message || 'Transcription failed') as any
+        err.error_code = errorCode
+        err.response = e.response
+        throw err
+      }
       throw e
+    } finally {
+      clearTimeout(timer)
     }
-    clearTimeout(timer)
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      const err = new Error(errorData.error || 'Transcription failed') as any
-      err.error_code = errorData.error_code
-      throw err
-    }
-
-    return response.json()
   },
 
   // Kokoro model management (status via unified /speech/status components)

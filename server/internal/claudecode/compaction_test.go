@@ -1,11 +1,36 @@
 package claudecode
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
+
+type summaryProviderStub struct {
+	respContent string
+	lastReq     llm.ChatRequest
+}
+
+func (p *summaryProviderStub) Name() string { return "stub" }
+
+func (p *summaryProviderStub) Models() []string { return []string{"stub-model"} }
+
+func (p *summaryProviderStub) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	p.lastReq = req
+	return &llm.ChatResponse{
+		Message: llm.Message{Role: llm.RoleAssistant, Content: p.respContent},
+	}, nil
+}
+
+func (p *summaryProviderStub) ChatStream(context.Context, llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	return nil, nil
+}
+
+func (p *summaryProviderStub) ChatStreamCallback(context.Context, llm.ChatRequest, llm.StreamCallback) error {
+	return nil
+}
 
 // generateLargeText creates a string with approximately n whitespace-separated words.
 func generateLargeText(n int) string {
@@ -368,6 +393,73 @@ func TestPruneHistoryPreservesToolPairs(t *testing.T) {
 				t.Errorf("orphaned assistant tool_use found: none of its tool_call IDs have matching results")
 			}
 		}
+	}
+}
+
+func TestNormalizeStructuredSummaryCanonicalizesLegacySections(t *testing.T) {
+	raw := strings.Join([]string{
+		"- Goal: ship pressure-driven compact",
+		"- Preferences: keep the 75% threshold",
+		"- Decisions: cue-based auto switching is disabled",
+		"- Pending: wire trim only as the final fallback",
+		"- File Paths: server/internal/server/chat.go",
+		"- File Paths: server/internal/server/chat_context.go",
+	}, "\n")
+
+	got := NormalizeStructuredSummary(raw, "", nil)
+
+	for _, token := range []string{
+		"Goal\n- ship pressure-driven compact",
+		"Instructions\n- keep the 75% threshold",
+		"Discoveries\n- cue-based auto switching is disabled",
+		"Accomplished\n- wire trim only as the final fallback",
+		"Relevant Files\n- server/internal/server/chat.go\n- server/internal/server/chat_context.go",
+	} {
+		if !strings.Contains(got, token) {
+			t.Fatalf("normalized summary missing %q:\n%s", token, got)
+		}
+	}
+}
+
+func TestNormalizeStructuredSummaryAggregatesRelevantFilesFromToolContext(t *testing.T) {
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: "Also keep server/internal/server/chat_context.go in mind."},
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{
+			{ID: "read-1", Name: "read", Arguments: `{"path":"server/internal/server/chat.go"}`},
+		}},
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{
+			{ID: "edit-1", Name: "edit", Arguments: `{"path":"server/internal/claudecode/compaction.go","old_text":"old","new_text":"new"}`},
+		}},
+	}
+
+	got := NormalizeStructuredSummary("Goal\n- fix compaction", "", messages)
+	want := "Relevant Files\n- server/internal/claudecode/compaction.go\n- server/internal/server/chat.go\n- server/internal/server/chat_context.go"
+	if !strings.Contains(got, want) {
+		t.Fatalf("normalized relevant files = %q, want ordered file aggregation %q", got, want)
+	}
+}
+
+func TestCompactorSummarizeNormalizesProviderOutput(t *testing.T) {
+	provider := &summaryProviderStub{
+		respContent: "- Goal: keep compact structured\n- Pending: verify tests\n- File Paths: server/internal/server/chat.go",
+	}
+	compactor := NewCompactor(CompactionConfig{
+		MaxContextTokens: 4096,
+		MaxHistoryShare:  1.0,
+		ReserveTokens:    256,
+	}, provider)
+
+	summary, err := compactor.Summarize(context.Background(), []llm.Message{
+		{Role: llm.RoleUser, Content: "Please keep server/internal/server/chat_context.go and the new budget flow aligned."},
+	}, "")
+	if err != nil {
+		t.Fatalf("Summarize() error = %v", err)
+	}
+	if !strings.Contains(summary, "Goal") || !strings.Contains(summary, "Accomplished") || !strings.Contains(summary, "Relevant Files") {
+		t.Fatalf("summary = %q, want canonical structured sections", summary)
+	}
+	if !strings.Contains(provider.lastReq.Messages[0].Content, "Goal, Instructions, Discoveries, Accomplished, Relevant Files") {
+		t.Fatalf("prompt = %q, want canonical summary instructions", provider.lastReq.Messages[0].Content)
 	}
 }
 

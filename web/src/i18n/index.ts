@@ -6,6 +6,7 @@ import priorityBillingOverrides from './priority-billing-overrides'
 import prioritySettingsOverrides from './priority-settings-overrides'
 import priorityTranslationOverrides from './priority-translation-overrides'
 import prioritySmallModelOverrides from './priority-small-model-overrides'
+import securityScanDetailOverrides from './security-scan-detail-overrides'
 import skillToolOverrides from './skill-tool-overrides'
 import skillStoreMarketplaceOverrides from './skill-store-marketplace-overrides'
 
@@ -172,6 +173,8 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
     const localeMessages = messages.default as LocaleMessages
     const localeOverrides =
       (priorityLocaleOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const localizedSecurityScanDetailOverrides =
+      (securityScanDetailOverrides as Record<string, LocaleMessages>)[locale] || {}
     const billingOverrides =
       (priorityBillingOverrides as Record<string, LocaleMessages>)[locale] || {}
     const settingsOverrides =
@@ -193,8 +196,12 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
       mergedBaseMessages,
       localeOverrides
     )
-    const withBillingOverrides = deepMergeMessages<LocaleMessages>(
+    const withSecurityScanDetailOverrides = deepMergeMessages<LocaleMessages>(
       withPriorityOverrides,
+      localizedSecurityScanDetailOverrides
+    )
+    const withBillingOverrides = deepMergeMessages<LocaleMessages>(
+      withSecurityScanDetailOverrides,
       billingOverrides
     )
     const withSettingsOverrides = deepMergeMessages<LocaleMessages>(

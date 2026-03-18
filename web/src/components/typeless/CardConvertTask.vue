@@ -90,6 +90,9 @@ let videoPreviewSeq = 0
 
 const displayCard = computed(() => task.value || props.card)
 const outputs = computed(() => displayCard.value.outputs || [])
+const sourceRefs = computed(() =>
+  (displayCard.value.sources || []).map((source) => String(source || '').trim()).filter(Boolean)
+)
 const isRunning = computed(() => ['pending', 'processing'].includes(displayCard.value.status))
 const isFailed = computed(() => displayCard.value.status === 'failed')
 const isCancelled = computed(() => displayCard.value.status === 'cancelled')
@@ -407,6 +410,23 @@ onUnmounted(() => {
     </div>
 
     <div class="px-3 py-3 space-y-3">
+      <div
+        v-if="sourceRefs.length > 0"
+        class="rounded-md bg-gray-50 dark:bg-gray-900/50 px-3 py-2"
+      >
+        <div class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          {{ t('speech.convertTask.sources', 'Sources') }}
+        </div>
+        <div class="mt-1 space-y-1">
+          <div
+            v-for="source in sourceRefs"
+            :key="source"
+            class="text-xs font-mono text-gray-700 dark:text-gray-300 break-all"
+          >
+            {{ source }}
+          </div>
+        </div>
+      </div>
       <div
         v-if="localizedMessage && !isRunning"
         class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words"

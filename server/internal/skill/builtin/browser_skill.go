@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // BrowserServiceInterface defines the interface for browser service used by the skill.
@@ -36,11 +38,11 @@ type BrowserNavResult struct {
 
 // BrowserA11yResult represents an accessibility tree result.
 type BrowserA11yResult struct {
-	Tree     string         `json:"tree"`
-	URL      string         `json:"url"`
-	Title    string         `json:"title"`
-	TargetID string         `json:"target_id"`
-	RefMap   map[int]int    `json:"ref_map,omitempty"`
+	Tree     string      `json:"tree"`
+	URL      string      `json:"url"`
+	Title    string      `json:"title"`
+	TargetID string      `json:"target_id"`
+	RefMap   map[int]int `json:"ref_map,omitempty"`
 }
 
 // BrowserInteractiveResult represents a JS-extracted interactive elements result.
@@ -82,6 +84,7 @@ type Browser struct {
 	manifest *skill.Manifest
 	mu       sync.RWMutex
 	svc      BrowserServiceInterface
+	mediaDir string
 	// Per-session ref map cache (last snapshot's refs)
 	lastRefMap            map[int]int
 	lastInteractiveRefMap map[int]string
@@ -171,7 +174,7 @@ func NewBrowser() *Browser {
 				{
 					Name:        "screenshot",
 					Type:        "string",
-					Description: "Base64-encoded screenshot",
+					Description: "Saved screenshot file path",
 				},
 			},
 		},
@@ -183,6 +186,27 @@ func (b *Browser) SetBrowserService(svc BrowserServiceInterface) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.svc = svc
+}
+
+// SetMediaDir configures the public media directory used for persisted screenshots.
+func (b *Browser) SetMediaDir(dir string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.mediaDir = dir
+}
+
+func (b *Browser) normalizeScreenshotPayload(data string) string {
+	b.mu.RLock()
+	mediaDir := b.mediaDir
+	b.mu.RUnlock()
+	if strings.TrimSpace(data) == "" {
+		return data
+	}
+	savedPath, err := tools.SaveBrowserScreenshotBase64(mediaDir, data)
+	if err != nil || savedPath == "" {
+		return data
+	}
+	return savedPath
 }
 
 // cacheRefs stores the latest snapshot's ref map and target for subsequent act calls.
@@ -346,6 +370,7 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		if err != nil {
 			return skill.NewErrorResult(err), nil
 		}
+		data = b.normalizeScreenshotPayload(data)
 
 		return skill.NewResult(map[string]any{
 			"screenshot": data,
@@ -538,6 +563,7 @@ func (b *Browser) doScreenshotWithInteractive(ctx context.Context, svc BrowserSe
 		if sErr != nil {
 			return skill.NewErrorResult(sErr), nil
 		}
+		data = b.normalizeScreenshotPayload(data)
 		return skill.NewResult(map[string]any{
 			"screenshot": data,
 			"strategy":   "screenshot",
@@ -561,6 +587,7 @@ func (b *Browser) doScreenshotWithInteractive(ctx context.Context, svc BrowserSe
 			"message":   pageMessage(interactive.Title, interactive.URL, interactive.Tree, interactive.Count),
 		}), nil
 	}
+	data = b.normalizeScreenshotPayload(data)
 
 	return skill.NewResult(map[string]any{
 		"screenshot": data,

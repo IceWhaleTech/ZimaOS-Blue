@@ -305,8 +305,9 @@ func (m *QuestionManager) DismissQuestion(id string) bool {
 		return false
 	}
 
-	// Send default answers (first option per question) so the tool call completes.
-	defaults := m.defaultAnswers(p.request.Questions)
+	// Prefer explicit cancel/deny options when dismissing so high-risk prompts
+	// resolve conservatively even if their primary action is not the first option.
+	defaults := m.dismissAnswers(p.request.Questions)
 	select {
 	case p.ch <- defaults:
 	default:
@@ -409,6 +410,38 @@ func (m *QuestionManager) defaultAnswers(questions []QuestionItem) []QuestionAns
 				val = q.Options[0].Label
 			}
 			results[i].Selected = []string{val}
+		}
+	}
+	return results
+}
+
+func (m *QuestionManager) dismissAnswers(questions []QuestionItem) []QuestionAnswerResult {
+	results := make([]QuestionAnswerResult, len(questions))
+	for i, q := range questions {
+		results[i] = QuestionAnswerResult{QuestionID: q.ID}
+		if len(q.Options) == 0 {
+			continue
+		}
+		selected := q.Options[0].Value
+		if selected == "" {
+			selected = q.Options[0].Label
+		}
+		for _, opt := range q.Options {
+			value := strings.ToLower(strings.TrimSpace(opt.Value))
+			if value == "" {
+				value = strings.ToLower(strings.TrimSpace(opt.Label))
+			}
+			switch value {
+			case "cancel", "deny", "reject", "stop", "abort", "no", "2":
+				selected = opt.Value
+				if strings.TrimSpace(selected) == "" {
+					selected = opt.Label
+				}
+				break
+			}
+		}
+		if strings.TrimSpace(selected) != "" {
+			results[i].Selected = []string{selected}
 		}
 	}
 	return results

@@ -83,7 +83,7 @@
 
 .filters {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 20px;
   flex-wrap: wrap;
   align-items: center;
@@ -91,30 +91,30 @@
 
 .search-box {
   position: relative;
-  flex: 1;
-  min-width: 200px;
+  flex: 1 1 220px;
+  min-width: 180px;
 }
 
 .search-icon {
   position: absolute;
-  left: 12px;
+  left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   color: var(--text-secondary);
 }
 
 .search-input {
   width: 100%;
-  padding: 10px 12px 10px 40px;
+  padding: 8px 10px 8px 34px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: 7px;
+  font-size: 13px;
   background: var(--glass-bg, rgba(255, 255, 255, 0.05));
   color: var(--text-primary);
   box-sizing: border-box;
-  height: 40px;
+  height: 36px;
 }
 
 .search-input:focus {
@@ -123,20 +123,20 @@
 }
 
 .filter-select {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: 7px;
+  font-size: 13px;
   background: var(--glass-bg, rgba(255, 255, 255, 0.05));
   color: var(--text-primary);
-  min-width: 120px;
+  min-width: 108px;
   box-sizing: border-box;
-  height: 40px;
+  height: 36px;
 }
 
 .filter-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .btn-refresh,
@@ -144,16 +144,17 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--glass-bg, rgba(255, 255, 255, 0.05));
   color: var(--text-primary);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   transition: all 0.2s;
   box-sizing: border-box;
-  height: 40px;
+  height: 36px;
+  white-space: nowrap;
 }
 
 .btn-refresh:hover,
@@ -168,8 +169,8 @@
 
 .btn-refresh svg,
 .btn-add-source svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 .error-banner {
@@ -267,7 +268,7 @@
 }
 
 .item-card.error::before {
-  background: linear-gradient(90deg, var(--error), #f97316);
+  background: var(--error);
   opacity: 1;
 }
 
@@ -276,12 +277,12 @@
 }
 
 .item-card.installed::before {
-  background: linear-gradient(90deg, var(--success), #10b981);
+  background: var(--success);
   opacity: 1;
 }
 
 .item-card.store-card:not(.installed)::before {
-  background: linear-gradient(90deg, var(--warning), #f97316);
+  background: var(--warning);
 }
 
 .item-header {
@@ -610,7 +611,7 @@
   flex: 1;
   padding: 6px 12px;
   border: none;
-  background: linear-gradient(135deg, var(--primary), #6366f1);
+  background: var(--primary);
   color: white;
   border-radius: var(--radius-md, 8px);
   font-size: 12px;

@@ -27,6 +27,14 @@ export interface ApprovedDirectoryEntry {
   approved_by?: string
 }
 
+export interface ApprovedBrowserSiteEntry {
+  id: string
+  origin: string
+  added_at: string
+  last_used: string
+  approved_by?: string
+}
+
 export const approvalApi = {
   getConfig: () => api.get<ApprovalConfig>('/approval/config'),
 
@@ -48,4 +56,10 @@ export const approvalApi = {
 
   revokeApprovedDirectory: (id: string) =>
     api.delete<{ deleted: boolean }>(`/exec/approvals/directories/${encodeURIComponent(id)}`),
+
+  listApprovedBrowserSites: () =>
+    api.get<{ entries: ApprovedBrowserSiteEntry[] }>('/browser/approvals/sites'),
+
+  revokeApprovedBrowserSite: (id: string) =>
+    api.delete<{ deleted: boolean }>(`/browser/approvals/sites/${encodeURIComponent(id)}`),
 }

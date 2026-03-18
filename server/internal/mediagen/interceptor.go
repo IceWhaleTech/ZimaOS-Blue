@@ -21,8 +21,8 @@ func NewInterceptor(manager *Manager, watcher *ChannelTaskWatcher) *Interceptor 
 // If so, it creates a task and starts watching it for channel notification.
 // Returns (taskID, true, nil) if media intent detected, ("", false, nil) otherwise.
 func (i *Interceptor) ClassifyAndGenerate(ctx context.Context, message string, hasImages bool, imageCount int, locale string, source string) (string, bool, error) {
-	// Skip classification entirely when no media providers are active
-	if !i.manager.HasActiveProviders() {
+	// Skip classification entirely when neither a real provider nor fallback models are available.
+	if !i.manager.HasAvailableModels() {
 		return "", false, nil
 	}
 

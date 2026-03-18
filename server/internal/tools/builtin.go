@@ -14,7 +14,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
-const maxFileWriteChunkBytes = 32 << 10 // 32 KiB per write call; use append=true for larger files.
+const maxFileWriteChunkBytes = 32 << 10 // 32 KiB per write call; prefer write_begin/write_chunk/write_commit for larger files.
 
 // FileReadTool reads content from a file.
 type FileReadTool struct {
@@ -196,7 +196,7 @@ func NewFileWriteTool(allowedPaths []string, maxFileSize int64) *FileWriteTool {
 func (f *FileWriteTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "write",
-		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does. For large files, write the first chunk, then continue with append=true across multiple calls instead of sending one huge payload.",
+		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does. For very large files, prefer write_begin/write_chunk/write_commit; otherwise write the first chunk, then continue with append=true across multiple calls instead of sending one huge payload.",
 		Icon:        "file-write",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -270,7 +270,7 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 	// Guard oversized single-call payloads. Large files should be written in
 	// chunks so tool-call arguments do not balloon follow-up LLM requests.
 	if len(content) > maxFileWriteChunkBytes {
-		return nil, fmt.Errorf("content chunk too large: %d bytes (max: %d bytes per write); split into smaller chunks and use append=true for multi-part writes", len(content), maxFileWriteChunkBytes)
+		return nil, fmt.Errorf("content chunk too large: %d bytes (max: %d bytes per write); for very large files use write_begin/write_chunk/write_commit, or split into smaller chunks and use append=true for multi-part writes", len(content), maxFileWriteChunkBytes)
 	}
 
 	// Check content size
@@ -396,8 +396,13 @@ func RegisterBuiltinTools(registry *Registry) {
 	if registry == nil {
 		return
 	}
+	writeSessions := NewWriteSessionManager(0)
 	registry.Register(NewFileReadTool(nil, 0))
 	registry.Register(NewFileWriteTool(nil, 0))
+	registry.Register(NewFileWriteBeginTool(nil, writeSessions))
+	registry.Register(NewFileWriteChunkTool(writeSessions))
+	registry.Register(NewFileWriteCommitTool(writeSessions))
+	registry.Register(NewFileWriteAbortTool(writeSessions))
 	registry.Register(NewEditTool(nil, 0))
 	registry.Register(NewGrepTool(nil, 0))
 	registry.Register(NewFindTool(nil))
@@ -415,8 +420,13 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 	if registry == nil {
 		return
 	}
+	writeSessions := NewWriteSessionManager(maxFileSize)
 	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
 	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
+	registry.Register(NewFileWriteBeginTool(allowedPaths, writeSessions))
+	registry.Register(NewFileWriteChunkTool(writeSessions))
+	registry.Register(NewFileWriteCommitTool(writeSessions))
+	registry.Register(NewFileWriteAbortTool(writeSessions))
 	registry.Register(NewEditTool(allowedPaths, maxFileSize))
 	registry.Register(NewGrepTool(allowedPaths, maxFileSize))
 	registry.Register(NewFindTool(allowedPaths))

@@ -40,13 +40,16 @@ export const useThemeStore = defineStore('theme', () => {
 
   function applyTheme() {
     const isDark = theme.value === 'dark' || (theme.value === 'system' && systemPrefersDark.value)
+    const root = document.documentElement
 
     if (isDark) {
-      document.documentElement.classList.add('dark')
-      document.documentElement.classList.remove('light')
+      root.classList.add('dark')
+      root.classList.remove('light')
+      root.dataset.theme = 'dark'
     } else {
-      document.documentElement.classList.remove('dark')
-      document.documentElement.classList.add('light')
+      root.classList.remove('dark')
+      root.classList.add('light')
+      root.dataset.theme = 'light'
     }
   }
 

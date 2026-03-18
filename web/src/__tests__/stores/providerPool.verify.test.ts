@@ -99,4 +99,23 @@ describe('providerPool store verification actions', () => {
     expect(store.providers[0]?.api_format).toBe('responses')
     expect(store.providers[0]?.base_url).toBe('https://example.com/v1/responses')
   })
+
+  it('rejects verification for media providers', async () => {
+    const store = useProviderPoolStore()
+    store.providers.push({
+      id: 'media-provider',
+      name: 'Media',
+      type: 'media',
+      location: 'cloud',
+      enabled: true,
+      status: 'active',
+      base_url: 'https://media.example.com',
+      priority: 10,
+    })
+
+    await expect(store.verifyProviderRecommendation('media-provider')).rejects.toThrow(
+      'Provider verification is not available for media providers'
+    )
+    expect(providerPoolApi.verifyProviderByID).not.toHaveBeenCalled()
+  })
 })

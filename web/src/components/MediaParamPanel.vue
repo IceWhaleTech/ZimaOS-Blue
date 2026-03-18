@@ -51,6 +51,15 @@ const categoryIcon = computed(() => {
 function onModelChange(e: Event) {
   emit('update:selectedModel', (e.target as HTMLSelectElement).value)
 }
+
+function modelLabel(model: MediaModelInfo): string {
+  const base = model.name || model.id
+  if (!model.is_fallback) return base
+  if (model.fallback_strategy === 'web_canvas') {
+    return `${base} · Fallback / Web Canvas`
+  }
+  return `${base} · Fallback / Public Space`
+}
 </script>
 
 <template>
@@ -144,7 +153,7 @@ function onModelChange(e: Event) {
           :disabled="generating"
         >
           <option v-for="m in models" :key="m.id" :value="m.id">
-            {{ m.name || m.id }}
+            {{ modelLabel(m) }}
           </option>
         </select>
       </div>

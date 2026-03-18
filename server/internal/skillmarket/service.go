@@ -1,6 +1,9 @@
 package skillmarket
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -28,6 +31,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
+const maxArchiveDownloadBytes = 128 << 20
+
 type Options struct {
 	Config            Config
 	Logger            *zap.Logger
@@ -49,6 +54,8 @@ type Service struct {
 	scanner           *Scanner
 	stopOnce          sync.Once
 	stopCh            chan struct{}
+	discoverMu        sync.Mutex
+	discoverStatus    DiscoverStatus
 }
 
 func NewService(db *sql.DB, opts Options) (*Service, error) {
@@ -97,6 +104,29 @@ func (s *Service) Start(ctx context.Context) {
 			s.logger.Warn("skillmarket curation sync failed", zap.Error(err))
 		}
 	}()
+	go func() {
+		sources, err := s.store.ListSources(ctx)
+		if err != nil {
+			if s.logger != nil {
+				s.logger.Warn("skillmarket source bootstrap check failed", zap.Error(err))
+			}
+			return
+		}
+		needsBootstrap := false
+		for _, source := range sources {
+			if !source.Enabled || source.Type != "lightmake_api" || !source.LastSuccessAt.IsZero() {
+				continue
+			}
+			needsBootstrap = true
+			break
+		}
+		if !needsBootstrap {
+			return
+		}
+		if _, err := s.Discover(ctx); err != nil && s.logger != nil {
+			s.logger.Warn("skillmarket initial bootstrap discover failed", zap.Error(err))
+		}
+	}()
 	if s.cfg.CrawlIncrementalInterval > 0 {
 		go s.runPeriodic(ctx, s.cfg.CrawlIncrementalInterval, func(runCtx context.Context) {
 			if _, err := s.Discover(runCtx); err != nil && s.logger != nil {
@@ -139,6 +169,33 @@ func (s *Service) Stop() {
 	s.stopOnce.Do(func() {
 		close(s.stopCh)
 	})
+}
+
+func (s *Service) GetDiscoverStatus() DiscoverStatus {
+	s.discoverMu.Lock()
+	defer s.discoverMu.Unlock()
+	return cloneDiscoverStatus(s.discoverStatus)
+}
+
+func (s *Service) StartDiscoverAsync() (DiscoverStatus, bool) {
+	s.discoverMu.Lock()
+	if s.discoverStatus.Running {
+		status := cloneDiscoverStatus(s.discoverStatus)
+		s.discoverMu.Unlock()
+		return status, false
+	}
+	s.discoverStatus = DiscoverStatus{
+		Running:   true,
+		StartedAt: timeutil.NowTime(),
+	}
+	status := cloneDiscoverStatus(s.discoverStatus)
+	s.discoverMu.Unlock()
+
+	go func() {
+		result, err := s.discoverOnce(context.Background())
+		s.finishDiscover(result, err)
+	}()
+	return status, true
 }
 
 func (s *Service) Search(ctx context.Context, query SearchQuery) (*SearchResponse, error) {
@@ -238,15 +295,19 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 	if !detail.Skill.Installable {
 		return nil, fmt.Errorf("skill is catalog-only and cannot be installed automatically")
 	}
-	report, err := s.store.GetSecurityReport(ctx, req.ID, version.Version)
-	if err != nil {
-		return nil, err
-	}
-	if report != nil && (report.RiskLevel == RiskCritical || report.RiskLevel == RiskHigh || report.SecurityBadge == BadgeRed) {
-		return nil, fmt.Errorf("installation blocked by security policy: %s risk", report.RiskLevel)
-	}
-	if report != nil && report.SecurityBadge == BadgeYellow && !req.AckRisk {
-		return nil, fmt.Errorf("installation requires risk acknowledgement")
+	installFromArchive := shouldInstallFromArchive(detail.Skill, version)
+	var report *SecurityReport
+	if !installFromArchive {
+		report, err = s.store.GetSecurityReport(ctx, req.ID, version.Version)
+		if err != nil {
+			return nil, err
+		}
+		if report != nil && (report.RiskLevel == RiskCritical || report.RiskLevel == RiskHigh || report.SecurityBadge == BadgeRed) {
+			return nil, fmt.Errorf("installation blocked by security policy: %s risk", report.RiskLevel)
+		}
+		if report != nil && report.SecurityBadge == BadgeYellow && !req.AckRisk {
+			return nil, fmt.Errorf("installation requires risk acknowledgement")
+		}
 	}
 
 	cacheDir := filepath.Join(s.cfg.CacheRoot, req.ID, version.Version)
@@ -257,34 +318,68 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 	}
 	defer os.RemoveAll(tempDir)
 
-	warnings := []string{}
-	if report != nil && report.SecurityBadge == BadgeYellow {
-		warnings = append(warnings, "Skill requires medium-risk permissions. Review the security report before enabling auto-update.")
-	}
-
-	if err := s.materializeVersion(tempDir, detail.Skill, version); err != nil {
-		return nil, err
-	}
-	if err := s.verifyInstallPayload(version.Checksum, filepath.Join(tempDir, "SKILL.md")); err != nil {
-		return nil, err
-	}
-	if report == nil {
-		recomputed, err := s.scanInstalledPayload(ctx, req.ID, version.Version, tempDir, nil)
+	installRoot := tempDir
+	installVersion := *version
+	installDoc := detail.Skill
+	if installFromArchive {
+		installRoot, installVersion, err = s.materializeArchiveVersion(ctx, detail.Skill, version, tempDir)
+		if err != nil {
+			return nil, err
+		}
+		cacheDir = filepath.Join(s.cfg.CacheRoot, req.ID, installVersion.Version)
+		parsed, err := parseSkillMarkdown(installVersion.RawSkillMD, req.ID)
+		if err != nil {
+			return nil, err
+		}
+		recomputed, err := s.scanInstalledPayload(ctx, req.ID, installVersion.Version, installRoot, parsed.Manifest.Permissions)
 		if err != nil {
 			return nil, err
 		}
 		report = recomputed
-		if report.SecurityBadge == BadgeRed || report.RiskLevel == RiskCritical || report.RiskLevel == RiskHigh {
-			return nil, fmt.Errorf("installation blocked by security policy: %s risk", report.RiskLevel)
+	} else {
+		if err := s.materializeVersion(tempDir, detail.Skill, version); err != nil {
+			return nil, err
 		}
-		if report.SecurityBadge == BadgeYellow && !req.AckRisk {
-			return nil, fmt.Errorf("installation requires risk acknowledgement")
+		if err := s.verifyInstallPayload(version.Checksum, filepath.Join(tempDir, "SKILL.md")); err != nil {
+			return nil, err
+		}
+		installRoot = tempDir
+		if report == nil {
+			recomputed, err := s.scanInstalledPayload(ctx, req.ID, version.Version, installRoot, nil)
+			if err != nil {
+				return nil, err
+			}
+			report = recomputed
 		}
 	}
-	if err := s.promoteInstall(tempDir, cacheDir, activeDir); err != nil {
+	if report == nil {
+		return nil, fmt.Errorf("security report unavailable")
+	}
+	if installFromArchive {
+		installDoc, err = buildInstalledDocument(detail.Skill, &installVersion, report)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.store.UpsertSkill(ctx, &installDoc, &installVersion, report); err != nil {
+			return nil, err
+		}
+	}
+	if report.SecurityBadge == BadgeRed || report.RiskLevel == RiskCritical || report.RiskLevel == RiskHigh {
+		return nil, fmt.Errorf("installation blocked by security policy: %s risk", report.RiskLevel)
+	}
+	if report.SecurityBadge == BadgeYellow && !req.AckRisk {
+		return nil, fmt.Errorf("installation requires risk acknowledgement")
+	}
+
+	warnings := []string{}
+	if report.SecurityBadge == BadgeYellow {
+		warnings = append(warnings, "Skill requires medium-risk permissions. Review the security report before enabling auto-update.")
+	}
+
+	if err := s.promoteInstall(installRoot, cacheDir, activeDir); err != nil {
 		return nil, err
 	}
-	if err := s.registerInstalledSkill(ctx, detail.Skill, version, report); err != nil {
+	if err := s.registerInstalledSkill(ctx, installDoc, &installVersion, report); err != nil {
 		return nil, err
 	}
 	_ = s.store.RecordTelemetry(ctx, req.ID, "download")
@@ -292,7 +387,7 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 
 	return &InstallResult{
 		SkillID:     req.ID,
-		Version:     version.Version,
+		Version:     installVersion.Version,
 		Path:        activeDir,
 		CachePath:   cacheDir,
 		Warnings:    warnings,
@@ -366,6 +461,61 @@ func (s *Service) CheckForUpdates(ctx context.Context, apply bool) ([]AvailableU
 }
 
 func (s *Service) Discover(ctx context.Context) (*DiscoverResult, error) {
+	if !s.beginDiscover() {
+		status := s.GetDiscoverStatus()
+		return status.Result, fmt.Errorf("discover already running")
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			s.finishDiscover(nil, fmt.Errorf("discover panic: %v", r))
+			panic(r)
+		}
+	}()
+	result, err := s.discoverOnce(ctx)
+	s.finishDiscover(result, err)
+	return result, err
+}
+
+func (s *Service) beginDiscover() bool {
+	s.discoverMu.Lock()
+	defer s.discoverMu.Unlock()
+	if s.discoverStatus.Running {
+		return false
+	}
+	s.discoverStatus = DiscoverStatus{
+		Running:   true,
+		StartedAt: timeutil.NowTime(),
+	}
+	return true
+}
+
+func (s *Service) finishDiscover(result *DiscoverResult, err error) {
+	s.discoverMu.Lock()
+	defer s.discoverMu.Unlock()
+	s.discoverStatus.Running = false
+	s.discoverStatus.FinishedAt = timeutil.NowTime()
+	s.discoverStatus.Result = cloneDiscoverResult(result)
+	if err != nil {
+		s.discoverStatus.LastError = err.Error()
+	} else {
+		s.discoverStatus.LastError = ""
+	}
+}
+
+func cloneDiscoverStatus(status DiscoverStatus) DiscoverStatus {
+	status.Result = cloneDiscoverResult(status.Result)
+	return status
+}
+
+func cloneDiscoverResult(result *DiscoverResult) *DiscoverResult {
+	if result == nil {
+		return nil
+	}
+	cloned := *result
+	return &cloned
+}
+
+func (s *Service) discoverOnce(ctx context.Context) (*DiscoverResult, error) {
 	_ = s.syncCurations(ctx)
 	sources, err := s.store.ListSources(ctx)
 	if err != nil {
@@ -378,6 +528,8 @@ func (s *Service) Discover(ctx context.Context) (*DiscoverResult, error) {
 			return nil, err
 		}
 		switch source.Type {
+		case "lightmake_api":
+			err = s.discoverFromLightmake(ctx, source, run)
 		case "github_code_search":
 			err = s.discoverFromGitHub(ctx, source, run)
 		case "clawhub":
@@ -407,6 +559,7 @@ func (s *Service) Discover(ctx context.Context) (*DiscoverResult, error) {
 
 func (s *Service) ensureDefaultSources(ctx context.Context) error {
 	defaults := []Source{
+		{ID: "tencent-skillhub", Type: "lightmake_api", BaseURL: strings.TrimRight(s.cfg.TencentSkillHubAPIBaseURL, "/"), DisplayName: "Tencent SkillHub", SourceGroup: "skillhub", AuthMode: "none", Enabled: true, RateLimitPerMinute: 120, Priority: 5},
 		{ID: "github-skill-md", Type: "github_code_search", BaseURL: "filename:SKILL.md", DisplayName: "GitHub SKILL.md", SourceGroup: "github", AuthMode: "optional_token", Enabled: true, RateLimitPerMinute: 30, Priority: 30},
 		{ID: "github-claude-md", Type: "github_code_search", BaseURL: "filename:CLAUDE.md", DisplayName: "GitHub CLAUDE.md", SourceGroup: "github", AuthMode: "optional_token", Enabled: true, RateLimitPerMinute: 30, Priority: 31},
 		{ID: "github-agent-md", Type: "github_code_search", BaseURL: "filename:AGENT.md", DisplayName: "GitHub AGENT.md", SourceGroup: "github", AuthMode: "optional_token", Enabled: true, RateLimitPerMinute: 30, Priority: 32},
@@ -417,18 +570,34 @@ func (s *Service) ensureDefaultSources(ctx context.Context) error {
 		{ID: "llmskills", Type: "html_catalog", BaseURL: strings.TrimRight(s.cfg.LLMSkillsBaseURL, "/"), DisplayName: "LLMSkills", SourceGroup: "llmskills", AuthMode: "none", Enabled: true, RateLimitPerMinute: 20, Priority: 43},
 	}
 	if token := strings.TrimSpace(s.cfg.SkillHubAPIKey); token != "" {
-		defaults[4].Headers = map[string]string{
-			"Authorization": "Bearer " + token,
-			"X-API-Key":     token,
+		for i := range defaults {
+			if defaults[i].ID != "skillhub-club" {
+				continue
+			}
+			defaults[i].Headers = map[string]string{
+				"Authorization": "Bearer " + token,
+				"X-API-Key":     token,
+			}
+			break
 		}
 	}
 	if token := strings.TrimSpace(s.cfg.SkillsMPAPIKey); token != "" {
-		defaults[6].Headers = map[string]string{
-			"Authorization": "Bearer " + token,
-			"X-API-Key":     token,
+		for i := range defaults {
+			if defaults[i].ID != "skillsmp" {
+				continue
+			}
+			defaults[i].Headers = map[string]string{
+				"Authorization": "Bearer " + token,
+				"X-API-Key":     token,
+			}
+			break
 		}
 	}
 	for i, mirrorURL := range s.cfg.ClawHubMirrorBaseURLs {
+		enabled := true
+		if isTencentSkillHubMirrorURL(mirrorURL) {
+			enabled = false
+		}
 		defaults = append(defaults, Source{
 			ID:                 fmt.Sprintf("clawhub-mirror-%d", i+1),
 			Type:               "clawhub",
@@ -437,7 +606,7 @@ func (s *Service) ensureDefaultSources(ctx context.Context) error {
 			SourceGroup:        "clawhub",
 			MirrorOf:           "clawhub",
 			AuthMode:           "none",
-			Enabled:            true,
+			Enabled:            enabled,
 			RateLimitPerMinute: 60,
 			Priority:           11 + i,
 		})
@@ -461,6 +630,23 @@ func (s *Service) ensureDefaultSources(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func isTencentSkillHubMirrorURL(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.Contains(lower, "lightmake.site") || strings.Contains(lower, "skillhub.tencent.com") {
+		return true
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	return strings.Contains(host, "lightmake.site") || strings.Contains(host, "skillhub.tencent.com")
 }
 
 type gitHubCodeSearchResponse struct {
@@ -598,6 +784,32 @@ type clawHubListResponse struct {
 	NextCursor string `json:"nextCursor,omitempty"`
 }
 
+type lightmakeListResponse struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    struct {
+		Skills []lightmakeSkill `json:"skills"`
+		Total  int              `json:"total"`
+	} `json:"data"`
+}
+
+type lightmakeSkill struct {
+	Category      string   `json:"category"`
+	Description   string   `json:"description"`
+	DescriptionZH string   `json:"description_zh"`
+	Downloads     int      `json:"downloads"`
+	Homepage      string   `json:"homepage"`
+	Installs      int      `json:"installs"`
+	Name          string   `json:"name"`
+	OwnerName     string   `json:"ownerName"`
+	Score         float64  `json:"score"`
+	Slug          string   `json:"slug"`
+	Stars         int      `json:"stars"`
+	Tags          []string `json:"tags"`
+	UpdatedAt     int64    `json:"updated_at"`
+	Version       string   `json:"version"`
+}
+
 type clawHubSkillDetailResponse struct {
 	Slug        string   `json:"slug"`
 	DisplayName string   `json:"displayName"`
@@ -650,11 +862,24 @@ func (s *Service) discoverFromClawHub(ctx context.Context, source Source, run *C
 			resp.Body.Close()
 			return fmt.Errorf("clawhub list status: %d", resp.StatusCode)
 		}
-		var payload clawHubListResponse
-		err = json.NewDecoder(resp.Body).Decode(&payload)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		resp.Body.Close()
 		if err != nil {
 			return err
+		}
+		var payload clawHubListResponse
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return err
+		}
+		if page == 1 && len(payload.Items) == 0 {
+			var wrapped struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+				Data    string `json:"data"`
+			}
+			if err := json.Unmarshal(body, &wrapped); err == nil && strings.Contains(strings.ToLower(wrapped.Data), "<!doctype html>") {
+				return fmt.Errorf("clawhub list returned wrapped html instead of skill data")
+			}
 		}
 		if len(payload.Items) == 0 {
 			break
@@ -746,11 +971,137 @@ func (s *Service) discoverFromClawHub(ctx context.Context, source Source, run *C
 		if newItems == 0 {
 			break
 		}
-		if payload.NextCursor == "" && len(payload.Items) < 100 {
+	}
+	return nil
+}
+
+func (s *Service) discoverFromLightmake(ctx context.Context, source Source, run *CrawlRun) error {
+	const pageSize = 100
+	const maxPages = 500
+
+	baseURL := strings.TrimRight(source.BaseURL, "/") + "/api/skills"
+	totalPages := maxPages
+	for page := 1; page <= totalPages && page <= maxPages; page++ {
+		queryURL := fmt.Sprintf("%s?page=%d&pageSize=%d&sortBy=score&order=desc", baseURL, page, pageSize)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, queryURL, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Accept", "application/json")
+		resp, err := s.httpClient.Do(req)
+		if err != nil {
+			return err
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		resp.Body.Close()
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("lightmake list status: %d", resp.StatusCode)
+		}
+
+		var payload lightmakeListResponse
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return err
+		}
+		if payload.Code != 0 {
+			return fmt.Errorf("lightmake list error: %s", strings.TrimSpace(defaultString(payload.Message, string(body))))
+		}
+		if payload.Data.Total > 0 {
+			totalPages = (payload.Data.Total + pageSize - 1) / pageSize
+		}
+		if len(payload.Data.Skills) == 0 {
 			break
+		}
+
+		for _, item := range payload.Data.Skills {
+			raw := lightmakeSkillMarkdown(item)
+			updated, err := s.ingestSkillContent(ctx, ingestRequest{
+				SourceID:        source.ID,
+				SourceName:      defaultString(source.DisplayName, source.ID),
+				SourceGroup:     defaultString(source.SourceGroup, source.ID),
+				SourceType:      source.Type,
+				RepoURL:         item.Homepage,
+				Homepage:        item.Homepage,
+				DownloadURL:     strings.TrimRight(source.BaseURL, "/") + "/api/v1/download?slug=" + url.QueryEscape(strings.TrimSpace(item.Slug)),
+				SourceURL:       item.Homepage,
+				SkillPath:       "SKILL.md",
+				SkillContent:    raw,
+				Stars:           item.Stars,
+				Downloads:       item.Downloads,
+				LastUpdated:     time.UnixMilli(item.UpdatedAt),
+				ExplicitID:      normalizeSkillID(item.Slug),
+				ExplicitName:    strings.TrimSpace(defaultString(item.Name, item.Slug)),
+				ExplicitVersion: defaultString(strings.TrimSpace(item.Version), "catalog"),
+				ExplicitAuthor:  strings.TrimSpace(item.OwnerName),
+				DescriptionHint: lightmakeDescription(item),
+				CategoryHint:    strings.TrimSpace(item.Category),
+				AdditionalTags:  item.Tags,
+				Installable:     true,
+				InstallType:     InstallTypeSourceArchive,
+				ArtifactKind:    ArtifactKindUnknown,
+			})
+			if err != nil {
+				run.Failed++
+				continue
+			}
+			if updated {
+				run.Updated++
+			} else {
+				run.Discovered++
+			}
 		}
 	}
 	return nil
+}
+
+func lightmakeDescription(item lightmakeSkill) string {
+	description := strings.TrimSpace(item.Description)
+	if description == "" {
+		description = strings.TrimSpace(item.DescriptionZH)
+	}
+	if description == "" {
+		description = "Tencent SkillHub catalog entry"
+	}
+	return description
+}
+
+func lightmakeSkillMarkdown(item lightmakeSkill) string {
+	name := strings.TrimSpace(defaultString(item.Name, item.Slug))
+	description := escapeYAMLText(lightmakeDescription(item))
+	version := escapeYAMLText(defaultString(strings.TrimSpace(item.Version), "catalog"))
+	category := escapeYAMLText(strings.TrimSpace(item.Category))
+	if category == "" {
+		category = "productivity"
+	}
+	tags := ""
+	if len(item.Tags) > 0 {
+		normalizedTags := make([]string, 0, len(item.Tags))
+		for _, tag := range item.Tags {
+			tag = escapeYAMLText(tag)
+			if tag == "" {
+				continue
+			}
+			normalizedTags = append(normalizedTags, tag)
+		}
+		if len(normalizedTags) > 0 {
+			tags = "\ntags: [" + strings.Join(normalizedTags, ", ") + "]"
+		}
+	}
+	return fmt.Sprintf(`---
+id: %s
+name: %s
+version: %s
+description: %s
+author: %s
+category: %s%s
+---
+
+# %s
+
+%s
+`, normalizeSkillID(item.Slug), escapeYAMLText(name), version, description, escapeYAMLText(item.OwnerName), category, tags, name, lightmakeDescription(item))
 }
 
 func (s *Service) fetchClawHubSkillEnrichment(ctx context.Context, source Source, skillID string) (*clawHubSkillEnrichment, error) {
@@ -1439,6 +1790,127 @@ func (s *Service) materializeVersion(tempDir string, doc SkillDocument, version 
 	return nil
 }
 
+func shouldInstallFromArchive(doc SkillDocument, version *SkillVersion) bool {
+	if normalizeInstallType(doc.InstallType) == InstallTypeSourceArchive {
+		return true
+	}
+	if looksLikeArchiveURL(doc.DownloadURL) {
+		return true
+	}
+	if version == nil {
+		return false
+	}
+	return looksLikeArchiveURL(version.SourceURL)
+}
+
+func (s *Service) materializeArchiveVersion(ctx context.Context, doc SkillDocument, version *SkillVersion, tempDir string) (string, SkillVersion, error) {
+	downloadURL := strings.TrimSpace(doc.DownloadURL)
+	if downloadURL == "" && version != nil {
+		downloadURL = strings.TrimSpace(version.SourceURL)
+	}
+	if downloadURL == "" {
+		return "", SkillVersion{}, fmt.Errorf("skill archive download url unavailable")
+	}
+
+	archivePath, finalURL, contentType, err := s.downloadArchive(ctx, downloadURL, tempDir)
+	if err != nil {
+		return "", SkillVersion{}, err
+	}
+	extractDir := filepath.Join(tempDir, "archive")
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+		return "", SkillVersion{}, err
+	}
+	if err := extractArchiveFile(archivePath, extractDir, finalURL, contentType); err != nil {
+		return "", SkillVersion{}, err
+	}
+
+	installRoot, skillFile, err := findArchiveInstallRoot(extractDir, doc.ID)
+	if err != nil {
+		return "", SkillVersion{}, err
+	}
+	rawBytes, err := os.ReadFile(skillFile)
+	if err != nil {
+		return "", SkillVersion{}, err
+	}
+	parsed, err := parseSkillMarkdown(string(rawBytes), doc.ID)
+	if err != nil {
+		return "", SkillVersion{}, err
+	}
+	if normalizeSkillID(parsed.Manifest.ID) != normalizeSkillID(doc.ID) {
+		return "", SkillVersion{}, fmt.Errorf("archive skill id mismatch: expected %s, found %s", doc.ID, parsed.Manifest.ID)
+	}
+	if err := writeManifestJSON(installRoot, parsed.Manifest); err != nil {
+		return "", SkillVersion{}, err
+	}
+
+	installVersion := SkillVersion{}
+	if version != nil {
+		installVersion = *version
+	}
+	if installVersion.Version != "" && installVersion.Version != parsed.Manifest.Version {
+		installVersion.ID = uuid.NewString()
+		installVersion.CreatedAt = time.Time{}
+		installVersion.UpdatedAt = time.Time{}
+		installVersion.ReleasedAt = timeutil.NowTime()
+	}
+	installVersion.SkillID = doc.ID
+	installVersion.Version = parsed.Manifest.Version
+	installVersion.SourceURL = downloadURL
+	installVersion.Checksum = parsed.Checksum
+	installVersion.SkillPath = "SKILL.md"
+	installVersion.RawSkillMD = string(rawBytes)
+	installVersion.ManifestJSON = manifestJSON(parsed.Manifest)
+	if installVersion.ID == "" {
+		installVersion.ID = uuid.NewString()
+	}
+	if installVersion.ReleasedAt.IsZero() {
+		installVersion.ReleasedAt = timeutil.NowTime()
+	}
+	installVersion.ScannedAt = timeutil.NowTime()
+
+	return installRoot, installVersion, nil
+}
+
+func buildInstalledDocument(doc SkillDocument, version *SkillVersion, report *SecurityReport) (SkillDocument, error) {
+	if version == nil {
+		return doc, fmt.Errorf("skill version is required")
+	}
+	parsed, err := parseSkillMarkdown(version.RawSkillMD, doc.ID)
+	if err != nil {
+		return doc, err
+	}
+	doc.Name = defaultString(strings.TrimSpace(parsed.Manifest.Name), doc.Name)
+	doc.Description = defaultString(strings.TrimSpace(parsed.Manifest.Description), doc.Description)
+	if strings.TrimSpace(parsed.Manifest.Author) != "" {
+		doc.Author = strings.TrimSpace(parsed.Manifest.Author)
+	}
+	doc.Category = normalizeCategory(parsed.Manifest.Category, version.RawSkillMD, parsed.Manifest.Tags)
+	doc.Tags = normalizeTags(doc.Category, parsed.Manifest.Tags)
+	doc.LatestVersion = version.Version
+	doc.ContentSHA256 = version.Checksum
+	doc.SkillPath = version.SkillPath
+	doc.SkillContent = version.RawSkillMD
+	doc.LastCrawledAt = timeutil.NowTime()
+	doc.Installable = true
+	if report != nil {
+		doc.SecurityScore = report.Score
+		doc.Permissions = append([]string(nil), report.Permissions...)
+		doc.RiskLevel = report.RiskLevel
+		doc.SecurityBadge = report.SecurityBadge
+		doc.VulnerabilityStatus = report.VulnerabilityStatus
+		doc.HasVulnerabilities = report.HasVulnerabilities
+		doc.HasPromptInjection = report.HasPromptInjection
+		doc.HasShellInjection = report.HasShellInjection
+		doc.HasDataExfiltration = report.HasDataExfiltration
+		doc.HasBinary = report.InstallSurface.HasBinary
+		doc.HasScripts = report.InstallSurface.HasScripts
+		doc.InstallType = report.InstallSurface.InstallType
+		doc.ArtifactKind = report.InstallSurface.ArtifactKind
+		doc.ScanStatus = report.LLMStatus
+	}
+	return doc, nil
+}
+
 func (s *Service) verifyInstallPayload(expectedChecksum, skillFile string) error {
 	if strings.TrimSpace(expectedChecksum) == "" {
 		return nil
@@ -1478,6 +1950,336 @@ func (s *Service) scanInstalledPayload(ctx context.Context, skillID, version, di
 	surface := detectInstallSurface(dir)
 	report := s.scanner.ScanWithSurface(ctx, skillID, version, strings.Join(parts, "\n\n"), declaredPermissions, surface)
 	return report, nil
+}
+
+func (s *Service) downloadArchive(ctx context.Context, downloadURL, tempDir string) (string, string, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return "", "", "", err
+	}
+	req.Header.Set("Accept", "application/zip, application/gzip, application/octet-stream")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return "", "", "", fmt.Errorf("archive download status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	finalURL := downloadURL
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL = resp.Request.URL.String()
+	}
+	archivePath := filepath.Join(tempDir, "download"+archiveExtension(finalURL, downloadURL, resp.Header.Get("Content-Type")))
+	file, err := os.OpenFile(archivePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return "", "", "", err
+	}
+	defer file.Close()
+
+	written, err := io.Copy(file, io.LimitReader(resp.Body, maxArchiveDownloadBytes+1))
+	if err != nil {
+		return "", "", "", err
+	}
+	if written > maxArchiveDownloadBytes {
+		return "", "", "", fmt.Errorf("archive exceeds %d bytes", maxArchiveDownloadBytes)
+	}
+
+	return archivePath, finalURL, resp.Header.Get("Content-Type"), nil
+}
+
+func archiveExtension(primaryURL, fallbackURL, contentType string) string {
+	for _, raw := range []string{primaryURL, fallbackURL} {
+		lower := strings.ToLower(strings.TrimSpace(raw))
+		switch {
+		case strings.Contains(lower, ".tar.gz"):
+			return ".tar.gz"
+		case strings.Contains(lower, ".tgz"):
+			return ".tgz"
+		case strings.Contains(lower, ".zip"):
+			return ".zip"
+		}
+	}
+	lowerType := strings.ToLower(contentType)
+	switch {
+	case strings.Contains(lowerType, "zip"):
+		return ".zip"
+	case strings.Contains(lowerType, "gzip"), strings.Contains(lowerType, "tar"):
+		return ".tar.gz"
+	default:
+		return ".archive"
+	}
+}
+
+func extractArchiveFile(archivePath, extractDir, downloadURL, contentType string) error {
+	format, err := detectArchiveFormat(archivePath, downloadURL, contentType)
+	if err != nil {
+		return err
+	}
+	switch format {
+	case "zip":
+		return extractZipArchive(archivePath, extractDir)
+	case "tar.gz":
+		return extractTarGzArchive(archivePath, extractDir)
+	default:
+		return fmt.Errorf("unsupported archive format: %s", format)
+	}
+}
+
+func detectArchiveFormat(archivePath, downloadURL, contentType string) (string, error) {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	header := make([]byte, 4)
+	n, err := file.Read(header)
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	header = header[:n]
+	if len(header) >= 2 && header[0] == 'P' && header[1] == 'K' {
+		return "zip", nil
+	}
+	if len(header) >= 2 && header[0] == 0x1f && header[1] == 0x8b {
+		return "tar.gz", nil
+	}
+
+	lowerURL := strings.ToLower(strings.TrimSpace(downloadURL))
+	switch {
+	case strings.Contains(lowerURL, ".zip"):
+		return "zip", nil
+	case strings.Contains(lowerURL, ".tar.gz"), strings.Contains(lowerURL, ".tgz"):
+		return "tar.gz", nil
+	}
+
+	lowerType := strings.ToLower(contentType)
+	switch {
+	case strings.Contains(lowerType, "zip"):
+		return "zip", nil
+	case strings.Contains(lowerType, "gzip"), strings.Contains(lowerType, "tar"):
+		return "tar.gz", nil
+	default:
+		return "", fmt.Errorf("unsupported archive format for %s", downloadURL)
+	}
+}
+
+func extractZipArchive(archivePath, extractDir string) error {
+	reader, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	for _, file := range reader.File {
+		target, err := safeArchiveTarget(extractDir, file.Name)
+		if err != nil {
+			return err
+		}
+		if target == "" {
+			continue
+		}
+		mode := file.Mode()
+		if mode&os.ModeSymlink != 0 {
+			return fmt.Errorf("zip symlink entry is not supported: %s", file.Name)
+		}
+		if file.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		rc, err := file.Open()
+		if err != nil {
+			return err
+		}
+		perm := mode.Perm()
+		if perm == 0 {
+			perm = 0o644
+		}
+		dst, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+		if err != nil {
+			rc.Close()
+			return err
+		}
+		if _, err := io.Copy(dst, rc); err != nil {
+			dst.Close()
+			rc.Close()
+			return err
+		}
+		if err := dst.Close(); err != nil {
+			rc.Close()
+			return err
+		}
+		if err := rc.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func extractTarGzArchive(archivePath, extractDir string) error {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return err
+	}
+	defer gzipReader.Close()
+
+	reader := tar.NewReader(gzipReader)
+	for {
+		header, err := reader.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		target, err := safeArchiveTarget(extractDir, header.Name)
+		if err != nil {
+			return err
+		}
+		if target == "" {
+			continue
+		}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			perm := os.FileMode(header.Mode).Perm()
+			if perm == 0 {
+				perm = 0o644
+			}
+			dst, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(dst, reader); err != nil {
+				dst.Close()
+				return err
+			}
+			if err := dst.Close(); err != nil {
+				return err
+			}
+		case tar.TypeSymlink, tar.TypeLink:
+			return fmt.Errorf("tar symlink entry is not supported: %s", header.Name)
+		}
+	}
+}
+
+func safeArchiveTarget(root, name string) (string, error) {
+	cleaned := strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
+	cleaned = strings.TrimPrefix(cleaned, "/")
+	cleaned = filepath.Clean(filepath.FromSlash(cleaned))
+	if cleaned == "." || cleaned == "" {
+		return "", nil
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("archive entry escapes destination: %s", name)
+	}
+	target := filepath.Join(root, cleaned)
+	rel, err := filepath.Rel(root, target)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("archive entry escapes destination: %s", name)
+	}
+	return target, nil
+}
+
+type archiveSkillCandidate struct {
+	dir       string
+	path      string
+	name      string
+	depth     int
+	matchesID bool
+}
+
+func findArchiveInstallRoot(extractDir, skillID string) (string, string, error) {
+	candidates := make([]archiveSkillCandidate, 0, 4)
+	if err := filepath.Walk(extractDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		base := info.Name()
+		if !strings.EqualFold(base, "SKILL.md") && !strings.EqualFold(base, "CLAUDE.md") && !strings.EqualFold(base, "AGENT.md") {
+			return nil
+		}
+		dir := filepath.Dir(path)
+		rel, err := filepath.Rel(extractDir, dir)
+		if err != nil {
+			return nil
+		}
+		depth := 0
+		if rel != "." {
+			depth = len(strings.Split(filepath.ToSlash(rel), "/"))
+		}
+		candidates = append(candidates, archiveSkillCandidate{
+			dir:       dir,
+			path:      path,
+			name:      base,
+			depth:     depth,
+			matchesID: normalizeSkillID(filepath.Base(dir)) == normalizeSkillID(skillID),
+		})
+		return nil
+	}); err != nil {
+		return "", "", err
+	}
+	if len(candidates) == 0 {
+		return "", "", fmt.Errorf("archive does not contain SKILL.md")
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].matchesID != candidates[j].matchesID {
+			return candidates[i].matchesID
+		}
+		leftIsSkill := strings.EqualFold(candidates[i].name, "SKILL.md")
+		rightIsSkill := strings.EqualFold(candidates[j].name, "SKILL.md")
+		if leftIsSkill != rightIsSkill {
+			return leftIsSkill
+		}
+		if candidates[i].depth != candidates[j].depth {
+			return candidates[i].depth < candidates[j].depth
+		}
+		return candidates[i].path < candidates[j].path
+	})
+
+	selected := candidates[0]
+	skillFile := filepath.Join(selected.dir, "SKILL.md")
+	if !strings.EqualFold(selected.name, "SKILL.md") || selected.path != skillFile {
+		raw, err := os.ReadFile(selected.path)
+		if err != nil {
+			return "", "", err
+		}
+		if err := os.WriteFile(skillFile, raw, 0o644); err != nil {
+			return "", "", err
+		}
+	}
+	return selected.dir, skillFile, nil
+}
+
+func writeManifestJSON(root string, manifest *skill.Manifest) error {
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(root, "manifest.json"), data, 0o644)
 }
 
 func (s *Service) promoteInstall(tempDir, cacheDir, activeDir string) error {

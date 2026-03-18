@@ -102,6 +102,17 @@ type ImageTaskResult struct {
 	UpdatedAt time.Time              `json:"updated_at,omitempty"`
 	Request   map[string]interface{} `json:"request,omitempty"`
 	Outputs   []ImageAsset           `json:"outputs,omitempty"`
+	Fallback  *MediaFallbackInfo     `json:"fallback_info,omitempty"`
+}
+
+// MediaFallbackInfo mirrors the backend fallback disclosure payload for native tool consumers.
+type MediaFallbackInfo struct {
+	Used        bool     `json:"used"`
+	Strategy    string   `json:"strategy"`
+	DisplayName string   `json:"display_name"`
+	SourceURLs  []string `json:"source_urls,omitempty"`
+	SpaceURL    string   `json:"space_url,omitempty"`
+	Disclosure  string   `json:"disclosure"`
 }
 
 // ImageGenerateFunc starts or waits on an image generation task.

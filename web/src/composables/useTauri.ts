@@ -11,6 +11,7 @@ declare global {
     }
     __TAURI__?: Record<string, unknown>
     __BLUE_DESKTOP__?: boolean
+    __BLUE_MACOS_GLASS__?: boolean
   }
 }
 

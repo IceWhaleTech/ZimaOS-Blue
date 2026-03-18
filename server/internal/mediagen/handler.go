@@ -95,6 +95,7 @@ func writeMediaRequestError(c echo.Context, err error) error {
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/images/generations", h.GenerateImage)
 	g.POST("/videos/generations", h.GenerateVideo)
+	g.GET("/fallback/render/:token", h.RenderFallbackPage)
 	g.GET("/tasks/:id", h.GetTask)
 	g.POST("/tasks/:id/cancel", h.CancelTask)
 	g.POST("/tasks/:id/retry", h.RetryTask)
@@ -253,6 +254,9 @@ func (h *Handler) StreamTask(c echo.Context) error {
 				"progress": task.Progress,
 				"type":     string(task.Type),
 			}
+			if task.FallbackInfo != nil {
+				evt["fallback_info"] = task.FallbackInfo
+			}
 
 			switch task.Status {
 			case TaskStatusSucceeded:
@@ -334,9 +338,10 @@ func (h *Handler) streamGeneration(c echo.Context, req *MediaRequest) error {
 
 	// Send initial event
 	writeSSE(w, "started", map[string]interface{}{
-		"task_id": task.ID,
-		"status":  string(task.Status),
-		"type":    string(task.Type),
+		"task_id":       task.ID,
+		"status":        string(task.Status),
+		"type":          string(task.Type),
+		"fallback_info": task.FallbackInfo,
 	})
 
 	// If already complete (sync provider), send result immediately
@@ -374,6 +379,9 @@ func (h *Handler) streamGeneration(c echo.Context, req *MediaRequest) error {
 				"id":       current.ID,
 				"status":   string(current.Status),
 				"progress": current.Progress,
+			}
+			if current.FallbackInfo != nil {
+				evt["fallback_info"] = current.FallbackInfo
 			}
 
 			switch current.Status {
@@ -413,6 +421,18 @@ func writeSSE(w *echo.Response, event string, data interface{}) {
 	}
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, payload)
 	w.Flush()
+}
+
+// RenderFallbackPage serves the temporary local HTML page used by browser screenshots.
+func (h *Handler) RenderFallbackPage(c echo.Context) error {
+	if h.manager == nil {
+		return echo.NewHTTPError(http.StatusNotFound, "fallback render not available")
+	}
+	doc, ok := h.manager.RenderFallbackPage(c.Param("token"))
+	if !ok {
+		return echo.NewHTTPError(http.StatusNotFound, "fallback render not found")
+	}
+	return c.HTML(http.StatusOK, doc)
 }
 
 // GetMediaStats handles GET /stats — returns aggregated media generation statistics.
@@ -545,7 +565,12 @@ func (h *Handler) ClassifyIntent(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request: " + err.Error()})
 	}
 
-	intent := ClassifyMediaIntent(req.Message, req.HasImages, req.ImageCount, req.Locale)
+	locale := strings.TrimSpace(req.Locale)
+	if locale == "" {
+		locale = h.locale
+	}
+
+	intent := ClassifyMediaIntent(req.Message, req.HasImages, req.ImageCount, locale)
 	if intent == nil {
 		return c.JSON(http.StatusOK, classifyResponse{Intent: nil})
 	}

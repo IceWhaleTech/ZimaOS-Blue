@@ -532,6 +532,14 @@ func (s *Store) UpsertSkill(ctx context.Context, doc *SkillDocument, version *Sk
 	}
 	defer tx.Rollback()
 
+	shouldReplaceDoc, err := shouldReplaceSkillDocument(ctx, tx, doc.ID, doc.SourceID)
+	if err != nil {
+		return err
+	}
+	if !shouldReplaceDoc {
+		return nil
+	}
+
 	var hidden int
 	var featuredRank int
 	var boostWeight float64
@@ -710,6 +718,60 @@ func (s *Store) UpsertSkill(ctx context.Context, doc *SkillDocument, version *Sk
 	}
 
 	return tx.Commit()
+}
+
+func shouldReplaceSkillDocument(ctx context.Context, tx *sql.Tx, skillID, incomingSourceID string) (bool, error) {
+	if strings.TrimSpace(skillID) == "" {
+		return true, nil
+	}
+	var existingSourceID string
+	err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE(source_id, '')
+		FROM skills
+		WHERE id = ?
+		LIMIT 1
+	`, skillID).Scan(&existingSourceID)
+	if err == sql.ErrNoRows {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	existingSourceID = strings.TrimSpace(existingSourceID)
+	incomingSourceID = strings.TrimSpace(incomingSourceID)
+	if existingSourceID == "" || incomingSourceID == "" || existingSourceID == incomingSourceID {
+		return true, nil
+	}
+
+	existingPriority, err := lookupSourcePriority(ctx, tx, existingSourceID)
+	if err != nil {
+		return false, err
+	}
+	incomingPriority, err := lookupSourcePriority(ctx, tx, incomingSourceID)
+	if err != nil {
+		return false, err
+	}
+	return incomingPriority <= existingPriority, nil
+}
+
+func lookupSourcePriority(ctx context.Context, tx *sql.Tx, sourceID string) (int, error) {
+	if strings.TrimSpace(sourceID) == "" {
+		return math.MaxInt32, nil
+	}
+	var priority int
+	err := tx.QueryRowContext(ctx, `
+		SELECT priority
+		FROM skill_sources
+		WHERE id = ?
+		LIMIT 1
+	`, sourceID).Scan(&priority)
+	if err == sql.ErrNoRows {
+		return math.MaxInt32, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return priority, nil
 }
 
 func (s *Store) UpsertSource(ctx context.Context, source Source) error {
@@ -1185,9 +1247,13 @@ func (s *Store) GetLatestVersion(ctx context.Context, skillID string) (*SkillVer
 			raw_skill_md, manifest_json, released_at, scanned_at, created_at, updated_at
 		FROM skill_versions
 		WHERE skill_id = ?
-		ORDER BY released_at DESC, created_at DESC
+		ORDER BY CASE
+			WHEN version = COALESCE((SELECT latest_version FROM skills WHERE id = ?), '') THEN 0
+			ELSE 1
+		END,
+		released_at DESC, created_at DESC
 		LIMIT 1
-	`, skillID)
+	`, skillID, skillID)
 	return scanSkillVersion(row)
 }
 

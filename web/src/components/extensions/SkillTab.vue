@@ -4,8 +4,9 @@ import { useI18n } from 'vue-i18n'
 import { skillApi, type Skill } from '@/api/skill'
 import { useSkillStore } from '@/stores/skill'
 import { parseFrontmatter } from '@/utils/frontmatter'
+import { renderMarkdown as renderMarkdownHtml } from '@/utils/markdown'
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
 const skillStore = useSkillStore()
 const emit = defineEmits<{
   (e: 'install-skill'): void
@@ -16,8 +17,98 @@ const filterCategory = ref<string>('all')
 const filterStatus = ref<'all' | 'enabled' | 'disabled'>('all')
 
 const selectedSkillId = ref<string | null>(null)
+const showDetailModal = ref(false)
 const contentBySkillId = ref<Record<string, string>>({})
 const contentLoadingIds = ref<Set<string>>(new Set())
+
+const isChineseLocale = computed(() => locale.value.toLowerCase().startsWith('zh'))
+const galleryHint = computed(() =>
+  isChineseLocale.value
+    ? '以卡片方式浏览技能，点击任意技能查看说明文档并管理启用状态。'
+    : 'Browse skills as cards. Open any skill to review docs and manage its status.'
+)
+const closeDetailLabel = computed(() =>
+  isChineseLocale.value ? '关闭技能详情' : 'Close skill details'
+)
+const sourceMetaLabel = computed(() => (isChineseLocale.value ? '来源' : 'Source'))
+
+type SkillCardPalette = {
+  tint: string
+  tintSoft: string
+  ring: string
+  glow: string
+  iconBg: string
+  iconBorder: string
+  iconText: string
+}
+
+const skillCardPalettes: SkillCardPalette[] = [
+  {
+    tint: '#3b82f6',
+    tintSoft: 'rgba(59, 130, 246, 0.12)',
+    ring: 'rgba(96, 165, 250, 0.34)',
+    glow: 'rgba(59, 130, 246, 0.2)',
+    iconBg: 'linear-gradient(180deg, rgba(59, 130, 246, 0.2), rgba(147, 197, 253, 0.12))',
+    iconBorder: 'rgba(147, 197, 253, 0.52)',
+    iconText: '#2563eb',
+  },
+  {
+    tint: '#a855f7',
+    tintSoft: 'rgba(168, 85, 247, 0.12)',
+    ring: 'rgba(192, 132, 252, 0.34)',
+    glow: 'rgba(168, 85, 247, 0.18)',
+    iconBg: 'linear-gradient(180deg, rgba(233, 213, 255, 0.32), rgba(216, 180, 254, 0.16))',
+    iconBorder: 'rgba(216, 180, 254, 0.54)',
+    iconText: '#9333ea',
+  },
+  {
+    tint: '#22c55e',
+    tintSoft: 'rgba(34, 197, 94, 0.12)',
+    ring: 'rgba(134, 239, 172, 0.34)',
+    glow: 'rgba(34, 197, 94, 0.16)',
+    iconBg: 'linear-gradient(180deg, rgba(187, 247, 208, 0.28), rgba(134, 239, 172, 0.14))',
+    iconBorder: 'rgba(134, 239, 172, 0.54)',
+    iconText: '#16a34a',
+  },
+  {
+    tint: '#f97316',
+    tintSoft: 'rgba(249, 115, 22, 0.12)',
+    ring: 'rgba(253, 186, 116, 0.34)',
+    glow: 'rgba(249, 115, 22, 0.18)',
+    iconBg: 'linear-gradient(180deg, rgba(254, 215, 170, 0.28), rgba(253, 186, 116, 0.16))',
+    iconBorder: 'rgba(253, 186, 116, 0.5)',
+    iconText: '#ea580c',
+  },
+  {
+    tint: '#ec4899',
+    tintSoft: 'rgba(236, 72, 153, 0.12)',
+    ring: 'rgba(249, 168, 212, 0.34)',
+    glow: 'rgba(236, 72, 153, 0.18)',
+    iconBg: 'linear-gradient(180deg, rgba(251, 207, 232, 0.3), rgba(249, 168, 212, 0.14))',
+    iconBorder: 'rgba(249, 168, 212, 0.52)',
+    iconText: '#db2777',
+  },
+  {
+    tint: '#14b8a6',
+    tintSoft: 'rgba(20, 184, 166, 0.12)',
+    ring: 'rgba(94, 234, 212, 0.34)',
+    glow: 'rgba(20, 184, 166, 0.18)',
+    iconBg: 'linear-gradient(180deg, rgba(153, 246, 228, 0.28), rgba(94, 234, 212, 0.14))',
+    iconBorder: 'rgba(94, 234, 212, 0.48)',
+    iconText: '#0f766e',
+  },
+]
+
+function hashSeed(value: string): number {
+  return Array.from(value).reduce((total, char, index) => {
+    return total + char.charCodeAt(0) * (index + 1)
+  }, 0)
+}
+
+function getSkillCardPalette(skill: Skill): SkillCardPalette {
+  const seed = `${skill.id}:${skill.category || ''}:${skill.name}`
+  return skillCardPalettes[hashSeed(seed) % skillCardPalettes.length]!
+}
 
 function getSkillName(skill: Skill): string {
   if (skill.builtin && te(`skills.builtin.${skill.id}.name`)) {
@@ -45,8 +136,8 @@ function getCategoryIcon(category?: string): string {
     development: '💻',
     analytics: '📈',
     extension: '🧩',
-    utility: '🔧',
-    system: '💻',
+    utility: '🛠',
+    system: '🖥',
     communication: '💬',
     information: '📰',
   }
@@ -60,16 +151,52 @@ function getCategoryLabel(category?: string): string {
   return category || t('plugins.categories.other')
 }
 
+function getSkillBadge(skill: Skill): string {
+  return skill.builtin ? t('skillStore.status.builtin') : t('skillStore.status.local')
+}
+
+function getVisibleTags(skill: Skill): string[] {
+  return (skill.tags || []).filter(Boolean).slice(0, 1)
+}
+
+function getSkillMonogram(skill: Skill): string {
+  const source = getSkillName(skill).trim() || skill.id.trim()
+  return Array.from(source)[0]?.toLocaleUpperCase(locale.value) || '?'
+}
+
+function formatSkillVersion(value?: string): string {
+  if (!value) return '-'
+  return value.startsWith('v') ? value : `v${value}`
+}
+
+function skillMetaText(value?: string): string {
+  if (value?.trim()) return value
+  return isChineseLocale.value ? '未知' : 'Unknown'
+}
+
+function getSkillAccentStyle(skill: Skill): Record<string, string> {
+  const accent = getSkillCardPalette(skill)
+  return {
+    '--skill-accent-a': accent.tint,
+    '--skill-accent-soft': accent.tintSoft,
+    '--skill-accent-glow': accent.glow,
+    '--skill-accent-ring': accent.ring,
+    '--skill-icon-bg': accent.iconBg,
+    '--skill-icon-border': accent.iconBorder,
+    '--skill-icon-fg': accent.iconText,
+  }
+}
+
 const filteredSkills = computed(() => {
   let result = skillStore.skills
   const query = searchQuery.value.trim().toLowerCase()
 
   if (query) {
-    result = result.filter((s) => {
-      const name = getSkillName(s).toLowerCase()
-      const desc = getSkillDescription(s).toLowerCase()
-      const tags = (s.tags || []).join(' ').toLowerCase()
-      const id = s.id.toLowerCase()
+    result = result.filter((skill) => {
+      const name = getSkillName(skill).toLowerCase()
+      const desc = getSkillDescription(skill).toLowerCase()
+      const tags = (skill.tags || []).join(' ').toLowerCase()
+      const id = skill.id.toLowerCase()
       return (
         name.includes(query) || desc.includes(query) || tags.includes(query) || id.includes(query)
       )
@@ -77,13 +204,13 @@ const filteredSkills = computed(() => {
   }
 
   if (filterCategory.value !== 'all') {
-    result = result.filter((s) => (s.category || 'other') === filterCategory.value)
+    result = result.filter((skill) => (skill.category || 'other') === filterCategory.value)
   }
 
   if (filterStatus.value === 'enabled') {
-    result = result.filter((s) => s.enabled)
+    result = result.filter((skill) => skill.enabled)
   } else if (filterStatus.value === 'disabled') {
-    result = result.filter((s) => !s.enabled)
+    result = result.filter((skill) => !skill.enabled)
   }
 
   return [...result].sort((a, b) =>
@@ -94,8 +221,8 @@ const filteredSkills = computed(() => {
 const selectedSkill = computed(() => {
   if (!selectedSkillId.value) return null
   return (
-    filteredSkills.value.find((s) => s.id === selectedSkillId.value) ||
-    skillStore.skills.find((s) => s.id === selectedSkillId.value) ||
+    filteredSkills.value.find((skill) => skill.id === selectedSkillId.value) ||
+    skillStore.skills.find((skill) => skill.id === selectedSkillId.value) ||
     null
   )
 })
@@ -107,10 +234,6 @@ const selectedSkillContent = computed(() => {
 
 const selectedSkillContentParsed = computed(() => parseFrontmatter(selectedSkillContent.value))
 const selectedSkillDocContent = computed(() => selectedSkillContentParsed.value.body)
-const selectedSkillFrontmatter = computed(() => selectedSkillContentParsed.value.entries)
-const frontmatterLabel = computed(() =>
-  te('skills.detail.sections.frontmatter') ? t('skills.detail.sections.frontmatter') : 'Frontmatter'
-)
 
 const selectedSkillContentLoading = computed(() => {
   if (!selectedSkill.value) return false
@@ -120,9 +243,8 @@ const selectedSkillContentLoading = computed(() => {
 const skillStats = computed(() => ({
   total: skillStore.skills.length,
   enabled: skillStore.enabledSkills.length,
-  disabled: skillStore.skills.length - skillStore.enabledSkills.length,
-  builtin: skillStore.skills.filter((s) => s.builtin).length,
-  categories: skillStore.categories.length,
+  builtin: skillStore.builtinSkills.length,
+  local: skillStore.installedSkills.length,
 }))
 
 watch(
@@ -130,10 +252,11 @@ watch(
   (list) => {
     if (!list.length) {
       selectedSkillId.value = null
+      showDetailModal.value = false
       return
     }
-    if (!selectedSkillId.value || !list.some((s) => s.id === selectedSkillId.value)) {
-      void selectSkill(list[0]!)
+    if (!selectedSkillId.value || !list.some((skill) => skill.id === selectedSkillId.value)) {
+      void primeSkill(list[0]!)
     }
   },
   { immediate: true }
@@ -170,9 +293,18 @@ async function ensureSkillContent(skillId: string) {
   }
 }
 
-async function selectSkill(skill: Skill) {
+async function primeSkill(skill: Skill) {
   selectedSkillId.value = skill.id
   await ensureSkillContent(skill.id)
+}
+
+async function openSkillDetail(skill: Skill) {
+  showDetailModal.value = true
+  await primeSkill(skill)
+}
+
+function closeSkillDetail() {
+  showDetailModal.value = false
 }
 
 async function handleToggle(skill: Skill) {
@@ -182,119 +314,105 @@ async function handleToggle(skill: Skill) {
     await skillStore.enableSkill(skill.id)
   }
 }
-
-function renderMarkdown(content: string): string {
-  if (!content) return ''
-
-  let html = content
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/\n\n/g, '</p><p>')
-
-  html = '<p>' + html + '</p>'
-  html = html.replace(/(<li>.*?<\/li>)+/gs, '<ul>$&</ul>')
-  return html
-}
 </script>
 
 <template>
-  <div class="skill-tab skill-tab-redesign">
-    <div class="overview-grid">
-      <div class="overview-item">
-        <span class="overview-value">{{ skillStats.total }}</span>
-        <span class="overview-label">{{ t('plugins.stats.total') }}</span>
-      </div>
-      <div class="overview-item">
-        <span class="overview-value good">{{ skillStats.enabled }}</span>
-        <span class="overview-label">{{ t('plugins.stats.enabled') }}</span>
-      </div>
-      <div class="overview-item">
-        <span class="overview-value muted">{{ skillStats.disabled }}</span>
-        <span class="overview-label">{{ t('plugins.stats.disabled') }}</span>
-      </div>
-      <div class="overview-item">
-        <span class="overview-value">{{ skillStats.builtin }}</span>
-        <span class="overview-label">{{ t('skills.detail.labels.builtin') }}</span>
-      </div>
-      <div class="overview-item">
-        <span class="overview-value">{{ skillStats.categories }}</span>
-        <span class="overview-label">{{ t('skills.detail.labels.categories') }}</span>
-      </div>
-    </div>
+  <div class="skill-tab skill-gallery">
+    <section class="skills-showcase dashboard-card-surface">
+      <div class="skills-showcase__lead">
+        <div class="skills-showcase__intro">
+          <span class="dashboard-card-label">{{ t('extensions.skills') }}</span>
+          <h2 class="skills-showcase__title">{{ t('plugins.subtitle') }}</h2>
+          <p class="skills-showcase__hint">
+            <span class="skills-showcase__hint-icon" aria-hidden="true">!</span>
+            <span>{{ galleryHint }}</span>
+          </p>
+        </div>
 
-    <div class="filters">
-      <div class="search-box">
-        <svg
-          class="search-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.35-4.35" />
-        </svg>
-        <input
-          v-model="searchQuery"
-          type="text"
-          :placeholder="t('skillStore.filters.searchSkillsPlaceholder')"
-          class="search-input"
-        />
+        <div class="skills-showcase__stats">
+          <article class="skills-showcase__stat-card dashboard-card-subsurface">
+            <span>{{ t('plugins.stats.total') }}</span>
+            <strong>{{ skillStats.total }}</strong>
+          </article>
+          <article class="skills-showcase__stat-card dashboard-card-subsurface">
+            <span>{{ t('plugins.stats.enabled') }}</span>
+            <strong>{{ skillStats.enabled }}</strong>
+          </article>
+          <article class="skills-showcase__stat-card dashboard-card-subsurface">
+            <span>{{ t('skillStore.status.local') }}</span>
+            <strong>{{ skillStats.local }}</strong>
+          </article>
+          <article class="skills-showcase__stat-card dashboard-card-subsurface">
+            <span>{{ t('skillStore.status.builtin') }}</span>
+            <strong>{{ skillStats.builtin }}</strong>
+          </article>
+        </div>
       </div>
 
-      <select v-model="filterCategory" class="filter-select">
-        <option value="all">{{ t('plugins.allCategories') }}</option>
-        <option v-for="cat in skillStore.categories" :key="cat" :value="cat">
-          {{ getCategoryIcon(cat) }} {{ getCategoryLabel(cat) }}
-        </option>
-      </select>
-
-      <select v-model="filterStatus" class="filter-select">
-        <option value="all">{{ t('skills.filters.allStatus') }}</option>
-        <option value="enabled">{{ t('common.enabled') }}</option>
-        <option value="disabled">{{ t('common.disabled') }}</option>
-      </select>
-
-      <div class="filter-actions">
-        <button class="btn-add-source" type="button" @click="emit('install-skill')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 4v16m8-8H4" />
-          </svg>
-          <span>{{ t('plugins.uploadSkill') }}</span>
-        </button>
-
-        <button
-          class="btn-refresh"
-          type="button"
-          :disabled="skillStore.loading"
-          @click="skillStore.fetchSkills()"
-        >
+      <div class="filters skills-showcase__filters dashboard-card-subsurface">
+        <div class="search-box skills-showcase__search">
           <svg
-            v-if="!skillStore.loading"
+            class="search-icon"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             stroke-width="2"
           >
-            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
-            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-            <path d="M16 21h5v-5" />
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
           </svg>
-          <span v-else class="spinner"></span>
-        </button>
+          <input
+            v-model="searchQuery"
+            type="text"
+            :placeholder="t('skillStore.filters.searchSkillsPlaceholder')"
+            class="search-input"
+          />
+        </div>
+
+        <select v-model="filterCategory" class="filter-select">
+          <option value="all">{{ t('plugins.allCategories') }}</option>
+          <option v-for="cat in skillStore.categories" :key="cat" :value="cat">
+            {{ getCategoryIcon(cat) }} {{ getCategoryLabel(cat) }}
+          </option>
+        </select>
+
+        <select v-model="filterStatus" class="filter-select">
+          <option value="all">{{ t('skills.filters.allStatus') }}</option>
+          <option value="enabled">{{ t('common.enabled') }}</option>
+          <option value="disabled">{{ t('common.disabled') }}</option>
+        </select>
+
+        <div class="filter-actions">
+          <button class="btn-add-source" type="button" @click="emit('install-skill')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 4v16m8-8H4" />
+            </svg>
+            <span>{{ t('plugins.uploadSkill') }}</span>
+          </button>
+
+          <button
+            class="btn-refresh"
+            type="button"
+            :disabled="skillStore.loading"
+            @click="skillStore.fetchSkills()"
+          >
+            <svg
+              v-if="!skillStore.loading"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+              <path d="M16 21h5v-5" />
+            </svg>
+            <span v-else class="spinner"></span>
+          </button>
+        </div>
       </div>
-    </div>
+    </section>
 
     <div v-if="skillStore.error" class="error-banner">
       {{ skillStore.error }}
@@ -306,351 +424,1147 @@ function renderMarkdown(content: string): string {
       <span>{{ t('common.loading') }}</span>
     </div>
 
-    <div v-else class="skill-layout">
-      <div class="skill-list">
-        <div v-if="filteredSkills.length === 0" class="empty-state list-empty">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <h3>{{ t('skills.empty.title') }}</h3>
-          <p>{{ t('skills.empty.description') }}</p>
-        </div>
-
-        <div v-else class="items-grid skill-grid">
-          <article
-            v-for="skill in filteredSkills"
-            :key="skill.id"
-            :class="[
-              'item-card',
-              'skill-card',
-              { active: selectedSkillId === skill.id, disabled: !skill.enabled },
-            ]"
-            tabindex="0"
-            role="button"
-            @click="selectSkill(skill)"
-            @keydown.enter.prevent="selectSkill(skill)"
-            @keydown.space.prevent="selectSkill(skill)"
-          >
-            <div class="item-header">
-              <img
-                v-if="getSkillIconUrl(skill.icon)"
-                :src="getSkillIconUrl(skill.icon)!"
-                class="item-icon-svg"
-                :alt="getSkillName(skill)"
-              />
-              <span v-else class="item-icon">{{ getCategoryIcon(skill.category) }}</span>
-
-              <div class="item-title">
-                <h3 :title="getSkillName(skill)">{{ getSkillName(skill) }}</h3>
-                <div class="item-title-meta">
-                  <span v-if="skill.category" class="category-badge">{{
-                    getCategoryLabel(skill.category)
-                  }}</span>
-                  <span class="builtin-badge">{{ t('plugins.builtin') }}</span>
-                  <span
-                    class="status-pill"
-                    :class="skill.enabled ? 'status-enabled' : 'status-disabled'"
-                  >
-                    {{ skill.enabled ? t('common.enabled') : t('common.disabled') }}
-                  </span>
-                </div>
-              </div>
-
-              <label class="toggle-switch" @click.stop>
-                <input
-                  type="checkbox"
-                  :checked="skill.enabled"
-                  :disabled="skillStore.loading"
-                  @change="handleToggle(skill)"
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <p class="item-description">
-              {{ getSkillDescription(skill) || t('plugins.noDescription') }}
-            </p>
-
-            <div v-if="skill.tags?.length" class="item-tags">
-              <span v-for="tag in skill.tags.slice(0, 4)" :key="tag" class="tag">{{ tag }}</span>
-            </div>
-          </article>
-        </div>
+    <section v-else class="skill-gallery__grid">
+      <div v-if="filteredSkills.length === 0" class="empty-state list-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <h3>{{ t('skills.empty.title') }}</h3>
+        <p>{{ t('skills.empty.description') }}</p>
       </div>
 
-      <aside class="skill-detail-panel">
-        <div v-if="selectedSkill" class="skill-detail-content">
-          <div class="detail-header">
-            <div class="detail-title-row">
-              <span class="detail-icon">{{ getCategoryIcon(selectedSkill.category) }}</span>
-              <div>
-                <h2>{{ getSkillName(selectedSkill) }}</h2>
-                <p>{{ getSkillDescription(selectedSkill) || t('plugins.noDescription') }}</p>
-              </div>
-            </div>
-
-            <label class="toggle-switch">
-              <input
-                type="checkbox"
-                :checked="selectedSkill.enabled"
-                :disabled="skillStore.loading"
-                @change="handleToggle(selectedSkill)"
-              />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-
-          <div class="detail-meta-grid">
-            <div class="meta-entry">
-              <span>{{ t('skills.detail.labels.id') }}</span>
-              <code>{{ selectedSkill.id }}</code>
-            </div>
-            <div class="meta-entry">
-              <span>{{ t('skills.detail.labels.version') }}</span>
-              <strong>{{ selectedSkill.version || '-' }}</strong>
-            </div>
-            <div class="meta-entry">
-              <span>{{ t('skills.detail.labels.author') }}</span>
-              <strong>{{ selectedSkill.author || '-' }}</strong>
-            </div>
-            <div class="meta-entry">
-              <span>{{ t('skills.detail.labels.category') }}</span>
-              <strong>{{ getCategoryLabel(selectedSkill.category) }}</strong>
-            </div>
-          </div>
-
-          <section
-            class="detail-section"
-            v-if="selectedSkill.inputs?.length || selectedSkill.outputs?.length"
+      <article
+        v-for="skill in filteredSkills"
+        v-else
+        :key="skill.id"
+        :class="[
+          'skill-showcase-card',
+          'dashboard-card-surface',
+          {
+            'skill-showcase-card--active': selectedSkillId === skill.id,
+            'skill-showcase-card--disabled': !skill.enabled,
+          },
+        ]"
+        :style="getSkillAccentStyle(skill)"
+        tabindex="0"
+        role="button"
+        @click="openSkillDetail(skill)"
+        @keydown.enter.prevent="openSkillDetail(skill)"
+        @keydown.space.prevent="openSkillDetail(skill)"
+      >
+        <div class="skill-showcase-card__topline">
+          <span class="skill-showcase-card__badge">{{ getSkillBadge(skill) }}</span>
+          <span
+            :class="[
+              'skill-showcase-card__state',
+              skill.enabled
+                ? 'skill-showcase-card__state--enabled'
+                : 'skill-showcase-card__state--disabled',
+            ]"
           >
-            <h4>{{ t('skills.detail.sections.parameters') }}</h4>
+            <span class="skill-showcase-card__state-dot"></span>
+            {{ skill.enabled ? t('common.enabled') : t('common.disabled') }}
+          </span>
+        </div>
 
-            <div v-if="selectedSkill.inputs?.length" class="param-group">
-              <p class="param-title">{{ t('skills.detail.sections.inputs') }}</p>
-              <ul class="param-list">
-                <li v-for="input in selectedSkill.inputs" :key="`in-${input.name}`">
-                  <div class="param-head">
-                    <code>{{ input.name }}</code>
-                    <span class="param-type">{{ input.type }}</span>
-                    <span v-if="input.required" class="param-required">{{
-                      t('skills.detail.required')
+        <div
+          :class="[
+            'skill-showcase-card__hero',
+            'dashboard-card-subsurface',
+          ]"
+        >
+          <div class="skill-showcase-card__orb">
+            <img
+              v-if="getSkillIconUrl(skill.icon)"
+              :src="getSkillIconUrl(skill.icon)!"
+              class="skill-showcase-card__orb-image"
+              :alt="getSkillName(skill)"
+            />
+            <span v-else class="skill-showcase-card__orb-fallback">{{
+              getSkillMonogram(skill)
+            }}</span>
+          </div>
+
+          <div class="skill-showcase-card__hero-copy">
+            <div class="skill-showcase-card__title-row">
+              <h3 :title="getSkillName(skill)">{{ getSkillName(skill) }}</h3>
+              <span
+                v-for="tag in getVisibleTags(skill)"
+                :key="`${skill.id}-${tag}`"
+                class="skill-showcase-card__chip skill-showcase-card__chip--soft"
+              >
+                {{ tag }}
+              </span>
+            </div>
+            <code class="skill-showcase-card__id">{{ skill.id }}</code>
+            <p>{{ getSkillDescription(skill) || t('plugins.noDescription') }}</p>
+            <div class="skill-showcase-card__chips">
+              <span class="skill-showcase-card__chip skill-showcase-card__chip--primary">{{
+                getCategoryLabel(skill.category)
+              }}</span>
+              <span v-if="skill.author" class="skill-showcase-card__chip skill-showcase-card__chip--soft">
+                {{ skill.author }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="skill-showcase-card__content">
+          <div class="skill-showcase-card__footer">
+            <div class="skill-showcase-card__metrics skill-showcase-card__metrics--rail">
+              <span class="skill-showcase-card__metric skill-showcase-card__metric--inline">
+                <svg
+                  class="skill-showcase-card__metric-icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                >
+                  <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                  <path d="m3.3 7 8.7 5 8.7-5" />
+                  <path d="M12 22V12" />
+                </svg>
+                <strong>{{ formatSkillVersion(skill.version) }}</strong>
+              </span>
+              <span class="skill-showcase-card__metric skill-showcase-card__metric--inline">
+                <svg
+                  class="skill-showcase-card__metric-icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                >
+                  <path d="M12 19V5" />
+                  <path d="m5 12 7-7 7 7" />
+                </svg>
+                <strong>{{ skill.inputs?.length || 0 }}</strong>
+              </span>
+              <span class="skill-showcase-card__metric skill-showcase-card__metric--inline">
+                <svg
+                  class="skill-showcase-card__metric-icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                >
+                  <path d="M12 5v14" />
+                  <path d="m19 12-7 7-7-7" />
+                </svg>
+                <strong>{{ skill.outputs?.length || 0 }}</strong>
+              </span>
+            </div>
+            <span class="skill-showcase-card__link-hint">{{ t('skillStore.actions.details') }}</span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <Teleport to="body">
+      <div
+        v-if="showDetailModal && selectedSkill"
+        class="skill-detail-modal-backdrop"
+        @click.self="closeSkillDetail"
+      >
+        <div
+          class="skill-detail-modal"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="getSkillName(selectedSkill)"
+          :style="getSkillAccentStyle(selectedSkill)"
+        >
+          <div class="skill-detail-modal__handle" aria-hidden="true"></div>
+          <button
+            class="skill-detail-modal__close"
+            type="button"
+            :aria-label="closeDetailLabel"
+            @click="closeSkillDetail"
+          >
+            ×
+          </button>
+
+          <div class="skill-detail-content">
+            <div class="detail-header">
+              <div class="detail-title-row">
+                <div class="detail-icon" :style="getSkillAccentStyle(selectedSkill)">
+                  <img
+                    v-if="getSkillIconUrl(selectedSkill.icon)"
+                    :src="getSkillIconUrl(selectedSkill.icon)!"
+                    class="detail-icon__image"
+                    :alt="getSkillName(selectedSkill)"
+                  />
+                  <span v-else>{{ getSkillMonogram(selectedSkill) }}</span>
+                </div>
+
+                <div class="detail-title-copy">
+                  <div class="detail-title-copy__row">
+                    <h2>{{ getSkillName(selectedSkill) }}</h2>
+                    <span class="skill-showcase-card__badge">{{
+                      getSkillBadge(selectedSkill)
                     }}</span>
                   </div>
-                  <p>{{ input.description || t('common.noDescriptionAvailable') }}</p>
-                </li>
-              </ul>
-            </div>
-
-            <div v-if="selectedSkill.outputs?.length" class="param-group">
-              <p class="param-title">{{ t('skills.detail.sections.outputs') }}</p>
-              <ul class="param-list">
-                <li v-for="output in selectedSkill.outputs" :key="`out-${output.name}`">
-                  <div class="param-head">
-                    <code>{{ output.name }}</code>
-                    <span class="param-type">{{ output.type }}</span>
-                  </div>
-                  <p>{{ output.description || t('common.noDescriptionAvailable') }}</p>
-                </li>
-              </ul>
-            </div>
-          </section>
-
-          <section class="detail-section detail-docs">
-            <h4>{{ t('skills.detail.sections.documentation') }}</h4>
-            <div v-if="selectedSkillContentLoading" class="loading-content">
-              <div class="spinner"></div>
-              <span>{{ t('common.loading') }}</span>
-            </div>
-            <div v-else-if="selectedSkillContent">
-              <div v-if="selectedSkillFrontmatter.length" class="frontmatter-panel">
-                <p class="frontmatter-title">{{ frontmatterLabel }}</p>
-                <div class="frontmatter-grid">
-                  <div
-                    v-for="entry in selectedSkillFrontmatter"
-                    :key="entry.key"
-                    class="frontmatter-item"
-                  >
-                    <span class="frontmatter-key">{{ entry.key }}</span>
-                    <code class="frontmatter-value">{{ entry.value }}</code>
+                  <code class="skill-showcase-card__id skill-showcase-card__id--detail">{{
+                    selectedSkill.id
+                  }}</code>
+                  <p>{{ getSkillDescription(selectedSkill) || t('plugins.noDescription') }}</p>
+                  <div class="detail-pill-row">
+                    <span class="detail-version-pill">{{
+                      formatSkillVersion(selectedSkill.version)
+                    }}</span>
+                    <span class="skill-showcase-card__chip skill-showcase-card__chip--primary">{{
+                      getCategoryLabel(selectedSkill.category)
+                    }}</span>
+                    <span
+                      v-if="selectedSkill.author"
+                      class="skill-showcase-card__chip skill-showcase-card__chip--soft"
+                    >
+                      {{ selectedSkill.author }}
+                    </span>
                   </div>
                 </div>
               </div>
-              <div
-                v-if="selectedSkillDocContent"
-                class="skill-content markdown-body"
-                v-html="renderMarkdown(selectedSkillDocContent)"
-              ></div>
-              <div v-else class="no-content">
-                <p>{{ t('skills.noContent') }}</p>
+
+              <div class="detail-actions">
+                <span
+                  :class="[
+                    'skill-showcase-card__state',
+                    selectedSkill.enabled
+                      ? 'skill-showcase-card__state--enabled'
+                      : 'skill-showcase-card__state--disabled',
+                  ]"
+                >
+                  <span class="skill-showcase-card__state-dot"></span>
+                  {{ selectedSkill.enabled ? t('common.enabled') : t('common.disabled') }}
+                </span>
+
+                <label class="toggle-switch">
+                  <input
+                    type="checkbox"
+                    :checked="selectedSkill.enabled"
+                    :disabled="skillStore.loading"
+                    @change="handleToggle(selectedSkill)"
+                  />
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
             </div>
-            <div v-else class="no-content">
-              <p>{{ t('skills.noContent') }}</p>
-            </div>
-          </section>
-        </div>
 
-        <div v-else class="detail-empty">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-          </svg>
-          <h3>{{ t('skills.detail.emptyTitle') }}</h3>
-          <p>{{ t('skills.detail.emptyDescription') }}</p>
+            <div class="detail-layout">
+              <aside class="detail-sidebar">
+                <section class="detail-section detail-overview-panel">
+                  <div class="detail-hero-stats">
+                    <article class="detail-hero-stat">
+                      <span>{{ t('skills.detail.labels.version') }}</span>
+                      <strong>{{ formatSkillVersion(selectedSkill.version) }}</strong>
+                    </article>
+                    <article class="detail-hero-stat">
+                      <span>{{ t('skills.detail.sections.inputs') }}</span>
+                      <strong>{{ selectedSkill.inputs?.length || 0 }}</strong>
+                    </article>
+                    <article class="detail-hero-stat">
+                      <span>{{ t('skills.detail.sections.outputs') }}</span>
+                      <strong>{{ selectedSkill.outputs?.length || 0 }}</strong>
+                    </article>
+                  </div>
+
+                  <div class="detail-meta-grid">
+                    <div class="meta-entry">
+                      <span>{{ t('skills.detail.labels.id') }}</span>
+                      <code>{{ selectedSkill.id }}</code>
+                    </div>
+                    <div class="meta-entry">
+                      <span>{{ t('skills.detail.labels.author') }}</span>
+                      <strong>{{ skillMetaText(selectedSkill.author) }}</strong>
+                    </div>
+                    <div class="meta-entry">
+                      <span>{{ t('skills.detail.labels.category') }}</span>
+                      <strong>{{ getCategoryLabel(selectedSkill.category) }}</strong>
+                    </div>
+                    <div class="meta-entry">
+                      <span>{{ sourceMetaLabel }}</span>
+                      <strong>{{ getSkillBadge(selectedSkill) }}</strong>
+                    </div>
+                  </div>
+                </section>
+              </aside>
+
+              <div class="detail-main">
+                <section
+                  v-if="selectedSkill.inputs?.length || selectedSkill.outputs?.length"
+                  class="detail-section detail-parameters"
+                >
+                  <div class="detail-section__head">
+                    <h4>{{ t('skills.detail.sections.parameters') }}</h4>
+                    <p class="detail-section__caption">
+                      <span>{{ t('skills.detail.sections.inputs') }} {{ selectedSkill.inputs?.length || 0 }}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{{ t('skills.detail.sections.outputs') }} {{ selectedSkill.outputs?.length || 0 }}</span>
+                    </p>
+                  </div>
+
+                  <div class="param-columns">
+                    <div v-if="selectedSkill.inputs?.length" class="param-group">
+                      <p class="param-title">{{ t('skills.detail.sections.inputs') }}</p>
+                      <ul class="param-list">
+                        <li v-for="input in selectedSkill.inputs" :key="`in-${input.name}`">
+                          <div class="param-head">
+                            <code>{{ input.name }}</code>
+                            <span class="param-type">{{ input.type }}</span>
+                            <span v-if="input.required" class="param-required">{{
+                              t('skills.detail.required')
+                            }}</span>
+                          </div>
+                          <p>{{ input.description || t('common.noDescriptionAvailable') }}</p>
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div v-if="selectedSkill.outputs?.length" class="param-group">
+                      <p class="param-title">{{ t('skills.detail.sections.outputs') }}</p>
+                      <ul class="param-list">
+                        <li v-for="output in selectedSkill.outputs" :key="`out-${output.name}`">
+                          <div class="param-head">
+                            <code>{{ output.name }}</code>
+                            <span class="param-type">{{ output.type }}</span>
+                          </div>
+                          <p>{{ output.description || t('common.noDescriptionAvailable') }}</p>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="detail-section detail-docs">
+                  <div class="detail-section__head">
+                    <h4>{{ t('skills.detail.sections.documentation') }}</h4>
+                    <p class="detail-section__caption">{{ formatSkillVersion(selectedSkill.version) }}</p>
+                  </div>
+
+                  <div class="detail-docs__surface">
+                    <div v-if="selectedSkillContentLoading" class="loading-content">
+                      <div class="spinner"></div>
+                      <span>{{ t('common.loading') }}</span>
+                    </div>
+                    <template v-else-if="selectedSkillContent">
+                      <div
+                        v-if="selectedSkillDocContent"
+                        class="skill-content markdown-body"
+                        v-html="renderMarkdownHtml(selectedSkillDocContent)"
+                      ></div>
+                      <div v-else class="no-content">
+                        <p>{{ t('skills.noContent') }}</p>
+                      </div>
+                    </template>
+                    <div v-else class="no-content">
+                      <p>{{ t('skills.noContent') }}</p>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
         </div>
-      </aside>
-    </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
 @import './extension-tab.css';
 
-.skill-tab-redesign {
+.skill-gallery,
+.skill-detail-modal-backdrop {
+  --skills-shell-border: rgba(71, 85, 105, 0.52);
+  --skills-shell-bg-top: rgba(24, 33, 53, 0.98);
+  --skills-shell-bg-bottom: rgba(9, 15, 28, 0.99);
+  --skills-shell-shadow:
+    0 20px 36px -30px rgba(2, 6, 23, 0.56),
+    0 14px 28px -24px rgba(14, 165, 233, 0.12);
+  --skills-shell-hint-bg: rgba(34, 197, 94, 0.14);
+  --skills-shell-hint-text: #86efac;
+  --skills-stat-border: rgba(71, 85, 105, 0.48);
+  --skills-stat-bg: rgba(15, 23, 42, 0.74);
+  --skills-stat-text: #94a3b8;
+  --skills-stat-value: #f8fafc;
+  --skills-card-border: rgba(71, 85, 105, 0.56);
+  --skills-card-bg-top: rgba(18, 27, 45, 0.98);
+  --skills-card-bg-bottom: rgba(8, 14, 27, 0.99);
+  --skills-card-shadow:
+    0 24px 42px -36px rgba(2, 6, 23, 0.7),
+    0 14px 26px -22px rgba(8, 47, 73, 0.26);
+  --skills-card-shadow-active:
+    0 28px 48px -34px rgba(2, 6, 23, 0.78),
+    0 18px 30px -24px rgba(8, 47, 73, 0.3);
+  --skills-card-title: #f8fafc;
+  --skills-card-text: rgba(226, 232, 240, 0.76);
+  --skills-card-outline: rgba(255, 255, 255, 0.05);
+  --skills-card-highlight: rgba(148, 163, 184, 0.06);
+  --skills-preview-border: rgba(120, 143, 173, 0.24);
+  --skills-preview-top: rgba(255, 255, 255, 0.08);
+  --skills-preview-mid: rgba(18, 31, 48, 0.94);
+  --skills-preview-bottom: rgba(8, 13, 26, 0.96);
+  --skills-preview-enabled-border: rgba(167, 243, 208, 0.34);
+  --skills-preview-enabled-tint: rgba(16, 185, 129, 0.18);
+  --skills-preview-disabled-border: rgba(125, 145, 175, 0.22);
+  --skills-preview-disabled-tint: rgba(59, 130, 246, 0.12);
+  --skills-icon-bg-top: rgba(255, 255, 255, 0.16);
+  --skills-icon-bg-bottom: rgba(46, 81, 108, 0.68);
+  --skills-icon-border: rgba(255, 255, 255, 0.16);
+  --skills-icon-fg: #f8fafc;
+  --skills-eyebrow-text: rgba(191, 219, 254, 0.88);
+  --skills-badge-border: rgba(148, 163, 184, 0.16);
+  --skills-badge-bg: rgba(15, 23, 42, 0.42);
+  --skills-badge-text: #cbd5e1;
+  --skills-state-border: rgba(148, 163, 184, 0.16);
+  --skills-state-bg: rgba(15, 23, 42, 0.42);
+  --skills-state-text: #e2e8f0;
+  --skills-state-enabled-text: #dcfce7;
+  --skills-state-enabled-bg: rgba(34, 197, 94, 0.14);
+  --skills-state-enabled-border: rgba(110, 231, 183, 0.24);
+  --skills-state-disabled-text: #e2e8f0;
+  --skills-state-disabled-bg: rgba(148, 163, 184, 0.12);
+  --skills-state-disabled-border: rgba(148, 163, 184, 0.18);
+  --skills-chip-border: rgba(148, 163, 184, 0.16);
+  --skills-chip-bg: rgba(30, 41, 59, 0.56);
+  --skills-chip-primary-bg: rgba(15, 23, 42, 0.48);
+  --skills-chip-text: #f8fafc;
+  --skills-chip-soft-text: rgba(226, 232, 240, 0.78);
+  --skills-meta-border: rgba(148, 163, 184, 0.16);
+  --skills-meta-bg: rgba(15, 23, 42, 0.38);
+  --skills-meta-text: #cbd5e1;
+  --skills-action-border: rgba(148, 163, 184, 0.16);
+  --skills-action-bg: rgba(8, 14, 27, 0.34);
+  --skills-action-text: #e2e8f0;
+  --skills-detail-backdrop: rgba(2, 6, 23, 0.72);
+  --skills-detail-modal-border: rgba(100, 116, 139, 0.28);
+  --skills-detail-modal-top: rgba(18, 27, 45, 0.99);
+  --skills-detail-modal-bottom: rgba(8, 13, 26, 1);
+  --skills-detail-shadow:
+    0 56px 140px -52px rgba(2, 6, 23, 0.92),
+    0 24px 44px -30px rgba(2, 132, 199, 0.18);
+  --skills-detail-close-bg: rgba(148, 163, 184, 0.14);
+  --skills-detail-close-bg-hover: rgba(148, 163, 184, 0.22);
+  --skills-detail-section-border: rgba(148, 163, 184, 0.16);
+  --skills-detail-section-bg: rgba(255, 255, 255, 0.04);
+  --skills-detail-section-bg-strong: rgba(15, 23, 42, 0.42);
+  --skills-detail-label: #94a3b8;
+  --skills-detail-code-bg: rgba(15, 23, 42, 0.58);
+  --skills-detail-code-border: rgba(148, 163, 184, 0.18);
+  --skills-detail-link: #7dd3fc;
+}
+
+.skill-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+:global(.light .skill-tab.skill-gallery),
+:global([data-theme='light'] .skill-tab.skill-gallery),
+:global(.light .skill-detail-modal-backdrop),
+:global([data-theme='light'] .skill-detail-modal-backdrop) {
+  --skills-shell-border: rgba(203, 213, 225, 0.82);
+  --skills-shell-bg-top: rgba(255, 255, 255, 0.98);
+  --skills-shell-bg-bottom: rgba(239, 244, 249, 0.96);
+  --skills-shell-shadow:
+    0 20px 32px -24px rgba(15, 23, 42, 0.14),
+    0 12px 22px -18px rgba(59, 130, 246, 0.08);
+  --skills-shell-hint-bg: rgba(22, 163, 74, 0.12);
+  --skills-shell-hint-text: #15803d;
+  --skills-stat-border: rgba(203, 213, 225, 0.88);
+  --skills-stat-bg: rgba(255, 255, 255, 0.84);
+  --skills-stat-text: #64748b;
+  --skills-stat-value: #0f172a;
+  --skills-card-border: rgba(203, 213, 225, 0.88);
+  --skills-card-bg-top: rgba(255, 255, 255, 0.98);
+  --skills-card-bg-bottom: rgba(244, 248, 251, 0.98);
+  --skills-card-shadow:
+    0 18px 30px -22px rgba(15, 23, 42, 0.12),
+    0 10px 18px -16px rgba(59, 130, 246, 0.08);
+  --skills-card-shadow-active:
+    0 22px 34px -22px rgba(15, 23, 42, 0.14),
+    0 14px 22px -16px rgba(59, 130, 246, 0.1);
+  --skills-card-title: #0f172a;
+  --skills-card-text: #475569;
+  --skills-card-outline: rgba(255, 255, 255, 0.8);
+  --skills-card-highlight: rgba(148, 163, 184, 0.04);
+  --skills-preview-border: rgba(148, 163, 184, 0.18);
+  --skills-preview-top: rgba(255, 255, 255, 0.9);
+  --skills-preview-mid: rgba(245, 249, 252, 0.92);
+  --skills-preview-bottom: rgba(232, 241, 247, 0.96);
+  --skills-preview-enabled-border: rgba(134, 239, 172, 0.48);
+  --skills-preview-enabled-tint: rgba(16, 185, 129, 0.16);
+  --skills-preview-disabled-border: rgba(191, 219, 254, 0.78);
+  --skills-preview-disabled-tint: rgba(59, 130, 246, 0.12);
+  --skills-icon-bg-top: rgba(255, 255, 255, 0.9);
+  --skills-icon-bg-bottom: rgba(191, 219, 254, 0.34);
+  --skills-icon-border: rgba(148, 163, 184, 0.2);
+  --skills-icon-fg: #0f172a;
+  --skills-eyebrow-text: rgba(37, 99, 235, 0.78);
+  --skills-badge-border: rgba(203, 213, 225, 0.92);
+  --skills-badge-bg: rgba(248, 250, 252, 0.92);
+  --skills-badge-text: #475569;
+  --skills-state-border: rgba(203, 213, 225, 0.88);
+  --skills-state-bg: rgba(255, 255, 255, 0.82);
+  --skills-state-text: #334155;
+  --skills-state-enabled-text: #166534;
+  --skills-state-enabled-bg: rgba(34, 197, 94, 0.12);
+  --skills-state-enabled-border: rgba(134, 239, 172, 0.46);
+  --skills-state-disabled-text: #475569;
+  --skills-state-disabled-bg: rgba(248, 250, 252, 0.94);
+  --skills-state-disabled-border: rgba(203, 213, 225, 0.92);
+  --skills-chip-border: rgba(203, 213, 225, 0.88);
+  --skills-chip-bg: rgba(248, 250, 252, 0.94);
+  --skills-chip-primary-bg: rgba(239, 246, 255, 0.96);
+  --skills-chip-text: #334155;
+  --skills-chip-soft-text: #64748b;
+  --skills-meta-border: rgba(203, 213, 225, 0.88);
+  --skills-meta-bg: rgba(248, 250, 252, 0.92);
+  --skills-meta-text: #475569;
+  --skills-action-border: rgba(203, 213, 225, 0.88);
+  --skills-action-bg: rgba(255, 255, 255, 0.9);
+  --skills-action-text: #0f172a;
+  --skills-detail-backdrop: rgba(226, 232, 240, 0.66);
+  --skills-detail-modal-border: rgba(203, 213, 225, 0.88);
+  --skills-detail-modal-top: rgba(255, 255, 255, 0.99);
+  --skills-detail-modal-bottom: rgba(243, 247, 250, 0.98);
+  --skills-detail-shadow:
+    0 48px 120px -52px rgba(15, 23, 42, 0.3),
+    0 20px 36px -24px rgba(59, 130, 246, 0.12);
+  --skills-detail-close-bg: rgba(226, 232, 240, 0.88);
+  --skills-detail-close-bg-hover: rgba(203, 213, 225, 0.96);
+  --skills-detail-section-border: rgba(203, 213, 225, 0.86);
+  --skills-detail-section-bg: rgba(255, 255, 255, 0.78);
+  --skills-detail-section-bg-strong: rgba(248, 250, 252, 0.96);
+  --skills-detail-label: #64748b;
+  --skills-detail-code-bg: rgba(241, 245, 249, 0.98);
+  --skills-detail-code-border: rgba(203, 213, 225, 0.86);
+  --skills-detail-link: #0369a1;
+}
+
+.skills-showcase {
+  padding: 18px;
+  border: 1px solid var(--skills-shell-border);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--skill-accent-a, var(--primary)) 14%, transparent), transparent 34%),
+    linear-gradient(180deg, var(--skills-shell-bg-top) 0%, var(--skills-shell-bg-bottom) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    var(--skills-shell-shadow);
+}
+
+.skills-showcase__lead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.92fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.skills-showcase__intro {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skills-showcase__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: clamp(1.1rem, 1vw + 0.95rem, 1.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.skills-showcase__hint {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 42rem;
+}
+
+.skills-showcase__hint-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--skills-shell-hint-bg);
+  color: var(--skills-shell-hint-text);
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.skills-showcase__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.skills-showcase__stat-card {
+  min-height: 68px;
+  padding: 10px;
+  border: 1px solid var(--skills-stat-border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--skills-stat-bg) 88%, white 4%) 0%, var(--skills-stat-bg) 100%);
+  color: var(--skills-stat-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.skills-showcase__stat-card span {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.skills-showcase__stat-card strong {
+  color: var(--skills-stat-value);
+  font-size: clamp(1rem, 0.55vw + 0.85rem, 1.2rem);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.skills-showcase__filters {
+  margin-bottom: 0;
+  padding: 12px;
+  border-radius: 18px;
+  border: none;
+  background: color-mix(in srgb, var(--skills-stat-bg) 84%, transparent);
+  box-shadow: none;
+}
+
+.skills-showcase__search {
+  min-width: min(240px, 100%);
+  max-width: 320px;
+}
+
+.skill-gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 18px;
+}
+
+.skill-showcase-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--skills-card-border);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--skill-accent-a) 10%, transparent), transparent 32%),
+    linear-gradient(180deg, var(--skills-card-bg-top) 0%, var(--skills-card-bg-bottom) 100%);
+  box-shadow:
+    inset 0 1px 0 var(--skills-card-outline),
+    var(--skills-card-shadow);
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    border-color 0.22s ease,
+    background 0.22s ease;
 }
 
-.overview-grid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+.skill-showcase-card::before,
+.skill-showcase-card::after {
+  content: none;
+  position: absolute;
+  pointer-events: none;
 }
 
-.overview-item {
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.05));
+.skill-showcase-card:hover,
+.skill-showcase-card:focus-visible,
+.skill-showcase-card--active {
+  outline: none;
+  transform: translateY(-2px);
+  border-color: var(--skill-accent-ring);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    var(--skills-card-shadow-active),
+    0 0 0 1px color-mix(in srgb, var(--skill-accent-ring) 42%, transparent);
+}
+
+.skill-showcase-card--disabled {
+  opacity: 0.9;
+  filter: saturate(0.88);
+}
+
+.skill-showcase-card__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.skill-showcase-card__hero {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.skill-showcase-card__orb,
+.detail-icon {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 22px;
+  background: var(--skill-icon-bg);
+  border: 1px solid var(--skill-icon-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 18px 28px -24px var(--skill-accent-glow);
+  color: var(--skill-icon-fg);
+  flex-shrink: 0;
+}
+
+.detail-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  font-size: 28px;
+}
+
+.skill-showcase-card__hero-copy {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 10px;
+  flex: 1;
 }
 
-.overview-value {
-  font-size: 22px;
-  font-weight: 600;
+.skill-showcase-card__orb-image,
+.detail-icon__image {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.28));
+}
+
+.detail-icon__image {
+  width: 36px;
+  height: 36px;
+}
+
+.skill-showcase-card__orb-fallback {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.28));
+}
+
+.skill-showcase-card__title-row,
+.detail-title-copy__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.skill-showcase-card__title-row h3 {
+  margin: 0;
+  color: var(--skills-card-title);
+  font-size: 1.3rem;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.skill-showcase-card__id {
+  display: inline-flex;
+  width: fit-content;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--skills-detail-code-border);
+  background: var(--skills-detail-code-bg);
+  color: var(--skills-detail-label);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.skill-showcase-card__id--detail {
+  margin-top: 2px;
+}
+
+.detail-title-copy h2 {
+  margin: 0;
   color: var(--text-primary);
-  line-height: 1.1;
+  font-size: 24px;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
 }
 
-.overview-value.good {
-  color: #22c55e;
+.skill-showcase-card__hero-copy p {
+  margin: 0;
+  color: var(--skills-card-text);
+  font-size: 1rem;
+  line-height: 1.62;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.overview-value.muted {
+.detail-title-copy p {
+  margin: 4px 0 0;
   color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
-.overview-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.skill-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.skill-list {
-  min-width: 0;
-}
-
-.skill-grid {
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-}
-
-.skill-card {
-  cursor: pointer;
-  outline: none;
-}
-
-.skill-card.active {
-  border-color: rgba(59, 130, 246, 0.45);
-  box-shadow:
-    0 0 0 1px rgba(59, 130, 246, 0.35),
-    0 10px 22px rgba(59, 130, 246, 0.18);
-}
-
-.status-pill {
+.skill-showcase-card__badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: 4px 8px;
   border-radius: 999px;
-  font-size: 10px;
-  border: 1px solid transparent;
+  border: 1px solid var(--skills-badge-border);
+  background: var(--skills-badge-bg);
+  color: var(--skills-badge-text);
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.status-enabled {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.14);
-  border-color: rgba(34, 197, 94, 0.28);
+.skill-showcase-card__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--skills-state-border);
+  background: var(--skills-state-bg);
+  color: var(--skills-state-text);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.status-disabled {
-  color: var(--text-secondary);
-  background: rgba(148, 163, 184, 0.14);
-  border-color: rgba(148, 163, 184, 0.24);
+.skill-showcase-card__state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.skill-detail-panel {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.05));
-  min-height: 360px;
-  max-height: calc(100vh - 260px);
-  overflow: auto;
+.skill-showcase-card__state--enabled {
+  color: var(--skills-state-enabled-text);
+  background: var(--skills-state-enabled-bg);
+  border-color: var(--skills-state-enabled-border);
+}
+
+.skill-showcase-card__state--disabled {
+  color: var(--skills-state-disabled-text);
+  background: var(--skills-state-disabled-bg);
+  border-color: var(--skills-state-disabled-border);
+}
+
+.skill-showcase-card__content {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  margin-top: auto;
+  padding-top: 2px;
+}
+
+.skill-showcase-card__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skill-showcase-card__metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+}
+
+.skill-showcase-card__metrics--rail {
+  row-gap: 6px;
+}
+
+.skill-showcase-card__metric--inline {
+  padding: 0;
+  color: var(--skills-detail-label);
+}
+
+.skill-showcase-card__metric-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--skill-accent-a);
+  flex-shrink: 0;
+}
+
+.skill-showcase-card__metric strong {
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.skill-showcase-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--skills-meta-border);
+}
+
+.skill-showcase-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.skill-showcase-card__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--skills-chip-border);
+  background: var(--skills-chip-bg);
+  color: var(--skills-chip-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.skill-showcase-card__chip--primary {
+  background: var(--skills-chip-primary-bg);
+}
+
+.skill-showcase-card__chip--soft {
+  color: var(--skills-chip-soft-text);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.skill-showcase-card__link-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.skill-showcase-card__link-hint::after {
+  content: '↗';
+  font-size: 11px;
+  line-height: 1;
+}
+
+.skill-detail-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--skills-detail-backdrop);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.skill-detail-modal {
+  position: relative;
+  width: min(780px, 100%);
+  border-radius: 22px;
+  border: 1px solid var(--skills-detail-modal-border);
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--skill-accent-soft) 70%, transparent), transparent 30%),
+    linear-gradient(180deg, var(--skills-detail-modal-top) 0%, var(--skills-detail-modal-bottom) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    var(--skills-detail-shadow);
+  overflow: hidden;
+}
+
+.skill-detail-modal__handle {
+  width: 56px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.34);
+  margin: 14px auto -6px;
+}
+
+.skill-detail-modal__close {
   position: sticky;
-  top: 12px;
+  top: 14px;
+  float: right;
+  margin: 14px 14px 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--skills-detail-close-bg);
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 1;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.skill-detail-modal__close:hover {
+  color: var(--text-primary);
+  background: var(--skills-detail-close-bg-hover);
+  transform: translateY(-1px);
 }
 
 .skill-detail-content {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 14px;
+  padding: 16px 16px 20px;
 }
 
 .detail-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--skills-detail-section-border);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--skills-detail-section-bg) 88%, white 4%) 0%, var(--skills-detail-section-bg) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 28px -26px rgba(2, 6, 23, 0.38);
 }
 
 .detail-title-row {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
-.detail-icon {
-  width: 38px;
-  height: 38px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+.detail-title-copy {
+  min-width: 0;
+}
+
+.detail-title-copy__row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  flex-shrink: 0;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.05));
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.detail-title-row h2 {
+.detail-title-copy__row h2 {
   margin: 0;
-  font-size: 18px;
   color: var(--text-primary);
+  font-size: clamp(1.55rem, 1vw + 1.2rem, 2rem);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
 }
 
-.detail-title-row p {
-  margin: 4px 0 0;
-  font-size: 13px;
+.detail-title-copy p {
+  margin: 8px 0 0;
+  max-width: 56ch;
   color: var(--text-secondary);
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.62;
+}
+
+.detail-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.detail-version-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 12px;
+  border: 1px solid rgba(34, 197, 94, 0.22);
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-self: flex-start;
+}
+
+.detail-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detail-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 108px;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 16px 14px;
+  border-radius: 22px;
+  border: 1px solid var(--skills-detail-section-border);
+  background:
+    radial-gradient(circle at top right, var(--skill-accent-soft) 0%, transparent 54%),
+    color-mix(in srgb, var(--skills-detail-section-bg) 92%, white 6%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.detail-hero-stat span {
+  font-size: 10px;
+  color: var(--skills-detail-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.detail-hero-stat strong {
+  font-size: clamp(1.3rem, 0.8vw + 1.1rem, 2rem);
+  line-height: 1;
+  color: var(--text-primary);
+  letter-spacing: -0.04em;
 }
 
 .detail-meta-grid {
@@ -660,51 +1574,61 @@ function renderMarkdown(content: string): string {
 }
 
 .meta-entry {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.04));
-  padding: 9px 10px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  padding: 12px 13px;
+  border: 1px solid var(--skills-detail-section-border);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--skills-detail-section-bg) 90%, white 4%) 0%, var(--skills-detail-section-bg) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .meta-entry span {
-  font-size: 11px;
-  color: var(--text-secondary);
+  font-size: 9px;
+  color: var(--skills-detail-label);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .meta-entry strong,
 .meta-entry code {
   font-size: 12px;
   color: var(--text-primary);
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .detail-section {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--skills-detail-section-border);
+  border-radius: 22px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--skills-detail-section-bg) 90%, white 4%) 0%, var(--skills-detail-section-bg) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 18px 26px -28px rgba(2, 6, 23, 0.34);
 }
 
 .detail-section h4 {
-  margin: 0 0 10px;
-  font-size: 14px;
+  margin: 0 0 12px;
+  font-size: 11px;
   color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .param-group + .param-group {
-  margin-top: 14px;
+  margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px dashed var(--border);
+  border-top: 1px dashed var(--skills-detail-section-border);
 }
 
 .param-title {
   margin: 0 0 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: 11px;
   font-weight: 600;
+  color: var(--skills-detail-label);
 }
 
 .param-list {
@@ -713,165 +1637,108 @@ function renderMarkdown(content: string): string {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .param-list li {
-  padding: 8px 9px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--glass-bg, rgba(255, 255, 255, 0.02));
+  padding: 11px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--skills-detail-section-border);
+  background: color-mix(in srgb, var(--skills-detail-section-bg-strong) 74%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .param-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: 7px;
+  margin-bottom: 5px;
+  flex-wrap: wrap;
 }
 
 .param-type {
-  font-size: 11px;
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--skills-detail-label);
+  border: 1px solid var(--skills-detail-section-border);
   border-radius: 999px;
-  padding: 1px 6px;
+  padding: 2px 7px;
 }
 
 .param-required {
-  font-size: 11px;
+  font-size: 10px;
   color: #f59e0b;
 }
 
 .param-list p {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.55;
 }
 
-.detail-docs .loading-content {
+.detail-docs .loading-content,
+.detail-docs .no-content {
   min-height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  color: var(--text-secondary);
-}
-
-.detail-docs .no-content {
-  min-height: 100px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-}
-
-.frontmatter-panel {
-  margin-bottom: 12px;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  padding: 10px;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.02));
-}
-
-.frontmatter-title {
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.frontmatter-grid {
-  display: grid;
   gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-}
-
-.frontmatter-item {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 8px;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.02));
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.frontmatter-key {
-  font-size: 11px;
   color: var(--text-secondary);
-  text-transform: uppercase;
-}
-
-.frontmatter-value {
-  font-size: 12px;
-  color: var(--text-primary);
-  word-break: break-word;
-}
-
-.detail-empty {
-  min-height: 280px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  gap: 8px;
-  padding: 18px;
-  color: var(--text-secondary);
-}
-
-.detail-empty svg {
-  width: 44px;
-  height: 44px;
-  opacity: 0.3;
-}
-
-.detail-empty h3 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 15px;
-}
-
-.detail-empty p {
-  margin: 0;
-  font-size: 13px;
 }
 
 .list-empty {
-  padding: 48px 18px;
+  grid-column: 1 / -1;
+  padding: 38px 16px;
+  text-align: center;
+  border: 1px dashed var(--skills-detail-section-border);
+  border-radius: 18px;
+  color: var(--text-secondary);
+  background: var(--skills-detail-section-bg);
+}
+
+.list-empty svg {
+  width: 32px;
+  height: 32px;
+  opacity: 0.34;
 }
 
 .list-empty h3 {
-  margin: 2px 0 0;
+  margin: 8px 0 0;
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .list-empty p {
-  margin: 2px 0 0;
-  font-size: 13px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .skill-content {
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.72;
   color: var(--text-primary);
 }
 
 .skill-content :deep(h1) {
-  font-size: 20px;
   margin: 0 0 12px;
+  font-size: 22px;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
 }
 
 .skill-content :deep(h2) {
+  margin: 22px 0 10px;
   font-size: 17px;
-  margin: 18px 0 10px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 .skill-content :deep(h3) {
-  font-size: 15px;
-  margin: 14px 0 8px;
+  margin: 16px 0 8px;
+  font-size: 14px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
 .skill-content :deep(p) {
@@ -880,34 +1747,155 @@ function renderMarkdown(content: string): string {
 
 .skill-content :deep(ul) {
   margin: 0 0 10px;
+  padding-left: 18px;
+}
+
+.skill-content :deep(ol) {
+  margin: 0 0 10px;
   padding-left: 20px;
 }
 
-.skill-content :deep(code) {
-  background: var(--color-bg-tertiary, var(--color-bg-secondary));
-  color: var(--color-code-text, var(--color-text-primary));
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
+.skill-content :deep(li) {
+  margin: 0 0 4px;
+}
+
+.skill-content :deep(.overflow-x-auto) {
+  margin: 14px 0;
+  overflow-x: auto;
+  border: 1px solid var(--skills-detail-section-border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--skills-detail-section-bg-strong) 92%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  scrollbar-gutter: stable both-edges;
+}
+
+.skill-content :deep(table) {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--text-primary);
+}
+
+.skill-content :deep(thead) {
+  background: color-mix(in srgb, var(--skills-detail-code-bg) 78%, transparent);
+}
+
+.skill-content :deep(th),
+.skill-content :deep(td) {
+  border-right: 1px solid var(--skills-detail-section-border);
+  border-bottom: 1px solid var(--skills-detail-section-border);
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
   font-size: 12px;
+  line-height: 1.55;
+}
+
+.skill-content :deep(tr > *:first-child) {
+  border-left: 1px solid var(--skills-detail-section-border);
+}
+
+.skill-content :deep(thead tr:first-child > * ) {
+  border-top: 1px solid var(--skills-detail-section-border);
+}
+
+.skill-content :deep(thead tr:first-child > *:first-child) {
+  border-top-left-radius: 16px;
+}
+
+.skill-content :deep(thead tr:first-child > *:last-child) {
+  border-top-right-radius: 16px;
+}
+
+.skill-content :deep(tbody tr:last-child > *:first-child) {
+  border-bottom-left-radius: 16px;
+}
+
+.skill-content :deep(tbody tr:last-child > *:last-child) {
+  border-bottom-right-radius: 16px;
+}
+
+.skill-content :deep(th) {
+  color: var(--text-primary);
+  font-weight: 700;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--skills-detail-code-bg) 88%, transparent);
+}
+
+.skill-content :deep(td) {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.skill-content :deep(tbody tr:nth-child(even) td) {
+  background: color-mix(in srgb, var(--skills-detail-section-bg) 88%, transparent);
+}
+
+.skill-content :deep(tbody tr:hover td) {
+  background: color-mix(in srgb, var(--skills-detail-code-bg) 64%, transparent);
+}
+
+.skill-content :deep(blockquote) {
+  margin: 14px 0;
+  padding: 12px 16px;
+  border-left: 3px solid color-mix(in srgb, var(--skill-accent-a, var(--primary)) 44%, transparent);
+  border-radius: 0 16px 16px 0;
+  background: color-mix(in srgb, var(--skills-detail-section-bg) 90%, transparent);
+  color: var(--text-secondary);
+}
+
+.skill-content :deep(hr) {
+  border: 0;
+  height: 1px;
+  margin: 18px 0;
+  background: var(--skills-detail-section-border);
+}
+
+.skill-content :deep(strong) {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.skill-content :deep(code) {
+  background: var(--skills-detail-code-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--skills-detail-code-border);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  font-size: 11px;
 }
 
 .skill-content :deep(pre) {
-  background: var(--color-bg-tertiary, var(--color-bg-secondary));
-  color: var(--color-text-primary);
-  padding: 12px;
-  border-radius: 8px;
+  background: var(--skills-detail-code-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--skills-detail-code-border);
+  padding: 14px;
+  border-radius: 18px;
   overflow-x: auto;
-  margin: 10px 0;
+  margin: 14px 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.skill-content :deep(pre code) {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1.65;
 }
 
 .markdown-body {
   background: transparent !important;
-  color: var(--color-text-primary) !important;
+  color: var(--text-primary) !important;
 }
 
 .skill-content :deep(a) {
-  color: var(--color-gray-900, #3b82f6);
+  color: var(--skills-detail-link);
   text-decoration: none;
 }
 
@@ -915,14 +1903,102 @@ function renderMarkdown(content: string): string {
   text-decoration: underline;
 }
 
-@media (max-width: 1180px) {
-  .skill-layout {
+@media (max-width: 980px) {
+  .skills-showcase__lead {
     grid-template-columns: 1fr;
   }
 
-  .skill-detail-panel {
-    max-height: none;
-    position: static;
+  .skills-showcase__stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .detail-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .detail-hero-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .skill-showcase-card__hero,
+  .skill-showcase-card__footer {
+    align-items: stretch;
+  }
+
+  .skill-showcase-card__footer {
+    flex-direction: column;
+  }
+
+  .skill-gallery__grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .skills-showcase {
+    padding: 12px;
+    border-radius: 18px;
+  }
+
+  .skills-showcase__title {
+    font-size: 1.2rem;
+  }
+
+  .skills-showcase__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .skill-gallery__grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .skill-showcase-card {
+    padding: 15px;
+    border-radius: 22px;
+  }
+
+  .skill-showcase-card__orb {
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+  }
+
+  .skill-detail-modal-backdrop {
+    padding: 10px;
+  }
+
+  .skill-detail-modal {
+    border-radius: 18px;
+  }
+
+  .skill-detail-content {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .detail-header {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .detail-title-row {
+    gap: 12px;
+  }
+
+  .detail-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-title-copy h2 {
+    font-size: 17px;
+  }
+
+  .detail-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 18px;
   }
 }
 </style>

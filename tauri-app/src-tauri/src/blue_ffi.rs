@@ -111,25 +111,28 @@ static SERVER_STARTED: AtomicBool = AtomicBool::new(false);
 /// # Returns
 /// * `Ok(())` on success
 /// * `Err(String)` with error message on failure
-pub fn start_server_with_args(port: u16, data_dir: Option<&str>, args: Option<&str>) -> Result<(), String> {
+pub fn start_server_with_args(
+    port: u16,
+    data_dir: Option<&str>,
+    args: Option<&str>,
+) -> Result<(), String> {
     if SERVER_STARTED.load(Ordering::SeqCst) {
         info!("Blue server already started via FFI");
         return Ok(());
     }
 
-    info!("Starting Blue server via FFI on port {} with args: {:?}", port, args);
+    info!(
+        "Starting Blue server via FFI on port {} with args: {:?}",
+        port, args
+    );
 
     let c_data_dir = match data_dir {
-        Some(dir) => {
-            CString::new(dir).map_err(|e| format!("Invalid data_dir path: {}", e))?
-        }
+        Some(dir) => CString::new(dir).map_err(|e| format!("Invalid data_dir path: {}", e))?,
         None => CString::new("").unwrap(),
     };
 
     let c_args = match args {
-        Some(arg_str) => {
-            CString::new(arg_str).map_err(|e| format!("Invalid args: {}", e))?
-        }
+        Some(arg_str) => CString::new(arg_str).map_err(|e| format!("Invalid args: {}", e))?,
         None => CString::new("").unwrap(),
     };
 
@@ -154,8 +157,14 @@ pub fn start_server_with_args(port: u16, data_dir: Option<&str>, args: Option<&s
         info!("Blue server started successfully via FFI with args");
         Ok(())
     } else {
-        error!("Failed to start Blue server via FFI, error code: {}", result);
-        Err(format!("Failed to start Blue server, error code: {}", result))
+        error!(
+            "Failed to start Blue server via FFI, error code: {}",
+            result
+        );
+        Err(format!(
+            "Failed to start Blue server, error code: {}",
+            result
+        ))
     }
 }
 
@@ -169,9 +178,7 @@ pub fn start_server(port: u16, data_dir: Option<&str>) -> Result<(), String> {
     info!("Starting Blue server via FFI on port {}", port);
 
     let c_data_dir = match data_dir {
-        Some(dir) => {
-            CString::new(dir).map_err(|e| format!("Invalid data_dir path: {}", e))?
-        }
+        Some(dir) => CString::new(dir).map_err(|e| format!("Invalid data_dir path: {}", e))?,
         None => CString::new("").unwrap(),
     };
 
@@ -191,8 +198,14 @@ pub fn start_server(port: u16, data_dir: Option<&str>) -> Result<(), String> {
         info!("Blue server started successfully via FFI");
         Ok(())
     } else {
-        error!("Failed to start Blue server via FFI, error code: {}", result);
-        Err(format!("Failed to start Blue server, error code: {}", result))
+        error!(
+            "Failed to start Blue server via FFI, error code: {}",
+            result
+        );
+        Err(format!(
+            "Failed to start Blue server, error code: {}",
+            result
+        ))
     }
 }
 
@@ -213,7 +226,10 @@ pub fn stop_server() -> Result<(), String> {
         Ok(())
     } else {
         error!("Failed to stop Blue server, error code: {}", result);
-        Err(format!("Failed to stop Blue server, error code: {}", result))
+        Err(format!(
+            "Failed to stop Blue server, error code: {}",
+            result
+        ))
     }
 }
 
@@ -225,7 +241,11 @@ pub fn is_running() -> bool {
 /// Get the actual port the server is listening on (0 if not yet listening)
 pub fn get_port() -> u16 {
     let p = unsafe { BlueServerGetPort() };
-    if p > 0 { p as u16 } else { 0 }
+    if p > 0 {
+        p as u16
+    } else {
+        0
+    }
 }
 
 /// Get the server version

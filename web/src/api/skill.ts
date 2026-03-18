@@ -407,6 +407,16 @@ export interface DiscoverResponse {
   failed?: number
 }
 
+export interface DiscoverStatusResponse {
+  accepted?: boolean
+  running: boolean
+  started_at?: string
+  finished_at?: string
+  last_error?: string
+  message?: string
+  result?: DiscoverResponse
+}
+
 export const skillApi = {
   list: () => api.get<Skill[]>('/skills'),
   get: (id: string) => api.get<Skill>(`/skills/${id}`),
@@ -437,7 +447,8 @@ export const skillApi = {
     api.post<MarketplaceInstallResult>(`/skills/${id}/update`, null, {
       params: ackRisk ? { ack_risk: true } : undefined,
     }),
-  discoverRefresh: () => api.post<DiscoverResponse>('/skills/discover/refresh'),
+  discoverRefresh: () => api.post<DiscoverStatusResponse>('/skills/discover/refresh'),
+  discoverStatus: () => api.get<DiscoverStatusResponse>('/skills/discover/status'),
   listMarketUpdates: () => api.get<MarketplaceUpdatesResponse>('/skills/updates'),
 
   listSources: () => api.get<SkillSource[]>('/skill-store/sources'),

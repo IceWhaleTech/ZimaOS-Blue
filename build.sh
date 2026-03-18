@@ -139,11 +139,17 @@ start_server() {
     info "Starting Go server..."
     cd "$PROJECT_ROOT/server"
 
-    go build -tags 'fts5 espeak kokoro' -o blue ./cmd/blue
+    local binary_path="./blue"
+    if [ "$(uname -s)" = "Darwin" ]; then
+        make build-bluecli
+        binary_path="./bin/bluecli"
+    else
+        go build -tags 'fts5 espeak kokoro' -o blue ./cmd/blue
+    fi
     success "Server built successfully"
 
     info "Starting server on http://localhost"
-    run_binary ./blue
+    run_binary "$binary_path"
 }
 
 # Start the web dev server
@@ -191,8 +197,14 @@ start_all() {
     # Start server in foreground
     info "Starting Go server (dev mode)..."
     cd "$PROJECT_ROOT/server"
-    go build -tags 'fts5 espeak kokoro' -o blue ./cmd/blue
-    run_binary ./blue
+    local binary_path="./blue"
+    if [ "$(uname -s)" = "Darwin" ]; then
+        make build-bluecli
+        binary_path="./bin/bluecli"
+    else
+        go build -tags 'fts5 espeak kokoro' -o blue ./cmd/blue
+    fi
+    run_binary "$binary_path"
 }
 
 # Cleanup function

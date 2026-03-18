@@ -68,15 +68,16 @@ type MediaResponse struct {
 type MediaTask struct {
 	task.BaseTask
 
-	UserID    string         `json:"user_id,omitempty"`
-	MessageID string         `json:"message_id,omitempty"`
-	Type      MediaType      `json:"type"`
-	Category  string         `json:"category,omitempty"`
-	Provider  string         `json:"provider"`
-	Model     string         `json:"model"`
-	Request   *MediaRequest  `json:"request,omitempty"`
-	Response  *MediaResponse `json:"response,omitempty"`
-	Source    string         `json:"source,omitempty"` // "web" or "channel"
+	UserID       string             `json:"user_id,omitempty"`
+	MessageID    string             `json:"message_id,omitempty"`
+	Type         MediaType          `json:"type"`
+	Category     string             `json:"category,omitempty"`
+	Provider     string             `json:"provider"`
+	Model        string             `json:"model"`
+	Request      *MediaRequest      `json:"request,omitempty"`
+	Response     *MediaResponse     `json:"response,omitempty"`
+	Source       string             `json:"source,omitempty"` // "web" or "channel"
+	FallbackInfo *MediaFallbackInfo `json:"fallback_info,omitempty"`
 
 	// Internal: upstream task ID for async providers
 	UpstreamID string `json:"-"`
@@ -93,13 +94,25 @@ type MediaProvider interface {
 
 // MediaModelInfo describes a model's media generation capabilities.
 type MediaModelInfo struct {
-	ID             string        `json:"id"`
-	Name           string        `json:"name"`
-	Type           MediaType     `json:"type"`
-	Category       MediaCategory `json:"category,omitempty"` // t2i, t2v, i2v, i2i, kf2v
-	Provider       string        `json:"provider"`
-	MaxResolution  string        `json:"max_resolution,omitempty"`
-	SupportedSizes []string      `json:"supported_sizes,omitempty"`
-	Price          float64       `json:"price,omitempty"`        // per-unit price (USD)
-	PricingUnit    string        `json:"pricing_unit,omitempty"` // "image", "second", "video"
+	ID               string        `json:"id"`
+	Name             string        `json:"name"`
+	Type             MediaType     `json:"type"`
+	Category         MediaCategory `json:"category,omitempty"` // t2i, t2v, i2v, i2i, kf2v
+	Provider         string        `json:"provider"`
+	MaxResolution    string        `json:"max_resolution,omitempty"`
+	SupportedSizes   []string      `json:"supported_sizes,omitempty"`
+	Price            float64       `json:"price,omitempty"`        // per-unit price (USD)
+	PricingUnit      string        `json:"pricing_unit,omitempty"` // "image", "second", "video"
+	IsFallback       bool          `json:"is_fallback,omitempty"`
+	FallbackStrategy string        `json:"fallback_strategy,omitempty"`
+}
+
+// MediaFallbackInfo describes how a task was fulfilled without a configured upstream API key.
+type MediaFallbackInfo struct {
+	Used        bool     `json:"used"`
+	Strategy    string   `json:"strategy"`
+	DisplayName string   `json:"display_name"`
+	SourceURLs  []string `json:"source_urls,omitempty"`
+	SpaceURL    string   `json:"space_url,omitempty"`
+	Disclosure  string   `json:"disclosure"`
 }

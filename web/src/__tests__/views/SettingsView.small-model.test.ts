@@ -8,9 +8,10 @@ import { settingsApi } from '@/api/settings'
 import { providerPoolApi } from '@/api/providerPool'
 import { claudeCodeApi } from '@/api/claudecode'
 import { backupApi } from '@/api/index'
+import { proxyCacheApi } from '@/api/proxyCache'
 import { serviceApi } from '@/api/service'
 
-let routeTab: 'proxy' | 'memory' = 'proxy'
+let routeTab: 'proxy' | 'memory' | 'llm' = 'proxy'
 const routerReplace = vi.fn()
 
 vi.mock('vue-router', async (importOriginal) => {
@@ -104,6 +105,14 @@ vi.mock('@/api/index', () => ({
     create: vi.fn(),
     restore: vi.fn(),
     delete: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/proxyCache', () => ({
+  proxyCacheApi: {
+    getPrunerConfig: vi.fn(),
+    getPrunerStats: vi.fn(),
+    updatePrunerConfig: vi.fn(),
   },
 }))
 
@@ -204,6 +213,45 @@ function primeApiMocks() {
   vi.mocked(settingsApi.resetSmallModelStats).mockResolvedValue({
     data: { success: true },
   } as never)
+  vi.mocked(proxyCacheApi.getPrunerConfig).mockResolvedValue({
+    data: {
+      enabled: true,
+      backend: 'local',
+      threshold: 0.5,
+      min_lines: 80,
+      timeout_ms: 5000,
+    },
+  } as never)
+  vi.mocked(proxyCacheApi.getPrunerStats).mockResolvedValue({
+    data: {
+      enabled: true,
+      stats: {
+        total_requests: 10,
+        pruned_requests: 3,
+        passthrough_requests: 7,
+        total_tokens_before: 1000,
+        total_tokens_after: 700,
+        tokens_saved: 300,
+        avg_compression_rate: 0.3,
+        avg_latency_ms: 12,
+      },
+    },
+  } as never)
+  vi.mocked(proxyCacheApi.updatePrunerConfig).mockImplementation(
+    async ({ enabled }: { enabled: boolean }) =>
+      ({
+        data: {
+          success: true,
+          config: {
+            enabled,
+            backend: 'local',
+            threshold: 0.5,
+            min_lines: 80,
+            timeout_ms: 5000,
+          },
+        },
+      }) as never
+  )
   vi.mocked(backupApi.list).mockResolvedValue({ data: [] } as never)
   vi.mocked(serviceApi.getInfo).mockResolvedValue({
     data: { installed: false, enabled: false },
@@ -249,6 +297,7 @@ describe('SettingsView small-model controls', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="small-model-context-prune-switch"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="proxy-pruner-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="smart-tool-selection-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="small-model-ir-master-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="small-model-rerank-switch"]').exists()).toBe(false)
@@ -292,6 +341,16 @@ describe('SettingsView small-model controls', () => {
     await wrapper.get('[data-testid="small-model-context-prune-switch"]').trigger('click')
     await flushPromises()
     expect(contextPruneSpy).toHaveBeenCalledWith(false)
+
+    expect(wrapper.get('[data-testid="proxy-pruner-switch"]').attributes('aria-checked')).toBe(
+      'true'
+    )
+    await wrapper.get('[data-testid="proxy-pruner-switch"]').trigger('click')
+    await flushPromises()
+    expect(proxyCacheApi.updatePrunerConfig).toHaveBeenCalledWith({ enabled: false })
+    expect(wrapper.get('[data-testid="proxy-pruner-switch"]').attributes('aria-checked')).toBe(
+      'false'
+    )
 
     await wrapper.get('[data-testid="small-model-media-intent-switch"]').trigger('click')
     await flushPromises()
@@ -386,7 +445,7 @@ describe('SettingsView small-model controls', () => {
     wrapper.unmount()
   })
 
-  it('shows provider-setup toast action and opens llm tab when clicked', async () => {
+  it('opens the llm tab directly even when no providers are configured', async () => {
     routeTab = 'proxy'
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -406,17 +465,26 @@ describe('SettingsView small-model controls', () => {
     await llmTabButton!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('请先配置大语言模型提供商。')
-    expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(true)
+    wrapper.unmount()
+  })
 
-    const setupLink = wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('配置大语言模型提供商'))
-    expect(setupLink).toBeTruthy()
-    await setupLink!.trigger('click')
+  it('honors an llm tab query without redirecting back to general', async () => {
+    routeTab = 'llm'
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
     await flushPromises()
 
     expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(true)
+    expect(routerReplace).toHaveBeenCalledWith({ query: { tab: 'llm' } })
+
     wrapper.unmount()
   })
 })

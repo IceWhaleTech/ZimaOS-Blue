@@ -16,18 +16,17 @@ const SERVICE_DISPLAY_NAME: &str = "ZimaOS Blue";
 
 #[cfg(target_os = "windows")]
 pub fn install_service() -> Result<String, String> {
-    let manager = ServiceManager::local_computer(
-        None::<&str>,
-        ServiceManagerAccess::CREATE_SERVICE,
-    )
-    .map_err(|e| format!("Failed to open service manager: {}", e))?;
+    let manager =
+        ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CREATE_SERVICE)
+            .map_err(|e| format!("Failed to open service manager: {}", e))?;
 
     // For Tauri GUI app, the service should use the embedded blue.exe
     // which is located in the same directory as the Tauri executable
-    let tauri_exe_path = std::env::current_exe()
-        .map_err(|e| format!("Failed to get executable path: {}", e))?;
+    let tauri_exe_path =
+        std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
 
-    let exe_dir = tauri_exe_path.parent()
+    let exe_dir = tauri_exe_path
+        .parent()
         .ok_or_else(|| "Failed to get executable directory".to_string())?;
 
     // Look for blue.exe in the same directory
@@ -57,34 +56,43 @@ pub fn install_service() -> Result<String, String> {
         .create_service(&service_info, ServiceAccess::CHANGE_CONFIG)
         .map_err(|e| format!("Failed to create service: {}", e))?;
 
-    Ok(format!("Service '{}' installed successfully", SERVICE_DISPLAY_NAME))
+    Ok(format!(
+        "Service '{}' installed successfully",
+        SERVICE_DISPLAY_NAME
+    ))
 }
 
 #[cfg(target_os = "windows")]
 pub fn uninstall_service() -> Result<String, String> {
-    let manager = ServiceManager::local_computer(
-        None::<&str>,
-        ServiceManagerAccess::CONNECT,
-    )
-    .map_err(|e| format!("Failed to open service manager: {}", e))?;
+    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+        .map_err(|e| format!("Failed to open service manager: {}", e))?;
 
     let service = manager
-        .open_service(SERVICE_NAME, ServiceAccess::DELETE | ServiceAccess::QUERY_STATUS)
+        .open_service(
+            SERVICE_NAME,
+            ServiceAccess::DELETE | ServiceAccess::QUERY_STATUS,
+        )
         .map_err(|e| format!("Failed to open service: {}", e))?;
 
     // Stop service if running
-    let status = service.query_status()
+    let status = service
+        .query_status()
         .map_err(|e| format!("Failed to query service status: {}", e))?;
 
     if status.current_state != ServiceState::Stopped {
-        service.stop()
+        service
+            .stop()
             .map_err(|e| format!("Failed to stop service: {}", e))?;
     }
 
-    service.delete()
+    service
+        .delete()
         .map_err(|e| format!("Failed to delete service: {}", e))?;
 
-    Ok(format!("Service '{}' uninstalled successfully", SERVICE_DISPLAY_NAME))
+    Ok(format!(
+        "Service '{}' uninstalled successfully",
+        SERVICE_DISPLAY_NAME
+    ))
 }
 
 #[cfg(not(target_os = "windows"))]

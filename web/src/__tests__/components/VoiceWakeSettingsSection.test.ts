@@ -60,14 +60,23 @@ vi.mock('@/api/voiceWake', () => ({
   },
 }))
 
+vi.mock('@/api/speech', () => ({
+  speechApi: {
+    getOfflineLanguages: vi.fn(),
+  },
+}))
+
 import { conversationApi } from '@/api/chat'
+import { speechApi } from '@/api/speech'
 import { voiceWakeApi } from '@/api/voiceWake'
 
-function createTestI18n() {
+function createTestI18n(currentLocale = 'en-US') {
   return createI18n({
     legacy: false,
-    locale: 'en-US',
+    locale: currentLocale,
     fallbackLocale: 'en-US',
+    missingWarn: false,
+    fallbackWarn: false,
     messages: {
       'en-US': {
         common: {
@@ -150,14 +159,18 @@ function createTestI18n() {
           wakeWordPlaceholder: 'e.g., Hey Blue',
         },
       },
+      'zh-CN': {},
+      zh: {},
+      'ja-JP': {},
+      ja: {},
     },
   })
 }
 
-function mountSection() {
+function mountSection(currentLocale = 'en-US') {
   return mount(VoiceWakeSettingsSection, {
     global: {
-      plugins: [createTestI18n()],
+      plugins: [createTestI18n(currentLocale)],
     },
   })
 }
@@ -201,6 +214,11 @@ describe('VoiceWakeSettingsSection', () => {
         speech_authorized: true,
         microphone_ready: true,
         reason: 'running',
+      },
+    } as never)
+    vi.mocked(speechApi.getOfflineLanguages).mockResolvedValue({
+      data: {
+        offline_languages: ['en-US', 'zh-CN'],
       },
     } as never)
     vi.mocked(conversationApi.list).mockResolvedValue({
@@ -289,14 +307,61 @@ describe('VoiceWakeSettingsSection', () => {
     const wrapper = mountSection()
     await flushPromises()
 
+    const title = wrapper.get('[data-testid="voicewake-title"]')
     const wakeWordCard = wrapper.get('[data-testid="voicewake-wakeword-config"]')
     const localeInline = wrapper.get('[data-testid="voicewake-locale-inline"]')
 
+    expect(title.classes()).toContain('text-sm')
     expect(wrapper.find('[data-testid="voicewake-header-toggle"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="voicewake-inline-config-grid"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="voicewake-activity-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="voicewake-speech-status"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="voicewake-mic-status"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="voicewake-restart"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="voicewake-recheck"]').exists()).toBe(false)
     expect(wakeWordCard.element.contains(localeInline.element)).toBe(true)
     expect(wrapper.text()).not.toContain('Background listening')
     expect(wrapper.text()).not.toContain('Command destination')
+    wrapper.unmount()
+  })
+
+  it('defaults the recognition language to the interface locale when installed', async () => {
+    const wrapper = mountSection('zh-CN')
+    await flushPromises()
+
+    expect((wrapper.get('[data-testid="voicewake-locale"]').element as HTMLSelectElement).value).toBe(
+      'zh-CN'
+    )
+    wrapper.unmount()
+  })
+
+  it('falls back to English when the interface locale is unavailable offline', async () => {
+    vi.mocked(speechApi.getOfflineLanguages).mockResolvedValueOnce({
+      data: {
+        offline_languages: ['de-DE', 'en-US'],
+      },
+    } as never)
+
+    const wrapper = mountSection('ja-JP')
+    await flushPromises()
+
+    expect((wrapper.get('[data-testid="voicewake-locale"]').element as HTMLSelectElement).value).toBe(
+      'en-US'
+    )
+    wrapper.unmount()
+  })
+
+  it('hides the recognition language selector when no offline languages are installed', async () => {
+    vi.mocked(speechApi.getOfflineLanguages).mockResolvedValueOnce({
+      data: {
+        offline_languages: [],
+      },
+    } as never)
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="voicewake-locale-inline"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -338,7 +403,7 @@ describe('VoiceWakeSettingsSection', () => {
     expect(settingsState.updateBackendSettings).toHaveBeenCalledWith({
       voice_wake_enabled: true,
       voice_wake_triggers: ['Hey Blue'],
-      voice_wake_locale: '',
+      voice_wake_locale: 'en-US',
       voice_wake_target_conversation_id: 'conv-current',
     })
     expect(
@@ -486,9 +551,7 @@ describe('VoiceWakeSettingsSection', () => {
     expect(wrapper.get('[data-testid="voicewake-activity-meta"]').text()).toContain(
       'Target conversation: Main conversation'
     )
-    expect(wrapper.get('[data-testid="voicewake-last-sent-card"]').classes()).toContain(
-      'border-green-200'
-    )
+    expect(wrapper.find('[data-testid="voicewake-last-sent-card"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -536,7 +599,7 @@ describe('VoiceWakeSettingsSection', () => {
     expect(settingsState.updateBackendSettings).toHaveBeenCalledWith({
       voice_wake_enabled: false,
       voice_wake_triggers: ['Hey Blue'],
-      voice_wake_locale: '',
+      voice_wake_locale: 'en-US',
       voice_wake_target_conversation_id: 'conv-current',
     })
     wrapper.unmount()
@@ -552,7 +615,7 @@ describe('VoiceWakeSettingsSection', () => {
     expect(settingsState.updateBackendSettings).toHaveBeenCalledWith({
       voice_wake_enabled: false,
       voice_wake_triggers: ['Hey Blue'],
-      voice_wake_locale: '',
+      voice_wake_locale: 'en-US',
       voice_wake_target_conversation_id: 'conv-1',
     })
     wrapper.unmount()
@@ -604,15 +667,15 @@ describe('VoiceWakeSettingsSection', () => {
     wrapper.unmount()
   })
 
-  it('hides the darwin platform label and highlights ready speech and mic states', async () => {
+  it('keeps the ready state visually minimal', async () => {
     const wrapper = mountSection()
     await flushPromises()
 
     expect(wrapper.find('[data-testid="voicewake-platform-status"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="voicewake-speech-status"]').classes()).toContain(
-      'bg-green-100'
-    )
-    expect(wrapper.get('[data-testid="voicewake-mic-status"]').classes()).toContain('bg-green-100')
+    expect(wrapper.find('[data-testid="voicewake-speech-status"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="voicewake-mic-status"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="voicewake-last-triggered-card"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="voicewake-last-sent-card"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

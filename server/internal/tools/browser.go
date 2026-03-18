@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -80,6 +81,7 @@ type BrowserRecipeInfo struct {
 type BrowserTool struct {
 	mu                    sync.RWMutex
 	backend               BrowserBackend
+	mediaDir              string
 	lastRefMap            map[int]int
 	lastInteractiveRefMap map[int]string
 	lastRefMode           string // "a11y" or "interactive"
@@ -98,6 +100,13 @@ func (t *BrowserTool) SetBackend(b BrowserBackend) {
 	t.backend = b
 }
 
+// SetMediaDir configures the public media directory used for persisted screenshots.
+func (t *BrowserTool) SetMediaDir(dir string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.mediaDir = strings.TrimSpace(dir)
+}
+
 // Backend returns the current browser backend.
 func (t *BrowserTool) Backend() BrowserBackend {
 	t.mu.RLock()
@@ -105,10 +114,24 @@ func (t *BrowserTool) Backend() BrowserBackend {
 	return t.backend
 }
 
+func (t *BrowserTool) normalizeScreenshotPayload(data string) string {
+	t.mu.RLock()
+	mediaDir := t.mediaDir
+	t.mu.RUnlock()
+	if strings.TrimSpace(data) == "" {
+		return data
+	}
+	savedPath, err := SaveBrowserScreenshotBase64(mediaDir, data)
+	if err != nil || savedPath == "" {
+		return data
+	}
+	return savedPath
+}
+
 func (t *BrowserTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "browser",
-		Description: "Open a URL, read page content (accessibility tree), interact with elements (@ref), take screenshots, or run recipes (search, fill_form, extract, login). For keyword search use web_search; for UI quality scoring use ui_reviewer.",
+		Description: "Final web fallback and live page tool. Use for login flows, CAPTCHA/challenges, JS-heavy rendering, clicking/typing/forms, scrolling, screenshots, or tab/session reuse. Not for keyword discovery; use web_search first. For quick public page reads, prefer web_fetch or web_read.",
 		Icon:        "browser",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -319,6 +342,7 @@ func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b Browser
 		if sErr != nil {
 			return jsonErr(sErr.Error()), nil
 		}
+		data = t.normalizeScreenshotPayload(data)
 		return jsonResult(map[string]interface{}{
 			"screenshot": data,
 			"strategy":   "screenshot",
@@ -340,6 +364,7 @@ func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b Browser
 			"message":   browserPageMsg(interactive.Title, interactive.URL, interactive.Tree, interactive.Count),
 		}), nil
 	}
+	data = t.normalizeScreenshotPayload(data)
 
 	return jsonResult(map[string]interface{}{
 		"screenshot": data,
@@ -382,6 +407,7 @@ func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[stri
 	}
 
 	if IsBrowserActionHighRisk("act", actType, "") {
+		currentURL := t.resolveCheckpointURL(ctx, b, targetID)
 		var screenshot *BrowserCheckpointScreenshot
 		if targetID != "" {
 			if shot, shotErr := b.ScreenshotTab(ctx, targetID); shotErr == nil && shot != "" {
@@ -396,6 +422,7 @@ func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[stri
 			RiskLevel:  "high",
 			Step:       "act",
 			Action:     actType,
+			URL:        currentURL,
 			Screenshot: screenshot,
 		})
 		if cpErr != nil {
@@ -445,6 +472,7 @@ func (t *BrowserTool) doScreenshot(ctx context.Context, b BrowserBackend, args m
 		return jsonErr(err.Error()), nil
 	}
 	emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "success", url)
+	data = t.normalizeScreenshotPayload(data)
 	return jsonResult(map[string]interface{}{
 		"screenshot": data,
 		"message":    fmt.Sprintf("Screenshot captured for %s", url),
@@ -507,6 +535,7 @@ func (t *BrowserTool) doRecipe(ctx context.Context, b BrowserBackend, args map[s
 			RiskLevel: "high",
 			Step:      "recipe",
 			Action:    recipeName,
+			URL:       strings.TrimSpace(params["url"]),
 		})
 		if cpErr != nil {
 			return jsonErr(fmt.Sprintf("checkpoint failed: %s", cpErr)), nil
@@ -579,6 +608,30 @@ func (t *BrowserTool) cacheA11y(targetID string, refMap map[int]int) {
 	t.lastRefMode = "a11y"
 	t.lastTarget = targetID
 	t.mu.Unlock()
+}
+
+func (t *BrowserTool) resolveCheckpointURL(ctx context.Context, b BrowserBackend, targetID string) string {
+	targetID = strings.TrimSpace(targetID)
+	tabs, err := b.Tabs(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, tab := range tabs {
+		tabID := strings.TrimSpace(tab.TargetID)
+		tabURL := strings.TrimSpace(tab.URL)
+		if targetID != "" && tabID == targetID {
+			return tabURL
+		}
+	}
+	for _, tab := range tabs {
+		if tab.Active {
+			return strings.TrimSpace(tab.URL)
+		}
+	}
+	if len(tabs) == 1 {
+		return strings.TrimSpace(tabs[0].URL)
+	}
+	return ""
 }
 
 // --- Helpers ---

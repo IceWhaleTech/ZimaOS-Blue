@@ -104,7 +104,7 @@ func NewWebSearchTool(config WebSearchConfig) *WebSearchTool {
 func (w *WebSearchTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "web_search",
-		Description: "Keyword web search. Returns result listings (title, URL, snippet). Does NOT open or read pages. For reading page content use web_fetch; for interactive page automation use browser; for UI review use ui_reviewer.",
+		Description: "Keyword web search for discovery. Use when you need candidate links, official docs, recent sources, or do not yet have the exact URL. Returns result listings only and does NOT open pages. After choosing a URL, use web_fetch for a quick public read, web_read for normalized page reading, and browser as the final fallback for login/JS/interaction.",
 		Icon:        "web-search",
 		Parameters: map[string]interface{}{
 			"type": "object",

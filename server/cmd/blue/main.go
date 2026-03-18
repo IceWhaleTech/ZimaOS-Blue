@@ -97,6 +97,9 @@ func applyPendingBackupRestore(dataDir string) error {
 		if err != nil {
 			return err
 		}
+		if result != nil && len(result.RepairedDatabases) > 0 {
+			fmt.Fprintf(os.Stderr, "Repaired databases %v in place\n", result.RepairedDatabases)
+		}
 		if result != nil && result.Recovered {
 			fmt.Fprintf(os.Stderr, "Recovered databases %v from backup %s\n", result.CorruptedDatabases, result.BackupID)
 		}
@@ -1328,19 +1331,7 @@ func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig, apiKey, baseURL strin
 }
 
 func resolveVectorStoreDBPath(dataDir, configuredPath string) string {
-	trimmed := strings.TrimSpace(configuredPath)
-	if trimmed == "" {
-		return filepath.Join(dataDir, "memory.db")
-	}
-	// Preserve special sqlite DSNs and explicit absolute paths.
-	if trimmed == ":memory:" || strings.HasPrefix(trimmed, "file:") || filepath.IsAbs(trimmed) {
-		return trimmed
-	}
-	// Keep backward compatibility with legacy default "./data/memory.db" while anchoring to app data dir.
-	if filepath.Clean(trimmed) == filepath.Join("data", "memory.db") {
-		return filepath.Join(dataDir, "memory.db")
-	}
-	return trimmed
+	return embedding.ResolveVectorStoreDBPath(dataDir, configuredPath)
 }
 
 // initDualWriteBackend creates a DualWriteBackend with VectorStore + HybridSearcher.
@@ -1354,7 +1345,7 @@ func initDualWriteBackend(cfg *config.Config, dataDir string, mdBackend *memory.
 
 	// Create cybertron embedding provider (lazy — model downloads on first use)
 	embCfg := cfg.Embedding
-	modelsDir := filepath.Join(filepath.Dir(dbPath), "models")
+	modelsDir := embedding.PrepareSharedModelCache(dataDir, cfg.Memory.VectorStore.DBPath, embCfg.Model)
 	model := embCfg.Model
 	if model == "" {
 		model = embedding.DefaultCybertronModel

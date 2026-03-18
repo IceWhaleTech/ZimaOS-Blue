@@ -214,7 +214,7 @@ func (w *WebFetchTool) SetPDFService(service PDFService) {
 func (w *WebFetchTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "web_fetch",
-		Description: "Fetch and extract readable content from a URL via HTTP. Supports lightweight HTML, text, and PDF reads without browser automation.",
+		Description: "Fast lightweight HTTP read for a known public URL. Best for static docs, articles, text, or PDFs when a quick readable extract is enough. Does not run JS or interact with pages; if the response indicates login_wall, challenge, or browser_required, switch to browser.",
 		Icon:        "web-search",
 		Parameters: map[string]interface{}{
 			"type": "object",

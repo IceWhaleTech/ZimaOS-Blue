@@ -2,7 +2,11 @@ package claudecode
 
 import (
 	"context"
+	"encoding/json"
+	"regexp"
+	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
@@ -21,6 +25,86 @@ const (
 	// DefaultParts is the default number of parts to split messages into.
 	DefaultParts = 2
 )
+
+const maxRelevantFiles = 12
+
+var (
+	structuredSummarySectionOrder = []string{
+		"Goal",
+		"Instructions",
+		"Discoveries",
+		"Accomplished",
+		"Relevant Files",
+	}
+
+	structuredSummarySectionAliases = map[string]string{
+		"goal":               "Goal",
+		"objective":          "Goal",
+		"objectives":         "Goal",
+		"instructions":       "Instructions",
+		"instruction":        "Instructions",
+		"preferences":        "Instructions",
+		"preference":         "Instructions",
+		"constraints":        "Instructions",
+		"constraint":         "Instructions",
+		"external approvals": "Instructions",
+		"external approval":  "Instructions",
+		"approvals":          "Instructions",
+		"approval":           "Instructions",
+		"reminders":          "Instructions",
+		"reminder":           "Instructions",
+		"discoveries":        "Discoveries",
+		"discovery":          "Discoveries",
+		"decisions":          "Discoveries",
+		"decision":           "Discoveries",
+		"confirmed facts":    "Discoveries",
+		"confirmed fact":     "Discoveries",
+		"facts":              "Discoveries",
+		"fact":               "Discoveries",
+		"findings":           "Discoveries",
+		"finding":            "Discoveries",
+		"accomplished":       "Accomplished",
+		"completed":          "Accomplished",
+		"completed work":     "Accomplished",
+		"status":             "Accomplished",
+		"pending":            "Accomplished",
+		"pending tasks":      "Accomplished",
+		"pending task":       "Accomplished",
+		"todo":               "Accomplished",
+		"todos":              "Accomplished",
+		"to do":              "Accomplished",
+		"open questions":     "Accomplished",
+		"open question":      "Accomplished",
+		"next steps":         "Accomplished",
+		"next step":          "Accomplished",
+		"relevant files":     "Relevant Files",
+		"relevant file":      "Relevant Files",
+		"file paths":         "Relevant Files",
+		"file path":          "Relevant Files",
+		"files":              "Relevant Files",
+		"read files":         "Relevant Files",
+		"read file":          "Relevant Files",
+		"modified files":     "Relevant Files",
+		"modified file":      "Relevant Files",
+		"written files":      "Relevant Files",
+		"written file":       "Relevant Files",
+		"edited files":       "Relevant Files",
+		"edited file":        "Relevant Files",
+	}
+
+	reMarkdownFileLink  = regexp.MustCompile(`\[[^\]]+\]\(([^)\s]+)\)`)
+	rePatchFileLine     = regexp.MustCompile(`(?m)^\*{3} (?:Add File|Update File|Delete File|Move to): (.+)$`)
+	rePathLineRefSuffix = regexp.MustCompile(`(?i)(?::\d+(?::\d+)?)$|#L\d+(?:C\d+)?$`)
+	reToolNameToken     = regexp.MustCompile(`[a-z0-9]+`)
+)
+
+type structuredSummarySections map[string][]string
+
+type relevantFileCollector struct {
+	modified  map[string]struct{}
+	read      map[string]struct{}
+	mentioned map[string]struct{}
+}
 
 // CompactionConfig holds configuration for context compaction.
 type CompactionConfig struct {
@@ -55,6 +139,481 @@ func NewCompactor(config CompactionConfig, provider llm.Provider) *Compactor {
 		config:   config,
 		provider: provider,
 	}
+}
+
+// StructuredSummaryInstructions returns the canonical summary instructions shared
+// by small-model and bridge/LLM compaction paths.
+func StructuredSummaryInstructions(custom string) string {
+	lines := []string{
+		"Format requirements:",
+		"- Output ONLY the summary text.",
+		"- Use these sections in this exact order and omit any empty section: Goal, Instructions, Discoveries, Accomplished, Relevant Files.",
+		"- Put each section label on its own line, followed by concise '- ' bullets.",
+		"- Preserve durable goals, explicit user instructions, confirmed discoveries, completed work, and pending work that still matters.",
+		"- Preserve exact filenames, directories, IDs, dates, and other opaque identifiers when they matter.",
+		"- In Relevant Files, list the most relevant paths only, prioritizing modified/written files before read-only files.",
+		"- Do not include chain-of-thought, transient speculation, or failed exploratory branches unless they changed the outcome.",
+	}
+	if trimmed := strings.TrimSpace(custom); trimmed != "" {
+		lines = append(lines, "- Additional focus: "+trimmed)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// NormalizeStructuredSummary rewrites summaries into the canonical five-section
+// format and enriches the Relevant Files section from message/tool context.
+func NormalizeStructuredSummary(rawSummary, previousSummary string, messages []llm.Message) string {
+	sections := parseStructuredSummary(rawSummary)
+	relevantFiles := collectRelevantFiles(messages, rawSummary, previousSummary)
+	if len(relevantFiles) > 0 {
+		sections["Relevant Files"] = relevantFiles
+	}
+	return formatStructuredSummary(sections)
+}
+
+func parseStructuredSummary(raw string) structuredSummarySections {
+	sections := make(structuredSummarySections, len(structuredSummarySectionOrder))
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return sections
+	}
+
+	current := ""
+	recognized := false
+	for _, line := range strings.Split(trimmed, "\n") {
+		text := strings.TrimSpace(line)
+		if text == "" {
+			continue
+		}
+		if section, item, ok := parseStructuredSummaryLine(text); ok {
+			current = section
+			recognized = true
+			if item != "" {
+				appendStructuredSummaryItem(sections, section, item)
+			}
+			continue
+		}
+		if current == "" {
+			continue
+		}
+		appendStructuredSummaryItem(sections, current, trimStructuredSummaryBullet(text))
+	}
+
+	if recognized {
+		return sections
+	}
+	for _, line := range strings.Split(trimmed, "\n") {
+		text := trimStructuredSummaryBullet(line)
+		if text == "" {
+			continue
+		}
+		appendStructuredSummaryItem(sections, "Discoveries", text)
+	}
+	return sections
+}
+
+func parseStructuredSummaryLine(line string) (section, item string, ok bool) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return "", "", false
+	}
+
+	inline := trimStructuredSummaryBullet(trimmed)
+	if idx := strings.Index(inline, ":"); idx > 0 {
+		if section = canonicalStructuredSummarySection(inline[:idx]); section != "" {
+			return section, strings.TrimSpace(inline[idx+1:]), true
+		}
+	}
+
+	heading := strings.TrimLeft(trimmed, "#-*• \t")
+	heading = strings.TrimSpace(strings.TrimSuffix(heading, ":"))
+	if section = canonicalStructuredSummarySection(heading); section != "" {
+		return section, "", true
+	}
+	return "", "", false
+}
+
+func canonicalStructuredSummarySection(label string) string {
+	normalized := normalizeStructuredSummaryLabel(label)
+	if normalized == "" {
+		return ""
+	}
+	return structuredSummarySectionAliases[normalized]
+}
+
+func normalizeStructuredSummaryLabel(label string) string {
+	if strings.TrimSpace(label) == "" {
+		return ""
+	}
+	var b strings.Builder
+	lastSpace := false
+	for _, r := range strings.ToLower(label) {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+			lastSpace = false
+		case unicode.IsSpace(r) || r == '_' || r == '-' || r == '/':
+			if !lastSpace && b.Len() > 0 {
+				b.WriteByte(' ')
+				lastSpace = true
+			}
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func trimStructuredSummaryBullet(line string) string {
+	trimmed := strings.TrimSpace(line)
+	trimmed = strings.TrimLeft(trimmed, "-*• \t")
+	return strings.TrimSpace(trimmed)
+}
+
+func appendStructuredSummaryItem(sections structuredSummarySections, section, item string) {
+	item = strings.TrimSpace(item)
+	if item == "" {
+		return
+	}
+	for _, existing := range sections[section] {
+		if strings.EqualFold(existing, item) {
+			return
+		}
+	}
+	sections[section] = append(sections[section], item)
+}
+
+func formatStructuredSummary(sections structuredSummarySections) string {
+	blocks := make([]string, 0, len(structuredSummarySectionOrder))
+	for _, section := range structuredSummarySectionOrder {
+		items := sections[section]
+		if len(items) == 0 {
+			continue
+		}
+		var b strings.Builder
+		b.WriteString(section)
+		for _, item := range items {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			b.WriteString("\n- ")
+			b.WriteString(item)
+		}
+		if b.Len() > len(section) {
+			blocks = append(blocks, b.String())
+		}
+	}
+	return strings.TrimSpace(strings.Join(blocks, "\n\n"))
+}
+
+func collectRelevantFiles(messages []llm.Message, summaryTexts ...string) []string {
+	collector := relevantFileCollector{
+		modified:  make(map[string]struct{}),
+		read:      make(map[string]struct{}),
+		mentioned: make(map[string]struct{}),
+	}
+
+	for _, msg := range messages {
+		for _, tc := range msg.ToolCalls {
+			toolMode := classifyToolFileAccess(tc.Name)
+			for _, path := range extractPathsFromStructuredPayload(tc.Arguments) {
+				collector.add(toolMode, path)
+			}
+			if toolMode == "modified" {
+				for _, path := range extractPatchPaths(tc.Arguments) {
+					collector.add("modified", path)
+				}
+			}
+		}
+		if mode := classifyToolFileAccess(msg.ToolName); mode != "" {
+			for _, path := range extractPathsFromStructuredPayload(msg.Content) {
+				collector.add(mode, path)
+			}
+		}
+		if msg.Role == llm.RoleUser || msg.Role == llm.RoleAssistant || msg.Role == llm.RoleSystem {
+			for _, path := range extractLikelyPathsFromText(messageSummaryText(msg)) {
+				collector.add("mentioned", path)
+			}
+		}
+	}
+
+	for _, text := range summaryTexts {
+		for _, path := range extractLikelyPathsFromText(text) {
+			collector.add("mentioned", path)
+		}
+		for _, path := range extractPatchPaths(text) {
+			collector.add("mentioned", path)
+		}
+	}
+
+	return collector.finalize()
+}
+
+func (c *relevantFileCollector) add(mode, path string) {
+	path = normalizePathCandidate(path)
+	if path == "" {
+		return
+	}
+	switch mode {
+	case "modified":
+		c.modified[path] = struct{}{}
+	case "read":
+		if _, exists := c.modified[path]; !exists {
+			c.read[path] = struct{}{}
+		}
+	default:
+		if _, exists := c.modified[path]; exists {
+			return
+		}
+		if _, exists := c.read[path]; exists {
+			return
+		}
+		c.mentioned[path] = struct{}{}
+	}
+}
+
+func (c *relevantFileCollector) finalize() []string {
+	modified := mapKeysSorted(c.modified)
+	read := mapKeysSorted(c.read)
+	mentioned := mapKeysSorted(c.mentioned)
+
+	out := make([]string, 0, len(modified)+len(read)+len(mentioned))
+	seen := make(map[string]struct{}, len(modified)+len(read)+len(mentioned))
+	appendPaths := func(paths []string) {
+		for _, path := range paths {
+			if _, exists := seen[path]; exists {
+				continue
+			}
+			seen[path] = struct{}{}
+			out = append(out, path)
+			if len(out) >= maxRelevantFiles {
+				return
+			}
+		}
+	}
+	appendPaths(modified)
+	if len(out) < maxRelevantFiles {
+		appendPaths(read)
+	}
+	if len(out) < maxRelevantFiles {
+		appendPaths(mentioned)
+	}
+	return out
+}
+
+func mapKeysSorted(set map[string]struct{}) []string {
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for key := range set {
+		out = append(out, key)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func classifyToolFileAccess(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return ""
+	}
+	tokens := reToolNameToken.FindAllString(strings.ToLower(name), -1)
+	for _, token := range tokens {
+		switch token {
+		case "write", "edit", "replace", "patch", "update", "create":
+			return "modified"
+		}
+	}
+	for _, token := range tokens {
+		switch token {
+		case "read", "open", "view":
+			return "read"
+		}
+	}
+	return ""
+}
+
+func extractPathsFromStructuredPayload(text string) []string {
+	paths := make([]string, 0, 4)
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return paths
+	}
+
+	var payload any
+	if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+		paths = append(paths, extractPathsFromJSONValue(payload)...)
+	}
+	paths = append(paths, extractPatchPaths(trimmed)...)
+	return dedupeStrings(paths)
+}
+
+func extractPathsFromJSONValue(v any) []string {
+	out := make([]string, 0, 4)
+	switch value := v.(type) {
+	case map[string]any:
+		for key, child := range value {
+			if isLikelyPathKey(key) {
+				out = append(out, extractStringValues(child)...)
+			}
+			out = append(out, extractPathsFromJSONValue(child)...)
+		}
+	case []any:
+		for _, child := range value {
+			out = append(out, extractPathsFromJSONValue(child)...)
+		}
+	}
+	return dedupeStrings(out)
+}
+
+func extractStringValues(v any) []string {
+	switch value := v.(type) {
+	case string:
+		return []string{value}
+	case []any:
+		out := make([]string, 0, len(value))
+		for _, item := range value {
+			out = append(out, extractStringValues(item)...)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func isLikelyPathKey(key string) bool {
+	switch normalizeStructuredSummaryLabel(key) {
+	case "path", "paths", "file", "files", "file path", "file paths", "filepath", "filepaths",
+		"filename", "filenames", "target", "targets", "source", "sources", "destination",
+		"dest", "old path", "new path", "workdir", "cwd", "directory", "directories", "dir":
+		return true
+	default:
+		return false
+	}
+}
+
+func extractPatchPaths(text string) []string {
+	matches := rePatchFileLine.FindAllStringSubmatch(text, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		paths = append(paths, match[1])
+	}
+	return dedupeStrings(paths)
+}
+
+func extractLikelyPathsFromText(text string) []string {
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	candidates := make([]string, 0, 8)
+	for _, match := range reMarkdownFileLink.FindAllStringSubmatch(text, -1) {
+		if len(match) >= 2 {
+			candidates = append(candidates, match[1])
+		}
+	}
+	fields := strings.FieldsFunc(text, func(r rune) bool {
+		switch r {
+		case ' ', '\n', '\r', '\t', ',', ';', '(', ')', '[', ']', '{', '}', '<', '>', '"', '\'':
+			return true
+		default:
+			return false
+		}
+	})
+	for _, field := range fields {
+		candidates = append(candidates, field)
+	}
+	return dedupeStrings(candidates)
+}
+
+func normalizePathCandidate(candidate string) string {
+	path := strings.TrimSpace(candidate)
+	if path == "" {
+		return ""
+	}
+	path = strings.Trim(path, "`*.,!?;:")
+	path = strings.Trim(path, "\"'")
+	path = strings.Trim(path, "()[]{}<>")
+	path = strings.TrimSpace(path)
+	if path == "" || strings.Contains(path, "://") {
+		return ""
+	}
+	path = rePathLineRefSuffix.ReplaceAllString(path, "")
+	path = strings.Trim(path, "`*.,!?;:")
+	if path == "" {
+		return ""
+	}
+	if strings.Count(path, "/")+strings.Count(path, "\\") == 0 {
+		return ""
+	}
+	hasLetter := false
+	for _, r := range path {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+			break
+		}
+	}
+	if !hasLetter {
+		return ""
+	}
+	return path
+}
+
+func dedupeStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func messageSummaryText(msg llm.Message) string {
+	if trimmed := strings.TrimSpace(msg.Content); trimmed != "" {
+		return trimmed
+	}
+	parts := make([]string, 0, len(msg.ContentParts)+1)
+	for _, part := range msg.ContentParts {
+		switch part.Type {
+		case "text":
+			if trimmed := strings.TrimSpace(part.Text); trimmed != "" {
+				parts = append(parts, trimmed)
+			}
+		case "image":
+			parts = append(parts, "[image attachment]")
+		default:
+			if trimmed := strings.TrimSpace(part.Text); trimmed != "" {
+				parts = append(parts, trimmed)
+			}
+		}
+	}
+	if len(parts) == 0 && len(msg.ToolCalls) > 0 {
+		names := make([]string, 0, len(msg.ToolCalls))
+		for _, tc := range msg.ToolCalls {
+			if name := strings.TrimSpace(tc.Name); name != "" {
+				names = append(names, name)
+			}
+		}
+		if len(names) > 0 {
+			parts = append(parts, "Tool calls: "+strings.Join(names, ", "))
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 // countTokensInString estimates tokens using a hybrid heuristic:
@@ -426,11 +985,8 @@ func (c *Compactor) Summarize(ctx context.Context, messages []llm.Message, previ
 	// Build summarization prompt
 	var sb strings.Builder
 	sb.WriteString("Summarize this conversation for future continuation context.\n")
-	sb.WriteString("Requirements:\n")
-	sb.WriteString("- Keep durable information: objective, key decisions, constraints, confirmed facts, TODO/open questions.\n")
-	sb.WriteString("- Omit intermediate reasoning traces and failed exploratory branches.\n")
-	sb.WriteString("- Use concise bullet points only.\n")
-	sb.WriteString("- Mark uncertain items explicitly as uncertain.\n\n")
+	sb.WriteString(StructuredSummaryInstructions(c.config.CustomInstructions))
+	sb.WriteString("\n\n")
 
 	if previousSummary != "" {
 		sb.WriteString("Previous context summary:\n")
@@ -442,13 +998,8 @@ func (c *Compactor) Summarize(ctx context.Context, messages []llm.Message, previ
 	for _, msg := range messages {
 		sb.WriteString(string(msg.Role))
 		sb.WriteString(": ")
-		sb.WriteString(msg.Content)
+		sb.WriteString(messageSummaryText(msg))
 		sb.WriteString("\n\n")
-	}
-
-	if c.config.CustomInstructions != "" {
-		sb.WriteString("\nAdditional focus:\n")
-		sb.WriteString(c.config.CustomInstructions)
 	}
 
 	// Call LLM for summarization
@@ -464,7 +1015,11 @@ func (c *Compactor) Summarize(ctx context.Context, messages []llm.Message, previ
 		return DefaultSummaryFallback, err
 	}
 
-	return resp.Message.Content, nil
+	summary := NormalizeStructuredSummary(resp.Message.Content, previousSummary, messages)
+	if summary == "" {
+		return DefaultSummaryFallback, nil
+	}
+	return summary, nil
 }
 
 // CompactMessages compacts messages to fit within context limits.

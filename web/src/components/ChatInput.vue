@@ -1963,7 +1963,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                       />
                     </svg>
                   </button>
-                  <div v-else class="desktop-inline-icon-btn is-passive">
+                  <div v-else-if="isTranscribing" class="desktop-inline-icon-btn is-passive">
                     <svg class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
                       <circle
                         class="opacity-25"

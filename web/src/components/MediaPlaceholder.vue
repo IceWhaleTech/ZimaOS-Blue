@@ -75,6 +75,8 @@ const isVideo = computed(() => {
   return task.value?.type === 'video'
 })
 
+const fallbackInfo = computed(() => task.value?.fallback_info)
+
 // Detect provider/config errors to show setup guidance
 const isProviderError = computed(() => {
   if (!task.value?.error) return false
@@ -163,6 +165,7 @@ function onTaskUpdate(data: any) {
   }
   if (data.error) task.value.error = data.error
   if (data.response) task.value.response = data.response
+  if (data.fallback_info) task.value.fallback_info = data.fallback_info
   loading.value = false
 
   if (isTerminal.value) handleTerminal()
@@ -304,6 +307,10 @@ watch(
           >
         </div>
         <div v-if="task?.model" class="mp-card-model">{{ task.model }}</div>
+        <div v-if="fallbackInfo?.used" class="mp-fallback">
+          <div class="mp-fallback-title">{{ fallbackInfo.display_name }}</div>
+          <div class="mp-fallback-text">{{ fallbackInfo.disclosure }}</div>
+        </div>
         <div v-if="elapsedSeconds > 10" class="mp-card-hint">{{ t('media.processingHint') }}</div>
         <div class="mp-card-bar">
           <div
@@ -321,24 +328,49 @@ watch(
     </div>
 
     <!-- Succeeded -->
-    <div v-else-if="task.status === 'succeeded' && resultUrls.length > 0" class="mp-result">
-      <template v-for="(url, i) in resultUrls" :key="i">
-        <video
-          v-if="isVideo"
-          :src="url"
-          controls
-          class="mp-media"
-          :aria-label="`Generated video ${i + 1}`"
-        />
-        <img
-          v-else
-          :src="url"
-          class="mp-media mp-media-clickable"
-          loading="lazy"
-          :alt="`Generated image ${i + 1}`"
-          @click="openViewer(url)"
-        />
-      </template>
+    <div v-else-if="task.status === 'succeeded' && resultUrls.length > 0">
+      <div v-if="fallbackInfo?.used" class="mp-fallback mp-fallback--result">
+        <div class="mp-fallback-title">{{ fallbackInfo.display_name }}</div>
+        <div class="mp-fallback-text">{{ fallbackInfo.disclosure }}</div>
+        <div v-if="fallbackInfo.space_url || fallbackInfo.source_urls?.length" class="mp-fallback-links">
+          <a
+            v-if="fallbackInfo.space_url"
+            class="mp-fallback-link"
+            :href="fallbackInfo.space_url"
+            target="_blank"
+            rel="noreferrer"
+            >Space</a
+          >
+          <a
+            v-for="(url, index) in fallbackInfo.source_urls || []"
+            :key="url"
+            class="mp-fallback-link"
+            :href="url"
+            target="_blank"
+            rel="noreferrer"
+            >Source {{ index + 1 }}</a
+          >
+        </div>
+      </div>
+      <div class="mp-result">
+        <template v-for="(url, i) in resultUrls" :key="i">
+          <video
+            v-if="isVideo"
+            :src="url"
+            controls
+            class="mp-media"
+            :aria-label="`Generated video ${i + 1}`"
+          />
+          <img
+            v-else
+            :src="url"
+            class="mp-media mp-media-clickable"
+            loading="lazy"
+            :alt="`Generated image ${i + 1}`"
+            @click="openViewer(url)"
+          />
+        </template>
+      </div>
     </div>
 
     <!-- Failed -->
@@ -600,6 +632,49 @@ watch(
   gap: 4px;
 }
 
+.mp-fallback {
+  margin-top: 0.5rem;
+  margin-left: 1.75rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.mp-fallback--result {
+  margin-left: 0;
+  margin-bottom: 0.5rem;
+}
+
+.mp-fallback-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.mp-fallback-text {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #475569;
+}
+
+.mp-fallback-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+
+.mp-fallback-link {
+  font-size: 0.75rem;
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.mp-fallback-link:hover {
+  text-decoration: underline;
+}
+
 .mp-media {
   max-width: 100%;
   max-height: 400px;
@@ -614,6 +689,26 @@ watch(
 
 .mp-media-clickable:hover {
   opacity: 0.85;
+}
+
+:root.dark .mp-fallback,
+[data-theme='dark'] .mp-fallback {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+:root.dark .mp-fallback-title,
+[data-theme='dark'] .mp-fallback-title {
+  color: #e2e8f0;
+}
+
+:root.dark .mp-fallback-text,
+[data-theme='dark'] .mp-fallback-text {
+  color: #cbd5e1;
+}
+
+:root.dark .mp-fallback-link,
+[data-theme='dark'] .mp-fallback-link {
+  color: #93c5fd;
 }
 
 /* Image Viewer Overlay */

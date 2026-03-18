@@ -26,6 +26,14 @@ export interface VADOptions {
   onSpeechEnd?: (audio: Blob) => void
   /** Called with current RMS level (0-1) for visualization. Throttled to ~10fps. */
   onVolumeChange?: (level: number) => void
+  /** Called when the user interrupts while VAD is paused in monitor mode. */
+  onBargeIn?: () => void
+  /** Minimum RMS to consider a barge-in while paused. Default: 0.04 */
+  bargeInThreshold?: number
+  /** Consecutive frames required to detect a barge-in. Default: 6 */
+  bargeInFrames?: number
+  /** Minimum active time in ms required to detect a barge-in. Default: 300 */
+  bargeInMinDuration?: number
 }
 
 type VADState = 'idle' | 'speaking' | 'silence_pending'
@@ -44,10 +52,15 @@ const THRESHOLD_HYSTERESIS = 0.002
 const RESUME_THRESHOLD_MIN_OFFSET = 0.0025
 const RESUME_THRESHOLD_RATIO = 0.12
 const DEFAULT_NOISE_CALIBRATION_DURATION = 400
+const DEFAULT_BARGE_IN_THRESHOLD = 0.04
+const DEFAULT_BARGE_IN_FRAMES = 6
+const DEFAULT_BARGE_IN_MIN_DURATION = 300
 
 export class EnergyVAD {
-  private opts: Required<Omit<VADOptions, 'onSpeechStart' | 'onSpeechEnd' | 'onVolumeChange'>> &
-    Pick<VADOptions, 'onSpeechStart' | 'onSpeechEnd' | 'onVolumeChange'>
+  private opts: Required<
+    Omit<VADOptions, 'onSpeechStart' | 'onSpeechEnd' | 'onVolumeChange' | 'onBargeIn'>
+  > &
+    Pick<VADOptions, 'onSpeechStart' | 'onSpeechEnd' | 'onVolumeChange' | 'onBargeIn'>
   private state: VADState = 'idle'
   private stream: MediaStream | null = null
   private audioCtx: AudioContext | null = null
@@ -60,9 +73,13 @@ export class EnergyVAD {
   private speechFrameCount = 0
   private resumeSpeechFrameCount = 0
   private paused = false
+  private monitorBargeInWhilePaused = false
   private volumeTickCount = 0 // throttle volume callbacks
   private noiseFloor = 0
   private listeningStartTime = 0
+  private bargeInFrameCount = 0
+  private bargeInActiveSince = 0
+  private bargeInTriggered = false
 
   // Single recorder: all chunks share the same WebM init segment
   private recorder: MediaRecorder | null = null
@@ -93,6 +110,10 @@ export class EnergyVAD {
       onSpeechStart: options?.onSpeechStart,
       onSpeechEnd: options?.onSpeechEnd,
       onVolumeChange: options?.onVolumeChange,
+      onBargeIn: options?.onBargeIn,
+      bargeInThreshold: options?.bargeInThreshold ?? DEFAULT_BARGE_IN_THRESHOLD,
+      bargeInFrames: options?.bargeInFrames ?? DEFAULT_BARGE_IN_FRAMES,
+      bargeInMinDuration: options?.bargeInMinDuration ?? DEFAULT_BARGE_IN_MIN_DURATION,
     }
     this.preBufferMaxChunks = Math.max(1, Math.ceil(preBufferDuration / CHUNK_TIMESLICE))
   }
@@ -123,8 +144,12 @@ export class EnergyVAD {
     this.resumeSpeechFrameCount = 0
     this.volumeTickCount = 0
     this.paused = false
+    this.monitorBargeInWhilePaused = false
     this.noiseFloor = Math.max(0.001, this.opts.silenceThreshold * 0.8)
     this.listeningStartTime = Date.now()
+    this.bargeInFrameCount = 0
+    this.bargeInActiveSince = 0
+    this.bargeInTriggered = false
     this._isListening = true
     this._isSpeaking = false
 
@@ -140,8 +165,12 @@ export class EnergyVAD {
   }
 
   /** Pause VAD detection without releasing mic (for TTS playback). */
-  pause(): void {
+  pause(options?: { monitorBargeIn?: boolean }): void {
     this.paused = true
+    this.monitorBargeInWhilePaused = !!options?.monitorBargeIn
+    this.bargeInFrameCount = 0
+    this.bargeInActiveSince = 0
+    this.bargeInTriggered = false
     // If currently recording speech, discard it
     if (this.speechStartIdx >= 0) {
       this.speechStartIdx = -1
@@ -158,9 +187,13 @@ export class EnergyVAD {
   resume(): void {
     if (!this._isListening) return
     this.paused = false
+    this.monitorBargeInWhilePaused = false
     this.state = 'idle'
     this.speechFrameCount = 0
     this.resumeSpeechFrameCount = 0
+    this.bargeInFrameCount = 0
+    this.bargeInActiveSince = 0
+    this.bargeInTriggered = false
     // Restart recorder
     this.startRecorder()
   }
@@ -197,6 +230,10 @@ export class EnergyVAD {
     this.noiseFloor = 0
     this.resumeSpeechFrameCount = 0
     this.listeningStartTime = 0
+    this.monitorBargeInWhilePaused = false
+    this.bargeInFrameCount = 0
+    this.bargeInActiveSince = 0
+    this.bargeInTriggered = false
   }
 
   private tick(): void {
@@ -212,7 +249,10 @@ export class EnergyVAD {
       this.opts.onVolumeChange?.(rms)
     }
 
-    if (this.paused) return
+    if (this.paused) {
+      this.tickPausedBargeIn(rms)
+      return
+    }
 
     const now = Date.now()
     const isCalibrating = now - this.listeningStartTime < this.opts.noiseCalibrationDuration
@@ -284,6 +324,36 @@ export class EnergyVAD {
         }
         break
     }
+  }
+
+  private tickPausedBargeIn(rms: number): void {
+    if (!this.monitorBargeInWhilePaused || this.bargeInTriggered) return
+
+    const now = Date.now()
+    const adaptiveGate = Math.max(
+      this.opts.bargeInThreshold,
+      this.noiseFloor * 2.8 + 0.015,
+      this.opts.speechThreshold * 2.2
+    )
+
+    if (rms >= adaptiveGate) {
+      this.bargeInFrameCount++
+      if (!this.bargeInActiveSince) {
+        this.bargeInActiveSince = now
+      }
+      const activeDuration = now - this.bargeInActiveSince + TICK_INTERVAL
+      if (
+        this.bargeInFrameCount >= this.opts.bargeInFrames &&
+        activeDuration >= this.opts.bargeInMinDuration
+      ) {
+        this.bargeInTriggered = true
+        this.opts.onBargeIn?.()
+      }
+      return
+    }
+
+    this.bargeInFrameCount = 0
+    this.bargeInActiveSince = 0
   }
 
   private computeRMS(data: Uint8Array): number {

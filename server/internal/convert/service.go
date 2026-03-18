@@ -127,7 +127,7 @@ func (s *Service) IsManagedPath(path string) bool {
 func (s *Service) Capabilities(ctx context.Context) Capabilities {
 	_ = ctx
 	tools := map[string]bool{}
-	for _, cmd := range []string{"textutil", "sips", "afconvert", "swift", "cupsfilter", "say", "x2t", "libreoffice", "openoffice", "soffice", "unoconv", "pandoc"} {
+	for _, cmd := range []string{"textutil", "sips", "afconvert", "swift", "qlmanage", "cupsfilter", "say", "x2t", "libreoffice", "openoffice", "soffice", "unoconv", "pandoc"} {
 		_, err := exec.LookPath(cmd)
 		tools[cmd] = err == nil
 	}
@@ -138,13 +138,24 @@ func (s *Service) Capabilities(ctx context.Context) Capabilities {
 	hasDocumentEngines := hasAvailableDocumentEngine(engines)
 	helper := s.helper.Status()
 	actions := supportedActionsForPlatform(runtime.GOOS, hasDocumentEngines, s.ttsProvider.Available(), s.asrProvider.Available())
+	documentFormats := aggregateDocumentFormats(engines)
+	notes := []string{
+		"Absolute local paths are supported.",
+		"Conversation attachments use att:<id> references; prior outputs use out:<task_id>:<output_id>.",
+		"Document conversion auto-detects local engines and falls back by priority.",
+		"Advanced PDF/video actions require blue-convert-helper or a local Swift fallback on macOS.",
+	}
+	if helper.Available {
+		documentFormats["helper_pdf_preview"] = append([]string(nil), helperPDFFallbackFormats...)
+		notes = append(notes, "When the helper is available, helper_pdf_preview can render supported document formats to preview PDFs if external document engines are missing.")
+	}
 	return Capabilities{
 		Available:       len(actions) > 0,
 		Platform:        runtime.GOOS,
 		Actions:         actions,
 		Tools:           tools,
 		Helper:          helper,
-		Document:        aggregateDocumentFormats(engines),
+		Document:        documentFormats,
 		DocumentEngines: engines,
 		Image: map[string][]string{
 			"sips": {"png", "jpg", "jpeg", "tiff", "gif", "bmp", "heic", "pdf"},
@@ -165,12 +176,7 @@ func (s *Service) Capabilities(ctx context.Context) Capabilities {
 		},
 		Retention:  retentionWindow.String(),
 		WorkingDir: s.rootDir,
-		Notes: []string{
-			"Absolute local paths are supported.",
-			"Conversation attachments use att:<id> references; prior outputs use out:<task_id>:<output_id>.",
-			"Document conversion auto-detects local engines and falls back by priority.",
-			"Advanced PDF/video actions require blue-convert-helper or a local Swift fallback on macOS.",
-		},
+		Notes:      notes,
 	}
 }
 
@@ -400,6 +406,7 @@ func (s *Service) Submit(ctx context.Context, userID, conversationID string, req
 		UserID:         userID,
 		Action:         req.Action,
 		Status:         StatusPending,
+		Sources:        append([]string(nil), req.Sources...),
 		TargetFormat:   normalizeFormat(req.TargetFormat, req.Options.Speech.TTS.Format),
 		SourceSummary:  summarizeSources(resolved, req.Text),
 		Progress:       0,
@@ -805,7 +812,7 @@ func (s *Service) convertDocument(ctx context.Context, task *ConvertTask, source
 	}
 
 	engines := availableDocumentEngines(s.documentEngines(ctx))
-	if len(engines) == 0 {
+	if len(engines) == 0 && !helperSupportsDocumentPDFFallback(sourceExt, target) {
 		return nil, "", fmt.Errorf("no document conversion engine is available on this host")
 	}
 
@@ -831,10 +838,18 @@ func (s *Service) convertDocument(ctx context.Context, task *ConvertTask, source
 		return []ConvertOutput{output}, "Document converted", nil
 	}
 
+	if helperSupportsDocumentPDFFallback(sourceExt, target) {
+		outputs, message, err := s.convertDocumentWithHelperPDF(ctx, task, source)
+		if err == nil {
+			return outputs, message, nil
+		}
+		attempts = append(attempts, fmt.Sprintf("helper_pdf: %v", err))
+	}
+
 	if len(attempts) == 0 {
 		return nil, "", fmt.Errorf("no document conversion engine supports %s -> %s", sourceExt, target)
 	}
-	return nil, "", fmt.Errorf("document conversion failed after trying engines (%s)", strings.Join(attempts, "; "))
+	return nil, "", fmt.Errorf("document conversion failed after trying converters (%s)", strings.Join(attempts, "; "))
 }
 
 func (s *Service) convertDocumentWithEngine(ctx context.Context, engine DocumentEngineInfo, sourcePath, outputPath, target string) error {
@@ -866,6 +881,18 @@ func (s *Service) convertDocumentWithEngine(ctx context.Context, engine Document
 	default:
 		return fmt.Errorf("unsupported engine: %s", engine.ID)
 	}
+}
+
+func (s *Service) convertDocumentWithHelperPDF(ctx context.Context, task *ConvertTask, source ResolvedSource) ([]ConvertOutput, string, error) {
+	if s == nil || s.helper == nil {
+		return nil, "", fmt.Errorf("convert helper unavailable")
+	}
+	return s.runHelperOutputs(ctx, task.ID, map[string]interface{}{
+		"action":        "render_document_pdf",
+		"sources":       []string{source.Path},
+		"target_format": "pdf",
+		"output_dir":    s.outputDir(task.ID),
+	}, "Document rendered to PDF")
 }
 
 func (s *Service) convertWithTextutil(ctx context.Context, task *ConvertTask, source ResolvedSource, target string) ([]ConvertOutput, string, error) {
@@ -987,6 +1014,7 @@ func (s *Service) decorateTask(task *ConvertTask) *ConvertTask {
 		return nil
 	}
 	clone := *task
+	clone.Sources = append([]string(nil), task.Sources...)
 	clone.Outputs = make([]ConvertOutput, len(task.Outputs))
 	copy(clone.Outputs, task.Outputs)
 	for i := range clone.Outputs {
@@ -1114,6 +1142,7 @@ func CardData(task *ConvertTask) map[string]interface{} {
 		"task_id":            task.ID,
 		"status":             string(task.Status),
 		"action":             task.Action,
+		"sources":            append([]string(nil), task.Sources...),
 		"source_summary":     task.SourceSummary,
 		"target_format":      task.TargetFormat,
 		"progress":           task.Progress,

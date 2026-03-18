@@ -6,6 +6,35 @@ import { getErrorMessage } from '@/utils/error'
 // so all API calls use relative URLs — no special URL construction needed.
 const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split('.')
+  if (parts.length !== 3 || !parts[1]) return null
+
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    return JSON.parse(atob(padded)) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+export function isAccessTokenExpiredOrExpiring(token: string, skewMs = 30_000): boolean {
+  const payload = decodeJwtPayload(token)
+  const exp = payload?.exp
+  if (typeof exp !== 'number') return false
+  return exp * 1000 <= Date.now() + skewMs
+}
+
+function shouldSkipProactiveRefresh(url?: string): boolean {
+  if (!url) return false
+  return (
+    url.includes('/auth/login') ||
+    url.includes('/auth/refresh') ||
+    url.includes('/preview/token')
+  )
+}
+
 async function reacquirePreviewToken(): Promise<string | null> {
   try {
     const response = await fetch('/api/v1/preview/token', {
@@ -106,10 +135,26 @@ export async function ensureFreshToken(): Promise<string | null> {
   }
 }
 
+async function getRequestToken(requestUrl?: string): Promise<string | null> {
+  let token = localStorage.getItem('token')
+  if (!token) return null
+
+  const isPreview = !!localStorage.getItem('preview_token')
+  if (
+    !isPreview &&
+    !shouldSkipProactiveRefresh(requestUrl) &&
+    isAccessTokenExpiredOrExpiring(token)
+  ) {
+    token = await ensureFreshToken()
+  }
+
+  return token
+}
+
 // Request interceptor
 api.interceptors.request.use(
   async (config) => {
-    const token = localStorage.getItem('token')
+    const token = await getRequestToken(config.url)
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }

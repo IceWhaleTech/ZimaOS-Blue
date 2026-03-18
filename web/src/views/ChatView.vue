@@ -35,10 +35,12 @@ import type { DeepResearchJobSummary } from '@/api/deepResearch'
 import { onSSEEvent, offSSEEvent } from '@/composables/useEventStream'
 import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
-import { clearConversationIncrementalStates } from '@/utils/typeless'
+import { clearConversationIncrementalStates, parseTypelessContentIncremental } from '@/utils/typeless'
 import { preloadHljs } from '@/utils/markdown'
 import { streamingTTSManager } from '@/api/voice'
 import { formatTokens } from '@/utils/format'
+import { findLatestTodoChecklistSummary } from '@/utils/todoChecklist'
+import type { Provider } from '@/api/providerPool'
 
 const { t, te, locale } = useI18n()
 const router = useRouter()
@@ -74,6 +76,8 @@ watch(locale, (newLocale) => {
 // Trial quota animation state
 const tokenAnimating = ref(false)
 const previousTokens = ref<number | null>(null)
+const RE_TYPELESS_CARD_PLACEHOLDER = /\[\[TYPELESS_CARD:[^\]]+\]\]/g
+const ACTIVE_TODO_PANEL_COLLAPSED_KEY = 'zima.chat.active_todo_collapsed.v1'
 
 const hasActiveDeepResearchJobs = computed(() => deepResearchJobs.activeJobs.length > 0)
 const messageAreaPaddingClass = computed(() => {
@@ -201,6 +205,28 @@ const hasCancelableWork = computed(() => {
   return agentTasks.value.some((task) =>
     ['pending', 'planning', 'executing', 'waiting_input'].includes(task.status)
   )
+})
+
+function hasVisibleTextOutsideCards(content: string): boolean {
+  return content.replace(RE_TYPELESS_CARD_PLACEHOLDER, '').trim().length > 0
+}
+
+const shouldCompactStreamingActions = computed(() => {
+  if (!hasCancelableWork.value) return false
+
+  const lastMessage = [...chatStore.messages].reverse().find((message) => message.role === 'assistant')
+  if (!lastMessage || lastMessage.role !== 'assistant') return false
+  if (typeof lastMessage.content !== 'string' || !lastMessage.content.trim()) return false
+
+  const parsed = parseTypelessContentIncremental(
+    lastMessage.content,
+    lastMessage.render_key || lastMessage.id,
+    lastMessage.conversation_id,
+    lastMessage.todo_card_id?.trim()
+  )
+
+  if (!parsed || parsed.cards.length === 0) return false
+  return !hasVisibleTextOutsideCards(parsed.text)
 })
 
 async function fetchAgentTasks() {
@@ -348,7 +374,15 @@ const lastAssistantMessageId = computed(() => {
 
 const streamingMessageId = computed(() => {
   if (!chatStore.streaming) return null
-  return chatStore.messages[chatStore.messages.length - 1]?.id ?? null
+  for (let i = chatStore.messages.length - 1; i >= 0; i--) {
+    const msg = chatStore.messages[i]
+    if (msg?.role === 'assistant' && msg.id.startsWith('streaming-')) return msg.id
+  }
+  for (let i = chatStore.messages.length - 1; i >= 0; i--) {
+    const msg = chatStore.messages[i]
+    if (msg?.role === 'assistant') return msg.id
+  }
+  return null
 })
 
 type MessageMemoSource = {
@@ -511,6 +545,175 @@ const contextMenuSelectedText = ref('')
 
 // Provider config dialog state
 const showProviderConfigDialog = ref(false)
+const providerConfigDialogMode = ref<'unconfigured' | 'unavailable'>('unconfigured')
+const providerConfigDialogHasDraft = ref(false)
+
+function providerAppearsAvailable(status?: string) {
+  return status !== 'error' && status !== 'inactive'
+}
+
+function chatTextWithFallback(key: string, fallback: string) {
+  return te(key) ? t(key) : fallback
+}
+
+function chatTextWithNamedFallback(
+  key: string,
+  fallback: string,
+  named: Record<string, string | number>
+) {
+  return te(key) ? String(t(key, named)) : fallback
+}
+
+function loadActiveTodoPanelCollapsed(): boolean {
+  try {
+    return localStorage.getItem(ACTIVE_TODO_PANEL_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function persistActiveTodoPanelCollapsed(value: boolean) {
+  try {
+    if (value) {
+      localStorage.setItem(ACTIVE_TODO_PANEL_COLLAPSED_KEY, '1')
+      return
+    }
+    localStorage.removeItem(ACTIVE_TODO_PANEL_COLLAPSED_KEY)
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function getChatMessageElementId(messageId: string): string {
+  return `chat-message-${encodeURIComponent(messageId.trim())}`
+}
+
+function providerStatusLabel(status: Provider['status']) {
+  if (status === 'active') return chatTextWithFallback('chat.noProvider.statusActive', 'Active')
+  if (status === 'inactive') return chatTextWithFallback('chat.noProvider.statusInactive', 'Inactive')
+  return chatTextWithFallback('chat.noProvider.statusError', 'Error')
+}
+
+function summarizeProviderIssue(error?: string, status?: Provider['status']) {
+  const normalized = String(error || '').trim()
+  if (!normalized) {
+    if (status === 'inactive') {
+      return chatTextWithFallback(
+        'chat.noProvider.issueInactive',
+        'Check whether the API key, OAuth account, or allowed models are ready.'
+      )
+    }
+    return chatTextWithFallback(
+      'chat.noProvider.issueGeneric',
+      'Open provider settings to review the latest health status.'
+    )
+  }
+
+  if (normalized.startsWith('auth_error:')) {
+    return chatTextWithFallback(
+      'chat.noProvider.issueAuth',
+      'Authentication failed. Recheck the API key or OAuth connection.'
+    )
+  }
+  if (normalized === 'network_error' || normalized === 'connection_error') {
+    return chatTextWithFallback(
+      'chat.noProvider.issueNetwork',
+      'Network connection failed. Verify the endpoint and local network.'
+    )
+  }
+  if (normalized === 'timeout_error') {
+    return chatTextWithFallback(
+      'chat.noProvider.issueTimeout',
+      'The provider timed out. Try again or switch to another route.'
+    )
+  }
+  if (normalized === 'certificate_error') {
+    return chatTextWithFallback(
+      'chat.noProvider.issueCertificate',
+      'TLS certificate verification failed for this provider.'
+    )
+  }
+  if (normalized === 'endpoint_not_found' || normalized.startsWith('base_url_not_configured')) {
+    return chatTextWithFallback(
+      'chat.noProvider.issueEndpoint',
+      'The provider endpoint is not configured correctly.'
+    )
+  }
+  if (normalized.startsWith('unexpected_status:')) {
+    const code = normalized.split(':')[1] || ''
+    return chatTextWithFallback(
+      'chat.noProvider.issueUnexpectedStatus',
+      `The provider returned an unexpected status${code ? ` (${code})` : ''}.`
+    )
+  }
+  return normalized
+}
+
+function buildProviderGuidanceCopy(mode: 'unconfigured' | 'unavailable') {
+  if (mode === 'unavailable') {
+    return {
+      eyebrow: chatTextWithFallback('chat.noProvider.unavailableEyebrow', 'Temporarily unavailable'),
+      title: chatTextWithFallback(
+        'chat.noProvider.unavailableTitle',
+        'No AI provider is available right now'
+      ),
+      description: chatTextWithFallback(
+        'chat.noProvider.unavailableDescription',
+        'Your configured providers are currently unavailable. Check their connection, API key, or model status in Settings and then try again.'
+      ),
+      primaryAction: chatTextWithFallback('chat.noProvider.review', 'Review Providers'),
+      secondaryAction: chatTextWithFallback('chat.noProvider.dismiss', 'Not now'),
+      iconWrapperClass: 'bg-amber-100 dark:bg-amber-900/30',
+      iconClass: 'text-amber-600 dark:text-amber-400',
+    }
+  }
+
+  return {
+    eyebrow: chatTextWithFallback('chat.noProvider.unconfiguredEyebrow', 'One quick step'),
+    title: chatTextWithFallback(
+      'chat.noProvider.unconfiguredTitle',
+      'Set up an AI provider to start chatting'
+    ),
+    description: chatTextWithFallback(
+      'chat.noProvider.unconfiguredDescription',
+      'You do not have an available LLM provider yet. Add one in Settings and you can continue right where you left off.'
+    ),
+    primaryAction: chatTextWithFallback('chat.noProvider.configure', 'Configure Provider'),
+    secondaryAction: chatTextWithFallback('chat.noProvider.dismiss', 'Not now'),
+    iconWrapperClass: 'bg-sky-100 dark:bg-sky-900/30',
+    iconClass: 'text-sky-600 dark:text-sky-300',
+  }
+}
+
+const providerConfigDialogCopy = computed(() => buildProviderGuidanceCopy(providerConfigDialogMode.value))
+const activeTodoPanelCollapsed = ref(loadActiveTodoPanelCollapsed())
+const focusedTodoMessageId = ref<string | null>(null)
+let focusedTodoMessageTimer: ReturnType<typeof setTimeout> | null = null
+const activeTodoSummary = computed(() => findLatestTodoChecklistSummary(chatStore.messages))
+const activeTodoProgressText = computed(() => {
+  const summary = activeTodoSummary.value
+  if (!summary) return ''
+
+  return chatTextWithNamedFallback(
+    'chat.activeTodo.progress',
+    `${summary.completedCount} out of ${summary.totalCount} tasks completed`,
+    {
+      completed: summary.completedCount,
+      total: summary.totalCount,
+    }
+  )
+})
+const activeTodoJumpMessageId = computed(
+  () => activeTodoSummary.value?.focusMessageId || activeTodoSummary.value?.messageId || ''
+)
+const activeTodoPanelToggleTitle = computed(() =>
+  activeTodoPanelCollapsed.value
+    ? chatTextWithFallback('chat.activeTodo.expand', 'Expand todo list')
+    : chatTextWithFallback('chat.activeTodo.collapse', 'Collapse todo list')
+)
+const activeTodoPanelJumpTitle = computed(() =>
+  chatTextWithFallback('chat.activeTodo.jumpToMessage', 'Jump to checklist message')
+)
 
 // Check if Claude Code CLI is enabled (from store, reactive)
 const isClaudeCodeEnabled = computed(() => settingsStore.claudeCodeEnabled)
@@ -521,6 +724,9 @@ const enabledLlmProviders = computed(() =>
 )
 const activeLlmProviders = computed(() =>
   enabledLlmProviders.value.filter((provider) => provider.status === 'active')
+)
+const hasProvisionallyAvailableProviders = computed(() =>
+  enabledLlmProviders.value.some((provider) => providerAppearsAvailable(provider.status))
 )
 const hasConfiguredProviders = computed(() => enabledLlmProviders.value.length > 0)
 const hasActiveProviders = computed(() => activeLlmProviders.value.length > 0)
@@ -545,6 +751,24 @@ const providerStatus = computed(() => {
   // Some providers enabled but not yet checked
   return { status: 'pending', color: 'yellow', message: t('chat.providerPending') }
 })
+
+const providerAttentionMode = computed<'unconfigured' | 'unavailable'>(() =>
+  hasConfiguredProviders.value ? 'unavailable' : 'unconfigured'
+)
+const needsProviderAttention = computed(() => !hasProvisionallyAvailableProviders.value)
+const providerInlineGuidanceCopy = computed(() => buildProviderGuidanceCopy(providerAttentionMode.value))
+const providerAttentionItems = computed(() =>
+  enabledLlmProviders.value.slice(0, 3).map((provider) => ({
+    id: provider.id,
+    name: providerPoolStore.getProviderDisplayName(provider.id),
+    statusLabel: providerStatusLabel(provider.status),
+    status: provider.status,
+    reason: summarizeProviderIssue(provider.last_error, provider.status),
+  }))
+)
+const providerAttentionOverflowCount = computed(() =>
+  Math.max(0, enabledLlmProviders.value.length - providerAttentionItems.value.length)
+)
 
 const showAwaitingConfirmation = computed(
   () =>
@@ -1014,7 +1238,11 @@ async function handleMediaConfirm() {
 // Handle voice transcript from TalkMode - auto send to AI
 async function handleVoiceTranscript(text: string) {
   if (text.trim() && (await ensureLlmProviderConfigured(text))) {
-    await chatStore.sendMessage(text)
+    if (chatStore.streaming) {
+      await chatStore.injectMessage(text)
+    } else {
+      await chatStore.sendMessage(text)
+    }
   }
 }
 
@@ -1376,8 +1604,27 @@ function handleStreamRetry() {
 }
 
 function handleOpenProviderSettings() {
-  showProviderConfigDialog.value = false
+  closeProviderConfigDialog()
   void router.push('/settings?tab=llm')
+}
+
+function closeProviderConfigDialog() {
+  showProviderConfigDialog.value = false
+}
+
+function openProviderConfigDialog(
+  mode: 'unconfigured' | 'unavailable',
+  messageToRestore?: string
+) {
+  providerConfigDialogMode.value = mode
+  providerConfigDialogHasDraft.value = Boolean(messageToRestore?.trim())
+  showProviderConfigDialog.value = true
+  if (providerConfigDialogHasDraft.value && messageToRestore?.trim()) {
+    nextTick(() => {
+      chatInputRef.value?.setInput?.(messageToRestore)
+      chatInputRef.value?.focus?.()
+    })
+  }
 }
 
 async function handleDeleteSelectedMessages() {
@@ -1435,6 +1682,93 @@ async function focusPendingDeepResearchJob() {
   return true
 }
 
+function getMessageIndex(messageId: string): number {
+  const normalizedMessageId = messageId.trim()
+  if (!normalizedMessageId) return -1
+  return chatStore.messages.findIndex(
+    (message) => message.id === normalizedMessageId || message.render_key === normalizedMessageId
+  )
+}
+
+function findMessageElement(messageId: string): HTMLElement | null {
+  const normalizedMessageId = messageId.trim()
+  if (!normalizedMessageId) return null
+  const container = messagesContainer.value
+  if (container) {
+    const localMatch =
+      Array.from(container.querySelectorAll<HTMLElement>('[data-message-id]')).find(
+        (node) => node.dataset.messageId === normalizedMessageId
+      ) || null
+    if (localMatch) return localMatch
+  }
+  return document.getElementById(getChatMessageElementId(normalizedMessageId))
+}
+
+function messageShellClasses(message: MessageMemoSource) {
+  return {
+    'chat-message-shell': true,
+    'is-todo-focused': focusedTodoMessageId.value === message.id,
+  }
+}
+
+function markTodoMessageFocused(messageId: string) {
+  focusedTodoMessageId.value = messageId
+  if (focusedTodoMessageTimer) {
+    clearTimeout(focusedTodoMessageTimer)
+  }
+  focusedTodoMessageTimer = setTimeout(() => {
+    focusedTodoMessageId.value = null
+    focusedTodoMessageTimer = null
+  }, 2200)
+}
+
+function waitForAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve())
+  })
+}
+
+async function focusMessageById(messageId: string): Promise<boolean> {
+  const normalizedMessageId = messageId.trim()
+  if (!normalizedMessageId) return false
+
+  const existingTarget = findMessageElement(normalizedMessageId)
+  if (existingTarget) {
+    existingTarget.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    markTodoMessageFocused(normalizedMessageId)
+    return true
+  }
+
+  const messageIndex = getMessageIndex(normalizedMessageId)
+  if (messageIndex < 0) return false
+
+  if (useVirtualScroll.value && virtualScrollRef.value) {
+    virtualScrollRef.value.scrollToItem(messageIndex, 'smooth')
+  }
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await nextTick()
+    await waitForAnimationFrame()
+    const target = findMessageElement(normalizedMessageId)
+    if (!target) continue
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    markTodoMessageFocused(normalizedMessageId)
+    return true
+  }
+
+  return false
+}
+
+function toggleActiveTodoPanel() {
+  activeTodoPanelCollapsed.value = !activeTodoPanelCollapsed.value
+}
+
+function handleActiveTodoPanelJump() {
+  const messageId = activeTodoJumpMessageId.value
+  if (!messageId) return
+  void focusMessageById(messageId)
+}
+
 async function handleOpenDeepResearchJob(job: DeepResearchJobSummary) {
   if (!job.conversation_id) return
   if (isMobile.value) {
@@ -1457,6 +1791,26 @@ watch(
   { flush: 'post' }
 )
 
+watch(activeTodoPanelCollapsed, (value) => {
+  persistActiveTodoPanelCollapsed(value)
+})
+
+watch(
+  () => activeTodoSummary.value?.messageId ?? '',
+  (messageId, previousMessageId) => {
+    if (messageId && messageId !== previousMessageId) {
+      activeTodoPanelCollapsed.value = false
+    }
+  }
+)
+
+watch(
+  () => chatStore.currentConversationId,
+  () => {
+    focusedTodoMessageId.value = null
+  }
+)
+
 async function ensureLlmProviderConfigured(messageToRestore?: string) {
   if (providerPoolStore.providers.length === 0) {
     try {
@@ -1466,20 +1820,25 @@ async function ensureLlmProviderConfigured(messageToRestore?: string) {
     }
   }
 
-  const hasLlmProviders = providerPoolStore.enabledProviders.some(
+  const enabledLlmProviders = providerPoolStore.enabledProviders.filter(
     (provider) => provider.type !== 'media'
   )
-  if (hasLlmProviders) {
+  const hasActiveLlmProvider = enabledLlmProviders.some((provider) => provider.status === 'active')
+  if (hasActiveLlmProvider) {
     return true
   }
 
-  showProviderConfigDialog.value = true
-  if (messageToRestore?.trim()) {
-    nextTick(() => {
-      chatInputRef.value?.setInput?.(messageToRestore)
-      chatInputRef.value?.focus?.()
-    })
+  const hasProvisionallyAvailableProvider = enabledLlmProviders.some((provider) =>
+    providerAppearsAvailable(provider.status)
+  )
+  if (hasProvisionallyAvailableProvider) {
+    return true
   }
+
+  openProviderConfigDialog(
+    enabledLlmProviders.length === 0 ? 'unconfigured' : 'unavailable',
+    messageToRestore
+  )
   return false
 }
 
@@ -1564,6 +1923,10 @@ onUnmounted(() => {
     clearTimeout(virtualLoadMoreRetryTimer)
     virtualLoadMoreRetryTimer = null
   }
+  if (focusedTodoMessageTimer) {
+    clearTimeout(focusedTodoMessageTimer)
+    focusedTodoMessageTimer = null
+  }
   clearVirtualItemObservers()
   if (autoScrollRafId !== null) {
     window.cancelAnimationFrame(autoScrollRafId)
@@ -1616,6 +1979,28 @@ onUnmounted(() => {
             <h1 class="chat-page-title text-gray-900 dark:text-white">
               {{ t('nav.chat') }}
             </h1>
+          </div>
+          <div v-if="isNarrowScreen" class="chat-page-actions">
+            <button
+              class="topbar-icon-btn text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors cursor-pointer"
+              :title="t('nav.expandSidebar')"
+              @click="openAppSidebar"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.9"
+                  d="M4.5 6.75A2.25 2.25 0 016.75 4.5h10.5a2.25 2.25 0 012.25 2.25v10.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 17.25V6.75zm4.5-2.25v15"
+                />
+              </svg>
+            </button>
           </div>
         </div>
       </header>
@@ -1885,7 +2270,7 @@ onUnmounted(() => {
                 </div>
 
                 <router-link
-                  v-if="providerStatus.status === 'none'"
+                  v-if="needsProviderAttention"
                   to="/settings?tab=llm"
                   class="routing-manage-row w-full px-4 py-3 flex items-center justify-between text-sm text-gray-900 dark:text-slate-100 transition-colors"
                   @click="showRoutingMenu = false"
@@ -1899,7 +2284,7 @@ onUnmounted(() => {
                         d="M11 5h2m-6 0h2m6 0h2m-5 0v2m0 10v2m0-2h2m-2 0h-2m6-10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2h10z"
                       />
                     </svg>
-                    {{ t('chat.addProvider') }}
+                    {{ providerInlineGuidanceCopy.primaryAction }}
                   </span>
                   <span class="text-xs text-gray-600 dark:text-slate-400">{{
                     t('chat.manageProviders')
@@ -2130,12 +2515,12 @@ onUnmounted(() => {
                   </div>
                   <div class="p-4 space-y-2">
                     <router-link
-                      v-if="providerStatus.status === 'none'"
+                      v-if="needsProviderAttention"
                       to="/settings?tab=llm"
                       class="w-full px-4 py-3 flex items-center justify-between rounded-xl text-sm text-gray-800 dark:text-slate-100 border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800"
                       @click="showRoutingMenu = false"
                     >
-                      <span>{{ t('chat.addProvider') }}</span>
+                      <span>{{ providerInlineGuidanceCopy.primaryAction }}</span>
                       <span class="text-xs text-gray-600 dark:text-slate-300">{{
                         t('chat.manageProviders')
                       }}</span>
@@ -2711,8 +3096,114 @@ onUnmounted(() => {
                   </p>
                 </div>
 
+                <div
+                  v-if="needsProviderAttention"
+                  data-testid="chat-provider-guidance-card"
+                  class="w-full max-w-xl mb-8 rounded-3xl border border-slate-200 bg-white/92 p-5 text-left shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/78"
+                >
+                  <div class="flex items-start gap-4">
+                    <div
+                      class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl"
+                      :class="providerInlineGuidanceCopy.iconWrapperClass"
+                    >
+                      <svg
+                        class="h-6 w-6"
+                        :class="providerInlineGuidanceCopy.iconClass"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <p class="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                        {{ providerInlineGuidanceCopy.eyebrow }}
+                      </p>
+                      <h4 class="text-base font-semibold text-slate-900 dark:text-white">
+                        {{ providerInlineGuidanceCopy.title }}
+                      </h4>
+                      <p class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                        {{ providerInlineGuidanceCopy.description }}
+                      </p>
+                      <div
+                        v-if="providerAttentionMode === 'unavailable' && providerAttentionItems.length > 0"
+                        class="mt-4 rounded-2xl border border-slate-200 bg-slate-50/90 p-3 dark:border-slate-700 dark:bg-slate-950/50"
+                      >
+                        <div
+                          class="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500"
+                        >
+                          {{
+                            chatTextWithFallback(
+                              'chat.noProvider.providerSummary',
+                              'Configured providers needing attention'
+                            )
+                          }}
+                        </div>
+                        <div class="space-y-2">
+                          <div
+                            v-for="item in providerAttentionItems"
+                            :key="item.id"
+                            class="rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900/70"
+                          >
+                            <div class="flex items-center justify-between gap-3">
+                              <div class="min-w-0 text-sm font-medium text-slate-900 dark:text-white">
+                                {{ item.name }}
+                              </div>
+                              <span
+                                class="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
+                                :class="
+                                  item.status === 'error'
+                                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200'
+                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+                                "
+                              >
+                                {{ item.statusLabel }}
+                              </span>
+                            </div>
+                            <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                              {{ item.reason }}
+                            </p>
+                          </div>
+                        </div>
+                        <p
+                          v-if="providerAttentionOverflowCount > 0"
+                          class="mt-2 text-xs text-slate-500 dark:text-slate-400"
+                        >
+                          {{
+                            chatTextWithFallback(
+                              'chat.noProvider.moreProviders',
+                              '{count} more providers also need attention.'
+                            ).replace('{count}', String(providerAttentionOverflowCount))
+                          }}
+                        </p>
+                      </div>
+                      <div class="mt-4 flex flex-wrap gap-3">
+                        <button
+                          data-testid="chat-provider-guidance-action"
+                          class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+                          @click="handleOpenProviderSettings"
+                        >
+                          {{ providerInlineGuidanceCopy.primaryAction }}
+                        </button>
+                        <button
+                          class="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                          @click="showRoutingMenu = true"
+                        >
+                          {{ t('chat.routingMode.title') }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Preset Questions -->
-                <PresetQuestions @select="handlePresetQuestionSelect" />
+                <PresetQuestions v-if="!needsProviderAttention" @select="handlePresetQuestionSelect" />
 
                 <div
                   v-if="!isMobile"
@@ -2757,7 +3248,8 @@ onUnmounted(() => {
                   :items="chatStore.messages"
                   :estimated-item-height="120"
                   :overscan="5"
-                  class="h-full pb-4"
+                  :scroll-container="messagesContainer"
+                  class="pb-4"
                   @visible-range-change="handleVisibleRangeChange"
                 >
                   <template #default="{ item: message, updateHeight }">
@@ -2765,6 +3257,9 @@ onUnmounted(() => {
                       v-if="message"
                       :key="getMessageRenderKey(message)"
                       :ref="bindVirtualItemHeight(message, updateHeight)"
+                      :id="getChatMessageElementId(message.id)"
+                      :data-message-id="message.id"
+                      :class="messageShellClasses(message)"
                     >
                       <ChatMessage
                         v-memo="messageMemoDeps(message)"
@@ -2781,7 +3276,13 @@ onUnmounted(() => {
 
                 <!-- Regular rendering for small lists -->
                 <div v-else class="pb-4">
-                  <div v-for="message in chatStore.messages" :key="getMessageRenderKey(message)">
+                  <div
+                    v-for="message in chatStore.messages"
+                    :key="getMessageRenderKey(message)"
+                    :id="getChatMessageElementId(message.id)"
+                    :data-message-id="message.id"
+                    :class="messageShellClasses(message)"
+                  >
                     <ChatMessage
                       v-memo="messageMemoDeps(message)"
                       :message="message"
@@ -2966,7 +3467,8 @@ onUnmounted(() => {
                 <!-- Streaming action buttons -->
                 <div
                   v-if="chatStore.messages.length > 0 && !chatStore.isMultiSelectMode"
-                  class="flex justify-center gap-2 py-4"
+                  class="chat-streaming-actions flex justify-center gap-2 pb-4"
+                  :class="shouldCompactStreamingActions ? 'pt-1' : 'pt-4'"
                 >
                   <!-- Stop button (shown during streaming or async tasks) -->
                   <button
@@ -3227,6 +3729,91 @@ onUnmounted(() => {
                   @switch-category="mediaGen.switchCategory($event)"
                 />
               </div>
+              <div
+                v-if="activeTodoSummary"
+                class="active-todo-panel-wrap w-full max-w-3xl mx-auto px-2.5 sm:px-3.5"
+                data-testid="active-todo-panel"
+              >
+                <section
+                  class="active-todo-panel"
+                  :class="{
+                    'is-complete': activeTodoSummary.allCompleted,
+                    'is-expanded': !activeTodoPanelCollapsed,
+                  }"
+                  aria-live="polite"
+                >
+                  <div class="active-todo-panel__header">
+                    <button
+                      type="button"
+                      class="active-todo-panel__summary active-todo-panel__summary--interactive"
+                      :title="activeTodoPanelJumpTitle"
+                      data-testid="active-todo-panel-jump"
+                      @click="handleActiveTodoPanelJump"
+                    >
+                      <span class="active-todo-panel__icon" aria-hidden="true">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.8"
+                            d="M8.75 6.75h10.5M8.75 12h10.5m-10.5 5.25h10.5M4.75 6.75h.01M4.75 12h.01M4.75 17.25h.01"
+                          />
+                        </svg>
+                      </span>
+                      <span class="active-todo-panel__progress">{{ activeTodoProgressText }}</span>
+                    </button>
+                    <div class="active-todo-panel__header-actions">
+                      <button
+                        type="button"
+                        class="active-todo-panel__icon-btn"
+                        :title="activeTodoPanelToggleTitle"
+                        data-testid="active-todo-panel-toggle"
+                        @click="toggleActiveTodoPanel"
+                      >
+                        <svg
+                          class="active-todo-panel__toggle-icon"
+                          :class="{ 'is-collapsed': activeTodoPanelCollapsed }"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 9l6 6 6-6"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <ol v-if="!activeTodoPanelCollapsed" class="active-todo-panel__list">
+                    <li
+                      v-for="(item, index) in activeTodoSummary.items"
+                      :key="`${activeTodoSummary.messageId}-${index}`"
+                      class="active-todo-panel__item"
+                      :class="{ 'is-checked': item.checked }"
+                    >
+                      <span
+                        class="active-todo-panel__check"
+                        :class="{ 'is-checked': item.checked }"
+                        aria-hidden="true"
+                      >
+                        <svg v-if="item.checked" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2.4"
+                            d="M5 12.5l4.2 4.2L19 7.5"
+                          />
+                        </svg>
+                      </span>
+                      <span class="active-todo-panel__index">{{ index + 1 }}.</span>
+                      <span class="active-todo-panel__text">{{ item.text }}</span>
+                    </li>
+                  </ol>
+                </section>
+              </div>
               <ChatInput
                 ref="chatInputRef"
                 :disabled="chatStore.sending && !chatStore.isPreTTFT"
@@ -3267,18 +3854,26 @@ onUnmounted(() => {
       <Transition name="fade">
         <div
           v-if="showProviderConfigDialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="provider-config-dialog-title"
           class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          @click.self="showProviderConfigDialog = false"
+          @click.self="closeProviderConfigDialog"
         >
           <div
-            class="w-full max-w-sm mx-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden"
+            class="w-full max-w-md mx-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden"
           >
             <div class="p-6 text-center">
+              <p class="mb-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-gray-400 dark:text-gray-500">
+                {{ providerConfigDialogCopy.eyebrow }}
+              </p>
               <div
-                class="w-14 h-14 mx-auto mb-4 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center"
+                class="w-14 h-14 mx-auto mb-4 rounded-full flex items-center justify-center"
+                :class="providerConfigDialogCopy.iconWrapperClass"
               >
                 <svg
-                  class="w-7 h-7 text-amber-600 dark:text-amber-400"
+                  class="w-7 h-7"
+                  :class="providerConfigDialogCopy.iconClass"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -3291,30 +3886,38 @@ onUnmounted(() => {
                   />
                 </svg>
               </div>
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                {{ t('chat.noProvider.title') }}
+              <h3
+                id="provider-config-dialog-title"
+                class="text-lg font-semibold text-gray-900 dark:text-white mb-2"
+              >
+                {{ providerConfigDialogCopy.title }}
               </h3>
-              <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                {{ t('chat.noProvider.description') }}
+              <p class="text-sm leading-6 text-gray-500 dark:text-gray-400 mb-5">
+                {{ providerConfigDialogCopy.description }}
               </p>
               <p
-                v-if="te('chat.noProvider.draftSaved')"
-                class="text-xs text-gray-500 dark:text-gray-400 mb-6"
+                v-if="providerConfigDialogHasDraft"
+                class="mb-6 rounded-xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300"
               >
-                {{ t('chat.noProvider.draftSaved') }}
+                {{
+                  chatTextWithFallback(
+                    'chat.noProvider.draftSaved',
+                    'Your draft has been kept locally so you can continue after setup.'
+                  )
+                }}
               </p>
               <div class="flex gap-3">
                 <button
                   class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                  @click="showProviderConfigDialog = false"
+                  @click="closeProviderConfigDialog"
                 >
-                  {{ t('common.cancel') }}
+                  {{ providerConfigDialogCopy.secondaryAction }}
                 </button>
                 <button
                   class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
                   @click="handleOpenProviderSettings"
                 >
-                  {{ t('chat.noProvider.configure') }}
+                  {{ providerConfigDialogCopy.primaryAction }}
                 </button>
               </div>
             </div>
@@ -3339,6 +3942,12 @@ onUnmounted(() => {
   --chat-pane-pad-x: 1rem;
   --chat-pane-pad-y: 0.96rem;
   --chat-thread-pad-x: 0.82rem;
+  --chat-header-row-height: 3.22rem;
+  --chat-header-row-pad-y: 0.44rem;
+  --chat-header-control-size: 1.96rem;
+  --chat-header-row-block-size: calc(
+    var(--chat-header-row-height) + (var(--chat-header-row-pad-y) * 2)
+  );
   --ct-border-soft: rgba(148, 163, 184, 0.3);
   --ct-border-strong: rgba(59, 130, 246, 0.45);
   --ct-chip-bg: rgba(255, 255, 255, 0.84);
@@ -3464,6 +4073,12 @@ header,
   min-width: 0;
 }
 
+.chat-page-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
 .chat-page-title {
   font-size: clamp(0.96rem, 0.92vw, 1.12rem);
   line-height: 1.08;
@@ -3482,9 +4097,10 @@ header,
 }
 
 .chat-thread-header {
-  height: 3.85rem;
-  min-height: 3.85rem;
-  padding: 0.72rem var(--chat-thread-pad-x);
+  box-sizing: border-box;
+  height: var(--chat-header-row-block-size);
+  min-height: var(--chat-header-row-block-size);
+  padding: var(--chat-header-row-pad-y) var(--chat-thread-pad-x);
   border: none;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: inset 0 -1px 0 rgba(226, 232, 240, 0.92);
@@ -3507,7 +4123,7 @@ header,
 
 .chat-thread-title {
   font-size: clamp(0.98rem, 1.02vw, 1.2rem);
-  line-height: 1.14;
+  line-height: 1.08;
   font-weight: 720;
   letter-spacing: -0.028em;
 }
@@ -3564,17 +4180,17 @@ header,
 .chat-thread-actions {
   flex-wrap: nowrap;
   justify-content: flex-end;
-  gap: 0.7rem;
+  gap: 0.62rem;
 }
 
 .chat-thread-detail-btn {
-  min-height: 2.1rem;
-  padding: 0 0.88rem;
+  min-height: var(--chat-header-control-size);
+  padding: 0 0.8rem;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   background: rgba(255, 255, 255, 0.88);
   color: rgb(71, 85, 105);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 650;
   letter-spacing: 0.01em;
 }
@@ -3739,13 +4355,13 @@ header,
 }
 
 .chat-mode-pill {
-  min-height: 2.1rem;
-  padding-inline: 0.82rem;
+  min-height: var(--chat-header-control-size);
+  padding-inline: 0.76rem;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(248, 250, 252, 0.7);
   color: rgb(71, 85, 105);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 650;
   letter-spacing: 0.01em;
 }
@@ -3981,6 +4597,209 @@ header,
   background: transparent;
 }
 
+.active-todo-panel-wrap {
+  --active-todo-panel-collapsed-height: 2.52rem;
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  min-width: 0;
+  height: var(--active-todo-panel-collapsed-height);
+  margin-bottom: -0.42rem;
+}
+
+.active-todo-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  border: 1px solid rgba(214, 219, 227, 0.96);
+  border-radius: 1.42rem 1.42rem 1rem 1rem;
+  background: rgba(248, 250, 252, 0.97);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 18px 38px -30px rgba(15, 23, 42, 0.22);
+  backdrop-filter: blur(18px);
+}
+
+.active-todo-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.36rem;
+  min-height: var(--active-todo-panel-collapsed-height);
+  padding: 0.24rem 0.58rem 0.22rem;
+}
+
+.active-todo-panel.is-expanded .active-todo-panel__header {
+  border-bottom: 1px solid rgba(226, 232, 240, 0.94);
+}
+
+.active-todo-panel__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.36rem;
+  min-width: 0;
+}
+
+.active-todo-panel__summary--interactive {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity 0.16s ease;
+}
+
+.active-todo-panel__summary--interactive:hover {
+  opacity: 0.86;
+}
+
+.active-todo-panel__icon {
+  width: 0.86rem;
+  height: 0.86rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(71, 85, 105, 0.86);
+  flex-shrink: 0;
+}
+
+.active-todo-panel__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.active-todo-panel__progress {
+  color: rgba(30, 41, 59, 0.94);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.active-todo-panel__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.active-todo-panel__icon-btn {
+  width: 1.24rem;
+  height: 1.24rem;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  color: rgba(71, 85, 105, 0.9);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.active-todo-panel__icon-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(148, 163, 184, 0.96);
+  background: rgba(255, 255, 255, 0.98);
+  color: rgba(30, 41, 59, 0.96);
+}
+
+.active-todo-panel__toggle-icon {
+  width: 0.74rem;
+  height: 0.74rem;
+  transition: transform 0.16s ease;
+}
+
+.active-todo-panel__toggle-icon.is-collapsed {
+  transform: rotate(180deg);
+}
+
+.active-todo-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.52rem;
+  max-height: min(9.75rem, 24vh);
+  overflow-y: auto;
+  padding: 0.68rem 0.95rem 0.8rem;
+}
+
+.active-todo-panel__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.56rem;
+  color: rgba(51, 65, 85, 0.95);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.active-todo-panel__item.is-checked {
+  color: rgba(100, 116, 139, 0.94);
+}
+
+.active-todo-panel__check {
+  width: 1.08rem;
+  height: 1.08rem;
+  margin-top: 0.13rem;
+  border-radius: 999px;
+  border: 1.5px solid rgba(148, 163, 184, 0.82);
+  background: rgba(255, 255, 255, 0.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  flex-shrink: 0;
+}
+
+.active-todo-panel__check.is-checked {
+  border-color: rgba(34, 197, 94, 0.78);
+  background: rgba(220, 252, 231, 0.96);
+  color: rgb(22, 101, 52);
+}
+
+.active-todo-panel__check svg {
+  width: 0.78rem;
+  height: 0.78rem;
+}
+
+.active-todo-panel__index {
+  min-width: 1.4rem;
+  font-weight: 600;
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.active-todo-panel__text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-message-shell {
+  position: relative;
+  border-radius: 1.4rem;
+  scroll-margin-block: 7.5rem;
+  transition:
+    background-color 0.24s ease,
+    box-shadow 0.24s ease;
+}
+
+.chat-message-shell.is-todo-focused {
+  background: rgba(239, 246, 255, 0.7);
+  box-shadow:
+    0 0 0 1px rgba(147, 197, 253, 0.42),
+    0 18px 36px -34px rgba(37, 99, 235, 0.42);
+}
+
 .chat-desktop-shell .chat-input-dock {
   padding-bottom: 0;
 }
@@ -4085,6 +4904,70 @@ header,
 :root.dark .chat-input-dock,
 [data-theme='dark'] .chat-input-dock {
   background: transparent;
+}
+
+:root.dark .active-todo-panel,
+[data-theme='dark'] .active-todo-panel {
+  border-color: rgba(71, 85, 105, 0.78);
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow:
+    inset 0 1px 0 rgba(148, 163, 184, 0.08),
+    0 18px 38px -28px rgba(2, 6, 23, 0.82);
+}
+
+:root.dark .active-todo-panel__icon,
+[data-theme='dark'] .active-todo-panel__icon {
+  color: rgba(148, 163, 184, 0.88);
+}
+
+:root.dark .active-todo-panel__progress,
+[data-theme='dark'] .active-todo-panel__progress {
+  color: rgba(226, 232, 240, 0.98);
+}
+
+:root.dark .active-todo-panel__icon-btn,
+[data-theme='dark'] .active-todo-panel__icon-btn {
+  border-color: rgba(71, 85, 105, 0.82);
+  background: rgba(15, 23, 42, 0.88);
+  color: rgba(203, 213, 225, 0.92);
+}
+
+:root.dark .active-todo-panel__icon-btn:hover,
+[data-theme='dark'] .active-todo-panel__icon-btn:hover {
+  border-color: rgba(100, 116, 139, 0.9);
+  background: rgba(30, 41, 59, 0.94);
+  color: rgba(241, 245, 249, 0.98);
+}
+
+:root.dark .active-todo-panel__item,
+[data-theme='dark'] .active-todo-panel__item {
+  color: rgba(226, 232, 240, 0.94);
+}
+
+:root.dark .active-todo-panel__item.is-checked,
+[data-theme='dark'] .active-todo-panel__item.is-checked {
+  color: rgba(148, 163, 184, 0.88);
+}
+
+:root.dark .active-todo-panel__check,
+[data-theme='dark'] .active-todo-panel__check {
+  border-color: rgba(100, 116, 139, 0.9);
+  background: rgba(15, 23, 42, 0.82);
+}
+
+:root.dark .active-todo-panel__check.is-checked,
+[data-theme='dark'] .active-todo-panel__check.is-checked {
+  border-color: rgba(74, 222, 128, 0.42);
+  background: rgba(6, 78, 59, 0.38);
+  color: rgb(110, 231, 183);
+}
+
+:root.dark .chat-message-shell.is-todo-focused,
+[data-theme='dark'] .chat-message-shell.is-todo-focused {
+  background: rgba(8, 47, 73, 0.24);
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.28),
+    0 18px 36px -32px rgba(14, 165, 233, 0.34);
 }
 
 :root.dark .topbar-icon-btn,
@@ -4757,6 +5640,42 @@ header,
   .chat-topbar::after {
     opacity: 0.7;
   }
+
+  .active-todo-panel-wrap {
+    --active-todo-panel-collapsed-height: 2.38rem;
+    margin-bottom: 0.12rem;
+  }
+
+  .active-todo-panel {
+    border-radius: 1.18rem;
+  }
+
+  .active-todo-panel__header {
+    padding: 0.2rem 0.5rem 0.18rem;
+  }
+
+  .active-todo-panel__progress {
+    font-size: 0.72rem;
+  }
+
+  .active-todo-panel__header-actions {
+    gap: 0;
+  }
+
+  .active-todo-panel__icon-btn {
+    width: 1.16rem;
+    height: 1.16rem;
+  }
+
+  .active-todo-panel__list {
+    max-height: min(8rem, 20vh);
+    padding: 0.6rem 0.82rem 0.72rem;
+  }
+
+  .active-todo-panel__item {
+    font-size: 0.9rem;
+    gap: 0.48rem;
+  }
 }
 
 @keyframes topbar-sheen {
@@ -4845,6 +5764,10 @@ header,
   margin-top: -0.85rem;
   background: transparent;
   padding-bottom: calc(max(env(safe-area-inset-bottom), 0px) + 0.75rem);
+}
+
+.mobile-chat .active-todo-panel-wrap {
+  margin-bottom: 0.18rem;
 }
 
 .chat-topbar-mobile {

@@ -197,6 +197,11 @@ const verificationProbeEntries = computed(() => {
   return entries
 })
 
+const supportsProviderVerification = computed(() => {
+  const provider = displayProvider.value
+  return !!provider && provider.type !== 'trial' && provider.type !== 'media'
+})
+
 let providerSelectionSeq = 0
 
 // Refresh models when provider changes
@@ -483,6 +488,7 @@ async function refreshModels(providerId: string) {
 async function runProviderVerification(apply = false) {
   const provider = displayProvider.value
   if (!provider) return
+  if (!supportsProviderVerification.value) return
   if (!provider.base_url) {
     notification.error(t('providerPool.verifyFailed'), t('providerPool.baseUrlRequired'), {
       titleKey: 'providerPool.verifyFailed',
@@ -2061,7 +2067,7 @@ onMounted(() => {
 
           <!-- Provider Verification & Recommendation -->
           <div
-            v-if="displayProvider!.type !== 'trial'"
+            v-if="supportsProviderVerification"
             class="mb-4 p-3 bg-gray-50 dark:bg-slate-900/30 rounded-lg border border-gray-100 dark:border-slate-700/50"
           >
             <div class="flex items-start justify-between gap-2 mb-2">

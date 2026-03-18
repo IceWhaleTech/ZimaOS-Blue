@@ -15,9 +15,10 @@ No external dependencies required. Uses built-in web search capability.
 
 | User Intent | Action |
 |-------------|--------|
-| Find relevant links/sources quickly | `blue web_search query=...` |
+| Need relevant links/sources quickly and do not yet have the right URL | `blue web_search query=...` |
 | Need official docs/reference pages | `blue web_search` with precise query terms |
-| Need page interaction/content extraction | Search first, then switch to `browser` |
+| Already have a concrete public URL and only need page content | Prefer `web_fetch` or `web_read`, not `web_search` |
+| Need page interaction/login/JS rendering | Search first, then switch to `browser` |
 
 ---
 
@@ -49,5 +50,5 @@ Parameters:
 
 ## Notes
 
-- `web_search` returns result listings only; it does not open pages.
-- Use `browser` to read or interact with a chosen URL.
+- `web_search` is the discovery step when you do not yet have the right URL.
+- After choosing a URL, prefer `web_fetch` for quick public reads, `web_read` for normalized content reads, and `browser` as the final fallback.

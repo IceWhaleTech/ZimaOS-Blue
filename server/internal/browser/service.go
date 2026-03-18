@@ -797,6 +797,22 @@ func (s *RodService) Act(ctx context.Context, req *ActRequest) (*ActResponse, er
 			return nil, err
 		}
 
+	case "upload":
+		el, err := page.Element(req.Selector)
+		if err != nil {
+			return nil, ErrElementNotFound
+		}
+		files := append([]string(nil), req.Files...)
+		if len(files) == 0 && req.Value != "" {
+			files = []string{req.Value}
+		}
+		if len(files) == 0 {
+			return nil, ErrInvalidAction
+		}
+		if err := el.SetFiles(files); err != nil {
+			return nil, err
+		}
+
 	case "wait":
 		if req.Duration > 0 {
 			time.Sleep(time.Duration(req.Duration) * time.Millisecond)
@@ -950,6 +966,16 @@ func (s *RodService) executeStep(ctx context.Context, page *rod.Page, step *Auto
 		}
 		return nil
 
+	case ActionUpload:
+		el, err := page.Element(step.Selector)
+		if err != nil {
+			return ErrElementNotFound
+		}
+		if step.Value == "" {
+			return ErrInvalidAction
+		}
+		return el.SetFiles([]string{step.Value})
+
 	default:
 		return ErrInvalidAction
 	}
@@ -1013,6 +1039,57 @@ func (s *RodService) getTab(targetID string) (*tabInfo, error) {
 		}
 	}
 	return nil, ErrTabNotFound
+}
+
+// ElementExists reports whether the given selector matches in the current tab.
+func (s *RodService) ElementExists(ctx context.Context, targetID, selector string) (bool, error) {
+	_ = ctx
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return false, err
+	}
+	timeout := GetTimeout(0, s.config)
+	_, err = tab.page.Timeout(timeout).Element(selector)
+	if err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+// ExtractFirstFromTab returns the first matching attribute or text content from the current tab.
+func (s *RodService) ExtractFirstFromTab(ctx context.Context, targetID, selector, attribute string) (string, error) {
+	_ = ctx
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return "", err
+	}
+	timeout := GetTimeout(0, s.config)
+	el, err := tab.page.Timeout(timeout).Element(selector)
+	if err != nil {
+		return "", err
+	}
+	if attribute != "" {
+		attr, err := el.Attribute(attribute)
+		if err != nil || attr == nil {
+			return "", err
+		}
+		return *attr, nil
+	}
+	return el.Text()
+}
+
+// PageInfo returns the current URL and title for a tab.
+func (s *RodService) PageInfo(ctx context.Context, targetID string) (string, string, error) {
+	_ = ctx
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return "", "", err
+	}
+	info, err := tab.page.Info()
+	if err != nil {
+		return "", "", err
+	}
+	return info.URL, info.Title, nil
 }
 
 // CookieHeader returns cookies applicable to the target URL from the tab's browser context.

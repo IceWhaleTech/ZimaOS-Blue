@@ -169,6 +169,72 @@ func TestHandlerTree(t *testing.T) {
 	}
 }
 
+func TestHandlerTreePreservesDirectorySubtreeOrder(t *testing.T) {
+	workspaceDir := t.TempDir()
+	mgr := NewManager(workspaceDir)
+	if err := mgr.EnsureWorkspace(); err != nil {
+		t.Fatalf("EnsureWorkspace: %v", err)
+	}
+
+	siblingDir := filepath.Join(workspaceDir, "phone_specs_2026")
+	if err := os.MkdirAll(siblingDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(siblingDir, "Redmi_Note_15.md"), []byte("child"), 0o644); err != nil {
+		t.Fatalf("WriteFile child: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceDir, "phone_specs_2026.md"), []byte("sibling"), 0o644); err != nil {
+		t.Fatalf("WriteFile sibling: %v", err)
+	}
+
+	h := NewHandler(mgr)
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/workspace"))
+
+	req := httptest.NewRequest(http.MethodGet, "/workspace/tree?max_depth=4", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var got struct {
+		Entries []struct {
+			Path string `json:"path"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	dirIndex := -1
+	childIndex := -1
+	siblingFileIndex := -1
+	for idx, entry := range got.Entries {
+		switch entry.Path {
+		case "phone_specs_2026":
+			dirIndex = idx
+		case "phone_specs_2026/Redmi_Note_15.md":
+			childIndex = idx
+		case "phone_specs_2026.md":
+			siblingFileIndex = idx
+		}
+	}
+
+	if dirIndex == -1 || childIndex == -1 || siblingFileIndex == -1 {
+		t.Fatalf("expected tree entries for dir, child, and sibling file; got %+v", got.Entries)
+	}
+	if !(dirIndex < childIndex && childIndex < siblingFileIndex) {
+		t.Fatalf(
+			"expected directory subtree to remain contiguous, got dir=%d child=%d sibling=%d",
+			dirIndex,
+			childIndex,
+			siblingFileIndex,
+		)
+	}
+}
+
 func TestHandlerTreeAllowsWhitelistRoot(t *testing.T) {
 	workspaceDir := t.TempDir()
 	extraRoot := t.TempDir()

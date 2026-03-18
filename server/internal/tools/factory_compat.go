@@ -71,7 +71,7 @@ func RegisterFactoryToolDefinitions(registry *Registry) {
 
 func factoryToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
-		factoryToolDefinition("browser", "Automate browser actions and page interactions."),
+		factoryToolDefinition("browser", "Final web fallback for login, JS-heavy pages, and live page interaction."),
 		factoryToolDefinition("canvas", "Create or update canvas-style structured artifacts."),
 		factoryToolDefinition("nodes", "Manage node/graph-style workflow structures."),
 		factoryToolDefinition("cron", "Create and manage scheduled jobs."),
@@ -89,9 +89,9 @@ func factoryToolDefinitions() []ToolDefinition {
 		factoryToolDefinition("memory_get", "Read a memory entry by ID or path."),
 		factoryToolDefinition("memory_write", "Write a new memory entry."),
 		factoryToolDefinition("memory_forget", "Delete a memory entry by ID."),
-		factoryToolDefinition("web_search", "Search the web for up-to-date information."),
-		factoryToolDefinition("web_fetch", "Fetch and parse a web page by URL."),
-		factoryToolDefinition("web_read", "Read a web page and return normalized main content."),
+		factoryToolDefinition("web_search", "Discover links, sources, and current information when you do not yet have the URL."),
+		factoryToolDefinition("web_fetch", "Quick lightweight HTTP read for a known public URL."),
+		factoryToolDefinition("web_read", "Normalized content read for a known URL, before falling back to browser."),
 		factoryToolDefinition("web_extract", "Extract structured fields from webpage HTML or a URL."),
 		factoryToolDefinition("web_crawl", "Crawl seed URLs with limits and checkpoints."),
 		factoryToolDefinition("image", "Analyze or process image inputs."),

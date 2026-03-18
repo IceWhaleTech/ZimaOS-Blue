@@ -201,7 +201,7 @@ watch(searchQuery, (query) => {
           />
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            class="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -516,6 +516,10 @@ watch(searchQuery, (query) => {
   --cl-border-strong: rgba(59, 130, 246, 0.34);
   --cl-header-px: 0.82rem;
   --cl-header-py: var(--chat-pane-pad-y, 0.96rem);
+  --cl-header-row-height: var(--chat-header-row-height, 3.85rem);
+  --cl-header-row-pad-y: var(--chat-header-row-pad-y, 0.72rem);
+  --cl-header-row-block-size: var(--chat-header-row-block-size, 5.29rem);
+  --cl-header-control-size: var(--chat-header-control-size, 1.96rem);
   --cl-item-px: 0.82rem;
   --cl-item-py: 1rem;
   --cl-side-width: 3.75rem;
@@ -543,7 +547,6 @@ watch(searchQuery, (query) => {
   position: sticky;
   top: 0;
   z-index: 10;
-  border-bottom: 1px solid var(--cl-border);
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -554,13 +557,13 @@ watch(searchQuery, (query) => {
   align-items: center;
   justify-content: space-between;
   gap: 0.7rem;
-  min-height: 3.75rem;
-  padding: calc(max(env(safe-area-inset-top), 0px) + 0.85rem) var(--cl-header-px) 0.9rem;
+  min-height: 3.35rem;
+  padding: calc(max(env(safe-area-inset-top), 0px) + 0.72rem) var(--cl-header-px) 0.72rem;
 }
 
 .list-title {
-  font-size: clamp(1.72rem, 6.2vw, 2.16rem);
-  line-height: 0.98;
+  font-size: clamp(1.48rem, 5.7vw, 1.9rem);
+  line-height: 0.94;
   font-weight: 700;
   letter-spacing: -0.045em;
   color: rgb(15, 23, 42);
@@ -577,11 +580,11 @@ watch(searchQuery, (query) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.3rem;
+  height: 2.3rem;
   flex-shrink: 0;
   border: 1px solid rgba(226, 232, 240, 0.92);
-  border-radius: 0.85rem;
+  border-radius: 0.78rem;
   background: rgba(255, 255, 255, 0.94);
   color: rgb(100, 116, 139);
   transition:
@@ -599,12 +602,15 @@ watch(searchQuery, (query) => {
 }
 
 .search-row {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  min-height: 3.85rem;
-  padding: 0.72rem var(--cl-header-px);
+  gap: 0.54rem;
+  height: var(--cl-header-row-block-size);
+  min-height: var(--cl-header-row-block-size);
+  padding: var(--cl-header-row-pad-y) var(--cl-header-px);
   border-top: none;
+  box-shadow: inset 0 -1px 0 var(--cl-border);
 }
 
 .conversation-list-mobile .search-row {
@@ -631,13 +637,13 @@ watch(searchQuery, (query) => {
   border-radius: inherit;
   background: transparent;
   box-shadow: none;
-  min-height: 2.3rem;
+  min-height: var(--cl-header-control-size);
   outline: none;
   appearance: none;
   -webkit-appearance: none;
-  padding: 0.64rem 2.15rem 0.64rem 2.45rem;
-  font-size: 0.88rem;
-  line-height: 1.2;
+  padding: 0.46rem 1.92rem 0.46rem 2.18rem;
+  font-size: 0.82rem;
+  line-height: 1.15;
 }
 
 .search-input:focus,
@@ -662,8 +668,8 @@ watch(searchQuery, (query) => {
 }
 
 .create-btn-inline {
-  width: 2.3rem;
-  height: 2.3rem;
+  width: var(--cl-header-control-size);
+  height: var(--cl-header-control-size);
   flex-shrink: 0;
 }
 

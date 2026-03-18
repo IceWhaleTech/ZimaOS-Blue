@@ -85,12 +85,21 @@ func (s *MediaStorage) StoreBase64(data string, contentType string, mediaType Me
 		return "", err
 	}
 
+	return s.StoreBytes(decoded, contentType, mediaType)
+}
+
+// StoreBytes stores raw media bytes locally and returns the served URL.
+func (s *MediaStorage) StoreBytes(data []byte, contentType string, mediaType MediaType) (string, error) {
+	if s == nil {
+		return "", fmt.Errorf("media storage is nil")
+	}
+
 	ext := extensionFromContentType(contentType, mediaType)
 	filename := uuid.New().String() + ext
 	subdir := subdirForType(mediaType)
 	localPath := filepath.Join(s.baseDir, subdir, filename)
 
-	if err := os.WriteFile(localPath, decoded, 0644); err != nil {
+	if err := os.WriteFile(localPath, data, 0644); err != nil {
 		return "", err
 	}
 

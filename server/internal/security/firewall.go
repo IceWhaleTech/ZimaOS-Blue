@@ -129,6 +129,9 @@ func (h *Handler) SetPromptGuard(detector *promptguard.Detector) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.promptGuard = detector
+	if h.scanner != nil && h.scanner.config != nil {
+		h.scanner.config.PromptGuardEnabled = detector != nil
+	}
 	h.ensurePromptFirewallBuiltinStateLocked()
 	h.applyPromptFirewallLocked()
 }

@@ -65,6 +65,7 @@ const checkpointContext = computed(() => {
     step?: string
     action?: string
     url?: string
+    site_origin?: string
     screenshot?: { mime_type?: string; data?: string; url?: string }
   }
 })
@@ -84,13 +85,72 @@ const dismissLabel = computed(() =>
   isCheckpointQuestion.value ? t('askQuestion.browserCheckpoint.cancel') : t('askQuestion.skip')
 )
 const submitLabel = computed(() =>
-  isCheckpointQuestion.value ? t('askQuestion.browserCheckpoint.continue') : t('askQuestion.submit')
+  isCheckpointQuestion.value
+    ? checkpointText(
+        'askQuestion.browserCheckpoint.continueOnce',
+        String(t('askQuestion.browserCheckpoint.continue'))
+      )
+    : t('askQuestion.submit')
 )
 const checkpointRiskLabel = computed(() => {
   const risk = (checkpointContext.value?.risk_level || 'high').toLowerCase()
   const key = `execCard.risk.${risk}`
   return te(key) ? t(key) : risk
 })
+const checkpointSiteOrigin = computed(() => checkpointContext.value?.site_origin?.trim() || '')
+
+function checkpointText(key: string, fallback: string, named?: Record<string, string>): string {
+  if (!te(key)) return fallback
+  return String(named ? t(key, named) : t(key))
+}
+
+function checkpointOptionValue(opt: { label?: string; value?: string }): string {
+  return String(opt.value || opt.label || '')
+    .trim()
+    .toLowerCase()
+}
+
+function optionLabel(opt: { label?: string; value?: string }): string {
+  if (!isCheckpointQuestion.value) return opt.label || ''
+  switch (checkpointOptionValue(opt)) {
+    case 'continue':
+      return checkpointText(
+        'askQuestion.browserCheckpoint.continueOnce',
+        String(opt.label || t('askQuestion.browserCheckpoint.continue'))
+      )
+    case 'allow_site':
+      return checkpointText('askQuestion.browserCheckpoint.allowSite', String(opt.label || 'Allow'))
+    case 'cancel':
+      return t('askQuestion.browserCheckpoint.cancel')
+    default:
+      return opt.label || ''
+  }
+}
+
+function optionDescription(opt: { description?: string; value?: string; label?: string }): string {
+  if (!isCheckpointQuestion.value) return opt.description || ''
+  switch (checkpointOptionValue(opt)) {
+    case 'continue':
+      return checkpointText(
+        'askQuestion.browserCheckpoint.continueDescription',
+        String(opt.description || '')
+      )
+    case 'allow_site':
+      if (!checkpointSiteOrigin.value) return opt.description || ''
+      return checkpointText(
+        'askQuestion.browserCheckpoint.allowSiteDescription',
+        String(opt.description || checkpointSiteOrigin.value),
+        { site: checkpointSiteOrigin.value }
+      )
+    case 'cancel':
+      return checkpointText(
+        'askQuestion.browserCheckpoint.cancelDescription',
+        String(opt.description || '')
+      )
+    default:
+      return opt.description || ''
+  }
+}
 
 function isSelected(qId: string, value: string): boolean {
   return answers.value[qId]?.selected.includes(value) ?? false
@@ -105,6 +165,10 @@ function toggleOption(qId: string, value: string, multiSelect: boolean) {
     else ans.selected.push(value)
   } else {
     ans.selected = [value]
+    if (isCheckpointQuestion.value) {
+      submit()
+      return
+    }
     // In quick mode, auto-submit after selecting an option
     if (isQuickMode.value) {
       submit()
@@ -431,10 +495,13 @@ function dismiss() {
                 </div>
                 <div class="flex-1 min-w-0">
                   <span class="text-xs font-medium text-gray-800 dark:text-gray-200">{{
-                    opt.label
+                    optionLabel(opt)
                   }}</span>
-                  <p v-if="opt.description" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {{ opt.description }}
+                  <p
+                    v-if="optionDescription(opt)"
+                    class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"
+                  >
+                    {{ optionDescription(opt) }}
                   </p>
                 </div>
               </label>

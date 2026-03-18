@@ -585,6 +585,104 @@ func registerPublicAuthRoutes(v1 *echo.Group, userHandler *user.Handler) {
 	v1.GET("/auth/password-policy", userHandler.GetPasswordPolicy)
 }
 
+func registerCurrentUserRoutes(v1 *echo.Group, authMiddleware *auth.AuthMiddleware, userHandler *user.Handler) {
+	if v1 == nil || userHandler == nil {
+		return
+	}
+
+	if authMiddleware == nil {
+		v1.GET("/users/me", userHandler.GetCurrentUser)
+		v1.PUT("/users/me", userHandler.UpdateCurrentUser)
+		return
+	}
+
+	// Preserve preview-mode access for GET while still hydrating request context
+	// from Bearer tokens when present.
+	v1.GET("/users/me", userHandler.GetCurrentUser, authMiddleware.OptionalAuthenticate())
+	v1.PUT("/users/me", userHandler.UpdateCurrentUser, authMiddleware.Authenticate())
+}
+
+func registerBrowserApprovalRoutes(v1 *echo.Group, authMiddleware, pageMiddleware echo.MiddlewareFunc, browserSiteStore *tools.BrowserSiteAllowlistStore) {
+	if v1 == nil || browserSiteStore == nil {
+		return
+	}
+
+	middlewares := make([]echo.MiddlewareFunc, 0, 2)
+	if authMiddleware != nil {
+		middlewares = append(middlewares, authMiddleware)
+	}
+	if pageMiddleware != nil {
+		middlewares = append(middlewares, pageMiddleware)
+	}
+
+	browserGroup := v1.Group("/browser", middlewares...)
+	browserGroup.GET("/approvals/sites", func(c echo.Context) error {
+		userID := resolveRequestUserID(c)
+		entries, err := browserSiteStore.List()
+		if err != nil {
+			return c.JSON(500, map[string]string{"error": "failed to load approved browser sites"})
+		}
+
+		type siteEntry struct {
+			ID         string `json:"id"`
+			Origin     string `json:"origin"`
+			AddedAt    string `json:"added_at"`
+			LastUsed   string `json:"last_used"`
+			ApprovedBy string `json:"approved_by,omitempty"`
+		}
+		out := make([]siteEntry, 0, len(entries))
+		for _, entry := range entries {
+			approvedBy := strings.TrimSpace(entry.ApprovedBy)
+			if approvedBy != "" && userID != "default" && userID != approvedBy {
+				continue
+			}
+			out = append(out, siteEntry{
+				ID:         entry.ID,
+				Origin:     entry.Origin,
+				AddedAt:    entry.AddedAt.UTC().Format(time.RFC3339),
+				LastUsed:   entry.LastUsed.UTC().Format(time.RFC3339),
+				ApprovedBy: approvedBy,
+			})
+		}
+
+		return c.JSON(200, map[string]interface{}{
+			"entries": out,
+		})
+	})
+
+	browserGroup.DELETE("/approvals/sites/:id", func(c echo.Context) error {
+		id := strings.TrimSpace(c.Param("id"))
+		if id == "" {
+			return c.JSON(400, map[string]string{"error": "site id is required"})
+		}
+
+		userID := resolveRequestUserID(c)
+		entries, err := browserSiteStore.List()
+		if err != nil {
+			return c.JSON(500, map[string]string{"error": "failed to load approved browser sites"})
+		}
+		found := false
+		for _, entry := range entries {
+			if entry.ID != id {
+				continue
+			}
+			found = true
+			approvedBy := strings.TrimSpace(entry.ApprovedBy)
+			if approvedBy != "" && userID != "default" && userID != approvedBy {
+				return c.JSON(403, map[string]string{"error": "forbidden"})
+			}
+			break
+		}
+		if !found {
+			return c.JSON(404, map[string]string{"error": "browser site approval not found"})
+		}
+		if err := browserSiteStore.Delete(id); err != nil {
+			return c.JSON(500, map[string]string{"error": "failed to revoke browser site approval"})
+		}
+		return c.JSON(200, map[string]bool{"deleted": true})
+	})
+}
+
 // RegisterAllRoutes registers all API routes on the Echo instance.
 // Returns the authenticated API group for late-binding route registration.
 func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
@@ -759,6 +857,35 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		mediaManager := mediagen.NewManager(mediaStorage, mediaConfigStore, locale)
 		mediaManager.InitConfigs()
+		if deps.Config != nil && deps.LazyBrowserSvc != nil {
+			fallbackCfg := deps.Config.Media.Fallback
+			webSearchTool := tools.NewWebSearchTool(tools.WebSearchConfig{
+				Provider:   fallbackFirstProvider(fallbackCfg.SearchProviderChain),
+				Providers:  append([]string(nil), fallbackCfg.SearchProviderChain...),
+				MaxResults: fallbackCfg.SearchMaxResults,
+				Timeout:    deps.Config.ToolCalling.WebSearch.Timeout,
+				SafeSearch: deps.Config.ToolCalling.WebSearch.SafeSearch,
+				Region:     deps.Config.ToolCalling.WebSearch.Region,
+				APIKey:     deps.Config.ToolCalling.WebSearch.APIKey,
+				BaseURL:    deps.Config.ToolCalling.WebSearch.BaseURL,
+			})
+			renderPort := server.GetActualPort()
+			if renderPort == 0 {
+				renderPort = deps.ServerConfig.Port
+			}
+			mediaManager.SetFallbackEngine(mediagen.NewFallbackEngine(mediagen.FallbackConfig{
+				Enabled:             fallbackCfg.Enabled,
+				SearchProviderChain: append([]string(nil), fallbackCfg.SearchProviderChain...),
+				SearchMaxResults:    fallbackCfg.SearchMaxResults,
+				ScreenshotWidth:     fallbackCfg.ScreenshotWidth,
+				ScreenshotHeight:    fallbackCfg.ScreenshotHeight,
+				ComplexPromptChars:  fallbackCfg.ComplexPromptChars,
+				RenderBaseURL:       fmt.Sprintf("http://127.0.0.1:%d", renderPort),
+				PublicSpaces:        convertFallbackPublicSpaces(fallbackCfg.PublicSpaces),
+			}, mediaStorage, mediagen.NewToolWebSearcher(webSearchTool), func() mediagen.FallbackBrowserService {
+				return deps.LazyBrowserSvc()
+			}, locale))
+		}
 		deps.MediaManager = mediaManager
 
 		// Task persistence for power-failure recovery (shares main DB)
@@ -1054,9 +1181,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	templatesHandler := server.NewTemplatesHandler()
 	templatesHandler.RegisterRoutes(v1)
 
-	// Public /me endpoint for preview mode
-	v1.GET("/users/me", deps.UserHandler.GetCurrentUser)
-	v1.PUT("/users/me", deps.UserHandler.UpdateCurrentUser)
+	// GET /users/me stays preview-compatible, but both routes need auth context
+	// when a Bearer token is supplied.
+	registerCurrentUserRoutes(v1, deps.AuthMiddleware, deps.UserHandler)
 
 	// Formfiller management routes
 	if deps.FormfillerHandler != nil {
@@ -1352,6 +1479,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.Config != nil {
 			marketCfg.SeedURLs = append([]string{}, deps.Config.SkillMarket.SeedURLs...)
 			marketCfg.ClawHubMirrorBaseURLs = append([]string{}, deps.Config.SkillMarket.ClawHubMirrorBaseURLs...)
+			marketCfg.TencentSkillHubAPIBaseURL = deps.Config.SkillMarket.TencentSkillHubAPIBaseURL
 			marketCfg.SkillHubBaseURL = deps.Config.SkillMarket.SkillHubBaseURL
 			marketCfg.SkillHubAPIKey = strings.TrimSpace(deps.Config.SkillMarket.SkillHubAPIKey)
 			marketCfg.SkillStackBaseURL = deps.Config.SkillMarket.SkillStackBaseURL
@@ -1371,7 +1499,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		var marketEmbedding embedding.Provider
 		if deps.Config != nil && strings.EqualFold(deps.Config.Embedding.Provider, "cybertron") {
 			provider := embedding.NewCybertronProvider(embedding.CybertronConfig{
-				ModelsDir:  filepath.Join(cfg.DataDir, "models", "skillmarket"),
+				ModelsDir:  embedding.PrepareSharedModelCache(cfg.DataDir, deps.Config.Memory.VectorStore.DBPath, deps.Config.Embedding.Model),
 				Model:      deps.Config.Embedding.Model,
 				Dimensions: deps.Config.Embedding.Dimensions,
 				Timeout:    deps.Config.Embedding.Timeout,
@@ -1458,6 +1586,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 	if deps.BrowserBackend != nil {
 		tools.RegisterBrowserTool(s.ToolRegistry, deps.BrowserBackend)
+		if browserTool := tools.GetBrowserTool(s.ToolRegistry); browserTool != nil {
+			browserTool.SetMediaDir(mediaDir)
+		}
 		if webFetchTool := tools.GetWebFetchTool(s.ToolRegistry); webFetchTool != nil {
 			webFetchTool.SetBrowser(deps.BrowserBackend)
 		}
@@ -1473,6 +1604,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if sk := s.SkillRegistry.Get("browser"); sk != nil {
 			if br, ok := sk.(*builtin.Browser); ok {
 				br.SetBrowserService(newLazyBrowserSkillAdapter(deps.LazyBrowserSvc))
+				br.SetMediaDir(mediaDir)
 			}
 		}
 	}
@@ -1567,10 +1699,19 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 	browserCheckpointMgr := tools.NewBrowserCheckpointManager(2 * time.Minute)
+	var browserSiteStore *tools.BrowserSiteAllowlistStore
+	if deps.DB != nil {
+		var err error
+		browserSiteStore, err = tools.NewBrowserSiteAllowlistStore(deps.DB)
+		if err != nil {
+			slog.Warn("failed to create browser site allowlist store", "error", err)
+		}
+	}
 	if deps.ChatHandler != nil {
 		deps.ChatHandler.SetMediaDir(mediaDir)
 		deps.ChatHandler.SetQuestionManager(questionMgr)
 		deps.ChatHandler.SetBrowserCheckpointManager(browserCheckpointMgr)
+		deps.ChatHandler.SetBrowserSiteAllowlistStore(browserSiteStore)
 	}
 
 	// Exec tools (shell execution + process management)
@@ -1803,6 +1944,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 
+	{
+		var browserApprovalAuth echo.MiddlewareFunc
+		if deps.AuthMiddleware != nil {
+			browserApprovalAuth = deps.AuthMiddleware.Authenticate()
+		}
+		registerBrowserApprovalRoutes(v1, browserApprovalAuth, requirePagePermission(permission.PageChat), browserSiteStore)
+	}
+
 	// Ask-user-question REST endpoints
 	if questionMgr != nil {
 		askGroup := v1.Group("/ask-user-question", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageChat))
@@ -1884,6 +2033,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Security routes (protected)
 	if deps.SecurityHandler != nil {
+		if deps.Config != nil {
+			deps.SecurityHandler.SetScannerConfig(buildSecurityScannerConfig(deps.Config))
+		}
 		if deps.ConfigKV != nil {
 			deps.SecurityHandler.SetKVStore(deps.ConfigKV)
 		}
@@ -3134,6 +3286,50 @@ func resolveRequestUserID(c echo.Context) string {
 	return "default"
 }
 
+func fallbackFirstProvider(chain []string) string {
+	if len(chain) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(chain[0])
+}
+
+func convertFallbackPublicSpaces(spaces []config.MediaFallbackPublicSpaceConfig) []mediagen.FallbackPublicSpacePreset {
+	out := make([]mediagen.FallbackPublicSpacePreset, 0, len(spaces))
+	for _, preset := range spaces {
+		categories := make([]mediagen.MediaCategory, 0, len(preset.Categories))
+		for _, category := range preset.Categories {
+			if trimmed := strings.TrimSpace(category); trimmed != "" {
+				categories = append(categories, mediagen.MediaCategory(trimmed))
+			}
+		}
+		success := make([]mediagen.FallbackResultSelector, 0, len(preset.SuccessSelectors))
+		for _, selector := range preset.SuccessSelectors {
+			success = append(success, mediagen.FallbackResultSelector{
+				Selectors: append([]string(nil), selector.Selectors...),
+				Attribute: selector.Attribute,
+				Kind:      selector.Kind,
+			})
+		}
+		out = append(out, mediagen.FallbackPublicSpacePreset{
+			ID:                      preset.ID,
+			DisplayName:             preset.DisplayName,
+			URL:                     preset.URL,
+			Categories:              categories,
+			ReadySelectors:          append([]string(nil), preset.ReadySelectors...),
+			PromptSelectors:         append([]string(nil), preset.PromptSelectors...),
+			NegativePromptSelectors: append([]string(nil), preset.NegativePromptSelectors...),
+			UploadSelectors:         append([]string(nil), preset.UploadSelectors...),
+			SubmitSelectors:         append([]string(nil), preset.SubmitSelectors...),
+			SuccessSelectors:        success,
+			ProcessingSelectors:     append([]string(nil), preset.ProcessingSelectors...),
+			ErrorSelectors:          append([]string(nil), preset.ErrorSelectors...),
+			PollInterval:            preset.PollInterval,
+			Timeout:                 preset.Timeout,
+		})
+	}
+	return out
+}
+
 // execApprovalAdapter bridges tools.ApprovalManager to api.ExecApprovalResolver.
 type execApprovalAdapter struct {
 	mgr *tools.ApprovalManager
@@ -3161,6 +3357,9 @@ func registerGatewayMethods(gw *gateway.Gateway, deps *RoutesDeps) {
 	browserGatewayTool := tools.NewBrowserTool()
 	if deps.BrowserBackend != nil {
 		browserGatewayTool.SetBackend(deps.BrowserBackend)
+	}
+	if deps.ServerConfig != nil && strings.TrimSpace(deps.ServerConfig.DataDir) != "" {
+		browserGatewayTool.SetMediaDir(filepath.Join(deps.ServerConfig.DataDir, "media"))
 	}
 
 	gw.RegisterHandler("chat.send", func(ctx context.Context, conn *gateway.Connection, msg *gateway.Message) (*gateway.Message, error) {

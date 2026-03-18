@@ -101,6 +101,7 @@ export interface TypelessCardResult extends TypelessCardBase {
   status: 'success' | 'error' | 'warning' | 'info'
   message?: string
   image?: string
+  images?: GalleryImage[]
   warning?: string
   warning_code?: string
   details?: ResultDetail[]
@@ -883,6 +884,7 @@ export interface TypelessCardConvertTask extends TypelessCardBase {
   task_id: string
   status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled' | string
   action?: string
+  sources?: string[]
   source_summary?: string
   target_format?: string
   progress?: number

@@ -485,36 +485,15 @@ func (s *MemoryRecallStats) Reset() {
 // classifyContext determines which context tier to use.
 // Pure regex/keyword matching, < 1ms, no LLM calls.
 func classifyContext(userMessage string, messageCount int, isAgentMode, isRegenerate bool) ContextTier {
+	_ = userMessage
+	_ = isAgentMode
+	_ = isRegenerate
+
 	// First message or empty conversation
 	if messageCount <= 1 {
 		return TierNoHistory
 	}
-
-	// Regenerate needs the original message context.
-	if isRegenerate {
-		return TierCompressedMemory
-	}
-
-	// Explicit topic-switch cues should hard-reset conversational history in the
-	// same session to avoid stale-context interference.
-	if hasTopicSwitchCue(userMessage) {
-		return TierNoHistory
-	}
-
-	// Agent mode always needs context for tool continuity
-	if isAgentMode {
-		return TierCompressedMemory
-	}
-
-	hasRef := hasReference(userMessage)
-
-	// Reference/continuity cues need prior context regardless of length.
-	if hasRef {
-		return TierCompressedMemory
-	}
-
-	// No references → treat as fresh standalone question.
-	return TierNoHistory
+	return TierFullHistory
 }
 
 // hasReference checks if the message contains reference/continuity markers.
@@ -645,6 +624,32 @@ func extractRecentRounds(messages []memory.Message, rounds int) []llm.Message {
 	// Without this, Anthropic API returns "tool_result with tool_use_id has no
 	// corresponding tool_use in previous messages".
 	return removeOrphanedToolResults(result)
+}
+
+func splitConversationByRecentUserTurns(messages []memory.Message, rounds int) (older, recent []llm.Message) {
+	if len(messages) == 0 {
+		return nil, nil
+	}
+	if rounds <= 0 {
+		return convertToLLMMessages(messages), nil
+	}
+
+	roundCount := 0
+	startIdx := len(messages)
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != "user" {
+			continue
+		}
+		roundCount++
+		if roundCount > rounds {
+			break
+		}
+		startIdx = i
+	}
+
+	older = convertToLLMMessages(messages[:startIdx])
+	recent = removeOrphanedToolResults(convertToLLMMessages(messages[startIdx:]))
+	return older, recent
 }
 
 // removeOrphanedToolResults drops tool-role messages whose ToolCallID
@@ -1166,13 +1171,6 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 	// 2. Classify
 	tier := classifyContext(params.UserMessage, messageCount, isAgentMode, params.IsRegenerate)
 
-	logger.Debug().
-		Str("conv_id", params.ConvID).
-		Str("tier", tier.String()).
-		Int("message_count", messageCount).
-		Bool("agent_mode", isAgentMode).
-		Msg("[context] classified")
-
 	// 3. Build context based on tier
 	result := ContextStrategyResult{
 		Tier:               tier,
@@ -1191,15 +1189,15 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 			result.Messages = extractLatestTurn(messages)
 		}
 
-	case TierCompressedMemory:
+	default:
 		fullHistory := removeOrphanedToolResults(convertToLLMMessages(messages))
 		fullHistoryBudget := h.measurePreparedInputBudget(params.Model, params.MaxTokens, fullHistory)
-		if fullHistoryBudget.MaxInputTokens <= 0 ||
-			float64(fullHistoryBudget.EstimatedInputTokens) <= float64(fullHistoryBudget.MaxInputTokens)*smartContextSoftCompressionThreshold {
+		if !fullHistoryBudget.NeedsPressureCompaction() {
 			result.Tier = TierFullHistory
 			result.Messages = fullHistory
 			break
 		}
+		result.Tier = TierCompressedMemory
 
 		// Keep more recent rounds (TrimPolicy-style protected tail) so short-lived
 		// decisions and constraints survive summary compression.
@@ -1231,71 +1229,81 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 			// Fallback: just use recent messages
 			result.Messages = recentMessages
 		}
-	}
 
-	if len(result.Messages) > 0 {
-		contextWindowTokens := h.compactionConfig.MaxContextTokens
-		if contextWindowTokens <= 0 {
-			contextWindowTokens = claudecode.DefaultContextTokens
-		}
-		pruneSettings := trimPolicyDefaultPruneSettings
-		if h.settingsHandler != nil {
-			pruneSettings.Tools.Allow = h.settingsHandler.GetSmallModelContextPruneToolAllow()
-			pruneSettings.Tools.Deny = h.settingsHandler.GetSmallModelContextPruneToolDeny()
-		}
-		pruned, report := trimPolicyPruneContextMessagesWithReport(result.Messages, contextWindowTokens, pruneSettings)
-		result.Messages = pruned
+		compressedBudget := h.measurePreparedInputBudget(params.Model, params.MaxTokens, result.Messages)
+		if compressedBudget.Exceeds() {
+			contextWindowTokens := compressedBudget.ContextWindow
+			if contextWindowTokens <= 0 {
+				contextWindowTokens = h.compactionConfig.MaxContextTokens
+			}
+			if contextWindowTokens <= 0 {
+				contextWindowTokens = claudecode.DefaultContextTokens
+			}
+			pruneSettings := trimPolicyDefaultPruneSettings
+			if h.settingsHandler != nil {
+				pruneSettings.Tools.Allow = h.settingsHandler.GetSmallModelContextPruneToolAllow()
+				pruneSettings.Tools.Deny = h.settingsHandler.GetSmallModelContextPruneToolDeny()
+			}
+			pruned, report := trimPolicyPruneContextMessagesWithReport(result.Messages, contextWindowTokens, pruneSettings)
+			result.Messages = pruned
 
-		if report.ExaminedToolResults > 0 {
-			ev := logger.Debug().
-				Str("conv_id", params.ConvID).
-				Int("tool_results_examined", report.ExaminedToolResults).
-				Int("tool_results_eligible", report.EligibleToolResults).
-				Int("skipped_by_tool_policy", report.SkippedByToolPolicy).
-				Int("skipped_by_image", report.SkippedByImage).
-				Int("soft_trimmed", report.SoftTrimmed).
-				Int("hard_cleared", report.HardCleared).
-				Int("before_chars", report.BeforeChars).
-				Int("after_chars", report.AfterChars)
-			if report.ContextWindowChars > 0 {
-				ev = ev.Float64("before_ratio", report.BeforeRatio).Float64("after_ratio", report.AfterRatio)
+			if report.ExaminedToolResults > 0 {
+				ev := logger.Debug().
+					Str("conv_id", params.ConvID).
+					Int("tool_results_examined", report.ExaminedToolResults).
+					Int("tool_results_eligible", report.EligibleToolResults).
+					Int("skipped_by_tool_policy", report.SkippedByToolPolicy).
+					Int("skipped_by_image", report.SkippedByImage).
+					Int("soft_trimmed", report.SoftTrimmed).
+					Int("hard_cleared", report.HardCleared).
+					Int("before_chars", report.BeforeChars).
+					Int("after_chars", report.AfterChars)
+				if report.ContextWindowChars > 0 {
+					ev = ev.Float64("before_ratio", report.BeforeRatio).Float64("after_ratio", report.AfterRatio)
+				}
+				if top := trimPolicyTopToolCounters(report.SoftTrimByTool, 3); len(top) > 0 {
+					ev = ev.Strs("soft_trim_tools", top)
+				}
+				if top := trimPolicyTopToolCounters(report.HardClearByTool, 3); len(top) > 0 {
+					ev = ev.Strs("hard_clear_tools", top)
+				}
+				ev.Msg("[context] trim policy report")
 			}
-			if top := trimPolicyTopToolCounters(report.SoftTrimByTool, 3); len(top) > 0 {
-				ev = ev.Strs("soft_trim_tools", top)
-			}
-			if top := trimPolicyTopToolCounters(report.HardClearByTool, 3); len(top) > 0 {
-				ev = ev.Strs("hard_clear_tools", top)
-			}
-			ev.Msg("[context] trim policy report")
 		}
 	}
 
 	result.MessageCountAfter = len(result.Messages)
+	finalBudget := h.measurePreparedInputBudget(params.Model, params.MaxTokens, result.Messages)
+	logger.Debug().
+		Str("conv_id", params.ConvID).
+		Str("tier", result.Tier.String()).
+		Int("message_count", messageCount).
+		Int("message_count_after", result.MessageCountAfter).
+		Float64("usage_ratio", finalBudget.ContextUsageRatio()).
+		Bool("agent_mode", isAgentMode).
+		Msg("[context] classified")
 
 	return result
 }
 
-// summaryCustomInstructions is the prompt for generating compressed summaries.
-const summaryCustomInstructions = "Summarize old conversation for continuation context. " +
-	"Omit intermediate reasoning, but preserve durable working memory. " +
-	"Output concise bullet points with labels when relevant: Goal, Decisions, Pending Tasks, Preferences, File Paths, External Approvals, Reminders, Confirmed Facts. " +
-	"Include exact filenames, directories, IDs, and dates when they matter. Skip empty sections. Keep the total under 320 tokens."
+const summaryCustomFocus = "Keep the total under 320 tokens. Include exact filenames, directories, IDs, and dates when they matter."
 
 // generateSummarySync generates a compressed summary for older messages.
 // Called synchronously when no cached summary exists.
 func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, allMessages []memory.Message, recentLLM []llm.Message) string {
-	recentCount := len(recentLLM)
-	olderCount := len(allMessages) - recentCount
-	if olderCount <= 0 {
-		return ""
-	}
-
-	olderMessages := convertToLLMMessages(allMessages[:olderCount])
+	olderMessages, splitRecent := splitConversationByRecentUserTurns(allMessages, compressedTierRecentRounds)
 	if len(olderMessages) == 0 {
 		return ""
 	}
+	relevantMessages := cloneLLMMessages(olderMessages)
+	if len(recentLLM) > 0 {
+		relevantMessages = append(relevantMessages, cloneLLMMessages(recentLLM)...)
+	} else {
+		relevantMessages = append(relevantMessages, cloneLLMMessages(splitRecent)...)
+	}
 
 	if summary := h.generateConversationSummaryWithSmallModel(ctx, olderMessages); summary != "" {
+		summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
 		if h.summaryCache != nil {
 			h.summaryCache.Put(convID, &ConversationSummary{
 				Text:         summary,
@@ -1314,13 +1322,14 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 		MaxContextTokens:   4096,
 		MaxHistoryShare:    1.0,
 		ReserveTokens:      220,
-		CustomInstructions: summaryCustomInstructions,
+		CustomInstructions: summaryCustomFocus,
 	}, provider)
 
 	summary, err := compactor.Summarize(ctx, olderMessages, "")
 	if err != nil || summary == claudecode.DefaultSummaryFallback {
 		return ""
 	}
+	summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
 
 	// Cache it
 	if h.summaryCache != nil {
@@ -1355,12 +1364,14 @@ func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Messa
 	copy(msgCopy, messages)
 
 	h.queueEvent(func() {
-		llmMessages := convertToLLMMessages(msgCopy)
-		if len(llmMessages) <= 4 {
+		olderMessages, recentMessages := splitConversationByRecentUserTurns(msgCopy, compressedTierRecentRounds)
+		if len(olderMessages) == 0 {
 			return
 		}
+		relevantMessages := append(cloneLLMMessages(olderMessages), cloneLLMMessages(recentMessages)...)
 
-		if summary := h.generateConversationSummaryWithSmallModel(context.Background(), llmMessages); summary != "" {
+		if summary := h.generateConversationSummaryWithSmallModel(context.Background(), olderMessages); summary != "" {
+			summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
 			h.summaryCache.Put(convID, &ConversationSummary{
 				Text:         summary,
 				MessageCount: len(msgCopy),
@@ -1378,13 +1389,14 @@ func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Messa
 			MaxContextTokens:   4096,
 			MaxHistoryShare:    1.0,
 			ReserveTokens:      220,
-			CustomInstructions: summaryCustomInstructions,
+			CustomInstructions: summaryCustomFocus,
 		}, provider)
 
-		summary, err := compactor.Summarize(context.Background(), llmMessages, "")
+		summary, err := compactor.Summarize(context.Background(), olderMessages, "")
 		if err != nil || summary == claudecode.DefaultSummaryFallback {
 			return
 		}
+		summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
 
 		h.summaryCache.Put(convID, &ConversationSummary{
 			Text:         summary,

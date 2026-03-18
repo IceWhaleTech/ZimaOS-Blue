@@ -198,6 +198,26 @@ describe('CardConvertTask', () => {
     expect(wrapper.find('audio').exists()).toBe(false)
   })
 
+  it('renders source refs when the task carries explicit sources', () => {
+    const wrapper = mount(CardConvertTask, {
+      props: {
+        card: makeCard({
+          status: 'succeeded',
+          action: 'convert',
+          target_format: 'pdf',
+          message: 'Completed',
+          sources: ['/Users/orca/.zimaos-blue/data/workspace/phone_specs_2026/完整汇总表格.md'],
+        }),
+      },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    expect(wrapper.text()).toContain('Sources')
+    expect(wrapper.text()).toContain('完整汇总表格.md')
+  })
+
   it('localizes stable action and message labels in zh-CN', () => {
     applyLocale('zh-CN')
 

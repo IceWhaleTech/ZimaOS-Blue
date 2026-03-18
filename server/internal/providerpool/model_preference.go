@@ -113,13 +113,16 @@ func providerFormatAffinityScore(modelID string, provider *Provider) int {
 		return 0
 	}
 
-	format := provider.APIFormat
-	if format == "" {
-		format = provider.DetectedFormat
+	plan := ResolveAPIFormatPlan(FormatResolutionRequest{
+		Provider:       provider,
+		ModelID:        modelID,
+		DetectedFormat: provider.DetectedFormat,
+	})
+	format := plan.SelectedFormat
+	if len(plan.CandidateFormats) > 0 {
+		format = plan.CandidateFormats[0]
 	}
-	if format == "" {
-		format = canonicalAPIFormatForProvider(provider)
-	}
+	nativeFormat := firstNonEmptyFormat(provider.APIFormat, provider.DetectedFormat, canonicalAPIFormatForProvider(provider))
 
 	score := 0
 	for index, preferred := range preferredAPIFormatsForModel(modelID) {
@@ -132,11 +135,11 @@ func providerFormatAffinityScore(modelID string, provider *Provider) int {
 	providerID := strings.ToLower(strings.TrimSpace(provider.ID))
 	switch inferModelFamily(modelID) {
 	case modelFamilyClaude:
-		if format == APIFormatAnthropic || strings.Contains(providerID, "anthropic") {
+		if nativeFormat == APIFormatAnthropic || strings.Contains(providerID, "anthropic") {
 			score += 25
 		}
 	case modelFamilyCodex:
-		if ResponsesIntegrationEnabled() && (format == APIFormatResponses || strings.Contains(providerID, "codex")) {
+		if ResponsesIntegrationEnabled() && (nativeFormat == APIFormatResponses || strings.Contains(providerID, "codex")) {
 			score += 25
 		}
 	default:

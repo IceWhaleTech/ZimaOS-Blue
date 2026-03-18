@@ -365,6 +365,29 @@ function mapWhitelistTreeEntries(
   return mapped
 }
 
+function hasLikelyUrlScheme(value: string): boolean {
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(value)
+}
+
+function resolveWorkspaceGeneratedPathCandidate(
+  value: string,
+  workspaceRootPath: string
+): string | null {
+  const trimmed = value.trim().replace(/^['"`]+|['"`]+$/g, '')
+  if (!trimmed) return null
+  if (isLocalAbsolutePath(trimmed)) return trimmed
+  if (!workspaceRootPath || !isLocalAbsolutePath(workspaceRootPath)) return null
+  if (trimmed.startsWith('/api/') || hasLikelyUrlScheme(trimmed)) return null
+
+  const relative = trimmed.replace(/^[.][\\/]+/, '').replace(/^[\\/]+/, '')
+  if (!relative) return null
+  if (relative.split(/[\\/]+/).some((segment) => segment === '..')) return null
+
+  const root = workspaceRootPath.replace(/[\\/]+$/, '')
+  const separator = root.includes('\\') && !root.includes('/') ? '\\' : '/'
+  return `${root}${separator}${relative}`
+}
+
 async function loadWhitelistWorkspaceTreeEntries(
   workspaceRootPath: string
 ): Promise<WorkspaceTreeEntry[]> {
@@ -403,15 +426,15 @@ async function loadWhitelistWorkspaceTreeEntries(
   }
 }
 
-function collectPathCandidates(value: unknown, into: string[]): void {
+function collectPathCandidates(value: unknown, workspaceRootPath: string, into: string[]): void {
   if (typeof value === 'string') {
-    const path = value.trim()
-    if (isLocalAbsolutePath(path)) into.push(path)
+    const path = resolveWorkspaceGeneratedPathCandidate(value, workspaceRootPath)
+    if (path) into.push(path)
     return
   }
 
   if (Array.isArray(value)) {
-    for (const item of value) collectPathCandidates(item, into)
+    for (const item of value) collectPathCandidates(item, workspaceRootPath, into)
     return
   }
 
@@ -420,38 +443,43 @@ function collectPathCandidates(value: unknown, into: string[]): void {
   const record = value as Record<string, unknown>
   for (const key of pathLikeKeys) {
     const candidate = record[key]
-    if (typeof candidate === 'string' && isLocalAbsolutePath(candidate.trim())) {
-      into.push(candidate.trim())
+    if (typeof candidate !== 'string') continue
+    const path = resolveWorkspaceGeneratedPathCandidate(candidate, workspaceRootPath)
+    if (path) {
+      into.push(path)
     }
   }
 }
 
-function extractLocalPathCandidatesFromCard(card: TypelessCard): string[] {
+function extractLocalPathCandidatesFromCard(
+  card: TypelessCard,
+  workspaceRootPath: string
+): string[] {
   const paths: string[] = []
 
   if (card.type === 'file') {
     const fileCard = card as TypelessCardFile
-    collectPathCandidates(fileCard.downloadUrl, paths)
-    collectPathCandidates(fileCard.previewUrl, paths)
+    collectPathCandidates(fileCard.downloadUrl, workspaceRootPath, paths)
+    collectPathCandidates(fileCard.previewUrl, workspaceRootPath, paths)
   }
 
   if (card.type === 'result') {
     const resultCard = card as TypelessCardResult
     for (const detail of resultCard.details || []) {
-      collectPathCandidates(detail.value, paths)
+      collectPathCandidates(detail.value, workspaceRootPath, paths)
     }
   }
 
   if (card.type === 'convert-task') {
     const convertCard = card as TypelessCardConvertTask
     for (const output of convertCard.outputs || []) {
-      collectPathCandidates(output.download_url, paths)
+      collectPathCandidates(output.download_url, workspaceRootPath, paths)
     }
   }
 
   const genericCard = card as unknown as Record<string, unknown>
-  collectPathCandidates(genericCard.artifacts, paths)
-  collectPathCandidates(genericCard.download_url, paths)
+  collectPathCandidates(genericCard.artifacts, workspaceRootPath, paths)
+  collectPathCandidates(genericCard.download_url, workspaceRootPath, paths)
 
   return Array.from(new Set(paths))
 }
@@ -483,7 +511,8 @@ function buildGeneratedFileRecord(
 
 function extractGeneratedFilesFromMessage(
   conversation: Conversation,
-  message: Message
+  message: Message,
+  workspaceRootPath: string
 ): GeneratedWorkspaceFile[] {
   if (!message.content || !message.content.trim()) return []
 
@@ -495,7 +524,7 @@ function extractGeneratedFilesFromMessage(
 
   for (const card of parsed.cards) {
     const source = card.type || 'card'
-    const candidates = extractLocalPathCandidatesFromCard(card)
+    const candidates = extractLocalPathCandidatesFromCard(card, workspaceRootPath)
     for (const candidate of candidates) {
       if (seenPaths.has(candidate)) continue
       seenPaths.add(candidate)
@@ -581,6 +610,10 @@ async function ensureGeneratedWorkspaceFiles(force = false) {
   generatedFilesLoading.value = true
   generatedFilesError.value = ''
   try {
+    if (!workspaceDir.value.trim()) {
+      await ensureWorkspaceMeta({ silent: true })
+    }
+    const workspaceRootPath = workspaceDir.value.trim() || workspaceTreeRoot.value.trim()
     const convRes = await conversationApi.list(GENERATED_SCAN_CONVERSATION_LIMIT, 0)
     const conversations = Array.isArray(convRes.data) ? convRes.data : []
 
@@ -591,7 +624,9 @@ async function ensureGeneratedWorkspaceFiles(force = false) {
         const msgRes = await messageApi.list(conversation.id, GENERATED_SCAN_MESSAGE_LIMIT, 0)
         const messages = Array.isArray(msgRes.data) ? msgRes.data : []
         for (const message of messages) {
-          allRecords.push(...extractGeneratedFilesFromMessage(conversation, message))
+          allRecords.push(
+            ...extractGeneratedFilesFromMessage(conversation, message, workspaceRootPath)
+          )
         }
       } catch (e) {
         console.error('Failed to scan messages for generated files:', e)
@@ -958,7 +993,7 @@ const coreWorkspaceFiles = computed(() => {
   return sortedWorkspaceFiles.value.filter((file) => coreWorkspaceFileNames.has(file.name))
 })
 
-const generatedRecordByPathKey = computed(() => {
+const generatedRecordByAbsPathKey = computed(() => {
   const map = new Map<string, GeneratedWorkspaceFile>()
   for (const record of generatedWorkspaceFiles.value) {
     const key = toPathKey(record.path)
@@ -969,12 +1004,44 @@ const generatedRecordByPathKey = computed(() => {
 })
 
 const workspaceTreeRows = computed<WorkspaceTreeRow[]>(() => {
-  return workspaceTreeEntries.value.map((entry) => {
-    const pathKey = toPathKey(String(entry.abs_path || ''))
-    const generatedRecord = isWorkspaceTreeDir(entry)
-      ? null
-      : generatedRecordByPathKey.value.get(pathKey) || null
+  const baseRows = workspaceTreeEntries.value.map((entry) => {
+    const absPathKey = toPathKey(String(entry.abs_path || ''))
+    const generatedRecord = absPathKey
+      ? generatedRecordByAbsPathKey.value.get(absPathKey) || null
+      : null
     return { entry, generatedRecord }
+  })
+
+  const inheritedRecordByTreePath = new Map<string, GeneratedWorkspaceFile>()
+  const linkedRows = [...baseRows]
+    .filter(
+      (row): row is WorkspaceTreeRow & { generatedRecord: GeneratedWorkspaceFile } =>
+        row.generatedRecord !== null
+    )
+    .sort(
+      (a, b) =>
+        messageTimeMs(b.generatedRecord.messageCreatedAt) -
+        messageTimeMs(a.generatedRecord.messageCreatedAt)
+    )
+
+  for (const row of linkedRows) {
+    const entryPathKey = toPathKey(String(row.entry.path || ''))
+    if (!entryPathKey) continue
+    for (const ancestor of getAncestorPathKeys(entryPathKey)) {
+      if (!inheritedRecordByTreePath.has(ancestor)) {
+        inheritedRecordByTreePath.set(ancestor, row.generatedRecord)
+      }
+    }
+  }
+
+  return baseRows.map((row) => {
+    if (row.generatedRecord) return row
+    const entryPathKey = toPathKey(String(row.entry.path || ''))
+    if (!entryPathKey) return row
+    return {
+      entry: row.entry,
+      generatedRecord: inheritedRecordByTreePath.get(entryPathKey) || null,
+    }
   })
 })
 
@@ -1083,7 +1150,9 @@ const isDarkTheme = computed(
     themeStore.theme === 'dark' || (themeStore.theme === 'system' && themeStore.systemPrefersDark)
 )
 const sidebarStatusHealthy = computed(() => {
-  const status = String(health.value?.status || '').trim().toLowerCase()
+  const status = String(health.value?.status || '')
+    .trim()
+    .toLowerCase()
   return !status || status === 'ok'
 })
 const sidebarStatusLabel = computed(() => {

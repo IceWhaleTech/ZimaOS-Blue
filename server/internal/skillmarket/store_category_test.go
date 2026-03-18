@@ -63,3 +63,159 @@ func TestStoreNormalizeLegacyVersionLikeCategories(t *testing.T) {
 		t.Fatalf("filters.Categories = %+v, want development_tools bucket", filters.Categories)
 	}
 }
+
+func TestStoreKeepsHigherPrioritySourceWhenLowerPriorityDuplicateArrives(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	ctx := context.Background()
+
+	for _, source := range []Source{
+		{ID: "tencent-skillhub", Type: "lightmake_api", BaseURL: "https://lightmake.site", Enabled: true, Priority: 5},
+		{ID: "clawhub", Type: "clawhub", BaseURL: "https://www.clawhub.ai", Enabled: true, Priority: 10},
+	} {
+		if err := store.UpsertSource(ctx, source); err != nil {
+			t.Fatalf("UpsertSource(%s) error = %v", source.ID, err)
+		}
+	}
+
+	if err := store.UpsertSkill(ctx, &SkillDocument{
+		ID:            "shared-skill",
+		Slug:          "shared-skill",
+		Name:          "Shared Skill",
+		Description:   "Tencent catalog copy",
+		LatestVersion: "1.0.0",
+		Installable:   true,
+		InstallType:   InstallTypeSourceArchive,
+		ArtifactKind:  ArtifactKindUnknown,
+		Published:     true,
+		SourceID:      "tencent-skillhub",
+		SourceName:    "Tencent SkillHub",
+		SourceGroup:   "skillhub",
+		SourceType:    "lightmake_api",
+		DownloadURL:   "https://lightmake.site/api/v1/download?slug=shared-skill",
+	}, nil, nil); err != nil {
+		t.Fatalf("UpsertSkill(tencent) error = %v", err)
+	}
+
+	if err := store.UpsertSkill(ctx, &SkillDocument{
+		ID:            "shared-skill",
+		Slug:          "shared-skill",
+		Name:          "Shared Skill",
+		Description:   "ClawHub raw copy",
+		LatestVersion: "1.0.1",
+		Installable:   true,
+		InstallType:   InstallTypeRawSkill,
+		ArtifactKind:  ArtifactKindOpenSource,
+		Published:     true,
+		SourceID:      "clawhub",
+		SourceName:    "ClawHub",
+		SourceGroup:   "clawhub",
+		SourceType:    "clawhub",
+		DownloadURL:   "https://www.clawhub.ai/api/v1/skills/shared-skill/skill-md",
+	}, nil, nil); err != nil {
+		t.Fatalf("UpsertSkill(clawhub) error = %v", err)
+	}
+
+	detail, err := store.GetSkill(ctx, "shared-skill")
+	if err != nil {
+		t.Fatalf("GetSkill() error = %v", err)
+	}
+	if detail == nil {
+		t.Fatal("expected shared-skill to exist")
+	}
+	if detail.Skill.SourceID != "tencent-skillhub" {
+		t.Fatalf("source id = %q, want tencent-skillhub", detail.Skill.SourceID)
+	}
+	if detail.Skill.InstallType != InstallTypeSourceArchive {
+		t.Fatalf("install type = %q, want %q", detail.Skill.InstallType, InstallTypeSourceArchive)
+	}
+	if detail.Skill.Description != "Tencent catalog copy" {
+		t.Fatalf("description = %q, want Tencent catalog copy", detail.Skill.Description)
+	}
+}
+
+func TestStoreAllowsHigherPrioritySourceToReplaceLowerPriorityDuplicate(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	ctx := context.Background()
+
+	for _, source := range []Source{
+		{ID: "tencent-skillhub", Type: "lightmake_api", BaseURL: "https://lightmake.site", Enabled: true, Priority: 5},
+		{ID: "clawhub", Type: "clawhub", BaseURL: "https://www.clawhub.ai", Enabled: true, Priority: 10},
+	} {
+		if err := store.UpsertSource(ctx, source); err != nil {
+			t.Fatalf("UpsertSource(%s) error = %v", source.ID, err)
+		}
+	}
+
+	if err := store.UpsertSkill(ctx, &SkillDocument{
+		ID:            "shared-skill",
+		Slug:          "shared-skill",
+		Name:          "Shared Skill",
+		Description:   "ClawHub raw copy",
+		LatestVersion: "1.0.1",
+		Installable:   true,
+		InstallType:   InstallTypeRawSkill,
+		ArtifactKind:  ArtifactKindOpenSource,
+		Published:     true,
+		SourceID:      "clawhub",
+		SourceName:    "ClawHub",
+		SourceGroup:   "clawhub",
+		SourceType:    "clawhub",
+		DownloadURL:   "https://www.clawhub.ai/api/v1/skills/shared-skill/skill-md",
+	}, nil, nil); err != nil {
+		t.Fatalf("UpsertSkill(clawhub) error = %v", err)
+	}
+
+	if err := store.UpsertSkill(ctx, &SkillDocument{
+		ID:            "shared-skill",
+		Slug:          "shared-skill",
+		Name:          "Shared Skill",
+		Description:   "Tencent catalog copy",
+		LatestVersion: "1.0.0",
+		Installable:   true,
+		InstallType:   InstallTypeSourceArchive,
+		ArtifactKind:  ArtifactKindUnknown,
+		Published:     true,
+		SourceID:      "tencent-skillhub",
+		SourceName:    "Tencent SkillHub",
+		SourceGroup:   "skillhub",
+		SourceType:    "lightmake_api",
+		DownloadURL:   "https://lightmake.site/api/v1/download?slug=shared-skill",
+	}, nil, nil); err != nil {
+		t.Fatalf("UpsertSkill(tencent) error = %v", err)
+	}
+
+	detail, err := store.GetSkill(ctx, "shared-skill")
+	if err != nil {
+		t.Fatalf("GetSkill() error = %v", err)
+	}
+	if detail == nil {
+		t.Fatal("expected shared-skill to exist")
+	}
+	if detail.Skill.SourceID != "tencent-skillhub" {
+		t.Fatalf("source id = %q, want tencent-skillhub", detail.Skill.SourceID)
+	}
+	if detail.Skill.InstallType != InstallTypeSourceArchive {
+		t.Fatalf("install type = %q, want %q", detail.Skill.InstallType, InstallTypeSourceArchive)
+	}
+	if detail.Skill.Description != "Tencent catalog copy" {
+		t.Fatalf("description = %q, want Tencent catalog copy", detail.Skill.Description)
+	}
+}

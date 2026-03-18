@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,11 +25,21 @@ type catalogPage struct {
 	Author      string
 	Text        string
 	Links       []string
+	Embedded    *catalogEmbeddedSkill
+}
+
+type catalogEmbeddedSkill struct {
+	Name      string
+	Author    string
+	RepoURL   string
+	SkillPath string
+	RawSkill  string
 }
 
 var githubBlobPattern = regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)$`)
 var githubRepoPattern = regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$`)
 var githubRawPattern = regexp.MustCompile(`^https?://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.+)$`)
+var skillHubStringRefPattern = regexp.MustCompile(`skillMdRaw":"\$([0-9A-Za-z]+)"`)
 
 func (s *Service) discoverFromHTMLCatalog(ctx context.Context, source Source, run *CrawlRun) error {
 	root, err := s.fetchCatalogPage(ctx, source, source.BaseURL)
@@ -60,6 +71,22 @@ func (s *Service) discoverFromHTMLCatalog(ctx context.Context, source Source, ru
 	seenSeeds := make(map[string]struct{})
 	for _, page := range pages {
 		hadInstallable := false
+		if page.Embedded != nil && strings.TrimSpace(page.Embedded.RawSkill) != "" {
+			updated, err := s.ingestEmbeddedCatalogSkill(ctx, source, page)
+			if err != nil {
+				run.Failed++
+				continue
+			}
+			hadInstallable = true
+			if updated {
+				run.Updated++
+			} else {
+				run.Discovered++
+			}
+		}
+		if hadInstallable {
+			continue
+		}
 		for _, link := range page.Links {
 			resolved, ok := resolveCatalogLink(page.URL, link)
 			if !ok {
@@ -216,6 +243,43 @@ func (s *Service) upsertCatalogOnlySkill(ctx context.Context, source Source, pag
 	return err
 }
 
+func (s *Service) ingestEmbeddedCatalogSkill(ctx context.Context, source Source, page *catalogPage) (bool, error) {
+	if page == nil || page.Embedded == nil || strings.TrimSpace(page.Embedded.RawSkill) == "" {
+		return false, fmt.Errorf("embedded catalog skill unavailable")
+	}
+
+	name := strings.TrimSpace(firstNonBlank(page.Embedded.Name, trimCatalogSkillTitle(page.Title), page.Title))
+	if name == "" {
+		name = normalizeSkillID(page.URL)
+	}
+	explicitID := normalizeSkillID(source.SourceGroup + "-" + name)
+	if explicitID == "" {
+		explicitID = normalizeSkillID(name)
+	}
+
+	return s.ingestSkillContent(ctx, ingestRequest{
+		SourceID:        source.ID,
+		SourceName:      defaultString(source.DisplayName, source.ID),
+		SourceGroup:     defaultString(source.SourceGroup, source.ID),
+		SourceType:      source.Type,
+		RepoURL:         firstNonBlank(page.Embedded.RepoURL, page.URL),
+		Homepage:        page.URL,
+		DownloadURL:     page.URL,
+		SourceURL:       page.URL,
+		SkillPath:       firstNonBlank(page.Embedded.SkillPath, "SKILL.md"),
+		SkillContent:    page.Embedded.RawSkill,
+		LastUpdated:     timeutil.NowTime(),
+		DefaultSkillID:  explicitID,
+		ExplicitID:      explicitID,
+		ExplicitName:    name,
+		ExplicitAuthor:  firstNonBlank(page.Embedded.Author, page.Author),
+		DescriptionHint: page.Description,
+		Installable:     true,
+		InstallType:     InstallTypeRawSkill,
+		ArtifactKind:    ArtifactKindOpenSource,
+	})
+}
+
 func (s *Service) fetchCatalogPage(ctx context.Context, source Source, rawURL string) (*catalogPage, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -240,7 +304,8 @@ func (s *Service) fetchCatalogPage(ctx context.Context, source Source, rawURL st
 	if err != nil {
 		return nil, err
 	}
-	doc, err := html.Parse(strings.NewReader(string(body)))
+	htmlBody := string(body)
+	doc, err := html.Parse(strings.NewReader(htmlBody))
 	if err != nil {
 		return nil, err
 	}
@@ -248,10 +313,72 @@ func (s *Service) fetchCatalogPage(ctx context.Context, source Source, rawURL st
 		URL:         rawURL,
 		Title:       strings.TrimSpace(extractHTMLTitle(doc)),
 		Description: strings.TrimSpace(extractHTMLMeta(doc, "description", "og:description", "twitter:description")),
-		Author:      strings.TrimSpace(extractHTMLMeta(doc, "author")),
+		Author:      strings.TrimSpace(extractHTMLMeta(doc, "author", "article:author")),
 		Text:        strings.TrimSpace(extractHTMLText(doc)),
 		Links:       extractHTMLLinks(doc),
+		Embedded:    extractCatalogEmbeddedSkill(rawURL, htmlBody),
 	}, nil
+}
+
+func trimCatalogSkillTitle(title string) string {
+	title = strings.TrimSpace(title)
+	for _, suffix := range []string{
+		" - Claude Skill Details | SkillHub",
+		" | SkillHub",
+	} {
+		if strings.HasSuffix(title, suffix) {
+			title = strings.TrimSpace(strings.TrimSuffix(title, suffix))
+		}
+	}
+	return title
+}
+
+func extractCatalogEmbeddedSkill(pageURL, htmlBody string) *catalogEmbeddedSkill {
+	normalizedBody := strings.ReplaceAll(htmlBody, `\"`, `"`)
+	if !strings.Contains(strings.ToLower(pageURL), "/skills/") || !strings.Contains(normalizedBody, `skillMdRaw":"$`) {
+		return nil
+	}
+
+	refMatch := skillHubStringRefPattern.FindStringSubmatch(normalizedBody)
+	if len(refMatch) != 2 {
+		return nil
+	}
+	rawPattern := regexp.MustCompile(regexp.QuoteMeta(refMatch[1]) + `:T[0-9A-Fa-f]+,"((?:\\.|[^"\\])*)"`)
+	rawMatch := rawPattern.FindStringSubmatch(normalizedBody)
+	if len(rawMatch) != 2 {
+		return nil
+	}
+	rawSkill := decodeEmbeddedCatalogString(rawMatch[1])
+	if strings.TrimSpace(rawSkill) == "" {
+		return nil
+	}
+
+	return &catalogEmbeddedSkill{
+		Name:      decodeEmbeddedCatalogMatch(normalizedBody, `skillName":"((?:\\.|[^"\\])*)"`),
+		RepoURL:   decodeEmbeddedCatalogMatch(normalizedBody, `repoUrl":"((?:\\.|[^"\\])*)"`),
+		SkillPath: decodeEmbeddedCatalogMatch(normalizedBody, `skillPath":"((?:\\.|[^"\\])*)"`),
+		RawSkill:  rawSkill,
+	}
+}
+
+func decodeEmbeddedCatalogMatch(htmlBody, pattern string) string {
+	re := regexp.MustCompile(pattern)
+	match := re.FindStringSubmatch(htmlBody)
+	if len(match) != 2 {
+		return ""
+	}
+	return decodeEmbeddedCatalogString(match[1])
+}
+
+func decodeEmbeddedCatalogString(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	decoded, err := strconv.Unquote(`"` + value + `"`)
+	if err == nil {
+		return strings.TrimSpace(decoded)
+	}
+	return strings.TrimSpace(strings.ReplaceAll(value, `\/`, `/`))
 }
 
 func (s *Service) fetchSkillReference(ctx context.Context, rawURL string) (content, skillPath, repoURL, downloadURL, installType string, err error) {

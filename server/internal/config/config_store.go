@@ -18,7 +18,7 @@ var configSections = []string{
 	"server", "log", "worker", "resources", "cgroup", "channels",
 	"performance", "security", "llm", "session", "embedding", "memory",
 	"grayscale", "companion", "claudecode", "claude_code_cli",
-	"first_run", "cc_switch", "statistics", "tool_calling", "browser",
+	"first_run", "cc_switch", "statistics", "tool_calling", "media", "browser",
 	"proxy", "pruner", "update", "heartbeat",
 }
 
@@ -215,6 +215,9 @@ func applySection(cfg *Config, section string, data json.RawMessage) {
 		yamlTag := field.Tag.Get("yaml")
 		if yamlTag == section {
 			ptr := reflect.New(field.Type)
+			// Seed the decoder with the current section so missing nested fields keep
+			// their existing defaults when older persisted configs omit them.
+			ptr.Elem().Set(v.Field(i))
 			if err := json.Unmarshal(data, ptr.Interface()); err == nil {
 				v.Field(i).Set(ptr.Elem())
 			}

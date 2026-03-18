@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -160,5 +161,121 @@ Help with rebase, review, and branch cleanup.
 	}
 	if !foundCatalogOnly {
 		t.Fatal("expected catalog-only directory entry to be indexed")
+	}
+}
+
+func TestDiscoverFromHTMLCatalogUsesEmbeddedSkillPageContent(t *testing.T) {
+	rawSkill := `---
+name: file-search
+description: Embedded file search skill
+---
+
+Use bash to inspect files quickly.
+`
+	encodedSkill := strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+		"\n", `\n`,
+	).Replace(rawSkill)
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/catalog", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`
+<html>
+  <head><title>SkillHub Fixture</title><meta name="description" content="fixture catalog"></head>
+  <body>
+    <a href="/skills/file-search">file-search</a>
+  </body>
+</html>`))
+	})
+	mux.HandleFunc("/skills/file-search", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(fmt.Sprintf(`
+<html>
+  <head>
+    <title>file-search - Claude Skill Details | SkillHub</title>
+    <meta name="description" content="Embedded skill detail">
+    <meta property="article:author" content="massgen">
+  </head>
+  <body>
+    <script>self.__next_f.push([1,"36:[\"$\",\"$L3b\",null,{\"skillName\":\"file-search\",\"skillMdRaw\":\"$3c\",\"repoUrl\":\"https://github.com/massgen/MassGen\",\"skillPath\":\"massgen/skills/file-search\"}]"])</script>
+    <script>self.__next_f.push([1,"3c:T10,\"%s\""])</script>
+  </body>
+</html>`, encodedSkill)))
+	})
+
+	tempDir := t.TempDir()
+	db, err := sql.Open("sqlite3", filepath.Join(tempDir, "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	cfg := DefaultConfig(tempDir, filepath.Join(tempDir, "active"))
+	cfg.CacheRoot = filepath.Join(tempDir, "cache")
+	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.SeedURLs = nil
+
+	svc, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(filepath.Join(tempDir, "active")),
+		Scanner:      NewScanner(nil),
+		HTTPClient:   server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	run := &CrawlRun{}
+	source := Source{
+		ID:          "skillhub-club",
+		Type:        "html_catalog",
+		BaseURL:     server.URL + "/catalog",
+		DisplayName: "SkillHub Club",
+		SourceGroup: "skillhub",
+		Enabled:     true,
+	}
+	if err := svc.discoverFromHTMLCatalog(context.Background(), source, run); err != nil {
+		t.Fatalf("discover html catalog: %v", err)
+	}
+
+	detail, err := svc.GetSkill(context.Background(), "skillhub-file-search")
+	if err != nil {
+		t.Fatalf("GetSkill(skillhub-file-search) error = %v", err)
+	}
+	if detail == nil {
+		t.Fatal("expected embedded skill detail")
+	}
+	if !detail.Skill.Installable {
+		t.Fatalf("expected embedded skill page to be installable, got skill=%+v version=%+v security=%+v", detail.Skill, detail.Version, detail.Security)
+	}
+	if detail.Skill.InstallType != InstallTypeRawSkill {
+		t.Fatalf("install type = %q, want %q", detail.Skill.InstallType, InstallTypeRawSkill)
+	}
+	if detail.Skill.ArtifactKind != ArtifactKindOpenSource {
+		t.Fatalf("artifact kind = %q, want %q", detail.Skill.ArtifactKind, ArtifactKindOpenSource)
+	}
+	if detail.Skill.SourceGroup != "skillhub" {
+		t.Fatalf("source group = %q, want skillhub", detail.Skill.SourceGroup)
+	}
+	if detail.Skill.Author != "massgen" {
+		t.Fatalf("author = %q, want massgen", detail.Skill.Author)
+	}
+	if detail.Skill.RepoURL != "https://github.com/massgen/MassGen" {
+		t.Fatalf("repo url = %q, want GitHub repo", detail.Skill.RepoURL)
+	}
+	if detail.Version == nil || strings.TrimSpace(detail.Version.RawSkillMD) != strings.TrimSpace(rawSkill) {
+		got := ""
+		if detail.Version != nil {
+			got = detail.Version.RawSkillMD
+		}
+		t.Fatalf("raw skill = %q, want embedded markdown", got)
+	}
+	if detail.Security == nil {
+		t.Fatal("expected security report for embedded skill page")
 	}
 }

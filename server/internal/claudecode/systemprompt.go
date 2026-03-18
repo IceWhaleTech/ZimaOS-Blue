@@ -218,7 +218,7 @@ const (
 	toolCallStyleGuidance = "<tool_style>Do not narrate routine tool calls. Narrate only for multi-step work, complex problems, sensitive actions, or when asked. Keep narration brief.</tool_style>" +
 		"<research_style>For latest/news/deep-research requests, run multiple search rounds before concluding and return one complete report with key findings plus source links. For GitHub repository research, check the corresponding DeepWiki materials first when available (for example `deepwiki.com/&lt;owner&gt;/&lt;repo&gt;`) before opening github.com pages, then use GitHub for primary-source verification or details that DeepWiki does not cover. For lightweight lookup requests, summarize key findings and then suggest next steps.</research_style>"
 
-	webToolRoutingGuidance = "<web_tools>Use web_fetch for lightweight public HTTP page reads. Use browser first for login flows, CAPTCHA/challenges, JS-heavy pages, or interactions. If a web_fetch result includes warning_code=login_wall, challenge, or browser_required, immediately switch to browser. When available, reuse browser session state with browser_target_id.</web_tools>"
+	webToolRoutingGuidance = "<web_tools>Use web_search when you need to discover, compare, or verify links/sources and do not yet have the right URL. Use web_fetch for the fastest lightweight HTTP read of a known public URL when a simple readable extract is enough. Use web_read when the user already gave a URL and wants normalized main content, especially when you may need headers/cookies, browser_target_id reuse, or lane-aware reading. Use browser first for login flows, CAPTCHA/challenges, JS-heavy pages, scrolling/clicking/forms, screenshots, or any live interaction. If web_fetch returns warning_code=login_wall, challenge, or browser_required, or web_read returns warning_codes including login_wall, challenge, or browser_required, immediately switch to browser. Preferred ladder: web_search -> web_fetch or web_read -> browser. Final web fallback is browser. When available, reuse browser session state with browser_target_id.</web_tools>"
 
 	blueCoreRulesGuidance = "<blue_core_rules>" +
 		"<rule>Brevity is mandatory: one sentence when possible, no fluff.</rule>" +
@@ -248,7 +248,7 @@ const (
 
 	agentModeExecutionManualConfirmClause = "Ask confirmation before destructive actions (delete, install, modify production config). For potential asset-loss operations (fund transfers, securities transactions, redemption/gift codes), always require explicit secondary user confirmation immediately before execution. Proceed without confirmation for safe operations. "
 
-	agentModeExecutionTail = "Use exec for file ops, installs, builds, tests. For large file creation or edits via the write tool, never send one huge payload: write the first chunk, then continue with smaller chunks using append=true. Do NOT stop early. Do NOT call exec without a concrete command — think first, then execute." +
+	agentModeExecutionTail = "Use exec for file ops, installs, builds, tests. For large file creation or edits, prefer transactional write tools when available: use write_begin, then write_chunk, then write_commit. Otherwise never send one huge payload: write the first chunk, then continue with smaller chunks using append=true. Do NOT stop early. Do NOT call exec without a concrete command — think first, then execute." +
 		" When facing multiple valid approaches or ambiguous requirements, use ask instead of guessing." +
 		" Prefer ask format: {\"questions\":[{\"question\":\"...\",\"type\":\"radio\",\"options\":[...]}]}." +
 		" Text-input ask format: {\"questions\":[{\"question\":\"...\",\"type\":\"text\"}]}." +
@@ -495,7 +495,7 @@ func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder, hasSandbox b
 
 	sb.WriteString("<tool_guidance>Built-in API tools. Call via tool_use — never through exec/shell.")
 	if b.toolRegistry.Get("write") != nil || b.toolRegistry.Get("file_write") != nil {
-		sb.WriteString("<write_guide>For large file writes, never send one huge write payload. Write the first chunk, then continue with smaller chunks using append=true.</write_guide>")
+		sb.WriteString("<write_guide>For large file writes, prefer write_begin + repeated write_chunk + write_commit. If you must use write directly, never send one huge write payload: write the first chunk, then continue with smaller chunks using append=true.</write_guide>")
 	}
 	b.writeExecGuidanceTo(sb, hasSandbox)
 	sb.WriteString("</tool_guidance>")
@@ -593,7 +593,7 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 
 	var sb strings.Builder
 	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). For reminders, prefer `blue reminder.add message=\"...\" time=...` or repeating `blue reminder.add message=\"...\" every=2m until=\"2026-03-17 22:00\"` (or call tool `reminder` directly); do not use `blue reminder --help` as an execution step. Use `scheduler` for cron-style automation jobs, not ordinary user reminders. ")
-	sb.WriteString("Routing: ask→ask, search→web_search, public URL read→web_fetch, interactive/login URL→browser, UI review→ui_reviewer, PPT/slide visuals→ppt, analyze→analyze, reminder/alert→reminder, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. If web_fetch returns warning_code=login_wall, challenge, or browser_required, switch to browser. ")
+	sb.WriteString("Routing: ask→ask, discover links/no URL→web_search, known public URL quick read→web_fetch, known URL normalized/session-aware read→web_read, login/JS/forms/screenshots/live interaction→browser, UI review→ui_reviewer, PPT/slide visuals→ppt, analyze→analyze, reminder/alert→reminder, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. If web_fetch returns warning_code=login_wall, challenge, or browser_required, or web_read returns warning_codes including those values, switch to browser. Final web fallback→browser. ")
 	sb.WriteString("Use progressive skill selection: prefer routed/pinned commands first, then inspect likely SKILL.md files on demand. ")
 	sb.WriteString("More skills in workspace `.claude/skills/` and user default `~/.claude/skills/`.")
 

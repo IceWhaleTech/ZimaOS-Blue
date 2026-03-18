@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 )
@@ -111,6 +112,51 @@ func TestLoadOrImport_MigratesLegacyDefaultJWTSecretFromDB(t *testing.T) {
 	}
 	if got2.Security.JWT.Secret != firstSecret {
 		t.Fatalf("expected migrated secret to remain stable, first=%q second=%q", firstSecret, got2.Security.JWT.Secret)
+	}
+}
+
+func TestLoadOrImport_PreservesMissingNestedSecurityDefaultsFromDB(t *testing.T) {
+	kv := kvstore.NewMemoryStore()
+	store := NewConfigStore(kv)
+	ctx := context.Background()
+
+	if err := kv.SetJSON(ctx, configKeyPrefix+"server", ServerConfig{Host: "0.0.0.0"}, 0); err != nil {
+		t.Fatalf("SetJSON(server) error = %v", err)
+	}
+	if err := kv.SetJSON(
+		ctx,
+		configKeyPrefix+"security",
+		map[string]any{
+			"jwt": map[string]any{
+				"secret": "legacy-jwt-secret",
+			},
+		},
+		0,
+	); err != nil {
+		t.Fatalf("SetJSON(security) error = %v", err)
+	}
+
+	cfg := defaults()
+	got, err := store.LoadOrImport(&cfg)
+	if err != nil {
+		t.Fatalf("LoadOrImport() error = %v", err)
+	}
+
+	if got.Security.JWT.Secret != "legacy-jwt-secret" {
+		t.Fatalf("Security.JWT.Secret = %q, want %q", got.Security.JWT.Secret, "legacy-jwt-secret")
+	}
+	if got.Security.JWT.Expiration != 24*time.Hour {
+		t.Fatalf("Security.JWT.Expiration = %v, want %v", got.Security.JWT.Expiration, 24*time.Hour)
+	}
+	if got.Security.JWT.RefreshExpiration != 720*time.Hour {
+		t.Fatalf(
+			"Security.JWT.RefreshExpiration = %v, want %v",
+			got.Security.JWT.RefreshExpiration,
+			720*time.Hour,
+		)
+	}
+	if got.Security.Sandbox.DefaultTimeout != 30*time.Second {
+		t.Fatalf("Security.Sandbox.DefaultTimeout = %v, want %v", got.Security.Sandbox.DefaultTimeout, 30*time.Second)
 	}
 }
 

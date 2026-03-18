@@ -3,7 +3,11 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { securityApi, type PromptFirewallConfig, type PromptFirewallRule } from '@/api/security'
 import { systemApi } from '@/api/index'
-import { approvalApi, type ApprovedDirectoryEntry } from '@/api/approval'
+import {
+  approvalApi,
+  type ApprovedBrowserSiteEntry,
+  type ApprovedDirectoryEntry,
+} from '@/api/approval'
 import { companionApi, type CompanionSession, type Stats as CompanionStats } from '@/api/companion'
 import {
   getActiveConnections,
@@ -18,6 +22,10 @@ import DataMaskingSettings from '@/components/security/DataMaskingSettings.vue'
 import MonitoringRetentionSettings from '@/components/security/MonitoringRetentionSettings.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import type { LogEntry } from '@/api/system'
+import {
+  formatSecurityScanSummary,
+  getVisibleSecurityScanSummaryMetrics,
+} from '@/utils/securityScanSummary'
 
 const { t, te } = useI18n()
 
@@ -129,6 +137,13 @@ const DETAIL_MESSAGE_KEYS: Record<string, string> = {
   'Error details are hidden from responses': 'error_hidden',
   'Sensitive error data may be logged. Ensure log access is restricted.': 'error_log_restrict',
   'Sensitive error data is filtered from logs': 'error_filtered_logs',
+  'Running in development mode. Ensure production settings before deployment.': 'running_development',
+  'Token expiration is too long or not set. This increases risk of token theft.':
+    'token_expiration_too_long_or_unset',
+  'Token expiration exceeds 8 hours. This increases risk of token theft.':
+    'token_expiration_too_long',
+  'Token expiration is not set. Check security.jwt.expiration in the loaded security configuration.':
+    'token_expiration_not_set',
   'Running in production mode': 'running_production',
   'Running in staging mode': 'running_staging',
 }
@@ -175,6 +190,9 @@ const expandedItemId = ref<string | null>(null) // ID of expanded item for detai
 const approvedDirs = ref<ApprovedDirectoryEntry[]>([])
 const loadingApprovedDirs = ref(false)
 const revokingApprovedDirId = ref<string | null>(null)
+const approvedBrowserSites = ref<ApprovedBrowserSiteEntry[]>([])
+const loadingApprovedBrowserSites = ref(false)
+const revokingApprovedBrowserSiteId = ref<string | null>(null)
 
 async function loadApprovedDirectories() {
   try {
@@ -198,6 +216,31 @@ async function revokeApprovedDirectory(id: string) {
     console.error('Failed to revoke approved directory:', error)
   } finally {
     revokingApprovedDirId.value = null
+  }
+}
+
+async function loadApprovedBrowserSites() {
+  try {
+    loadingApprovedBrowserSites.value = true
+    const response = await approvalApi.listApprovedBrowserSites()
+    approvedBrowserSites.value = response.data.entries || []
+  } catch (error) {
+    console.error('Failed to load approved browser sites:', error)
+    approvedBrowserSites.value = []
+  } finally {
+    loadingApprovedBrowserSites.value = false
+  }
+}
+
+async function revokeApprovedBrowserSite(id: string) {
+  try {
+    revokingApprovedBrowserSiteId.value = id
+    await approvalApi.revokeApprovedBrowserSite(id)
+    approvedBrowserSites.value = approvedBrowserSites.value.filter((item) => item.id !== id)
+  } catch (error) {
+    console.error('Failed to revoke approved browser site:', error)
+  } finally {
+    revokingApprovedBrowserSiteId.value = null
   }
 }
 
@@ -674,18 +717,15 @@ const scanSummary = computed(() => {
   return { passed, warnings, failed, total: scanResults.value.length }
 })
 
-const visibleScanSummaryMetrics = computed(() => [
-  {
-    key: 'passed',
-    value: scanSummary.value.passed,
-    label: t('security.scan.passed'),
-  },
-  {
-    key: 'failed',
-    value: scanSummary.value.failed,
-    label: t('security.scan.failed'),
-  },
-])
+const scanSummaryLabels = computed(() => ({
+  passed: t('security.scan.passed'),
+  warnings: t('security.scan.warnings'),
+  failed: t('security.scan.failed'),
+}))
+
+const visibleScanSummaryMetrics = computed(() =>
+  getVisibleSecurityScanSummaryMetrics(scanSummary.value, scanSummaryLabels.value)
+)
 
 // Get category label
 function getCategoryLabel(category: string): string {
@@ -786,11 +826,7 @@ const securityStatusTitle = computed(() => {
 
 const securityStatusDescription = computed(() => {
   return scanCompleted.value
-    ? t('security.scanSummary', {
-        passed: scanSummary.value.passed,
-        warnings: scanSummary.value.warnings,
-        failed: scanSummary.value.failed,
-      })
+    ? formatSecurityScanSummary(scanSummary.value, scanSummaryLabels.value)
     : t('security.scanInProgress')
 })
 
@@ -888,6 +924,7 @@ let connectionRefreshInterval: ReturnType<typeof setInterval> | null = null
 onMounted(async () => {
   loadPromptFirewall()
   loadApprovedDirectories()
+  loadApprovedBrowserSites()
 
   // Load cached results first
   loadCachedScanResults()
@@ -934,15 +971,18 @@ onUnmounted(() => {
 
       <section class="security-shell">
         <div class="security-tab-shell">
-          <nav class="security-tab-nav" aria-label="Tabs">
+          <nav class="security-tab-nav dashboard-card-surface" aria-label="Security sections">
             <button
               v-for="tab in tabs"
               :key="tab.id"
-              class="security-tab-button dashboard-card-subsurface"
-              :class="{ 'is-active': activeTab === tab.id }"
+              type="button"
+              role="tab"
+              :aria-selected="activeTab === tab.id"
+              class="security-tab-button"
+              :class="{ 'security-tab-button--active': activeTab === tab.id }"
               @click="selectTab(tab.id)"
             >
-              <span class="security-tab-icon">
+              <span class="security-tab-button__icon">
                 <svg
                   v-if="tab.icon === 'shield'"
                   xmlns="http://www.w3.org/2000/svg"
@@ -1075,10 +1115,12 @@ onUnmounted(() => {
                   />
                 </svg>
               </span>
-              <span class="security-tab-body">
-                <span class="security-tab-label">{{ getTabLabel(tab) }}</span>
+              <span class="security-tab-button__body">
+                <span class="security-tab-button__label-row">
+                  <span class="security-tab-button__label">{{ getTabLabel(tab) }}</span>
+                </span>
               </span>
-              <span class="security-tab-state" aria-hidden="true"></span>
+              <span class="security-tab-button__state" aria-hidden="true"></span>
             </button>
           </nav>
         </div>
@@ -1598,6 +1640,68 @@ onUnmounted(() => {
                     :disabled="revokingApprovedDirId === entry.id"
                     class="px-2.5 py-1 text-xs border border-red-300 dark:border-red-700 rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
                     @click="revokeApprovedDirectory(entry.id)"
+                  >
+                    {{ tr('common.revoke', 'Revoke') }}
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section class="security-panel dashboard-card-surface">
+              <div class="flex items-center justify-between mb-2 gap-3">
+                <div>
+                  <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                    {{ tr('security.approvedBrowserSites', 'Allowed Browser Sites') }}
+                  </h3>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">
+                    {{
+                      tr(
+                        'security.approvedBrowserSitesDesc',
+                        'Websites you marked as Always Allow for browser checkpoints.'
+                      )
+                    }}
+                  </p>
+                </div>
+                <button
+                  :disabled="loadingApprovedBrowserSites"
+                  class="px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-500 rounded text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-600 disabled:opacity-50"
+                  @click="loadApprovedBrowserSites"
+                >
+                  {{ tr('common.refresh', 'Refresh') }}
+                </button>
+              </div>
+
+              <div
+                v-if="loadingApprovedBrowserSites"
+                class="text-sm text-gray-500 dark:text-slate-400 py-3"
+              >
+                {{ t('common.loading') }}
+              </div>
+              <div
+                v-else-if="!approvedBrowserSites.length"
+                class="text-sm text-gray-500 dark:text-slate-400 py-3"
+              >
+                {{ tr('security.noApprovedBrowserSites', 'No allowed browser sites') }}
+              </div>
+              <div v-else class="space-y-2">
+                <div
+                  v-for="entry in approvedBrowserSites"
+                  :key="entry.id"
+                  class="flex items-start justify-between gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/50"
+                >
+                  <div class="min-w-0">
+                    <p class="text-sm font-mono text-gray-800 dark:text-slate-200 break-all">
+                      {{ entry.origin }}
+                    </p>
+                    <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                      {{ tr('claudecode.lastUsed', 'Last used') }}:
+                      {{ formatDate(entry.last_used) }}
+                    </p>
+                  </div>
+                  <button
+                    :disabled="revokingApprovedBrowserSiteId === entry.id"
+                    class="px-2.5 py-1 text-xs border border-red-300 dark:border-red-700 rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                    @click="revokeApprovedBrowserSite(entry.id)"
                   >
                     {{ tr('common.revoke', 'Revoke') }}
                   </button>
@@ -2184,6 +2288,9 @@ onUnmounted(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+  width: 100%;
+  max-width: 82rem;
+  margin: 0 auto;
   padding-bottom: 0;
 }
 
@@ -2217,6 +2324,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  width: 100%;
+  max-width: 82rem;
+  margin: 0 auto;
 }
 
 .security-page :deep(.dashboard-card-surface) {
@@ -2241,6 +2351,11 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .security-tab-button {
@@ -2248,61 +2363,76 @@ onUnmounted(() => {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
+  min-height: 100%;
   padding: 14px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 1.5rem;
-  background: rgba(255, 255, 255, 0.96);
+  background: transparent;
+  box-shadow: none;
   color: #0f172a;
   text-align: left;
   transition:
-    transform 0.22s ease,
     border-color 0.22s ease,
     box-shadow 0.22s ease,
-    background 0.22s ease;
+    background-color 0.22s ease,
+    color 0.22s ease;
 }
 
 .security-tab-button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.98);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 22px 36px -34px rgba(15, 23, 42, 0.2);
+  border-color: rgba(148, 163, 184, 0.52);
+  background: rgba(248, 250, 252, 0.9);
 }
 
-.security-tab-button.is-active {
-  border-color: rgba(255, 255, 255, 0.98);
-  background: rgba(243, 246, 249, 0.96);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 22px 36px -34px rgba(15, 23, 42, 0.2);
+.security-tab-button--active {
+  border-color: rgba(148, 163, 184, 0.58);
+  background: rgba(241, 245, 249, 0.92);
+  color: #0f172a;
 }
 
-.security-tab-icon {
+.security-tab-button__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 2.6rem;
   height: 2.6rem;
+  flex-shrink: 0;
   border-radius: 0.85rem;
-  background: rgba(var(--dashboard-page-accent), 0.12);
-  color: rgb(var(--dashboard-page-accent));
+  background: rgba(148, 163, 184, 0.16);
+  color: #64748b;
 }
 
-.security-tab-body {
+.security-tab-button__icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.security-tab-button--active .security-tab-button__icon {
+  background: rgba(148, 163, 184, 0.22);
+  color: #475569;
+}
+
+.security-tab-button__body {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.32rem;
 }
 
-.security-tab-label {
-  display: block;
+.security-tab-button__label-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.security-tab-button__label {
+  display: inline-flex;
   font-size: 0.9rem;
   font-weight: 700;
   line-height: 1.25;
 }
 
-.security-tab-state {
+.security-tab-button__state {
   width: 12px;
   height: 12px;
   border-radius: 999px;
@@ -2312,9 +2442,9 @@ onUnmounted(() => {
     background-color 0.22s ease;
 }
 
-.security-tab-button.is-active .security-tab-state {
+.security-tab-button--active .security-tab-button__state {
   transform: scale(1.05);
-  background: rgb(var(--dashboard-page-accent));
+  background: #64748b;
 }
 
 .security-content,
@@ -3073,9 +3203,9 @@ html.dark .security-status-title,
 :root.dark .security-status-metric-value,
 [data-theme='dark'] .security-status-metric-value,
 html.dark .security-status-metric-value,
-:root.dark .security-tab-button.is-active,
-[data-theme='dark'] .security-tab-button.is-active,
-html.dark .security-tab-button.is-active {
+:root.dark .security-tab-button--active,
+[data-theme='dark'] .security-tab-button--active,
+html.dark .security-tab-button--active {
   color: rgb(241 245 249);
 }
 
@@ -3094,38 +3224,48 @@ html.dark .security-tab-button {
 :root.dark .security-tab-button:hover,
 [data-theme='dark'] .security-tab-button:hover,
 html.dark .security-tab-button:hover {
-  border-color: rgba(148, 163, 184, 0.24);
+  border-color: rgba(148, 163, 184, 0.28);
   background: rgba(30, 41, 59, 0.82);
 }
 
-:root.dark .security-tab-button.is-active,
-[data-theme='dark'] .security-tab-button.is-active,
-html.dark .security-tab-button.is-active {
-  border-color: rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.82);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 22px 36px -34px rgba(2, 6, 23, 0.66);
+:root.dark .security-tab-button--active,
+[data-theme='dark'] .security-tab-button--active,
+html.dark .security-tab-button--active {
+  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(30, 41, 59, 0.92);
 }
 
 :root.dark .security-tab-button,
 [data-theme='dark'] .security-tab-button,
 html.dark .security-tab-button {
   border-color: rgba(71, 85, 105, 0.46);
-  background: rgba(15, 23, 42, 0.78);
+  background: transparent;
 }
 
-:root.dark .security-tab-icon,
-[data-theme='dark'] .security-tab-icon,
-html.dark .security-tab-icon {
-  color: rgb(191 219 254);
-  background: rgba(96, 165, 250, 0.14);
+:root.dark .security-tab-button__icon,
+[data-theme='dark'] .security-tab-button__icon,
+html.dark .security-tab-button__icon {
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.18);
 }
 
-:root.dark .security-tab-state,
-[data-theme='dark'] .security-tab-state,
-html.dark .security-tab-state {
+:root.dark .security-tab-button__state,
+[data-theme='dark'] .security-tab-button__state,
+html.dark .security-tab-button__state {
   background: rgba(148, 163, 184, 0.32);
+}
+
+:root.dark .security-tab-button--active .security-tab-button__icon,
+[data-theme='dark'] .security-tab-button--active .security-tab-button__icon,
+html.dark .security-tab-button--active .security-tab-button__icon {
+  background: rgba(148, 163, 184, 0.24);
+  color: #f8fafc;
+}
+
+:root.dark .security-tab-button--active .security-tab-button__state,
+[data-theme='dark'] .security-tab-button--active .security-tab-button__state,
+html.dark .security-tab-button--active .security-tab-button__state {
+  background: #cbd5e1;
 }
 
 :root.dark .security-status-metric,

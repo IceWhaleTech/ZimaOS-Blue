@@ -752,8 +752,9 @@ type providerResponse struct {
 	Enabled  bool             `json:"enabled"`
 	Status   ProviderStatus   `json:"status"`
 
-	BaseURL   string    `json:"base_url,omitempty"`
-	APIFormat APIFormat `json:"api_format,omitempty"`
+	BaseURL       string        `json:"base_url,omitempty"`
+	APIFormat     APIFormat     `json:"api_format,omitempty"`
+	APIFormatMode APIFormatMode `json:"api_format_mode,omitempty"`
 
 	APIKeys []APIKey     `json:"api_keys,omitempty"`
 	OAuth   *OAuthConfig `json:"oauth,omitempty"`
@@ -881,6 +882,7 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLook
 		Status:        p.Status,
 		BaseURL:       p.BaseURL,
 		APIFormat:     p.APIFormat,
+		APIFormatMode: ProviderAPIFormatMode(p),
 		APIKeys:       p.APIKeys,
 		OAuth:         p.OAuth,
 		Priority:      p.Priority,
@@ -1054,6 +1056,9 @@ func (h *Handler) AddProvider(c echo.Context) error {
 	if provider.BaseURL == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "base_url is required"})
 	}
+	if !isValidAPIFormatMode(provider.APIFormatMode) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "api_format_mode must be 'auto' or 'pinned'"})
+	}
 
 	// Generate ID if not provided
 	if provider.ID == "" {
@@ -1087,13 +1092,25 @@ func (h *Handler) AddProvider(c echo.Context) error {
 		})
 	}
 
-	// Auto-detect best API format for third-party/custom providers.
-	detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), &provider)
-	provider.APIFormat = detectedFormat
-	provider.DetectedFormat = detectedFormat
-	provider.DetectedAt = timeutil.NowTime()
-	if detectedBaseURL != "" {
-		provider.BaseURL = detectedBaseURL
+	explicitFormat := provider.APIFormat != ""
+	if explicitFormat && provider.APIFormatMode == "" {
+		provider.APIFormatMode = APIFormatModePinned
+	}
+	if !explicitFormat {
+		// Auto-detect best API format for third-party/custom providers.
+		detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), &provider)
+		provider.APIFormat = detectedFormat
+		provider.DetectedFormat = detectedFormat
+		provider.DetectedAt = timeutil.NowTime()
+		if detectedBaseURL != "" {
+			provider.BaseURL = detectedBaseURL
+		}
+	} else {
+		provider.DetectedFormat = provider.APIFormat
+		provider.DetectedAt = timeutil.NowTime()
+	}
+	if provider.APIFormatMode == "" {
+		provider.APIFormatMode = defaultAPIFormatModeForProvider(&provider)
 	}
 	if err := validateResponsesIntegrationAllowed(&provider); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -1167,6 +1184,12 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 	if updates.APIFormat != "" {
 		candidate.APIFormat = updates.APIFormat
 	}
+	if updates.APIFormatMode != "" {
+		if !isValidAPIFormatMode(updates.APIFormatMode) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "api_format_mode must be 'auto' or 'pinned'"})
+		}
+		candidate.APIFormatMode = updates.APIFormatMode
+	}
 	if updates.Priority != 0 {
 		candidate.Priority = updates.Priority
 	}
@@ -1186,6 +1209,7 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 		candidate.APIFormat = canonicalAPIFormatForProvider(&candidate)
 		candidate.DetectedFormat = candidate.APIFormat
 		candidate.DetectedAt = timeutil.NowTime()
+		candidate.APIFormatMode = APIFormatModePinned
 	} else if updates.APIFormat == "" && (updates.BaseURL != "" || candidate.APIFormat == "") {
 		detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), &candidate)
 		candidate.APIFormat = detectedFormat
@@ -1193,6 +1217,20 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 		candidate.DetectedAt = timeutil.NowTime()
 		if detectedBaseURL != "" {
 			candidate.BaseURL = detectedBaseURL
+		}
+		if candidate.APIFormatMode == "" {
+			candidate.APIFormatMode = defaultAPIFormatModeForProvider(&candidate)
+		}
+	} else {
+		if updates.APIFormat != "" {
+			candidate.DetectedFormat = candidate.APIFormat
+			candidate.DetectedAt = timeutil.NowTime()
+			if updates.APIFormatMode == "" && candidate.APIFormatMode == "" {
+				candidate.APIFormatMode = APIFormatModePinned
+			}
+		}
+		if candidate.APIFormatMode == "" {
+			candidate.APIFormatMode = defaultAPIFormatModeForProvider(&candidate)
 		}
 	}
 	if err := validateResponsesIntegrationAllowed(&candidate); err != nil {
@@ -1206,6 +1244,15 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, existing)
+}
+
+func isValidAPIFormatMode(mode APIFormatMode) bool {
+	switch mode {
+	case "", APIFormatModeAuto, APIFormatModePinned:
+		return true
+	default:
+		return false
+	}
 }
 
 // DeleteProvider removes a provider

@@ -10,6 +10,10 @@
     <!-- Preconnect for faster API calls -->
     <link rel="preconnect" href="//localhost" crossorigin />
     <style>
+      html, body {
+        margin: 0;
+        background: transparent;
+      }
       /* Inline splash screen — visible before JS loads, removed by Vue on mount */
       #app-splash {
         position: fixed;
@@ -21,11 +25,36 @@
         gap: 24px;
         z-index: 99999;
         transition: opacity 0.3s ease;
+        background:
+          radial-gradient(circle at 16% 18%, rgba(59, 130, 246, 0.18), transparent 32%),
+          radial-gradient(circle at 82% 12%, rgba(45, 212, 191, 0.14), transparent 28%),
+          rgba(15, 23, 42, 0.42);
+        backdrop-filter: blur(24px) saturate(1.12);
+        -webkit-backdrop-filter: blur(24px) saturate(1.12);
       }
       #app-splash.fade-out { opacity: 0; pointer-events: none; }
-      /* Theme-aware background: dark by default, light if .light class */
-      #app-splash { background: #0F172A; color: #94A3B8; }
-      :root.light #app-splash { background: #F8FAFC; color: #64748B; }
+      :root.light #app-splash {
+        background:
+          radial-gradient(circle at 14% 18%, rgba(96, 165, 250, 0.24), transparent 34%),
+          radial-gradient(circle at 84% 12%, rgba(45, 212, 191, 0.16), transparent 28%),
+          rgba(255, 255, 255, 0.52);
+      }
+      #app-splash .splash-panel {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 96px;
+        height: 96px;
+        border-radius: 28px;
+        background: rgba(15, 23, 42, 0.36);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 24px 60px rgba(2, 6, 23, 0.22);
+        backdrop-filter: blur(22px) saturate(1.1);
+        -webkit-backdrop-filter: blur(22px) saturate(1.1);
+      }
+      :root.light #app-splash .splash-panel {
+        background: rgba(255, 255, 255, 0.44);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68), 0 24px 60px rgba(148, 163, 184, 0.22);
+      }
       /* Spinner */
       #app-splash .spinner {
         width: 36px; height: 36px;
@@ -34,12 +63,20 @@
         border-radius: 50%;
         animation: splash-spin 0.8s linear infinite;
       }
+      #app-splash { color: rgba(148, 163, 184, 0.88); }
+      :root.light #app-splash { color: rgba(100, 116, 139, 0.88); }
       @keyframes splash-spin { to { transform: rotate(360deg); } }
       /* Apply saved theme class immediately to avoid flash */
     </style>
     <script>
       // Apply theme before first paint to prevent flash
       (function() {
+        if (window.__BLUE_DESKTOP__) {
+          document.documentElement.dataset.blueDesktop = 'true';
+        }
+        if (window.__BLUE_MACOS_GLASS__) {
+          document.documentElement.dataset.blueMacosGlass = 'true';
+        }
         var t = localStorage.getItem('zimaos-blue-theme') || 'system';
         var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.classList.add(dark ? 'dark' : 'light');
@@ -48,7 +85,9 @@
   </head>
   <body>
     <div id="app-splash" aria-label="Loading">
-      <div class="spinner"></div>
+      <div class="splash-panel">
+        <div class="spinner"></div>
+      </div>
     </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>

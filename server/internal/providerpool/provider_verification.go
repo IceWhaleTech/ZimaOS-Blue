@@ -32,6 +32,8 @@ type providerVerificationResult struct {
 	Model                string                               `json:"model"`
 	DetectedFormat       APIFormat                            `json:"detected_format"`
 	RecommendedAPIFormat APIFormat                            `json:"recommended_api_format"`
+	CandidateFormats     []APIFormat                          `json:"candidate_formats,omitempty"`
+	ResolutionSource     FormatResolutionSource               `json:"resolution_source,omitempty"`
 	RecommendedBaseURL   string                               `json:"recommended_base_url"`
 	ResponsesOnly        bool                                 `json:"responses_only"`
 	ChatError            string                               `json:"chat_error,omitempty"`
@@ -139,8 +141,19 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 	anthropicReachable := isProviderVerificationReachable(anthropicStatus)
 	openAIReachable := isProviderVerificationReachable(chatStatus)
 	responsesReachable := responsesEnabled && (isProviderVerificationReachable(respV1Status) || isProviderVerificationReachable(respRawStatus))
-
-	recommendedFormat := recommendedAPIFormatForModel(probeModel, detectedFormat, anthropicReachable, openAIReachable && !responsesOnly, responsesReachable, responsesOnly)
+	resolutionPlan := ResolveAPIFormatPlan(FormatResolutionRequest{
+		Provider:       provider,
+		ModelID:        probeModel,
+		DetectedFormat: detectedFormat,
+	})
+	recommendedFormat := recommendedReachableFormatForPlan(
+		resolutionPlan,
+		detectedFormat,
+		anthropicReachable,
+		openAIReachable,
+		responsesReachable,
+		responsesOnly,
+	)
 
 	rootBaseURL := strings.TrimSuffix(urls.modelsURL, "/v1/models")
 	if strings.TrimSpace(rootBaseURL) == "" {
@@ -213,6 +226,8 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 		Model:                probeModel,
 		DetectedFormat:       detectedFormat,
 		RecommendedAPIFormat: recommendedFormat,
+		CandidateFormats:     append([]APIFormat(nil), resolutionPlan.CandidateFormats...),
+		ResolutionSource:     resolutionPlan.Source,
 		RecommendedBaseURL:   recommendedBaseURL,
 		ResponsesOnly:        responsesOnly,
 		ChatError:            chatError,
@@ -230,8 +245,13 @@ func applyProviderVerificationRecommendation(provider *Provider, result *provide
 
 	changed := false
 	if isThirdPartyProvider(provider) {
-		if result.RecommendedAPIFormat != "" && result.RecommendedAPIFormat != APIFormatResponses && provider.APIFormat != result.RecommendedAPIFormat {
+		if result.RecommendedAPIFormat != "" && provider.APIFormat != result.RecommendedAPIFormat {
 			provider.APIFormat = result.RecommendedAPIFormat
+			changed = true
+		}
+		recommendedMode := resolvedCustomProviderFormatMode(strings.TrimSpace(result.RecommendedBaseURL))
+		if provider.APIFormatMode != recommendedMode {
+			provider.APIFormatMode = recommendedMode
 			changed = true
 		}
 		recommendedBaseURL := normalizeCustomVerificationApplyBaseURL(strings.TrimSpace(result.RecommendedBaseURL))
@@ -248,9 +268,14 @@ func applyProviderVerificationRecommendation(provider *Provider, result *provide
 			provider.ResetParsedURL()
 			changed = true
 		}
-		if provider.DetectedFormat != "" {
-			provider.DetectedFormat = ""
-			provider.DetectedAt = time.Time{}
+		if provider.DetectedEndpoint != "" && strings.TrimSpace(provider.DetectedEndpoint) != strings.TrimSpace(recommendedBaseURL) {
+			provider.DetectedEndpoint = ""
+			provider.ResetParsedURL()
+			changed = true
+		}
+		if result.RecommendedAPIFormat != "" && provider.DetectedFormat != result.RecommendedAPIFormat {
+			provider.DetectedFormat = result.RecommendedAPIFormat
+			provider.DetectedAt = now
 			changed = true
 		}
 		if changed {
@@ -259,6 +284,10 @@ func applyProviderVerificationRecommendation(provider *Provider, result *provide
 		return changed
 	}
 
+	if provider.APIFormatMode != APIFormatModePinned {
+		provider.APIFormatMode = APIFormatModePinned
+		changed = true
+	}
 	if result.RecommendedAPIFormat != "" && provider.APIFormat != result.RecommendedAPIFormat {
 		provider.APIFormat = result.RecommendedAPIFormat
 		provider.DetectedFormat = result.RecommendedAPIFormat
@@ -276,6 +305,51 @@ func applyProviderVerificationRecommendation(provider *Provider, result *provide
 		provider.UpdatedAt = now
 	}
 	return changed
+}
+
+func recommendedReachableFormatForPlan(plan FormatResolutionPlan, detectedFormat APIFormat, anthropicReachable, openAIReachable, responsesReachable, responsesOnly bool) APIFormat {
+	responsesEnabled := ResponsesIntegrationEnabled()
+	if !responsesEnabled {
+		responsesReachable = false
+		responsesOnly = false
+		if detectedFormat == APIFormatResponses {
+			detectedFormat = ""
+		}
+	}
+
+	if responsesOnly && responsesReachable {
+		return APIFormatResponses
+	}
+
+	reachable := map[APIFormat]bool{
+		APIFormatAnthropic: anthropicReachable,
+		APIFormatOpenAI:    openAIReachable && !responsesOnly,
+		APIFormatResponses: responsesReachable,
+	}
+	for _, format := range plan.CandidateFormats {
+		if reachable[format] {
+			return format
+		}
+	}
+	if detectedFormat != "" && reachable[detectedFormat] {
+		return detectedFormat
+	}
+	if reachable[APIFormatOpenAI] {
+		return APIFormatOpenAI
+	}
+	if reachable[APIFormatAnthropic] {
+		return APIFormatAnthropic
+	}
+	if reachable[APIFormatResponses] {
+		return APIFormatResponses
+	}
+	if detectedFormat != "" {
+		return detectedFormat
+	}
+	if plan.SelectedFormat != "" {
+		return plan.SelectedFormat
+	}
+	return APIFormatOpenAI
 }
 
 func normalizeCustomVerificationApplyBaseURL(raw string) string {
@@ -298,6 +372,20 @@ func normalizeCustomVerificationApplyBaseURL(raw string) string {
 	default:
 		return raw
 	}
+}
+
+func resolvedCustomProviderFormatMode(raw string) APIFormatMode {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return APIFormatModeAuto
+	}
+	normalized := normalizeCustomVerificationApplyBaseURL(raw)
+	if normalized == strings.TrimSuffix(raw, "/") {
+		if _, ok := DetectEndpointFixedFormat(raw); ok {
+			return APIFormatModePinned
+		}
+	}
+	return APIFormatModeAuto
 }
 
 func isGenericVerificationEndpointLock(raw string) bool {

@@ -23,6 +23,40 @@ const emit = defineEmits<{
 const copiedIndex = ref<number | null>(null)
 const titleCopied = ref(false)
 
+interface ResolvedImageItem {
+  alt: string
+  src: string
+}
+
+const IMAGE_DETAIL_LABELS = new Set([
+  'image',
+  'images',
+  'media_url',
+  'preview_image',
+  'preview_url',
+  'screenshot',
+  'screenshots',
+  'thumbnail',
+  'thumbnail_url',
+])
+const IMAGE_URL_SUFFIX_RE = /\.(?:png|jpe?g|gif|webp|bmp|svg)(?:[?#].*)?$/i
+const WINDOWS_ABS_PATH_RE = /^(?:[a-zA-Z]:[\\/]|\\\\)/
+const POSIX_LOCAL_ROOT_SEGMENTS = new Set([
+  'users',
+  'home',
+  'tmp',
+  'var',
+  'private',
+  'mnt',
+  'media',
+  'volumes',
+  'root',
+  'opt',
+  'srv',
+  'data',
+  'run',
+])
+
 // Title is explicitly marked as copyable by the backend (e.g. exec command)
 const isTitleCopyable = computed(() => !!(props.card as any).title_copyable)
 
@@ -83,9 +117,11 @@ function isMapValue(val: unknown): val is Record<string, unknown> {
 /** Try to parse a string as JSON object; returns the object or null */
 function tryParseObject(val: unknown): Record<string, unknown> | null {
   if (isMapValue(val)) return val
-  if (typeof val === 'string' && val.startsWith('{')) {
+  if (typeof val === 'string') {
+    const trimmed = val.trim()
+    if (!trimmed.startsWith('{')) return null
     try {
-      const o = JSON.parse(val)
+      const o = JSON.parse(trimmed)
       if (isMapValue(o)) return o
     } catch {
       /* not JSON */
@@ -154,6 +190,145 @@ function normalizeResultCardKey(input: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
+function isLikelyLocalFilesystemPath(raw: string): boolean {
+  const trimmed = raw.trim()
+  if (!trimmed || !isLocalAbsolutePath(trimmed) || isApiPath(trimmed) || isHttpUrl(trimmed)) {
+    return false
+  }
+
+  if (WINDOWS_ABS_PATH_RE.test(trimmed)) return true
+  if (!trimmed.startsWith('/')) return false
+
+  const firstSegment = trimmed
+    .slice(1)
+    .split('/')[0]
+    ?.trim()
+    .toLowerCase()
+
+  return !!firstSegment && POSIX_LOCAL_ROOT_SEGMENTS.has(firstSegment)
+}
+
+function toLocalFileContentUrl(path: string): string {
+  const trimmed = path.trim()
+  if (!isLikelyLocalFilesystemPath(trimmed)) return ''
+  return `/api/v1/system/local-file/content?path=${encodeURIComponent(trimmed)}&inline=1`
+}
+
+function normalizeImageSource(raw: string, mimeType?: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  const localFileContentUrl = toLocalFileContentUrl(trimmed)
+  if (localFileContentUrl) return localFileContentUrl
+  if (
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('/')
+  ) {
+    return trimmed
+  }
+  const mime = mimeType?.trim()
+  if (mime?.startsWith('image/')) {
+    return `data:${mime};base64,${trimmed}`
+  }
+  return `data:image/png;base64,${trimmed}`
+}
+
+function isImageDetailLabel(label: string): boolean {
+  return IMAGE_DETAIL_LABELS.has(normalizeResultCardKey(label))
+}
+
+function isLikelyImageString(raw: string): boolean {
+  const trimmed = raw.trim()
+  if (!trimmed) return false
+  if (isLikelyLocalFilesystemPath(trimmed)) {
+    return IMAGE_URL_SUFFIX_RE.test(trimmed)
+  }
+  if (
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('/')
+  ) {
+    return trimmed.startsWith('data:image/') || IMAGE_URL_SUFFIX_RE.test(trimmed)
+  }
+  return /^[A-Za-z0-9+/=\r\n]+$/.test(trimmed) && trimmed.length >= 64
+}
+
+function pushResolvedImage(
+  items: ResolvedImageItem[],
+  seen: Set<string>,
+  raw: string,
+  alt: string,
+  mimeType?: string
+) {
+  const src = normalizeImageSource(raw, mimeType)
+  if (!src || seen.has(src)) return
+  seen.add(src)
+  items.push({ src, alt })
+}
+
+function extractResolvedImages(
+  value: unknown,
+  label: string,
+  items: ResolvedImageItem[],
+  seen: Set<string>
+) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        extractResolvedImages(parsed, label, items, seen)
+        return
+      } catch {
+        // Fall back to string heuristics below.
+      }
+    }
+    if (isImageDetailLabel(label) || isLikelyImageString(trimmed)) {
+      pushResolvedImage(items, seen, trimmed, label)
+    }
+    return
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => extractResolvedImages(entry, label, items, seen))
+    return
+  }
+
+  if (!isMapValue(value)) return
+
+  const mimeType =
+    typeof value.mime_type === 'string'
+      ? value.mime_type
+      : typeof value.mimeType === 'string'
+        ? value.mimeType
+        : undefined
+
+  const directStringKeys = ['src', 'url', 'image', 'screenshot', 'thumbnail']
+  directStringKeys.forEach((key) => {
+    const candidate = value[key]
+    if (typeof candidate === 'string' && candidate.trim()) {
+      pushResolvedImage(items, seen, candidate, label || key, mimeType)
+    }
+  })
+
+  const binaryKeys = ['data', 'base64']
+  binaryKeys.forEach((key) => {
+    const candidate = value[key]
+    if (typeof candidate === 'string' && candidate.trim()) {
+      pushResolvedImage(items, seen, candidate, label || key, mimeType)
+    }
+  })
+
+  for (const [subKey, subValue] of Object.entries(value)) {
+    if (typeof subValue === 'string' && !isImageDetailLabel(subKey) && !isLikelyImageString(subValue))
+      continue
+    extractResolvedImages(subValue, subKey, items, seen)
+  }
+}
+
 function tLabel(label: string): string {
   const key = 'resultCard.labels.' + normalizeResultCardKey(label)
   return te(key) ? t(key) : label
@@ -214,6 +389,16 @@ const translatedTitle = computed(() => {
   return translated === key ? rawTitle : translated
 })
 
+const parsedMessagePayload = computed(() => tryParseObject(props.card.message))
+const displayMessage = computed(() => {
+  const payload = parsedMessagePayload.value
+  if (payload) {
+    const nestedMessage = typeof payload.message === 'string' ? payload.message.trim() : ''
+    return nestedMessage
+  }
+  return (props.card.message || '').trim()
+})
+
 const errorKeyMap: [RegExp, string][] = [
   [/browser start failed/i, 'uiReview.errors.browserStartFailed'],
   [/browser service not available/i, 'uiReview.errors.browserNotAvailable'],
@@ -222,7 +407,7 @@ const errorKeyMap: [RegExp, string][] = [
 ]
 
 const translatedMessage = computed(() => {
-  const msg = props.card.message
+  const msg = displayMessage.value
   if (!msg) return ''
   if (props.card.status === 'error') {
     for (const [re, key] of errorKeyMap) {
@@ -239,19 +424,43 @@ const translatedMessage = computed(() => {
 
 const warningText = computed(() => (props.card.warning || '').trim())
 const warningCodeLabel = computed(() => formatToolWarningCodeLabel(props.card.warning_code, t))
-const resolvedImageSrc = computed(() => {
-  const raw = (props.card.image || '').trim()
-  if (!raw) return ''
-  if (
-    raw.startsWith('data:image/') ||
-    raw.startsWith('http://') ||
-    raw.startsWith('https://') ||
-    raw.startsWith('/')
-  ) {
-    return raw
+const resolvedImageItems = computed<ResolvedImageItem[]>(() => {
+  const items: ResolvedImageItem[] = []
+  const seen = new Set<string>()
+
+  ;(props.card.images || []).forEach((image) => {
+    if (!image) return
+    pushResolvedImage(
+      items,
+      seen,
+      image.src,
+      image.alt || translatedTitle.value || 'image',
+      undefined
+    )
+  })
+
+  const rawCardImage = (props.card.image || '').trim()
+  if (rawCardImage) {
+    pushResolvedImage(items, seen, rawCardImage, translatedTitle.value || 'image')
   }
-  return `data:image/png;base64,${raw}`
+
+  if (parsedMessagePayload.value) {
+    extractResolvedImages(
+      parsedMessagePayload.value,
+      translatedTitle.value || 'image',
+      items,
+      seen
+    )
+  }
+
+  ;(props.card.details || []).forEach((detail) => {
+    if (!isImageDetailLabel(detail.label)) return
+    extractResolvedImages(detail.value, detail.label, items, seen)
+  })
+
+  return items
 })
+const hasRenderedImages = computed(() => resolvedImageItems.value.length > 0)
 
 // Filter out details that are redundant with the title/message
 const visibleDetails = computed(() => {
@@ -261,6 +470,7 @@ const visibleDetails = computed(() => {
       const lbl = d.label.toLowerCase()
       if (lbl === 'status' || lbl === '状态') return false
       if (lbl === 'warning' || lbl === 'warning_code') return false
+      if (isImageDetailLabel(d.label) && hasRenderedImages.value) return false
       if ((lbl === 'result' || lbl === '结果') && props.card.message) return false
       return true
     })
@@ -344,22 +554,33 @@ const visibleDetails = computed(() => {
     <!-- Body -->
     <div class="px-4 py-3">
       <div
-        v-if="resolvedImageSrc"
+        v-if="hasRenderedImages"
         class="rounded-md overflow-hidden border border-gray-200 dark:border-gray-700/60 bg-gray-50 dark:bg-gray-900/60"
       >
         <img
-          :src="resolvedImageSrc"
-          :alt="translatedTitle || 'image'"
+          v-if="resolvedImageItems.length === 1"
+          :src="resolvedImageItems[0]?.src"
+          :alt="resolvedImageItems[0]?.alt || translatedTitle || 'image'"
           class="w-full max-h-[22rem] object-contain"
           loading="lazy"
         />
+        <div v-else class="grid grid-cols-2 gap-2 p-2">
+          <img
+            v-for="(image, index) in resolvedImageItems"
+            :key="`${image.src}-${index}`"
+            :src="image.src"
+            :alt="image.alt || translatedTitle || 'image'"
+            class="w-full max-h-56 rounded object-contain bg-white/60 dark:bg-gray-950/40"
+            loading="lazy"
+          />
+        </div>
       </div>
 
       <!-- Message -->
       <p
-        v-if="card.message"
+        v-if="translatedMessage"
         class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed"
-        :class="resolvedImageSrc ? 'mt-3' : ''"
+        :class="hasRenderedImages ? 'mt-3' : ''"
       >
         {{ translatedMessage }}
       </p>
@@ -367,7 +588,7 @@ const visibleDetails = computed(() => {
       <div
         v-if="warningText || warningCodeLabel"
         class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/60 dark:bg-amber-900/20"
-        :class="card.message ? 'mt-3' : ''"
+        :class="translatedMessage ? 'mt-3' : ''"
       >
         <div
           class="flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-200"

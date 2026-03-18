@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted, watch, onMounted, nextTick } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ttsAudioManager, voiceApi } from '@/api/voice'
 import { speechApi } from '@/api/speech'
@@ -11,11 +11,12 @@ import {
   isTtsSpeechMuted,
   setTtsAutoPlayEnabled,
 } from '@/utils/ttsPreferences'
+import { createProcessTraceItem, type ProcessTraceItem } from '@/utils/processTrace'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useChatStore } from '@/stores/chat'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const localeStore = useLocaleStore()
 const chatStore = useChatStore()
 
@@ -30,257 +31,245 @@ const emit = defineEmits<{
   response: [text: string]
 }>()
 
-// Conversation state machine
-type ConversationState = 'idle' | 'listening' | 'transcribing' | 'processing' | 'speaking'
-const conversationState = ref<ConversationState>('idle')
-const autoPlayTTS = ref(isTtsAutoPlayEnabled())
-const error = ref<string | null>(null)
+type ConversationState =
+  | 'idle'
+  | 'listening'
+  | 'preparing_audio'
+  | 'uploading_audio'
+  | 'transcribing'
+  | 'requesting'
+  | 'waiting_response'
+  | 'tool_processing'
+  | 'awaiting_confirmation'
+  | 'tts_preparing'
+  | 'speaking'
+  | 'retrying'
 
 type TalkBubble = {
   id: string
   role: 'user' | 'assistant'
   text: string
 }
+
+const conversationState = ref<ConversationState>('idle')
+const autoPlayTTS = ref(isTtsAutoPlayEnabled())
+const error = ref<string | null>(null)
 const conversationBubbles = ref<TalkBubble[]>([])
 const bubbleListRef = ref<HTMLElement | null>(null)
-
-// ASR model download prompt
 const showASRDownloadPrompt = ref(false)
-
-// Audio visualization (0-100)
 const audioLevel = ref(0)
-
-// Mobile detection
 const isMobile = ref(false)
 const lastSpokenAssistantMessageId = ref<string | null>(null)
+const uploadProgress = ref(0)
+const processDetailsExpanded = ref(false)
+const localProcessTrace = ref<ProcessTraceItem[]>([])
+const localPhase = ref<ConversationState | null>(null)
+const listeningReady = ref(false)
+const interruptionHint = ref<string | null>(null)
 
-// VAD instance
 let vad: EnergyVAD | null = null
 let isSynthesizingTTS = false
+let ttsInterruptedByBargeIn = false
+let interruptionHintTimer: number | null = null
+let requestPhaseTimer: number | null = null
 
-// Derived state helpers
-const isActive = () => conversationState.value !== 'idle'
+const recentProcessTrace = computed(() =>
+  [...localProcessTrace.value, ...chatStore.processTrace]
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(-3)
+    .reverse()
+)
 
-// Check mobile on mount
-onMounted(() => {
-  isMobile.value = window.innerWidth < 768
-  window.addEventListener('resize', syncMobileState)
-  window.addEventListener('blur', handleWindowBlur)
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-})
+const fullProcessTrace = computed(() =>
+  [...localProcessTrace.value, ...chatStore.processTrace]
+    .sort((a, b) => b.timestamp - a.timestamp)
+)
 
-function syncMobileState() {
-  isMobile.value = window.innerWidth < 768
+const hasProcessTrace = computed(() => fullProcessTrace.value.length > 0)
+const uploadPercent = computed(() => Math.round(uploadProgress.value * 100))
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let index = 0
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024
+    index++
+  }
+  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`
 }
 
-// Open talk mode — check permissions, then start VAD loop
-async function open() {
-  // Secure context check
-  if (!window.isSecureContext) {
-    error.value = t('chat.voiceSecureContextError')
-    return
-  }
-
-  // getUserMedia support check
-  if (!navigator.mediaDevices?.getUserMedia) {
-    error.value = t('chat.voiceNotSupportedError')
-    return
-  }
-
-  // Pre-check mic permission
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    stream.getTracks().forEach((t) => t.stop())
-  } catch (err: any) {
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-      error.value = t('chat.voiceMicrophonePermissionDenied')
-    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-      error.value = t('chat.voiceMicrophoneNotFound')
-    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-      error.value = t('chat.voiceMicrophoneInUse')
-    } else {
-      error.value = t('chat.voiceMicrophoneError')
-    }
-    return
-  }
-
-  // Check ASR model readiness
-  try {
-    const res = await speechApi.getStatus()
-    if (!res.data?.asr?.ready) {
-      showASRDownloadPrompt.value = true
-      return
-    }
-  } catch {
-    // Assume ready if check fails
-  }
-
-  error.value = null
-  startListening()
+function formatDuration(seconds?: number): string {
+  if (!seconds || seconds <= 0) return '0.0s'
+  if (seconds < 10) return `${seconds.toFixed(1)}s`
+  return `${Math.round(seconds)}s`
 }
 
-// Start VAD listening
-async function startListening() {
-  if (conversationState.value === 'listening' || conversationState.value === 'speaking') return
+function summarizeText(text: string, maxLen = 96): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  if (normalized.length <= maxLen) return normalized
+  return normalized.slice(0, maxLen - 1) + '…'
+}
 
-  error.value = null
-
-  if (vad) {
-    vad.destroy()
-    vad = null
+function getLatestChatTrace(
+  categories: Array<ProcessTraceItem['category']>,
+  statuses: Array<ProcessTraceItem['status']> = ['active', 'pending', 'error']
+): ProcessTraceItem | null {
+  for (let i = chatStore.processTrace.length - 1; i >= 0; i--) {
+    const item = chatStore.processTrace[i]
+    if (!item) continue
+    if (!categories.includes(item.category)) continue
+    if (!statuses.includes(item.status)) continue
+    return item
   }
+  return null
+}
 
-  const lang = localeStore.currentLocale.split('-')[0]
+function trimLocalProcessTrace() {
+  if (localProcessTrace.value.length <= 24) return
+  localProcessTrace.value = localProcessTrace.value.slice(-24)
+}
 
-  vad = new EnergyVAD({
-    speechThreshold: 0.015,
-    silenceThreshold: 0.01,
-    silenceDuration: 1500,
-    minSpeechDuration: 500,
-    onSpeechStart: () => {
-      // Visual feedback handled by audioLevel reactivity
-    },
-    onSpeechEnd: async (audioBlob: Blob) => {
-      conversationState.value = 'transcribing'
-
-      try {
-        const wavBlob = await convertToWav(audioBlob)
-        if (!wavBlob) {
-          resumeListening()
-          return
-        }
-        const result = await speechApi.transcribe(wavBlob, 'wav', lang)
-
-        if (result.text) {
-          pushBubble('user', result.text)
-          conversationState.value = 'processing'
-          emit('transcript', result.text)
-        } else {
-          // Empty transcription — resume
-          resumeListening()
-        }
-      } catch (e: any) {
-        console.error('Transcription failed:', e)
-        const errorCode = e?.error_code || e?.response?.data?.error_code
-        if (errorCode === 'timeout' || e?.name === 'AbortError') {
-          error.value = t('chat.voiceTranscriptionTimeout')
-        } else if (errorCode === 'on_device_unavailable') {
-          error.value = t('speech.onDeviceUnavailableError')
-        } else {
-          const serverMsg = e?.response?.data?.error || e?.response?.data?.message || e?.message
-          error.value = serverMsg || t('chat.talkMode.transcriptionError')
-        }
-        // Resume listening after error
-        resumeListening()
+function upsertLocalProcessTrace(
+  item: Omit<ProcessTraceItem, 'id' | 'timestamp'>,
+  options?: { replaceLatestByEvent?: boolean }
+) {
+  const next = createProcessTraceItem(item)
+  const trace = [...localProcessTrace.value]
+  if (options?.replaceLatestByEvent) {
+    for (let i = trace.length - 1; i >= 0; i--) {
+      if (trace[i]?.event === next.event) {
+        trace[i] = next
+        localProcessTrace.value = trace
+        trimLocalProcessTrace()
+        return
       }
-    },
-    onVolumeChange: (level: number) => {
-      audioLevel.value = level * 100
-    },
-  })
+    }
+  }
+  trace.push(next)
+  localProcessTrace.value = trace
+  trimLocalProcessTrace()
+}
 
-  try {
-    await vad.start()
-    conversationState.value = 'listening'
-  } catch (e) {
-    error.value = t('chat.voiceMicrophoneError')
-    console.error('Failed to start VAD:', e)
+function clearRequestPhaseTimer() {
+  if (requestPhaseTimer !== null) {
+    window.clearTimeout(requestPhaseTimer)
+    requestPhaseTimer = null
+  }
+}
+
+function setLocalPhase(next: ConversationState | null) {
+  localPhase.value = next
+  syncConversationState()
+}
+
+function setInterruptionHint(text: string) {
+  interruptionHint.value = text
+  if (interruptionHintTimer !== null) {
+    window.clearTimeout(interruptionHintTimer)
+  }
+  interruptionHintTimer = window.setTimeout(() => {
+    interruptionHint.value = null
+    interruptionHintTimer = null
+  }, 2500)
+}
+
+function resolveTraceText(
+  key: string,
+  fallback: string,
+  named?: Record<string, string | number>
+): string {
+  const path = `chat.processTrace.${key}`
+  return te(path) ? String(named ? t(path, named) : t(path)) : fallback
+}
+
+function resolveTraceField(key: string, fallback: string): string {
+  return resolveTraceText(`fields.${key}`, fallback)
+}
+
+function resolveTraceSummaryValue(key: string, fallback: string): string {
+  return resolveTraceText(`summaryValues.${key}`, fallback)
+}
+
+function buildAudioDetail(
+  blob: Blob,
+  format: string,
+  options?: {
+    duration?: number
+    progress?: number
+    transcript?: string
+  }
+): string {
+  const fieldFormat = resolveTraceField('format', 'Format')
+  const fieldSize = resolveTraceField('size', 'Size')
+  const fieldDuration = resolveTraceField('duration', 'Duration')
+  const fieldUpload = resolveTraceField('upload', 'Upload')
+  const fieldTranscript = resolveTraceField('transcript', 'Transcript')
+  const lines = [`${fieldFormat}: ${format}`, `${fieldSize}: ${formatBytes(blob.size)}`]
+  if (typeof options?.duration === 'number') {
+    lines.push(`${fieldDuration}: ${formatDuration(options.duration)}`)
+  }
+  if (typeof options?.progress === 'number') {
+    lines.push(`${fieldUpload}: ${Math.round(options.progress * 100)}%`)
+  }
+  if (options?.transcript) {
+    lines.push(`${fieldTranscript}: ${summarizeText(options.transcript)}`)
+  }
+  return lines.join('\n')
+}
+
+function buildRequestDetail(text: string, interrupted: boolean): string {
+  const fieldTranscript = resolveTraceField('transcript', 'Transcript')
+  const fieldMode = resolveTraceField('mode', 'Mode')
+  const fieldConversation = resolveTraceField('conversation', 'Conversation')
+  const lines = [`${fieldTranscript}: ${summarizeText(text)}`]
+  lines.push(
+    `${fieldMode}: ${
+      interrupted
+        ? resolveTraceSummaryValue('interruptCurrentReply', 'Interrupt current reply')
+        : resolveTraceSummaryValue('sendNewRequest', 'Send new request')
+    }`
+  )
+  if (props.conversationId) {
+    lines.push(`${fieldConversation}: ${props.conversationId}`)
+  }
+  return lines.join('\n')
+}
+
+function deriveChatConversationState(): ConversationState | null {
+  if (chatStore.awaitingConfirmation) {
+    return 'awaiting_confirmation'
+  }
+  if (getLatestChatTrace(['retry', 'recovery'])) {
+    return 'retrying'
+  }
+  if (chatStore.toolExecuting) {
+    return 'tool_processing'
+  }
+  if (chatStore.streaming || chatStore.sending) {
+    return 'waiting_response'
+  }
+  return null
+}
+
+function syncConversationState() {
+  if (!props.modelValue) {
     conversationState.value = 'idle'
+    return
   }
-}
-
-// Resume listening (after transcription/TTS)
-function resumeListening() {
-  if (vad && vad.isListening) {
-    vad.resume()
-    conversationState.value = 'listening'
-  } else {
-    startListening()
+  if (localPhase.value) {
+    conversationState.value = localPhase.value
+    return
   }
-}
-
-// Stop everything
-function stopAll() {
-  if (vad) {
-    vad.destroy()
-    vad = null
+  const storeState = deriveChatConversationState()
+  if (storeState) {
+    conversationState.value = storeState
+    return
   }
-  conversationState.value = 'idle'
-  audioLevel.value = 0
+  conversationState.value = listeningReady.value ? 'listening' : 'idle'
 }
-
-// Toggle listening (main button)
-function toggleListening() {
-  if (isActive()) {
-    stopAll()
-  } else {
-    startListening()
-  }
-}
-
-// Close talk mode
-function close() {
-  stopAll()
-  emit('update:modelValue', false)
-}
-
-function stopTTSPlayback() {
-  ttsAudioManager.stop()
-  if (isSynthesizingTTS) {
-    voiceApi.stopSpeaking().catch(() => {})
-  }
-}
-
-function handleWindowBlur() {
-  stopTTSPlayback()
-}
-
-function handleVisibilityChange() {
-  if (document.hidden) {
-    stopTTSPlayback()
-  }
-}
-
-// Toggle mute
-function toggleAutoPlay() {
-  autoPlayTTS.value = !autoPlayTTS.value
-  setTtsAutoPlayEnabled(autoPlayTTS.value)
-}
-
-// Watch for modelValue changes
-watch(
-  () => props.modelValue,
-  (newValue) => {
-    if (newValue) {
-      conversationBubbles.value = []
-      lastSpokenAssistantMessageId.value = null
-      open()
-    } else {
-      stopAll()
-    }
-  }
-)
-
-// Watch for AI response completion and play TTS
-watch(
-  () => chatStore.streaming,
-  async (streaming, wasStreaming) => {
-    if (wasStreaming && !streaming && props.modelValue) {
-      const messages = chatStore.messages
-      const lastMsg = messages.length > 0 ? messages[messages.length - 1] : undefined
-      if (lastMsg?.role === 'assistant' && lastMsg.content) {
-        const plainText = markdownToText(lastMsg.content)
-        if (lastSpokenAssistantMessageId.value === lastMsg.id) {
-          resumeListening()
-          return
-        }
-        pushBubble('assistant', plainText)
-        await playResponseTTS(plainText)
-        lastSpokenAssistantMessageId.value = lastMsg.id
-      }
-    }
-  }
-)
 
 function pushBubble(role: 'user' | 'assistant', text: string) {
   const value = text.trim()
@@ -298,36 +287,561 @@ function pushBubble(role: 'user' | 'assistant', text: string) {
   })
 }
 
-// Play TTS for AI response
+function clearInterruptionHint() {
+  if (interruptionHintTimer !== null) {
+    window.clearTimeout(interruptionHintTimer)
+    interruptionHintTimer = null
+  }
+  interruptionHint.value = null
+}
+
+function stopTTSPlayback() {
+  ttsAudioManager.stop()
+  if (isSynthesizingTTS || conversationState.value === 'speaking') {
+    voiceApi.stopSpeaking().catch(() => {})
+  }
+}
+
+function resumeListening(options?: { interrupted?: boolean }) {
+  clearRequestPhaseTimer()
+  setLocalPhase(null)
+  uploadProgress.value = 0
+  if (options?.interrupted) {
+    setInterruptionHint(t('chat.stillListening'))
+  }
+  if (vad && vad.isListening) {
+    vad.resume()
+    listeningReady.value = true
+    syncConversationState()
+    return
+  }
+  void startListening()
+}
+
+function handleBargeIn() {
+  if (!props.modelValue) return
+  if (!isSynthesizingTTS && !ttsAudioManager.isPlaying()) return
+  ttsInterruptedByBargeIn = true
+  upsertLocalProcessTrace(
+    {
+      source: 'client',
+      event: 'barge_in',
+      category: 'audio',
+      status: 'active',
+      label: t('chat.stillListening'),
+      detail: resolveTraceText(
+        'details.bargeIn',
+        'Playback stopped so you can continue speaking.'
+      ),
+    },
+    { replaceLatestByEvent: true }
+  )
+  stopTTSPlayback()
+  resumeListening({ interrupted: true })
+}
+
+function handleWindowBlur() {
+  stopTTSPlayback()
+}
+
+function handleVisibilityChange() {
+  if (document.hidden) {
+    stopTTSPlayback()
+  }
+}
+
+function syncMobileState() {
+  isMobile.value = window.innerWidth < 768
+}
+
+const statusLabel = computed(() => {
+  if (conversationState.value === 'listening' && interruptionHint.value) {
+    return interruptionHint.value
+  }
+
+  switch (conversationState.value) {
+    case 'listening':
+      return t('chat.talkMode.listening')
+    case 'preparing_audio':
+      return t('chat.talkMode.preparingAudio')
+    case 'uploading_audio':
+      return t('chat.talkMode.uploadingAudio', { percent: uploadPercent.value || 0 })
+    case 'transcribing':
+      return t('chat.voiceTranscribing')
+    case 'requesting':
+      return t('chat.talkMode.requesting')
+    case 'waiting_response':
+      return t('chat.talkMode.waitingResponse')
+    case 'tool_processing':
+      return t('chat.talkMode.toolProcessing')
+    case 'awaiting_confirmation':
+      return t('chat.awaitingConfirmation')
+    case 'tts_preparing':
+      return t('chat.talkMode.ttsPreparing')
+    case 'speaking':
+      return t('chat.talkMode.speaking')
+    case 'retrying':
+      return t('chat.talkMode.retrying')
+    default:
+      return t('chat.talkMode.tapToStart')
+  }
+})
+
+function traceItemStatusClass(item: ProcessTraceItem) {
+  if (item.status === 'error') return 'talk-process-item--error'
+  if (item.status === 'active' || item.status === 'pending') return 'talk-process-item--active'
+  return 'talk-process-item--success'
+}
+
+function traceItemLabel(item: ProcessTraceItem) {
+  if (typeof item.progress === 'number' && item.progress >= 0 && item.progress < 100) {
+    return `${item.label} ${Math.round(item.progress)}%`
+  }
+  return item.label
+}
+
+function stopAll() {
+  clearRequestPhaseTimer()
+  clearInterruptionHint()
+  stopTTSPlayback()
+  if (vad) {
+    vad.destroy()
+    vad = null
+  }
+  listeningReady.value = false
+  audioLevel.value = 0
+  uploadProgress.value = 0
+  localPhase.value = null
+  conversationState.value = 'idle'
+}
+
+function toggleListening() {
+  if (conversationState.value === 'idle') {
+    void startListening()
+    return
+  }
+  stopAll()
+}
+
+function close() {
+  stopAll()
+  emit('update:modelValue', false)
+}
+
+function toggleAutoPlay() {
+  autoPlayTTS.value = !autoPlayTTS.value
+  setTtsAutoPlayEnabled(autoPlayTTS.value)
+}
+
+async function open() {
+  if (!window.isSecureContext) {
+    error.value = t('chat.voiceSecureContextError')
+    return
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    error.value = t('chat.voiceNotSupportedError')
+    return
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    stream.getTracks().forEach((track) => track.stop())
+  } catch (err: any) {
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      error.value = t('chat.voiceMicrophonePermissionDenied')
+    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      error.value = t('chat.voiceMicrophoneNotFound')
+    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+      error.value = t('chat.voiceMicrophoneInUse')
+    } else {
+      error.value = t('chat.voiceMicrophoneError')
+    }
+    return
+  }
+
+  try {
+    const res = await speechApi.getStatus()
+    if (!res.data?.asr?.ready) {
+      showASRDownloadPrompt.value = true
+      return
+    }
+  } catch {
+    // Assume ready if check fails
+  }
+
+  error.value = null
+  await startListening()
+}
+
+async function startListening() {
+  if (listeningReady.value && conversationState.value === 'listening') return
+
+  clearInterruptionHint()
+  error.value = null
+
+  if (vad) {
+    vad.destroy()
+    vad = null
+  }
+
+  const lang = localeStore.currentLocale.split('-')[0]
+
+  vad = new EnergyVAD({
+    speechThreshold: 0.015,
+    silenceThreshold: 0.01,
+    silenceDuration: 1500,
+    minSpeechDuration: 500,
+    bargeInThreshold: 0.055,
+    bargeInFrames: 7,
+    bargeInMinDuration: 350,
+    onSpeechEnd: async (audioBlob: Blob) => {
+      listeningReady.value = false
+      uploadProgress.value = 0
+      setLocalPhase('preparing_audio')
+      const preparingLabel = t('chat.talkMode.preparingAudio')
+      upsertLocalProcessTrace(
+        {
+          source: 'client',
+          event: 'audio_preparing',
+          category: 'audio',
+          status: 'active',
+          label: preparingLabel,
+          detail: buildAudioDetail(audioBlob, 'webm'),
+        },
+        { replaceLatestByEvent: true }
+      )
+
+      try {
+        const wavBlob = await convertToWav(audioBlob)
+        if (!wavBlob) {
+          resumeListening()
+          return
+        }
+
+        upsertLocalProcessTrace(
+          {
+            source: 'client',
+            event: 'audio_preparing',
+            category: 'audio',
+            status: 'success',
+            label: preparingLabel,
+            detail: buildAudioDetail(wavBlob, 'wav'),
+          },
+          { replaceLatestByEvent: true }
+        )
+
+        setLocalPhase('uploading_audio')
+        upsertLocalProcessTrace(
+          {
+            source: 'client',
+            event: 'audio_uploading',
+            category: 'audio',
+            status: 'active',
+            label: t('chat.talkMode.uploadingAudio', { percent: 0 }),
+            detail: buildAudioDetail(wavBlob, 'wav', { progress: 0 }),
+            progress: 0,
+          },
+          { replaceLatestByEvent: true }
+        )
+
+        const result = await speechApi.transcribe(wavBlob, 'wav', lang, {
+          onUploadProgress: (progress) => {
+            uploadProgress.value = progress
+            upsertLocalProcessTrace(
+              {
+                source: 'client',
+                event: 'audio_uploading',
+                category: 'audio',
+                status: progress >= 1 ? 'success' : 'active',
+                label:
+                  progress >= 1
+                    ? t('chat.talkMode.audioUploaded')
+                    : t('chat.talkMode.uploadingAudio', {
+                        percent: Math.round(progress * 100),
+                      }),
+                detail: buildAudioDetail(wavBlob, 'wav', { progress }),
+                progress: Math.round(progress * 100),
+              },
+              { replaceLatestByEvent: true }
+            )
+            if (progress >= 1 && localPhase.value === 'uploading_audio') {
+              setLocalPhase('transcribing')
+              upsertLocalProcessTrace(
+                {
+                  source: 'client',
+                  event: 'audio_transcribing',
+                  category: 'audio',
+                  status: 'active',
+                  label: t('chat.voiceTranscribing'),
+                  detail: buildAudioDetail(wavBlob, 'wav'),
+                },
+                { replaceLatestByEvent: true }
+              )
+            }
+          },
+        })
+
+        setLocalPhase('transcribing')
+        upsertLocalProcessTrace(
+          {
+            source: 'client',
+            event: 'audio_transcribing',
+            category: 'audio',
+            status: 'success',
+            label: t('chat.talkMode.transcriptReady'),
+            detail: buildAudioDetail(wavBlob, 'wav', {
+              duration: result.duration,
+              transcript: result.text,
+            }),
+          },
+          { replaceLatestByEvent: true }
+        )
+
+        if (result.text?.trim()) {
+          const transcript = result.text.trim()
+          const interrupted = chatStore.streaming
+          pushBubble('user', transcript)
+          upsertLocalProcessTrace({
+            source: 'client',
+            event: 'talk_request_summary',
+            category: 'summary',
+            status: 'info',
+            label: interrupted ? t('chat.talkMode.interruptReady') : t('chat.talkMode.requestReady'),
+            command: summarizeText(transcript),
+            detail: buildRequestDetail(transcript, interrupted),
+          })
+          upsertLocalProcessTrace(
+            {
+              source: 'client',
+              event: 'talk_request_dispatched',
+              category: 'lifecycle',
+              status: 'active',
+              label: interrupted
+                ? t('chat.talkMode.interruptingRequest')
+                : t('chat.talkMode.requesting'),
+              detail: interrupted
+                ? resolveTraceText(
+                    'details.voiceInterruptDispatched',
+                    'Blue is restarting with your latest voice interruption.'
+                  )
+                : resolveTraceText(
+                    'details.voiceRequestDispatched',
+                    'Blue is sending your voice request.'
+                  ),
+            },
+            { replaceLatestByEvent: true }
+          )
+          upsertLocalProcessTrace(
+            {
+              source: 'client',
+              event: 'talk_waiting_response',
+              category: 'lifecycle',
+              status: 'active',
+              label: t('chat.talkMode.waitingResponse'),
+              detail: resolveTraceText(
+                'details.voiceWaitingForResponse',
+                'Waiting for the first response from Blue.'
+              ),
+            },
+            { replaceLatestByEvent: true }
+          )
+          setLocalPhase('requesting')
+          clearRequestPhaseTimer()
+          requestPhaseTimer = window.setTimeout(() => {
+            if (localPhase.value === 'requesting') {
+              setLocalPhase(null)
+            }
+            requestPhaseTimer = null
+          }, 350)
+          emit('transcript', transcript)
+        } else {
+          resumeListening()
+        }
+      } catch (e: any) {
+        console.error('Transcription failed:', e)
+        const errorCode = e?.error_code || e?.response?.data?.error_code
+        if (errorCode === 'timeout' || e?.name === 'AbortError') {
+          error.value = t('chat.voiceTranscriptionTimeout')
+        } else if (errorCode === 'on_device_unavailable') {
+          error.value = t('speech.onDeviceUnavailableError')
+        } else {
+          const serverMsg = e?.response?.data?.error || e?.response?.data?.message || e?.message
+          error.value = serverMsg || t('chat.talkMode.transcriptionError')
+        }
+        upsertLocalProcessTrace(
+          {
+            source: 'client',
+            event: 'audio_transcribing',
+            category: 'audio',
+            status: 'error',
+            label: t('chat.talkMode.transcriptionError'),
+            detail:
+              error.value ||
+              resolveTraceText('details.transcriptionFailed', 'Transcription failed.'),
+          },
+          { replaceLatestByEvent: true }
+        )
+        resumeListening()
+      }
+    },
+    onVolumeChange: (level: number) => {
+      audioLevel.value = level * 100
+    },
+    onBargeIn: handleBargeIn,
+  })
+
+  try {
+    await vad.start()
+    listeningReady.value = true
+    setLocalPhase(null)
+  } catch (e) {
+    error.value = t('chat.voiceMicrophoneError')
+    console.error('Failed to start VAD:', e)
+    listeningReady.value = false
+    conversationState.value = 'idle'
+  }
+}
+
 async function playResponseTTS(text: string) {
   if (!text.trim() || !autoPlayTTS.value || isTtsSpeechMuted()) {
-    // No TTS — resume listening immediately
     resumeListening()
     return
   }
 
-  conversationState.value = 'speaking'
-  if (vad) vad.pause()
+  if (vad) {
+    vad.pause({ monitorBargeIn: true })
+  }
+
+  ttsInterruptedByBargeIn = false
+  setLocalPhase('tts_preparing')
+  upsertLocalProcessTrace(
+    {
+      source: 'client',
+      event: 'tts_preparing',
+      category: 'tts',
+      status: 'active',
+      label: t('chat.talkMode.ttsPreparing'),
+      detail: summarizeText(text),
+    },
+    { replaceLatestByEvent: true }
+  )
 
   try {
     isSynthesizingTTS = true
     const result = await speechApi.synthesize(text)
-    if (result.audio) {
-      await ttsAudioManager.play(result.audio, result.content_type || 'audio/mp3')
+    if (!result.audio || ttsInterruptedByBargeIn) {
+      return
     }
-  } catch (e) {
-    console.error('TTS playback failed:', e)
+
+    setLocalPhase('speaking')
+    upsertLocalProcessTrace(
+      {
+        source: 'client',
+        event: 'tts_playback',
+        category: 'tts',
+        status: 'active',
+        label: t('chat.talkMode.speaking'),
+        detail: summarizeText(text),
+      },
+      { replaceLatestByEvent: true }
+    )
+    await ttsAudioManager.play(result.audio, result.content_type || 'audio/mp3')
+    upsertLocalProcessTrace(
+      {
+        source: 'client',
+        event: 'tts_playback',
+        category: 'tts',
+        status: 'success',
+        label: t('chat.talkMode.speakingCompleted'),
+        detail: summarizeText(text),
+      },
+      { replaceLatestByEvent: true }
+    )
+  } catch (e: any) {
+    if (e?.name !== 'AbortError') {
+      console.error('TTS playback failed:', e)
+      upsertLocalProcessTrace(
+        {
+          source: 'client',
+          event: 'tts_playback',
+          category: 'tts',
+          status: 'error',
+          label: t('chat.ttsError'),
+          detail: e?.message || resolveTraceText('details.ttsPlaybackFailed', 'TTS playback failed.'),
+        },
+        { replaceLatestByEvent: true }
+      )
+    }
   } finally {
     isSynthesizingTTS = false
-    // Resume listening for next turn
-    resumeListening()
+    setLocalPhase(null)
+    if (props.modelValue && !chatStore.streaming) {
+      resumeListening()
+    }
   }
 }
 
-// Cleanup on unmount
+onMounted(() => {
+  syncMobileState()
+  window.addEventListener('resize', syncMobileState)
+  window.addEventListener('blur', handleWindowBlur)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+watch(
+  () => props.modelValue,
+  (newValue) => {
+    if (newValue) {
+      conversationBubbles.value = []
+      localProcessTrace.value = []
+      processDetailsExpanded.value = false
+      uploadProgress.value = 0
+      lastSpokenAssistantMessageId.value = null
+      clearInterruptionHint()
+      void open()
+    } else {
+      stopAll()
+    }
+  }
+)
+
+watch(
+  () => [chatStore.streaming, chatStore.sending, chatStore.toolExecuting, chatStore.awaitingConfirmation, chatStore.processTrace.length],
+  () => {
+    if (localPhase.value === 'requesting' && (chatStore.streaming || chatStore.sending)) {
+      setLocalPhase(null)
+    } else {
+      syncConversationState()
+    }
+  }
+)
+
+watch(
+  () => chatStore.streaming,
+  async (streaming, wasStreaming) => {
+    if (wasStreaming && !streaming && props.modelValue) {
+      const messages = chatStore.messages
+      const lastMsg = messages.length > 0 ? messages[messages.length - 1] : undefined
+      if (lastMsg?.role === 'assistant' && lastMsg.content) {
+        const plainText = markdownToText(lastMsg.content)
+        if (lastSpokenAssistantMessageId.value === lastMsg.id) {
+          resumeListening()
+          return
+        }
+        pushBubble('assistant', plainText)
+        emit('response', plainText)
+        await playResponseTTS(plainText)
+        lastSpokenAssistantMessageId.value = lastMsg.id
+      } else if (props.modelValue && !isSynthesizingTTS) {
+        resumeListening()
+      }
+    }
+  }
+)
+
 onUnmounted(() => {
   stopAll()
-  stopTTSPlayback()
   window.removeEventListener('resize', syncMobileState)
   window.removeEventListener('blur', handleWindowBlur)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
@@ -346,13 +860,11 @@ onUnmounted(() => {
           class="talk-mode-container w-full p-6"
           :class="isMobile ? 'mobile-fullscreen' : 'glass-card max-w-md mx-4 rounded-2xl'"
         >
-          <!-- Header -->
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('chat.talkMode.title') }}
             </h3>
             <div class="flex items-center gap-2">
-              <!-- Auto-play TTS toggle button -->
               <button
                 class="p-2 rounded-lg transition-colors cursor-pointer hover:bg-gray-200 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400"
                 :title="autoPlayTTS ? t('chat.talkMode.mute') : t('chat.talkMode.unmute')"
@@ -390,7 +902,6 @@ onUnmounted(() => {
                   />
                 </svg>
               </button>
-              <!-- Close button -->
               <button
                 class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 transition-colors cursor-pointer"
                 @click="close"
@@ -412,7 +923,6 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Transcript bubbles -->
           <div ref="bubbleListRef" class="talk-bubble-list mb-4">
             <div
               v-for="bubble in conversationBubbles"
@@ -435,21 +945,21 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Main action button -->
           <div class="flex flex-col items-center">
             <button
               class="relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer"
               :class="{
                 'bg-green-500 hover:bg-green-600': conversationState === 'listening',
-                'bg-yellow-500': conversationState === 'transcribing',
-                'bg-blue-500': conversationState === 'processing',
-                'bg-purple-500': conversationState === 'speaking',
+                'bg-amber-500': conversationState === 'preparing_audio' || conversationState === 'uploading_audio' || conversationState === 'transcribing',
+                'bg-sky-500': conversationState === 'requesting' || conversationState === 'waiting_response' || conversationState === 'tts_preparing',
+                'bg-orange-500': conversationState === 'retrying' || conversationState === 'tool_processing',
+                'bg-rose-500': conversationState === 'awaiting_confirmation',
+                'bg-indigo-500': conversationState === 'speaking',
                 'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400':
                   conversationState === 'idle',
               }"
               @click="toggleListening"
             >
-              <!-- Audio level ring (listening) -->
               <div
                 v-if="conversationState === 'listening'"
                 class="absolute inset-0 rounded-full transition-transform duration-100"
@@ -464,9 +974,8 @@ onUnmounted(() => {
                 class="absolute inset-0 rounded-full border-4 border-green-300/40 talk-breathing"
               />
 
-              <!-- Icons per state -->
               <svg
-                v-if="conversationState === 'listening'"
+                v-if="conversationState === 'listening' || conversationState === 'idle'"
                 class="w-10 h-10 text-white relative z-10"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -480,25 +989,17 @@ onUnmounted(() => {
                 />
               </svg>
               <svg
-                v-else-if="
-                  conversationState === 'transcribing' || conversationState === 'processing'
-                "
-                class="w-10 h-10 text-white animate-spin"
+                v-else-if="conversationState === 'awaiting_confirmation'"
+                class="w-10 h-10 text-white"
                 fill="none"
                 viewBox="0 0 24 24"
+                stroke="currentColor"
               >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                />
                 <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8.228 9c.549-1.165 1.918-2 3.522-2 2.071 0 3.75 1.343 3.75 3 0 1.235-.931 2.296-2.25 2.75-.69.238-1.25.921-1.25 1.651V15m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
               <svg
@@ -517,48 +1018,79 @@ onUnmounted(() => {
               </svg>
               <svg
                 v-else
-                class="w-10 h-10 text-white"
+                class="w-10 h-10 text-white animate-spin"
                 fill="none"
                 viewBox="0 0 24 24"
-                stroke="currentColor"
               >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
                 <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
             </button>
 
-            <!-- Status text -->
-            <p class="mt-4 text-sm text-gray-600 dark:text-gray-400">
-              <template v-if="conversationState === 'listening'">
-                {{ t('chat.talkMode.listening') }}
-              </template>
-              <template v-else-if="conversationState === 'transcribing'">
-                {{ t('chat.voiceTranscribing') }}
-              </template>
-              <template v-else-if="conversationState === 'processing'">
-                {{ t('chat.talkMode.processing') }}
-              </template>
-              <template v-else-if="conversationState === 'speaking'">
-                {{ t('chat.talkMode.speaking') }}
-              </template>
-              <template v-else>
-                {{ t('chat.talkMode.tapToStart') }}
-              </template>
+            <p class="mt-4 text-sm text-gray-600 dark:text-gray-400 text-center">
+              {{ statusLabel }}
             </p>
+
+            <div v-if="conversationState === 'uploading_audio'" class="talk-upload-progress mt-3">
+              <div class="talk-upload-progress__track">
+                <div
+                  class="talk-upload-progress__fill"
+                  :style="{ width: `${uploadPercent}%` }"
+                />
+              </div>
+              <div class="talk-upload-progress__meta">{{ uploadPercent }}%</div>
+            </div>
           </div>
 
-          <!-- ASR Model Download Prompt -->
+          <div v-if="hasProcessTrace" class="talk-process-panel mt-5">
+            <div class="talk-process-panel__header">
+              <span class="talk-process-panel__title">{{ t('chat.talkMode.recentActivity') }}</span>
+              <button
+                class="talk-process-panel__toggle"
+                @click="processDetailsExpanded = !processDetailsExpanded"
+              >
+                {{
+                  processDetailsExpanded ? t('chat.hideToolDetails') : t('chat.showToolDetails')
+                }}
+              </button>
+            </div>
+
+            <div class="talk-process-list">
+              <div
+                v-for="item in processDetailsExpanded ? fullProcessTrace : recentProcessTrace"
+                :key="item.id"
+                class="talk-process-item"
+                :class="traceItemStatusClass(item)"
+              >
+                <div class="talk-process-item__row">
+                  <span class="talk-process-item__dot" />
+                  <span class="talk-process-item__label">{{ traceItemLabel(item) }}</span>
+                </div>
+                <div v-if="item.command" class="talk-process-item__command">{{ item.command }}</div>
+                <div v-if="processDetailsExpanded && item.detail" class="talk-process-item__detail">
+                  {{ item.detail }}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <ModelDownloadPrompt
             v-model:model-visible="showASRDownloadPrompt"
             type="asr"
             @downloaded="open"
           />
 
-          <!-- Error message -->
           <div
             v-if="error"
             class="mt-4 p-3 rounded-lg bg-red-500/10 text-red-400 text-sm flex items-center gap-2"
@@ -593,7 +1125,6 @@ onUnmounted(() => {
   backdrop-filter: blur(10px);
 }
 
-/* Mobile fullscreen */
 .mobile-fullscreen {
   max-width: 100% !important;
   margin: 0 !important;
@@ -645,7 +1176,125 @@ onUnmounted(() => {
   border-bottom-left-radius: 8px;
 }
 
-/* Breathing animation for listening state */
+.talk-upload-progress {
+  width: min(260px, 100%);
+}
+
+.talk-upload-progress__track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.talk-upload-progress__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #38bdf8 0%, #22c55e 100%);
+  transition: width 120ms ease;
+}
+
+.talk-upload-progress__meta {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.talk-process-panel {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 12px;
+}
+
+.talk-process-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.talk-process-panel__title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.talk-process-panel__toggle {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+}
+
+.talk-process-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.talk-process-item {
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+}
+
+.talk-process-item--active {
+  border-color: rgba(56, 189, 248, 0.34);
+  background: rgba(14, 116, 144, 0.16);
+}
+
+.talk-process-item--success {
+  border-color: rgba(74, 222, 128, 0.24);
+}
+
+.talk-process-item--error {
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(127, 29, 29, 0.18);
+}
+
+.talk-process-item__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.talk-process-item__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.9;
+}
+
+.talk-process-item__label {
+  font-size: 13px;
+  line-height: 1.35;
+  color: #fff;
+}
+
+.talk-process-item__command {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.78);
+  word-break: break-word;
+}
+
+.talk-process-item__detail {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.72);
+}
+
 @keyframes talk-breathing {
   0%,
   100% {
@@ -657,6 +1306,7 @@ onUnmounted(() => {
     opacity: 0.15;
   }
 }
+
 .talk-breathing {
   animation: talk-breathing 2s ease-in-out infinite;
 }

@@ -18,6 +18,7 @@ const isPreviewMode = computed(() => previewStore.isPreviewMode)
 
 const { isTauri, setCloseBehavior } = useTauri()
 const settingsStore = useSettingsStore()
+const DESKTOP_SIDEBAR_BREAKPOINT = 1024
 
 const route = useRoute()
 const noPadding = computed(() => route.meta.noPadding === true)
@@ -31,17 +32,13 @@ const showPreviewOnboarding = computed(
     settingsStore.claudeCodeEnabledLoaded &&
     !settingsStore.claudeCodeEnabled
 )
-const mobileDevicePattern = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i
-
-function detectMobileDevice() {
-  if (typeof navigator === 'undefined') return false
-  const userAgent = navigator.userAgent.toLowerCase()
-  const isiPadDesktopMode = userAgent.includes('macintosh') && navigator.maxTouchPoints > 1
-  return mobileDevicePattern.test(userAgent) || isiPadDesktopMode
+function detectHiddenSidebarViewport() {
+  if (typeof window === 'undefined') return false
+  return window.innerWidth < DESKTOP_SIDEBAR_BREAKPOINT
 }
 
-const isMobileDevice = ref(detectMobileDevice())
-const showMobileSidebarToggle = computed(() => isMobileDevice.value)
+const hasHiddenSidebarViewport = ref(detectHiddenSidebarViewport())
+const showSidebarToggle = computed(() => hasHiddenSidebarViewport.value && !isChatRoute.value)
 
 // Sidebar ref for mobile toggle
 type AppSidebarExposed = InstanceType<typeof AppSidebar> & {
@@ -58,13 +55,18 @@ function toggleSidebar() {
 
 // Provide toggle for child components (e.g. ChatView on mobile)
 provide('toggleAppSidebar', toggleSidebar)
-provide('hasGlobalMobileSidebarToggle', showMobileSidebarToggle)
+provide('hasGlobalMobileSidebarToggle', showSidebarToggle)
+
+function syncViewportState() {
+  hasHiddenSidebarViewport.value = detectHiddenSidebarViewport()
+}
 
 // Form filler widget - now shows on input focus, no need for route watching
 const { setup, cleanup } = useFormFillerWidget()
 
 onMounted(() => {
-  isMobileDevice.value = detectMobileDevice()
+  syncViewportState()
+  window.addEventListener('resize', syncViewportState)
   setup()
   // Sync close behavior setting to Tauri backend on startup
   if (isTauri.value) {
@@ -73,6 +75,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', syncViewportState)
   cleanup()
 })
 </script>
@@ -103,7 +106,7 @@ onUnmounted(() => {
             { 'p-[0.9rem] sm:p-[1.125rem] lg:p-[1.35rem]': !noPadding },
           ]"
         >
-          <div v-if="showMobileSidebarToggle" class="layout-mobile-nav-bar lg:hidden">
+          <div v-if="showSidebarToggle" class="layout-mobile-nav-bar lg:hidden">
             <button
               class="layout-mobile-nav-button"
               aria-label="Open navigation"
@@ -152,6 +155,30 @@ onUnmounted(() => {
 
 .app-shell-home {
   background: var(--color-bg-base);
+}
+
+html[data-blue-macos-glass='true'] .app-shell {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.18), transparent 42%),
+    radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.14), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.68) 0%, rgba(15, 23, 42, 0.52) 100%);
+}
+
+html[data-blue-macos-glass='true'] .app-shell-home {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.62) 0%, rgba(15, 23, 42, 0.48) 100%);
+}
+
+html.light[data-blue-macos-glass='true'] .app-shell,
+html[data-theme='light'][data-blue-macos-glass='true'] .app-shell {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(96, 165, 250, 0.22), transparent 42%),
+    radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.16), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.74) 0%, rgba(241, 245, 249, 0.64) 100%);
+}
+
+html.light[data-blue-macos-glass='true'] .app-shell-home,
+html[data-theme='light'][data-blue-macos-glass='true'] .app-shell-home {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(241, 245, 249, 0.6) 100%);
 }
 
 .layout-body {

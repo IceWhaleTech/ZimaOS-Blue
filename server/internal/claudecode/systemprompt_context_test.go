@@ -439,11 +439,17 @@ func TestBuildStructured_StaticIncludesWebToolRoutingGuidance(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
 	static := b.BuildStructured(context.Background(), "").Static
 
-	if !strings.Contains(static, "Use web_fetch for lightweight public HTTP page reads") {
-		t.Fatalf("expected static prompt to mention web_fetch routing, got: %s", static)
+	if !strings.Contains(static, "Use web_search when you need to discover, compare, or verify links/sources") {
+		t.Fatalf("expected static prompt to mention web_search routing, got: %s", static)
+	}
+	if !strings.Contains(static, "Use web_read when the user already gave a URL and wants normalized main content") {
+		t.Fatalf("expected static prompt to mention web_read routing, got: %s", static)
 	}
 	if !strings.Contains(static, "warning_code=login_wall, challenge, or browser_required") {
 		t.Fatalf("expected static prompt to mention structured browser fallback codes, got: %s", static)
+	}
+	if !strings.Contains(static, "Final web fallback is browser") {
+		t.Fatalf("expected static prompt to mention final browser fallback, got: %s", static)
 	}
 	if !strings.Contains(static, "browser_target_id") {
 		t.Fatalf("expected static prompt to mention browser_target_id reuse, got: %s", static)
@@ -470,10 +476,13 @@ func TestBuildSkillsSection_UsesWebFetchBrowserRouting(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{WorkspaceDir: workspaceDir})
 	section := b.buildSkillsSection()
 
-	if !strings.Contains(section, "public URL read→web_fetch, interactive/login URL→browser") {
-		t.Fatalf("expected skills section to route between web_fetch and browser, got: %s", section)
+	if !strings.Contains(section, "discover links/no URL→web_search, known public URL quick read→web_fetch, known URL normalized/session-aware read→web_read") {
+		t.Fatalf("expected skills section to route between web_search, web_fetch, and web_read, got: %s", section)
 	}
-	if !strings.Contains(section, "If web_fetch returns warning_code=login_wall, challenge, or browser_required, switch to browser") {
-		t.Fatalf("expected skills section to mention browser fallback on structured warning code, got: %s", section)
+	if !strings.Contains(section, "If web_fetch returns warning_code=login_wall, challenge, or browser_required, or web_read returns warning_codes including those values, switch to browser") {
+		t.Fatalf("expected skills section to mention browser fallback on structured web_fetch/web_read warnings, got: %s", section)
+	}
+	if !strings.Contains(section, "Final web fallback→browser") {
+		t.Fatalf("expected skills section to mention final browser fallback, got: %s", section)
 	}
 }

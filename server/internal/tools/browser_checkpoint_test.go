@@ -118,3 +118,74 @@ func TestParseBrowserCheckpointDecision(t *testing.T) {
 		t.Fatalf("expected pending/false for unrecognized input, got decision=%s ok=%v", decision, ok)
 	}
 }
+
+func TestNormalizeBrowserSiteOrigin(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{input: "https://Example.com/foo?bar=baz", want: "https://example.com"},
+		{input: "http://example.com:80/path", want: "http://example.com"},
+		{input: "https://example.com:443/path", want: "https://example.com"},
+		{input: "https://example.com:8443/path", want: "https://example.com:8443"},
+		{input: "example.com", want: "https://example.com"},
+		{input: "file:///tmp/test.html", want: ""},
+		{input: "", want: ""},
+	}
+	for _, tc := range cases {
+		if got := NormalizeBrowserSiteOrigin(tc.input); got != tc.want {
+			t.Fatalf("NormalizeBrowserSiteOrigin(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestBrowserSiteAllowlistStore(t *testing.T) {
+	db := newTestDB(t)
+	store, err := NewBrowserSiteAllowlistStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := store.Match("https://example.com/path", "user-1"); got != nil {
+		t.Fatalf("expected no match in empty store, got %+v", got)
+	}
+
+	if err := store.Add("https://Example.com/account", "user-1"); err != nil {
+		t.Fatalf("Add returned error: %v", err)
+	}
+	if err := store.Add("https://example.com/another-path", "user-1"); err != nil {
+		t.Fatalf("duplicate Add returned error: %v", err)
+	}
+
+	if got := store.Match("https://example.com/settings", "user-1"); got == nil {
+		t.Fatal("expected normalized origin match for same user")
+	} else if got.Origin != "https://example.com" {
+		t.Fatalf("match origin = %q, want %q", got.Origin, "https://example.com")
+	}
+
+	if got := store.Match("https://example.com/settings", "user-2"); got != nil {
+		t.Fatalf("expected no cross-user match, got %+v", got)
+	}
+
+	entries, err := store.List()
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("List len = %d, want 1", len(entries))
+	}
+	if entries[0].Origin != "https://example.com" {
+		t.Fatalf("List origin = %q, want %q", entries[0].Origin, "https://example.com")
+	}
+
+	if err := store.Delete(entries[0].ID); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+	if got := store.Match("https://example.com/settings", "user-1"); got != nil {
+		t.Fatalf("expected match to be deleted, got %+v", got)
+	}
+
+	if err := store.Add("file:///tmp/test.html", "user-1"); err == nil {
+		t.Fatal("expected invalid origin add to fail")
+	}
+}

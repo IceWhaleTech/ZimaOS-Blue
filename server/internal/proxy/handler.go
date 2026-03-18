@@ -418,13 +418,17 @@ func isRateLimitLikeUpstreamError(statusCode int, body []byte) bool {
 	if statusCode < 500 {
 		return false
 	}
+	lower := toLowerBytes(body)
+	if bytes.Contains(lower, []byte("overloaded_error")) ||
+		bytes.Contains(lower, []byte("\"type\":\"overloaded\"")) ||
+		bytes.Contains(lower, []byte("overloaded")) {
+		return true
+	}
 	if upstreamerrors.HasRequestBuildFailureBody(body) {
 		return false
 	}
-	lower := toLowerBytes(body)
 	return bytes.Contains(lower, []byte("overloaded_error")) ||
 		bytes.Contains(lower, []byte("\"type\":\"overloaded\"")) ||
-		bytes.Contains(lower, []byte("overloaded")) ||
 		bytes.Contains(lower, []byte("rate_limit")) ||
 		bytes.Contains(lower, []byte("rate limit")) ||
 		bytes.Contains(lower, []byte("too many requests")) ||
@@ -462,6 +466,9 @@ func proxyFailureStatusCode(err error) int {
 	errMsg := strings.TrimSpace(strings.ToLower(err.Error()))
 	if errors.Is(err, providerpool.ErrNoAvailableProvider) || strings.Contains(errMsg, "no available provider") {
 		return http.StatusServiceUnavailable
+	}
+	if IsContextWindowExceededMessage(errMsg) {
+		return http.StatusBadRequest
 	}
 	if statusCode := classifyRateLimitLikeErrorText(errMsg); statusCode != 0 {
 		return statusCode
@@ -2258,82 +2265,42 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 // allFormatsForProvider returns format candidates to try for a provider.
 // Persisted format first, then remembered (in-memory), then provider default, then remaining.
 // Returns (buf, count, known) where known=true means the first format is from detection/memory.
-func (ph *ProxyHandler) allFormatsForProvider(pid, burl, requestedModel string, provider *providerpool.Provider) ([4]providerpool.APIFormat, int, bool) {
-	var buf [4]providerpool.APIFormat
-	n := 0
-	known := false
-
-	has := func(f providerpool.APIFormat) bool {
-		for i := 0; i < n; i++ {
-			if buf[i] == f {
-				return true
-			}
-		}
-		return false
-	}
-
-	add := func(f providerpool.APIFormat) {
-		if f == "" || has(f) || n >= len(buf) {
-			return
-		}
-		buf[n] = f
-		n++
-	}
-
-	if endpointFormat, ok := providerEndpointFixedFormat(provider, burl); ok {
-		add(endpointFormat)
-		return buf, n, true
-	}
-
+func (ph *ProxyHandler) formatPlanForProvider(pid, burl, requestedModel string, provider *providerpool.Provider) providerpool.FormatResolutionPlan {
+	var modelMemory providerpool.APIFormat
 	if isCustomRelayProvider(provider) {
 		if remembered, ok := ph.providerMemory.RecallModelFormat(pid, burl, requestedModel); ok {
-			add(providerpool.APIFormat(remembered))
-			known = true
-		}
-		for _, format := range providerpool.PreferredAPIFormatsForModel(requestedModel) {
-			add(format)
-		}
-		return buf, n, known
-	}
-
-	if provider != nil && provider.DetectedFormat != "" {
-		add(provider.DetectedFormat)
-		known = true
-	}
-	if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
-		add(providerpool.APIFormat(remembered))
-		known = true
-	}
-	if provider != nil {
-		add(provider.APIFormat)
-	}
-	if isSingleFormatProvider(provider) {
-		return buf, n, known
-	}
-	if strings.HasSuffix(burl, "/messages") || strings.Contains(burl, "anthropic") {
-		add(providerpool.APIFormatAnthropic)
-	}
-	switch provider.APIFormat {
-	case providerpool.APIFormatCopilot, providerpool.APIFormatCloudCode, providerpool.APIFormatOllama, providerpool.APIFormatResponses:
-	default:
-		fallbacks := [...]providerpool.APIFormat{
-			providerpool.APIFormatResponses,
-			providerpool.APIFormatAnthropic,
-			providerpool.APIFormatOpenAI,
-		}
-		if provider.APIFormat == providerpool.APIFormatAnthropic {
-			fallbacks = [...]providerpool.APIFormat{
-				providerpool.APIFormatResponses,
-				providerpool.APIFormatOpenAI,
-				providerpool.APIFormatAnthropic,
-			}
-		}
-		for _, f := range fallbacks {
-			add(f)
+			modelMemory = providerpool.APIFormat(remembered)
 		}
 	}
 
-	return buf, n, known
+	var providerMemory providerpool.APIFormat
+	if !isCustomRelayProvider(provider) {
+		if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
+			providerMemory = providerpool.APIFormat(remembered)
+		}
+	}
+
+	return providerpool.ResolveAPIFormatPlan(providerpool.FormatResolutionRequest{
+		Provider:             provider,
+		ModelID:              requestedModel,
+		DetectedFormat:       provider.DetectedFormat,
+		ModelMemoryFormat:    modelMemory,
+		ProviderMemoryFormat: providerMemory,
+	})
+}
+
+func (ph *ProxyHandler) allFormatsForProvider(pid, burl, requestedModel string, provider *providerpool.Provider) ([4]providerpool.APIFormat, int, bool) {
+	var buf [4]providerpool.APIFormat
+	plan := ph.formatPlanForProvider(pid, burl, requestedModel, provider)
+	n := 0
+	for _, format := range plan.CandidateFormats {
+		if format == "" || n >= len(buf) {
+			continue
+		}
+		buf[n] = format
+		n++
+	}
+	return buf, n, plan.Known()
 }
 
 func isCustomRelayProvider(provider *providerpool.Provider) bool {
@@ -2403,23 +2370,11 @@ func normalizeCustomRelayBaseURLForFormat(provider *providerpool.Provider, parse
 // detectEndpointFixedFormat infers API format from endpoint-specific base URLs.
 // Returns (format, true) only when the path itself implies a fixed protocol family.
 func detectEndpointFixedFormat(raw string) (providerpool.APIFormat, bool) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", false
-	}
-	return detectEndpointFixedFormatFromPath(u.Path)
+	return providerpool.DetectEndpointFixedFormat(raw)
 }
 
 func detectEndpointFixedFormatFromPath(path string) (providerpool.APIFormat, bool) {
-	path = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(path)), "/")
-	switch {
-	case strings.HasSuffix(path, "/responses"):
-		return providerpool.APIFormatResponses, true
-	case strings.HasSuffix(path, "/messages"), strings.HasSuffix(path, "/anthropic"):
-		return providerpool.APIFormatAnthropic, true
-	default:
-		return "", false
-	}
+	return providerpool.DetectEndpointFixedFormatFromPath(path)
 }
 
 func isSingleFormatProvider(provider *providerpool.Provider) bool {
@@ -2444,10 +2399,10 @@ func (ph *ProxyHandler) rememberSuccessfulFormat(provider *providerpool.Provider
 	if provider == nil || format == "" {
 		return
 	}
-	if isCustomRelayProvider(provider) && strings.TrimSpace(requestedModel) != "" {
+	if isCustomRelayProvider(provider) && providerpool.ProviderAPIFormatMode(provider) == providerpool.APIFormatModeAuto && strings.TrimSpace(requestedModel) != "" {
 		ph.providerMemory.RememberModelFormat(provider.ID, baseURL, requestedModel, string(format))
 		ph.providerMemory.ForgetFormat(provider.ID, baseURL)
-	} else {
+	} else if !isCustomRelayProvider(provider) {
 		ph.providerMemory.RememberFormat(provider.ID, baseURL, string(format))
 	}
 	if actualModel != "" && requestedModel != "" && actualModel != requestedModel {
@@ -2744,9 +2699,13 @@ func (ph *ProxyHandler) tryOnProvider(
 	}
 
 	formatsBuf, nFormats, formatKnown := ph.allFormatsForProvider(pid, burl, pr.model, result.Provider)
+	formatPlan := ph.formatPlanForProvider(pid, burl, pr.model, result.Provider)
+	fullFormatsBuf := formatsBuf
+	selectedFormat := formatPlan.SelectedFormat
 	allFormats := nFormats // remember full count before truncation
 	if endpointFormat, ok := detectEndpointFixedFormatFromPath(r.URL.Path); ok {
 		formatsBuf[0] = endpointFormat
+		selectedFormat = endpointFormat
 		nFormats = 1
 		allFormats = 1
 		formatKnown = true
@@ -2766,6 +2725,9 @@ func (ph *ProxyHandler) tryOnProvider(
 	// If format is known (detected or remembered), only try that one — skip fallback formats.
 	// On format mismatch (422 / wrapped 404), nFormats is expanded back to allFormats.
 	if formatKnown {
+		if selectedFormat != "" {
+			formatsBuf[0] = selectedFormat
+		}
 		nFormats = 1
 	}
 
@@ -2862,7 +2824,7 @@ func (ph *ProxyHandler) tryOnProvider(
 
 			// Request conversion unsupported on fast path should expand to the
 			// remaining format candidates for custom relays instead of bailing out.
-			if allFormats > 1 && isRequestConversionUnsupportedError(statusCode, errBody) {
+			if allFormats > 1 && formatPlan.Mutable && isRequestConversionUnsupportedError(statusCode, errBody) {
 				errStr := string(errBody)
 				if len(errStr) > 256 {
 					errStr = errStr[:256]
@@ -2871,9 +2833,10 @@ func (ph *ProxyHandler) tryOnProvider(
 					"provider", pid, "format", format, "model", pr.model, "status", statusCode, "body", errStr)
 				ph.forgetRememberedFormat(result.Provider, burl, pr.model)
 				ph.clearDetectedFormat(result.Provider)
+				formatsBuf = fullFormatsBuf
 				nFormats = allFormats
 				lastErr = newRequestConversionUnsupportedError(pr.model, pid, errStr)
-			} else if allFormats > 1 && isFormatMismatchError(statusCode, errBody) && !known404ModelNotConfigured {
+			} else if allFormats > 1 && formatPlan.Mutable && isFormatMismatchError(statusCode, errBody) && !known404ModelNotConfigured {
 				// Format mismatch on fast path — expand to all formats and fall through to general loop.
 				// Exception: some curated providers return generic 404 for unknown models
 				// (e.g. Copilot). In that case, treat it as model-not-configured.
@@ -2885,6 +2848,7 @@ func (ph *ProxyHandler) tryOnProvider(
 					"provider", pid, "format", format, "model", pr.model)
 				ph.forgetRememberedFormat(result.Provider, burl, pr.model)
 				ph.clearDetectedFormat(result.Provider)
+				formatsBuf = fullFormatsBuf
 				nFormats = allFormats
 				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 				// Fall through to general loop which will try remaining formats
@@ -2917,8 +2881,11 @@ func (ph *ProxyHandler) tryOnProvider(
 					if allFormats > 1 {
 						slog.Warn("[proxy] request conversion unsupported on fast path, expanding to all formats",
 							"provider", pid, "format", format, "model", pr.model, "status", statusCode, "body", errStr)
-						ph.forgetRememberedFormat(result.Provider, burl, pr.model)
-						ph.clearDetectedFormat(result.Provider)
+						if formatPlan.Mutable {
+							ph.forgetRememberedFormat(result.Provider, burl, pr.model)
+							ph.clearDetectedFormat(result.Provider)
+						}
+						formatsBuf = fullFormatsBuf
 						nFormats = allFormats
 						lastErr = newRequestConversionUnsupportedError(pr.model, pid, errStr)
 						break
@@ -2934,6 +2901,9 @@ func (ph *ProxyHandler) tryOnProvider(
 					slog.Warn("[proxy] upstream 5xx error",
 						"provider", pid, "status", statusCode, "error", errMsg)
 					return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
+				}
+				if statusCode == http.StatusBadRequest && strings.Contains(errStr, "invalid_request_error") {
+					return nil, "", "", fmt.Errorf("upstream 400: %s", errStr)
 				}
 				if isFormatMismatchError(statusCode, errBody) && !known404ModelNotConfigured {
 					return nil, "", "", fmt.Errorf("provider returned %d: %s", statusCode, errStr)
@@ -3123,9 +3093,10 @@ func (ph *ProxyHandler) tryOnProvider(
 				slog.Warn("[proxy] request conversion unsupported on provider, trying next format",
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 				lastErr = newRequestConversionUnsupportedError(model, pid, errStr)
-				if fi == nFormats-1 && allFormats > nFormats {
+				if fi == nFormats-1 && formatPlan.Mutable && allFormats > nFormats {
 					ph.forgetRememberedFormat(result.Provider, burl, pr.model)
 					ph.clearDetectedFormat(result.Provider)
+					formatsBuf = fullFormatsBuf
 					nFormats = allFormats
 				}
 				continue
@@ -3156,9 +3127,10 @@ func (ph *ProxyHandler) tryOnProvider(
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 				// If we're on the last format and there are more available, expand
-				if fi == nFormats-1 && allFormats > nFormats {
+				if fi == nFormats-1 && formatPlan.Mutable && allFormats > nFormats {
 					ph.forgetRememberedFormat(result.Provider, burl, pr.model)
 					ph.clearDetectedFormat(result.Provider)
+					formatsBuf = fullFormatsBuf
 					nFormats = allFormats
 				}
 				continue

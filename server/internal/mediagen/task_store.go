@@ -39,6 +39,7 @@ func (s *TaskStore) migrate() error {
 			upstream_id  TEXT NOT NULL DEFAULT '',
 			request      TEXT NOT NULL DEFAULT '{}',
 			response     TEXT NOT NULL DEFAULT '',
+			fallback_info TEXT NOT NULL DEFAULT '',
 			error        TEXT NOT NULL DEFAULT '',
 			progress     REAL NOT NULL DEFAULT 0,
 			source       TEXT NOT NULL DEFAULT 'web',
@@ -87,28 +88,34 @@ func ensureMediaTaskColumns(db *sql.DB) error {
 			return err
 		}
 	}
+	if _, ok := existing["fallback_info"]; !ok {
+		if _, err := db.Exec(`ALTER TABLE media_tasks ADD COLUMN fallback_info TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 // PersistentTask is the DB-serializable form of a media task.
 type PersistentTask struct {
-	ID          string     `json:"id"`
-	UserID      string     `json:"user_id,omitempty"`
-	MessageID   string     `json:"message_id"`
-	Status      TaskStatus `json:"status"`
-	Type        MediaType  `json:"type"`
-	Category    string     `json:"category"`
-	Provider    string     `json:"provider"`
-	Model       string     `json:"model"`
-	UpstreamID  string     `json:"upstream_id"`
-	Request     string     `json:"request"`  // JSON-encoded MediaRequest
-	Response    string     `json:"response"` // JSON-encoded MediaResponse
-	Error       string     `json:"error"`
-	Progress    float64    `json:"progress"`
-	Source      string     `json:"source"` // "web" or "channel"
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	ID           string     `json:"id"`
+	UserID       string     `json:"user_id,omitempty"`
+	MessageID    string     `json:"message_id"`
+	Status       TaskStatus `json:"status"`
+	Type         MediaType  `json:"type"`
+	Category     string     `json:"category"`
+	Provider     string     `json:"provider"`
+	Model        string     `json:"model"`
+	UpstreamID   string     `json:"upstream_id"`
+	Request      string     `json:"request"`  // JSON-encoded MediaRequest
+	Response     string     `json:"response"` // JSON-encoded MediaResponse
+	FallbackInfo string     `json:"fallback_info"`
+	Error        string     `json:"error"`
+	Progress     float64    `json:"progress"`
+	Source       string     `json:"source"` // "web" or "channel"
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
 }
 
 func normalizeMediaTaskScope(userID []string) (string, bool) {
@@ -136,10 +143,10 @@ func (s *TaskStore) Create(t *PersistentTask) error {
 	t.UpdatedAt = now
 	_, err := s.db.Exec(`
 		INSERT INTO media_tasks (id, user_id, message_id, status, type, category, provider, model,
-			upstream_id, request, response, error, progress, source, created_at, updated_at, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			upstream_id, request, response, fallback_info, error, progress, source, created_at, updated_at, completed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.UserID, t.MessageID, string(t.Status), string(t.Type), t.Category, t.Provider, t.Model,
-		t.UpstreamID, t.Request, t.Response, t.Error, t.Progress, t.Source,
+		t.UpstreamID, t.Request, t.Response, t.FallbackInfo, t.Error, t.Progress, t.Source,
 		task.TimeToSQL(t.CreatedAt), task.TimeToSQL(t.UpdatedAt), task.NullTimeToSQL(t.CompletedAt),
 	)
 	return err
@@ -174,11 +181,26 @@ func (s *TaskStore) UpdateMessageID(taskID, messageID string) error {
 	return err
 }
 
+// UpdateFallbackInfo persists fallback metadata changes for an existing task.
+func (s *TaskStore) UpdateFallbackInfo(taskID string, info *MediaFallbackInfo) error {
+	payload := ""
+	if info != nil {
+		encoded, err := json.Marshal(info)
+		if err != nil {
+			return err
+		}
+		payload = string(encoded)
+	}
+	_, err := s.db.Exec(`UPDATE media_tasks SET fallback_info=?, updated_at=? WHERE id=?`,
+		payload, task.TimeToSQL(timeutil.NowTime()), taskID)
+	return err
+}
+
 // Get retrieves a single task by ID.
 func (s *TaskStore) Get(id string, userID ...string) (*PersistentTask, error) {
 	clause, args := mediaTaskScopeClause(userID, "user_id")
 	query := `SELECT id, user_id, message_id, status, type, category, provider, model,
-		upstream_id, request, response, error, progress, source, created_at, updated_at, completed_at
+		upstream_id, request, response, fallback_info, error, progress, source, created_at, updated_at, completed_at
 		FROM media_tasks WHERE id=?` + clause
 	queryArgs := []any{id}
 	queryArgs = append(queryArgs, args...)
@@ -190,7 +212,7 @@ func (s *TaskStore) Get(id string, userID ...string) (*PersistentTask, error) {
 func (s *TaskStore) GetByMessageID(messageID string, userID ...string) ([]*PersistentTask, error) {
 	clause, args := mediaTaskScopeClause(userID, "user_id")
 	query := `SELECT id, user_id, message_id, status, type, category, provider, model,
-		upstream_id, request, response, error, progress, source, created_at, updated_at, completed_at
+		upstream_id, request, response, fallback_info, error, progress, source, created_at, updated_at, completed_at
 		FROM media_tasks WHERE message_id=?` + clause + ` ORDER BY created_at DESC`
 	queryArgs := []any{messageID}
 	queryArgs = append(queryArgs, args...)
@@ -205,7 +227,7 @@ func (s *TaskStore) GetByMessageID(messageID string, userID ...string) ([]*Persi
 // ListPending returns all non-terminal tasks (for power-failure recovery).
 func (s *TaskStore) ListPending() ([]*PersistentTask, error) {
 	rows, err := s.db.Query(`SELECT id, user_id, message_id, status, type, category, provider, model,
-		upstream_id, request, response, error, progress, source, created_at, updated_at, completed_at
+		upstream_id, request, response, fallback_info, error, progress, source, created_at, updated_at, completed_at
 		FROM media_tasks WHERE status IN ('pending', 'processing') ORDER BY created_at ASC`)
 	if err != nil {
 		return nil, err
@@ -219,7 +241,7 @@ func scanTask(row *sql.Row) (*PersistentTask, error) {
 	var createdAt, updatedAt string
 	var completedAt sql.NullString
 	err := row.Scan(&t.ID, &t.UserID, &t.MessageID, &t.Status, &t.Type, &t.Category, &t.Provider, &t.Model,
-		&t.UpstreamID, &t.Request, &t.Response, &t.Error, &t.Progress, &t.Source,
+		&t.UpstreamID, &t.Request, &t.Response, &t.FallbackInfo, &t.Error, &t.Progress, &t.Source,
 		&createdAt, &updatedAt, &completedAt)
 	if err != nil {
 		return nil, err
@@ -237,7 +259,7 @@ func scanTasks(rows *sql.Rows) ([]*PersistentTask, error) {
 		var createdAt, updatedAt string
 		var completedAt sql.NullString
 		err := rows.Scan(&t.ID, &t.UserID, &t.MessageID, &t.Status, &t.Type, &t.Category, &t.Provider, &t.Model,
-			&t.UpstreamID, &t.Request, &t.Response, &t.Error, &t.Progress, &t.Source,
+			&t.UpstreamID, &t.Request, &t.Response, &t.FallbackInfo, &t.Error, &t.Progress, &t.Source,
 			&createdAt, &updatedAt, &completedAt)
 		if err != nil {
 			return tasks, err
@@ -280,6 +302,12 @@ func (t *PersistentTask) ToMediaTask() *MediaTask {
 		var resp MediaResponse
 		if json.Unmarshal([]byte(t.Response), &resp) == nil {
 			mt.Response = &resp
+		}
+	}
+	if t.FallbackInfo != "" {
+		var info MediaFallbackInfo
+		if json.Unmarshal([]byte(t.FallbackInfo), &info) == nil {
+			mt.FallbackInfo = &info
 		}
 	}
 	return mt
@@ -417,6 +445,11 @@ func FromMediaTask(mt *MediaTask) *PersistentTask {
 	if mt.Response != nil {
 		if b, err := json.Marshal(mt.Response); err == nil {
 			t.Response = string(b)
+		}
+	}
+	if mt.FallbackInfo != nil {
+		if b, err := json.Marshal(mt.FallbackInfo); err == nil {
+			t.FallbackInfo = string(b)
 		}
 	}
 	return t

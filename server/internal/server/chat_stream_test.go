@@ -40,6 +40,13 @@ type trialToolRoundStreamingProvider struct {
 	callCount int
 }
 
+type injectionRestartProxyHandler struct {
+	mu             sync.Mutex
+	callCount      int
+	firstChunkSent chan struct{}
+	cancelFirst    func()
+}
+
 // autoContinueFailingProxyHandler simulates:
 // 1) first stream round returns a TODO checklist (triggers auto-continue)
 // 2) follow-up rounds fail before any chunks with upstream_error 502
@@ -275,6 +282,49 @@ func (h *missingTerminalMarkerProxyHandler) ServeHTTP(w http.ResponseWriter, r *
 	}
 }
 
+func (h *injectionRestartProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_injection_restart"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	h.mu.Lock()
+	h.callCount++
+	call := h.callCount
+	h.mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+
+	switch call {
+	case 1:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_inject_1","choices":[{"delta":{"content":"Working on it"},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		select {
+		case <-h.firstChunkSent:
+		default:
+			close(h.firstChunkSent)
+		}
+		if h.cancelFirst != nil {
+			h.cancelFirst()
+		}
+		<-r.Context().Done()
+	case 2:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_inject_2","choices":[{"delta":{"content":"Updated answer"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	default:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_inject_final","choices":[{"delta":{"content":"done"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+}
+
 func newTCP4TestServerOrSkip(t *testing.T, handler http.Handler) *httptest.Server {
 	t.Helper()
 	ln, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -407,6 +457,19 @@ func extractJSONSSEEvents(t *testing.T, body string) []map[string]interface{} {
 		t.Fatalf("failed to scan SSE body: %v", err)
 	}
 	return events
+}
+
+func requireProcessEvent(t *testing.T, events []map[string]interface{}, name, status string) map[string]interface{} {
+	t.Helper()
+	for _, event := range events {
+		gotName, _ := event["process_event"].(string)
+		gotStatus, _ := event["process_status"].(string)
+		if gotName == name && (status == "" || gotStatus == status) {
+			return event
+		}
+	}
+	t.Fatalf("expected process event %q with status %q, got events=%v", name, status, events)
+	return nil
 }
 
 func newSingleModelOpenAIProxyHandler(t *testing.T, upstreamBaseURL, providerID, modelID string) *proxy.ProxyHandler {
@@ -2219,6 +2282,15 @@ func TestStreamMessageAutoContinue_PreContent502GracefulCompletion(t *testing.T)
 	if fallbackText := streamContinuationFailureText(settingsHandler.GetLocale()); fallbackText != "" && !strings.Contains(body, fallbackText) {
 		t.Fatalf("expected continuation failure fallback text in stream body, got=%s", body)
 	}
+	events := extractJSONSSEEvents(t, body)
+	retryScheduled := requireProcessEvent(t, events, "pre_content_retry_scheduled", "pending")
+	if attempt, ok := retryScheduled["process_attempt"].(float64); !ok || int(attempt) != 1 {
+		t.Fatalf("expected retry attempt=1, got event=%v", retryScheduled)
+	}
+	requireProcessEvent(t, events, "pre_content_retry_started", "active")
+	requireProcessEvent(t, events, "pre_content_retry_failed", "error")
+	requireProcessEvent(t, events, "continuation_recovery_started", "active")
+	requireProcessEvent(t, events, "continuation_recovery_failed", "error")
 	if fakeProxy.callCount != 5 {
 		t.Fatalf("expected exactly 5 proxy calls (initial + bounded pre-content retry + stage1 + stage2 recovery attempts), got %d", fakeProxy.callCount)
 	}
@@ -2277,6 +2349,81 @@ func TestStreamMessage_MissingTerminalMarkerStillEmitsDoneChunk(t *testing.T) {
 	if !doneSeen {
 		t.Fatalf("expected structured done=true SSE event, got body=%s", body)
 	}
+}
+
+func TestStreamMessage_EmitsInjectionRestartProcessEvent(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test injection restart")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fakeProxy := &injectionRestartProxyHandler{
+		firstChunkSent: make(chan struct{}),
+		cancelFirst:    cancel,
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	if _, injected := handler.enqueueConversationInjection(conv.ID, "Actually focus on logs"); !injected {
+		t.Fatal("expected queued injection")
+	}
+
+	e := echo.New()
+	streamReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/conversations/"+conv.ID+"/messages/stream",
+		bytes.NewBufferString(`{"message":"hello","model":"gpt-5.3-codex-spark"}`),
+	).WithContext(ctx)
+	streamReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	streamRec := httptest.NewRecorder()
+	streamCtx := e.NewContext(streamReq, streamRec)
+	streamCtx.SetParamNames("id")
+	streamCtx.SetParamValues(conv.ID)
+
+	streamErrCh := make(chan error, 1)
+	go func() {
+		streamErrCh <- handler.StreamMessage(streamCtx)
+	}()
+
+	select {
+	case <-fakeProxy.firstChunkSent:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first streamed chunk")
+	}
+
+	select {
+	case err := <-streamErrCh:
+		if err != nil {
+			t.Fatalf("StreamMessage error: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for restarted stream")
+	}
+
+	body := streamRec.Body.String()
+	if !strings.Contains(body, "Updated answer") {
+		t.Fatalf("expected restarted answer in stream body, got=%s", body)
+	}
+	events := extractJSONSSEEvents(t, body)
+	var injectionSeen bool
+	for _, event := range events {
+		if injected, ok := event["injection"].(bool); ok && injected {
+			injectionSeen = true
+			break
+		}
+	}
+	if !injectionSeen {
+		t.Fatalf("expected injection SSE event, got body=%s", body)
+	}
+	requireProcessEvent(t, events, "injection_restart", "active")
 }
 
 func TestStreamMessageAutoContinue_PreContentRetryKeepsContinuationWithPreviousResponseID(t *testing.T) {
@@ -3498,6 +3645,12 @@ func TestStreamMessage_ToolRoundPreContent502_RetriesWithoutPinnedProvider(t *te
 	if !strings.Contains(body, "备用 provider 恢复成功。") {
 		t.Fatalf("expected unpinned retry follow-up content, body=%s", body)
 	}
+	events := extractJSONSSEEvents(t, body)
+	failoverActive := requireProcessEvent(t, events, "provider_failover", "active")
+	if gotProvider, _ := failoverActive["process_provider"].(string); gotProvider != "prov_primary" {
+		t.Fatalf("expected failover to mention prov_primary, got event=%v", failoverActive)
+	}
+	requireProcessEvent(t, events, "provider_failover", "success")
 	if fakeProxy.callCount != 3 {
 		t.Fatalf("expected exactly 3 proxy calls (tool round + pinned failure + unpinned retry), got %d", fakeProxy.callCount)
 	}
@@ -3732,6 +3885,53 @@ func TestStreamMessageRetriesContextTooLongWithLargerModel(t *testing.T) {
 		if models[i] != "small-model" {
 			t.Fatalf("intermediate request model = %q, want small-model before fallback; models=%#v", models[i], models)
 		}
+	}
+}
+
+func TestStreamMessageRetriesRelayWrappedContextTooLongWithLargerModel(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create memory store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Stream retry relay-wrapped context too long")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+		{ProviderID: "p-context", ModelID: "small-model", ContextWindow: 4096, InputPrice: 5, Priority: 20},
+		{ProviderID: "p-context", ModelID: "large-model", ContextWindow: 8192, InputPrice: 8, Priority: 20},
+	}))
+	fakeProxy := &contextTooLongThenSuccessProxyHandler{
+		providerID:   "p-context",
+		successText:  "stream recovered after relay-wrapped fallback",
+		relayWrapped: true,
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"hello","model":"small-model","max_tokens":64}`)
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("stream should recover without STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, "data: [DONE]") {
+		t.Fatalf("expected done marker, body=%s", body)
+	}
+	if !strings.Contains(body, "stream recovered after relay-wrapped fallback") {
+		t.Fatalf("expected recovered stream content, body=%s", body)
+	}
+
+	models := fakeProxy.RequestModels()
+	if len(models) < 2 {
+		t.Fatalf("request models = %#v, want at least [small-model ... large-model]", models)
+	}
+	if models[0] != "small-model" {
+		t.Fatalf("first request model = %q, want small-model; models=%#v", models[0], models)
+	}
+	if models[len(models)-1] != "large-model" {
+		t.Fatalf("final request model = %q, want large-model; models=%#v", models[len(models)-1], models)
 	}
 }
 
@@ -4263,7 +4463,7 @@ func TestStreamMessageShortAffirmative_InjectsContinuationHint(t *testing.T) {
 	}
 }
 
-func TestStreamMessageSecondSendTimeout_NotPreloadRelated(t *testing.T) {
+func TestStreamMessageSecondSendTimeout_RetainsHistoryUnderPressureDrivenContext(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
@@ -4290,11 +4490,8 @@ func TestStreamMessageSecondSendTimeout_NotPreloadRelated(t *testing.T) {
 	}
 
 	secondBody := runStreamTurn(t, handler, conv.ID, `{"message":"second turn","model":"gpt-4o-mini"}`)
-	if strings.Contains(secondBody, `"error":"STREAM_ERROR"`) {
-		t.Fatalf("expected second turn to avoid STREAM_ERROR, body=%s", secondBody)
-	}
-	if !strings.Contains(secondBody, `"done":true`) {
-		t.Fatalf("second turn should contain done marker, body=%s", secondBody)
+	if !strings.Contains(secondBody, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected second turn to surface the upstream timeout once history is retained, body=%s", secondBody)
 	}
 
 	counts := fakeProxy.RequestMsgCounts()
@@ -4303,8 +4500,8 @@ func TestStreamMessageSecondSendTimeout_NotPreloadRelated(t *testing.T) {
 	}
 	firstCount := counts[0]
 	secondCount := counts[1]
-	if secondCount < firstCount {
-		t.Fatalf("expected second request to include at least as much context as first (first=%d second=%d)", firstCount, secondCount)
+	if secondCount <= firstCount {
+		t.Fatalf("expected second request to include more retained history than first (first=%d second=%d)", firstCount, secondCount)
 	}
 }
 
@@ -4318,7 +4515,16 @@ func TestStreamMessageCodexResponsesSecondTurn_UsesPreviousResponseID(t *testing
 		body, _ := io.ReadAll(r.Body)
 		_ = r.Body.Close()
 		prevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
-		inputText := strings.TrimSpace(gjson.GetBytes(body, "input.0.content.0.text").String())
+		currentText := ""
+		for _, item := range gjson.GetBytes(body, "input").Array() {
+			for _, block := range item.Get("content").Array() {
+				if text := strings.TrimSpace(block.Get("text").String()); text != "" {
+					currentText = text
+				}
+			}
+		}
+		isFirstTurn := currentText == "first turn"
+		isSecondTurn := currentText == "second turn"
 
 		if r.URL.Path != "/v1/responses" {
 			http.Error(w, "unexpected path", http.StatusBadRequest)
@@ -4326,7 +4532,7 @@ func TestStreamMessageCodexResponsesSecondTurn_UsesPreviousResponseID(t *testing
 		}
 
 		// Ignore non-chat probe traffic (auth/tool probes).
-		if inputText != "first turn" && inputText != "second turn" {
+		if !isFirstTurn && !isSecondTurn {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"id":"resp_probe","object":"response","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`))
@@ -4339,7 +4545,7 @@ func TestStreamMessageCodexResponsesSecondTurn_UsesPreviousResponseID(t *testing
 		requestPrevIDs = append(requestPrevIDs, prevID)
 		mu.Unlock()
 
-		if inputText == "first turn" {
+		if isFirstTurn {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_turn_1","choices":[{"delta":{"content":"first ok"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
