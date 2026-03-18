@@ -112,6 +112,7 @@ type SessionAuditConfig struct {
 
 // EmbeddingConfig holds embedding provider configuration.
 type EmbeddingConfig struct {
+	Enabled    bool                  `yaml:"enabled"`
 	Provider   string                `yaml:"provider"`
 	Model      string                `yaml:"model"`
 	Dimensions int                   `yaml:"dimensions"`

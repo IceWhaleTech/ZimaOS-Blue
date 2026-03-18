@@ -676,7 +676,7 @@ func defaults() Config {
 			},
 		},
 		Embedding: EmbeddingConfig{
-			Provider: "cybertron", Model: "BAAI/bge-small-zh-v1.5", Dimensions: 0, BatchSize: 100, Timeout: 30 * time.Second,
+			Enabled: false, Provider: "cybertron", Model: "BAAI/bge-small-zh-v1.5", Dimensions: 0, BatchSize: 100, Timeout: 30 * time.Second,
 			Cache:  EmbeddingCacheConfig{Enabled: true, MaxEntries: 10000, TTL: 24 * time.Hour},
 			OpenAI: OpenAIEmbeddingConfig{BaseURL: "https://api.openai.com"},
 			Ollama: OllamaEmbeddingConfig{BaseURL: "http://localhost:11434"},

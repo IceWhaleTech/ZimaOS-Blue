@@ -1497,7 +1497,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 
 		var marketEmbedding embedding.Provider
-		if deps.Config != nil && strings.EqualFold(deps.Config.Embedding.Provider, "cybertron") {
+		if deps.Config != nil && deps.Config.Embedding.Enabled && strings.EqualFold(deps.Config.Embedding.Provider, "cybertron") {
 			provider := embedding.NewCybertronProvider(embedding.CybertronConfig{
 				ModelsDir:  embedding.PrepareSharedModelCache(cfg.DataDir, deps.Config.Memory.VectorStore.DBPath, deps.Config.Embedding.Model),
 				Model:      deps.Config.Embedding.Model,
@@ -2546,7 +2546,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		var prunerMw *pruner.Middleware
 		var prunerHandler *pruner.APIHandler
 		prunerCfg := pruner.DefaultConfig()
-		prunerCfg.Enabled = true
 		if deps.Config.Pruner != nil {
 			prunerCfg = *deps.Config.Pruner
 		}
