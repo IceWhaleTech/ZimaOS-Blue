@@ -26,6 +26,33 @@ func DefaultHeartbeatConfig() HeartbeatConfig {
 	}
 }
 
+// GroupPolicy controls whether inbound group messages are accepted.
+type GroupPolicy string
+
+const (
+	// GroupPolicyOpen accepts group messages from any chat.
+	GroupPolicyOpen GroupPolicy = "open"
+	// GroupPolicyAllowlist only accepts group messages from explicitly allowed chats.
+	GroupPolicyAllowlist GroupPolicy = "allowlist"
+	// GroupPolicyDisabled rejects all group messages.
+	GroupPolicyDisabled GroupPolicy = "disabled"
+)
+
+// GroupAccessConfig controls inbound group message access across all channels.
+type GroupAccessConfig struct {
+	// Policy controls whether group messages are accepted.
+	Policy GroupPolicy `yaml:"policy" json:"policy"`
+	// AllowedChatIDs stores per-channel allowed group chat IDs when Policy is allowlist.
+	AllowedChatIDs map[string][]string `yaml:"allowed_chat_ids" json:"allowed_chat_ids"`
+}
+
+// DefaultGroupAccessConfig returns a permissive default that preserves existing behavior.
+func DefaultGroupAccessConfig() GroupAccessConfig {
+	return GroupAccessConfig{
+		Policy: GroupPolicyOpen,
+	}
+}
+
 // Config contains common configuration for all channels.
 type Config struct {
 	// Enabled indicates if channels are globally enabled.
@@ -36,6 +63,8 @@ type Config struct {
 	MaxMessageLength int `yaml:"max_message_length"`
 	// Heartbeat controls periodic "still alive" messages during long responses.
 	Heartbeat HeartbeatConfig `yaml:"heartbeat"`
+	// GroupAccess controls which group chats may send inbound messages.
+	GroupAccess GroupAccessConfig `yaml:"group_access"`
 	// Telegram configuration.
 	Telegram TelegramConfig `yaml:"telegram"`
 	// Discord configuration.
@@ -209,6 +238,7 @@ func DefaultConfig() Config {
 		DefaultTimeoutSeconds: 90,
 		MaxMessageLength:      4096,
 		Heartbeat:             DefaultHeartbeatConfig(),
+		GroupAccess:           DefaultGroupAccessConfig(),
 		Telegram: TelegramConfig{
 			Enabled: false,
 		},

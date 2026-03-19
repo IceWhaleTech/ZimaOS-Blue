@@ -38,7 +38,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -73,7 +72,7 @@ var (
 	gitCommit = "unknown"
 )
 
-func applyPendingBackupRestore(dataDir string) error {
+func applyPendingBackupRestore(dataDir string, previousCleanShutdown bool) error {
 	mgr, err := backup.NewManager(backup.Config{
 		Enabled:       true,
 		RetentionDays: 7,
@@ -84,6 +83,9 @@ func applyPendingBackupRestore(dataDir string) error {
 		return err
 	}
 	if !mgr.HasPendingRestore() {
+		if previousCleanShutdown {
+			return nil
+		}
 		dbPaths, err := backup.DiscoverSQLiteDatabasePaths(dataDir)
 		if err != nil {
 			return err
@@ -388,6 +390,14 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
+	previousCleanShutdown, startupIntegrityErr := dbutil.BeginStartupIntegritySession(dataDir)
+	if startupIntegrityErr != nil {
+		fmt.Fprintf(os.Stderr, "Startup integrity state warning: %v\n", startupIntegrityErr)
+		previousCleanShutdown = false
+	}
+	dbutil.SetStartupQuickCheckEnabled(!previousCleanShutdown)
+	defer dbutil.SetStartupQuickCheckEnabled(true)
+
 	// Initialize logger with ring buffer for log viewing
 	if err := logger.Init(&cfg.Log); err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
@@ -407,7 +417,10 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		zap.Int("port", cfg.Server.Port),
 		zap.String("data_dir", dataDir),
 	)
-	if err := applyPendingBackupRestore(dataDir); err != nil {
+	if previousCleanShutdown {
+		zapLogger.Info("Skipping proactive startup database scan after previous clean shutdown")
+	}
+	if err := applyPendingBackupRestore(dataDir, previousCleanShutdown); err != nil {
 		zapLogger.Warn("Failed to apply pending backup restore before database initialization", zap.Error(err))
 	}
 
@@ -470,10 +483,10 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		return nil
 	})
 
-	// Initialize metrics
+	// Initialize chat handler
+	chatHandler := server.NewChatHandler(services.MemoryStore, services.LLMRegistry, services.ToolRegistry)
 	metricsCollector, metricsWriter := bootstrap.InitMetrics(dataDir, services.DB)
-	defer metricsCollector.Stop()
-	defer metricsWriter.Stop()
+	chatHandler.SetMetricsRecorder(metricsWriter)
 	// Register cleanup for metrics
 	registerCleanup(func() error {
 		metricsCollector.Stop()
@@ -481,9 +494,6 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		return nil
 	})
 
-	// Initialize chat handler
-	chatHandler := server.NewChatHandler(services.MemoryStore, services.LLMRegistry, services.ToolRegistry)
-	chatHandler.SetMetricsRecorder(metricsWriter)
 	if cfg.Session.Audit.Enabled {
 		auditCfg := sessionaudit.StoreConfig{
 			RetentionDays:    cfg.Session.Audit.RetentionDays,
@@ -583,23 +593,32 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		sandboxHandler = sandbox.NewHandler(sandboxManager)
 	}
 
-	// Initialize cron handler
-	cronService := cron.NewService(cron.DefaultConfig(), zapLogger)
-	cronService.RegisterBuiltinHandlers()
-	cronHandler := cron.NewHandler(cronService, zapLogger)
-	// Defer cron start — not needed until a scheduled job fires
-	go func() {
-		cronService.Start()
-	}()
+	// Initialize cron handler lazily so startup does not block on scheduler setup.
+	var (
+		cronService   *cron.Service
+		cronServiceMu sync.Mutex
+	)
+	cronHandler := cron.NewLazyHandler(func() *cron.Service {
+		svc := cron.NewService(cron.DefaultConfig(), zapLogger)
+		svc.RegisterBuiltinHandlers()
+		if err := svc.Start(); err != nil {
+			zapLogger.Warn("Failed to start cron service", zap.Error(err))
+		}
+		cronServiceMu.Lock()
+		cronService = svc
+		cronServiceMu.Unlock()
+		return svc
+	}, zapLogger)
 	// Register cleanup for cron service
 	registerCleanup(func() error {
-		cronService.Stop(context.Background())
+		cronServiceMu.Lock()
+		svc := cronService
+		cronServiceMu.Unlock()
+		if svc != nil {
+			svc.Stop(context.Background())
+		}
 		return nil
 	})
-
-	// Initialize Home Assistant handler
-	haService := homeassistant.NewHAService()
-	haHandler := homeassistant.NewHandler(haService)
 
 	// Initialize browser handler
 	browserService, _ := browser.NewService(&cfg.Browser)
@@ -615,20 +634,31 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		formfillerHandler = formfiller.NewHandler(formfillerStore)
 	}
 
-	// Initialize workflow handler
-	workflowRepo, _ := workflow.NewRepository(services.DB)
-	var workflowHandler *workflow.Handler
-	if workflowRepo != nil {
-		workflowService, _ := workflow.NewService(nil, workflowRepo)
-		if workflowService != nil {
-			workflowHandler = workflow.NewHandler(workflowService)
+	// Initialize workflow handler lazily to avoid repository setup on the critical startup path.
+	workflowHandler := workflow.NewLazyHandler(func() *workflow.WorkflowService {
+		workflowRepo, err := workflow.NewRepository(services.DB)
+		if err != nil {
+			zapLogger.Warn("Failed to initialize workflow repository", zap.Error(err))
+			return nil
 		}
-	}
-
-	// Initialize Whisper ASR provider
-	whisperASRProvider := stt.NewWhisperProvider(&stt.WhisperConfig{
-		ModelPath: filepath.Join(dataDir, "models", "whisper"),
+		workflowService, err := workflow.NewService(nil, workflowRepo)
+		if err != nil {
+			zapLogger.Warn("Failed to initialize workflow service", zap.Error(err))
+			return nil
+		}
+		zapLogger.Info("Workflow service initialized lazily")
+		return workflowService
 	})
+
+	// Initialize Whisper ASR provider only on platforms that can actually use it during
+	// embedded startup. macOS desktop relies on native STT and would otherwise pay the
+	// model-manager setup cost without using Whisper on the startup path.
+	var whisperASRProvider *stt.WhisperProvider
+	if runtime.GOOS != "darwin" {
+		whisperASRProvider = stt.NewWhisperProvider(&stt.WhisperConfig{
+			ModelPath: filepath.Join(dataDir, "models", "whisper"),
+		})
+	}
 	// Register cleanup for Whisper provider
 	if whisperASRProvider != nil {
 		registerCleanup(func() error {
@@ -713,17 +743,26 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// On macOS, use native STT (no whisper in Tauri macOS build)
 	if runtime.GOOS == "darwin" {
-		zapLogger.Info("macOS detected, initializing native STT...")
-		macosSTT := speech.NewMacOSNativeSTT()
-		if err := macosSTT.Initialize(); err == nil {
+		status, authErr, authInitialized := speech.CurrentSTTAuthorizationState()
+		switch {
+		case authErr != nil:
+			zapLogger.Warn("macOS native STT authorization failed before server startup", zap.Error(authErr))
+			speechService.SetASRPermissionDenied(authErr.Error())
+		case !authInitialized:
+			err := fmt.Errorf("macOS STT authorization not initialized; call RequestSTTAuthorization() from main() first")
+			zapLogger.Warn("macOS native STT authorization state missing at startup", zap.Error(err))
+			speechService.SetASRPermissionDenied(err.Error())
+		case status != 3:
+			err := fmt.Errorf("speech recognition not authorized (status=%d)", status)
+			zapLogger.Warn("macOS native STT unavailable after authorization check", zap.Error(err))
+			speechService.SetASRPermissionDenied(err.Error())
+		default:
+			macosSTT := speech.NewMacOSNativeSTT()
 			speechService.SetASRProvider(macosSTT)
 			if voiceHandler != nil {
 				voiceHandler.Service().SetSTTService(stt.NewServiceFromProvider(macosSTT))
 			}
-			zapLogger.Info("macOS native STT initialized OK")
-		} else {
-			zapLogger.Warn("macOS native STT init failed, no ASR available", zap.Error(err))
-			speechService.SetASRPermissionDenied(err.Error())
+			zapLogger.Info("macOS native STT authorized; deferring provider initialization until first use", zap.Int("status", status))
 		}
 	} else if runtime.GOOS == "windows" {
 		zapLogger.Info("Windows detected, initializing native ASR...")
@@ -750,22 +789,66 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	// Initialize companion handler
 	companionConfig := companion.DefaultConfig()
 	companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
-	companionStorage, _ := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
 	var companionHandler *companion.Handler
 	var companionWSHandler *companion.WebSocketHandler
-	if companionStorage != nil {
-		companionStreamer := companion.NewEventStreamer(companionConfig)
-		// Defer streamer start — not needed until companion WebSocket connects
-		go companionStreamer.Start(ctx)
-		companionManager := companion.NewManager(companionStorage, companionStreamer, companionConfig)
-		companionHandler = companion.NewHandler(companionManager, companionStorage)
-		companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
-		chatHandler.SetCompanionManager(companionManager)
-		// Register cleanup for companion streamer
-		registerCleanup(func() error {
-			companionStreamer.Stop()
-			return nil
+	var warmCompanion func()
+	{
+		var (
+			companionInitMu            sync.Mutex
+			companionCleanupRegistered bool
+			companionManager           *companion.Manager
+			companionStorage           companion.Storage
+			companionStreamer          *companion.EventStreamer
+		)
+		initCompanion := func() (*companion.Manager, companion.Storage, companion.Streamer) {
+			companionInitMu.Lock()
+			defer companionInitMu.Unlock()
+
+			if companionManager != nil && companionStorage != nil && companionStreamer != nil {
+				return companionManager, companionStorage, companionStreamer
+			}
+
+			storage, err := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
+			if err != nil {
+				zapLogger.Warn("Failed to initialize companion storage lazily", zap.Error(err))
+				return nil, nil, nil
+			}
+
+			streamer := companion.NewEventStreamer(companionConfig)
+			if err := streamer.Start(ctx); err != nil {
+				zapLogger.Warn("Failed to start companion streamer lazily", zap.Error(err))
+				return nil, nil, nil
+			}
+
+			manager := companion.NewManager(storage, streamer, companionConfig)
+			chatHandler.SetCompanionManager(manager)
+
+			if !companionCleanupRegistered {
+				registerCleanup(func() error {
+					return streamer.Stop()
+				})
+				companionCleanupRegistered = true
+			}
+
+			companionManager = manager
+			companionStorage = storage
+			companionStreamer = streamer
+
+			zapLogger.Info("Companion services initialized lazily")
+			return companionManager, companionStorage, companionStreamer
+		}
+
+		companionHandler = companion.NewLazyHandler(func() (*companion.Manager, companion.Storage) {
+			manager, storage, _ := initCompanion()
+			return manager, storage
 		})
+		companionWSHandler = companion.NewLazyWebSocketHandler(func() companion.Streamer {
+			_, _, streamer := initCompanion()
+			return streamer
+		}, companionConfig)
+		warmCompanion = func() {
+			_, _, _ = initCompanion()
+		}
 	}
 
 	// Initialize provider pool (SQLite-backed, auto-migrates from JSON files)
@@ -807,9 +890,13 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if err := workspaceMgr.EnsureWorkspace(); err != nil {
 		zapLogger.Warn("Failed to initialize workspace", zap.Error(err))
 	}
-	if err := workspaceMgr.ReleaseContextPacks(contextpackembed.PacksFS); err != nil {
-		zapLogger.Warn("Failed to release embedded context packs", zap.Error(err))
-	}
+	// Context packs are only needed when context-aware chat features are used, so
+	// release them in the background instead of blocking first paint.
+	go func() {
+		if err := workspaceMgr.ReleaseContextPacks(contextpackembed.PacksFS); err != nil {
+			zapLogger.Warn("Failed to release embedded context packs", zap.Error(err))
+		}
+	}()
 	contextRegistry := contextpack.NewRegistry(workspaceMgr.ContextDir())
 	contextAnnotationStore, err := contextpack.NewAnnotationStore(filepath.Join(dataDir, "contextpacks.db"))
 	if err != nil {
@@ -1017,7 +1104,6 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		SecurityHandler:    securityHandler,
 		SandboxHandler:     sandboxHandler,
 		CronHandler:        cronHandler,
-		HAHandler:          haHandler,
 		BrowserHandler:     browserHandler,
 		VoiceHandler:       voiceHandler,
 		VoiceWSHandler:     voiceWSHandler,
@@ -1064,6 +1150,10 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		},
 	})
 
+	if warmCompanion != nil {
+		go warmCompanion()
+	}
+
 	zapLogger.Info("All routes registered", zap.Int("actual_port", actualPort))
 
 	// Wait for context cancellation or error
@@ -1084,7 +1174,13 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		metricsCollector.Stop()
 		metricsWriter.Stop()
 
-		return httpServer.Shutdown(shutdownCtx)
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			return err
+		}
+		if err := dbutil.MarkStartupIntegrityClean(dataDir); err != nil {
+			zapLogger.Warn("Failed to mark startup integrity state clean", zap.Error(err))
+		}
+		return nil
 	case err := <-errCh:
 		return err
 	}

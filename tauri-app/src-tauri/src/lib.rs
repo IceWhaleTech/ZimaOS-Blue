@@ -124,8 +124,8 @@ fn build_main_window<R: tauri::Runtime, M: Manager<R>>(
     #[cfg(target_os = "macos")]
     let builder = builder
         .transparent(true)
-        .title_bar_style(tauri::TitleBarStyle::Visible)
-        .traffic_light_position(tauri::LogicalPosition::new(18.0, 20.0))
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .traffic_light_position(tauri::LogicalPosition::new(18.0, 18.0))
         .hidden_title(true)
         .accept_first_mouse(true)
         .effects(main_window_effects())
@@ -153,7 +153,7 @@ fn build_panel_window<R: tauri::Runtime, M: Manager<R>>(
     #[cfg(target_os = "macos")]
     let builder = builder
         .transparent(true)
-        .title_bar_style(tauri::TitleBarStyle::Visible)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
         .traffic_light_position(tauri::LogicalPosition::new(18.0, 18.0))
         .hidden_title(true)
         .accept_first_mouse(true)
@@ -223,12 +223,26 @@ fn rebuild_window_for_path(
 
 #[cfg(target_os = "macos")]
 fn apply_main_window_macos_style<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
-    if let Err(err) = window.set_title_bar_style(tauri::TitleBarStyle::Visible) {
+    use objc2_app_kit::{NSWindow, NSWindowToolbarStyle};
+
+    if let Err(err) = window.set_title_bar_style(tauri::TitleBarStyle::Overlay) {
         error!("Failed to apply macOS title bar style: {}", err);
     }
     if let Err(err) = window.set_effects(main_window_effects()) {
         error!("Failed to apply macOS window effects: {}", err);
     }
+
+    let ns_window_ptr = match window.ns_window() {
+        Ok(ptr) => ptr,
+        Err(err) => {
+            error!("Failed to access macOS NSWindow handle: {}", err);
+            return;
+        }
+    };
+
+    let ns_window: &NSWindow = unsafe { &*ns_window_ptr.cast() };
+    ns_window.setTitlebarAppearsTransparent(true);
+    ns_window.setToolbarStyle(NSWindowToolbarStyle::UnifiedCompact);
 }
 
 #[cfg(target_os = "macos")]
@@ -734,11 +748,52 @@ async fn reveal_path(path: String) -> Result<(), String> {
     })
 }
 
+fn cli_compatible_data_dir_for_home(home_dir: &Path, dev_mode: bool) -> PathBuf {
+    let state_dir = if dev_mode {
+        ".zimaos-blue-dev"
+    } else {
+        ".zimaos-blue"
+    };
+    home_dir.join(state_dir).join("data")
+}
+
+#[cfg(target_os = "macos")]
+fn default_macos_data_dir(cli_dev_mode: bool) -> Option<String> {
+    dirs::home_dir().map(|home| {
+        cli_compatible_data_dir_for_home(&home, cli_dev_mode)
+            .to_string_lossy()
+            .to_string()
+    })
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn embedded_server_data_dir(cli: &CliArgs) -> String {
+    if let Some(path) = cli.data_dir.clone() {
+        return path;
+    }
+
+    #[cfg(target_os = "macos")]
+    if let Some(path) = default_macos_data_dir(cli.dev) {
+        return path;
+    }
+
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.join("data")))
+        .and_then(|p| p.to_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|h| h.join(".zimaos-blue").to_string_lossy().to_string())
+                .unwrap_or_else(|| ".zimaos-blue".to_string())
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        embedded_server_port_bind_timeout, parent_directory_for_reveal_fallback,
-        parse_bool_env_flag, reveal_path_with_fallback, stt_auth_startup_enabled,
+        build_args_string, cli_compatible_data_dir_for_home, embedded_server_port_bind_timeout,
+        parent_directory_for_reveal_fallback, parse_bool_env_flag, reveal_path_with_fallback,
+        stt_auth_startup_enabled, CliArgs,
     };
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
@@ -804,6 +859,66 @@ mod tests {
             .expect("temp dir should have a filesystem root")
             .to_path_buf();
         assert_eq!(parent_directory_for_reveal_fallback(&root, false), None);
+    }
+
+    #[test]
+    fn cli_compatible_data_dir_for_home_matches_cli_layout() {
+        let home = Path::new("/Users/tester");
+        assert_eq!(
+            cli_compatible_data_dir_for_home(home, false),
+            PathBuf::from("/Users/tester/.zimaos-blue/data")
+        );
+        assert_eq!(
+            cli_compatible_data_dir_for_home(home, true),
+            PathBuf::from("/Users/tester/.zimaos-blue-dev/data")
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn build_args_string_injects_cli_compatible_default_data_dir_on_macos() {
+        let cli = CliArgs::default();
+        let args = build_args_string(&cli, None).expect("expected default data-dir args");
+        let expected = format!(
+            "--data-dir {}",
+            cli_compatible_data_dir_for_home(
+                &dirs::home_dir().expect("home directory should be available"),
+                false
+            )
+            .to_string_lossy()
+        );
+        assert_eq!(args, expected);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn build_args_string_uses_dev_cli_compatible_default_data_dir_on_macos() {
+        let cli = CliArgs {
+            dev: true,
+            ..CliArgs::default()
+        };
+        let args = build_args_string(&cli, None).expect("expected default data-dir args");
+        let expected = format!(
+            "--data-dir {} --dev",
+            cli_compatible_data_dir_for_home(
+                &dirs::home_dir().expect("home directory should be available"),
+                true
+            )
+            .to_string_lossy()
+        );
+        assert_eq!(args, expected);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn build_args_string_preserves_explicit_data_dir_on_macos() {
+        let cli = CliArgs {
+            data_dir: Some("/tmp/custom-data".to_string()),
+            dev: true,
+            ..CliArgs::default()
+        };
+        let args = build_args_string(&cli, None).expect("expected explicit data-dir args");
+        assert_eq!(args, "--data-dir /tmp/custom-data --dev");
     }
 
     #[test]
@@ -939,25 +1054,22 @@ async fn start_server_platform_with_args(
             cli_args_str
         );
 
-        // Get data directory: CLI --data-dir > default
         let data_dir = if let Some(state) = app.try_state::<AppState>() {
-            state.cli_args.data_dir.clone()
+            embedded_server_data_dir(&state.cli_args)
         } else {
-            None
-        }
-        .unwrap_or_else(|| {
-            // For Tauri app, use data directory next to executable
-            std::env::current_exe()
-                .ok()
-                .and_then(|exe| exe.parent().map(|p| p.join("data")))
-                .and_then(|p| p.to_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| {
-                    // Fallback to home directory if exe path fails
-                    dirs::home_dir()
-                        .map(|h| h.join(".zimaos-blue").to_string_lossy().to_string())
-                        .unwrap_or_else(|| ".zimaos-blue".to_string())
-                })
-        });
+            #[cfg(target_os = "macos")]
+            {
+                default_macos_data_dir(false).unwrap_or_else(|| ".zimaos-blue/data".to_string())
+            }
+            #[cfg(target_os = "windows")]
+            {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| exe.parent().map(|p| p.join("data")))
+                    .and_then(|p| p.to_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| ".\\data".to_string())
+            }
+        };
 
         blue_ffi::start_server_with_args(port, Some(&data_dir), cli_args_str.as_deref())?;
 
@@ -1079,6 +1191,11 @@ fn build_args_string(cli: &CliArgs, extra: Option<&str>) -> Option<String> {
     }
     if let Some(ref d) = cli.data_dir {
         parts.push(format!("--data-dir {}", d));
+    } else {
+        #[cfg(target_os = "macos")]
+        if let Some(d) = default_macos_data_dir(cli.dev) {
+            parts.push(format!("--data-dir {}", d));
+        }
     }
     if cli.dev {
         parts.push("--dev".to_string());

@@ -26,7 +26,13 @@ type ApprovalConfig struct {
 // ExecApprovalResolver resolves exec-specific approval requests.
 // Implemented by a wrapper around tools.ApprovalManager to avoid circular imports.
 type ExecApprovalResolver interface {
-	ResolveApproval(id string, decision string, bindingHash string) bool
+	ResolveApproval(id string, decision string, bindingHash string) ExecApprovalResolveResult
+}
+
+// ExecApprovalResolveResult describes the outcome of resolving an exec approval.
+type ExecApprovalResolveResult struct {
+	Resolved        bool
+	BindingMismatch bool
 }
 
 // PendingRequest is a tool call waiting for user approval.
@@ -212,8 +218,14 @@ func (h *ApprovalHandler) Resolve(c echo.Context) error {
 	}
 
 	// Try exec approval resolver as fallback.
-	if resolver != nil && resolver.ResolveApproval(req.RequestID, req.Decision, req.BindingHash) {
-		return c.JSON(http.StatusOK, map[string]string{"status": req.Decision})
+	if resolver != nil {
+		result := resolver.ResolveApproval(req.RequestID, req.Decision, req.BindingHash)
+		if result.Resolved {
+			return c.JSON(http.StatusOK, map[string]string{"status": req.Decision})
+		}
+		if result.BindingMismatch {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "binding hash mismatch"})
+		}
 	}
 
 	return c.JSON(http.StatusNotFound, map[string]string{"error": "request not found"})

@@ -26,7 +26,7 @@ var rootCmd = &cobra.Command{
 AI assistant capabilities with local-first architecture.
 
 It supports multiple LLM providers, plugins, skills, and
-integrates with various services like Home Assistant.`,
+integrates with various automation and productivity services.`,
 	Version: version,
 	// Run the server by default if no subcommand is provided
 	Run: func(cmd *cobra.Command, args []string) {

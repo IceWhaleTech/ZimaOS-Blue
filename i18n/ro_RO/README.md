@@ -223,7 +223,7 @@ Temporizator (30 min) → Citire HEARTBEAT.md → Evaluare LLM → Eliminare tok
 | Voce | voice, tts, stt, speech |
 | Observare | metrics, heartbeat, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
-| Integrare | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integrare | browser, cron, workflow, formfiller, tunnel, crawler |
 | Planificator | scheduler, worker, workerpool, pool |
 | Nucleu | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | Sistem | sysinfo, cgroup, iotask, watcher, resources, backup, update |

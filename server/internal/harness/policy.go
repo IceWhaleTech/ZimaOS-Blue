@@ -51,6 +51,9 @@ func NewPolicyResolver(cfg config.HarnessConfig, agents *config.AgentsConfig) *P
 
 func (r *PolicyResolver) Resolve(spec RunSpec) RunSpec {
 	out := spec
+	if strings.TrimSpace(out.WorkspaceRoot) == "" {
+		out.WorkspaceRoot = r.defaultWorkspaceRoot()
+	}
 	if out.ApprovalMode == "" {
 		out.ApprovalMode = r.defaults.ApprovalMode
 	}
@@ -161,6 +164,27 @@ func (r *PolicyResolver) ResolveChild(parent *Run, spec RunSpec) (RunSpec, error
 		return RunSpec{}, fmt.Errorf("child run cannot widen approval mode")
 	}
 	return spec, nil
+}
+
+func (r *PolicyResolver) defaultWorkspaceRoot() string {
+	if r == nil {
+		return filepath.Join(".", "data", "workspace")
+	}
+	if storePath := strings.TrimSpace(r.defaults.StorePath); storePath != "" {
+		return filepath.Join(filepath.Dir(storePath), "workspace")
+	}
+	if artifactRoot := strings.TrimSpace(r.defaults.ArtifactRoot); artifactRoot != "" {
+		clean := filepath.Clean(artifactRoot)
+		if strings.EqualFold(filepath.Base(clean), "artifacts") {
+			parent := filepath.Dir(clean)
+			if strings.EqualFold(filepath.Base(parent), "harness") {
+				return filepath.Join(filepath.Dir(parent), "workspace")
+			}
+			return filepath.Join(parent, "workspace")
+		}
+		return filepath.Join(filepath.Dir(clean), "workspace")
+	}
+	return filepath.Join(".", "data", "workspace")
 }
 
 func (r *PolicyResolver) ArtifactRoot(runID string) string {

@@ -204,7 +204,6 @@ export default {
     subtitle: 'Spravovat automatizační úlohy, naplánované úlohy a ovládání chytrého domu',
     tabs: {
       smartHome: 'Chytrý dům',
-      smartHomeDesc: 'Ovládat zařízení a automatizace Home Assistant',
       cron: 'Naplánované úlohy',
       cronDesc: 'Spravovat cron úlohy a naplánované spuštění',
       autoReply: 'Automatická odpověď',
@@ -2085,7 +2084,6 @@ export default {
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
-  homeAssistant: { ...enUS.homeAssistant },
 
   skills: {
     ...enUS.skills,

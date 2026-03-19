@@ -287,7 +287,6 @@ export default {
     subtitle: 'Beheer automatiserings taken, geplande taken en slimme huisbesturingen',
     tabs: {
       smartHome: 'Slim huis',
-      smartHomeDesc: 'Home Assistant apparaten en automatiseringen beheren',
       cron: 'Geplande taken',
       cronDesc: 'Beheer cron taken en geplande uitvoeringen',
       autoReply: 'Automatisch antwoord',
@@ -2038,9 +2037,6 @@ export default {
   },
   cron: {
     ...enUS.cron,
-  },
-  homeAssistant: {
-    ...enUS.homeAssistant,
   },
 
   skills: {

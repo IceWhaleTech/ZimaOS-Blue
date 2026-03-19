@@ -295,7 +295,6 @@ export default {
       'ഓട്ടോമേഷൻ ടാസ്കുകൾ, ഷെഡ്യൂൾ ചെയ്ത ജോലികൾ, സ്മാർട്ട് ഹോം നിയന്ത്രണങ്ങൾ മാനേജ് ചെയ്യുക',
     tabs: {
       smartHome: 'സ്മാർട്ട് ഹോം',
-      smartHomeDesc: 'Home Assistant ഉപകരണങ്ങളും ഓട്ടോമേഷനുകളും നിയന്ത്രിക്കുക',
       cron: 'ഷെഡ്യൂൾ ചെയ്ത ടാസ്കുകൾ',
       cronDesc: 'cron ജോലികളും ഷെഡ്യൂൾ ചെയ്ത എക്സിക്യൂഷനുകളും മാനേജ് ചെയ്യുക',
       autoReply: 'ഓട്ടോ റിപ്ലൈ',
@@ -1731,7 +1730,6 @@ export default {
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
-  homeAssistant: { ...enUS.homeAssistant },
 
   skills: {
     ...enUS.skills,

@@ -17,6 +17,12 @@ func RequestSTTAuthorization() (int, error) {
 	return 0, fmt.Errorf("macOS STT not available on this platform")
 }
 
+// CurrentSTTAuthorizationState reports that macOS STT is unavailable on
+// non-darwin builds.
+func CurrentSTTAuthorizationState() (status int, authErr error, initialized bool) {
+	return 0, fmt.Errorf("macOS native STT not available on this platform"), false
+}
+
 // RunMainRunLoop is a no-op on non-macOS.
 func RunMainRunLoop() {}
 
@@ -77,10 +83,10 @@ func (p *MacOSNativeSTT) TranscribeStream(_ context.Context, _ *stt.TranscribeRe
 // Close does nothing
 func (p *MacOSNativeSTT) Close() {}
 
-func (p *MacOSNativeSTT) SetRequireOnDevice(_ bool) {}
-func (p *MacOSNativeSTT) RequireOnDevice() bool     { return false }
-func (p *MacOSNativeSTT) SupportsOnDevice() bool    { return false }
-func (p *MacOSNativeSTT) DictationAvailable() bool  { return false }
+func (p *MacOSNativeSTT) SetRequireOnDevice(_ bool)           {}
+func (p *MacOSNativeSTT) RequireOnDevice() bool               { return false }
+func (p *MacOSNativeSTT) SupportsOnDevice() bool              { return false }
+func (p *MacOSNativeSTT) DictationAvailable() bool            { return false }
 func (p *MacOSNativeSTT) OfflineDictationLanguages() []string { return nil }
 
 // OnDeviceUnavailableError indicates on-device recognition failed for the locale.

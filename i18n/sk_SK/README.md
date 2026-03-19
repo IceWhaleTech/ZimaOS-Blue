@@ -199,7 +199,7 @@ sh build.sh
 | Hlas | voice, tts, stt, speech |
 | Pozorovanie | metrics, heartbeat, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
-| Integrácia | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integrácia | browser, cron, workflow, formfiller, tunnel, crawler |
 | Plánovač | scheduler, worker, workerpool, pool |
 | Jadro | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | Systém | sysinfo, cgroup, iotask, watcher, resources, backup, update |

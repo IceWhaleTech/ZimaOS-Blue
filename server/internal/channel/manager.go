@@ -48,6 +48,9 @@ type Manager struct {
 	logger   *zap.Logger
 	config   Config
 
+	groupAccessMu sync.RWMutex
+	groupAccess   GroupAccessConfig
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -73,6 +76,7 @@ func NewManager(cfg Config, logger *zap.Logger) *Manager {
 		channels:    make(map[string]Channel),
 		logger:      logger,
 		config:      cfg,
+		groupAccess: cloneGroupAccessConfig(cfg.GroupAccess),
 		ctx:         ctx,
 		cancel:      cancel,
 		convStates:  make(map[string]*conversationState),
@@ -215,10 +219,111 @@ func (m *Manager) handleMessages(ch Channel) {
 				m.logger.Debug("message channel closed", zap.String("channel", name))
 				return
 			}
+			if !m.shouldAcceptInboundMessage(name, msg) {
+				continue
+			}
 
 			m.enqueueConversationMessage(ch, msg)
 		}
 	}
+}
+
+// SetGroupAccess updates the runtime group access policy used for inbound messages.
+func (m *Manager) SetGroupAccess(cfg GroupAccessConfig) {
+	m.groupAccessMu.Lock()
+	defer m.groupAccessMu.Unlock()
+	m.groupAccess = cloneGroupAccessConfig(cfg)
+}
+
+// GetGroupAccess returns the current runtime group access policy.
+func (m *Manager) GetGroupAccess() GroupAccessConfig {
+	m.groupAccessMu.RLock()
+	defer m.groupAccessMu.RUnlock()
+	return cloneGroupAccessConfig(m.groupAccess)
+}
+
+func (m *Manager) shouldAcceptInboundMessage(channelName string, msg Message) bool {
+	if !msg.IsGroup {
+		return true
+	}
+
+	groupAccess := m.GetGroupAccess()
+	policy := normalizeGroupPolicy(groupAccess.Policy)
+	switch policy {
+	case GroupPolicyDisabled:
+		m.logDroppedGroupMessage(channelName, msg, policy)
+		return false
+	case GroupPolicyAllowlist:
+		if isAllowedGroupChat(groupAccess.AllowedChatIDs, channelName, msg.ChatID) {
+			return true
+		}
+		m.logDroppedGroupMessage(channelName, msg, policy)
+		return false
+	default:
+		return true
+	}
+}
+
+func (m *Manager) logDroppedGroupMessage(channelName string, msg Message, policy GroupPolicy) {
+	if strings.TrimSpace(channelName) == "" {
+		channelName = strings.TrimSpace(msg.ChannelName)
+	}
+	m.logger.Info("dropping inbound group message",
+		zap.String("channel", channelName),
+		zap.String("chat_id", msg.ChatID),
+		zap.String("message_id", msg.ID),
+		zap.String("policy", string(policy)))
+}
+
+func normalizeGroupPolicy(policy GroupPolicy) GroupPolicy {
+	switch strings.ToLower(strings.TrimSpace(string(policy))) {
+	case string(GroupPolicyDisabled):
+		return GroupPolicyDisabled
+	case string(GroupPolicyAllowlist):
+		return GroupPolicyAllowlist
+	default:
+		return GroupPolicyOpen
+	}
+}
+
+func isAllowedGroupChat(allowed map[string][]string, channelName, chatID string) bool {
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" {
+		return false
+	}
+	channelName = strings.TrimSpace(channelName)
+	return matchesAllowedChatID(allowed[channelName], chatID) || matchesAllowedChatID(allowed["*"], chatID)
+}
+
+func matchesAllowedChatID(allowed []string, chatID string) bool {
+	for _, candidate := range allowed {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if candidate == "*" || candidate == chatID {
+			return true
+		}
+	}
+	return false
+}
+
+func cloneGroupAccessConfig(cfg GroupAccessConfig) GroupAccessConfig {
+	cloned := GroupAccessConfig{
+		Policy: cfg.Policy,
+	}
+	if len(cfg.AllowedChatIDs) == 0 {
+		return cloned
+	}
+	cloned.AllowedChatIDs = make(map[string][]string, len(cfg.AllowedChatIDs))
+	for channelName, chatIDs := range cfg.AllowedChatIDs {
+		if len(chatIDs) == 0 {
+			cloned.AllowedChatIDs[channelName] = nil
+			continue
+		}
+		cloned.AllowedChatIDs[channelName] = append([]string(nil), chatIDs...)
+	}
+	return cloned
 }
 
 func (m *Manager) enqueueConversationMessage(ch Channel, msg Message) {

@@ -447,8 +447,6 @@ const EXPECTED_SAME_AS_ENGLISH_KEYS = new Set([
   'feishu',
   'footer.version',
   'googlechat',
-  'homeAssistant.url',
-  'homeAssistant.urlPlaceholder',
   'ideDiscovery.ide',
   'ideDiscovery.oauth',
   'ideDiscovery.sourceCCSwitch',

@@ -225,7 +225,7 @@ Temporitzador (30 min) → Lectura HEARTBEAT.md → Avaluació LLM → Eliminaci
 | Veu | voice, tts, stt, speech |
 | Observació | metrics, heartbeat, companion, profiling, leakdetect |
 | Connector | plugin, skill, skillstore |
-| Integració | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integració | browser, cron, workflow, formfiller, tunnel, crawler |
 | Planificador | scheduler, worker, workerpool, pool |
 | Nucli | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | Sistema | sysinfo, cgroup, iotask, watcher, resources, backup, update |

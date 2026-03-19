@@ -86,6 +86,10 @@ func (c *Controller) Submit(ctx context.Context, spec RunSpec) (*Run, error) {
 	if err := c.store.CreateRun(ctx, run); err != nil {
 		return nil, err
 	}
+	if err := c.ensureWorkspaceRoot(run.WorkspaceRoot); err != nil {
+		_ = c.store.DeleteRun(ctx, run.ID)
+		return nil, err
+	}
 	if err := c.ensureArtifactRoot(run.ArtifactRoot); err != nil {
 		_ = c.store.DeleteRun(ctx, run.ID)
 		return nil, err
@@ -169,6 +173,10 @@ func (c *Controller) SpawnChild(ctx context.Context, parentID string, spec RunSp
 	}
 	child.ArtifactRoot = c.resolver.ArtifactRoot(child.ID)
 	if err := c.store.CreateRun(ctx, child); err != nil {
+		return nil, err
+	}
+	if err := c.ensureWorkspaceRoot(child.WorkspaceRoot); err != nil {
+		_ = c.store.DeleteRun(ctx, child.ID)
 		return nil, err
 	}
 	if err := c.ensureArtifactRoot(child.ArtifactRoot); err != nil {
@@ -412,6 +420,17 @@ func (c *Controller) ensureArtifactRoot(path string) error {
 	}
 	if err := os.MkdirAll(clean, 0o755); err != nil {
 		return fmt.Errorf("create artifact root: %w", err)
+	}
+	return nil
+}
+
+func (c *Controller) ensureWorkspaceRoot(path string) error {
+	clean := strings.TrimSpace(path)
+	if clean == "" {
+		return nil
+	}
+	if err := os.MkdirAll(clean, 0o755); err != nil {
+		return fmt.Errorf("create workspace root: %w", err)
 	}
 	return nil
 }

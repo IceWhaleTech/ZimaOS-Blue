@@ -2,7 +2,7 @@
 
 <p align="center">
   面向大胆构建者的<strong>本地优先</strong>智能体运行时<br>
-  开箱即用 · 开源 · 通用 · 双重监督
+  开箱即用 · 开源 · 通用 · 厂商中立
 </p>
 
 <p align="center">
@@ -176,7 +176,7 @@ sh build.sh
 | Voice | voice, tts, stt, speech |
 | Observe | metrics, heartbeat, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
-| Integrate | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integrate | browser, cron, workflow, formfiller, tunnel, crawler |
 | Scheduler | scheduler, worker, workerpool, pool |
 | Core | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | System | sysinfo, cgroup, iotask, watcher, resources, backup, update |

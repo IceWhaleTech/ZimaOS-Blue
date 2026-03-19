@@ -15,8 +15,9 @@ type Handler struct {
 	logger  *zap.Logger
 
 	// Lazy init support
-	once   sync.Once
-	initFn func() *Service
+	once            sync.Once
+	initFn          func() *Service
+	serviceInitHook func(*Service)
 }
 
 // NewHandler creates a new cron handler.
@@ -41,6 +42,9 @@ func (h *Handler) svc() *Service {
 	h.once.Do(func() {
 		if h.service == nil && h.initFn != nil {
 			h.service = h.initFn()
+			if h.service != nil && h.serviceInitHook != nil {
+				h.serviceInitHook(h.service)
+			}
 			h.logger.Info("cron service initialized lazily")
 		}
 	})
@@ -50,6 +54,25 @@ func (h *Handler) svc() *Service {
 // GetService returns the cron service for cleanup purposes.
 func (h *Handler) GetService() *Service {
 	return h.svc()
+}
+
+// SetServiceInitHook configures a callback that runs once the lazy service is created.
+func (h *Handler) SetServiceInitHook(fn func(*Service)) {
+	if h == nil || fn == nil {
+		return
+	}
+	if h.serviceInitHook == nil {
+		h.serviceInitHook = fn
+	} else {
+		prev := h.serviceInitHook
+		h.serviceInitHook = func(svc *Service) {
+			prev(svc)
+			fn(svc)
+		}
+	}
+	if h.service != nil {
+		fn(h.service)
+	}
 }
 
 // CreateRequest represents a create job request.

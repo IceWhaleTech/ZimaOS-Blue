@@ -206,7 +206,6 @@ export default {
       'Zarządzaj zadaniami automatyzacji, zaplanowanymi pracami i sterowaniem inteligentnego domu',
     tabs: {
       smartHome: 'Inteligentny dom',
-      smartHomeDesc: 'Steruj urządzeniami i automatyzacjami Home Assistant',
       cron: 'Zaplanowane zadania',
       cronDesc: 'Zarządzaj zadaniami cron i zaplanowanymi wykonaniami',
       autoReply: 'Automatyczna odpowiedź',
@@ -2058,7 +2057,6 @@ export default {
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
-  homeAssistant: { ...enUS.homeAssistant },
 
   skills: {
     ...enUS.skills,

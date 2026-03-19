@@ -250,7 +250,6 @@ export default {
     system: '시스템',
     plugins: '확장 기능',
     profile: '프로필',
-    homeAssistant: 'Home Assistant',
     browserAutomation: '브라우저 자동화',
     autoReply: '자동 응답',
     tenants: '테넌트',
@@ -1223,7 +1222,6 @@ export default {
     subtitle: '자동화 작업, 예약된 작업 및 스마트 홈 제어 관리',
     tabs: {
       smartHome: '스마트 홈',
-      smartHomeDesc: 'Home Assistant 장치 및 자동화 제어',
       cron: '예약 작업',
       cronDesc: 'cron 작업 및 예약 실행 관리',
       autoReply: '자동 응답',
@@ -2509,7 +2507,6 @@ export default {
     subtitle: '자동화 작업, 예약된 작업 및 스마트 홈 제어 관리',
     tabs: {
       smartHome: '스마트 홈',
-      smartHomeDesc: 'Home Assistant 장치 및 자동화 제어',
       cron: '예약 작업',
       cronDesc: 'cron 작업 및 예약 실행 관리',
       autoReply: '자동 응답',
@@ -4022,43 +4019,6 @@ export default {
   discord: 'Discord',
   feishu: 'Feishu / Lark',
   googlechat: 'Google Chat',
-  homeAssistant: {
-    title: '스마트 홈',
-    // Connection
-    connected: '연결됨',
-    disconnected: '연결 끊김',
-    connectTitle: 'Home Assistant에 연결',
-    url: 'Home Assistant URL',
-    urlPlaceholder: 'http://homeassistant.local:8123',
-    token: '장기 액세스 토큰',
-    tokenPlaceholder: '액세스 토큰을 입력하세요',
-    tokenHint: 'Home Assistant에서 토큰 생성: 프로필 → 장기 액세스 토큰',
-    connect: '연결',
-    connecting: '연결 중...',
-    disconnect: 'Home Assistant 연결 해제',
-    connectionFailed: 'Home Assistant 연결 실패. URL과 토큰을 확인하세요.',
-    // Voice command
-    voiceCommand: '음성 명령',
-    voicePlaceholder: '예: 거실 조명 켜줘',
-    send: '전송',
-    processing: '처리 중...',
-    commandFailed: '명령 처리 실패',
-    trySuggestions: 'Try:',
-    // Scenes
-    scenes: '장면',
-    // Domains
-    domains: {
-      media_player: '미디어',
-    },
-    // Entity actions
-    turnOn: '켜기',
-    turnOff: '끄기',
-    // Automations
-    automations: '자동화',
-    trigger: '실행',
-    enable: '활성화',
-    disable: '비활성화',
-  },
   hooks: {
     wake: '깨우기',
   },

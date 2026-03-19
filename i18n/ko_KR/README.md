@@ -204,7 +204,7 @@ sh build.sh
 | 음성 | voice, tts, stt, speech |
 | 관측 | metrics, heartbeat, companion, profiling, leakdetect |
 | 플러그인 | plugin, skill, skillstore |
-| 통합 | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| 통합 | browser, cron, workflow, formfiller, tunnel, crawler |
 | 스케줄러 | scheduler, worker, workerpool, pool |
 | 코어 | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | 시스템 | sysinfo, cgroup, iotask, watcher, resources, backup, update |

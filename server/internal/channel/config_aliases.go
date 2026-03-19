@@ -6,6 +6,8 @@ import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channelconfig"
 // does not need to import the runtime channel package.
 type (
 	HeartbeatConfig     = channelconfig.HeartbeatConfig
+	GroupPolicy         = channelconfig.GroupPolicy
+	GroupAccessConfig   = channelconfig.GroupAccessConfig
 	Config              = channelconfig.Config
 	TelegramConfig      = channelconfig.TelegramConfig
 	DiscordConfig       = channelconfig.DiscordConfig
@@ -23,8 +25,18 @@ type (
 	ZaloConfig          = channelconfig.ZaloConfig
 )
 
+const (
+	GroupPolicyOpen      = channelconfig.GroupPolicyOpen
+	GroupPolicyAllowlist = channelconfig.GroupPolicyAllowlist
+	GroupPolicyDisabled  = channelconfig.GroupPolicyDisabled
+)
+
 func DefaultHeartbeatConfig() HeartbeatConfig {
 	return channelconfig.DefaultHeartbeatConfig()
+}
+
+func DefaultGroupAccessConfig() GroupAccessConfig {
+	return channelconfig.DefaultGroupAccessConfig()
 }
 
 func DefaultConfig() Config {

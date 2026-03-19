@@ -808,6 +808,188 @@ func TestManager_MessageHandler(t *testing.T) {
 	mgr.Stop(ctx)
 }
 
+func TestManager_MessageHandler_DropsGroupMessagesWhenGroupAccessDisabled(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 5
+	cfg.GroupAccess.Policy = GroupPolicyDisabled
+
+	mgr := NewManager(cfg, logger)
+
+	ch := newMockChannel("feishu", "feishu", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+
+	handlerCalled := make(chan struct{}, 1)
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		handlerCalled <- struct{}{}
+		return &OutgoingMessage{Content: "Response"}, nil
+	})
+
+	if err := mgr.StartChannel(context.Background(), "feishu"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mgr.Stop(stopCtx)
+	}()
+
+	ch.simulateMessage(Message{
+		ID:      "msg1",
+		ChatID:  "oc_group_1",
+		UserID:  "user1",
+		Content: "Hello",
+		IsGroup: true,
+	})
+
+	select {
+	case <-handlerCalled:
+		t.Fatal("handler should not be called for blocked group messages")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestManager_MessageHandler_AllowsDirectMessagesWhenGroupAccessDisabled(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 5
+	cfg.GroupAccess.Policy = GroupPolicyDisabled
+
+	mgr := NewManager(cfg, logger)
+
+	ch := newMockChannel("feishu", "feishu", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+
+	handlerCalled := make(chan struct{}, 1)
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		handlerCalled <- struct{}{}
+		return &OutgoingMessage{Content: "Response"}, nil
+	})
+
+	if err := mgr.StartChannel(context.Background(), "feishu"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mgr.Stop(stopCtx)
+	}()
+
+	ch.simulateMessage(Message{
+		ID:      "msg1",
+		ChatID:  "dm_chat_1",
+		UserID:  "user1",
+		Content: "Hello",
+		IsGroup: false,
+	})
+
+	select {
+	case <-handlerCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler was not called for direct message")
+	}
+}
+
+func TestManager_MessageHandler_DropsUnlistedGroupWhenGroupAccessAllowlist(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 5
+	cfg.GroupAccess.Policy = GroupPolicyAllowlist
+	cfg.GroupAccess.AllowedChatIDs = map[string][]string{
+		"feishu": {"oc_allowed"},
+	}
+
+	mgr := NewManager(cfg, logger)
+
+	ch := newMockChannel("feishu", "feishu", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+
+	handlerCalled := make(chan struct{}, 1)
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		handlerCalled <- struct{}{}
+		return &OutgoingMessage{Content: "Response"}, nil
+	})
+
+	if err := mgr.StartChannel(context.Background(), "feishu"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mgr.Stop(stopCtx)
+	}()
+
+	ch.simulateMessage(Message{
+		ID:      "msg1",
+		ChatID:  "oc_blocked",
+		UserID:  "user1",
+		Content: "Hello",
+		IsGroup: true,
+	})
+
+	select {
+	case <-handlerCalled:
+		t.Fatal("handler should not be called for unlisted group message")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestManager_MessageHandler_AllowsListedGroupWhenGroupAccessAllowlist(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 5
+	cfg.GroupAccess.Policy = GroupPolicyAllowlist
+	cfg.GroupAccess.AllowedChatIDs = map[string][]string{
+		"feishu": {"oc_allowed"},
+	}
+
+	mgr := NewManager(cfg, logger)
+
+	ch := newMockChannel("feishu", "feishu", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+
+	handlerCalled := make(chan struct{}, 1)
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		handlerCalled <- struct{}{}
+		return &OutgoingMessage{Content: "Response"}, nil
+	})
+
+	if err := mgr.StartChannel(context.Background(), "feishu"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mgr.Stop(stopCtx)
+	}()
+
+	ch.simulateMessage(Message{
+		ID:      "msg1",
+		ChatID:  "oc_allowed",
+		UserID:  "user1",
+		Content: "Hello",
+		IsGroup: true,
+	})
+
+	select {
+	case <-handlerCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler was not called for allowlisted group message")
+	}
+}
+
 func TestManager_MessageHandler_SupersededMessagesOnlyReplyLatest(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := DefaultConfig()

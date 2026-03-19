@@ -225,7 +225,7 @@ Amadóir (30 nóim) → Léigh HEARTBEAT.md → Meastóireacht LLM → Bain toke
 | Voice | voice, tts, stt, speech |
 | Observe | metrics, heartbeat, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
-| Integrate | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integrate | browser, cron, workflow, formfiller, tunnel, crawler |
 | Scheduler | scheduler, worker, workerpool, pool |
 | Core | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | System | sysinfo, cgroup, iotask, watcher, resources, backup, update |

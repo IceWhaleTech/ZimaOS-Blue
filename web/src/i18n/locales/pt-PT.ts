@@ -1449,7 +1449,6 @@ export default {
     subtitle: 'Manage automation tasks, scheduled jobs, and smart home controls',
     tabs: {
       smartHome: 'Smart Home',
-      smartHomeDesc: 'Control Home Assistant devices and automations',
       cron: 'Scheduled Tasks',
       cronDesc: 'Manage cron jobs and scheduled executions',
       autoReply: 'Auto Reply',
@@ -1936,43 +1935,6 @@ export default {
   feishu: 'Feishu / Lark',
   form: 'Form',
   googlechat: 'Google Chat',
-  homeAssistant: {
-    title: 'Smart Home',
-    // Connection
-    connected: 'Connected',
-    disconnected: 'Disconnected',
-    connectTitle: 'Connect to Home Assistant',
-    url: 'Home Assistant URL',
-    urlPlaceholder: 'http://homeassistant.local:8123',
-    token: 'Long-Lived Access Token',
-    tokenPlaceholder: 'Enter your access token',
-    tokenHint: 'Generate a token in Home Assistant: Profile → Long-Lived Access Tokens',
-    connect: 'Connect',
-    connecting: 'Connecting...',
-    disconnect: 'Disconnect from Home Assistant',
-    connectionFailed: 'Failed to connect to Home Assistant. Please check your URL and token.',
-    // Voice command
-    voiceCommand: 'Voice Command',
-    voicePlaceholder: 'Try: Turn on the living room light',
-    send: 'Send',
-    processing: 'Processing...',
-    commandFailed: 'Failed to process command',
-    trySuggestions: 'Try:',
-    // Scenes
-    scenes: 'Scenes',
-    // Domains
-    domains: {
-      media_player: 'Media',
-    },
-    // Entity actions
-    turnOn: 'Turn On',
-    turnOff: 'Turn Off',
-    // Automations
-    automations: 'Automations',
-    trigger: 'Trigger',
-    enable: 'Enable',
-    disable: 'Disable',
-  },
   imessage: 'iMessage',
   input: 'Input',
   instagram: 'Instagram',

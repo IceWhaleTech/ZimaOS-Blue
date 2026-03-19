@@ -16,6 +16,7 @@ export interface PendingRequest {
   tool_call_id: string
   arguments: Record<string, unknown>
   session_id?: string
+  binding_hash?: string
   created_at: string
 }
 
@@ -45,10 +46,11 @@ export const approvalApi = {
       params: sessionId ? { session_id: sessionId } : undefined,
     }),
 
-  resolve: (requestId: string, decision: Decision | ExecDecision) =>
+  resolve: (requestId: string, decision: Decision | ExecDecision, bindingHash?: string) =>
     api.post<{ status: string }>('/approval/resolve', {
       request_id: requestId,
       decision,
+      ...(bindingHash ? { binding_hash: bindingHash } : {}),
     }),
 
   listApprovedDirectories: () =>

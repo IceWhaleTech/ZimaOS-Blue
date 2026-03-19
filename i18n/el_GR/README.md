@@ -225,7 +225,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | Φωνή | voice, tts, stt, speech |
 | Παρατήρηση | metrics, heartbeat, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
-| Ενσωμάτωση | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Ενσωμάτωση | browser, cron, workflow, formfiller, tunnel, crawler |
 | Χρονοπρογραμματιστής | scheduler, worker, workerpool, pool |
 | Πυρήνας | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | Σύστημα | sysinfo, cgroup, iotask, watcher, resources, backup, update |

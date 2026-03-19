@@ -627,7 +627,11 @@ func defaults() Config {
 			CPU: CgroupCPUConfig{Weight: 100},
 		},
 
-		Channels: channelconfig.Config{DefaultTimeoutSeconds: 30, MaxMessageLength: 4096},
+		Channels: func() channelconfig.Config {
+			cfg := channelconfig.DefaultConfig()
+			cfg.DefaultTimeoutSeconds = 30
+			return cfg
+		}(),
 		Performance: PerformanceConfig{
 			Database: DatabasePerfConfig{
 				PoolSize: 10, MaxIdleConns: 5, ConnMaxLifetime: time.Hour, WALMode: true,

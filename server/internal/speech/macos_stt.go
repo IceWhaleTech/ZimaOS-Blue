@@ -215,6 +215,15 @@ var (
 	sttAuthErr    error
 )
 
+// CurrentSTTAuthorizationState returns the most recent speech-recognition
+// authorization result recorded by RequestSTTAuthorization* without triggering
+// any additional platform initialization.
+func CurrentSTTAuthorizationState() (status int, authErr error, initialized bool) {
+	sttAuthMu.Lock()
+	defer sttAuthMu.Unlock()
+	return sttAuthStatus, sttAuthErr, sttAuthStatus != -1 || sttAuthErr != nil
+}
+
 // mainDoneCh signals RunMainRunLoop to stop.
 // Buffered with capacity 1 to ensure the stop signal is not lost
 // even if RunMainRunLoop is busy pumping the NSRunLoop.

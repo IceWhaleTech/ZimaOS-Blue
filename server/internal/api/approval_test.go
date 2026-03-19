@@ -19,6 +19,14 @@ type approvalObserverStub struct {
 	resolved  []tools.ApprovalRuntimeEvent
 }
 
+type execResolverStub struct {
+	result ExecApprovalResolveResult
+}
+
+func (s execResolverStub) ResolveApproval(id string, decision string, bindingHash string) ExecApprovalResolveResult {
+	return s.result
+}
+
 func (s *approvalObserverStub) OnToolRequested(event tools.ToolRuntimeEvent)         {}
 func (s *approvalObserverStub) OnToolFinished(event tools.ToolRuntimeEvent)          {}
 func (s *approvalObserverStub) OnQuestionRequested(event tools.QuestionRuntimeEvent) {}
@@ -93,6 +101,26 @@ func TestApprovalResolveRejectsBindingHashMismatch(t *testing.T) {
 	}
 	if _, ok := h.pending["req-1"]; !ok {
 		t.Fatal("pending request should remain after binding mismatch")
+	}
+}
+
+func TestApprovalResolveRejectsExecBindingHashMismatch(t *testing.T) {
+	e := echo.New()
+	h := NewApprovalHandler(nil)
+	h.SetExecResolver(execResolverStub{
+		result: ExecApprovalResolveResult{BindingMismatch: true},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/approval/resolve", strings.NewReader(`{"request_id":"exec-1","decision":"allow-once"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Resolve(c); err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusConflict)
 	}
 }
 

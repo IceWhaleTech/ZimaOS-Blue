@@ -220,10 +220,6 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, permission: PagePermissions.CHAT },
   },
   {
-    path: '/smart-home',
-    redirect: '/cron',
-  },
-  {
     path: '/browser-automation',
     redirect: '/cron',
   },

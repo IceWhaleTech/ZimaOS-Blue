@@ -4139,14 +4139,12 @@ header,
 }
 
 html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
-  border: 1px solid rgba(186, 203, 223, 0.44);
-  border-radius: 1.55rem;
-  background: rgba(255, 255, 255, 0.28);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.66),
-    0 28px 52px -42px rgba(148, 163, 184, 0.44);
-  backdrop-filter: blur(18px) saturate(1.08);
-  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-sidebar-shell {
@@ -4908,11 +4906,9 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-input-dock {
 html[data-blue-macos-glass='true']:root.dark .chat-desktop-shell .chat-workspace,
 html[data-blue-macos-glass='true'][data-theme='dark'] .chat-desktop-shell .chat-workspace,
 html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
-  border-color: rgba(71, 85, 105, 0.66);
-  background: rgba(15, 23, 42, 0.34);
-  box-shadow:
-    inset 0 1px 0 rgba(148, 163, 184, 0.08),
-    0 26px 48px -38px rgba(2, 6, 23, 0.72);
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 :root.dark .chat-main-shell,

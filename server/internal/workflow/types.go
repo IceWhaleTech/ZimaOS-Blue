@@ -73,8 +73,6 @@ const (
 	TriggerTypeWebhook     TriggerType = "webhook"
 	TriggerTypeFileChange  TriggerType = "file_change"
 	TriggerTypeChannelMsg  TriggerType = "channel_message"
-	TriggerTypeHAEvent     TriggerType = "ha_event"
-	TriggerTypeHAState     TriggerType = "ha_state"
 	TriggerTypeSystemEvent TriggerType = "system_event"
 )
 
@@ -100,7 +98,6 @@ const (
 	ActionTypeLLM         ActionType = "llm"
 	ActionTypeSkill       ActionType = "skill"
 	ActionTypeChannelSend ActionType = "channel_send"
-	ActionTypeHAService   ActionType = "ha_service"
 	ActionTypeBrowser     ActionType = "browser"
 	ActionTypeFileOps     ActionType = "file_ops"
 	ActionTypeJavaScript  ActionType = "javascript"
@@ -174,7 +171,6 @@ type TriggerConfig struct {
 	Webhook  *WebhookConfig        `json:"webhook,omitempty"`
 	File     *FileChangeConfig     `json:"file,omitempty"`
 	Channel  *ChannelTriggerConfig `json:"channel,omitempty"`
-	HA       *HATriggerConfig      `json:"ha,omitempty"`
 	System   *SystemTriggerConfig  `json:"system,omitempty"`
 }
 
@@ -211,16 +207,6 @@ type ChannelTriggerConfig struct {
 	FromUsers   []string `json:"from_users,omitempty"` // Filter by user
 }
 
-// HATriggerConfig contains Home Assistant trigger configuration.
-type HATriggerConfig struct {
-	EventType string `json:"event_type,omitempty"` // For event triggers
-	EntityID  string `json:"entity_id,omitempty"`  // For state triggers
-	FromState string `json:"from_state,omitempty"` // Previous state
-	ToState   string `json:"to_state,omitempty"`   // New state
-	Attribute string `json:"attribute,omitempty"`  // Attribute to watch
-	Condition string `json:"condition,omitempty"`  // Additional condition
-}
-
 // SystemTriggerConfig contains system event trigger configuration.
 type SystemTriggerConfig struct {
 	EventType string `json:"event_type"` // startup, shutdown, etc.
@@ -233,7 +219,6 @@ type ActionConfig struct {
 	LLM        *LLMActionConfig      `json:"llm,omitempty"`
 	Skill      *SkillActionConfig    `json:"skill,omitempty"`
 	Channel    *ChannelActionConfig  `json:"channel,omitempty"`
-	HA         *HAActionConfig       `json:"ha,omitempty"`
 	Browser    *BrowserActionConfig  `json:"browser,omitempty"`
 	File       *FileActionConfig     `json:"file,omitempty"`
 	JavaScript *JavaScriptConfig     `json:"javascript,omitempty"`
@@ -277,14 +262,6 @@ type ChannelActionConfig struct {
 	ChannelID   string `json:"channel_id"`
 	Message     string `json:"message"`
 	Format      string `json:"format,omitempty"` // text, markdown, html
-}
-
-// HAActionConfig contains Home Assistant action configuration.
-type HAActionConfig struct {
-	Domain   string                 `json:"domain"`
-	Service  string                 `json:"service"`
-	EntityID string                 `json:"entity_id,omitempty"`
-	Data     map[string]interface{} `json:"data,omitempty"`
 }
 
 // BrowserActionConfig contains browser action configuration.

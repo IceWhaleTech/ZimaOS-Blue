@@ -120,7 +120,6 @@ export default {
     system: 'Система',
     plugins: 'Расширения',
     profile: 'Профиль',
-    homeAssistant: 'Home Assistant',
     browserAutomation: 'Автоматизация браузера',
     autoReply: 'Автоответ',
     tenants: 'Арендаторы',
@@ -1077,7 +1076,6 @@ export default {
       'Управление задачами автоматизации, запланированными заданиями и управлением умным домом',
     tabs: {
       smartHome: 'Умный дом',
-      smartHomeDesc: 'Управление устройствами и автоматизациями Home Assistant',
       cron: 'Запланированные задачи',
       cronDesc: 'Управление cron-заданиями и запланированными выполнениями',
       autoReply: 'Автоответ',
@@ -3441,7 +3439,6 @@ export default {
     subtitle: 'Управление задачами автоматизации, расписаниями и умным домом',
     tabs: {
       smartHome: 'Smart Home',
-      smartHomeDesc: 'Control Home Assistant devices and automations',
       cron: 'Scheduled Tasks',
       cronDesc: 'Управление cron-задачами и запланированными выполнениями',
       autoReply: 'Auto Reply',
@@ -3910,43 +3907,6 @@ export default {
       everyMondayMorning: 'Every Monday at 9am',
       everyMonth: 'Every month',
     },
-  },
-  homeAssistant: {
-    title: 'Smart Home',
-    // Connection
-    connected: 'Connected',
-    disconnected: 'Disconnected',
-    connectTitle: 'Connect to Home Assistant',
-    url: 'Home Assistant URL',
-    urlPlaceholder: 'http://homeassistant.local:8123',
-    token: 'Long-Lived Access Token',
-    tokenPlaceholder: 'Введите ваш токен доступа',
-    tokenHint: 'Generate a token in Home Assistant: Profile → Long-Lived Access Tokens',
-    connect: 'Connect',
-    connecting: 'Подключение...',
-    disconnect: 'Disconnect from Home Assistant',
-    connectionFailed: 'Не удалось подключиться к Home Assistant. Проверьте URL и токен.',
-    // Voice command
-    voiceCommand: 'Voice Command',
-    voicePlaceholder: 'Try: Turn on the living room light',
-    send: 'Send',
-    processing: 'Processing...',
-    commandFailed: 'Failed to process command',
-    trySuggestions: 'Try:',
-    // Scenes
-    scenes: 'Scenes',
-    // Domains
-    domains: {
-      media_player: 'Media',
-    },
-    // Entity actions
-    turnOn: 'Turn On',
-    turnOff: 'Turn Off',
-    // Automations
-    automations: 'Automations',
-    trigger: 'Trigger',
-    enable: 'Enable',
-    disable: 'Disable',
   },
   memory: {
     title: 'Memory Management',

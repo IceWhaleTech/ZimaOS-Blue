@@ -22,6 +22,36 @@ export type Platform = 'macos' | 'windows' | 'linux' | 'unknown'
 const isTauriApp = ref(false)
 const isInitialized = ref(false)
 const detectedPlatform = ref<Platform>('unknown')
+type TauriWindowModule = typeof import('@tauri-apps/api/window')
+type TauriCurrentWindow = ReturnType<TauriWindowModule['getCurrentWindow']>
+
+let tauriWindowModulePromise: Promise<TauriWindowModule> | null = null
+let tauriCurrentWindow: TauriCurrentWindow | null = null
+
+function loadTauriWindowModule(): Promise<TauriWindowModule> {
+  if (!tauriWindowModulePromise) {
+    tauriWindowModulePromise = import('@tauri-apps/api/window').catch((error) => {
+      tauriWindowModulePromise = null
+      throw error
+    })
+  }
+
+  return tauriWindowModulePromise
+}
+
+function preloadTauriWindowApi(): void {
+  if (!isTauriApp.value) return
+  void loadTauriWindowModule()
+}
+
+async function getCurrentTauriWindow(): Promise<TauriCurrentWindow | null> {
+  if (!isTauriApp.value) return null
+  if (tauriCurrentWindow) return tauriCurrentWindow
+
+  const windowModule = await loadTauriWindowModule()
+  tauriCurrentWindow = windowModule.getCurrentWindow()
+  return tauriCurrentWindow
+}
 
 /**
  * Composable to detect if the app is running inside a Tauri desktop application.
@@ -161,6 +191,20 @@ export function useTauri() {
     }
   }
 
+  async function startWindowDragging(): Promise<boolean> {
+    if (!isTauriApp.value) return false
+
+    try {
+      const currentWindow = await getCurrentTauriWindow()
+      if (!currentWindow) return false
+      await currentWindow.startDragging()
+      return true
+    } catch (e) {
+      console.error('Failed to start window dragging:', e)
+      return false
+    }
+  }
+
   /**
    * Reveal a local path in the system file manager.
    * Only available in desktop runtime.
@@ -224,6 +268,8 @@ export function useTauri() {
     setCloseBehavior,
     /** Sync tray menu language with app locale */
     setTrayLocale,
+    /** Start dragging the current desktop window */
+    startWindowDragging,
     /** Reveal path in system file manager */
     revealInFileManager,
   }
@@ -236,12 +282,14 @@ export function useTauri() {
 function detectTauri(): void {
   if (typeof window !== 'undefined' && (window as any).__BLUE_DESKTOP__) {
     isTauriApp.value = true
+    preloadTauriWindowApi()
     return
   }
 
   // Fallback: check for Tauri v2/v1 internals (e.g. when loaded via asset protocol)
   if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
     isTauriApp.value = true
+    preloadTauriWindowApi()
     return
   }
 

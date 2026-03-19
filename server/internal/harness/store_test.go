@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -149,6 +150,112 @@ func TestSQLiteStore_DeleteRunCascadesArtifactsAndEvents(t *testing.T) {
 	}
 	if len(artifacts) != 0 {
 		t.Fatalf("expected no artifacts after delete, got %#v", artifacts)
+	}
+}
+
+func TestSQLiteStore_RecoversRunTreeAfterRestart(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "harness.db")
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	store, err := NewSQLiteStore(db)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore failed: %v", err)
+	}
+
+	parent := &Run{
+		ID:            "run-parent",
+		RootRunID:     "run-parent",
+		Kind:          RunKindAgentTask,
+		Status:        RunStatusExecuting,
+		UserID:        "user-1",
+		Goal:          "parent run",
+		WorkspaceRoot: filepath.Join(filepath.Dir(dbPath), "workspace"),
+		ArtifactRoot:  filepath.Join(filepath.Dir(dbPath), "artifacts", "run-parent"),
+	}
+	child := &Run{
+		ID:            "run-child",
+		RootRunID:     "run-parent",
+		ParentRunID:   "run-parent",
+		Kind:          RunKindSubagent,
+		Status:        RunStatusPending,
+		UserID:        "user-1",
+		Goal:          "child run",
+		WorkspaceRoot: parent.WorkspaceRoot,
+		ArtifactRoot:  filepath.Join(filepath.Dir(dbPath), "artifacts", "run-child"),
+	}
+
+	if err := store.CreateRun(ctx, parent); err != nil {
+		t.Fatalf("CreateRun parent failed: %v", err)
+	}
+	if err := store.CreateRun(ctx, child); err != nil {
+		t.Fatalf("CreateRun child failed: %v", err)
+	}
+	if err := store.AppendEvent(ctx, RunEvent{
+		ID:        "event-parent",
+		RunID:     parent.ID,
+		RootRunID: parent.RootRunID,
+		Type:      "child_spawned",
+		Message:   child.ID,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("AppendEvent failed: %v", err)
+	}
+	if err := store.AttachArtifact(ctx, ArtifactRef{
+		ID:        "artifact-child",
+		RunID:     child.ID,
+		Kind:      "log",
+		PathOrURL: filepath.Join(filepath.Dir(dbPath), "artifacts", "run-child", "trace.log"),
+	}); err != nil {
+		t.Fatalf("AttachArtifact failed: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close sqlite: %v", err)
+	}
+
+	reopenedDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("reopen sqlite: %v", err)
+	}
+	defer func() { _ = reopenedDB.Close() }()
+	reopened, err := NewSQLiteStore(reopenedDB)
+	if err != nil {
+		t.Fatalf("reopen store failed: %v", err)
+	}
+
+	runs, err := reopened.ListRuns(ctx, RunFilter{RootRunID: parent.RootRunID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListRuns failed: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("runs len = %d, want 2", len(runs))
+	}
+
+	recoveredChild, err := reopened.GetRun(ctx, child.ID)
+	if err != nil {
+		t.Fatalf("GetRun child failed: %v", err)
+	}
+	if recoveredChild.ParentRunID != parent.ID || recoveredChild.RootRunID != parent.RootRunID {
+		t.Fatalf("unexpected recovered child: %#v", recoveredChild)
+	}
+
+	events, err := reopened.ListEvents(ctx, parent.ID, 10)
+	if err != nil {
+		t.Fatalf("ListEvents failed: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != "child_spawned" {
+		t.Fatalf("unexpected recovered events: %#v", events)
+	}
+
+	artifacts, err := reopened.ListArtifacts(ctx, child.ID)
+	if err != nil {
+		t.Fatalf("ListArtifacts failed: %v", err)
+	}
+	if len(artifacts) != 1 || artifacts[0].ID != "artifact-child" {
+		t.Fatalf("unexpected recovered artifacts: %#v", artifacts)
 	}
 }
 

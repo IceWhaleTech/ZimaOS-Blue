@@ -326,7 +326,6 @@ export default {
     subtitle: '管理自动化任务、定时任务和智能家居控制',
     tabs: {
       smartHome: '智能家居',
-      smartHomeDesc: '控制 Home Assistant 设备和自动化',
       cron: '定时任务',
       cronDesc: '管理定时任务和计划执行',
       autoReply: '自动回复',
@@ -2003,49 +2002,11 @@ export default {
     // Common
     noDescription: '暂无描述',
   },
-  homeAssistant: {
-    title: '智能家居',
-    // 连接
-    connected: '已连接',
-    disconnected: '未连接',
-    connectTitle: '连接到 Home Assistant',
-    url: 'Home Assistant URL',
-    urlPlaceholder: 'http://homeassistant.local:8123',
-    token: '长期访问令牌',
-    tokenPlaceholder: '请输入您的访问令牌',
-    tokenHint: '在 Home Assistant 中生成令牌：个人资料 → 长期访问令牌',
-    connect: '连接',
-    connecting: '连接中...',
-    disconnect: '断开 Home Assistant 连接',
-    connectionFailed: '连接 Home Assistant 失败。请检查您的 URL 和令牌。',
-    // 语音命令
-    voiceCommand: '语音命令',
-    voicePlaceholder: '试试：打开客厅的灯',
-    send: '发送',
-    processing: '处理中...',
-    commandFailed: '处理命令失败',
-    trySuggestions: '试试：',
-    // 场景
-    scenes: '场景',
-    // 域
-    domains: {
-      media_player: '媒体',
-    },
-    // 设备操作
-    turnOn: '打开',
-    turnOff: '关闭',
-    // 自动化
-    automations: '自动化',
-    trigger: '触发',
-    enable: '启用',
-    disable: '禁用',
-  },
   automation: {
     title: '自动化',
     subtitle: '管理自动化任务、定时任务和智能家居控制',
     tabs: {
       smartHome: '智能家居',
-      smartHomeDesc: '控制 Home Assistant 设备和自动化',
       cron: '定时任务',
       cronDesc: '管理定时任务和计划执行',
       autoReply: '自动回复',
@@ -2894,6 +2855,18 @@ export default {
     toggleFailed: '切换接入失败',
     fillRequiredFields: '请先填写必填字段',
     viewDocs: '查看文档',
+    groupAccessTitle: '群消息访问',
+    groupAccessDesc: '统一设置 Blue 是否接收各接入来源的群聊消息。',
+    groupAccessHint: '开放会保持现状。禁用会拦截所有群聊。允许名单只接收列出的群。',
+    groupAccessPolicy: '策略',
+    groupAccessPolicyOpen: '开放',
+    groupAccessPolicyAllowlist: '允许名单',
+    groupAccessPolicyDisabled: '禁用',
+    groupAccessAllowedChats: '允许的群聊',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint: '每行一条，格式为 channel:chat_id；需要时可使用 * 通配。',
+    groupAccessSaveFailed: '保存群消息访问设置失败',
+    groupAccessFormatError: '每行都要使用 channel:chat_id 格式',
     // 验证消息 (来自后端 message_key)
     validation: {
       testSuccess: '连接成功',

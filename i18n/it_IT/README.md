@@ -170,7 +170,7 @@ sh build.sh
 | Voce | voice, tts, stt, speech |
 | Osservabilità | metrics, heartbeat, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
-| Integrazione | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integrazione | browser, cron, workflow, formfiller, tunnel, crawler |
 | Scheduler | scheduler, worker, workerpool, pool |
 | Core | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | Sistema | sysinfo, cgroup, iotask, watcher, resources, backup, update |

@@ -87,49 +87,5 @@ func DefaultTemplates() []WorkflowTemplateResponse {
 				}},
 			},
 		},
-		{
-			ID:          "ha-automation",
-			Name:        "Home Assistant Automation",
-			Description: "Automate Home Assistant based on state changes",
-			Category:    "smart-home",
-			Tags:        []string{"home-assistant", "smart-home", "automation"},
-			Workflow: Workflow{
-				Name: "Home Assistant Automation",
-				Nodes: []Node{
-					{
-						ID:   "trigger-1",
-						Type: NodeTypeTrigger,
-						Name: "State Change Trigger",
-						Config: map[string]interface{}{
-							"trigger": map[string]interface{}{
-								"type": "ha_state",
-								"ha": map[string]interface{}{
-									"entity_id": "binary_sensor.motion",
-									"to_state":  "on",
-								},
-							},
-						},
-					},
-					{
-						ID:   "action-1",
-						Type: NodeTypeAction,
-						Name: "Turn On Light",
-						Config: map[string]interface{}{
-							"type": "ha_service",
-							"ha": map[string]interface{}{
-								"domain":    "light",
-								"service":   "turn_on",
-								"entity_id": "light.living_room",
-							},
-						},
-					},
-				},
-				Connections: []Connection{{
-					ID:         "conn-1",
-					SourceNode: "trigger-1",
-					TargetNode: "action-1",
-				}},
-			},
-		},
 	}
 }

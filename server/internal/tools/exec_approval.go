@@ -68,6 +68,15 @@ type pendingApproval struct {
 	created time.Time
 }
 
+// ApprovalResolveStatus describes the outcome of resolving a pending exec approval.
+type ApprovalResolveStatus int
+
+const (
+	ApprovalResolveNotFound ApprovalResolveStatus = iota
+	ApprovalResolveBindingMismatch
+	ApprovalResolveSuccess
+)
+
 // ApprovalManager handles the exec approval flow via SSE.
 type ApprovalManager struct {
 	broker   *sse.Broker
@@ -211,6 +220,11 @@ func (m *ApprovalManager) ResolveApproval(id string, decision ApprovalDecision) 
 
 // ResolveApprovalWithBinding resolves a pending approval and validates its binding hash.
 func (m *ApprovalManager) ResolveApprovalWithBinding(id string, decision ApprovalDecision, bindingHash string) bool {
+	return m.ResolveApprovalWithBindingStatus(id, decision, bindingHash) == ApprovalResolveSuccess
+}
+
+// ResolveApprovalWithBindingStatus resolves a pending approval and reports why a resolution failed.
+func (m *ApprovalManager) ResolveApprovalWithBindingStatus(id string, decision ApprovalDecision, bindingHash string) ApprovalResolveStatus {
 	m.mu.Lock()
 	p, ok := m.pending[id]
 	if ok {
@@ -218,25 +232,25 @@ func (m *ApprovalManager) ResolveApprovalWithBinding(id string, decision Approva
 		got := strings.TrimSpace(bindingHash)
 		if expected != "" && got != "" && expected != got {
 			m.mu.Unlock()
-			return false
+			return ApprovalResolveBindingMismatch
 		}
 		if expected != "" && got == "" {
 			m.mu.Unlock()
-			return false
+			return ApprovalResolveBindingMismatch
 		}
 		delete(m.pending, id)
 	}
 	m.mu.Unlock()
 
 	if !ok {
-		return false
+		return ApprovalResolveNotFound
 	}
 
 	select {
 	case p.ch <- decision:
 	default:
 	}
-	return true
+	return ApprovalResolveSuccess
 }
 
 // PendingCount returns the number of pending approval requests.

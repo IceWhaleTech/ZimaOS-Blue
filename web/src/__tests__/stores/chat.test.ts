@@ -364,6 +364,7 @@ describe('Chat Store', () => {
         tool_call_id: 'tool-1',
         arguments: { url: 'https://example.com' },
         session_id: 'conv-1',
+        binding_hash: undefined,
       })
     })
 
@@ -383,7 +384,7 @@ describe('Chat Store', () => {
       const resolved = await store.resolveApproval('approve')
 
       expect(resolved).toBe(true)
-      expect(approvalApi.resolve).toHaveBeenCalledWith('approval-1', 'approve')
+      expect(approvalApi.resolve).toHaveBeenCalledWith('approval-1', 'approve', undefined)
       expect(store.pendingApproval).toBeNull()
       expect(store.awaitingConfirmation).toBe(false)
     })
@@ -404,7 +405,38 @@ describe('Chat Store', () => {
       const resolved = await store.resolveExecApproval('allow-once')
 
       expect(resolved).toBe(true)
-      expect(approvalApi.resolve).toHaveBeenCalledWith('exec-1', 'allow-once')
+      expect(approvalApi.resolve).toHaveBeenCalledWith('exec-1', 'allow-once', undefined)
+      expect(store.pendingExecApproval).toBeNull()
+      expect(store.awaitingConfirmation).toBe(false)
+    })
+
+    it('forwards binding hashes when resolving approvals', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.setPendingApproval({
+        id: 'approval-1',
+        tool_name: 'browser',
+        tool_call_id: 'tool-1',
+        arguments: { url: 'https://example.com' },
+        session_id: 'conv-1',
+        binding_hash: 'binding-tool',
+      })
+      store.setPendingExecApproval({
+        id: 'exec-1',
+        session_id: 'conv-1',
+        type: 'directory',
+        directory: '/tmp',
+        binding_hash: 'binding-exec',
+        expires_at: Date.now() + 60_000,
+      })
+
+      vi.mocked(approvalApi.resolve).mockResolvedValue({ data: { status: 'approve' } } as never)
+
+      await store.resolveApproval('approve')
+      await store.resolveExecApproval('allow-once')
+
+      expect(approvalApi.resolve).toHaveBeenNthCalledWith(1, 'approval-1', 'approve', 'binding-tool')
+      expect(approvalApi.resolve).toHaveBeenNthCalledWith(2, 'exec-1', 'allow-once', 'binding-exec')
       expect(store.pendingExecApproval).toBeNull()
       expect(store.awaitingConfirmation).toBe(false)
     })

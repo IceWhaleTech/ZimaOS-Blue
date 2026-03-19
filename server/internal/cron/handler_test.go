@@ -169,3 +169,49 @@ func TestHandlerExecutionsWrappedJobsAlias(t *testing.T) {
 		t.Fatalf("expected execution to finish, got status=%s", resp.Executions[0].Status)
 	}
 }
+
+func TestLazyHandlerServiceInitHookRunsOnceAndAppliesImmediately(t *testing.T) {
+	var (
+		initCalls int
+		hookCalls int
+	)
+	svc := NewService(DefaultConfig(), zap.NewNop())
+	h := NewLazyHandler(func() *Service {
+		initCalls++
+		return svc
+	}, zap.NewNop())
+
+	h.SetServiceInitHook(func(got *Service) {
+		if got != svc {
+			t.Fatalf("hook service = %p, want %p", got, svc)
+		}
+		hookCalls++
+	})
+
+	if got := h.GetService(); got != svc {
+		t.Fatalf("GetService() = %p, want %p", got, svc)
+	}
+	if initCalls != 1 {
+		t.Fatalf("initCalls = %d, want 1", initCalls)
+	}
+	if hookCalls != 1 {
+		t.Fatalf("hookCalls after lazy init = %d, want 1", hookCalls)
+	}
+
+	h.SetServiceInitHook(func(got *Service) {
+		if got != svc {
+			t.Fatalf("late hook service = %p, want %p", got, svc)
+		}
+		hookCalls++
+	})
+
+	if hookCalls != 2 {
+		t.Fatalf("hookCalls after late hook = %d, want 2", hookCalls)
+	}
+	if got := h.GetService(); got != svc {
+		t.Fatalf("GetService() second call = %p, want %p", got, svc)
+	}
+	if initCalls != 1 {
+		t.Fatalf("initCalls after second GetService = %d, want 1", initCalls)
+	}
+}

@@ -19,7 +19,6 @@ ZimaOS-Blue
 ├── 主要功能区
 │   ├── 聊天 (/chat)                  - 核心AI对话界面
 │   ├── 语音聊天 (/voice)             - 语音交互
-│   ├── 智能家居 (/smart-home)        - Home Assistant集成
 │   ├── 浏览器自动化 (/browser-automation) - 自动化操作
 │   └── 自动回复 (/auto-reply)        - 消息自动回复规则
 │
@@ -68,7 +67,6 @@ public routes (无需认证):
 authenticated routes:
   /chat                    → ChatView
   /voice                   → VoiceChatView
-  /smart-home              → HomeAssistantView
   /browser-automation      → BrowserAutomationView
   /auto-reply              → AutoReplyView
   /channels                → ChannelsView
@@ -137,7 +135,6 @@ http://localhost:3000       → 检查 /api/setup/status   → completed?
 | **Channel** | /channels | - | ChannelsView.vue |
 | **Cron** | /cron | - | CronView.vue |
 | **Browser Automation** | /browser-automation | - | BrowserAutomationView.vue |
-| **Home Assistant** | /smart-home | - | HomeAssistantView.vue |
 | **Auto Reply** | /auto-reply | - | AutoReplyView.vue |
 | **Security** | /security | - | SecurityView.vue |
 | **Sandbox** | /sandbox | - | SandboxView.vue |

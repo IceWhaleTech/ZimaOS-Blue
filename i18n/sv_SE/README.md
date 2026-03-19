@@ -199,7 +199,7 @@ sh build.sh
 | Röst | voice, tts, stt, speech |
 | Observera | metrics, heartbeat, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
-| Integrera | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integrera | browser, cron, workflow, formfiller, tunnel, crawler |
 | Schemaläggare | scheduler, worker, workerpool, pool |
 | Kärna | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | System | sysinfo, cgroup, iotask, watcher, resources, backup, update |

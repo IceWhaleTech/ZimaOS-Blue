@@ -284,7 +284,6 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 - [x] Multi-user/multi-tenant
 - [ ] Mobile App (Native iOS/Android)
 - [x] Browser automation (Playwright/Rod)
-- [x] Smart home integration (Home Assistant API)
 - [x] Voice assistant mode
 - [ ] Workflow automation (n8n-style)
 - [ ] Multi-node cluster mode
@@ -499,4 +498,3 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
   - [Vite](https://vitejs.dev/)
   - [SQLite-vec](https://github.com/asg017/sqlite-vec)
   - [sourcegraph/conc](https://github.com/sourcegraph/conc)
-

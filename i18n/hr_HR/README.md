@@ -225,7 +225,7 @@ Mjerač (30 min) → Čitanje HEARTBEAT.md → LLM procjena → Uklanjanje HEART
 | Glas | voice, tts, stt, speech |
 | Nadzor | metrics, heartbeat, companion, profiling, leakdetect |
 | Dodatak | plugin, skill, skillstore |
-| Integracija | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integracija | browser, cron, workflow, formfiller, tunnel, crawler |
 | Raspoređivač | scheduler, worker, workerpool, pool |
 | Jezgra | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | Sustav | sysinfo, cgroup, iotask, watcher, resources, backup, update |

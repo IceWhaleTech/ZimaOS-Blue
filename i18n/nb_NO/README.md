@@ -199,7 +199,7 @@ sh build.sh
 | Tale | voice, tts, stt, speech |
 | Observasjon | metrics, heartbeat, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
-| Integrasjon | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integrasjon | browser, cron, workflow, formfiller, tunnel, crawler |
 | Planlegger | scheduler, worker, workerpool, pool |
 | Kjerne | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | System | sysinfo, cgroup, iotask, watcher, resources, backup, update |

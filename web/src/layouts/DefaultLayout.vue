@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RouterView, useRoute } from 'vue-router'
 import { computed, ref, provide, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { useI18n } from 'vue-i18n'
 import AppSidebar from '@/components/AppSidebar.vue'
 const FormFillerWidget = defineAsyncComponent(
   () => import('@/components/formfiller/FormFillerWidget.vue')
@@ -15,8 +16,9 @@ import { useSettingsStore } from '@/stores/settings'
 
 const previewStore = usePreviewStore()
 const isPreviewMode = computed(() => previewStore.isPreviewMode)
+const { t, te } = useI18n()
 
-const { isTauri, setCloseBehavior } = useTauri()
+const { isTauri, platform, setCloseBehavior } = useTauri()
 const settingsStore = useSettingsStore()
 const DESKTOP_SIDEBAR_BREAKPOINT = 1024
 
@@ -25,6 +27,8 @@ const noPadding = computed(() => route.meta.noPadding === true)
 const hideLayout = computed(() => route.meta.hideLayout === true)
 const isChatRoute = computed(() => route.path.startsWith('/chat'))
 const isHomeRoute = computed(() => route.name === 'Home' || route.path === '/home')
+const showMacosWindowChrome = computed(() => isTauri.value && platform.value === 'macos')
+const showWindowChromeLabel = computed(() => !isChatRoute.value)
 const showPreviewOnboarding = computed(
   () =>
     isPreviewMode.value &&
@@ -48,6 +52,52 @@ type AppSidebarExposed = InstanceType<typeof AppSidebar> & {
 const sidebarRef = ref<AppSidebarExposed | null>(null)
 const workspacePanelOpen = computed(() => Boolean(sidebarRef.value?.workspacePanelOpen))
 const sidebarCollapsed = computed(() => Boolean(sidebarRef.value?.isCollapsed))
+
+function chromeLabel(key: string, fallback: string) {
+  return te(key) ? t(key) : fallback
+}
+
+const windowChromeSectionLabel = computed(() => {
+  const routeName = typeof route.name === 'string' ? route.name : ''
+  switch (routeName) {
+    case 'Chat':
+      return chromeLabel('nav.chat', 'Chat')
+    case 'Home':
+      return chromeLabel('nav.dashboard', 'Dashboard')
+    case 'Settings':
+      return chromeLabel('nav.settings', 'Settings')
+    case 'Plugins':
+      return chromeLabel('nav.plugins', 'Extensions')
+    case 'Profile':
+      return chromeLabel('nav.profile', 'Profile')
+    case 'VoiceChat':
+      return chromeLabel('voiceView.title', 'Voice')
+    case 'Channels':
+      return chromeLabel('nav.channels', 'Channels')
+    case 'Security':
+      return chromeLabel('nav.security', 'Security')
+    case 'CronJobs':
+      return chromeLabel('nav.automation', 'Automation')
+    case 'AuditLogs':
+      return chromeLabel('audit.title', 'Audit')
+    case 'Billing':
+      return chromeLabel('nav.billing', 'Billing')
+    case 'Tenants':
+      return chromeLabel('tenants.title', 'Workspaces')
+    case 'TenantDetail':
+      return chromeLabel('tenants.title', 'Workspaces')
+    case 'AuthProviders':
+      return chromeLabel('authProviders.title', 'Authentication Providers')
+    case 'Users':
+      return chromeLabel('nav.users', 'Users')
+    case 'Login':
+      return chromeLabel('auth.signIn', 'Sign in')
+    case 'ConnectionError':
+      return chromeLabel('connection.quality.offline', 'Offline')
+    default:
+      return routeName ? routeName.replace(/([a-z])([A-Z])/g, '$1 $2') : 'ZimaOS Blue'
+  }
+})
 
 function toggleSidebar() {
   sidebarRef.value?.toggle()
@@ -84,8 +134,27 @@ onUnmounted(() => {
 <template>
   <div
     class="app-shell h-screen overflow-hidden flex flex-col"
-    :class="{ 'app-shell-home': isHomeRoute }"
+    :class="{
+      'app-shell-home': isHomeRoute,
+      'app-shell-macos-chrome': showMacosWindowChrome,
+    }"
   >
+    <header
+      v-if="showMacosWindowChrome"
+      class="layout-window-chrome"
+      data-tauri-drag-region
+    >
+      <div class="layout-window-chrome-bar" aria-hidden="true">
+        <div class="layout-window-chrome-traffic-slot" aria-hidden="true" />
+        <div v-if="showWindowChromeLabel" class="layout-window-chrome-pill">
+          <span class="layout-window-chrome-app">ZimaOS Blue</span>
+          <span class="layout-window-chrome-divider" aria-hidden="true" />
+          <span class="layout-window-chrome-section">{{ windowChromeSectionLabel }}</span>
+        </div>
+        <div class="layout-window-chrome-trailing" aria-hidden="true" />
+      </div>
+    </header>
+
     <!-- Full-screen layout without navigation for setup/login pages -->
     <div v-if="hideLayout" class="layout-public-view flex-1 min-h-0 overflow-auto">
       <RouterView />
@@ -159,7 +228,11 @@ onUnmounted(() => {
   );
   --workspace-dock-width: 28rem;
   --layout-viewport-height: 100vh;
-  --layout-content-height: var(--layout-viewport-height);
+  --layout-window-chrome-height: 0px;
+  --layout-content-height: calc(
+    var(--layout-viewport-height) - var(--layout-window-chrome-height)
+  );
+  position: relative;
   min-height: 0;
   height: var(--layout-viewport-height);
   background:
@@ -178,66 +251,55 @@ onUnmounted(() => {
   background: var(--color-bg-base);
 }
 
+.app-shell-macos-chrome {
+  --layout-window-chrome-height: 2.92rem;
+  --layout-chat-top-spacing: 0.34rem;
+  --layout-content-height: var(--layout-viewport-height);
+}
+
 .layout-window-chrome {
-  position: relative;
+  position: absolute;
+  inset: 0 0 auto 0;
   z-index: 20;
-  padding: 0.38rem 0.9rem 0;
+  height: var(--layout-window-chrome-height);
+  box-sizing: border-box;
+  padding: 0.22rem 0.78rem 0;
   user-select: none;
   -webkit-user-select: none;
-  app-region: drag;
-  -webkit-app-region: drag;
+  cursor: default;
 }
 
 .layout-window-chrome-bar {
-  min-height: 3rem;
+  box-sizing: border-box;
+  min-height: 100%;
   display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr) 4.25rem;
+  grid-template-columns: 4.2rem minmax(0, 1fr) 4.2rem;
   align-items: center;
-  gap: 0.72rem;
-  padding: 0.4rem 0.72rem;
-  border-radius: 1.45rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.18);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 18px 34px -28px rgba(2, 6, 23, 0.34);
-  backdrop-filter: blur(22px) saturate(1.1);
-  -webkit-backdrop-filter: blur(22px) saturate(1.1);
-  app-region: drag;
-  -webkit-app-region: drag;
 }
 
-.layout-window-chrome-controls-slot,
-.layout-window-chrome-trailing {
-  min-height: 2.1rem;
-  border-radius: 999px;
-  app-region: drag;
-  -webkit-app-region: drag;
-}
-
-.layout-window-chrome-controls-slot {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+.layout-window-chrome-bar,
+.layout-window-chrome-bar * {
+  pointer-events: none;
 }
 
 .layout-window-chrome-pill {
   justify-self: center;
   display: inline-flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.42rem;
   min-width: 0;
-  max-width: 100%;
-  padding: 0.46rem 0.88rem;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.22);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 18px 34px -26px rgba(2, 6, 23, 0.4);
-  backdrop-filter: blur(18px) saturate(1.12);
-  -webkit-backdrop-filter: blur(18px) saturate(1.12);
-  app-region: drag;
-  -webkit-app-region: drag;
+  max-width: min(100%, 20rem);
+  padding: 0;
+}
+
+.layout-window-chrome-traffic-slot {
+  width: 4.2rem;
+  min-width: 4.2rem;
+}
+
+.layout-window-chrome-trailing {
+  width: 4.2rem;
+  min-width: 4.2rem;
 }
 
 .layout-window-chrome-app,
@@ -251,20 +313,20 @@ onUnmounted(() => {
 }
 
 .layout-window-chrome-app {
-  font-size: 0.75rem;
-  font-weight: 650;
-  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.68rem;
+  font-weight: 520;
+  color: rgba(15, 23, 42, 0.46);
 }
 
 .layout-window-chrome-section {
-  font-size: 0.71rem;
-  font-weight: 560;
-  color: rgba(191, 219, 254, 0.86);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.84);
 }
 
 .layout-window-chrome-divider {
   width: 1px;
-  height: 0.85rem;
+  height: 0.72rem;
   background: rgba(148, 163, 184, 0.24);
 }
 
@@ -298,41 +360,32 @@ html[data-theme='light'][data-blue-macos-glass='true'] .app-shell-home {
 }
 
 html[data-blue-macos-glass='true'] .layout-window-chrome-pill {
-  border-color: rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.26);
-}
-
-html[data-blue-macos-glass='true'] .layout-window-chrome-bar {
-  border-color: rgba(148, 163, 184, 0.2);
-  background: rgba(15, 23, 42, 0.16);
+  background: transparent;
 }
 
 html.light[data-blue-macos-glass='true'] .layout-window-chrome-pill,
 html[data-theme='light'][data-blue-macos-glass='true'] .layout-window-chrome-pill {
-  border-color: rgba(186, 203, 223, 0.44);
-  background: rgba(255, 255, 255, 0.42);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 18px 34px -26px rgba(148, 163, 184, 0.34);
-}
-
-html.light[data-blue-macos-glass='true'] .layout-window-chrome-bar,
-html[data-theme='light'][data-blue-macos-glass='true'] .layout-window-chrome-bar {
-  border-color: rgba(186, 203, 223, 0.46);
-  background: rgba(255, 255, 255, 0.3);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.64),
-    0 18px 34px -28px rgba(148, 163, 184, 0.2);
+  background: transparent;
 }
 
 html.light[data-blue-macos-glass='true'] .layout-window-chrome-app,
 html[data-theme='light'][data-blue-macos-glass='true'] .layout-window-chrome-app {
-  color: rgba(15, 23, 42, 0.88);
+  color: rgba(15, 23, 42, 0.42);
 }
 
 html.light[data-blue-macos-glass='true'] .layout-window-chrome-section,
 html[data-theme='light'][data-blue-macos-glass='true'] .layout-window-chrome-section {
-  color: rgba(37, 99, 235, 0.8);
+  color: rgba(15, 23, 42, 0.82);
+}
+
+html.dark[data-blue-macos-glass='true'] .layout-window-chrome-app,
+html[data-theme='dark'][data-blue-macos-glass='true'] .layout-window-chrome-app {
+  color: rgba(255, 255, 255, 0.44);
+}
+
+html.dark[data-blue-macos-glass='true'] .layout-window-chrome-section,
+html[data-theme='dark'][data-blue-macos-glass='true'] .layout-window-chrome-section {
+  color: rgba(255, 255, 255, 0.86);
 }
 
 html[data-blue-macos-glass='true'] .layout-public-view {
@@ -436,15 +489,29 @@ html.dark .layout-mobile-nav-button:hover {
 
 @media (max-width: 767px) {
   .layout-window-chrome {
-    padding-inline: 0.72rem;
-  }
-
-  .layout-window-chrome-bar {
-    grid-template-columns: 4.8rem minmax(0, 1fr) 3rem;
+    padding-inline: 0.56rem;
   }
 
   .layout-window-chrome-pill {
-    padding: 0.44rem 0.74rem;
+    max-width: 100%;
+  }
+
+  .layout-window-chrome-traffic-slot {
+    width: 3.2rem;
+    min-width: 3.2rem;
+  }
+
+  .layout-window-chrome-trailing {
+    width: 3.2rem;
+    min-width: 3.2rem;
+  }
+
+  .layout-window-chrome-app {
+    display: none;
+  }
+
+  .layout-window-chrome-divider {
+    display: none;
   }
 
   .layout-window-chrome-section {

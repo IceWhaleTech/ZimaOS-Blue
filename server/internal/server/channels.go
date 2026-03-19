@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -153,22 +155,43 @@ func (h *ChannelHandler) RegisterRoutes(g *echo.Group) {
 }
 
 const channelsKVKey = "config:channels"
+const channelSettingsKVKey = "config:channels:settings"
+
+// ChannelSettings contains global channel settings that apply across integrations.
+type ChannelSettings struct {
+	GroupAccess channel.GroupAccessConfig `json:"group_access"`
+}
+
+// DefaultChannelSettings returns the default global channel settings.
+func DefaultChannelSettings() ChannelSettings {
+	return ChannelSettings{
+		GroupAccess: channel.DefaultGroupAccessConfig(),
+	}
+}
+
+// ApplyChannelSettings overlays persisted global channel settings onto a base config.
+func ApplyChannelSettings(cfg channel.Config, settings ChannelSettings) channel.Config {
+	cfg.GroupAccess = normalizeChannelSettings(settings).GroupAccess
+	return cfg
+}
 
 // ChannelConfigStore stores channel configurations persistently.
 type ChannelConfigStore struct {
-	kv      kvstore.Store
-	mu      sync.RWMutex
-	configs map[string]*ChannelConfig
+	kv          kvstore.Store
+	mu          sync.RWMutex
+	configs     map[string]*ChannelConfig
+	settings    ChannelSettings
+	hasSettings bool
 }
 
 // ChannelConfig represents a channel's configuration.
 type ChannelConfig struct {
-	ID               string            `json:"id"`
-	Enabled          bool              `json:"enabled"`
-	Status           string            `json:"status"`
-	Config           map[string]string `json:"config"`
-	LastError        string            `json:"last_error,omitempty"`
-	LastErrorKey     string            `json:"last_error_key,omitempty"`
+	ID           string            `json:"id"`
+	Enabled      bool              `json:"enabled"`
+	Status       string            `json:"status"`
+	Config       map[string]string `json:"config"`
+	LastError    string            `json:"last_error,omitempty"`
+	LastErrorKey string            `json:"last_error_key,omitempty"`
 	// Persistent statistics
 	MessagesReceived int64   `json:"messages_received,omitempty"`
 	MessagesSent     int64   `json:"messages_sent,omitempty"`
@@ -179,8 +202,9 @@ type ChannelConfig struct {
 // NewChannelConfigStore creates a new channel config store.
 func NewChannelConfigStore(kv kvstore.Store) *ChannelConfigStore {
 	store := &ChannelConfigStore{
-		kv:      kv,
-		configs: make(map[string]*ChannelConfig),
+		kv:       kv,
+		configs:  make(map[string]*ChannelConfig),
+		settings: DefaultChannelSettings(),
 	}
 	store.load()
 	return store
@@ -203,6 +227,27 @@ func (s *ChannelConfigStore) Set(id string, cfg *ChannelConfig) error {
 	return s.save()
 }
 
+// GetSettings returns stored global channel settings and whether they were explicitly persisted.
+func (s *ChannelConfigStore) GetSettings() (ChannelSettings, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return normalizeChannelSettings(s.settings), s.hasSettings
+}
+
+// SetSettings saves global channel settings.
+func (s *ChannelConfigStore) SetSettings(settings ChannelSettings) error {
+	normalized, err := validateAndNormalizeChannelSettings(settings)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.settings = normalized
+	s.hasSettings = true
+	return s.saveSettings()
+}
+
 // List returns all channel configurations.
 func (s *ChannelConfigStore) List() []*ChannelConfig {
 	s.mu.RLock()
@@ -217,13 +262,25 @@ func (s *ChannelConfigStore) List() []*ChannelConfig {
 func (s *ChannelConfigStore) load() {
 	var configs map[string]*ChannelConfig
 	if err := s.kv.GetJSON(context.Background(), channelsKVKey, &configs); err != nil {
-		return
+		configs = nil
 	}
-	s.configs = configs
+	if configs != nil {
+		s.configs = configs
+	}
+
+	var settings ChannelSettings
+	if err := s.kv.GetJSON(context.Background(), channelSettingsKVKey, &settings); err == nil {
+		s.settings = normalizeChannelSettings(settings)
+		s.hasSettings = true
+	}
 }
 
 func (s *ChannelConfigStore) save() error {
 	return s.kv.SetJSON(context.Background(), channelsKVKey, s.configs, 0)
+}
+
+func (s *ChannelConfigStore) saveSettings() error {
+	return s.kv.SetJSON(context.Background(), channelSettingsKVKey, s.settings, 0)
 }
 
 // GetEnabled returns all enabled channel configurations.
@@ -345,6 +402,42 @@ func (h *ChannelConfigHandler) startPeriodicPersist() {
 // SetFactory sets the channel factory for creating channel instances.
 func (h *ChannelConfigHandler) SetFactory(factory *ChannelFactory) {
 	h.factory = factory
+}
+
+// GetSettings returns global channel settings.
+func (h *ChannelConfigHandler) GetSettings(c echo.Context) error {
+	settings := DefaultChannelSettings()
+	if h.manager != nil {
+		settings.GroupAccess = h.manager.GetGroupAccess()
+	} else if stored, ok := h.store.GetSettings(); ok {
+		settings = stored
+	}
+	return c.JSON(http.StatusOK, settings)
+}
+
+// UpdateSettings updates global channel settings.
+func (h *ChannelConfigHandler) UpdateSettings(c echo.Context) error {
+	var req ChannelSettings
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	settings, err := validateAndNormalizeChannelSettings(req)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if err := h.store.SetSettings(settings); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save channel settings")
+	}
+	if h.manager != nil {
+		h.manager.SetGroupAccess(settings.GroupAccess)
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":  true,
+		"message":  "Channel settings saved",
+		"settings": settings,
+	})
 }
 
 // ChannelConfigResponse represents a channel config with runtime stats.
@@ -684,6 +777,8 @@ func (h *ChannelConfigHandler) ToggleChannel(c echo.Context) error {
 // RegisterRoutes registers channel config routes.
 func (h *ChannelConfigHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/channels", h.ListChannelConfigs)
+	g.GET("/channels/settings", h.GetSettings)
+	g.PUT("/channels/settings", h.UpdateSettings)
 	g.GET("/channels/:id", h.GetChannelConfig)
 	g.PUT("/channels/:id", h.UpdateChannelConfig)
 	g.POST("/channels/:id/toggle", h.ToggleChannel)
@@ -740,4 +835,49 @@ func isChannelAvailable(channelID string) bool {
 	default:
 		return true
 	}
+}
+
+func validateAndNormalizeChannelSettings(settings ChannelSettings) (ChannelSettings, error) {
+	settings = normalizeChannelSettings(settings)
+	switch settings.GroupAccess.Policy {
+	case channel.GroupPolicyOpen, channel.GroupPolicyAllowlist, channel.GroupPolicyDisabled:
+		return settings, nil
+	default:
+		return ChannelSettings{}, fmt.Errorf("invalid group access policy")
+	}
+}
+
+func normalizeChannelSettings(settings ChannelSettings) ChannelSettings {
+	normalized := DefaultChannelSettings()
+	policy := channel.GroupPolicy(strings.ToLower(strings.TrimSpace(string(settings.GroupAccess.Policy))))
+	if policy != "" {
+		normalized.GroupAccess.Policy = policy
+	}
+	if len(settings.GroupAccess.AllowedChatIDs) == 0 {
+		return normalized
+	}
+
+	allowed := make(map[string][]string)
+	for channelName, chatIDs := range settings.GroupAccess.AllowedChatIDs {
+		channelName = strings.TrimSpace(channelName)
+		if channelName == "" {
+			continue
+		}
+		seen := make(map[string]struct{})
+		for _, chatID := range chatIDs {
+			chatID = strings.TrimSpace(chatID)
+			if chatID == "" {
+				continue
+			}
+			if _, exists := seen[chatID]; exists {
+				continue
+			}
+			seen[chatID] = struct{}{}
+			allowed[channelName] = append(allowed[channelName], chatID)
+		}
+	}
+	if len(allowed) > 0 {
+		normalized.GroupAccess.AllowedChatIDs = allowed
+	}
+	return normalized
 }

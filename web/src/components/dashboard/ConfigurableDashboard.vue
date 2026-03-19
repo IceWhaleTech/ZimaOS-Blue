@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, markRaw, type Component, useSlots } from 'vue'
-import { useI18n } from 'vue-i18n'
 import { useDashboardStore } from '@/stores/dashboard'
 import DashboardCustomizer from './DashboardCustomizer.vue'
 
@@ -42,7 +41,6 @@ const props = withDefaults(
   }
 )
 
-const { t } = useI18n()
 const dashboardStore = useDashboardStore()
 const slots = useSlots()
 const hasHeaderLeft = computed(() => Boolean(slots['header-left']))
@@ -324,29 +322,6 @@ function getPriorityGridClass(cardId: string): string {
         </div>
       </div>
     </section>
-
-    <!-- Empty State -->
-    <div v-if="visibleCards.length === 0" class="dashboard-card-surface text-center py-12">
-      <svg
-        class="mx-auto h-12 w-12 text-gray-400"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
-        />
-      </svg>
-      <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-        {{ t('dashboard.noCardsEnabled') || 'No cards enabled' }}
-      </h3>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        {{ t('dashboard.clickCustomize') || 'Click the customize button to add cards' }}
-      </p>
-    </div>
   </div>
 </template>
 

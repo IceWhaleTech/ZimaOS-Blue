@@ -365,7 +365,6 @@ export default {
     subtitle: 'Manage automation tasks, scheduled jobs, and smart home controls',
     tabs: {
       smartHome: 'Smart Home',
-      smartHomeDesc: 'Control Home Assistant devices and automations',
       cron: 'Scheduled tasks',
       cronDesc: 'Manage cron jobs and scheduled executions',
       autoReply: 'Auto Reply',
@@ -2091,49 +2090,11 @@ export default {
     // Common
     noDescription: 'No description available',
   },
-  homeAssistant: {
-    title: 'Smart Home',
-    // Connection
-    connected: 'Connected',
-    disconnected: 'Disconnected',
-    connectTitle: 'Connect to Home Assistant',
-    url: 'Home Assistant URL',
-    urlPlaceholder: 'http://homeassistant.local:8123',
-    token: 'Long-Lived Access Token',
-    tokenPlaceholder: 'Enter your access token',
-    tokenHint: 'Generate a token in Home Assistant: Profile → Long-Lived Access Tokens',
-    connect: 'Connect',
-    connecting: 'Connecting...',
-    disconnect: 'Disconnect from Home Assistant',
-    connectionFailed: 'Failed to connect to Home Assistant. Please check your URL and token.',
-    // Voice command
-    voiceCommand: 'Voice Command',
-    voicePlaceholder: 'Try: Turn on the living room light',
-    send: 'Send',
-    processing: 'Processing...',
-    commandFailed: 'Failed to process command',
-    trySuggestions: 'Try:',
-    // Scenes
-    scenes: 'Scenes',
-    // Domains
-    domains: {
-      media_player: 'Media',
-    },
-    // Entity actions
-    turnOn: 'Turn On',
-    turnOff: 'Turn Off',
-    // Automations
-    automations: 'Automations',
-    trigger: 'Trigger',
-    enable: 'Enable',
-    disable: 'Disable',
-  },
   automation: {
     title: 'Automation',
     subtitle: 'Manage automation tasks, scheduled jobs, and smart home controls',
     tabs: {
       smartHome: 'Smart Home',
-      smartHomeDesc: 'Control Home Assistant devices and automations',
       cron: 'Scheduled Tasks',
       cronDesc: 'Manage cron jobs and scheduled executions',
       autoReply: 'Auto Reply',
@@ -3030,6 +2991,18 @@ export default {
     toggleFailed: 'Failed to toggle integration',
     fillRequiredFields: 'Please fill in required fields first',
     viewDocs: 'View Documentation',
+    groupAccessTitle: 'Group Access',
+    groupAccessDesc: 'Set one unified rule for whether Blue accepts inbound group messages.',
+    groupAccessHint: 'Open keeps current behavior. Disabled blocks all group chats. Allowlist only accepts listed chats.',
+    groupAccessPolicy: 'Policy',
+    groupAccessPolicyOpen: 'Open',
+    groupAccessPolicyAllowlist: 'Allowlist',
+    groupAccessPolicyDisabled: 'Disabled',
+    groupAccessAllowedChats: 'Allowed Group Chats',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint: 'One entry per line in channel:chat_id format. Use * as a wildcard if needed.',
+    groupAccessSaveFailed: 'Failed to save group access settings',
+    groupAccessFormatError: 'Use one channel:chat_id entry per line',
     // Validation messages (from backend message_key)
     validation: {
       testSuccess: 'Connection successful',

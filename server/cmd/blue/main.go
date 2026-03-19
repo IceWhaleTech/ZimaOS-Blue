@@ -34,7 +34,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/gateway"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/lifecycle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -78,7 +77,7 @@ var (
 	gitCommit = "unknown"
 )
 
-func applyPendingBackupRestore(dataDir string) error {
+func applyPendingBackupRestore(dataDir string, previousCleanShutdown bool) error {
 	mgr, err := backup.NewManager(backup.Config{
 		Enabled:       true,
 		RetentionDays: 7,
@@ -89,6 +88,9 @@ func applyPendingBackupRestore(dataDir string) error {
 		return err
 	}
 	if !mgr.HasPendingRestore() {
+		if previousCleanShutdown {
+			return nil
+		}
 		dbPaths, err := backup.DiscoverSQLiteDatabasePaths(dataDir)
 		if err != nil {
 			return err
@@ -192,7 +194,17 @@ func runServer() {
 	if err := os.MkdirAll(dataDir, 0750); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to create data directory")
 	}
-	if err := applyPendingBackupRestore(dataDir); err != nil {
+	previousCleanShutdown, startupIntegrityErr := dbutil.BeginStartupIntegritySession(dataDir)
+	if startupIntegrityErr != nil {
+		logger.Warn().Err(startupIntegrityErr).Msg("Failed to initialize startup integrity state")
+		previousCleanShutdown = false
+	}
+	dbutil.SetStartupQuickCheckEnabled(!previousCleanShutdown)
+	defer dbutil.SetStartupQuickCheckEnabled(true)
+	if previousCleanShutdown {
+		logger.Info().Msg("Skipping proactive startup database scan after previous clean shutdown")
+	}
+	if err := applyPendingBackupRestore(dataDir, previousCleanShutdown); err != nil {
 		logger.Warn().Err(err).Msg("Failed to apply pending backup restore before database initialization")
 	}
 
@@ -539,8 +551,6 @@ func runServer() {
 		sandboxManager    *sandbox.Manager
 		sandboxHandler    *sandbox.Handler
 		cronHandler       *cron.Handler
-		haService         *homeassistant.HAService
-		haHandler         *homeassistant.Handler
 		browserHandler    *browser.Handler
 		sttService        stt.Service
 		ttsService        tts.Service
@@ -758,12 +768,6 @@ func runServer() {
 		browserBackend = tools.NewModeAwareRodBrowserBackend(lazyBrowserSvc, lazyVisibleBrowserSvc)
 	}
 
-	initPool.Go(func() {
-		haService = homeassistant.NewHAService()
-		haHandler = homeassistant.NewHandler(haService)
-		logger.Info().Msg("Home Assistant handler initialized")
-	})
-
 	// TTS/STT services are initialized lazily when chat page is opened
 	// This avoids heavy initialization at startup
 	logger.Info().Msg("TTS/STT services will be initialized on demand (when chat page is opened)")
@@ -866,7 +870,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, configKV, configStore)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, configKV, configStore)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -969,10 +973,15 @@ func runServer() {
 	// Clean up extracted web dist from tmpfs
 	web.CleanupDist()
 
+	if err := dbutil.MarkStartupIntegrityClean(dataDir); err != nil {
+		logger.Warn().Err(err).Msg("Failed to mark startup integrity state clean")
+		logger.Warn().Msg("Leaving startup integrity marker dirty so the next boot performs conservative database checks")
+	}
+
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, configKV kvstore.Store, configStore *config.ConfigStore) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, configKV kvstore.Store, configStore *config.ConfigStore) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -1250,7 +1259,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		SecurityHandler:    securityHandler,
 		SandboxHandler:     sandboxHandler,
 		CronHandler:        cronHandler,
-		HAHandler:          haHandler,
 		BrowserHandler:     browserHandler,
 		BrowserIPC:         browserIPC,
 		UIReviewerIPC:      uiReviewerIPC,

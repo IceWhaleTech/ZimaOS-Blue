@@ -201,7 +201,7 @@ sh build.sh
 | Stemme | voice, tts, stt, speech |
 | Overvågning | metrics, heartbeat, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
-| Integration | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integration | browser, cron, workflow, formfiller, tunnel, crawler |
 | Planlægger | scheduler, worker, workerpool, pool |
 | Kerne | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | System | sysinfo, cgroup, iotask, watcher, resources, backup, update |

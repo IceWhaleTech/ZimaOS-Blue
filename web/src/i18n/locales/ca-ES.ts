@@ -207,7 +207,6 @@ export default {
       "Gestionar tasques d'automatització, treballs programats i controls de la llar intel·ligent",
     tabs: {
       smartHome: 'Llar intel·ligent',
-      smartHomeDesc: 'Controlar dispositius i automatitzacions de Home Assistant',
       cron: 'Tasques programades',
       cronDesc: 'Gestionar treballs cron i execucions programades',
       autoReply: 'Resposta automàtica',
@@ -2251,7 +2250,6 @@ export default {
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
-  homeAssistant: { ...enUS.homeAssistant },
 
   skills: {
     ...enUS.skills,

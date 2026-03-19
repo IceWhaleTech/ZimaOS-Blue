@@ -208,7 +208,6 @@ export default {
       'Gestionați sarcini de automatizare, lucrări programate și controale ale casei inteligente',
     tabs: {
       smartHome: 'Casă inteligentă',
-      smartHomeDesc: 'Controlați dispozitive și automatizări Home Assistant',
       cron: 'Sarcini programate',
       cronDesc: 'Gestionați lucrări cron și execuții programate',
       autoReply: 'Răspuns automat',
@@ -1725,7 +1724,6 @@ export default {
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
-  homeAssistant: { ...enUS.homeAssistant },
 
   skills: {
     ...enUS.skills,

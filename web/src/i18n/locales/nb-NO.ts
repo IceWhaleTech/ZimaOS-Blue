@@ -205,7 +205,6 @@ export default {
     subtitle: 'Administrer automatiseringsoppgaver, planlagte jobber og smart hjemkontroller',
     tabs: {
       smartHome: 'Smart hjem',
-      smartHomeDesc: 'Kontroller Home Assistant-enheter og automatiseringer',
       cron: 'Planlagte oppgaver',
       cronDesc: 'Administrer cron-jobber og planlagte kjøringer',
       autoReply: 'Autosvar',
@@ -1482,7 +1481,6 @@ export default {
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
-  homeAssistant: { ...enUS.homeAssistant },
 
   skills: {
     ...enUS.skills,

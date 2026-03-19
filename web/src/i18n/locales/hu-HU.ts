@@ -217,7 +217,6 @@ export default {
     subtitle: 'Automatizálási feladatok, ütemezett munkák és okos otthon vezérlés kezelése',
     tabs: {
       smartHome: 'Okos otthon',
-      smartHomeDesc: 'Home Assistant eszközök és automatizálások vezérlése',
       cron: 'Ütemezett feladatok',
       cronDesc: 'Cron munkák és ütemezett végrehajtások kezelése',
       autoReply: 'Automatikus válasz',
@@ -1636,7 +1635,6 @@ export default {
   automation: enUS.automation,
   workflow: enUS.workflow,
   cron: enUS.cron,
-  homeAssistant: enUS.homeAssistant,
 
   skills: {
     ...enUS.skills,

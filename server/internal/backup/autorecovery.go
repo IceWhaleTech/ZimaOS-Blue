@@ -89,6 +89,16 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 		// Check database integrity
 		if err := database.QuickCheckDatabase(dbPath); err != nil {
 			if database.IsSQLiteCorruptionError(err) {
+				if rebuilt, ftsErr := database.RepairKnownFTSIndexes(dbPath); ftsErr == nil {
+					if len(rebuilt) > 0 {
+						if retryErr := database.QuickCheckDatabase(dbPath); retryErr == nil {
+							result.RepairedDatabases = append(result.RepairedDatabases, dbPath)
+							continue
+						}
+					}
+				} else {
+					fmt.Printf("Warning: failed to rebuild known FTS indexes for %s: %v\n", dbPath, ftsErr)
+				}
 				if _, repairErr := database.RepairSQLiteDatabase(dbPath); repairErr == nil {
 					result.RepairedDatabases = append(result.RepairedDatabases, dbPath)
 					continue

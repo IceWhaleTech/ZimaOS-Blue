@@ -584,6 +584,7 @@ export const useChatStore = defineStore('chat', () => {
     tool_call_id: string
     arguments: Record<string, unknown>
     session_id?: string
+    binding_hash?: string
   } | null>(null)
 
   // Ask-user-question state
@@ -623,6 +624,7 @@ export const useChatStore = defineStore('chat', () => {
     security?: string
     session_id?: string
     conversation_id?: string
+    binding_hash?: string
     expires_at: number
   } | null>(null)
 
@@ -1605,6 +1607,7 @@ export const useChatStore = defineStore('chat', () => {
     security?: string
     session_id?: string
     conversation_id?: string
+    binding_hash?: string
     expires_at: number
   } | null {
     if (!data || typeof data !== 'object') return null
@@ -1647,6 +1650,7 @@ export const useChatStore = defineStore('chat', () => {
       security: stringifyOptional(source.security),
       session_id: stringifyOptional(source.session_id),
       conversation_id: stringifyOptional(source.conversation_id),
+      binding_hash: stringifyOptional(source.binding_hash ?? source.bindingHash),
       expires_at: expiresAt,
     }
 
@@ -3198,7 +3202,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!approval) return false
     const toolName = approval.tool_name
     try {
-      await approvalApi.resolve(approval.request_id, decision)
+      await approvalApi.resolve(approval.request_id, decision, approval.binding_hash)
       pendingApproval.value = null
       clearAwaitingConfirmationForSession(approval.session_id)
       // If "Always Allow", set this tool's policy to auto
@@ -3252,6 +3256,7 @@ export const useChatStore = defineStore('chat', () => {
       tool_call_id: data.tool_call_id || '',
       arguments: data.arguments || {},
       session_id: sessionId || undefined,
+      binding_hash: stringifyOptional(data.binding_hash ?? data.bindingHash),
     }
     clearPendingRecoveryRetryTimer()
     awaitingConfirmation.value = true
@@ -3390,7 +3395,7 @@ export const useChatStore = defineStore('chat', () => {
     const approval = pendingExecApproval.value
     if (!approval) return false
     try {
-      await approvalApi.resolve(approval.id, decision)
+      await approvalApi.resolve(approval.id, decision, approval.binding_hash)
       setPendingExecApproval(null)
       clearAwaitingConfirmationForSession(approval.session_id || approval.conversation_id)
       return true

@@ -225,7 +225,7 @@ Időzítő (30 perc) → HEARTBEAT.md olvasása → LLM kiértékelés → HEART
 | Hang | voice, tts, stt, speech |
 | Megfigyelés | metrics, heartbeat, companion, profiling, leakdetect |
 | Bővítmény | plugin, skill, skillstore |
-| Integráció | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Integráció | browser, cron, workflow, formfiller, tunnel, crawler |
 | Ütemező | scheduler, worker, workerpool, pool |
 | Mag | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | Rendszer | sysinfo, cgroup, iotask, watcher, resources, backup, update |

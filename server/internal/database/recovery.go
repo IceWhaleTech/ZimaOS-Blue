@@ -33,6 +33,8 @@ func IsSQLiteCorruptionError(err error) bool {
 	return strings.Contains(msg, "database disk image is malformed") ||
 		strings.Contains(msg, "database is malformed") ||
 		strings.Contains(msg, "database corruption detected") ||
+		strings.Contains(msg, "fts5: corruption") ||
+		strings.Contains(msg, "malformed inverted index for fts5 table") ||
 		strings.Contains(msg, "sqlite_corrupt") ||
 		strings.Contains(msg, "file is not a database")
 }
@@ -62,8 +64,10 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 	}
 
 	var checkpointErr error
+	var ftsRepairErr error
 	var repairErr error
 	triedCheckpoint := false
+	triedFTSRepair := false
 	triedRepair := false
 
 	for {
@@ -83,6 +87,14 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 							continue
 						}
 					}
+					if !triedFTSRepair {
+						triedFTSRepair = true
+						var repaired []string
+						repaired, ftsRepairErr = RepairKnownFTSIndexes(dbPath)
+						if ftsRepairErr == nil && len(repaired) > 0 {
+							continue
+						}
+					}
 					if !triedRepair {
 						triedRepair = true
 						_, repairErr = RepairSQLiteDatabase(dbPath)
@@ -93,8 +105,14 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 
 					baseErr := WrapSQLiteOpenError(dbPath, err)
 					switch {
+					case checkpointErr != nil && ftsRepairErr != nil && repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v; failed to rebuild known FTS indexes: %v; failed to repair database: %v)", baseErr, checkpointErr, ftsRepairErr, repairErr)
 					case checkpointErr != nil && repairErr != nil:
 						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v; failed to repair database: %v)", baseErr, checkpointErr, repairErr)
+					case ftsRepairErr != nil && repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to rebuild known FTS indexes: %v; failed to repair database: %v)", baseErr, ftsRepairErr, repairErr)
+					case ftsRepairErr != nil:
+						return nil, fmt.Errorf("%w (failed to rebuild known FTS indexes: %v)", baseErr, ftsRepairErr)
 					case checkpointErr != nil:
 						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v)", baseErr, checkpointErr)
 					case repairErr != nil:
@@ -117,6 +135,14 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 							continue
 						}
 					}
+					if !triedFTSRepair {
+						triedFTSRepair = true
+						var repaired []string
+						repaired, ftsRepairErr = RepairKnownFTSIndexes(dbPath)
+						if ftsRepairErr == nil && len(repaired) > 0 {
+							continue
+						}
+					}
 					if !triedRepair {
 						triedRepair = true
 						_, repairErr = RepairSQLiteDatabase(dbPath)
@@ -127,8 +153,14 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 
 					baseErr := WrapSQLiteOpenError(dbPath, err)
 					switch {
+					case checkpointErr != nil && ftsRepairErr != nil && repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v; failed to rebuild known FTS indexes: %v; failed to repair database: %v)", baseErr, checkpointErr, ftsRepairErr, repairErr)
 					case checkpointErr != nil && repairErr != nil:
 						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v; failed to repair database: %v)", baseErr, checkpointErr, repairErr)
+					case ftsRepairErr != nil && repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to rebuild known FTS indexes: %v; failed to repair database: %v)", baseErr, ftsRepairErr, repairErr)
+					case ftsRepairErr != nil:
+						return nil, fmt.Errorf("%w (failed to rebuild known FTS indexes: %v)", baseErr, ftsRepairErr)
 					case checkpointErr != nil:
 						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v)", baseErr, checkpointErr)
 					case repairErr != nil:
@@ -147,7 +179,7 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 
 func shouldQuickCheckSQLitePath(dbPath string) bool {
 	dbPath = strings.TrimSpace(dbPath)
-	return dbPath != "" && dbPath != ":memory:"
+	return dbPath != "" && dbPath != ":memory:" && StartupQuickCheckEnabled()
 }
 
 func quickCheckOpenDatabase(db *sql.DB) error {

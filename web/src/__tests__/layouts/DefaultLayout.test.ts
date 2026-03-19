@@ -24,6 +24,7 @@ const {
       isTauri: false,
       platform: 'unknown',
       setCloseBehavior: vi.fn(),
+      startWindowDragging: vi.fn(),
       refreshTauriDetection: vi.fn(),
     },
   }))
@@ -47,6 +48,7 @@ vi.mock('@/composables/useTauri', () => ({
     isTauri: { value: tauriState.isTauri },
     platform: { value: tauriState.platform },
     setCloseBehavior: tauriState.setCloseBehavior,
+    startWindowDragging: tauriState.startWindowDragging,
   }),
   refreshTauriDetection: tauriState.refreshTauriDetection,
 }))
@@ -229,7 +231,7 @@ describe('DefaultLayout', () => {
     wrapper.unmount()
   })
 
-  it('does not render the custom macOS window navigation bar inside Tauri desktop mode', async () => {
+  it('renders the custom macOS window drag area inside Tauri desktop mode', async () => {
     setUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
     )
@@ -238,7 +240,25 @@ describe('DefaultLayout', () => {
 
     const wrapper = await mountLayout('/home')
 
-    expect(wrapper.find('.layout-window-chrome').exists()).toBe(false)
+    expect(wrapper.find('.layout-window-chrome').exists()).toBe(true)
+    expect(wrapper.find('.layout-window-chrome-pill').exists()).toBe(true)
+    expect(wrapper.find('.layout-window-chrome').attributes('data-tauri-drag-region')).toBe('')
+    expect(wrapper.find('.layout-window-chrome-traffic-slot').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('hides the centered macOS window title on the chat route', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+    )
+    tauriState.isTauri = true
+    tauriState.platform = 'macos'
+
+    const wrapper = await mountLayout('/chat')
+
+    expect(wrapper.find('.layout-window-chrome').exists()).toBe(true)
+    expect(wrapper.find('.layout-window-chrome-pill').exists()).toBe(false)
 
     wrapper.unmount()
   })

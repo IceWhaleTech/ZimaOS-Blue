@@ -228,7 +228,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | വോയ്‌സ് | voice, tts, stt, speech |
 | നിരീക്ഷണം | metrics, heartbeat, companion, profiling, leakdetect |
 | പ്ലഗിൻ | plugin, skill, skillstore |
-| ഇന്റഗ്രേഷൻ | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| ഇന്റഗ്രേഷൻ | browser, cron, workflow, formfiller, tunnel, crawler |
 | ഷെഡ്യൂളർ | scheduler, worker, workerpool, pool |
 | കോർ | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | സിസ്റ്റം | sysinfo, cgroup, iotask, watcher, resources, backup, update |

@@ -20,6 +20,8 @@ type WebSocketHandler struct {
 	upgrader websocket.Upgrader
 	mu       sync.RWMutex
 	conns    map[*websocket.Conn]context.CancelFunc
+	initFn   func() Streamer
+	initMu   sync.Mutex
 }
 
 // NewWebSocketHandler creates a new WebSocket handler.
@@ -34,6 +36,21 @@ func NewWebSocketHandler(streamer Streamer, config *Config) *WebSocketHandler {
 			CheckOrigin: security.CheckOriginDefault,
 		},
 		conns: make(map[*websocket.Conn]context.CancelFunc),
+	}
+}
+
+// NewLazyWebSocketHandler creates a WebSocket handler that defers streamer
+// creation until the first incoming companion stream request.
+func NewLazyWebSocketHandler(initFn func() Streamer, config *Config) *WebSocketHandler {
+	return &WebSocketHandler{
+		config: config,
+		upgrader: websocket.Upgrader{
+			ReadBufferSize:  config.WebSocket.ReadBufferSize,
+			WriteBufferSize: config.WebSocket.WriteBufferSize,
+			CheckOrigin:     security.CheckOriginDefault,
+		},
+		conns:  make(map[*websocket.Conn]context.CancelFunc),
+		initFn: initFn,
 	}
 }
 
@@ -73,6 +90,11 @@ func (h *WebSocketHandler) HandleSessionStream(c echo.Context) error {
 
 // handleWebSocket handles WebSocket connection setup and event streaming.
 func (h *WebSocketHandler) handleWebSocket(c echo.Context, sessionID string) error {
+	streamer := h.ensureStreamer()
+	if streamer == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "companion service not available"})
+	}
+
 	conn, err := h.upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
 		return err
@@ -93,7 +115,7 @@ func (h *WebSocketHandler) handleWebSocket(c echo.Context, sessionID string) err
 	}()
 
 	// Subscribe to events
-	eventCh, cleanup := h.streamer.Subscribe(sessionID)
+	eventCh, cleanup := streamer.Subscribe(sessionID)
 	defer cleanup()
 
 	// Start ping ticker
@@ -127,6 +149,23 @@ func (h *WebSocketHandler) handleWebSocket(c echo.Context, sessionID string) err
 			}
 		}
 	}
+}
+
+func (h *WebSocketHandler) ensureStreamer() Streamer {
+	if h == nil {
+		return nil
+	}
+	if h.streamer != nil || h.initFn == nil {
+		return h.streamer
+	}
+
+	h.initMu.Lock()
+	defer h.initMu.Unlock()
+
+	if h.streamer == nil && h.initFn != nil {
+		h.streamer = h.initFn()
+	}
+	return h.streamer
 }
 
 // readPump reads messages from the WebSocket connection.

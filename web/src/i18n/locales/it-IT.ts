@@ -120,7 +120,6 @@ export default {
     system: 'Sistema',
     plugins: 'Estensioni',
     profile: 'Profilo',
-    homeAssistant: 'Home Assistant',
     browserAutomation: 'Automazione browser',
     autoReply: 'Risposta automatica',
     tenants: 'Tenant',
@@ -1105,7 +1104,6 @@ export default {
       'Gestisci attività di automazione, lavori programmati e controlli della casa intelligente',
     tabs: {
       smartHome: 'Casa intelligente',
-      smartHomeDesc: 'Controlla dispositivi e automazioni Home Assistant',
       cron: 'Attività programmate',
       cronDesc: 'Gestisci lavori cron ed esecuzioni programmate',
       autoReply: 'Risposta automatica',
@@ -2632,13 +2630,6 @@ export default {
   cron: {
     title: 'Attività pianificate',
     createCronJob: 'Crea attività pianificata',
-  },
-  homeAssistant: {
-    title: 'Home Assistant',
-    devices: 'Dispositivi',
-    entities: 'Entità',
-    automations: 'Automazioni',
-    scenes: 'Scene',
   },
   skills: {
     ...enUS.skills,

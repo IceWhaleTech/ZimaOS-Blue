@@ -224,9 +224,9 @@ func TestStore_Search(t *testing.T) {
 	// Insert test skills
 	skills := []*Skill{
 		{
-			ID:        "smart-home",
-			Name:      "Smart Home Controller",
-			Summary:   "Control your smart home devices",
+			ID:        "automation-starter",
+			Name:      "Automation Starter",
+			Summary:   "Starter templates for automation workflows",
 			Category:  "automation",
 			SourceID:  "clawhub",
 			Stars:     100,
@@ -274,7 +274,7 @@ func TestStore_Search(t *testing.T) {
 		}
 
 		opts := SearchOptions{
-			Query:    "smart home",
+			Query:    "automation starter",
 			Page:     1,
 			PageSize: 10,
 		}
@@ -605,9 +605,9 @@ func TestStore_SearchFallbackWithoutFTS(t *testing.T) {
 	now := time.Now()
 	if err := store.UpsertSkillBatch(ctx, []*Skill{
 		{
-			ID:        "smart-home",
-			Name:      "Smart Home Controller",
-			Summary:   "Control your smart home devices",
+			ID:        "automation-starter",
+			Name:      "Automation Starter",
+			Summary:   "Starter templates for automation workflows",
 			Category:  "automation",
 			SourceID:  "clawhub",
 			Stars:     100,
@@ -632,14 +632,14 @@ func TestStore_SearchFallbackWithoutFTS(t *testing.T) {
 		t.Fatalf("failed to insert skills: %v", err)
 	}
 
-	result, err := store.Search(ctx, SearchOptions{Query: "smart home", Page: 1, PageSize: 10})
+	result, err := store.Search(ctx, SearchOptions{Query: "automation starter", Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatalf("search fallback failed: %v", err)
 	}
 	if result.Total == 0 {
 		t.Fatal("expected fallback search results")
 	}
-	if result.Skills[0].Skill.ID != "smart-home" {
+	if result.Skills[0].Skill.ID != "automation-starter" {
 		t.Fatalf("unexpected top fallback result: %+v", result.Skills[0].Skill)
 	}
 }

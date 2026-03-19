@@ -206,7 +206,7 @@ sh build.sh
 | 音声 | voice, tts, stt, speech |
 | 監視 | metrics, heartbeat, companion, profiling, leakdetect |
 | プラグイン | plugin, skill, skillstore |
-| 統合 | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| 統合 | browser, cron, workflow, formfiller, tunnel, crawler |
 | スケジューラー | scheduler, worker, workerpool, pool |
 | コア | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | システム | sysinfo, cgroup, iotask, watcher, resources, backup, update |

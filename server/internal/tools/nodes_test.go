@@ -178,3 +178,35 @@ func TestNodesToolDefinitionIncludesArrayItems(t *testing.T) {
 		t.Fatalf("tags.items.type = %#v, want string", tagItems["type"])
 	}
 }
+
+func TestRegisterLazyNodesToolDefersServiceResolutionUntilNeeded(t *testing.T) {
+	registry := NewRegistry()
+	resolveCalls := 0
+
+	RegisterLazyNodesTool(registry, func() *workflow.WorkflowService {
+		resolveCalls++
+		return nil
+	})
+
+	tool := registry.Get("nodes")
+	if tool == nil {
+		t.Fatal("expected nodes tool to be registered")
+	}
+	if resolveCalls != 0 {
+		t.Fatalf("resolveCalls after registration = %d, want 0", resolveCalls)
+	}
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{"action": "templates"}); err != nil {
+		t.Fatalf("templates action returned error: %v", err)
+	}
+	if resolveCalls != 0 {
+		t.Fatalf("resolveCalls after templates action = %d, want 0", resolveCalls)
+	}
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{"action": "list"}); err == nil {
+		t.Fatal("expected list action to fail when lazy service resolver returns nil")
+	}
+	if resolveCalls != 1 {
+		t.Fatalf("resolveCalls after list action = %d, want 1", resolveCalls)
+	}
+}

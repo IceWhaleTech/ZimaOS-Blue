@@ -206,7 +206,6 @@ export default {
     subtitle: 'Upravljajte zadacima automatizacije, zakazanim poslovima i kontrolama pametnog doma',
     tabs: {
       smartHome: 'Pametni dom',
-      smartHomeDesc: 'Kontrolirajte Home Assistant uređaje i automatizacije',
       cron: 'Zakazani zadaci',
       cronDesc: 'Upravljajte cron poslovima i zakazanim izvršavanjima',
       autoReply: 'Automatski odgovor',
@@ -1444,7 +1443,6 @@ export default {
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
-  homeAssistant: { ...enUS.homeAssistant },
 
   skills: {
     ...enUS.skills,

@@ -1803,20 +1803,6 @@ func (h *SkillHandler) convertClawHubSkill(item ClawHubSkill, source *SkillSourc
 func (h *SkillHandler) getMockClawHubSkills(source *SkillSource) []*RemoteSkill {
 	return []*RemoteSkill{
 		{
-			ID:          "clawhub-smart-home",
-			Name:        "Smart Home Controller",
-			Version:     "1.2.0",
-			Description: "Advanced smart home automation with scene management",
-			Author:      "ClawHub Team",
-			Category:    "integration",
-			Tags:        []string{"smart-home", "automation", "iot"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://www.clawhub.ai/skills/smart-home",
-			Stars:       256,
-			Downloads:   1520,
-		},
-		{
 			ID:          "clawhub-ai-assistant",
 			Name:        "AI Writing Assistant",
 			Version:     "2.0.1",

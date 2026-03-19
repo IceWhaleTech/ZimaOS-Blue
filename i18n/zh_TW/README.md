@@ -2,7 +2,7 @@
 
 <p align="center">
   面向大膽構建者的<strong>本地優先</strong>智能體運行時<br>
-  開箱即用 · 開源 · 通用 · 雙重監督
+  開箱即用 · 開源 · 通用 · 廠商中立
 </p>
 
 <p align="center">
@@ -207,7 +207,7 @@ sh build.sh
 | 語音層 | voice, tts, stt, speech |
 | 觀測層 | metrics, heartbeat, companion, profiling, leakdetect |
 | 外掛層 | plugin, skill, skillstore |
-| 整合層 | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| 整合層 | browser, cron, workflow, formfiller, tunnel, crawler |
 | 排程層 | scheduler, worker, workerpool, pool |
 | 核心層 | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
 | 系統層 | sysinfo, cgroup, iotask, watcher, resources, backup, update |

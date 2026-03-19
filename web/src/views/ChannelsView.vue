@@ -53,11 +53,24 @@ interface ChannelDef {
   lastReplyAt?: string
 }
 
+type GroupAccessPolicy = 'open' | 'allowlist' | 'disabled'
+
+interface ChannelSettingsResponse {
+  group_access?: {
+    policy?: GroupAccessPolicy
+    allowed_chat_ids?: Record<string, string[]>
+  }
+}
+
 const loading = ref(false)
 const saving = ref<string | null>(null)
 const toggling = ref<string | null>(null)
 const testingConnection = ref<string | null>(null)
 const testResult = ref<{ channelId: string; success: boolean; message: string } | null>(null)
+const groupAccessPolicy = ref<GroupAccessPolicy>('open')
+const groupAccessAllowedChatIDsText = ref('')
+const savingGroupAccess = ref(false)
+const groupAccessResult = ref<{ success: boolean; message: string } | null>(null)
 
 // Resolve a channel error message: prefer i18n key, fallback to raw string
 function resolveChannelError(channel: ChannelDef): string {
@@ -66,6 +79,66 @@ function resolveChannelError(channel: ChannelDef): string {
     if (te(i18nKey)) return t(i18nKey)
   }
   return channel.lastError || ''
+}
+
+function normalizeGroupAccessPolicy(value: unknown): GroupAccessPolicy {
+  switch (value) {
+    case 'allowlist':
+    case 'disabled':
+      return value
+    default:
+      return 'open'
+  }
+}
+
+function formatAllowedChatIDs(allowed?: Record<string, string[]>): string {
+  if (!allowed) return ''
+
+  const lines: string[] = []
+  for (const channelName of Object.keys(allowed).sort()) {
+    const chatIDs = [...(allowed[channelName] || [])].sort()
+    for (const chatID of chatIDs) {
+      if (!chatID) continue
+      lines.push(`${channelName}:${chatID}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+function parseAllowedChatIDs(raw: string): { allowed_chat_ids: Record<string, string[]>; error?: string } {
+  const allowed: Record<string, string[]> = {}
+
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    const separatorIndex = trimmed.indexOf(':')
+    if (separatorIndex <= 0 || separatorIndex >= trimmed.length - 1) {
+      return { allowed_chat_ids: {}, error: t('channels.groupAccessFormatError') }
+    }
+
+    const channelName = trimmed.slice(0, separatorIndex).trim()
+    const chatID = trimmed.slice(separatorIndex + 1).trim()
+    if (!channelName || !chatID) {
+      return { allowed_chat_ids: {}, error: t('channels.groupAccessFormatError') }
+    }
+
+    const existing = allowed[channelName] || []
+    if (!existing.includes(chatID)) {
+      allowed[channelName] = [...existing, chatID]
+    }
+  }
+
+  return { allowed_chat_ids: allowed }
+}
+
+function showGroupAccessResult(success: boolean, message: string) {
+  groupAccessResult.value = { success, message }
+  window.setTimeout(() => {
+    if (groupAccessResult.value?.message === message) {
+      groupAccessResult.value = null
+    }
+  }, 3000)
 }
 
 // Start collapsed; the primary section still keeps locale favorites,
@@ -1096,6 +1169,66 @@ async function loadChannelConfigs() {
   }
 }
 
+async function loadChannelSettings() {
+  try {
+    const response = await fetch('/api/channels/settings')
+    if (!response.ok) return
+
+    const data = (await response.json()) as ChannelSettingsResponse
+    const groupAccess = data.group_access || {}
+    groupAccessPolicy.value = normalizeGroupAccessPolicy(groupAccess.policy)
+    groupAccessAllowedChatIDsText.value = formatAllowedChatIDs(groupAccess.allowed_chat_ids)
+  } catch (err) {
+    console.error('Failed to load channel settings:', err)
+  }
+}
+
+async function saveGroupAccessSettings() {
+  savingGroupAccess.value = true
+
+  try {
+    const parsed =
+      groupAccessPolicy.value === 'allowlist'
+        ? parseAllowedChatIDs(groupAccessAllowedChatIDsText.value)
+        : { allowed_chat_ids: {} }
+    if (parsed.error) {
+      showGroupAccessResult(false, parsed.error)
+      return
+    }
+
+    const response = await fetch('/api/channels/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        group_access: {
+          policy: groupAccessPolicy.value,
+          allowed_chat_ids: parsed.allowed_chat_ids,
+        },
+      }),
+    })
+
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      showGroupAccessResult(false, data.message || t('channels.groupAccessSaveFailed'))
+      return
+    }
+
+    const settings = (data.settings || data) as ChannelSettingsResponse
+    const groupAccess = settings.group_access || {
+      policy: groupAccessPolicy.value,
+      allowed_chat_ids: parsed.allowed_chat_ids,
+    }
+    groupAccessPolicy.value = normalizeGroupAccessPolicy(groupAccess.policy)
+    groupAccessAllowedChatIDsText.value = formatAllowedChatIDs(groupAccess.allowed_chat_ids)
+    showGroupAccessResult(true, t('channels.savedSuccessfully'))
+  } catch (err) {
+    console.error('Failed to save channel settings:', err)
+    showGroupAccessResult(false, t('channels.groupAccessSaveFailed'))
+  } finally {
+    savingGroupAccess.value = false
+  }
+}
+
 async function saveChannel(channelId: string) {
   saving.value = channelId
   const channelDef = channelMap.value.get(channelId)
@@ -1442,6 +1575,7 @@ onMounted(() => {
   // Load backend settings first to get locale
   settingsStore.fetchBackendSettings()
   loadChannelConfigs()
+  loadChannelSettings()
   loadRemoteAccessStatus()
 })
 
@@ -1532,6 +1666,102 @@ watch(
 
         <div v-else class="channels-board">
           <div class="channels-board__stack">
+            <div class="channels-policy-card">
+              <div class="channels-policy-card__header">
+                <div class="channels-policy-card__identity">
+                  <div class="channels-policy-card__icon-shell">
+                    <svg
+                      class="channels-policy-card__icon"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.75"
+                        d="M17 20h5V9H2v11h5m10 0v-5a3 3 0 10-6 0v5m6 0H7"
+                      />
+                    </svg>
+                  </div>
+                  <div class="channels-policy-card__copy">
+                    <h3 class="channels-policy-card__title text-gray-900 dark:text-white">
+                      {{ t('channels.groupAccessTitle') }}
+                    </h3>
+                    <p
+                      class="channels-policy-card__description text-gray-500 dark:text-slate-300"
+                    >
+                      {{ t('channels.groupAccessDesc') }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="channels-policy-card__body">
+                <div class="space-y-2">
+                  <label
+                    class="channels-policy-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+                  >
+                    {{ t('channels.groupAccessPolicy') }}
+                  </label>
+                  <select
+                    v-model="groupAccessPolicy"
+                    class="channels-policy-card__select w-full border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                  >
+                    <option value="open">{{ t('channels.groupAccessPolicyOpen') }}</option>
+                    <option value="allowlist">
+                      {{ t('channels.groupAccessPolicyAllowlist') }}
+                    </option>
+                    <option value="disabled">
+                      {{ t('channels.groupAccessPolicyDisabled') }}
+                    </option>
+                  </select>
+                  <p class="channels-policy-card__note text-xs text-gray-500 dark:text-slate-300">
+                    {{ t('channels.groupAccessHint') }}
+                  </p>
+                </div>
+
+                <div v-if="groupAccessPolicy === 'allowlist'" class="space-y-2">
+                  <label
+                    class="channels-policy-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+                  >
+                    {{ t('channels.groupAccessAllowedChats') }}
+                  </label>
+                  <textarea
+                    v-model="groupAccessAllowedChatIDsText"
+                    class="channels-policy-card__textarea w-full border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                    :placeholder="t('channels.groupAccessAllowedChatsPlaceholder')"
+                  />
+                  <p class="channels-policy-card__note text-xs text-gray-500 dark:text-slate-300">
+                    {{ t('channels.groupAccessAllowedChatsHint') }}
+                  </p>
+                </div>
+
+                <div class="channels-policy-card__footer">
+                  <button
+                    class="channels-policy-card__primary-action bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors"
+                    :disabled="savingGroupAccess"
+                    :class="{ 'opacity-60 cursor-not-allowed': savingGroupAccess }"
+                    @click="saveGroupAccessSettings"
+                  >
+                    {{ savingGroupAccess ? t('channels.saving') : t('common.save') }}
+                  </button>
+
+                  <p
+                    v-if="groupAccessResult"
+                    class="channels-policy-card__result text-sm"
+                    :class="
+                      groupAccessResult.success
+                        ? 'text-green-700 dark:text-green-300'
+                        : 'text-red-700 dark:text-red-300'
+                    "
+                  >
+                    {{ groupAccessResult.message }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div
               class="channels-remote-card"
               :class="{ 'channels-remote-card--expanded': remoteAccessExpanded }"
@@ -2140,6 +2370,119 @@ watch(
 
 .channels-board__stack--secondary {
   padding-top: 0.18rem;
+}
+
+.channels-policy-card {
+  overflow: hidden;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.channels-policy-card__header {
+  display: flex;
+  align-items: center;
+  gap: 0.84rem;
+  min-height: 4.6rem;
+  padding: 0.86rem 0.96rem;
+}
+
+.channels-policy-card__identity {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.74rem;
+}
+
+.channels-policy-card__icon-shell {
+  width: 2.32rem;
+  height: 2.32rem;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 0.74rem;
+  background: #f8fafc;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  box-shadow: none;
+}
+
+.channels-policy-card__icon {
+  width: 1.18rem;
+  height: 1.18rem;
+  color: #334155;
+}
+
+.channels-policy-card__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.channels-policy-card__title {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.channels-policy-card__description {
+  margin-top: 0.22rem;
+  font-size: 0.74rem;
+  line-height: 1.38;
+}
+
+.channels-policy-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  border-top: 1px solid rgba(226, 232, 240, 0.96);
+  padding: 0.92rem;
+  background: #f8fafc;
+}
+
+.channels-policy-card__label {
+  font-size: 0.68rem;
+}
+
+.channels-policy-card__select,
+.channels-policy-card__textarea {
+  width: 100%;
+  min-height: 2.08rem;
+  padding: 0.4rem 0.54rem;
+  border-radius: 0.66rem;
+  font-size: 0.7rem;
+}
+
+.channels-policy-card__textarea {
+  min-height: 7.5rem;
+  resize: vertical;
+  font-family:
+    ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+}
+
+.channels-policy-card__note {
+  font-size: 0.58rem;
+  line-height: 1.45;
+}
+
+.channels-policy-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.72rem;
+}
+
+.channels-policy-card__primary-action {
+  min-height: 2.14rem;
+  padding: 0.42rem 0.9rem;
+  border-radius: 0.72rem;
+  font-size: 0.7rem;
+}
+
+.channels-policy-card__result {
+  font-size: 0.72rem;
+  line-height: 1.4;
 }
 
 .channels-remote-card {

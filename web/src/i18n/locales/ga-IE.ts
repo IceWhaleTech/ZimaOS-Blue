@@ -286,7 +286,6 @@ export default {
     subtitle: 'Bainistigh tascanna uathoibrithe, poist sceidealaithe agus rialuithe tí cliste',
     tabs: {
       smartHome: 'Teach Cliste',
-      smartHomeDesc: 'Rialú feistí agus uathoibrithe Home Assistant',
       cron: 'Tascanna Sceidealaithe',
       cronDesc: 'Bainistigh poist cron agus rith sceidealaithe',
       autoReply: 'Freagra Uathoibríoch',
@@ -1801,7 +1800,6 @@ export default {
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
-  homeAssistant: { ...enUS.homeAssistant },
 
   skills: {
     ...enUS.skills,

@@ -43,7 +43,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
 	harnessdrivers "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness/drivers"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/inject"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -528,7 +527,6 @@ type RoutesDeps struct {
 	SecurityHandler    *security.Handler
 	SandboxHandler     *sandbox.Handler
 	CronHandler        *cron.Handler
-	HAHandler          *homeassistant.Handler
 	BrowserHandler     *browser.Handler
 	WorkflowHandler    *workflow.Handler
 	VoiceHandler       *voice.Handler
@@ -749,6 +747,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 	authPageAPIGroup := func(page string) *echo.Group {
 		return api.Group("", deps.AuthMiddleware.Authenticate(), requirePagePermission(page))
+	}
+
+	// Frontend bootstrap blocks on these authenticated endpoints before the Vue
+	// app mounts, so register them on the fast path with health/system routes.
+	registerCurrentUserRoutes(v1, deps.AuthMiddleware, deps.UserHandler)
+	if deps.AuthMiddleware == nil {
+		permHandler.RegisterCurrentUserRoutes(v1)
+	} else {
+		permHandler.RegisterCurrentUserRoutes(v1.Group("", deps.AuthMiddleware.Authenticate()))
 	}
 
 	// Lightweight health endpoint — registered FIRST so the Tauri health poll
@@ -1196,10 +1203,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	templatesHandler := server.NewTemplatesHandler()
 	templatesHandler.RegisterRoutes(v1)
 
-	// GET /users/me stays preview-compatible, but both routes need auth context
-	// when a Bearer token is supplied.
-	registerCurrentUserRoutes(v1, deps.AuthMiddleware, deps.UserHandler)
-
 	// Formfiller management routes
 	if deps.FormfillerHandler != nil {
 		formfillerGroup := v1.Group("/formfiller", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageTools))
@@ -1264,7 +1267,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	usersGroup.POST("/:id/unlock", deps.UserHandler.UnlockUser)
 	usersGroup.POST("/:id/reset-password", deps.UserHandler.ResetPassword)
 
-	permHandler.RegisterRoutes(protected)
+	permHandler.RegisterAdminRoutes(protected)
 	logger.Info("Permission routes registered")
 
 	// Password change
@@ -1593,9 +1596,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Wire backing services into skills
 	if deps.CronHandler != nil {
 		if deps.WorkflowHandler != nil {
-			if svc := deps.WorkflowHandler.GetService(); svc != nil {
-				tools.RegisterNodesTool(s.ToolRegistry, svc)
-			}
+			tools.RegisterLazyNodesTool(s.ToolRegistry, deps.WorkflowHandler.GetService)
 		}
 		cronAdapter := cron.NewSkillAdapter(deps.CronHandler.GetService)
 		if sk := s.SkillRegistry.Get("scheduler"); sk != nil {
@@ -1603,19 +1604,18 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				ss.SetCronService(cronAdapter)
 			}
 		}
-		// Register command handler for scheduler skill
-		if svc := deps.CronHandler.GetService(); svc != nil {
+		tools.RegisterCronTool(s.ToolRegistry, cronToolAdapter{resolve: deps.CronHandler.GetService})
+		deps.CronHandler.SetServiceInitHook(func(svc *cron.Service) {
 			svc.SetMessageInjector(inject.NewMemoryStoreInjector(s.MemoryStore))
 			if deps.SSEBroker != nil {
 				svc.SetEventPublisher(deps.SSEBroker)
 			}
-			tools.RegisterCronTool(s.ToolRegistry, cronToolAdapter{runtime: svc})
 			svc.RegisterCommandHandler(cron.CommandSecurityConfig{
 				Enabled:          true,
 				RequireAdminRole: true,
 			})
 			registerDeepResearchCronHandler(svc, deepResearchService, logger)
-		}
+		})
 	}
 	// Browser + UI reviewer: wire backends for IPC and LLM tool use.
 	if deps.LazyBrowserSvc != nil {
@@ -2176,20 +2176,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		hbHandler := heartbeat.NewHandler(hbRunner)
 		hbHandler.RegisterRoutes(apiProtected)
 		logger.Info("Heartbeat routes registered", zap.Bool("enabled", hbCfg.Enabled))
-	}
-
-	// Home Assistant routes (protected) - /api/homeassistant/*
-	if deps.HAHandler != nil {
-		haGroup := apiProtected.Group("/homeassistant", requirePagePermission(permission.PageAutomation))
-		deps.HAHandler.RegisterRoutes(haGroup)
-	} else {
-		stub := featureDisabled("homeassistant")
-		haGroup := apiProtected.Group("/homeassistant", requirePagePermission(permission.PageAutomation))
-		haGroup.GET("/status", stub)
-		haGroup.GET("/entities", stub)
-		haGroup.GET("/scenes", stub)
-		haGroup.GET("/automations", stub)
-		haGroup.Any("/*", stub)
 	}
 
 	// Browser automation routes (protected) - /api/browser/*
@@ -3076,7 +3062,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Channel config + channel manager
 	if deps.ChannelConfigStore != nil {
-		channelManager := channel.NewManager(channel.DefaultConfig(), logger)
+		channelCfg := channel.DefaultConfig()
+		if deps.Config != nil {
+			channelCfg = deps.Config.Channels
+		}
+		if settings, ok := deps.ChannelConfigStore.GetSettings(); ok {
+			channelCfg = server.ApplyChannelSettings(channelCfg, settings)
+		}
+		channelManager := channel.NewManager(channelCfg, logger)
 		channelFactory := server.NewChannelFactory(deps.Logger)
 		if deps.ChatHandler != nil {
 			deps.ChatHandler.SetChannelSender(func(ctx context.Context, channelName string, out channel.OutgoingMessage) error {
@@ -3444,8 +3437,15 @@ type execApprovalAdapter struct {
 	mgr *tools.ApprovalManager
 }
 
-func (a execApprovalAdapter) ResolveApproval(id string, decision string, bindingHash string) bool {
-	return a.mgr.ResolveApprovalWithBinding(id, tools.ApprovalDecision(decision), bindingHash)
+func (a execApprovalAdapter) ResolveApproval(id string, decision string, bindingHash string) networkapi.ExecApprovalResolveResult {
+	switch a.mgr.ResolveApprovalWithBindingStatus(id, tools.ApprovalDecision(decision), bindingHash) {
+	case tools.ApprovalResolveSuccess:
+		return networkapi.ExecApprovalResolveResult{Resolved: true}
+	case tools.ApprovalResolveBindingMismatch:
+		return networkapi.ExecApprovalResolveResult{BindingMismatch: true}
+	default:
+		return networkapi.ExecApprovalResolveResult{}
+	}
 }
 
 type workflowToolRuntimeAdapter struct {

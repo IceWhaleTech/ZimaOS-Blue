@@ -208,7 +208,6 @@ export default {
       'Διαχείριση εργασιών αυτοματοποίησης, προγραμματισμένων εργασιών και ελέγχων έξυπνου σπιτιού',
     tabs: {
       smartHome: 'Έξυπνο σπίτι',
-      smartHomeDesc: 'Έλεγχος συσκευών και αυτοματοποιήσεων Home Assistant',
       cron: 'Προγραμματισμένες εργασίες',
       cronDesc: 'Διαχείριση cron εργασιών και προγραμματισμένων εκτελέσεων',
       autoReply: 'Αυτόματη απάντηση',
@@ -2036,7 +2035,6 @@ export default {
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
-  homeAssistant: { ...enUS.homeAssistant },
 
   skills: {
     ...enUS.skills,

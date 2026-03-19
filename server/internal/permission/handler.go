@@ -27,8 +27,25 @@ func NewHandler(service *Service, userRepo user.Repository) *Handler {
 
 // RegisterRoutes registers the permission routes
 func (h *Handler) RegisterRoutes(g *echo.Group) {
-	// Get own permissions (any authenticated user)
+	h.RegisterCurrentUserRoutes(g)
+	h.RegisterAdminRoutes(g)
+}
+
+// RegisterCurrentUserRoutes registers endpoints needed during authenticated
+// frontend bootstrap. Keeping these separate lets the server expose them
+// before heavier route registration finishes.
+func (h *Handler) RegisterCurrentUserRoutes(g *echo.Group) {
+	if g == nil {
+		return
+	}
 	g.GET("/users/me/permissions", h.GetMyPermissions)
+}
+
+// RegisterAdminRoutes registers admin-focused permission management endpoints.
+func (h *Handler) RegisterAdminRoutes(g *echo.Group) {
+	if g == nil {
+		return
+	}
 
 	// Get available permissions (admin only)
 	g.GET("/permissions/available", h.GetAvailablePermissions)

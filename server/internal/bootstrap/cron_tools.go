@@ -8,14 +8,22 @@ import (
 )
 
 type cronToolAdapter struct {
-	runtime *cron.Service
+	resolve func() *cron.Service
+}
+
+func (a cronToolAdapter) runtime() *cron.Service {
+	if a.resolve == nil {
+		return nil
+	}
+	return a.resolve()
 }
 
 func (a cronToolAdapter) Config(_ context.Context) tools.CronConfigInfo {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return tools.CronConfigInfo{}
 	}
-	cfg := a.runtime.Config()
+	cfg := runtime.Config()
 	return tools.CronConfigInfo{
 		Enabled:                 cfg.Enabled,
 		MaxConcurrentJobs:       cfg.MaxConcurrentJobs,
@@ -26,17 +34,19 @@ func (a cronToolAdapter) Config(_ context.Context) tools.CronConfigInfo {
 }
 
 func (a cronToolAdapter) Handlers(_ context.Context) []string {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return nil
 	}
-	return a.runtime.Handlers()
+	return runtime.Handlers()
 }
 
 func (a cronToolAdapter) ListJobs(_ context.Context) ([]tools.CronJobInfo, error) {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return nil, nil
 	}
-	jobs := a.runtime.List()
+	jobs := runtime.List()
 	result := make([]tools.CronJobInfo, 0, len(jobs))
 	for _, job := range jobs {
 		if job == nil {
@@ -48,10 +58,11 @@ func (a cronToolAdapter) ListJobs(_ context.Context) ([]tools.CronJobInfo, error
 }
 
 func (a cronToolAdapter) GetJob(_ context.Context, id string) (*tools.CronJobInfo, error) {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return nil, nil
 	}
-	job, ok := a.runtime.Get(id)
+	job, ok := runtime.Get(id)
 	if !ok || job == nil {
 		return nil, nil
 	}
@@ -60,10 +71,11 @@ func (a cronToolAdapter) GetJob(_ context.Context, id string) (*tools.CronJobInf
 }
 
 func (a cronToolAdapter) CreateJob(_ context.Context, name, description, schedule, handler string, payload map[string]interface{}) (*tools.CronJobInfo, error) {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return nil, nil
 	}
-	job, err := a.runtime.Create(name, description, schedule, handler, payload)
+	job, err := runtime.Create(name, description, schedule, handler, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -72,45 +84,51 @@ func (a cronToolAdapter) CreateJob(_ context.Context, name, description, schedul
 }
 
 func (a cronToolAdapter) UpdateJob(_ context.Context, id, name, description, schedule string, payload map[string]interface{}) error {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return nil
 	}
-	return a.runtime.Update(id, name, description, schedule, payload)
+	return runtime.Update(id, name, description, schedule, payload)
 }
 
 func (a cronToolAdapter) DeleteJob(_ context.Context, id string) error {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return nil
 	}
-	return a.runtime.Delete(id)
+	return runtime.Delete(id)
 }
 
 func (a cronToolAdapter) EnableJob(_ context.Context, id string) error {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return nil
 	}
-	return a.runtime.Enable(id)
+	return runtime.Enable(id)
 }
 
 func (a cronToolAdapter) DisableJob(_ context.Context, id string) error {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return nil
 	}
-	return a.runtime.Disable(id)
+	return runtime.Disable(id)
 }
 
 func (a cronToolAdapter) TriggerJob(_ context.Context, id string) error {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return nil
 	}
-	return a.runtime.Trigger(id)
+	return runtime.Trigger(id)
 }
 
 func (a cronToolAdapter) GetExecutions(_ context.Context, id string, limit int) ([]tools.CronExecutionInfo, error) {
-	if a.runtime == nil {
+	runtime := a.runtime()
+	if runtime == nil {
 		return nil, nil
 	}
-	executions, err := a.runtime.GetExecutions(id, limit)
+	executions, err := runtime.GetExecutions(id, limit)
 	if err != nil {
 		return nil, err
 	}

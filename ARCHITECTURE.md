@@ -1,67 +1,73 @@
 # ZimaOS-Blue Architecture
 
-> A Local-first Agent Runtime for Builders with Bolder Mind
-> Single-binary Go monolith · ~40MB · Idle ~4MB · Startup < 1s
+> Current implementation architecture for this repository.
+> This document is intentionally implementation-oriented: it describes what is wired in code today, not a future-state concept diagram.
 
-```
+## Text Diagram
+
+```text
 ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
-│ 🎨 Vue 3 Frontend  (web/)  ── Vibe it / DIY it / Swap it                                      │
+│ Vue Frontend + Tauri Desktop  (`web/` + `tauri-app/`)  ── same API, browser or native shell   │
 │                                                                                               │
-│ Vue 3 + Vite + TypeScript + Tailwind CSS + i18n (18 langs)                                    │
-│ Build output embedded into Go binary; can also deploy standalone or swap entirely             │
+│ Vue 3 + Vite + TypeScript + Pinia + Vue Router + i18n                                         │
+│ Build output embedded into Go binary; desktop adds tray/window/notification shell             │
 │                                                                                               │
 │ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
 │ │ChatView  │ │Providers │ │Channels  │ │Security   │ │Metrics   │ │Plugins   │ │Settings  │   │
 │ │          │ │PoolMgmt  │ │Mgmt      │ │Dashboard  │ │Dashboard │ │Store     │ │Panels    │   │
 │ └──────────┘ └──────────┘ └──────────┘ └───────────┘ └──────────┘ └──────────┘ └──────────┘   │
-│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌──────────┐                │
-│ │Memory    │ │Companion │ │Heartbeat │ │Personality│ │Voice/TTS │ │Automation│                │
-│ │Browser   │ │Monitor   │ │Settings  │ │Editor     │ │Controls  │ │Workflows │                │
-│ └──────────┘ └──────────┘ └──────────┘ └───────────┘ └──────────┘ └──────────┘                │
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
+│ │Home /    │ │Users /   │ │Voice /   │ │Workflow / │ │Billing   │ │Audit     │ │Desktop   │   │
+│ │Profile   │ │Tenants   │ │Speech    │ │Cron       │ │Panels    │ │Logs      │ │Tray/App  │   │
+│ └──────────┘ └──────────┘ └──────────┘ └───────────┘ └──────────┘ └──────────┘ └──────────┘   │
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
+│ │Memory    │ │Workspace │ │Companion │ │Preview /  │ │Remote    │ │DeepRes   │ │Approval  │   │
+│ │Browser   │ │Panels    │ │Monitor   │ │Auth/SSO   │ │Access    │ │Tasks     │ │Dialogs   │   │
+│ └──────────┘ └──────────┘ └──────────┘ └───────────┘ └──────────┘ └──────────┘ └──────────┘   │
 │                                                                                               │
-│ API: api/*.ts  (45 modules: chat, proxy, metrics, auth, memory, companion, voice, tts, ...)   │
+│ API + stores/composables: chat, proxy, provider pool, auth, memory, companion, voice, tauri   │
 └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
-         │ HTTP / WebSocket / SSE
-         │ (Frontend fully decoupled — swap with any SPA, mobile app, or curl)
+         │ HTTP / WebSocket / SSE / IPC
+         │ (Browser SPA, desktop shell, channels, voice, and external clients share one runtime)
          ▼
 ╔═══════════════════════════════════════════════════════════════════════════════════════════════════════════╗
-║  Go Backend  (server/)                                                                                    ║
+║  Go Backend  (`server/`)                                                                                  ║
 ╠═══════════════════════════════════════════════════════════════════════════════════════════════════════════╣
 ║                                                                                                           ║
 ║  ┌───────────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                        Gateway & Routing  (bootstrap/routes.go)                                   │    ║
+║  │                        Gateway & Routing  (`bootstrap/routes.go`)                                 │    ║
 ║  │                                                                                                   │    ║
-║  │  Echo Router ──► Middleware: Auth → RateLimit → CORS → PromptGuard → Logging → Metrics            │    ║
+║  │  Echo Router ──► Middleware: Auth → Permission → CORS → PromptGuard → Logging → Metrics           │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐  OpenAI-Compatible       │    ║
-║  │  │  Messages     │ │  Chat         │ │  Models       │ │  Embeddings   │  Proxy Endpoints         │    ║
-║  │  │  Completions  │ │  Streaming    │ │  Providers    │ │               │                          │    ║
+║  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐  Chat & Proxy API        │    ║
+║  │  │ Conversations │ │  Chat         │ │  Models /     │ │  Embeddings   │                          │    ║
+║  │  │  Messages     │ │  Streaming    │ │  Providers    │ │  `/v1/*`      │                          │    ║
 ║  │  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘                          │    ║
 ║  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐  Management API          │    ║
-║  │  │  Memory       │ │  Auth         │ │  Metrics      │ │  Channels     │                          │    ║
-║  │  │  MemoryV2     │ │  Security     │ │  System       │ │  Heartbeat    │                          │    ║
+║  │  │  Users /      │ │  Settings /   │ │  Metrics /    │ │  Channels /   │                          │    ║
+║  │  │  Auth / Keys  │ │  Config       │ │  System       │ │  Heartbeat    │                          │    ║
 ║  │  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘                          │    ║
 ║  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐  Feature API             │    ║
-║  │  │  Companion    │ │  Plugins      │ │  Skills       │ │  Voice        │                          │    ║
-║  │  │  Personality  │ │  Cron         │ │  Workflow     │ │  TTS          │                          │    ║
+║  │  │  Agent / MCP  │ │  Plugins      │ │  Skills /     │ │  Browser /    │                          │    ║
+║  │  │  DeepResearch │ │  Tool Store   │ │  Workflow     │ │  Memory / PPT │                          │    ║
 ║  │  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘                          │    ║
-║  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐  WebSocket & Debug       │    ║
-║  │  │  ChatStream   │ │  Companion    │ │  VoiceStream  │ │  Profiling    │                          │    ║
-║  │  │  (SSE)        │ │  (events)     │ │  (audio)      │ │(CPU/mem/gortn)│                          │    ║
+║  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐  Realtime & Edge         │    ║
+║  │  │  SSE Events   │ │  Companion    │ │  Voice /      │ │  Approval /   │                          │    ║
+║  │  │  `/api/v1/`   │ │  WebSocket    │ │  VoiceWake    │ │  Debug / WS   │                          │    ║
 ║  │  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘                          │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║         ▼                                                                                                 ║
 ║  ┌───────────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  ★ API Proxy Sidecar  (proxy/)  ── Core hot path, all LLM requests pass through   │    ║
+║  │                  API Proxy Runtime  (`proxy/` + `proxybridge/`)                                   │    ║
 ║  │                                                                                                   │    ║
-║  │  Claude Code CLI / Any OpenAI Client / Anthropic SDK / Gemini SDK / OAuth Client                  │    ║
+║  │  Web chat / agent / voice / deep research / external OpenAI clients / Anthropic SDK / Codex CLI   │    ║
 ║  │       │                                                                                           │    ║
 ║  │       ▼                                                                                           │    ║
-║  │  Inbound API Formats (4 upstream protocols)                                                       │    ║
+║  │  Inbound API Formats                                                                              │    ║
 ║  │  ┌──────────────┐ ┌──────────────┐ ┌───────────────┐ ┌──────────────┐                             │    ║
-║  │  │OpenAI Compat │ │Anthropic API │ │  Gemini API   │ │  OAuth API   │                             │    ║
-║  │  │chat/responses│ │  messages    │ │generateContent│ │ token-based  │                             │    ║
+║  │  │OpenAI Compat │ │Anthropic API │ │ Responses /   │ │ Embeddings   │                             │    ║
+║  │  │chat/responses│ │  messages    │ │ Models API    │ │              │                             │    ║
 ║  │  └──────────────┘ └──────────────┘ └───────────────┘ └──────────────┘                             │    ║
 ║  │       │                                                                                           │    ║
 ║  │       ▼                                                                                           │    ║
@@ -74,55 +80,70 @@
 ║  │                                     ▼              ▼              ▼                               │    ║
 ║  │                               ┌──────────┐  ┌────────────┐  ┌──────────┐                          │    ║
 ║  │                               │  Score   │  │ route:auto │  │ Failover │                          │    ║
-║  │                               │  Cache   │  │ route:cloud│  │ Circuit  │                          │    ║
+║  │                               │  Cache   │  │ route:tier │  │ Race /   │                          │    ║
 ║  │                               │(ecache2) │  │ route:local│  │ Breaker  │                          │    ║
 ║  │                               └──────────┘  └────────────┘  └──────────┘                          │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌─────────────────────────────────────────────────────────────────────────────────────┐          │    ║
-║  │  │  Two-Level Cache (CC Cache)                                                         │          │    ║
+║  │  │  Two-Level Cache (runtime cache)                                                    │          │    ║
 ║  │  │  ┌──────────────────────┐          ┌───────────────────────────────┐                │          │    ║
 ║  │  │  │  L1: In-Memory LRU   │  miss──▶ │  L2: Disk SQLite Cache        │                │          │    ║
-║  │  │  │  (ecache2 sharded)   │          │  (cache_disk.go)              │                │          │    ║
-║  │  │  │  Fast path, ~μs      │          │  Persistent, survives restart │                │          │    ║
+║  │  │  │  (ecache2 sharded)   │          │  (cache/) optional            │                │          │    ║
+║  │  │  │  prompt stats + fast │          │  survives restart             │                │          │    ║
 ║  │  │  └──────────────────────┘          └───────────────────────────────┘                │          │    ║
 ║  │  └─────────────────────────────────────────────────────────────────────────────────────┘          │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐                                           │    ║
-║  │  │  Conn    │  │  Config  │  │  Model   │  │  Metrics │                                           │    ║
-║  │  │  Pool    │  │  Watch   │  │  Compat  │  │  Writer  │                                           │    ║
+║  │  │  Conn    │  │  Toggle  │  │  Model   │  │  Metrics │                                           │    ║
+║  │  │  Pool    │  │  Store   │  │  Compat  │  │  Writer  │                                           │    ║
 ║  │  │  HTTP/2  │  │  HotLoad │  │  Layer   │  │  (stats) │                                           │    ║
 ║  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘                                           │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Provider Pool  (providerpool/)  ── Unified LLM provider management               │    ║
+║  │                  Provider Pool  (`providerpool/`)  ── Unified provider management                 │    ║
 ║  │                                                                                                   │    ║
 ║  │  Provider Types:                                                                                  │    ║
+║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌──────────┐             │    ║
+║  │  │ OpenAI  │ │Anthropic│ │ Gemini  │ │DeepSeek │ │Moonshot │ │  Azure  │ │OpenRouter│             │    ║
+║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └──────────┘             │    ║
 ║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐              │    ║
-║  │  │ OpenAI  │ │Anthropic│ │ Google  │ │DeepSeek │ │Moonshot │ │  Azure  │ │  Open   │              │    ║
-║  │  │ (cloud) │ │ (cloud) │ │ Gemini  │ │ (cloud) │ │ (Kimi)  │ │ OpenAI  │ │ Router  │              │    ║
-║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘              │    ║
-║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐              │    ║
-║  │  │AiHubMix │ │  Ollama │ │ MiniMax │ │  Codex  │ │  Grok   │ │  Qwen   │ │ Venice  │              │    ║
-║  │  │ (cloud) │ │ (local) │ │ (cloud) │ │ (cloud) │ │  (xAI)  │ │(Alibaba)│ │   AI    │              │    ║
+║  │  │ MiniMax │ │ Ollama  │ │  Grok   │ │  Qwen   │ │ Bedrock │ │  GLM    │ │ Custom  │              │    ║
 ║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘              │    ║
 ║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐                                      │    ║
-║  │  │ Amazon  │ │  GLM    │ │ Custom  │ │  Trial  │ │  IDE    │                                      │    ║
-║  │  │ Bedrock │ │ (Zhipu) │ │(OpenAI) │ │ (quota) │ │(detect) │                                      │    ║
+║  │  │  Trial  │ │  IDE    │ │  Codex  │ │ Cloud   │ │Copilot  │                                      │    ║
+║  │  │ (quota) │ │(detect) │ │ OAuth   │ │ Code    │ │ OAuth   │                                      │    ║
 ║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘                                      │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                 │    ║
-║  │  │  Health  │ │ Priority │ │  Rate    │ │  API Key │ │  Model   │                                 │    ║
-║  │  │  Check   │ │  Route   │ │  Limit   │ │ Rotation │ │ Discover │                                 │    ║
-║  │  │(circuit) │ │  Engine  │ │(per-prov)│ │  & Usage │ │(auto)    │                                 │    ║
+║  │  │  Health  │ │ Priority │ │  Rate    │ │  OAuth   │ │  Model   │                                 │    ║
+║  │  │  Check   │ │  Route   │ │  Limit   │ │  & Usage │ │ Discover │                                 │    ║
+║  │  │(circuit) │ │  Engine  │ │(per-prov)│ │ tracker  │ │(auto)    │                                 │    ║
 ║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                                 │    ║
 ║  │                                                                                                   │    ║
-║  │  API Formats: OpenAI Compat │ Anthropic │ Gemini │ OAuth                                          │    ║
-║  │  Storage: {dataDir}/providerpool/*.json                                                           │    ║
+║  │  API Formats: OpenAI Compat │ Anthropic │ Ollama │ OAuth                                          │    ║
+║  │  Storage: SQLite-backed provider pool; legacy JSON auto-migrated                                  │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Context Pruner  (pruner/)  ── Smart context pruning, reduce token cost           │    ║
+║  │                  Tool & Harness Runtime                                                           │    ║
+║  │                                                                                                   │    ║
+║  │  `tools.Registry` + `tools.Executor` + runtime `ToolGateway`                                      │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                 │    ║
+║  │  │  File    │ │  Exec    │ │ Browser  │ │ Convert  │ │ Agents   │                                 │    ║
+║  │  │ read/    │ │ shell /  │ │ web_*    │ │ OCR/PDF/ │ │ subagent │                                 │    ║
+║  │  │ write    │ │ sessions │ │ tools    │ │ PPT/img  │ │ bridge   │                                 │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                                 │    ║
+║  │                                                                                                   │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                              │    ║
+║  │  │ Approval │ │ Question │ │ Harness  │ │   SSE    │                                              │    ║
+║  │  │ runtime  │ │ manager  │ │ runs +   │ │ broker   │                                              │    ║
+║  │  │ resolve  │ │ ask-user │ │ artifacts│ │ events   │                                              │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘                                              │    ║
+║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
+║         │                                                                                                 ║
+║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
+║  │                  Context Pruner  (`pruner/`)  ── Smart context pruning                            │    ║
 ║  │                                                                                                   │    ║
 ║  │  Request ──▶ DetectType ──▶ Segmentize ──▶ Score (BM25) ──▶ SelectTopK ──▶ Pruned Output          │    ║
 ║  │                  │              │              │                │                                 │    ║
@@ -134,39 +155,49 @@
 ║  │            │  Data    │  │ Import   │   │ LRU Cache│    │  Select  │                              │    ║
 ║  │            └──────────┘  └──────────┘   └──────────┘    └──────────┘                              │    ║
 ║  │                                                                                                   │    ║
-║  │  Backends: local (line) │ bm25 (segment) │ ir (paragraph) │ swe-pruner (Go native)                │    ║
-║  │  Middleware: plugs into proxy, processes tool/user/system messages                                │    ║
+║  │  Backends: local (line) │ bm25 (segment) │ legacy IR hooks still present                          │    ║
+║  │  Middleware: plugs into proxy, processes user/tool/system messages                                │    ║
 ║  │  Config: enabled=false, threshold=0.5, min_lines=50, cache=256 slots                              │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Agent Runtime  ── LLM interaction core                                           │    ║
+║  │                  Agent Runtime  ── chat / agent / MCP orchestration                               │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │    ║
-║  │  │  LLM Client  │  │  Tool/Func   │  │  Context     │  │  Streaming   │  │  Personality │         │    ║
-║  │  │  (llm/)      │  │  Calling     │  │  Manager     │  │  Response    │  │  (SOUL.md)   │         │    ║
-║  │  │  OpenAI fmt  │  │  (tools/)    │  │  (context/)  │  │  (streaming/)│  │  (personal/) │         │    ║
+║  │  │ ChatHandler  │  │ Tool Gateway │  │ ContextPack  │  │ Agent / MCP  │  │ Session /    │         │    ║
+║  │  │ conv/store   │  │ approvals +  │  │ SOUL + skill │  │ deepresearch │  │ TODO state   │         │    ║
+║  │  │ stream loops │  │ call shaping │  │ bootstrap    │  │ task runner  │  │compact/budget│         │    ║
 ║  │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘         │    ║
+║  │                                                                                                   │    ║
+║  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                           │    ║
+║  │  │ Proxy Bridge │  │ ClaudeCode   │  │ SmallModel   │  │ Workflow /   │                           │    ║
+║  │  │ proxy or llm │  │ system prompt│  │ short QA /   │  │ Cron hooks   │                           │    ║
+║  │  │ fallback     │  │ + bootstrap  │  │ tool routing │  │ automation   │                           │    ║
+║  │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘                           │    ║
+║  │                                                                                                   │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
 ║  │                  Memory & Intelligence                                                            │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌─────────────────────────────┐  ┌─────────────────────────────┐  ┌─────────────────────────┐    │    ║
-║  │  │  Conversation Memory        │  │  Vector Memory (optional)   │  │  Memory Service v2      │    │    ║
-║  │  │  (memory/)                  │  │  (memory/sqlite_vec_store)  │  │  (memory/)              │    │    ║
+║  │  │  Conversation Memory        │  │  Long-term Memory           │  │  Search & Recall        │    │    ║
+║  │  │  (`memory.Store`)           │  │  (`memory/`)                │  │  vector / hybrid opt.   │    │    ║
 ║  │  │  ┌────────┐ ┌────────┐      │  │  ┌────────┐ ┌────────┐      │  │  ┌────────┐ ┌─────────┐ │    │    ║
-║  │  │  │Sessions│ │Messages│      │  │  │FTS5    │ │sqlite- │      │  │  │Version │ │Namespace│ │    │    ║
-║  │  │  │        │ │History │      │  │  │Keyword │ │vec     │      │  │  │Entries │ │Isolate  │ │    │    ║
-║  │  │  └────────┘ └────────┘      │  │  │Search  │ │Hybrid  │      │  │  └────────┘ └─────────┘ │    │    ║
-║  │  │  ┌────────┐                 │  │  └────────┘ └────────┘      │  │  Purge: every 6h        │    │    ║
-║  │  │  │Compact │ (auto-summary)  │  │  Embedding: text-embed-3    │  │  API: MemoryV2 module   │    │    ║
-║  │  │  └────────┘                 │  │  AES-256-GCM encryption     │  └─────────────────────────┘    │    ║
+║  │  │  │Convs   │ │Messages│      │  │  │Daily   │ │Layered │      │  │  │FTS5    │ │sqlite-  │ │    │    ║
+║  │  │  │titles  │ │history │      │  │  │logs    │ │memory  │      │  │  │keyword │ │vec      │ │    │    ║
+║  │  │  └────────┘ └────────┘      │  │  └────────┘ └────────┘      │  │  │search  │ │hybrid   │ │    │    ║
+║  │  │  ┌────────┐ ┌────────┐      │  │  ┌────────┐ ┌────────┐      │  │  └────────┘ └─────────┘ │    │    ║
+║  │  │  │CmdState│ │Compact │      │  │  │Import /│ │Export /│      │  │  recall API + embeddings│    │    ║
+║  │  │  │/ TODO  │ │summary │      │  │  │append  │ │prune   │      │  └─────────────────────────┘    │    ║
+║  │  │  └────────┘ └────────┘      │  │  └────────┘ └────────┘      │                                 │    ║
 ║  │  └─────────────────────────────┘  └─────────────────────────────┘                                 │    ║
+║  │                                                                                                   │    ║
+║  │  Workspace: `workspace/` + `contextpack/` + embedded `SKILL.md` release                           │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Channel Adapters  (channel/)  ── Multi-channel messaging                         │    ║
+║  │                  Channel Adapters  (`channel/`)  ── Multi-channel messaging                       │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐          │    ║
 ║  │  │  Web   │ │Telegram│ │Discord │ │ Slack  │ │ WeChat │ │ Feishu │ │ Matrix │ │iMessage│          │    ║
@@ -186,66 +217,69 @@
 ║  │  └────────┘                                                                                       │    ║
 ║  │                                                                                                   │    ║
 ║  │  Manager: central registry, auto-reconnect, message queue                                         │    ║
-║  │  Humanizer (humanizer/): Markdown → natural text (IM mode / Voice mode)                           │    ║
-║  │  AutoReply (autoreply/): rule-based auto-response                                                 │    ║
-║  │  Storage: {dataDir}/channels/*.json                                                               │    ║
+║  │  Humanizer (`humanizer/`): Markdown → natural text (IM mode / Voice mode)                         │    ║
+║  │  AutoReply (`autoreply/`): rule-based auto-response                                               │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Security Layer  (security/ + auth/ + permission/)                                │    ║
+║  │                  Security Layer  (`security/` + `auth/` + `permission/`)                          │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │    ║
 ║  │  │  JWT     │ │ API Keys │ │ Password │ │  MFA     │ │ WebAuthn │ │  OIDC    │ │  RBAC    │       │    ║
 ║  │  │  Auth    │ │ Scoped   │ │ Argon2id │ │  TOTP    │ │ Passkeys │ │ Provider │ │ Roles    │       │    ║
 ║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘       │    ║
 ║  │                                                                                                   │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │    ║
+║  │  │ Permit   │ │ ExtAuth  │ │ Prompt   │ │ Sandbox  │ │ Approval │ │  Audit   │ │ TLS/ACME │       │    ║
+║  │  │ page ACL │ │ headers  │ │ Guard    │ │ exec iso │ │ tool/exec│ │  trail   │ │ renew    │       │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘       │    ║
+║  │                                                                                                   │    ║
 ║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                              │    ║
-║  │  │  Threat  │ │  Sandbox │ │  Audit   │ │  TLS     │                                              │    ║
-║  │  │ Detector │ │ Executor │ │  Trail   │ │ Manager  │                                              │    ║
-║  │  │(SQLi/XSS │ │(isolated │ │(immutable│ │(ACME/LE) │                                              │    ║
-║  │  │PromptInj │ │ resource │ │ append)  │ │ auto-    │                                              │    ║
-║  │  │ CmdInj)  │ │ limits)  │ │          │ │ renew    │                                              │    ║
+║  │  │ Threat   │ │ Firewall │ │  FS Safe │ │ Secrets  │                                              │    ║
+║  │  │ detector │ │ origin   │ │ path chk │ │ encrypt  │                                              │    ║
 ║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘                                              │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Voice & Speech Pipeline  (voice/ + tts/ + stt/ + speech/)                        │    ║
+║  │                  Voice & Speech Pipeline  (`voice/` + `tts/` + `stt/` + `speech/`)                │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌──────────────────────────────────────────────────────────────────────────────────────┐         │    ║
-║  │  │  STT (Whisper)  ──▶  LLM Processing  ──▶  TTS (eSpeak-NG / Edge TTS)                 │         │    ║
-║  │  │  ┌──────────┐       ┌──────────┐         ┌──────────┐ ┌──────────┐                   │         │    ║
-║  │  │  │  Whisper │       │  Agent   │         │ eSpeak-NG│ │ Edge TTS │                   │         │    ║
-║  │  │  │  (local) │       │  Runtime │         │  (local) │ │ (cloud)  │                   │         │    ║
-║  │  │  │  lazy    │       │          │         │  CGO,lazy│ │ MS Edge  │                   │         │    ║
-║  │  │  └──────────┘       └──────────┘         └──────────┘ └──────────┘                   │         │    ║
-║  │  └──────────────────────────────────────────────────────────────────────────────────────┘         │    ║
-║  │  Session: per-user │ States: Idle→Listening→Processing→Speaking │ WebSocket audio stream          │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                    │    ║
+║  │  │  Voice   │ │    WS    │ │   STT    │ │  Chat /  │ │   TTS    │ │VoiceWake │                    │    ║
+║  │  │ sessions │ │  audio   │ │ routing  │ │  proxy   │ │ routing  │ │ triggers │                    │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                    │    ║
+║  │                                                                                                   │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                    │    ║
+║  │  │ macOS    │ │ Windows  │ │ Whisper  │ │ Edge TTS │ │ Local /  │ │  Cache   │                    │    ║
+║  │  │ native   │ │ native   │ │ models   │ │ stream   │ │ speaker  │ │  audio   │                    │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                    │    ║
+║  │                                                                                                   │    ║
+║  │  Voice request ──▶ STT (native / Whisper) ──▶ Chat / Proxy Runtime ──▶ TTS (Edge / local)         │    ║
+║  │  Session: per-user │ States: Idle→Listening→Processing→Speaking │ VoiceWake background target     │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
 ║  │                  Observability & Agents                                                           │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────────────────────┐  ┌──────────────────────────┐  ┌──────────────────────────┐         │    ║
-║  │  │  Metrics  (metrics/)     │  │  Heartbeat (heartbeat/)  │  │  Companion (companion/)  │         │    ║
+║  │  │  Metrics  (`metrics/`)   │  │ Heartbeat (`heartbeat/`) │  │  Companion (`companion/`)│         │    ║
 ║  │  │  ┌────────┐ ┌────────┐   │  │  ┌────────┐ ┌────────┐   │  │  ┌────────┐ ┌────────┐   │         │    ║
 ║  │  │  │CPU/Mem │ │API Call│   │  │  │Periodic│ │HEART-  │   │  │  │Realtime│ │Session │   │         │    ║
 ║  │  │  │GC/Gortn│ │Token $ │   │  │  │Poll    │ │BEAT.md │   │  │  │Events  │ │Monitor │   │         │    ║
 ║  │  │  └────────┘ └────────┘   │  │  └────────┘ └────────┘   │  │  └────────┘ └────────┘   │         │    ║
-║  │  │  SQLite: blue.db         │  │  Dedup: 24h cache        │  │  WebSocket + JSONL       │         │    ║
-║  │  │  Interval: 10s, 30pts    │  │  Active hours window     │  │  Retention: 7d/30d/90d   │         │    ║
+║  │  │  SQLite writer + trend   │  │  Dedup + active hours    │  │  WebSocket + JSONL       │         │    ║
 ║  │  └──────────────────────────┘  └──────────────────────────┘  └──────────────────────────┘         │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Plugin & Skill System  (plugin/ + skill/ + skillstore/)                          │    ║
+║  │                  Plugin & Skill System  (`plugin/` + `skill/` + `skillstore/`)                    │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────────────────────┐  ┌──────────────────────────┐  ┌──────────────────────────┐         │    ║
-║  │  │  Plugin Runtime          │  │  Skill Registry          │  │  Skill Store             │         │    ║
+║  │  │  Plugin Runtime          │  │  Skill Registry          │  │  Skill Market            │         │    ║
 ║  │  │  ┌────────┐ ┌────────┐   │  │  ┌────────┐ ┌────────┐   │  │  ┌────────┐ ┌────────┐   │         │    ║
-║  │  │  │Go      │ │  JS    │   │  │  │Weather │ │Search  │   │  │  │Featured│ │Install │   │         │    ║
-║  │  │  │Module  │ │ (goja) │   │  │  │Calc    │ │SysInfo │   │  │  │Skills  │ │& Sync  │   │         │    ║
-║  │  │  └────────┘ └────────┘   │  │  │DateTime│ │Custom  │   │  │  └────────┘ └────────┘   │         │    ║
-║  │  │  Isolation + limits      │  │  └────────┘ └────────┘   │  │  SQLite: skills.db       │         │    ║
+║  │  │  │Go      │ │  JS    │   │  │  │Embed   │ │ Local  │   │  │  │Browse  │ │Install │   │         │    ║
+║  │  │  │Native  │ │disabled│   │  │  │skills  │ │ scan   │   │  │  │Update  │ │& Risk  │   │         │    ║
+║  │  │  └────────┘ └────────┘   │  │  │SKILL.md│ │help cmd│   │  │  │Cache   │ │checks  │   │         │    ║
+║  │  │  deps + restrictions     │  │  └────────┘ └────────┘   │  │  └────────┘ └────────┘   │         │    ║
 ║  │  └──────────────────────────┘  └──────────────────────────┘  └──────────────────────────┘         │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
@@ -253,43 +287,54 @@
 ║  │                  Integrations & Automation                                                        │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │    ║
-║  │  │ Browser  │ │  Home    │ │  Cron    │ │ Workflow │ │  Form    │ │  Tunnel  │ │  Backup  │       │    ║
-║  │  │ (Rod)    │ │Assistant │ │ Schedule │ │ (n8n)    │ │ Filler   │ │ Manager  │ │ Restore  │       │    ║
-║  │  │ lazy init│ │  REST    │ │          │ │ nodes    │ │ template │ │ (4 provs)│ │ 7d retain│       │    ║
+║  │  │ Browser  │ │  Home    │ │  Cron    │ │ Workflow │ │ Convert  │ │  Tunnel  │ │  Backup  │       │    ║
+║  │  │ (Rod)    │ │Assistant │ │ Schedule │ │  nodes   │ │ OCR/PDF/ │ │Ngrok /   │ │ Restore  │       │    ║
+║  │  │ lazy init│ │  REST    │ │          │ │          │ │ PPT/x2t  │ │ Cloudfl. │ │ snapshots│       │    ║
 ║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘       │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                              │    ║
+║  │  │ WebPush  │ │ Webhook  │ │ MediaGen │ │ Preview  │                                              │    ║
+║  │  │ VAPID    │ │ targets  │ │ image /  │ │ userdata │                                              │    ║
+║  │  │ sender   │ │          │ │ cards    │ │ bridge   │                                              │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘                                              │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Scheduler  (scheduler/)  ── Priority task scheduling                             │    ║
+║  │                  Worker & Scheduler  (`workerpool/` + `scheduler/`)                              │    ║
 ║  │                                                                                                   │    ║
-║  │  Priority: Low → Normal → High → Critical                                                         │    ║
-║  │  States: Pending → Running → Completed/Failed/Cancelled                                           │    ║
-║  │  Retry: exponential backoff │ Deps: DAG resolution │ Max concurrent: 10                           │    ║
-║  │  Persistence: SQLite (scheduler/persistence/)                                                     │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                 │    ║
+║  │  │   IO     │ │ Compute  │ │ Priority │ │ Schedule │ │ Task DB  │                                 │    ║
+║  │  │  Pool    │ │  Pool    │ │ queues   │ │ engine   │ │ sqlite   │                                 │    ║
+║  │  │ worker   │ │ worker   │ │ low→crit │ │ retry/DAG│ │ persist  │                                 │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                                 │    ║
+║  │                                                                                                   │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                              │    ║
+║  │  │ Pending  │ │ Running  │ │Complete/ │ │ Deferred │                                              │    ║
+║  │  │ queue    │ │ stats    │ │Cancel    │ │ jobs /   │                                              │    ║
+║  │  │ submit   │ │ metrics  │ │ states   │ │ resume   │                                              │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘                                              │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Core Runtime  (v0.1)  ── Stable kernel                                           │    ║
+║  │                  Core Runtime                                                                     │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                    │    ║
 ║  │  │Lifecycle │ │  Worker  │ │  Config  │ │  Logger  │ │  Update  │ │  SysInfo │                    │    ║
-║  │  │ Manager  │ │  Pool    │ │  (Viper) │ │  (Zap)   │ │  OTA     │ │  (mem/cpu│                    │    ║
-║  │  │ graceful │ │conc/pool │ │ hot-load │ │ struct   │ │ channels │ │  process)│                    │    ║
+║  │  │ Manager  │ │  Pool    │ │ YAML+KV  │ │ zerolog/ │ │  OTA     │ │  mem/cpu │                    │    ║
+║  │  │ graceful │ │ priority │ │ hot-load │ │   zap    │ │ channels │ │  process │                    │    ║
 ║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                    │    ║
 ║  │                                                                                                   │    ║
-║  │  GC: GOGC=30, GOMEMLIMIT=48MB │ DB pool: 8 open, 3 idle │ Argon2: 32MB                            │    ║
+║  │  GC tuned at boot │ SQLite recovery + WAL │ lazy background services keep startup fast            │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
 ║  │                  Data Layer                                                                       │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐   │    ║
-║  │  │  SQLite (WAL)  │ │  skills.db     │ │  cache.db      │ │  Files/JSON    │ │  memory.db     │   │    ║
-║  │  │  blue.db       │ │  skill meta    │ │  L2 disk cache │ │  {dataDir}/*   │ │  vector search │   │    ║
-║  │  │  users/roles   │ │  featured list │ │  (proxy)       │ │  providers     │ │  sqlite-vec    │   │    ║
-║  │  │  audit/keys    │ │                │ │                │ │  channels      │ │  FTS/hybrid    │   │    ║
-║  │  │  conversations │ │                │ │                │ │                │ │                │   │    ║
-║  │  │  api_keys      │ │                │ │                │ │                │ │                │   │    ║
+║  │  │  SQLite (WAL)  │ │contextpacks.db │ │ workspace/     │ │ plugin-cache/  │ │ models/ +      │   │    ║
+║  │  │  blue.db       │ │ annotations    │ │ SOUL.md        │ │ backups/       │ │ vector store   │   │    ║
+║  │  │ users/auth     │ │ lookups        │ │ memory md      │ │ restore state  │ │ Whisper/OCR    │   │    ║
+║  │  │ conv/provider  │ │                │ │ skills/media   │ │                │ │ sqlite-vec/FTS │   │    ║
+║  │  │ config/harness │ │                │ │                │ │                │ │ hybrid search  │   │    ║
 ║  │  └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘   │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║                                                                                                           ║
@@ -301,12 +346,10 @@
 │                                                                                                           │
 │  LLM Providers                                                                                            │
 │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐          │
-│  │ OpenAI  │ │Anthropic│ │ Google  │ │DeepSeek │ │Moonshot │ │  Azure  │ │  Open   │ │AiHubMix │          │
-│  │         │ │         │ │ Gemini  │ │         │ │ (Kimi)  │ │ OpenAI  │ │ Router  │ │         │          │
+│  │ OpenAI  │ │Anthropic│ │ Gemini  │ │DeepSeek │ │Moonshot │ │  Azure  │ │OpenRout.│ │ MiniMax │          │
 │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘          │
 │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐          │
-│  │  Ollama │ │ MiniMax │ │  Codex  │ │  Grok   │ │  Qwen   │ │ Venice  │ │ Amazon  │ │  GLM    │          │
-│  │ (local) │ │         │ │         │ │  (xAI)  │ │(Alibaba)│ │   AI    │ │ Bedrock │ │ (Zhipu) │          │
+│  │  Ollama │ │  Grok   │ │  Qwen   │ │ Bedrock │ │  GLM    │ │  Codex  │ │CloudCode│ │ Custom  │          │
 │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘          │
 │                                                                                                           │
 │  Channels (IM / Social)                                                                                   │
@@ -322,12 +365,6 @@
 │  │  cloud │ │        │ │        │ │        │ │        │ │        │                                        │
 │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                                        │
 │                                                                                                           │
-│  Smart Home & IoT                                                                                         │
-│  ┌──────────┐                                                                                             │
-│  │  Home    │                                                                                             │
-│  │Assistant │                                                                                             │
-│  └──────────┘                                                                                             │
-│                                                                                                           │
 │  Remote Access (tunnel/)                                                                                  │
 │  ┌──────────┐ ┌──────────┐                                                                                │
 │  │  Ngrok   │ │Cloudflare│                                                                                │
@@ -342,43 +379,204 @@
 └───────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Data Flow
+## System Topology
 
-### Chat Request (Proxy Hot Path)
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
+```text
+Clients and surfaces
+  - Browser SPA (`web/`)
+  - Tauri desktop shell (`tauri-app/`)
+  - CLI and socket IPC (`blue ...`, `sockipc`)
+  - Channels, voice, webhooks, remote access
+                                    |
+                                    | HTTP / WebSocket / SSE / IPC
+                                    v
++-----------------------------------------------------------------------------------+
+| Go runtime (`server/`)                                                            |
+|                                                                                   |
+| Edge and assembly                                                                 |
+|   `cmd/blue` + `internal/server` + `internal/bootstrap` + `internal/web`          |
+|   - Echo router                                                                   |
+|   - auth, API keys, page permissions                                              |
+|   - static SPA serving                                                            |
+|   - SSE and WebSocket endpoints                                                   |
+|                                                                                   |
+| Product services                                                                  |
+|   chat, agent, deep research, workflow, cron, browser, media, companion, memory   |
+|                                                                                   |
+| Tool and execution plane                                                          |
+|   `tools.Registry` + `tools.Executor` + approvals + `harness.Controller`          |
+|                                                                                   |
+| Inference plane                                                                   |
+|   `server.ChatHandler` / `agent.Runner` / `voice.Service`                         |
+|      -> `proxybridge.Bridge`                                                      |
+|      -> `proxy.ProxyHandler`                                                      |
+|      -> `providerpool.Router`                                                     |
+|      -> upstream model providers                                                  |
+|   fallback: direct `llm.ProviderRegistry` when proxy is disabled                  |
+|                                                                                   |
+| State plane                                                                       |
+|   SQLite, kvstore-backed config, workspace files, markdown memory, vector store,  |
+|   media artifacts, models, backups                                                |
++-----------------------------------------------------------------------------------+
 ```
 
-### Channel Message Flow
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+## Runtime Modes
+
+- Server mode. `server/cmd/blue` starts the full Go runtime and serves both API and the Vue SPA from the same process.
+- Desktop mode. `tauri-app/` owns the native window, tray, notifications, and launches or embeds the Go runtime:
+  - macOS and Windows use the CGO/FFI path.
+  - Linux launches a `blue-server` sidecar and points the WebView at `http://localhost:{port}`.
+- CLI and IPC mode. Fast-path CLI dispatch handles lightweight commands before Cobra bootstraps the full server; longer-running skill and tool style commands are bridged through `sockipc`.
+
+## Boot Sequence
+
+1. `bootstrap.TuneGC()` applies Go runtime memory tuning.
+2. Config is loaded from YAML, then imported or overlaid into the SQLite-backed `config.Store`.
+3. Logger, lifecycle manager, worker pool, and `blue.db` are initialized.
+4. SQLite opens through `database.OpenSQLiteWithRecovery`, enabling WAL and recovery logic before services attach.
+5. Core services are created: users, auth, permissions, API keys, memory store, tool registry, skill registry, plugin registry, and `server.ChatHandler`.
+6. Background or lazy services are started: metrics, backup, OCR/PDF, browser, cron, workflow, push, speech, voice, companion, ngrok, and provider pool refresh.
+7. Workspace files and embedded assets are released under `{dataDir}/workspace`, including context packs and bundled `SKILL.md` files.
+8. `bootstrap.RegisterAllRoutes` mounts the API, proxy, SSE, WebSocket, IPC, and static frontend routes.
+9. HTTP starts first; provider model refresh, OAuth auto-refresh, and other deferred tasks hook into `server.OnServerStart`.
+
+## Major Layers
+
+| Layer | Primary packages | Responsibility |
+| --- | --- | --- |
+| Runtime assembly | `cmd/blue`, `internal/bootstrap`, `internal/server` | Startup, dependency wiring, Echo server, TLS, route registration |
+| Frontend and shell | `web`, `tauri-app`, `internal/web` | Vue SPA, desktop shell, localhost WebView binding, static asset serving |
+| Identity and security | `auth`, `permission`, `rbac`, `mfa`, `password`, `oidc`, `security`, `sandbox`, `promptguard`, `api` | JWT/API key auth, page permissions, approvals, security checks, sandbox integration |
+| Chat and agent runtime | `server`, `agent`, `deepresearch`, `claudecode`, `contextpack`, `session` | Conversation orchestration, system prompt building, agent execution, session compaction |
+| Tool and execution plane | `tools`, `browser`, `convert`, `mediagen`, `ppt`, `workflow`, `cron`, `push`, `harness`, `workspace` | Tool registry, browser and file tools, approvals, tracked runs, automation |
+| Inference routing | `proxy`, `proxybridge`, `providerpool`, `llm`, `pruner`, `gateway` | OpenAI/Anthropic-style proxying, request normalization, provider routing, failover, context pruning |
+| Memory and knowledge | `memory`, `embedding`, `skill`, `skillstore`, `plugin` | Conversation storage, markdown memory, vector search, skills, plugins, skill catalog |
+| Integrations and I/O | `channel`, `autoreply`, `humanizer`, `voice`, `speech`, `stt`, `tts`, `voicewake`, `webhook`, `ngrok`, `tunnel`, `companion`, `heartbeat` | IM channels, speech pipeline, webhook and tunnel integrations, event streaming |
+| Persistence and ops | `database`, `kvstore`, `backup`, `metrics`, `update`, `logger` | SQLite access, config persistence, recovery, metrics, OTA/update concerns, logging |
+
+## Core Request Flows
+
+### Web and Desktop Chat
+
+```text
+Vue route (`/chat`) or desktop WebView
+  -> `/api/v1/conversations/*` and related chat APIs
+  -> `server.ChatHandler`
+  -> memory/session/tool orchestration + system prompt/context packs
+  -> `proxybridge.Bridge` when proxy is enabled
+     or direct `llm.ProviderRegistry` fallback
+  -> upstream provider
+  -> streaming response + conversation persistence + metrics + audit + SSE updates
 ```
 
-### Voice Pipeline
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
+### OpenAI-Compatible Proxy
+
+```text
+External client
+  -> `/v1/chat/completions` | `/v1/messages` | `/v1/embeddings` | `/v1/models`
+  -> API key validation + session tracking
+  -> optional pruner, routing rules, model router, prompt cache, masking
+  -> `providerpool.Router` selection + failover/provider race
+  -> upstream format conversion and dispatch
+  -> normalized response or SSE stream back to caller
 ```
 
-## Package Map (server/internal/)
+Important detail: in the current implementation the proxy is an in-process handler mounted on Echo routes, not a mandatory separate microservice. Internal features reuse the same path through `proxybridge`.
 
-| Layer | Packages |
-|-------|----------|
-| Gateway | `bootstrap`, `server`, `gateway` |
-| Proxy | `proxy`, `connection`, `streaming`, `resilience` |
-| Provider | `providerpool`, `providers`, `llm` |
-| Pruner | `pruner` (detector, segmenter, bm25, pipeline, cache) |
-| Agent | `context`, `tools`, `personality`, `humanizer` |
-| Memory | `memory`, `embedding`, `kvstore` |
-| Channel | `channel`, `autoreply`, `i18n` |
-| Security | `security`, `auth`, `permission`, `rbac`, `mfa`, `password`, `oidc`, `extauth`, `sandbox`, `promptguard`, `audit` |
-| Voice | `voice`, `tts`, `stt`, `speech` |
-| Observe | `metrics`, `heartbeat`, `companion`, `profiling`, `leakdetect` |
-| Plugin | `plugin`, `skill`, `skillstore` |
-| Integrate | `browser`, `homeassistant`, `cron`, `workflow`, `formfiller`, `tunnel`, `crawler` |
-| Scheduler | `scheduler`, `worker`, `workerpool`, `pool` |
-| Core | `lifecycle`, `config`, `logger`, `database`, `cache`, `ratelimit`, `retry`, `timeutil`, `sync` |
-| System | `sysinfo`, `cgroup`, `iotask`, `watcher`, `resources`, `backup`, `update` |
-| Multi-tenant | `tenant`, `user`, `session`, `preview` |
+### Tool, Approval, and Harness Flow
+
+```text
+Chat / agent / workflow issues a tool call
+  -> `tools.Registry` + `tools.Executor`
+  -> approval-aware exec/file/browser/image/pdf/tts tools
+  -> approval or question event over SSE
+  -> optional `harness.Controller` persists run tree, events, and artifacts
+  -> result returns to chat, agent, workflow, or IPC caller
+```
+
+### Voice Flow
+
+```text
+`/api/v1/voice/*` HTTP or WebSocket audio
+  -> `voice.Service`
+  -> STT provider
+     - native macOS / Windows ASR when available
+     - Whisper-based fallback otherwise
+  -> chat function routed through `proxybridge.Bridge`
+  -> `speech` / `tts` provider
+  -> synthesized audio or transcript response
+```
+
+## Frontend and Desktop Composition
+
+- `web/` is a Vue 3 + Vite + TypeScript SPA with Pinia, Vue Router, and Vue I18n.
+- The router covers chat, home, settings, providers, channels, automation, voice, users, plugins, and preview-aware auth flows.
+- `internal/web` serves the built SPA with SPA fallback semantics and cache-control rules for hashed assets versus HTML.
+- `tauri-app` injects desktop markers into localhost pages, manages main and quick-panel windows, system tray actions, and native notifications.
+- In desktop mode the frontend still talks to the same localhost API surface; there is no separate desktop-only API.
+
+## State and Persistence
+
+| Location | Purpose |
+| --- | --- |
+| `{dataDir}/blue.db` | Primary SQLite database: users, API keys, permissions, conversations, config KV, provider pool tables, harness state, and other shared runtime data |
+| Optional SQLite stores | Metrics and session audit can use dedicated SQLite files when configured, but default to shared DB usage where possible |
+| `{dataDir}/workspace/` | User-editable runtime workspace: persona/context files such as `SOUL.md`, released context packs, markdown memory content, and related artifacts |
+| `{dataDir}/contextpacks.db` | Context-pack annotation and lookup metadata |
+| Memory vector store path | Resolved from memory config for hybrid memory search and embeddings |
+| `{dataDir}/media/` | Generated images, browser captures, and other media task artifacts |
+| `{dataDir}/models/` | Whisper, OCR, embedding, and other downloadable local model assets |
+| `{dataDir}/backups/` | Backup snapshots and restore staging used by auto-recovery |
+| `{dataDir}/plugin-cache/` | Downloaded and cached plugin artifacts |
+
+## Package Map
+
+### Entry and edge
+
+- `server/cmd/blue`: main entrypoint, CLI dispatch, server startup
+- `server/internal/bootstrap`: service and route assembly
+- `server/internal/server`: Echo wrapper, chat handlers, API handlers
+- `server/internal/web`: static SPA discovery, extraction, and serving
+- `tauri-app/src-tauri`: desktop host runtime
+
+### Inference and routing
+
+- `server/internal/proxy`: `/v1/*` proxy handler, routing, failover, cache stats, masking, request normalization
+- `server/internal/proxybridge`: bridge that lets internal runtime code call the proxy as an `llm` backend
+- `server/internal/providerpool`: provider registry, model discovery, routing, health checks, OAuth, pricing, usage tracking
+- `server/internal/llm`: direct provider implementations for fallback and internal use
+- `server/internal/pruner`: local context-pruning middleware and management API
+
+### Tool and agent runtime
+
+- `server/internal/tools`: built-in tools, exec safety, approvals, browser adapters, tool gateway
+- `server/internal/agent`: agent runner and agent-facing APIs
+- `server/internal/harness`: tracked run controller, child-run policy, artifact and event persistence
+- `server/internal/cron`, `workflow`, `push`, `browser`, `convert`, `mediagen`, `ppt`: automation and execution integrations
+- `server/internal/skill`: Go skill registry and embedded skill assets
+
+### Memory and workspace
+
+- `server/internal/memory`: SQLite conversation store, markdown backend, layered memory, vector store, hybrid search
+- `server/internal/session`: session isolation, compaction, persistence hooks
+- `server/internal/contextpack`: workspace context packs and resolver
+- `server/internal/workspace`: managed runtime workspace layout
+
+### Security and governance
+
+- `server/internal/auth`, `permission`, `rbac`, `mfa`, `password`, `oidc`, `extauth`: identity and access control
+- `server/internal/security`, `sandbox`, `promptguard`: runtime security features
+- `server/internal/api`: cross-runtime APIs such as approval resolution
+
+### Integrations
+
+- `server/internal/channel`, `autoreply`, `humanizer`: multi-channel delivery and rendering
+- `server/internal/voice`, `speech`, `stt`, `tts`, `voicewake`: speech stack
+- `server/internal/ngrok`, `tunnel`, `webhook`, `companion`, `heartbeat`: external integrations and background monitoring
+
+## Implementation Notes
+
+- The provider pool is SQLite-backed by default and auto-migrates legacy JSON data when a DB-backed pool is used.
+- The public pruner surface is effectively local-backend only; removed historical backends are still referenced in some legacy code paths and tests.
+- Bundled skills are sourced from `assets/skills/`, copied into `server/internal/skill/embedded/`, and released into the runtime workspace at startup.
+- The browser service, pruner middleware, vector memory backend, and some speech/model features are intentionally lazy so startup stays fast.

@@ -394,31 +394,76 @@ func findWorkflowTemplate(templates []workflow.WorkflowTemplateResponse, id stri
 
 type nodesServiceAdapter struct {
 	runtime *workflow.WorkflowService
+	resolve func() *workflow.WorkflowService
+}
+
+func (a nodesServiceAdapter) service() (*workflow.WorkflowService, error) {
+	if a.runtime != nil {
+		return a.runtime, nil
+	}
+	if a.resolve != nil {
+		if runtime := a.resolve(); runtime != nil {
+			return runtime, nil
+		}
+	}
+	return nil, fmt.Errorf("nodes service not available")
 }
 
 func (a nodesServiceAdapter) ListWorkflows(ctx context.Context, tenantID string, opts *workflow.ListOptions) ([]*workflow.Workflow, int, error) {
-	return a.runtime.ListWorkflows(ctx, tenantID, opts)
+	runtime, err := a.service()
+	if err != nil {
+		return nil, 0, err
+	}
+	return runtime.ListWorkflows(ctx, tenantID, opts)
 }
 func (a nodesServiceAdapter) GetWorkflow(ctx context.Context, id string) (*workflow.Workflow, error) {
-	return a.runtime.GetWorkflow(ctx, id)
+	runtime, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.GetWorkflow(ctx, id)
 }
 func (a nodesServiceAdapter) CreateWorkflow(ctx context.Context, item *workflow.Workflow) (*workflow.Workflow, error) {
-	return a.runtime.CreateWorkflow(ctx, item)
+	runtime, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.CreateWorkflow(ctx, item)
 }
 func (a nodesServiceAdapter) UpdateWorkflow(ctx context.Context, item *workflow.Workflow) (*workflow.Workflow, error) {
-	return a.runtime.UpdateWorkflow(ctx, item)
+	runtime, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.UpdateWorkflow(ctx, item)
 }
 func (a nodesServiceAdapter) DeleteWorkflow(ctx context.Context, id string) error {
-	return a.runtime.DeleteWorkflow(ctx, id)
+	runtime, err := a.service()
+	if err != nil {
+		return err
+	}
+	return runtime.DeleteWorkflow(ctx, id)
 }
 func (a nodesServiceAdapter) ExecuteWorkflow(ctx context.Context, id string, triggerData map[string]interface{}) (*workflow.Execution, error) {
-	return a.runtime.ExecuteWorkflow(ctx, id, triggerData)
+	runtime, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.ExecuteWorkflow(ctx, id, triggerData)
 }
 func (a nodesServiceAdapter) EnableWorkflow(ctx context.Context, id string) error {
-	return a.runtime.EnableWorkflow(ctx, id)
+	runtime, err := a.service()
+	if err != nil {
+		return err
+	}
+	return runtime.EnableWorkflow(ctx, id)
 }
 func (a nodesServiceAdapter) DisableWorkflow(ctx context.Context, id string) error {
-	return a.runtime.DisableWorkflow(ctx, id)
+	runtime, err := a.service()
+	if err != nil {
+		return err
+	}
+	return runtime.DisableWorkflow(ctx, id)
 }
 func (a nodesServiceAdapter) Templates(_ context.Context) []workflow.WorkflowTemplateResponse {
 	return workflow.DefaultTemplates()
@@ -430,4 +475,12 @@ func RegisterNodesTool(registry *Registry, runtime *workflow.WorkflowService) {
 		return
 	}
 	registry.Register(NewNodesTool(nodesServiceAdapter{runtime: runtime}))
+}
+
+// RegisterLazyNodesTool registers the native nodes tool with lazy service resolution.
+func RegisterLazyNodesTool(registry *Registry, resolve func() *workflow.WorkflowService) {
+	if registry == nil || resolve == nil {
+		return
+	}
+	registry.Register(NewNodesTool(nodesServiceAdapter{resolve: resolve}))
 }
