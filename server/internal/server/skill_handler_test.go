@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -431,6 +433,68 @@ func TestSkillHandler_InstallSkillRejectsTraversalID(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
 	}
+}
+
+func TestSkillHandler_InstallFromURL(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+	e := echo.New()
+
+	t.Run("installs and registers direct skill markdown", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = w.Write([]byte(`---
+id: url_installed_skill
+name: URL Installed Skill
+version: 1.2.3
+description: Installed from direct URL
+---
+
+# URL Installed Skill
+`))
+		}))
+		defer server.Close()
+
+		body := fmt.Sprintf(`{"url":"%s/SKILL.md"}`, server.URL)
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/install-url", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.InstallFromURL(c); err != nil {
+			t.Fatalf("InstallFromURL failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		if registry.Get("url_installed_skill") == nil {
+			t.Fatalf("expected installed skill to be registered")
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "url_installed_skill", "SKILL.md")); err != nil {
+			t.Fatalf("expected SKILL.md to be written: %v", err)
+		}
+	})
+
+	t.Run("rejects html document", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<!doctype html><html><head><title>Skill Page</title></head><body>not markdown</body></html>`))
+		}))
+		defer server.Close()
+
+		body := fmt.Sprintf(`{"url":"%s/skill-page"}`, server.URL)
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/install-url", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.InstallFromURL(c); err != nil {
+			t.Fatalf("InstallFromURL failed: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+	})
 }
 
 func TestSkillHandler_UninstallSkill(t *testing.T) {

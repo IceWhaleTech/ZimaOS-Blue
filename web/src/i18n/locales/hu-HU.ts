@@ -2479,6 +2479,7 @@ export default {
     ...enUS.agent,
     mode: 'Feladatciklus mód',
     modeDescription: 'Folyamatos tervezés-végrehajtás ciklusokat engedélyez, amíg ki nem kapcsolod',
+    autoConfirm: 'Automatikus megerősítés',
     autoConfirmDescription:
       'Destruktív műveleteknél megerősítés kihagyása (jobb kattintás a feladatciklus gombra a váltáshoz)',
     sendMessage: 'Üzenet küldése az ügynöknek...',

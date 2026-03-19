@@ -2680,6 +2680,7 @@ export default {
     ...enUS.agent,
     mode: 'Uppgiftsloopläge',
     modeDescription: 'Aktiverar kontinuerliga planera-och-kör-loopar tills du stänger av det',
+    autoConfirm: 'Automatisk bekräftelse',
     autoConfirmDescription:
       'Hoppa över bekräftelse för destruktiva åtgärder (högerklicka på uppgiftsloop-knappen för att växla)',
     sendMessage: 'Skicka ett meddelande till agenten...',

@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	toolruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // Registry manages all loaded plugins
@@ -505,8 +506,20 @@ func (a *pluginAPIImpl) RegisterTool(tool Tool) error {
 	a.registry.mu.Lock()
 	defer a.registry.mu.Unlock()
 
+	tool.Name = strings.TrimSpace(tool.Name)
+	if tool.Name == "" {
+		return fmt.Errorf("tool name is required")
+	}
 	if _, exists := a.registry.tools[tool.Name]; exists {
 		return fmt.Errorf("tool %s already registered", tool.Name)
+	}
+	if err := toolruntime.ValidateToolSchema(tool.Parameters); err != nil {
+		return fmt.Errorf("tool %s has invalid schema: %w", tool.Name, err)
+	}
+	tool.Parameters = toolruntime.NormalizeToolSchemaForLLM("", "", "", tool.Parameters)
+	tool.RiskLevel = normalizePluginToolRisk(tool.RiskLevel)
+	if len(tool.VisibilityAllowlist) == 0 {
+		tool.VisibilityAllowlist = []string{"chat", "agent", "workflow"}
 	}
 
 	// Wrap the handler with isolation
@@ -517,6 +530,19 @@ func (a *pluginAPIImpl) RegisterTool(tool Tool) error {
 	a.registry.tools[tool.Name] = &tool
 	logger.Info().Str("plugin_id", a.pluginID).Str("tool", tool.Name).Msg("Registered tool")
 	return nil
+}
+
+func normalizePluginToolRisk(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "critical":
+		return "critical"
+	case "high":
+		return "high"
+	case "medium":
+		return "medium"
+	default:
+		return "low"
+	}
 }
 
 func (a *pluginAPIImpl) RegisterHook(event string, handler HookHandler) error {

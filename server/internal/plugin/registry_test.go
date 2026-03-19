@@ -238,6 +238,20 @@ func TestPluginAPI_RegisterTool(t *testing.T) {
 			t.Fatal("expected error for duplicate tool")
 		}
 	})
+
+	t.Run("reject invalid schema", func(t *testing.T) {
+		err := api.RegisterTool(Tool{
+			Name:        "bad-tool",
+			Description: "bad",
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": "not-an-object",
+			},
+		})
+		if err == nil {
+			t.Fatal("expected invalid schema error")
+		}
+	})
 }
 
 func TestPluginAPI_RegisterHook(t *testing.T) {

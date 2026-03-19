@@ -2628,11 +2628,13 @@ html[data-theme='light'][data-blue-macos-glass='true'] .app-sidebar {
 @media (min-width: 1024px) {
   .app-sidebar {
     position: sticky;
+    inset: auto;
     top: 0;
     align-self: flex-start;
-    min-height: calc(100vh - 1.6rem);
-    height: auto;
-    max-height: calc(100vh - 1.6rem);
+    flex-shrink: 0;
+    min-height: var(--layout-sidebar-height, calc(100vh - 1.6rem));
+    height: var(--layout-sidebar-height, calc(100vh - 1.6rem));
+    max-height: var(--layout-sidebar-height, calc(100vh - 1.6rem));
     border: 1px solid rgba(148, 163, 184, 0.22);
     border-radius: 1.75rem;
     overflow: hidden;

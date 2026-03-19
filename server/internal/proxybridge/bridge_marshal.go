@@ -265,7 +265,7 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 				Function: bridgeFunction{
 					Name:        t.Name,
 					Description: t.Description,
-					Parameters:  t.Parameters,
+					Parameters:  normalizeBridgeToolSchema(t.Parameters),
 				},
 			}
 		}
@@ -402,12 +402,158 @@ func MarshalResponsesRequest(req llm.ChatRequest) ([]byte, error) {
 				Type:        "function",
 				Name:        t.Name,
 				Description: t.Description,
-				Parameters:  t.Parameters,
+				Parameters:  normalizeBridgeToolSchema(t.Parameters),
 			})
 		}
 	}
 
 	return marshalResponsesRequestWithSizeGuard(out)
+}
+
+func normalizeBridgeToolSchema(schema map[string]interface{}) map[string]interface{} {
+	if len(schema) == 0 {
+		return map[string]interface{}{
+			"type":                 "object",
+			"properties":           map[string]interface{}{},
+			"additionalProperties": false,
+		}
+	}
+	out := make(map[string]interface{}, len(schema)+3)
+	for key, value := range schema {
+		switch key {
+		case "properties":
+			props, ok := value.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			normalized := make(map[string]interface{}, len(props))
+			for name, child := range props {
+				childMap, _ := child.(map[string]interface{})
+				normalized[name] = normalizeBridgeToolSchema(childMap)
+			}
+			out[key] = normalized
+		case "items":
+			switch typed := value.(type) {
+			case map[string]interface{}:
+				out[key] = normalizeBridgeToolSchema(typed)
+			case []interface{}:
+				items := make([]interface{}, 0, len(typed))
+				for _, child := range typed {
+					if childMap, ok := child.(map[string]interface{}); ok {
+						items = append(items, normalizeBridgeToolSchema(childMap))
+						continue
+					}
+					items = append(items, cloneBridgeJSONValue(child))
+				}
+				out[key] = items
+			}
+		case "oneOf", "anyOf", "allOf":
+			items, ok := value.([]interface{})
+			if !ok {
+				continue
+			}
+			normalized := make([]interface{}, 0, len(items))
+			for _, child := range items {
+				if childMap, ok := child.(map[string]interface{}); ok {
+					normalized = append(normalized, normalizeBridgeToolSchema(childMap))
+					continue
+				}
+				normalized = append(normalized, cloneBridgeJSONValue(child))
+			}
+			out[key] = normalized
+		case "additionalProperties":
+			switch typed := value.(type) {
+			case bool:
+				out[key] = typed
+			case map[string]interface{}:
+				out[key] = normalizeBridgeToolSchema(typed)
+			}
+		case "required":
+			if normalized := bridgeNormalizeStringList(value); len(normalized) > 0 {
+				out[key] = normalized
+			}
+		case "nullable":
+			continue
+		default:
+			out[key] = cloneBridgeJSONValue(value)
+		}
+	}
+	if _, ok := out["type"]; !ok {
+		if _, hasProps := out["properties"]; hasProps {
+			out["type"] = "object"
+		} else if _, hasItems := out["items"]; hasItems {
+			out["type"] = "array"
+		}
+	}
+	if typeName, ok := out["type"].(string); ok && typeName == "object" {
+		if _, exists := out["properties"]; !exists {
+			out["properties"] = map[string]interface{}{}
+		}
+		if _, exists := out["additionalProperties"]; !exists {
+			out["additionalProperties"] = false
+		}
+	}
+	return out
+}
+
+func cloneBridgeJSONValue(raw interface{}) interface{} {
+	switch typed := raw.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(typed))
+		for key, value := range typed {
+			out[key] = cloneBridgeJSONValue(value)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(typed))
+		for i, value := range typed {
+			out[i] = cloneBridgeJSONValue(value)
+		}
+		return out
+	default:
+		return typed
+	}
+}
+
+func bridgeNormalizeStringList(raw interface{}) []string {
+	switch typed := raw.(type) {
+	case []string:
+		out := make([]string, 0, len(typed))
+		seen := make(map[string]struct{}, len(typed))
+		for _, item := range typed {
+			trimmed := strings.TrimSpace(item)
+			if trimmed == "" {
+				continue
+			}
+			if _, ok := seen[trimmed]; ok {
+				continue
+			}
+			seen[trimmed] = struct{}{}
+			out = append(out, trimmed)
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		seen := make(map[string]struct{}, len(typed))
+		for _, item := range typed {
+			value, ok := item.(string)
+			if !ok {
+				continue
+			}
+			trimmed := strings.TrimSpace(value)
+			if trimmed == "" {
+				continue
+			}
+			if _, ok := seen[trimmed]; ok {
+				continue
+			}
+			seen[trimmed] = struct{}{}
+			out = append(out, trimmed)
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 func trimMessagesForResponsesContinuation(messages []llm.Message) []llm.Message {
@@ -652,7 +798,11 @@ func normalizeResponsesInputRole(role string) string {
 
 // ParseChatResponse parses OpenAI-format JSON into llm.ChatResponse.
 func ParseChatResponse(body []byte) (*llm.ChatResponse, error) {
-	if resp, handled, err := parseResponsesChatResponse(body); handled {
+	return parseChatResponseWithMetrics(body, nil)
+}
+
+func parseChatResponseWithMetrics(body []byte, metrics runtimeMetricsRecorder) (*llm.ChatResponse, error) {
+	if resp, handled, err := parseResponsesChatResponseWithMetrics(body, metrics); handled {
 		return resp, err
 	}
 
@@ -686,10 +836,11 @@ func ParseChatResponse(body []byte) (*llm.ChatResponse, error) {
 		if len(c.Message.ToolCalls) > 0 {
 			cr.Message.ToolCalls = make([]llm.ToolCall, len(c.Message.ToolCalls))
 			for i, tc := range c.Message.ToolCalls {
+				callID, toolName, arguments := normalizeInboundBridgeToolCall(tc.ID, tc.Function.Name, tc.Function.Arguments, false, metrics)
 				cr.Message.ToolCalls[i] = llm.ToolCall{
-					ID:        tc.ID,
-					Name:      tc.Function.Name,
-					Arguments: rawToString(tc.Function.Arguments),
+					ID:        callID,
+					Name:      toolName,
+					Arguments: arguments,
 				}
 			}
 		}
@@ -700,11 +851,15 @@ func ParseChatResponse(body []byte) (*llm.ChatResponse, error) {
 // ParseSSEChunk parses a single SSE data line into an llm.StreamChunk.
 // Returns (chunk, done, error). done=true on [DONE] sentinel.
 func ParseSSEChunk(dataPayload string) (llm.StreamChunk, bool, error) {
+	return parseSSEChunkWithMetrics(dataPayload, nil)
+}
+
+func parseSSEChunkWithMetrics(dataPayload string, metrics runtimeMetricsRecorder) (llm.StreamChunk, bool, error) {
 	if dataPayload == "[DONE]" {
 		return llm.StreamChunk{Done: true}, true, nil
 	}
 
-	if chunk, done, handled, err := parseResponsesSSEChunk(dataPayload); handled {
+	if chunk, done, handled, err := parseResponsesSSEChunkWithMetrics(dataPayload, metrics); handled {
 		return chunk, done, err
 	}
 
@@ -743,10 +898,11 @@ func ParseSSEChunk(dataPayload string) (llm.StreamChunk, bool, error) {
 		if len(c.Delta.ToolCalls) > 0 {
 			chunk.ToolCalls = make([]llm.ToolCall, len(c.Delta.ToolCalls))
 			for i, tc := range c.Delta.ToolCalls {
+				callID, toolName, arguments := normalizeInboundBridgeToolCall(tc.ID, tc.Function.Name, tc.Function.Arguments, true, metrics)
 				chunk.ToolCalls[i] = llm.ToolCall{
-					ID:        tc.ID,
-					Name:      tc.Function.Name,
-					Arguments: rawToString(tc.Function.Arguments),
+					ID:        callID,
+					Name:      toolName,
+					Arguments: arguments,
 				}
 			}
 		}
@@ -764,6 +920,10 @@ func ParseSSEChunk(dataPayload string) (llm.StreamChunk, bool, error) {
 }
 
 func parseResponsesChatResponse(body []byte) (*llm.ChatResponse, bool, error) {
+	return parseResponsesChatResponseWithMetrics(body, nil)
+}
+
+func parseResponsesChatResponseWithMetrics(body []byte, metrics runtimeMetricsRecorder) (*llm.ChatResponse, bool, error) {
 	var probe struct {
 		Object string          `json:"object"`
 		Output json.RawMessage `json:"output"`
@@ -817,10 +977,11 @@ func parseResponsesChatResponse(body []byte) (*llm.ChatResponse, bool, error) {
 			if callID == "" {
 				callID = item.ID
 			}
+			callID, toolName, arguments := normalizeInboundResponsesToolCall(callID, item.Name, item.Arguments, false, metrics)
 			cr.Message.ToolCalls = append(cr.Message.ToolCalls, llm.ToolCall{
 				ID:        callID,
-				Name:      item.Name,
-				Arguments: rawToString(item.Arguments),
+				Name:      toolName,
+				Arguments: arguments,
 			})
 		}
 	}
@@ -832,6 +993,10 @@ func parseResponsesChatResponse(body []byte) (*llm.ChatResponse, bool, error) {
 }
 
 func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, error) {
+	return parseResponsesSSEChunkWithMetrics(dataPayload, nil)
+}
+
+func parseResponsesSSEChunkWithMetrics(dataPayload string, metrics runtimeMetricsRecorder) (llm.StreamChunk, bool, bool, error) {
 	var event bridgeResponsesEvent
 	if err := json.Unmarshal([]byte(dataPayload), &event); err != nil {
 		return llm.StreamChunk{}, false, false, nil
@@ -861,11 +1026,12 @@ func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, er
 			if callID == "" {
 				callID = event.Item.ID
 			}
+			callID, toolName, arguments := normalizeInboundResponsesToolCall(callID, event.Item.Name, event.Item.Arguments, true, metrics)
 			chunk.ToolCalls = []llm.ToolCall{
 				{
 					ID:        callID,
-					Name:      event.Item.Name,
-					Arguments: rawToString(event.Item.Arguments),
+					Name:      toolName,
+					Arguments: arguments,
 				},
 			}
 			return chunk, false, true, nil
@@ -874,7 +1040,8 @@ func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, er
 		return chunk, false, true, nil
 	case "response.function_call_arguments.delta":
 		if event.Delta != "" {
-			chunk.ToolCalls = []llm.ToolCall{{Arguments: event.Delta}}
+			_, _, arguments := normalizeInboundResponsesToolCall("", "", toRawJSON(event.Delta), true, metrics)
+			chunk.ToolCalls = []llm.ToolCall{{Arguments: arguments}}
 			return chunk, false, true, nil
 		}
 		chunk.Progress = event.Type
@@ -882,10 +1049,11 @@ func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, er
 	case "response.function_call_arguments.done":
 		args := strings.TrimSpace(event.Arguments)
 		if args == "" && event.Item != nil {
-			args = rawToString(event.Item.Arguments)
+			_, _, args = normalizeInboundResponsesToolCall("", "", event.Item.Arguments, false, metrics)
 		}
 		if args != "" {
-			chunk.ToolCalls = []llm.ToolCall{{Arguments: args}}
+			_, _, arguments := normalizeInboundResponsesToolCall("", "", toRawJSON(args), false, metrics)
+			chunk.ToolCalls = []llm.ToolCall{{Arguments: arguments}}
 			return chunk, false, true, nil
 		}
 		chunk.Progress = event.Type
@@ -896,11 +1064,12 @@ func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, er
 			if callID == "" {
 				callID = event.Item.ID
 			}
+			callID, toolName, arguments := normalizeInboundResponsesToolCall(callID, event.Item.Name, event.Item.Arguments, false, metrics)
 			chunk.ToolCalls = []llm.ToolCall{
 				{
 					ID:        callID,
-					Name:      event.Item.Name,
-					Arguments: rawToString(event.Item.Arguments),
+					Name:      toolName,
+					Arguments: arguments,
 				},
 			}
 			return chunk, false, true, nil
@@ -911,7 +1080,7 @@ func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, er
 		chunk.Done = true
 		if event.Response != nil {
 			chunk.Delta = extractResponsesOutputText(event.Response.Output)
-			chunk.ToolCalls = extractResponsesOutputToolCalls(event.Response.Output)
+			chunk.ToolCalls = extractResponsesOutputToolCallsWithMetrics(event.Response.Output, metrics)
 			u := event.Response.Usage
 			if u.InputTokens > 0 || u.OutputTokens > 0 || u.TotalTokens > 0 {
 				chunk.Usage = &llm.Usage{
@@ -962,6 +1131,10 @@ func extractResponsesOutputText(output []bridgeResponsesOutputItem) string {
 }
 
 func extractResponsesOutputToolCalls(output []bridgeResponsesOutputItem) []llm.ToolCall {
+	return extractResponsesOutputToolCallsWithMetrics(output, nil)
+}
+
+func extractResponsesOutputToolCallsWithMetrics(output []bridgeResponsesOutputItem, metrics runtimeMetricsRecorder) []llm.ToolCall {
 	if len(output) == 0 {
 		return nil
 	}
@@ -974,13 +1147,14 @@ func extractResponsesOutputToolCalls(output []bridgeResponsesOutputItem) []llm.T
 		if callID == "" {
 			callID = item.ID
 		}
-		if callID == "" || item.Name == "" {
+		callID, toolName, arguments := normalizeInboundResponsesToolCall(callID, item.Name, item.Arguments, false, metrics)
+		if callID == "" || toolName == "" {
 			continue
 		}
 		out = append(out, llm.ToolCall{
 			ID:        callID,
-			Name:      item.Name,
-			Arguments: rawToString(item.Arguments),
+			Name:      toolName,
+			Arguments: arguments,
 		})
 	}
 	return out
@@ -1013,4 +1187,145 @@ func rawToString(raw json.RawMessage) string {
 		}
 	}
 	return string(raw)
+}
+
+func normalizeInboundBridgeToolCall(callID, name string, arguments json.RawMessage, allowPartial bool, metrics runtimeMetricsRecorder) (string, string, string) {
+	return normalizeInboundToolCall("bridge", callID, name, arguments, allowPartial, metrics)
+}
+
+func normalizeInboundResponsesToolCall(callID, name string, arguments json.RawMessage, allowPartial bool, metrics runtimeMetricsRecorder) (string, string, string) {
+	return normalizeInboundToolCall("responses", callID, name, arguments, allowPartial, metrics)
+}
+
+func normalizeInboundToolCall(source, callID, name string, arguments json.RawMessage, allowPartial bool, metrics runtimeMetricsRecorder) (string, string, string) {
+	callID = strings.TrimSpace(callID)
+	name = strings.TrimSpace(name)
+	normalizedArgs, repaired, ok := normalizeInboundArguments(arguments, allowPartial)
+	if !ok {
+		recordProviderNormalizationFailure(metrics, source, "arguments")
+		return callID, name, rawToString(arguments)
+	}
+	if name == "" && !allowPartial {
+		recordProviderNormalizationFailure(metrics, source, "name")
+	}
+	if repaired {
+		recordProviderNormalizationRepair(metrics, source)
+	}
+	return callID, name, normalizedArgs
+}
+
+func normalizeInboundArguments(raw json.RawMessage, allowPartial bool) (string, bool, bool) {
+	trimmed := strings.TrimSpace(rawToString(raw))
+	if trimmed == "" {
+		if allowPartial {
+			return "", false, true
+		}
+		return "{}", false, true
+	}
+
+	if obj, ok := parseJSONObject(trimmed); ok {
+		return marshalCanonicalJSONObject(obj), false, true
+	}
+
+	if rawLooksLikeJSONString(raw) {
+		var decoded string
+		if json.Unmarshal(raw, &decoded) == nil {
+			decoded = strings.TrimSpace(decoded)
+			if decoded == "" {
+				if allowPartial {
+					return "", true, true
+				}
+				return "{}", true, true
+			}
+			if obj, ok := parseJSONObject(decoded); ok {
+				return marshalCanonicalJSONObject(obj), true, true
+			}
+			if allowPartial {
+				return decoded, true, true
+			}
+			if obj, ok := repairJSONObject(decoded); ok {
+				return marshalCanonicalJSONObject(obj), true, true
+			}
+			return decoded, true, false
+		}
+	}
+
+	if json.Valid([]byte(trimmed)) {
+		var generic interface{}
+		if json.Unmarshal([]byte(trimmed), &generic) == nil {
+			if allowPartial {
+				return trimmed, false, true
+			}
+			return trimmed, false, false
+		}
+	}
+
+	if allowPartial {
+		return trimmed, false, true
+	}
+	if obj, ok := repairJSONObject(trimmed); ok {
+		return marshalCanonicalJSONObject(obj), true, true
+	}
+	return trimmed, false, false
+}
+
+func parseJSONObject(raw string) (map[string]interface{}, bool) {
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+		return nil, false
+	}
+	if obj == nil {
+		return map[string]interface{}{}, true
+	}
+	return obj, true
+}
+
+func repairJSONObject(raw string) (map[string]interface{}, bool) {
+	candidates := []string{
+		raw,
+		strings.ReplaceAll(raw, `'`, `"`),
+	}
+	for _, candidate := range candidates {
+		if obj, ok := parseJSONObject(candidate); ok {
+			return obj, true
+		}
+	}
+	return nil, false
+}
+
+func marshalCanonicalJSONObject(obj map[string]interface{}) string {
+	if obj == nil {
+		return "{}"
+	}
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
+func rawLooksLikeJSONString(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	return raw[0] == '"'
+}
+
+func recordProviderNormalizationFailure(metrics runtimeMetricsRecorder, source, reason string) {
+	if metrics == nil {
+		return
+	}
+	metrics.RecordCounter("provider_tool_normalization_fail_total", 1, map[string]string{
+		"source": source,
+		"reason": strings.TrimSpace(reason),
+	})
+}
+
+func recordProviderNormalizationRepair(metrics runtimeMetricsRecorder, source string) {
+	if metrics == nil {
+		return
+	}
+	metrics.RecordCounter("provider_tool_normalization_repair_total", 1, map[string]string{
+		"source": source,
+	})
 }

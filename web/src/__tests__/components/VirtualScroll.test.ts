@@ -184,4 +184,57 @@ describe('VirtualScroll', () => {
 
     expect(scrollContainer.scrollTop).toBe(150)
   })
+
+  it('keeps the current viewport anchored when older keyed items are prepended', async () => {
+    const scrollContainer = document.createElement('div')
+    Object.defineProperty(scrollContainer, 'clientHeight', {
+      configurable: true,
+      value: 200,
+    })
+    Object.defineProperty(scrollContainer, 'scrollHeight', {
+      configurable: true,
+      value: 4000,
+    })
+    scrollContainer.getBoundingClientRect = () => mockRect({ top: 0 })
+
+    const initialItems = Array.from({ length: 100 }, (_, index) => ({ id: `row-${index}` }))
+    const wrapper = mount(VirtualScroll, {
+      props: {
+        itemCount: initialItems.length,
+        items: initialItems,
+        itemKey: 'id',
+        estimatedItemHeight: 100,
+        overscan: 0,
+        scrollContainer,
+      },
+      slots: {
+        default: '<div style="height: 100px;">row</div>',
+      },
+    })
+
+    ;(wrapper.element as HTMLElement).getBoundingClientRect = () =>
+      mockRect({ top: -scrollContainer.scrollTop })
+
+    await wrapper.vm.$nextTick()
+    await flushRafChain()
+
+    scrollContainer.scrollTop = 150
+    scrollContainer.dispatchEvent(new Event('scroll'))
+    await wrapper.vm.$nextTick()
+    await flushRafChain()
+
+    const nextItems = [
+      { id: 'older-0' },
+      { id: 'older-1' },
+      ...initialItems,
+    ]
+    await wrapper.setProps({
+      itemCount: nextItems.length,
+      items: nextItems,
+    })
+    await wrapper.vm.$nextTick()
+    await flushRafChain()
+
+    expect(scrollContainer.scrollTop).toBe(350)
+  })
 })

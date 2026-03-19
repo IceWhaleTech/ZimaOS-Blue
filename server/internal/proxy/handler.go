@@ -1954,6 +1954,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		slog.Error("[proxy] all providers failed",
+			"requested_model", pr.requestedModel,
 			"model", pr.model,
 			"mode", routeReq.Mode,
 			"has_tools", hasTools,

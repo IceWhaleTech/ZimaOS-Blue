@@ -2626,6 +2626,7 @@ export default {
     ...enUS.agent,
     mode: 'Opgaveloop-tilstand',
     modeDescription: 'Aktivér kontinuerlige planlæg-og-udfør-loops, indtil du slår den fra',
+    autoConfirm: 'Automatisk bekræftelse',
     autoConfirmDescription:
       'Spring bekræftelse over for destruktive handlinger (højreklik på opgaveloop-knappen for at skifte)',
     sendMessage: 'Send en besked til agenten...',

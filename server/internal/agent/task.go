@@ -33,22 +33,28 @@ const (
 
 // Task represents an autonomous agent task.
 type Task struct {
-	ID              string              `json:"id"`
-	UserID          string              `json:"user_id"`
-	ConversationID  string              `json:"conversation_id,omitempty"`
-	Goal            string              `json:"goal"`
-	Plan            []PlanStep          `json:"plan,omitempty"`
-	Status          TaskStatus          `json:"status"`
-	RuntimeState    RuntimeState        `json:"runtime_state,omitempty"`
-	RuntimeAudit    []RuntimeAuditEvent `json:"runtime_audit,omitempty"`
-	SuccessCriteria []string            `json:"success_criteria,omitempty"`
-	FallbackPlan    []string            `json:"fallback_plan,omitempty"`
-	CurrentStep     int                 `json:"current_step"`
-	Progress        int                 `json:"progress"` // 0-100
-	Result          string              `json:"result,omitempty"`
-	Error           string              `json:"error,omitempty"`
-	CreatedAt       time.Time           `json:"created_at"`
-	UpdatedAt       time.Time           `json:"updated_at"`
+	ID                 string              `json:"id"`
+	UserID             string              `json:"user_id"`
+	ConversationID     string              `json:"conversation_id,omitempty"`
+	Goal               string              `json:"goal"`
+	Plan               []PlanStep          `json:"plan,omitempty"`
+	Status             TaskStatus          `json:"status"`
+	RuntimeState       RuntimeState        `json:"runtime_state,omitempty"`
+	RuntimeAudit       []RuntimeAuditEvent `json:"runtime_audit,omitempty"`
+	SuccessCriteria    []string            `json:"success_criteria,omitempty"`
+	FallbackPlan       []string            `json:"fallback_plan,omitempty"`
+	CurrentStep        int                 `json:"current_step"`
+	Progress           int                 `json:"progress"` // 0-100
+	Result             string              `json:"result,omitempty"`
+	VerifiedOutput     string              `json:"verified_output,omitempty"`
+	VerificationErrors []string            `json:"verification_errors,omitempty"`
+	GroundingStatus    string              `json:"grounding_status,omitempty"`
+	Error              string              `json:"error,omitempty"`
+	CreatedAt          time.Time           `json:"created_at"`
+	UpdatedAt          time.Time           `json:"updated_at"`
+	WorkspaceRoot      string              `json:"-"`
+
+	GroundState *GroundTruthState `json:"-"`
 }
 
 // PlanStep represents a single step in the agent's plan.
@@ -150,4 +156,24 @@ func unmarshalStringSlice(data string) []string {
 	var out []string
 	_ = json.Unmarshal([]byte(data), &out)
 	return out
+}
+
+func marshalGroundTruthState(state *GroundTruthState) string {
+	if state == nil {
+		return ""
+	}
+	b, _ := json.Marshal(state)
+	return string(b)
+}
+
+func unmarshalGroundTruthState(data string) *GroundTruthState {
+	if data == "" {
+		return nil
+	}
+	var out GroundTruthState
+	if err := json.Unmarshal([]byte(data), &out); err != nil {
+		return nil
+	}
+	out.ensureMaps()
+	return &out
 }

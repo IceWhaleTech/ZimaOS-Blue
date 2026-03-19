@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { deepMergeMessages, type LocaleMessages } from '../i18n/merge'
+import prioritySettingsOverrides from '../i18n/priority-settings-overrides'
+import researchToolOverrides from '../i18n/research-tool-overrides'
 import skillToolOverrides from '../i18n/skill-tool-overrides'
 import { getLocalizedToolDescription, getLocalizedToolName } from './toolLocalization'
 
@@ -42,13 +44,32 @@ function buildMergedLocaleMessages(locale: string): LocaleMessages {
   }
 
   const mergedBase = locale === 'en-US' ? baseLocale : deepMergeMessages(baseLocale, localeMessages)
-  return deepMergeMessages(
+  const withSettingsOverrides = deepMergeMessages(
     mergedBase,
+    (prioritySettingsOverrides as Record<string, LocaleMessages>)[locale] || {},
+  )
+  const withSkillToolOverrides = deepMergeMessages(
+    withSettingsOverrides,
     (skillToolOverrides as Record<string, LocaleMessages>)[locale] || {},
+  )
+
+  return deepMergeMessages(
+    withSkillToolOverrides,
+    (researchToolOverrides as Record<string, LocaleMessages>)[locale] || {},
   )
 }
 
-const nameCoverage = ['cron', 'read', 'write', 'web_search', 'analyze', 'ask', 'mediagen'] as const
+const nameCoverage = [
+  'cron',
+  'read',
+  'write',
+  'web_search',
+  'analyze',
+  'ask',
+  'mediagen',
+  'research_run',
+  'research_status',
+] as const
 
 const descriptionCoverage = [
   {
@@ -83,6 +104,15 @@ const descriptionCoverage = [
   {
     name: 'mediagen',
     description: 'Generate images and videos using AI models.',
+  },
+  {
+    name: 'research_run',
+    description:
+      'Run deep research. You can wait for the final report or get a job ID to check later.',
+  },
+  {
+    name: 'research_status',
+    description: 'Get the current status or final report for a deep research job.',
   },
   {
     name: 'docker',

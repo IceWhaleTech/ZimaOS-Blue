@@ -164,6 +164,18 @@ func TestEngineSupportsConversionCrossFamily(t *testing.T) {
 	}
 }
 
+func TestEngineSupportsConversionTextutilMarkdownAndTextAlias(t *testing.T) {
+	if engineSupportsConversion(documentEngineTextutil, "md", "pdf") {
+		t.Fatalf("textutil should not claim md->pdf support")
+	}
+	if !engineSupportsConversion(documentEngineTextutil, "md", "text") {
+		t.Fatalf("textutil should allow md->text alias")
+	}
+	if !engineSupportsConversion(documentEngineTextutil, "text", "rtf") {
+		t.Fatalf("textutil should allow .text source alias")
+	}
+}
+
 func TestConvertDocumentFallsBackToLowerPriorityEngine(t *testing.T) {
 	svc := setupConvertTestService(t)
 	tmpDir := t.TempDir()
@@ -259,6 +271,60 @@ func TestConvertDocumentFallsBackToHelperPDFWhenNoEngineSupportsSource(t *testin
 	}
 	if !strings.HasSuffix(outputs[0].Name, ".pdf") {
 		t.Fatalf("output name = %q, want .pdf suffix", outputs[0].Name)
+	}
+}
+
+func TestConvertDocumentMarkdownToPDFFallsBackWithoutCallingTextutil(t *testing.T) {
+	svc := setupConvertTestService(t)
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.md")
+	if err := os.WriteFile(sourcePath, []byte("# hello\n\nfrom helper fallback"), 0o640); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	markerPath := filepath.Join(tmpDir, "textutil-called")
+	textutilPath := filepath.Join(tmpDir, "textutil")
+	textutilScript := "#!/bin/sh\nprintf called > \"" + markerPath + "\"\nexit 42\n"
+	if err := os.WriteFile(textutilPath, []byte(textutilScript), 0o755); err != nil {
+		t.Fatalf("write textutil script: %v", err)
+	}
+
+	helperPath := filepath.Join(tmpDir, "blue-convert-helper")
+	helperScript := "#!/bin/sh\nreq=\"$1\"\noutdir=$(sed -n 's/.*\"output_dir\":\"\\([^\"]*\\)\".*/\\1/p' \"$req\" | head -n 1)\nif [ -z \"$outdir\" ]; then\n  echo '{\"error\":\"missing output_dir\"}'\n  exit 1\nfi\nmkdir -p \"$outdir\"\nout=\"$outdir/source.pdf\"\nprintf 'pdf' > \"$out\"\nprintf '{\"outputs\":[{\"path\":\"%s\",\"name\":\"source.pdf\",\"preview_kind\":\"pdf\"}]}\n' \"$out\"\n"
+	if err := os.WriteFile(helperPath, []byte(helperScript), 0o755); err != nil {
+		t.Fatalf("write helper script: %v", err)
+	}
+	t.Setenv("BLUE_CONVERT_HELPER", helperPath)
+
+	svc.locator = commandLocator{
+		lookPath: func(name string) (string, error) {
+			if name == documentEngineTextutil {
+				return textutilPath, nil
+			}
+			return "", exec.ErrNotFound
+		},
+		stat: func(path string) (fs.FileInfo, error) {
+			return nil, os.ErrNotExist
+		},
+		runVersion: func(ctx context.Context, name string, args ...string) (string, error) {
+			return "", nil
+		},
+	}
+
+	task := &ConvertTask{ID: "task-helper-textutil-skip"}
+	source := ResolvedSource{Name: filepath.Base(sourcePath), Path: sourcePath, Category: "document"}
+	outputs, message, err := svc.convertDocument(context.Background(), task, source, "pdf")
+	if err != nil {
+		t.Fatalf("convertDocument failed: %v", err)
+	}
+	if message != "Document rendered to PDF" {
+		t.Fatalf("message = %q, want %q", message, "Document rendered to PDF")
+	}
+	if len(outputs) != 1 {
+		t.Fatalf("outputs = %d, want 1", len(outputs))
+	}
+	if _, err := os.Stat(markerPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected textutil to be skipped, stat err = %v", err)
 	}
 }
 

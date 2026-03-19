@@ -190,6 +190,108 @@ function normalizeResultCardKey(input: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
+type ResultCardTextParams = Record<string, string | number>
+
+type ResultCardPattern = {
+  key: string
+  regex: RegExp
+  params?: (match: RegExpMatchArray) => ResultCardTextParams
+}
+
+const RESULT_CARD_MESSAGE_PATTERNS: ResultCardPattern[] = [
+  {
+    key: 'found_results',
+    regex: /^Found (\d+) results$/,
+    params: (match) => ({ count: Number(match[1] || 0) }),
+  },
+  {
+    key: 'reminder_count',
+    regex: /^(\d+) reminders$/,
+    params: (match) => ({ count: Number(match[1] || 0) }),
+  },
+  {
+    key: 'cleared_reminders',
+    regex: /^Cleared (\d+) reminders$/,
+    params: (match) => ({ count: Number(match[1] || 0) }),
+  },
+  {
+    key: 'showing_first_entries_in_path',
+    regex: /^Showing first (\d+) entries in (.+) \(more omitted\)$/,
+    params: (match) => ({ count: Number(match[1] || 0), path: match[2] || '' }),
+  },
+  {
+    key: 'single_entry_in_path',
+    regex: /^1 entry in (.+)$/,
+    params: (match) => ({ path: match[1] || '' }),
+  },
+  {
+    key: 'no_entries_in_path',
+    regex: /^No entries in (.+)$/,
+    params: (match) => ({ path: match[1] || '' }),
+  },
+  {
+    key: 'entries_in_path',
+    regex: /^(\d+) entries in (.+)$/,
+    params: (match) => ({ count: Number(match[1] || 0), path: match[2] || '' }),
+  },
+  {
+    key: 'screenshot_captured_for',
+    regex: /^Screenshot captured for (.+)$/,
+    params: (match) => ({ target: match[1] || '' }),
+  },
+]
+
+const RESULT_CARD_WARNING_PATTERNS: ResultCardPattern[] = [
+  {
+    key: 'listing_truncated',
+    regex: /^Listing was truncated; narrow the path or increase max_entries\.$/,
+  },
+]
+
+function translateResultCardPattern(
+  scope: string,
+  raw: string,
+  patterns: ResultCardPattern[]
+): string {
+  for (const pattern of patterns) {
+    const match = raw.match(pattern.regex)
+    if (!match) continue
+    const key = `${scope}.${pattern.key}`
+    if (!te(key)) return raw
+    const params = pattern.params ? pattern.params(match) : null
+    return params ? t(key, params) : t(key)
+  }
+  return raw
+}
+
+function translateResultCardMessage(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+
+  const directKey = `resultCard.messages.${normalizeResultCardKey(trimmed)}`
+  if (te(directKey)) return t(directKey)
+
+  return translateResultCardPattern(
+    'resultCard.messageTemplates',
+    trimmed,
+    RESULT_CARD_MESSAGE_PATTERNS
+  )
+}
+
+function translateResultCardWarning(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+
+  const directKey = `resultCard.warnings.${normalizeResultCardKey(trimmed)}`
+  if (te(directKey)) return t(directKey)
+
+  return translateResultCardPattern(
+    'resultCard.warnings',
+    trimmed,
+    RESULT_CARD_WARNING_PATTERNS
+  )
+}
+
 function isLikelyLocalFilesystemPath(raw: string): boolean {
   const trimmed = raw.trim()
   if (!trimmed || !isLocalAbsolutePath(trimmed) || isApiPath(trimmed) || isHttpUrl(trimmed)) {
@@ -414,15 +516,11 @@ const translatedMessage = computed(() => {
       if (re.test(msg)) return t(key, msg)
     }
   }
-  const normalizedMessage = msg
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-  const key = 'resultCard.messages.' + normalizedMessage
-  return te(key) ? t(key) : msg
+  return translateResultCardMessage(msg)
 })
 
 const warningText = computed(() => (props.card.warning || '').trim())
+const translatedWarningText = computed(() => translateResultCardWarning(warningText.value))
 const warningCodeLabel = computed(() => formatToolWarningCodeLabel(props.card.warning_code, t))
 const resolvedImageItems = computed<ResolvedImageItem[]>(() => {
   const items: ResolvedImageItem[] = []
@@ -596,10 +694,10 @@ const visibleDetails = computed(() => {
           <span>{{ warningCodeLabel || t('toolWarnings.warning', 'Warning') }}</span>
         </div>
         <p
-          v-if="warningText"
+          v-if="translatedWarningText"
           class="mt-1 text-sm leading-relaxed text-amber-900 dark:text-amber-100"
         >
-          {{ warningText }}
+          {{ translatedWarningText }}
         </p>
       </div>
 

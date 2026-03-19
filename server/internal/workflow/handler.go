@@ -16,8 +16,9 @@ type Handler struct {
 	service *WorkflowService
 
 	// Lazy init support
-	once   sync.Once
-	initFn func() *WorkflowService
+	once            sync.Once
+	initFn          func() *WorkflowService
+	serviceInitHook func(*WorkflowService)
 
 	routeMiddlewares []echo.MiddlewareFunc
 }
@@ -37,6 +38,9 @@ func (h *Handler) svc() *WorkflowService {
 	h.once.Do(func() {
 		if h.service == nil && h.initFn != nil {
 			h.service = h.initFn()
+			if h.service != nil && h.serviceInitHook != nil {
+				h.serviceInitHook(h.service)
+			}
 		}
 	})
 	return h.service
@@ -45,6 +49,28 @@ func (h *Handler) svc() *WorkflowService {
 // GetService returns the workflow service, triggering lazy init if needed.
 func (h *Handler) GetService() *WorkflowService {
 	return h.svc()
+}
+
+// SetServiceInitHook configures a callback that runs once the lazy service is created.
+func (h *Handler) SetServiceInitHook(fn func(*WorkflowService)) {
+	if h == nil {
+		return
+	}
+	if fn == nil {
+		return
+	}
+	if h.serviceInitHook == nil {
+		h.serviceInitHook = fn
+	} else {
+		prev := h.serviceInitHook
+		h.serviceInitHook = func(svc *WorkflowService) {
+			prev(svc)
+			fn(svc)
+		}
+	}
+	if h.service != nil {
+		fn(h.service)
+	}
 }
 
 // SetRouteMiddlewares applies security middleware to workflow management routes.
@@ -105,6 +131,7 @@ func (h *Handler) registerWorkflowRoutes(g *echo.Group) {
 	g.GET("/:id/executions/:executionId", h.GetExecution)
 	g.POST("/:id/executions/:executionId/cancel", h.CancelExecution)
 	g.POST("/:id/executions/:executionId/retry", h.RetryExecution)
+	g.POST("/:id/executions/:executionId/resume", h.ResumeExecution)
 	g.GET("/:id/executions/:executionId/logs", h.GetExecutionLogs)
 
 	// Import/Export
@@ -183,6 +210,12 @@ type UpdateWorkflowRequest struct {
 	Variables   map[string]string `json:"variables,omitempty"`
 	Settings    *WorkflowSettings `json:"settings,omitempty"`
 	Tags        []string          `json:"tags,omitempty"`
+}
+
+// ResumeExecutionRequest represents a resume execution request.
+type ResumeExecutionRequest struct {
+	Decision string                 `json:"decision,omitempty"`
+	Payload  map[string]interface{} `json:"payload,omitempty"`
 }
 
 // UpdateWorkflow updates an existing workflow.
@@ -447,6 +480,29 @@ func (h *Handler) RetryExecution(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusAccepted, execution)
+}
+
+// ResumeExecution resumes a paused execution from its current checkpoint.
+func (h *Handler) ResumeExecution(c echo.Context) error {
+	executionID := c.Param("executionId")
+
+	var req ResumeExecutionRequest
+	if err := c.Bind(&req); err != nil && err != io.EOF {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	execution, err := h.svc().ResumeExecution(requestContext(c), executionID, ExecutionResumeInput{
+		Decision: req.Decision,
+		Payload:  req.Payload,
+	})
+	if err != nil {
+		if err == ErrExecutionNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "execution not found"})
+		}
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, execution)
 }
 
 // GetExecutionLogs retrieves logs for an execution.

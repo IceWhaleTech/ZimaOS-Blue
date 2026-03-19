@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ChatInput from '@/components/ChatInput.vue'
 import { i18n } from '@/i18n'
+import { useSettingsStore } from '@/stores/settings'
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -167,5 +168,34 @@ describe('ChatInput cancel affordance', () => {
       false
     )
     expect(wrapper.find('.desktop-textarea-actions .chat-send-btn').exists()).toBe(true)
+  })
+
+  it('toggles Ralph Loop auto-confirm on context menu', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const settingsStore = useSettingsStore()
+    const setAgentAutoConfirm = vi
+      .spyOn(settingsStore, 'setAgentAutoConfirm')
+      .mockResolvedValue(undefined)
+
+    const wrapper = mount(ChatInput, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+        stubs: {
+          ImagePreview: true,
+          ModelDownloadPrompt: true,
+        },
+      },
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const taskLoopButton = wrapper.find('button.mode-chip-loop')
+    expect(taskLoopButton.exists()).toBe(true)
+
+    await taskLoopButton.trigger('contextmenu')
+
+    expect(setAgentAutoConfirm).toHaveBeenCalledWith(true)
   })
 })

@@ -92,7 +92,7 @@ describe('todo checklist rendering helpers', () => {
     })
   })
 
-  it('uses the canonical checklist message as the focus target for duplicate echoes', () => {
+  it('keeps active summary pinned to the canonical checklist for duplicate echoes', () => {
     const canonical = assistantMessage('msg-a1', '- [ ] 收集信息\n- [ ] 写总结', {
       todo_card_id: 'todo-checklist-msg-a1',
     })
@@ -108,16 +108,16 @@ describe('todo checklist rendering helpers', () => {
     ]
 
     expect(findLatestTodoChecklistSummary(messages)).toEqual({
-      messageId: 'msg-a3',
+      messageId: 'msg-a1',
       focusMessageId: 'msg-a1',
-      todoCardId: undefined,
+      todoCardId: 'todo-checklist-msg-a1',
       items: [
-        { checked: true, text: '收集信息' },
+        { checked: false, text: '收集信息' },
         { checked: false, text: '写总结' },
       ],
       totalCount: 2,
-      completedCount: 1,
-      pendingCount: 1,
+      completedCount: 0,
+      pendingCount: 2,
       allCompleted: false,
     })
   })

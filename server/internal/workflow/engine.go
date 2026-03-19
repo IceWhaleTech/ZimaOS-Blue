@@ -9,21 +9,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 // Engine executes workflows.
 type Engine struct {
-	config     *Config
-	executions map[string]*executionState
-	mu         sync.RWMutex
-	handlers   map[ActionType]ActionHandler
-	triggers   map[string]*triggerState
-	triggerMu  sync.RWMutex
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	config            *Config
+	executions        map[string]*executionState
+	mu                sync.RWMutex
+	handlers          map[ActionType]ActionHandler
+	triggers          map[string]*triggerState
+	triggerMu         sync.RWMutex
+	ctx               context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
+	toolGateway       ToolRuntime
+	checkpointEnabled func() bool
+	executionObserver func(*Execution)
 }
 
 // executionState tracks the state of a running execution.
@@ -33,6 +36,7 @@ type executionState struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	nodeQueue chan string
+	resumeCh  chan ExecutionResumeInput
 	completed map[string]bool
 	mu        sync.Mutex
 }
@@ -75,11 +79,29 @@ func (e *Engine) registerDefaultHandlers() {
 	e.handlers[ActionTypeHTTP] = e.handleHTTPAction
 	e.handlers[ActionTypeSetVariable] = e.handleSetVariableAction
 	e.handlers[ActionTypeJavaScript] = e.handleJavaScriptAction
+	e.handlers[ActionTypeBrowser] = e.handleBrowserAction
+	e.handlers[ActionTypeFileOps] = e.handleFileAction
+	e.handlers[ActionTypeSkill] = e.handleSkillAction
 }
 
 // RegisterHandler registers a custom action handler.
 func (e *Engine) RegisterHandler(actionType ActionType, handler ActionHandler) {
 	e.handlers[actionType] = handler
+}
+
+// SetToolGateway wires the shared tool runtime into workflow action handlers.
+func (e *Engine) SetToolGateway(gateway ToolRuntime) {
+	e.toolGateway = gateway
+}
+
+// SetExecutionObserver wires a callback for execution state transitions.
+func (e *Engine) SetExecutionObserver(observer func(*Execution)) {
+	e.executionObserver = observer
+}
+
+// SetCheckpointEnabledFunc wires a runtime gate for checkpoint/pause semantics.
+func (e *Engine) SetCheckpointEnabledFunc(enabled func() bool) {
+	e.checkpointEnabled = enabled
 }
 
 // Execute starts a workflow execution.
@@ -145,6 +167,7 @@ func (e *Engine) Execute(ctx context.Context, workflow *Workflow, triggerType Tr
 		ctx:       execCtx,
 		cancel:    execCancel,
 		nodeQueue: make(chan string, len(workflow.Nodes)),
+		resumeCh:  make(chan ExecutionResumeInput, 1),
 		completed: make(map[string]bool),
 	}
 
@@ -166,6 +189,8 @@ func (e *Engine) Execute(ctx context.Context, workflow *Workflow, triggerType Tr
 // runExecution runs the workflow execution.
 func (e *Engine) runExecution(state *executionState) {
 	state.execution.Status = ExecutionStatusRunning
+	state.execution.StatusReason = ""
+	e.notifyExecutionUpdate(state.execution)
 
 	// Find trigger nodes (entry points)
 	triggerNodes := e.findTriggerNodes(state.workflow)
@@ -230,6 +255,27 @@ func (e *Engine) runExecution(state *executionState) {
 			state.completed[nodeID] = true
 			state.mu.Unlock()
 
+			if result.Status != NodeStatusFailed {
+				if checkpoint := e.buildExecutionCheckpoint(node, result); checkpoint != nil {
+					if err := e.pauseForCheckpoint(state, checkpoint, result); err != nil {
+						if state.ctx.Err() == context.DeadlineExceeded {
+							state.execution.Status = ExecutionStatusFailed
+							state.execution.StatusReason = "checkpoint_timeout"
+							state.execution.Error = "execution timed out while waiting for checkpoint resume"
+						} else if state.ctx.Err() != nil {
+							state.execution.Status = ExecutionStatusCancelled
+							state.execution.StatusReason = "checkpoint_cancelled"
+						} else {
+							state.execution.Status = ExecutionStatusFailed
+							state.execution.StatusReason = "checkpoint_resume_failed"
+							state.execution.Error = err.Error()
+						}
+						e.completeExecution(state)
+						return
+					}
+				}
+			}
+
 			// Handle node result
 			if result.Status == NodeStatusFailed {
 				continueOnError := false
@@ -239,6 +285,7 @@ func (e *Engine) runExecution(state *executionState) {
 
 				if !continueOnError {
 					state.execution.Status = ExecutionStatusFailed
+					state.execution.StatusReason = "node_failed"
 					state.execution.Error = fmt.Sprintf("node %s failed: %s", node.Name, result.Error)
 					e.completeExecution(state)
 					return
@@ -251,6 +298,7 @@ func (e *Engine) runExecution(state *executionState) {
 			// Check if all nodes completed
 			if e.isExecutionComplete(state) {
 				state.execution.Status = ExecutionStatusCompleted
+				state.execution.StatusReason = ""
 				e.completeExecution(state)
 				return
 			}
@@ -377,8 +425,8 @@ func (e *Engine) executeLoopNode(state *executionState, node *Node, input map[st
 		}
 
 		return map[string]interface{}{
-			"items":   results,
-			"count":   len(results),
+			"items": results,
+			"count": len(results),
 		}, nil
 
 	case "count":
@@ -482,6 +530,124 @@ func (e *Engine) handleJavaScriptAction(ctx context.Context, config map[string]i
 		"code":     code,
 		"executed": true,
 	}, nil
+}
+
+func (e *Engine) handleBrowserAction(ctx context.Context, config map[string]interface{}, input map[string]interface{}) (map[string]interface{}, error) {
+	args := workflowToolArgs(config, "type")
+	return e.executeToolAction(ctx, "browser", args)
+}
+
+func (e *Engine) handleFileAction(ctx context.Context, config map[string]interface{}, input map[string]interface{}) (map[string]interface{}, error) {
+	operation, _ := config["operation"].(string)
+	switch strings.ToLower(strings.TrimSpace(operation)) {
+	case "read":
+		return e.executeToolAction(ctx, "read", map[string]interface{}{
+			"path": nonEmptyString(config["source_path"], config["path"]),
+		})
+	case "write":
+		return e.executeToolAction(ctx, "write", map[string]interface{}{
+			"path":        nonEmptyString(config["dest_path"], config["source_path"], config["path"]),
+			"content":     config["content"],
+			"create_dirs": config["create_dirs"],
+		})
+	case "list", "ls":
+		return e.executeToolAction(ctx, "ls", map[string]interface{}{
+			"path": nonEmptyString(config["source_path"], config["path"]),
+		})
+	case "find":
+		return e.executeToolAction(ctx, "find", map[string]interface{}{
+			"path": nonEmptyString(config["source_path"], config["path"]),
+			"glob": config["pattern"],
+		})
+	case "grep":
+		return e.executeToolAction(ctx, "grep", map[string]interface{}{
+			"path":  nonEmptyString(config["source_path"], config["path"]),
+			"regex": config["pattern"],
+		})
+	default:
+		return nil, fmt.Errorf("unsupported file operation: %s", operation)
+	}
+}
+
+func (e *Engine) handleSkillAction(ctx context.Context, config map[string]interface{}, input map[string]interface{}) (map[string]interface{}, error) {
+	skillID, _ := config["skill_id"].(string)
+	if strings.TrimSpace(skillID) == "" {
+		return nil, fmt.Errorf("skill_id is required")
+	}
+	args, _ := config["parameters"].(map[string]interface{})
+	if len(args) == 0 {
+		args = workflowToolArgs(config, "type", "skill_id")
+	}
+	return e.executeToolAction(ctx, skillID, args)
+}
+
+func (e *Engine) executeToolAction(ctx context.Context, toolName string, args map[string]interface{}) (map[string]interface{}, error) {
+	if e == nil || e.toolGateway == nil {
+		return nil, fmt.Errorf("workflow tool gateway is not configured")
+	}
+	result, err := e.toolGateway.Execute(ctx, ToolExecutionRequest{
+		ToolName:  strings.TrimSpace(toolName),
+		Arguments: workflowToolArgs(args),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return workflowToolOutputMap(result)
+}
+
+func workflowToolOutputMap(result *ToolExecutionResult) (map[string]interface{}, error) {
+	if result == nil {
+		return map[string]interface{}{}, nil
+	}
+	switch typed := result.ExecutionResult.(type) {
+	case nil:
+		return map[string]interface{}{}, nil
+	case map[string]interface{}:
+		return typed, nil
+	case string:
+		var decoded map[string]interface{}
+		if err := json.Unmarshal([]byte(typed), &decoded); err == nil {
+			return decoded, nil
+		}
+		return map[string]interface{}{"result": typed}, nil
+	default:
+		data, err := json.Marshal(typed)
+		if err != nil {
+			return map[string]interface{}{"result": err.Error()}, nil
+		}
+		var decoded map[string]interface{}
+		if err := json.Unmarshal(data, &decoded); err == nil {
+			return decoded, nil
+		}
+		return map[string]interface{}{"result": string(data)}, nil
+	}
+}
+
+func workflowToolArgs(config map[string]interface{}, excludeKeys ...string) map[string]interface{} {
+	if len(config) == 0 {
+		return nil
+	}
+	excluded := make(map[string]struct{}, len(excludeKeys))
+	for _, key := range excludeKeys {
+		excluded[key] = struct{}{}
+	}
+	out := make(map[string]interface{}, len(config))
+	for key, value := range config {
+		if _, skip := excluded[key]; skip {
+			continue
+		}
+		out[key] = value
+	}
+	return out
+}
+
+func nonEmptyString(values ...interface{}) string {
+	for _, value := range values {
+		if s, ok := value.(string); ok && strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s)
+		}
+	}
+	return ""
 }
 
 // findTriggerNodes finds all trigger nodes in a workflow.
@@ -602,6 +768,7 @@ func (e *Engine) completeExecution(state *executionState) {
 	now := timeutil.NowTime()
 	state.execution.CompletedAt = &now
 	state.execution.Duration = now.Sub(state.execution.StartedAt).Milliseconds()
+	e.notifyExecutionUpdate(state.execution)
 
 	close(state.nodeQueue)
 }
@@ -780,14 +947,41 @@ func (e *Engine) CancelExecution(id string) error {
 		return ErrExecutionNotFound
 	}
 
-	if state.execution.Status != ExecutionStatusRunning {
+	if state.execution.Status != ExecutionStatusRunning && state.execution.Status != ExecutionStatusPaused {
 		return nil
 	}
 
 	state.cancel()
 	state.execution.Status = ExecutionStatusCancelled
+	state.execution.StatusReason = "cancelled"
+	e.notifyExecutionUpdate(state.execution)
 
 	return nil
+}
+
+// ResumeExecution resumes a paused execution with a decision payload.
+func (e *Engine) ResumeExecution(id string, resume ExecutionResumeInput) (*Execution, error) {
+	e.mu.RLock()
+	state, ok := e.executions[id]
+	e.mu.RUnlock()
+	if !ok {
+		return nil, ErrExecutionNotFound
+	}
+	if state.execution.Status != ExecutionStatusPaused {
+		return nil, fmt.Errorf("execution is not paused")
+	}
+	if state.execution.Checkpoint == nil {
+		return nil, fmt.Errorf("execution has no checkpoint to resume")
+	}
+	select {
+	case state.resumeCh <- cloneExecutionResumeInput(resume):
+	default:
+		return nil, fmt.Errorf("execution resume is already pending")
+	}
+	state.execution.Status = ExecutionStatusRunning
+	state.execution.StatusReason = string(ExecutionCheckpointResumeWithDecision)
+	e.notifyExecutionUpdate(state.execution)
+	return cloneExecution(state.execution), nil
 }
 
 // ListExecutions returns all executions.
@@ -823,6 +1017,203 @@ func (e *Engine) Close() error {
 
 	e.wg.Wait()
 	return nil
+}
+
+func (e *Engine) notifyExecutionUpdate(execution *Execution) {
+	if e == nil || e.executionObserver == nil || execution == nil {
+		return
+	}
+	e.executionObserver(cloneExecution(execution))
+}
+
+func (e *Engine) buildExecutionCheckpoint(node *Node, result *NodeResult) *ExecutionCheckpoint {
+	if node == nil || result == nil {
+		return nil
+	}
+	if e != nil && e.checkpointEnabled != nil && !e.checkpointEnabled() {
+		return nil
+	}
+	rawCheckpoint, ok := node.Config["checkpoint"].(map[string]interface{})
+	if !ok {
+		kind, _ := node.Config["checkpoint_kind"].(string)
+		if strings.TrimSpace(kind) == "" {
+			return nil
+		}
+		rawCheckpoint = map[string]interface{}{
+			"kind":    kind,
+			"reason":  node.Config["checkpoint_reason"],
+			"payload": node.Config["checkpoint_payload"],
+		}
+	}
+
+	kind := normalizeExecutionCheckpointKind(valueAsString(rawCheckpoint["kind"]))
+	if kind == "" {
+		return nil
+	}
+
+	checkpoint := &ExecutionCheckpoint{
+		ID:        uuid.New().String(),
+		Kind:      kind,
+		NodeID:    node.ID,
+		NodeName:  node.Name,
+		Reason:    firstNonEmptyString(valueAsString(rawCheckpoint["reason"]), string(kind)),
+		CreatedAt: timeutil.NowTime(),
+		Payload:   cloneMap(rawCheckpoint["payload"]),
+	}
+	if checkpoint.Payload == nil {
+		checkpoint.Payload = make(map[string]interface{})
+	}
+	if len(result.Output) > 0 {
+		checkpoint.Payload["node_output"] = cloneMap(result.Output)
+	}
+	return checkpoint
+}
+
+func (e *Engine) pauseForCheckpoint(state *executionState, checkpoint *ExecutionCheckpoint, result *NodeResult) error {
+	if state == nil || checkpoint == nil {
+		return nil
+	}
+	state.execution.Status = ExecutionStatusPaused
+	state.execution.StatusReason = firstNonEmptyString(checkpoint.Reason, string(checkpoint.Kind))
+	state.execution.Checkpoint = checkpoint
+	e.notifyExecutionUpdate(state.execution)
+
+	var resume ExecutionResumeInput
+	select {
+	case resume = <-state.resumeCh:
+	case <-state.ctx.Done():
+		return state.ctx.Err()
+	}
+
+	now := timeutil.NowTime()
+	checkpoint.ResumedAt = &now
+	checkpoint.Resume = &ExecutionResumeInput{
+		Decision: strings.TrimSpace(resume.Decision),
+		Payload:  cloneMap(resume.Payload),
+	}
+	state.execution.Status = ExecutionStatusRunning
+	state.execution.StatusReason = string(ExecutionCheckpointResumeWithDecision)
+	if state.execution.Variables == nil {
+		state.execution.Variables = make(map[string]interface{})
+	}
+	state.execution.Variables["checkpoint"] = executionCheckpointToMap(checkpoint)
+	state.execution.Variables["checkpoint_decision"] = strings.TrimSpace(resume.Decision)
+	if checkpoint.Resume != nil && len(checkpoint.Resume.Payload) > 0 {
+		state.execution.Variables["checkpoint_payload"] = cloneMap(checkpoint.Resume.Payload)
+	}
+	if result != nil {
+		if result.Output == nil {
+			result.Output = make(map[string]interface{})
+		}
+		result.Output["checkpoint"] = executionCheckpointToMap(checkpoint)
+	}
+	e.notifyExecutionUpdate(state.execution)
+	return nil
+}
+
+func executionCheckpointToMap(checkpoint *ExecutionCheckpoint) map[string]interface{} {
+	if checkpoint == nil {
+		return nil
+	}
+	out := map[string]interface{}{
+		"id":         checkpoint.ID,
+		"kind":       checkpoint.Kind,
+		"node_id":    checkpoint.NodeID,
+		"node_name":  checkpoint.NodeName,
+		"reason":     checkpoint.Reason,
+		"created_at": checkpoint.CreatedAt,
+	}
+	if checkpoint.Payload != nil {
+		out["payload"] = cloneMap(checkpoint.Payload)
+	}
+	if checkpoint.ResumedAt != nil {
+		out["resumed_at"] = *checkpoint.ResumedAt
+	}
+	if checkpoint.Resume != nil {
+		out["resume"] = map[string]interface{}{
+			"decision": checkpoint.Resume.Decision,
+			"payload":  cloneMap(checkpoint.Resume.Payload),
+		}
+	}
+	return out
+}
+
+func normalizeExecutionCheckpointKind(raw string) ExecutionCheckpointKind {
+	switch strings.TrimSpace(raw) {
+	case string(ExecutionCheckpointPauseForApproval):
+		return ExecutionCheckpointPauseForApproval
+	case string(ExecutionCheckpointResumeWithDecision):
+		return ExecutionCheckpointResumeWithDecision
+	case string(ExecutionCheckpointAwaitToolResult):
+		return ExecutionCheckpointAwaitToolResult
+	case string(ExecutionCheckpointJSONTask):
+		return ExecutionCheckpointJSONTask
+	default:
+		return ""
+	}
+}
+
+func cloneExecution(execution *Execution) *Execution {
+	if execution == nil {
+		return nil
+	}
+	data, err := json.Marshal(execution)
+	if err != nil {
+		cloned := *execution
+		return &cloned
+	}
+	var cloned Execution
+	if err := json.Unmarshal(data, &cloned); err != nil {
+		copied := *execution
+		return &copied
+	}
+	return &cloned
+}
+
+func cloneExecutionResumeInput(in ExecutionResumeInput) ExecutionResumeInput {
+	return ExecutionResumeInput{
+		Decision: strings.TrimSpace(in.Decision),
+		Payload:  cloneMap(in.Payload),
+	}
+}
+
+func cloneMap(value interface{}) map[string]interface{} {
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(typed))
+		for key, item := range typed {
+			out[key] = item
+		}
+		return out
+	default:
+		data, err := json.Marshal(typed)
+		if err != nil {
+			return nil
+		}
+		var out map[string]interface{}
+		if err := json.Unmarshal(data, &out); err != nil {
+			return nil
+		}
+		return out
+	}
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func valueAsString(value interface{}) string {
+	if s, ok := value.(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 // ValidateWorkflow validates a workflow definition.

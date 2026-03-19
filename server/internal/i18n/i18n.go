@@ -141,6 +141,18 @@ const (
 	MsgDurationHr  = "duration.hr"  // e.g. "1h" / "1时"
 )
 
+// Message keys for tool-loop abort/recovery prompts.
+const (
+	MsgToolLoopAbortRepeatedOverwrite  = "tool_loop.abort.repeated_overwrite"
+	MsgToolLoopAbortIdenticalRepeat    = "tool_loop.abort.identical_repeat"
+	MsgToolLoopAbortErrorRepeat        = "tool_loop.abort.error_repeat"
+	MsgToolLoopAbortPingPong           = "tool_loop.abort.ping_pong"
+	MsgToolLoopAbortPollingNoProgress  = "tool_loop.abort.polling_no_progress"
+	MsgToolLoopAbortGeneric            = "tool_loop.abort.generic"
+	MsgToolLoopRecoveryRepeatedOverwrite = "tool_loop.recovery.repeated_overwrite"
+	MsgToolLoopRecoveryGeneric         = "tool_loop.recovery.generic"
+)
+
 var (
 	translations = map[Language]map[string]string{
 		LangEnUS: {

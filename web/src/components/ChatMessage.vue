@@ -487,9 +487,7 @@ const processDetailsExpanded = ref(settingsStore.showToolDetails)
 watch(
   () => settingsStore.showToolDetails,
   (show) => {
-    if (show) {
-      processDetailsExpanded.value = true
-    }
+    processDetailsExpanded.value = show
   }
 )
 

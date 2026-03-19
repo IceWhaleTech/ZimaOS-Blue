@@ -316,6 +316,9 @@ func (t *ImageTool) executeReview(ctx context.Context, args map[string]interface
 		return nil, err
 	}
 	if len(inputs) == 0 {
+		inputs = collectContextImageReviewInputs(ctx)
+	}
+	if len(inputs) == 0 {
 		return nil, errors.New("image/base64 or url is required for review")
 	}
 	if len(inputs) == 1 {
@@ -694,6 +697,28 @@ func collectImageReviewInputs(args map[string]interface{}) ([]imageReviewInput, 
 		return nil, fmt.Errorf("too many image inputs: %d exceeds max_images=%d", len(unique), limit)
 	}
 	return unique, nil
+}
+
+func collectContextImageReviewInputs(ctx context.Context) []imageReviewInput {
+	contextInputs := GetImageInputs(ctx)
+	if len(contextInputs) == 0 {
+		return nil
+	}
+	inputs := make([]imageReviewInput, 0, len(contextInputs))
+	seen := make(map[string]struct{}, len(contextInputs))
+	for _, input := range contextInputs {
+		value := strings.TrimSpace(input.Data)
+		if value == "" {
+			continue
+		}
+		key := "inline::" + value
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		inputs = append(inputs, imageReviewInput{Kind: "inline", Value: value})
+	}
+	return inputs
 }
 
 func collectCompatStringValues(value interface{}) ([]string, error) {

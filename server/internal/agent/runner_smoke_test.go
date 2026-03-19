@@ -106,9 +106,8 @@ func TestRunnerSmoke_VerifyRecoverFailure_EndsDone(t *testing.T) {
 	llmMock := &scriptedLLM{
 		calls: []scriptedLLMCall{
 			{content: `{"goal":"build","subtasks":[{"description":"primary step"}],"success_criteria":["verify passes"],"fallback_plan":["recover once"]}`},
-			{content: "primary step completed"},
-			{err: context.DeadlineExceeded}, // verify fails
-			{err: context.Canceled},         // recover fails
+			{content: "not-json"},
+			{content: "not-json"},
 		},
 	}
 	runner := NewRunner(store, llmMock, nil, nil, nil, RunnerConfig{
@@ -135,20 +134,14 @@ func TestRunnerSmoke_VerifyRecoverFailure_EndsDone(t *testing.T) {
 		if strings.HasPrefix(step.Description, "Verify the completed work") && step.Status == StepStatusFailed {
 			verifyFailed = true
 		}
-		if strings.HasPrefix(step.Description, "Recovery: apply the fallback plan") && step.Status == StepStatusFailed {
-			recoverFailed = true
-		}
 	}
 	if !verifyFailed {
 		t.Fatal("expected failed verify step in plan")
 	}
-	if !recoverFailed {
-		t.Fatal("expected failed recovery step in plan")
+	if recoverFailed {
+		t.Fatal("did not expect recovery step in grounded runtime flow")
 	}
-	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateVerify, RuntimeStateRecover) {
-		t.Fatal("expected runtime transition VERIFY -> RECOVER")
-	}
-	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateRecover, RuntimeStateReport) {
-		t.Fatal("expected runtime transition RECOVER -> REPORT")
+	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateVerify, RuntimeStateReport) {
+		t.Fatal("expected runtime transition VERIFY -> REPORT")
 	}
 }

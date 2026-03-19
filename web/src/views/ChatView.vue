@@ -82,9 +82,9 @@ const ACTIVE_TODO_PANEL_COLLAPSED_KEY = 'zima.chat.active_todo_collapsed.v1'
 const hasActiveDeepResearchJobs = computed(() => deepResearchJobs.activeJobs.length > 0)
 const messageAreaPaddingClass = computed(() => {
   if (isMobile.value) {
-    return hasActiveDeepResearchJobs.value ? 'pb-40' : 'pb-6'
+    return hasActiveDeepResearchJobs.value ? 'pb-16' : 'pb-6'
   }
-  return hasActiveDeepResearchJobs.value ? 'pb-16' : 'pb-8'
+  return hasActiveDeepResearchJobs.value ? 'pb-12' : 'pb-8'
 })
 
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -203,12 +203,45 @@ watch(showTalkMode, (open) => {
 
 // Agent task state
 const agentTasks = ref<AgentTask[]>([])
+const ACTIVE_AGENT_TASK_STATUSES = new Set<AgentTask['status']>([
+  'pending',
+  'planning',
+  'executing',
+  'waiting_input',
+])
+
+function isAgentTaskActive(task: Pick<AgentTask, 'status'> | null | undefined): boolean {
+  return !!task && ACTIVE_AGENT_TASK_STATUSES.has(task.status)
+}
 
 const hasCancelableWork = computed(() => {
   if (chatStore.streaming || mediaGen.generating.value) return true
-  return agentTasks.value.some((task) =>
-    ['pending', 'planning', 'executing', 'waiting_input'].includes(task.status)
-  )
+  return agentTasks.value.some((task) => isAgentTaskActive(task))
+})
+
+const executingConversationIds = computed(() => {
+  const ids = new Set<string>()
+
+  const localExecutingIds = Array.isArray(chatStore.executingConversationIds)
+    ? chatStore.executingConversationIds
+    : []
+  for (const id of localExecutingIds) {
+    const normalizedId = String(id || '').trim()
+    if (normalizedId) ids.add(normalizedId)
+  }
+
+  for (const task of agentTasks.value) {
+    if (!isAgentTaskActive(task)) continue
+    const normalizedId = String(task.conversation_id || '').trim()
+    if (normalizedId) ids.add(normalizedId)
+  }
+
+  for (const job of deepResearchJobs.activeJobs) {
+    const normalizedId = String(job.conversation_id || '').trim()
+    if (normalizedId) ids.add(normalizedId)
+  }
+
+  return [...ids]
 })
 
 function hasVisibleTextOutsideCards(content: string): boolean {
@@ -2029,7 +2062,7 @@ onUnmounted(() => {
           <ConversationList
             :conversations="chatStore.sortedConversations"
             :current-id="chatStore.currentConversationId"
-            :executing-conversation-ids="chatStore.executingConversationIds"
+            :executing-conversation-ids="executingConversationIds"
             :loading="chatStore.loading"
             :searching="chatStore.searching"
             :mobile="isMobile"
@@ -3250,6 +3283,7 @@ onUnmounted(() => {
                   ref="virtualScrollRef"
                   :item-count="chatStore.messages.length"
                   :items="chatStore.messages"
+                  :item-key="getMessageRenderKey"
                   :estimated-item-height="120"
                   :overscan="5"
                   :scroll-container="messagesContainer"
@@ -3717,7 +3751,7 @@ onUnmounted(() => {
             <div class="chat-input-dock flex-shrink-0">
               <div
                 v-if="hasActiveDeepResearchJobs"
-                class="max-w-5xl mx-auto px-3 sm:px-4 pt-3 pb-2"
+                class="max-w-5xl mx-auto px-3 sm:px-4 py-1"
               >
                 <DeepResearchTaskDock @view="handleOpenDeepResearchJob" />
               </div>
@@ -4131,14 +4165,12 @@ html[data-blue-macos-glass='true'] .chat-page-title {
   font-size: clamp(0.9rem, 0.88vw, 1.02rem);
 }
 
-@media (min-width: 768px) {
-  html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-page-header {
-    display: none;
-  }
+html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-thread-shell-desktop {
+  padding-top: 0;
 }
 
-html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-thread-shell-desktop {
-  padding-top: 0.08rem;
+html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
+  height: auto;
 }
 
 .chat-thread-header {
@@ -4847,6 +4879,15 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-thread-shell-deskto
 
 .chat-desktop-shell .chat-input-dock {
   padding-bottom: 0;
+}
+
+html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-messages-area {
+  scroll-padding-bottom: 11.35rem;
+}
+
+html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-input-dock {
+  margin-top: 0;
+  padding-bottom: 0.42rem;
 }
 
 .border-glass-border {

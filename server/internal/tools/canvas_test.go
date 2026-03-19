@@ -27,6 +27,31 @@ func TestCanvasToolCreateFromContent(t *testing.T) {
 	}
 }
 
+func TestCanvasToolCreateFromSingleComponentObject(t *testing.T) {
+	tool := NewCanvasTool(a2ui.NewManager(zap.NewNop()))
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"title": "Greeting",
+		"components": map[string]interface{}{
+			"id":   "text1",
+			"type": "text",
+			"props": map[string]interface{}{
+				"text": "Hello world",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	canvas := payload["canvas"].(*a2ui.Canvas)
+	if len(canvas.Components) != 1 {
+		t.Fatalf("components len = %d, want 1", len(canvas.Components))
+	}
+	if canvas.Components[0].ID != "text1" || canvas.Components[0].Type != a2ui.ComponentTypeText {
+		t.Fatalf("unexpected component: %#v", canvas.Components[0])
+	}
+}
+
 func TestCanvasToolListAndGet(t *testing.T) {
 	mgr := a2ui.NewManager(zap.NewNop())
 	if err := mgr.CreateCanvas(&a2ui.Canvas{ID: "canvas_1", Title: "One"}); err != nil {
@@ -143,20 +168,24 @@ func TestCanvasToolExecuteAction(t *testing.T) {
 	}
 }
 
-func TestCanvasToolDefinitionIncludesArrayItems(t *testing.T) {
+func TestCanvasToolDefinitionSupportsSingleOrArrayComponents(t *testing.T) {
 	tool := NewCanvasTool(a2ui.NewManager(zap.NewNop()))
 	props := tool.Definition().Parameters["properties"].(map[string]interface{})
 	components := props["components"].(map[string]interface{})
-	items, ok := components["items"].(map[string]interface{})
+	arraySchema, objectSchema := canvasComponentSchemaBranches(t, components)
+	items, ok := arraySchema["items"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("components.items missing from schema: %#v", components)
+		t.Fatalf("array branch items missing from schema: %#v", arraySchema)
 	}
 	if items["type"] != "object" {
-		t.Fatalf("components.items.type = %#v, want object", items["type"])
+		t.Fatalf("array branch items.type = %#v, want object", items["type"])
+	}
+	if objectSchema["additionalProperties"] != true {
+		t.Fatalf("object branch additionalProperties = %#v, want true", objectSchema["additionalProperties"])
 	}
 }
 
-func TestCanvasToolSchemaCompressionPreservesArrayItems(t *testing.T) {
+func TestCanvasToolSchemaCompressionPreservesFlexibleComponentsSchema(t *testing.T) {
 	router := DefaultToolRouter()
 	router.DynamicExposure = false
 
@@ -168,11 +197,59 @@ func TestCanvasToolSchemaCompressionPreservesArrayItems(t *testing.T) {
 
 	props := routed[0].Parameters["properties"].(map[string]interface{})
 	components := props["components"].(map[string]interface{})
-	items, ok := components["items"].(map[string]interface{})
+	arraySchema, objectSchema := canvasComponentSchemaBranches(t, components)
+	items, ok := arraySchema["items"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("compressed components.items missing from schema: %#v", components)
+		t.Fatalf("compressed array branch items missing from schema: %#v", arraySchema)
 	}
 	if items["type"] != "object" {
-		t.Fatalf("compressed components.items.type = %#v, want object", items["type"])
+		t.Fatalf("compressed array branch items.type = %#v, want object", items["type"])
 	}
+	if objectSchema["additionalProperties"] != true {
+		t.Fatalf("compressed object branch additionalProperties = %#v, want true", objectSchema["additionalProperties"])
+	}
+}
+
+func TestCanvasToolSchemaValidationAllowsSingleComponentObject(t *testing.T) {
+	def := NewCanvasTool(a2ui.NewManager(zap.NewNop())).Definition()
+	err := ValidateToolArguments(def.Parameters, map[string]interface{}{
+		"components": map[string]interface{}{
+			"id":   "text1",
+			"type": "text",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateToolArguments returned error: %v", err)
+	}
+}
+
+func canvasComponentSchemaBranches(t *testing.T, components map[string]interface{}) (map[string]interface{}, map[string]interface{}) {
+	t.Helper()
+
+	rawBranches, ok := components["anyOf"].([]interface{})
+	if !ok {
+		t.Fatalf("components.anyOf missing from schema: %#v", components)
+	}
+
+	var arraySchema map[string]interface{}
+	var objectSchema map[string]interface{}
+	for _, raw := range rawBranches {
+		branch, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		typeName, _ := branch["type"].(string)
+		switch typeName {
+		case "array":
+			arraySchema = branch
+		case "object":
+			objectSchema = branch
+		}
+	}
+
+	if arraySchema == nil || objectSchema == nil {
+		t.Fatalf("components.anyOf missing expected branches: %#v", rawBranches)
+	}
+
+	return arraySchema, objectSchema
 }

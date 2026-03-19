@@ -2508,7 +2508,7 @@ export default {
     modal: {
       ...enUS.skillStore.modal,
       sourceIdPlaceholder: 'moy-istochnik-skilla',
-      skillURLPlaceholder: 'https://example.com/SKILL.md',
+      skillURLPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       typeClawdhub: 'ClawdHub (официальный)',
       url: 'Ссылка URL',
       urlPlaceholder: 'https://primer.ru',

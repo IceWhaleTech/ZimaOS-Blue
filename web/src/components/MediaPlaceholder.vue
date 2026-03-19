@@ -6,12 +6,16 @@ import type { MediaTask } from '@/api/media'
 import { getTask, retryTask } from '@/api/media'
 import { useNotificationStore } from '@/stores/notification'
 import { onSSEEvent, offSSEEvent } from '@/composables/useEventStream'
+import {
+  getLocalizedMediaFallbackLabel,
+  getLocalizedMediaModelName,
+} from '@/utils/mediaModelLocalization'
 
 const props = defineProps<{
   taskId: string
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const router = useRouter()
 const notificationStore = useNotificationStore()
 
@@ -76,6 +80,19 @@ const isVideo = computed(() => {
 })
 
 const fallbackInfo = computed(() => task.value?.fallback_info)
+
+const taskModelLabel = computed(() => {
+  const model = task.value?.model?.trim()
+  if (!model) return ''
+  return getLocalizedMediaModelName({ id: model }, t, te)
+})
+
+const fallbackDisplayName = computed(() => {
+  if (!fallbackInfo.value?.used) return ''
+  return (
+    getLocalizedMediaFallbackLabel(fallbackInfo.value, t, te) ?? fallbackInfo.value.display_name
+  )
+})
 
 // Detect provider/config errors to show setup guidance
 const isProviderError = computed(() => {
@@ -306,9 +323,9 @@ watch(
             >{{ elapsedSeconds.toFixed(1) }}s</span
           >
         </div>
-        <div v-if="task?.model" class="mp-card-model">{{ task.model }}</div>
+        <div v-if="taskModelLabel" class="mp-card-model">{{ taskModelLabel }}</div>
         <div v-if="fallbackInfo?.used" class="mp-fallback">
-          <div class="mp-fallback-title">{{ fallbackInfo.display_name }}</div>
+          <div class="mp-fallback-title">{{ fallbackDisplayName }}</div>
           <div class="mp-fallback-text">{{ fallbackInfo.disclosure }}</div>
         </div>
         <div v-if="elapsedSeconds > 10" class="mp-card-hint">{{ t('media.processingHint') }}</div>
@@ -330,9 +347,12 @@ watch(
     <!-- Succeeded -->
     <div v-else-if="task.status === 'succeeded' && resultUrls.length > 0">
       <div v-if="fallbackInfo?.used" class="mp-fallback mp-fallback--result">
-        <div class="mp-fallback-title">{{ fallbackInfo.display_name }}</div>
+        <div class="mp-fallback-title">{{ fallbackDisplayName }}</div>
         <div class="mp-fallback-text">{{ fallbackInfo.disclosure }}</div>
-        <div v-if="fallbackInfo.space_url || fallbackInfo.source_urls?.length" class="mp-fallback-links">
+        <div
+          v-if="fallbackInfo.space_url || fallbackInfo.source_urls?.length"
+          class="mp-fallback-links"
+        >
           <a
             v-if="fallbackInfo.space_url"
             class="mp-fallback-link"

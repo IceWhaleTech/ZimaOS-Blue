@@ -1,6 +1,7 @@
 package deepresearch
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,6 +16,9 @@ import (
 
 type Handler struct {
 	service *Service
+	creator interface {
+		CreateJob(ctx context.Context, req CreateJobRequest) (*Job, error)
+	}
 }
 
 const (
@@ -23,7 +27,16 @@ const (
 )
 
 func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+	return &Handler{service: service, creator: service}
+}
+
+func (h *Handler) SetJobCreator(creator interface {
+	CreateJob(ctx context.Context, req CreateJobRequest) (*Job, error)
+}) {
+	if h == nil || creator == nil {
+		return
+	}
+	h.creator = creator
 }
 
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
@@ -52,7 +65,11 @@ func (h *Handler) CreateJob(c echo.Context) error {
 	req.UserID = userID
 	req.TenantID = tenantID
 
-	job, err := h.service.CreateJob(c.Request().Context(), req)
+	creator := h.creator
+	if creator == nil {
+		creator = h.service
+	}
+	job, err := creator.CreateJob(c.Request().Context(), req)
 	if err != nil {
 		return mapServiceError(c, err, http.StatusBadRequest)
 	}

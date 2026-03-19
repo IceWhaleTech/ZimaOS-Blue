@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
@@ -107,6 +108,20 @@ func TestShouldAutoContinueForActionPledge(t *testing.T) {
 		}
 	})
 
+	t.Run("continues for english recovery redirect", func(t *testing.T) {
+		current := "I noticed I was repeatedly overwriting the same file without making progress, so I stopped before damaging it further. The next step should be to inspect or validate the existing file, or switch to a different approach."
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for english recovery redirect")
+		}
+	})
+
+	t.Run("continues for chinese recovery redirect", func(t *testing.T) {
+		current := "我先不继续覆盖这个文件了，下一步应该先读取或验证现有脚本，必要时换一种方法。"
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for chinese recovery redirect")
+		}
+	})
+
 	t.Run("continues for spanish action pledge", func(t *testing.T) {
 		current := "Necesito verificarlo en línea. Voy a revisar y te respondo enseguida."
 		if !shouldAutoContinueForActionPledge(current) {
@@ -194,6 +209,24 @@ func TestBuildDeepSearchExecutionHint(t *testing.T) {
 
 	if got := buildDeepSearchExecutionHint("你好"); got != "" {
 		t.Fatalf("expected empty hint for non-research request, got=%q", got)
+	}
+}
+
+func TestBuildLocalizedToolLoopMessages(t *testing.T) {
+	abortZh := buildLocalizedToolLoopAbortMessage(i18n.LangZhCN, tools.ToolLoopReasonErrorRepeat, "")
+	if want := i18n.T(i18n.LangZhCN, i18n.MsgToolLoopAbortErrorRepeat); abortZh != want {
+		t.Fatalf("abort message = %q, want %q", abortZh, want)
+	}
+	if strings.Contains(abortZh, "I kept hitting the same tool error") {
+		t.Fatalf("expected localized abort message, got english text %q", abortZh)
+	}
+
+	recoveryZh := buildLocalizedToolLoopRecoveryNudge(i18n.LangZhCN, tools.ToolLoopReasonIdenticalRepeat, "write:append=false path=/tmp/demo.txt")
+	if want := i18n.T(i18n.LangZhCN, i18n.MsgToolLoopRecoveryRepeatedOverwrite); recoveryZh != want {
+		t.Fatalf("recovery nudge = %q, want %q", recoveryZh, want)
+	}
+	if strings.Contains(recoveryZh, "You are repeatedly overwriting the same file") {
+		t.Fatalf("expected localized recovery nudge, got english text %q", recoveryZh)
 	}
 }
 
@@ -435,6 +468,14 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if !ok || reason != "action_pledge" {
 			t.Fatalf("expected action_pledge auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("non-agent continues on recovery redirect", func(t *testing.T) {
+		current := "I noticed I was repeatedly overwriting the same file without making progress, so I stopped before damaging it further. The next step should be to inspect or validate the existing file, or switch to a different approach."
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if !ok || reason != "action_pledge" {
+			t.Fatalf("expected action_pledge auto-continue for recovery redirect, got ok=%v reason=%q", ok, reason)
 		}
 	})
 
@@ -807,6 +848,47 @@ func TestSyncTrackedTodoAfterToolRound(t *testing.T) {
 		}
 		if got != tracked {
 			t.Fatalf("unexpected checklist mutation without explicit update: %q", got)
+		}
+	})
+}
+
+func TestSyncTrackedTodoAfterToollessChecklist(t *testing.T) {
+	t.Run("bootstraps the initial checklist from a toolless reply", func(t *testing.T) {
+		current := "- [ ] 收集信息\n- [ ] 写总结"
+
+		got, changed := syncTrackedTodoAfterToollessChecklist("", current)
+		if !changed {
+			t.Fatal("expected initial checklist bootstrap to be accepted")
+		}
+		if got != current {
+			t.Fatalf("unexpected bootstrapped checklist: %q", got)
+		}
+	})
+
+	t.Run("ignores intermediate checklist echoes without real completion", func(t *testing.T) {
+		tracked := "- [ ] 收集信息\n- [ ] 写总结"
+		current := "- [x] 收集信息\n- [ ] 写总结\n\n我继续执行第二步。"
+
+		got, changed := syncTrackedTodoAfterToollessChecklist(tracked, current)
+		if changed {
+			t.Fatalf("expected duplicate checklist echo to be ignored, got=%q", got)
+		}
+		if got != tracked {
+			t.Fatalf("unexpected checklist mutation for toolless echo: %q", got)
+		}
+	})
+
+	t.Run("accepts explicit final completion for the same checklist", func(t *testing.T) {
+		tracked := "- [ ] 收集信息\n- [ ] 写总结"
+		current := "任务已完成。最终总结：\n\n- [x] 收集信息\n- [x] 写总结"
+		want := "- [x] 收集信息\n- [x] 写总结"
+
+		got, changed := syncTrackedTodoAfterToollessChecklist(tracked, current)
+		if !changed {
+			t.Fatal("expected completion-style checklist update to be accepted")
+		}
+		if got != want {
+			t.Fatalf("unexpected completed checklist: %q", got)
 		}
 	})
 }
@@ -1321,10 +1403,10 @@ func TestActionPledgeDuplicateDebounce(t *testing.T) {
 	if shouldStopForDuplicateActionPledge("pseudo_tool_call", 10) {
 		t.Fatal("expected duplicate stop gate to ignore pseudo_tool_call")
 	}
-	if shouldStopForDuplicateActionPledge("summary_intro", maxConsecutiveDuplicateActionPledgeAutoContinue) {
+	if shouldStopForDuplicateActionPledge("summary_intro", maxConsecutiveDuplicateSummaryIntroAutoContinue) {
 		t.Fatal("expected first summary_intro duplicate count within threshold")
 	}
-	if !shouldStopForDuplicateActionPledge("summary_intro", maxConsecutiveDuplicateActionPledgeAutoContinue+1) {
+	if !shouldStopForDuplicateActionPledge("summary_intro", maxConsecutiveDuplicateSummaryIntroAutoContinue+1) {
 		t.Fatal("expected summary_intro duplicate count over threshold to stop")
 	}
 }

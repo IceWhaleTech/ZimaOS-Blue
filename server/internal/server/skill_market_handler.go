@@ -192,6 +192,12 @@ func (h *SkillHandler) MarketUninstallSkill(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
+	if resolvedID, ok := h.resolveInstalledSkillID(id); ok {
+		id = resolvedID
+	}
+	if info := h.registry.GetInfo(id); info != nil && info.Builtin {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "cannot uninstall builtin skill"})
+	}
 	if h.market == nil {
 		if err := h.legacyMarketUninstall(id); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -624,6 +630,17 @@ func (h *SkillHandler) legacyMarketInstall(ctx context.Context, id, userID strin
 			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
 			return nil, err
 		}
+		skillContent, err := readInstalledSkillMarkdown(skillDir)
+		if err != nil {
+			_ = os.RemoveAll(skillDir)
+			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+			return nil, err
+		}
+		if _, _, err := h.parseSkillContent(string(skillContent), ghURL, rs.Name, rs.Description); err != nil {
+			_ = os.RemoveAll(skillDir)
+			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+			return nil, err
+		}
 	} else {
 		if err := os.MkdirAll(skillDir, 0o755); err != nil {
 			return nil, err
@@ -641,10 +658,23 @@ func (h *SkillHandler) legacyMarketInstall(ctx context.Context, id, userID strin
 		}
 	}
 
-	manifest := h.createManifestFromRemoteSkill(rs)
-	_ = h.registry.Register(NewRemoteSkillAdapter(manifest), false)
-	if h.localScanner != nil {
-		_ = h.localScanner.Scan()
+	skillContent, err := readInstalledSkillMarkdown(skillDir)
+	if err != nil {
+		_ = os.RemoveAll(skillDir)
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+	_, manifest, err := h.parseSkillContent(string(skillContent), firstString(ghURL, rs.DownloadURL), rs.Name, rs.Description)
+	if err != nil {
+		_ = os.RemoveAll(skillDir)
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+	manifest.ID = id
+	if err := h.registerInstalledSkill(manifest); err != nil {
+		_ = os.RemoveAll(skillDir)
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
 	}
 	h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
 

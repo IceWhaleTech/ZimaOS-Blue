@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -700,6 +701,88 @@ func TestExecAllowedDirsEmpty(t *testing.T) {
 	json.Unmarshal([]byte(result.(string)), &res)
 	if res.Status != "completed" {
 		t.Errorf("expected completed, got %s", res.Status)
+	}
+}
+
+func TestExecHonorsExecPathGuardForWorkdir(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 10 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	workdir := t.TempDir()
+	guard := &stubExecPathGuard{workdirErr: errors.New("exec denied: guarded workdir")}
+	ctx := WithExecPathGuard(context.Background(), guard)
+
+	_, err := tool.Execute(ctx, map[string]interface{}{
+		"command": "echo ok",
+		"workdir": workdir,
+	})
+	if err == nil || !strings.Contains(err.Error(), "guarded workdir") {
+		t.Fatalf("expected guarded workdir error, got %v", err)
+	}
+	if guard.lastWorkdir == "" {
+		t.Fatal("expected exec path guard to observe workdir")
+	}
+}
+
+func TestExecHonorsExecPathGuardForCommandPaths(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 10 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	workdir := t.TempDir()
+	guard := &stubExecPathGuard{pathErr: errors.New("exec denied: protected path")}
+	ctx := WithExecPathGuard(context.Background(), guard)
+
+	_, err := tool.Execute(ctx, map[string]interface{}{
+		"command": "cat /tmp/protected.txt",
+		"workdir": workdir,
+	})
+	if err == nil || !strings.Contains(err.Error(), "protected path") {
+		t.Fatalf("expected protected path error, got %v", err)
+	}
+	if guard.lastPath != "/tmp/protected.txt" {
+		t.Fatalf("lastPath = %q, want %q", guard.lastPath, "/tmp/protected.txt")
+	}
+}
+
+func TestExecHonorsExecPathGuardForRelativeCommandPaths(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 10 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	workdir := filepath.Join(t.TempDir(), "workspace", "sub")
+	if err := os.MkdirAll(workdir, 0o755); err != nil {
+		t.Fatalf("mkdir workdir: %v", err)
+	}
+	guard := &stubExecPathGuard{pathErr: errors.New("exec denied: protected relative path")}
+	ctx := WithExecPathGuard(context.Background(), guard)
+
+	_, err := tool.Execute(ctx, map[string]interface{}{
+		"command": "cat ../protected.txt",
+		"workdir": workdir,
+	})
+	if err == nil || !strings.Contains(err.Error(), "protected relative path") {
+		t.Fatalf("expected protected relative path error, got %v", err)
+	}
+	want := filepath.Join(filepath.Dir(workdir), "protected.txt")
+	if guard.lastPath != want {
+		t.Fatalf("lastPath = %q, want %q", guard.lastPath, want)
 	}
 }
 
@@ -1570,6 +1653,41 @@ func TestExtractAbsolutePaths(t *testing.T) {
 	}
 }
 
+func TestExtractCommandPaths(t *testing.T) {
+	workdir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(filepath.Join(workdir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	parentDir := filepath.Dir(workdir)
+
+	tests := []struct {
+		name    string
+		command string
+		want    []string
+	}{
+		{name: "absolute", command: "cat /etc/passwd", want: []string{"/etc/passwd"}},
+		{name: "relative", command: "cat ./sub/file.txt", want: []string{filepath.Join(workdir, "sub", "file.txt")}},
+		{name: "parent traversal", command: "cat ../secret.txt", want: []string{filepath.Join(parentDir, "secret.txt")}},
+		{name: "cd chain", command: "cd sub && cat ../allowed.txt", want: []string{filepath.Join(workdir, "sub"), filepath.Join(workdir, "allowed.txt")}},
+		{name: "redirect", command: "echo ok > ../out.txt", want: []string{filepath.Join(parentDir, "out.txt")}},
+		{name: "option assignment", command: "tool --output=./report.txt", want: []string{filepath.Join(workdir, "report.txt")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractCommandPaths(tt.command, workdir)
+			if len(got) != len(tt.want) {
+				t.Fatalf("extractCommandPaths(%q) = %v, want %v", tt.command, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("extractCommandPaths(%q)[%d] = %q, want %q", tt.command, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestValidateCommandPathsBlocks(t *testing.T) {
 	allowedDir := t.TempDir()
 	sessions := NewSessionRegistry()
@@ -1603,6 +1721,18 @@ func TestValidateCommandPathsBlocks(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "outside allowed") {
 		t.Errorf("expected 'outside allowed' error for /etc/passwd, got %v", err)
+	}
+
+	subDir := filepath.Join(allowedDir, "sub")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("mkdir subdir: %v", err)
+	}
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"command": "cat ../../secret.txt",
+		"workdir": subDir,
+	})
+	if err == nil || !strings.Contains(err.Error(), "outside allowed") {
+		t.Errorf("expected relative parent traversal to be denied, got %v", err)
 	}
 }
 

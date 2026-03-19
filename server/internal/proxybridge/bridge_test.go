@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -116,6 +117,43 @@ func TestBridgeChat_PropagatesBackgroundTaskHeader(t *testing.T) {
 	}
 	if gotBackground != "true" {
 		t.Fatalf("expected %s header=true, got %q", proxy.BackgroundTaskHeader, gotBackground)
+	}
+}
+
+func TestMarshalChatRequestNormalizesToolSchema(t *testing.T) {
+	data, err := MarshalChatRequest(llm.ChatRequest{
+		Model: "gpt-5",
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "hi"},
+		},
+		Tools: []llm.Tool{{
+			Name: "browser",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"url": map[string]interface{}{"type": "string"},
+				},
+				"nullable": true,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("MarshalChatRequest() error = %v", err)
+	}
+
+	var req bridgeRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if len(req.Tools) != 1 {
+		t.Fatalf("len(req.Tools) = %d, want 1", len(req.Tools))
+	}
+	params := req.Tools[0].Function.Parameters
+	if got, ok := params["additionalProperties"].(bool); !ok || got {
+		t.Fatalf("additionalProperties = %v, want false", params["additionalProperties"])
+	}
+	if _, ok := params["nullable"]; ok {
+		t.Fatalf("nullable should be removed from marshalled schema, got %v", params["nullable"])
 	}
 }
 

@@ -67,13 +67,13 @@ type UIHint struct {
 
 // PluginInfo contains metadata about a loaded plugin
 type PluginInfo struct {
-	Manifest   *Manifest              `json:"manifest"`
-	Origin     PluginOrigin           `json:"origin"`
-	Status     PluginStatus           `json:"status"`
-	Path       string                 `json:"path"`
-	Config     map[string]interface{} `json:"config,omitempty"`
-	Error      string                 `json:"error,omitempty"`
-	IsNative   bool                   `json:"is_native"`
+	Manifest *Manifest              `json:"manifest"`
+	Origin   PluginOrigin           `json:"origin"`
+	Status   PluginStatus           `json:"status"`
+	Path     string                 `json:"path"`
+	Config   map[string]interface{} `json:"config,omitempty"`
+	Error    string                 `json:"error,omitempty"`
+	IsNative bool                   `json:"is_native"`
 }
 
 // Plugin is the interface that all plugins must implement
@@ -129,10 +129,12 @@ type PluginAPI interface {
 
 // Tool represents an agent tool
 type Tool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
-	Handler     ToolHandler            `json:"-"`
+	Name                string                 `json:"name"`
+	Description         string                 `json:"description"`
+	Parameters          map[string]interface{} `json:"parameters"`
+	RiskLevel           string                 `json:"risk_level,omitempty"`
+	VisibilityAllowlist []string               `json:"visibility_allowlist,omitempty"`
+	Handler             ToolHandler            `json:"-"`
 }
 
 // ToolHandler is the function signature for tool handlers

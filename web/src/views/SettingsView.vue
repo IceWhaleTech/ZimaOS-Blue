@@ -184,6 +184,29 @@ async function handleMemoryRecallModeChange(mode: MemoryRecallMode) {
   }
 }
 
+const agentSettingsSaving = ref(false)
+
+async function withAgentSettingsSave(task: () => Promise<void>) {
+  if (agentSettingsSaving.value) return
+  try {
+    agentSettingsSaving.value = true
+    await task()
+    showSaveStatus(t('settings.saved', 'Saved'))
+  } catch {
+    showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
+  } finally {
+    agentSettingsSaving.value = false
+  }
+}
+
+async function handleAgentModeChange(next: boolean) {
+  await withAgentSettingsSave(() => settingsStore.setAgentMode(next))
+}
+
+async function handleAgentAutoConfirmChange(next: boolean) {
+  await withAgentSettingsSave(() => settingsStore.setAgentAutoConfirm(next))
+}
+
 const smallModelSaving = ref(false)
 let smallModelPollInterval: ReturnType<typeof setInterval> | null = null
 const smallModelDownloading = computed(() => {
@@ -812,6 +835,75 @@ onUnmounted(() => {
             </div>
             <div class="dashboard-card-subsurface settings-field-card settings-field-card--flush">
               <ProviderPoolSection />
+            </div>
+          </section>
+
+          <section class="settings-module">
+            <div class="settings-module__header">
+              <div>
+                <span class="settings-module__eyebrow">{{
+                  t('settings.codingRuntime', '编码能力')
+                }}</span>
+                <h2 class="settings-module__title">{{ t('chat.taskLoop') }}</h2>
+              </div>
+            </div>
+
+            <div class="settings-card-grid">
+              <div class="dashboard-card-subsurface settings-field-card">
+                <div class="settings-field-card__row">
+                  <div class="settings-card-heading">
+                    <label class="settings-field-label">{{ t('agent.mode') }}</label>
+                    <p class="settings-field-hint">{{ t('agent.modeDescription') }}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    :aria-checked="settingsStore.agentMode"
+                    :disabled="agentSettingsSaving"
+                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                    :class="
+                      settingsStore.agentMode
+                        ? 'bg-green-600 dark:bg-green-500'
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    "
+                    @click="handleAgentModeChange(!settingsStore.agentMode)"
+                  >
+                    <span
+                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                      :class="settingsStore.agentMode ? 'translate-x-5' : 'translate-x-0'"
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div class="dashboard-card-subsurface settings-field-card">
+                <div class="settings-field-card__row">
+                  <div class="settings-card-heading">
+                    <label class="settings-field-label">{{ t('agent.autoConfirm') }}</label>
+                    <p class="settings-field-hint">{{ t('agent.autoConfirmDescription') }}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    :aria-checked="settingsStore.agentAutoConfirm"
+                    :disabled="agentSettingsSaving"
+                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                    :class="
+                      settingsStore.agentAutoConfirm
+                        ? 'bg-green-600 dark:bg-green-500'
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    "
+                    @click="handleAgentAutoConfirmChange(!settingsStore.agentAutoConfirm)"
+                  >
+                    <span
+                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                      :class="
+                        settingsStore.agentAutoConfirm ? 'translate-x-5' : 'translate-x-0'
+                      "
+                    />
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 

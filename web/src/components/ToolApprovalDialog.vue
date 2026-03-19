@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 
@@ -7,6 +7,8 @@ const { t, te } = useI18n()
 const chatStore = useChatStore()
 
 const approval = computed(() => chatStore.pendingApproval)
+const submittingDecision = ref<'deny' | 'approve' | 'always-allow' | null>(null)
+const isSubmitting = computed(() => submittingDecision.value !== null)
 
 const translatedToolName = computed(() => {
   if (!approval.value?.tool_name) return ''
@@ -22,16 +24,29 @@ const argsDisplay = computed(() => {
   }))
 })
 
+async function runDecision(
+  decision: 'deny' | 'approve' | 'always-allow',
+  action: () => Promise<unknown>
+) {
+  if (isSubmitting.value) return
+  submittingDecision.value = decision
+  try {
+    await action()
+  } finally {
+    submittingDecision.value = null
+  }
+}
+
 function approve() {
-  chatStore.resolveApproval('approve')
+  return runDecision('approve', () => chatStore.resolveApproval('approve'))
 }
 
 function alwaysAllow() {
-  chatStore.resolveApproval('approve', true)
+  return runDecision('always-allow', () => chatStore.resolveApproval('approve', true))
 }
 
 function deny() {
-  chatStore.resolveApproval('deny')
+  return runDecision('deny', () => chatStore.resolveApproval('deny'))
 }
 </script>
 
@@ -120,22 +135,37 @@ function deny() {
             class="flex gap-2 px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
           >
             <button
-              class="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+              :disabled="isSubmitting"
+              class="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               @click="deny"
             >
-              {{ t('approval.deny', 'Deny') }}
+              {{
+                submittingDecision === 'deny'
+                  ? t('common.processing', 'Processing...')
+                  : t('approval.deny', 'Deny')
+              }}
             </button>
             <button
-              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors cursor-pointer"
+              :disabled="isSubmitting"
+              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               @click="approve"
             >
-              {{ t('approval.allow', 'Allow') }}
+              {{
+                submittingDecision === 'approve'
+                  ? t('common.processing', 'Processing...')
+                  : t('approval.allow', 'Allow')
+              }}
             </button>
             <button
-              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors cursor-pointer"
+              :disabled="isSubmitting"
+              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               @click="alwaysAllow"
             >
-              {{ t('approval.alwaysAllow', 'Always Allow') }}
+              {{
+                submittingDecision === 'always-allow'
+                  ? t('common.processing', 'Processing...')
+                  : t('approval.alwaysAllow', 'Always Allow')
+              }}
             </button>
           </div>
         </div>

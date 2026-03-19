@@ -237,4 +237,65 @@ describe('ChatMessage bubble rendering', () => {
     expect(wrapper.find('.assistant-process-toggle').exists()).toBe(true)
     expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(0)
   })
+
+  it('syncs a message-level process toggle when the global work-details setting is hidden again', async () => {
+    settingsStore.showToolDetails = false
+
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: {
+          ...makeMessage('assistant', ''),
+          local_process_tool_results: [
+            {
+              name: 'web_search',
+              id: 'tool-search-3',
+              command: 'Need sources',
+              icon: '✓',
+              status: 'Found 3 results',
+              output: 'Source A\nSource B',
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: {
+            props: ['item'],
+            template: '<div class="tool-detail-card-stub">{{ item.status }}</div>',
+          },
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(0)
+    const collapsedLabel = wrapper.get('.assistant-process-toggle').text()
+
+    await wrapper.get('.assistant-process-toggle').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(1)
+    const expandedLabel = wrapper.get('.assistant-process-toggle').text()
+    expect(expandedLabel).not.toBe(collapsedLabel)
+
+    settingsStore.showToolDetails = true
+    await flushPromises()
+
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(1)
+    expect(wrapper.get('.assistant-process-toggle').text()).toBe(expandedLabel)
+
+    settingsStore.showToolDetails = false
+    await flushPromises()
+
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(0)
+    expect(wrapper.get('.assistant-process-toggle').text()).toBe(collapsedLabel)
+  })
 })

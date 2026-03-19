@@ -3,39 +3,39 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"sync"
 	"time"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // GrayscaleConfig holds grayscale/feature flag configuration.
 type GrayscaleConfig struct {
-	Enabled  bool          `yaml:"enabled"`
-	Flags    []FeatureFlag `yaml:"flags"`
-	ABTests  []ABTest      `yaml:"ab_tests"`
+	Enabled  bool            `yaml:"enabled"`
+	Flags    []FeatureFlag   `yaml:"flags"`
+	ABTests  []ABTest        `yaml:"ab_tests"`
 	Versions []ConfigVersion `yaml:"versions"`
 }
 
 // FeatureFlag represents a single feature flag with targeting rules.
 type FeatureFlag struct {
-	Name        string           `yaml:"name"`
-	Description string           `yaml:"description"`
-	Enabled     bool             `yaml:"enabled"`
-	Percentage  float64          `yaml:"percentage"` // 0-100, for percentage rollout
-	Users       []string         `yaml:"users"`      // Specific user IDs
-	Groups      []string         `yaml:"groups"`     // User groups
-	Variants    []FlagVariant    `yaml:"variants"`   // For multivariate flags
-	Rules       []TargetingRule  `yaml:"rules"`      // Advanced targeting rules
+	Name         string          `yaml:"name"`
+	Description  string          `yaml:"description"`
+	Enabled      bool            `yaml:"enabled"`
+	Percentage   float64         `yaml:"percentage"` // 0-100, for percentage rollout
+	Users        []string        `yaml:"users"`      // Specific user IDs
+	Groups       []string        `yaml:"groups"`     // User groups
+	Variants     []FlagVariant   `yaml:"variants"`   // For multivariate flags
+	Rules        []TargetingRule `yaml:"rules"`      // Advanced targeting rules
 	DefaultValue interface{}     `yaml:"default_value"`
-	CreatedAt   time.Time        `yaml:"created_at"`
-	UpdatedAt   time.Time        `yaml:"updated_at"`
+	CreatedAt    time.Time       `yaml:"created_at"`
+	UpdatedAt    time.Time       `yaml:"updated_at"`
 }
 
 // FlagVariant represents a variant in a multivariate flag.
 type FlagVariant struct {
-	Name       string      `yaml:"name"`
-	Value      interface{} `yaml:"value"`
-	Weight     float64     `yaml:"weight"` // Percentage weight (0-100)
+	Name   string      `yaml:"name"`
+	Value  interface{} `yaml:"value"`
+	Weight float64     `yaml:"weight"` // Percentage weight (0-100)
 }
 
 // TargetingRule represents an advanced targeting rule.
@@ -47,22 +47,22 @@ type TargetingRule struct {
 
 // ABTest represents an A/B test configuration.
 type ABTest struct {
-	Name        string       `yaml:"name"`
-	Description string       `yaml:"description"`
-	Enabled     bool         `yaml:"enabled"`
-	StartTime   time.Time    `yaml:"start_time"`
-	EndTime     time.Time    `yaml:"end_time"`
-	Variants    []ABVariant  `yaml:"variants"`
-	TrafficPct  float64      `yaml:"traffic_pct"` // Percentage of traffic in test
-	Metrics     []string     `yaml:"metrics"`     // Metrics to track
+	Name        string      `yaml:"name"`
+	Description string      `yaml:"description"`
+	Enabled     bool        `yaml:"enabled"`
+	StartTime   time.Time   `yaml:"start_time"`
+	EndTime     time.Time   `yaml:"end_time"`
+	Variants    []ABVariant `yaml:"variants"`
+	TrafficPct  float64     `yaml:"traffic_pct"` // Percentage of traffic in test
+	Metrics     []string    `yaml:"metrics"`     // Metrics to track
 }
 
 // ABVariant represents a variant in an A/B test.
 type ABVariant struct {
-	Name       string      `yaml:"name"`
-	Value      interface{} `yaml:"value"`
-	Weight     float64     `yaml:"weight"` // Percentage weight
-	IsControl  bool        `yaml:"is_control"`
+	Name      string      `yaml:"name"`
+	Value     interface{} `yaml:"value"`
+	Weight    float64     `yaml:"weight"` // Percentage weight
+	IsControl bool        `yaml:"is_control"`
 }
 
 // ConfigVersion represents a versioned configuration.
@@ -213,6 +213,17 @@ func (e *FlagEvaluator) ListABTests() []ABTest {
 		return nil
 	}
 	return e.config.ABTests
+}
+
+// HasFlag reports whether the named feature flag exists in the current config.
+func (e *FlagEvaluator) HasFlag(flagName string) bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if e.config == nil {
+		return false
+	}
+	return e.findFlag(flagName) != nil
 }
 
 func (e *FlagEvaluator) findFlag(name string) *FeatureFlag {

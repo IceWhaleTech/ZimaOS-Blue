@@ -1,7 +1,8 @@
 // Strip markdown heading from first line if present.
 // Keeps previous behavior: if first line starts with '#' after leading spaces/tabs,
 // remove that line and trim leading whitespace from the remaining content.
-export function stripFirstLineHeading(content: string): string {
+export function stripFirstLineHeading(content: string | null | undefined): string {
+  if (typeof content !== 'string') return ''
   const len = content.length
   if (len === 0) return content
 

@@ -14,8 +14,8 @@ import (
 
 // InitConfig holds configuration for lazy initialization of TTS/STT services.
 type InitConfig struct {
-	DataDir       string
-	OpenAIAPIKey  string
+	DataDir      string
+	OpenAIAPIKey string
 }
 
 // Service provides unified speech functionality (TTS + ASR).
@@ -52,18 +52,31 @@ type Service interface {
 
 // service implements the Service interface.
 type service struct {
-	sttService       stt.Service
-	ttsService       tts.Service
-	asrProvider      stt.Provider
-	ttsProvider      tts.Provider
-	espeakManager    *EspeakManager
-	config           *Config
-	initConfig       *InitConfig
-	initialized      bool
-	initializing     bool
-	asrPermDenied    bool   // macOS STT permission denied
-	asrPermError     string // macOS STT permission error message
-	mu               sync.RWMutex
+	sttService    stt.Service
+	ttsService    tts.Service
+	asrProvider   stt.Provider
+	ttsProvider   tts.Provider
+	espeakManager *EspeakManager
+	config        *Config
+	initConfig    *InitConfig
+	initialized   bool
+	initializing  bool
+	asrPermDenied bool   // macOS STT permission denied
+	asrPermError  string // macOS STT permission error message
+	mu            sync.RWMutex
+}
+
+type serviceSnapshot struct {
+	sttService     stt.Service
+	ttsService     tts.Service
+	asrProvider    stt.Provider
+	ttsProvider    tts.Provider
+	espeakManager  *EspeakManager
+	ttsConfigured  string
+	asrConfigured  string
+	editBeforeSend bool
+	asrPermDenied  bool
+	asrPermError   string
 }
 
 // NewService creates a new unified speech service.
@@ -211,6 +224,8 @@ func (s *service) GetStatus() *StatusResponse {
 		_ = s.Initialize()
 	}
 
+	snap := s.snapshot()
+
 	resp := &StatusResponse{
 		TTS: TTSStatus{
 			Ready:    false,
@@ -219,23 +234,23 @@ func (s *service) GetStatus() *StatusResponse {
 		ASR: ASRStatus{
 			Ready:          false,
 			Provider:       "none",
-			EditBeforeSend: s.config.ASR.EditBeforeSend,
+			EditBeforeSend: snap.editBeforeSend,
 		},
 	}
 
 	// Get TTS status from configured provider
-	if s.config.TTS.Provider != "" {
-		resp.TTS.Provider = s.config.TTS.Provider
-		if s.ttsProvider != nil {
+	if snap.ttsConfigured != "" {
+		resp.TTS.Provider = snap.ttsConfigured
+		if snap.ttsProvider != nil {
 			resp.TTS.Ready = true
-			resp.TTS.ModelName = s.ttsProvider.Name()
+			resp.TTS.ModelName = snap.ttsProvider.Name()
 		}
 	}
 
 	// Populate available TTS providers from the TTS service
 	hasEspeak := false
-	if s.ttsService != nil {
-		for _, pt := range s.ttsService.ListProviders() {
+	if snap.ttsService != nil {
+		for _, pt := range snap.ttsService.ListProviders() {
 			name := string(pt)
 			resp.TTS.AvailableProviders = append(resp.TTS.AvailableProviders, name)
 			if name == "espeak-ng" {
@@ -244,31 +259,31 @@ func (s *service) GetStatus() *StatusResponse {
 		}
 
 		// Populate TTS component download statuses (Kokoro, Vocoder)
-		resp.TTS.Components = s.getTTSComponentStatuses()
+		resp.TTS.Components = getTTSComponentStatuses(snap.ttsService)
 	}
 
 	// Populate eSpeak status only when espeak-ng is an available provider
-	if hasEspeak && s.espeakManager != nil {
+	if hasEspeak && snap.espeakManager != nil {
 		resp.Espeak = &EspeakStatus{
-			Installed:     s.espeakManager.IsLibraryInstalled(),
-			Path:          s.espeakManager.GetLibraryPath(),
-			LanguageCount: s.espeakManager.LanguageCount(),
-			DataSize:      s.espeakManager.GetDataSize(),
+			Installed:     snap.espeakManager.IsLibraryInstalled(),
+			Path:          snap.espeakManager.GetLibraryPath(),
+			LanguageCount: snap.espeakManager.LanguageCount(),
+			DataSize:      snap.espeakManager.GetDataSize(),
 			StaticLinked:  true,
 		}
 	}
 
 	// Get ASR status from configured provider
-	if s.config.ASR.Provider != "" {
-		resp.ASR.Provider = s.config.ASR.Provider
-		if s.asrProvider != nil {
+	if snap.asrConfigured != "" {
+		resp.ASR.Provider = snap.asrConfigured
+		if snap.asrProvider != nil {
 			resp.ASR.Ready = true
 			// Use the actual provider type from the provider object, not the config
-			resp.ASR.Provider = string(s.asrProvider.Type())
-			resp.ASR.ModelName = string(s.asrProvider.Type())
+			resp.ASR.Provider = string(snap.asrProvider.Type())
+			resp.ASR.ModelName = string(snap.asrProvider.Type())
 
 			// Get download status from Whisper provider
-			if whisperProvider, ok := s.asrProvider.(*stt.WhisperProvider); ok {
+			if whisperProvider, ok := snap.asrProvider.(*stt.WhisperProvider); ok {
 				status := whisperProvider.GetModelStatus()
 				resp.ASR.Downloading = status.Downloading
 				resp.ASR.HasPending = status.HasPending
@@ -304,23 +319,23 @@ func (s *service) GetStatus() *StatusResponse {
 	}
 
 	// Report macOS permission denied state
-	if s.asrPermDenied {
+	if snap.asrPermDenied {
 		resp.ASR.PermissionDenied = true
-		resp.ASR.PermissionError = s.asrPermError
+		resp.ASR.PermissionError = snap.asrPermError
 		resp.ASR.PermissionAppName = GetTCCAppName()
 	}
 
 	// Report macOS on-device status
-	if s.asrProvider != nil {
-		if macosSTT, ok := s.asrProvider.(*MacOSNativeSTT); ok {
+	if snap.asrProvider != nil {
+		if macosSTT, ok := snap.asrProvider.(*MacOSNativeSTT); ok {
 			resp.ASR.OnDeviceSupported = macosSTT.SupportsOnDevice()
 			resp.ASR.OnDeviceOnly = macosSTT.RequireOnDevice()
 			resp.ASR.DictationAvailable = macosSTT.DictationAvailable()
 		}
 		// Report Windows native available languages
-		if _, ok := s.asrProvider.(*windowsNativeASR); ok && s.ttsService != nil {
+		if _, ok := snap.asrProvider.(*windowsNativeASR); ok && snap.ttsService != nil {
 			// Get languages from TTS service voices
-			if providers := s.ttsService.ListProviders(); len(providers) > 0 {
+			if providers := snap.ttsService.ListProviders(); len(providers) > 0 {
 				for _, pt := range providers {
 					if string(pt) == "windows-native" {
 						// Windows native languages will be shown
@@ -333,13 +348,13 @@ func (s *service) GetStatus() *StatusResponse {
 	}
 
 	// Populate ASR models
-	resp.ASR.Models = s.listASRModels(resp)
+	resp.ASR.Models = listASRModels(snap.asrProvider, resp)
 
 	// Populate available ASR providers
 	resp.ASR.AvailableProviders = s.listAvailableASRProviders()
 
 	// Populate TTS models
-	resp.TTS.Models = s.listTTSModels()
+	resp.TTS.Models = listTTSModels(snap.ttsProvider)
 
 	return resp
 }
@@ -365,15 +380,15 @@ func (s *service) listAvailableASRProviders() []string {
 
 // listASRModels returns ASR models for the status response.
 // Native providers (macOS/Windows) return empty list when ready.
-func (s *service) listASRModels(st *StatusResponse) []interface{} {
+func listASRModels(provider stt.Provider, st *StatusResponse) []interface{} {
 	// Native providers don't need model list when ready
 	if (st.ASR.Provider == "macos-native" || st.ASR.Provider == "windows-native") && st.ASR.Ready {
 		return []interface{}{}
 	}
 
 	// Whisper models
-	if s.asrProvider != nil {
-		if lister, ok := s.asrProvider.(interface{ ListModels() []interface{} }); ok {
+	if provider != nil {
+		if lister, ok := provider.(interface{ ListModels() []interface{} }); ok {
 			return lister.ListModels()
 		}
 	}
@@ -386,9 +401,9 @@ func (s *service) listASRModels(st *StatusResponse) []interface{} {
 }
 
 // listTTSModels returns TTS models for the status response.
-func (s *service) listTTSModels() []interface{} {
-	if s.ttsProvider != nil {
-		if lister, ok := s.ttsProvider.(interface{ ListModels() []interface{} }); ok {
+func listTTSModels(provider tts.Provider) []interface{} {
+	if provider != nil {
+		if lister, ok := provider.(interface{ ListModels() []interface{} }); ok {
 			return lister.ListModels()
 		}
 	}
@@ -398,14 +413,14 @@ func (s *service) listTTSModels() []interface{} {
 // getTTSComponentStatuses returns download/readiness status for TTS components
 // (Kokoro model, vocoder) so the frontend can poll a single /speech/status endpoint.
 // Components that are not compiled in are omitted entirely.
-func (s *service) getTTSComponentStatuses() map[string]*ComponentDownloadStatus {
-	if s.ttsService == nil {
+func getTTSComponentStatuses(ttsService tts.Service) map[string]*ComponentDownloadStatus {
+	if ttsService == nil {
 		return nil
 	}
 	components := make(map[string]*ComponentDownloadStatus)
 
 	// Kokoro status
-	raw := s.ttsService.GetKokoroStatus()
+	raw := ttsService.GetKokoroStatus()
 	kokoro := &ComponentDownloadStatus{}
 	if v, ok := raw["ready"].(bool); ok {
 		kokoro.Ready = v
@@ -433,7 +448,7 @@ func (s *service) getTTSComponentStatuses() map[string]*ComponentDownloadStatus 
 	}
 
 	// Vocoder status
-	rawV := s.ttsService.GetVocoderStatus()
+	rawV := ttsService.GetVocoderStatus()
 	vocoder := &ComponentDownloadStatus{}
 	if v, ok := rawV["ready"].(bool); ok {
 		vocoder.Ready = v
@@ -462,14 +477,16 @@ func isNotCompiledIn(errMsg string) bool {
 
 // GetModels returns all available models.
 func (s *service) GetModels() *ModelsResponse {
+	snap := s.snapshot()
+
 	resp := &ModelsResponse{
 		TTS: []ModelInfo{},
 		ASR: []ModelInfo{},
 	}
 
 	// Get ASR models if provider supports it
-	if s.asrProvider != nil {
-		if lister, ok := s.asrProvider.(interface{ ListModels() []interface{} }); ok {
+	if snap.asrProvider != nil {
+		if lister, ok := snap.asrProvider.(interface{ ListModels() []interface{} }); ok {
 			models := lister.ListModels()
 			for _, m := range models {
 				if modelInfo, ok := m.(ModelInfo); ok {
@@ -480,8 +497,8 @@ func (s *service) GetModels() *ModelsResponse {
 	}
 
 	// Get TTS models if provider supports it
-	if s.ttsProvider != nil {
-		if lister, ok := s.ttsProvider.(interface{ ListModels() []interface{} }); ok {
+	if snap.ttsProvider != nil {
+		if lister, ok := snap.ttsProvider.(interface{ ListModels() []interface{} }); ok {
 			models := lister.ListModels()
 			for _, m := range models {
 				if modelInfo, ok := m.(ModelInfo); ok {
@@ -496,26 +513,36 @@ func (s *service) GetModels() *ModelsResponse {
 
 // GetASRProvider returns the ASR provider.
 func (s *service) GetASRProvider() stt.Provider {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.asrProvider
 }
 
 // GetTTSProvider returns the TTS provider.
 func (s *service) GetTTSProvider() tts.Provider {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.ttsProvider
 }
 
 // GetSTTService returns the underlying STT service.
 func (s *service) GetSTTService() stt.Service {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.sttService
 }
 
 // GetTTSService returns the underlying TTS service.
 func (s *service) GetTTSService() tts.Service {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.ttsService
 }
 
 // IsEditBeforeSendEnabled returns whether edit-before-send is enabled.
 func (s *service) IsEditBeforeSendEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.config.ASR.EditBeforeSend
 }
 
@@ -560,16 +587,20 @@ func (s *service) SetEspeakManager(em *EspeakManager) {
 
 // Transcribe transcribes audio using the configured ASR provider.
 func (s *service) Transcribe(ctx context.Context, req *stt.TranscribeRequest) (*TranscriptionResult, error) {
+	snap := s.snapshot()
+
 	var resp *stt.TranscribeResponse
 	var err error
 
 	// Use ASR provider if available
-	if s.asrProvider != nil {
-		if transcriber, ok := s.asrProvider.(interface{ Transcribe(context.Context, *stt.TranscribeRequest) (*stt.TranscribeResponse, error) }); ok {
+	if snap.asrProvider != nil {
+		if transcriber, ok := snap.asrProvider.(interface {
+			Transcribe(context.Context, *stt.TranscribeRequest) (*stt.TranscribeResponse, error)
+		}); ok {
 			resp, err = transcriber.Transcribe(ctx, req)
 		}
-	} else if s.sttService != nil {
-		resp, err = s.sttService.Transcribe(ctx, req)
+	} else if snap.sttService != nil {
+		resp, err = snap.sttService.Transcribe(ctx, req)
 	} else {
 		return nil, ErrNoASRProvider
 	}
@@ -583,8 +614,29 @@ func (s *service) Transcribe(ctx context.Context, req *stt.TranscribeRequest) (*
 		Language:   resp.Language,
 		Duration:   resp.Duration,
 		Confidence: resp.Confidence,
-		Editable:   s.config.ASR.EditBeforeSend,
+		Editable:   snap.editBeforeSend,
 	}, nil
+}
+
+func (s *service) snapshot() serviceSnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	snap := serviceSnapshot{
+		sttService:    s.sttService,
+		ttsService:    s.ttsService,
+		asrProvider:   s.asrProvider,
+		ttsProvider:   s.ttsProvider,
+		espeakManager: s.espeakManager,
+		asrPermDenied: s.asrPermDenied,
+		asrPermError:  s.asrPermError,
+	}
+	if s.config != nil {
+		snap.ttsConfigured = s.config.TTS.Provider
+		snap.asrConfigured = s.config.ASR.Provider
+		snap.editBeforeSend = s.config.ASR.EditBeforeSend
+	}
+	return snap
 }
 
 // Error definitions

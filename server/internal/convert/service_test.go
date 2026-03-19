@@ -209,6 +209,21 @@ func TestValidateRequestRules(t *testing.T) {
 	}
 }
 
+func TestNormalizeFormatTextAlias(t *testing.T) {
+	if got := normalizeFormat("text", ""); got != "txt" {
+		t.Fatalf("normalizeFormat(text) = %q, want txt", got)
+	}
+	if got := normalizeFormat("", "text"); got != "txt" {
+		t.Fatalf("normalizeFormat(fallback=text) = %q, want txt", got)
+	}
+	if !isDocumentFormat("text") {
+		t.Fatal("expected .text to be treated as a document format")
+	}
+	if categorizeSource("/tmp/note.text", "") != "document" {
+		t.Fatalf("categorizeSource(.text) should return document")
+	}
+}
+
 func TestCancelTaskUpdatesStatus(t *testing.T) {
 	svc := setupConvertTestService(t)
 	task := &ConvertTask{

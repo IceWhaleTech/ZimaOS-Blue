@@ -98,6 +98,11 @@ type staticToolMock struct {
 	err    error
 }
 
+type imageInputCaptureTool struct {
+	mu     sync.Mutex
+	inputs []tools.ToolImageInput
+}
+
 type webSearchToolMock struct {
 	result interface{}
 	err    error
@@ -120,9 +125,54 @@ func (m *staticToolMock) Execute(context.Context, map[string]interface{}) (inter
 	return map[string]interface{}{"ok": true}, nil
 }
 
+func (m *imageInputCaptureTool) Definition() tools.ToolDefinition {
+	return tools.ToolDefinition{
+		Name:        "image",
+		Description: "mock image tool",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"action": map[string]interface{}{"type": "string"},
+				"prompt": map[string]interface{}{"type": "string"},
+			},
+			"additionalProperties": true,
+		},
+	}
+}
+
+func (m *imageInputCaptureTool) Execute(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+	m.mu.Lock()
+	m.inputs = tools.GetImageInputs(ctx)
+	m.mu.Unlock()
+	return map[string]interface{}{"ok": true}, nil
+}
+
+func (m *imageInputCaptureTool) CapturedInputs() []tools.ToolImageInput {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]tools.ToolImageInput, len(m.inputs))
+	copy(out, m.inputs)
+	return out
+}
+
+func inlinePNGBase64ForChatTest() string {
+	return "ZGF0YQ=="
+}
+
 func (m *webSearchToolMock) Definition() tools.ToolDefinition {
 	return tools.ToolDefinition{
-		Name: "web_search",
+		Name:        "web_search",
+		Description: "mock web search",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"query":       map[string]interface{}{"type": "string"},
+				"format":      map[string]interface{}{"type": "string"},
+				"max_results": map[string]interface{}{"type": "integer"},
+			},
+			"required":             []string{"query"},
+			"additionalProperties": true,
+		},
 	}
 }
 
@@ -3191,6 +3241,78 @@ func TestChatHandlerSendMessageAutoContinue_RetriesEmptyReplyAfterToolRound(t *t
 	}
 }
 
+func TestChatHandlerSendMessagePassesImageAttachmentsIntoToolContext(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Image Attachment Tool Context")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "image-tool-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_image_1",
+						Name:      "image",
+						Arguments: `{"action":"review","prompt":"describe this upload"}`,
+					}},
+				},
+			},
+			{
+				ID:    "image-tool-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "done",
+				},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	imageTool := &imageInputCaptureTool{}
+	toolRegistry.Register(imageTool)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := fmt.Sprintf(`{"message":"帮我看看这张图","provider":"scripted","model":"gpt-5.3-codex-spark","attachments":[{"type":"image","name":"upload.png","mime_type":"image/png","data":"%s"}]}`, inlinePNGBase64ForChatTest())
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	inputs := imageTool.CapturedInputs()
+	if len(inputs) != 1 {
+		t.Fatalf("captured inputs = %#v, want 1 image input", inputs)
+	}
+	if inputs[0].Name != "upload.png" {
+		t.Fatalf("image input name = %q, want upload.png", inputs[0].Name)
+	}
+	if inputs[0].MimeType != "image/png" {
+		t.Fatalf("image input mime_type = %q, want image/png", inputs[0].MimeType)
+	}
+	if inputs[0].Data == "" {
+		t.Fatal("expected image input data to be forwarded")
+	}
+}
+
 func TestChatHandlerSendMessageAutoContinue_RetriesErrorAfterToolRound(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -3757,6 +3879,258 @@ func TestChatHandlerSendMessage_WriteToWhitelistAliasE2E(t *testing.T) {
 	workspaceTarget := filepath.Join(workspaceRoot, "notes", "e2e.txt")
 	if _, statErr := os.Stat(workspaceTarget); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no mirrored file in workspace root, got stat=%v", statErr)
+	}
+}
+
+func TestChatHandlerSendMessage_AutoContinuesRecoveryRedirectAfterRepeatedOverwriteLoop(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Repeated Overwrite Recovery")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	workspaceRoot := t.TempDir()
+	targetPath := filepath.Join(workspaceRoot, "export_notes.applescript")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "overwrite-loop-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_write_1",
+						Name:      "write",
+						Arguments: fmt.Sprintf(`{"path":%q,"content":"-- broken script round 1"}`, targetPath),
+					}},
+				},
+			},
+			{
+				ID:    "overwrite-loop-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_write_2",
+						Name:      "write",
+						Arguments: fmt.Sprintf(`{"path":%q,"content":"-- broken script round 2"}`, targetPath),
+					}},
+				},
+			},
+			{
+				ID:    "overwrite-loop-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_write_3",
+						Name:      "write",
+						Arguments: fmt.Sprintf(`{"path":%q,"content":"-- broken script round 3"}`, targetPath),
+					}},
+				},
+			},
+			{
+				ID:    "overwrite-loop-recovery",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "I noticed I was repeatedly overwriting the same file without making progress, so I stopped before damaging it further. The next step should be to inspect or validate the existing file, or switch to a different approach.",
+				},
+			},
+			{
+				ID:    "overwrite-loop-final-summary",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "I inspected the existing file instead of overwriting it again. The current script still contains the round 3 payload, so I stopped there to avoid more damage.",
+				},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewFileWriteTool([]string{workspaceRoot}, 0))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我导出 Apple Notes","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 5 {
+		t.Fatalf("expected 5 LLM rounds (3 writes + recovery redirect + auto-continued summary), got %d", scripted.CallCount())
+	}
+
+	fourthReq, ok := scripted.RequestAt(3)
+	if !ok {
+		t.Fatalf("missing fourth request capture")
+	}
+	last := fourthReq.Messages[len(fourthReq.Messages)-1]
+	expectedRecoveryNudge := i18n.T(i18n.ParseLanguage(handler.settingsHandler.GetLocale()), i18n.MsgToolLoopRecoveryRepeatedOverwrite)
+	if last.Role != llm.RoleUser || last.Content != expectedRecoveryNudge {
+		t.Fatalf("expected overwrite recovery nudge %q in fourth request, got role=%s content=%q", expectedRecoveryNudge, last.Role, last.Content)
+	}
+
+	fifthReq, ok := scripted.RequestAt(4)
+	if !ok {
+		t.Fatalf("missing fifth request capture")
+	}
+	last = fifthReq.Messages[len(fifthReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "Now actually execute by calling available tools") {
+		t.Fatalf("expected toolless auto-continue nudge in fifth request, got role=%s content=%q", last.Role, last.Content)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "I inspected the existing file instead of overwriting it again") {
+		t.Fatalf("expected auto-continued recovery summary content, got %q", content)
+	}
+
+	b, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read final file: %v", err)
+	}
+	if got := strings.TrimSpace(string(b)); got != "-- broken script round 3" {
+		t.Fatalf("final file content = %q, want round 3 payload", got)
+	}
+}
+
+func TestChatHandlerSendMessage_StopsAfterRepeatedOverwriteRecoveryFails(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Repeated Overwrite Abort")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	workspaceRoot := t.TempDir()
+	targetPath := filepath.Join(workspaceRoot, "export_notes.applescript")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "overwrite-abort-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_abort_write_1",
+						Name:      "write",
+						Arguments: fmt.Sprintf(`{"path":%q,"content":"-- broken script round 1"}`, targetPath),
+					}},
+				},
+			},
+			{
+				ID:    "overwrite-abort-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_abort_write_2",
+						Name:      "write",
+						Arguments: fmt.Sprintf(`{"path":%q,"content":"-- broken script round 2"}`, targetPath),
+					}},
+				},
+			},
+			{
+				ID:    "overwrite-abort-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_abort_write_3",
+						Name:      "write",
+						Arguments: fmt.Sprintf(`{"path":%q,"content":"-- broken script round 3"}`, targetPath),
+					}},
+				},
+			},
+			{
+				ID:    "overwrite-abort-round-4",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_abort_write_4",
+						Name:      "write",
+						Arguments: fmt.Sprintf(`{"path":%q,"content":"-- broken script round 4"}`, targetPath),
+					}},
+				},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewFileWriteTool([]string{workspaceRoot}, 0))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我导出 Apple Notes","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 4 {
+		t.Fatalf("expected 4 LLM rounds (3 writes + failed recovery write), got %d", scripted.CallCount())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	expectedAbort := i18n.T(i18n.ParseLanguage(handler.settingsHandler.GetLocale()), i18n.MsgToolLoopAbortRepeatedOverwrite)
+	if !strings.Contains(content, expectedAbort) {
+		t.Fatalf("expected overwrite abort message %q, got %q", expectedAbort, content)
+	}
+
+	b, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read final file: %v", err)
+	}
+	if got := strings.TrimSpace(string(b)); got != "-- broken script round 4" {
+		t.Fatalf("final file content = %q, want round 4 payload", got)
 	}
 }
 

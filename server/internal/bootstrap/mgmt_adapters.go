@@ -345,8 +345,10 @@ func (a *mgmtToolAdapter) ListTools(_ context.Context) ([]tools.AdminToolInfo, e
 		}
 		def := t.Definition()
 		result = append(result, tools.AdminToolInfo{
-			Name:        def.Name,
-			Description: def.Description,
+			Name:                def.Name,
+			Description:         def.Description,
+			RiskLevel:           def.RiskLevel,
+			VisibilityAllowlist: append([]string(nil), def.VisibilityAllowlist...),
 		})
 	}
 	// Disabled tools
@@ -357,9 +359,11 @@ func (a *mgmtToolAdapter) ListTools(_ context.Context) ([]tools.AdminToolInfo, e
 		}
 		def := t.Definition()
 		result = append(result, tools.AdminToolInfo{
-			Name:        def.Name,
-			Description: def.Description,
-			Disabled:    true,
+			Name:                def.Name,
+			Description:         def.Description,
+			Disabled:            true,
+			RiskLevel:           def.RiskLevel,
+			VisibilityAllowlist: append([]string(nil), def.VisibilityAllowlist...),
 		})
 	}
 	return result, nil

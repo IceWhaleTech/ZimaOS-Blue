@@ -2459,6 +2459,7 @@ export default {
     ...enUS.agent,
     mode: 'Oppgaveløkkemodus',
     modeDescription: 'Aktiverer kontinuerlige plan-og-utfør-løkker til du slår den av',
+    autoConfirm: 'Automatisk bekreftelse',
     autoConfirmDescription:
       'Hopp over bekreftelse for destruktive handlinger (høyreklikk på oppgaveløkke-knappen for å bytte)',
     sendMessage: 'Send en melding til agenten...',

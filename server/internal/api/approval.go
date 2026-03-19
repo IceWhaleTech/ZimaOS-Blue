@@ -1,14 +1,19 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // ApprovalConfig holds the tool-call approval policy.
@@ -21,18 +26,29 @@ type ApprovalConfig struct {
 // ExecApprovalResolver resolves exec-specific approval requests.
 // Implemented by a wrapper around tools.ApprovalManager to avoid circular imports.
 type ExecApprovalResolver interface {
-	ResolveApproval(id string, decision string) bool
+	ResolveApproval(id string, decision string, bindingHash string) bool
 }
 
 // PendingRequest is a tool call waiting for user approval.
 type PendingRequest struct {
-	ID         string         `json:"id"`
-	ToolName   string         `json:"tool_name"`
-	ToolCallID string         `json:"tool_call_id"`
-	Arguments  map[string]any `json:"arguments"`
-	SessionID  string         `json:"session_id,omitempty"`
-	CreatedAt  string         `json:"created_at"`
-	UserID     string         `json:"-"`
+	ID           string         `json:"id"`
+	RunID        string         `json:"run_id,omitempty"`
+	StepIndex    int            `json:"step_index,omitempty"`
+	ToolName     string         `json:"tool_name"`
+	ToolCallID   string         `json:"tool_call_id"`
+	Arguments    map[string]any `json:"arguments"`
+	SessionID    string         `json:"session_id,omitempty"`
+	RouteKind    string         `json:"route_kind,omitempty"`
+	Provider     string         `json:"provider,omitempty"`
+	ProviderID   string         `json:"provider_id,omitempty"`
+	Model        string         `json:"model,omitempty"`
+	AgentID      string         `json:"agent_id,omitempty"`
+	PolicySource string         `json:"policy_source,omitempty"`
+	RiskLevel    string         `json:"risk_level,omitempty"`
+	BindingHash  string         `json:"binding_hash,omitempty"`
+	CreatedAt    string         `json:"created_at"`
+	ExpiresAt    int64          `json:"expires_at,omitempty"`
+	UserID       string         `json:"-"`
 }
 
 // ApprovalHandler serves the /api/v1/approval endpoints.
@@ -40,8 +56,11 @@ type ApprovalHandler struct {
 	mu           sync.RWMutex
 	config       ApprovalConfig
 	pending      map[string]*PendingRequest // id → request
+	waiters      map[string]chan string
 	broker       *sse.Broker
 	execResolver ExecApprovalResolver // optional, for exec tool approvals
+	timeout      time.Duration
+	observer     tools.RuntimeEventObserver
 }
 
 // NewApprovalHandler creates a new handler with sensible defaults.
@@ -53,7 +72,9 @@ func NewApprovalHandler(broker *sse.Broker) *ApprovalHandler {
 			ToolPolicies:  map[string]string{},
 		},
 		pending: make(map[string]*PendingRequest),
+		waiters: make(map[string]chan string),
 		broker:  broker,
+		timeout: 2 * time.Minute,
 	}
 }
 
@@ -63,6 +84,13 @@ func (h *ApprovalHandler) SetExecResolver(r ExecApprovalResolver) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.execResolver = r
+}
+
+// SetObserver wires lifecycle notifications for tool approval requests.
+func (h *ApprovalHandler) SetObserver(observer tools.RuntimeEventObserver) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.observer = observer
 }
 
 // RegisterRoutes registers approval endpoints on the given group.
@@ -112,10 +140,28 @@ func (h *ApprovalHandler) ListPending(c echo.Context) error {
 	return c.JSON(http.StatusOK, out)
 }
 
+// GetPendingByRun returns the first pending tool approval request for a harness run.
+func (h *ApprovalHandler) GetPendingByRun(runID string) *PendingRequest {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, req := range h.pending {
+		if strings.TrimSpace(req.RunID) == runID {
+			out := *req
+			return &out
+		}
+	}
+	return nil
+}
+
 // resolveRequest is the JSON body for POST /approval/resolve.
 type resolveRequest struct {
-	RequestID string `json:"request_id"`
-	Decision  string `json:"decision"` // approve or deny
+	RequestID   string `json:"request_id"`
+	Decision    string `json:"decision"`     // approve or deny
+	BindingHash string `json:"binding_hash"` // binds UI resolution to the original request
 }
 
 // Resolve approves or denies a pending request.
@@ -130,22 +176,43 @@ func (h *ApprovalHandler) Resolve(c echo.Context) error {
 	if ok {
 		delete(h.pending, req.RequestID)
 	}
+	waiter := h.waiters[req.RequestID]
+	if ok || waiter != nil {
+		delete(h.waiters, req.RequestID)
+	}
 	resolver := h.execResolver
 	h.mu.Unlock()
 
 	if ok {
+		expectedBinding := strings.TrimSpace(pr.BindingHash)
+		if expectedBinding != "" && strings.TrimSpace(req.BindingHash) != expectedBinding {
+			h.mu.Lock()
+			h.pending[req.RequestID] = pr
+			if waiter != nil {
+				h.waiters[req.RequestID] = waiter
+			}
+			h.mu.Unlock()
+			return c.JSON(http.StatusConflict, map[string]string{"error": "binding hash mismatch"})
+		}
 		// Resolve a generic tool approval.
+		if waiter != nil {
+			select {
+			case waiter <- req.Decision:
+			default:
+			}
+		}
 		if h.broker != nil {
 			h.broker.Publish(pr.UserID, "tool_approval_resolved", map[string]string{
-				"request_id": req.RequestID,
-				"decision":   req.Decision,
+				"request_id":   req.RequestID,
+				"decision":     req.Decision,
+				"binding_hash": expectedBinding,
 			})
 		}
 		return c.JSON(http.StatusOK, map[string]string{"status": req.Decision})
 	}
 
 	// Try exec approval resolver as fallback.
-	if resolver != nil && resolver.ResolveApproval(req.RequestID, req.Decision) {
+	if resolver != nil && resolver.ResolveApproval(req.RequestID, req.Decision, req.BindingHash) {
 		return c.JSON(http.StatusOK, map[string]string{"status": req.Decision})
 	}
 
@@ -155,10 +222,19 @@ func (h *ApprovalHandler) Resolve(c echo.Context) error {
 // Enqueue adds a new pending request and pushes an SSE event.
 // Called by the tool executor when a tool call needs approval.
 func (h *ApprovalHandler) Enqueue(userID string, req *PendingRequest) {
+	if req == nil {
+		return
+	}
+	if req.ID == "" {
+		req.ID = uuid.NewString()
+	}
 	req.UserID = userID
 	req.SessionID = strings.TrimSpace(req.SessionID)
 	if req.CreatedAt == "" {
 		req.CreatedAt = timeutil.NowTime().UTC().Format("2006-01-02T15:04:05Z")
+	}
+	if req.ExpiresAt == 0 {
+		req.ExpiresAt = timeutil.NowMilli() + h.timeout.Milliseconds()
 	}
 	h.mu.Lock()
 	h.pending[req.ID] = req
@@ -166,4 +242,212 @@ func (h *ApprovalHandler) Enqueue(userID string, req *PendingRequest) {
 	if h.broker != nil {
 		h.broker.Publish(userID, "tool_approval_request", req)
 	}
+}
+
+// AuthorizeToolCall enforces generic tool approval policies at runtime.
+func (h *ApprovalHandler) AuthorizeToolCall(ctx context.Context, req tools.ToolApprovalRequest) (tools.ToolApprovalDecision, error) {
+	mode, source := h.policyMode(req.ToolName)
+	approval := tools.ToolApprovalEnvelope{
+		Mode:         mode,
+		PolicySource: nonEmpty(strings.TrimSpace(req.PolicySource), source),
+		RiskLevel:    normalizeRiskLevel(req.RiskLevel),
+		BindingHash:  strings.TrimSpace(req.BindingHash),
+	}
+	decision := tools.ToolApprovalDecision{
+		Allowed:  true,
+		Approval: approval,
+	}
+	switch mode {
+	case "deny":
+		decision.Allowed = false
+		decision.Approval.Required = true
+		decision.Approval.Reason = fmt.Sprintf("tool %q blocked by approval policy", strings.TrimSpace(req.ToolName))
+		return decision, nil
+	case "ask":
+		pending := &PendingRequest{
+			ID:           uuid.NewString(),
+			RunID:        tools.GetRunID(ctx),
+			StepIndex:    tools.GetRunStep(ctx),
+			ToolName:     strings.TrimSpace(req.ToolName),
+			ToolCallID:   strings.TrimSpace(req.ToolCallID),
+			Arguments:    cloneApprovalArgs(req.Arguments),
+			SessionID:    strings.TrimSpace(req.SessionID),
+			RouteKind:    strings.TrimSpace(string(req.RouteKind)),
+			Provider:     strings.TrimSpace(req.Provider),
+			ProviderID:   strings.TrimSpace(req.ProviderID),
+			Model:        strings.TrimSpace(req.Model),
+			AgentID:      strings.TrimSpace(req.AgentID),
+			PolicySource: decision.Approval.PolicySource,
+			RiskLevel:    decision.Approval.RiskLevel,
+			BindingHash:  decision.Approval.BindingHash,
+		}
+		resolution, waitErr := h.waitForApproval(ctx, nonEmpty(strings.TrimSpace(req.UserID), tools.GetUserID(ctx)), pending)
+		decision.Approval.Required = true
+		decision.Approval.ID = pending.ID
+		decision.Approval.ExpiresAt = pending.ExpiresAt
+		if waitErr != nil {
+			decision.Allowed = false
+			decision.Approval.Reason = waitErr.Error()
+			return decision, waitErr
+		}
+		allowed := resolution == "approve" || resolution == "allow" || resolution == "allow-once" || resolution == "allow-always"
+		decision.Allowed = allowed
+		if !allowed {
+			decision.Approval.Reason = "tool approval denied"
+		}
+		return decision, nil
+	default:
+		return decision, nil
+	}
+}
+
+func (h *ApprovalHandler) waitForApproval(ctx context.Context, userID string, req *PendingRequest) (string, error) {
+	if req == nil {
+		return "", fmt.Errorf("approval request is required")
+	}
+	if req.ID == "" {
+		req.ID = uuid.NewString()
+	}
+	req.UserID = nonEmpty(strings.TrimSpace(userID), "default")
+	req.SessionID = strings.TrimSpace(req.SessionID)
+	if req.RunID == "" {
+		req.RunID = tools.GetRunID(ctx)
+	}
+	if req.StepIndex == 0 {
+		req.StepIndex = tools.GetRunStep(ctx)
+	}
+	req.CreatedAt = timeutil.NowTime().UTC().Format("2006-01-02T15:04:05Z")
+	req.ExpiresAt = timeutil.NowMilli() + h.timeout.Milliseconds()
+
+	ch := make(chan string, 1)
+	h.mu.Lock()
+	h.pending[req.ID] = req
+	h.waiters[req.ID] = ch
+	observer := h.observer
+	h.mu.Unlock()
+
+	if h.broker != nil {
+		h.broker.Publish(req.UserID, "tool_approval_request", req)
+	}
+	if observer != nil {
+		observer.OnApprovalRequested(toolApprovalRuntimeEvent(req))
+	}
+
+	timer := time.NewTimer(h.timeout)
+	defer timer.Stop()
+	defer func() {
+		h.mu.Lock()
+		delete(h.pending, req.ID)
+		delete(h.waiters, req.ID)
+		h.mu.Unlock()
+	}()
+
+	select {
+	case resolution := <-ch:
+		if observer != nil {
+			event := toolApprovalRuntimeEvent(req)
+			event.Decision = strings.ToLower(strings.TrimSpace(resolution))
+			observer.OnApprovalResolved(event)
+		}
+		return strings.ToLower(strings.TrimSpace(resolution)), nil
+	case <-timer.C:
+		err := fmt.Errorf("tool approval timed out after %s", h.timeout)
+		if observer != nil {
+			event := toolApprovalRuntimeEvent(req)
+			event.Decision = "deny"
+			event.Error = err.Error()
+			observer.OnApprovalResolved(event)
+		}
+		return "deny", err
+	case <-ctx.Done():
+		err := ctx.Err()
+		if observer != nil {
+			event := toolApprovalRuntimeEvent(req)
+			event.Decision = "deny"
+			event.Error = err.Error()
+			observer.OnApprovalResolved(event)
+		}
+		return "deny", err
+	}
+}
+
+func toolApprovalRuntimeEvent(req *PendingRequest) tools.ApprovalRuntimeEvent {
+	if req == nil {
+		return tools.ApprovalRuntimeEvent{}
+	}
+	return tools.ApprovalRuntimeEvent{
+		RunID:        req.RunID,
+		StepIndex:    req.StepIndex,
+		Kind:         "tool",
+		ID:           req.ID,
+		ToolName:     req.ToolName,
+		ToolCallID:   req.ToolCallID,
+		SessionID:    req.SessionID,
+		UserID:       req.UserID,
+		PolicySource: req.PolicySource,
+		RiskLevel:    req.RiskLevel,
+		BindingHash:  req.BindingHash,
+		ExpiresAt:    req.ExpiresAt,
+	}
+}
+
+func (h *ApprovalHandler) policyMode(toolName string) (mode string, source string) {
+	h.mu.RLock()
+	cfg := h.config
+	h.mu.RUnlock()
+
+	if !cfg.Enabled {
+		return "auto", "approval.disabled"
+	}
+	toolName = strings.TrimSpace(toolName)
+	if toolName != "" {
+		if rawMode, ok := cfg.ToolPolicies[toolName]; ok {
+			return normalizeApprovalMode(rawMode), "approval.tool_policies." + toolName
+		}
+	}
+	return normalizeApprovalMode(cfg.DefaultPolicy), "approval.default_policy"
+}
+
+func normalizeApprovalMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "ask":
+		return "ask"
+	case "deny":
+		return "deny"
+	default:
+		return "auto"
+	}
+}
+
+func normalizeRiskLevel(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "critical":
+		return "critical"
+	case "high":
+		return "high"
+	case "medium":
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+func cloneApprovalArgs(in map[string]interface{}) map[string]interface{} {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func nonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

@@ -227,7 +227,25 @@ func normalizeTags(category string, tags []string) []string {
 	return out
 }
 
+func looksLikeHTMLSkillContent(raw string) bool {
+	snippet := strings.ToLower(strings.TrimSpace(raw))
+	if len(snippet) > 2048 {
+		snippet = snippet[:2048]
+	}
+	if snippet == "" {
+		return false
+	}
+	if strings.HasPrefix(snippet, "<!doctype html") || strings.HasPrefix(snippet, "<html") {
+		return true
+	}
+	return strings.Contains(snippet, "<head") && strings.Contains(snippet, "<body")
+}
+
 func parseSkillMarkdown(raw string, fallbackID string) (*normalizedSkill, error) {
+	if looksLikeHTMLSkillContent(raw) {
+		return nil, fmt.Errorf("skill content is html, not markdown")
+	}
+
 	manifest := &skill.Manifest{
 		Version:  "0.1.0",
 		Metadata: map[string]string{},

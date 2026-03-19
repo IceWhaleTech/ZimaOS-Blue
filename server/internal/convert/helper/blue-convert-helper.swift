@@ -47,7 +47,7 @@ func outputDict(path: String, previewKind: String? = nil, previewText: String? =
     return payload
 }
 
-let plainTextDocumentExtensions: Set<String> = ["txt", "md", "csv", "tsv"]
+let plainTextDocumentExtensions: Set<String> = ["txt", "text", "md", "csv", "tsv"]
 
 func readPlainTextDocument(from sourceURL: URL) throws -> NSAttributedString {
     var encoding = String.Encoding.utf8

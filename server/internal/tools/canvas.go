@@ -24,6 +24,16 @@ func NewCanvasTool(manager *a2ui.Manager) *CanvasTool {
 
 // Definition returns the tool schema.
 func (t *CanvasTool) Definition() ToolDefinition {
+	componentSchema := map[string]interface{}{
+		"type":                 "object",
+		"additionalProperties": true,
+	}
+	componentArraySchema := map[string]interface{}{
+		"type":        "array",
+		"description": "Canvas component tree.",
+		"items":       componentSchema,
+	}
+
 	return ToolDefinition{
 		Name:        "canvas",
 		Description: "Create, inspect, update, delete, and execute lightweight Agent-to-UI canvases.",
@@ -40,11 +50,10 @@ func (t *CanvasTool) Definition() ToolDefinition {
 				"title":       map[string]interface{}{"type": "string", "description": "Canvas title."},
 				"description": map[string]interface{}{"type": "string", "description": "Canvas description."},
 				"components": map[string]interface{}{
-					"type":        "array",
-					"description": "Canvas component tree.",
-					"items": map[string]interface{}{
-						"type":                 "object",
-						"additionalProperties": true,
+					"description": "Canvas component tree. Accepts either a single component object or an array of component objects.",
+					"anyOf": []interface{}{
+						componentArraySchema,
+						componentSchema,
 					},
 				},
 				"layout":         map[string]interface{}{"type": "string", "description": "Layout type: vertical, horizontal, or grid."},
@@ -291,6 +300,20 @@ func decodeComponents(value interface{}) ([]a2ui.Component, error) {
 	}
 	if typed, ok := value.([]a2ui.Component); ok {
 		return typed, nil
+	}
+	if typed, ok := value.(a2ui.Component); ok {
+		return []a2ui.Component{typed}, nil
+	}
+	if _, ok := value.(map[string]interface{}); ok {
+		var component a2ui.Component
+		blob, err := json.Marshal(value)
+		if err != nil {
+			return nil, fmt.Errorf("marshal component: %w", err)
+		}
+		if err := json.Unmarshal(blob, &component); err != nil {
+			return nil, fmt.Errorf("decode component: %w", err)
+		}
+		return []a2ui.Component{component}, nil
 	}
 	var components []a2ui.Component
 	blob, err := json.Marshal(value)

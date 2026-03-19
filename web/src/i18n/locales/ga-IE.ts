@@ -2415,6 +2415,7 @@ export default {
     mode: 'Mód lúb tascanna',
     modeDescription:
       'Cumasaíonn sé lúba leanúnacha pleanála agus forghníomhaithe go dtí go múchann tú é',
+    autoConfirm: 'Deimhniú uathoibríoch',
     autoConfirmDescription:
       'Scipeáil dearbhú do ghníomhartha millteacha (cliceáil ar dheis ar an gcnaipe lúb tascanna chun scoránú)',
     sendMessage: 'Seol teachtaireacht chuig an ngníomhaire...',

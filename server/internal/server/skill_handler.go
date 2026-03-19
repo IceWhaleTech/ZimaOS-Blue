@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -994,6 +995,8 @@ type gitHubContentEntry struct {
 
 // gitHubURLPattern matches github.com/{owner}/{repo}/tree/{ref}/{path}
 var gitHubURLPattern = regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)$`)
+var gitHubBlobURLPattern = regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)$`)
+var errHTMLSkillDocument = errors.New("downloaded content is an HTML page, not a skill file")
 
 // parseGitHubDirURL parses a GitHub tree URL into API components.
 // Returns (owner, repo, ref, path, ok).
@@ -1009,6 +1012,80 @@ func parseGitHubDirURL(u string) (string, string, string, string, bool) {
 func isGitHubDirURL(u string) bool {
 	_, _, _, _, ok := parseGitHubDirURL(u)
 	return ok
+}
+
+// parseGitHubBlobURL parses a GitHub blob URL into components.
+// Returns (owner, repo, ref, path, ok).
+func parseGitHubBlobURL(u string) (string, string, string, string, bool) {
+	m := gitHubBlobURLPattern.FindStringSubmatch(u)
+	if m == nil {
+		return "", "", "", "", false
+	}
+	return m[1], m[2], m[3], m[4], true
+}
+
+func rawGitHubBlobURL(owner, repo, ref, path string) string {
+	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", owner, repo, ref, path)
+}
+
+func normalizeSkillInstallURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if owner, repo, ref, path, ok := parseGitHubBlobURL(rawURL); ok {
+		return rawGitHubBlobURL(owner, repo, ref, path)
+	}
+	return rawURL
+}
+
+func looksLikeHTMLDocument(body []byte, contentType string) bool {
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/xhtml+xml") {
+		return true
+	}
+	snippet := strings.ToLower(strings.TrimSpace(string(body)))
+	if len(snippet) > 2048 {
+		snippet = snippet[:2048]
+	}
+	if snippet == "" {
+		return false
+	}
+	if strings.HasPrefix(snippet, "<!doctype html") || strings.HasPrefix(snippet, "<html") {
+		return true
+	}
+	return strings.Contains(snippet, "<head") && strings.Contains(snippet, "<body")
+}
+
+func validateDownloadedSkillContent(body []byte, contentType, sourceURL string) error {
+	if looksLikeHTMLDocument(body, contentType) {
+		if _, _, _, _, ok := parseGitHubBlobURL(sourceURL); ok {
+			return fmt.Errorf("%w (%s). Please use the raw GitHub file URL or a GitHub tree URL", errHTMLSkillDocument, sourceURL)
+		}
+		return fmt.Errorf("%w (%s)", errHTMLSkillDocument, sourceURL)
+	}
+	return nil
+}
+
+func readInstalledSkillMarkdown(dir string) ([]byte, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("installed directory does not contain SKILL.md")
+		}
+		return nil, err
+	}
+	return data, nil
+}
+
+func (h *SkillHandler) registerInstalledSkill(manifest *skill.Manifest) error {
+	if manifest == nil {
+		return nil
+	}
+	if err := h.registry.Register(NewRemoteSkillAdapter(manifest), false); err != nil {
+		return err
+	}
+	if h.localScanner != nil {
+		_ = h.localScanner.Scan()
+	}
+	return nil
 }
 
 // downloadGitHubDirectory downloads all files from a GitHub directory into destDir.
@@ -1148,10 +1225,11 @@ func (h *SkillHandler) findRemoteSkill(ctx context.Context, id string) *RemoteSk
 func (h *SkillHandler) downloadSkillMD(ctx context.Context, id string, rs *RemoteSkill) ([]byte, error) {
 	const maxRetries = 3
 	var lastErr error
+	sawHTMLDocument := false
 	urls := make([]string, 0, 2)
 
 	if rs.DownloadURL != "" {
-		urls = append(urls, rs.DownloadURL)
+		urls = append(urls, normalizeSkillInstallURL(rs.DownloadURL))
 	}
 	if rs.SourceID == "clawhub" || rs.SourceGroup == "clawhub" || len(urls) == 0 {
 		urls = append(urls, fmt.Sprintf("https://www.clawhub.ai/api/v1/skills/%s/skill-md", id))
@@ -1170,8 +1248,14 @@ func (h *SkillHandler) downloadSkillMD(ctx context.Context, id string, rs *Remot
 			}
 			if resp.StatusCode == http.StatusOK {
 				data, err := io.ReadAll(resp.Body)
+				contentType := resp.Header.Get("Content-Type")
 				resp.Body.Close()
 				if err == nil {
+					if err := validateDownloadedSkillContent(data, contentType, u); err != nil {
+						lastErr = err
+						sawHTMLDocument = true
+						continue
+					}
 					return data, nil
 				}
 				lastErr = err
@@ -1192,10 +1276,14 @@ func (h *SkillHandler) downloadSkillMD(ctx context.Context, id string, rs *Remot
 		}
 	}
 
+	if sawHTMLDocument && lastErr != nil {
+		return nil, lastErr
+	}
+
 	// Fallback: generate minimal SKILL.md
 	_ = lastErr // all download attempts failed, use fallback
-	return []byte(fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n# %s\n\n%s\n",
-		rs.Name, rs.Description, rs.Name, rs.Description)), nil
+	return []byte(fmt.Sprintf("---\nid: %s\nname: %s\ndescription: %s\nversion: %s\n---\n\n# %s\n\n%s\n",
+		id, rs.Name, rs.Description, firstNonEmpty(rs.Version, "1.0.0"), rs.Name, rs.Description)), nil
 }
 
 // InstallSkill installs a skill by downloading files to the skills directory.
@@ -1274,8 +1362,30 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 				"error": fmt.Sprintf("failed to download from GitHub: %v", err),
 			})
 		}
-		manifest := h.createManifestFromRemoteSkill(rs)
-		_ = h.registry.Register(NewRemoteSkillAdapter(manifest), false)
+		skillContent, err := readInstalledSkillMarkdown(skillDir)
+		if err != nil {
+			_ = os.RemoveAll(skillDir)
+			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+		}
+		_, manifest, err := h.parseSkillContent(string(skillContent), ghURL, rs.Name, rs.Description)
+		if err != nil {
+			_ = os.RemoveAll(skillDir)
+			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": fmt.Sprintf("failed to parse SKILL.md: %v", err),
+			})
+		}
+		manifest.ID = id
+		if err := h.registerInstalledSkill(manifest); err != nil {
+			_ = os.RemoveAll(skillDir)
+			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to register skill: %v", err),
+			})
+		}
 		h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success": true,
@@ -1313,8 +1423,22 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 			"error": fmt.Sprintf("failed to write SKILL.md: %v", err),
 		})
 	}
-	manifest := h.createManifestFromRemoteSkill(rs)
-	_ = h.registry.Register(NewRemoteSkillAdapter(manifest), false)
+	_, manifest, err := h.parseSkillContent(string(skillContent), firstString(rs.DownloadURL, rs.Homepage), rs.Name, rs.Description)
+	if err != nil {
+		_ = os.RemoveAll(skillDir)
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("failed to parse SKILL.md: %v", err),
+		})
+	}
+	manifest.ID = id
+	if err := h.registerInstalledSkill(manifest); err != nil {
+		_ = os.RemoveAll(skillDir)
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("failed to register skill: %v", err),
+		})
+	}
 
 	h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -1326,20 +1450,6 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 
 // UninstallSkill uninstalls a skill by removing its directory.
 func (h *SkillHandler) UninstallSkill(c echo.Context) error {
-	if h.market != nil {
-		id, err := validatedSkillID(c.Param("id"))
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-		}
-		if err := h.market.Uninstall(c.Request().Context(), id); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-		}
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success":  true,
-			"skill_id": id,
-		})
-	}
-
 	id, err := validatedSkillID(c.Param("id"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -1357,6 +1467,16 @@ func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 	if info := h.registry.GetInfo(id); info != nil && info.Builtin {
 		return c.JSON(http.StatusForbidden, map[string]string{
 			"error": "cannot uninstall builtin skill",
+		})
+	}
+
+	if h.market != nil {
+		if err := h.market.Uninstall(c.Request().Context(), id); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":  true,
+			"skill_id": id,
 		})
 	}
 
@@ -1379,6 +1499,9 @@ func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 
 	// Also unregister from in-memory registry if present
 	_ = h.registry.Unregister(id)
+	if h.localScanner != nil {
+		_ = h.localScanner.Scan()
+	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
@@ -2555,27 +2678,46 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
-	if req.URL == "" {
+	installURL := normalizeSkillInstallURL(req.URL)
+	if installURL == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "URL is required"})
 	}
 	if h.skillsDir == "" {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "skills directory not configured"})
 	}
+	if err := os.MkdirAll(h.skillsDir, 0o755); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("mkdir skills dir: %v", err)})
+	}
 
 	ctx := c.Request().Context()
 
 	// Check if this is a GitHub directory URL
-	if isGitHubDirURL(req.URL) {
-		// Extract skill ID from the URL path (last segment)
-		_, _, _, ghPath, _ := parseGitHubDirURL(req.URL)
-		parts := strings.Split(strings.TrimSuffix(ghPath, "/"), "/")
-		skillID := parts[len(parts)-1]
-		if req.Name != "" {
-			skillID = strings.ToLower(strings.ReplaceAll(req.Name, " ", "-"))
+	if isGitHubDirURL(installURL) {
+		tempDir, err := os.MkdirTemp(h.skillsDir, ".skill-install-*")
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("mkdir temp: %v", err)})
 		}
-		skillID, err := normalizedSkillID(skillID)
+		cleanupDir := tempDir
+		defer func() {
+			if cleanupDir != "" {
+				_ = os.RemoveAll(cleanupDir)
+			}
+		}()
+
+		if err := h.downloadGitHubDirectory(ctx, installURL, tempDir, nil); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("GitHub download failed: %v", err)})
+		}
+
+		body, err := readInstalledSkillMarkdown(tempDir)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		if err := validateDownloadedSkillContent(body, "", installURL); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		skillID, manifest, err := h.parseSkillContent(string(body), installURL, req.Name, req.Description)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to parse skill: %v", err)})
 		}
 
 		if existingID, installed := h.resolveInstalledSkillID(skillID); installed {
@@ -2586,14 +2728,13 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 		if _, err := os.Stat(skillDir); err == nil {
 			return c.JSON(http.StatusConflict, map[string]string{"error": "skill already installed"})
 		}
-
-		if err := os.MkdirAll(skillDir, 0o755); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("mkdir: %v", err)})
+		if err := os.Rename(tempDir, skillDir); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("move: %v", err)})
 		}
-
-		if err := h.downloadGitHubDirectory(ctx, req.URL, skillDir, nil); err != nil {
-			os.RemoveAll(skillDir)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("GitHub download failed: %v", err)})
+		cleanupDir = ""
+		if err := h.registerInstalledSkill(manifest); err != nil {
+			_ = os.RemoveAll(skillDir)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("register: %v", err)})
 		}
 
 		return c.JSON(http.StatusOK, map[string]interface{}{
@@ -2607,7 +2748,7 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 	var body []byte
 	var lastErr error
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		httpReq, err := http.NewRequestWithContext(ctx, "GET", req.URL, nil)
+		httpReq, err := http.NewRequestWithContext(ctx, "GET", installURL, nil)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid URL: %v", err)})
 		}
@@ -2616,8 +2757,12 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 			lastErr = err
 		} else if resp.StatusCode == http.StatusOK {
 			body, lastErr = io.ReadAll(resp.Body)
+			contentType := resp.Header.Get("Content-Type")
 			resp.Body.Close()
 			if lastErr == nil {
+				if err := validateDownloadedSkillContent(body, contentType, installURL); err != nil {
+					return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+				}
 				break
 			}
 		} else {
@@ -2639,7 +2784,7 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 		return c.JSON(http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("failed after %d attempts: %v", maxRetries, lastErr)})
 	}
 
-	skillID, _, err := h.parseSkillContent(string(body), req.URL, req.Name, req.Description)
+	skillID, manifest, err := h.parseSkillContent(string(body), installURL, req.Name, req.Description)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to parse skill: %v", err)})
 	}
@@ -2653,12 +2798,26 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 		return c.JSON(http.StatusConflict, map[string]string{"error": "skill already installed"})
 	}
 
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("mkdir: %v", err)})
+	tempDir, err := os.MkdirTemp(h.skillsDir, ".skill-install-*")
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("mkdir temp: %v", err)})
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), body, 0o644); err != nil {
-		os.RemoveAll(skillDir)
+	cleanupDir := tempDir
+	defer func() {
+		if cleanupDir != "" {
+			_ = os.RemoveAll(cleanupDir)
+		}
+	}()
+	if err := os.WriteFile(filepath.Join(tempDir, "SKILL.md"), body, 0o644); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("write: %v", err)})
+	}
+	if err := os.Rename(tempDir, skillDir); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("move: %v", err)})
+	}
+	cleanupDir = ""
+	if err := h.registerInstalledSkill(manifest); err != nil {
+		_ = os.RemoveAll(skillDir)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("register: %v", err)})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -2669,6 +2828,10 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 
 // parseSkillContent parses SKILL.md content and returns skill ID and manifest
 func (h *SkillHandler) parseSkillContent(content, sourceURL, overrideName, overrideDesc string) (string, *skill.Manifest, error) {
+	if err := validateDownloadedSkillContent([]byte(content), "", sourceURL); err != nil {
+		return "", nil, err
+	}
+
 	manifest := &skill.Manifest{
 		Version:  "1.0.0",
 		Metadata: make(map[string]string),
@@ -2693,7 +2856,7 @@ func (h *SkillHandler) parseSkillContent(content, sourceURL, overrideName, overr
 				}
 
 				key := strings.TrimSpace(line[:colonIdx])
-				value := strings.TrimSpace(line[colonIdx+1:])
+				value := strings.Trim(strings.TrimSpace(line[colonIdx+1:]), `"'`)
 
 				switch key {
 				case "name":

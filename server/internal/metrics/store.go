@@ -98,9 +98,9 @@ type RetentionPolicy struct {
 
 // ContinuousQuery defines a continuous query configuration.
 type ContinuousQuery struct {
-	Name        string
-	Database    string
-	Query       string
+	Name          string
+	Database      string
+	Query         string
 	ResampleEvery time.Duration
 	ResampleFor   time.Duration
 }
@@ -144,12 +144,13 @@ func DefaultStoreConfig() *StoreConfig {
 
 // Measurement names for metrics.
 const (
-	MeasurementAPICalls    = "api_calls"
-	MeasurementTokenUsage  = "token_usage"
-	MeasurementLatency     = "latency"
-	MeasurementSpeed       = "speed"
-	MeasurementSystem      = "system"
-	MeasurementProcess     = "process"
+	MeasurementAPICalls   = "api_calls"
+	MeasurementTokenUsage = "token_usage"
+	MeasurementLatency    = "latency"
+	MeasurementSpeed      = "speed"
+	MeasurementSystem     = "system"
+	MeasurementProcess    = "process"
+	MeasurementCounters   = "runtime_counters"
 )
 
 // Tag keys for metrics.
@@ -157,25 +158,26 @@ const (
 	TagModel     = "model"
 	TagStatus    = "status"
 	TagErrorType = "error_type"
+	TagMetric    = "metric"
 )
 
 // Field keys for metrics.
 const (
-	FieldCount           = "count"
-	FieldSuccess         = "success"
-	FieldLatencyMs       = "latency_ms"
-	FieldInputTokens     = "input_tokens"
-	FieldOutputTokens    = "output_tokens"
-	FieldTotalTokens     = "total_tokens"
-	FieldCacheReadTokens = "cache_read_tokens"
+	FieldCount            = "count"
+	FieldSuccess          = "success"
+	FieldLatencyMs        = "latency_ms"
+	FieldInputTokens      = "input_tokens"
+	FieldOutputTokens     = "output_tokens"
+	FieldTotalTokens      = "total_tokens"
+	FieldCacheReadTokens  = "cache_read_tokens"
 	FieldCacheWriteTokens = "cache_write_tokens"
-	FieldCost            = "cost"
-	FieldTokensPerSecond = "tokens_per_second"
-	FieldTTFT            = "ttft_ms"
-	FieldCPUPercent      = "cpu_percent"
-	FieldMemoryBytes     = "memory_bytes"
-	FieldMemoryPercent   = "memory_percent"
-	FieldDiskPercent     = "disk_percent"
+	FieldCost             = "cost"
+	FieldTokensPerSecond  = "tokens_per_second"
+	FieldTTFT             = "ttft_ms"
+	FieldCPUPercent       = "cpu_percent"
+	FieldMemoryBytes      = "memory_bytes"
+	FieldMemoryPercent    = "memory_percent"
+	FieldDiskPercent      = "disk_percent"
 )
 
 // Helper functions

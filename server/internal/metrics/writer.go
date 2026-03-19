@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"sync"
 	"time"
 )
@@ -499,6 +500,26 @@ func (w *MetricsWriter) RecordSpeed(model string, tokensPerSecond, ttftMs, decod
 			AddField("decode_speed", decodeSpeed)
 		w.store.Write(ctx, point)
 	}
+}
+
+// RecordCounter records a lightweight runtime counter with optional tags.
+func (w *MetricsWriter) RecordCounter(name string, value int64, tags map[string]string) {
+	if w == nil || value == 0 || strings.TrimSpace(name) == "" {
+		return
+	}
+	if w.store == nil {
+		return
+	}
+	ctx := context.Background()
+	point := NewPoint(MeasurementCounters).
+		AddTag(TagMetric, strings.TrimSpace(name)).
+		AddField(FieldCount, value)
+	for key, raw := range tags {
+		if trimmed := strings.TrimSpace(raw); trimmed != "" {
+			point.AddTag(key, trimmed)
+		}
+	}
+	w.store.Write(ctx, point)
 }
 
 // GetCallStats returns current call statistics.

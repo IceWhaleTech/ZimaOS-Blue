@@ -34,6 +34,67 @@ func TestQuestionManager_TimeoutActionDefault(t *testing.T) {
 	}
 }
 
+func TestQuestionManager_ObserverReceivesLifecycleEvents(t *testing.T) {
+	broker := sse.NewBroker()
+	ch := broker.Subscribe("u1")
+	defer broker.Unsubscribe("u1", ch)
+	mgr := NewQuestionManager(broker, func() bool { return false }, 2*time.Second)
+	observer := &runtimeObserverStub{}
+	mgr.SetObserver(observer)
+
+	ctx := WithRunID(context.Background(), "run-q1")
+	ctx = WithRunStep(ctx, 3)
+	questions := []QuestionItem{{
+		ID:       "q1",
+		Question: "Pick one",
+		Options:  []QuestionOption{{Label: "A", Value: "a"}, {Label: "B", Value: "b"}},
+	}}
+
+	done := make(chan []QuestionAnswerResult, 1)
+	go func() {
+		answers, _, err := mgr.AskQuestions(ctx, "u1", "s1", questions)
+		if err != nil {
+			t.Errorf("AskQuestions error: %v", err)
+			done <- nil
+			return
+		}
+		done <- answers
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if pending := mgr.GetPending("u1"); pending != nil {
+			if !mgr.ResolveAnswer(pending.ID, []QuestionAnswerResult{{QuestionID: "q1", Selected: []string{"b"}}}) {
+				t.Fatal("ResolveAnswer returned false")
+			}
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	select {
+	case answers := <-done:
+		if len(answers) != 1 || len(answers[0].Selected) != 1 || answers[0].Selected[0] != "b" {
+			t.Fatalf("unexpected answers: %+v", answers)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for AskQuestions")
+	}
+
+	if len(observer.questionRequested) != 1 {
+		t.Fatalf("questionRequested len = %d, want 1", len(observer.questionRequested))
+	}
+	if len(observer.questionResolved) != 1 {
+		t.Fatalf("questionResolved len = %d, want 1", len(observer.questionResolved))
+	}
+	if observer.questionRequested[0].RunID != "run-q1" || observer.questionResolved[0].RunID != "run-q1" {
+		t.Fatalf("unexpected run ids: req=%q res=%q", observer.questionRequested[0].RunID, observer.questionResolved[0].RunID)
+	}
+	if observer.questionResolved[0].TimedOut {
+		t.Fatal("question should not be marked timed out")
+	}
+}
+
 func TestQuestionManager_TimeoutActionError(t *testing.T) {
 	broker := sse.NewBroker()
 	ch := broker.Subscribe("u1")

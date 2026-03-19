@@ -40,6 +40,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/gateway"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
+	harnessdrivers "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness/drivers"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/inject"
@@ -133,11 +135,11 @@ func toolResultToIPCData(result any) map[string]string {
 		}
 		return map[string]string{"result": typed}
 	default:
-		encoded, err := json.Marshal(typed)
-		if err != nil {
-			return map[string]string{"result": fmt.Sprintf("%v", typed)}
+		sanitized := tools.SafeToolPayloadValue(typed, 64*1024)
+		if parsed, ok := sanitized.(map[string]interface{}); ok {
+			return flattenToolResultMap(parsed)
 		}
-		return map[string]string{"result": string(encoded)}
+		return map[string]string{"result": tools.SafeToolPayloadString(sanitized, 64*1024)}
 	}
 }
 
@@ -150,12 +152,7 @@ func flattenToolResultMap(data map[string]interface{}) map[string]string {
 		case string:
 			out[k] = typed
 		default:
-			encoded, err := json.Marshal(typed)
-			if err != nil {
-				out[k] = fmt.Sprintf("%v", typed)
-				continue
-			}
-			out[k] = string(encoded)
+			out[k] = tools.SafeToolPayloadString(typed, 64*1024)
 		}
 	}
 	return out
@@ -330,6 +327,7 @@ func registerAgentAndMCPRoutes(
 	deps *RoutesDeps,
 	logger *zap.Logger,
 	agentLLMCaller agent.LLMCaller,
+	harnessController *harness.Controller,
 	mcpPermission ...echo.MiddlewareFunc,
 ) *agent.Runner {
 	if protected == nil || v1 == nil || services == nil || cfg == nil || deps == nil || logger == nil {
@@ -341,6 +339,9 @@ func registerAgentAndMCPRoutes(
 		toolRegistry = tools.NewRegistry()
 	}
 	executor := tools.NewExecutor(toolRegistry)
+	if deps.ChatHandler != nil {
+		executor.SetTraceStore(deps.ChatHandler.GetToolTraceStore())
+	}
 
 	var agentRunnerRef *agent.Runner
 	if deps.DB != nil && deps.SSEBroker != nil && agentLLMCaller != nil {
@@ -358,9 +359,17 @@ func registerAgentAndMCPRoutes(
 				logger.Info("Recovered stale agent tasks", zap.Int64("count", recovered))
 			}
 			agentRunner := agent.NewRunner(agentStore, agentLLMCaller, toolRegistry, executor, deps.SSEBroker, agent.RunnerConfig{})
-			agentHandler := agent.NewHandler(agentStore, agentRunner)
 			agentGroup := protected.Group("/agent")
-			agentHandler.RegisterRoutes(agentGroup)
+			if harnessController != nil {
+				agentDriver := harnessdrivers.NewAgentDriver(harness.RunKindAgentTask, agentRunner, agentStore, harnessController)
+				subagentDriver := harnessdrivers.NewAgentDriver(harness.RunKindSubagent, agentRunner, agentStore, harnessController)
+				agentRunner.SetEventObserver(agentDriver)
+				harnessController.RegisterDriver(agentDriver)
+				harnessController.RegisterDriver(subagentDriver)
+				harness.NewAgentCompatHandler(harnessController, agentStore, agentRunner, filepath.Join(cfg.DataDir, "workspace")).RegisterRoutes(agentGroup)
+			} else {
+				agent.NewHandler(agentStore, agentRunner).RegisterRoutes(agentGroup)
+			}
 			agentRunnerRef = agentRunner
 			logger.Info("Agent task routes registered")
 		}
@@ -503,6 +512,7 @@ type RoutesDeps struct {
 	Ctx              context.Context
 	MetricsWriter    *metrics.MetricsWriter
 	MetricsCollector *metrics.Collector
+	FlagEvaluator    *config.FlagEvaluator
 	ChatHandler      *server.ChatHandler
 	PluginRegistry   *plugin.Registry
 	PluginStore      *plugin.Store
@@ -691,6 +701,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	logger := deps.Logger
 	dataDir := cfg.DataDir
 	kv := deps.ConfigKV // shared kvstore for settings, VAPID keys, toggles, etc.
+	flagEvaluator := deps.FlagEvaluator
+	if flagEvaluator == nil && deps.Config != nil {
+		flagEvaluator = config.NewFlagEvaluator(&deps.Config.Grayscale)
+		deps.FlagEvaluator = flagEvaluator
+	}
 
 	// ── Fast path: register critical routes FIRST so the HTTP listener can ──
 	// ── start serving health checks while heavy subsystems initialize.     ──
@@ -1292,6 +1307,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	toolPolicyResolver := tools.NewToolPolicyResolver(deps.Config)
 	deps.ChatHandler.SetToolPolicyResolver(toolPolicyResolver)
 	deps.ChatHandler.SetToolTraceStore(tools.NewToolTraceStore(1000))
+	deps.ChatHandler.SetFlagEvaluator(flagEvaluator)
 
 	// Tool router: dynamic exposure + schema compression (config-driven, default off).
 	toolRouter := tools.DefaultToolRouter()
@@ -1332,8 +1348,22 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Deep research service (shared by API + skill executor)
 	deepResearchService := deepresearch.NewService(nil, deepresearch.NewToolWebSearcherWithConfig(webSearchConfig))
-	if deps.SSEBroker != nil {
-		deepResearchService.SetEventPublisher(deps.SSEBroker)
+	var harnessController *harness.Controller
+	var harnessRuntimeObserver tools.RuntimeEventObserver
+	var harnessSubagentExecutor tools.SubagentExecutor
+	var harnessWriteGuard tools.WritePathGuard
+	var harnessExecGuard tools.ExecPathGuard
+	if deps.DB != nil && deps.Config != nil && deps.Config.Harness.Enabled {
+		harnessStore, err := harness.NewSQLiteStore(deps.DB)
+		if err != nil {
+			logger.Warn("Failed to initialize harness store", zap.Error(err))
+		} else {
+			harnessController = harness.NewController(harnessStore, harness.NewPolicyResolver(deps.Config.Harness, &deps.Config.Agents))
+			harnessRuntimeObserver = harness.NewRuntimeObserver(harnessController)
+			harnessSubagentExecutor = harness.NewSubagentExecutor(harnessController, &deps.Config.Agents)
+			harnessWriteGuard = harness.NewWritePathGuard(harnessController)
+			harnessExecGuard = harness.NewExecPathGuard(harnessController)
+		}
 	}
 	deepResearchService.SetRoutePolicy(deepresearch.RoutePolicy{
 		DefaultMode:     deepresearch.RouteMode(deps.Config.Research.Router.DefaultMode),
@@ -1357,7 +1387,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 	deps.ChatHandler.SetDeepResearchService(deepResearchService)
-	tools.RegisterResearchTools(s.ToolRegistry, newDeepResearchToolAdapter(deepResearchService))
+	if harnessController != nil {
+		researchDriver := harnessdrivers.NewResearchDriver(deepResearchService, harnessController)
+		if deps.SSEBroker != nil {
+			researchDriver.SetNextPublisher(deps.SSEBroker)
+		}
+		deepResearchService.SetEventPublisher(researchDriver)
+		harnessController.RegisterDriver(researchDriver)
+	} else if deps.SSEBroker != nil {
+		deepResearchService.SetEventPublisher(deps.SSEBroker)
+	}
+	tools.RegisterResearchTools(s.ToolRegistry, newDeepResearchToolAdapter(deepResearchService, harnessController, filepath.Join(cfg.DataDir, "workspace")))
 
 	// Register auto-reply routes
 	if deps.AutoreplyHandler != nil {
@@ -1712,6 +1752,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		deps.ChatHandler.SetQuestionManager(questionMgr)
 		deps.ChatHandler.SetBrowserCheckpointManager(browserCheckpointMgr)
 		deps.ChatHandler.SetBrowserSiteAllowlistStore(browserSiteStore)
+		if harnessRuntimeObserver != nil {
+			deps.ChatHandler.SetToolEventObserver(harnessRuntimeObserver)
+		}
+	}
+	if questionMgr != nil && harnessRuntimeObserver != nil {
+		questionMgr.SetObserver(harnessRuntimeObserver)
 	}
 
 	// Exec tools (shell execution + process management)
@@ -1725,6 +1771,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		execConfig.AllowedDirs = []string{cfg.DataDir}
 		if deps.SSEBroker != nil {
 			execApprovals = tools.NewApprovalManager(deps.SSEBroker)
+			if harnessRuntimeObserver != nil {
+				execApprovals.SetObserver(harnessRuntimeObserver)
+			}
 		}
 		var dirStore *tools.DirAllowlistStore
 		if deps.DB != nil {
@@ -1858,7 +1907,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			execGroup.POST("/approvals/:id", func(c echo.Context) error {
 				id := c.Param("id")
 				var body struct {
-					Decision string `json:"decision"`
+					Decision    string `json:"decision"`
+					BindingHash string `json:"binding_hash"`
 				}
 				if err := c.Bind(&body); err != nil {
 					return c.JSON(400, map[string]string{"error": "invalid body"})
@@ -1867,7 +1917,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				if decision != tools.ApprovalAllowOnce && decision != tools.ApprovalAllowAlways && decision != tools.ApprovalDeny {
 					return c.JSON(400, map[string]string{"error": "invalid decision; use allow-once, allow-always, or deny"})
 				}
-				if !execApprovals.ResolveApproval(id, decision) {
+				if !execApprovals.ResolveApprovalWithBinding(id, decision, body.BindingHash) {
 					return c.JSON(404, map[string]string{"error": "approval not found or expired"})
 				}
 				return c.JSON(200, map[string]string{"status": string(decision)})
@@ -2008,6 +2058,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 	s.MgmtTool = mgmtTool
 	// Settings and channels are wired later (created after this point)
+
+	registerPluginTools(s.ToolRegistry, deps.PluginRegistry)
 
 	// Plugin routes
 	pluginHandler := server.NewPluginHandler(deps.PluginRegistry)
@@ -2155,6 +2207,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Workflow routes
 	if deps.WorkflowHandler != nil {
+		deps.WorkflowHandler.SetServiceInitHook(func(svc *workflow.WorkflowService) {
+			svc.SetFlagEvaluator(flagEvaluator)
+		})
 		deps.WorkflowHandler.SetRouteMiddlewares(deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageAutomation))
 		deps.WorkflowHandler.RegisterRoutes(e)
 	} else {
@@ -2168,9 +2223,24 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Deep research routes (protected)
 	deepResearchHandler := deepresearch.NewHandler(deepResearchService)
+	if creator := newHarnessResearchCreator(harnessController, deepResearchService, filepath.Join(cfg.DataDir, "workspace")); creator != nil {
+		deepResearchHandler.SetJobCreator(creator)
+	}
 	deepResearchHandler.RegisterGroup(protected.Group("/deep-research", requirePagePermission(permission.PageChat)))
 	deepResearchHandler.RegisterGroup(apiProtected.Group("/deep-research", requirePagePermission(permission.PageChat)))
 	logger.Info("Deep research routes registered")
+	var harnessDetailView *harnessDetailProvider
+	if harnessController != nil {
+		harnessHandler := harness.NewHandler(harnessController)
+		harnessDetailView = &harnessDetailProvider{
+			execApprovals: execApprovals,
+			questionMgr:   questionMgr,
+		}
+		harnessHandler.SetDetailProvider(harnessDetailView)
+		harnessHandler.RegisterRoutes(protected.Group("/harness", requirePagePermission(permission.PageTools)))
+		harnessHandler.RegisterRoutes(apiProtected.Group("/harness", requirePagePermission(permission.PageTools)))
+		logger.Info("Harness routes registered")
+	}
 
 	// Voice routes - /api/v1/voice/*
 	if deps.VoiceHandler != nil {
@@ -2744,6 +2814,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// ProxyBridge: route ChatHandler LLM calls through proxy pipeline
 		bridge := proxybridge.NewBridge(proxyHandler)
+		if deps.MetricsWriter != nil {
+			bridge.SetMetricsRecorder(deps.MetricsWriter)
+		}
 		proxyCaller := &proxyBridgeLLMCaller{
 			bridge:            bridge,
 			claudeCodeHandler: deps.ClaudeCodeHandler,
@@ -2906,7 +2979,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		restrictionsHandler.RegisterRoutes(authPageV1Group(permission.PageProviders))
 	}
 
-	agentRunnerRef = registerAgentAndMCPRoutes(protected, v1, s, cfg, deps, logger, agentLLMCaller, requirePagePermission(permission.PageTools))
+	agentRunnerRef = registerAgentAndMCPRoutes(protected, v1, s, cfg, deps, logger, agentLLMCaller, harnessController, requirePagePermission(permission.PageTools))
 	reflectService = selfreflect.NewService(auxiliaryLLM, nil)
 	if sk := s.SkillRegistry.Get("self_reflect"); sk != nil {
 		if sr, ok := sk.(*builtin.SelfReflect); ok {
@@ -2915,6 +2988,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 	if agentRunnerRef != nil {
 		agentRunnerRef.SetReflector(reflectService)
+		agentRunnerRef.SetSubagentExecutor(harnessSubagentExecutor)
+		agentRunnerRef.SetWritePathGuard(harnessWriteGuard)
+		agentRunnerRef.SetExecPathGuard(harnessExecGuard)
+		if deps.MetricsWriter != nil {
+			agentRunnerRef.SetToolMetricsRecorder(deps.MetricsWriter)
+		}
 	}
 
 	// Ngrok remote access routes
@@ -3262,9 +3341,40 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		sseHandler.RegisterRoutes(apiProtected.Group("/v1"))
 
 		approvalHandler := networkapi.NewApprovalHandler(deps.SSEBroker)
+		if harnessDetailView != nil {
+			harnessDetailView.approvalHandler = approvalHandler
+		}
 		// Wire exec approval resolver so /approval/resolve can handle exec approvals too.
 		if execApprovals != nil {
 			approvalHandler.SetExecResolver(execApprovalAdapter{execApprovals})
+		}
+		if deps.ChatHandler != nil {
+			deps.ChatHandler.SetToolApprover(approvalHandler)
+		}
+		if agentRunnerRef != nil {
+			agentRunnerRef.SetToolApprover(approvalHandler)
+			if harnessRuntimeObserver != nil {
+				agentRunnerRef.SetToolEventObserver(harnessRuntimeObserver)
+			}
+		}
+		if harnessRuntimeObserver != nil {
+			approvalHandler.SetObserver(harnessRuntimeObserver)
+		}
+		if deps.WorkflowHandler != nil && s != nil && s.ToolRegistry != nil {
+			workflowGateway := tools.NewToolGateway(s.ToolRegistry, tools.NewExecutor(s.ToolRegistry))
+			workflowGateway.SetApprover(approvalHandler)
+			if harnessRuntimeObserver != nil {
+				workflowGateway.SetEventObserver(harnessRuntimeObserver)
+			}
+			if deps.MetricsWriter != nil {
+				workflowGateway.SetMetricsRecorder(deps.MetricsWriter)
+			}
+			deps.WorkflowHandler.SetServiceInitHook(func(svc *workflow.WorkflowService) {
+				svc.SetToolGateway(workflowToolRuntimeAdapter{gateway: workflowGateway})
+				if deps.MetricsWriter != nil {
+					svc.SetMetricsRecorder(deps.MetricsWriter)
+				}
+			})
 		}
 		approvalHandler.RegisterRoutes(apiProtected.Group("/v1"))
 	}
@@ -3334,12 +3444,105 @@ type execApprovalAdapter struct {
 	mgr *tools.ApprovalManager
 }
 
-func (a execApprovalAdapter) ResolveApproval(id string, decision string) bool {
-	return a.mgr.ResolveApproval(id, tools.ApprovalDecision(decision))
+func (a execApprovalAdapter) ResolveApproval(id string, decision string, bindingHash string) bool {
+	return a.mgr.ResolveApprovalWithBinding(id, tools.ApprovalDecision(decision), bindingHash)
+}
+
+type workflowToolRuntimeAdapter struct {
+	gateway *tools.ToolGateway
+}
+
+func (a workflowToolRuntimeAdapter) Execute(ctx context.Context, req workflow.ToolExecutionRequest) (*workflow.ToolExecutionResult, error) {
+	if a.gateway == nil {
+		return nil, fmt.Errorf("workflow tool gateway is not configured")
+	}
+	argsJSON, _ := json.Marshal(req.Arguments)
+	result, err := a.gateway.Execute(tools.WithRouteKind(ctx, tools.ToolRouteKindWorkflow), tools.ToolGatewayRequest{
+		ToolName:   strings.TrimSpace(req.ToolName),
+		Arguments:  string(argsJSON),
+		RouteKind:  tools.ToolRouteKindWorkflow,
+		SessionID:  strings.TrimSpace(req.SessionID),
+		UserID:     strings.TrimSpace(req.UserID),
+		Provider:   strings.TrimSpace(req.Provider),
+		ProviderID: strings.TrimSpace(req.ProviderID),
+		Model:      strings.TrimSpace(req.Model),
+		AgentID:    strings.TrimSpace(req.AgentID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &workflow.ToolExecutionResult{
+		ExecutionResult: result.ExecutionResult,
+		CompactPayload:  result.CompactLLMPayload,
+		AuditPayload:    result.AuditPayload,
+	}, nil
 }
 
 type gatewayStopper struct {
 	gateway *gateway.Gateway
+}
+
+type pluginToolAdapter struct {
+	registry *plugin.Registry
+	name     string
+}
+
+func (t *pluginToolAdapter) Definition() tools.ToolDefinition {
+	if t == nil || t.registry == nil {
+		return tools.ToolDefinition{Name: strings.TrimSpace(t.name)}
+	}
+	tool := t.registry.GetTool(strings.TrimSpace(t.name))
+	if tool == nil {
+		return tools.ToolDefinition{Name: strings.TrimSpace(t.name)}
+	}
+	return tools.ToolDefinition{
+		Name:                strings.TrimSpace(tool.Name),
+		Description:         strings.TrimSpace(tool.Description),
+		Icon:                "extension",
+		Parameters:          tool.Parameters,
+		RiskLevel:           strings.TrimSpace(tool.RiskLevel),
+		VisibilityAllowlist: append([]string(nil), tool.VisibilityAllowlist...),
+	}
+}
+
+func (t *pluginToolAdapter) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	if t == nil || t.registry == nil {
+		return nil, fmt.Errorf("plugin tool registry is not configured")
+	}
+	tool := t.registry.GetTool(strings.TrimSpace(t.name))
+	if tool == nil || tool.Handler == nil {
+		return nil, fmt.Errorf("plugin tool %q is not available", strings.TrimSpace(t.name))
+	}
+	result, err := tool.Handler(ctx, args)
+	if err != nil || result == nil {
+		return result, err
+	}
+	if _, marshalErr := json.Marshal(result); marshalErr != nil {
+		slog.Warn("plugin tool result required safe normalization",
+			"tool", strings.TrimSpace(t.name),
+			"cause", marshalErr.Error(),
+		)
+		return tools.SafeToolPayloadValue(result, 64*1024), nil
+	}
+	return result, nil
+}
+
+func registerPluginTools(toolRegistry *tools.Registry, pluginRegistry *plugin.Registry) {
+	if toolRegistry == nil || pluginRegistry == nil {
+		return
+	}
+	for _, tool := range pluginRegistry.ListTools() {
+		if tool == nil || strings.TrimSpace(tool.Name) == "" {
+			continue
+		}
+		if toolRegistry.Get(tool.Name) != nil {
+			continue
+		}
+		toolRegistry.Register(&pluginToolAdapter{
+			registry: pluginRegistry,
+			name:     tool.Name,
+		})
+	}
 }
 
 func (g gatewayStopper) Close() error {

@@ -6,6 +6,8 @@ interface Props {
   itemCount: number
   // Optional source items for slot access
   items?: any[]
+  // Stable key for each item so prepend/reorder operations can preserve height mappings
+  itemKey?: string | ((item: any, index: number) => string | number)
   // Estimated height of each item (used for initial calculation)
   estimatedItemHeight?: number
   // Number of items to render above/below visible area
@@ -24,6 +26,8 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   visibleRangeChange: [start: number, end: number]
 }>()
+
+type StableItemKey = string | number
 
 class FenwickTree {
   private tree: number[] = []
@@ -141,6 +145,9 @@ const usesExternalScroll = computed(() => Boolean(props.scrollContainer))
 const itemHeights = ref<number[]>([])
 const heightTree = new FenwickTree()
 const updateHeightHandlers = new Map<number, (height: number) => void>()
+const previousItemKeys = ref<StableItemKey[] | null>(null)
+let prependAnchorRafId: number | null = null
+let pendingPrependAnchorDelta = 0
 
 function getUpdateHeightHandler(index: number): (height: number) => void {
   const cached = updateHeightHandlers.get(index)
@@ -184,9 +191,130 @@ function rebuildHeightTree() {
   bumpLayoutVersion()
 }
 
+function resolveStableItemKey(item: unknown, index: number): StableItemKey {
+  if (!props.itemKey) return index
+
+  if (typeof props.itemKey === 'function') {
+    const resolved = props.itemKey(item, index)
+    return typeof resolved === 'string' || typeof resolved === 'number' ? resolved : index
+  }
+
+  if (item && typeof item === 'object') {
+    const resolved = (item as Record<string, unknown>)[props.itemKey]
+    if (typeof resolved === 'string' || typeof resolved === 'number') {
+      return resolved
+    }
+  }
+
+  return index
+}
+
+function getStableItemKeys(itemCount: number): StableItemKey[] | null {
+  if (!props.itemKey || !props.items) return null
+
+  const keys = new Array<StableItemKey>(itemCount)
+  for (let i = 0; i < itemCount; i++) {
+    keys[i] = resolveStableItemKey(props.items[i], i)
+  }
+  return keys
+}
+
+function stableKeysEqual(a: StableItemKey[] | null, b: StableItemKey[] | null) {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+function buildHeightsFromStableKeys(
+  nextKeys: StableItemKey[],
+  prevKeys: StableItemKey[],
+  prevHeights: number[],
+  estimatedHeight: number
+) {
+  const heightByKey = new Map<StableItemKey, number>()
+  for (let i = 0; i < prevKeys.length; i++) {
+    const prevKey = prevKeys[i]
+    if (prevKey === undefined) continue
+    heightByKey.set(prevKey, prevHeights[i] ?? estimatedHeight)
+  }
+  return nextKeys.map((key) => heightByKey.get(key) ?? estimatedHeight)
+}
+
+function getPrependedItemCount(nextKeys: StableItemKey[], prevKeys: StableItemKey[]) {
+  if (prevKeys.length === 0 || nextKeys.length <= prevKeys.length) return 0
+
+  const delta = nextKeys.length - prevKeys.length
+  for (let i = 0; i < prevKeys.length; i++) {
+    if (nextKeys[i + delta] !== prevKeys[i]) {
+      return 0
+    }
+  }
+  return delta
+}
+
+function sumHeights(heights: number[], endExclusive: number) {
+  let total = 0
+  const limit = Math.min(endExclusive, heights.length)
+  for (let i = 0; i < limit; i++) {
+    total += heights[i] ?? 0
+  }
+  return total
+}
+
+function schedulePrependAnchorDelta(delta: number) {
+  if (delta <= 0) return
+
+  pendingPrependAnchorDelta += delta
+  if (prependAnchorRafId !== null) return
+
+  prependAnchorRafId = window.requestAnimationFrame(() => {
+    prependAnchorRafId = null
+    if (pendingPrependAnchorDelta === 0) return
+    const nextDelta = pendingPrependAnchorDelta
+    pendingPrependAnchorDelta = 0
+    applyScrollAnchorDelta(nextDelta)
+  })
+}
+
 watch(
-  () => [props.itemCount, props.estimatedItemHeight] as const,
+  () => [props.itemCount, props.estimatedItemHeight, props.items, props.itemKey] as const,
   ([itemCount, estimatedHeight], oldValue) => {
+    const nextKeys = getStableItemKeys(itemCount)
+    if (nextKeys) {
+      const prevKeys = previousItemKeys.value ?? []
+      if (
+        stableKeysEqual(prevKeys, nextKeys) &&
+        itemHeights.value.length === itemCount &&
+        oldValue?.[1] === estimatedHeight
+      ) {
+        previousItemKeys.value = nextKeys
+        return
+      }
+
+      const nextHeights = buildHeightsFromStableKeys(
+        nextKeys,
+        prevKeys,
+        itemHeights.value,
+        estimatedHeight
+      )
+      const prependedItemCount = getPrependedItemCount(nextKeys, prevKeys)
+
+      itemHeights.value = nextHeights
+      heightTree.build(nextHeights)
+      previousItemKeys.value = nextKeys
+      bumpLayoutVersion()
+
+      if (prependedItemCount > 0) {
+        schedulePrependAnchorDelta(sumHeights(nextHeights, prependedItemCount))
+      }
+      return
+    }
+
+    previousItemKeys.value = null
+
     const prevCount = oldValue?.[0]
     const prevEstimated = oldValue?.[1]
 
@@ -463,6 +591,10 @@ watch([containerRef, () => props.scrollContainer], () => {
 })
 
 onUnmounted(() => {
+  if (prependAnchorRafId !== null) {
+    window.cancelAnimationFrame(prependAnchorRafId)
+    prependAnchorRafId = null
+  }
   if (layoutVersionRafId !== null) {
     window.cancelAnimationFrame(layoutVersionRafId)
     layoutVersionRafId = null
@@ -476,6 +608,7 @@ onUnmounted(() => {
     emitRangeRafId = null
   }
   activeScrollContainer.value?.removeEventListener('scroll', handleScroll)
+  pendingPrependAnchorDelta = 0
   pendingRange = null
   pendingScrollContainer = null
   updateHeightHandlers.clear()

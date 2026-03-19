@@ -2,34 +2,75 @@ package bootstrap
 
 import (
 	"context"
+	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 type deepResearchToolAdapter struct {
-	service *deepresearch.Service
+	service              *deepresearch.Service
+	manager              *harness.Controller
+	defaultWorkspaceRoot string
 }
 
-func newDeepResearchToolAdapter(service *deepresearch.Service) *deepResearchToolAdapter {
-	return &deepResearchToolAdapter{service: service}
+func newDeepResearchToolAdapter(service *deepresearch.Service, manager *harness.Controller, defaultWorkspaceRoot string) *deepResearchToolAdapter {
+	return &deepResearchToolAdapter{
+		service:              service,
+		manager:              manager,
+		defaultWorkspaceRoot: strings.TrimSpace(defaultWorkspaceRoot),
+	}
 }
 
 func (a *deepResearchToolAdapter) CreateJob(ctx context.Context, req tools.ResearchCreateJobRequest) (*tools.ResearchJob, error) {
 	if a == nil || a.service == nil {
 		return nil, deepresearch.ErrJobNotFound
 	}
+	if a.manager != nil {
+		run, err := a.manager.Submit(ctx, harness.RunSpec{
+			Kind:           harness.RunKindResearch,
+			Goal:           req.Query,
+			UserID:         req.UserID,
+			ConversationID: req.ConversationID,
+			SessionID:      req.ConversationID,
+			WorkspaceRoot:  a.defaultWorkspaceRoot,
+			Metadata: map[string]interface{}{
+				"mode":          req.Mode,
+				"route_mode":    req.RouteMode,
+				"lang":          req.Lang,
+				"report_style":  req.ReportStyle,
+				"time_windows":  append([]string(nil), req.TimeWindows...),
+				"strict_entity": req.StrictEntity != nil && *req.StrictEntity,
+				"max_sources":   budgetMaxSources(req.Budget),
+				"max_seconds":   budgetMaxSeconds(req.Budget),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		job, err := a.service.GetJobForUser(run.ID, req.UserID, "")
+		if err == nil {
+			return toToolResearchJob(job), nil
+		}
+		return &tools.ResearchJob{
+			ID:             run.ID,
+			ConversationID: run.ConversationID,
+			Status:         string(run.Status),
+			Query:          run.Goal,
+		}, nil
+	}
 	job, err := a.service.CreateJob(ctx, deepresearch.CreateJobRequest{
-		UserID:       req.UserID,
+		UserID:         req.UserID,
 		ConversationID: req.ConversationID,
-		Query:        req.Query,
-		Mode:         deepresearch.Mode(req.Mode),
-		RouteMode:    deepresearch.RouteMode(req.RouteMode),
-		Lang:         req.Lang,
-		Budget:       toDeepResearchBudget(req.Budget),
-		StrictEntity: req.StrictEntity,
-		TimeWindows:  append([]string(nil), req.TimeWindows...),
-		ReportStyle:  req.ReportStyle,
+		Query:          req.Query,
+		Mode:           deepresearch.Mode(req.Mode),
+		RouteMode:      deepresearch.RouteMode(req.RouteMode),
+		Lang:           req.Lang,
+		Budget:         toDeepResearchBudget(req.Budget),
+		StrictEntity:   req.StrictEntity,
+		TimeWindows:    append([]string(nil), req.TimeWindows...),
+		ReportStyle:    req.ReportStyle,
 	})
 	if err != nil {
 		return nil, err
@@ -114,4 +155,18 @@ func cloneExperimentReportForTool(report *deepresearch.ExperimentReport) map[str
 		out["metadata"] = meta
 	}
 	return out
+}
+
+func budgetMaxSources(budget *tools.ResearchBudget) int {
+	if budget == nil {
+		return 0
+	}
+	return budget.MaxSources
+}
+
+func budgetMaxSeconds(budget *tools.ResearchBudget) int {
+	if budget == nil {
+		return 0
+	}
+	return budget.MaxSeconds
 }

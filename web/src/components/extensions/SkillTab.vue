@@ -5,6 +5,7 @@ import { skillApi, type Skill } from '@/api/skill'
 import { useSkillStore } from '@/stores/skill'
 import { parseFrontmatter } from '@/utils/frontmatter'
 import { renderMarkdown as renderMarkdownHtml } from '@/utils/markdown'
+import { formatVersionLabel } from '@/utils/version-label'
 
 const { t, te, locale } = useI18n()
 const skillStore = useSkillStore()
@@ -20,6 +21,7 @@ const selectedSkillId = ref<string | null>(null)
 const showDetailModal = ref(false)
 const contentBySkillId = ref<Record<string, string>>({})
 const contentLoadingIds = ref<Set<string>>(new Set())
+const uninstallingSkillId = ref<string | null>(null)
 
 const isChineseLocale = computed(() => locale.value.toLowerCase().startsWith('zh'))
 const galleryHint = computed(() =>
@@ -165,8 +167,7 @@ function getSkillMonogram(skill: Skill): string {
 }
 
 function formatSkillVersion(value?: string): string {
-  if (!value) return '-'
-  return value.startsWith('v') ? value : `v${value}`
+  return formatVersionLabel(value)
 }
 
 function skillMetaText(value?: string): string {
@@ -239,6 +240,7 @@ const selectedSkillContentLoading = computed(() => {
   if (!selectedSkill.value) return false
   return contentLoadingIds.value.has(selectedSkill.value.id)
 })
+const canUninstallSelectedSkill = computed(() => !!selectedSkill.value && !selectedSkill.value.builtin)
 
 const skillStats = computed(() => ({
   total: skillStore.skills.length,
@@ -312,6 +314,26 @@ async function handleToggle(skill: Skill) {
     await skillStore.disableSkill(skill.id)
   } else {
     await skillStore.enableSkill(skill.id)
+  }
+}
+
+async function handleUninstall(skill: Skill) {
+  if (skill.builtin || uninstallingSkillId.value === skill.id) return
+
+  const confirmed = window.confirm(
+    t('skillStore.modal.confirmUninstallMessage', { name: getSkillName(skill) })
+  )
+  if (!confirmed) return
+
+  uninstallingSkillId.value = skill.id
+  try {
+    const result = await skillStore.uninstallSkill(skill.id)
+    if (result?.success) {
+      closeSkillDetail()
+      await skillStore.fetchSkills()
+    }
+  } finally {
+    uninstallingSkillId.value = null
   }
 }
 </script>
@@ -640,6 +662,20 @@ async function handleToggle(skill: Skill) {
                   />
                   <span class="toggle-slider"></span>
                 </label>
+
+                <button
+                  v-if="canUninstallSelectedSkill"
+                  type="button"
+                  class="detail-uninstall-button"
+                  :disabled="uninstallingSkillId === selectedSkill.id || skillStore.loading"
+                  @click="handleUninstall(selectedSkill)"
+                >
+                  {{
+                    uninstallingSkillId === selectedSkill.id
+                      ? t('common.loading')
+                      : t('skillStore.actions.uninstall')
+                  }}
+                </button>
               </div>
             </div>
 
@@ -1532,6 +1568,33 @@ async function handleToggle(skill: Skill) {
   flex-wrap: wrap;
   justify-content: flex-end;
   align-self: flex-start;
+}
+
+.detail-uninstall-button {
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  background: rgba(127, 29, 29, 0.14);
+  color: #fca5a5;
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.detail-uninstall-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(127, 29, 29, 0.2);
+  border-color: rgba(248, 113, 113, 0.38);
+}
+
+.detail-uninstall-button:disabled {
+  opacity: 0.64;
+  cursor: not-allowed;
 }
 
 .detail-hero-stats {

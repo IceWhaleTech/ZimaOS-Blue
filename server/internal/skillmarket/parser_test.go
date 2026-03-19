@@ -42,3 +42,11 @@ func TestNormalizeMarketplaceCategoryUsesBusinessTaxonomy(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSkillMarkdownRejectsHTMLContent(t *testing.T) {
+	raw := `<!doctype html><html><head><title>Not a skill</title></head><body>oops</body></html>`
+
+	if _, err := parseSkillMarkdown(raw, "html-skill"); err == nil {
+		t.Fatalf("expected html content to be rejected")
+	}
+}

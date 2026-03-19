@@ -71,7 +71,7 @@ func TestRegisterAgentAndMCPRoutes_ProxyDisabled(t *testing.T) {
 	defer deps.SSEBroker.Close()
 
 	llmCaller := &fakeAgentLLMCaller{}
-	runner := registerAgentAndMCPRoutes(protected, v1, services, cfg, deps, zap.NewNop(), llmCaller)
+	runner := registerAgentAndMCPRoutes(protected, v1, services, cfg, deps, zap.NewNop(), llmCaller, nil)
 	if runner == nil {
 		t.Fatal("expected non-nil agent runner when proxy is disabled")
 	}
@@ -154,7 +154,7 @@ func TestRegisterAgentAndMCPRoutes_ProxyDisabled_MCPOrchestratorGenerativeUsesFa
 	defer deps.SSEBroker.Close()
 
 	llmCaller := &fakeAgentLLMCaller{}
-	runner := registerAgentAndMCPRoutes(protected, v1, services, cfg, deps, zap.NewNop(), llmCaller)
+	runner := registerAgentAndMCPRoutes(protected, v1, services, cfg, deps, zap.NewNop(), llmCaller, nil)
 	if runner == nil {
 		t.Fatal("expected non-nil agent runner when proxy is disabled")
 	}

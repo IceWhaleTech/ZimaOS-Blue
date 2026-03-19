@@ -2294,6 +2294,7 @@ export default {
     ...enUS.agent,
     mode: 'Modo de ciclo de tarefas',
     modeDescription: 'Ativa ciclos contínuos de planear e executar tarefas até o desativar',
+    autoConfirm: 'Confirmação automática',
     autoConfirmDescription:
       'Ignorar confirmação para ações destrutivas (clique com o botão direito no botão de ciclo de tarefas para alternar)',
     sendMessage: 'Enviar mensagem ao agente...',

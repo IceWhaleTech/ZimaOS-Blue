@@ -185,6 +185,7 @@ type Event struct {
 }
 
 type CreateJobRequest struct {
+	RequestedID    string    `json:"requested_id,omitempty"`
 	UserID       string    `json:"user_id,omitempty"`
 	TenantID     string    `json:"tenant_id,omitempty"`
 	ConversationID string  `json:"conversation_id,omitempty"`

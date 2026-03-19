@@ -532,8 +532,26 @@ func (r *FailoverResult) Summary() string {
 	if r == nil {
 		return ""
 	}
-	parts := make([]string, 0, len(r.FailedAttempts)+1)
+	repeatedProviders := make(map[string]int)
 	for _, attempt := range r.FailedAttempts {
+		if attempt == nil {
+			continue
+		}
+		providerID := strings.TrimSpace(attempt.ProviderID)
+		if providerID == "" {
+			providerID = strings.TrimSpace(attempt.ProviderName)
+		}
+		if providerID == "" {
+			continue
+		}
+		repeatedProviders[providerID]++
+	}
+	if successProvider := strings.TrimSpace(r.SuccessProvider); successProvider != "" {
+		repeatedProviders[successProvider]++
+	}
+
+	parts := make([]string, 0, len(r.FailedAttempts)+1)
+	for i, attempt := range r.FailedAttempts {
 		if attempt == nil {
 			continue
 		}
@@ -544,9 +562,41 @@ func (r *FailoverResult) Summary() string {
 		if providerID == "" {
 			providerID = "unknown"
 		}
-		segment := fmt.Sprintf("%s[%s,%dms]", providerID, attempt.Reason, attempt.Latency.Milliseconds())
+
+		segmentProvider := providerID
+		if repeatedProviders[providerID] > 1 {
+			if modelID := strings.TrimSpace(attempt.ModelID); modelID != "" {
+				segmentProvider += ":" + modelID
+			}
+		}
+
+		segment := fmt.Sprintf("%s[%s,%dms]", segmentProvider, attempt.Reason, attempt.Latency.Milliseconds())
 		if nextProviderID := strings.TrimSpace(attempt.NextProviderID); nextProviderID != "" {
-			segment += "->" + nextProviderID
+			nextProviderLabel := nextProviderID
+			if repeatedProviders[nextProviderID] > 1 {
+				nextModelID := ""
+				for j := i + 1; j < len(r.FailedAttempts); j++ {
+					nextAttempt := r.FailedAttempts[j]
+					if nextAttempt == nil {
+						continue
+					}
+					candidateProviderID := strings.TrimSpace(nextAttempt.ProviderID)
+					if candidateProviderID == "" {
+						candidateProviderID = strings.TrimSpace(nextAttempt.ProviderName)
+					}
+					if candidateProviderID == nextProviderID {
+						nextModelID = strings.TrimSpace(nextAttempt.ModelID)
+						break
+					}
+				}
+				if nextModelID == "" && strings.TrimSpace(r.SuccessProvider) == nextProviderID {
+					nextModelID = strings.TrimSpace(r.SuccessModel)
+				}
+				if nextModelID != "" {
+					nextProviderLabel += ":" + nextModelID
+				}
+			}
+			segment += "->" + nextProviderLabel
 		}
 		parts = append(parts, segment)
 	}

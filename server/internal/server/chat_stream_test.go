@@ -130,6 +130,15 @@ type toolCallThenTextProxyHandler struct {
 	callCount int
 }
 
+// bufferedIntroThenToolAndCardProxyHandler simulates:
+// 1) first round emits intro text in multiple chunks so part of it remains buffered
+// 2) the round then switches to a tool call
+// 3) the tool emits a typeless card during execution
+// 4) the chat layer should flush the buffered intro before showing the card
+type bufferedIntroThenToolAndCardProxyHandler struct {
+	callCount int
+}
+
 // toolRoundPreContentFailingProxyHandler simulates:
 // 1) first round emits a tool_call
 // 2) second round fails before any SSE chunk with upstream 502
@@ -147,6 +156,10 @@ type toolRoundPinnedProviderFailoverProxyHandler struct {
 	requestExcluded       [][]string
 	requestPrevIDs        []string
 	requestDisableCont    []bool
+}
+
+type emitCardToolMock struct {
+	def tools.ToolDefinition
 }
 
 // toolRoundOverloadedAfterSearchProxyHandler simulates:
@@ -224,6 +237,20 @@ type secondTurnTimeoutProxyHandler struct {
 // missingTerminalMarkerProxyHandler emits a valid delta chunk but omits
 // response.completed / [DONE] from upstream SSE payload.
 type missingTerminalMarkerProxyHandler struct{}
+
+func (m *emitCardToolMock) Definition() tools.ToolDefinition {
+	return m.def
+}
+
+func (m *emitCardToolMock) Execute(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+	tools.EmitCard(ctx, map[string]interface{}{
+		"type":    "result",
+		"id":      "flush-before-card",
+		"title":   "Flush Before Card",
+		"message": "buffer-flush-card",
+	})
+	return map[string]interface{}{"ok": true}, nil
+}
 
 func (h *secondTurnTimeoutProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -837,6 +864,39 @@ func (h *toolCallThenTextProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.
 	}
 
 	fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_2","choices":[{"delta":{"content":"最终结果已返回。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+	flush()
+}
+
+func (h *bufferedIntroThenToolAndCardProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_buffered_intro_card"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	if h.callCount == 1 {
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"buffered_intro_round_1","choices":[{"delta":{"content":"前置说明："},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"buffered_intro_round_1","choices":[{"delta":{"content":"补充说明：即将展示卡片。"},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"buffered_intro_round_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_buffered_intro_1","type":"function","function":{"name":"emit_card_tool","arguments":"{\"topic\":\"card\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"buffered_intro_round_1","choices":[{"delta":{},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		return
+	}
+
+	fmt.Fprintf(w, "data: %s\n\n", `{"id":"buffered_intro_round_2","choices":[{"delta":{"content":"最终结果已返回。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 	flush()
 }
 
@@ -3206,6 +3266,74 @@ func TestStreamMessageAutoContinue_ToolRoundWithoutChecklistUpdate_DoesNotImplic
 	}
 }
 
+func TestStreamMessageAutoContinue_ToollessChecklistEcho_DoesNotKeepUpdatingTodo(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test toolless checklist echo stability")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		roundContents: []string{
+			"- [ ] 收集信息\n- [ ] 写总结",
+			"- [x] 收集信息\n- [ ] 写总结\n\n我继续执行第二步。",
+			"任务已完成。最终总结：已整理输出。",
+		},
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"继续推进这个任务直到完成","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected 3 proxy calls (initial checklist + echo + completion), got %d", fakeProxy.callCount)
+	}
+	if got := strings.Count(body, `"todo_updated":true`); got != 1 {
+		t.Fatalf("expected exactly one todo_updated event for initial checklist bootstrap, got %d; body=%s", got, body)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 50, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "- [x] 收集信息") {
+			t.Fatalf("expected toolless checklist echo not to update persisted canonical checklist, got=%q", m.Content)
+		}
+	}
+}
+
 func TestStreamMessageAutoContinue_ActionPledge_DuplicateDebounceStopsLoop(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -3224,6 +3352,7 @@ func TestStreamMessageAutoContinue_ActionPledge_DuplicateDebounceStopsLoop(t *te
 	duplicateActionPledge := "我先帮你快速查一下 BlueAgent 的最新相关新闻与动态。请稍等，我整理成要点给你。"
 	fakeProxy := &autoContinueScriptedProxyHandler{
 		roundContents: []string{
+			duplicateActionPledge,
 			duplicateActionPledge,
 			duplicateActionPledge,
 			duplicateActionPledge,
@@ -3251,11 +3380,64 @@ func TestStreamMessageAutoContinue_ActionPledge_DuplicateDebounceStopsLoop(t *te
 	if !strings.Contains(body, `"done":true`) {
 		t.Fatalf("expected final done chunk, body=%s", body)
 	}
-	if fakeProxy.callCount != 2 {
-		t.Fatalf("expected duplicate action_pledge to stop at 2 proxy calls, got %d", fakeProxy.callCount)
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected duplicate action_pledge to stop at 3 proxy calls, got %d", fakeProxy.callCount)
 	}
 	if !fakeProxy.sawExecutionNudge {
 		t.Fatalf("expected second request to include auto-continue execution nudge, last=%q", fakeProxy.lastRequestMessage)
+	}
+}
+
+func TestStreamMessageAutoContinue_ActionPledge_DuplicateAllowsFinalResult(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test action pledge duplicate still reaches result")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	duplicateActionPledge := "我先帮你快速查一下 BlueAgent 的最新相关新闻与动态。请稍等，我整理成要点给你。"
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		roundContents: []string{
+			duplicateActionPledge,
+			duplicateActionPledge,
+			"已完成查询并整理：这是 BlueAgent 的最新动态摘要。",
+		},
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我查询一下blueagent的新闻","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected 3 proxy calls (pledge + duplicate pledge + final result), got %d", fakeProxy.callCount)
+	}
+	if !strings.Contains(body, "已完成查询并整理：这是 BlueAgent 的最新动态摘要。") {
+		t.Fatalf("expected final result to be delivered instead of stopping early, body=%s", body)
 	}
 }
 
@@ -3311,6 +3493,101 @@ func TestStreamMessage_ToolCallRound_SuppressesPostToolCallDelta(t *testing.T) {
 	}
 	if fakeProxy.callCount != 2 {
 		t.Fatalf("expected 2 proxy calls (tool round + final round), got %d", fakeProxy.callCount)
+	}
+}
+
+func TestStreamMessage_ToolCardFlushesBufferedIntroBeforeEmitCard(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test buffered intro flush before emit card")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&emitCardToolMock{
+		def: tools.ToolDefinition{
+			Name:        "emit_card_tool",
+			Description: "mock tool that emits a typeless card during execution",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"additionalProperties": true,
+			},
+		},
+	})
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &bufferedIntroThenToolAndCardProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请执行并展示过程卡片","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+
+	var fullContent strings.Builder
+	scanner := bufio.NewScanner(strings.NewReader(body))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			continue
+		}
+		var chunk map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if delta, ok := chunk["delta"].(string); ok {
+			fullContent.WriteString(delta)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan stream body: %v", err)
+	}
+
+	content := fullContent.String()
+	if !strings.Contains(content, "前置说明：补充说明：即将展示卡片。") {
+		t.Fatalf("expected buffered intro text to remain visible before card, content=%s", content)
+	}
+	introIdx := strings.Index(content, "补充说明：即将展示卡片。")
+	cardIdx := strings.Index(content, `"id":"flush-before-card"`)
+	if cardIdx < 0 {
+		t.Fatalf("expected emitted typeless card marker in content, got=%s", content)
+	}
+	if introIdx < 0 {
+		t.Fatalf("expected buffered intro marker in content, got=%s", content)
+	}
+	if introIdx > cardIdx {
+		t.Fatalf("expected buffered intro to appear before emitted card, intro_idx=%d card_idx=%d content=%s", introIdx, cardIdx, content)
+	}
+	if !strings.Contains(content, "最终结果已返回。") {
+		t.Fatalf("expected final result content in stream output, got=%s", content)
 	}
 }
 
@@ -3471,16 +3748,17 @@ func TestStreamMessage_ToolRoundOverloadedAfterSearch_EmitsFallbackSummary(t *te
 	}
 
 	toolRegistry := tools.NewRegistry()
-	mockSearch := tools.NewMockTool("web_search", "mock web search")
-	mockSearch.SetResult(map[string]interface{}{
-		"query": "OpenClaw latest news 2025",
-		"results": []map[string]interface{}{
-			{"title": "OpenClaw 发布周报", "url": "https://example.com/openclaw-weekly", "description": "weekly update"},
-			{"title": "OpenClaw Roadmap Update", "url": "https://example.com/openclaw-roadmap", "description": "roadmap"},
+	mockSearch := &webSearchToolMock{
+		result: map[string]interface{}{
+			"query": "OpenClaw latest news 2025",
+			"results": []map[string]interface{}{
+				{"title": "OpenClaw 发布周报", "url": "https://example.com/openclaw-weekly", "description": "weekly update"},
+				{"title": "OpenClaw Roadmap Update", "url": "https://example.com/openclaw-roadmap", "description": "roadmap"},
+			},
+			"total_count": 2,
+			"provider":    "mock",
 		},
-		"total_count": 2,
-		"provider":    "mock",
-	})
+	}
 	toolRegistry.Register(mockSearch)
 
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), toolRegistry)
@@ -3542,11 +3820,21 @@ func TestStreamMessage_PendingTodoNoProviderAfterTool_FallsBackWithoutExtraConti
 	}
 
 	toolRegistry := tools.NewRegistry()
-	mockTool := tools.NewMockTool("write", "mock write-like tool")
-	mockTool.SetResult(map[string]interface{}{
-		"status": "success",
-		"path":   "/workspace/tank-battle/server.js",
-	})
+	mockTool := &staticToolMock{
+		def: tools.ToolDefinition{
+			Name:        "write",
+			Description: "mock write-like tool",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"additionalProperties": true,
+			},
+		},
+		result: map[string]interface{}{
+			"status": "success",
+			"path":   "/workspace/tank-battle/server.js",
+		},
+	}
 	toolRegistry.Register(mockTool)
 
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), toolRegistry)

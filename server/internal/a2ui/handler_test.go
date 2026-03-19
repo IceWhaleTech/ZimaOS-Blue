@@ -78,6 +78,32 @@ func TestCreateCanvas(t *testing.T) {
 	}
 }
 
+func TestCreateCanvasSingleComponentObject(t *testing.T) {
+	_, e := setupTestHandler()
+
+	body := `{"id":"test-canvas","title":"Test Canvas","components":{"id":"text1","type":"text","props":{"content":"Hello"}}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/a2ui/canvases", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	var canvas Canvas
+	if err := json.Unmarshal(rec.Body.Bytes(), &canvas); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if len(canvas.Components) != 1 {
+		t.Fatalf("expected 1 component, got %d", len(canvas.Components))
+	}
+	if canvas.Components[0].ID != "text1" || canvas.Components[0].Type != ComponentTypeText {
+		t.Fatalf("unexpected component: %#v", canvas.Components[0])
+	}
+}
+
 func TestCreateCanvasWithoutID(t *testing.T) {
 	_, e := setupTestHandler()
 
@@ -167,6 +193,35 @@ func TestUpdateCanvas(t *testing.T) {
 
 	if result.Title != "Updated Title" {
 		t.Errorf("expected title 'Updated Title', got '%s'", result.Title)
+	}
+}
+
+func TestUpdateCanvasSingleComponentObject(t *testing.T) {
+	handler, e := setupTestHandler()
+
+	canvas := &Canvas{ID: "update-test", Title: "Original Title"}
+	handler.manager.CreateCanvas(canvas)
+
+	body := `{"components":{"id":"text1","type":"text","props":{"content":"Hello"}}}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/a2ui/canvases/update-test", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var result Canvas
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if len(result.Components) != 1 {
+		t.Fatalf("expected 1 component, got %d", len(result.Components))
+	}
+	if result.Components[0].ID != "text1" || result.Components[0].Type != ComponentTypeText {
+		t.Fatalf("unexpected component: %#v", result.Components[0])
 	}
 }
 

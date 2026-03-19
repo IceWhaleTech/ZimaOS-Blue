@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -41,7 +42,7 @@ func (r *Repository) migrate() error {
 		`CREATE TABLE IF NOT EXISTS workflow_executions (
 			id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, workflow_name TEXT NOT NULL,
 			tenant_id TEXT NOT NULL, status TEXT NOT NULL, trigger_type TEXT NOT NULL,
-			trigger_data TEXT, variables TEXT, node_results TEXT, error TEXT,
+			trigger_data TEXT, variables TEXT, node_results TEXT, status_reason TEXT, checkpoint TEXT, error TEXT,
 			started_at DATETIME NOT NULL, completed_at DATETIME, duration INTEGER,
 			FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE
 		)`,
@@ -66,6 +67,14 @@ func (r *Repository) migrate() error {
 	for _, query := range queries {
 		if _, err := r.db.Exec(query); err != nil {
 			return fmt.Errorf("failed to execute migration: %w", err)
+		}
+	}
+	for _, alter := range []string{
+		`ALTER TABLE workflow_executions ADD COLUMN status_reason TEXT`,
+		`ALTER TABLE workflow_executions ADD COLUMN checkpoint TEXT`,
+	} {
+		if _, err := r.db.Exec(alter); err != nil && !isDuplicateColumnError(err) {
+			return fmt.Errorf("failed to backfill workflow_executions columns: %w", err)
 		}
 	}
 	return nil
@@ -264,6 +273,8 @@ type execRow struct {
 	TriggerData  string  `json:"trigger_data" zorm:"trigger_data"`
 	Variables    string  `json:"variables" zorm:"variables"`
 	NodeResults  string  `json:"node_results" zorm:"node_results"`
+	StatusReason string  `json:"status_reason" zorm:"status_reason"`
+	Checkpoint   string  `json:"checkpoint" zorm:"checkpoint"`
 	Error        string  `json:"error" zorm:"error"`
 	StartedAt    string  `json:"started_at" zorm:"started_at"`
 	CompletedAt  *string `json:"completed_at" zorm:"completed_at"`
@@ -274,7 +285,7 @@ func rowToExecution(r execRow) *Execution {
 	e := &Execution{
 		ID: r.ID, WorkflowID: r.WorkflowID, WorkflowName: r.WorkflowName,
 		TenantID: r.TenantID, Status: ExecutionStatus(r.Status),
-		TriggerType: TriggerType(r.TriggerType), Error: r.Error,
+		TriggerType: TriggerType(r.TriggerType), StatusReason: r.StatusReason, Error: r.Error,
 		StartedAt: parseWfTime(r.StartedAt),
 	}
 	if r.CompletedAt != nil {
@@ -289,6 +300,7 @@ func rowToExecution(r execRow) *Execution {
 	json.Unmarshal([]byte(r.TriggerData), &e.TriggerData)
 	json.Unmarshal([]byte(r.Variables), &e.Variables)
 	json.Unmarshal([]byte(r.NodeResults), &e.NodeResults)
+	json.Unmarshal([]byte(r.Checkpoint), &e.Checkpoint)
 	return e
 }
 
@@ -298,7 +310,8 @@ func (r *Repository) SaveExecution(ctx context.Context, execution *Execution) er
 		"workflow_name": execution.WorkflowName, "tenant_id": execution.TenantID,
 		"status": execution.Status, "trigger_type": execution.TriggerType,
 		"trigger_data": marshalJSON(execution.TriggerData), "variables": marshalJSON(execution.Variables),
-		"node_results": marshalJSON(execution.NodeResults), "error": execution.Error,
+		"node_results": marshalJSON(execution.NodeResults), "status_reason": execution.StatusReason,
+		"checkpoint": marshalJSON(execution.Checkpoint), "error": execution.Error,
 		"started_at": execution.StartedAt, "completed_at": execution.CompletedAt,
 		"duration": execution.Duration,
 	})
@@ -474,4 +487,12 @@ func (r *Repository) CleanupOldExecutions(ctx context.Context, retentionDays int
 
 	n, err := r.execTable(ctx).Delete(z.Where(z.Lt("completed_at", cutoff)))
 	return int64(n), err
+}
+
+func isDuplicateColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(lower, "duplicate column name")
 }

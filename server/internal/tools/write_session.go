@@ -205,6 +205,25 @@ func (m *WriteSessionManager) Append(sessionID, ownerID, content string) (*write
 	return cloneWriteSession(session), nil
 }
 
+func (m *WriteSessionManager) Preview(sessionID, ownerID string) (*writeSession, error) {
+	if m == nil {
+		return nil, errors.New("write session manager is not configured")
+	}
+
+	now := time.Now()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.pruneExpiredLocked(now)
+
+	session, err := m.resolveSessionLocked(sessionID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	return cloneWriteSession(session), nil
+}
+
 func (m *WriteSessionManager) Commit(sessionID, ownerID string, expectedBytes int64, expectedSHA256 string) (*writeSession, string, error) {
 	if m == nil {
 		return nil, "", errors.New("write session manager is not configured")
@@ -389,6 +408,9 @@ func (t *FileWriteBeginTool) Execute(ctx context.Context, args map[string]interf
 	if err != nil {
 		return nil, err
 	}
+	if err := enforceWritePathGuard(ctx, absPath); err != nil {
+		return nil, err
+	}
 
 	session, err := t.sessions.Begin(absPath, relPath, GetUserID(ctx), createDirs)
 	if err != nil {
@@ -521,6 +543,14 @@ func (t *FileWriteCommitTool) Execute(ctx context.Context, args map[string]inter
 	}
 	expectedSHA256, err := fsOptionalString(args, "", "expected_sha256", "expected_sha256", "expectedSha256")
 	if err != nil {
+		return nil, err
+	}
+
+	session, err := t.sessions.Preview(sessionID, GetUserID(ctx))
+	if err != nil {
+		return nil, err
+	}
+	if err := enforceWritePathGuard(ctx, session.TargetPath); err != nil {
 		return nil, err
 	}
 

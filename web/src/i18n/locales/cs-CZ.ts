@@ -2715,6 +2715,7 @@ export default {
     ...enUS.agent,
     mode: 'Režim cyklu úloh',
     modeDescription: 'Povolí nepřetržité cykly plánování a provádění, dokud jej nevypnete',
+    autoConfirm: 'Automatické potvrzení',
     autoConfirmDescription:
       'Přeskočit potvrzení u destruktivních akcí (přepnutí pravým kliknutím na tlačítko cyklu úloh)',
     sendMessage: 'Odeslat zprávu agentovi...',

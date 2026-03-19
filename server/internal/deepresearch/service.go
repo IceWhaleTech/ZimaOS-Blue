@@ -248,8 +248,12 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 	budget = clampBudget(mode, budget)
 
 	now := timeutil.NowTime()
+	jobID := strings.TrimSpace(req.RequestedID)
+	if jobID == "" {
+		jobID = uuid.NewString()
+	}
 	job := &Job{
-		ID:                 uuid.NewString(),
+		ID:                 jobID,
 		ConversationID:     strings.TrimSpace(req.ConversationID),
 		UserID:             userID,
 		TenantID:           tenantID,

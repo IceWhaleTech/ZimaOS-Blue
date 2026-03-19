@@ -127,6 +127,11 @@ type mockBrowserService struct {
 	interactiveCount  int // configurable for auto-snapshot tests
 	screenshotData    string
 	screenshotTabData string
+	lastActMode       string
+	lastActTargetID   string
+	lastActRef        int
+	lastActAction     string
+	lastActValue      string
 }
 
 func newMockBrowserService() *mockBrowserService {
@@ -169,17 +174,27 @@ func (m *mockBrowserService) CountInteractiveElements(_ context.Context, _ strin
 	return m.interactiveCount, nil
 }
 
-func (m *mockBrowserService) ActByRef(_ context.Context, _ string, ref int, refMap map[int]int, _ string, _ string) error {
+func (m *mockBrowserService) ActByRef(_ context.Context, targetID string, ref int, refMap map[int]int, action string, value string) error {
 	if _, ok := refMap[ref]; !ok {
 		return fmt.Errorf("unknown ref @%d", ref)
 	}
+	m.lastActMode = "a11y"
+	m.lastActTargetID = targetID
+	m.lastActRef = ref
+	m.lastActAction = action
+	m.lastActValue = value
 	return nil
 }
 
-func (m *mockBrowserService) ActByInteractiveRef(_ context.Context, _ string, ref int, refMap map[int]string, _ string, _ string) error {
+func (m *mockBrowserService) ActByInteractiveRef(_ context.Context, targetID string, ref int, refMap map[int]string, action string, value string) error {
 	if _, ok := refMap[ref]; !ok {
 		return fmt.Errorf("unknown ref @%d", ref)
 	}
+	m.lastActMode = "interactive"
+	m.lastActTargetID = targetID
+	m.lastActRef = ref
+	m.lastActAction = action
+	m.lastActValue = value
 	return nil
 }
 
@@ -417,6 +432,9 @@ func TestBrowserSkill(t *testing.T) {
 		if err := br.Validate(map[string]any{"action": "snapshot_interactive"}); err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
+		if err := br.Validate(map[string]any{"action": "scroll", "ref": 1}); err != nil {
+			t.Errorf("unexpected error for legacy action alias: %v", err)
+		}
 	})
 
 	t.Run("navigate", func(t *testing.T) {
@@ -477,6 +495,37 @@ func TestBrowserSkill(t *testing.T) {
 		})
 		if err != nil || !result.Success {
 			t.Fatalf("act with interactive ref failed: err=%v", err)
+		}
+	})
+
+	t.Run("legacy_scroll_action_alias", func(t *testing.T) {
+		mock.lastActMode = ""
+		mock.lastActTargetID = ""
+		mock.lastActRef = 0
+		mock.lastActAction = ""
+		mock.lastActValue = ""
+
+		result, err := br.Execute(context.Background(), map[string]any{
+			"action": "snapshot_interactive",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("snapshot_interactive failed: err=%v", err)
+		}
+
+		result, err = br.Execute(context.Background(), map[string]any{
+			"action": "scroll", "ref": float64(1),
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("legacy scroll action failed: err=%v success=%v", err, result.Success)
+		}
+		if mock.lastActMode != "interactive" {
+			t.Fatalf("lastActMode = %q, want interactive", mock.lastActMode)
+		}
+		if mock.lastActAction != "scroll" {
+			t.Fatalf("lastActAction = %q, want scroll", mock.lastActAction)
+		}
+		if mock.lastActRef != 1 {
+			t.Fatalf("lastActRef = %d, want 1", mock.lastActRef)
 		}
 	})
 

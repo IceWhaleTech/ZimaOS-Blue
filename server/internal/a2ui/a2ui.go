@@ -4,6 +4,7 @@
 package a2ui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -79,6 +80,35 @@ type Component struct {
 	Validation *Validation `json:"validation,omitempty"`
 }
 
+type componentList []Component
+
+func (c *componentList) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		*c = nil
+		return nil
+	}
+
+	switch trimmed[0] {
+	case '{':
+		var component Component
+		if err := json.Unmarshal(trimmed, &component); err != nil {
+			return err
+		}
+		*c = componentList{component}
+		return nil
+	case '[':
+		var components []Component
+		if err := json.Unmarshal(trimmed, &components); err != nil {
+			return err
+		}
+		*c = componentList(components)
+		return nil
+	default:
+		return fmt.Errorf("components must be an object or array")
+	}
+}
+
 // Action represents an interactive action that can be triggered by a component.
 type Action struct {
 	// ID is the unique identifier for this action.
@@ -143,6 +173,36 @@ type Canvas struct {
 	CreatedAt time.Time `json:"created_at"`
 	// ExpiresAt is when the canvas expires (optional).
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+func (c *Canvas) UnmarshalJSON(data []byte) error {
+	type canvasPayload struct {
+		ID          string                 `json:"id"`
+		Title       string                 `json:"title,omitempty"`
+		Description string                 `json:"description,omitempty"`
+		Components  componentList          `json:"components"`
+		Layout      string                 `json:"layout,omitempty"`
+		Metadata    map[string]interface{} `json:"metadata,omitempty"`
+		CreatedAt   time.Time              `json:"created_at"`
+		ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
+	}
+
+	var payload canvasPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	*c = Canvas{
+		ID:          payload.ID,
+		Title:       payload.Title,
+		Description: payload.Description,
+		Components:  []Component(payload.Components),
+		Layout:      payload.Layout,
+		Metadata:    payload.Metadata,
+		CreatedAt:   payload.CreatedAt,
+		ExpiresAt:   payload.ExpiresAt,
+	}
+	return nil
 }
 
 // ActionResult represents the result of an action execution.

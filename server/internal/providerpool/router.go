@@ -20,7 +20,8 @@ import (
 type candidateSnapshot struct {
 	// byModel maps model ID → sorted candidates (by default strategy)
 	byModel map[string][]*RouteCandidate
-	// allCandidates is the full list of all provider+model pairs (for empty model requests)
+	// allCandidates is the full list of all provider+model pairs. Empty-model
+	// routing collapses this to one filtered candidate per provider at read time.
 	allCandidates []*RouteCandidate
 	// builtAt is when this snapshot was created
 	builtAt time.Time
@@ -303,7 +304,30 @@ func (r *Router) getCandidatesFromSnapshot(req *RouteRequest) []*RouteCandidate 
 		copy := *c
 		result = append(result, &copy)
 	}
+	if req.ModelID == "" && len(result) > 1 {
+		result = collapseCandidatesByProvider(result)
+	}
 	return result
+}
+
+func collapseCandidatesByProvider(candidates []*RouteCandidate) []*RouteCandidate {
+	if len(candidates) <= 1 {
+		return candidates
+	}
+
+	seen := make(map[string]struct{}, len(candidates))
+	collapsed := make([]*RouteCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == nil || candidate.Provider == nil {
+			continue
+		}
+		if _, exists := seen[candidate.Provider.ID]; exists {
+			continue
+		}
+		seen[candidate.Provider.ID] = struct{}{}
+		collapsed = append(collapsed, candidate)
+	}
+	return collapsed
 }
 
 // findCandidates finds all providers that can serve the requested model

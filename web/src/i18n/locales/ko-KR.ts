@@ -1938,9 +1938,10 @@ export default {
       cancel: '취소',
       add: '추가',
       installFromURLTitle: 'URL에서 스킬 설치',
-      installFromURLDescription: 'GitHub의 SKILL.md 파일 URL 또는 직접 링크를 입력하세요.',
+      installFromURLDescription:
+        'GitHub raw/blob SKILL.md 링크, tree 디렉터리 링크 또는 스킬 직접 URL을 입력하세요. blob 링크는 자동 변환되고 tree 링크는 전체 디렉터리를 설치합니다.',
       skillURL: '스킬 URL',
-      skillURLPlaceholder: 'https://example.com/SKILL.md',
+      skillURLPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       skillNameOptional: '스킬 이름（선택 사항）',
       skillNamePlaceholder: '스킬 이름 덮어쓰기',
       install: '설치',

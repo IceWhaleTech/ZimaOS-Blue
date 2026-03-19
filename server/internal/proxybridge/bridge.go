@@ -76,11 +76,24 @@ func (e *ProxyError) IsNoProvider() bool {
 // Bridge adapts llm.ChatRequest/ChatResponse to flow through an http.Handler proxy.
 type Bridge struct {
 	handler http.Handler
+	metrics runtimeMetricsRecorder
+}
+
+type runtimeMetricsRecorder interface {
+	RecordCounter(name string, value int64, tags map[string]string)
 }
 
 // NewBridge creates a new bridge that routes LLM calls through the given handler.
 func NewBridge(handler http.Handler) *Bridge {
 	return &Bridge{handler: handler}
+}
+
+// SetMetricsRecorder wires a lightweight counter recorder for normalization/runtime events.
+func (b *Bridge) SetMetricsRecorder(recorder runtimeMetricsRecorder) {
+	if b == nil {
+		return
+	}
+	b.metrics = recorder
 }
 
 // ensureTimeout returns a context with a deadline if one isn't already set.
@@ -204,7 +217,7 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 		respBody = decoded
 	}
 
-	resp, parseErr := ParseChatResponse(respBody)
+	resp, parseErr := parseChatResponseWithMetrics(respBody, b.metrics)
 	if parseErr != nil {
 		rawBody := string(respBody)
 		slog.Error("[bridge] failed to parse non-stream chat response",
@@ -355,7 +368,7 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 		if payload == "" {
 			continue
 		}
-		chunk, done, parseErr := ParseSSEChunk(payload)
+		chunk, done, parseErr := parseSSEChunkWithMetrics(payload, b.metrics)
 		if parseErr != nil {
 			// Fix #7: Log malformed SSE instead of silently dropping
 			slog.Warn("bridge: malformed SSE chunk", "error", parseErr, "payload_len", len(payload))

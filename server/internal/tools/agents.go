@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
@@ -48,13 +49,22 @@ func (t *AgentsListTool) Definition() ToolDefinition {
 func (t *SubagentsTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "subagents",
-		Description: "Inspect which agents can use subagents and the effective subagent policy applied to them.",
+		Description: "Inspect effective subagent policy, or spawn a harness-backed child agent when action=spawn or action=run.",
 		Icon:        "subagents",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"agent_id":     map[string]interface{}{"type": "string", "description": "Optional agent ID filter"},
-				"enabled_only": map[string]interface{}{"type": "boolean", "description": "If true, only return agents with subagents effectively enabled"},
+				"action":          map[string]interface{}{"type": "string", "description": "Optional action: inspect/list (default) or spawn/run to create a child agent run."},
+				"goal":            map[string]interface{}{"type": "string", "description": "Child-agent goal. Required when action=spawn or action=run."},
+				"context":         map[string]interface{}{"type": "string", "description": "Optional extra context passed to the child agent."},
+				"wait":            map[string]interface{}{"type": "boolean", "description": "If true, wait for the child run to reach a terminal state before returning. Defaults to true for spawn/run."},
+				"agent_id":        map[string]interface{}{"type": "string", "description": "Optional agent ID filter"},
+				"model":           map[string]interface{}{"type": "string", "description": "Optional child model override."},
+				"enabled_only":    map[string]interface{}{"type": "boolean", "description": "If true, only return agents with subagents effectively enabled"},
+				"max_steps":       map[string]interface{}{"type": "integer", "description": "Optional child max_steps override."},
+				"max_tool_rounds": map[string]interface{}{"type": "integer", "description": "Optional child max_tool_rounds override."},
+				"max_duration":    map[string]interface{}{"type": "string", "description": "Optional child max duration, for example 2m or 30s."},
+				"metadata":        map[string]interface{}{"type": "object", "description": "Optional child run metadata."},
 			},
 		},
 	}
@@ -100,9 +110,13 @@ func (t *AgentsListTool) Execute(ctx context.Context, args map[string]interface{
 
 // Execute returns effective subagent policy information.
 func (t *SubagentsTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	_ = ctx
 	if t == nil || t.cfg == nil {
 		return map[string]interface{}{"agents": []interface{}{}, "defaults": map[string]interface{}{}}, nil
+	}
+	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
+	goal := strings.TrimSpace(firstCompatString(args, "goal", "task", "objective", "prompt"))
+	if shouldSpawnSubagent(action, goal) {
+		return t.executeSpawn(ctx, args, goal)
 	}
 	agentID := strings.TrimSpace(firstCompatString(args, "agent_id", "agentId", "id", "agent"))
 	enabledOnly, _ := compatBoolArg(args, "enabled_only", "enabledOnly")
@@ -141,6 +155,109 @@ func (t *SubagentsTool) Execute(ctx context.Context, args map[string]interface{}
 		"agents":   agents,
 		"count":    len(agents),
 	}, nil
+}
+
+func (t *SubagentsTool) executeSpawn(ctx context.Context, args map[string]interface{}, goal string) (interface{}, error) {
+	executor := GetSubagentExecutor(ctx)
+	if executor == nil {
+		return nil, fmt.Errorf("subagent execution is not available in this runtime")
+	}
+	if goal == "" {
+		return nil, fmt.Errorf("goal is required when action=spawn or action=run")
+	}
+
+	wait := true
+	if explicitWait, ok := compatBoolArg(args, "wait", "sync", "block"); ok {
+		wait = explicitWait
+	}
+
+	req := normalizeSubagentRequest(SubagentRequest{
+		Goal:          goal,
+		AgentID:       strings.TrimSpace(firstCompatString(args, "agent_id", "agentId", "id", "agent")),
+		Model:         strings.TrimSpace(firstCompatString(args, "model")),
+		Context:       strings.TrimSpace(firstCompatString(args, "context", "instructions", "brief")),
+		Wait:          wait,
+		MaxSteps:      compatIntOrZero(args, "max_steps", "maxSteps"),
+		MaxToolRounds: compatIntOrZero(args, "max_tool_rounds", "maxToolRounds"),
+		MaxDuration:   compatDurationOrZero(args, "max_duration", "maxDuration"),
+		Metadata:      compatMapOrNil(args, "metadata"),
+	})
+
+	result, err := executor.ExecuteSubagent(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return map[string]interface{}{}, nil
+	}
+	return result, nil
+}
+
+func shouldSpawnSubagent(action, goal string) bool {
+	switch action {
+	case "spawn", "run", "start", "create":
+		return true
+	}
+	return strings.TrimSpace(goal) != ""
+}
+
+func compatIntOrZero(args map[string]interface{}, keys ...string) int {
+	value, ok := firstCompatIntDeep(args, keys...)
+	if !ok || value <= 0 {
+		return 0
+	}
+	return value
+}
+
+func compatDurationOrZero(args map[string]interface{}, keys ...string) time.Duration {
+	value, ok := firstCompatValueDeep(args, keys...)
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case time.Duration:
+		if typed > 0 {
+			return typed
+		}
+	case string:
+		dur, err := time.ParseDuration(strings.TrimSpace(typed))
+		if err == nil && dur > 0 {
+			return dur
+		}
+	case int:
+		if typed > 0 {
+			return time.Duration(typed) * time.Second
+		}
+	case int32:
+		if typed > 0 {
+			return time.Duration(typed) * time.Second
+		}
+	case int64:
+		if typed > 0 {
+			return time.Duration(typed) * time.Second
+		}
+	case float64:
+		if typed > 0 {
+			return time.Duration(typed * float64(time.Second))
+		}
+	}
+	return 0
+}
+
+func compatMapOrNil(args map[string]interface{}, keys ...string) map[string]interface{} {
+	value, ok := firstCompatValueDeep(args, keys...)
+	if !ok {
+		return nil
+	}
+	typed, ok := coerceCompatMap(value)
+	if !ok || len(typed) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(typed))
+	for k, v := range typed {
+		out[k] = v
+	}
+	return out
 }
 
 func effectiveAgentConfig(defaults, agent config.AgentConfig) config.AgentConfig {

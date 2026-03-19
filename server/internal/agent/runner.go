@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,14 +59,15 @@ type RunnerConfig struct {
 
 // Runner executes agent tasks in the background.
 type Runner struct {
-	store     *Store
-	llm       LLMCaller
-	executor  *tools.Executor
-	registry  *tools.Registry
-	broker    *sse.Broker
-	memory    MemoryRecaller
-	reflector SelfReflector
-	config    RunnerConfig
+	store       *Store
+	llm         LLMCaller
+	executor    *tools.Executor
+	toolGateway *tools.ToolGateway
+	registry    *tools.Registry
+	broker      *sse.Broker
+	memory      MemoryRecaller
+	reflector   SelfReflector
+	config      RunnerConfig
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc // task ID → cancel
@@ -81,10 +83,21 @@ type Runner struct {
 	askTimeoutActionFunc func() string // "error" | "default"
 	maxToolRoundsFunc    func() int
 	autoReflectFunc      func() bool
+
+	groundedRuntime *GroundedRuntime
+	groundedSecret  []byte
+	eventObserver   TaskEventObserver
+	subagents       tools.SubagentExecutor
+	writeGuard      tools.WritePathGuard
+	execGuard       tools.ExecPathGuard
 }
 
 type SelfReflector interface {
 	Reflect(ctx context.Context, input selfreflect.Input) (*selfreflect.Result, error)
+}
+
+type TaskEventObserver interface {
+	HandleTaskEvent(event TaskEvent)
 }
 
 // NewRunner creates a new agent runner.
@@ -107,16 +120,131 @@ func NewRunner(store *Store, llmCaller LLMCaller, registry *tools.Registry, exec
 	default:
 		config.AskTimeoutAction = "error"
 	}
-	return &Runner{
-		store:     store,
-		llm:       llmCaller,
-		registry:  registry,
-		executor:  executor,
-		broker:    broker,
-		config:    config,
-		running:   make(map[string]context.CancelFunc),
-		msgQueues: make(map[string][]string),
-		askQueues: make(map[string]chan []QuestionAnswer),
+	var toolGateway *tools.ToolGateway
+	if registry != nil && executor != nil {
+		toolGateway = tools.NewToolGateway(registry, executor)
+	}
+	runner := &Runner{
+		store:       store,
+		llm:         llmCaller,
+		registry:    registry,
+		executor:    executor,
+		toolGateway: toolGateway,
+		broker:      broker,
+		config:      config,
+		running:     make(map[string]context.CancelFunc),
+		msgQueues:   make(map[string][]string),
+		askQueues:   make(map[string]chan []QuestionAnswer),
+	}
+	runner.groundedSecret = newGroundedSecret()
+	runner.groundedRuntime = NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmCaller,
+		ResponderLLM:     llmCaller,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		AskHandler:       runner.handleAskUser,
+		ConfirmToolCall:  runner.confirmGroundedToolCall,
+		Secret:           runner.groundedSecret,
+		MaxPlannerRounds: config.MaxToolRoundsPerStep,
+	})
+	if runner.toolGateway != nil && runner.groundedRuntime != nil && runner.groundedRuntime.executor != nil {
+		runner.groundedRuntime.executor.SetToolGateway(runner.toolGateway)
+	}
+	return runner
+}
+
+// SetToolApprover wires runtime tool approval enforcement into the agent's shared tool gateway.
+func (r *Runner) SetToolApprover(approver tools.ToolApprover) {
+	if r == nil {
+		return
+	}
+	if r.toolGateway == nil && r.registry != nil && r.executor != nil {
+		r.toolGateway = tools.NewToolGateway(r.registry, r.executor)
+	}
+	if r.toolGateway != nil {
+		r.toolGateway.SetApprover(approver)
+	}
+	if r.groundedRuntime != nil && r.groundedRuntime.executor != nil {
+		r.groundedRuntime.executor.SetToolGateway(r.toolGateway)
+	}
+}
+
+// SetToolEventObserver wires runtime tool lifecycle observation into the shared tool gateway.
+func (r *Runner) SetToolEventObserver(observer tools.RuntimeEventObserver) {
+	if r == nil {
+		return
+	}
+	if r.toolGateway == nil && r.registry != nil && r.executor != nil {
+		r.toolGateway = tools.NewToolGateway(r.registry, r.executor)
+	}
+	if r.toolGateway != nil {
+		r.toolGateway.SetEventObserver(observer)
+	}
+	if r.groundedRuntime != nil && r.groundedRuntime.executor != nil {
+		r.groundedRuntime.executor.SetToolGateway(r.toolGateway)
+	}
+}
+
+// SetToolMetricsRecorder wires runtime counter recording into the shared tool gateway.
+func (r *Runner) SetToolMetricsRecorder(recorder interface {
+	RecordCounter(name string, value int64, tags map[string]string)
+}) {
+	if r == nil || recorder == nil {
+		return
+	}
+	if r.toolGateway == nil && r.registry != nil && r.executor != nil {
+		r.toolGateway = tools.NewToolGateway(r.registry, r.executor)
+	}
+	if r.toolGateway != nil {
+		r.toolGateway.SetMetricsRecorder(recorder)
+	}
+	if r.groundedRuntime != nil && r.groundedRuntime.executor != nil {
+		r.groundedRuntime.executor.SetToolGateway(r.toolGateway)
+	}
+}
+
+func newGroundedSecret() []byte {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return []byte("zimaos-grounded-runtime-fallback-secret")
+	}
+	return secret
+}
+
+func (r *Runner) confirmGroundedToolCall(ctx context.Context, task *Task, step PlanStep, nextTool PlannerToolCall) error {
+	argsJSON, _ := json.Marshal(nextTool.Args)
+	capability := classifyCapability(nextTool.Tool, string(argsJSON))
+	if !shouldRequireConfirm(capability, step.Description) {
+		return nil
+	}
+	if err := r.transitionState(ctx, task, RuntimeStateConfirmGate, "high-risk capability requires confirmation", &capability, TaskStatusWaitingInput); err != nil {
+		return err
+	}
+	answers, askErr := r.AskUser(ctx, task.ID, buildHighRiskConfirmationQuestions(nextTool.Tool, capability, step.Description), step.Index)
+	if askErr != nil {
+		return askErr
+	}
+	decision := "skip"
+	if len(answers) > 0 && len(answers[0].Values) > 0 {
+		decision = answers[0].Values[0]
+	}
+	switch decision {
+	case "abort":
+		if err := r.transitionState(ctx, task, RuntimeStateAborted, "user aborted on high-risk tool call", &capability, TaskStatusAborted); err != nil {
+			return err
+		}
+		return fmt.Errorf("user aborted task during high-risk confirmation")
+	case "skip":
+		if err := r.transitionState(ctx, task, RuntimeStateExecute, "user skipped high-risk tool call", &capability, TaskStatusExecuting); err != nil {
+			return err
+		}
+		return fmt.Errorf("user skipped high-risk tool call")
+	default:
+		if err := r.transitionState(ctx, task, RuntimeStateExecute, "high-risk tool call approved", &capability, TaskStatusExecuting); err != nil {
+			return err
+		}
+		return nil
 	}
 }
 
@@ -231,17 +359,39 @@ func (r *Runner) SetReflector(reflector SelfReflector) {
 	r.reflector = reflector
 }
 
+// SetSubagentExecutor wires harness-backed child-run execution into the agent runtime.
+func (r *Runner) SetSubagentExecutor(executor tools.SubagentExecutor) {
+	if r == nil {
+		return
+	}
+	r.subagents = executor
+}
+
+// SetWritePathGuard wires runtime-specific direct-write protection into file mutation tools.
+func (r *Runner) SetWritePathGuard(guard tools.WritePathGuard) {
+	if r == nil {
+		return
+	}
+	r.writeGuard = guard
+}
+
+// SetExecPathGuard wires runtime-specific exec path protection into exec-style tools.
+func (r *Runner) SetExecPathGuard(guard tools.ExecPathGuard) {
+	if r == nil {
+		return
+	}
+	r.execGuard = guard
+}
+
+// SetEventObserver wires an optional observer for task SSE events.
+func (r *Runner) SetEventObserver(observer TaskEventObserver) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.eventObserver = observer
+}
+
 // Submit creates and starts a new agent task. Returns the task immediately.
 func (r *Runner) Submit(ctx context.Context, userID, goal, conversationID, conversationCtx string) (*Task, error) {
-	// Check concurrency limit
-	running, err := r.store.CountRunning(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check running tasks: %w", err)
-	}
-	if running >= r.config.MaxConcurrent {
-		return nil, fmt.Errorf("max concurrent tasks reached (%d)", r.config.MaxConcurrent)
-	}
-
 	task := &Task{
 		ID:             uuid.New().String(),
 		UserID:         userID,
@@ -249,16 +399,48 @@ func (r *Runner) Submit(ctx context.Context, userID, goal, conversationID, conve
 		Goal:           goal,
 		Status:         TaskStatusPending,
 	}
+	if err := r.startTask(ctx, task, conversationCtx); err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+
+// SubmitTask starts a caller-provided task ID through the normal runner flow.
+func (r *Runner) SubmitTask(ctx context.Context, task *Task, conversationCtx string) (*Task, error) {
+	if task == nil {
+		return nil, fmt.Errorf("task is required")
+	}
+	if strings.TrimSpace(task.ID) == "" {
+		task.ID = uuid.New().String()
+	}
+	if task.Status == "" {
+		task.Status = TaskStatusPending
+	}
+	if err := r.startTask(ctx, task, conversationCtx); err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+
+func (r *Runner) startTask(ctx context.Context, task *Task, conversationCtx string) error {
+	// Check concurrency limit
+	running, err := r.store.CountRunning(ctx, task.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to check running tasks: %w", err)
+	}
+	if running >= r.config.MaxConcurrent {
+		return fmt.Errorf("max concurrent tasks reached (%d)", r.config.MaxConcurrent)
+	}
 
 	if err := r.store.Create(ctx, task); err != nil {
-		return nil, fmt.Errorf("failed to create task: %w", err)
+		return fmt.Errorf("failed to create task: %w", err)
 	}
 
 	// Publish creation event
-	r.publishEvent(userID, TaskEvent{
+	r.publishEvent(task.UserID, TaskEvent{
 		TaskID:    task.ID,
 		EventType: "task_created",
-		Message:   taskCreatedMessage(goal),
+		Message:   taskCreatedMessage(task.Goal),
 	})
 
 	// Start background execution
@@ -273,7 +455,7 @@ func (r *Runner) Submit(ctx context.Context, userID, goal, conversationID, conve
 		r.execute(taskCtx, task, conversationCtx)
 	}()
 
-	return task, nil
+	return nil
 }
 
 // Cancel cancels a running task.
@@ -1025,6 +1207,12 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 				r.cancelTask(task, "task cancelled")
 				return
 			}
+			if task.RuntimeState == RuntimeStateAborted {
+				task.Status = TaskStatusAborted
+				task.Progress = 100
+				_ = r.store.Update(ctx, task)
+				return
+			}
 			// Retry once before marking as failed
 			logger.Warn().Err(err).Int("step", i).Str("task_id", task.ID).Msg("[agent] step failed, retrying once")
 			r.publishEvent(task.UserID, TaskEvent{
@@ -1038,6 +1226,12 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		if err != nil {
 			if errors.Is(ctx.Err(), context.Canceled) {
 				r.cancelTask(task, "task cancelled")
+				return
+			}
+			if task.RuntimeState == RuntimeStateAborted {
+				task.Status = TaskStatusAborted
+				task.Progress = 100
+				_ = r.store.Update(ctx, task)
 				return
 			}
 			step.Status = StepStatusFailed
@@ -1105,7 +1299,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before verify: %v", err))
 		return
 	}
-	verifyResult, verifyOutput, verifyErr := r.runVerification(ctx, task, verificationCtx)
+	_, verifyOutput, verifyErr := r.groundedRuntime.VerifyTask(task)
 	if errors.Is(ctx.Err(), context.Canceled) {
 		r.cancelTask(task, "task cancelled")
 		return
@@ -1129,95 +1323,9 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	completedAt := timeutil.NowTime()
 	verifyStep.CompletedAt = &completedAt
 	task.Plan = append(task.Plan, *verifyStep)
-
 	if verifyStep.Status != StepStatusCompleted {
-		if ctx.Err() != nil {
-			r.cancelTask(task, "task cancelled")
-			return
-		}
-		if err := r.transitionState(ctx, task, RuntimeStateRecover, "verification failed", nil, TaskStatusExecuting); err != nil {
-			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before recovery: %v", err))
-			return
-		}
-		r.appendAudit(task, RuntimeAuditEvent{
-			Timestamp: timeutil.NowTime(),
-			Reason:    "recovery_started",
-			Error:     verifyStep.Output,
-		})
-		recoverStep := &PlanStep{
-			Index:       len(task.Plan),
-			Description: recoveryStepDescription(verificationCtx.TaskKind),
-			Status:      StepStatusRunning,
-		}
-		start := timeutil.NowTime()
-		recoverStep.StartedAt = &start
-		recoverOut, recoverErr := r.runRecovery(ctx, task, verificationCtx, verifyResult)
-		if errors.Is(ctx.Err(), context.Canceled) {
-			r.cancelTask(task, "task cancelled")
-			return
-		}
-		end := timeutil.NowTime()
-		recoverStep.CompletedAt = &end
-		if recoverErr != nil {
-			recoverStep.Status = StepStatusFailed
-			recoverStep.Output = strings.TrimSpace(recoverOut)
-			if recoverStep.Output == "" {
-				recoverStep.Output = fmt.Sprintf("Recovery failed: %v", recoverErr)
-			}
-		} else {
-			r.appendAudit(task, RuntimeAuditEvent{
-				Timestamp: timeutil.NowTime(),
-				Reason:    "recovery_applied_fallback_plan",
-			})
-			recoverStep.Status = StepStatusCompleted
-			recoverStep.Output = truncate(recoverOut, 1200)
-		}
-		task.Plan = append(task.Plan, *recoverStep)
-		if recoverStep.Status != StepStatusCompleted {
-			r.failTask(ctx, task, fmt.Sprintf("verification failed and recovery failed: %v", recoverErr))
-			return
-		}
-
-		if err := r.transitionState(ctx, task, RuntimeStateVerify, "re-verify after recovery", nil, TaskStatusExecuting); err != nil {
-			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before re-verify: %v", err))
-			return
-		}
-		retryVerificationCtx := compileVerificationContext(task)
-		verifyRetryStep := &PlanStep{
-			Index:       len(task.Plan),
-			Description: verificationStepDescription(retryVerificationCtx.TaskKind, true),
-			Status:      StepStatusRunning,
-		}
-		retryStart := timeutil.NowTime()
-		verifyRetryStep.StartedAt = &retryStart
-		_, verifyRetryOutput, verifyRetryErr := r.runVerification(ctx, task, retryVerificationCtx)
-		if errors.Is(ctx.Err(), context.Canceled) {
-			r.cancelTask(task, "task cancelled")
-			return
-		}
-		retryEnd := timeutil.NowTime()
-		verifyRetryStep.CompletedAt = &retryEnd
-		if verifyRetryErr != nil {
-			r.appendAudit(task, RuntimeAuditEvent{
-				Timestamp: timeutil.NowTime(),
-				Reason:    "verification_failed",
-				Error:     verifyRetryErr.Error(),
-			})
-			verifyRetryStep.Status = StepStatusFailed
-			verifyRetryStep.Output = verifyRetryOutput
-		} else {
-			r.appendAudit(task, RuntimeAuditEvent{
-				Timestamp: timeutil.NowTime(),
-				Reason:    "verification_passed",
-			})
-			verifyRetryStep.Status = StepStatusCompleted
-			verifyRetryStep.Output = verifyRetryOutput
-		}
-		task.Plan = append(task.Plan, *verifyRetryStep)
-		if verifyRetryStep.Status != StepStatusCompleted {
-			r.failTask(ctx, task, "verification did not pass after bounded recovery retry")
-			return
-		}
+		r.failTask(ctx, task, "grounded verification failed")
+		return
 	}
 	if ctx.Err() != nil {
 		r.cancelTask(task, "task cancelled")
@@ -1238,7 +1346,11 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	}
 	task.Status = TaskStatusCompleted
 	task.Progress = 100
-	task.Result = r.generateSummary(ctx, task, reflection)
+	task.Result = buildGroundedTaskReport(task)
+	if learned := formatLearnedSection(reflection); learned != "" {
+		task.Result = task.Result + "\n\n" + learned
+	}
+	task.VerifiedOutput = task.Result
 	if ctx.Err() != nil {
 		r.cancelTask(task, "task cancelled")
 		return
@@ -1351,36 +1463,62 @@ func (r *Runner) generatePlan(ctx context.Context, goal, conversationCtx string)
 
 // executeStep runs a single plan step using the LLM + tools.
 func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (string, error) {
-	// Build context: goal + plan + current step
-	var contextMsg strings.Builder
-	contextMsg.WriteString(fmt.Sprintf("Goal: %s\n\n", task.Goal))
-	contextMsg.WriteString("Plan:\n")
-	for _, s := range task.Plan {
-		status := "[ ]"
-		if s.Status == StepStatusCompleted {
-			status = "[x]"
-		} else if s.Status == StepStatusRunning {
-			status = "[>]"
-		} else if s.Status == StepStatusFailed {
-			status = "[!]"
+	ctx = tools.WithRunID(ctx, task.ID)
+	ctx = tools.WithRunStep(ctx, step.Index)
+	ctx = tools.WithSubagentExecutor(ctx, r.subagents)
+	ctx = tools.WithWritePathGuard(ctx, r.writeGuard)
+	ctx = tools.WithExecPathGuard(ctx, r.execGuard)
+	if workspaceRoot := strings.TrimSpace(task.WorkspaceRoot); workspaceRoot != "" {
+		ctx = tools.WithFSRootOverride(ctx, []string{workspaceRoot}, map[string]string{
+			"workspace": workspaceRoot,
+		})
+	}
+	if r.groundedRuntime == nil {
+		// Backward-compatible fallback used by focused prompt/unit tests that
+		// construct a Runner manually without the grounded runtime wiring.
+		var contextMsg strings.Builder
+		contextMsg.WriteString(fmt.Sprintf("Goal: %s\n\n", task.Goal))
+		contextMsg.WriteString("Plan:\n")
+		for _, s := range task.Plan {
+			status := "[ ]"
+			if s.Status == StepStatusCompleted {
+				status = "[x]"
+			} else if s.Status == StepStatusRunning {
+				status = "[>]"
+			} else if s.Status == StepStatusFailed {
+				status = "[!]"
+			}
+			contextMsg.WriteString(fmt.Sprintf("%s %d. %s\n", status, s.Index+1, s.Description))
+			if s.Output != "" && s.Status == StepStatusCompleted {
+				contextMsg.WriteString(fmt.Sprintf("   Result: %s\n", truncate(s.Output, 200)))
+			}
 		}
-		contextMsg.WriteString(fmt.Sprintf("%s %d. %s\n", status, s.Index+1, s.Description))
-		if s.Output != "" && s.Status == StepStatusCompleted {
-			contextMsg.WriteString(fmt.Sprintf("   Result: %s\n", truncate(s.Output, 200)))
+		contextMsg.WriteString(fmt.Sprintf("\nNow execute step %d: %s", step.Index+1, step.Description))
+
+		cachedTools := r.llmTools()
+		return r.executeLoopWithTools(
+			ctx,
+			task,
+			step.Index,
+			step.Description,
+			buildStepExecutionSystemPrompt(cachedTools),
+			contextMsg.String(),
+			cachedTools,
+		)
+	}
+	result, err := r.groundedRuntime.ExecuteStep(ctx, task, *step, task.Plan, r.resolveMaxToolRoundsPerStep())
+	if result != nil {
+		task.VerifiedOutput = result.VerifiedOutput
+		task.VerificationErrors = mergeVerificationErrors(task.VerificationErrors, result.VerificationErrors)
+		task.GroundingStatus = combineGroundingStatus(task.GroundingStatus, result.GroundingStatus)
+		if strings.TrimSpace(result.Output) != "" {
+			return result.Output, err
 		}
 	}
-	contextMsg.WriteString(fmt.Sprintf("\nNow execute step %d: %s", step.Index+1, step.Description))
-
-	cachedTools := r.llmTools()
-	return r.executeLoopWithTools(
-		ctx,
-		task,
-		step.Index,
-		step.Description,
-		buildStepExecutionSystemPrompt(cachedTools),
-		contextMsg.String(),
-		cachedTools,
-	)
+	if err != nil {
+		return "", err
+	}
+	return "unknown", nil
 }
 
 func buildStepExecutionSystemPrompt(tools []llm.Tool) string {
@@ -1544,17 +1682,46 @@ func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex
 			if tc.Name == "ask" {
 				content = r.handleAskUser(ctx, task, tc.Arguments)
 			} else {
-				result, execErr := r.executor.ExecuteJSON(ctx, tc.Name, tc.Arguments)
+				var (
+					result  interface{}
+					execErr error
+				)
+				if r.toolGateway != nil {
+					gatewayResult, gatewayErr := r.toolGateway.Execute(ctx, tools.ToolGatewayRequest{
+						ToolCallID: tc.ID,
+						ToolName:   tc.Name,
+						Arguments:  tc.Arguments,
+						SessionID:  strings.TrimSpace(task.ConversationID),
+						RouteKind:  tools.ToolRouteKindAgent,
+						UserID:     strings.TrimSpace(task.UserID),
+					})
+					execErr = gatewayErr
+					if gatewayResult != nil {
+						if gatewayErr == nil && gatewayResult.ExecutionResult != nil {
+							result = gatewayResult.ExecutionResult
+						} else if gatewayResult.AuditPayload != nil {
+							result = gatewayResult.AuditPayload
+						}
+					}
+				} else if r.executor != nil {
+					result, execErr = r.executor.ExecuteJSON(ctx, tc.Name, tc.Arguments)
+				} else {
+					execErr = fmt.Errorf("tool executor is unavailable")
+				}
 				if execErr != nil {
-					errObj, _ := json.Marshal(map[string]string{"error": execErr.Error()})
+					errObj, _ := json.Marshal(tools.ToolErrorPayload(execErr))
 					content = string(errObj)
 				} else {
 					switch v := result.(type) {
 					case string:
 						content = v
 					default:
-						b, _ := json.Marshal(v)
-						content = string(b)
+						b, marshalErr := json.Marshal(v)
+						if marshalErr != nil {
+							content = tools.SafeToolPayloadString(v, 64*1024)
+						} else {
+							content = string(b)
+						}
 					}
 				}
 			}
@@ -2173,7 +2340,11 @@ func (r *Runner) failTask(ctx context.Context, task *Task, errMsg string) {
 		}
 	}
 	task.Progress = 100
-	task.Result = r.generateSummary(persistCtx, task, reflection)
+	task.Result = buildGroundedTaskReport(task)
+	if learned := formatLearnedSection(reflection); learned != "" {
+		task.Result = task.Result + "\n\n" + learned
+	}
+	task.VerifiedOutput = task.Result
 	_ = r.store.Update(persistCtx, task)
 	if task.RuntimeState != RuntimeStateDone {
 		if err := r.transitionState(persistCtx, task, RuntimeStateDone, "task failed", nil, TaskStatusFailed); err != nil {
@@ -2265,6 +2436,12 @@ func (r *Runner) publishEvent(userID string, event TaskEvent) {
 	if r.broker != nil {
 		r.broker.Publish(userID, event.EventType, event)
 	}
+	r.mu.Lock()
+	observer := r.eventObserver
+	r.mu.Unlock()
+	if observer != nil {
+		observer.HandleTaskEvent(event)
+	}
 }
 
 func truncate(s string, maxLen int) string {
@@ -2280,7 +2457,7 @@ func (r *Runner) llmTools() []llm.Tool {
 	if r.registry == nil {
 		return nil
 	}
-	defs := r.registry.Definitions()
+	defs := r.registry.DefinitionsForRoute(tools.ToolRouteKindAgent)
 	out := make([]llm.Tool, len(defs))
 	for i, d := range defs {
 		out[i] = llm.Tool{

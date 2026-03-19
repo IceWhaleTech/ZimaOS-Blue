@@ -221,3 +221,30 @@ func TestMetricsWriter_MultipleModels(t *testing.T) {
 		t.Errorf("Expected 4 models, got %d", len(modelStats))
 	}
 }
+
+func TestMetricsWriter_RecordCounter(t *testing.T) {
+	store := NewMockStore()
+	writer := NewMetricsWriter(store, nil)
+
+	writer.RecordCounter("grounding_fallback_total", 2, map[string]string{
+		"route_kind": "chat",
+		"status":     "fallback",
+	})
+
+	points := store.GetPoints()
+	if len(points) != 1 {
+		t.Fatalf("expected 1 point, got %d", len(points))
+	}
+	if points[0].Measurement != MeasurementCounters {
+		t.Fatalf("measurement = %q, want %q", points[0].Measurement, MeasurementCounters)
+	}
+	if points[0].Tags[TagMetric] != "grounding_fallback_total" {
+		t.Fatalf("metric tag = %q, want grounding_fallback_total", points[0].Tags[TagMetric])
+	}
+	if points[0].Fields[FieldCount] != int64(2) {
+		t.Fatalf("count field = %v, want 2", points[0].Fields[FieldCount])
+	}
+	if points[0].Tags["route_kind"] != "chat" {
+		t.Fatalf("route_kind tag = %q, want chat", points[0].Tags["route_kind"])
+	}
+}

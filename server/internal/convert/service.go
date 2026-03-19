@@ -1275,6 +1275,9 @@ func normalizeFormat(primary, fallback string) string {
 	if value == "" {
 		value = strings.ToLower(strings.TrimSpace(fallback))
 	}
+	if value == "text" {
+		value = "txt"
+	}
 	if value == "jpeg" {
 		value = "jpg"
 	}

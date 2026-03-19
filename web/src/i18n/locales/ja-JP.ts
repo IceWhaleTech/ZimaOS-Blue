@@ -1190,8 +1190,9 @@ export default {
     installFromUrl: 'URL から',
     uploadFile: 'ファイルをアップロード',
     skillUrlLabel: 'スキル URL',
-    skillUrlPlaceholder: 'https://github.com/user/skill-repo または https://example.com/skill.zip',
-    skillUrlHint: 'GitHub リポジトリ URL またはスキルパッケージへの直接リンクを入力',
+    skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
+    skillUrlHint:
+      'GitHub の raw/blob SKILL.md リンク、tree ディレクトリリンク、直接リンクに対応しており、tree リンクはスキル ディレクトリ全体をインストールします',
     urlRequired: 'URL を入力してください',
     fileRequired: 'ファイルを選択してください',
     install: 'インストール',
@@ -2515,9 +2516,9 @@ export default {
       add: '追加',
       installFromURLTitle: 'URLからスキルをインストール',
       installFromURLDescription:
-        'GitHubのSKILL.mdファイルのURLまたは直接リンクを入力してください。',
+        'GitHub の raw/blob SKILL.md リンク、tree ディレクトリリンク、またはスキルへの直接 URL を入力してください。blob は自動変換され、tree はディレクトリ全体をインストールします。',
       skillURL: 'スキル URL',
-      skillURLPlaceholder: 'https://example.com/SKILL.md',
+      skillURLPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       skillNameOptional: 'スキル名（任意）',
       skillNamePlaceholder: 'スキル名を上書き',
       install: 'インストール',

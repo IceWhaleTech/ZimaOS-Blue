@@ -480,7 +480,11 @@ const marketplaceCategoryTranslations = {
 
 const marketplaceLocaleOverrides = {
   'en-US': wrapMarketplace({}),
-  'en-GB': wrapMarketplace({}),
+  'en-GB': wrapMarketplace({
+    sort: {
+      mostUsed: 'Most used',
+    },
+  }),
   'zh-CN': wrapMarketplace({
     defaultSource: '商店',
     hero: {
@@ -1607,6 +1611,9 @@ const marketplaceLocaleOverrides = {
       sources: 'Fontes {count}',
       filtersReady: 'Filtros prontos',
     },
+    sort: {
+      mostUsed: 'Mais utilizados',
+    },
     actions: {
       refreshSources: 'Actualizar fontes',
       installing: 'A instalar...',
@@ -2278,6 +2285,9 @@ const marketplaceLocaleOverrides = {
       shellInjection: 'Shell injection',
       dataExfiltration: 'Exfiltrace dat',
     },
+    sort: {
+      mostUsed: 'Nejpouzivanejsi',
+    },
     results: {
       discover: 'Objevovat',
       curatedCount: '{count} vybranych skillu',
@@ -2390,6 +2400,9 @@ const marketplaceLocaleOverrides = {
       shellInjection: 'Shell injection',
       dataExfiltration: 'Dataeksfiltration',
     },
+    sort: {
+      mostUsed: 'Mest brugte',
+    },
     results: {
       discover: 'Udforsk',
       curatedCount: '{count} udvalgte skills',
@@ -2501,6 +2514,9 @@ const marketplaceLocaleOverrides = {
       promptInjection: 'Prompt injection',
       shellInjection: 'Shell injection',
       dataExfiltration: 'Exagogi dedomenon',
+    },
+    sort: {
+      mostUsed: 'Pio xrisimopoiimena',
     },
     results: {
       discover: 'Anakalypse',
@@ -2621,6 +2637,9 @@ const marketplaceLocaleOverrides = {
       shellInjection: 'Shell injection',
       dataExfiltration: 'Eas-sreabhadh sonraí',
     },
+    sort: {
+      mostUsed: 'Is mó a úsáidtear',
+    },
     actions: {
       refreshSources: 'Athnuaigh foinsí',
       installing: 'Á shuiteáil...',
@@ -2735,6 +2754,9 @@ const marketplaceLocaleOverrides = {
       shellInjection: 'Shell injection',
       dataExfiltration: 'Izvlacenje podataka',
     },
+    sort: {
+      mostUsed: 'Najcesce koristeno',
+    },
     actions: {
       refreshSources: 'Osvjezi izvore',
       installing: 'Instalacija u tijeku...',
@@ -2846,6 +2868,9 @@ const marketplaceLocaleOverrides = {
       promptInjection: 'Prompt injection',
       shellInjection: 'Shell injection',
       dataExfiltration: 'Adatkivitel',
+    },
+    sort: {
+      mostUsed: 'Legtobbet hasznalt',
     },
     actions: {
       refreshSources: 'Forrasok frissitese',
@@ -2959,6 +2984,9 @@ const marketplaceLocaleOverrides = {
       shellInjection: 'Shell injection',
       dataExfiltration: 'Data exfiltration',
     },
+    sort: {
+      mostUsed: 'ഏറ്റവും കൂടുതൽ ഉപയോഗിച്ചത്',
+    },
     actions: {
       refreshSources: 'ഉറവിടങ്ങൾ പുതുക്കുക',
       installing: 'ഇൻസ്റ്റാൾ ചെയ്യുന്നു...',
@@ -3070,6 +3098,9 @@ const marketplaceLocaleOverrides = {
       promptInjection: 'Prompt injection',
       shellInjection: 'Shell injection',
       dataExfiltration: 'Dataeksfiltrasjon',
+    },
+    sort: {
+      mostUsed: 'Mest brukt',
     },
     actions: {
       refreshSources: 'Oppdater kilder',
@@ -3183,6 +3214,9 @@ const marketplaceLocaleOverrides = {
       shellInjection: 'Shell injection',
       dataExfiltration: 'Exfiltrare date',
     },
+    sort: {
+      mostUsed: 'Cele mai folosite',
+    },
     actions: {
       refreshSources: 'Actualizeaza sursele',
       installing: 'Se instaleaza...',
@@ -3294,6 +3328,9 @@ const marketplaceLocaleOverrides = {
       promptInjection: 'Prompt injection',
       shellInjection: 'Shell injection',
       dataExfiltration: 'Exfiltracia dat',
+    },
+    sort: {
+      mostUsed: 'Najpouzivanejsie',
     },
     actions: {
       refreshSources: 'Obnovit zdroje',

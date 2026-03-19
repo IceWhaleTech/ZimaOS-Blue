@@ -1365,8 +1365,9 @@ export default {
     installFromUrl: 'From URL',
     uploadFile: 'Upload File',
     skillUrlLabel: 'Skill URL',
-    skillUrlPlaceholder: 'https://github.com/user/skill-repo or https://example.com/skill.zip',
-    skillUrlHint: 'Enter a GitHub repository URL or direct link to a skill package',
+    skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
+    skillUrlHint:
+      'Supports GitHub raw/blob SKILL.md links, tree directory links, and direct package URLs. Tree links install the full skill directory.',
     urlRequired: 'Please enter a URL',
     fileRequired: 'Please select a file',
     install: 'Install',
@@ -3952,9 +3953,10 @@ export default {
       add: 'Add',
       // Install from URL modal
       installFromURLTitle: 'Install Skill from URL',
-      installFromURLDescription: 'Enter the URL of a SKILL.md file from GitHub or any direct link.',
+      installFromURLDescription:
+        'Enter a GitHub raw/blob SKILL.md link, a tree directory link, or any direct skill URL. Blob links are converted automatically and tree links install the full directory.',
       skillURL: 'Skill URL',
-      skillURLPlaceholder: 'https://raw.githubusercontent.com/.../SKILL.md',
+      skillURLPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       skillNameOptional: 'Skill Name (optional)',
       skillNamePlaceholder: 'Override the skill name',
       install: 'Install',

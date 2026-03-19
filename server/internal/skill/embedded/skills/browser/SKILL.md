@@ -1,0 +1,83 @@
+---
+name: browser
+description: "Interact with live web pages using the built-in browser tool (navigate, inspect, click/type, screenshot, tab management). Use when the user asks to open/read a URL, extract page content, fill forms, click elements, reproduce web behavior, or capture screenshots."
+---
+
+# Browser Skill
+
+## Setup
+
+No external dependencies required. Uses built-in browser commands.
+
+---
+
+## Task Routing
+
+| User Intent | Action |
+|-------------|--------|
+| Open a URL and inspect page content | `blue browser.navigate` -> `blue browser.snapshot` or `blue browser.snapshot_interactive` |
+| Click/type/select on page elements | `blue browser.snapshot*` to get `@ref`, then `blue browser.act` |
+| Capture screenshot evidence | `blue browser.screenshot` |
+| Inspect or switch active browser tabs | `blue browser.tabs` |
+
+---
+
+## Command Usage
+
+### browser.navigate
+
+```bash
+blue browser.navigate url=https://example.com
+```
+
+### browser.snapshot
+
+```bash
+blue browser.snapshot target_id=ABCDEF123456
+```
+
+### browser.snapshot_interactive
+
+```bash
+blue browser.snapshot_interactive target_id=ABCDEF123456
+```
+
+### browser.act
+
+```bash
+blue browser.act ref=5 act_type=click
+blue browser.act ref=8 act_type=type value="hello"
+blue browser.act ref=12 act_type=select value="option_a"
+```
+
+### browser.screenshot
+
+```bash
+blue browser.screenshot url=https://example.com
+blue browser.screenshot target_id=ABCDEF123456
+```
+
+### browser.tabs
+
+```bash
+blue browser.tabs
+```
+
+---
+
+## Error Handling
+
+| Error | Resolution |
+|-------|------------|
+| URL invalid/unreachable | Verify URL and retry with full `https://` form |
+| Missing `@ref` for act | Run snapshot first and use returned `@ref` |
+| Element not interactable | Refresh snapshot and retry with correct visible element |
+
+---
+
+## Notes
+
+- Use `browser` for real page interaction, not keyword discovery.
+- For simple keyword lookup, prefer `web_search` first.
+- For known public URLs that only need content, prefer `web_fetch` or `web_read`.
+- Treat `browser` as the final fallback when lighter web tools are insufficient.

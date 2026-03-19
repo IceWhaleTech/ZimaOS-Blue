@@ -189,6 +189,32 @@ func TestImageToolReviewUsesVisionForInlineImage(t *testing.T) {
 	}
 }
 
+func TestImageToolReviewUsesContextImageInputsWhenArgsOmitImage(t *testing.T) {
+	vision := &imageVisionMock{resp: "context image description"}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+
+	ctx := WithImageInputs(context.Background(), []ToolImageInput{{
+		Name:     "upload.png",
+		MimeType: "image/png",
+		Data:     inlinePNGBase64(t),
+	}})
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "review",
+		"prompt": "What is shown?",
+	})
+	if err != nil {
+		t.Fatalf("execute context review failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "vision" {
+		t.Fatalf("mode = %v, want vision", payload["mode"])
+	}
+	if vision.prompt != "What is shown?" {
+		t.Fatalf("prompt = %q, want What is shown?", vision.prompt)
+	}
+}
+
 func TestImageToolReviewSignedImageURLUsesVision(t *testing.T) {
 	vision := &imageVisionMock{resp: "signed image description"}
 	reviewer := &imageReviewMock{}

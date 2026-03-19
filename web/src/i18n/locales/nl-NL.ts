@@ -2697,6 +2697,7 @@ export default {
     ...enUS.agent,
     mode: 'Taaklusmodus',
     modeDescription: 'Schakelt doorlopende plan-en-uitvoer-lussen in totdat je het uitschakelt',
+    autoConfirm: 'Automatische bevestiging',
     autoConfirmDescription:
       'Bevestiging overslaan voor destructieve acties (rechtsklik op de taaklusknop om te wisselen)',
     sendMessage: 'Stuur een bericht naar de agent...',

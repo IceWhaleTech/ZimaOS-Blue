@@ -291,6 +291,64 @@ func TestRepository_SaveExecution(t *testing.T) {
 	}
 }
 
+func TestRepository_SaveExecutionPersistsCheckpointFields(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo, _ := NewRepository(db)
+	ctx := context.Background()
+
+	workflow := &Workflow{
+		TenantID: "tenant-1",
+		Name:     "Checkpoint Workflow",
+		Status:   WorkflowStatusActive,
+		Nodes:    []Node{{ID: "trigger-1", Type: NodeTypeTrigger, Name: "Trigger"}},
+	}
+	repo.CreateWorkflow(ctx, workflow)
+
+	now := time.Now().UTC().Truncate(time.Second)
+	execution := &Execution{
+		ID:           "exec-checkpoint",
+		WorkflowID:   workflow.ID,
+		WorkflowName: workflow.Name,
+		TenantID:     workflow.TenantID,
+		Status:       ExecutionStatusPaused,
+		StatusReason: "approval_needed",
+		TriggerType:  TriggerTypeManual,
+		StartedAt:    now,
+		Checkpoint: &ExecutionCheckpoint{
+			ID:        "cp-1",
+			Kind:      ExecutionCheckpointPauseForApproval,
+			NodeID:    "action-1",
+			NodeName:  "Approval",
+			Reason:    "approval_needed",
+			CreatedAt: now,
+			Payload:   map[string]interface{}{"scope": "exec"},
+		},
+	}
+
+	if err := repo.SaveExecution(ctx, execution); err != nil {
+		t.Fatalf("SaveExecution() error = %v", err)
+	}
+
+	stored, err := repo.GetExecution(ctx, execution.ID)
+	if err != nil {
+		t.Fatalf("GetExecution() error = %v", err)
+	}
+	if stored.StatusReason != "approval_needed" {
+		t.Fatalf("status_reason = %q, want approval_needed", stored.StatusReason)
+	}
+	if stored.Checkpoint == nil {
+		t.Fatal("checkpoint = nil, want populated checkpoint")
+	}
+	if stored.Checkpoint.Kind != ExecutionCheckpointPauseForApproval {
+		t.Fatalf("checkpoint kind = %q, want %q", stored.Checkpoint.Kind, ExecutionCheckpointPauseForApproval)
+	}
+	if stored.Checkpoint.Payload["scope"] != "exec" {
+		t.Fatalf("checkpoint payload = %+v, want scope=exec", stored.Checkpoint.Payload)
+	}
+}
+
 func TestRepository_ListExecutions(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

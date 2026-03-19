@@ -23,6 +23,20 @@ func isVerificationPrompt(req llm.ChatRequest) bool {
 	return strings.Contains(req.Messages[0].Content, "strict verification engine")
 }
 
+func isGroundedPlannerPrompt(req llm.ChatRequest) bool {
+	if len(req.Messages) == 0 {
+		return false
+	}
+	return strings.Contains(req.Messages[0].Content, "Planner in a hallucination-safe runtime")
+}
+
+func isGroundedResponderPrompt(req llm.ChatRequest) bool {
+	if len(req.Messages) == 0 {
+		return false
+	}
+	return strings.Contains(req.Messages[0].Content, "Responder in a hallucination-safe runtime")
+}
+
 func isSummaryPrompt(req llm.ChatRequest) bool {
 	if len(req.Messages) == 0 {
 		return false
@@ -98,6 +112,10 @@ func defaultSummaryResponse(req llm.ChatRequest) string {
 
 func defaultResponseForRequest(req llm.ChatRequest) string {
 	switch {
+	case isGroundedPlannerPrompt(req):
+		return `{"status":"complete","reason":"No additional tool call is required.","assertions":[]}`
+	case isGroundedResponderPrompt(req):
+		return `{"summary":"unknown","claims":[{"type":"unknown","text":"unknown"}]}`
 	case isVerificationPrompt(req):
 		return defaultVerificationResponse(req)
 	case isSummaryPrompt(req):
@@ -1368,9 +1386,6 @@ func TestRunner_AutoReflectCompletedTask(t *testing.T) {
 	s := testStore(t)
 	m := &scriptedLLM{calls: []scriptedLLMCall{
 		{content: `{"goal":"finish parser fix","subtasks":[{"description":"apply parser fix"}],"success_criteria":["verification passes"],"fallback_plan":["inspect the failing step"]}`},
-		{content: "apply parser fix completed"},
-		{content: `{"status":"pass","summary":"Verification passed for the parser fix.","criteria_results":[{"criterion":"verification passes","status":"pass","evidence":"Focused verification passed after the parser fix."}],"suggested_recovery":"","executed_checks":["review parser fix output","run focused verification"]}`},
-		{content: "Summary: The parser fix completed and verification passed.\n\nLearned:\n- Run focused verification before broader validation.\n\nIf you'd like, I can also help with:\n1. If you'd like, I can help verify the deliverable in your environment.\n2. If you want, I can help run the adjacent parser tests.\n3. If you'd like, I can continue with the next improvement."},
 	}}
 	reflector := &mockReflector{result: &selfreflect.Result{
 		Summary: "Reflection complete.",
@@ -1423,10 +1438,8 @@ func TestRunner_AutoReflectFailedTask(t *testing.T) {
 	s := testStore(t)
 	m := &scriptedLLM{calls: []scriptedLLMCall{
 		{content: `{"goal":"build","subtasks":[{"description":"primary step"}],"success_criteria":["verify passes"],"fallback_plan":["recover once"]}`},
-		{content: "primary step completed"},
-		{err: fmt.Errorf("verify failed")},
-		{err: fmt.Errorf("recover failed")},
-		{content: "Summary: The task failed after verification and recovery both failed.\n\nLearned:\n- Record the first verification failure before retrying.\n\nIf you'd like, I can also help with:\n1. If you'd like, I can inspect the failing verification output.\n2. If you want, I can help narrow the recovery scope.\n3. If you'd like, I can retry with a changed input."},
+		{content: "not-json"},
+		{content: "not-json"},
 	}}
 	reflector := &mockReflector{result: &selfreflect.Result{
 		Summary: "Failure reflection complete.",
@@ -1462,8 +1475,8 @@ func TestRunner_AutoReflectFailedTask(t *testing.T) {
 	if strings.TrimSpace(reflector.inputs[0].ResultSummary) == "" {
 		t.Fatalf("expected failed reflection input result summary to be populated, got %#v", reflector.inputs[0])
 	}
-	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateRecover, RuntimeStateReflect) {
-		t.Fatal("expected runtime transition RECOVER -> REFLECT")
+	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateVerify, RuntimeStateReflect) {
+		t.Fatal("expected runtime transition VERIFY -> REFLECT")
 	}
 	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateReflect, RuntimeStateReport) {
 		t.Fatal("expected runtime transition REFLECT -> REPORT")

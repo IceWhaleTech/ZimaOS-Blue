@@ -46,6 +46,7 @@ const requiredMarketplaceKeys = [
   'skillStore.marketplace.categories.security_compliance',
   'skillStore.marketplace.categories.communication_collaboration',
   'skillStore.marketplace.categories.other',
+  'skillStore.marketplace.sort.mostUsed',
 ] as const
 
 function buildMergedLocaleMessages(locale: string): LocaleMessages {

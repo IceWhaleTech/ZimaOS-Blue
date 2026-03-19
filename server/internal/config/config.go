@@ -43,6 +43,7 @@ type Config struct {
 	Browser       browser.Config       `yaml:"browser"`
 	Agents        AgentsConfig         `yaml:"agents"`    // v0.11.0
 	Research      ResearchConfig       `yaml:"research"`  // v0.11.x
+	Harness       HarnessConfig        `yaml:"harness"`   // v0.11.x
 	Proxy         *proxy.ProxyConfig   `yaml:"proxy"`     // v0.10.5.1: API Proxy
 	Pruner        *pruner.Config       `yaml:"pruner"`    // v0.10.27: Context Pruner
 	Update        UpdateConfig         `yaml:"update"`    // OTA Update
@@ -718,6 +719,7 @@ func defaults() Config {
 		Browser:       *browser.DefaultConfig(),
 		Agents:        *DefaultAgentsConfig(),
 		Research:      *DefaultResearchConfig(),
+		Harness:       *DefaultHarnessConfig(),
 
 		Proxy: &proxy.ProxyConfig{
 			Enabled: true,

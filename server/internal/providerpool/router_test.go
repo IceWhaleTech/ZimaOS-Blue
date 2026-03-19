@@ -1799,6 +1799,35 @@ func TestFailoverResultSummary(t *testing.T) {
 	}
 }
 
+func TestFailoverResultSummary_RepeatedProviderIncludesModel(t *testing.T) {
+	result := &FailoverResult{
+		SuccessProvider: "provider-a",
+		SuccessModel:    "model-c",
+		FailedAttempts: []*FailoverRecord{
+			{
+				ProviderID:     "provider-a",
+				ModelID:        "model-a",
+				Reason:         FailoverReasonAPIError,
+				Latency:        125 * time.Millisecond,
+				NextProviderID: "provider-a",
+			},
+			{
+				ProviderID:     "provider-a",
+				ModelID:        "model-b",
+				Reason:         FailoverReasonTimeout,
+				Latency:        250 * time.Millisecond,
+				NextProviderID: "provider-a",
+			},
+		},
+	}
+
+	got := result.Summary()
+	want := "provider-a:model-a[api_error,125ms]->provider-a:model-b | provider-a:model-b[timeout,250ms]->provider-a:model-c | provider-a[success:model-c]"
+	if got != want {
+		t.Fatalf("Summary() = %q, want %q", got, want)
+	}
+}
+
 func TestRouterEmptyModelID(t *testing.T) {
 	router, cleanup := setupRouterTest(t)
 	defer cleanup()
@@ -1819,6 +1848,149 @@ func TestRouterEmptyModelID(t *testing.T) {
 
 	if result.Model == nil {
 		t.Error("Model should not be nil")
+	}
+}
+
+func TestRouterEmptyModelID_RouteWithFallbackTriesEachProviderOnce(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-empty-model-dedupe-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	high := &Provider{
+		ID:       "provider-high",
+		Name:     "High",
+		Type:     ProviderTypeCustom,
+		Enabled:  true,
+		Status:   ProviderStatusActive,
+		Priority: 100,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+	}
+	medium := &Provider{
+		ID:       "provider-medium",
+		Name:     "Medium",
+		Type:     ProviderTypeCustom,
+		Enabled:  true,
+		Status:   ProviderStatusActive,
+		Priority: 50,
+		APIKeys:  []APIKey{{ID: "k2", Key: "key2", Enabled: true}},
+	}
+	registry.Register(high)
+	registry.Register(medium)
+
+	if err := storage.SaveModels(high.ID, []*Model{
+		{ID: "high-model-a", ProviderID: high.ID, Name: "high-model-a", Enabled: true},
+		{ID: "high-model-b", ProviderID: high.ID, Name: "high-model-b", Enabled: true},
+	}); err != nil {
+		t.Fatalf("SaveModels high failed: %v", err)
+	}
+	if err := storage.SaveModels(medium.ID, []*Model{
+		{ID: "medium-model-a", ProviderID: medium.ID, Name: "medium-model-a", Enabled: true},
+	}); err != nil {
+		t.Fatalf("SaveModels medium failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	var tried []string
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		tried = append(tried, result.Provider.ID+":"+result.Model.ID)
+		if result.Provider.ID == high.ID {
+			return errors.New("simulated request failure")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("RouteWithFallback failed: %v", err)
+	}
+
+	if len(tried) != 2 {
+		t.Fatalf("expected 2 attempts, got %d: %v", len(tried), tried)
+	}
+	if tried[0] != "provider-high:high-model-a" {
+		t.Fatalf("expected first attempt on first high provider model, got %s", tried[0])
+	}
+	if tried[1] != "provider-medium:medium-model-a" {
+		t.Fatalf("expected fallback to medium provider, got %s", tried[1])
+	}
+}
+
+func TestRouterEmptyModelID_RequireCapUsesFirstMatchingModelPerProvider(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-empty-model-cap-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	high := &Provider{
+		ID:       "provider-high",
+		Name:     "High",
+		Type:     ProviderTypeCustom,
+		Enabled:  true,
+		Status:   ProviderStatusActive,
+		Priority: 100,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+	}
+	medium := &Provider{
+		ID:       "provider-medium",
+		Name:     "Medium",
+		Type:     ProviderTypeCustom,
+		Enabled:  true,
+		Status:   ProviderStatusActive,
+		Priority: 50,
+		APIKeys:  []APIKey{{ID: "k2", Key: "key2", Enabled: true}},
+	}
+	registry.Register(high)
+	registry.Register(medium)
+
+	if err := storage.SaveModels(high.ID, []*Model{
+		{ID: "high-model-no-tools", ProviderID: high.ID, Name: "high-model-no-tools", Enabled: true, Capabilities: ModelCapabilities{Chat: true}},
+		{ID: "high-model-tools", ProviderID: high.ID, Name: "high-model-tools", Enabled: true, Capabilities: ModelCapabilities{Chat: true, FunctionCall: true}},
+	}); err != nil {
+		t.Fatalf("SaveModels high failed: %v", err)
+	}
+	if err := storage.SaveModels(medium.ID, []*Model{
+		{ID: "medium-model-tools", ProviderID: medium.ID, Name: "medium-model-tools", Enabled: true, Capabilities: ModelCapabilities{Chat: true, FunctionCall: true}},
+	}); err != nil {
+		t.Fatalf("SaveModels medium failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	result, err := router.Route(&RouteRequest{
+		ModelID:  "",
+		Strategy: RoutingStrategyPriority,
+		RequireCap: &ModelCapabilities{
+			FunctionCall: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Route failed: %v", err)
+	}
+
+	if result.Provider.ID != high.ID {
+		t.Fatalf("expected high priority provider, got %s", result.Provider.ID)
+	}
+	if result.Model == nil || result.Model.ID != "high-model-tools" {
+		t.Fatalf("expected first matching tool-capable model for high provider, got %+v", result.Model)
+	}
+	if len(result.Fallbacks) != 1 {
+		t.Fatalf("expected exactly one fallback provider, got %d", len(result.Fallbacks))
+	}
+	if result.Fallbacks[0].Provider.ID != medium.ID || result.Fallbacks[0].Model.ID != "medium-model-tools" {
+		t.Fatalf("expected medium tool-capable fallback, got provider=%s model=%s", result.Fallbacks[0].Provider.ID, result.Fallbacks[0].Model.ID)
 	}
 }
 

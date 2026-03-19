@@ -429,6 +429,30 @@ func TestFromJSON(t *testing.T) {
 	}
 }
 
+func TestFromJSONSingleComponentObject(t *testing.T) {
+	jsonData := `{
+		"id": "test-canvas",
+		"title": "Test Canvas",
+		"components": {
+			"id": "text1",
+			"type": "text",
+			"props": {"content": "Hello"}
+		}
+	}`
+
+	canvas, err := FromJSON([]byte(jsonData))
+	if err != nil {
+		t.Fatalf("FromJSON() error = %v", err)
+	}
+
+	if len(canvas.Components) != 1 {
+		t.Fatalf("FromJSON() components len = %d, want 1", len(canvas.Components))
+	}
+	if canvas.Components[0].ID != "text1" || canvas.Components[0].Type != ComponentTypeText {
+		t.Fatalf("unexpected component: %#v", canvas.Components[0])
+	}
+}
+
 func TestFromJSON_Invalid(t *testing.T) {
 	_, err := FromJSON([]byte("invalid json"))
 	if err == nil {

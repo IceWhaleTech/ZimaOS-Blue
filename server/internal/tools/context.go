@@ -14,23 +14,47 @@ const (
 	langKey        toolContextKey = "tool_lang"
 	channelKey     toolContextKey = "tool_channel"
 	deviceKey      toolContextKey = "tool_device"
+	imageInputsKey toolContextKey = "tool_image_inputs"
 	cardEmitKey    toolContextKey = "tool_card_emit"
 	sessionIDKey   toolContextKey = "tool_session_id"
+	providerKey    toolContextKey = "tool_provider"
+	providerIDKey  toolContextKey = "tool_provider_id"
+	modelKey       toolContextKey = "tool_model"
+	agentIDKey     toolContextKey = "tool_agent_id"
+	routeKindKey   toolContextKey = "tool_route_kind"
+	runIDKey       toolContextKey = "tool_run_id"
+	runStepKey     toolContextKey = "tool_run_step"
 	checkpointKey  toolContextKey = "tool_browser_checkpoint"
 	browserModeKey toolContextKey = "tool_browser_launch_mode"
 	fsScopeKey     toolContextKey = "tool_fs_scope"
 )
 
 type BrowserLaunchMode string
+type ToolRouteKind string
+
+// ToolImageInput carries an inline image attachment through tool execution
+// context so review-style tools can recover the original image input even when
+// the model omits it from structured arguments.
+type ToolImageInput struct {
+	Name     string
+	MimeType string
+	Data     string
+}
 
 type fsScopeContext struct {
-	roots   []string
-	aliases map[string]string
+	roots        []string
+	aliases      map[string]string
+	replaceRoots bool
 }
 
 const (
 	BrowserLaunchModeDefault BrowserLaunchMode = ""
 	BrowserLaunchModeVisible BrowserLaunchMode = "visible"
+
+	ToolRouteKindUnknown  ToolRouteKind = ""
+	ToolRouteKindChat     ToolRouteKind = "chat"
+	ToolRouteKindAgent    ToolRouteKind = "agent"
+	ToolRouteKindWorkflow ToolRouteKind = "workflow"
 )
 
 // CardEmitFunc is a callback that tools can use to emit streaming typeless
@@ -130,6 +154,43 @@ func GetDevice(ctx context.Context) string {
 	return ""
 }
 
+// WithImageInputs returns a context carrying inline image inputs for tools.
+func WithImageInputs(ctx context.Context, inputs []ToolImageInput) context.Context {
+	if len(inputs) == 0 {
+		return ctx
+	}
+	normalized := make([]ToolImageInput, 0, len(inputs))
+	for _, input := range inputs {
+		data := strings.TrimSpace(input.Data)
+		if data == "" {
+			continue
+		}
+		normalized = append(normalized, ToolImageInput{
+			Name:     strings.TrimSpace(input.Name),
+			MimeType: strings.TrimSpace(input.MimeType),
+			Data:     data,
+		})
+	}
+	if len(normalized) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, imageInputsKey, normalized)
+}
+
+// GetImageInputs extracts inline image inputs from tool execution context.
+func GetImageInputs(ctx context.Context) []ToolImageInput {
+	if ctx == nil {
+		return nil
+	}
+	inputs, ok := ctx.Value(imageInputsKey).([]ToolImageInput)
+	if !ok || len(inputs) == 0 {
+		return nil
+	}
+	out := make([]ToolImageInput, len(inputs))
+	copy(out, inputs)
+	return out
+}
+
 // WithSessionID returns a context carrying the conversation/session ID.
 func WithSessionID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, sessionIDKey, id)
@@ -143,9 +204,117 @@ func GetSessionID(ctx context.Context) string {
 	return ""
 }
 
+// WithProvider returns a context carrying the provider name used for tool execution.
+func WithProvider(ctx context.Context, provider string) context.Context {
+	return context.WithValue(ctx, providerKey, strings.TrimSpace(provider))
+}
+
+// GetProvider extracts the provider name from the context.
+func GetProvider(ctx context.Context) string {
+	if v, ok := ctx.Value(providerKey).(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+// WithProviderID returns a context carrying the sticky/internal provider ID.
+func WithProviderID(ctx context.Context, providerID string) context.Context {
+	return context.WithValue(ctx, providerIDKey, strings.TrimSpace(providerID))
+}
+
+// GetProviderID extracts the provider ID from the context.
+func GetProviderID(ctx context.Context) string {
+	if v, ok := ctx.Value(providerIDKey).(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+// WithModel returns a context carrying the model used for tool execution.
+func WithModel(ctx context.Context, model string) context.Context {
+	return context.WithValue(ctx, modelKey, strings.TrimSpace(model))
+}
+
+// GetModel extracts the model from the context.
+func GetModel(ctx context.Context) string {
+	if v, ok := ctx.Value(modelKey).(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+// WithAgentID returns a context carrying the agent identifier.
+func WithAgentID(ctx context.Context, agentID string) context.Context {
+	return context.WithValue(ctx, agentIDKey, strings.TrimSpace(agentID))
+}
+
+// GetAgentID extracts the agent identifier from the context.
+func GetAgentID(ctx context.Context) string {
+	if v, ok := ctx.Value(agentIDKey).(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+// WithRouteKind returns a context carrying the current execution route kind.
+func WithRouteKind(ctx context.Context, kind ToolRouteKind) context.Context {
+	if strings.TrimSpace(string(kind)) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, routeKindKey, kind)
+}
+
+// GetRouteKind extracts the execution route kind from the context.
+func GetRouteKind(ctx context.Context) ToolRouteKind {
+	if v, ok := ctx.Value(routeKindKey).(ToolRouteKind); ok {
+		return ToolRouteKind(strings.TrimSpace(string(v)))
+	}
+	if v, ok := ctx.Value(routeKindKey).(string); ok {
+		return ToolRouteKind(strings.TrimSpace(v))
+	}
+	return ToolRouteKindUnknown
+}
+
+// WithRunID returns a context carrying the harness run ID.
+func WithRunID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, runIDKey, id)
+}
+
+// GetRunID extracts the harness run ID from the context.
+func GetRunID(ctx context.Context) string {
+	if v, ok := ctx.Value(runIDKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// WithRunStep returns a context carrying the current harness step index.
+func WithRunStep(ctx context.Context, step int) context.Context {
+	return context.WithValue(ctx, runStepKey, step)
+}
+
+// GetRunStep extracts the harness step index from the context.
+func GetRunStep(ctx context.Context) int {
+	if v, ok := ctx.Value(runStepKey).(int); ok {
+		return v
+	}
+	return 0
+}
+
 // WithFSScope returns a context carrying additional filesystem roots and aliases
 // for file tools (read/write/edit/grep/find/ls).
 func WithFSScope(ctx context.Context, roots []string, aliases map[string]string) context.Context {
+	return withFSScope(ctx, roots, aliases, false)
+}
+
+// WithFSRootOverride returns a context carrying a filesystem root override for
+// file tools. Relative file paths resolve against these roots instead of the
+// tool's default configured roots.
+func WithFSRootOverride(ctx context.Context, roots []string, aliases map[string]string) context.Context {
+	return withFSScope(ctx, roots, aliases, true)
+}
+
+func withFSScope(ctx context.Context, roots []string, aliases map[string]string, replaceRoots bool) context.Context {
 	normalizedRoots := make([]string, 0, len(roots))
 	seenRoots := make(map[string]struct{}, len(roots))
 	for _, raw := range roots {
@@ -187,14 +356,15 @@ func WithFSScope(ctx context.Context, roots []string, aliases map[string]string)
 	}
 
 	return context.WithValue(ctx, fsScopeKey, fsScopeContext{
-		roots:   normalizedRoots,
-		aliases: normalizedAliases,
+		roots:        normalizedRoots,
+		aliases:      normalizedAliases,
+		replaceRoots: replaceRoots,
 	})
 }
 
 // GetFSScope returns additional filesystem roots and aliases from the context.
 func GetFSScope(ctx context.Context) (roots []string, aliases map[string]string) {
-	v, ok := ctx.Value(fsScopeKey).(fsScopeContext)
+	v, ok := getFSScopeContext(ctx)
 	if !ok {
 		return nil, nil
 	}
@@ -210,6 +380,14 @@ func GetFSScope(ctx context.Context) (roots []string, aliases map[string]string)
 		}
 	}
 	return roots, aliases
+}
+
+func getFSScopeContext(ctx context.Context) (fsScopeContext, bool) {
+	v, ok := ctx.Value(fsScopeKey).(fsScopeContext)
+	if !ok {
+		return fsScopeContext{}, false
+	}
+	return v, true
 }
 
 func normalizeFSAliasKey(alias string) string {

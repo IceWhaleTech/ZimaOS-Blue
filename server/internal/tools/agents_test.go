@@ -8,6 +8,23 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
 
+type stubSubagentExecutor struct {
+	req    SubagentRequest
+	result *SubagentResult
+	err    error
+}
+
+func (s *stubSubagentExecutor) ExecuteSubagent(_ context.Context, req SubagentRequest) (*SubagentResult, error) {
+	s.req = req
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.result != nil {
+		return s.result, nil
+	}
+	return &SubagentResult{RunID: "child-1", Status: "completed", Completed: true, Terminal: true}, nil
+}
+
 func TestAgentsListToolExecute(t *testing.T) {
 	cfg := &config.Config{Agents: *config.DefaultAgentsConfig()}
 	tool := NewAgentsListTool(cfg)
@@ -138,5 +155,82 @@ func TestSubagentsToolExecuteAgentIDNotFound(t *testing.T) {
 	tool := NewSubagentsTool(cfg)
 	if _, err := tool.Execute(context.Background(), map[string]interface{}{"agent_id": "missing"}); err == nil {
 		t.Fatal("expected missing agent error")
+	}
+}
+
+func TestSubagentsToolSpawnUsesExecutor(t *testing.T) {
+	cfg := &config.Config{Agents: *config.DefaultAgentsConfig()}
+	tool := NewSubagentsTool(cfg)
+	executor := &stubSubagentExecutor{
+		result: &SubagentResult{
+			RunID:       "child-1",
+			ParentRunID: "parent-1",
+			Status:      "completed",
+			Result:      "done",
+			Completed:   true,
+			Terminal:    true,
+		},
+	}
+	ctx := WithRunID(context.Background(), "parent-1")
+	ctx = WithSubagentExecutor(ctx, executor)
+
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"action":          "run",
+		"goal":            "investigate the failing migration",
+		"agent_id":        "worker",
+		"model":           "gpt-test",
+		"context":         "Focus on the DB layer.",
+		"wait":            false,
+		"max_steps":       5,
+		"max_tool_rounds": 9,
+		"max_duration":    "45s",
+		"metadata": map[string]interface{}{
+			"source": "unit-test",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	got, ok := result.(*SubagentResult)
+	if !ok {
+		t.Fatalf("expected *SubagentResult, got %T", result)
+	}
+	if got.RunID != "child-1" || got.Status != "completed" {
+		t.Fatalf("unexpected result: %#v", got)
+	}
+	if executor.req.Goal != "investigate the failing migration" {
+		t.Fatalf("goal = %q", executor.req.Goal)
+	}
+	if executor.req.AgentID != "worker" || executor.req.Model != "gpt-test" {
+		t.Fatalf("unexpected target selection: %#v", executor.req)
+	}
+	if executor.req.Context != "Focus on the DB layer." {
+		t.Fatalf("context = %q", executor.req.Context)
+	}
+	if executor.req.Wait {
+		t.Fatal("expected wait=false to propagate")
+	}
+	if executor.req.MaxSteps != 5 || executor.req.MaxToolRounds != 9 {
+		t.Fatalf("unexpected budgets: %#v", executor.req)
+	}
+	if executor.req.MaxDuration != 45*time.Second {
+		t.Fatalf("max_duration = %v", executor.req.MaxDuration)
+	}
+	if source, _ := executor.req.Metadata["source"].(string); source != "unit-test" {
+		t.Fatalf("unexpected metadata: %#v", executor.req.Metadata)
+	}
+}
+
+func TestSubagentsToolSpawnRequiresExecutor(t *testing.T) {
+	cfg := &config.Config{Agents: *config.DefaultAgentsConfig()}
+	tool := NewSubagentsTool(cfg)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "spawn",
+		"goal":   "do something",
+	})
+	if err == nil {
+		t.Fatal("expected missing executor error")
 	}
 }

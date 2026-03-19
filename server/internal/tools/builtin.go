@@ -266,6 +266,9 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 	if err != nil {
 		return nil, err
 	}
+	if err := enforceWritePathGuard(ctx, absPath); err != nil {
+		return nil, err
+	}
 
 	// Guard oversized single-call payloads. Large files should be written in
 	// chunks so tool-call arguments do not balloon follow-up LLM requests.
@@ -453,6 +456,14 @@ func RegisterApprovalAwareFileTools(registry *Registry, allowedPaths []string, m
 	write := NewFileWriteTool(allowedPaths, maxFileSize)
 	write.scope = write.scope.withApprovalFlow(approvals, dirStore)
 	registry.Register(write)
+
+	writeSessions := NewWriteSessionManager(maxFileSize)
+	writeBegin := NewFileWriteBeginTool(allowedPaths, writeSessions)
+	writeBegin.scope = writeBegin.scope.withApprovalFlow(approvals, dirStore)
+	registry.Register(writeBegin)
+	registry.Register(NewFileWriteChunkTool(writeSessions))
+	registry.Register(NewFileWriteCommitTool(writeSessions))
+	registry.Register(NewFileWriteAbortTool(writeSessions))
 
 	edit := NewEditTool(allowedPaths, maxFileSize)
 	edit.Scope = edit.Scope.withApprovalFlow(approvals, dirStore)

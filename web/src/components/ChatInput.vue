@@ -227,10 +227,17 @@ const deepResearchInfoTags = computed(() => [
   t('chat.deepResearchCitations', 'Citations'),
 ])
 
+const ralphLoopAutoConfirmStateLabel = computed(() =>
+  settingsStore.agentAutoConfirm
+    ? t('common.enabled', 'Enabled')
+    : t('common.disabled', 'Disabled')
+)
+
 const ralphLoopInfoTags = computed(() => [
   t('chat.ralphLoopHoverPlan', 'Plan'),
   t('chat.ralphLoopHoverAct', 'Act'),
   t('chat.ralphLoopHoverCheck', 'Check'),
+  `${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel.value}`,
 ])
 
 const routingChipClasses = computed(() => ({
@@ -425,6 +432,17 @@ function toggleAgentMode() {
   settingsStore.setAgentMode(!settingsStore.agentMode).catch((err) => {
     console.error('Failed to update Ralph Loop mode:', err)
   })
+}
+
+function toggleAgentAutoConfirm() {
+  settingsStore.setAgentAutoConfirm(!settingsStore.agentAutoConfirm).catch((err) => {
+    console.error('Failed to update Ralph Loop auto-confirm:', err)
+  })
+}
+
+function handleAgentModeContextMenu(event: MouseEvent) {
+  event.preventDefault()
+  toggleAgentAutoConfirm()
 }
 
 function handleCancel() {
@@ -1193,8 +1211,9 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           class="mode-chip mode-chip-loop"
           :class="{ 'is-active-agent': settingsStore.agentMode }"
           :aria-pressed="settingsStore.agentMode"
-          :title="t('chat.taskLoop')"
+          :title="`${t('chat.taskLoop')} · ${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel}`"
           @click="toggleAgentMode"
+          @contextmenu="handleAgentModeContextMenu"
         >
           <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
@@ -1819,7 +1838,11 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                     :class="{ 'is-active-agent': settingsStore.agentMode }"
                     :aria-label="t('chat.taskLoop')"
                     :aria-pressed="settingsStore.agentMode"
+                    :title="
+                      `${t('chat.taskLoop')} · ${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel}`
+                    "
                     @click="toggleAgentMode"
+                    @contextmenu="handleAgentModeContextMenu"
                   >
                     <svg
                       class="mode-chip__icon"

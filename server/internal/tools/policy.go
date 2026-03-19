@@ -9,9 +9,12 @@ import (
 
 // ToolPolicyRequest carries runtime selection hints.
 type ToolPolicyRequest struct {
-	Provider string
-	Model    string
-	AgentID  string
+	Provider   string
+	ProviderID string
+	Model      string
+	AgentID    string
+	SessionID  string
+	RouteKind  ToolRouteKind
 }
 
 // ToolPolicyResolver narrows the visible tool surface before selection/routing.
@@ -95,8 +98,16 @@ func (r *ToolPolicyResolver) providerScope(req ToolPolicyRequest) config.ToolPol
 	if policy, ok := r.providerPolicy[strings.TrimSpace(req.Provider)]; ok {
 		return cloneToolPolicyScope(policy)
 	}
+	if policy, ok := r.providerPolicy[strings.TrimSpace(req.ProviderID)]; ok {
+		return cloneToolPolicyScope(policy)
+	}
 	if policy, ok := r.providerPolicy[strings.TrimSpace(req.Model)]; ok {
 		return cloneToolPolicyScope(policy)
+	}
+	if providerID := strings.TrimSpace(req.ProviderID); providerID != "" && strings.TrimSpace(req.Model) != "" {
+		if policy, ok := r.providerPolicy[providerID+"/"+strings.TrimSpace(req.Model)]; ok {
+			return cloneToolPolicyScope(policy)
+		}
 	}
 	if provider := strings.TrimSpace(req.Provider); provider != "" && strings.TrimSpace(req.Model) != "" {
 		if policy, ok := r.providerPolicy[provider+"/"+strings.TrimSpace(req.Model)]; ok {

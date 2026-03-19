@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MediaCategory, MediaIntent, MediaModelInfo } from '@/api/media'
+import { getLocalizedMediaModelName } from '@/utils/mediaModelLocalization'
 
 const props = defineProps<{
   intent: MediaIntent
@@ -53,12 +54,7 @@ function onModelChange(e: Event) {
 }
 
 function modelLabel(model: MediaModelInfo): string {
-  const base = model.name || model.id
-  if (!model.is_fallback) return base
-  if (model.fallback_strategy === 'web_canvas') {
-    return `${base} · Fallback / Web Canvas`
-  }
-  return `${base} · Fallback / Public Space`
+  return getLocalizedMediaModelName(model, t, te)
 }
 </script>
 

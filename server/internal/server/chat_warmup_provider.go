@@ -17,6 +17,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
 
@@ -207,7 +208,13 @@ func (h *ChatHandler) buildProviderWarmupRequest(ctx context.Context, convID, mo
 			Msg("[warmup] provider-side warmup skipped: explicit prefix cache unavailable on this provider format")
 		return req, ctx, false
 	}
-	selectedTools := h.selectTools("", model)
+	selectedTools := h.selectTools("", tools.ToolPolicyRequest{
+		Model:      model,
+		Provider:   strings.TrimSpace(targetProvider.Name),
+		ProviderID: strings.TrimSpace(targetProviderID),
+		SessionID:  convID,
+		RouteKind:  tools.ToolRouteKindChat,
+	})
 	webSearchEnabled := state.WebSearchEnabled
 	deepResearchEnabled := state.DeepResearchEnabled
 	selectedTools = applyWebSearchPreference(selectedTools, &webSearchEnabled)

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useToolStore } from '@/stores/tool'
 import type { Tool } from '@/api/tool'
 import { getLocalizedToolDescription, getLocalizedToolName } from '@/utils/toolLocalization'
+import { formatVersionLabel } from '@/utils/version-label'
 
 const { t, te, locale } = useI18n()
 const toolStore = useToolStore()
@@ -115,8 +116,10 @@ function getToolDescription(tool: Tool): string {
   return getLocalizedToolDescription(tool.name, tool.description, t, te)
 }
 
-function getToolBadge(tool: Tool): string {
-  return tool.builtin ? t('skillStore.status.builtin') : t('skillStore.status.local')
+function getToolMetaLabel(tool: Tool): string {
+  if (tool.author) return tool.author
+  if (tool.builtin) return t('skillStore.status.builtin')
+  return '-'
 }
 
 function getVisibleTags(tool: Tool): string[] {
@@ -129,8 +132,7 @@ function getToolMonogram(tool: Tool): string {
 }
 
 function formatToolVersion(value?: string): string {
-  if (!value) return '-'
-  return value.startsWith('v') ? value : `v${value}`
+  return formatVersionLabel(value)
 }
 
 function getToolIconUrl(tool: Tool): string | null {
@@ -248,7 +250,6 @@ const toolStats = computed(() => ({
   total: toolStore.tools.length,
   enabled: toolStore.enabledTools.length,
   builtin: toolStore.builtinTools.length,
-  local: toolStore.installedTools.length,
 }))
 
 const categories = computed(() => {
@@ -289,10 +290,6 @@ async function handleToggle(tool: Tool) {
         <span class="extension-market-hero__stat-pill">
           <span>{{ t('plugins.stats.enabled') }}</span>
           <strong>{{ toolStats.enabled }}</strong>
-        </span>
-        <span class="extension-market-hero__stat-pill">
-          <span>{{ t('skillStore.status.local') }}</span>
-          <strong>{{ toolStats.local }}</strong>
         </span>
         <span class="extension-market-hero__stat-pill">
           <span>{{ t('skillStore.status.builtin') }}</span>
@@ -388,8 +385,15 @@ async function handleToggle(tool: Tool) {
         ]"
         :style="getToolAccentStyle(tool)"
       >
-        <div class="tool-showcase-card__topline">
-          <span class="tool-showcase-card__badge">{{ getToolBadge(tool) }}</span>
+        <div
+          :class="[
+            'tool-showcase-card__topline',
+            { 'tool-showcase-card__topline--actions-only': !tool.builtin },
+          ]"
+        >
+          <span v-if="tool.builtin" class="tool-showcase-card__badge">
+            {{ t('skillStore.status.builtin') }}
+          </span>
           <div class="tool-showcase-card__topline-actions">
             <span
               :class="[
@@ -494,7 +498,7 @@ async function handleToggle(tool: Tool) {
                   <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
                   <path d="M6 20a6 6 0 0 1 12 0" />
                 </svg>
-                <strong>{{ tool.author || getToolBadge(tool) }}</strong>
+                <strong>{{ getToolMetaLabel(tool) }}</strong>
               </span>
             </div>
           </div>
@@ -709,6 +713,10 @@ async function handleToggle(tool: Tool) {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+}
+
+.tool-showcase-card__topline--actions-only {
+  justify-content: flex-end;
 }
 
 .tool-showcase-card__topline-actions {

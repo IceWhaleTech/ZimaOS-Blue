@@ -73,6 +73,11 @@ func (s *fsToolScope) rootsWithContext(ctx context.Context) []string {
 	if s == nil {
 		return nil
 	}
+	if scope, ok := getFSScopeContext(ctx); ok && scope.replaceRoots && len(scope.roots) > 0 {
+		roots := make([]string, len(scope.roots))
+		copy(roots, scope.roots)
+		return roots
+	}
 	roots := make([]string, 0, len(s.roots))
 	seen := make(map[string]struct{}, len(s.roots))
 	for _, r := range s.roots {
@@ -103,20 +108,12 @@ func (s *fsToolScope) rootsWithContext(ctx context.Context) []string {
 }
 
 func (s *fsToolScope) aliasesWithContext(ctx context.Context) map[string]string {
-	_, aliases := GetFSScope(ctx)
-	if len(aliases) == 0 {
+	scope, ok := getFSScopeContext(ctx)
+	if !ok || len(scope.aliases) == 0 {
 		return nil
 	}
-	out := make(map[string]string, len(aliases))
-	for rawAlias, rawPath := range aliases {
-		alias := normalizeFSAliasKey(rawAlias)
-		if alias == "" {
-			continue
-		}
-		path := filepath.Clean(strings.TrimSpace(rawPath))
-		if path == "" {
-			continue
-		}
+	out := make(map[string]string, len(scope.aliases))
+	for alias, path := range scope.aliases {
 		out[alias] = path
 	}
 	return out
@@ -594,6 +591,9 @@ func (t *EditTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	absPath, relPath, _, err := t.Scope.resolvePathWithContext(ctx, "edit", path, false)
 	if err != nil {
+		return nil, err
+	}
+	if err := enforceWritePathGuard(ctx, absPath); err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(absPath)

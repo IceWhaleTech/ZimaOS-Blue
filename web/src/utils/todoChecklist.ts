@@ -100,14 +100,17 @@ export function findLatestTodoChecklistSummary(messages: Message[]): TodoCheckli
     const message = messages[index]
     if (!message || message.role !== 'assistant') continue
 
-    const summary = summarizeTodoChecklist(message.content)
-    if (!summary) continue
-    const focusMessage = findCanonicalTodoChecklistMessage(messages, message)
+    const latestSummary = summarizeTodoChecklist(message.content)
+    if (!latestSummary) continue
+    const canonicalMessage = findCanonicalTodoChecklistMessage(messages, message)
+    const summaryMessage = canonicalMessage.id === message.id ? message : canonicalMessage
+    const summary = summarizeTodoChecklist(summaryMessage.content) ?? latestSummary
 
     return {
-      messageId: message.id,
-      focusMessageId: focusMessage.id,
-      todoCardId: message.todo_card_id?.trim() || undefined,
+      messageId: summaryMessage.id,
+      focusMessageId: canonicalMessage.id,
+      todoCardId:
+        canonicalMessage.todo_card_id?.trim() || message.todo_card_id?.trim() || undefined,
       ...summary,
     }
   }

@@ -3598,6 +3598,7 @@ export default {
     mode: 'Modalità ciclo attività',
     modeDescription:
       'Abilita cicli continui di pianificazione ed esecuzione finché non la disattivi',
+    autoConfirm: 'Conferma automatica',
     autoConfirmDescription:
       'Salta la conferma per le azioni distruttive (clic destro sul pulsante ciclo attività per cambiare)',
     sendMessage: "Invia un messaggio all'agente...",

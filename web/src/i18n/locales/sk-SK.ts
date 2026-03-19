@@ -2339,6 +2339,7 @@ export default {
     ...enUS.agent,
     mode: 'Režim slučky úloh',
     modeDescription: 'Povolí nepretržité cykly plánovania a vykonávania, kým ho nevypnete',
+    autoConfirm: 'Automatické potvrdenie',
     autoConfirmDescription:
       'Preskočiť potvrdenie pri deštruktívnych akciách (prepnutie pravým kliknutím na tlačidlo slučky úloh)',
     sendMessage: 'Odoslať správu agentovi...',

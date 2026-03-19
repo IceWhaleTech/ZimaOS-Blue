@@ -120,7 +120,13 @@ describe('MediaPlaceholder', () => {
     })
     await flushPromises()
 
-    expect(notificationStoreMock.info).toHaveBeenCalledWith('media.cancelled', 'chat.taskCancelled')
+    expect(notificationStoreMock.info).toHaveBeenCalledWith(
+      'media.cancelled',
+      'chat.taskCancelled',
+      {
+        titleKey: 'media.cancelled',
+      }
+    )
     expect(wrapper.find('button.mp-retry--cancelled').exists()).toBe(true)
     wrapper.unmount()
   })

@@ -588,6 +588,7 @@ func webFetchCard(content string) map[string]interface{} {
 }
 
 func webSearchCard(content string) map[string]interface{} {
+	content = unwrapUntrustedToolCardContent(content, "web_search")
 	var resp struct {
 		Query      string            `json:"query"`
 		Results    []json.RawMessage `json:"results"`
@@ -608,6 +609,25 @@ func webSearchCard(content string) map[string]interface{} {
 		"total_count": resp.TotalCount,
 		"results":     results,
 	}
+}
+
+func unwrapUntrustedToolCardContent(content, toolName string) string {
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(content), &payload) != nil {
+		return content
+	}
+	if !strings.EqualFold(strings.TrimSpace(formatValue(payload["tool"])), strings.TrimSpace(toolName)) {
+		return content
+	}
+	data, ok := payload["data"]
+	if !ok {
+		return content
+	}
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		return content
+	}
+	return string(encoded)
 }
 
 func deepResearchCard(content string) map[string]interface{} {

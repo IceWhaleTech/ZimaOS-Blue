@@ -6,15 +6,15 @@ import "context"
 
 // AdminProviderInfo is a simplified provider representation for the admin tool.
 type AdminProviderInfo struct {
-	ID       string              `json:"id"`
-	Name     string              `json:"name"`
-	Type     string              `json:"type"`
-	Location string              `json:"location,omitempty"` // cloud or local
-	BaseURL  string              `json:"base_url,omitempty"`
-	Enabled  bool                `json:"enabled"`
-	Models   []string            `json:"models,omitempty"`
-	Priority int                 `json:"priority"`
-	APIKeys  []AdminProviderKey  `json:"api_keys,omitempty"`
+	ID       string             `json:"id"`
+	Name     string             `json:"name"`
+	Type     string             `json:"type"`
+	Location string             `json:"location,omitempty"` // cloud or local
+	BaseURL  string             `json:"base_url,omitempty"`
+	Enabled  bool               `json:"enabled"`
+	Models   []string           `json:"models,omitempty"`
+	Priority int                `json:"priority"`
+	APIKeys  []AdminProviderKey `json:"api_keys,omitempty"`
 }
 
 // AdminProviderKey is a simplified API key representation (no raw key).
@@ -82,9 +82,11 @@ type AdminSkillService interface {
 
 // AdminToolInfo is a simplified tool representation.
 type AdminToolInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Disabled    bool   `json:"disabled,omitempty"`
+	Name                string   `json:"name"`
+	Description         string   `json:"description,omitempty"`
+	Disabled            bool     `json:"disabled,omitempty"`
+	RiskLevel           string   `json:"risk_level,omitempty"`
+	VisibilityAllowlist []string `json:"visibility_allowlist,omitempty"`
 }
 
 // AdminToolService provides tool management.
@@ -167,16 +169,16 @@ type AdminAPIKeyCreateResult struct {
 
 // AdminUpgradeInfo holds upgrade/OTA information.
 type AdminUpgradeInfo struct {
-	CurrentVersion   string   `json:"current_version"`
-	UpdateAvailable  bool     `json:"update_available"`
-	LatestVersion    string   `json:"latest_version,omitempty"`
-	DownloadURLs     []string `json:"download_urls,omitempty"`
-	ReleaseNoteURL   string   `json:"release_note_url,omitempty"`
-	Delay            int      `json:"delay,omitempty"`
-	State            string   `json:"state,omitempty"`            // idle, checking, downloading, applying, restarting, failed
-	Progress         float64  `json:"progress,omitempty"`         // 0-100
-	Error            string   `json:"error,omitempty"`            // error message if failed
-	DownloadedPath   string   `json:"downloaded_path,omitempty"` // path to downloaded update
+	CurrentVersion  string   `json:"current_version"`
+	UpdateAvailable bool     `json:"update_available"`
+	LatestVersion   string   `json:"latest_version,omitempty"`
+	DownloadURLs    []string `json:"download_urls,omitempty"`
+	ReleaseNoteURL  string   `json:"release_note_url,omitempty"`
+	Delay           int      `json:"delay,omitempty"`
+	State           string   `json:"state,omitempty"`           // idle, checking, downloading, applying, restarting, failed
+	Progress        float64  `json:"progress,omitempty"`        // 0-100
+	Error           string   `json:"error,omitempty"`           // error message if failed
+	DownloadedPath  string   `json:"downloaded_path,omitempty"` // path to downloaded update
 }
 
 // AdminUpgradeService provides upgrade/OTA management.

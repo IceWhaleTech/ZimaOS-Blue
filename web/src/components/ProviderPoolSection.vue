@@ -9,6 +9,7 @@ import ProviderIcon from '@/components/ProviderIcon.vue'
 import type { Provider, Model, ProviderVerificationResult } from '@/api/providerPool'
 import { providerPoolApi } from '@/api/providerPool'
 import { formatTokens } from '@/utils/format'
+import { getLocalizedMediaModelName } from '@/utils/mediaModelLocalization'
 
 const { t, te } = useI18n()
 const route = useRoute()
@@ -95,6 +96,16 @@ const showNewProviderApiKey = ref(false)
 const addingProvider = ref(false)
 const addingStep = ref('') // '', 'adding', 'probing', 'done'
 
+function openAddProviderModal() {
+  showNewProviderApiKey.value = false
+  showAddModal.value = true
+}
+
+function closeAddProviderModal() {
+  showNewProviderApiKey.value = false
+  showAddModal.value = false
+}
+
 function tr(key: string, fallback = ''): string {
   return te(key) ? t(key) : fallback
 }
@@ -111,6 +122,10 @@ function getTabLabel(tab: ProviderTab): string {
   return tr(`providerPool.tabs.${tab}`, tabFallbackLabels[tab] || tab)
 }
 
+function getLocalizedProviderModelName(model: Model): string {
+  return getLocalizedMediaModelName(model, t, te)
+}
+
 // New API key form
 const newKey = ref({
   providerId: '',
@@ -118,6 +133,11 @@ const newKey = ref({
   label: '',
 })
 const showNewKeyApiKey = ref(false)
+
+function closeKeyModal() {
+  showNewKeyApiKey.value = false
+  showKeyModal.value = false
+}
 const selectedKeyId = ref('')
 const fetchingKeyModels = ref<Record<string, boolean>>({})
 
@@ -1466,7 +1486,7 @@ onMounted(() => {
         </button>
         <button
           class="px-3 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg flex items-center gap-1 text-sm transition-colors"
-          @click="showNewProviderApiKey = false; showAddModal = true"
+          @click="openAddProviderModal"
         >
           <span>+</span>
           {{ t('providerPool.addCustom') }}
@@ -2729,7 +2749,7 @@ onMounted(() => {
                       >⠿</span
                     >
                     <span class="text-gray-900 dark:text-white font-medium">{{
-                      model.display_name || model.name
+                      getLocalizedProviderModelName(model)
                     }}</span>
                     <span
                       v-if="model.capabilities?.length"
@@ -3045,7 +3065,7 @@ onMounted(() => {
                 type="button"
                 :disabled="addingProvider"
                 class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg disabled:opacity-50"
-                @click="showNewProviderApiKey = false; showAddModal = false"
+                @click="closeAddProviderModal"
               >
                 {{ t('common.cancel') }}
               </button>
@@ -3145,7 +3165,7 @@ onMounted(() => {
               <button
                 type="button"
                 class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
-                @click="showNewKeyApiKey = false; showKeyModal = false"
+                @click="closeKeyModal"
               >
                 {{ t('common.cancel') }}
               </button>
@@ -3442,7 +3462,7 @@ onMounted(() => {
                 />
                 <div class="flex-1 min-w-0">
                   <span class="text-sm text-gray-900 dark:text-white">{{
-                    model.display_name || model.name
+                    getLocalizedProviderModelName(model)
                   }}</span>
                   <span
                     v-if="model.capabilities?.length"

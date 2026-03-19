@@ -42,6 +42,8 @@ type QuestionAnswerResult struct {
 // QuestionRequest is the SSE payload sent to the frontend.
 type QuestionRequest struct {
 	ID        string                 `json:"id"`
+	RunID     string                 `json:"run_id,omitempty"`
+	StepIndex int                    `json:"step_index,omitempty"`
 	Questions []QuestionItem         `json:"questions"`
 	UserID    string                 `json:"user_id"`
 	SessionID string                 `json:"session_id,omitempty"`
@@ -57,11 +59,12 @@ type pendingQuestion struct {
 
 // QuestionManager handles the ask-user-question flow via SSE.
 type QuestionManager struct {
-	broker  *sse.Broker
-	mu      sync.Mutex
-	pending map[string]*pendingQuestion
-	timeout time.Duration
-	silent  func() bool // returns true when unattended mode is active
+	broker   *sse.Broker
+	mu       sync.Mutex
+	pending  map[string]*pendingQuestion
+	timeout  time.Duration
+	silent   func() bool // returns true when unattended mode is active
+	observer RuntimeEventObserver
 	// Optional dynamic overrides (wired from settings at runtime).
 	timeoutFunc       func() time.Duration
 	timeoutActionFunc func() string // "default" | "error"
@@ -112,6 +115,13 @@ func (m *QuestionManager) SetTimeoutActionFunc(fn func() string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.timeoutActionFunc = fn
+}
+
+// SetObserver wires lifecycle notifications for question request/resolution.
+func (m *QuestionManager) SetObserver(observer RuntimeEventObserver) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.observer = observer
 }
 
 func (m *QuestionManager) resolveTimeout() time.Duration {
@@ -196,6 +206,8 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 	timeout := m.resolveTimeout()
 	req := QuestionRequest{
 		ID:        reqID,
+		RunID:     GetRunID(ctx),
+		StepIndex: GetRunStep(ctx),
 		Questions: questions,
 		UserID:    userID,
 		SessionID: sessionID,
@@ -205,6 +217,7 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 
 	m.mu.Lock()
 	m.pending[reqID] = &pendingQuestion{ch: answerCh, request: req, created: timeutil.NowTime()}
+	observer := m.observer
 	m.mu.Unlock()
 
 	defer func() {
@@ -215,6 +228,9 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 
 	// Publish SSE event
 	m.broker.Publish(userID, "ask", req)
+	if observer != nil {
+		observer.OnQuestionRequested(questionRuntimeEvent(req, nil, false, false, nil))
+	}
 
 	// Wait for response or timeout
 	timer := time.NewTimer(timeout)
@@ -222,16 +238,65 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 
 	select {
 	case answers := <-answerCh:
+		if observer != nil {
+			observer.OnQuestionResolved(questionRuntimeEvent(req, answers, false, false, nil))
+		}
 		return answers, false, nil
 	case <-timer.C:
+		defaultAnswers := m.defaultAnswers(questions)
+		if observer != nil {
+			var resolveErr error
+			if m.resolveTimeoutAction() == "error" {
+				resolveErr = fmt.Errorf("question timed out after %s", timeout)
+				observer.OnQuestionResolved(questionRuntimeEvent(req, nil, false, true, resolveErr))
+			} else {
+				observer.OnQuestionResolved(questionRuntimeEvent(req, defaultAnswers, true, true, nil))
+			}
+		}
 		if m.resolveTimeoutAction() == "error" {
 			return nil, false, fmt.Errorf("question timed out after %s", timeout)
 		}
 		// Timeout: return defaults
-		return m.defaultAnswers(questions), true, nil
+		return defaultAnswers, true, nil
 	case <-ctx.Done():
+		if observer != nil {
+			observer.OnQuestionResolved(questionRuntimeEvent(req, nil, false, false, ctx.Err()))
+		}
 		return nil, false, ctx.Err()
 	}
+}
+
+func questionRuntimeEvent(req QuestionRequest, answers []QuestionAnswerResult, silent bool, timedOut bool, err error) QuestionRuntimeEvent {
+	event := QuestionRuntimeEvent{
+		RunID:     req.RunID,
+		StepIndex: req.StepIndex,
+		ID:        req.ID,
+		SessionID: req.SessionID,
+		UserID:    req.UserID,
+		Questions: append([]QuestionItem(nil), req.Questions...),
+		ExpiresAt: req.ExpiresAt,
+		Context:   cloneQuestionContext(req.Context),
+		Silent:    silent,
+		TimedOut:  timedOut,
+	}
+	if len(answers) > 0 {
+		event.Answers = append([]QuestionAnswerResult(nil), answers...)
+	}
+	if err != nil {
+		event.Error = err.Error()
+	}
+	return event
+}
+
+func cloneQuestionContext(in map[string]interface{}) map[string]interface{} {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // ResolveAnswer is called by the REST endpoint when the user responds.
@@ -386,6 +451,35 @@ func (m *QuestionManager) GetPendingBySession(sessionID string) *QuestionRequest
 			continue
 		}
 		if strings.TrimSpace(p.request.SessionID) != sessionID {
+			continue
+		}
+		if latest == nil || p.created.After(latest.created) {
+			latest = p
+		}
+	}
+	if latest != nil {
+		req := latest.request
+		return &req
+	}
+	return nil
+}
+
+// GetPendingByRun returns the most recent pending question request for a harness run.
+func (m *QuestionManager) GetPendingByRun(runID string) *QuestionRequest {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return nil
+	}
+	nowMs := timeutil.NowMilli()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var latest *pendingQuestion
+	for id, p := range m.pending {
+		if p == nil || p.request.ExpiresAt <= nowMs {
+			delete(m.pending, id)
+			continue
+		}
+		if strings.TrimSpace(p.request.RunID) != runID {
 			continue
 		}
 		if latest == nil || p.created.After(latest.created) {

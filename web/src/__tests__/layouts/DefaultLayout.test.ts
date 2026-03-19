@@ -3,8 +3,13 @@ import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
-const { setupFormFillerWidget, cleanupFormFillerWidget, previewStoreState, settingsStoreState } =
-  vi.hoisted(() => ({
+const {
+  setupFormFillerWidget,
+  cleanupFormFillerWidget,
+  previewStoreState,
+  settingsStoreState,
+  tauriState,
+} = vi.hoisted(() => ({
     setupFormFillerWidget: vi.fn(),
     cleanupFormFillerWidget: vi.fn(),
     previewStoreState: {
@@ -15,7 +20,20 @@ const { setupFormFillerWidget, cleanupFormFillerWidget, previewStoreState, setti
       claudeCodeEnabled: false,
       claudeCodeEnabledLoaded: true,
     },
+    tauriState: {
+      isTauri: false,
+      platform: 'unknown',
+      setCloseBehavior: vi.fn(),
+      refreshTauriDetection: vi.fn(),
+    },
   }))
+
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (_key: string, fallback?: string) => fallback || '',
+    te: () => false,
+  }),
+}))
 
 vi.mock('@/composables/useFormFillerWidget', () => ({
   useFormFillerWidget: () => ({
@@ -26,9 +44,11 @@ vi.mock('@/composables/useFormFillerWidget', () => ({
 
 vi.mock('@/composables/useTauri', () => ({
   useTauri: () => ({
-    isTauri: { value: false },
-    setCloseBehavior: vi.fn(),
+    isTauri: { value: tauriState.isTauri },
+    platform: { value: tauriState.platform },
+    setCloseBehavior: tauriState.setCloseBehavior,
   }),
+  refreshTauriDetection: tauriState.refreshTauriDetection,
 }))
 
 vi.mock('@/stores/preview', () => ({
@@ -122,6 +142,8 @@ describe('DefaultLayout', () => {
     previewStoreState.isPreviewMode = false
     settingsStoreState.claudeCodeEnabled = false
     settingsStoreState.claudeCodeEnabledLoaded = true
+    tauriState.isTauri = false
+    tauriState.platform = 'unknown'
     setViewportWidth(1440)
   })
 
@@ -203,6 +225,20 @@ describe('DefaultLayout', () => {
     const wrapper = await mountLayout('/chat')
 
     expect(wrapper.find('.preview-onboarding-modal-stub').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('does not render the custom macOS window navigation bar inside Tauri desktop mode', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+    )
+    tauriState.isTauri = true
+    tauriState.platform = 'macos'
+
+    const wrapper = await mountLayout('/home')
+
+    expect(wrapper.find('.layout-window-chrome').exists()).toBe(false)
 
     wrapper.unmount()
   })

@@ -2,8 +2,14 @@ package tools
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
+
+type recursiveTracePayload struct {
+	Name string                 `json:"name"`
+	Self *recursiveTracePayload `json:"self,omitempty"`
+}
 
 func TestExecutorTraceStoreRecordsCalls(t *testing.T) {
 	registry := NewRegistry()
@@ -24,5 +30,32 @@ func TestExecutorTraceStoreRecordsCalls(t *testing.T) {
 	}
 	if records[0].RequestedTool != "hello" || records[0].ActualTool != "hello" {
 		t.Fatalf("unexpected trace record: %#v", records[0])
+	}
+}
+
+func TestExecutorTraceStoreSummarizesRecursivePayloads(t *testing.T) {
+	registry := NewRegistry()
+	payload := &recursiveTracePayload{Name: "root"}
+	payload.Self = payload
+	mock := NewMockTool("hello", "hello tool")
+	mock.SetResult(payload)
+	registry.Register(mock)
+
+	executor := NewExecutor(registry)
+	store := NewToolTraceStore(10)
+	executor.SetTraceStore(store)
+
+	if _, err := executor.Execute(context.Background(), "hello", map[string]interface{}{"name": "blue"}); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	records := store.List(1)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 trace record, got %d", len(records))
+	}
+	if !strings.Contains(records[0].OutputSummary, `"name":"root"`) {
+		t.Fatalf("output_summary = %q, want name field", records[0].OutputSummary)
+	}
+	if !strings.Contains(records[0].OutputSummary, `[circular payload omitted]`) {
+		t.Fatalf("output_summary = %q, want circular marker", records[0].OutputSummary)
 	}
 }

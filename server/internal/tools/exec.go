@@ -463,8 +463,8 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return nil, err
 	}
 
-	// Validate absolute paths referenced in the command against allowed dirs.
-	if err := t.validateCommandPaths(ctx, command, &warnings); err != nil {
+	// Validate paths referenced in the command against allowed dirs.
+	if err := t.validateCommandPaths(ctx, command, workdir, &warnings); err != nil {
 		return nil, err
 	}
 
@@ -1593,14 +1593,17 @@ func (t *ExecTool) recordAudit(ctx context.Context, command, workdir string, ris
 // parent/child entries). On "allow-once" the command proceeds without
 // persisting. On deny (or timeout) the command is rejected.
 func (t *ExecTool) validateWorkdir(ctx context.Context, workdir string) error {
-	if len(t.config.AllowedDirs) == 0 {
-		return nil
-	}
 	absWorkdir, err := filepath.Abs(workdir)
 	if err != nil {
 		return fmt.Errorf("exec denied: cannot resolve workdir %q: %w", workdir, err)
 	}
 	absWorkdir = filepath.Clean(absWorkdir)
+	if err := enforceExecWorkdirGuard(ctx, absWorkdir); err != nil {
+		return err
+	}
+	if len(t.config.AllowedDirs) == 0 {
+		return nil
+	}
 
 	// 1. Check static AllowedDirs.
 	for _, dir := range t.config.AllowedDirs {
@@ -1751,6 +1754,7 @@ func parseFloatArg(v interface{}, defaultVal float64) float64 {
 // It avoids matching common flags like --option=/value by requiring the path
 // to start at a word boundary or after whitespace/quotes.
 var absPathRe = regexp.MustCompile(`(?:^|[\s"'=])(/(?:[a-zA-Z0-9._~-]+/)*[a-zA-Z0-9._~-]+)`)
+var redirectionPrefixRe = regexp.MustCompile(`^(?:\d*>>?|\d*<<?|&>>?|&>)`)
 
 // urlLikePathPrefixes are path prefixes that look like URL routes, not filesystem paths.
 // Paths starting with these are skipped by extractAbsolutePaths.
@@ -1789,6 +1793,218 @@ func extractAbsolutePaths(command string) []string {
 	return paths
 }
 
+// extractCommandPaths returns all unique absolute filesystem paths referenced in
+// a shell command, including relative paths resolved against the supplied
+// workdir. It also tracks simple `cd <dir>` chains so later segments resolve
+// relative paths against the updated cwd.
+func extractCommandPaths(command, workdir string) []string {
+	workdir = strings.TrimSpace(workdir)
+	if workdir == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			workdir = cwd
+		}
+	}
+	if workdir == "" {
+		workdir = "."
+	}
+	absWorkdir, err := filepath.Abs(workdir)
+	if err != nil {
+		absWorkdir = filepath.Clean(workdir)
+	}
+
+	chains := splitChainOperators(command)
+	if len(chains) == 0 {
+		chains = []string{command}
+	}
+
+	seen := make(map[string]struct{})
+	paths := make([]string, 0, 8)
+	currentCwd := absWorkdir
+	for _, chain := range chains {
+		parts := splitPipelineForPathExtraction(chain)
+		if len(parts) == 0 {
+			parts = []string{chain}
+		}
+		if len(parts) == 1 {
+			currentCwd = collectPathsFromCommandPart(parts[0], currentCwd, seen, &paths, true)
+			continue
+		}
+		for _, part := range parts {
+			_ = collectPathsFromCommandPart(part, currentCwd, seen, &paths, false)
+		}
+	}
+	return paths
+}
+
+func splitPipelineForPathExtraction(command string) []string {
+	var parts []string
+	var buf strings.Builder
+	inSingle, inDouble, escaped := false, false, false
+
+	flush := func() {
+		s := strings.TrimSpace(buf.String())
+		buf.Reset()
+		if s != "" {
+			parts = append(parts, s)
+		}
+	}
+
+	for _, ch := range command {
+		if escaped {
+			buf.WriteRune(ch)
+			escaped = false
+			continue
+		}
+		if ch == '\\' && !inSingle {
+			escaped = true
+			buf.WriteRune(ch)
+			continue
+		}
+		if inSingle {
+			buf.WriteRune(ch)
+			if ch == '\'' {
+				inSingle = false
+			}
+			continue
+		}
+		if inDouble {
+			buf.WriteRune(ch)
+			if ch == '"' {
+				inDouble = false
+			}
+			continue
+		}
+		if ch == '\'' {
+			inSingle = true
+			buf.WriteRune(ch)
+			continue
+		}
+		if ch == '"' {
+			inDouble = true
+			buf.WriteRune(ch)
+			continue
+		}
+		if ch == '|' {
+			flush()
+			continue
+		}
+		buf.WriteRune(ch)
+	}
+
+	if escaped || inSingle || inDouble {
+		return nil
+	}
+	flush()
+	return parts
+}
+
+func collectPathsFromCommandPart(part, cwd string, seen map[string]struct{}, paths *[]string, persistCwd bool) string {
+	tokens := tokenizeShell(part)
+	if len(tokens) == 0 {
+		return cwd
+	}
+	nextCwd := cwd
+	commandName := filepath.Base(tokens[0])
+
+	for i, token := range tokens {
+		resolved, updatesCwd := resolveCommandPathToken(commandName, i, token, cwd)
+		if resolved == "" {
+			continue
+		}
+		if _, ok := seen[resolved]; !ok {
+			seen[resolved] = struct{}{}
+			*paths = append(*paths, resolved)
+		}
+		if updatesCwd {
+			nextCwd = resolved
+		}
+	}
+
+	if persistCwd {
+		return nextCwd
+	}
+	return cwd
+}
+
+func resolveCommandPathToken(commandName string, index int, token string, cwd string) (string, bool) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", false
+	}
+	if strings.EqualFold(commandName, "cd") && index == 1 {
+		return normalizeCommandPathToken(token, cwd, true), true
+	}
+	return normalizeCommandPathToken(token, cwd, false), false
+}
+
+func normalizeCommandPathToken(token string, cwd string, allowBare bool) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	token = redirectionPrefixRe.ReplaceAllString(token, "")
+	token = strings.TrimSpace(token)
+	if token == "" || token == "|" || token == ">" || token == "<" || token == ">>" || token == "<<" {
+		return ""
+	}
+	if idx := strings.IndexByte(token, '='); idx >= 0 && idx < len(token)-1 {
+		if normalized := normalizeCommandPathToken(token[idx+1:], cwd, allowBare); normalized != "" {
+			return normalized
+		}
+	}
+	if strings.Contains(token, "://") || strings.HasPrefix(token, "$") {
+		return ""
+	}
+	if filepath.IsAbs(token) {
+		return cleanCommandPath(token)
+	}
+	if strings.HasPrefix(token, "~/") {
+		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+			return cleanCommandPath(filepath.Join(home, token[2:]))
+		}
+		return ""
+	}
+	if !looksLikeRelativeCommandPath(token, allowBare) {
+		return ""
+	}
+	if cwd == "" {
+		if wd, err := os.Getwd(); err == nil {
+			cwd = wd
+		}
+	}
+	return cleanCommandPath(filepath.Join(cwd, token))
+}
+
+func looksLikeRelativeCommandPath(token string, allowBare bool) bool {
+	if token == "." || token == ".." {
+		return true
+	}
+	if strings.HasPrefix(token, "./") || strings.HasPrefix(token, "../") {
+		return true
+	}
+	if strings.Contains(token, "/") || strings.Contains(token, `\`) {
+		return true
+	}
+	if allowBare && !strings.HasPrefix(token, "-") {
+		return true
+	}
+	return false
+}
+
+func cleanCommandPath(raw string) string {
+	raw = filepath.Clean(raw)
+	if raw == "/" || raw == "." || raw == "" {
+		return ""
+	}
+	if raw == "/dev/null" || raw == "/dev/stdin" || raw == "/dev/stdout" || raw == "/dev/stderr" {
+		return ""
+	}
+	if isURLLikePath(raw) {
+		return ""
+	}
+	return raw
+}
+
 // isURLLikePath returns true if the path looks like a URL route rather than
 // a filesystem path (e.g. /api/new-game, /v1/chat/completions).
 func isURLLikePath(path string) bool {
@@ -1801,15 +2017,20 @@ func isURLLikePath(path string) bool {
 	return false
 }
 
-// validateCommandPaths extracts absolute paths from the command and checks
+// validateCommandPaths extracts filesystem paths from the command and checks
 // each against the allowed directories and persistent dir allowlist. Paths
 // outside the allowlist trigger an approval request (same as validateWorkdir).
-func (t *ExecTool) validateCommandPaths(ctx context.Context, command string, warnings *[]string) error {
+func (t *ExecTool) validateCommandPaths(ctx context.Context, command, workdir string, warnings *[]string) error {
+	dirs := extractCommandPaths(command, workdir)
+	for _, dir := range dirs {
+		if err := enforceExecPathGuard(ctx, dir); err != nil {
+			return err
+		}
+	}
 	if len(t.config.AllowedDirs) == 0 {
 		return nil // unrestricted
 	}
 
-	dirs := extractAbsolutePaths(command)
 	for _, dir := range dirs {
 		if t.isDirAllowed(dir) {
 			continue

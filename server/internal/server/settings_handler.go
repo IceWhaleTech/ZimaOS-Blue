@@ -12,6 +12,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voicewake"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
@@ -289,7 +290,10 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "chat handler not configured"})
 	}
 
-	selectedDefs := chatHandler.selectTools(req.Query, req.Model)
+	selectedDefs := chatHandler.selectTools(req.Query, tools.ToolPolicyRequest{
+		Model:     req.Model,
+		RouteKind: tools.ToolRouteKindChat,
+	})
 	toolNames := make([]string, len(selectedDefs))
 	for i, def := range selectedDefs {
 		toolNames[i] = def.Name

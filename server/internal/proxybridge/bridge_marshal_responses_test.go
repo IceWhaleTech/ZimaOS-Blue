@@ -221,6 +221,83 @@ func TestParseSSEChunk_OpenAIErrorPayload(t *testing.T) {
 	}
 }
 
+type bridgeMetricsStub struct {
+	counts map[string]int64
+}
+
+func (m *bridgeMetricsStub) RecordCounter(name string, value int64, _ map[string]string) {
+	if m.counts == nil {
+		m.counts = make(map[string]int64)
+	}
+	m.counts[name] += value
+}
+
+func TestParseChatResponseWithMetricsRepairsStringifiedToolArguments(t *testing.T) {
+	payload := []byte(`{
+		"id":"resp_repair",
+		"model":"gpt-4o",
+		"choices":[
+			{
+				"index":0,
+				"message":{
+					"role":"assistant",
+					"tool_calls":[
+						{
+							"id":"call_1",
+							"type":"function",
+							"function":{"name":"exec","arguments":"{'cmd':'pwd'}"}
+						}
+					]
+				}
+			}
+		]
+	}`)
+
+	metrics := &bridgeMetricsStub{}
+	resp, err := parseChatResponseWithMetrics(payload, metrics)
+	if err != nil {
+		t.Fatalf("parseChatResponseWithMetrics() error = %v", err)
+	}
+	if len(resp.Message.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %d, want 1", len(resp.Message.ToolCalls))
+	}
+	if got := resp.Message.ToolCalls[0].Arguments; got != `{"cmd":"pwd"}` {
+		t.Fatalf("arguments = %q, want canonical JSON object", got)
+	}
+	if got := metrics.counts["provider_tool_normalization_repair_total"]; got != 1 {
+		t.Fatalf("repair metric = %d, want 1", got)
+	}
+}
+
+func TestParseResponsesChatResponseWithMetricsRecordsNormalizationFailure(t *testing.T) {
+	payload := []byte(`{
+		"id":"resp_fail",
+		"object":"response",
+		"model":"o3",
+		"output":[
+			{"type":"function_call","call_id":"call_bad","name":"exec","arguments":"oops"}
+		]
+	}`)
+
+	metrics := &bridgeMetricsStub{}
+	resp, handled, err := parseResponsesChatResponseWithMetrics(payload, metrics)
+	if err != nil {
+		t.Fatalf("parseResponsesChatResponseWithMetrics() error = %v", err)
+	}
+	if !handled {
+		t.Fatal("handled = false, want true")
+	}
+	if resp == nil || len(resp.Message.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %+v, want one normalized tool call", resp)
+	}
+	if got := resp.Message.ToolCalls[0].Arguments; got != "oops" {
+		t.Fatalf("arguments = %q, want original irreparable payload", got)
+	}
+	if got := metrics.counts["provider_tool_normalization_fail_total"]; got != 1 {
+		t.Fatalf("failure metric = %d, want 1", got)
+	}
+}
+
 func TestParseChatResponse_ResponsesObject(t *testing.T) {
 	body := []byte(`{
 		"id":"resp_5",

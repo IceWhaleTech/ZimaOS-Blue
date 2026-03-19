@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"encoding/json"
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -14,16 +14,19 @@ const maxToolTraceSummaryBytes = 2048
 
 // ToolTraceRecord captures one tool execution summary.
 type ToolTraceRecord struct {
-	ID            string    `json:"id"`
-	RequestedTool string    `json:"requested_tool"`
-	ActualTool    string    `json:"actual_tool"`
-	StartedAt     time.Time `json:"started_at"`
-	FinishedAt    time.Time `json:"finished_at"`
-	DurationMs    int64     `json:"duration_ms"`
-	Success       bool      `json:"success"`
-	Error         string    `json:"error,omitempty"`
-	InputSummary  string    `json:"input_summary,omitempty"`
-	OutputSummary string    `json:"output_summary,omitempty"`
+	ID             string    `json:"id"`
+	RunID          string    `json:"run_id,omitempty"`
+	StepIndex      int       `json:"step_index,omitempty"`
+	CapabilityKind string    `json:"capability_kind,omitempty"`
+	RequestedTool  string    `json:"requested_tool"`
+	ActualTool     string    `json:"actual_tool"`
+	StartedAt      time.Time `json:"started_at"`
+	FinishedAt     time.Time `json:"finished_at"`
+	DurationMs     int64     `json:"duration_ms"`
+	Success        bool      `json:"success"`
+	Error          string    `json:"error,omitempty"`
+	InputSummary   string    `json:"input_summary,omitempty"`
+	OutputSummary  string    `json:"output_summary,omitempty"`
 }
 
 // ToolTraceStore keeps recent in-memory tool traces.
@@ -42,7 +45,7 @@ func NewToolTraceStore(limit int) *ToolTraceStore {
 }
 
 // Record appends a finished tool trace.
-func (s *ToolTraceStore) Record(startedAt time.Time, requestedTool, actualTool string, args map[string]interface{}, result interface{}, err error) string {
+func (s *ToolTraceStore) Record(ctx context.Context, startedAt time.Time, requestedTool, actualTool string, args map[string]interface{}, result interface{}, err error) string {
 	if s == nil {
 		return ""
 	}
@@ -51,15 +54,18 @@ func (s *ToolTraceStore) Record(startedAt time.Time, requestedTool, actualTool s
 		startedAt = finishedAt
 	}
 	record := ToolTraceRecord{
-		ID:            uuid.NewString(),
-		RequestedTool: strings.TrimSpace(requestedTool),
-		ActualTool:    strings.TrimSpace(actualTool),
-		StartedAt:     startedAt,
-		FinishedAt:    finishedAt,
-		DurationMs:    finishedAt.Sub(startedAt).Milliseconds(),
-		Success:       err == nil,
-		InputSummary:  summarizeToolTraceValue(args),
-		OutputSummary: summarizeToolTraceValue(result),
+		ID:             uuid.NewString(),
+		RunID:          GetRunID(ctx),
+		StepIndex:      GetRunStep(ctx),
+		CapabilityKind: inferToolTraceCapabilityKind(actualTool, args),
+		RequestedTool:  strings.TrimSpace(requestedTool),
+		ActualTool:     strings.TrimSpace(actualTool),
+		StartedAt:      startedAt,
+		FinishedAt:     finishedAt,
+		DurationMs:     finishedAt.Sub(startedAt).Milliseconds(),
+		Success:        err == nil,
+		InputSummary:   summarizeToolTraceValue(args),
+		OutputSummary:  summarizeToolTraceValue(result),
 	}
 	if err != nil {
 		record.Error = err.Error()
@@ -72,6 +78,21 @@ func (s *ToolTraceStore) Record(startedAt time.Time, requestedTool, actualTool s
 		s.records = append([]ToolTraceRecord(nil), s.records[overflow:]...)
 	}
 	return record.ID
+}
+
+func inferToolTraceCapabilityKind(actualTool string, args map[string]interface{}) string {
+	name := strings.TrimSpace(strings.ToLower(actualTool))
+	switch {
+	case strings.HasPrefix(name, "mcp"), strings.HasPrefix(name, "mcp_"):
+		return "mcp"
+	case name == "exec":
+		if cmd, _ := args["command"].(string); strings.HasPrefix(strings.TrimSpace(cmd), "blue ") {
+			return "skill"
+		}
+		return "tool"
+	default:
+		return "tool"
+	}
 }
 
 // List returns the most recent traces, newest first.
@@ -95,12 +116,9 @@ func summarizeToolTraceValue(value interface{}) string {
 	if value == nil {
 		return ""
 	}
-	b, err := json.Marshal(value)
-	if err != nil {
-		return ""
+	summary := SafeToolPayloadString(value, maxToolTraceSummaryBytes)
+	if len(summary) <= maxToolTraceSummaryBytes {
+		return summary
 	}
-	if len(b) <= maxToolTraceSummaryBytes {
-		return string(b)
-	}
-	return string(b[:maxToolTraceSummaryBytes]) + "…"
+	return summary[:maxToolTraceSummaryBytes] + "…"
 }

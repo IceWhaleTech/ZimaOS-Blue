@@ -51,21 +51,20 @@ type highRiskToolCallLLM struct {
 	calls int
 }
 
-func (m *highRiskToolCallLLM) Chat(_ context.Context, _ llm.ChatRequest) (*llm.ChatResponse, error) {
+func (m *highRiskToolCallLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	m.calls++
 	if m.calls == 1 {
 		return &llm.ChatResponse{
 			Message: llm.Message{Role: llm.RoleAssistant, Content: `{"goal":"build","subtasks":[{"description":"run risky operation"}]}`},
 		}, nil
 	}
+	if isGroundedPlannerPrompt(req) {
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: `{"status":"continue","reason":"Need to execute the requested risky command.","next_tool":{"tool":"exec","args":{"command":"rm -rf /tmp/smoke-risk"}},"assertions":[]}`},
+		}, nil
+	}
 	return &llm.ChatResponse{
-		Message: llm.Message{
-			Role:    llm.RoleAssistant,
-			Content: "execute risky command",
-			ToolCalls: []llm.ToolCall{
-				{ID: "tc-risk-1", Name: "exec", Arguments: `{"command":"rm -rf /tmp/smoke-risk"}`},
-			},
-		},
+		Message: llm.Message{Role: llm.RoleAssistant, Content: defaultResponseForRequest(req)},
 	}, nil
 }
 
@@ -171,8 +170,8 @@ func TestAgentHandlerSmoke_ConfirmGateAbortHighRiskCall(t *testing.T) {
 	}
 
 	done := waitForTaskStatusFromAPI(t, e, created.ID, 6*time.Second, TaskStatusCompleted, TaskStatusFailed, TaskStatusAborted)
-	if done.Status != TaskStatusFailed {
-		t.Fatalf("final status=%q, want failed; error=%s", done.Status, done.Error)
+	if done.Status != TaskStatusAborted {
+		t.Fatalf("final status=%q, want aborted; error=%s", done.Status, done.Error)
 	}
 	if done.RuntimeState != RuntimeStateAborted {
 		t.Fatalf("runtime_state=%q, want %q", done.RuntimeState, RuntimeStateAborted)

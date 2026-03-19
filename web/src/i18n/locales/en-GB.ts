@@ -2766,8 +2766,9 @@ export default {
     installFromUrl: 'From URL',
     uploadFile: 'Upload File',
     skillUrlLabel: 'Skill URL',
-    skillUrlPlaceholder: 'https://github.com/user/skill-repo or https://example.com/skill.zip',
-    skillUrlHint: 'Enter a GitHub repository URL or direct link to a skill package',
+    skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
+    skillUrlHint:
+      'Supports GitHub raw/blob SKILL.md links, tree directory links, and direct URLs. Tree links install the full skill directory.',
     urlRequired: 'Please enter a URL',
     fileRequired: 'Please select a file',
     install: 'Install',
@@ -4664,6 +4665,7 @@ export default {
     ...enUS.agent,
     mode: 'Task Loop Mode',
     modeDescription: 'Enable continuous plan-and-execute loops until you turn it off',
+    autoConfirm: 'Auto-Confirm',
     autoConfirmDescription:
       'Skip confirmation for destructive actions (right-click task loop button to toggle)',
     sendMessage: 'Send a message to the agent...',

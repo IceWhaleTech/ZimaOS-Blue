@@ -7,6 +7,8 @@ const { t } = useI18n()
 const chatStore = useChatStore()
 
 const approval = computed(() => chatStore.pendingExecApproval)
+const submittingDecision = ref<'deny' | 'allow-once' | 'allow-always' | null>(null)
+const isSubmitting = computed(() => submittingDecision.value !== null)
 
 // Countdown timer
 const remainingSeconds = ref(0)
@@ -32,14 +34,27 @@ watch(approval, (a) => {
   }
 })
 
+async function runDecision(
+  decision: 'deny' | 'allow-once' | 'allow-always',
+  action: () => Promise<unknown>
+) {
+  if (isSubmitting.value) return
+  submittingDecision.value = decision
+  try {
+    await action()
+  } finally {
+    submittingDecision.value = null
+  }
+}
+
 function allowOnce() {
-  chatStore.resolveExecApproval('allow-once')
+  return runDecision('allow-once', () => chatStore.resolveExecApproval('allow-once'))
 }
 function allowAlways() {
-  chatStore.resolveExecApproval('allow-always')
+  return runDecision('allow-always', () => chatStore.resolveExecApproval('allow-always'))
 }
 function deny() {
-  chatStore.resolveExecApproval('deny')
+  return runDecision('deny', () => chatStore.resolveExecApproval('deny'))
 }
 </script>
 
@@ -117,22 +132,37 @@ function deny() {
             class="flex gap-2 px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
           >
             <button
-              class="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+              :disabled="isSubmitting"
+              class="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               @click="deny"
             >
-              {{ t('execApproval.deny') }}
+              {{
+                submittingDecision === 'deny'
+                  ? t('common.processing', 'Processing...')
+                  : t('execApproval.deny')
+              }}
             </button>
             <button
-              class="px-4 py-2.5 text-sm font-medium rounded-lg border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors cursor-pointer"
+              :disabled="isSubmitting"
+              class="px-4 py-2.5 text-sm font-medium rounded-lg border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               @click="allowOnce"
             >
-              {{ t('execApproval.allowOnce') }}
+              {{
+                submittingDecision === 'allow-once'
+                  ? t('common.processing', 'Processing...')
+                  : t('execApproval.allowOnce')
+              }}
             </button>
             <button
-              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors cursor-pointer"
+              :disabled="isSubmitting"
+              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               @click="allowAlways"
             >
-              {{ t('execApproval.allowAlways') }}
+              {{
+                submittingDecision === 'allow-always'
+                  ? t('common.processing', 'Processing...')
+                  : t('execApproval.allowAlways')
+              }}
             </button>
           </div>
         </div>

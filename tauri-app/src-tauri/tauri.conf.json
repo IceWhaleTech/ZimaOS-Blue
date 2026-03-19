@@ -96,23 +96,7 @@
   "app": {
     "macOSPrivateApi": true,
     "withGlobalTauri": false,
-    "windows": [
-      {
-        "label": "main",
-        "title": "ZimaOS Blue",
-        "width": 1400,
-        "height": 900,
-        "minWidth": 800,
-        "minHeight": 600,
-        "resizable": true,
-        "fullscreen": false,
-        "center": true,
-        "decorations": true,
-        "transparent": false,
-        "visible": false,
-        "url": "about:blank"
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

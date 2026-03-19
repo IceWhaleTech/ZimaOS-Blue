@@ -238,6 +238,11 @@ func (b *Browser) Validate(input map[string]any) error {
 	if !ok {
 		return fmt.Errorf("action must be a string")
 	}
+	actType, _ := input["act_type"].(string)
+	if actType == "" {
+		actType, _ = input["actType"].(string)
+	}
+	actionStr, actType = tools.CanonicalizeBrowserAction(actionStr, actType)
 	switch actionStr {
 	case "navigate", "snapshot", "snapshot_interactive", "snapshot_auto", "act", "screenshot", "tabs", "close", "recipe", "recipes":
 		// valid
@@ -253,7 +258,7 @@ func (b *Browser) Validate(input map[string]any) error {
 		if _, ok := input["ref"]; !ok {
 			return fmt.Errorf("ref is required for act (use @N from the accessibility tree)")
 		}
-		if _, ok := input["act_type"]; !ok {
+		if actType == "" {
 			return fmt.Errorf("act_type is required for act (click, type, focus, hover, scroll, select)")
 		}
 	case "recipe":
@@ -274,6 +279,11 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 	}
 
 	action, _ := input["action"].(string)
+	actType, _ := input["act_type"].(string)
+	if actType == "" {
+		actType, _ = input["actType"].(string)
+	}
+	action, actType = tools.CanonicalizeBrowserAction(action, actType)
 	if action == "" {
 		return skill.NewErrorResult(fmt.Errorf("action is required")), nil
 	}
@@ -326,7 +336,6 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		case int:
 			ref = r
 		}
-		actType, _ := input["act_type"].(string)
 		value, _ := input["value"].(string)
 
 		b.mu.RLock()

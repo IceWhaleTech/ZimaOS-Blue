@@ -2,11 +2,14 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
@@ -22,6 +25,12 @@ type WorkflowService struct {
 	cronMu    sync.RWMutex
 	webhooks  map[string]string // path -> workflowID
 	webhookMu sync.RWMutex
+	metrics   workflowMetricsRecorder
+	flags     workflowFlagEvaluator
+}
+
+type workflowMetricsRecorder interface {
+	RecordCounter(name string, value int64, tags map[string]string)
 }
 
 // NewService creates a new workflow service.
@@ -40,6 +49,7 @@ func NewService(config *Config, repo *Repository) (*WorkflowService, error) {
 		cronJobs: make(map[string]cron.EntryID),
 		webhooks: make(map[string]string),
 	}
+	engine.SetExecutionObserver(s.persistExecutionUpdate)
 
 	// Start cron scheduler
 	s.cron.Start()
@@ -50,6 +60,22 @@ func NewService(config *Config, repo *Repository) (*WorkflowService, error) {
 	}
 
 	return s, nil
+}
+
+// SetMetricsRecorder wires a lightweight runtime counter recorder.
+func (s *WorkflowService) SetMetricsRecorder(recorder workflowMetricsRecorder) {
+	if s == nil {
+		return
+	}
+	s.metrics = recorder
+}
+
+// SetToolGateway wires the shared tool runtime into the workflow engine.
+func (s *WorkflowService) SetToolGateway(gateway ToolRuntime) {
+	if s == nil || s.engine == nil {
+		return
+	}
+	s.engine.SetToolGateway(gateway)
 }
 
 // loadActiveTriggers loads and registers triggers for active workflows.
@@ -328,6 +354,39 @@ func (s *WorkflowService) RetryExecution(ctx context.Context, id string) (*Execu
 	return s.ExecuteWorkflow(ctx, execution.WorkflowID, execution.TriggerData)
 }
 
+// ResumeExecution resumes a paused workflow execution.
+func (s *WorkflowService) ResumeExecution(ctx context.Context, id string, resume ExecutionResumeInput) (*Execution, error) {
+	if !s.workflowCheckpointResumeEnabled(nil) {
+		return nil, fmt.Errorf("workflow checkpoint resume is disabled")
+	}
+	execution, err := s.GetExecution(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if execution.Status != ExecutionStatusPaused {
+		return nil, fmt.Errorf("can only resume paused executions")
+	}
+	resumed, err := s.engine.ResumeExecution(id, resume)
+	if err != nil {
+		if errors.Is(err, ErrExecutionNotFound) {
+			return nil, fmt.Errorf("paused execution is not resident in the active runtime; resume after restart is not supported yet")
+		}
+		return nil, err
+	}
+	if resumed == nil {
+		resumed = execution
+	}
+	if s.metrics != nil {
+		s.metrics.RecordCounter("workflow_checkpoint_resume_total", 1, map[string]string{
+			"workflow_id":   strings.TrimSpace(resumed.WorkflowID),
+			"execution_id":  strings.TrimSpace(resumed.ID),
+			"checkpoint":    checkpointKindFromExecution(resumed),
+			"status_reason": strings.TrimSpace(resumed.StatusReason),
+		})
+	}
+	return resumed, nil
+}
+
 // GetExecutionLogs retrieves logs for an execution.
 func (s *WorkflowService) GetExecutionLogs(ctx context.Context, executionID string, opts *ListOptions) ([]*ExecutionLog, int, error) {
 	return s.repo.GetExecutionLogs(ctx, executionID, opts)
@@ -553,3 +612,22 @@ func (s *WorkflowService) StartCleanupJob() {
 		log.Printf("[INFO] cleanup job deleted %d old executions", deleted)
 	})
 }
+
+func (s *WorkflowService) persistExecutionUpdate(execution *Execution) {
+	if s == nil || s.repo == nil || execution == nil {
+		return
+	}
+	ctx := withWorkflowTenant(context.Background(), execution.TenantID)
+	if err := s.repo.SaveExecution(ctx, execution); err != nil {
+		log.Printf("[WARN] failed to persist workflow execution update %s: %v", execution.ID, err)
+	}
+}
+
+func checkpointKindFromExecution(execution *Execution) string {
+	if execution == nil || execution.Checkpoint == nil {
+		return ""
+	}
+	return strings.TrimSpace(string(execution.Checkpoint.Kind))
+}
+
+var _ workflowMetricsRecorder = (*metrics.MetricsWriter)(nil)

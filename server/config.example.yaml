@@ -228,6 +228,18 @@ browser:
   browser_path: ""      # optional explicit Chrome/Chromium path
   evaluate_enabled: true
 
+# Harness control plane (runtime-first, benchmark-ready)
+harness:
+  enabled: true
+  store_path: "./data/harness.db"
+  artifact_root: "./data/harness/artifacts"
+  event_retention_days: 30
+  default_approval_mode: "ask"   # ask, allow, deny
+  default_sandbox_mode: "inherit"
+  default_max_duration: "30m"
+  default_max_steps: 32
+  default_max_tool_rounds: 50
+
 # Session settings (conversation context + audit trail)
 session:
   max_tokens: 0                  # 0 = auto-resolve from model context window; use a positive value to force a fixed history budget

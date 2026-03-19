@@ -2855,6 +2855,7 @@ export default {
     mode: 'Mode de bucle de tasques',
     modeDescription:
       'Activa bucles continus de planificar i executar tasques fins que el desactivis',
+    autoConfirm: 'Confirmació automàtica',
     autoConfirmDescription:
       'Omet la confirmació per a accions destructives (fes clic dret al botó del bucle de tasques per canviar)',
     sendMessage: "Envia un missatge a l'agent...",

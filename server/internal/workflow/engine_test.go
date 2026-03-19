@@ -265,6 +265,98 @@ func TestEngine_Execute(t *testing.T) {
 	})
 }
 
+func TestEngine_ExecutePausesAndResumesCheckpoint(t *testing.T) {
+	engine := NewEngine(nil)
+	defer engine.Close()
+
+	workflow := &Workflow{
+		ID:     "checkpoint-workflow",
+		Name:   "Checkpoint Workflow",
+		Status: WorkflowStatusActive,
+		Nodes: []Node{
+			{ID: "trigger-1", Type: NodeTypeTrigger, Name: "Trigger"},
+			{
+				ID:   "action-1",
+				Type: NodeTypeAction,
+				Name: "Checkpointed Action",
+				Config: map[string]interface{}{
+					"type":              string(ActionTypeSetVariable),
+					"name":              "result",
+					"value":             "ready",
+					"checkpoint_kind":   string(ExecutionCheckpointPauseForApproval),
+					"checkpoint_reason": "approval_needed",
+				},
+			},
+		},
+		Connections: []Connection{
+			{ID: "conn-1", SourceNode: "trigger-1", TargetNode: "action-1"},
+		},
+	}
+
+	execution, err := engine.Execute(context.Background(), workflow, TriggerTypeManual, nil)
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	waitForWorkflowExecutionStatus(t, engine, execution.ID, ExecutionStatusPaused)
+	paused, err := engine.GetExecution(execution.ID)
+	if err != nil {
+		t.Fatalf("GetExecution(paused) error = %v", err)
+	}
+	if paused.StatusReason != "approval_needed" {
+		t.Fatalf("status_reason = %q, want approval_needed", paused.StatusReason)
+	}
+	if paused.Checkpoint == nil || paused.Checkpoint.Kind != ExecutionCheckpointPauseForApproval {
+		t.Fatalf("checkpoint = %+v, want pause_for_approval", paused.Checkpoint)
+	}
+
+	resumed, err := engine.ResumeExecution(execution.ID, ExecutionResumeInput{
+		Decision: "approve",
+		Payload:  map[string]interface{}{"ticket": "A-1"},
+	})
+	if err != nil {
+		t.Fatalf("ResumeExecution() error = %v", err)
+	}
+	if resumed.Status != ExecutionStatusRunning && resumed.Status != ExecutionStatusCompleted {
+		t.Fatalf("resume status = %q, want running or completed", resumed.Status)
+	}
+	if resumed.Status == ExecutionStatusRunning && resumed.StatusReason != string(ExecutionCheckpointResumeWithDecision) {
+		t.Fatalf("resume status_reason = %q, want %q", resumed.StatusReason, ExecutionCheckpointResumeWithDecision)
+	}
+
+	waitForWorkflowExecutionStatus(t, engine, execution.ID, ExecutionStatusCompleted)
+	completed, err := engine.GetExecution(execution.ID)
+	if err != nil {
+		t.Fatalf("GetExecution(completed) error = %v", err)
+	}
+	if completed.Checkpoint == nil || completed.Checkpoint.Resume == nil {
+		t.Fatalf("checkpoint resume = %+v, want populated resume", completed.Checkpoint)
+	}
+	if completed.Checkpoint.Resume.Decision != "approve" {
+		t.Fatalf("checkpoint resume decision = %q, want approve", completed.Checkpoint.Resume.Decision)
+	}
+	if got := completed.Variables["checkpoint_decision"]; got != "approve" {
+		t.Fatalf("checkpoint_decision = %v, want approve", got)
+	}
+}
+
+func waitForWorkflowExecutionStatus(t *testing.T, engine *Engine, executionID string, status ExecutionStatus) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		execution, err := engine.GetExecution(executionID)
+		if err == nil && execution.Status == status {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	execution, err := engine.GetExecution(executionID)
+	if err != nil {
+		t.Fatalf("GetExecution(%s) error = %v", executionID, err)
+	}
+	t.Fatalf("execution status = %q, want %q", execution.Status, status)
+}
+
 func TestEngine_CancelExecution(t *testing.T) {
 	engine := NewEngine(nil)
 	defer engine.Close()

@@ -30,6 +30,10 @@ function createTestI18n(locale = 'en-US') {
         resultCard: {
           titles: {
             browser_page: 'Browser page',
+            browser: 'Browser',
+            file_write: 'File Write',
+            ls: 'ls',
+            analyze: 'analyze',
           },
           labels: {
             final_url: 'Final URL',
@@ -52,10 +56,33 @@ function createTestI18n(locale = 'en-US') {
           messages: {
             browser_tab_ready: 'Browser tab ready',
             no_result_data: 'No result data',
+            file_written_successfully: 'File written successfully',
+            search_completed: 'Search completed',
+            auto_answered_silent_mode: 'Auto-answered (silent mode)',
+            screenshot_captured: 'Screenshot captured',
+            screenshot_captured_interactive_elements_unavailable:
+              'Screenshot captured (interactive elements unavailable)',
+          },
+          messageTemplates: {
+            found_results: 'Found {count} results',
+            reminder_count: '{count} reminders',
+            cleared_reminders: 'Cleared {count} reminders',
+            entries_in_path: '{count} entries in {path}',
+            single_entry_in_path: '1 entry in {path}',
+            no_entries_in_path: 'No entries in {path}',
+            showing_first_entries_in_path:
+              'Showing first {count} entries in {path} (more omitted)',
+            screenshot_captured_for: 'Screenshot captured for {target}',
+          },
+          warnings: {
+            listing_truncated: 'Listing was truncated; narrow the path or increase max_entries.',
           },
           copy: 'Copy',
           copied: 'Copied!',
           openLink: 'Open',
+        },
+        toolWarnings: {
+          warning: 'Warning',
         },
         tools: {
           names: {
@@ -73,6 +100,10 @@ function createTestI18n(locale = 'en-US') {
         resultCard: {
           titles: {
             browser_page: 'Browser page',
+            browser: '浏览器',
+            file_write: '写入文件',
+            ls: 'ls',
+            analyze: '分析',
           },
           labels: {
             final_url: '最终 URL',
@@ -95,10 +126,31 @@ function createTestI18n(locale = 'en-US') {
           messages: {
             browser_tab_ready: '浏览器标签页已就绪',
             no_result_data: '没有结果数据',
+            file_written_successfully: '文件写入成功',
+            search_completed: '搜索完成',
+            auto_answered_silent_mode: '已自动回答（静默模式）',
+            screenshot_captured: '已捕获截图',
+            screenshot_captured_interactive_elements_unavailable: '已捕获截图（交互元素不可用）',
+          },
+          messageTemplates: {
+            found_results: '找到 {count} 条结果',
+            reminder_count: '{count} 个提醒',
+            cleared_reminders: '已清除 {count} 个提醒',
+            entries_in_path: '{path} 中有 {count} 个条目',
+            single_entry_in_path: '{path} 中有 1 个条目',
+            no_entries_in_path: '{path} 中没有条目',
+            showing_first_entries_in_path: '显示 {path} 中前 {count} 个条目（更多已省略）',
+            screenshot_captured_for: '已为 {target} 捕获截图',
+          },
+          warnings: {
+            listing_truncated: '列表已截断；请缩小路径范围或增大 max_entries。',
           },
           copy: '复制',
           copied: '已复制！',
           openLink: '打开',
+        },
+        toolWarnings: {
+          warning: '警告',
         },
         tools: {
           names: {
@@ -197,6 +249,46 @@ describe('CardResult', () => {
     expect(wrapper.text()).not.toContain('target_id')
   })
 
+  it('translates exact backend result messages', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'File Write',
+          status: 'success',
+          message: 'File written successfully',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('文件写入成功')
+    expect(wrapper.text()).not.toContain('File written successfully')
+  })
+
+  it('translates templated backend summaries and warnings', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'ls',
+          status: 'warning',
+          message: 'Showing first 12 entries in /tmp/demo (more omitted)',
+          warning: 'Listing was truncated; narrow the path or increase max_entries.',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('显示 /tmp/demo 中前 12 个条目（更多已省略）')
+    expect(wrapper.text()).toContain('列表已截断；请缩小路径范围或增大 max_entries。')
+    expect(wrapper.text()).not.toContain('Listing was truncated; narrow the path or increase max_entries.')
+  })
+
   it('renders image previews for result cards and normalizes raw base64 strings', () => {
     const base64PNG =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII='
@@ -269,6 +361,30 @@ describe('CardResult', () => {
     expect(wrapper.text()).toContain('Screenshot captured for https://example.com')
     expect(wrapper.text()).not.toContain(base64PNG)
     expect(wrapper.text()).not.toContain('{"message"')
+  })
+
+  it('translates screenshot-captured summary templates from JSON-encoded message payloads', () => {
+    const base64PNG =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII='
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'browser',
+          status: 'info',
+          message: JSON.stringify({
+            message: 'Screenshot captured for https://example.com',
+            screenshot: base64PNG,
+          }),
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('已为 https://example.com 捕获截图')
+    expect(wrapper.text()).not.toContain('Screenshot captured for https://example.com')
   })
 
   it('bridges local screenshot file paths from JSON-encoded message payloads', () => {

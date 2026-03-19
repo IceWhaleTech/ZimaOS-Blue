@@ -28,10 +28,12 @@ type ForwardedResult struct {
 
 // ToolDefinition describes a tool that can be called by an LLM.
 type ToolDefinition struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Icon        string                 `json:"icon,omitempty"`
-	Parameters  map[string]interface{} `json:"parameters,omitempty"`
+	Name                string                 `json:"name"`
+	Description         string                 `json:"description"`
+	Icon                string                 `json:"icon,omitempty"`
+	Parameters          map[string]interface{} `json:"parameters,omitempty"`
+	RiskLevel           string                 `json:"risk_level,omitempty"`
+	VisibilityAllowlist []string               `json:"visibility_allowlist,omitempty"`
 }
 
 // Tool is the interface that all tools must implement.
@@ -197,6 +199,86 @@ func (r *Registry) DefinitionsForLocale(locale string) []ToolDefinition {
 	return localizeToolDefinitions(r.Definitions(), locale)
 }
 
+// DefinitionsForRoute returns visible tool definitions for the given runtime route.
+func (r *Registry) DefinitionsForRoute(kind ToolRouteKind) []ToolDefinition {
+	return filterToolDefinitionsForRoute(r.Definitions(), kind)
+}
+
+// DefinitionsForRouteAndLocale returns visible tool definitions for the given
+// runtime route with locale-aware schema examples.
+func (r *Registry) DefinitionsForRouteAndLocale(kind ToolRouteKind, locale string) []ToolDefinition {
+	return localizeToolDefinitions(r.DefinitionsForRoute(kind), locale)
+}
+
+// LookupDefinition returns the visible tool definition for a tool name.
+func (r *Registry) LookupDefinition(name string) (ToolDefinition, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return ToolDefinition{}, false
+	}
+	if tool := r.tools[trimmed]; tool != nil {
+		return tool.Definition(), true
+	}
+	if _, disabled := r.disabled[trimmed]; disabled {
+		return ToolDefinition{}, false
+	}
+	if def, ok := r.exposed[trimmed]; ok {
+		return def, true
+	}
+	return ToolDefinition{}, false
+}
+
+// LookupDefinitionForRoute returns the visible tool definition for a tool name
+// scoped to a runtime route.
+func (r *Registry) LookupDefinitionForRoute(name string, kind ToolRouteKind) (ToolDefinition, bool) {
+	def, ok := r.LookupDefinition(name)
+	if !ok {
+		return ToolDefinition{}, false
+	}
+	if !toolDefinitionVisibleForRoute(def, kind) {
+		return ToolDefinition{}, false
+	}
+	return def, true
+}
+
+func filterToolDefinitionsForRoute(defs []ToolDefinition, kind ToolRouteKind) []ToolDefinition {
+	if len(defs) == 0 {
+		return defs
+	}
+	if kind == ToolRouteKindUnknown {
+		return defs
+	}
+	out := make([]ToolDefinition, 0, len(defs))
+	for _, def := range defs {
+		if toolDefinitionVisibleForRoute(def, kind) {
+			out = append(out, def)
+		}
+	}
+	return out
+}
+
+func toolDefinitionVisibleForRoute(def ToolDefinition, kind ToolRouteKind) bool {
+	if kind == ToolRouteKindUnknown {
+		return true
+	}
+	if len(def.VisibilityAllowlist) == 0 {
+		return true
+	}
+	want := strings.TrimSpace(strings.ToLower(string(kind)))
+	if want == "" {
+		return true
+	}
+	for _, raw := range def.VisibilityAllowlist {
+		if strings.EqualFold(strings.TrimSpace(raw), want) {
+			return true
+		}
+	}
+	return false
+}
+
 // Executor handles tool execution.
 type Executor struct {
 	registry   *Registry
@@ -230,7 +312,7 @@ func (e *Executor) Execute(ctx context.Context, name string, args map[string]int
 	startedAt := time.Now().UTC()
 	record := func(actual string, result interface{}, err error) (interface{}, error) {
 		if e != nil && e.traceStore != nil {
-			e.traceStore.Record(startedAt, name, actual, args, result, err)
+			e.traceStore.Record(ctx, startedAt, name, actual, args, result, err)
 		}
 		return result, err
 	}
@@ -904,6 +986,16 @@ func normalizeBrowserCompatArgs(rawName string, args map[string]interface{}) map
 		if actType := firstCompatStringDeep(normalized, "act_type", "actType"); actType != "" {
 			normalized["act_type"] = actType
 		}
+	}
+	action, actType := CanonicalizeBrowserAction(
+		asString(normalized["action"]),
+		asString(normalized["act_type"]),
+	)
+	if action != "" {
+		normalized["action"] = action
+	}
+	if actType != "" {
+		normalized["act_type"] = actType
 	}
 	if strings.TrimSpace(asString(normalized["value"])) == "" {
 		if value := firstCompatStringDeep(normalized, "value"); value != "" {
@@ -1738,6 +1830,11 @@ func (m *MockTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        m.name,
 		Description: m.description,
+		Parameters: map[string]interface{}{
+			"type":                 "object",
+			"properties":           map[string]interface{}{},
+			"additionalProperties": true,
+		},
 	}
 }
 

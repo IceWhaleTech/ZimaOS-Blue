@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => ({
     statusSummary: null,
     streaming: false,
     streamingContent: '',
+    executingConversationIds: [] as string[],
     sortedConversations: [] as Array<Record<string, unknown>>,
     toolExecuting: false,
     toolExecutingCommands: [] as string[],
@@ -227,10 +228,14 @@ vi.mock('@/components/ConversationList.vue', () => ({
     name: 'ConversationList',
     props: {
       conversations: { type: Array, default: () => [] },
+      executingConversationIds: { type: Array, default: () => [] },
     },
     emits: ['select', 'create', 'delete', 'search', 'pin', 'unpin'],
     template: `
-      <div class="conversation-list-stub">
+      <div
+        class="conversation-list-stub"
+        :data-executing-ids="(executingConversationIds || []).join(',')"
+      >
         <button
           v-for="conversation in conversations"
           :key="conversation.id"
@@ -455,6 +460,7 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.statusSummary = null
     mocks.chatStore.streaming = false
     mocks.chatStore.streamingContent = ''
+    mocks.chatStore.executingConversationIds = []
     mocks.chatStore.sortedConversations = []
     mocks.chatStore.toolExecuting = false
     mocks.chatStore.toolExecutingCommands = []
@@ -516,6 +522,7 @@ describe('ChatView page-level card actions', () => {
     mocks.providerPoolStore.fetchProviders.mockReset().mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchRoutingMode.mockReset().mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
+    mocks.deepResearchJobsStore.activeJobs = []
     mocks.deepResearchJobsStore.fetchActiveJobs.mockReset().mockResolvedValue(undefined)
     mocks.deepResearchJobsStore.handleGlobalEvent.mockReset()
     mocks.deepResearchJobsStore.applyJobSnapshot.mockReset()
@@ -811,6 +818,72 @@ describe('ChatView page-level card actions', () => {
     expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
     expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
+  })
+
+  it('keeps conversation running badges for local streams, agent tasks, and deep research jobs', async () => {
+    mocks.chatStore.executingConversationIds = ['conv-streaming']
+    mocks.chatStore.sortedConversations = [
+      {
+        id: 'conv-streaming',
+        title: 'Streaming conversation',
+        created_at: '2026-03-08T00:00:00.000Z',
+        updated_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'conv-agent',
+        title: 'Agent conversation',
+        created_at: '2026-03-08T00:00:00.000Z',
+        updated_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'conv-research',
+        title: 'Research conversation',
+        created_at: '2026-03-08T00:00:00.000Z',
+        updated_at: '2026-03-08T00:00:00.000Z',
+      },
+    ]
+    mocks.agentApi.listTasks.mockResolvedValue({
+      data: [
+        {
+          id: 'task-1',
+          user_id: 'user-1',
+          conversation_id: 'conv-agent',
+          goal: 'Investigate regression',
+          plan: [],
+          status: 'planning',
+          current_step: 0,
+          progress: 12,
+          created_at: '2026-03-08T00:00:00.000Z',
+          updated_at: '2026-03-08T00:00:00.000Z',
+        },
+      ],
+    })
+    mocks.deepResearchJobsStore.activeJobs = [
+      {
+        id: 'job-1',
+        job_id: 'job-1',
+        conversation_id: 'conv-research',
+        query: 'Track session badge regressions',
+        status: 'running',
+        stage: 'running',
+        progress: 48,
+        iteration: 1,
+        latest_action: '',
+        latest_gap: '',
+        updated_at: '2026-03-08T00:00:00.000Z',
+      },
+    ]
+
+    const wrapper = await mountChatView('Idle state')
+    await flushPromises()
+
+    const executingIds = wrapper
+      .get('.conversation-list-stub')
+      .attributes('data-executing-ids')
+      ?.split(',')
+      .filter(Boolean)
+
+    expect(executingIds).toEqual(['conv-streaming', 'conv-agent', 'conv-research'])
   })
 
   it('submits use_browser from a web-fetch card rendered inside ChatView', async () => {

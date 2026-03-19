@@ -583,6 +583,7 @@ export const useChatStore = defineStore('chat', () => {
     tool_name: string
     tool_call_id: string
     arguments: Record<string, unknown>
+    session_id?: string
   } | null>(null)
 
   // Ask-user-question state
@@ -1662,6 +1663,16 @@ export const useChatStore = defineStore('chat', () => {
       pendingRecoveryRetryTimer = null
     }
     pendingRecoveryRetryCount = 0
+  }
+
+  function clearAwaitingConfirmationForSession(sessionId?: string) {
+    const normalizedSessionId = typeof sessionId === 'string' ? sessionId.trim() : ''
+    if (normalizedSessionId) {
+      updateActiveStreamState(normalizedSessionId, { awaitingConfirmation: false })
+    }
+    if (!pendingQuestion.value && !pendingApproval.value && !pendingExecApproval.value) {
+      awaitingConfirmation.value = false
+    }
   }
 
   async function recoverPendingConfirmationsWithRetry() {
@@ -3183,10 +3194,13 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function resolveApproval(decision: Decision, alwaysAllow = false) {
-    if (!pendingApproval.value) return
-    const toolName = pendingApproval.value.tool_name
+    const approval = pendingApproval.value
+    if (!approval) return false
+    const toolName = approval.tool_name
     try {
-      await approvalApi.resolve(pendingApproval.value.request_id, decision)
+      await approvalApi.resolve(approval.request_id, decision)
+      pendingApproval.value = null
+      clearAwaitingConfirmationForSession(approval.session_id)
       // If "Always Allow", set this tool's policy to auto
       if (alwaysAllow && toolName) {
         try {
@@ -3198,8 +3212,10 @@ export const useChatStore = defineStore('chat', () => {
           console.error('Failed to update tool policy:', e)
         }
       }
-    } finally {
-      pendingApproval.value = null
+      return true
+    } catch (e) {
+      console.error('Failed to resolve tool approval:', e)
+      return false
     }
   }
 
@@ -3235,6 +3251,7 @@ export const useChatStore = defineStore('chat', () => {
       tool_name: data.tool_name || '',
       tool_call_id: data.tool_call_id || '',
       arguments: data.arguments || {},
+      session_id: sessionId || undefined,
     }
     clearPendingRecoveryRetryTimer()
     awaitingConfirmation.value = true
@@ -3370,13 +3387,16 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function resolveExecApproval(decision: ExecDecision) {
-    if (!pendingExecApproval.value) return
+    const approval = pendingExecApproval.value
+    if (!approval) return false
     try {
-      await approvalApi.resolve(pendingExecApproval.value.id, decision)
+      await approvalApi.resolve(approval.id, decision)
+      setPendingExecApproval(null)
+      clearAwaitingConfirmationForSession(approval.session_id || approval.conversation_id)
+      return true
     } catch (e) {
       console.error('Failed to resolve exec approval:', e)
-    } finally {
-      setPendingExecApproval(null)
+      return false
     }
   }
 

@@ -354,7 +354,7 @@ export default {
     },
     plugins: {
       builtin: 'Integrat',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo o https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Desactivat',
         enabled: 'Activat',
@@ -389,7 +389,7 @@ export default {
       skillPackageRequirement1: 'Ha de contenir un manifest skill.json vàlid',
       skillPackageRequirement2: "Ha d'incloure tots els fitxers d'habilitat necessaris",
       skillUrlHint:
-        "Introdueix l'URL d'un repositori de GitHub o un enllaç directe a un paquet d'habilitat",
+        "Admet enllaços GitHub raw/blob a SKILL.md, enllaços de directori tree i enllaços directes; els enllaços tree instal·len tot el directori de l'habilitat",
       skillUrlLabel: "URL de l'habilitat",
       supportedFormats: 'Formats compatibles',
       uploadFile: 'Puja un fitxer',
@@ -849,7 +849,7 @@ export default {
     },
     plugins: {
       builtin: 'Vestavěný',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo nebo https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Zakázáno',
         enabled: 'Povoleno',
@@ -883,7 +883,8 @@ export default {
       skillPackageInfo: 'Požadavky na balíček dovednosti',
       skillPackageRequirement1: 'Musí obsahovat platný manifest skill.json',
       skillPackageRequirement2: 'Zahrňte všechny požadované soubory dovednosti',
-      skillUrlHint: 'Zadejte URL repozitáře GitHub nebo přímý odkaz na balíček dovednosti',
+      skillUrlHint:
+        'Podporuje odkazy GitHub raw/blob na SKILL.md, odkazy na adresáře tree i přímé odkazy; odkazy tree nainstalují celý adresář dovednosti',
       skillUrlLabel: 'URL dovednosti',
       supportedFormats: 'Podporované formáty',
       uploadFile: 'Nahrát soubor',
@@ -1341,7 +1342,7 @@ export default {
     },
     plugins: {
       builtin: 'Indbygget',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo eller https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Deaktiveret',
         enabled: 'Aktiveret',
@@ -1375,7 +1376,8 @@ export default {
       skillPackageInfo: 'Krav til færdighedspakke',
       skillPackageRequirement1: 'Skal indeholde en gyldig skill.json-manifestfil',
       skillPackageRequirement2: 'Medtag alle nødvendige færdighedsfiler',
-      skillUrlHint: 'Indtast en GitHub-repository-URL eller et direkte link til en færdighedspakke',
+      skillUrlHint:
+        'Understøtter GitHub raw/blob-SKILL.md-links, tree-mappelinks og direkte links; tree-links installerer hele skill-mappen',
       skillUrlLabel: 'Færdigheds-URL',
       supportedFormats: 'Understøttede formater',
       uploadFile: 'Upload fil',
@@ -1821,7 +1823,7 @@ export default {
     },
     plugins: {
       builtin: 'Integriert',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo oder https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Deaktiviert',
         enabled: 'Aktiviert',
@@ -1853,7 +1855,7 @@ export default {
       skillPackageRequirement1: 'Muss eine gültige Manifestdatei skill.json enthalten',
       skillPackageRequirement2: 'Alle erforderlichen Skill-Dateien einschließen',
       skillUrlHint:
-        'Geben Sie eine GitHub-Repository-URL oder einen direkten Link zu einem Skill-Paket ein',
+        'Unterstützt GitHub-raw/blob-Links zu SKILL.md, tree-Verzeichnislinks und Direktlinks; tree-Links installieren das gesamte Skill-Verzeichnis',
       skillUrlLabel: 'Skill-URL',
       supportedFormats: 'Unterstützte Formate',
       uploadFile: 'Datei hochladen',
@@ -2298,7 +2300,7 @@ export default {
     },
     plugins: {
       builtin: 'Ενσωματωμένο',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo ή https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Απενεργοποιημένο',
         enabled: 'Ενεργοποιημένο',
@@ -2332,7 +2334,8 @@ export default {
       skillPackageInfo: 'Απαιτήσεις πακέτου δεξιότητας',
       skillPackageRequirement1: 'Πρέπει να περιέχει έγκυρο manifest skill.json',
       skillPackageRequirement2: 'Συμπεριλάβετε όλα τα απαιτούμενα αρχεία δεξιότητας',
-      skillUrlHint: 'Εισαγάγετε URL αποθετηρίου GitHub ή άμεσο σύνδεσμο σε πακέτο δεξιότητας',
+      skillUrlHint:
+        'Υποστηρίζει συνδέσμους GitHub raw/blob προς το SKILL.md, συνδέσμους καταλόγου tree και άμεσους συνδέσμους· οι σύνδεσμοι tree εγκαθιστούν ολόκληρο τον κατάλογο του skill',
       skillUrlLabel: 'URL δεξιότητας',
       supportedFormats: 'Υποστηριζόμενες μορφές',
       uploadFile: 'Μεταφόρτωση αρχείου',
@@ -3179,7 +3182,7 @@ export default {
     },
     plugins: {
       builtin: 'Integrado',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo o https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Desactivado',
         enabled: 'Activado',
@@ -3211,7 +3214,7 @@ export default {
       skillPackageRequirement1: 'Debe contener un manifiesto skill.json válido',
       skillPackageRequirement2: 'Incluye todos los archivos de habilidad necesarios',
       skillUrlHint:
-        'Introduce la URL de un repositorio de GitHub o un enlace directo a un paquete de habilidades',
+        'Admite enlaces GitHub raw/blob a SKILL.md, enlaces de directorio tree y enlaces directos; los enlaces tree instalan el directorio completo de la habilidad',
       skillUrlLabel: 'URL de la habilidad',
       supportedFormats: 'Formatos compatibles',
       uploadFile: 'Subir archivo',
@@ -3639,7 +3642,7 @@ export default {
     },
     plugins: {
       builtin: 'Intégré',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo ou https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Désactivé',
         enabled: 'Activé',
@@ -3671,7 +3674,7 @@ export default {
       skillPackageRequirement1: 'Doit contenir un manifeste skill.json valide',
       skillPackageRequirement2: 'Inclure tous les fichiers de compétence requis',
       skillUrlHint:
-        "Saisissez l'URL d'un dépôt GitHub ou un lien direct vers un paquet de compétences",
+        'Prend en charge les liens GitHub raw/blob vers SKILL.md, les liens de répertoire tree et les liens directs ; les liens tree installent tout le répertoire de la compétence',
       skillUrlLabel: 'URL de la compétence',
       supportedFormats: 'Formats pris en charge',
       uploadFile: 'Téléverser un fichier',
@@ -4116,7 +4119,7 @@ export default {
     },
     plugins: {
       builtin: 'Ionsuite',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo nó https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Díchumasaithe',
         enabled: 'Cumasaithe',
@@ -4150,7 +4153,8 @@ export default {
       skillPackageInfo: 'Ceanglais phacáiste scile',
       skillPackageRequirement1: 'Caithfidh manifest bailí skill.json a bheith ann',
       skillPackageRequirement2: 'Cuir san áireamh gach comhad scile riachtanach',
-      skillUrlHint: 'Cuir isteach URL stór GitHub nó nasc díreach le pacáiste scile',
+      skillUrlHint:
+        'Tacaíonn sé le naisc GitHub raw/blob chuig SKILL.md, naisc eolaire tree agus naisc dhíreacha; suiteálann naisc tree eolaire iomlán na scile',
       skillUrlLabel: 'URL scile',
       supportedFormats: 'Formáidí tacaithe',
       uploadFile: 'Uaslódáil comhad',
@@ -4672,7 +4676,7 @@ export default {
     },
     plugins: {
       builtin: 'Ugrađeno',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo ili https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Onemogućeno',
         enabled: 'Omogućeno',
@@ -4706,7 +4710,8 @@ export default {
       skillPackageInfo: 'Zahtjevi paketa vještine',
       skillPackageRequirement1: 'Mora sadržavati valjani manifest skill.json',
       skillPackageRequirement2: 'Uključite sve potrebne datoteke vještine',
-      skillUrlHint: 'Unesite URL GitHub repozitorija ili izravnu poveznicu na paket vještine',
+      skillUrlHint:
+        'Podržava GitHub raw/blob poveznice na SKILL.md, poveznice na tree direktorij i izravne poveznice; tree poveznice instaliraju cijeli direktorij vještine',
       skillUrlLabel: 'URL vještine',
       supportedFormats: 'Podržani formati',
       uploadFile: 'Prenesi datoteku',
@@ -5228,7 +5233,7 @@ export default {
     },
     plugins: {
       builtin: 'Beépített',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo vagy https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Letiltva',
         enabled: 'Engedélyezve',
@@ -5262,7 +5267,8 @@ export default {
       skillPackageInfo: 'Készségcsomag követelményei',
       skillPackageRequirement1: 'Érvényes skill.json jegyzéket kell tartalmaznia',
       skillPackageRequirement2: 'Tartalmazza az összes szükséges készségfájlt',
-      skillUrlHint: 'Adjon meg egy GitHub-tár URL-t vagy közvetlen hivatkozást egy készségcsomagra',
+      skillUrlHint:
+        'Támogatja a GitHub raw/blob SKILL.md hivatkozásokat, a tree könyvtárhivatkozásokat és a közvetlen hivatkozásokat; a tree hivatkozások a teljes készségkönyvtárat telepítik',
       skillUrlLabel: 'Készség URL',
       supportedFormats: 'Támogatott formátumok',
       uploadFile: 'Fájl feltöltése',
@@ -5784,8 +5790,7 @@ export default {
     },
     plugins: {
       builtin: 'Integrato',
-      skillUrlPlaceholder:
-        'https://github.com/user/skill-repo oppure https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Disabilitato',
         enabled: 'Abilitato',
@@ -5817,7 +5822,7 @@ export default {
       skillPackageRequirement1: 'Deve contenere un manifest skill.json valido',
       skillPackageRequirement2: 'Includi tutti i file di competenza richiesti',
       skillUrlHint:
-        "Inserisci l'URL di un repository GitHub o un collegamento diretto a un pacchetto di competenze",
+        "Supporta link GitHub raw/blob a SKILL.md, link a directory tree e link diretti; i link tree installano l'intera directory della competenza",
       skillUrlLabel: 'URL della competenza',
       supportedFormats: 'Formati supportati',
       uploadFile: 'Carica file',
@@ -6500,7 +6505,7 @@ export default {
     },
     plugins: {
       builtin: '내장',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo 또는 https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: '비활성화',
         enabled: '활성화',
@@ -6531,7 +6536,8 @@ export default {
       skillPackageInfo: '스킬 패키지 요구 사항',
       skillPackageRequirement1: '유효한 skill.json 매니페스트가 있어야 합니다',
       skillPackageRequirement2: '필수 스킬 파일을 모두 포함해야 합니다',
-      skillUrlHint: 'GitHub 저장소 URL 또는 스킬 패키지 직접 링크를 입력하세요',
+      skillUrlHint:
+        'GitHub raw/blob SKILL.md 링크, tree 디렉터리 링크, 직접 링크를 지원하며 tree 링크는 스킬 디렉터리 전체를 설치합니다',
       skillUrlLabel: '스킬 URL',
       supportedFormats: '지원 형식',
       uploadFile: '파일 업로드',
@@ -6971,8 +6977,7 @@ export default {
     },
     plugins: {
       builtin: 'ഉൾനിർമ്മിതം',
-      skillUrlPlaceholder:
-        'https://github.com/user/skill-repo അല്ലെങ്കിൽ https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'അപ്രാപ്തം',
         enabled: 'സജ്ജം',
@@ -7007,7 +7012,7 @@ export default {
       skillPackageRequirement1: 'സാധുവായ skill.json മാനിഫെസ്റ്റ് ഉണ്ടായിരിക്കണം',
       skillPackageRequirement2: 'ആവശ്യമായ എല്ലാ സ്കിൽ ഫയലുകളും ഉൾപ്പെടുത്തണം',
       skillUrlHint:
-        'ഒരു GitHub റെപ്പോസിറ്ററി URL അല്ലെങ്കിൽ സ്കിൽ പാക്കേജിലേക്കുള്ള നേരിട്ടുള്ള ലിങ്ക് നൽകുക',
+        'GitHub raw/blob SKILL.md ലിങ്കുകളും tree ഡയറക്ടറി ലിങ്കുകളും നേരിട്ടുള്ള ലിങ്കുകളും പിന്തുണയ്ക്കുന്നു; tree ലിങ്കുകൾ മുഴുവൻ skill ഡയറക്ടറിയും ഇൻസ്റ്റാൾ ചെയ്യും',
       skillUrlLabel: 'സ്കിൽ URL',
       supportedFormats: 'പിന്തുണയ്ക്കുന്ന ഫോർമാറ്റുകൾ',
       uploadFile: 'ഫയൽ അപ്‌ലോഡ് ചെയ്യുക',
@@ -7528,7 +7533,7 @@ export default {
     },
     plugins: {
       builtin: 'Innebygd',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo eller https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Deaktivert',
         enabled: 'Aktivert',
@@ -7563,7 +7568,7 @@ export default {
       skillPackageRequirement1: 'Må inneholde et gyldig skill.json-manifest',
       skillPackageRequirement2: 'Ta med alle nødvendige ferdighetsfiler',
       skillUrlHint:
-        'Skriv inn en GitHub-repositorie-URL eller en direkte lenke til en ferdighetspakke',
+        'Støtter GitHub raw/blob-SKILL.md-lenker, tree-kataloglenker og direkte lenker; tree-lenker installerer hele ferdighetskatalogen',
       skillUrlLabel: 'Ferdighets-URL',
       supportedFormats: 'Støttede formater',
       uploadFile: 'Last opp fil',
@@ -8082,7 +8087,7 @@ export default {
     },
     plugins: {
       builtin: 'Ingebouwd',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo of https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Uitgeschakeld',
         enabled: 'Ingeschakeld',
@@ -8117,7 +8122,7 @@ export default {
       skillPackageRequirement1: 'Moet een geldig skill.json-manifest bevatten',
       skillPackageRequirement2: 'Neem alle vereiste vaardigheidsbestanden op',
       skillUrlHint:
-        'Voer een GitHub-repository-URL in of een directe link naar een vaardigheidspakket',
+        'Ondersteunt GitHub raw/blob-SKILL.md-links, tree-maplinks en directe links; tree-links installeren de volledige vaardighedenmap',
       skillUrlLabel: 'Vaardigheids-URL',
       supportedFormats: 'Ondersteunde indelingen',
       uploadFile: 'Bestand uploaden',
@@ -8580,7 +8585,7 @@ export default {
     },
     plugins: {
       builtin: 'Wbudowane',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo lub https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Wyłączone',
         enabled: 'Włączone',
@@ -8615,7 +8620,7 @@ export default {
       skillPackageRequirement1: 'Musi zawierać prawidłowy manifest skill.json',
       skillPackageRequirement2: 'Dołącz wszystkie wymagane pliki umiejętności',
       skillUrlHint:
-        'Wprowadź adres URL repozytorium GitHub lub bezpośredni link do pakietu umiejętności',
+        'Obsługuje linki GitHub raw/blob do SKILL.md, linki do katalogów tree i linki bezpośrednie; linki tree instalują cały katalog umiejętności',
       skillUrlLabel: 'URL umiejętności',
       supportedFormats: 'Obsługiwane formaty',
       uploadFile: 'Prześlij plik',
@@ -9074,7 +9079,7 @@ export default {
     },
     plugins: {
       builtin: 'Integrado',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo ou https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Desativado',
         enabled: 'Ativado',
@@ -9106,7 +9111,7 @@ export default {
       skillPackageRequirement1: 'Deve conter um manifesto skill.json válido',
       skillPackageRequirement2: 'Inclua todos os arquivos de skill necessários',
       skillUrlHint:
-        'Digite a URL de um repositório GitHub ou um link direto para um pacote de skill',
+        'Suporta links GitHub raw/blob para SKILL.md, links de diretório tree e links diretos; links tree instalam o diretório completo da habilidade',
       skillUrlLabel: 'URL da skill',
       supportedFormats: 'Formatos compatíveis',
       uploadFile: 'Enviar arquivo',
@@ -9565,7 +9570,7 @@ export default {
     },
     plugins: {
       builtin: 'Integrado',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo ou https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Desativado',
         enabled: 'Ativado',
@@ -9597,7 +9602,7 @@ export default {
       skillPackageRequirement1: 'Tem de conter um manifesto skill.json válido',
       skillPackageRequirement2: 'Inclua todos os ficheiros de skill necessários',
       skillUrlHint:
-        'Introduza o URL de um repositório GitHub ou uma ligação direta para um pacote de skill',
+        'Suporta ligações GitHub raw/blob para SKILL.md, ligações de diretório tree e ligações diretas; as ligações tree instalam o diretório completo da competência',
       skillUrlLabel: 'URL da skill',
       supportedFormats: 'Formatos suportados',
       uploadFile: 'Enviar ficheiro',
@@ -10056,7 +10061,7 @@ export default {
     },
     plugins: {
       builtin: 'Integrat',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo sau https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Dezactivat',
         enabled: 'Activat',
@@ -10091,7 +10096,7 @@ export default {
       skillPackageRequirement1: 'Trebuie să conțină un manifest skill.json valid',
       skillPackageRequirement2: 'Include toate fișierele de abilități necesare',
       skillUrlHint:
-        'Introduceți URL-ul unui depozit GitHub sau un link direct către un pachet de abilități',
+        'Acceptă linkuri GitHub raw/blob către SKILL.md, linkuri de director tree și linkuri directe; linkurile tree instalează întregul director al skill-ului',
       skillUrlLabel: 'URL-ul abilității',
       supportedFormats: 'Formate acceptate',
       uploadFile: 'Încarcă fișier',
@@ -10611,7 +10616,7 @@ export default {
     },
     plugins: {
       builtin: 'Встроенный',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo или https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Отключено',
         enabled: 'Включено',
@@ -10642,7 +10647,8 @@ export default {
       skillPackageInfo: 'Требования к пакету навыка',
       skillPackageRequirement1: 'Должен содержать действительный манифест skill.json',
       skillPackageRequirement2: 'Включите все необходимые файлы навыка',
-      skillUrlHint: 'Введите URL репозитория GitHub или прямую ссылку на пакет навыка',
+      skillUrlHint:
+        'Поддерживает ссылки GitHub raw/blob на SKILL.md, ссылки на каталоги tree и прямые ссылки; ссылки tree устанавливают весь каталог навыка',
       skillUrlLabel: 'URL навыка',
       supportedFormats: 'Поддерживаемые форматы',
       uploadFile: 'Загрузить файл',
@@ -11100,7 +11106,7 @@ export default {
     },
     plugins: {
       builtin: 'Vstavané',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo alebo https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Zakázané',
         enabled: 'Povolené',
@@ -11134,7 +11140,8 @@ export default {
       skillPackageInfo: 'Požiadavky na balík zručnosti',
       skillPackageRequirement1: 'Musí obsahovať platný manifest skill.json',
       skillPackageRequirement2: 'Zahrňte všetky potrebné súbory zručnosti',
-      skillUrlHint: 'Zadajte URL GitHub repozitára alebo priamy odkaz na balík zručnosti',
+      skillUrlHint:
+        'Podporuje GitHub raw/blob odkazy na SKILL.md, odkazy na adresáre tree a priame odkazy; odkazy tree nainštalujú celý adresár zručnosti',
       skillUrlLabel: 'URL zručnosti',
       supportedFormats: 'Podporované formáty',
       uploadFile: 'Nahrať súbor',
@@ -11655,7 +11662,7 @@ export default {
     },
     plugins: {
       builtin: 'Inbyggd',
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo eller https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       stats: {
         disabled: 'Inaktiverad',
         enabled: 'Aktiverad',
@@ -11689,7 +11696,8 @@ export default {
       skillPackageInfo: 'Krav för färdighetspaket',
       skillPackageRequirement1: 'Måste innehålla ett giltigt skill.json-manifest',
       skillPackageRequirement2: 'Inkludera alla nödvändiga färdighetsfiler',
-      skillUrlHint: 'Ange en GitHub-repositorie-URL eller en direktlänk till ett färdighetspaket',
+      skillUrlHint:
+        'Stöder GitHub raw/blob-SKILL.md-länkar, tree-kataloglänkar och direktlänkar; tree-länkar installerar hela färdighetskatalogen',
       skillUrlLabel: 'Färdighets-URL',
       supportedFormats: 'Format som stöds',
       uploadFile: 'Ladda upp fil',
@@ -12112,7 +12120,7 @@ export default {
       wifi: 'Wi‑Fi',
     },
     plugins: {
-      skillUrlPlaceholder: 'https://github.com/user/skill-repo 或 https://example.com/skill.zip',
+      skillUrlPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
     },
     remoteAccess: {
       ngrokDomainPlaceholder: '例如：myapp.ngrok-free.app',

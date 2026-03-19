@@ -1,6 +1,19 @@
 package i18n
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func testAllLanguages() []Language {
+	return []Language{
+		LangEnUS, LangEnGB, LangZhCN, LangZhTW, LangJaJP, LangKoKR,
+		LangDeDE, LangFrFR, LangEsES, LangItIT, LangPtBR, LangPtPT,
+		LangRuRU, LangPlPL, LangNlNL, LangSvSE, LangDaDK, LangNbNO,
+		LangCsCZ, LangSkSK, LangHuHU, LangRoRO, LangHrHR, LangElGR,
+		LangCaES, LangGaIE, LangMlIN,
+	}
+}
 
 func TestParseLanguage(t *testing.T) {
 	tests := []struct {
@@ -78,17 +91,43 @@ func TestT_AllLanguagesHaveMediaKeys(t *testing.T) {
 }
 
 func TestT_AllLanguagesHaveWorkspaceRootEscapeError(t *testing.T) {
-	langs := []Language{
-		LangEnUS, LangEnGB, LangZhCN, LangZhTW, LangJaJP, LangKoKR,
-		LangDeDE, LangFrFR, LangEsES, LangItIT, LangPtBR, LangPtPT,
-		LangRuRU, LangPlPL, LangNlNL, LangSvSE, LangDaDK, LangNbNO,
-		LangCsCZ, LangSkSK, LangHuHU, LangRoRO, LangHrHR, LangElGR,
-		LangCaES, LangGaIE, LangMlIN,
-	}
-	for _, lang := range langs {
+	for _, lang := range testAllLanguages() {
 		got := T(lang, MsgPathEscapesWorkspaceRoot)
 		if got == MsgPathEscapesWorkspaceRoot {
 			t.Errorf("T(%q, %q) returned key itself — missing translation", lang, MsgPathEscapesWorkspaceRoot)
+		}
+	}
+}
+
+func TestTranslations_AllLanguagesHaveToolLoopKeys(t *testing.T) {
+	keys := []string{
+		MsgToolLoopAbortRepeatedOverwrite,
+		MsgToolLoopAbortIdenticalRepeat,
+		MsgToolLoopAbortErrorRepeat,
+		MsgToolLoopAbortPingPong,
+		MsgToolLoopAbortPollingNoProgress,
+		MsgToolLoopAbortGeneric,
+		MsgToolLoopRecoveryRepeatedOverwrite,
+		MsgToolLoopRecoveryGeneric,
+	}
+
+	mu.RLock()
+	defer mu.RUnlock()
+
+	for _, lang := range testAllLanguages() {
+		msgs, ok := translations[lang]
+		if !ok {
+			t.Fatalf("translations[%q] missing", lang)
+		}
+		for _, key := range keys {
+			got, ok := msgs[key]
+			if !ok {
+				t.Errorf("translations[%q][%q] missing explicit translation", lang, key)
+				continue
+			}
+			if strings.TrimSpace(got) == "" {
+				t.Errorf("translations[%q][%q] is blank", lang, key)
+			}
 		}
 	}
 }

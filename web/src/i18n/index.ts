@@ -6,6 +6,9 @@ import priorityBillingOverrides from './priority-billing-overrides'
 import prioritySettingsOverrides from './priority-settings-overrides'
 import priorityTranslationOverrides from './priority-translation-overrides'
 import prioritySmallModelOverrides from './priority-small-model-overrides'
+import mediaFallbackOverrides from './media-fallback-overrides'
+import resultCardMessageOverrides from './result-card-message-overrides'
+import researchToolOverrides from './research-tool-overrides'
 import securityScanDetailOverrides from './security-scan-detail-overrides'
 import skillToolOverrides from './skill-tool-overrides'
 import skillStoreMarketplaceOverrides from './skill-store-marketplace-overrides'
@@ -173,6 +176,8 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
     const localeMessages = messages.default as LocaleMessages
     const localeOverrides =
       (priorityLocaleOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const localizedResultCardMessageOverrides =
+      (resultCardMessageOverrides as Record<string, LocaleMessages>)[locale] || {}
     const localizedSecurityScanDetailOverrides =
       (securityScanDetailOverrides as Record<string, LocaleMessages>)[locale] || {}
     const billingOverrides =
@@ -181,8 +186,12 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
       (prioritySettingsOverrides as Record<string, LocaleMessages>)[locale] || {}
     const translationOverrides =
       (priorityTranslationOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const localizedMediaFallbackOverrides =
+      (mediaFallbackOverrides as Record<string, LocaleMessages>)[locale] || {}
     const localizedSkillToolOverrides =
       (skillToolOverrides as Record<string, LocaleMessages>)[locale] || {}
+    const localizedResearchToolOverrides =
+      (researchToolOverrides as Record<string, LocaleMessages>)[locale] || {}
     const localizedSkillStoreMarketplaceOverrides =
       (skillStoreMarketplaceOverrides as Record<string, LocaleMessages>)[locale] || {}
     const smallModelOverrides =
@@ -196,8 +205,12 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
       mergedBaseMessages,
       localeOverrides
     )
-    const withSecurityScanDetailOverrides = deepMergeMessages<LocaleMessages>(
+    const withResultCardMessageOverrides = deepMergeMessages<LocaleMessages>(
       withPriorityOverrides,
+      localizedResultCardMessageOverrides
+    )
+    const withSecurityScanDetailOverrides = deepMergeMessages<LocaleMessages>(
+      withResultCardMessageOverrides,
       localizedSecurityScanDetailOverrides
     )
     const withBillingOverrides = deepMergeMessages<LocaleMessages>(
@@ -212,12 +225,20 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
       withSettingsOverrides,
       translationOverrides
     )
-    const withSkillToolOverrides = deepMergeMessages<LocaleMessages>(
+    const withMediaFallbackOverrides = deepMergeMessages<LocaleMessages>(
       withTranslationOverrides,
+      localizedMediaFallbackOverrides
+    )
+    const withSkillToolOverrides = deepMergeMessages<LocaleMessages>(
+      withMediaFallbackOverrides,
       localizedSkillToolOverrides
     )
-    const withSkillStoreMarketplaceOverrides = deepMergeMessages<LocaleMessages>(
+    const withResearchToolOverrides = deepMergeMessages<LocaleMessages>(
       withSkillToolOverrides,
+      localizedResearchToolOverrides
+    )
+    const withSkillStoreMarketplaceOverrides = deepMergeMessages<LocaleMessages>(
+      withResearchToolOverrides,
       localizedSkillStoreMarketplaceOverrides
     )
     const mergedMessages = deepMergeMessages<LocaleMessages>(

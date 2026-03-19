@@ -2,6 +2,11 @@ package agent
 
 import "testing"
 
+type recursiveAgentPayload struct {
+	Name string                 `json:"name"`
+	Self *recursiveAgentPayload `json:"self,omitempty"`
+}
+
 func TestCanTransition(t *testing.T) {
 	if !canTransition("", RuntimeStateIntake) {
 		t.Fatal("empty -> INTAKE should be allowed")
@@ -68,5 +73,22 @@ func TestClassifyCapability_SkillViaExec(t *testing.T) {
 	cap := classifyCapability("exec", `{"command":"blue web_search query=llm"}`)
 	if cap.Kind != CapabilityKindSkill {
 		t.Fatalf("kind=%s, want skill", cap.Kind)
+	}
+}
+
+func TestNormalizeToolResultValueGuardsRecursivePayloads(t *testing.T) {
+	payload := &recursiveAgentPayload{Name: "root"}
+	payload.Self = payload
+
+	got := normalizeToolResultValue(payload)
+	asMap, ok := got.(map[string]interface{})
+	if !ok {
+		t.Fatalf("normalizeToolResultValue() = %#v, want map", got)
+	}
+	if asMap["name"] != "root" {
+		t.Fatalf("name = %v, want root", asMap["name"])
+	}
+	if asMap["self"] != "[circular payload omitted]" {
+		t.Fatalf("self = %v, want circular marker", asMap["self"])
 	}
 }

@@ -799,6 +799,30 @@ func TestExecutorExecuteJSONArgs_BrowserNestedCamelCaseFallback(t *testing.T) {
 	}
 }
 
+func TestExecutorExecuteJSONArgs_BrowserLegacyTopLevelActionFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{def: ToolDefinition{Name: "browser", Description: "browser"}}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "browser", `{"input":{"action":"scroll","ref":3,"targetId":"tab_1"}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["action"]; got != "act" {
+		t.Fatalf("action = %v, want %q", got, "act")
+	}
+	if got := tool.args["act_type"]; got != "scroll" {
+		t.Fatalf("act_type = %v, want %q", got, "scroll")
+	}
+	if got := tool.args["target_id"]; got != "tab_1" {
+		t.Fatalf("target_id = %v, want %q", got, "tab_1")
+	}
+	if got := tool.args["ref"]; got != float64(3) {
+		t.Fatalf("ref = %v, want %v", got, float64(3))
+	}
+}
+
 func TestExecutorExecuteJSONArgs_WebFetchNestedCamelCaseFallback(t *testing.T) {
 	registry := NewRegistry()
 	tool := &captureArgsTool{def: ToolDefinition{Name: "web_fetch", Description: "fetch"}}
@@ -1032,6 +1056,42 @@ func TestFileReadToolAllowedPaths(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for disallowed path")
+	}
+}
+
+func TestFileReadToolFSRootOverride(t *testing.T) {
+	baseDir := t.TempDir()
+	runDir := filepath.Join(baseDir, "run")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("mkdir run dir: %v", err)
+	}
+	if err := writeTestFile(filepath.Join(baseDir, "outer.txt"), "outer"); err != nil {
+		t.Fatalf("write outer file: %v", err)
+	}
+	if err := writeTestFile(filepath.Join(runDir, "inner.txt"), "inner"); err != nil {
+		t.Fatalf("write inner file: %v", err)
+	}
+
+	tool := NewFileReadTool([]string{baseDir}, 0)
+	ctx := WithFSRootOverride(context.Background(), []string{runDir}, map[string]string{"workspace": runDir})
+
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"path": "inner.txt",
+	})
+	if err != nil {
+		t.Fatalf("expected inner.txt to resolve within override root: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if payload["content"] != "inner" {
+		t.Fatalf("content = %q, want inner", payload["content"])
+	}
+
+	if _, err := tool.Execute(ctx, map[string]interface{}{"path": "../outer.txt"}); err == nil {
+		t.Fatal("expected override root to reject parent traversal")
 	}
 }
 

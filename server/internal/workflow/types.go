@@ -43,6 +43,16 @@ const (
 	ExecutionStatusPaused    ExecutionStatus = "paused"
 )
 
+// ExecutionCheckpointKind identifies a deterministic pause/resume checkpoint.
+type ExecutionCheckpointKind string
+
+const (
+	ExecutionCheckpointPauseForApproval   ExecutionCheckpointKind = "pause_for_approval"
+	ExecutionCheckpointResumeWithDecision ExecutionCheckpointKind = "resume_with_decision"
+	ExecutionCheckpointAwaitToolResult    ExecutionCheckpointKind = "await_tool_result"
+	ExecutionCheckpointJSONTask           ExecutionCheckpointKind = "json_task"
+)
+
 // NodeStatus represents the status of a node execution.
 type NodeStatus string
 
@@ -58,14 +68,14 @@ const (
 type TriggerType string
 
 const (
-	TriggerTypeManual       TriggerType = "manual"
-	TriggerTypeSchedule     TriggerType = "schedule"
-	TriggerTypeWebhook      TriggerType = "webhook"
-	TriggerTypeFileChange   TriggerType = "file_change"
-	TriggerTypeChannelMsg   TriggerType = "channel_message"
-	TriggerTypeHAEvent      TriggerType = "ha_event"
-	TriggerTypeHAState      TriggerType = "ha_state"
-	TriggerTypeSystemEvent  TriggerType = "system_event"
+	TriggerTypeManual      TriggerType = "manual"
+	TriggerTypeSchedule    TriggerType = "schedule"
+	TriggerTypeWebhook     TriggerType = "webhook"
+	TriggerTypeFileChange  TriggerType = "file_change"
+	TriggerTypeChannelMsg  TriggerType = "channel_message"
+	TriggerTypeHAEvent     TriggerType = "ha_event"
+	TriggerTypeHAState     TriggerType = "ha_state"
+	TriggerTypeSystemEvent TriggerType = "system_event"
 )
 
 // NodeType represents the type of workflow node.
@@ -159,13 +169,13 @@ type Connection struct {
 
 // TriggerConfig contains trigger-specific configuration.
 type TriggerConfig struct {
-	Type     TriggerType            `json:"type"`
-	Schedule *ScheduleConfig        `json:"schedule,omitempty"`
-	Webhook  *WebhookConfig         `json:"webhook,omitempty"`
-	File     *FileChangeConfig      `json:"file,omitempty"`
-	Channel  *ChannelTriggerConfig  `json:"channel,omitempty"`
-	HA       *HATriggerConfig       `json:"ha,omitempty"`
-	System   *SystemTriggerConfig   `json:"system,omitempty"`
+	Type     TriggerType           `json:"type"`
+	Schedule *ScheduleConfig       `json:"schedule,omitempty"`
+	Webhook  *WebhookConfig        `json:"webhook,omitempty"`
+	File     *FileChangeConfig     `json:"file,omitempty"`
+	Channel  *ChannelTriggerConfig `json:"channel,omitempty"`
+	HA       *HATriggerConfig      `json:"ha,omitempty"`
+	System   *SystemTriggerConfig  `json:"system,omitempty"`
 }
 
 // ScheduleConfig contains schedule trigger configuration.
@@ -196,19 +206,19 @@ type FileChangeConfig struct {
 type ChannelTriggerConfig struct {
 	ChannelType string   `json:"channel_type"` // telegram, discord, etc.
 	ChannelID   string   `json:"channel_id,omitempty"`
-	Keywords    []string `json:"keywords,omitempty"`    // Trigger on keywords
-	Regex       string   `json:"regex,omitempty"`       // Trigger on regex match
-	FromUsers   []string `json:"from_users,omitempty"`  // Filter by user
+	Keywords    []string `json:"keywords,omitempty"`   // Trigger on keywords
+	Regex       string   `json:"regex,omitempty"`      // Trigger on regex match
+	FromUsers   []string `json:"from_users,omitempty"` // Filter by user
 }
 
 // HATriggerConfig contains Home Assistant trigger configuration.
 type HATriggerConfig struct {
-	EventType   string            `json:"event_type,omitempty"`   // For event triggers
-	EntityID    string            `json:"entity_id,omitempty"`    // For state triggers
-	FromState   string            `json:"from_state,omitempty"`   // Previous state
-	ToState     string            `json:"to_state,omitempty"`     // New state
-	Attribute   string            `json:"attribute,omitempty"`    // Attribute to watch
-	Condition   string            `json:"condition,omitempty"`    // Additional condition
+	EventType string `json:"event_type,omitempty"` // For event triggers
+	EntityID  string `json:"entity_id,omitempty"`  // For state triggers
+	FromState string `json:"from_state,omitempty"` // Previous state
+	ToState   string `json:"to_state,omitempty"`   // New state
+	Attribute string `json:"attribute,omitempty"`  // Attribute to watch
+	Condition string `json:"condition,omitempty"`  // Additional condition
 }
 
 // SystemTriggerConfig contains system event trigger configuration.
@@ -218,41 +228,41 @@ type SystemTriggerConfig struct {
 
 // ActionConfig contains action-specific configuration.
 type ActionConfig struct {
-	Type       ActionType             `json:"type"`
-	HTTP       *HTTPActionConfig      `json:"http,omitempty"`
-	LLM        *LLMActionConfig       `json:"llm,omitempty"`
-	Skill      *SkillActionConfig     `json:"skill,omitempty"`
-	Channel    *ChannelActionConfig   `json:"channel,omitempty"`
-	HA         *HAActionConfig        `json:"ha,omitempty"`
-	Browser    *BrowserActionConfig   `json:"browser,omitempty"`
-	File       *FileActionConfig      `json:"file,omitempty"`
-	JavaScript *JavaScriptConfig      `json:"javascript,omitempty"`
-	Variable   *VariableActionConfig  `json:"variable,omitempty"`
-	Email      *EmailActionConfig     `json:"email,omitempty"`
-	Notify     *NotifyActionConfig    `json:"notify,omitempty"`
+	Type       ActionType            `json:"type"`
+	HTTP       *HTTPActionConfig     `json:"http,omitempty"`
+	LLM        *LLMActionConfig      `json:"llm,omitempty"`
+	Skill      *SkillActionConfig    `json:"skill,omitempty"`
+	Channel    *ChannelActionConfig  `json:"channel,omitempty"`
+	HA         *HAActionConfig       `json:"ha,omitempty"`
+	Browser    *BrowserActionConfig  `json:"browser,omitempty"`
+	File       *FileActionConfig     `json:"file,omitempty"`
+	JavaScript *JavaScriptConfig     `json:"javascript,omitempty"`
+	Variable   *VariableActionConfig `json:"variable,omitempty"`
+	Email      *EmailActionConfig    `json:"email,omitempty"`
+	Notify     *NotifyActionConfig   `json:"notify,omitempty"`
 }
 
 // HTTPActionConfig contains HTTP action configuration.
 type HTTPActionConfig struct {
-	URL         string            `json:"url"`
-	Method      string            `json:"method"`
-	Headers     map[string]string `json:"headers,omitempty"`
-	Body        string            `json:"body,omitempty"`
-	ContentType string            `json:"content_type,omitempty"`
-	Timeout     int               `json:"timeout,omitempty"`
-	FollowRedirects bool          `json:"follow_redirects,omitempty"`
-	ValidateSSL bool              `json:"validate_ssl,omitempty"`
+	URL             string            `json:"url"`
+	Method          string            `json:"method"`
+	Headers         map[string]string `json:"headers,omitempty"`
+	Body            string            `json:"body,omitempty"`
+	ContentType     string            `json:"content_type,omitempty"`
+	Timeout         int               `json:"timeout,omitempty"`
+	FollowRedirects bool              `json:"follow_redirects,omitempty"`
+	ValidateSSL     bool              `json:"validate_ssl,omitempty"`
 }
 
 // LLMActionConfig contains LLM action configuration.
 type LLMActionConfig struct {
-	Provider    string   `json:"provider"` // openai, claude, ollama
-	Model       string   `json:"model"`
-	Prompt      string   `json:"prompt"`
-	SystemPrompt string  `json:"system_prompt,omitempty"`
-	Temperature float64  `json:"temperature,omitempty"`
-	MaxTokens   int      `json:"max_tokens,omitempty"`
-	Tools       []string `json:"tools,omitempty"` // Tool names to enable
+	Provider     string   `json:"provider"` // openai, claude, ollama
+	Model        string   `json:"model"`
+	Prompt       string   `json:"prompt"`
+	SystemPrompt string   `json:"system_prompt,omitempty"`
+	Temperature  float64  `json:"temperature,omitempty"`
+	MaxTokens    int      `json:"max_tokens,omitempty"`
+	Tools        []string `json:"tools,omitempty"` // Tool names to enable
 }
 
 // SkillActionConfig contains skill action configuration.
@@ -271,10 +281,10 @@ type ChannelActionConfig struct {
 
 // HAActionConfig contains Home Assistant action configuration.
 type HAActionConfig struct {
-	Domain    string                 `json:"domain"`
-	Service   string                 `json:"service"`
-	EntityID  string                 `json:"entity_id,omitempty"`
-	Data      map[string]interface{} `json:"data,omitempty"`
+	Domain   string                 `json:"domain"`
+	Service  string                 `json:"service"`
+	EntityID string                 `json:"entity_id,omitempty"`
+	Data     map[string]interface{} `json:"data,omitempty"`
 }
 
 // BrowserActionConfig contains browser action configuration.
@@ -288,12 +298,12 @@ type BrowserActionConfig struct {
 
 // FileActionConfig contains file operation configuration.
 type FileActionConfig struct {
-	Operation   string `json:"operation"` // read, write, copy, move, delete
-	SourcePath  string `json:"source_path"`
-	DestPath    string `json:"dest_path,omitempty"`
-	Content     string `json:"content,omitempty"`
-	Encoding    string `json:"encoding,omitempty"`
-	CreateDirs  bool   `json:"create_dirs,omitempty"`
+	Operation  string `json:"operation"` // read, write, copy, move, delete
+	SourcePath string `json:"source_path"`
+	DestPath   string `json:"dest_path,omitempty"`
+	Content    string `json:"content,omitempty"`
+	Encoding   string `json:"encoding,omitempty"`
+	CreateDirs bool   `json:"create_dirs,omitempty"`
 }
 
 // JavaScriptConfig contains JavaScript execution configuration.
@@ -337,23 +347,23 @@ type ConditionConfig struct {
 
 // LoopConfig contains loop node configuration.
 type LoopConfig struct {
-	Type       string `json:"type"`        // for_each, while, count
-	Items      string `json:"items,omitempty"`      // Expression for items to iterate
-	Condition  string `json:"condition,omitempty"`  // While condition
-	Count      int    `json:"count,omitempty"`      // Fixed count
-	MaxIterations int `json:"max_iterations,omitempty"` // Safety limit
+	Type          string `json:"type"`                     // for_each, while, count
+	Items         string `json:"items,omitempty"`          // Expression for items to iterate
+	Condition     string `json:"condition,omitempty"`      // While condition
+	Count         int    `json:"count,omitempty"`          // Fixed count
+	MaxIterations int    `json:"max_iterations,omitempty"` // Safety limit
 }
 
 // SwitchConfig contains switch node configuration.
 type SwitchConfig struct {
-	Expression string            `json:"expression"` // Expression to evaluate
-	Cases      map[string]string `json:"cases"`      // Value -> port mapping
+	Expression string            `json:"expression"`        // Expression to evaluate
+	Cases      map[string]string `json:"cases"`             // Value -> port mapping
 	Default    string            `json:"default,omitempty"` // Default port
 }
 
 // DelayConfig contains delay node configuration.
 type DelayConfig struct {
-	Duration int    `json:"duration"` // Delay in seconds
+	Duration int    `json:"duration"`        // Delay in seconds
 	Until    string `json:"until,omitempty"` // Wait until specific time
 }
 
@@ -364,14 +374,35 @@ type Execution struct {
 	WorkflowName string                 `json:"workflow_name"`
 	TenantID     string                 `json:"tenant_id"`
 	Status       ExecutionStatus        `json:"status"`
+	StatusReason string                 `json:"status_reason,omitempty"`
 	TriggerType  TriggerType            `json:"trigger_type"`
 	TriggerData  map[string]interface{} `json:"trigger_data,omitempty"`
 	Variables    map[string]interface{} `json:"variables,omitempty"`
 	NodeResults  map[string]*NodeResult `json:"node_results,omitempty"`
+	Checkpoint   *ExecutionCheckpoint   `json:"checkpoint,omitempty"`
 	Error        string                 `json:"error,omitempty"`
 	StartedAt    time.Time              `json:"started_at"`
 	CompletedAt  *time.Time             `json:"completed_at,omitempty"`
 	Duration     int64                  `json:"duration,omitempty"` // Duration in milliseconds
+}
+
+// ExecutionCheckpoint captures pause/resume state for an execution.
+type ExecutionCheckpoint struct {
+	ID        string                  `json:"id"`
+	Kind      ExecutionCheckpointKind `json:"kind"`
+	NodeID    string                  `json:"node_id,omitempty"`
+	NodeName  string                  `json:"node_name,omitempty"`
+	Reason    string                  `json:"reason,omitempty"`
+	Payload   map[string]interface{}  `json:"payload,omitempty"`
+	CreatedAt time.Time               `json:"created_at"`
+	ResumedAt *time.Time              `json:"resumed_at,omitempty"`
+	Resume    *ExecutionResumeInput   `json:"resume,omitempty"`
+}
+
+// ExecutionResumeInput represents a resume decision/payload supplied by callers.
+type ExecutionResumeInput struct {
+	Decision string                 `json:"decision,omitempty"`
+	Payload  map[string]interface{} `json:"payload,omitempty"`
 }
 
 // NodeResult represents the result of a node execution.
@@ -419,6 +450,7 @@ type Service interface {
 	ListExecutions(ctx context.Context, workflowID string, opts *ListOptions) ([]*Execution, int, error)
 	CancelExecution(ctx context.Context, id string) error
 	RetryExecution(ctx context.Context, id string) (*Execution, error)
+	ResumeExecution(ctx context.Context, id string, resume ExecutionResumeInput) (*Execution, error)
 
 	// Logs
 	GetExecutionLogs(ctx context.Context, executionID string, opts *ListOptions) ([]*ExecutionLog, int, error)
@@ -445,25 +477,25 @@ type ListOptions struct {
 
 // Stats contains workflow statistics.
 type Stats struct {
-	TotalWorkflows     int `json:"total_workflows"`
-	ActiveWorkflows    int `json:"active_workflows"`
-	TotalExecutions    int `json:"total_executions"`
-	RunningExecutions  int `json:"running_executions"`
+	TotalWorkflows       int `json:"total_workflows"`
+	ActiveWorkflows      int `json:"active_workflows"`
+	TotalExecutions      int `json:"total_executions"`
+	RunningExecutions    int `json:"running_executions"`
 	SuccessfulExecutions int `json:"successful_executions"`
-	FailedExecutions   int `json:"failed_executions"`
+	FailedExecutions     int `json:"failed_executions"`
 }
 
 // Config contains workflow engine configuration.
 type Config struct {
-	MaxConcurrentExecutions int           `json:"max_concurrent_executions" yaml:"max_concurrent_executions"`
-	DefaultTimeout          int           `json:"default_timeout" yaml:"default_timeout"` // seconds
-	MaxTimeout              int           `json:"max_timeout" yaml:"max_timeout"`         // seconds
-	RetryDelay              int           `json:"retry_delay" yaml:"retry_delay"`         // seconds
-	MaxRetries              int           `json:"max_retries" yaml:"max_retries"`
-	SaveExecutionData       bool          `json:"save_execution_data" yaml:"save_execution_data"`
-	ExecutionDataRetention  int           `json:"execution_data_retention" yaml:"execution_data_retention"` // days
-	WebhookBasePath         string        `json:"webhook_base_path" yaml:"webhook_base_path"`
-	Enabled                 bool          `json:"enabled" yaml:"enabled"`
+	MaxConcurrentExecutions int    `json:"max_concurrent_executions" yaml:"max_concurrent_executions"`
+	DefaultTimeout          int    `json:"default_timeout" yaml:"default_timeout"` // seconds
+	MaxTimeout              int    `json:"max_timeout" yaml:"max_timeout"`         // seconds
+	RetryDelay              int    `json:"retry_delay" yaml:"retry_delay"`         // seconds
+	MaxRetries              int    `json:"max_retries" yaml:"max_retries"`
+	SaveExecutionData       bool   `json:"save_execution_data" yaml:"save_execution_data"`
+	ExecutionDataRetention  int    `json:"execution_data_retention" yaml:"execution_data_retention"` // days
+	WebhookBasePath         string `json:"webhook_base_path" yaml:"webhook_base_path"`
+	Enabled                 bool   `json:"enabled" yaml:"enabled"`
 }
 
 // DefaultConfig returns the default workflow configuration.

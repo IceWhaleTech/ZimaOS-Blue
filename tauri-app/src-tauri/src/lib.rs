@@ -67,9 +67,14 @@ const PANEL_WINDOW_MIN_WIDTH: f64 = 640.0;
 const PANEL_WINDOW_MIN_HEIGHT: f64 = 420.0;
 const PANEL_WINDOW_PATH: &str = "/chat?panel=1";
 const ABOUT_BLANK_SPLASH_SCRIPT: &str = r#"
-document.documentElement.style.background = 'transparent';
-document.body.style.cssText = 'margin:0;background:transparent;display:flex;align-items:center;justify-content:center;height:100vh';
-document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:96px;height:96px;border-radius:28px;background:rgba(15,23,42,0.34);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14),0 24px 60px rgba(2,6,23,0.22);backdrop-filter:blur(26px) saturate(1.12);-webkit-backdrop-filter:blur(26px) saturate(1.12)"><div style="width:36px;height:36px;border:3px solid rgba(148,163,184,0.72);border-top-color:#3B82F6;border-radius:50%;animation:s .8s linear infinite"></div></div><style>@keyframes s{to{transform:rotate(360deg)}}@media(prefers-color-scheme:light){body>div{background:rgba(255,255,255,0.52)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.68),0 24px 60px rgba(148,163,184,0.22)!important}body>div>div{border-color:rgba(100,116,139,0.56)!important;border-top-color:#3B82F6!important}}</style>';
+(() => {
+  if (window.location.href !== 'about:blank') {
+    return;
+  }
+  document.documentElement.style.background = 'transparent';
+  document.body.style.cssText = 'margin:0;background:transparent;display:flex;align-items:center;justify-content:center;height:100vh';
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:96px;height:96px;border-radius:28px;background:rgba(15,23,42,0.34);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14),0 24px 60px rgba(2,6,23,0.22);backdrop-filter:blur(26px) saturate(1.12);-webkit-backdrop-filter:blur(26px) saturate(1.12)"><div style="width:36px;height:36px;border:3px solid rgba(148,163,184,0.72);border-top-color:#3B82F6;border-radius:50%;animation:s .8s linear infinite"></div></div><style>@keyframes s{to{transform:rotate(360deg)}}@media(prefers-color-scheme:light){body>div{background:rgba(255,255,255,0.52)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.68),0 24px 60px rgba(148,163,184,0.22)!important}body>div>div{border-color:rgba(100,116,139,0.56)!important;border-top-color:#3B82F6!important}}</style>';
+})();
 "#;
 
 #[cfg(target_os = "macos")]
@@ -113,12 +118,13 @@ fn build_main_window<R: tauri::Runtime, M: Manager<R>>(
         .inner_size(MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT)
         .min_inner_size(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT)
         .center()
-        .visible(false);
+        .visible(false)
+        .initialization_script(ABOUT_BLANK_SPLASH_SCRIPT);
 
     #[cfg(target_os = "macos")]
     let builder = builder
         .transparent(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .title_bar_style(tauri::TitleBarStyle::Visible)
         .traffic_light_position(tauri::LogicalPosition::new(18.0, 20.0))
         .hidden_title(true)
         .accept_first_mouse(true)
@@ -141,12 +147,13 @@ fn build_panel_window<R: tauri::Runtime, M: Manager<R>>(
         .maximizable(false)
         .minimizable(false)
         .skip_taskbar(true)
-        .visible(false);
+        .visible(false)
+        .initialization_script(ABOUT_BLANK_SPLASH_SCRIPT);
 
     #[cfg(target_os = "macos")]
     let builder = builder
         .transparent(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .title_bar_style(tauri::TitleBarStyle::Visible)
         .traffic_light_position(tauri::LogicalPosition::new(18.0, 18.0))
         .hidden_title(true)
         .accept_first_mouse(true)
@@ -194,9 +201,29 @@ fn show_and_focus_window<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
     let _ = window.set_focus();
 }
 
+fn rebuild_window_for_path(
+    app_handle: &tauri::AppHandle,
+    label: &str,
+    path: &str,
+) -> Result<tauri::WebviewWindow, String> {
+    if let Some(window) = app_handle.get_webview_window(label) {
+        let _ = window.destroy();
+    }
+
+    match label {
+        MAIN_WINDOW_LABEL => build_main_window(app_handle, webview_url_for_path(app_handle, path))
+            .map_err(|e| e.to_string()),
+        PANEL_WINDOW_LABEL => {
+            build_panel_window(app_handle, webview_url_for_path(app_handle, path))
+                .map_err(|e| e.to_string())
+        }
+        _ => Err(format!("Unknown window label {label}")),
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn apply_main_window_macos_style<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
-    if let Err(err) = window.set_title_bar_style(tauri::TitleBarStyle::Overlay) {
+    if let Err(err) = window.set_title_bar_style(tauri::TitleBarStyle::Visible) {
         error!("Failed to apply macOS title bar style: {}", err);
     }
     if let Err(err) = window.set_effects(main_window_effects()) {
@@ -227,7 +254,9 @@ fn open_or_focus_main_window(app_handle: &tauri::AppHandle) -> tauri::Result<()>
     }
 
     let window = build_main_window(app_handle, webview_url_for_path(app_handle, ""))?;
-    let _ = window.set_focus();
+    #[cfg(target_os = "macos")]
+    apply_main_window_macos_style(&window);
+    show_and_focus_window(&window);
     Ok(())
 }
 
@@ -236,12 +265,19 @@ fn open_or_focus_panel_window(app_handle: &tauri::AppHandle) -> tauri::Result<()
     activate_macos_app();
 
     if let Some(window) = app_handle.get_webview_window(PANEL_WINDOW_LABEL) {
+        #[cfg(target_os = "macos")]
+        apply_main_window_macos_style(&window);
         show_and_focus_window(&window);
         return Ok(());
     }
 
-    let window = build_panel_window(app_handle, webview_url_for_path(app_handle, PANEL_WINDOW_PATH))?;
-    let _ = window.set_focus();
+    let window = build_panel_window(
+        app_handle,
+        webview_url_for_path(app_handle, PANEL_WINDOW_PATH),
+    )?;
+    #[cfg(target_os = "macos")]
+    apply_main_window_macos_style(&window);
+    show_and_focus_window(&window);
     Ok(())
 }
 
@@ -250,20 +286,44 @@ fn navigate_window_to_server_path(
     label: &str,
     path: &str,
 ) -> Result<(), String> {
-    let Some(origin) = server_origin(app_handle) else {
+    if server_origin(app_handle).is_none() {
         return Err("Server URL not ready".to_string());
-    };
+    }
+
     let Some(window) = app_handle.get_webview_window(label) else {
         return Err(format!("Window {label} not found"));
     };
 
-    let url = format!("{}{}", origin, path);
-    window
-        .navigate(url.parse().expect("server URL should be valid"))
-        .map_err(|e| e.to_string())
+    let url = match webview_url_for_path(app_handle, path) {
+        tauri::WebviewUrl::External(url) => url,
+        _ => return Err(format!("Server URL for window {label} is not ready")),
+    };
+
+    window.navigate(url).map_err(|e| e.to_string())
 }
 
-fn show_server_start_error<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, error_message: &str) {
+fn bind_window_to_server_path(
+    app_handle: &tauri::AppHandle,
+    label: &str,
+    path: &str,
+) -> Result<tauri::WebviewWindow, String> {
+    if app_handle.get_webview_window(label).is_none() {
+        info!("Window {label} missing after server startup; creating it");
+        return rebuild_window_for_path(app_handle, label, path);
+    }
+
+    info!("Navigating window {label} to the server-backed UI");
+    navigate_window_to_server_path(app_handle, label, path)?;
+
+    app_handle
+        .get_webview_window(label)
+        .ok_or_else(|| format!("Window {label} disappeared after navigation"))
+}
+
+fn show_server_start_error<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    error_message: &str,
+) {
     let escaped = error_message
         .replace('\\', "\\\\")
         .replace('\'', "\\'")
@@ -677,8 +737,8 @@ async fn reveal_path(path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        parent_directory_for_reveal_fallback, parse_bool_env_flag, reveal_path_with_fallback,
-        stt_auth_startup_enabled,
+        embedded_server_port_bind_timeout, parent_directory_for_reveal_fallback,
+        parse_bool_env_flag, reveal_path_with_fallback, stt_auth_startup_enabled,
     };
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
@@ -708,6 +768,19 @@ mod tests {
         assert!(stt_auth_startup_enabled(true, true, Some("1")));
         assert!(!stt_auth_startup_enabled(false, false, Some("0")));
         assert!(stt_auth_startup_enabled(false, false, Some("invalid")));
+    }
+
+    #[test]
+    fn embedded_server_port_bind_timeout_is_more_lenient_for_debug_builds() {
+        assert_eq!(
+            embedded_server_port_bind_timeout(false),
+            std::time::Duration::from_secs(45)
+        );
+        assert_eq!(
+            embedded_server_port_bind_timeout(true),
+            std::time::Duration::from_secs(90)
+        );
+        assert!(embedded_server_port_bind_timeout(true) > embedded_server_port_bind_timeout(false));
     }
 
     #[test]
@@ -899,9 +972,13 @@ async fn start_server_platform_with_args(
         let mut use_https = false;
         let mut actual_port: u16 = port;
 
-        // Phase 1: FFI poll — wait for is_running + port > 0
+        // Phase 1: FFI poll — wait for is_running + port > 0.
+        // Embedded startup can take a few seconds on first launch or slower machines,
+        // so avoid treating a healthy but slower boot as a fatal error.
         let mut phase1_ok = false;
-        for _ in 0..400 {
+        let phase1_timeout = embedded_server_port_bind_timeout(cfg!(debug_assertions));
+        let phase1_deadline = std::time::Instant::now() + phase1_timeout;
+        while std::time::Instant::now() < phase1_deadline {
             if blue_ffi::is_running() {
                 let p = blue_ffi::get_port();
                 if p > 0 {
@@ -910,11 +987,14 @@ async fn start_server_platform_with_args(
                     break;
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
 
         if !phase1_ok {
-            return Err("Server failed to start: timed out waiting for port binding".to_string());
+            return Err(format!(
+                "Server failed to start: timed out after {:?} waiting for embedded server port binding",
+                phase1_timeout
+            ));
         }
 
         info!("Server bound to port {}", actual_port);
@@ -928,13 +1008,13 @@ async fn start_server_platform_with_args(
         let http_url = format!("http://localhost:{}/api/v1/health", actual_port);
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_millis(500))
+            .timeout(std::time::Duration::from_secs(1))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
         let mut server_ready = false;
         let mut delay_ms = 10u64;
-        for i in 0..20 {
+        for i in 0..30 {
             if i > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                 delay_ms = std::cmp::min(delay_ms * 2, 200);
@@ -1016,6 +1096,14 @@ fn build_args_string(cli: &CliArgs, extra: Option<&str>) -> Option<String> {
         None
     } else {
         Some(parts.join(" "))
+    }
+}
+
+fn embedded_server_port_bind_timeout(is_debug_build: bool) -> std::time::Duration {
+    if is_debug_build {
+        std::time::Duration::from_secs(90)
+    } else {
+        std::time::Duration::from_secs(45)
     }
 }
 
@@ -1248,28 +1336,32 @@ pub fn run() {
                     "window.__BLUE_DESKTOP__=true;\
                      window.__BLUE_MACOS_GLASS__=true;\
                      document.documentElement.dataset.blueDesktop='true';\
-                     document.documentElement.dataset.blueMacosGlass='true';"
+                     document.documentElement.dataset.blueMacosGlass='true';",
                 );
 
                 #[cfg(not(target_os = "macos"))]
                 let _ = webview.eval(
                     "window.__BLUE_DESKTOP__=true;\
-                     document.documentElement.dataset.blueDesktop='true';"
+                     document.documentElement.dataset.blueDesktop='true';",
                 );
             }
         })
         .setup(|app| {
             info!("Setting up application");
 
-            #[cfg(target_os = "macos")]
-            {
+            if app.get_webview_window(MAIN_WINDOW_LABEL).is_none() {
+                #[cfg(target_os = "macos")]
+                info!("Creating main window with macOS vibrancy styling");
+
+                #[cfg(not(target_os = "macos"))]
+                info!("Creating main window");
+
+                let window = build_main_window(app.handle(), about_blank_webview_url())?;
+                show_and_focus_window(&window);
+            } else {
+                #[cfg(target_os = "macos")]
                 if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-                    info!("Applying macOS styling to existing main window");
                     apply_main_window_macos_style(&window);
-                } else {
-                    info!(
-                        "Main window is not available during setup yet; macOS styling will be applied after creation"
-                    );
                 }
             }
 
@@ -1419,49 +1511,58 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
                     });
                 }
 
-                // Navigate windows that may still be showing the startup splash.
-                if let Some(window) = app_handle_for_window.get_webview_window(MAIN_WINDOW_LABEL) {
-                    #[cfg(target_os = "macos")]
-                    apply_main_window_macos_style(&window);
+                // Replace the startup splash with the real localhost UI as soon as the server is ready.
+                match bind_window_to_server_path(&app_handle_for_window, MAIN_WINDOW_LABEL, "") {
+                    Ok(window) => {
+                        #[cfg(target_os = "macos")]
+                        apply_main_window_macos_style(&window);
 
-                    let protocol = if use_https { "https" } else { "http" };
-                    let url = format!("{}://localhost:{}", protocol, port);
-                    info!("Navigating main window to server at {}", url);
-                    if let Err(e) =
-                        navigate_window_to_server_path(&app_handle_for_window, MAIN_WINDOW_LABEL, "")
-                    {
-                        error!("Failed to navigate main window to server: {}", e);
-                    }
+                        let protocol = if use_https { "https" } else { "http" };
+                        let url = format!("{}://localhost:{}", protocol, port);
+                        info!("Main window bound to server at {}", url);
+                        show_and_focus_window(&window);
 
-                    if app_handle_for_window.get_webview_window(PANEL_WINDOW_LABEL).is_some() {
-                        if let Err(e) = navigate_window_to_server_path(
-                            &app_handle_for_window,
-                            PANEL_WINDOW_LABEL,
-                            PANEL_WINDOW_PATH,
-                        ) {
-                            error!("Failed to navigate quick panel to server: {}", e);
+                        if app_handle_for_window
+                            .get_webview_window(PANEL_WINDOW_LABEL)
+                            .is_some()
+                        {
+                            match bind_window_to_server_path(
+                                &app_handle_for_window,
+                                PANEL_WINDOW_LABEL,
+                                PANEL_WINDOW_PATH,
+                            ) {
+                                Ok(panel_window) => {
+                                    #[cfg(target_os = "macos")]
+                                    apply_main_window_macos_style(&panel_window);
+                                    let _ = panel_window.show();
+                                }
+                                Err(e) => {
+                                    error!("Failed to bind quick panel to server: {}", e);
+                                }
+                            }
+                        }
+
+                        // on_page_load shows the window as soon as the HTML loads (splash visible).
+                        // Fallback: if frontend somehow fails, force-show after 5s.
+                        tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
+                        if !window.is_visible().unwrap_or(true) {
+                            info!("Fallback: showing window after timeout");
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+
+                        // On macOS, activate the app to bring it to front
+                        #[cfg(target_os = "macos")]
+                        {
+                            use std::process::Command;
+                            let _ = Command::new("osascript")
+                                .args(["-e", "tell application \"ZimaOS Blue\" to activate"])
+                                .output();
                         }
                     }
-
-                    // on_page_load shows the window as soon as the HTML loads (splash visible).
-                    // Fallback: if frontend somehow fails, force-show after 5s.
-                    tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
-                    if !window.is_visible().unwrap_or(true) {
-                        info!("Fallback: showing window after timeout");
-                        let _ = window.show();
-                        let _ = window.set_focus();
+                    Err(e) => {
+                        error!("Failed to bind main window to server: {}", e);
                     }
-
-                    // On macOS, activate the app to bring it to front
-                    #[cfg(target_os = "macos")]
-                    {
-                        use std::process::Command;
-                        let _ = Command::new("osascript")
-                            .args(["-e", "tell application \"ZimaOS Blue\" to activate"])
-                            .output();
-                    }
-                } else {
-                    error!("Failed to get main window");
                 }
             });
 
@@ -1488,7 +1589,8 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
                             use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
                             if let Some(mtm) = MainThreadMarker::new() {
                                 let ns_app = NSApplication::sharedApplication(mtm);
-                                ns_app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+                                ns_app
+                                    .setActivationPolicy(NSApplicationActivationPolicy::Accessory);
                             }
                         }
                     } else if !QUITTING.load(Ordering::SeqCst) {

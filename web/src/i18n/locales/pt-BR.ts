@@ -2552,7 +2552,7 @@ export default {
     modal: {
       ...enUS.skillStore.modal,
       sourceIdPlaceholder: 'minha-fonte-skill',
-      skillURLPlaceholder: 'https://example.com/SKILL.md',
+      skillURLPlaceholder: 'https://github.com/org/repo/blob/main/skills/demo/SKILL.md',
       typeClawdhub: 'ClawdHub (oficial)',
       url: 'Endereço URL',
       urlPlaceholder: 'https://exemplo.com.br',

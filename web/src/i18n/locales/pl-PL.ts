@@ -2689,6 +2689,7 @@ export default {
     ...enUS.agent,
     mode: 'Tryb pętli zadań',
     modeDescription: 'Włącza ciągłe pętle planowania i wykonywania, dopóki go nie wyłączysz',
+    autoConfirm: 'Automatyczne potwierdzenie',
     autoConfirmDescription:
       'Pomiń potwierdzenie dla destrukcyjnych działań (kliknij prawym przyciskiem przycisk pętli zadań, aby przełączyć)',
     sendMessage: 'Wyślij wiadomość do agenta...',

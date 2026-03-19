@@ -15,6 +15,11 @@ type browserCompatBackend struct {
 	recipeName       string
 	recipeParams     map[string]string
 	screenshotData   string
+	lastActMode      string
+	lastActTargetID  string
+	lastActRef       int
+	lastActAction    string
+	lastActValue     string
 }
 
 func (b *browserCompatBackend) Start(context.Context) error { return nil }
@@ -38,10 +43,20 @@ func (b *browserCompatBackend) InteractiveElements(context.Context, string) (Bro
 func (b *browserCompatBackend) CountInteractiveElements(context.Context, string) (int, error) {
 	return 1, nil
 }
-func (b *browserCompatBackend) ActByRef(context.Context, string, int, map[int]int, string, string) error {
+func (b *browserCompatBackend) ActByRef(_ context.Context, targetID string, ref int, _ map[int]int, action string, value string) error {
+	b.lastActMode = "a11y"
+	b.lastActTargetID = targetID
+	b.lastActRef = ref
+	b.lastActAction = action
+	b.lastActValue = value
 	return nil
 }
-func (b *browserCompatBackend) ActByInteractiveRef(context.Context, string, int, map[int]string, string, string) error {
+func (b *browserCompatBackend) ActByInteractiveRef(_ context.Context, targetID string, ref int, _ map[int]string, action string, value string) error {
+	b.lastActMode = "interactive"
+	b.lastActTargetID = targetID
+	b.lastActRef = ref
+	b.lastActAction = action
+	b.lastActValue = value
 	return nil
 }
 func (b *browserCompatBackend) Screenshot(context.Context, string) (string, error) {
@@ -121,6 +136,59 @@ func TestBrowserToolRecipeSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 	if got := out["recipe"]; got != "search" {
 		t.Fatalf("recipe = %v, want search", got)
+	}
+}
+
+func TestBrowserToolExecuteCanonicalizesLegacyTopLevelActAction(t *testing.T) {
+	backend := &browserCompatBackend{}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "snapshot_interactive",
+	}); err != nil {
+		t.Fatalf("snapshot_interactive error = %v", err)
+	}
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "scroll",
+		"ref":    1,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.lastActMode != "interactive" {
+		t.Fatalf("lastActMode = %q, want interactive", backend.lastActMode)
+	}
+	if backend.lastActAction != "scroll" {
+		t.Fatalf("lastActAction = %q, want scroll", backend.lastActAction)
+	}
+	if backend.lastActRef != 1 {
+		t.Fatalf("lastActRef = %d, want 1", backend.lastActRef)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["success"]; got != true {
+		t.Fatalf("success = %v, want true", got)
+	}
+}
+
+func TestBrowserToolExecuteLegacyTopLevelActActionRequiresRef(t *testing.T) {
+	backend := &browserCompatBackend{}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "scroll",
+	})
+	if err == nil {
+		t.Fatal("expected missing ref error")
+	}
+	if !strings.Contains(err.Error(), "ref is required for act") {
+		t.Fatalf("error = %q, want missing ref message", err.Error())
 	}
 }
 

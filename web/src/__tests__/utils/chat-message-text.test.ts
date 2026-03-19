@@ -3,6 +3,11 @@ import { stripFirstLineHeading } from '@/utils/chat-message-text'
 
 describe('chat-message-text', () => {
   describe('stripFirstLineHeading', () => {
+    it('returns empty string for nullish content', () => {
+      expect(stripFirstLineHeading(undefined)).toBe('')
+      expect(stripFirstLineHeading(null)).toBe('')
+    })
+
     it('returns empty string for heading-only content', () => {
       expect(stripFirstLineHeading('# Title')).toBe('')
     })

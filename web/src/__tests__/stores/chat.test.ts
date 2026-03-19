@@ -363,7 +363,50 @@ describe('Chat Store', () => {
         tool_name: 'browser',
         tool_call_id: 'tool-1',
         arguments: { url: 'https://example.com' },
+        session_id: 'conv-1',
       })
+    })
+
+    it('clears waiting-for-confirmation state after resolving a tool approval', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.setPendingApproval({
+        id: 'approval-1',
+        tool_name: 'browser',
+        tool_call_id: 'tool-1',
+        arguments: { url: 'https://example.com' },
+        session_id: 'conv-1',
+      })
+
+      vi.mocked(approvalApi.resolve).mockResolvedValue({ data: { status: 'approve' } } as never)
+
+      const resolved = await store.resolveApproval('approve')
+
+      expect(resolved).toBe(true)
+      expect(approvalApi.resolve).toHaveBeenCalledWith('approval-1', 'approve')
+      expect(store.pendingApproval).toBeNull()
+      expect(store.awaitingConfirmation).toBe(false)
+    })
+
+    it('clears waiting-for-confirmation state after resolving an exec approval', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.setPendingExecApproval({
+        id: 'exec-1',
+        session_id: 'conv-1',
+        type: 'directory',
+        directory: '/tmp',
+        expires_at: Date.now() + 60_000,
+      })
+
+      vi.mocked(approvalApi.resolve).mockResolvedValue({ data: { status: 'allow-once' } } as never)
+
+      const resolved = await store.resolveExecApproval('allow-once')
+
+      expect(resolved).toBe(true)
+      expect(approvalApi.resolve).toHaveBeenCalledWith('exec-1', 'allow-once')
+      expect(store.pendingExecApproval).toBeNull()
+      expect(store.awaitingConfirmation).toBe(false)
     })
   })
 

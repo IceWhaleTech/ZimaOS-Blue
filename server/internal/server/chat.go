@@ -1931,6 +1931,73 @@ func shouldAutoContinueForActionPledge(currentContent string) bool {
 	if !hasCompletionCue && containsAny(s, zhWaitOrWrapCues) && (containsAny(s, zhActionCues) || strings.Contains(s, "整理")) {
 		return true
 	}
+
+	recoveryLeadCues := []string{
+		"the next step should be to",
+		"next step should be to",
+		"i should switch to",
+		"i'll switch to",
+		"i will switch to",
+	}
+	recoveryActionCues := []string{
+		"inspect or validate",
+		"validate or inspect",
+		"inspect the existing file",
+		"validate the existing file",
+		"verify the existing file",
+		"read the existing file",
+		"switch to a different approach",
+		"try a different approach",
+		"use a different approach",
+		"take a different approach",
+	}
+	recoveryContextCues := []string{
+		"without making progress",
+		"stopped before damaging it further",
+		"stopped here to avoid",
+		"avoid more damage",
+	}
+	if containsAny(lower, recoveryLeadCues) && containsAny(lower, recoveryActionCues) {
+		return true
+	}
+	if containsAny(lower, recoveryContextCues) && containsAny(lower, recoveryActionCues) {
+		return true
+	}
+
+	zhRecoveryLeadCues := []string{
+		"下一步应该先",
+		"接下来应该先",
+		"下一步先",
+		"接下来先",
+	}
+	zhRecoveryActionCues := []string{
+		"读取或验证",
+		"先读取",
+		"先验证",
+		"读取现有",
+		"验证现有",
+		"检查现有",
+		"改用另一种",
+		"换一种方法",
+		"换个方法",
+		"换一种方式",
+		"换个思路",
+		"换一种思路",
+	}
+	zhRecoveryContextCues := []string{
+		"我先不继续",
+		"先不继续",
+		"不再继续",
+		"没有进展",
+		"避免继续覆盖",
+		"避免再覆盖",
+	}
+	if containsAny(s, zhRecoveryLeadCues) && containsAny(s, zhRecoveryActionCues) {
+		return true
+	}
+	if containsAny(s, zhRecoveryContextCues) && containsAny(s, zhRecoveryActionCues) {
+		return true
+	}
 	return false
 }
 
@@ -2545,6 +2612,39 @@ func syncTrackedTodoAfterToollessReply(trackedTodoContent, currentContent string
 	return updated, updated != trackedTodoContent
 }
 
+// syncTrackedTodoAfterToollessChecklist keeps the first checklist stable across
+// toolless auto-continue rounds. We only accept toolless checklist changes when
+// bootstrapping the initial checklist, or when a completion-style reply
+// explicitly returns the same checklist fully completed.
+func syncTrackedTodoAfterToollessChecklist(trackedTodoContent, currentContent string) (string, bool) {
+	checklist := ""
+	if candidate, ok := extractChecklistFromJSONResult(currentContent); ok {
+		checklist = strings.TrimSpace(candidate)
+	} else if candidate, ok := extractFirstTodoChecklist(currentContent); ok {
+		checklist = strings.TrimSpace(candidate)
+	}
+	if checklist == "" {
+		return trackedTodoContent, false
+	}
+
+	if strings.TrimSpace(trackedTodoContent) == "" {
+		return checklist, true
+	}
+
+	trackedSig := todoChecklistSignature(trackedTodoContent)
+	checklistSig := todoChecklistSignature(checklist)
+	if trackedSig == "" || checklistSig == "" || trackedSig != checklistSig {
+		return trackedTodoContent, false
+	}
+	if !isLikelyTaskCompletionResponse(currentContent) || hasPendingTodo(checklist) {
+		return trackedTodoContent, false
+	}
+	if checklist == strings.TrimSpace(trackedTodoContent) {
+		return trackedTodoContent, false
+	}
+	return checklist, true
+}
+
 func isLikelyTaskCompletionResponse(content string) bool {
 	s := strings.TrimSpace(content)
 	if s == "" {
@@ -2848,11 +2948,8 @@ func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, 
 			Msg("[im] empty post-tool auto-continue budget exhausted; finishing current round")
 	}
 
-	if checklist, ok := extractChecklistFromJSONResult(resp.Message.Content); ok && strings.TrimSpace(checklist) != "" {
-		state.TodoContent = checklist
-		state.PlanCompletedByTool = !hasPendingTodo(checklist)
-	} else if checklist, ok := extractFirstTodoChecklist(resp.Message.Content); ok {
-		state.TodoContent = checklist
+	if updatedChecklist, changed := syncTrackedTodoAfterToollessChecklist(state.TodoContent, resp.Message.Content); changed {
+		state.TodoContent = updatedChecklist
 		state.PlanCompletedByTool = !hasPendingTodo(state.TodoContent)
 	}
 
@@ -3511,7 +3608,13 @@ func todoAwarePersistedContent(content, trackedTodoContent string, persistTodoIn
 	sanitized := stripDuplicateTodoChecklistForPersistence(trimmed, trackedTodoContent)
 	sanitized = stripDuplicateTodoChecklistFromTypelessCards(sanitized, trackedTodoContent)
 	if persistTodoInPlace {
+		if syncedChecklist, changed := syncTrackedTodoAfterToollessChecklist(trackedTodoContent, trimmed); changed {
+			return syncedChecklist
+		}
 		if checklist, ok := extractFirstTodoChecklist(trimmed); ok {
+			if tracked := strings.TrimSpace(trackedTodoContent); tracked != "" {
+				return tracked
+			}
 			return checklist
 		}
 		if strings.TrimSpace(sanitized) == "" {
@@ -5331,6 +5434,7 @@ type ChatHandler struct {
 	providerPool      *providerpool.Pool
 	toolRegistry      *tools.Registry
 	toolExecutor      *tools.Executor
+	toolGateway       *tools.ToolGateway
 	sessionAuditStore *sessionaudit.Store
 	streamController  *claudecode.StreamController
 	compactionConfig  claudecode.CompactionConfig
@@ -5419,6 +5523,7 @@ type ChatHandler struct {
 	toolRouter         *tools.ToolRouter
 	toolPolicyResolver *tools.ToolPolicyResolver
 	toolTraceStore     *tools.ToolTraceStore
+	flagEvaluator      chatFlagEvaluator
 	skillSelector      *claudecode.SkillSelector
 	settingsHandler    *SettingsHandler
 	smallModel         smallmodel.Runtime
@@ -5632,14 +5737,17 @@ func (h *ChatHandler) resolvePromptPolicy() PromptPolicy {
 }
 
 // selectTools returns tool definitions after selector + router stages.
-func (h *ChatHandler) selectTools(userMessage, model string) []tools.ToolDefinition {
+func (h *ChatHandler) selectTools(userMessage string, policyReq tools.ToolPolicyRequest) []tools.ToolDefinition {
 	locale := ""
 	if h.settingsHandler != nil {
 		locale = h.settingsHandler.GetLocale()
 	}
-	allDefs := h.toolRegistry.DefinitionsForLocale(locale)
+	if policyReq.RouteKind == tools.ToolRouteKindUnknown {
+		policyReq.RouteKind = tools.ToolRouteKindChat
+	}
+	allDefs := h.toolRegistry.DefinitionsForRouteAndLocale(policyReq.RouteKind, locale)
 	if h.toolPolicyResolver != nil {
-		allDefs = h.toolPolicyResolver.Filter(tools.ToolPolicyRequest{Model: model}, allDefs)
+		allDefs = h.toolPolicyResolver.Filter(policyReq, allDefs)
 	}
 	selected := allDefs
 
@@ -5654,7 +5762,7 @@ func (h *ChatHandler) selectTools(userMessage, model string) []tools.ToolDefinit
 
 	routed := selected
 	if h.toolRouter != nil {
-		routed = h.toolRouter.Route(userMessage, model, selected)
+		routed = h.toolRouter.Route(userMessage, policyReq.Model, selected)
 	}
 
 	names := make([]string, len(routed))
@@ -5666,7 +5774,7 @@ func (h *ChatHandler) selectTools(userMessage, model string) []tools.ToolDefinit
 		Int("selected", len(selected)).
 		Int("routed", len(routed)).
 		Strs("tools", names).
-		Str("model", model).
+		Str("model", policyReq.Model).
 		Str("query", userMessage).
 		Bool("selector_nil", h.toolSelector == nil).
 		Bool("router_nil", h.toolRouter == nil).
@@ -8077,7 +8185,7 @@ func defsToLLMTools(defs []tools.ToolDefinition) []llm.Tool {
 		result[i] = llm.Tool{
 			Name:        def.Name,
 			Description: def.Description,
-			Parameters:  def.Parameters,
+			Parameters:  tools.NormalizeToolSchemaForLLM("", "", "", def.Parameters),
 		}
 	}
 	return result
@@ -8090,13 +8198,23 @@ type MetricsRecorder interface {
 	RecordSpeed(model string, tokensPerSecond, ttftMs, decodeSpeed float64)
 }
 
+type runtimeCounterRecorder interface {
+	RecordCounter(name string, value int64, tags map[string]string)
+}
+
 // NewChatHandler creates a new chat handler.
 func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRegistry *tools.Registry) *ChatHandler {
+	toolExecutor := tools.NewExecutor(toolRegistry)
+	var toolGateway *tools.ToolGateway
+	if toolRegistry != nil {
+		toolGateway = tools.NewToolGateway(toolRegistry, toolExecutor)
+	}
 	h := &ChatHandler{
 		store:                          store,
 		providers:                      providers,
 		toolRegistry:                   toolRegistry,
-		toolExecutor:                   tools.NewExecutor(toolRegistry),
+		toolExecutor:                   toolExecutor,
+		toolGateway:                    toolGateway,
 		streamController:               claudecode.NewStreamController(),
 		compactionConfig:               claudecode.DefaultCompactionConfig(),
 		convToSession:                  make(map[string]string),
@@ -8123,6 +8241,34 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 	// Start async event processor
 	go h.processEventQueue()
 	return h
+}
+
+// SetToolApprover wires runtime approval enforcement into the shared tool gateway.
+func (h *ChatHandler) SetToolApprover(approver tools.ToolApprover) {
+	if h == nil {
+		return
+	}
+	if h.toolGateway == nil && h.toolRegistry != nil && h.toolExecutor != nil {
+		h.toolGateway = tools.NewToolGateway(h.toolRegistry, h.toolExecutor)
+	}
+	if h.toolGateway == nil {
+		return
+	}
+	h.toolGateway.SetApprover(approver)
+}
+
+// SetToolEventObserver wires runtime tool lifecycle observation into the shared tool gateway.
+func (h *ChatHandler) SetToolEventObserver(observer tools.RuntimeEventObserver) {
+	if h == nil {
+		return
+	}
+	if h.toolGateway == nil && h.toolRegistry != nil && h.toolExecutor != nil {
+		h.toolGateway = tools.NewToolGateway(h.toolRegistry, h.toolExecutor)
+	}
+	if h.toolGateway == nil {
+		return
+	}
+	h.toolGateway.SetEventObserver(observer)
 }
 
 // processEventQueue processes events asynchronously to avoid blocking request handlers.
@@ -8168,6 +8314,9 @@ func (h *ChatHandler) queueEvent(fn func()) {
 // SetMetricsRecorder sets the metrics recorder for tracking API call metrics.
 func (h *ChatHandler) SetMetricsRecorder(recorder MetricsRecorder) {
 	h.metricsRecorder = recorder
+	if counterRecorder, ok := recorder.(runtimeCounterRecorder); ok && h.toolGateway != nil {
+		h.toolGateway.SetMetricsRecorder(counterRecorder)
+	}
 }
 
 // SetSessionAuditStore sets an isolated audit store for raw tool payload logs.
@@ -9252,11 +9401,7 @@ func formatValue(v interface{}) string {
 		if v == nil {
 			return ""
 		}
-		b, err := json.Marshal(v)
-		if err != nil {
-			return fmt.Sprintf("%v", v)
-		}
-		return string(b)
+		return tools.SafeToolPayloadString(v, 8*1024)
 	}
 }
 
@@ -9775,6 +9920,7 @@ func (h *ChatHandler) buildIMToolContext(baseCtx context.Context, msg channel.Me
 	toolCtx = tools.WithLang(toolCtx, string(lang))
 	toolCtx = tools.WithUserID(toolCtx, msg.UserID)
 	toolCtx = tools.WithSessionID(toolCtx, convID)
+	toolCtx = tools.WithImageInputs(toolCtx, toolImageInputsFromChannelAttachments(msg.Attachments))
 	if emitter := h.buildIMCardEmitter(baseCtx, msg.ChannelName, msg.ChatID, msg.ID, lang); emitter != nil {
 		toolCtx = tools.WithCardEmitter(toolCtx, emitter)
 	}
@@ -10399,7 +10545,11 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 
 	// Add tool definitions (smart selection filters by user query when enabled)
-	selectedTools := h.selectTools(routingMessage, req.Model)
+	selectedTools := h.selectTools(routingMessage, tools.ToolPolicyRequest{
+		Model:     req.Model,
+		SessionID: convID,
+		RouteKind: tools.ToolRouteKindChat,
+	})
 	selectedTools = applyDeepResearchPreference(selectedTools, channelDeepResearchEnabled)
 	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
 	req.Tools = defsToLLMTools(selectedTools)
@@ -10431,6 +10581,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	autoModelRollbackTried := false
 	todoMessageState := imTodoMessageState{}
 	autoContinueState := imToollessAutoContinueState{MaxAutoContinueRetries: h.getMaxAutoContinueForMode(channelAgentModeEnabled)}
+	var imLoopDetector tools.ToolLoopDetector
 	for imRound := 0; imRound < maxIMToolRounds; imRound++ {
 		resp, err = h.chatOnce(ctx, req)
 		if err != nil {
@@ -10660,6 +10811,35 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				return pendingMessage, nil
 			}
 			return "", nil
+		}
+		toolSummaries := make([]string, 0, len(completed))
+		for _, item := range completed {
+			toolSummaries = append(toolSummaries, tools.NormalizeToolProgressSummary(item.Content))
+		}
+		if detection := imLoopDetector.Observe(toolLoopSignature(completedCalls), resp.Message.Content, toolSummaries); detection.Abort {
+			h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
+				"mode":        "im",
+				"reason":      detection.Reason,
+				"provider":    strings.TrimSpace(resp.Provider),
+				"provider_id": strings.TrimSpace(resp.ProviderID),
+				"model":       strings.TrimSpace(resp.Model),
+			})
+			logger.Warn().
+				Int("round", imRound).
+				Str("reason", detection.Reason).
+				Int("streak", detection.Streak).
+				Str("signature", detection.Signature).
+				Msg("[im] aborting tool loop after repeated no-progress pattern")
+			resp = &llm.ChatResponse{
+				Model:      resp.Model,
+				Provider:   resp.Provider,
+				ProviderID: resp.ProviderID,
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: buildLocalizedToolLoopAbortMessage(lang, detection.Reason, detection.Signature),
+				},
+			}
+			break
 		}
 		req.Messages = append(req.Messages, resp.Message)
 		req.Messages = append(req.Messages, completed...)
@@ -10968,8 +11148,15 @@ const pseudoToolCallModelSwitchThreshold = 2
 
 // maxConsecutiveDuplicateActionPledgeAutoContinue is the number of consecutive
 // identical action_pledge contents allowed before forcing stop.
-// This mirrors queue-style debounce behavior to avoid repeated placeholder loops.
-const maxConsecutiveDuplicateActionPledgeAutoContinue = 1
+// Keep this slightly higher than summary_intro because action_pledge often
+// appears before the model has produced any actual tool result.
+const maxConsecutiveDuplicateActionPledgeAutoContinue = 2
+
+// maxConsecutiveDuplicateSummaryIntroAutoContinue is the number of consecutive
+// identical summary_intro contents allowed before forcing stop.
+// Once we are in summary-intro mode, repeating the same intro is usually a
+// strong sign of a stalled loop rather than productive continuation.
+const maxConsecutiveDuplicateSummaryIntroAutoContinue = 1
 
 // maxConsecutiveDuplicateToolCalls is the number of consecutive identical tool
 // calls (same name + same arguments) allowed before the loop is forcibly broken.
@@ -11013,6 +11200,142 @@ func toolCallSignature(calls []llm.ToolCall) string {
 		sb.WriteString(tc.Arguments)
 	}
 	return sb.String()
+}
+
+func toolLoopSignature(calls []llm.ToolCall) string {
+	if len(calls) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i, tc := range calls {
+		if i > 0 {
+			sb.WriteByte('|')
+		}
+		sb.WriteString(toolLoopCallSignature(tc))
+	}
+	return sb.String()
+}
+
+func toolLoopCallSignature(tc llm.ToolCall) string {
+	name := strings.ToLower(strings.TrimSpace(tc.Name))
+	if name == "" {
+		return strings.TrimSpace(tc.Arguments)
+	}
+	if sig, ok := specializedToolLoopSignature(name, tc.Arguments); ok {
+		return name + ":" + sig
+	}
+	return name + ":" + strings.TrimSpace(tc.Arguments)
+}
+
+func specializedToolLoopSignature(name, rawArgs string) (string, bool) {
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(rawArgs), &payload) != nil || len(payload) == 0 {
+		return "", false
+	}
+
+	switch name {
+	case "write", "file_write":
+		path := extractToolLoopArgString(payload, "path", "file_path")
+		if path == "" {
+			return "", false
+		}
+		return fmt.Sprintf("append=%t path=%s", extractToolLoopArgBool(payload, "append"), path), true
+	case "read", "file_read":
+		path := extractToolLoopArgString(payload, "path", "file_path")
+		if path == "" {
+			return "", false
+		}
+		return "path=" + path, true
+	case "write_begin":
+		path := extractToolLoopArgString(payload, "path", "file_path")
+		if path == "" {
+			return "", false
+		}
+		return "path=" + path, true
+	case "write_chunk", "write_commit", "write_abort":
+		sessionID := extractToolLoopArgString(payload, "session_id", "sessionId")
+		if sessionID == "" {
+			return "", false
+		}
+		return "session=" + sessionID, true
+	default:
+		return "", false
+	}
+}
+
+func extractToolLoopArgString(payload map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if raw, ok := payload[key]; ok {
+			if s, ok := raw.(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
+}
+
+func extractToolLoopArgBool(payload map[string]interface{}, keys ...string) bool {
+	for _, key := range keys {
+		if raw, ok := payload[key]; ok {
+			if b, ok := raw.(bool); ok {
+				return b
+			}
+		}
+	}
+	return false
+}
+
+func isRepeatedOverwriteLoopSignature(signature string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(signature))
+	return strings.Contains(normalized, "write:append=false") && strings.Contains(normalized, " path=")
+}
+
+func buildToolLoopAbortMessage(reason string) string {
+	return buildLocalizedToolLoopAbortMessage(i18n.DefaultLanguage, reason, "")
+}
+
+func buildToolLoopAbortMessageWithSignature(reason, signature string) string {
+	return buildLocalizedToolLoopAbortMessage(i18n.DefaultLanguage, reason, signature)
+}
+
+func buildLocalizedToolLoopAbortMessage(lang i18n.Language, reason, signature string) string {
+	return i18n.T(lang, toolLoopAbortMessageKey(reason, signature))
+}
+
+func toolLoopAbortMessageKey(reason, signature string) string {
+	if isRepeatedOverwriteLoopSignature(signature) {
+		return i18n.MsgToolLoopAbortRepeatedOverwrite
+	}
+	switch strings.TrimSpace(reason) {
+	case tools.ToolLoopReasonIdenticalRepeat:
+		return i18n.MsgToolLoopAbortIdenticalRepeat
+	case tools.ToolLoopReasonErrorRepeat:
+		return i18n.MsgToolLoopAbortErrorRepeat
+	case tools.ToolLoopReasonPingPong:
+		return i18n.MsgToolLoopAbortPingPong
+	case tools.ToolLoopReasonPollingNoProgress:
+		return i18n.MsgToolLoopAbortPollingNoProgress
+	default:
+		return i18n.MsgToolLoopAbortGeneric
+	}
+}
+
+func buildToolLoopRecoveryNudge(reason, signature string) string {
+	return buildLocalizedToolLoopRecoveryNudge(i18n.DefaultLanguage, reason, signature)
+}
+
+func buildLocalizedToolLoopRecoveryNudge(lang i18n.Language, reason, signature string) string {
+	return i18n.T(lang, toolLoopRecoveryMessageKey(reason, signature))
+}
+
+func toolLoopRecoveryMessageKey(reason, signature string) string {
+	if isRepeatedOverwriteLoopSignature(signature) {
+		return i18n.MsgToolLoopRecoveryRepeatedOverwrite
+	}
+	switch strings.TrimSpace(reason) {
+	default:
+		return i18n.MsgToolLoopRecoveryGeneric
+	}
 }
 
 func limitToolCallsForRound(calls []llm.ToolCall) ([]llm.ToolCall, bool) {
@@ -11161,7 +11484,14 @@ func toollessAutoContinueSignature(reason, content string) string {
 }
 
 func shouldStopForDuplicateActionPledge(reason string, consecutiveDups int) bool {
-	return (reason == "action_pledge" || reason == "summary_intro") && consecutiveDups > maxConsecutiveDuplicateActionPledgeAutoContinue
+	switch reason {
+	case "action_pledge":
+		return consecutiveDups > maxConsecutiveDuplicateActionPledgeAutoContinue
+	case "summary_intro":
+		return consecutiveDups > maxConsecutiveDuplicateSummaryIntroAutoContinue
+	default:
+		return false
+	}
 }
 
 func shouldSwitchModelAfterPseudoToolCall(pseudoToolCallAutoContinueCount int) bool {
@@ -11790,33 +12120,86 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 		ctx = tools.WithCardEmitter(ctx, nil)
 	}
 	ctx = h.withDirectoryWhitelistFSScope(ctx)
+	ctx = tools.WithRouteKind(ctx, tools.ToolRouteKindChat)
 
 	toolLang := i18n.ParseLanguage(tools.GetLang(ctx))
 	var results []llm.Message
 	for _, tc := range toolCalls {
 		h.recordToolPayloadAudit(ctx, "assistant_tool_call", string(llm.RoleAssistant), tc, tc.Arguments, false)
 		logger.Info().Str("tool", tc.Name).Str("id", tc.ID).Msg("[chat] executing tool call")
-		result, err := h.toolExecutor.ExecuteJSON(ctx, tc.Name, tc.Arguments)
-		var content string
-		if err != nil {
-			logger.Error().Err(err).Str("tool", tc.Name).Str("id", tc.ID).Msg("[chat] tool call failed")
-			// Use json.Marshal to properly escape the error string (quotes, newlines, etc.)
-			errJSON, _ := json.Marshal(localizeToolExecutionErrorMessage(toolLang, err.Error()))
-			content = fmt.Sprintf(`{"error":%s}`, errJSON)
-		} else {
-			// Unwrap ForwardedResult from exec auto-forward.
-			if fwd, ok := result.(*tools.ForwardedResult); ok {
-				result = fwd.Result
+		var (
+			content      string
+			auditPayload string
+			err          error
+		)
+		if h.toolGateway != nil {
+			gatewayResult, gatewayErr := h.toolGateway.Execute(ctx, tools.ToolGatewayRequest{
+				ToolCallID: tc.ID,
+				ToolName:   tc.Name,
+				Arguments:  tc.Arguments,
+				RouteKind:  tools.ToolRouteKindChat,
+			})
+			err = gatewayErr
+			if gatewayResult != nil {
+				content = gatewayResult.CompactLLMContent
+				auditPayload = gatewayResult.AuditContent
 			}
-			switch v := result.(type) {
-			case string:
-				content = sanitizeToolOutput(v)
-			default:
-				b, _ := json.Marshal(v)
+			if err != nil {
+				logger.Error().Err(err).Str("tool", tc.Name).Str("id", tc.ID).Msg("[chat] tool call failed")
+				payload := tools.ToolErrorPayload(err)
+				rawErr := ""
+				if nested, ok := payload["details"].(map[string]interface{}); ok {
+					if cause, ok := nested["cause"].(string); ok {
+						rawErr = strings.TrimSpace(cause)
+					}
+				}
+				if rawErr == "" {
+					if fallbackErr, ok := payload["error"].(string); ok {
+						rawErr = fallbackErr
+					}
+				}
+				if rawErr != "" {
+					payload["error"] = localizeToolExecutionErrorMessage(toolLang, rawErr)
+				}
+				b, _ := json.Marshal(payload)
 				content = string(b)
+				if auditPayload == "" {
+					auditPayload = content
+				}
+			}
+		} else {
+			result, execErr := h.toolExecutor.ExecuteJSON(ctx, tc.Name, tc.Arguments)
+			err = execErr
+			if err != nil {
+				logger.Error().Err(err).Str("tool", tc.Name).Str("id", tc.ID).Msg("[chat] tool call failed")
+				errJSON, _ := json.Marshal(localizeToolExecutionErrorMessage(toolLang, err.Error()))
+				content = fmt.Sprintf(`{"error":%s}`, errJSON)
+				auditPayload = content
+			} else {
+				if fwd, ok := result.(*tools.ForwardedResult); ok {
+					result = fwd.Result
+				}
+				switch v := result.(type) {
+				case string:
+					content = sanitizeToolOutput(v)
+				default:
+					b, marshalErr := json.Marshal(v)
+					if marshalErr != nil {
+						content = tools.SafeToolPayloadString(v, 64*1024)
+					} else {
+						content = string(b)
+					}
+				}
+				auditPayload = content
 			}
 		}
-		h.recordToolPayloadAudit(ctx, "tool_result", string(llm.RoleTool), tc, content, err != nil)
+		if content == "" {
+			content = "{}"
+		}
+		if auditPayload == "" {
+			auditPayload = content
+		}
+		h.recordToolPayloadAudit(ctx, "tool_result", string(llm.RoleTool), tc, auditPayload, err != nil)
 		results = append(results, llm.Message{
 			Role:       llm.RoleTool,
 			Content:    content,
@@ -12239,6 +12622,13 @@ func compactWebSearchPayloadForLLM(payload map[string]interface{}) map[string]in
 	if len(payload) == 0 {
 		return map[string]interface{}{}
 	}
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		if anyToStringForLLM(payload["query"]) == "" && anyToStringForLLM(payload["provider"]) == "" {
+			if _, hasResults := payload["results"]; !hasResults {
+				payload = data
+			}
+		}
+	}
 
 	out := make(map[string]interface{}, 6)
 	query := anyToStringForLLM(payload["query"])
@@ -12549,7 +12939,7 @@ func anyToStringForLLM(v interface{}) string {
 	case json.RawMessage:
 		return strings.TrimSpace(string(t))
 	default:
-		return strings.TrimSpace(fmt.Sprint(t))
+		return strings.TrimSpace(tools.SafeToolPayloadString(t, 8*1024))
 	}
 }
 
@@ -13365,7 +13755,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
-	selectedTools := h.selectTools(routingMessage, chatReq.Model)
+	selectedTools := h.selectTools(routingMessage, tools.ToolPolicyRequest{
+		Model:     chatReq.Model,
+		SessionID: convID,
+		RouteKind: tools.ToolRouteKindChat,
+	})
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
 	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
@@ -13455,6 +13849,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	toolCtx = tools.WithUserID(toolCtx, webUserID)
 	toolCtx = tools.WithChannel(toolCtx, "web")
 	toolCtx = tools.WithSessionID(toolCtx, convID)
+	toolCtx = tools.WithImageInputs(toolCtx, toolImageInputsFromRequestAttachments(req.Attachments))
 	if requester := h.buildBrowserCheckpointRequester(c.Request().Context(), "web", webUserID, convID, "", "", webLang); requester != nil {
 		toolCtx = tools.WithBrowserCheckpointRequester(toolCtx, requester)
 	}
@@ -13572,6 +13967,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		awaitingPostToolSummary := false
 		prevToollessAutoContinueSig := ""
 		consecutiveToollessAutoContinueDups := 0
+		toolLoopRecoveryUsed := false
+		var toolLoopDetector tools.ToolLoopDetector
 		agentModeAutoContinue := isAgentMode
 		maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
 
@@ -13767,11 +14164,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						Msg("[chat] empty post-tool auto-continue budget exhausted; finishing current round")
 				}
 
-				if checklist, ok := extractChecklistFromJSONResult(resp.Message.Content); ok && strings.TrimSpace(checklist) != "" {
-					todoContent = checklist
-					planCompletedByTool = !hasPendingTodo(checklist)
-				} else if checklist, ok := extractFirstTodoChecklist(resp.Message.Content); ok {
-					todoContent = checklist
+				if updatedChecklist, changed := syncTrackedTodoAfterToollessChecklist(todoContent, resp.Message.Content); changed {
+					todoContent = updatedChecklist
 					planCompletedByTool = !hasPendingTodo(todoContent)
 				}
 
@@ -13905,6 +14299,51 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 					})
 				}
 			}
+			toolSummaries := make([]string, 0, len(toolResults))
+			for _, item := range toolResults {
+				toolSummaries = append(toolSummaries, tools.NormalizeToolProgressSummary(item.Content))
+			}
+			if detection := toolLoopDetector.Observe(toolLoopSignature(resp.Message.ToolCalls), resp.Message.Content, toolSummaries); detection.Abort {
+				if !toolLoopRecoveryUsed {
+					toolLoopRecoveryUsed = true
+					chatReq.Messages = append(chatReq.Messages, llm.Message{
+						Role:    llm.RoleUser,
+						Content: buildLocalizedToolLoopRecoveryNudge(webLang, detection.Reason, detection.Signature),
+					})
+					logger.Warn().
+						Int("round", round).
+						Str("reason", detection.Reason).
+						Int("streak", detection.Streak).
+						Str("signature", detection.Signature).
+						Msg("[chat] tool loop detected; injecting recovery nudge before abort")
+					resp = nil
+					err = nil
+					continue
+				}
+				h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
+					"mode":        "non_stream",
+					"reason":      detection.Reason,
+					"provider":    strings.TrimSpace(resp.Provider),
+					"provider_id": strings.TrimSpace(resp.ProviderID),
+					"model":       strings.TrimSpace(resp.Model),
+				})
+				logger.Warn().
+					Int("round", round).
+					Str("reason", detection.Reason).
+					Int("streak", detection.Streak).
+					Str("signature", detection.Signature).
+					Msg("[chat] aborting tool loop after repeated no-progress pattern")
+				resp = &llm.ChatResponse{
+					Model:      resp.Model,
+					Provider:   resp.Provider,
+					ProviderID: resp.ProviderID,
+					Message: llm.Message{
+						Role:    llm.RoleAssistant,
+						Content: buildLocalizedToolLoopAbortMessage(webLang, detection.Reason, detection.Signature),
+					},
+				}
+				break
+			}
 		}
 	}
 	if err != nil && strings.TrimSpace(req.Provider) == "" && h.shouldUseDeepResearchFallback(err, routingMessage, req.DeepResearchEnabled) {
@@ -13983,6 +14422,21 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 	if supportsResponsesContinuation(chatReq.Model) && resp != nil && resp.ID != "" {
 		h.setPreviousResponseID(convID, resp.ID)
+	}
+	if resp != nil {
+		if grounding := h.runChatGroundingVerification(c.Request().Context(), chatGroundingRequest{
+			Model:      nonEmptyChatGroundingString(resp.Model, model, chatReq.Model),
+			Provider:   resp.Provider,
+			ProviderID: resp.ProviderID,
+			SessionID:  convID,
+			UserID:     h.getUserID(c),
+			Locale:     locale,
+			Goal:       routingMessage,
+			Draft:      resp.Message.Content,
+			Messages:   chatReq.Messages,
+		}); grounding.Used && strings.TrimSpace(grounding.Output) != "" {
+			resp.Message.Content = grounding.Output
+		}
 	}
 
 	// Append typeless cards for tool results to content
@@ -14208,7 +14662,7 @@ func (h *ChatHandler) ListTools(c echo.Context) error {
 	if h.settingsHandler != nil {
 		locale = h.settingsHandler.GetLocale()
 	}
-	defs := h.toolRegistry.DefinitionsForLocale(locale)
+	defs := h.toolRegistry.DefinitionsForRouteAndLocale(tools.ToolRouteKindChat, locale)
 	return c.JSON(http.StatusOK, defs)
 }
 
@@ -14416,7 +14870,7 @@ func cardActionFormValue(formData map[string]interface{}, key string) string {
 	if !ok || v == nil {
 		return ""
 	}
-	return strings.TrimSpace(fmt.Sprintf("%v", v))
+	return strings.TrimSpace(tools.SafeToolPayloadString(v, 8*1024))
 }
 
 func (h *ChatHandler) isSpecialControlMessage(message string) bool {
@@ -14914,7 +15368,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
-	selectedTools := h.selectTools(routingMessage, chatReq.Model)
+	selectedTools := h.selectTools(routingMessage, tools.ToolPolicyRequest{
+		Model:     chatReq.Model,
+		SessionID: convID,
+		RouteKind: tools.ToolRouteKindChat,
+	})
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
 	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
@@ -15027,6 +15485,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	ctx = tools.WithUserID(ctx, streamUserID)
 	ctx = tools.WithChannel(ctx, "web")
 	ctx = tools.WithSessionID(ctx, convID)
+	ctx = tools.WithImageInputs(ctx, toolImageInputsFromRequestAttachments(req.Attachments))
 	streamBaseCtx := ctx
 	buildStreamCtxForBudgetAttempt := func(attempt *preparedBudgetAttempt) context.Context {
 		resolvedRoute = proxy.ResolvedRoute{}
@@ -15142,17 +15601,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	// Inject card emitter so tools (e.g. ui_reviewer) can push streaming
 	// progress cards to the client during execution.
+	var emitStreamingCard func(card map[string]interface{})
 	toolCtx = tools.WithCardEmitter(toolCtx, func(card map[string]interface{}) {
-		cardJSON, err := json.Marshal(card)
-		if err != nil {
-			return
+		if emitStreamingCard != nil {
+			emitStreamingCard(card)
 		}
-		block := "\n\n```typeless\n" + string(cardJSON) + "\n```"
-		emitSSE(map[string]interface{}{
-			"delta":     block,
-			"done":      false,
-			"stream_id": streamID,
-		})
 	})
 	if requester := h.buildBrowserCheckpointRequester(c.Request().Context(), "web", streamUserID, convID, "", "", streamLang); requester != nil {
 		toolCtx = tools.WithBrowserCheckpointRequester(toolCtx, requester)
@@ -15184,6 +15637,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// sub-frame latency for perceived streaming responsiveness.
 	var pendingDeltaBuffer strings.Builder
 	lastDeltaFlushAt := timeutil.NowTime()
+	lastPersistFlushAt := timeutil.NowTime()
 	lastDeltaChunkAt := time.Time{}
 	avgChunkGapMs := 18.0
 	hasSentDeltaSinceIdle := false
@@ -15203,6 +15657,22 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			return 16 * time.Millisecond, 512
 		default:
 			return 10 * time.Millisecond, 256
+		}
+	}
+
+	adaptivePersistenceTargets := func() (time.Duration, int) {
+		// Persist drafts far less aggressively than SSE chunks. This keeps
+		// mid-stream refreshes useful without hammering SQLite for every
+		// handful of streamed characters.
+		switch {
+		case avgChunkGapMs <= 8:
+			return 1200 * time.Millisecond, 4096
+		case avgChunkGapMs <= 14:
+			return 900 * time.Millisecond, 3072
+		case avgChunkGapMs <= 24:
+			return 700 * time.Millisecond, 2048
+		default:
+			return 500 * time.Millisecond, 1024
 		}
 	}
 
@@ -15228,6 +15698,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		pendingDeltaBuffer.Reset()
 		lastDeltaFlushAt = timeutil.NowTime()
 		return true
+	}
+	flushPendingVisibleDelta := func() int {
+		flushed := pendingDeltaBuffer.Len()
+		if flushed == 0 {
+			return 0
+		}
+		flushPendingDelta(true)
+		return flushed
 	}
 
 	queueDelta := func(delta string) {
@@ -15259,6 +15737,24 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			hasSentDeltaSinceIdle = true
 		}
 	}
+	emitStreamingCard = func(card map[string]interface{}) {
+		flushed := flushPendingVisibleDelta()
+		if flushed > 0 {
+			logger.Debug().
+				Int("flushed_pending_delta_chars", flushed).
+				Msg("[chat] stream: flushed pending assistant delta before typeless card")
+		}
+		cardJSON, err := json.Marshal(card)
+		if err != nil {
+			return
+		}
+		block := "\n\n```typeless\n" + string(cardJSON) + "\n```"
+		emitSSE(map[string]interface{}{
+			"delta":     block,
+			"done":      false,
+			"stream_id": streamID,
+		})
+	}
 
 	// Tool execution loop for streaming — collect tool calls, execute, re-stream
 	var streamToolCalls []llm.ToolCall
@@ -15270,13 +15766,44 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var finalLatencyMs, finalTTFTMs, finalTPS float64
 	var lastStreamProgress string
 
-	// Incremental persistence: insert placeholder message before streaming starts.
-	// This ensures a page refresh mid-stream still shows partial content.
+	// Incremental persistence: insert/update a placeholder message while
+	// streaming so a page refresh still shows partial content.
 	var streamingMsgID string
 	var finalPersistedMsgID string
 	var lastFlushLen int
 	pendingInjectionRestartOnChunk := h.hasPendingInjection(convID)
-	const flushInterval = 64 // flush to DB every N new chars (low for near-real-time cross-tab sync)
+
+	persistStreamingDraft := func() bool {
+		now := timeutil.NowTime()
+		if streamingMsgID == "" {
+			// First flush creates a placeholder draft row.
+			m, err := h.store.AddMessage(context.Background(), convID, memory.Message{
+				Role:    "assistant",
+				Content: fullContent,
+			})
+			if err != nil {
+				logger.Warn().Err(err).Str("conv_id", convID).Msg("[chat] failed to insert streaming draft")
+				return false
+			}
+			streamingMsgID = m.ID
+			h.conversationCache.Invalidate(convID)
+		} else {
+			if err := h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, nil); err != nil {
+				logger.Warn().Err(err).Str("conv_id", convID).Str("message_id", streamingMsgID).Msg("[chat] failed to update streaming draft")
+				return false
+			}
+		}
+		lastFlushLen = len(fullContent)
+		lastPersistFlushAt = now
+		// Notify other tabs/devices that this conversation has new content
+		if h.sseBroker != nil {
+			h.sseBroker.Publish(userID, "conversation_updated", map[string]any{
+				"id":        convID,
+				"streaming": true,
+			})
+		}
+		return true
+	}
 
 	// TODO checklist tracking: when the first message contains `- [ ]` items,
 	// we track its ID and content so we can advance checkboxes after each
@@ -15300,6 +15827,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var prevToolSig string          // signature of previous round's tool calls for duplicate detection
 	var consecutiveDups int         // count of consecutive identical tool call rounds
 	var typelessCardsPersisted bool // true once tool result cards are appended to persisted content
+	var streamLoopDetector tools.ToolLoopDetector
 	isAgentMode = h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	agentModeAutoContinue := isAgentMode
 	maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
@@ -15567,12 +16095,12 @@ STREAM_LOOP:
 				}
 				if !suppressUserDeltaAfterToolCall && len(streamToolCalls) > 0 {
 					suppressUserDeltaAfterToolCall = true
-					dropped := dropPendingVisibleDelta()
+					flushed := flushPendingVisibleDelta()
 					logger.Info().
 						Int("tool_round", toolRound).
 						Int("tool_calls", len(streamToolCalls)).
-						Int("dropped_pending_delta_chars", dropped).
-						Msg("[chat] stream: detected tool calls, suppressing subsequent assistant delta for this round")
+						Int("flushed_pending_delta_chars", flushed).
+						Msg("[chat] stream: detected tool calls, flushed pending assistant delta and suppressed subsequent assistant delta for this round")
 				}
 			}
 
@@ -15648,28 +16176,13 @@ STREAM_LOOP:
 				})
 			}
 
-			// Incremental persistence: insert or update the message in DB periodically
-			// so a page refresh mid-stream still shows partial content.
-			if chunk.Delta != "" && len(fullContent)-lastFlushLen >= flushInterval {
-				if streamingMsgID == "" {
-					// First flush — insert placeholder (provider/model filled on completion)
-					if m, err := h.store.AddMessage(context.Background(), convID, memory.Message{
-						Role:    "assistant",
-						Content: fullContent,
-					}); err == nil {
-						streamingMsgID = m.ID
-						h.conversationCache.Invalidate(convID)
-					}
-				} else {
-					h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, nil)
-				}
-				lastFlushLen = len(fullContent)
-				// Notify other tabs/devices that this conversation has new content
-				if h.sseBroker != nil {
-					h.sseBroker.Publish(userID, "conversation_updated", map[string]any{
-						"id":        convID,
-						"streaming": true,
-					})
+			// Incremental persistence: throttle draft writes by both content growth
+			// and elapsed time to avoid excessive SQLite churn during streaming.
+			if chunk.Delta != "" {
+				persistInterval, persistBytes := adaptivePersistenceTargets()
+				if len(fullContent)-lastFlushLen >= persistBytes ||
+					timeutil.SinceTime(lastPersistFlushAt) >= persistInterval {
+					persistStreamingDraft()
 				}
 			}
 
@@ -16326,13 +16839,20 @@ STREAM_LOOP:
 				prevToolSig = sig
 			}
 			if consecutiveDups > maxConsecutiveDuplicateToolCalls {
+				h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
+					"mode":        "stream",
+					"reason":      tools.ToolLoopReasonIdenticalRepeat,
+					"provider":    strings.TrimSpace(actualProvider),
+					"provider_id": strings.TrimSpace(actualProviderID),
+					"model":       strings.TrimSpace(actualModel),
+				})
 				logger.Warn().
 					Int("tool_round", toolRound).
 					Int("consecutive_dups", consecutiveDups).
 					Str("tool_signature", sig).
 					Msg("[chat] stream: breaking loop — LLM is repeating the same tool call")
 				// Inject a short message so the user sees something
-				dupMsg := "I noticed I was repeating the same action. Let me stop here to avoid duplicates."
+				dupMsg := buildLocalizedToolLoopAbortMessage(streamLang, tools.ToolLoopReasonIdenticalRepeat, sig)
 				emitSSE(map[string]interface{}{
 					"delta":     dupMsg,
 					"done":      false,
@@ -16465,6 +16985,37 @@ STREAM_LOOP:
 				})
 			}
 
+			toolSummaries := make([]string, 0, len(toolResults))
+			for _, item := range toolResults {
+				toolSummaries = append(toolSummaries, tools.NormalizeToolProgressSummary(item.Content))
+			}
+			if detection := streamLoopDetector.Observe(toolLoopSignature(streamToolCalls), assistantContextContent, toolSummaries); detection.Abort {
+				h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
+					"mode":        "stream",
+					"reason":      detection.Reason,
+					"provider":    strings.TrimSpace(actualProvider),
+					"provider_id": strings.TrimSpace(actualProviderID),
+					"model":       strings.TrimSpace(actualModel),
+				})
+				abortMsg := buildLocalizedToolLoopAbortMessage(streamLang, detection.Reason, detection.Signature)
+				if !strings.Contains(fullContent, abortMsg) {
+					fullContent += "\n\n" + abortMsg
+					totalDeltaChars += len(abortMsg)
+					emitSSE(map[string]interface{}{
+						"delta":     "\n\n" + abortMsg,
+						"done":      false,
+						"stream_id": streamID,
+					})
+				}
+				logger.Warn().
+					Int("tool_round", toolRound).
+					Str("reason", detection.Reason).
+					Int("streak", detection.Streak).
+					Str("signature", detection.Signature).
+					Msg("[chat] stream: aborting tool loop after repeated no-progress pattern")
+				break STREAM_LOOP
+			}
+
 			// Build assistant message with compacted tool-call context for follow-up rounds.
 			assistantMsg := compactAssistantToolContextForLLM(llm.Message{
 				Role:      llm.RoleAssistant,
@@ -16525,6 +17076,7 @@ STREAM_LOOP:
 			// Reset for next round — new message will be created
 			streamingMsgID = ""
 			lastFlushLen = 0
+			lastPersistFlushAt = timeutil.NowTime()
 			accumulateCompletedRoundUsage()
 
 			// Reset content for next round (LLM will generate new response)
@@ -16865,6 +17417,7 @@ STREAM_LOOP:
 				streamingMsgID = ""
 			}
 			lastFlushLen = 0
+			lastPersistFlushAt = timeutil.NowTime()
 			chatReq.Messages = append(chatReq.Messages,
 				llm.Message{Role: llm.RoleAssistant, Content: buildToollessAutoContinueAssistantContent(fullContent, "deep_search_min_rounds")},
 				llm.Message{Role: llm.RoleUser, Content: buildDeepSearchMinRoundsNudge(deepSearchState)},
@@ -16978,6 +17531,7 @@ STREAM_LOOP:
 					roundContent := sanitizeResponseContentWithProvider(fullContent, actualProvider, actualProviderID, sanitizeModelHint(actualModel, chatReq.Model))
 					persistedMsgID := ""
 					persistedRoundContent := roundContent
+					prevTodoContent := strings.TrimSpace(todoContent)
 					if streamingMsgID != "" {
 						persistedRoundContent = todoAwarePersistedContent(roundContent, todoContent, streamingMsgID == todoMsgID)
 						h.store.UpdateMessageContent(context.Background(), streamingMsgID, persistedRoundContent, nil)
@@ -17002,25 +17556,34 @@ STREAM_LOOP:
 
 					// Capture TODO message (auto-continue is the most common path
 					// where the LLM first outputs a checklist plan).
+					capturedTodoThisRound := false
 					if todoMsgID == "" && persistedMsgID != "" {
 						if checklist, ok := extractFirstTodoChecklist(roundContent); ok {
 							todoMsgID = persistedMsgID
 							todoContent = checklist
+							planCompletedByTool = !hasPendingTodo(todoContent)
+							capturedTodoThisRound = true
 						}
 					}
 					if todoMsgID != "" && persistedMsgID == todoMsgID {
-						if checklist, ok := extractFirstTodoChecklist(roundContent); ok {
-							todoContent = checklist
-						} else if strings.TrimSpace(todoContent) == "" {
-							todoContent = strings.TrimSpace(persistedRoundContent)
+						if !capturedTodoThisRound {
+							if checklist, ok := extractFirstTodoChecklist(persistedRoundContent); ok {
+								todoContent = checklist
+								planCompletedByTool = !hasPendingTodo(todoContent)
+							} else if strings.TrimSpace(todoContent) == "" {
+								todoContent = strings.TrimSpace(persistedRoundContent)
+								planCompletedByTool = !hasPendingTodo(todoContent)
+							}
 						}
-						emitSSE(map[string]interface{}{
-							"todo_updated": true,
-							"message_id":   todoMsgID,
-							"todo_card_id": todoChecklistCardID(todoMsgID),
-							"content":      todoContent,
-							"stream_id":    streamID,
-						})
+						if nextTodo := strings.TrimSpace(todoContent); nextTodo != "" && (capturedTodoThisRound || nextTodo != prevTodoContent) {
+							emitSSE(map[string]interface{}{
+								"todo_updated": true,
+								"message_id":   todoMsgID,
+								"todo_card_id": todoChecklistCardID(todoMsgID),
+								"content":      todoContent,
+								"stream_id":    streamID,
+							})
+						}
 					}
 
 					if !collapseRound {
@@ -17032,6 +17595,7 @@ STREAM_LOOP:
 						streamingMsgID = ""
 					}
 					lastFlushLen = 0
+					lastPersistFlushAt = timeutil.NowTime()
 				} else if fullContent != "" && !shouldPersistRound && streamingMsgID != "" {
 					// A pseudo_tool_call round may have already created an incremental
 					// placeholder. Scrub it immediately so malformed content cannot leak
@@ -17039,6 +17603,7 @@ STREAM_LOOP:
 					h.store.UpdateMessageContent(context.Background(), streamingMsgID, "", nil)
 					h.conversationCache.Invalidate(convID)
 					lastFlushLen = 0
+					lastPersistFlushAt = timeutil.NowTime()
 				}
 				promptPolicy := h.resolvePromptPolicy()
 				chatReq.Messages = append(chatReq.Messages,
@@ -17302,16 +17867,9 @@ STREAM_LOOP:
 				}
 				toolCtx = context.WithoutCancel(ctx)
 				toolCtx = tools.WithCardEmitter(toolCtx, func(card map[string]interface{}) {
-					cardJSON, err := json.Marshal(card)
-					if err != nil {
-						return
+					if emitStreamingCard != nil {
+						emitStreamingCard(card)
 					}
-					block := "\n\n```typeless\n" + string(cardJSON) + "\n```"
-					emitSSE(map[string]interface{}{
-						"delta":     block,
-						"done":      false,
-						"stream_id": streamID,
-					})
 				})
 				if requester := h.buildBrowserCheckpointRequester(c.Request().Context(), "web", userID, convID, "", "", streamLang); requester != nil {
 					toolCtx = tools.WithBrowserCheckpointRequester(toolCtx, requester)
@@ -17361,7 +17919,11 @@ STREAM_LOOP:
 					h.recordContextPackAudit(promptCtx, convID, selection)
 				}
 
-				injectedTools := h.selectTools(injectedMsg, model)
+				injectedTools := h.selectTools(injectedMsg, tools.ToolPolicyRequest{
+					Model:     model,
+					SessionID: convID,
+					RouteKind: tools.ToolRouteKindChat,
+				})
 				injectedTools = applyWebSearchPreference(injectedTools, req.WebSearchEnabled)
 				injectedTools = applyDeepResearchPreference(injectedTools, req.DeepResearchEnabled)
 				injectedTools = applyReminderToolPreference(injectedTools, injectedMsg)
@@ -17384,6 +17946,7 @@ STREAM_LOOP:
 				fullContent = ""
 				streamingMsgID = ""
 				lastFlushLen = 0
+				lastPersistFlushAt = timeutil.NowTime()
 				totalDeltaChars = 0
 				streamToolCalls = streamToolCalls[:0]
 				streamErrorHandled = false
@@ -17678,6 +18241,29 @@ STREAM_LOOP:
 			"stream_id": streamID,
 		})
 		return nil
+	}
+
+	if grounding := h.runChatGroundingVerification(c.Request().Context(), chatGroundingRequest{
+		Model:      nonEmptyChatGroundingString(actualModel, model, chatReq.Model),
+		Provider:   actualProvider,
+		ProviderID: actualProviderID,
+		SessionID:  convID,
+		UserID:     userID,
+		Locale:     streamLocale,
+		Goal:       routingMessage,
+		Draft:      fullContent,
+		Messages:   chatReq.Messages,
+	}); grounding.Used && strings.TrimSpace(grounding.Output) != "" {
+		note := wrapStreamingChatGroundingBody(streamLocale, grounding.Output)
+		if note != "" && !strings.Contains(fullContent, note) {
+			fullContent = strings.TrimRight(fullContent, "\n") + "\n\n" + note
+			totalDeltaChars += len(note) + 2
+			emitSSE(map[string]interface{}{
+				"delta":     "\n\n" + note,
+				"done":      false,
+				"stream_id": streamID,
+			})
+		}
 	}
 
 	// Persist assistant message AFTER typeless cards are appended to fullContent.
@@ -18490,6 +19076,46 @@ func (h *ChatHandler) applyRequestAttachmentsToMessages(ctx context.Context, req
 	return append(messages, userMsg)
 }
 
+func toolImageInputsFromRequestAttachments(attachments []MessageAttachment) []tools.ToolImageInput {
+	if len(attachments) == 0 {
+		return nil
+	}
+	inputs := make([]tools.ToolImageInput, 0, len(attachments))
+	for _, att := range attachments {
+		if att.Type != "image" {
+			continue
+		}
+		data := strings.TrimSpace(att.Data)
+		if data == "" {
+			continue
+		}
+		inputs = append(inputs, tools.ToolImageInput{
+			Name:     strings.TrimSpace(att.Name),
+			MimeType: strings.TrimSpace(att.MimeType),
+			Data:     data,
+		})
+	}
+	return inputs
+}
+
+func toolImageInputsFromChannelAttachments(attachments []channel.Attachment) []tools.ToolImageInput {
+	if len(attachments) == 0 {
+		return nil
+	}
+	inputs := make([]tools.ToolImageInput, 0, len(attachments))
+	for _, att := range attachments {
+		if att.Type != channel.MessageTypeImage || len(att.Data) == 0 {
+			continue
+		}
+		inputs = append(inputs, tools.ToolImageInput{
+			Name:     strings.TrimSpace(att.Name),
+			MimeType: strings.TrimSpace(att.MimeType),
+			Data:     base64.StdEncoding.EncodeToString(att.Data),
+		})
+	}
+	return inputs
+}
+
 // sanitizeTitle removes newlines and extra whitespace from a title.
 func sanitizeTitle(s string) string {
 	var result []rune
@@ -18644,7 +19270,7 @@ func (h *ChatHandler) doWarmupWithToken(convID, token string) {
 	// selectTools("", model) returns the full tool set; the conversion result is cached
 	// by the proxy's ToolCache for reuse when the real request arrives.
 	if h.toolRegistry != nil {
-		_ = h.selectTools("", model)
+		_ = h.selectTools("", tools.ToolPolicyRequest{Model: model, RouteKind: tools.ToolRouteKindChat})
 	}
 
 	// 1d. Log provider affinity status — the actual pinning happens at request time

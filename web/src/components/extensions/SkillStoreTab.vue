@@ -12,6 +12,7 @@ import {
   type SkillSecurityEvidence,
 } from '@/api/skill'
 import SemanticSearchField from '@/components/ui/SemanticSearchField.vue'
+import { formatVersionLabel } from '@/utils/version-label'
 
 const { t, te, locale } = useI18n()
 
@@ -51,7 +52,31 @@ const selectedSkill = computed<RemoteSkill | null>(() => {
   return skills.value.find((skill) => skill.id === selectedSkillId.value) ?? null
 })
 
+const detailSkill = computed<RemoteSkill | null>(() => {
+  const base = selectedDetail.value?.skill ? normalizeSkill(selectedDetail.value.skill) : selectedSkill.value
+  if (!base) return null
+  return {
+    ...base,
+    version: base.version || selectedDetail.value?.version?.version,
+    source_url: selectedDetail.value?.version?.source_url || base.source_url,
+    installed: selectedDetail.value?.installed ?? base.installed,
+  }
+})
+
 const selectedSecurity = computed(() => selectedDetail.value?.security ?? null)
+const detailInstalled = computed(() => !!detailSkill.value?.installed)
+const detailUpdatedAt = computed(
+  () =>
+    selectedDetail.value?.version?.released_at ||
+    detailSkill.value?.updated_at ||
+    detailSkill.value?.last_updated ||
+    detailSkill.value?.synced_at ||
+    ''
+)
+const detailRiskLabel = computed(() => {
+  const value = selectedSecurity.value?.risk_level || detailSkill.value?.risk_level || 'unknown'
+  return marketplaceText(`riskLevels.${value}`, value)
+})
 const catalogCount = computed(() => totalSkills.value || skills.value.length)
 
 const resultSubtitle = computed(() =>
@@ -356,9 +381,9 @@ function skillMonogram(skill?: RemoteSkill | null): string {
 }
 
 function skillVersionLabel(skill?: RemoteSkill | null): string {
-  const value = skill?.version || skill?.latest_version || selectedDetail.value?.version?.version
-  if (!value) return '-'
-  return value.startsWith('v') ? value : `v${value}`
+  return formatVersionLabel(
+    skill?.version || skill?.latest_version || selectedDetail.value?.version?.version
+  )
 }
 
 function visibleSkillTags(skill?: RemoteSkill | null, limit = 2): string[] {
@@ -1133,7 +1158,7 @@ onMounted(async () => {
 
     <Teleport to="body">
       <div
-        v-if="showDetailModal && selectedSkill"
+        v-if="showDetailModal && detailSkill"
         class="store-detail-modal-backdrop"
         @click.self="closeSkillDetail"
       >
@@ -1141,60 +1166,58 @@ onMounted(async () => {
           class="store-detail-modal-shell"
           role="dialog"
           aria-modal="true"
-          :aria-label="selectedSkill.name"
+          :aria-label="detailSkill.name"
         >
           <div class="store-detail-modal-handle" aria-hidden="true"></div>
           <div
             class="detail-card dashboard-card-surface store-detail-modal-card"
-            :style="skillAccentStyle(selectedSkill)"
+            :style="skillAccentStyle(detailSkill)"
           >
             <header class="detail-header">
               <div class="detail-hero-main">
                 <div class="detail-icon" aria-hidden="true">
-                  <span>{{ skillMonogram(selectedSkill) }}</span>
+                  <span>{{ skillMonogram(detailSkill) }}</span>
                 </div>
                 <div class="detail-main">
                   <div class="detail-topline">
-                    <span class="source-chip">{{ sourceLabel(selectedSkill) }}</span>
-                    <span class="meta-chip meta-chip-soft">{{
-                      categoryLabel(selectedSkill.category)
-                    }}</span>
-                    <span :class="['shield-chip', detailBadgeClass(selectedSkill.security_badge)]">
-                      {{ badgeLabel(selectedSkill) }}
+                    <span class="source-chip">{{ sourceLabel(detailSkill) }}</span>
+                    <span class="meta-chip meta-chip-soft">{{ categoryLabel(detailSkill.category) }}</span>
+                    <span :class="['shield-chip', detailBadgeClass(detailSkill.security_badge)]">
+                      {{ badgeLabel(detailSkill) }}
                     </span>
                   </div>
-                  <h3>{{ selectedSkill.name }}</h3>
-                  <code class="detail-slug">{{ selectedSkill.id }}</code>
+                  <h3>{{ detailSkill.name }}</h3>
+                  <code class="detail-slug">{{ detailSkill.id }}</code>
                   <div class="detail-pill-row">
-                    <span class="detail-version-pill">{{ skillVersionLabel(selectedSkill) }}</span>
-                    <span v-if="selectedSkill.installed" class="meta-chip meta-chip-installed">{{
+                    <span class="detail-version-pill">{{ skillVersionLabel(detailSkill) }}</span>
+                    <span v-if="detailInstalled" class="meta-chip meta-chip-installed">{{
                       skillStoreText('installed', 'Installed')
                     }}</span>
                   </div>
-                  <p class="detail-subtitle">{{ cardDescription(selectedSkill) }}</p>
+                  <p class="detail-subtitle">{{ cardDescription(detailSkill) }}</p>
                   <p class="detail-source-note">
                     <span>{{
                       marketplaceText('detail.catalogSource', 'Catalog source')
-                    }} {{ sourceLabel(selectedSkill) }}</span>
+                    }} {{ sourceLabel(detailSkill) }}</span>
                     <button
                       type="button"
                       class="detail-inline-link"
-                      @click="openSkillSource(selectedSkill)"
+                      @click="openSkillSource(detailSkill)"
                     >
                       {{ marketplaceText('actions.viewSource', 'View source') }}
                     </button>
                   </p>
-                  <div v-if="visibleSkillTags(selectedSkill).length" class="detail-tag-row">
+                  <div v-if="visibleSkillTags(detailSkill).length" class="detail-tag-row">
                     <span
-                      v-for="tag in visibleSkillTags(selectedSkill, 4)"
-                      :key="`${selectedSkill.id}-${tag}`"
+                      v-for="tag in visibleSkillTags(detailSkill, 4)"
+                      :key="`${detailSkill.id}-${tag}`"
                       class="meta-chip meta-chip-soft"
                     >
                       {{ tag }}
                     </span>
                   </div>
-                  <p v-if="selectedSkill.curated_reason" class="detail-callout">
-                    {{ selectedSkill.curated_reason }}
+                  <p v-if="detailSkill.curated_reason" class="detail-callout">
+                    {{ detailSkill.curated_reason }}
                   </p>
                 </div>
               </div>
@@ -1205,7 +1228,7 @@ onMounted(async () => {
                     type="button"
                     class="detail-utility-button"
                     :aria-label="marketplaceText('actions.viewSource', 'View source')"
-                    @click="openSkillSource(selectedSkill)"
+                    @click="openSkillSource(detailSkill)"
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                       <path d="M14 5h5v5" />
@@ -1239,7 +1262,7 @@ onMounted(async () => {
                     <path d="M5 21h14" />
                   </svg>
                 </span>
-                <strong>{{ formatNumber(selectedSkill.downloads) }}</strong>
+                <strong>{{ formatNumber(detailSkill.downloads) }}</strong>
                 <small>{{ skillStoreText('detail.meta.downloads', 'Downloads') }}</small>
               </article>
               <article class="detail-hero-stat">
@@ -1248,7 +1271,7 @@ onMounted(async () => {
                     <path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.9Z" />
                   </svg>
                 </span>
-                <strong>{{ formatNumber(selectedSkill.stars) }}</strong>
+                <strong>{{ formatNumber(detailSkill.stars) }}</strong>
                 <small>{{ skillStoreText('detail.meta.stars', 'Stars') }}</small>
               </article>
             </div>
@@ -1261,29 +1284,29 @@ onMounted(async () => {
                 <h4>{{
                   marketplaceText('detail.installHeading', 'Add this skill to your workspace')
                 }}</h4>
-                <p>{{ installHint(selectedSkill) }}</p>
+                <p>{{ installHint(detailSkill) }}</p>
               </div>
               <div class="detail-actions detail-actions--inline">
                 <button
-                  v-if="selectedSkill.installable"
-                  :class="['install-button', `install-${selectedSkill.security_badge || 'yellow'}`]"
+                  v-if="detailSkill.installable"
+                  :class="['install-button', `install-${detailSkill.security_badge || 'yellow'}`]"
                   :disabled="
-                    installingSkillId === selectedSkill.id || selectedSkill.security_badge === 'red'
+                    installingSkillId === detailSkill.id || detailSkill.security_badge === 'red'
                   "
-                  @click="installSkill(selectedSkill)"
+                  @click="installSkill(detailSkill)"
                 >
-                  <span v-if="selectedSkill.security_badge === 'red'">{{
+                  <span v-if="detailSkill.security_badge === 'red'">{{
                     marketplaceText('actions.blocked', 'Blocked')
                   }}</span>
-                  <span v-else-if="selectedSkill.installed">{{
+                  <span v-else-if="detailInstalled">{{
                     skillStoreText('installed', 'Installed')
                   }}</span>
                   <span v-else>{{ skillStoreText('install', 'Install') }}</span>
                 </button>
-                <button v-else class="source-button" @click="openSkillSource(selectedSkill)">
+                <button v-else class="source-button" @click="openSkillSource(detailSkill)">
                   {{ marketplaceText('actions.viewSource', 'View source') }}
                 </button>
-                <button class="btn-ghost" @click="openSkillSource(selectedSkill)">
+                <button class="btn-ghost" @click="openSkillSource(detailSkill)">
                   {{ skillStoreText('detail.openLink', 'Open Link') }}
                 </button>
               </div>
@@ -1292,23 +1315,19 @@ onMounted(async () => {
             <div class="detail-meta">
               <div class="meta-item">
                 <span>{{ skillStoreText('detail.meta.updated', 'Last Updated') }}</span>
-                <strong>{{
-                  formatDate(
-                    selectedSkill.updated_at || selectedSkill.last_updated || selectedSkill.synced_at
-                  )
-                }}</strong>
+                <strong>{{ formatDate(detailUpdatedAt) }}</strong>
               </div>
               <div class="meta-item">
                 <span>{{ marketplaceText('detail.meta.category', 'Category') }}</span>
-                <strong>{{ categoryLabel(selectedSkill.category) }}</strong>
+                <strong>{{ categoryLabel(detailSkill.category) }}</strong>
               </div>
-              <div v-if="selectedSkill.author" class="meta-item">
+              <div v-if="detailSkill.author" class="meta-item">
                 <span>{{ marketplaceText('detail.meta.author', 'Author') }}</span>
-                <strong>{{ selectedSkill.author }}</strong>
+                <strong>{{ detailSkill.author }}</strong>
               </div>
               <div class="meta-item">
                 <span>{{ skillStoreText('detail.openLink', 'Open Link') }}</span>
-                <strong>{{ sourceLabel(selectedSkill) }}</strong>
+                <strong>{{ sourceLabel(detailSkill) }}</strong>
               </div>
             </div>
 
@@ -1316,10 +1335,10 @@ onMounted(async () => {
               <div class="section-heading">
                 <div>
                   <h4>{{ marketplaceText('security.title', 'Security') }}</h4>
-                  <p>{{ installHint(selectedSkill) }}</p>
+                  <p>{{ installHint(detailSkill) }}</p>
                 </div>
-                <span :class="['shield-chip', detailBadgeClass(selectedSkill.security_badge)]">
-                  {{ riskLabel(selectedSkill) }}
+                <span :class="['shield-chip', detailBadgeClass(detailSkill.security_badge)]">
+                  {{ detailRiskLabel }}
                 </span>
               </div>
               <div v-if="detailLoading" class="detail-loading">
@@ -1437,7 +1456,7 @@ onMounted(async () => {
 
             <section class="detail-section">
               <h4>{{ marketplaceText('detail.title', 'Details') }}</h4>
-              <p>{{ cardDescription(selectedSkill) }}</p>
+              <p>{{ cardDescription(detailSkill) }}</p>
             </section>
           </div>
         </div>

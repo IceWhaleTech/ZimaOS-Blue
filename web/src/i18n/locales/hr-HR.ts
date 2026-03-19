@@ -2409,6 +2409,7 @@ export default {
     ...enUS.agent,
     mode: 'Način petlje zadataka',
     modeDescription: 'Omogućuje kontinuirane petlje planiranja i izvršavanja dok ga ne isključite',
+    autoConfirm: 'Automatska potvrda',
     autoConfirmDescription:
       'Preskoči potvrdu za destruktivne radnje (desni klik na gumb petlje zadataka za prebacivanje)',
     sendMessage: 'Pošalji poruku agentu...',

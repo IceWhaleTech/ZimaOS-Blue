@@ -191,6 +191,10 @@ func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) 
 	if action == "" {
 		return nil, errors.New("action is required")
 	}
+	action, actType := CanonicalizeBrowserAction(action, firstCompatString(args, "act_type", "actType"))
+	if actType != "" {
+		args["act_type"] = actType
+	}
 	targetID := firstCompatString(args, "target_id", "targetId")
 	vision, _ := compatBoolArg(args, "vision")
 
@@ -379,13 +383,16 @@ func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b Browser
 }
 
 func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[string]interface{}, targetID string) (interface{}, error) {
-	ref := 0
-	if raw, ok := compatArgValue(args, "ref"); ok {
-		if parsed, ok := coerceCompatInt(raw); ok {
-			ref = parsed
-		}
+	rawRef, ok := compatArgValue(args, "ref")
+	if !ok {
+		return nil, errors.New("ref is required for act (use @N from the accessibility tree)")
+	}
+	ref, ok := coerceCompatInt(rawRef)
+	if !ok {
+		return nil, errors.New("ref must be an integer for act")
 	}
 	actType := firstCompatString(args, "act_type", "actType")
+	_, actType = CanonicalizeBrowserAction("act", actType)
 	if actType == "" {
 		return nil, errors.New("act_type is required for act")
 	}

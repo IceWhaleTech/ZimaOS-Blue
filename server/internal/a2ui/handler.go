@@ -42,7 +42,7 @@ type createCanvasRequest struct {
 	ID          string                 `json:"id"`
 	Title       string                 `json:"title"`
 	Description string                 `json:"description"`
-	Components  []Component            `json:"components"`
+	Components  componentList          `json:"components"`
 	Layout      string                 `json:"layout"`
 	Metadata    map[string]interface{} `json:"metadata"`
 	TTLSeconds  int                    `json:"ttl_seconds"`
@@ -63,7 +63,7 @@ func (h *Handler) CreateCanvas(c echo.Context) error {
 		ID:          req.ID,
 		Title:       req.Title,
 		Description: req.Description,
-		Components:  req.Components,
+		Components:  []Component(req.Components),
 		Layout:      req.Layout,
 		Metadata:    req.Metadata,
 		CreatedAt:   time.Now(),
@@ -100,7 +100,7 @@ func (h *Handler) GetCanvas(c echo.Context) error {
 type updateCanvasRequest struct {
 	Title       string                 `json:"title"`
 	Description string                 `json:"description"`
-	Components  []Component            `json:"components"`
+	Components  componentList          `json:"components"`
 	Layout      string                 `json:"layout"`
 	Metadata    map[string]interface{} `json:"metadata"`
 }
@@ -131,7 +131,7 @@ func (h *Handler) UpdateCanvas(c echo.Context) error {
 		existing.Description = req.Description
 	}
 	if req.Components != nil {
-		existing.Components = req.Components
+		existing.Components = []Component(req.Components)
 	}
 	if req.Layout != "" {
 		existing.Layout = req.Layout

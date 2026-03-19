@@ -2323,6 +2323,7 @@ export default {
     ...enUS.agent,
     mode: 'Mod buclă de sarcini',
     modeDescription: 'Activează bucle continue de planificare și execuție până când îl dezactivezi',
+    autoConfirm: 'Confirmare automată',
     autoConfirmDescription:
       'Omite confirmarea pentru acțiuni distructive (clic dreapta pe butonul buclei de sarcini pentru comutare)',
     sendMessage: 'Trimite un mesaj agentului...',
