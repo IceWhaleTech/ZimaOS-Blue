@@ -758,9 +758,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'സുരക്ഷാ നിയന്ത്രണങ്ങൾ',
+      harness: harness.nav.harness,
       approvals: 'അംഗീകൃത ഡയറക്ടറികൾ',
       firewall: 'ഫയർവാൾ',
       masking: 'ഡാറ്റ മാസ്കിംഗ്',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'വിശ്വസനീയമായ ഡയറക്ടറികൾ, നെറ്റ്‌വർക്ക് എക്സ്പോഷർ, പ്രോംപ്റ്റ് ഗാർഡ്റെയിലുകൾ, മാസ്കിംഗ് നയങ്ങൾ എന്നിവ നിയന്ത്രിക്കുക.',
+      harness: 'ഇവാൽ ഗ്രൂപ്പുകൾ, പരീക്ഷണ ബാച്ചുകൾ, സ്കോർ ഫലങ്ങൾ എന്നിവ പിന്തുടരുക.',
     },
     firewall: {
       ...enUS.security.firewall,

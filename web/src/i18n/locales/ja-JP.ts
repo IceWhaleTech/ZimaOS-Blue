@@ -2653,6 +2653,7 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'セキュリティ制御',
+      harness: harness.nav.harness,
       approvals: '承認済みディレクトリ',
       overview: '概要',
       monitoring: '監視',
@@ -2660,6 +2661,11 @@ export default {
       logs: 'ログ',
       firewall: 'ファイアウォール',
       masking: 'データマスキング',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: '信頼済みディレクトリ、ネットワーク露出、プロンプトのガードレール、マスキング方針を管理します。',
+      harness: '評価グループ、実験バッチ、スコア結果を追跡します。',
     },
     statusSecure: 'システム安全',
     statusWarning: '警告を検出',

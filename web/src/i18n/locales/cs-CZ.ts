@@ -740,9 +740,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Bezpečnostní kontroly',
+      harness: harness.nav.harness,
       approvals: 'Schválené adresáře',
       firewall: 'Firewall',
       masking: 'Maskování dat',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Spravujte důvěryhodné adresáře, vystavení sítě, ochrany promptů a zásady maskování.',
+      harness: 'Sledujte skupiny hodnocení, experimentální dávky a výsledky skórování.',
     },
     firewall: {
       ...enUS.security.firewall,

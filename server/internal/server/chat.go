@@ -12716,6 +12716,92 @@ func buildPostResearchFailureRecoveryNudge(userMessage string, toolCalls []llm.T
 	return fmt.Sprintf("Live search/research tools just failed or timed out. Do not stop with a fallback summary. Using your general knowledge plus any successful evidence already gathered, now write the requested report to %q. Include an executive summary, key findings, a comparison table when relevant, and a short note that live retrieval failed so some details may be approximate. After writing the file, give a brief final confirmation.", target)
 }
 
+func buildPostEmptyResearchResultNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	if !shouldPreferDeepSearchReport(userMessage) {
+		return ""
+	}
+	if len(collectSuccessfulWriteTargets(toolCalls, toolResults)) > 0 {
+		return ""
+	}
+	if !hasEmptyResearchToolResult(toolCalls, toolResults) {
+		return ""
+	}
+	target := extractRequestedArtifactPath(userMessage)
+	if target == "" {
+		return ""
+	}
+	return fmt.Sprintf("Deep research returned no usable evidence. For public research like this, do not switch to interactive browser navigation unless login or page interaction is truly required. Prefer web_search, web_fetch, or web_read on public sources. If live retrieval still does not produce enough evidence, write the requested report to %q using your general knowledge plus any successful evidence already gathered. Include an executive summary, key findings, a comparison table when relevant, and a short note about limited live evidence.", target)
+}
+
+func buildPostResearchFailureRecoveryRetryNudge(userMessage string) string {
+	if !shouldPreferDeepSearchReport(userMessage) {
+		return ""
+	}
+	target := extractRequestedArtifactPath(userMessage)
+	if target == "" {
+		return ""
+	}
+	return fmt.Sprintf("The previous write-focused follow-up ended before the report was saved. Do not stop with a summary. Now write the requested report to %q using your general knowledge plus any successful evidence already gathered. Include an executive summary, key findings, a comparison table when relevant, and a short note that live retrieval failed so some details may be approximate. After writing the file, give a brief final confirmation.", target)
+}
+
+const maxResearchFailureWriteRecoveryRetries = 2
+
+func shouldRetryPendingResearchWrite(userMessage, currentContent string, pending bool, retries int) bool {
+	if !pending || retries >= maxResearchFailureWriteRecoveryRetries {
+		return false
+	}
+	if strings.TrimSpace(buildPostResearchFailureRecoveryRetryNudge(userMessage)) == "" {
+		return false
+	}
+	return !isAwaitingUserInput(currentContent)
+}
+
+func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string) []llm.Tool {
+	if len(tools) == 0 || extractRequestedArtifactPath(userMessage) == "" {
+		return tools
+	}
+	priority := []string{
+		"web_search",
+		"web_fetch",
+		"web_read",
+		"web_extract",
+		"web_crawl",
+		"write",
+		"write_begin",
+		"write_chunk",
+		"write_commit",
+		"read",
+		"ls",
+		"find",
+		"grep",
+		"convert",
+	}
+	indexByName := make(map[string]llm.Tool, len(tools))
+	for _, tool := range tools {
+		name := strings.ToLower(strings.TrimSpace(tool.Name))
+		if name == "" {
+			continue
+		}
+		if _, ok := indexByName[name]; ok {
+			continue
+		}
+		indexByName[name] = tool
+	}
+
+	reduced := make([]llm.Tool, 0, len(priority))
+	for _, name := range priority {
+		tool, ok := indexByName[name]
+		if !ok {
+			continue
+		}
+		reduced = append(reduced, tool)
+	}
+	if len(reduced) == 0 {
+		return tools
+	}
+	return reduced
+}
+
 func buildResearchFailureRecoveryTools(tools []llm.Tool, userMessage string) []llm.Tool {
 	if len(tools) == 0 || extractRequestedArtifactPath(userMessage) == "" {
 		return tools
@@ -12820,6 +12906,50 @@ func hasFailedResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Mes
 		}
 		if classifyToolFallbackOutcome(payload) == "failed" {
 			return true
+		}
+	}
+	return false
+}
+
+func hasEmptyResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
+	if len(toolResults) == 0 {
+		return false
+	}
+
+	callByID := make(map[string]llm.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			callByID[id] = tc
+		}
+	}
+
+	for i, tr := range toolResults {
+		toolName := ""
+		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
+			toolName = toolCalls[i].Name
+		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			toolName = matched.Name
+		}
+		if !strings.EqualFold(strings.TrimSpace(toolName), "research_run") {
+			continue
+		}
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(strings.TrimSpace(tr.Content)), &payload) != nil || len(payload) == 0 {
+			continue
+		}
+		if classifyToolFallbackOutcome(payload) == "failed" {
+			continue
+		}
+		if evidenceCount, ok := payload["evidence_count"].(float64); ok && evidenceCount <= 0 {
+			return true
+		}
+		if answer, _ := payload["answer"].(string); strings.Contains(strings.ToLower(answer), "no sufficient evidence") {
+			return true
+		}
+		if report, ok := payload["report"].(map[string]interface{}); ok {
+			if answer, _ := report["answer"].(string); strings.Contains(strings.ToLower(answer), "no sufficient evidence") {
+				return true
+			}
 		}
 	}
 	return false
@@ -14539,6 +14669,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		todoContent = ""
 		planCompletedByTool := false
 		awaitingPostToolSummary := false
+		researchFailureWriteRecoveryPending := false
+		researchFailureWriteRecoveryRetries := 0
 		prevToollessAutoContinueSig := ""
 		consecutiveToollessAutoContinueDups := 0
 		toolLoopRecoveryUsed := false
@@ -14580,6 +14712,26 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				}
 			}
 			if err != nil || resp == nil {
+				if round > 0 && err != nil && researchFailureWriteRecoveryPending && researchFailureWriteRecoveryRetries < maxResearchFailureWriteRecoveryRetries && llmCtx.Err() == nil {
+					researchFailureWriteRecoveryRetries++
+					if strings.TrimSpace(chatReq.PreviousResponseID) != "" {
+						chatReq.PreviousResponseID = ""
+						llmCtx = proxy.WithDisableResponsesContinuation(llmCtx)
+					}
+					if retryNudge := buildPostResearchFailureRecoveryRetryNudge(routingMessage); retryNudge != "" {
+						chatReq.Messages = append(chatReq.Messages,
+							llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
+							llm.Message{Role: llm.RoleUser, Content: retryNudge},
+						)
+						chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
+						logger.Warn().Err(err).Int("round", round).
+							Int("recovery_retry", researchFailureWriteRecoveryRetries).
+							Msg("[chat] research recovery follow-up failed; nudging fresh write continuation before fallback")
+						err = nil
+						resp = nil
+						continue
+					}
+				}
 				if round > 0 && err != nil && awaitingPostToolSummary && autoContinueCount < maxAutoContinueRetries && llmCtx.Err() == nil {
 					reason := classifyEmptyPostToolAutoContinueReason(todoContent, agentModeAutoContinue, planCompletedByTool)
 					nudgeSkipReason := preContentRetrySkipReason(err)
@@ -14743,6 +14895,30 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 					planCompletedByTool = !hasPendingTodo(todoContent)
 				}
 
+				if shouldRetryPendingResearchWrite(routingMessage, resp.Message.Content, researchFailureWriteRecoveryPending, researchFailureWriteRecoveryRetries) {
+					researchFailureWriteRecoveryRetries++
+					if strings.TrimSpace(chatReq.PreviousResponseID) != "" {
+						chatReq.PreviousResponseID = ""
+						llmCtx = proxy.WithDisableResponsesContinuation(llmCtx)
+					}
+					if retryNudge := buildPostResearchFailureRecoveryRetryNudge(routingMessage); retryNudge != "" {
+						chatReq.Messages = append(chatReq.Messages,
+							llm.Message{Role: llm.RoleAssistant, Content: buildToollessAutoContinueAssistantContent(resp.Message.Content, "action_pledge")},
+							llm.Message{Role: llm.RoleUser, Content: retryNudge},
+						)
+						chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
+						prevToollessAutoContinueSig = ""
+						consecutiveToollessAutoContinueDups = 0
+						logger.Warn().
+							Int("round", round).
+							Int("recovery_retry", researchFailureWriteRecoveryRetries).
+							Msg("[chat] pending research report still not saved after toolless reply; forcing write continuation")
+						resp = nil
+						err = nil
+						continue
+					}
+				}
+
 				if autoContinueCount < maxAutoContinueRetries {
 					preferReminderTool := round == 0 && shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
 					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(resp.Message.Content, todoContent, agentModeAutoContinue, round > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
@@ -14876,6 +15052,10 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			// Execute tool calls and feed results back
 			logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
 			toolResults := h.executeToolCalls(toolCtx, resp.Message.ToolCalls)
+			if len(collectSuccessfulWriteTargets(resp.Message.ToolCalls, toolResults)) > 0 {
+				researchFailureWriteRecoveryPending = false
+				researchFailureWriteRecoveryRetries = 0
+			}
 			deepSearchState.observeToolRound(resp.Message.ToolCalls, toolResults)
 			planChecklist, planChecklistUpdated := extractPlanChecklistFromToolRound(resp.Message.ToolCalls, toolResults)
 			if planDone, ok := extractPlanCompletionFromToolRound(resp.Message.ToolCalls, toolResults); ok {
@@ -14903,12 +15083,21 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 					Content: nudge,
 				})
 			}
+			if nudge := buildPostEmptyResearchResultNudge(routingMessage, resp.Message.ToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+				chatReq.Tools = buildEmptyResearchResultRecoveryTools(chatReq.Tools, routingMessage)
+			}
 			if nudge := buildPostResearchFailureRecoveryNudge(routingMessage, resp.Message.ToolCalls, toolResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
 					Role:    llm.RoleUser,
 					Content: nudge,
 				})
 				chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
+				researchFailureWriteRecoveryPending = true
+				researchFailureWriteRecoveryRetries = 0
 			}
 			toolSummaries := make([]string, 0, len(toolResults))
 			for _, item := range toolResults {
@@ -16435,7 +16624,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var missingTodoAutoContinueCount int    // track checklist-bootstrap retries when TODO list is missing
 	var pendingTodoAutoContinueCount int    // track retries when model repeats pending TODO without execution
 	var awaitingPostToolSummary bool        // true after a real tool round until a user-facing summary arrives
-	var prevToollessAutoContinueSig string  // signature of previous toolless auto-continue round
+	var researchFailureWriteRecoveryPending bool
+	var researchFailureWriteRecoveryRetries int
+	var prevToollessAutoContinueSig string // signature of previous toolless auto-continue round
 	var consecutiveToollessAutoContinueDups int
 	var deepSearchForcePending bool
 	var deepSearchForceReason string
@@ -17604,6 +17795,10 @@ STREAM_LOOP:
 			for _, item := range toolResults {
 				toolSummaries = append(toolSummaries, tools.NormalizeToolProgressSummary(item.Content))
 			}
+			if len(collectSuccessfulWriteTargets(streamToolCalls, toolResults)) > 0 {
+				researchFailureWriteRecoveryPending = false
+				researchFailureWriteRecoveryRetries = 0
+			}
 			if detection := streamLoopDetector.Observe(toolLoopSignature(streamToolCalls), assistantContextContent, toolSummaries); detection.Abort {
 				h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
 					"mode":        "stream",
@@ -17658,12 +17853,21 @@ STREAM_LOOP:
 					Content: nudge,
 				})
 			}
+			if nudge := buildPostEmptyResearchResultNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+				chatReq.Tools = buildEmptyResearchResultRecoveryTools(chatReq.Tools, routingMessage)
+			}
 			if nudge := buildPostResearchFailureRecoveryNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
 					Role:    llm.RoleUser,
 					Content: nudge,
 				})
 				chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
+				researchFailureWriteRecoveryPending = true
+				researchFailureWriteRecoveryRetries = 0
 			}
 
 			// Persist this round's content as a separate message and notify frontend.
@@ -17945,6 +18149,27 @@ STREAM_LOOP:
 			// tool results from previous rounds, synthesize a text summary from
 			// those results so the user sees something useful instead of an error.
 			if err != nil && toolRound > 0 {
+				if researchFailureWriteRecoveryPending && researchFailureWriteRecoveryRetries < maxResearchFailureWriteRecoveryRetries && ctx.Err() == nil {
+					researchFailureWriteRecoveryRetries++
+					if strings.TrimSpace(chatReq.PreviousResponseID) != "" {
+						chatReq.PreviousResponseID = ""
+						ctx = proxy.WithDisableResponsesContinuation(ctx)
+					}
+					if retryNudge := buildPostResearchFailureRecoveryRetryNudge(routingMessage); retryNudge != "" {
+						chatReq.Messages = append(chatReq.Messages,
+							llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
+							llm.Message{Role: llm.RoleUser, Content: retryNudge},
+						)
+						chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
+						logger.Warn().Err(err).Int("tool_round", toolRound).
+							Int("recovery_retry", researchFailureWriteRecoveryRetries).
+							Msg("[chat] stream: research recovery follow-up failed; nudging fresh write continuation before fallback")
+						err = nil
+						streamCompleted = false
+						awaitingInputSent = false
+						continue
+					}
+				}
 				fallbackContent, toolResultCount := buildToolFallbackTextWithOptions(chatReq.Messages, 4096, toolFallbackTextOptions{toolCardsVisible: typelessCardsPersisted})
 				if toolResultCount > 0 {
 					logger.Warn().Err(err).Int("tool_round", toolRound).Int("tool_results", toolResultCount).
@@ -18060,6 +18285,32 @@ STREAM_LOOP:
 		}
 		if streamCompleted && fullContent != "" && len(streamToolCalls) == 0 {
 			maybeCompleteImplicitSummaryTodo(fullContent)
+		}
+
+		if streamCompleted && fullContent != "" && len(streamToolCalls) == 0 && shouldRetryPendingResearchWrite(routingMessage, fullContent, researchFailureWriteRecoveryPending, researchFailureWriteRecoveryRetries) {
+			researchFailureWriteRecoveryRetries++
+			if strings.TrimSpace(chatReq.PreviousResponseID) != "" {
+				chatReq.PreviousResponseID = ""
+				ctx = proxy.WithDisableResponsesContinuation(ctx)
+			}
+			if retryNudge := buildPostResearchFailureRecoveryRetryNudge(routingMessage); retryNudge != "" {
+				chatReq.Messages = append(chatReq.Messages,
+					llm.Message{Role: llm.RoleAssistant, Content: buildToollessAutoContinueAssistantContent(fullContent, "action_pledge")},
+					llm.Message{Role: llm.RoleUser, Content: retryNudge},
+				)
+				chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
+				accumulateCompletedRoundUsage()
+				fullContent = ""
+				streamCompleted = false
+				awaitingInputSent = false
+				prevToollessAutoContinueSig = ""
+				consecutiveToollessAutoContinueDups = 0
+				logger.Warn().
+					Int("tool_round", toolRound).
+					Int("recovery_retry", researchFailureWriteRecoveryRetries).
+					Msg("[chat] stream: pending research report still not saved after toolless reply; forcing write continuation")
+				continue
+			}
 		}
 
 		// Auto-continue: when LLM stopped without tool calls but the content

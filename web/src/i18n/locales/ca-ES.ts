@@ -751,9 +751,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Controls de seguretat',
+      harness: harness.nav.harness,
       approvals: 'Directoris aprovats',
       firewall: 'Tallafoc',
       masking: 'Emmascarament de dades',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Gestiona directoris de confiança, exposició de xarxa, salvaguardes de prompts i polítiques d’emmascarament.',
+      harness: 'Segueix grups d’avaluació, lots d’experiments i resultats de puntuació.',
     },
     firewall: {
       ...enUS.security.firewall,

@@ -875,14 +875,6 @@ const configurationNavItemsConfig: NavItem[] = [
     adminOnly: true,
   },
   {
-    id: 'harness',
-    name: 'nav.harness',
-    path: '/harness',
-    icon: 'M5.25 6.75h13.5M5.25 12h13.5M5.25 17.25h8.25M3.75 4.5h16.5A1.5 1.5 0 0121.75 6v12A1.5 1.5 0 0120.25 19.5H3.75A1.5 1.5 0 012.25 18V6a1.5 1.5 0 011.5-1.5zm12 10.5l1.5 1.5 3-3',
-    permission: PagePermissions.TOOLS,
-    adminOnly: true,
-  },
-  {
     id: 'settings',
     name: 'nav.settings',
     path: '/settings',

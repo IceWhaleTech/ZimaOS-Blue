@@ -741,9 +741,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Sikkerhedskontroller',
+      harness: harness.nav.harness,
       approvals: 'Godkendte mapper',
       firewall: 'Brandmur',
       masking: 'Datamaskering',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Administrer betroede mapper, netværkseksponering, prompt-værn og maskeringspolitikker.',
+      harness: 'Følg evalueringsgrupper, eksperimentbatcher og score-resultater.',
     },
     firewall: {
       ...enUS.security.firewall,

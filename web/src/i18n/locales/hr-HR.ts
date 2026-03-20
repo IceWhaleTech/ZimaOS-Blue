@@ -745,9 +745,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Sigurnosne kontrole',
+      harness: harness.nav.harness,
       approvals: 'Odobreni direktoriji',
       firewall: 'Vatrozid',
       masking: 'Maskiranje podataka',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Upravljajte pouzdanim direktorijima, izloženošću mreže, zaštitama promptova i pravilima maskiranja.',
+      harness: 'Pratite evaluacijske grupe, serije eksperimenata i rezultate bodovanja.',
     },
     firewall: {
       ...enUS.security.firewall,

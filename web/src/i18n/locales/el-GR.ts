@@ -752,9 +752,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Έλεγχοι ασφαλείας',
+      harness: harness.nav.harness,
       approvals: 'Εγκεκριμένοι κατάλογοι',
       firewall: 'Τείχος προστασίας',
       masking: 'Απόκρυψη δεδομένων',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Διαχειριστείτε έμπιστους καταλόγους, έκθεση δικτύου, προστασίες prompt και πολιτικές απόκρυψης.',
+      harness: 'Παρακολουθήστε ομάδες αξιολόγησης, παρτίδες πειραμάτων και αποτελέσματα βαθμολόγησης.',
     },
     firewall: {
       ...enUS.security.firewall,

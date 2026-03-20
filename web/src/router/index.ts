@@ -446,15 +446,23 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, permission: PagePermissions.SECURITY },
   },
   {
+    path: '/security/harness/:id',
+    name: 'HarnessGroupDetail',
+    component: () => import('@/views/HarnessGroupDetailView.vue'),
+    meta: { requiresAuth: true, permission: PagePermissions.TOOLS },
+  },
+  {
     path: '/harness',
     name: 'HarnessGroups',
-    component: () => import('@/views/HarnessGroupsView.vue'),
+    redirect: { name: 'Security', query: { tab: 'harness' } },
     meta: { requiresAuth: true, permission: PagePermissions.TOOLS },
   },
   {
     path: '/harness/:id',
-    name: 'HarnessGroupDetail',
-    component: () => import('@/views/HarnessGroupDetailView.vue'),
+    redirect: (to) => ({
+      name: 'HarnessGroupDetail',
+      params: { id: to.params.id },
+    }),
     meta: { requiresAuth: true, permission: PagePermissions.TOOLS },
   },
   {

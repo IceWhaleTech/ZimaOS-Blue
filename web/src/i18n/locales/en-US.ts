@@ -2491,6 +2491,7 @@ export default {
     tabs: {
       overview: 'Overview',
       controls: 'Security Controls',
+      harness: 'Harness',
       approvals: 'Approved Directories',
       firewall: 'Firewall',
       network: 'Network',
@@ -2501,7 +2502,8 @@ export default {
     },
     tabDescriptions: {
       overview: 'Scan posture, active issues, and real-time security status.',
-      controls: 'Manage trusted directories, prompt guardrails, and data masking policies.',
+      controls: 'Manage trusted directories, network exposure, prompt guardrails, and masking policies.',
+      harness: 'Track eval groups, experiment batches, and score outcomes.',
       approvals: 'Review folders trusted for exec and convert operations.',
       firewall: 'Maintain keyword guardrails before prompts are processed.',
       network: 'Inspect exposure, connectivity, and listener configuration.',
@@ -3063,9 +3065,10 @@ export default {
     groupAccessPolicyAllowlist: 'Allowlist',
     groupAccessPolicyDisabled: 'Disabled',
     groupAccessMentionPolicy: 'Reply Condition',
-    groupAccessMentionPolicyMentioned: 'Only reply when Blue is @mentioned',
+    groupAccessMentionPolicyMentioned: "Only reply when Blue is {'@'}mentioned",
     groupAccessMentionPolicyAlways: 'Reply to all allowed group messages',
-    groupAccessMentionHint: 'Default behavior is to reply in groups only when Blue is explicitly @mentioned.',
+    groupAccessMentionHint:
+      "Default behavior is to reply in groups only when Blue is explicitly {'@'}mentioned.",
     groupAccessAllowedChats: 'Allowed Group Chats',
     groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
     groupAccessAllowedChatsHint: 'One entry per line in channel:chat_id format. Use * as a wildcard if needed.',

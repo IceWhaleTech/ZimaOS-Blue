@@ -2038,9 +2038,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: '보안 제어',
+      harness: harness.nav.harness,
       approvals: '승인된 디렉터리',
       firewall: '방화벽',
       masking: '데이터 마스킹',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: '신뢰된 디렉터리, 네트워크 노출, 프롬프트 가드레일, 마스킹 정책을 관리합니다.',
+      harness: '평가 그룹, 실험 배치, 점수 결과를 추적합니다.',
     },
     firewall: {
       ...enUS.security.firewall,

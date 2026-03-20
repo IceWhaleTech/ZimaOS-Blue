@@ -306,7 +306,7 @@ onUnmounted(() => {
   <div class="harness-detail-page">
     <header class="detail-hero">
       <div class="hero-main">
-        <RouterLink class="back-link" :to="{ name: 'HarnessGroups' }">
+        <RouterLink class="back-link" :to="{ name: 'Security', query: { tab: 'harness' } }">
           {{ tr('common.back', 'Back') }}
         </RouterLink>
         <div class="hero-heading">

@@ -1537,9 +1537,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Средства защиты',
+      harness: harness.nav.harness,
       approvals: 'Одобренные каталоги',
       firewall: 'Брандмауэр',
       masking: 'Маскирование данных',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Управляйте доверенными каталогами, сетевой экспозицией, защитными ограничителями промптов и политиками маскирования.',
+      harness: 'Отслеживайте группы оценки, пакеты экспериментов и результаты оценивания.',
     },
     firewall: {
       ...enUS.security.firewall,

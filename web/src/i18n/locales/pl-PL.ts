@@ -747,9 +747,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Kontrole bezpieczeństwa',
+      harness: harness.nav.harness,
       approvals: 'Zatwierdzone katalogi',
       firewall: 'Zapora',
       masking: 'Maskowanie danych',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Zarządzaj zaufanymi katalogami, ekspozycją sieci, zabezpieczeniami promptów i zasadami maskowania.',
+      harness: 'Śledź grupy ewaluacyjne, partie eksperymentów i wyniki punktacji.',
     },
     firewall: {
       ...enUS.security.firewall,

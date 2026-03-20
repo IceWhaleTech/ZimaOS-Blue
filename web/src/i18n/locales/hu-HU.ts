@@ -764,9 +764,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Biztonsági vezérlők',
+      harness: harness.nav.harness,
       approvals: 'Jóváhagyott könyvtárak',
       firewall: 'Tűzfal',
       masking: 'Adatmaszkolás',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Kezelje a megbízható könyvtárakat, a hálózati kitettséget, a prompt-védelmi korlátokat és a maszkolási szabályokat.',
+      harness: 'Kövesse az értékelési csoportokat, a kísérleti kötegeket és a pontozási eredményeket.',
     },
     firewall: {
       ...enUS.security.firewall,

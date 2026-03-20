@@ -747,9 +747,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Bezpečnostné kontroly',
+      harness: harness.nav.harness,
       approvals: 'Schválené adresáre',
       firewall: 'Firewall',
       masking: 'Maskovanie údajov',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Spravujte dôveryhodné adresáre, vystavenie siete, ochranné pravidlá promptov a zásady maskovania.',
+      harness: 'Sledujte evaluačné skupiny, experimentálne dávky a výsledky skórovania.',
     },
     firewall: {
       ...enUS.security.firewall,

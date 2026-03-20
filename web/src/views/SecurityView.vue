@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { securityApi, type PromptFirewallConfig, type PromptFirewallRule } from '@/api/security'
 import { systemApi } from '@/api/index'
 import {
@@ -21,6 +22,9 @@ import FixPreviewDialog from '@/components/security/FixPreviewDialog.vue'
 import DataMaskingSettings from '@/components/security/DataMaskingSettings.vue'
 import MonitoringRetentionSettings from '@/components/security/MonitoringRetentionSettings.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
+import { useAuthStore } from '@/stores/auth'
+import { PagePermissions } from '@/constants/pagePermissions'
+import HarnessGroupsView from '@/views/HarnessGroupsView.vue'
 import type { LogEntry } from '@/api/system'
 import {
   formatSecurityScanSummary,
@@ -28,10 +32,12 @@ import {
 } from '@/utils/securityScanSummary'
 
 const { t, te } = useI18n()
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
 
 // Tab definitions
-type TabId = 'overview' | 'controls' | 'network' | 'monitoring' | 'logs'
-const activeTab = ref<TabId>('overview')
+type TabId = 'overview' | 'controls' | 'harness' | 'monitoring' | 'logs'
 
 interface SecurityTabMeta {
   id: TabId
@@ -40,7 +46,9 @@ interface SecurityTabMeta {
   fallbackLabel: string
 }
 
-const tabs: SecurityTabMeta[] = [
+const hasHarnessAccess = computed(() => authStore.hasPermission(PagePermissions.TOOLS))
+
+const baseTabs: SecurityTabMeta[] = [
   {
     id: 'overview',
     labelKey: 'security.tabs.overview',
@@ -54,10 +62,10 @@ const tabs: SecurityTabMeta[] = [
     fallbackLabel: 'Security Controls',
   },
   {
-    id: 'network',
-    labelKey: 'security.tabs.network',
-    icon: 'network',
-    fallbackLabel: 'Network',
+    id: 'harness',
+    labelKey: 'security.tabs.harness',
+    icon: 'harness',
+    fallbackLabel: 'Harness',
   },
   {
     id: 'monitoring',
@@ -73,10 +81,48 @@ const tabs: SecurityTabMeta[] = [
   },
 ]
 
+const tabs = computed(() =>
+  baseTabs.filter((tab) => tab.id !== 'harness' || hasHarnessAccess.value)
+)
+
+function getRequestedTab(): string {
+  const raw = route.query.tab
+  return Array.isArray(raw) ? String(raw[0] || '') : String(raw || '')
+}
+
+function normalizeTabId(rawTab: string): TabId {
+  if (rawTab === 'network') return 'controls'
+  if (rawTab === 'harness' && !hasHarnessAccess.value) return 'overview'
+  switch (rawTab) {
+    case 'overview':
+    case 'controls':
+    case 'harness':
+    case 'monitoring':
+    case 'logs':
+      return rawTab
+    default:
+      return 'overview'
+  }
+}
+
+const activeTab = ref<TabId>(normalizeTabId(getRequestedTab()))
+
+function replaceTabQuery(tabId: TabId) {
+  const requestedTab = getRequestedTab()
+  if (requestedTab === tabId) return
+  void router.replace({
+    query: {
+      ...route.query,
+      tab: tabId,
+    },
+  })
+}
+
 function selectTab(tabId: TabId) {
   activeTab.value = tabId
+  replaceTabQuery(tabId)
   if (tabId === 'logs' && logs.value.length === 0) {
-    fetchLogs()
+    void fetchLogs()
   }
 }
 
@@ -924,6 +970,11 @@ let companionRefreshInterval: ReturnType<typeof setInterval> | null = null
 let connectionRefreshInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
+  const requestedTab = getRequestedTab()
+  if (requestedTab === 'network' || (requestedTab === 'harness' && !hasHarnessAccess.value)) {
+    replaceTabQuery(activeTab.value)
+  }
+
   loadPromptFirewall()
   loadApprovedDirectories()
   loadApprovedBrowserSites()
@@ -946,6 +997,10 @@ onMounted(async () => {
   // Fetch connection data
   fetchConnections()
   connectionRefreshInterval = setInterval(fetchConnections, 5000)
+
+  if (activeTab.value === 'logs' && logs.value.length === 0) {
+    void fetchLogs()
+  }
 })
 
 onUnmounted(() => {
@@ -1034,7 +1089,7 @@ onUnmounted(() => {
                   />
                 </svg>
                 <svg
-                  v-else-if="tab.icon === 'network'"
+                  v-else-if="tab.icon === 'harness'"
                   xmlns="http://www.w3.org/2000/svg"
                   class="h-4 w-4"
                   fill="none"
@@ -1045,7 +1100,7 @@ onUnmounted(() => {
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                    d="M5.25 6.75h13.5M5.25 12h13.5M5.25 17.25h8.25M3.75 4.5h16.5A1.5 1.5 0 0121.75 6v12A1.5 1.5 0 0120.25 19.5H3.75A1.5 1.5 0 012.25 18V6a1.5 1.5 0 011.5-1.5zm12 10.5l1.5 1.5 3-3"
                   />
                 </svg>
                 <svg
@@ -1870,13 +1925,14 @@ onUnmounted(() => {
             </section>
 
             <DataMaskingSettings />
+            <NetworkSettings :show-port-section="false" :show-security-sections="true" />
           </div>
 
           <div
-            v-show="activeTab === 'network'"
+            v-if="hasHarnessAccess && activeTab === 'harness'"
             class="security-section-stack security-embedded-stack"
           >
-            <NetworkSettings :show-port-section="false" :show-security-sections="true" />
+            <HarnessGroupsView />
           </div>
 
           <div

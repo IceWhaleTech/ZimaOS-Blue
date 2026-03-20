@@ -1804,9 +1804,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Contrôles de sécurité',
+      harness: harness.nav.harness,
       approvals: 'Répertoires approuvés',
       firewall: 'Pare-feu',
       masking: 'Masquage des données',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Gérez les répertoires de confiance, l’exposition réseau, les garde-fous de prompts et les politiques de masquage.',
+      harness: 'Suivez les groupes d’évaluation, les lots d’expériences et les résultats de score.',
     },
     firewall: {
       ...enUS.security.firewall,

@@ -752,9 +752,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Rialuithe slándála',
+      harness: harness.nav.harness,
       approvals: 'Eolairí ceadaithe',
       firewall: 'Balla Dóiteáin',
       masking: 'Mascáil Sonraí',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Bainistigh eolairí iontaofa, nochtadh líonra, ráillí cosanta do phrompts agus polasaithe mascála.',
+      harness: 'Rianaigh grúpaí meastóireachta, baisceanna turgnamh agus torthaí scórála.',
     },
     firewall: {
       ...enUS.security.firewall,

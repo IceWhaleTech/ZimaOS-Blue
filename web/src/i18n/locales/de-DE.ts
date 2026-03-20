@@ -1798,9 +1798,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Sicherheitskontrollen',
+      harness: harness.nav.harness,
       approvals: 'Genehmigte Verzeichnisse',
       firewall: 'Firewall',
       masking: 'Datenmaskierung',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Verwalten Sie vertrauenswürdige Verzeichnisse, Netzwerkexposition, Prompt-Schutzmechanismen und Maskierungsrichtlinien.',
+      harness: 'Verfolgen Sie Evaluierungsgruppen, Experiment-Batches und Bewertungsergebnisse.',
     },
     firewall: {
       ...enUS.security.firewall,

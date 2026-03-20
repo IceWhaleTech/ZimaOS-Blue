@@ -82,6 +82,10 @@ const testResult = ref<{ channelId: string; success: boolean; message: string } 
 const groupAccessPolicy = ref<GroupAccessPolicy>('open')
 const groupAccessMentionPolicy = ref<GroupMentionPolicy>('mentioned')
 const groupAccessAllowedChatIDsText = ref('')
+const showGroupAccessModal = ref(false)
+const groupAccessDraftPolicy = ref<GroupAccessPolicy>('open')
+const groupAccessDraftMentionPolicy = ref<GroupMentionPolicy>('mentioned')
+const groupAccessDraftAllowedChatIDsText = ref('')
 const savingGroupAccess = ref(false)
 const groupAccessResult = ref<{ success: boolean; message: string } | null>(null)
 const channelLoadError = ref<string | null>(null)
@@ -154,6 +158,19 @@ function parseAllowedChatIDs(raw: string): { allowed_chat_ids: Record<string, st
   }
 
   return { allowed_chat_ids: allowed }
+}
+
+function countAllowedChatEntries(raw: string): number {
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean).length
+}
+
+function syncGroupAccessDraftFromCurrent() {
+  groupAccessDraftPolicy.value = groupAccessPolicy.value
+  groupAccessDraftMentionPolicy.value = groupAccessMentionPolicy.value
+  groupAccessDraftAllowedChatIDsText.value = groupAccessAllowedChatIDsText.value
 }
 
 function showGroupAccessResult(success: boolean, message: string) {
@@ -1065,6 +1082,7 @@ const enabledCount = computed(() => {
   const remoteCount = remoteAccessState.value === 'connected' ? 1 : 0
   return channelCount + remoteCount
 })
+
 const connectedCount = computed(() => {
   const channelCount = channelDefs.value.filter((c) => c.status === 'connected').length
   const remoteCount = remoteAccessState.value === 'connected' ? 1 : 0
@@ -1074,6 +1092,42 @@ const connectedCount = computed(() => {
 const heroPreviewChannels = computed(() =>
   primaryChannels.value.slice(0, defaultVisibleChannelCount)
 )
+
+const groupAccessPolicyLabel = computed(() => {
+  switch (groupAccessPolicy.value) {
+    case 'allowlist':
+      return t('channels.groupAccessPolicyAllowlist')
+    case 'disabled':
+      return t('channels.groupAccessPolicyDisabled')
+    default:
+      return t('channels.groupAccessPolicyOpen')
+  }
+})
+
+const groupAccessMentionPolicyLabel = computed(() => {
+  switch (groupAccessMentionPolicy.value) {
+    case 'always':
+      return t('channels.groupAccessMentionPolicyAlways')
+    default:
+      return t('channels.groupAccessMentionPolicyMentioned')
+  }
+})
+
+const groupAccessAllowedChatCount = computed(() =>
+  countAllowedChatEntries(groupAccessAllowedChatIDsText.value)
+)
+
+const groupAccessSummaryDetail = computed(() => {
+  if (groupAccessPolicy.value === 'allowlist') {
+    return `${t('channels.groupAccessAllowedChats')}: ${groupAccessAllowedChatCount.value}`
+  }
+
+  if (groupAccessPolicy.value === 'disabled') {
+    return t('channels.groupAccessDesc')
+  }
+
+  return groupAccessMentionPolicyLabel.value
+})
 
 const selectedProviderInfo = computed(() => {
   return tunnelProviders.value.find((p) => p.id === selectedProvider.value)
@@ -1227,9 +1281,24 @@ async function loadChannelSettings() {
     groupAccessPolicy.value = normalizeGroupAccessPolicy(groupAccess.policy)
     groupAccessMentionPolicy.value = normalizeGroupMentionPolicy(groupAccess.mention_policy)
     groupAccessAllowedChatIDsText.value = formatAllowedChatIDs(groupAccess.allowed_chat_ids)
+    if (!showGroupAccessModal.value) {
+      syncGroupAccessDraftFromCurrent()
+    }
   } catch (err) {
     console.error('Failed to load channel settings:', err)
   }
+}
+
+function openGroupAccessModal() {
+  groupAccessResult.value = null
+  syncGroupAccessDraftFromCurrent()
+  showGroupAccessModal.value = true
+}
+
+function closeGroupAccessModal() {
+  if (savingGroupAccess.value) return
+  showGroupAccessModal.value = false
+  syncGroupAccessDraftFromCurrent()
 }
 
 async function saveGroupAccessSettings() {
@@ -1237,8 +1306,8 @@ async function saveGroupAccessSettings() {
 
   try {
     const parsed =
-      groupAccessPolicy.value === 'allowlist'
-        ? parseAllowedChatIDs(groupAccessAllowedChatIDsText.value)
+      groupAccessDraftPolicy.value === 'allowlist'
+        ? parseAllowedChatIDs(groupAccessDraftAllowedChatIDsText.value)
         : { allowed_chat_ids: {} }
     if (parsed.error) {
       showGroupAccessResult(false, parsed.error)
@@ -1250,8 +1319,8 @@ async function saveGroupAccessSettings() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         group_access: {
-          policy: groupAccessPolicy.value,
-          mention_policy: groupAccessMentionPolicy.value,
+          policy: groupAccessDraftPolicy.value,
+          mention_policy: groupAccessDraftMentionPolicy.value,
           allowed_chat_ids: parsed.allowed_chat_ids,
         },
       }),
@@ -1265,13 +1334,15 @@ async function saveGroupAccessSettings() {
 
     const settings = (data.settings || data) as ChannelSettingsResponse
     const groupAccess = settings.group_access || {
-      policy: groupAccessPolicy.value,
-      mention_policy: groupAccessMentionPolicy.value,
+      policy: groupAccessDraftPolicy.value,
+      mention_policy: groupAccessDraftMentionPolicy.value,
       allowed_chat_ids: parsed.allowed_chat_ids,
     }
     groupAccessPolicy.value = normalizeGroupAccessPolicy(groupAccess.policy)
     groupAccessMentionPolicy.value = normalizeGroupMentionPolicy(groupAccess.mention_policy)
     groupAccessAllowedChatIDsText.value = formatAllowedChatIDs(groupAccess.allowed_chat_ids)
+    syncGroupAccessDraftFromCurrent()
+    showGroupAccessModal.value = false
     showGroupAccessResult(true, t('channels.savedSuccessfully'))
   } catch (err) {
     console.error('Failed to save channel settings:', err)
@@ -1615,6 +1686,12 @@ function toggleRemoteAccessExpanded() {
   remoteAccessExpanded.value = !remoteAccessExpanded.value
 }
 
+function handleGroupAccessDialogKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && showGroupAccessModal.value) {
+    closeGroupAccessModal()
+  }
+}
+
 function updateChannelField(channelId: string, fieldIndex: number, value: string) {
   const channel = channelMap.value.get(channelId)
   if (channel && channel.fields[fieldIndex]) {
@@ -1629,6 +1706,7 @@ onMounted(() => {
   loadChannelConfigs()
   loadChannelSettings()
   loadRemoteAccessStatus()
+  window.addEventListener('keydown', handleGroupAccessDialogKeydown)
 })
 
 onUnmounted(() => {
@@ -1638,6 +1716,7 @@ onUnmounted(() => {
     clearInterval(interval)
   }
   channelPollIntervals.clear()
+  window.removeEventListener('keydown', handleGroupAccessDialogKeydown)
 })
 
 watch(
@@ -1714,6 +1793,47 @@ onErrorCaptured((error, _instance, info) => {
               </div>
             </div>
           </article>
+
+          <article
+            class="dashboard-card-surface channels-summary-card channels-summary-card--group-access"
+          >
+            <div class="channels-summary-head">
+              <span class="channels-summary-label">{{ t('channels.groupAccessTitle') }}</span>
+              <span
+                class="channels-summary-pill"
+                :class="{
+                  'channels-summary-pill--open': groupAccessPolicy === 'open',
+                  'channels-summary-pill--allowlist': groupAccessPolicy === 'allowlist',
+                  'channels-summary-pill--disabled': groupAccessPolicy === 'disabled',
+                }"
+              >
+                {{ groupAccessPolicyLabel }}
+              </span>
+            </div>
+            <p class="channels-summary-note">
+              {{ groupAccessSummaryDetail }}
+            </p>
+            <div class="channels-summary-footer">
+              <button
+                type="button"
+                class="channels-summary-button"
+                @click="openGroupAccessModal"
+              >
+                {{ t('common.configure') }}
+              </button>
+              <p
+                v-if="groupAccessResult && !showGroupAccessModal"
+                class="channels-summary-result"
+                :class="
+                  groupAccessResult.success
+                    ? 'text-green-700 dark:text-green-300'
+                    : 'text-red-700 dark:text-red-300'
+                "
+              >
+                {{ groupAccessResult.message }}
+              </p>
+            </div>
+          </article>
         </section>
 
         <div v-if="loading" class="text-center py-8">
@@ -1764,124 +1884,6 @@ onErrorCaptured((error, _instance, info) => {
           </div>
 
           <div v-else class="channels-board__stack">
-            <div class="channels-policy-card">
-              <div class="channels-policy-card__header">
-                <div class="channels-policy-card__identity">
-                  <div class="channels-policy-card__icon-shell">
-                    <svg
-                      class="channels-policy-card__icon"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="1.75"
-                        d="M17 20h5V9H2v11h5m10 0v-5a3 3 0 10-6 0v5m6 0H7"
-                      />
-                    </svg>
-                  </div>
-                  <div class="channels-policy-card__copy">
-                    <h3 class="channels-policy-card__title text-gray-900 dark:text-white">
-                      {{ t('channels.groupAccessTitle') }}
-                    </h3>
-                    <p
-                      class="channels-policy-card__description text-gray-500 dark:text-slate-300"
-                    >
-                      {{ t('channels.groupAccessDesc') }}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div class="channels-policy-card__body">
-                <div class="space-y-2">
-                  <label
-                    class="channels-policy-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
-                  >
-                    {{ t('channels.groupAccessPolicy') }}
-                  </label>
-                  <select
-                    v-model="groupAccessPolicy"
-                    class="channels-policy-card__select w-full border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                  >
-                    <option value="open">{{ t('channels.groupAccessPolicyOpen') }}</option>
-                    <option value="allowlist">
-                      {{ t('channels.groupAccessPolicyAllowlist') }}
-                    </option>
-                    <option value="disabled">
-                      {{ t('channels.groupAccessPolicyDisabled') }}
-                    </option>
-                  </select>
-                  <p class="channels-policy-card__note text-xs text-gray-500 dark:text-slate-300">
-                    {{ t('channels.groupAccessHint') }}
-                  </p>
-                </div>
-
-                <div class="space-y-2">
-                  <label
-                    class="channels-policy-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
-                  >
-                    {{ t('channels.groupAccessMentionPolicy') }}
-                  </label>
-                  <select
-                    v-model="groupAccessMentionPolicy"
-                    class="channels-policy-card__select w-full border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                  >
-                    <option value="mentioned">
-                      {{ t('channels.groupAccessMentionPolicyMentioned') }}
-                    </option>
-                    <option value="always">
-                      {{ t('channels.groupAccessMentionPolicyAlways') }}
-                    </option>
-                  </select>
-                  <p class="channels-policy-card__note text-xs text-gray-500 dark:text-slate-300">
-                    {{ t('channels.groupAccessMentionHint') }}
-                  </p>
-                </div>
-
-                <div v-if="groupAccessPolicy === 'allowlist'" class="space-y-2">
-                  <label
-                    class="channels-policy-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
-                  >
-                    {{ t('channels.groupAccessAllowedChats') }}
-                  </label>
-                  <textarea
-                    v-model="groupAccessAllowedChatIDsText"
-                    class="channels-policy-card__textarea w-full border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                    :placeholder="t('channels.groupAccessAllowedChatsPlaceholder')"
-                  />
-                  <p class="channels-policy-card__note text-xs text-gray-500 dark:text-slate-300">
-                    {{ t('channels.groupAccessAllowedChatsHint') }}
-                  </p>
-                </div>
-
-                <div class="channels-policy-card__footer">
-                  <button
-                    class="channels-policy-card__primary-action bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors"
-                    :disabled="savingGroupAccess"
-                    :class="{ 'opacity-60 cursor-not-allowed': savingGroupAccess }"
-                    @click="saveGroupAccessSettings"
-                  >
-                    {{ savingGroupAccess ? t('channels.saving') : t('common.save') }}
-                  </button>
-
-                  <p
-                    v-if="groupAccessResult"
-                    class="channels-policy-card__result text-sm"
-                    :class="
-                      groupAccessResult.success
-                        ? 'text-green-700 dark:text-green-300'
-                        : 'text-red-700 dark:text-red-300'
-                    "
-                  >
-                    {{ groupAccessResult.message }}
-                  </p>
-                </div>
-              </div>
-            </div>
-
             <div
               class="channels-remote-card"
               :class="{ 'channels-remote-card--expanded': remoteAccessExpanded }"
@@ -2294,6 +2296,146 @@ onErrorCaptured((error, _instance, info) => {
         </div>
       </div>
     </section>
+
+    <Teleport to="body">
+      <div
+        v-if="showGroupAccessModal"
+        class="channels-group-modal-backdrop"
+        @click.self="closeGroupAccessModal"
+      >
+        <div
+          class="channels-group-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="channels-group-access-title"
+        >
+          <div class="channels-group-modal__header">
+            <div class="channels-group-modal__copy">
+              <span class="channels-group-modal__eyebrow">{{ t('channels.groupAccessTitle') }}</span>
+              <h2 id="channels-group-access-title" class="channels-group-modal__title">
+                {{ t('channels.groupAccessTitle') }}
+              </h2>
+              <p class="channels-group-modal__description">
+                {{ t('channels.groupAccessDesc') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="channels-group-modal__close"
+              :disabled="savingGroupAccess"
+              @click="closeGroupAccessModal"
+            >
+              <span class="sr-only">{{ t('common.close') }}</span>
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div class="channels-group-modal__body">
+            <div class="space-y-2">
+              <label
+                class="channels-policy-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+              >
+                {{ t('channels.groupAccessPolicy') }}
+              </label>
+              <select
+                v-model="groupAccessDraftPolicy"
+                class="channels-policy-card__select w-full border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+              >
+                <option value="open">{{ t('channels.groupAccessPolicyOpen') }}</option>
+                <option value="allowlist">
+                  {{ t('channels.groupAccessPolicyAllowlist') }}
+                </option>
+                <option value="disabled">
+                  {{ t('channels.groupAccessPolicyDisabled') }}
+                </option>
+              </select>
+              <p class="channels-policy-card__note text-xs text-gray-500 dark:text-slate-300">
+                {{ t('channels.groupAccessHint') }}
+              </p>
+            </div>
+
+            <div class="space-y-2">
+              <label
+                class="channels-policy-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+              >
+                {{ t('channels.groupAccessMentionPolicy') }}
+              </label>
+              <select
+                v-model="groupAccessDraftMentionPolicy"
+                class="channels-policy-card__select w-full border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+              >
+                <option value="mentioned">
+                  {{ t('channels.groupAccessMentionPolicyMentioned') }}
+                </option>
+                <option value="always">
+                  {{ t('channels.groupAccessMentionPolicyAlways') }}
+                </option>
+              </select>
+              <p class="channels-policy-card__note text-xs text-gray-500 dark:text-slate-300">
+                {{ t('channels.groupAccessMentionHint') }}
+              </p>
+            </div>
+
+            <div v-if="groupAccessDraftPolicy === 'allowlist'" class="space-y-2">
+              <label
+                class="channels-policy-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+              >
+                {{ t('channels.groupAccessAllowedChats') }}
+              </label>
+              <textarea
+                v-model="groupAccessDraftAllowedChatIDsText"
+                class="channels-policy-card__textarea w-full border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                :placeholder="t('channels.groupAccessAllowedChatsPlaceholder')"
+              />
+              <p class="channels-policy-card__note text-xs text-gray-500 dark:text-slate-300">
+                {{ t('channels.groupAccessAllowedChatsHint') }}
+              </p>
+            </div>
+          </div>
+
+          <div class="channels-group-modal__footer">
+            <p
+              v-if="groupAccessResult"
+              class="channels-group-modal__result"
+              :class="
+                groupAccessResult.success
+                  ? 'text-green-700 dark:text-green-300'
+                  : 'text-red-700 dark:text-red-300'
+              "
+            >
+              {{ groupAccessResult.message }}
+            </p>
+
+            <div class="channels-group-modal__actions">
+              <button
+                type="button"
+                class="channels-group-modal__secondary-action"
+                :disabled="savingGroupAccess"
+                @click="closeGroupAccessModal"
+              >
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                type="button"
+                class="channels-group-modal__primary-action"
+                :disabled="savingGroupAccess"
+                :class="{ 'opacity-60 cursor-not-allowed': savingGroupAccess }"
+                @click="saveGroupAccessSettings"
+              >
+                {{ savingGroupAccess ? t('channels.saving') : t('common.save') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -2464,6 +2606,86 @@ onErrorCaptured((error, _instance, info) => {
   color: #475569;
 }
 
+.channels-summary-card--group-access {
+  justify-content: flex-start;
+  gap: 0.48rem;
+}
+
+.channels-summary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.channels-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.channels-summary-pill--open {
+  background: rgba(220, 252, 231, 0.95);
+  color: #166534;
+}
+
+.channels-summary-pill--allowlist {
+  background: rgba(254, 249, 195, 0.95);
+  color: #854d0e;
+}
+
+.channels-summary-pill--disabled {
+  background: rgba(254, 226, 226, 0.95);
+  color: #b91c1c;
+}
+
+.channels-summary-note {
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: #64748b;
+  min-height: 1.95rem;
+}
+
+.channels-summary-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.42rem;
+  margin-top: auto;
+}
+
+.channels-summary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.4rem 0.78rem;
+  border-radius: 0.72rem;
+  border: 0;
+  background: #111827;
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease;
+}
+
+.channels-summary-button:hover {
+  transform: translateY(-1px);
+  background: #030712;
+}
+
+.channels-summary-result {
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
 .channels-board {
   position: relative;
   display: flex;
@@ -2574,6 +2796,162 @@ onErrorCaptured((error, _instance, info) => {
   font-size: 0.7rem;
   line-height: 1.45;
   color: #64748b;
+}
+
+.channels-group-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.56);
+  backdrop-filter: blur(10px);
+}
+
+.channels-group-modal {
+  width: min(100%, 42rem);
+  max-height: min(100vh - 2rem, 44rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.4rem;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+}
+
+.channels-group-modal__header,
+.channels-group-modal__footer {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.08rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.96);
+}
+
+.channels-group-modal__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.channels-group-modal__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.44rem;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.channels-group-modal__title {
+  margin-top: 0.58rem;
+  font-size: 1.02rem;
+  line-height: 1.15;
+  font-weight: 700;
+  color: #111827;
+}
+
+.channels-group-modal__description {
+  margin-top: 0.32rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.channels-group-modal__close {
+  width: 2.2rem;
+  height: 2.2rem;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(203, 213, 225, 0.96);
+  background: #f8fafc;
+  color: #475569;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.channels-group-modal__close:hover {
+  background: #f1f5f9;
+  border-color: rgba(148, 163, 184, 0.96);
+}
+
+.channels-group-modal__close svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.channels-group-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+  padding: 1rem 1.08rem;
+  background: #f8fafc;
+}
+
+.channels-group-modal__footer {
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(226, 232, 240, 0.96);
+  border-bottom: 0;
+  background: #ffffff;
+}
+
+.channels-group-modal__result {
+  flex: 1 1 14rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.channels-group-modal__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.62rem;
+}
+
+.channels-group-modal__primary-action,
+.channels-group-modal__secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.14rem;
+  padding: 0.42rem 0.9rem;
+  border-radius: 0.78rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  transition: background-color 160ms ease;
+}
+
+.channels-group-modal__primary-action {
+  border: 0;
+  background: #111827;
+  color: #ffffff;
+}
+
+.channels-group-modal__primary-action:hover {
+  background: #030712;
+}
+
+.channels-group-modal__secondary-action {
+  border: 1px solid rgba(203, 213, 225, 0.96);
+  background: #ffffff;
+  color: #475569;
+}
+
+.channels-group-modal__secondary-action:hover {
+  background: #f8fafc;
 }
 
 .channels-policy-card {
@@ -2855,11 +3233,15 @@ onErrorCaptured((error, _instance, info) => {
 
 @media (min-width: 760px) {
   .channels-summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 960px) {
+  .channels-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .channels-board {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2908,6 +3290,33 @@ onErrorCaptured((error, _instance, info) => {
 
   .channels-remote-card__body {
     padding: 0.82rem;
+  }
+
+  .channels-group-modal {
+    max-height: min(100vh - 1.5rem, 100%);
+  }
+
+  .channels-group-modal__header,
+  .channels-group-modal__body,
+  .channels-group-modal__footer {
+    padding-left: 0.92rem;
+    padding-right: 0.92rem;
+  }
+
+  .channels-group-modal__footer,
+  .channels-group-modal__actions {
+    width: 100%;
+  }
+
+  .channels-group-modal__actions {
+    margin-left: 0;
+    flex-direction: column-reverse;
+  }
+
+  .channels-group-modal__primary-action,
+  .channels-group-modal__secondary-action {
+    width: 100%;
+    justify-content: center;
   }
 }
 
@@ -2961,6 +3370,106 @@ html.dark .channels-summary-value,
 [data-theme='dark'] .channels-summary-icon-pill--count,
 html.dark .channels-summary-icon-pill--count {
   color: #f8fafc;
+}
+
+:root.dark .channels-summary-note,
+[data-theme='dark'] .channels-summary-note,
+html.dark .channels-summary-note,
+:root.dark .channels-group-modal__description,
+[data-theme='dark'] .channels-group-modal__description,
+html.dark .channels-group-modal__description {
+  color: #cbd5e1;
+}
+
+:root.dark .channels-summary-button,
+[data-theme='dark'] .channels-summary-button,
+html.dark .channels-summary-button,
+:root.dark .channels-group-modal__primary-action,
+[data-theme='dark'] .channels-group-modal__primary-action,
+html.dark .channels-group-modal__primary-action {
+  background: #94a3b8;
+  color: #0f172a;
+}
+
+:root.dark .channels-summary-button:hover,
+[data-theme='dark'] .channels-summary-button:hover,
+html.dark .channels-summary-button:hover,
+:root.dark .channels-group-modal__primary-action:hover,
+[data-theme='dark'] .channels-group-modal__primary-action:hover,
+html.dark .channels-group-modal__primary-action:hover {
+  background: #cbd5e1;
+}
+
+:root.dark .channels-summary-pill--open,
+[data-theme='dark'] .channels-summary-pill--open,
+html.dark .channels-summary-pill--open {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+:root.dark .channels-summary-pill--allowlist,
+[data-theme='dark'] .channels-summary-pill--allowlist,
+html.dark .channels-summary-pill--allowlist {
+  background: rgba(250, 204, 21, 0.2);
+  color: #fde68a;
+}
+
+:root.dark .channels-summary-pill--disabled,
+[data-theme='dark'] .channels-summary-pill--disabled,
+html.dark .channels-summary-pill--disabled {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+:root.dark .channels-group-modal,
+[data-theme='dark'] .channels-group-modal,
+html.dark .channels-group-modal {
+  background: #111827;
+  border-color: rgba(71, 85, 105, 0.46);
+}
+
+:root.dark .channels-group-modal__header,
+[data-theme='dark'] .channels-group-modal__header,
+html.dark .channels-group-modal__header,
+:root.dark .channels-group-modal__footer,
+[data-theme='dark'] .channels-group-modal__footer,
+html.dark .channels-group-modal__footer {
+  border-color: rgba(71, 85, 105, 0.46);
+}
+
+:root.dark .channels-group-modal__body,
+[data-theme='dark'] .channels-group-modal__body,
+html.dark .channels-group-modal__body {
+  background: #1e293b;
+}
+
+:root.dark .channels-group-modal__title,
+[data-theme='dark'] .channels-group-modal__title,
+html.dark .channels-group-modal__title {
+  color: #f8fafc;
+}
+
+:root.dark .channels-group-modal__eyebrow,
+[data-theme='dark'] .channels-group-modal__eyebrow,
+html.dark .channels-group-modal__eyebrow,
+:root.dark .channels-group-modal__close,
+[data-theme='dark'] .channels-group-modal__close,
+html.dark .channels-group-modal__close,
+:root.dark .channels-group-modal__secondary-action,
+[data-theme='dark'] .channels-group-modal__secondary-action,
+html.dark .channels-group-modal__secondary-action {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(71, 85, 105, 0.5);
+  color: #cbd5e1;
+}
+
+:root.dark .channels-group-modal__close:hover,
+[data-theme='dark'] .channels-group-modal__close:hover,
+html.dark .channels-group-modal__close:hover,
+:root.dark .channels-group-modal__secondary-action:hover,
+[data-theme='dark'] .channels-group-modal__secondary-action:hover,
+html.dark .channels-group-modal__secondary-action:hover {
+  background: rgba(30, 41, 59, 0.9);
 }
 
 :root.dark .channels-summary-icon-pill,

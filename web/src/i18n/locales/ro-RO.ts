@@ -751,9 +751,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Controale de securitate',
+      harness: harness.nav.harness,
       approvals: 'Directoare aprobate',
       firewall: 'Firewall',
       masking: 'Mascarea datelor',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Gestionează directoare de încredere, expunerea în rețea, protecțiile pentru prompturi și politicile de mascarea datelor.',
+      harness: 'Urmărește grupuri de evaluare, loturi de experimente și rezultate de scor.',
     },
     firewall: {
       ...enUS.security.firewall,

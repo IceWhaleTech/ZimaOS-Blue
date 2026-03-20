@@ -534,9 +534,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Controlos de segurança',
+      harness: harness.nav.harness,
       approvals: 'Diretórios aprovados',
       firewall: 'Firewall',
       masking: 'Mascaramento de dados',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Gira diretórios fidedignos, exposição de rede, guardrails de prompts e políticas de mascaramento.',
+      harness: 'Acompanhe grupos de avaliação, lotes experimentais e resultados de pontuação.',
     },
     firewall: {
       ...enUS.security.firewall,

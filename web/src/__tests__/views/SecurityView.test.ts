@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
+import { createPinia, setActivePinia } from 'pinia'
 
 import SecurityView from '@/views/SecurityView.vue'
 import { approvalApi } from '@/api/approval'
@@ -8,6 +9,7 @@ import { securityApi } from '@/api/security'
 import { systemApi } from '@/api/index'
 import { companionApi } from '@/api/companion'
 import { getActiveConnections, getConnectionStats } from '@/api/connections'
+import { useAuthStore } from '@/stores/auth'
 
 vi.mock('@/api/approval', () => ({
   approvalApi: {
@@ -48,6 +50,21 @@ vi.mock('@/api/connections', () => ({
   getConnectionStats: vi.fn(),
 }))
 
+const replaceMock = vi.fn()
+
+vi.mock('vue-router', async () => {
+  const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
+  return {
+    ...actual,
+    useRoute: () => ({
+      query: {},
+    }),
+    useRouter: () => ({
+      replace: replaceMock,
+    }),
+  }
+})
+
 vi.mock('@/utils/securityScanSummary', () => ({
   formatSecurityScanSummary: vi.fn(() => 'All checks cached'),
   getVisibleSecurityScanSummaryMetrics: vi.fn(() => []),
@@ -81,6 +98,10 @@ vi.mock('@/components/security/MonitoringRetentionSettings.vue', () => ({
 
 vi.mock('@/components/settings/NetworkSettings.vue', () => ({
   default: { name: 'NetworkSettings', template: '<div class="network-settings-stub"></div>' },
+}))
+
+vi.mock('@/views/HarnessGroupsView.vue', () => ({
+  default: { name: 'HarnessGroupsView', template: '<div class="harness-groups-view-stub"></div>' },
 }))
 
 const localStorageMock = (() => {
@@ -122,9 +143,14 @@ function createTestI18n() {
 }
 
 function mountSecurityView() {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const authStore = useAuthStore()
+  ;(authStore as any).user = { role: 'admin' }
+
   return shallowMount(SecurityView, {
     global: {
-      plugins: [createTestI18n()],
+      plugins: [pinia, createTestI18n()],
     },
   })
 }
@@ -134,6 +160,7 @@ describe('SecurityView approved browser sites', () => {
     localStorageMock.clear()
     localStorageMock.setItem('security_last_scan_timestamp', new Date().toISOString())
     vi.clearAllMocks()
+    replaceMock.mockReset()
 
     vi.mocked(securityApi.getPromptFirewall).mockResolvedValue({
       data: { enabled: true, rules: [], rule_count: 0 },
@@ -212,6 +239,29 @@ describe('SecurityView approved browser sites', () => {
     expect(approvalApi.revokeApprovedBrowserSite).toHaveBeenCalledTimes(1)
     expect(approvalApi.revokeApprovedBrowserSite).toHaveBeenCalledWith('site-1')
     expect(wrapper.text()).not.toContain('https://example.com')
+
+    wrapper.unmount()
+  })
+
+  it('shows harness as a security tab and removes the standalone network tab', async () => {
+    const wrapper = mountSecurityView()
+
+    await flushPromises()
+
+    const tabLabels = wrapper.findAll('button[role="tab"]').map((node) => node.text())
+
+    expect(tabLabels.some((label) => label.includes('Harness'))).toBe(true)
+    expect(tabLabels.some((label) => label.trim() === 'Network')).toBe(false)
+
+    const harnessTab = wrapper.findAll('button[role="tab"]').find((node) => {
+      return node.text().includes('Harness')
+    })
+    expect(harnessTab).toBeTruthy()
+
+    await harnessTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'HarnessGroupsView' }).exists()).toBe(true)
 
     wrapper.unmount()
   })

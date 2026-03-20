@@ -750,9 +750,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Beveiligingscontroles',
+      harness: harness.nav.harness,
       approvals: 'Goedgekeurde mappen',
       firewall: 'Firewall',
       masking: 'Gegevensmaskering',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Beheer vertrouwde mappen, netwerkblootstelling, prompt-beveiligingen en maskeringsbeleid.',
+      harness: 'Volg evaluatiegroepen, experimentele batches en score-uitkomsten.',
     },
     firewall: {
       ...enUS.security.firewall,

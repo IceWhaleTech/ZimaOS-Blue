@@ -1218,10 +1218,10 @@ export default {
     groupAccessPolicyAllowlist: 'Allowlist',
     groupAccessPolicyDisabled: 'Disabled',
     groupAccessMentionPolicy: 'Reply Condition',
-    groupAccessMentionPolicyMentioned: 'Only reply when Blue is @mentioned',
+    groupAccessMentionPolicyMentioned: "Only reply when Blue is {'@'}mentioned",
     groupAccessMentionPolicyAlways: 'Reply to all allowed group messages',
     groupAccessMentionHint:
-      'Default behaviour is to reply in groups only when Blue is explicitly @mentioned.',
+      "Default behaviour is to reply in groups only when Blue is explicitly {'@'}mentioned.",
     groupAccessAllowedChats: 'Allowed Group Chats',
     groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
     groupAccessAllowedChatsHint:
@@ -3093,6 +3093,7 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Security Controls',
+      harness: harness.nav.harness,
       approvals: 'Approved Directories',
       overview: 'Overview',
       firewall: 'Firewall',
@@ -3100,6 +3101,11 @@ export default {
       monitoring: 'Monitoring',
       events: 'Events',
       logs: 'Logs',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Manage trusted directories, network exposure, prompt guardrails and masking policies.',
+      harness: 'Track eval groups, experiment batches and score outcomes.',
     },
     firewall: {
       ...enUS.security.firewall,

@@ -1532,9 +1532,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Controlli di sicurezza',
+      harness: harness.nav.harness,
       approvals: 'Directory approvate',
       firewall: 'Firewall',
       masking: 'Mascheramento dati',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Gestisci directory attendibili, esposizione di rete, protezioni dei prompt e criteri di mascheramento.',
+      harness: 'Monitora gruppi di valutazione, batch di esperimenti e risultati dei punteggi.',
     },
     firewall: {
       ...enUS.security.firewall,

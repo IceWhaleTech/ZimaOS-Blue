@@ -745,9 +745,15 @@ export default {
     tabs: {
       ...enUS.security.tabs,
       controls: 'Säkerhetskontroller',
+      harness: harness.nav.harness,
       approvals: 'Godkända kataloger',
       firewall: 'Brandvägg',
       masking: 'Datamaskering',
+    },
+    tabDescriptions: {
+      ...enUS.security.tabDescriptions,
+      controls: 'Hantera betrodda kataloger, nätverksexponering, skyddsräcken för promptar och maskeringspolicyer.',
+      harness: 'Följ utvärderingsgrupper, experimentbatcher och poängresultat.',
     },
     firewall: {
       ...enUS.security.firewall,

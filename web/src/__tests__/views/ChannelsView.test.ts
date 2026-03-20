@@ -61,13 +61,31 @@ function createTestI18n() {
           subtitle: 'Connect external channels',
           enabledChannels: 'Enabled channels',
           connectedChannels: 'Connected channels',
+          groupAccessTitle: 'Group Access',
+          groupAccessDesc: 'Set one unified rule for whether Blue accepts inbound group messages.',
+          groupAccessPolicyOpen: 'Open',
+          groupAccessPolicyAllowlist: 'Allowlist',
+          groupAccessPolicyDisabled: 'Disabled',
+          groupAccessMentionPolicyMentioned: 'Only reply when Blue is mentioned',
+          groupAccessMentionPolicyAlways: 'Reply to all allowed group messages',
+          groupAccessAllowedChats: 'Allowed Group Chats',
+          groupAccessPolicy: 'Policy',
+          groupAccessHint: 'Group access hint',
+          groupAccessMentionPolicy: 'Reply Condition',
+          groupAccessMentionHint: 'Mention hint',
+          groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed',
+          groupAccessAllowedChatsHint: 'Allowed chats hint',
+          saving: 'Saving...',
         },
         common: {
           loading: 'Loading',
           save: 'Save',
+          configure: 'Configure',
           loadMore: 'Load More',
           optional: 'Optional',
           retry: 'Retry',
+          cancel: 'Cancel',
+          close: 'Close',
         },
         remoteAccess: {
           title: 'Remote Access',
@@ -115,5 +133,28 @@ describe('ChannelsView', () => {
     expect(wrapper.text()).toContain('Channels did not fully load')
     expect(wrapper.text()).toContain('401')
     expect(wrapper.findAll('channel-card-stub').length).toBeGreaterThan(0)
+  })
+
+  it('renders group access as the fourth summary card and opens the modal', async () => {
+    const ChannelsView = (await import('@/views/ChannelsView.vue')).default
+
+    const wrapper = shallowMount(ChannelsView, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.findAll('.channels-summary-grid .channels-summary-card')).toHaveLength(4)
+    expect(wrapper.text()).toContain('Group Access')
+
+    await wrapper.find('.channels-summary-button').trigger('click')
+
+    expect(wrapper.find('.channels-group-modal').exists()).toBe(true)
+    expect(wrapper.find('.channels-group-modal__title').text()).toBe('Group Access')
   })
 })
