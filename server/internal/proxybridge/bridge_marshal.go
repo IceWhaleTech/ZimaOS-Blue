@@ -1215,22 +1215,22 @@ func normalizeInboundToolCall(source, callID, name string, arguments json.RawMes
 }
 
 func normalizeInboundArguments(raw json.RawMessage, allowPartial bool) (string, bool, bool) {
-	trimmed := strings.TrimSpace(rawToString(raw))
-	if trimmed == "" {
+	rawArgs := rawToString(raw)
+	if rawArgs == "" {
 		if allowPartial {
 			return "", false, true
 		}
 		return "{}", false, true
 	}
 
-	if obj, ok := parseJSONObject(trimmed); ok {
+	if obj, ok := parseJSONObject(rawArgs); ok {
 		return marshalCanonicalJSONObject(obj), false, true
 	}
 
 	if rawLooksLikeJSONString(raw) {
 		var decoded string
 		if json.Unmarshal(raw, &decoded) == nil {
-			decoded = strings.TrimSpace(decoded)
+			// decoded = strings.TrimSpace(decoded)
 			if decoded == "" {
 				if allowPartial {
 					return "", true, true
@@ -1250,23 +1250,23 @@ func normalizeInboundArguments(raw json.RawMessage, allowPartial bool) (string, 
 		}
 	}
 
-	if json.Valid([]byte(trimmed)) {
+	if json.Valid([]byte(rawArgs)) {
 		var generic interface{}
-		if json.Unmarshal([]byte(trimmed), &generic) == nil {
+		if json.Unmarshal([]byte(rawArgs), &generic) == nil {
 			if allowPartial {
-				return trimmed, false, true
+				return rawArgs, false, true
 			}
-			return trimmed, false, false
+			return rawArgs, false, false
 		}
 	}
 
 	if allowPartial {
-		return trimmed, false, true
+		return rawArgs, false, true
 	}
-	if obj, ok := repairJSONObject(trimmed); ok {
+	if obj, ok := repairJSONObject(rawArgs); ok {
 		return marshalCanonicalJSONObject(obj), true, true
 	}
-	return trimmed, false, false
+	return rawArgs, false, false
 }
 
 func parseJSONObject(raw string) (map[string]interface{}, bool) {
