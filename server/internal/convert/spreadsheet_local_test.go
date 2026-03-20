@@ -36,6 +36,15 @@ func TestLoadSpreadsheetWorkbookHandlesInlineStringsAndHeaderDeduplication(t *te
 	if len(sheet.Records) != 1 {
 		t.Fatalf("record count = %d, want 1", len(sheet.Records))
 	}
+	if sheet.Summary == nil {
+		t.Fatal("expected sheet summary")
+	}
+	if got := sheet.Summary.NumericTotals["Column_3"]; got != 1200 {
+		t.Fatalf("summary total Column_3 = %v, want 1200", got)
+	}
+	if workbook.Summary == nil || len(workbook.Summary.SheetSummaries) != 1 {
+		t.Fatalf("workbook summary = %#v, want one sheet summary", workbook.Summary)
+	}
 
 	record := sheet.Records[0]
 	if got, _ := record["Department"].(string); got != "Finance" {
@@ -86,8 +95,59 @@ func TestConvertDocumentUsesLocalSpreadsheetConverterForJSON(t *testing.T) {
 	if !strings.Contains(string(data), `"sheet_count": 1`) {
 		t.Fatalf("output json missing sheet_count, got=%s", string(data))
 	}
+	if !strings.Contains(string(data), `"summary": {`) {
+		t.Fatalf("output json missing summary block, got=%s", string(data))
+	}
 	if !strings.Contains(string(data), `"Department_2": "Platform"`) {
 		t.Fatalf("output json missing deduplicated record field, got=%s", string(data))
+	}
+}
+
+func TestSummarizeDelimitedFileComputesDeterministicTotalsAndTopGroups(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), "quarterly_sales.csv")
+	content := strings.Join([]string{
+		"Date,Region,Product,Units_Sold,Revenue,Cost",
+		"2024-01-01,East,Widget B,100,3000,1800",
+		"2024-01-02,West,Widget A,50,1250,750",
+		"2024-01-03,East,Widget B,60,1800,1080",
+	}, "\n")
+	if err := os.WriteFile(sourcePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+
+	summary, err := SummarizeDelimitedFile(sourcePath)
+	if err != nil {
+		t.Fatalf("SummarizeDelimitedFile failed: %v", err)
+	}
+	if summary == nil {
+		t.Fatal("expected non-nil summary")
+	}
+	if got := summary.NumericTotals["Revenue"]; got != 6050 {
+		t.Fatalf("Revenue total = %v, want 6050", got)
+	}
+	if got := summary.NumericTotals["Cost"]; got != 3630 {
+		t.Fatalf("Cost total = %v, want 3630", got)
+	}
+	if got := summary.NumericTotals["Profit"]; got != 2420 {
+		t.Fatalf("Profit total = %v, want 2420", got)
+	}
+	if got := summary.NumericTotals["Units_Sold"]; got != 210 {
+		t.Fatalf("Units_Sold total = %v, want 210", got)
+	}
+	topRegion := summary.TopByMetric["Revenue"]["Region"]
+	if topRegion.Value != "East" || topRegion.Total != 4800 {
+		t.Fatalf("top revenue region = %#v, want East / 4800", topRegion)
+	}
+	topProduct := summary.TopByMetric["Revenue"]["Product"]
+	if topProduct.Value != "Widget B" || topProduct.Total != 4800 {
+		t.Fatalf("top revenue product = %#v, want Widget B / 4800", topProduct)
+	}
+	highlights := strings.Join(summary.Highlights, " | ")
+	if !strings.Contains(highlights, "Total Profit: 2,420") {
+		t.Fatalf("highlights = %q, want total profit line", highlights)
+	}
+	if !strings.Contains(highlights, "Top Revenue by Region: East (4,800)") {
+		t.Fatalf("highlights = %q, want top region line", highlights)
 	}
 }
 

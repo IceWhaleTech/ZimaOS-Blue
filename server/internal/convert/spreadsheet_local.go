@@ -17,14 +17,16 @@ import (
 const workbookRelNS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
 type spreadsheetWorkbook struct {
-	Source     string             `json:"source"`
-	SheetCount int                `json:"sheet_count"`
-	Sheets     []spreadsheetSheet `json:"sheets"`
+	Source     string                  `json:"source"`
+	SheetCount int                     `json:"sheet_count"`
+	Summary    *TabularWorkbookSummary `json:"summary,omitempty"`
+	Sheets     []spreadsheetSheet      `json:"sheets"`
 }
 
 type spreadsheetSheet struct {
 	Name     string                   `json:"name"`
 	Headers  []string                 `json:"headers,omitempty"`
+	Summary  *TabularSummary          `json:"summary,omitempty"`
 	Rows     [][]interface{}          `json:"rows"`
 	Records  []map[string]interface{} `json:"records,omitempty"`
 	RowCount int                      `json:"row_count"`
@@ -90,7 +92,7 @@ type xlsxTextRunXML struct {
 func convertSpreadsheetLocally(outputDir string, source ResolvedSource, target string) (string, string, bool, error) {
 	sourceExt := docExt(source.Path)
 	target = normalizeFormat(target, "")
-	if sourceExt != "xlsx" {
+	if sourceExt != "xlsx" && sourceExt != "csv" && sourceExt != "tsv" {
 		return "", "", false, nil
 	}
 	switch target {
@@ -98,8 +100,20 @@ func convertSpreadsheetLocally(outputDir string, source ResolvedSource, target s
 	default:
 		return "", "", false, nil
 	}
+	if sourceExt != "xlsx" && target == "csv" {
+		return "", "", false, nil
+	}
 
-	workbook, err := loadSpreadsheetWorkbook(source.Path)
+	var (
+		workbook *spreadsheetWorkbook
+		err      error
+	)
+	switch sourceExt {
+	case "xlsx":
+		workbook, err = loadSpreadsheetWorkbook(source.Path)
+	case "csv", "tsv":
+		workbook, err = loadDelimitedWorkbook(source.Path)
+	}
 	if err != nil {
 		return "", "", true, err
 	}
@@ -121,6 +135,62 @@ func convertSpreadsheetLocally(outputDir string, source ResolvedSource, target s
 		return "", "", true, err
 	}
 	return outputPath, preview, true, nil
+}
+
+func loadDelimitedWorkbook(sourcePath string) (*spreadsheetWorkbook, error) {
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		return nil, fmt.Errorf("open delimited file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.FieldsPerRecord = -1
+	if docExt(sourcePath) == "tsv" {
+		reader.Comma = '\t'
+	}
+	rawRows, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("read delimited file: %w", err)
+	}
+
+	maxCols := 0
+	for _, rawRow := range rawRows {
+		if len(rawRow) > maxCols {
+			maxCols = len(rawRow)
+		}
+	}
+	rows := make([][]spreadsheetCell, 0, len(rawRows))
+	for _, rawRow := range rawRows {
+		row := make([]spreadsheetCell, maxCols)
+		for idx, value := range rawRow {
+			row[idx] = decodeDelimitedSpreadsheetCell(value)
+		}
+		rows = append(rows, row)
+	}
+
+	sheetName := trimExt(filepath.Base(sourcePath))
+	if strings.TrimSpace(sheetName) == "" {
+		sheetName = "Sheet1"
+	}
+	sheet := spreadsheetSheet{
+		Name:     sheetName,
+		Rows:     convertSpreadsheetRowsToInterfaces(rows),
+		RowCount: len(rows),
+	}
+	if len(rows) > 0 {
+		sheet.Headers = uniqueSpreadsheetHeaders(rows[0])
+		sheet.Records = spreadsheetRecordsFromRows(rows)
+		sheet.Summary = summarizeTabularRecords(sheet.Name, sheet.Headers, sheet.Records)
+	}
+
+	workbook := &spreadsheetWorkbook{
+		Source: filepath.Base(sourcePath),
+		Sheets: []spreadsheetSheet{sheet},
+	}
+	workbook.SheetCount = len(workbook.Sheets)
+	workbook.Summary = summarizeWorkbookSheets(workbook.Sheets)
+	return workbook, nil
 }
 
 func loadSpreadsheetWorkbook(xlsxPath string) (*spreadsheetWorkbook, error) {
@@ -198,10 +268,12 @@ func loadSpreadsheetWorkbook(xlsxPath string) (*spreadsheetWorkbook, error) {
 		if len(rows) > 0 {
 			sheet.Headers = uniqueSpreadsheetHeaders(rows[0])
 			sheet.Records = spreadsheetRecordsFromRows(rows)
+			sheet.Summary = summarizeTabularRecords(sheet.Name, sheet.Headers, sheet.Records)
 		}
 		workbook.Sheets = append(workbook.Sheets, sheet)
 	}
 	workbook.SheetCount = len(workbook.Sheets)
+	workbook.Summary = summarizeWorkbookSheets(workbook.Sheets)
 	return workbook, nil
 }
 
@@ -283,6 +355,20 @@ func decodeSpreadsheetCell(cell xlsxCellXML, sharedStrings []string) (spreadshee
 		return spreadsheetCell{}, nil
 	}
 	return spreadsheetCell{Display: text, Value: text}, nil
+}
+
+func decodeDelimitedSpreadsheetCell(value string) spreadsheetCell {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return spreadsheetCell{}
+	}
+	if i, err := strconv.ParseInt(text, 10, 64); err == nil {
+		return spreadsheetCell{Display: text, Value: i}
+	}
+	if f, err := strconv.ParseFloat(text, 64); err == nil {
+		return spreadsheetCell{Display: text, Value: f}
+	}
+	return spreadsheetCell{Display: value, Value: value}
 }
 
 func spreadsheetCellText(cell xlsxCellXML, sharedStrings []string) string {
@@ -564,5 +650,13 @@ func spreadsheetPreview(workbook *spreadsheetWorkbook) string {
 		}
 		parts = append(parts, fmt.Sprintf("%s (%d data rows)", sheet.Name, rowCount))
 	}
-	return "Converted spreadsheet with sheets: " + strings.Join(parts, ", ")
+	preview := "Converted spreadsheet with sheets: " + strings.Join(parts, ", ")
+	if workbook.Summary == nil || len(workbook.Summary.Highlights) == 0 {
+		return preview
+	}
+	highlights := workbook.Summary.Highlights
+	if len(highlights) > 3 {
+		highlights = highlights[:3]
+	}
+	return preview + ". Highlights: " + strings.Join(highlights, "; ")
 }

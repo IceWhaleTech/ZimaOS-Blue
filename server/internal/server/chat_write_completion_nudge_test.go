@@ -106,6 +106,30 @@ func TestBuildPostResearchFailureRecoveryNudge_RecognizesExecWrappedSearchFailur
 	}
 }
 
+func TestBuildResearchFailureRecoveryTools_ReducesToWriteWorkflow(t *testing.T) {
+	tools := []llm.Tool{
+		{Name: "research_run"},
+		{Name: "browser"},
+		{Name: "web_search"},
+		{Name: "write"},
+		{Name: "read"},
+		{Name: "find"},
+	}
+
+	reduced := buildResearchFailureRecoveryTools(tools, "Write the report to market_research.md after the research step.")
+	if len(reduced) == 0 {
+		t.Fatal("expected reduced toolset")
+	}
+	if got := reduced[0].Name; got != "write" {
+		t.Fatalf("expected write to be first reduced tool, got=%q", got)
+	}
+	for _, tool := range reduced {
+		if tool.Name == "web_search" || tool.Name == "browser" || tool.Name == "research_run" {
+			t.Fatalf("expected search tools to be removed from recovery toolset, got=%v", reduced)
+		}
+	}
+}
+
 func containsSubstring(haystack, needle string) bool {
 	return len(needle) > 0 && len(haystack) >= len(needle) && (func() bool {
 		return stringIndex(haystack, needle) >= 0

@@ -1031,6 +1031,54 @@ func TestFileReadTool(t *testing.T) {
 	}
 }
 
+func TestFileReadToolAddsTabularSummaryForCSV(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "sales.csv")
+	testContent := strings.Join([]string{
+		"Region,Product,Revenue,Cost",
+		"East,Widget B,3000,1800",
+		"West,Widget A,1250,750",
+		"East,Widget B,1800,1080",
+	}, "\n")
+	if err := writeTestFile(testFile, testContent); err != nil {
+		t.Fatalf("failed to create csv file: %v", err)
+	}
+
+	tool := NewFileReadTool([]string{tmpDir}, 0)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path": testFile,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var resultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &resultMap); err != nil {
+		t.Fatalf("failed to parse result: %v", err)
+	}
+	rawSummary, ok := resultMap["tabular_summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected tabular_summary, got %#v", resultMap["tabular_summary"])
+	}
+	numericTotals, ok := rawSummary["numeric_totals"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected numeric_totals, got %#v", rawSummary["numeric_totals"])
+	}
+	if got := numericTotals["Revenue"]; got != float64(6050) {
+		t.Fatalf("Revenue total = %v, want 6050", got)
+	}
+	if got := numericTotals["Profit"]; got != float64(2420) {
+		t.Fatalf("Profit total = %v, want 2420", got)
+	}
+	highlights, ok := rawSummary["highlights"].([]interface{})
+	if !ok || len(highlights) == 0 {
+		t.Fatalf("expected highlights, got %#v", rawSummary["highlights"])
+	}
+	if !strings.Contains(fmt.Sprint(highlights), "Top Revenue by Region: East (4,800)") {
+		t.Fatalf("unexpected highlights: %#v", highlights)
+	}
+}
+
 // Test FileRead tool with allowed paths
 func TestFileReadToolAllowedPaths(t *testing.T) {
 	tmpDir := t.TempDir()

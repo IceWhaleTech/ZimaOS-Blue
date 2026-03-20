@@ -20,7 +20,9 @@ import http.client
 import importlib
 import json
 import logging
+import os
 import shutil
+import sqlite3
 import sys
 import time
 from dataclasses import asdict, is_dataclass
@@ -68,6 +70,11 @@ def parse_args() -> argparse.Namespace:
         "--output",
         default="docs/reports/pinchbench_blue_results.json",
         help="Where to write the JSON results",
+    )
+    parser.add_argument(
+        "--blue-db-path",
+        default="",
+        help="Optional path to Blue's SQLite database. When available, tool audit logs are merged back into the transcript so graders can see tool calls.",
     )
     parser.add_argument(
         "--timeout-multiplier",
@@ -336,6 +343,138 @@ def usage_from_stats(stats: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return usage
 
 
+def transcript_has_tool_calls(transcript: Sequence[Dict[str, Any]]) -> bool:
+    for entry in transcript:
+        if entry.get("type") != "message":
+            continue
+        message = entry.get("message", {})
+        if message.get("role") != "assistant":
+            continue
+        for item in message.get("content", []):
+            if item.get("type") == "toolCall":
+                return True
+    return False
+
+
+def resolve_blue_db_path(explicit_path: str) -> Optional[Path]:
+    candidates: List[Path] = []
+    if explicit_path.strip():
+        candidates.append(Path(explicit_path).expanduser())
+    env_path = os.environ.get("BLUE_DB_PATH", "").strip()
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+    candidates.append(Path.home() / ".zimaos-blue" / "data" / "blue.db")
+    candidates.append(Path("/tmp/pinchbench-home/.zimaos-blue/data/blue.db"))
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve(strict=False)
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        if resolved.exists():
+            return resolved
+    return None
+
+
+def load_tool_audit_rows(db_path: Optional[Path], conversation_id: str) -> List[Dict[str, Any]]:
+    if db_path is None or not conversation_id:
+        return []
+    query = """
+        SELECT created_at, event_type, role, tool_call_id, tool_name, payload
+        FROM session_tool_audit_logs
+        WHERE conversation_id = ?
+          AND event_type IN ('assistant_tool_call', 'tool_result')
+        ORDER BY created_at ASC, id ASC
+    """
+    uri = f"file:{db_path}?mode=ro&immutable=1"
+    try:
+        with sqlite3.connect(uri, uri=True) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(query, (conversation_id,)).fetchall()
+    except sqlite3.Error as exc:
+        LOG.debug("Failed to read Blue audit rows from %s: %s", db_path, exc)
+        return []
+    return [dict(row) for row in rows]
+
+
+def build_audit_transcript_entries(audit_rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
+    for row in audit_rows:
+        event_type = str(row.get("event_type", "") or "").strip().lower()
+        tool_name = str(row.get("tool_name", "") or "").strip()
+        tool_call_id = str(row.get("tool_call_id", "") or "").strip()
+        payload_text = str(row.get("payload", "") or "")
+        if event_type == "assistant_tool_call" and tool_name:
+            parsed_args = parse_tool_arguments(payload_text)
+            entries.append(
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "toolCall",
+                                "id": tool_call_id or f"audit-{len(entries)+1}",
+                                "name": tool_name,
+                                "arguments": parsed_args,
+                                "params": parsed_args,
+                            }
+                        ],
+                    },
+                }
+            )
+            continue
+        if event_type == "tool_result":
+            entries.append(
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "toolResult",
+                        "toolCallId": tool_call_id,
+                        "toolName": tool_name,
+                        "content": [payload_text],
+                    },
+                }
+            )
+    return entries
+
+
+def augment_transcript_with_audit(
+    transcript: List[Dict[str, Any]],
+    *,
+    db_path: Optional[Path],
+    conversation_id: str,
+) -> List[Dict[str, Any]]:
+    if not transcript or transcript_has_tool_calls(transcript):
+        return transcript
+    audit_rows = load_tool_audit_rows(db_path, conversation_id)
+    if not audit_rows:
+        return transcript
+    audit_entries = build_audit_transcript_entries(audit_rows)
+    if not audit_entries:
+        return transcript
+
+    insert_at = len(transcript)
+    for idx in range(len(transcript) - 1, -1, -1):
+        entry = transcript[idx]
+        if entry.get("type") != "message":
+            continue
+        message = entry.get("message", {})
+        if message.get("role") == "assistant":
+            insert_at = idx
+            break
+    merged = transcript[:insert_at] + audit_entries + transcript[insert_at:]
+    LOG.debug(
+        "Injected %d audit transcript entries for conversation %s from %s",
+        len(audit_entries),
+        conversation_id,
+        db_path,
+    )
+    return merged
+
+
 def convert_blue_messages_to_transcript(messages: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     transcript: List[Dict[str, Any]] = []
     for msg in messages:
@@ -409,10 +548,11 @@ def extract_usage_from_transcript(transcript: Sequence[Dict[str, Any]]) -> Dict[
 
 
 class BlueJudgeRunner:
-    def __init__(self, client: BlueClient, provider: str, model: str):
+    def __init__(self, client: BlueClient, provider: str, model: str, *, blue_db_path: Optional[Path] = None):
         self.client = client
         self.provider = provider
         self.model = model
+        self.blue_db_path = blue_db_path
 
     def run_prompt(self, *, prompt: str, workspace: Path, timeout_seconds: float) -> Dict[str, Any]:
         workspace.mkdir(parents=True, exist_ok=True)
@@ -430,6 +570,11 @@ class BlueJudgeRunner:
             )
             messages = self.client.get_messages(conv_id, timeout=min(timeout_seconds, 30.0))
             transcript = convert_blue_messages_to_transcript(messages)
+            transcript = augment_transcript_with_audit(
+                transcript,
+                db_path=self.blue_db_path,
+                conversation_id=conv_id,
+            )
             return {
                 "agent_id": f"blue-judge-{self.provider or 'auto'}",
                 "task_id": "judge",
@@ -465,6 +610,7 @@ def execute_task(
     provider: str,
     model: str,
     timeout_multiplier: float,
+    blue_db_path: Optional[Path],
 ) -> Dict[str, Any]:
     start_time = time.time()
     workspace = prepare_workspace(task, pinchbench_dir, workspace_dir)
@@ -521,6 +667,11 @@ def execute_task(
         stderr_chunks.append(f"Failed to fetch conversation messages: {exc}")
 
     transcript = convert_blue_messages_to_transcript(messages)
+    transcript = augment_transcript_with_audit(
+        transcript,
+        db_path=blue_db_path,
+        conversation_id=conv_id,
+    )
     if (
         status == "error"
         and failed_prompt_index is not None
@@ -653,6 +804,11 @@ def main() -> int:
     pinchbench_dir = Path(args.pinchbench_dir).resolve()
     workspace_dir = Path(args.workspace_dir).resolve()
     output_path = Path(args.output).resolve()
+    blue_db_path = resolve_blue_db_path(args.blue_db_path)
+    if blue_db_path is not None:
+        LOG.info("Using Blue DB at %s for transcript audit recovery", blue_db_path)
+    else:
+        LOG.info("Blue DB not found; transcript recovery will rely on conversation messages only")
 
     lib_tasks, lib_grading = load_pinchbench_modules(pinchbench_dir)
     task_loader = lib_tasks.TaskLoader(pinchbench_dir / "tasks")
@@ -662,7 +818,12 @@ def main() -> int:
     client = BlueClient(args.blue_base_url)
     judge_provider = args.judge_provider or args.provider
     judge_model = args.judge_model or args.model
-    judge_runner = None if args.skip_judge else BlueJudgeRunner(client, judge_provider, judge_model)
+    judge_runner = None if args.skip_judge else BlueJudgeRunner(
+        client,
+        judge_provider,
+        judge_model,
+        blue_db_path=blue_db_path,
+    )
 
     LOG.info("Loaded %d tasks; running %d", len(tasks), len(selected_tasks))
     run_results: List[Dict[str, Any]] = []
@@ -677,6 +838,7 @@ def main() -> int:
             provider=args.provider,
             model=args.model,
             timeout_multiplier=args.timeout_multiplier,
+            blue_db_path=blue_db_path,
         )
 
         grade = None

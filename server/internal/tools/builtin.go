@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
@@ -160,6 +161,12 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 		"total_lines": totalLines,
 		"truncated":   truncated,
 		"content":     sliced,
+	}
+	switch strings.ToLower(strings.TrimPrefix(filepath.Ext(absPath), ".")) {
+	case "csv", "tsv":
+		if summary, summaryErr := convertpkg.SummarizeDelimitedFile(absPath); summaryErr == nil && summary != nil {
+			response["tabular_summary"] = summary
+		}
 	}
 	jsonResult, _ := json.Marshal(response)
 	return string(jsonResult), nil

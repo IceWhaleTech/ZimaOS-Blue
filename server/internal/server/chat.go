@@ -12716,6 +12716,47 @@ func buildPostResearchFailureRecoveryNudge(userMessage string, toolCalls []llm.T
 	return fmt.Sprintf("Live search/research tools just failed or timed out. Do not stop with a fallback summary. Using your general knowledge plus any successful evidence already gathered, now write the requested report to %q. Include an executive summary, key findings, a comparison table when relevant, and a short note that live retrieval failed so some details may be approximate. After writing the file, give a brief final confirmation.", target)
 }
 
+func buildResearchFailureRecoveryTools(tools []llm.Tool, userMessage string) []llm.Tool {
+	if len(tools) == 0 || extractRequestedArtifactPath(userMessage) == "" {
+		return tools
+	}
+	priority := []string{
+		"write",
+		"write_begin",
+		"write_chunk",
+		"write_commit",
+		"read",
+		"ls",
+		"find",
+		"grep",
+		"convert",
+	}
+	indexByName := make(map[string]llm.Tool, len(tools))
+	for _, tool := range tools {
+		name := strings.ToLower(strings.TrimSpace(tool.Name))
+		if name == "" {
+			continue
+		}
+		if _, ok := indexByName[name]; ok {
+			continue
+		}
+		indexByName[name] = tool
+	}
+
+	reduced := make([]llm.Tool, 0, len(priority))
+	for _, name := range priority {
+		tool, ok := indexByName[name]
+		if !ok {
+			continue
+		}
+		reduced = append(reduced, tool)
+	}
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "write") {
+		return tools
+	}
+	return reduced
+}
+
 func collectSuccessfulWriteTargets(toolCalls []llm.ToolCall, toolResults []llm.Message) []string {
 	if len(toolResults) == 0 {
 		return nil
@@ -12828,6 +12869,16 @@ func extractSuccessfulWriteTarget(toolName, content string) string {
 	}
 	path, _ := payload["path"].(string)
 	return strings.TrimSpace(path)
+}
+
+func containsLLMToolName(tools []llm.Tool, name string) bool {
+	target := strings.ToLower(strings.TrimSpace(name))
+	for _, tool := range tools {
+		if strings.EqualFold(strings.TrimSpace(tool.Name), target) {
+			return true
+		}
+	}
+	return false
 }
 
 func isSearchLikeToolCallForLLM(tc llm.ToolCall) bool {
@@ -14857,6 +14908,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 					Role:    llm.RoleUser,
 					Content: nudge,
 				})
+				chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
 			}
 			toolSummaries := make([]string, 0, len(toolResults))
 			for _, item := range toolResults {
@@ -17611,6 +17663,7 @@ STREAM_LOOP:
 					Role:    llm.RoleUser,
 					Content: nudge,
 				})
+				chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
 			}
 
 			// Persist this round's content as a separate message and notify frontend.
