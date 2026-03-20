@@ -214,9 +214,8 @@ func TestAnalyzeTool_Execute_NoBridge(t *testing.T) {
 
 func TestAnalyzeTool_Execute_SupportsNestedCamelCaseArgs(t *testing.T) {
 	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
-	htmlBody := `<div class="hero"><h1>Test</h1></div>`
 
-	bridge := &mockLLMBridge{responses: []string{analysisJSON, htmlBody}}
+	bridge := &mockLLMBridge{responses: []string{analysisJSON}}
 	tool := NewAnalyzeTool()
 	tool.SetLLMBridge(bridge)
 	tool.SetMediaDir(t.TempDir())
@@ -231,8 +230,8 @@ func TestAnalyzeTool_Execute_SupportsNestedCamelCaseArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(bridge.calls) != 2 {
-		t.Fatalf("expected 2 LLM calls, got %d", len(bridge.calls))
+	if len(bridge.calls) != 1 {
+		t.Fatalf("expected 1 LLM call, got %d", len(bridge.calls))
 	}
 	if !strings.Contains(bridge.calls[0], "Test Topic") || !strings.Contains(bridge.calls[0], "Some content to analyze") {
 		t.Fatalf("unexpected first prompt: %q", bridge.calls[0])
@@ -241,10 +240,9 @@ func TestAnalyzeTool_Execute_SupportsNestedCamelCaseArgs(t *testing.T) {
 
 func TestAnalyzeTool_Execute_AnalyzeWithText(t *testing.T) {
 	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
-	htmlBody := `<div class="hero"><h1>Test</h1></div>`
 
 	bridge := &mockLLMBridge{
-		responses: []string{analysisJSON, htmlBody},
+		responses: []string{analysisJSON},
 	}
 
 	tool := NewAnalyzeTool()
@@ -260,9 +258,8 @@ func TestAnalyzeTool_Execute_AnalyzeWithText(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should have called LLM twice (extract + generate HTML)
-	if len(bridge.calls) != 2 {
-		t.Errorf("expected 2 LLM calls, got %d", len(bridge.calls))
+	if len(bridge.calls) != 1 {
+		t.Errorf("expected 1 LLM call, got %d", len(bridge.calls))
 	}
 
 	// First call should contain the topic and content
@@ -271,11 +268,6 @@ func TestAnalyzeTool_Execute_AnalyzeWithText(t *testing.T) {
 	}
 	if !strings.Contains(bridge.calls[0], "Some content to analyze") {
 		t.Error("first LLM call should contain input text")
-	}
-
-	// Second call should contain the analysis JSON
-	if !strings.Contains(bridge.calls[1], "Test summary") {
-		t.Error("second LLM call should contain analysis data")
 	}
 
 	// Result should be JSON with success
@@ -290,15 +282,61 @@ func TestAnalyzeTool_Execute_AnalyzeWithText(t *testing.T) {
 	if resultMap["success"] != true {
 		t.Error("expected success=true")
 	}
+	if resultMap["output_mode"] != "inline" {
+		t.Errorf("expected output_mode=inline, got %v", resultMap["output_mode"])
+	}
+	if resultMap["report_url"] != nil {
+		t.Error("did not expect report_url in inline mode")
+	}
+	if strings.TrimSpace(resultMap["answer"].(string)) == "" {
+		t.Error("expected inline answer in result")
+	}
+}
+
+func TestAnalyzeTool_Execute_ReportModeGeneratesHTMLReport(t *testing.T) {
+	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
+	htmlBody := `<div class="hero"><h1>Test</h1></div>`
+
+	bridge := &mockLLMBridge{
+		responses: []string{analysisJSON, htmlBody},
+	}
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	tool.SetMediaDir(t.TempDir())
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"topic":       "Test Topic",
+		"text":        "Some content to analyze",
+		"lang":        "en-US",
+		"output_mode": "report",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(bridge.calls) != 2 {
+		t.Fatalf("expected 2 LLM calls in report mode, got %d", len(bridge.calls))
+	}
+	if !strings.Contains(bridge.calls[1], "Test summary") {
+		t.Fatal("expected second LLM call to contain analysis data in report mode")
+	}
+
+	resultStr, ok := result.(string)
+	if !ok {
+		t.Fatalf("expected string result, got %T", result)
+	}
+	var resultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(resultStr), &resultMap); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
 	if resultMap["report_url"] == nil {
-		t.Error("expected report_url in result")
+		t.Fatal("expected report_url in report mode")
 	}
 }
 
 func TestAnalyzeTool_Execute_EmitsDetailedProgressAndCollectionCard(t *testing.T) {
 	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
-	htmlBody := `<div class="hero"><h1>Test</h1></div>`
-	bridge := &mockLLMBridge{responses: []string{analysisJSON, htmlBody}}
+	bridge := &mockLLMBridge{responses: []string{analysisJSON}}
 
 	tool := NewAnalyzeTool()
 	tool.SetLLMBridge(bridge)
@@ -342,7 +380,7 @@ func TestAnalyzeTool_Execute_EmitsDetailedProgressAndCollectionCard(t *testing.T
 					sawDocStep = true
 				}
 			case "save_report":
-				if status == "success" {
+				if status == "skipped" {
 					sawSaveStep = true
 				}
 			}
@@ -369,9 +407,8 @@ func TestAnalyzeTool_Execute_EmitsDetailedProgressAndCollectionCard(t *testing.T
 
 func TestAnalyzeTool_Execute_AddsLongLLMDeadlineWhenParentHasNone(t *testing.T) {
 	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
-	htmlBody := `<div class="hero"><h1>Test</h1></div>`
 
-	bridge := &deadlineProbeBridge{responses: []string{analysisJSON, htmlBody}}
+	bridge := &deadlineProbeBridge{responses: []string{analysisJSON}}
 
 	tool := NewAnalyzeTool()
 	tool.SetLLMBridge(bridge)
@@ -386,8 +423,8 @@ func TestAnalyzeTool_Execute_AddsLongLLMDeadlineWhenParentHasNone(t *testing.T) 
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(bridge.hadDL) != 2 {
-		t.Fatalf("expected 2 bridge calls, got %d", len(bridge.hadDL))
+	if len(bridge.hadDL) != 1 {
+		t.Fatalf("expected 1 bridge call, got %d", len(bridge.hadDL))
 	}
 	for i, ok := range bridge.hadDL {
 		if !ok {
@@ -401,9 +438,8 @@ func TestAnalyzeTool_Execute_AddsLongLLMDeadlineWhenParentHasNone(t *testing.T) 
 
 func TestAnalyzeTool_Execute_UsesSmallModelDocExtractWhenEnabled(t *testing.T) {
 	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
-	htmlBody := `<div class="hero"><h1>Test</h1></div>`
 	bridge := &mockLLMBridge{
-		responses: []string{analysisJSON, htmlBody},
+		responses: []string{analysisJSON},
 	}
 	sm := &analyzeSmallModelMock{
 		respText: "Objective: summarize findings\nInputs: text\nSteps: collect -> analyze\nOutputs: report\nRisks: missing data",
@@ -432,8 +468,8 @@ func TestAnalyzeTool_Execute_UsesSmallModelDocExtractWhenEnabled(t *testing.T) {
 	if sm.calls != 1 {
 		t.Fatalf("small model calls = %d, want 1", sm.calls)
 	}
-	if len(bridge.calls) != 2 {
-		t.Fatalf("expected 2 LLM calls, got %d", len(bridge.calls))
+	if len(bridge.calls) != 1 {
+		t.Fatalf("expected 1 LLM call, got %d", len(bridge.calls))
 	}
 	if !strings.Contains(bridge.calls[0], "=== Small-model structured extraction ===") {
 		t.Fatalf("analysis prompt should include small-model extraction block, got: %s", bridge.calls[0])
@@ -451,9 +487,8 @@ func TestAnalyzeTool_Execute_UsesSmallModelDocExtractWhenEnabled(t *testing.T) {
 
 func TestAnalyzeTool_Execute_DocExtractDisabledSkipsSmallModel(t *testing.T) {
 	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
-	htmlBody := `<div class="hero"><h1>Test</h1></div>`
 	bridge := &mockLLMBridge{
-		responses: []string{analysisJSON, htmlBody},
+		responses: []string{analysisJSON},
 	}
 	sm := &analyzeSmallModelMock{
 		respText: "Objective: should not appear",
@@ -482,8 +517,8 @@ func TestAnalyzeTool_Execute_DocExtractDisabledSkipsSmallModel(t *testing.T) {
 	if sm.calls != 0 {
 		t.Fatalf("small model calls = %d, want 0 when doc extract switch disabled", sm.calls)
 	}
-	if len(bridge.calls) != 2 {
-		t.Fatalf("expected 2 LLM calls, got %d", len(bridge.calls))
+	if len(bridge.calls) != 1 {
+		t.Fatalf("expected 1 LLM call, got %d", len(bridge.calls))
 	}
 	if strings.Contains(bridge.calls[0], "=== Small-model structured extraction ===") {
 		t.Fatalf("analysis prompt should not include small-model extraction block when disabled")

@@ -66,14 +66,14 @@ const api = axios.create({
 
 // Token refresh state — shared across concurrent 401s
 let isRefreshing = false
-let refreshSubscribers: ((token: string) => void)[] = []
+let refreshSubscribers: ((token: string | null) => void)[] = []
 
-function onRefreshed(token: string) {
+function resolveRefreshSubscribers(token: string | null) {
   refreshSubscribers.forEach((cb) => cb(token))
   refreshSubscribers = []
 }
 
-function addRefreshSubscriber(cb: (token: string) => void) {
+function addRefreshSubscriber(cb: (token: string | null) => void) {
   refreshSubscribers.push(cb)
 }
 
@@ -99,7 +99,7 @@ export async function ensureFreshToken(): Promise<string | null> {
 
   // Normal mode: if already refreshing, wait for it
   if (isRefreshing) {
-    return new Promise<string>((resolve) => {
+    return new Promise<string | null>((resolve) => {
       addRefreshSubscriber(resolve)
     })
   }
@@ -108,6 +108,7 @@ export async function ensureFreshToken(): Promise<string | null> {
   const refreshTokenValue = localStorage.getItem('refresh_token')
   if (!refreshTokenValue) {
     isRefreshing = false
+    resolveRefreshSubscribers(null)
     clearAuthAndRedirect()
     return null
   }
@@ -125,11 +126,11 @@ export async function ensureFreshToken(): Promise<string | null> {
     localStorage.setItem('token', data.token)
     localStorage.setItem('refresh_token', data.refresh_token)
     isRefreshing = false
-    onRefreshed(data.token)
+    resolveRefreshSubscribers(data.token)
     return data.token
   } catch {
     isRefreshing = false
-    refreshSubscribers = []
+    resolveRefreshSubscribers(null)
     clearAuthAndRedirect()
     return null
   }

@@ -1,20 +1,27 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
-import { PagePermissions } from '@/api/users'
+import { PagePermissions } from '@/constants/pagePermissions'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
+import { reportStartupMark } from '@/utils/startupTrace'
 
 // Desktop detection: __BLUE_DESKTOP__ is injected by the Tauri on_page_load handler.
 // In desktop mode, the page is loaded from http://localhost:{port} (same-origin as the
 // Go server), so all API calls use relative URLs — no special URL construction needed.
 const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+const CHAT_STARTUP_PREVIEW_CHECK_TIMEOUT_MS = 250
+
+type PreviewModeCheckResult = {
+  preview: boolean
+  connectionError: boolean
+}
 
 // Preview mode state (cached to avoid repeated API calls)
 let previewModeChecked = false
 let isPreviewMode = false
 let connectionFailed = false
 let previewTokenFetched = false
-let pendingCheck: Promise<{ preview: boolean; connectionError: boolean }> | null = null
+let pendingCheck: Promise<PreviewModeCheckResult> | null = null
 
 async function fetchSystemMode(): Promise<Response> {
   const controller = new AbortController()
@@ -29,7 +36,7 @@ async function fetchSystemMode(): Promise<Response> {
   }
 }
 
-async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: boolean }> {
+async function checkPreviewMode(): Promise<PreviewModeCheckResult> {
   if (previewModeChecked) return { preview: isPreviewMode, connectionError: connectionFailed }
 
   // Deduplicate concurrent calls — only one inflight request at a time
@@ -43,7 +50,7 @@ async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: 
   }
 }
 
-async function doCheckPreviewMode(): Promise<{ preview: boolean; connectionError: boolean }> {
+async function doCheckPreviewMode(): Promise<PreviewModeCheckResult> {
   // In desktop mode, the Go server may still be starting on first launch.
   // Retry with backoff instead of failing immediately.
   const maxAttempts = isDesktop ? 5 : 1
@@ -119,6 +126,91 @@ async function fetchPreviewToken(): Promise<void> {
   }
 }
 
+function hasStoredSessionHint(): boolean {
+  try {
+    return !!(localStorage.getItem('token') || localStorage.getItem('preview_token'))
+  } catch {
+    return false
+  }
+}
+
+function isChatRouteLocation(path: string, name: unknown): boolean {
+  return path === '/chat' || name === 'Chat'
+}
+
+function isLoginRouteLocation(path: string, name: unknown): boolean {
+  return path === '/login' || name === 'Login'
+}
+
+function shouldUseOptimisticStartupPreviewCheck(path: string, name: unknown): boolean {
+  if (!isDesktop || previewModeChecked) return false
+  if (isChatRouteLocation(path, name)) return true
+  return isLoginRouteLocation(path, name) && !hasStoredSessionHint()
+}
+
+async function waitForPreviewCheckResult(
+  checkPromise: Promise<PreviewModeCheckResult>,
+  timeoutMs: number
+): Promise<PreviewModeCheckResult | null> {
+  let timeoutHandle: number | undefined
+  try {
+    return await Promise.race([
+      checkPromise,
+      new Promise<null>((resolve) => {
+        timeoutHandle = window.setTimeout(() => resolve(null), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeoutHandle !== undefined) {
+      window.clearTimeout(timeoutHandle)
+    }
+  }
+}
+
+function normalizeConnectionErrorFromPath(path: string): string {
+  return path === '/login' ? '/' : path
+}
+
+async function applyDeferredPreviewModeResult(
+  result: PreviewModeCheckResult,
+  intendedPath: string
+): Promise<void> {
+  if (result.connectionError) {
+    if (router.currentRoute.value.name === 'ConnectionError') return
+    await router.replace({
+      name: 'ConnectionError',
+      query: { from: normalizeConnectionErrorFromPath(intendedPath) },
+    })
+    return
+  }
+
+  if (!result.preview) return
+
+  const staleToken = localStorage.getItem('token')
+  const hasPreviewToken = !!localStorage.getItem('preview_token')
+  if (staleToken && !hasPreviewToken) {
+    useAuthStore().clearAuth()
+  }
+
+  await usePreviewStore().initialize()
+  if (router.currentRoute.value.name === 'Login') {
+    await router.replace({ name: 'Home' })
+  }
+}
+
+function deferPreviewModeResolution(
+  intendedPath: string,
+  checkPromise: Promise<PreviewModeCheckResult>
+) {
+  reportStartupMark('router_mode_check_deferred')
+  void checkPromise
+    .then(async (result) => {
+      reportStartupMark('router_mode_check_deferred_done')
+      await applyDeferredPreviewModeResult(result, intendedPath)
+    })
+    .catch(() => {})
+}
+
 // Reset preview mode status (call this after upgrade completes)
 export function resetPreviewModeStatus(): void {
   previewModeChecked = false
@@ -138,10 +230,90 @@ export function getCachedPreviewMode(): { checked: boolean; preview: boolean } {
 // By the time the router guard fires, the result is likely cached.
 checkPreviewMode().catch(() => {})
 
-// Preload the ChatView chunk in parallel with the preview mode check.
-// This overlaps the network fetch so the chunk is ready when navigation completes.
-const chatViewPreload = () => import('@/views/ChatView.vue')
-chatViewPreload()
+const importChatView = () => import('@/views/ChatView.vue')
+const importLoginView = () => import('@/views/LoginView.vue')
+const importConnectionErrorView = () => import('@/views/ConnectionErrorView.vue')
+let chatViewPreloadPromise: ReturnType<typeof importChatView> | null = null
+let loginViewPreloadPromise: ReturnType<typeof importLoginView> | null = null
+let connectionErrorViewPreloadPromise: ReturnType<typeof importConnectionErrorView> | null = null
+
+function preloadChatView() {
+  if (!chatViewPreloadPromise) {
+    reportStartupMark('chat_view_preload_start')
+    chatViewPreloadPromise = importChatView()
+      .then((module) => {
+        reportStartupMark('chat_view_preload_done')
+        return module
+      })
+      .catch((error) => {
+        chatViewPreloadPromise = null
+        reportStartupMark('chat_view_preload_error')
+        throw error
+      })
+  }
+  return chatViewPreloadPromise
+}
+
+function preloadLoginView() {
+  if (!loginViewPreloadPromise) {
+    loginViewPreloadPromise = importLoginView().catch((error) => {
+      loginViewPreloadPromise = null
+      throw error
+    })
+  }
+  return loginViewPreloadPromise
+}
+
+function preloadConnectionErrorView() {
+  if (!connectionErrorViewPreloadPromise) {
+    connectionErrorViewPreloadPromise = importConnectionErrorView().catch((error) => {
+      connectionErrorViewPreloadPromise = null
+      throw error
+    })
+  }
+  return connectionErrorViewPreloadPromise
+}
+
+function loadChatViewForRoute() {
+  reportStartupMark('chat_view_route_import_start')
+  return (chatViewPreloadPromise ?? importChatView())
+    .then((module) => {
+      reportStartupMark('chat_view_route_import_done')
+      return module
+    })
+    .catch((error) => {
+      reportStartupMark('chat_view_route_import_error')
+      throw error
+    })
+}
+
+function loadLoginViewForRoute() {
+  return loginViewPreloadPromise ?? importLoginView()
+}
+
+function loadConnectionErrorViewForRoute() {
+  return connectionErrorViewPreloadPromise ?? importConnectionErrorView()
+}
+
+function warmInitialStartupRoutes() {
+  if (typeof window === 'undefined') return
+  const path = window.location.pathname
+  if (path === '/' || path === '/chat') {
+    void preloadChatView().catch(() => {})
+    if (!hasStoredSessionHint()) {
+      void preloadLoginView().catch(() => {})
+    }
+    void preloadConnectionErrorView().catch(() => {})
+    return
+  }
+
+  if (path === '/login') {
+    void preloadLoginView().catch(() => {})
+    void preloadConnectionErrorView().catch(() => {})
+  }
+}
+
+warmInitialStartupRoutes()
 
 // Clear all cached state and tokens (for debugging/cleanup)
 export function clearAllState(): void {
@@ -162,7 +334,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/login',
     name: 'Login',
-    component: () => import('@/views/LoginView.vue'),
+    component: () => loadLoginViewForRoute(),
     meta: { public: true, hideLayout: true },
   },
   {
@@ -174,13 +346,13 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/connection-error',
     name: 'ConnectionError',
-    component: () => import('@/views/ConnectionErrorView.vue'),
+    component: () => loadConnectionErrorViewForRoute(),
     meta: { public: true, hideLayout: true },
   },
   {
     path: '/chat',
     name: 'Chat',
-    component: () => import('@/views/ChatView.vue'),
+    component: () => loadChatViewForRoute(),
     meta: { requiresAuth: true, noPadding: true, permission: PagePermissions.CHAT },
   },
   {
@@ -274,6 +446,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, permission: PagePermissions.SECURITY },
   },
   {
+    path: '/harness',
+    name: 'HarnessGroups',
+    component: () => import('@/views/HarnessGroupsView.vue'),
+    meta: { requiresAuth: true, permission: PagePermissions.TOOLS },
+  },
+  {
+    path: '/harness/:id',
+    name: 'HarnessGroupDetail',
+    component: () => import('@/views/HarnessGroupDetailView.vue'),
+    meta: { requiresAuth: true, permission: PagePermissions.TOOLS },
+  },
+  {
     path: '/sandbox',
     redirect: '/cron',
   },
@@ -313,6 +497,30 @@ const router = createRouter({
   routes,
 })
 
+router.afterEach(() => {
+  reportStartupMark('router_after_each')
+})
+
+function hydrateAuthenticatedChatRouteInBackground(
+  requiredPermission: string | undefined,
+  requiresAdmin: unknown
+) {
+  const authStore = useAuthStore()
+  if (authStore.user) return
+
+  reportStartupMark('router_fetch_user_deferred')
+  void authStore.fetchUser().then(() => {
+    if (requiresAdmin && !authStore.isAdmin) {
+      void router.replace({ name: 'Chat' })
+      return
+    }
+
+    if (requiredPermission && !authStore.hasPermission(requiredPermission)) {
+      void router.replace({ name: 'Chat' })
+    }
+  })
+}
+
 // Navigation guard for authentication, preview mode, and permissions
 let isNavigating = false
 router.beforeEach(async (to, from, next) => {
@@ -329,6 +537,11 @@ router.beforeEach(async (to, from, next) => {
 
   isNavigating = true
   try {
+    reportStartupMark('router_guard_enter')
+    if (isChatRouteLocation(to.path, to.name)) {
+      reportStartupMark('router_chat_guard_enter')
+    }
+
     // Extract access_token from URL query (e.g. QR code deep link)
     const urlToken = to.query.access_token as string | undefined
     if (urlToken) {
@@ -340,7 +553,7 @@ router.beforeEach(async (to, from, next) => {
     }
 
     const token = localStorage.getItem('token')
-    const isAuthenticated = !!token
+    let isAuthenticated = !!token
     const requiresAuth = to.meta.requiresAuth
     const requiresAdmin = to.meta.requiresAdmin
     const requiredPermission = to.meta.permission as string | undefined
@@ -352,53 +565,88 @@ router.beforeEach(async (to, from, next) => {
     }
 
     // Check preview mode (no users exist)
-    const { preview: inPreviewMode, connectionError } = await checkPreviewMode()
+    let previewModeResult: PreviewModeCheckResult | null = null
+    if (shouldUseOptimisticStartupPreviewCheck(to.path, to.name)) {
+      const previewCheckPromise = checkPreviewMode()
+      previewModeResult = await waitForPreviewCheckResult(
+        previewCheckPromise,
+        CHAT_STARTUP_PREVIEW_CHECK_TIMEOUT_MS
+      )
 
-    // If connection error (500 or network failure), redirect to error page
-    if (connectionError) {
-      // Avoid redirect loop: don't pass /login as from, use the original intended destination
-      const fromPath = to.fullPath === '/login' ? '/' : to.fullPath
-      next({ name: 'ConnectionError', query: { from: fromPath } })
-      return
+      if (!previewModeResult) {
+        reportStartupMark('router_mode_checked_optimistic')
+        deferPreviewModeResolution(to.fullPath, previewCheckPromise)
+      }
+    } else {
+      previewModeResult = await checkPreviewMode()
     }
 
-    // In preview mode, allow access to most routes without authentication.
-    // Clear any stale non-preview tokens so the UI correctly detects preview state.
-    if (inPreviewMode) {
-      const staleToken = localStorage.getItem('token')
-      const hasPreviewToken = !!localStorage.getItem('preview_token')
-      if (staleToken && !hasPreviewToken) {
-        // Stale token from a previous normal-mode session — wipe it
-        localStorage.removeItem('token')
-        localStorage.removeItem('refresh_token')
-        // Also reset the reactive auth store so isAuthenticated becomes false
-        const authStore = useAuthStore()
-        authStore.clearAuth()
-      }
-      // Eagerly initialize preview store so sidebar/header can read isPreviewMode
-      const previewStore = usePreviewStore()
-      await previewStore.initialize()
-      if (to.name === 'Login') {
-        next({ name: 'Home' })
+    if (previewModeResult) {
+      const { preview: inPreviewMode, connectionError } = previewModeResult
+      reportStartupMark('router_mode_checked')
+
+      // If connection error (500 or network failure), redirect to error page
+      if (connectionError) {
+        void preloadConnectionErrorView().catch(() => {})
+        next({
+          name: 'ConnectionError',
+          query: { from: normalizeConnectionErrorFromPath(to.fullPath) },
+        })
         return
       }
-      next()
-      return
+
+      // In preview mode, allow access to most routes without authentication.
+      // Clear any stale non-preview tokens so the UI correctly detects preview state.
+      if (inPreviewMode) {
+        if (isChatRouteLocation(to.path, to.name)) {
+          void preloadChatView()
+        }
+        const staleToken = localStorage.getItem('token')
+        const hasPreviewToken = !!localStorage.getItem('preview_token')
+        if (staleToken && !hasPreviewToken) {
+          // Stale token from a previous normal-mode session — wipe it
+          localStorage.removeItem('token')
+          localStorage.removeItem('refresh_token')
+          // Also reset the reactive auth store so isAuthenticated becomes false
+          const authStore = useAuthStore()
+          authStore.clearAuth()
+        }
+        // Eagerly initialize preview store so sidebar/header can read isPreviewMode
+        const previewStore = usePreviewStore()
+        await previewStore.initialize()
+        if (to.name === 'Login') {
+          next({ name: 'Home' })
+          return
+        }
+        next()
+        return
+      }
+    }
+
+    if (previewModeResult && isChatRouteLocation(to.path, to.name)) {
+      void preloadChatView()
     }
 
     // Normal mode: standard authentication flow
     const previewToken = localStorage.getItem('preview_token')
-    if (previewToken && !inPreviewMode) {
+    if (previewModeResult && previewToken) {
       localStorage.removeItem('preview_token')
       localStorage.removeItem('token')
+      isAuthenticated = false
       if ((requiresAuth || requiredPermission) && to.name !== 'Login') {
+        void preloadLoginView().catch(() => {})
         next({ name: 'Login', query: { redirect: to.fullPath } })
         return
       }
     }
 
+    if (!previewModeResult && isChatRouteLocation(to.path, to.name)) {
+      void preloadChatView()
+    }
+
     // Redirect to login if auth required but not authenticated
     if ((requiresAuth || requiredPermission) && !isAuthenticated) {
+      void preloadLoginView().catch(() => {})
       next({ name: 'Login', query: { redirect: to.fullPath } })
       return
     }
@@ -418,9 +666,21 @@ router.beforeEach(async (to, from, next) => {
     // On page refresh, token is restored from localStorage but user/permissions
     // are not — fetch them before rendering so sidebar and guards work correctly.
     if (isAuthenticated) {
+      if (isChatRouteLocation(to.path, to.name)) {
+        void preloadChatView()
+      }
       const authStore = useAuthStore()
       if (!authStore.user) {
+        if (isChatRouteLocation(to.path, to.name)) {
+          hydrateAuthenticatedChatRouteInBackground(requiredPermission, requiresAdmin)
+          reportStartupMark('router_guard_ready')
+          next()
+          return
+        }
+
+        reportStartupMark('router_fetch_user_wait')
         await authStore.fetchUser()
+        reportStartupMark('router_fetch_user_done')
       }
 
       // Check admin-only routes
@@ -436,6 +696,7 @@ router.beforeEach(async (to, from, next) => {
       }
     }
 
+    reportStartupMark('router_guard_ready')
     next()
   } finally {
     isNavigating = false

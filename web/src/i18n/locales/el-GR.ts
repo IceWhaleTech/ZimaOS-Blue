@@ -441,6 +441,27 @@ export default {
     toggleFailed: 'Αποτυχία εναλλαγής ενσωμάτωσης',
     fillRequiredFields: 'Συμπληρώστε πρώτα τα υποχρεωτικά πεδία',
     viewDocs: 'Δείτε την τεκμηρίωση',
+    groupAccessTitle: 'Πρόσβαση ομάδων',
+    groupAccessDesc:
+      'Ορίστε έναν ενιαίο κανόνα για το αν το Blue δέχεται εισερχόμενα μηνύματα ομάδας.',
+    groupAccessHint:
+      'Ανοιχτό διατηρεί την τρέχουσα συμπεριφορά. Απενεργοποιημένο αποκλείει όλες τις ομαδικές συνομιλίες. Η λίστα επιτρεπόμενων δέχεται μόνο τις καταχωρημένες συνομιλίες.',
+    groupAccessPolicy: 'Πολιτική',
+    groupAccessPolicyOpen: 'Ανοιχτό',
+    groupAccessPolicyAllowlist: 'Λίστα επιτρεπόμενων',
+    groupAccessPolicyDisabled: 'Απενεργοποιημένο',
+    groupAccessMentionPolicy: 'Συνθήκη απάντησης',
+    groupAccessMentionPolicyMentioned:
+      "Απάντηση μόνο όταν γίνεται {'@'}αναφορά στο Blue",
+    groupAccessMentionPolicyAlways: 'Απάντηση σε όλα τα επιτρεπόμενα μηνύματα ομάδας',
+    groupAccessMentionHint:
+      "Από προεπιλογή, το Blue απαντά σε ομάδες μόνο όταν γίνεται ρητή {'@'}αναφορά.",
+    groupAccessAllowedChats: 'Επιτρεπόμενες ομαδικές συνομιλίες',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Μία καταχώρηση ανά γραμμή στη μορφή channel:chat_id. Χρησιμοποιήστε * ως μπαλαντέρ αν χρειάζεται.',
+    groupAccessSaveFailed: 'Αποτυχία αποθήκευσης ρυθμίσεων πρόσβασης ομάδων',
+    groupAccessFormatError: 'Χρησιμοποιήστε μία καταχώρηση channel:chat_id ανά γραμμή',
     telegramDesc: 'Σύνδεση με Telegram Bot API',
     telegramHint: "Δημιουργήστε bot μέσω {'@'}BotFather και λάβετε το token του bot",
     telegramOpenChat: 'Άνοιγμα συνομιλίας bot',

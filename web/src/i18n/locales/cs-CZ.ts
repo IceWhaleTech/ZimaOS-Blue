@@ -436,6 +436,26 @@ export default {
     toggleFailed: 'Nepodařilo se přepnout integraci',
     fillRequiredFields: 'Nejprve vyplňte povinná pole',
     viewDocs: 'Zobrazit dokumentaci',
+    groupAccessTitle: 'Přístup do skupin',
+    groupAccessDesc:
+      'Nastavte jedno společné pravidlo pro to, zda Blue přijímá příchozí skupinové zprávy.',
+    groupAccessHint:
+      'Otevřeno zachová současné chování. Zakázáno zablokuje všechny skupinové chaty. Seznam povolených přijímá jen uvedené chaty.',
+    groupAccessPolicy: 'Zásada',
+    groupAccessPolicyOpen: 'Otevřeno',
+    groupAccessPolicyAllowlist: 'Seznam povolených',
+    groupAccessPolicyDisabled: 'Zakázáno',
+    groupAccessMentionPolicy: 'Podmínka odpovědi',
+    groupAccessMentionPolicyMentioned: "Odpovídat jen když je Blue zmíněn pomocí {'@'}",
+    groupAccessMentionPolicyAlways: 'Odpovídat na všechny povolené skupinové zprávy',
+    groupAccessMentionHint:
+      "Výchozí chování je odpovídat ve skupinách jen tehdy, když je Blue výslovně zmíněn pomocí {'@'}.",
+    groupAccessAllowedChats: 'Povolené skupinové chaty',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Jedna položka na řádek ve formátu channel:chat_id. V případě potřeby použijte * jako zástupný znak.',
+    groupAccessSaveFailed: 'Nepodařilo se uložit nastavení přístupu do skupin',
+    groupAccessFormatError: 'Použijte jeden záznam channel:chat_id na řádek',
     telegramDesc: 'Připojení k Telegram Bot API',
     telegramHint: "Vytvořte bota přes {'@'}BotFather a získejte token bota",
     telegramOpenChat: 'Otevřít chat bota',

@@ -287,3 +287,43 @@ func TestHelperResponseUnmarshalIncludesPath(t *testing.T) {
 		t.Fatalf("path = %q, want /tmp/out.pdf", resp.Outputs[0].Path)
 	}
 }
+
+func TestApplyRequestedOutputPathMovesOutput(t *testing.T) {
+	svc := setupConvertTestService(t)
+	taskID := "task-output-path"
+	sourcePath := filepath.Join(svc.outputDir(taskID), "draft.pdf")
+	if err := os.WriteFile(sourcePath, []byte("pdf"), 0o640); err != nil {
+		t.Fatalf("write source output: %v", err)
+	}
+
+	outputs := []ConvertOutput{{
+		ID:          "out-1",
+		Name:        "draft.pdf",
+		MimeType:    "application/pdf",
+		PreviewKind: PreviewPDF,
+		Path:        sourcePath,
+		Ref:         "out:" + taskID + ":out-1",
+		DownloadURL: "/api/v1/convert/tasks/" + taskID + "/download/out-1",
+	}}
+	targetPath := filepath.Join(t.TempDir(), "exports", "final.pdf")
+
+	moved, err := svc.applyRequestedOutputPath(taskID, TaskRequest{OutputPath: targetPath}, outputs)
+	if err != nil {
+		t.Fatalf("applyRequestedOutputPath() error = %v", err)
+	}
+	if len(moved) != 1 {
+		t.Fatalf("len(moved) = %d, want 1", len(moved))
+	}
+	if moved[0].Path != targetPath {
+		t.Fatalf("moved path = %q, want %q", moved[0].Path, targetPath)
+	}
+	if moved[0].Name != "final.pdf" {
+		t.Fatalf("moved name = %q, want final.pdf", moved[0].Name)
+	}
+	if _, err := os.Stat(targetPath); err != nil {
+		t.Fatalf("expected target output to exist: %v", err)
+	}
+	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
+		t.Fatalf("expected source output to be moved away, got stat error %v", err)
+	}
+}

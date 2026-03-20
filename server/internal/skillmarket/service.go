@@ -187,6 +187,7 @@ func (s *Service) StartDiscoverAsync() (DiscoverStatus, bool) {
 	s.discoverStatus = DiscoverStatus{
 		Running:   true,
 		StartedAt: timeutil.NowTime(),
+		Result:    &DiscoverResult{},
 	}
 	status := cloneDiscoverStatus(s.discoverStatus)
 	s.discoverMu.Unlock()
@@ -485,8 +486,40 @@ func (s *Service) beginDiscover() bool {
 	s.discoverStatus = DiscoverStatus{
 		Running:   true,
 		StartedAt: timeutil.NowTime(),
+		Result:    &DiscoverResult{},
 	}
 	return true
+}
+
+func (s *Service) setDiscoverTotals(totalSources int) {
+	s.discoverMu.Lock()
+	defer s.discoverMu.Unlock()
+	if !s.discoverStatus.Running {
+		return
+	}
+	s.discoverStatus.TotalSources = totalSources
+	if s.discoverStatus.Result == nil {
+		s.discoverStatus.Result = &DiscoverResult{}
+	}
+	s.discoverStatus.Result.SourcesProcessed = totalSources
+}
+
+func (s *Service) setDiscoverProgress(source Source, processedSources int, result *DiscoverResult) {
+	s.discoverMu.Lock()
+	defer s.discoverMu.Unlock()
+	if !s.discoverStatus.Running {
+		return
+	}
+	s.discoverStatus.ProcessedSources = processedSources
+	s.discoverStatus.CurrentSourceID = source.ID
+	s.discoverStatus.CurrentSourceName = defaultString(source.DisplayName, source.ID)
+	s.discoverStatus.Result = cloneDiscoverResult(result)
+	if s.discoverStatus.Result == nil {
+		s.discoverStatus.Result = &DiscoverResult{}
+	}
+	if s.discoverStatus.TotalSources > 0 {
+		s.discoverStatus.Result.SourcesProcessed = s.discoverStatus.TotalSources
+	}
 }
 
 func (s *Service) finishDiscover(result *DiscoverResult, err error) {
@@ -494,6 +527,14 @@ func (s *Service) finishDiscover(result *DiscoverResult, err error) {
 	defer s.discoverMu.Unlock()
 	s.discoverStatus.Running = false
 	s.discoverStatus.FinishedAt = timeutil.NowTime()
+	if result != nil && s.discoverStatus.TotalSources == 0 {
+		s.discoverStatus.TotalSources = result.SourcesProcessed
+	}
+	if s.discoverStatus.TotalSources > 0 {
+		s.discoverStatus.ProcessedSources = s.discoverStatus.TotalSources
+	}
+	s.discoverStatus.CurrentSourceID = ""
+	s.discoverStatus.CurrentSourceName = ""
 	s.discoverStatus.Result = cloneDiscoverResult(result)
 	if err != nil {
 		s.discoverStatus.LastError = err.Error()
@@ -522,7 +563,10 @@ func (s *Service) discoverOnce(ctx context.Context) (*DiscoverResult, error) {
 		return nil, err
 	}
 	result := &DiscoverResult{SourcesProcessed: len(sources)}
+	s.setDiscoverTotals(len(sources))
+	processedSources := 0
 	for _, source := range sources {
+		s.setDiscoverProgress(source, processedSources, result)
 		run, err := s.store.BeginCrawlRun(ctx, source.ID)
 		if err != nil {
 			return nil, err
@@ -553,6 +597,8 @@ func (s *Service) discoverOnce(ctx context.Context) (*DiscoverResult, error) {
 		result.Discovered += run.Discovered
 		result.Updated += run.Updated
 		result.Failed += run.Failed
+		processedSources++
+		s.setDiscoverProgress(source, processedSources, result)
 	}
 	return result, nil
 }

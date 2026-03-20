@@ -435,6 +435,26 @@ export default {
     toggleFailed: 'Kunne ikke skifte integration',
     fillRequiredFields: 'Udfyld venligst de påkrævede felter først',
     viewDocs: 'Se dokumentation',
+    groupAccessTitle: 'Gruppeadgang',
+    groupAccessDesc:
+      'Angiv én samlet regel for, om Blue accepterer indgående gruppemeddelelser.',
+    groupAccessHint:
+      'Åben bevarer den nuværende adfærd. Deaktiveret blokerer alle gruppechats. Tilladelsesliste accepterer kun de angivne chats.',
+    groupAccessPolicy: 'Politik',
+    groupAccessPolicyOpen: 'Åben',
+    groupAccessPolicyAllowlist: 'Tilladelsesliste',
+    groupAccessPolicyDisabled: 'Deaktiveret',
+    groupAccessMentionPolicy: 'Svarbetingelse',
+    groupAccessMentionPolicyMentioned: "Svar kun når Blue bliver {'@'}nævnt",
+    groupAccessMentionPolicyAlways: 'Svar på alle tilladte gruppemeddelelser',
+    groupAccessMentionHint:
+      "Standardadfærden er kun at svare i grupper, når Blue udtrykkeligt bliver {'@'}nævnt.",
+    groupAccessAllowedChats: 'Tilladte gruppechats',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Én post pr. linje i formatet channel:chat_id. Brug * som jokertegn ved behov.',
+    groupAccessSaveFailed: 'Kunne ikke gemme indstillinger for gruppeadgang',
+    groupAccessFormatError: 'Brug én channel:chat_id-post pr. linje',
     telegramDesc: 'Forbind til Telegram Bot API',
     telegramHint: "Opret en bot via {'@'}BotFather og få din bot-token",
     telegramOpenChat: 'Åbn botchat',

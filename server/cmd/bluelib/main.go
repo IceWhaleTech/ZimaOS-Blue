@@ -67,12 +67,12 @@ import (
 )
 
 var (
-	version   = "0.10.32"
+	version   = "0.10.33"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
 
-func applyPendingBackupRestore(dataDir string, previousCleanShutdown bool) error {
+func applyPendingBackupRestore(dataDir string) (bool, error) {
 	mgr, err := backup.NewManager(backup.Config{
 		Enabled:       true,
 		RetentionDays: 7,
@@ -80,25 +80,13 @@ func applyPendingBackupRestore(dataDir string, previousCleanShutdown bool) error
 		SkillsPath:    filepath.Join(dataDir, "workspace", ".claude", "skills"),
 	}, dataDir, dataDir)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !mgr.HasPendingRestore() {
-		if previousCleanShutdown {
-			return nil
-		}
-		dbPaths, err := backup.DiscoverSQLiteDatabasePaths(dataDir)
-		if err != nil {
-			return err
-		}
-		if result, err := mgr.CheckAndAutoRecover(context.Background(), dbPaths); err != nil {
-			return err
-		} else if result != nil && len(result.RepairedDatabases) > 0 {
-			fmt.Fprintf(os.Stderr, "Repaired databases %v in place\n", result.RepairedDatabases)
-		}
-		return nil
+		return false, nil
 	}
 	_, err = mgr.ApplyPendingRestore(context.Background())
-	return err
+	return true, err
 }
 
 // getDataDir returns the platform-specific data directory path
@@ -363,6 +351,9 @@ func BlueServerCleanup() {
 }
 
 func runServer(ctx context.Context, port int, dataDir string, cfgFile string) error {
+	trace := bootstrap.NewStartupTrace("bluelib.run_server", nil)
+	trace.Mark("enter")
+
 	// Tune GC for lower memory usage (shared with blue CLI)
 	bootstrap.TuneGC()
 
@@ -371,6 +362,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+	trace.Mark("config_loaded")
 
 	// Initialize HotReloader for config changes
 	var hotReloader *config.HotReloader
@@ -379,6 +371,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		WatchInterval:       5 * time.Second,
 		ValidateBeforeApply: true,
 	})
+	trace.Mark("hot_reloader_ready")
 
 	// Override port if specified
 	if port > 0 {
@@ -389,14 +382,20 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if err := os.MkdirAll(dataDir, 0750); err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
+	trace.Mark("data_dir_ready")
 
 	previousCleanShutdown, startupIntegrityErr := dbutil.BeginStartupIntegritySession(dataDir)
 	if startupIntegrityErr != nil {
 		fmt.Fprintf(os.Stderr, "Startup integrity state warning: %v\n", startupIntegrityErr)
 		previousCleanShutdown = false
 	}
-	dbutil.SetStartupQuickCheckEnabled(!previousCleanShutdown)
+	// A dirty previous shutdown alone is not enough to justify a blocking
+	// quick_check on large databases. SQLite WAL recovery handles the common
+	// crash path; explicit restore markers and open-time recovery handle the
+	// real recovery mode cases.
+	dbutil.SetStartupQuickCheckEnabled(false)
 	defer dbutil.SetStartupQuickCheckEnabled(true)
+	trace.Mark("startup_integrity_ready", zap.Bool("previous_clean_shutdown", previousCleanShutdown))
 
 	// Initialize logger with ring buffer for log viewing
 	if err := logger.Init(&cfg.Log); err != nil {
@@ -409,6 +408,8 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 	defer zapLogger.Sync()
+	trace.SetLogger(zapLogger)
+	trace.Mark("logger_ready")
 
 	zapLogger.Info("Starting ZimaOS-Blue (embedded)",
 		zap.String("version", version),
@@ -417,12 +418,16 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		zap.Int("port", cfg.Server.Port),
 		zap.String("data_dir", dataDir),
 	)
+	appliedPendingRestore, err := applyPendingBackupRestore(dataDir)
 	if previousCleanShutdown {
 		zapLogger.Info("Skipping proactive startup database scan after previous clean shutdown")
+	} else if !appliedPendingRestore {
+		zapLogger.Info("Skipping proactive full startup recovery scan; pending restore marker not found and primary database open will perform quick integrity checks")
 	}
-	if err := applyPendingBackupRestore(dataDir, previousCleanShutdown); err != nil {
+	if err != nil {
 		zapLogger.Warn("Failed to apply pending backup restore before database initialization", zap.Error(err))
 	}
+	trace.Mark("backup_restore_checked")
 
 	// Create server config
 	serverCfg := &bootstrap.ServerConfig{
@@ -440,6 +445,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		return fmt.Errorf("failed to initialize services: %w", err)
 	}
 	defer services.Close()
+	trace.Mark("services_initialized")
 
 	// Shared kvstore for all config persistence
 	sqliteKV, err := kvstore.NewSQLiteStoreWithDB(services.DB)
@@ -476,6 +482,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	} else {
 		zapLogger.Info("Periodic WAL checkpoint disabled")
 	}
+	trace.Mark("config_store_ready")
 
 	// Register cleanup for services
 	registerCleanup(func() error {
@@ -529,6 +536,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 			zapLogger.Info("Session tool payload audit store enabled", zap.String("path", auditDBPath), zap.Int("retention_days", cfg.Session.Audit.RetentionDays))
 		}
 	}
+	trace.Mark("chat_metrics_ready")
 
 	// Initialize external auth service
 	extauthService, _ := extauth.NewService(&extauth.ServiceConfig{
@@ -559,6 +567,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		permService := permission.NewService(permRepo, services.UserRepo)
 		userHandler.SetPermissionService(permService)
 	}
+	trace.Mark("core_handlers_ready")
 
 	// Initialize backup handler
 	backupManager, _ := backup.NewManager(backup.Config{
@@ -621,18 +630,25 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	})
 
 	// Initialize browser handler
-	browserService, _ := browser.NewService(&cfg.Browser)
-	var browserHandler *browser.Handler
-	if browserService != nil {
-		browserHandler = browser.NewHandler(browserService)
-	}
+	browserHandler := browser.NewLazyHandler(func() browser.Service {
+		browserService, err := browser.NewService(&cfg.Browser)
+		if err != nil {
+			zapLogger.Warn("Failed to initialize browser service lazily", zap.Error(err))
+			return nil
+		}
+		return browserService
+	})
 
 	// Initialize formfiller handler
-	formfillerStore, _ := formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
-	var formfillerHandler *formfiller.Handler
-	if formfillerStore != nil {
-		formfillerHandler = formfiller.NewHandler(formfillerStore)
-	}
+	formfillerHandler := formfiller.NewLazyHandler(func() (*formfiller.Store, error) {
+		formfillerStore, err := formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
+		if err != nil {
+			zapLogger.Warn("Failed to initialize form filler store lazily", zap.Error(err))
+			return nil, err
+		}
+		return formfillerStore, nil
+	})
+	trace.Mark("browser_formfiller_ready", zap.Bool("browser_handler", browserHandler != nil), zap.Bool("formfiller_handler", formfillerHandler != nil))
 
 	// Initialize workflow handler lazily to avoid repository setup on the critical startup path.
 	workflowHandler := workflow.NewLazyHandler(func() *workflow.WorkflowService {
@@ -785,6 +801,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	} else if whisperASRProvider != nil {
 		speechService.SetASRProvider(whisperASRProvider)
 	}
+	trace.Mark("speech_ready")
 
 	// Initialize companion handler
 	companionConfig := companion.DefaultConfig()
@@ -850,6 +867,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 			_, _, _ = initCompanion()
 		}
 	}
+	trace.Mark("companion_handlers_ready")
 
 	// Initialize provider pool (SQLite-backed, auto-migrates from JSON files)
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
@@ -880,6 +898,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		bootstrap.LoadProvidersFromPool(providerPool, services.LLMRegistry)
 		chatHandler.SetProviderPool(providerPool)
 	}
+	trace.Mark("provider_pool_ready", zap.Bool("provider_pool", providerPool != nil))
 
 	// Initialize ngrok
 	ngrokConfigStore := ngrok.NewConfigStore(configKV)
@@ -927,6 +946,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	systemPromptBuilder.SetWorkspace(workspaceMgr)
 	systemPromptBuilder.SetContextResolver(contextResolver)
 	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
+	trace.Mark("workspace_context_ready")
 
 	// Initialize channel config store
 	channelConfigStore := server.NewChannelConfigStore(configKV)
@@ -950,6 +970,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		pushIPC = pushResult.IPC
 		pushSvc = pushResult.Service
 	}
+	trace.Mark("push_ready")
 
 	// Clean up extracted web dist from tmpfs on shutdown
 	registerCleanup(func() error {
@@ -1051,6 +1072,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	// Initialize memory handler in background — it's not needed until the first
 	// memory API call or chat recall, so don't block server startup.
 	go memoryHandler.Init()
+	trace.Mark("memory_init_started")
 
 	// Create Echo server
 	e := echo.New()
@@ -1065,6 +1087,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if err != nil {
 		return err
 	}
+	trace.Mark("listener_bound", zap.Int("actual_port", actualPort))
 
 	// Propagate actual port to server/security/network packages
 	server.SetActualPort(actualPort)
@@ -1140,6 +1163,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		// This lets the Tauri health poll succeed while heavy subsystems
 		// (media, skills, IPC) are still initializing.
 		OnEarlyReady: func() {
+			trace.Mark("routes_early_ready", zap.Int("actual_port", actualPort))
 			zapLogger.Info("Critical routes ready, starting HTTP server early",
 				zap.String("addr", addr), zap.Int("actual_port", actualPort))
 			go func() {
@@ -1153,6 +1177,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if warmCompanion != nil {
 		go warmCompanion()
 	}
+	trace.Mark("routes_registered")
 
 	zapLogger.Info("All routes registered", zap.Int("actual_port", actualPort))
 

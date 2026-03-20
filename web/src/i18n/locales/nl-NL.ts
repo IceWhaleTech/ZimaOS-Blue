@@ -440,6 +440,27 @@ export default {
     toggleFailed: 'Integratie schakelen mislukt',
     fillRequiredFields: 'Vul eerst de verplichte velden in',
     viewDocs: 'Documentatie bekijken',
+    groupAccessTitle: 'Groepstoegang',
+    groupAccessDesc:
+      'Stel één uniforme regel in voor de vraag of Blue inkomende groepsberichten accepteert.',
+    groupAccessHint:
+      'Open behoudt het huidige gedrag. Uitgeschakeld blokkeert alle groepschats. De toelatingslijst accepteert alleen vermelde chats.',
+    groupAccessPolicy: 'Beleid',
+    groupAccessPolicyOpen: 'Open',
+    groupAccessPolicyAllowlist: 'Toelatingslijst',
+    groupAccessPolicyDisabled: 'Uitgeschakeld',
+    groupAccessMentionPolicy: 'Antwoordvoorwaarde',
+    groupAccessMentionPolicyMentioned:
+      "Alleen antwoorden wanneer Blue {'@'}genoemd wordt",
+    groupAccessMentionPolicyAlways: 'Antwoorden op alle toegestane groepsberichten',
+    groupAccessMentionHint:
+      "Standaard antwoordt Blue in groepen alleen wanneer het expliciet {'@'}genoemd wordt.",
+    groupAccessAllowedChats: 'Toegestane groepschats',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Eén item per regel in de indeling channel:chat_id. Gebruik indien nodig * als jokerteken.',
+    groupAccessSaveFailed: 'Opslaan van instellingen voor groepstoegang mislukt',
+    groupAccessFormatError: 'Gebruik één channel:chat_id-item per regel',
     telegramDesc: 'Verbinden met Telegram Bot API',
     telegramHint: "Maak een bot via {'@'}BotFather en krijg je bot-token",
     telegramOpenChat: 'Botchat openen',

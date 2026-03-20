@@ -1,28 +1,68 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
 import { useThemeStore } from '@/stores/theme'
-import { workspaceApi } from '@/api/workspace'
 import type { WorkspaceFile, WorkspaceStats, WorkspaceTreeEntry } from '@/api/workspace'
-import { claudeCodeApi, type DirectoryWhitelistEntry } from '@/api/claudecode'
-import { conversationApi, messageApi, type Conversation, type Message } from '@/api/chat'
-import type {
-  TypelessCard,
-  TypelessCardConvertTask,
-  TypelessCardFile,
-  TypelessCardResult,
-} from '@/types/typeless'
-import { parseTypelessContent } from '@/utils/typeless'
-import { PagePermissions } from '@/api/users'
+import type { DirectoryWhitelistEntry } from '@/api/claudecode'
+import type { Conversation, Message } from '@/api/chat'
+import { PagePermissions } from '@/constants/pagePermissions'
 import { storeToRefs } from 'pinia'
 import { useTauri } from '@/composables/useTauri'
 import { isLocalAbsolutePath } from '@/utils/localPath'
 import { resetPreviewModeStatus } from '@/router'
-import PreviewUpgradeForm from '@/components/preview/PreviewUpgradeForm.vue'
+import { extractLocalPathCandidatesFromCard } from '@/utils/workspaceGeneratedFiles'
+const PreviewUpgradeForm = defineAsyncComponent(
+  () => import('@/components/preview/PreviewUpgradeForm.vue')
+)
+
+type WorkspaceApiModule = typeof import('@/api/workspace')
+type ClaudeCodeApiModule = typeof import('@/api/claudecode')
+type ChatApiModule = typeof import('@/api/chat')
+type TypelessUtilsModule = typeof import('@/utils/typeless')
+
+let workspaceApiModulePromise: Promise<WorkspaceApiModule> | null = null
+let claudeCodeApiModulePromise: Promise<ClaudeCodeApiModule> | null = null
+let chatApiModulePromise: Promise<ChatApiModule> | null = null
+let typelessUtilsModulePromise: Promise<TypelessUtilsModule> | null = null
+
+async function loadWorkspaceApi() {
+  if (!workspaceApiModulePromise) {
+    workspaceApiModulePromise = import('@/api/workspace')
+  }
+  return (await workspaceApiModulePromise).workspaceApi
+}
+
+async function loadClaudeCodeApi() {
+  if (!claudeCodeApiModulePromise) {
+    claudeCodeApiModulePromise = import('@/api/claudecode')
+  }
+  return (await claudeCodeApiModulePromise).claudeCodeApi
+}
+
+async function loadConversationApi() {
+  if (!chatApiModulePromise) {
+    chatApiModulePromise = import('@/api/chat')
+  }
+  return (await chatApiModulePromise).conversationApi
+}
+
+async function loadMessageApi() {
+  if (!chatApiModulePromise) {
+    chatApiModulePromise = import('@/api/chat')
+  }
+  return (await chatApiModulePromise).messageApi
+}
+
+async function loadTypelessUtils() {
+  if (!typelessUtilsModulePromise) {
+    typelessUtilsModulePromise = import('@/utils/typeless')
+  }
+  return await typelessUtilsModulePromise
+}
 
 interface NavItem {
   id: string
@@ -64,17 +104,6 @@ interface WhitelistTreeTarget {
 const GENERATED_SCAN_CONVERSATION_LIMIT = 20
 const GENERATED_SCAN_MESSAGE_LIMIT = 120
 
-const pathLikeKeys = [
-  'path',
-  'file',
-  'file_path',
-  'output_path',
-  'download_url',
-  'local_path',
-  'artifact_path',
-  'url',
-]
-
 const coreWorkspaceFileInfo: Record<string, CoreWorkspaceFileInfo> = {
   'SOUL.md': { icon: '🧠', labelKey: 'workspace.label.soul', descKey: 'workspace.desc.soul' },
   'USER.md': { icon: '👤', labelKey: 'workspace.label.user', descKey: 'workspace.desc.user' },
@@ -102,7 +131,7 @@ const systemStore = useSystemStore()
 const authStore = useAuthStore()
 const previewStore = usePreviewStore()
 const themeStore = useThemeStore()
-const { isTauri, platform, openInBrowser, revealInFileManager } = useTauri()
+const { isTauri, platform, openInBrowser, revealInFileManager, startWindowDragging } = useTauri()
 const { health } = storeToRefs(systemStore)
 const { isAdmin } = storeToRefs(authStore)
 const { isPreviewMode } = storeToRefs(previewStore)
@@ -119,6 +148,7 @@ const isConfigurationGroupExpanded = ref(true)
 const isMac =
   typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0
 const showPreviewUpgradeModal = ref(false)
+const showMacosDesktopDragRegion = computed(() => isTauri.value && platform.value === 'macos')
 
 // Workspace panel state
 const showWorkspacePanel = ref(false)
@@ -365,33 +395,14 @@ function mapWhitelistTreeEntries(
   return mapped
 }
 
-function hasLikelyUrlScheme(value: string): boolean {
-  return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(value)
-}
-
-function resolveWorkspaceGeneratedPathCandidate(
-  value: string,
-  workspaceRootPath: string
-): string | null {
-  const trimmed = value.trim().replace(/^['"`]+|['"`]+$/g, '')
-  if (!trimmed) return null
-  if (isLocalAbsolutePath(trimmed)) return trimmed
-  if (!workspaceRootPath || !isLocalAbsolutePath(workspaceRootPath)) return null
-  if (trimmed.startsWith('/api/') || hasLikelyUrlScheme(trimmed)) return null
-
-  const relative = trimmed.replace(/^[.][\\/]+/, '').replace(/^[\\/]+/, '')
-  if (!relative) return null
-  if (relative.split(/[\\/]+/).some((segment) => segment === '..')) return null
-
-  const root = workspaceRootPath.replace(/[\\/]+$/, '')
-  const separator = root.includes('\\') && !root.includes('/') ? '\\' : '/'
-  return `${root}${separator}${relative}`
-}
-
 async function loadWhitelistWorkspaceTreeEntries(
   workspaceRootPath: string
 ): Promise<WorkspaceTreeEntry[]> {
   try {
+    const [claudeCodeApi, workspaceApi] = await Promise.all([
+      loadClaudeCodeApi(),
+      loadWorkspaceApi(),
+    ])
     const cfgRes = await claudeCodeApi.getConfig()
     const config = cfgRes.data
     if (
@@ -426,64 +437,6 @@ async function loadWhitelistWorkspaceTreeEntries(
   }
 }
 
-function collectPathCandidates(value: unknown, workspaceRootPath: string, into: string[]): void {
-  if (typeof value === 'string') {
-    const path = resolveWorkspaceGeneratedPathCandidate(value, workspaceRootPath)
-    if (path) into.push(path)
-    return
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) collectPathCandidates(item, workspaceRootPath, into)
-    return
-  }
-
-  if (!value || typeof value !== 'object') return
-
-  const record = value as Record<string, unknown>
-  for (const key of pathLikeKeys) {
-    const candidate = record[key]
-    if (typeof candidate !== 'string') continue
-    const path = resolveWorkspaceGeneratedPathCandidate(candidate, workspaceRootPath)
-    if (path) {
-      into.push(path)
-    }
-  }
-}
-
-function extractLocalPathCandidatesFromCard(
-  card: TypelessCard,
-  workspaceRootPath: string
-): string[] {
-  const paths: string[] = []
-
-  if (card.type === 'file') {
-    const fileCard = card as TypelessCardFile
-    collectPathCandidates(fileCard.downloadUrl, workspaceRootPath, paths)
-    collectPathCandidates(fileCard.previewUrl, workspaceRootPath, paths)
-  }
-
-  if (card.type === 'result') {
-    const resultCard = card as TypelessCardResult
-    for (const detail of resultCard.details || []) {
-      collectPathCandidates(detail.value, workspaceRootPath, paths)
-    }
-  }
-
-  if (card.type === 'convert-task') {
-    const convertCard = card as TypelessCardConvertTask
-    for (const output of convertCard.outputs || []) {
-      collectPathCandidates(output.download_url, workspaceRootPath, paths)
-    }
-  }
-
-  const genericCard = card as unknown as Record<string, unknown>
-  collectPathCandidates(genericCard.artifacts, workspaceRootPath, paths)
-  collectPathCandidates(genericCard.download_url, workspaceRootPath, paths)
-
-  return Array.from(new Set(paths))
-}
-
 function buildGeneratedFileRecord(
   path: string,
   source: string,
@@ -509,13 +462,14 @@ function buildGeneratedFileRecord(
   }
 }
 
-function extractGeneratedFilesFromMessage(
+async function extractGeneratedFilesFromMessage(
   conversation: Conversation,
   message: Message,
   workspaceRootPath: string
-): GeneratedWorkspaceFile[] {
+): Promise<GeneratedWorkspaceFile[]> {
   if (!message.content || !message.content.trim()) return []
 
+  const { parseTypelessContent } = await loadTypelessUtils()
   const parsed = parseTypelessContent(message.content, message.id, conversation.id)
   if (!parsed.cards.length) return []
 
@@ -543,6 +497,7 @@ async function ensureWorkspaceMeta(options?: { silent?: boolean }) {
   workspaceMetaRequested.value = true
   workspaceMetaLoading.value = true
   try {
+    const workspaceApi = await loadWorkspaceApi()
     const res = await workspaceApi.getMeta()
     workspaceDir.value = String(res.data?.dir || '').trim()
     workspaceMetaLoaded.value = true
@@ -562,6 +517,7 @@ async function ensureWorkspaceFiles(force = false) {
   workspaceLoading.value = true
   workspaceError.value = ''
   try {
+    const workspaceApi = await loadWorkspaceApi()
     const [filesRes, statsRes] = await Promise.all([
       workspaceApi.listFiles(),
       workspaceApi.getStats(),
@@ -583,6 +539,7 @@ async function ensureWorkspaceTree(force = false) {
   workspaceTreeLoading.value = true
   workspaceTreeError.value = ''
   try {
+    const workspaceApi = await loadWorkspaceApi()
     const res = await workspaceApi.getTree({ max_depth: 16 })
     workspaceTreeRoot.value = String(res.data?.root || '').trim()
     const baseEntries = Array.isArray(res.data?.entries) ? res.data.entries : []
@@ -610,6 +567,10 @@ async function ensureGeneratedWorkspaceFiles(force = false) {
   generatedFilesLoading.value = true
   generatedFilesError.value = ''
   try {
+    const [conversationApi, messageApi] = await Promise.all([
+      loadConversationApi(),
+      loadMessageApi(),
+    ])
     if (!workspaceDir.value.trim()) {
       await ensureWorkspaceMeta({ silent: true })
     }
@@ -625,7 +586,7 @@ async function ensureGeneratedWorkspaceFiles(force = false) {
         const messages = Array.isArray(msgRes.data) ? msgRes.data : []
         for (const message of messages) {
           allRecords.push(
-            ...extractGeneratedFilesFromMessage(conversation, message, workspaceRootPath)
+            ...(await extractGeneratedFilesFromMessage(conversation, message, workspaceRootPath))
           )
         }
       } catch (e) {
@@ -678,6 +639,7 @@ async function saveCoreEdit(name: string) {
   coreSaving.value = true
   workspaceError.value = ''
   try {
+    const workspaceApi = await loadWorkspaceApi()
     await workspaceApi.putFile(name, coreEditDraft.value)
     const target = workspaceFiles.value.find((file) => file.name === name)
     if (target) {
@@ -791,7 +753,6 @@ onMounted(() => {
     isConfigurationGroupExpanded.value = true
   }
   window.addEventListener('keydown', handleKeydown)
-  void ensureWorkspaceMeta({ silent: true })
 })
 
 onUnmounted(() => {
@@ -911,6 +872,14 @@ const configurationNavItemsConfig: NavItem[] = [
     path: '/security',
     icon: 'M12 3l7.5 3v5.25c0 4.18-2.86 8.1-7.5 9.75-4.64-1.65-7.5-5.57-7.5-9.75V6L12 3zm0 5.25v4.5m0 3h.01',
     permission: PagePermissions.SECURITY,
+    adminOnly: true,
+  },
+  {
+    id: 'harness',
+    name: 'nav.harness',
+    path: '/harness',
+    icon: 'M5.25 6.75h13.5M5.25 12h13.5M5.25 17.25h8.25M3.75 4.5h16.5A1.5 1.5 0 0121.75 6v12A1.5 1.5 0 0120.25 19.5H3.75A1.5 1.5 0 012.25 18V6a1.5 1.5 0 011.5-1.5zm12 10.5l1.5 1.5 3-3',
+    permission: PagePermissions.TOOLS,
     adminOnly: true,
   },
   {
@@ -1189,6 +1158,11 @@ function openGithubRepo(): void {
 function toggleSidebarTheme(): void {
   themeStore.setTheme(isDarkTheme.value ? 'light' : 'dark')
 }
+
+function handleWindowDragMouseDown(event: MouseEvent): void {
+  if (!showMacosDesktopDragRegion.value || event.button !== 0) return
+  void startWindowDragging()
+}
 </script>
 
 <template>
@@ -1204,363 +1178,374 @@ function toggleSidebarTheme(): void {
     ]"
   >
     <div
-      class="sidebar-brand-shell"
-      :class="isCollapsed ? 'px-2 pt-3.5 pb-2.5' : 'px-3.5 pt-3.5 pb-2.5'"
-    >
-      <div class="sidebar-brand-row flex items-center justify-between gap-2">
-        <RouterLink
-          to="/"
-          class="sidebar-brand"
-          :class="[
-            isCollapsed
-              ? 'flex-1 justify-center px-1.5 py-1.5'
-              : 'flex-1 justify-between px-1.5 py-1.5 gap-2.5',
-          ]"
-          :title="isCollapsed ? 'Blue' : undefined"
-        >
-          <div class="sidebar-brand-main">
-            <div class="sidebar-brand-mark">
-              <img
-                src="/logo.svg"
-                alt="ZimaOS Blue"
-                class="h-6 w-6 object-contain dark:brightness-150"
-              />
+      v-if="showMacosDesktopDragRegion"
+      class="sidebar-window-drag-region"
+      aria-hidden="true"
+      data-tauri-drag-region
+      @mousedown="handleWindowDragMouseDown"
+    />
+    <div class="sidebar-card flex flex-1 min-h-0 flex-col">
+      <div
+        class="sidebar-brand-shell"
+        :class="isCollapsed ? 'px-2 pb-2.5' : 'px-3.5 pb-2.5'"
+      >
+        <div class="sidebar-brand-row flex items-center justify-between gap-2">
+          <RouterLink
+            to="/"
+            class="sidebar-brand"
+            :class="[
+              isCollapsed
+                ? 'flex-1 justify-center px-1.5 py-1.5'
+                : 'flex-1 justify-between px-1.5 py-1.5 gap-2.5',
+            ]"
+            :title="isCollapsed ? 'Blue' : undefined"
+          >
+            <div class="sidebar-brand-main">
+              <div class="sidebar-brand-mark">
+                <img
+                  src="/logo.svg"
+                  alt="ZimaOS Blue"
+                  class="h-6 w-6 object-contain dark:brightness-150"
+                />
+              </div>
+              <div v-if="!isCollapsed" class="sidebar-brand-copy">
+                <span class="sidebar-brand-name">Blue</span>
+              </div>
             </div>
-            <div v-if="!isCollapsed" class="sidebar-brand-copy">
-              <span class="sidebar-brand-name">Blue</span>
+
+            <span
+              v-if="!isCollapsed"
+              class="sidebar-status-badge"
+              :class="
+                sidebarStatusHealthy ? 'sidebar-status-badge-online' : 'sidebar-status-badge-alert'
+              "
+              :title="sidebarStatusLabel"
+            >
+              <span
+                class="sidebar-status-dot"
+                :class="
+                  sidebarStatusHealthy ? 'sidebar-status-dot-online' : 'sidebar-status-dot-alert'
+                "
+                aria-hidden="true"
+              />
+              <span class="sidebar-status-label">{{ sidebarStatusLabel }}</span>
+            </span>
+          </RouterLink>
+
+          <button
+            class="sidebar-icon-btn sidebar-mobile-close lg:hidden p-1.5 rounded-lg text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white"
+            @click="isOpen = false"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-[1.1rem] w-[1.1rem]"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <nav class="px-3.5 py-1.5 flex-1 min-h-0 flex flex-col">
+        <div class="space-y-1.5 flex-1 min-h-0 overflow-y-auto">
+          <button
+            v-for="item in primaryNavItems"
+            :key="item.id"
+            type="button"
+            class="sidebar-nav-item w-full flex items-center px-3 py-[0.6rem] rounded-[1.1rem] transition-all duration-200 cursor-pointer group text-left"
+            :class="[
+              isNavItemActive(item) ? 'sidebar-nav-item-active' : 'sidebar-nav-item-inactive',
+              isCollapsed ? 'justify-center' : 'gap-2.5',
+            ]"
+            :data-testid="getNavItemTestId(item)"
+            :title="isCollapsed ? item.name : undefined"
+            @click="handleNavItemClick(item)"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-[1.1rem] w-[1.1rem] transition-transform duration-200 group-hover:scale-110 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.8"
+                :d="item.icon"
+              />
+            </svg>
+            <span v-if="!isCollapsed" class="text-[0.95rem] font-medium whitespace-nowrap">{{
+              item.name
+            }}</span>
+          </button>
+
+          <div v-if="showConfigurationGroup" class="sidebar-section mt-3.5">
+            <button
+              v-if="!isCollapsed"
+              type="button"
+              class="sidebar-section-trigger flex w-full items-center justify-between gap-2.5 px-2 py-1.5 text-left"
+              data-testid="sidebar-section-configuration"
+              :title="
+                isConfigurationGroupExpanded
+                  ? tr('common.collapse', 'Collapse')
+                  : tr('common.expand', 'Expand')
+              "
+              :aria-expanded="isConfigurationGroupExpanded"
+              @click="toggleConfigurationGroup"
+            >
+              <span class="sidebar-section-label">{{ configurationLabel }}</span>
+              <span
+                class="sidebar-section-chevron flex items-center justify-center rounded-md p-1 text-gray-500 dark:text-slate-400 transition-colors"
+                aria-hidden="true"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4 transition-transform duration-200"
+                  :class="isConfigurationGroupExpanded ? '' : '-rotate-90'"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.8"
+                    d="M7 10l5 5 5-5"
+                  />
+                </svg>
+              </span>
+            </button>
+
+            <div
+              v-if="(isCollapsed || isConfigurationGroupExpanded) && configurationNavItems.length"
+              class="space-y-1.5"
+              :class="isCollapsed ? 'mt-0' : 'mt-1.5'"
+            >
+              <button
+                v-for="item in configurationNavItems"
+                :key="item.id"
+                type="button"
+                class="sidebar-nav-item w-full flex items-center px-3 py-[0.6rem] rounded-[1.1rem] transition-all duration-200 cursor-pointer group text-left"
+                :class="[
+                  isNavItemActive(item) ? 'sidebar-nav-item-active' : 'sidebar-nav-item-inactive',
+                  isCollapsed ? 'justify-center' : 'gap-2.5',
+                ]"
+                :data-testid="getNavItemTestId(item)"
+                :title="isCollapsed ? item.name : undefined"
+                @click="handleNavItemClick(item)"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-[1.1rem] w-[1.1rem] transition-transform duration-200 group-hover:scale-110 flex-shrink-0"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.8"
+                    :d="item.icon"
+                  />
+                </svg>
+                <span v-if="!isCollapsed" class="text-[0.95rem] font-medium whitespace-nowrap">{{
+                  item.name
+                }}</span>
+              </button>
             </div>
           </div>
+        </div>
+      </nav>
 
-          <span
-            v-if="!isCollapsed"
-            class="sidebar-status-badge"
-            :class="
-              sidebarStatusHealthy ? 'sidebar-status-badge-online' : 'sidebar-status-badge-alert'
-            "
-            :title="sidebarStatusLabel"
-          >
-            <span
-              class="sidebar-status-dot"
-              :class="
-                sidebarStatusHealthy ? 'sidebar-status-dot-online' : 'sidebar-status-dot-alert'
-              "
-              aria-hidden="true"
-            />
-            <span class="sidebar-status-label">{{ sidebarStatusLabel }}</span>
-          </span>
-        </RouterLink>
-
-        <button
-          class="sidebar-icon-btn sidebar-mobile-close lg:hidden p-1.5 rounded-lg text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white"
-          @click="isOpen = false"
+      <!-- Bottom section: Version + Collapse toggle -->
+      <div
+        class="sidebar-footer px-3.5 pt-2.5 pb-3.5 border-t border-gray-200/45 dark:border-slate-700/60"
+        :class="{ 'sidebar-footer-preview': isPreviewMode }"
+      >
+        <div
+          v-if="!isPreviewMode"
+          class="flex items-center"
+          :class="isCollapsed ? 'justify-center' : 'justify-between'"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-[1.1rem] w-[1.1rem]"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+          <!-- Version info -->
+          <div
+            v-if="health"
+            class="sidebar-footer-meta text-[10px] text-gray-500 dark:text-slate-400 uppercase tracking-[0.12em]"
+            :class="{ hidden: isCollapsed }"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <nav class="px-3.5 py-1.5 flex-1 min-h-0 flex flex-col">
-      <div class="space-y-1.5 flex-1 min-h-0 overflow-y-auto">
-        <button
-          v-for="item in primaryNavItems"
-          :key="item.id"
-          type="button"
-          class="sidebar-nav-item w-full flex items-center px-3 py-[0.6rem] rounded-[1.1rem] transition-all duration-200 cursor-pointer group text-left"
-          :class="[
-            isNavItemActive(item) ? 'sidebar-nav-item-active' : 'sidebar-nav-item-inactive',
-            isCollapsed ? 'justify-center' : 'gap-2.5',
-          ]"
-          :data-testid="getNavItemTestId(item)"
-          :title="isCollapsed ? item.name : undefined"
-          @click="handleNavItemClick(item)"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-[1.1rem] w-[1.1rem] transition-transform duration-200 group-hover:scale-110 flex-shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="1.8"
-              :d="item.icon"
-            />
-          </svg>
-          <span v-if="!isCollapsed" class="text-[0.95rem] font-medium whitespace-nowrap">{{
-            item.name
-          }}</span>
-        </button>
-
-        <div v-if="showConfigurationGroup" class="sidebar-section mt-3.5">
+            v{{ health.version }}
+          </div>
+          <!-- Collapse toggle button (desktop only) -->
           <button
-            v-if="!isCollapsed"
-            type="button"
-            class="sidebar-section-trigger flex w-full items-center justify-between gap-2.5 px-2 py-1.5 text-left"
-            data-testid="sidebar-section-configuration"
+            class="sidebar-icon-btn hidden lg:flex p-1.5 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-slate-100 transition-colors"
             :title="
-              isConfigurationGroupExpanded
-                ? tr('common.collapse', 'Collapse')
-                : tr('common.expand', 'Expand')
+              (isCollapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')) +
+              (isMac ? ' (⌘B)' : ' (Alt+B)')
             "
-            :aria-expanded="isConfigurationGroupExpanded"
-            @click="toggleConfigurationGroup"
+            @click="toggleCollapse"
           >
-            <span class="sidebar-section-label">{{ configurationLabel }}</span>
-            <span
-              class="sidebar-section-chevron flex items-center justify-center rounded-md p-1 text-gray-500 dark:text-slate-400 transition-colors"
-              aria-hidden="true"
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4 transition-transform duration-300"
+              :class="isCollapsed ? 'rotate-180' : ''"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4 transition-transform duration-200"
-                :class="isConfigurationGroupExpanded ? '' : '-rotate-90'"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.8"
-                  d="M7 10l5 5 5-5"
-                />
-              </svg>
-            </span>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <div
+          class="sidebar-footer-actions"
+          :class="[
+            !isPreviewMode ? 'mt-3' : '',
+            isPreviewMode
+              ? isCollapsed
+                ? 'sidebar-footer-actions-preview-collapsed'
+                : 'sidebar-footer-actions-preview'
+              : 'sidebar-footer-actions-default',
+          ]"
+        >
+          <RouterLink
+            v-if="!isPreviewMode"
+            to="/profile"
+            class="sidebar-account-link flex items-center"
+            :class="[
+              isActive('/profile')
+                ? 'sidebar-account-link-active'
+                : 'sidebar-account-link-inactive',
+              isCollapsed
+                ? 'justify-center mx-auto h-9 w-9 rounded-full'
+                : 'gap-2 px-[0.5625rem] py-[0.4375rem] rounded-[0.9rem]',
+            ]"
+            data-testid="sidebar-nav-profile"
+            :title="isCollapsed ? profileName : undefined"
+          >
+            <span class="sidebar-profile-avatar flex-shrink-0">{{ profileInitial }}</span>
+            <div v-if="!isCollapsed" class="min-w-0">
+              <div class="text-[0.86rem] font-medium leading-none truncate">{{ profileName }}</div>
+              <div class="text-[10px] text-gray-500 dark:text-slate-400 truncate mt-0.5">
+                {{ profileRole }}
+              </div>
+            </div>
+          </RouterLink>
+
+          <button
+            v-if="isPreviewMode"
+            type="button"
+            class="sidebar-preview-create-btn"
+            :class="[
+              isCollapsed
+                ? 'sidebar-preview-create-btn-collapsed'
+                : 'sidebar-preview-create-btn-expanded',
+            ]"
+            data-testid="sidebar-preview-create-account"
+            data-onboarding-anchor="preview-create-account"
+            :title="t('preview.createAccount')"
+            :aria-label="t('preview.createAccount')"
+            @click="openPreviewUpgradeModal"
+          >
+            <span class="sidebar-preview-create-icon" aria-hidden="true">+</span>
+            <span v-if="!isCollapsed" class="sidebar-preview-create-label">{{
+              t('preview.createAccount')
+            }}</span>
           </button>
 
           <div
-            v-if="(isCollapsed || isConfigurationGroupExpanded) && configurationNavItems.length"
-            class="space-y-1.5"
-            :class="isCollapsed ? 'mt-0' : 'mt-1.5'"
+            class="sidebar-utility-row"
+            :class="[
+              isCollapsed ? 'flex-col items-center' : '',
+              isPreviewMode ? 'sidebar-utility-row-preview' : 'sidebar-utility-row-default',
+            ]"
           >
             <button
-              v-for="item in configurationNavItems"
-              :key="item.id"
               type="button"
-              class="sidebar-nav-item w-full flex items-center px-3 py-[0.6rem] rounded-[1.1rem] transition-all duration-200 cursor-pointer group text-left"
-              :class="[
-                isNavItemActive(item) ? 'sidebar-nav-item-active' : 'sidebar-nav-item-inactive',
-                isCollapsed ? 'justify-center' : 'gap-2.5',
-              ]"
-              :data-testid="getNavItemTestId(item)"
-              :title="isCollapsed ? item.name : undefined"
-              @click="handleNavItemClick(item)"
+              class="sidebar-utility-button"
+              :class="{ 'sidebar-utility-button-expanded': !isCollapsed && !isPreviewMode }"
+              :title="githubButtonTitle"
+              aria-label="Open GitHub"
+              @click="openGithubRepo"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="h-[1.1rem] w-[1.1rem] transition-transform duration-200 group-hover:scale-110 flex-shrink-0"
+                class="h-[1.05rem] w-[1.05rem]"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 0C5.373 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386C24 5.373 18.627 0 12 0z"
+                />
+              </svg>
+              <span v-if="!isCollapsed && !isPreviewMode" class="sidebar-utility-label">{{
+                githubButtonLabel
+              }}</span>
+            </button>
+
+            <button
+              type="button"
+              class="sidebar-utility-button"
+              :class="{
+                'sidebar-utility-button-active': isDarkTheme,
+                'sidebar-utility-button-expanded': !isCollapsed && !isPreviewMode,
+              }"
+              :title="themeButtonTitle"
+              :aria-label="themeButtonTitle"
+              @click="toggleSidebarTheme"
+            >
+              <svg
+                v-if="isDarkTheme"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-[1.05rem] w-[1.05rem]"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
+                aria-hidden="true"
               >
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="1.8"
-                  :d="item.icon"
+                  d="M12 3v1.5m0 15V21m8.5-9H19m-14 0H3.5m14.51 6.01-1.06-1.06M7.05 7.05 5.99 5.99m12.02 0-1.06 1.06M7.05 16.95l-1.06 1.06M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"
                 />
               </svg>
-              <span v-if="!isCollapsed" class="text-[0.95rem] font-medium whitespace-nowrap">{{
-                item.name
+              <svg
+                v-else
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-[1.05rem] w-[1.05rem]"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                  d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z"
+                />
+              </svg>
+              <span v-if="!isCollapsed && !isPreviewMode" class="sidebar-utility-label">{{
+                themeButtonLabel
               }}</span>
             </button>
           </div>
-        </div>
-      </div>
-    </nav>
-
-    <!-- Bottom section: Version + Collapse toggle -->
-    <div
-      class="sidebar-footer px-3.5 pt-2.5 pb-3.5 border-t border-gray-200/45 dark:border-slate-700/60"
-      :class="{ 'sidebar-footer-preview': isPreviewMode }"
-    >
-      <div
-        v-if="!isPreviewMode"
-        class="flex items-center"
-        :class="isCollapsed ? 'justify-center' : 'justify-between'"
-      >
-        <!-- Version info -->
-        <div
-          v-if="health"
-          class="sidebar-footer-meta text-[10px] text-gray-500 dark:text-slate-400 uppercase tracking-[0.12em]"
-          :class="{ hidden: isCollapsed }"
-        >
-          v{{ health.version }}
-        </div>
-        <!-- Collapse toggle button (desktop only) -->
-        <button
-          class="sidebar-icon-btn hidden lg:flex p-1.5 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-slate-100 transition-colors"
-          :title="
-            (isCollapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')) +
-            (isMac ? ' (⌘B)' : ' (Alt+B)')
-          "
-          @click="toggleCollapse"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-4 w-4 transition-transform duration-300"
-            :class="isCollapsed ? 'rotate-180' : ''"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
-            />
-          </svg>
-        </button>
-      </div>
-
-      <div
-        class="sidebar-footer-actions"
-        :class="[
-          !isPreviewMode ? 'mt-3' : '',
-          isPreviewMode
-            ? isCollapsed
-              ? 'sidebar-footer-actions-preview-collapsed'
-              : 'sidebar-footer-actions-preview'
-            : 'sidebar-footer-actions-default',
-        ]"
-      >
-        <RouterLink
-          v-if="!isPreviewMode"
-          to="/profile"
-          class="sidebar-account-link flex items-center"
-          :class="[
-            isActive('/profile') ? 'sidebar-account-link-active' : 'sidebar-account-link-inactive',
-            isCollapsed
-              ? 'justify-center mx-auto h-9 w-9 rounded-full'
-              : 'gap-2 px-[0.5625rem] py-[0.4375rem] rounded-[0.9rem]',
-          ]"
-          data-testid="sidebar-nav-profile"
-          :title="isCollapsed ? profileName : undefined"
-        >
-          <span class="sidebar-profile-avatar flex-shrink-0">{{ profileInitial }}</span>
-          <div v-if="!isCollapsed" class="min-w-0">
-            <div class="text-[0.86rem] font-medium leading-none truncate">{{ profileName }}</div>
-            <div class="text-[10px] text-gray-500 dark:text-slate-400 truncate mt-0.5">
-              {{ profileRole }}
-            </div>
-          </div>
-        </RouterLink>
-
-        <button
-          v-if="isPreviewMode"
-          type="button"
-          class="sidebar-preview-create-btn"
-          :class="[
-            isCollapsed
-              ? 'sidebar-preview-create-btn-collapsed'
-              : 'sidebar-preview-create-btn-expanded',
-          ]"
-          data-testid="sidebar-preview-create-account"
-          data-onboarding-anchor="preview-create-account"
-          :title="t('preview.createAccount')"
-          :aria-label="t('preview.createAccount')"
-          @click="openPreviewUpgradeModal"
-        >
-          <span class="sidebar-preview-create-icon" aria-hidden="true">+</span>
-          <span v-if="!isCollapsed" class="sidebar-preview-create-label">{{
-            t('preview.createAccount')
-          }}</span>
-        </button>
-
-        <div
-          class="sidebar-utility-row"
-          :class="[
-            isCollapsed ? 'flex-col items-center' : '',
-            isPreviewMode ? 'sidebar-utility-row-preview' : 'sidebar-utility-row-default',
-          ]"
-        >
-          <button
-            type="button"
-            class="sidebar-utility-button"
-            :class="{ 'sidebar-utility-button-expanded': !isCollapsed && !isPreviewMode }"
-            :title="githubButtonTitle"
-            aria-label="Open GitHub"
-            @click="openGithubRepo"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-[1.05rem] w-[1.05rem]"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                d="M12 0C5.373 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386C24 5.373 18.627 0 12 0z"
-              />
-            </svg>
-            <span v-if="!isCollapsed && !isPreviewMode" class="sidebar-utility-label">{{
-              githubButtonLabel
-            }}</span>
-          </button>
-
-          <button
-            type="button"
-            class="sidebar-utility-button"
-            :class="{
-              'sidebar-utility-button-active': isDarkTheme,
-              'sidebar-utility-button-expanded': !isCollapsed && !isPreviewMode,
-            }"
-            :title="themeButtonTitle"
-            :aria-label="themeButtonTitle"
-            @click="toggleSidebarTheme"
-          >
-            <svg
-              v-if="isDarkTheme"
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-[1.05rem] w-[1.05rem]"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.8"
-                d="M12 3v1.5m0 15V21m8.5-9H19m-14 0H3.5m14.51 6.01-1.06-1.06M7.05 7.05 5.99 5.99m12.02 0-1.06 1.06M7.05 16.95l-1.06 1.06M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"
-              />
-            </svg>
-            <svg
-              v-else
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-[1.05rem] w-[1.05rem]"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.8"
-                d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z"
-              />
-            </svg>
-            <span v-if="!isCollapsed && !isPreviewMode" class="sidebar-utility-label">{{
-              themeButtonLabel
-            }}</span>
-          </button>
         </div>
       </div>
     </div>
@@ -1944,7 +1929,24 @@ function toggleSidebarTheme(): void {
 
 <style scoped>
 .app-sidebar {
+  --sidebar-brand-top-pad: 0.875rem;
+  --sidebar-window-drag-height: 0px;
   position: fixed;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-blue-macos-glass='true'] .app-sidebar {
+  --sidebar-brand-top-pad: 0.34rem;
+  --sidebar-window-drag-height: 1.7rem;
+}
+
+.sidebar-card {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
   background:
     radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.12), transparent 28%),
     linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(15, 23, 42, 0.76));
@@ -1954,7 +1956,7 @@ function toggleSidebarTheme(): void {
   box-shadow: 18px 0 36px -28px rgba(2, 6, 23, 0.9);
 }
 
-html[data-blue-macos-glass='true'] .app-sidebar {
+html[data-blue-macos-glass='true'] .sidebar-card {
   background:
     radial-gradient(circle at 46% 0%, rgba(56, 189, 248, 0.14), transparent 28%),
     linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.58));
@@ -1968,6 +1970,14 @@ html[data-blue-macos-glass='true'] .app-sidebar {
 
 .sidebar-brand-shell {
   position: relative;
+  padding-top: var(--sidebar-brand-top-pad);
+}
+
+.sidebar-window-drag-region {
+  flex: 0 0 auto;
+  height: var(--sidebar-window-drag-height);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .sidebar-brand-row {
@@ -2385,6 +2395,11 @@ html[data-blue-macos-glass='true'] .app-sidebar {
 
 :root.light .app-sidebar,
 [data-theme='light'] .app-sidebar {
+  background: transparent;
+}
+
+:root.light .sidebar-card,
+[data-theme='light'] .sidebar-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 249, 251, 0.98));
   border-right-color: rgba(209, 213, 219, 0.9);
   box-shadow: 12px 0 26px -24px rgba(15, 23, 42, 0.1);
@@ -2392,6 +2407,11 @@ html[data-blue-macos-glass='true'] .app-sidebar {
 
 html.light[data-blue-macos-glass='true'] .app-sidebar,
 html[data-theme='light'][data-blue-macos-glass='true'] .app-sidebar {
+  background: transparent;
+}
+
+html.light[data-blue-macos-glass='true'] .sidebar-card,
+html[data-theme='light'][data-blue-macos-glass='true'] .sidebar-card {
   background:
     radial-gradient(circle at 50% 0%, rgba(96, 165, 250, 0.18), transparent 30%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(241, 245, 249, 0.72));
@@ -2635,13 +2655,16 @@ html[data-theme='light'][data-blue-macos-glass='true'] .app-sidebar {
     min-height: var(--layout-sidebar-height, calc(100vh - 1.6rem));
     height: var(--layout-sidebar-height, calc(100vh - 1.6rem));
     max-height: var(--layout-sidebar-height, calc(100vh - 1.6rem));
+  }
+
+  .sidebar-card {
     border: 1px solid rgba(148, 163, 184, 0.22);
     border-radius: 1.75rem;
     overflow: hidden;
   }
 
-  :root.light .app-sidebar,
-  [data-theme='light'] .app-sidebar {
+  :root.light .sidebar-card,
+  [data-theme='light'] .sidebar-card {
     border-color: rgba(186, 203, 223, 0.78);
   }
 }

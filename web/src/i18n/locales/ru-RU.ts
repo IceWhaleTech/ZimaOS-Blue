@@ -1336,6 +1336,27 @@ export default {
     toggleFailed: 'Не удалось переключить интеграцию',
     fillRequiredFields: 'Сначала заполните обязательные поля',
     viewDocs: 'Открыть документацию',
+    groupAccessTitle: 'Доступ к группам',
+    groupAccessDesc:
+      'Задайте единое правило для того, принимает ли Blue входящие сообщения из групп.',
+    groupAccessHint:
+      'Открыто сохраняет текущее поведение. Отключено блокирует все групповые чаты. Список разрешённых принимает только указанные чаты.',
+    groupAccessPolicy: 'Политика',
+    groupAccessPolicyOpen: 'Открыто',
+    groupAccessPolicyAllowlist: 'Список разрешённых',
+    groupAccessPolicyDisabled: 'Отключено',
+    groupAccessMentionPolicy: 'Условие ответа',
+    groupAccessMentionPolicyMentioned:
+      "Отвечать только когда Blue упомянут через {'@'}",
+    groupAccessMentionPolicyAlways: 'Отвечать на все разрешённые сообщения групп',
+    groupAccessMentionHint:
+      "По умолчанию Blue отвечает в группах только тогда, когда его явно упомянули через {'@'}.",
+    groupAccessAllowedChats: 'Разрешённые групповые чаты',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'По одной записи на строку в формате channel:chat_id. При необходимости используйте * как подстановочный знак.',
+    groupAccessSaveFailed: 'Не удалось сохранить настройки доступа к группам',
+    groupAccessFormatError: 'Используйте по одной записи channel:chat_id на строку',
     telegramDesc: 'Подключение через Telegram Bot API',
     telegramHint: "Создайте бота через {'@'}BotFather и получите токен бота",
     telegramOpenChat: 'Открыть чат бота',

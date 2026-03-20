@@ -441,6 +441,27 @@ export default {
     toggleFailed: 'Comutare integrare eșuată',
     fillRequiredFields: 'Completați câmpurile obligatorii',
     viewDocs: 'Vedeți documentația',
+    groupAccessTitle: 'Acces la grupuri',
+    groupAccessDesc:
+      'Setați o regulă unificată pentru a decide dacă Blue acceptă mesajele de grup primite.',
+    groupAccessHint:
+      'Deschis păstrează comportamentul actual. Dezactivat blochează toate chaturile de grup. Lista de permisiuni acceptă doar chaturile listate.',
+    groupAccessPolicy: 'Politică',
+    groupAccessPolicyOpen: 'Deschis',
+    groupAccessPolicyAllowlist: 'Lista de permisiuni',
+    groupAccessPolicyDisabled: 'Dezactivat',
+    groupAccessMentionPolicy: 'Condiție de răspuns',
+    groupAccessMentionPolicyMentioned:
+      "Răspunde doar când Blue este {'@'}menționat",
+    groupAccessMentionPolicyAlways: 'Răspunde la toate mesajele de grup permise',
+    groupAccessMentionHint:
+      "Comportamentul implicit este ca Blue să răspundă în grupuri doar când este {'@'}menționat explicit.",
+    groupAccessAllowedChats: 'Chaturi de grup permise',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'O intrare pe linie în formatul channel:chat_id. Folosiți * ca wildcard dacă este nevoie.',
+    groupAccessSaveFailed: 'Salvarea setărilor de acces la grupuri a eșuat',
+    groupAccessFormatError: 'Folosiți o intrare channel:chat_id pe linie',
     telegramDesc: 'Conectare la Telegram Bot API',
     telegramHint: "Creați un bot via {'@'}BotFather și obțineți tokenul bot",
     telegramOpenChat: 'Deschideți chatul bot',

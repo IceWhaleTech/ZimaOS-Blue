@@ -3614,6 +3614,26 @@ export default {
     toggleFailed: '連携の切り替えに失敗しました',
     fillRequiredFields: '先に必須項目を入力してください',
     viewDocs: 'ドキュメントを見る',
+    groupAccessTitle: 'グループアクセス',
+    groupAccessDesc:
+      'Blue がグループからの受信メッセージを受け付けるかどうかの共通ルールを設定します。',
+    groupAccessHint:
+      'オープンは現在の動作を維持します。無効はすべてのグループチャットをブロックします。許可リストは指定したチャットだけを受け付けます。',
+    groupAccessPolicy: 'ポリシー',
+    groupAccessPolicyOpen: 'オープン',
+    groupAccessPolicyAllowlist: '許可リスト',
+    groupAccessPolicyDisabled: '無効',
+    groupAccessMentionPolicy: '返信条件',
+    groupAccessMentionPolicyMentioned: "Blue が {'@'}メンションされたときのみ返信",
+    groupAccessMentionPolicyAlways: '許可されたグループメッセージすべてに返信',
+    groupAccessMentionHint:
+      "既定では、Blue はグループ内で明示的に {'@'}メンションされた場合のみ返信します。",
+    groupAccessAllowedChats: '許可されたグループチャット',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      '1 行につき 1 件、channel:chat_id 形式で入力してください。必要に応じて * をワイルドカードとして使えます。',
+    groupAccessSaveFailed: 'グループアクセス設定の保存に失敗しました',
+    groupAccessFormatError: '1 行に 1 件の channel:chat_id を指定してください',
     // Channel descriptions
     telegramDesc: 'Telegram Bot API に接続',
     telegramHint: "{'@'}BotFather でボットを作成し、ボットトークンを取得してください",

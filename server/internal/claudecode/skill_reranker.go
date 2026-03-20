@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+
+	sel "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
 )
 
 // SkillReranker re-ranks top candidates when IR confidence is ambiguous.
@@ -75,12 +77,12 @@ func rerankScore(query string, c SkillDoc) float64 {
 	name := strings.ToLower(c.Name)
 	desc := strings.ToLower(c.Description)
 	example := strings.ToLower(c.Example)
-	if name != "" && strings.Contains(query, name) {
+	if name != "" && sel.ContainsTerm(query, name) {
 		score += 2.8
 	}
 	for _, t := range c.Tags {
 		tl := strings.ToLower(strings.TrimSpace(t))
-		if tl != "" && strings.Contains(query, tl) {
+		if tl != "" && sel.ContainsTerm(query, tl) {
 			score += 0.7
 		}
 	}
@@ -88,10 +90,10 @@ func rerankScore(query string, c SkillDoc) float64 {
 		if len(tok) < 2 {
 			continue
 		}
-		if strings.Contains(desc, tok) {
+		if sel.ContainsTerm(desc, tok) {
 			score += 0.25
 		}
-		if strings.Contains(example, tok) {
+		if sel.ContainsTerm(example, tok) {
 			score += 0.2
 		}
 	}

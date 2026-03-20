@@ -65,7 +65,8 @@ func (d *recursiveListOneDriver) Sync(ctx context.Context, run *Run) (*Run, erro
 
 func newTestController(t *testing.T) *Controller {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	tmpDir := t.TempDir()
+	db, err := sql.Open("sqlite3", filepath.Join(tmpDir, "harness-test.db"))
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -75,7 +76,6 @@ func newTestController(t *testing.T) *Controller {
 		t.Fatalf("NewSQLiteStore failed: %v", err)
 	}
 	harnessCfg := *config.DefaultHarnessConfig()
-	tmpDir := t.TempDir()
 	harnessCfg.StorePath = filepath.Join(tmpDir, "harness.db")
 	harnessCfg.ArtifactRoot = filepath.Join(tmpDir, "artifacts")
 	return NewController(store, NewPolicyResolver(harnessCfg, nil))

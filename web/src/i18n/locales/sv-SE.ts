@@ -437,6 +437,26 @@ export default {
     toggleFailed: 'Misslyckades att växla integration',
     fillRequiredFields: 'Fyll i obligatoriska fält först',
     viewDocs: 'Visa dokumentation',
+    groupAccessTitle: 'Gruppåtkomst',
+    groupAccessDesc:
+      'Ange en gemensam regel för om Blue ska ta emot inkommande gruppmeddelanden.',
+    groupAccessHint:
+      'Öppen behåller nuvarande beteende. Inaktiverad blockerar alla gruppchattar. Tillåtelselista accepterar endast listade chattar.',
+    groupAccessPolicy: 'Policy',
+    groupAccessPolicyOpen: 'Öppen',
+    groupAccessPolicyAllowlist: 'Tillåtelselista',
+    groupAccessPolicyDisabled: 'Inaktiverad',
+    groupAccessMentionPolicy: 'Svarsvillkor',
+    groupAccessMentionPolicyMentioned: "Svara bara när Blue blir {'@'}nämnd",
+    groupAccessMentionPolicyAlways: 'Svara på alla tillåtna gruppmeddelanden',
+    groupAccessMentionHint:
+      "Som standard svarar Blue i grupper bara när den uttryckligen blir {'@'}nämnd.",
+    groupAccessAllowedChats: 'Tillåtna gruppchattar',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'En post per rad i formatet channel:chat_id. Använd * som jokertecken vid behov.',
+    groupAccessSaveFailed: 'Det gick inte att spara inställningarna för gruppåtkomst',
+    groupAccessFormatError: 'Använd en channel:chat_id-post per rad',
     telegramDesc: 'Anslut till Telegram Bot API',
     telegramHint: "Skapa en bot via {'@'}BotFather och hämta din bot-token",
     telegramOpenChat: 'Öppna botchatt',

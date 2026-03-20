@@ -125,6 +125,11 @@ func (d *ResearchDriver) Publish(userID string, eventType string, data any) {
 	if strings.HasSuffix(strings.TrimSpace(eventType), ".job_completed") {
 		d.attachJobArtifacts(context.Background(), jobID)
 	}
+	if strings.HasSuffix(strings.TrimSpace(eventType), ".job_completed") ||
+		strings.HasSuffix(strings.TrimSpace(eventType), ".job_failed") ||
+		strings.HasSuffix(strings.TrimSpace(eventType), ".job_cancelled") {
+		_ = d.manager.SyncExperimentGroupProjection(context.Background(), jobID)
+	}
 }
 
 func (d *ResearchDriver) attachJobArtifacts(ctx context.Context, jobID string) {

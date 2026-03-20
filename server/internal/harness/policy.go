@@ -128,6 +128,15 @@ func (r *PolicyResolver) ResolveChild(parent *Run, spec RunSpec) (RunSpec, error
 	if strings.TrimSpace(spec.Model) == "" {
 		spec.Model = parent.Model
 	}
+	if strings.TrimSpace(spec.GroupID) == "" {
+		spec.GroupID = parent.GroupID
+	}
+	if strings.TrimSpace(spec.GroupItemID) == "" {
+		spec.GroupItemID = parent.GroupItemID
+	}
+	if spec.AttemptIndex <= 0 {
+		spec.AttemptIndex = parent.AttemptIndex
+	}
 	if strings.TrimSpace(spec.WorkspaceRoot) == "" {
 		spec.WorkspaceRoot = parent.WorkspaceRoot
 	}

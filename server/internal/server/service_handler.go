@@ -528,7 +528,8 @@ func (h *ServiceHandler) getSystemdUnit() string {
 
 // isTauriMode checks if running as embedded library in Tauri
 func (h *ServiceHandler) isTauriMode() bool {
-	// In Tauri mode, the executable is blue.exe (GUI) not a CLI binary
+	// In Tauri mode, the executable is a GUI binary (for example blue.exe or
+	// zimaos-blue.exe), not the CLI/server binary.
 	// Check if help returns CLI-style output
 	if !strings.Contains(strings.ToLower(h.execPath), ".exe") {
 		return false

@@ -13,6 +13,7 @@ mod blue_ffi;
 
 use clap::Parser;
 use log::{error, info};
+use once_cell::sync::Lazy;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
@@ -47,11 +48,58 @@ pub struct CliArgs {
     verbose: bool,
 }
 
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn getppid() -> i32;
+}
+
 /// Flag to track if we're actually quitting (vs just hiding to tray)
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
 /// Close behavior: false = quit, true = minimize to tray
 static MINIMIZE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+
+struct DesktopStartupTrace {
+    enabled: bool,
+    component: &'static str,
+    started: std::time::Instant,
+    last: std::sync::Mutex<std::time::Instant>,
+}
+
+impl DesktopStartupTrace {
+    fn new(component: &'static str) -> Self {
+        let now = std::time::Instant::now();
+        Self {
+            enabled: startup_trace_env_enabled(),
+            component,
+            started: now,
+            last: std::sync::Mutex::new(now),
+        }
+    }
+
+    fn mark(&self, label: &str) {
+        if !self.enabled {
+            return;
+        }
+
+        let now = std::time::Instant::now();
+        let mut last = self.last.lock().unwrap();
+        let step = now.duration_since(*last);
+        *last = now;
+        let total = now.duration_since(self.started);
+
+        info!(
+            "startup-trace component={} label={} step_ms={} total_ms={}",
+            self.component,
+            label,
+            step.as_millis(),
+            total.as_millis()
+        );
+    }
+}
+
+static DESKTOP_STARTUP_TRACE: Lazy<DesktopStartupTrace> =
+    Lazy::new(|| DesktopStartupTrace::new("tauri.desktop"));
 
 const MAIN_WINDOW_LABEL: &str = "main";
 const MAIN_WINDOW_TITLE: &str = "ZimaOS Blue";
@@ -201,6 +249,126 @@ fn show_and_focus_window<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
     let _ = window.set_focus();
 }
 
+#[cfg(target_os = "macos")]
+fn macos_app_bundle_path(exe: &Path) -> Option<PathBuf> {
+    let macos_dir = exe.parent()?;
+    if macos_dir.file_name()? != "MacOS" {
+        return None;
+    }
+
+    let contents_dir = macos_dir.parent()?;
+    if contents_dir.file_name()? != "Contents" {
+        return None;
+    }
+
+    let app_dir = contents_dir.parent()?;
+    if app_dir.extension()? != "app" {
+        return None;
+    }
+
+    Some(app_dir.to_path_buf())
+}
+
+#[cfg(target_os = "macos")]
+fn macos_parent_pid() -> u32 {
+    let parent = unsafe { getppid() };
+    if parent <= 0 {
+        0
+    } else {
+        parent as u32
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn should_relaunch_bundle_via_open(exe: &Path, parent_pid: u32) -> bool {
+    parent_pid != 1 && macos_app_bundle_path(exe).is_some()
+}
+
+#[cfg(target_os = "macos")]
+fn maybe_relaunch_bundle_via_open() -> bool {
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(err) => {
+            eprintln!(
+                "Unable to determine current executable for macOS relaunch: {}",
+                err
+            );
+            return false;
+        }
+    };
+
+    let parent_pid = macos_parent_pid();
+    if !should_relaunch_bundle_via_open(&exe, parent_pid) {
+        return false;
+    }
+
+    let Some(app_bundle) = macos_app_bundle_path(&exe) else {
+        return false;
+    };
+
+    let mut command = std::process::Command::new("open");
+    command.arg("-n").arg(&app_bundle);
+
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if !args.is_empty() {
+        command.arg("--args");
+        command.args(args);
+    }
+
+    match command.status() {
+        Ok(status) if status.success() => {
+            eprintln!(
+                "Relaunching {} via LaunchServices to avoid direct-binary AppKit startup crashes.",
+                app_bundle.display()
+            );
+            true
+        }
+        Ok(status) => {
+            eprintln!(
+                "Failed to relaunch {} via LaunchServices (exit status: {}).",
+                app_bundle.display(),
+                status
+            );
+            false
+        }
+        Err(err) => {
+            eprintln!(
+                "Failed to relaunch {} via LaunchServices: {}",
+                app_bundle.display(),
+                err
+            );
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn update_window_on_main_thread(
+    app_handle: &tauri::AppHandle,
+    label: &str,
+    apply_style: bool,
+    focus: bool,
+) {
+    let app_handle = app_handle.clone();
+    let callback_handle = app_handle.clone();
+    let label = label.to_string();
+    let _ = app_handle.run_on_main_thread(move || {
+        let Some(window) = callback_handle.get_webview_window(&label) else {
+            return;
+        };
+
+        if apply_style {
+            apply_main_window_macos_style(&window);
+        }
+
+        let _ = window.show();
+        let _ = window.unminimize();
+        if focus {
+            let _ = window.set_focus();
+        }
+    });
+}
+
 fn rebuild_window_for_path(
     app_handle: &tauri::AppHandle,
     label: &str,
@@ -260,17 +428,19 @@ fn open_or_focus_main_window(app_handle: &tauri::AppHandle) -> tauri::Result<()>
     #[cfg(target_os = "macos")]
     activate_macos_app();
 
-    if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
+    if let Some(_window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
         #[cfg(target_os = "macos")]
-        apply_main_window_macos_style(&window);
-        show_and_focus_window(&window);
+        update_window_on_main_thread(app_handle, MAIN_WINDOW_LABEL, true, true);
+        #[cfg(not(target_os = "macos"))]
+        show_and_focus_window(&_window);
         return Ok(());
     }
 
-    let window = build_main_window(app_handle, webview_url_for_path(app_handle, ""))?;
+    let _window = build_main_window(app_handle, webview_url_for_path(app_handle, ""))?;
     #[cfg(target_os = "macos")]
-    apply_main_window_macos_style(&window);
-    show_and_focus_window(&window);
+    update_window_on_main_thread(app_handle, MAIN_WINDOW_LABEL, true, true);
+    #[cfg(not(target_os = "macos"))]
+    show_and_focus_window(&_window);
     Ok(())
 }
 
@@ -278,20 +448,22 @@ fn open_or_focus_panel_window(app_handle: &tauri::AppHandle) -> tauri::Result<()
     #[cfg(target_os = "macos")]
     activate_macos_app();
 
-    if let Some(window) = app_handle.get_webview_window(PANEL_WINDOW_LABEL) {
+    if let Some(_window) = app_handle.get_webview_window(PANEL_WINDOW_LABEL) {
         #[cfg(target_os = "macos")]
-        apply_main_window_macos_style(&window);
-        show_and_focus_window(&window);
+        update_window_on_main_thread(app_handle, PANEL_WINDOW_LABEL, true, true);
+        #[cfg(not(target_os = "macos"))]
+        show_and_focus_window(&_window);
         return Ok(());
     }
 
-    let window = build_panel_window(
+    let _window = build_panel_window(
         app_handle,
         webview_url_for_path(app_handle, PANEL_WINDOW_PATH),
     )?;
     #[cfg(target_os = "macos")]
-    apply_main_window_macos_style(&window);
-    show_and_focus_window(&window);
+    update_window_on_main_thread(app_handle, PANEL_WINDOW_LABEL, true, true);
+    #[cfg(not(target_os = "macos"))]
+    show_and_focus_window(&_window);
     Ok(())
 }
 
@@ -321,13 +493,15 @@ fn bind_window_to_server_path(
     label: &str,
     path: &str,
 ) -> Result<tauri::WebviewWindow, String> {
+    let traced_path = startup_trace_path(path);
+
     if app_handle.get_webview_window(label).is_none() {
         info!("Window {label} missing after server startup; creating it");
-        return rebuild_window_for_path(app_handle, label, path);
+        return rebuild_window_for_path(app_handle, label, &traced_path);
     }
 
     info!("Navigating window {label} to the server-backed UI");
-    navigate_window_to_server_path(app_handle, label, path)?;
+    navigate_window_to_server_path(app_handle, label, &traced_path)?;
 
     app_handle
         .get_webview_window(label)
@@ -465,6 +639,36 @@ impl Default for AppState {
             use_https: std::sync::Mutex::new(false),
         }
     }
+}
+
+fn startup_trace_env_enabled() -> bool {
+    ["ZIMAOS_STARTUP_TRACE", "BLUE_STARTUP_TRACE"]
+        .iter()
+        .filter_map(|key| std::env::var(key).ok())
+        .any(|raw| parse_bool_env_flag(&raw).unwrap_or(false))
+}
+
+fn startup_trace_disable_notification_plugin() -> bool {
+    if !startup_trace_env_enabled() {
+        return false;
+    }
+
+    [
+        "ZIMAOS_STARTUP_TRACE_DISABLE_NOTIFICATION_PLUGIN",
+        "BLUE_STARTUP_TRACE_DISABLE_NOTIFICATION_PLUGIN",
+    ]
+    .iter()
+    .filter_map(|key| std::env::var(key).ok())
+    .any(|raw| parse_bool_env_flag(&raw).unwrap_or(false))
+}
+
+fn startup_trace_path(path: &str) -> String {
+    if !startup_trace_env_enabled() || path.contains("startup_trace=") {
+        return path.to_string();
+    }
+
+    let separator = if path.contains('?') { '&' } else { '?' };
+    format!("{path}{separator}startup_trace=1")
 }
 
 fn parse_bool_env_flag(raw: &str) -> Option<bool> {
@@ -795,6 +999,8 @@ mod tests {
         parent_directory_for_reveal_fallback, parse_bool_env_flag, reveal_path_with_fallback,
         stt_auth_startup_enabled, CliArgs,
     };
+    #[cfg(target_os = "macos")]
+    use super::{macos_app_bundle_path, should_relaunch_bundle_via_open};
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
 
@@ -921,6 +1127,37 @@ mod tests {
         assert_eq!(args, "--data-dir /tmp/custom-data --dev");
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_app_bundle_path_detects_bundle_binary() {
+        let exe = PathBuf::from("/Applications/ZimaOS Blue.app/Contents/MacOS/blue");
+        assert_eq!(
+            macos_app_bundle_path(&exe),
+            Some(PathBuf::from("/Applications/ZimaOS Blue.app"))
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_app_bundle_path_ignores_non_bundle_binary() {
+        assert_eq!(
+            macos_app_bundle_path(Path::new("/usr/local/bin/blue")),
+            None
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn should_relaunch_bundle_via_open_only_for_direct_bundle_launches() {
+        let exe = PathBuf::from("/Applications/ZimaOS Blue.app/Contents/MacOS/blue");
+        assert!(should_relaunch_bundle_via_open(&exe, 3538));
+        assert!(!should_relaunch_bundle_via_open(&exe, 1));
+        assert!(!should_relaunch_bundle_via_open(
+            Path::new("/usr/local/bin/blue"),
+            3538
+        ));
+    }
+
     #[test]
     fn reveal_path_with_fallback_uses_parent_directory_when_file_reveal_fails() {
         let dir = std::env::temp_dir();
@@ -1033,6 +1270,8 @@ async fn start_server_platform_with_args(
     app: &tauri::AppHandle,
     args: Option<String>,
 ) -> Result<(), String> {
+    DESKTOP_STARTUP_TRACE.mark("server_platform_enter");
+
     // Merge explicit args with CLI args from AppState
     let cli_args_str = if let Some(state) = app.try_state::<AppState>() {
         build_args_string(&state.cli_args, args.as_deref())
@@ -1071,7 +1310,9 @@ async fn start_server_platform_with_args(
             }
         };
 
+        DESKTOP_STARTUP_TRACE.mark("ffi_start_requested");
         blue_ffi::start_server_with_args(port, Some(&data_dir), cli_args_str.as_deref())?;
+        DESKTOP_STARTUP_TRACE.mark("ffi_start_returned");
 
         if let Some(state) = app.try_state::<AppState>() {
             *state.server_running.lock().unwrap() = true;
@@ -1108,6 +1349,7 @@ async fn start_server_platform_with_args(
                 phase1_timeout
             ));
         }
+        DESKTOP_STARTUP_TRACE.mark("ffi_port_bound");
 
         info!("Server bound to port {}", actual_port);
 
@@ -1125,11 +1367,18 @@ async fn start_server_platform_with_args(
             .unwrap_or_else(|_| reqwest::Client::new());
 
         let mut server_ready = false;
-        let mut delay_ms = 10u64;
-        for i in 0..30 {
+        for i in 0..40 {
             if i > 0 {
+                // Local loopback health checks are cheap; keep the early polling cadence
+                // tight so we don't oversleep after the listener is already ready.
+                let delay_ms = if i < 10 {
+                    15
+                } else if i < 25 {
+                    30
+                } else {
+                    60
+                };
                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                delay_ms = std::cmp::min(delay_ms * 2, 200);
             }
 
             if client.get(&http_url).send().await.is_ok() {
@@ -1139,7 +1388,7 @@ async fn start_server_platform_with_args(
             }
 
             // Only try HTTPS after a few HTTP failures (rare case: TLS enabled)
-            if i >= 5 {
+            if i >= 8 {
                 let https_url = format!("https://localhost:{}/api/v1/health", actual_port);
                 if client.get(&https_url).send().await.is_ok() {
                     info!("Server ready (HTTPS) after attempt {}", i + 1);
@@ -1156,11 +1405,13 @@ async fn start_server_platform_with_args(
                 actual_port
             ));
         }
+        DESKTOP_STARTUP_TRACE.mark("http_health_ready");
 
         // Update state with detected protocol
         if let Some(state) = app.try_state::<AppState>() {
             *state.use_https.lock().unwrap() = use_https;
         }
+        DESKTOP_STARTUP_TRACE.mark("protocol_detected");
 
         info!(
             "Server protocol detected: {}",
@@ -1356,12 +1607,26 @@ pub fn run() {
     // Parse CLI arguments
     let cli_args = CliArgs::parse();
 
+    #[cfg(target_os = "macos")]
+    if maybe_relaunch_bundle_via_open() {
+        return;
+    }
+
+    #[cfg(not(debug_assertions))]
+    let startup_trace_enabled = startup_trace_env_enabled();
+
     // Initialize logger with optimized settings for Windows
     // Use warn level in release builds to reduce startup overhead
     #[cfg(debug_assertions)]
     let default_level = if cli_args.verbose { "debug" } else { "info" };
     #[cfg(not(debug_assertions))]
-    let default_level = if cli_args.verbose { "debug" } else { "warn" };
+    let default_level = if cli_args.verbose {
+        "debug"
+    } else if startup_trace_enabled {
+        "info"
+    } else {
+        "warn"
+    };
 
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level))
         .format_timestamp(None)
@@ -1371,6 +1636,7 @@ pub fn run() {
         .init();
 
     info!("Starting ZimaOS Blue desktop application");
+    DESKTOP_STARTUP_TRACE.mark("run_enter");
     if cli_args.port.is_some()
         || cli_args.config.is_some()
         || cli_args.data_dir.is_some()
@@ -1393,20 +1659,50 @@ pub fn run() {
         cli_args,
         use_https: std::sync::Mutex::new(false),
     };
+    DESKTOP_STARTUP_TRACE.mark("app_state_ready");
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    let startup_trace_enabled = startup_trace_env_enabled();
+    let disable_notification_plugin = startup_trace_disable_notification_plugin();
+
+    let builder = tauri::Builder::default();
+    DESKTOP_STARTUP_TRACE.mark("builder_default_ready");
+
+    let builder = if startup_trace_enabled {
+        info!("Startup trace enabled; single-instance plugin disabled for clean profiling");
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // When second instance is launched, show and focus the first instance
             info!("Second instance detected, focusing existing window");
             if let Err(e) = open_or_focus_main_window(&app) {
                 error!("Failed to focus main window for second instance: {}", e);
             }
         }))
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_opener::init())
+    };
+    DESKTOP_STARTUP_TRACE.mark("single_instance_configured");
+
+    let builder = builder.plugin(tauri_plugin_shell::init());
+    DESKTOP_STARTUP_TRACE.mark("plugin_shell_registered");
+
+    let builder = if disable_notification_plugin {
+        info!("Startup trace profiling: notification plugin disabled");
+        builder
+    } else {
+        let builder = builder.plugin(tauri_plugin_notification::init());
+        DESKTOP_STARTUP_TRACE.mark("plugin_notification_registered");
+        builder
+    };
+
+    let builder = builder.plugin(tauri_plugin_process::init());
+    DESKTOP_STARTUP_TRACE.mark("plugin_process_registered");
+
+    let builder = builder.plugin(tauri_plugin_os::init());
+    DESKTOP_STARTUP_TRACE.mark("plugin_os_registered");
+
+    let builder = builder.plugin(tauri_plugin_opener::init());
+    DESKTOP_STARTUP_TRACE.mark("plugin_opener_registered");
+
+    let builder = builder
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             get_server_url,
@@ -1431,6 +1727,7 @@ pub fn run() {
             // For about:blank, inject a splash spinner and show the window immediately.
             // This gives instant visual feedback while the Go server boots.
             if url == "about:blank" {
+                DESKTOP_STARTUP_TRACE.mark("about_blank_page_loaded");
                 let _ = webview.eval(ABOUT_BLANK_SPLASH_SCRIPT);
                 let _ = webview.window().show();
                 let _ = webview.window().set_focus();
@@ -1438,15 +1735,14 @@ pub fn run() {
 
             // Show the window when the localhost page loads.
             if url.contains("localhost") {
+                DESKTOP_STARTUP_TRACE.mark("localhost_page_loaded");
                 let _ = webview.window().show();
                 let _ = webview.window().set_focus();
             }
 
-            // Inject desktop marker into external pages (Go server at localhost)
-            // so the frontend knows it's running inside the desktop app.
-            // NOTE: We do NOT inject __TAURI_INTERNALS__ because the page is loaded
-            // from an external origin (http://localhost) where Tauri IPC is unavailable.
-            // The frontend should use relative URLs (same-origin) for all API calls.
+            // Inject desktop markers into external localhost pages so the frontend knows
+            // it's running inside the desktop app. Tauri IPC for these pages is controlled
+            // by the configured remote capabilities in tauri.conf.json.
             if url.contains("localhost") {
                 #[cfg(target_os = "macos")]
                 let _ = webview.eval(
@@ -1465,6 +1761,7 @@ pub fn run() {
         })
         .setup(|app| {
             info!("Setting up application");
+            DESKTOP_STARTUP_TRACE.mark("setup_enter");
 
             if app.get_webview_window(MAIN_WINDOW_LABEL).is_none() {
                 #[cfg(target_os = "macos")]
@@ -1475,6 +1772,7 @@ pub fn run() {
 
                 let window = build_main_window(app.handle(), about_blank_webview_url())?;
                 show_and_focus_window(&window);
+                DESKTOP_STARTUP_TRACE.mark("main_window_visible");
             } else {
                 #[cfg(target_os = "macos")]
                 if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
@@ -1548,6 +1846,7 @@ pub fn run() {
             app.manage(tray);
             app.manage(TrayPanelItem(panel));
             app.manage(TrayQuitItem(quit));
+            DESKTOP_STARTUP_TRACE.mark("tray_ready");
 
             // Open devtools in debug builds (must be done in setup, before async tasks)
             #[cfg(debug_assertions)]
@@ -1573,8 +1872,10 @@ pub fn run() {
                     });
 
                 if should_request_stt_auth {
+                    DESKTOP_STARTUP_TRACE.mark("stt_auth_scheduled");
                     let stt_app_handle = app.handle().clone();
                     let _ = stt_app_handle.run_on_main_thread(move || {
+                        DESKTOP_STARTUP_TRACE.mark("stt_auth_request_begin");
                         info!("Requesting macOS speech recognition authorization...");
                         let status = blue_ffi::request_stt_authorization();
                         match status {
@@ -1584,6 +1885,7 @@ pub fn run() {
                             0 => info!("Speech recognition not determined"),
                             _ => info!("Speech recognition status: {}", status),
                         }
+                        DESKTOP_STARTUP_TRACE.mark("stt_auth_request_complete");
                     });
                 } else {
                     info!(
@@ -1595,8 +1897,12 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
 
             tauri::async_runtime::spawn(async move {
                 info!("Attempting to start server...");
+                DESKTOP_STARTUP_TRACE.mark("server_task_enter");
                 match start_server_platform(&app_handle).await {
-                    Ok(_) => info!("Server started successfully"),
+                    Ok(_) => {
+                        DESKTOP_STARTUP_TRACE.mark("server_start_complete");
+                        info!("Server started successfully");
+                    }
                     Err(e) => {
                         error!("Failed to start server: {}", e);
                         for label in [MAIN_WINDOW_LABEL, PANEL_WINDOW_LABEL] {
@@ -1631,12 +1937,19 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
                 // Replace the startup splash with the real localhost UI as soon as the server is ready.
                 match bind_window_to_server_path(&app_handle_for_window, MAIN_WINDOW_LABEL, "") {
                     Ok(window) => {
+                        DESKTOP_STARTUP_TRACE.mark("main_window_navigated");
                         #[cfg(target_os = "macos")]
-                        apply_main_window_macos_style(&window);
+                        update_window_on_main_thread(
+                            &app_handle_for_window,
+                            MAIN_WINDOW_LABEL,
+                            true,
+                            true,
+                        );
 
                         let protocol = if use_https { "https" } else { "http" };
                         let url = format!("{}://localhost:{}", protocol, port);
                         info!("Main window bound to server at {}", url);
+                        #[cfg(not(target_os = "macos"))]
                         show_and_focus_window(&window);
 
                         if app_handle_for_window
@@ -1648,10 +1961,17 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
                                 PANEL_WINDOW_LABEL,
                                 PANEL_WINDOW_PATH,
                             ) {
-                                Ok(panel_window) => {
+                                Ok(_panel_window) => {
+                                    DESKTOP_STARTUP_TRACE.mark("panel_window_navigated");
                                     #[cfg(target_os = "macos")]
-                                    apply_main_window_macos_style(&panel_window);
-                                    let _ = panel_window.show();
+                                    update_window_on_main_thread(
+                                        &app_handle_for_window,
+                                        PANEL_WINDOW_LABEL,
+                                        true,
+                                        false,
+                                    );
+                                    #[cfg(not(target_os = "macos"))]
+                                    let _ = _panel_window.show();
                                 }
                                 Err(e) => {
                                     error!("Failed to bind quick panel to server: {}", e);
@@ -1664,7 +1984,16 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
                         tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
                         if !window.is_visible().unwrap_or(true) {
                             info!("Fallback: showing window after timeout");
+                            #[cfg(target_os = "macos")]
+                            update_window_on_main_thread(
+                                &app_handle_for_window,
+                                MAIN_WINDOW_LABEL,
+                                false,
+                                true,
+                            );
+                            #[cfg(not(target_os = "macos"))]
                             let _ = window.show();
+                            #[cfg(not(target_os = "macos"))]
                             let _ = window.set_focus();
                         }
 
@@ -1684,61 +2013,69 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
             });
 
             info!("Application setup complete");
+            DESKTOP_STARTUP_TRACE.mark("setup_complete");
             Ok(())
-        })
+        });
+
+    DESKTOP_STARTUP_TRACE.mark("builder_configured");
+    DESKTOP_STARTUP_TRACE.mark("build_start");
+
+    let app = builder
         .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            match event {
-                RunEvent::ExitRequested { api, .. } => {
-                    // Only prevent exit if we're not actually quitting AND minimize-to-tray is enabled
-                    if !QUITTING.load(Ordering::SeqCst) && MINIMIZE_TO_TRAY.load(Ordering::SeqCst) {
-                        api.prevent_exit();
-                        for label in [MAIN_WINDOW_LABEL, PANEL_WINDOW_LABEL] {
-                            if let Some(window) = app_handle.get_webview_window(label) {
-                                let _ = window.hide();
-                            }
+        .expect("error while building tauri application");
+
+    DESKTOP_STARTUP_TRACE.mark("build_complete");
+
+    app.run(|app_handle, event| {
+        match event {
+            RunEvent::ExitRequested { api, .. } => {
+                // Only prevent exit if we're not actually quitting AND minimize-to-tray is enabled
+                if !QUITTING.load(Ordering::SeqCst) && MINIMIZE_TO_TRAY.load(Ordering::SeqCst) {
+                    api.prevent_exit();
+                    for label in [MAIN_WINDOW_LABEL, PANEL_WINDOW_LABEL] {
+                        if let Some(window) = app_handle.get_webview_window(label) {
+                            let _ = window.hide();
                         }
-                        // On macOS, hide the Dock icon when minimizing to tray
-                        #[cfg(target_os = "macos")]
-                        {
-                            use objc2::MainThreadMarker;
-                            use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-                            if let Some(mtm) = MainThreadMarker::new() {
-                                let ns_app = NSApplication::sharedApplication(mtm);
-                                ns_app
-                                    .setActivationPolicy(NSApplicationActivationPolicy::Accessory);
-                            }
+                    }
+                    // On macOS, hide the Dock icon when minimizing to tray
+                    #[cfg(target_os = "macos")]
+                    {
+                        use objc2::MainThreadMarker;
+                        use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+                        if let Some(mtm) = MainThreadMarker::new() {
+                            let ns_app = NSApplication::sharedApplication(mtm);
+                            ns_app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
                         }
-                    } else if !QUITTING.load(Ordering::SeqCst) {
-                        // "quit" behavior: stop server and exit
-                        #[cfg(any(target_os = "macos", target_os = "windows"))]
-                        graceful_quit(app_handle);
+                    }
+                } else if !QUITTING.load(Ordering::SeqCst) {
+                    // "quit" behavior: stop server and exit
+                    #[cfg(any(target_os = "macos", target_os = "windows"))]
+                    graceful_quit(app_handle);
+                    #[cfg(target_os = "linux")]
+                    {
+                        QUITTING.store(true, Ordering::SeqCst);
+                        info!("Graceful quit: stopping server");
                         #[cfg(target_os = "linux")]
                         {
-                            QUITTING.store(true, Ordering::SeqCst);
-                            info!("Graceful quit: stopping server");
-                            #[cfg(target_os = "linux")]
-                            {
-                                let app_clone = app_handle.clone();
-                                tauri::async_runtime::block_on(async {
-                                    let _ = server::stop_server(app_clone).await;
-                                });
-                            }
-                            app_handle.exit(0);
+                            let app_clone = app_handle.clone();
+                            tauri::async_runtime::block_on(async {
+                                let _ = server::stop_server(app_clone).await;
+                            });
                         }
+                        app_handle.exit(0);
                     }
                 }
-                RunEvent::Exit => {
-                    // Clean up tray icon on Windows to prevent ghost icons
-                    #[cfg(target_os = "windows")]
-                    {
-                        if let Some(tray) = app_handle.try_state::<tauri::tray::TrayIcon>() {
-                            let _ = tray.set_visible(false);
-                        }
-                    }
-                }
-                _ => {}
             }
-        });
+            RunEvent::Exit => {
+                // Clean up tray icon on Windows to prevent ghost icons
+                #[cfg(target_os = "windows")]
+                {
+                    if let Some(tray) = app_handle.try_state::<tauri::tray::TrayIcon>() {
+                        let _ = tray.set_visible(false);
+                    }
+                }
+            }
+            _ => {}
+        }
+    });
 }

@@ -119,28 +119,59 @@ export default defineConfig({
         experimentalMinChunkSize: 5000, // 5KB minimum chunk size to reduce HTTP requests
         // Optimize chunk splitting for parallel downloads
         manualChunks: (id) => {
-          // Core Vue ecosystem - loaded first
-          if (id.includes('node_modules/vue') ||
-              id.includes('node_modules/@vue') ||
-              id.includes('node_modules/vue-router') ||
-              id.includes('node_modules/pinia')) {
-            return 'vue-core'
+          // Shared helper injected by Rollup's CommonJS bridge
+          if (id.includes('commonjsHelpers')) {
+            return 'shared-cjs'
+          }
+          // VueUse utilities and their transitive deps
+          if (id.includes('node_modules/@vueuse') ||
+              id.includes('node_modules/perfect-debounce') ||
+              id.includes('node_modules/hookable') ||
+              id.includes('node_modules/birpc')) {
+            return 'vueuse'
+          }
+          // vue-i18n and its runtime/compiler dependencies
+          if (id.includes('node_modules/vue-i18n') ||
+              id.includes('node_modules/@intlify/')) {
+            return 'i18n-core'
           }
           // Vue Flow - heavy library, separate chunk (lazy loaded)
           if (id.includes('node_modules/@vue-flow')) {
             return 'vue-flow'
           }
-          // vue-i18n library only (not locale files)
-          if (id.includes('node_modules/vue-i18n')) {
-            return 'i18n-core'
-          }
-          // VueUse utilities
-          if (id.includes('node_modules/@vueuse')) {
-            return 'vueuse'
+          // Core Vue ecosystem - loaded first
+          if (id.includes('node_modules/vue') ||
+              id.includes('node_modules/@vue/') ||
+              id.includes('node_modules/vue-router') ||
+              id.includes('node_modules/pinia')) {
+            return 'vue-core'
           }
           // Axios and HTTP utilities
           if (id.includes('node_modules/axios')) {
             return 'http'
+          }
+          // Rich text / markdown rendering stack should stay off the startup path
+          if (id.includes('node_modules/highlight.js') ||
+              id.includes('node_modules/decode-named-character-reference') ||
+              id.includes('node_modules/katex') ||
+              id.includes('node_modules/micromark') ||
+              id.includes('node_modules/mdast-') ||
+              id.includes('node_modules/remark-') ||
+              id.includes('node_modules/rehype-') ||
+              id.includes('node_modules/unified') ||
+              id.includes('node_modules/trough') ||
+              id.includes('node_modules/vfile') ||
+              id.includes('node_modules/vfile-') ||
+              id.includes('node_modules/unist-') ||
+              id.includes('node_modules/hast-') ||
+              id.includes('node_modules/property-information') ||
+              id.includes('node_modules/space-separated-tokens') ||
+              id.includes('node_modules/comma-separated-tokens') ||
+              id.includes('node_modules/zwitch') ||
+              id.includes('node_modules/bail') ||
+              id.includes('node_modules/@braintree/sanitize-url') ||
+              id.includes('node_modules/ts-dedent')) {
+            return 'richtext'
           }
           // Mermaid is lazy-loaded via dynamic import() in CardMermaid.vue
           // Do NOT assign it to a named chunk — let Vite naturally code-split it

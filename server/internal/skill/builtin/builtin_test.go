@@ -14,6 +14,8 @@ func TestRegisterAll(t *testing.T) {
 		NewSelfReflect(),
 		NewReminder(),
 		NewScheduler(),
+		NewEmail(),
+		NewCalendar(),
 		NewBrowser(),
 		NewAnalyze(),
 		NewDeepResearch(),

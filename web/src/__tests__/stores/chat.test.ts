@@ -1251,6 +1251,30 @@ describe('Chat Store', () => {
       expect(items[0]?.icon).toBe('✓')
     })
 
+    it('formats convert tool commands from input_path and output_path', () => {
+      const items = parseToolResults([
+        {
+          name: 'convert',
+          id: 'convert-2',
+          args: JSON.stringify({
+            input_path: 'docs/phone_specs.md',
+            output_path: 'exports/phone_specs.pdf',
+          }),
+          result: JSON.stringify({
+            async: false,
+            task_id: 'task-2',
+            status: 'succeeded',
+            output_path: '/Users/orca/.zimaos-blue/data/workspace/exports/phone_specs.pdf',
+          }),
+        },
+      ])
+
+      expect(items).toHaveLength(1)
+      expect(items[0]?.command).toBe('docs/phone_specs.md -> exports/phone_specs.pdf')
+      expect(items[0]?.status).toBe('succeeded')
+      expect(items[0]?.icon).toBe('✓')
+    })
+
     it('should map challenge and browser_required warning codes to friendly statuses', () => {
       const items = parseToolResults([
         {

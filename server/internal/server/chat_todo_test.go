@@ -1739,6 +1739,62 @@ func TestApplyReminderToolPreference(t *testing.T) {
 	}
 }
 
+func TestApplyResearchToolPreference(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "research_run"},
+		{Name: "research_status"},
+		{Name: "browser"},
+	}
+
+	filtered := applyResearchToolPreference(defs, "请做一份最新 AI 模型的研究报告，并附来源引用")
+	if got := toolNames(filtered); strings.Join(got, ",") != "research_run,research_status,browser" {
+		t.Fatalf("expected research tools + browser, got=%v", got)
+	}
+}
+
+func TestApplyWritingToolPreference(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "research_run"},
+		{Name: "analyze"},
+		{Name: "email"},
+	}
+
+	filtered := applyWritingToolPreference(defs, "把这段话改写得更正式一些")
+	if len(filtered) != 0 {
+		t.Fatalf("expected pure writing intent to suppress tools, got=%v", toolNames(filtered))
+	}
+}
+
+func TestApplyEmailAndCalendarToolPreference(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "email"},
+		{Name: "calendar"},
+	}
+
+	emailFiltered := applyEmailToolPreference(defs, "帮我归档收件箱里来自 Alice 的未读邮件")
+	if got := toolNames(emailFiltered); strings.Join(got, ",") != "email" {
+		t.Fatalf("expected email-only toolset, got=%v", got)
+	}
+
+	calendarFiltered := applyCalendarToolPreference(defs, "帮我看一下今天的日程安排")
+	if got := toolNames(calendarFiltered); strings.Join(got, ",") != "calendar" {
+		t.Fatalf("expected calendar-only toolset, got=%v", got)
+	}
+
+	workspaceEmailTask := applyEmailToolPreference(defs, "The emails have been provided to you in the inbox/ folder in your workspace. Read all 13 emails and create a triage report.")
+	if len(workspaceEmailTask) != len(defs) {
+		t.Fatalf("expected workspace email file task to keep full toolset, got=%v", toolNames(workspaceEmailTask))
+	}
+
+	workspaceCalendarTask := applyCalendarToolPreference(defs, "Review all files in the research/ folder and write a daily summary to daily_briefing.md.")
+	if len(workspaceCalendarTask) != len(defs) {
+		t.Fatalf("expected workspace file task to keep full toolset, got=%v", toolNames(workspaceCalendarTask))
+	}
+}
+
 func toolNames(defs []tools.ToolDefinition) []string {
 	names := make([]string, 0, len(defs))
 	for _, def := range defs {

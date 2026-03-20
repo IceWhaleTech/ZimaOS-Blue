@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -40,37 +41,40 @@ const (
 )
 
 type Run struct {
-	ID             string                   `json:"id"`
-	RootRunID      string                   `json:"root_run_id"`
-	ParentRunID    string                   `json:"parent_run_id,omitempty"`
-	Kind           RunKind                  `json:"kind"`
-	Status         RunStatus                `json:"status"`
-	RuntimeState   agentpkg.RuntimeState    `json:"runtime_state,omitempty"`
-	UserID         string                   `json:"user_id,omitempty"`
-	ConversationID string                   `json:"conversation_id,omitempty"`
-	SessionID      string                   `json:"session_id,omitempty"`
-	AgentID        string                   `json:"agent_id,omitempty"`
-	Goal           string                   `json:"goal"`
-	Model          string                   `json:"model,omitempty"`
-	Result         string                   `json:"result,omitempty"`
-	Error          string                   `json:"error,omitempty"`
-	Depth          int                      `json:"depth"`
-	CurrentStep    int                      `json:"current_step"`
-	Progress       int                      `json:"progress"`
-	WorkspaceRoot  string                   `json:"workspace_root,omitempty"`
-	ArtifactRoot   string                   `json:"artifact_root,omitempty"`
-	SandboxMode    string                   `json:"sandbox_mode,omitempty"`
-	ApprovalMode   ApprovalMode             `json:"approval_mode,omitempty"`
-	MaxDuration    time.Duration            `json:"max_duration,omitempty"`
-	MaxSteps       int                      `json:"max_steps,omitempty"`
-	MaxToolRounds  int                      `json:"max_tool_rounds,omitempty"`
-	MaxSubagents   int                      `json:"max_subagents,omitempty"`
-	MaxDepth       int                      `json:"max_depth,omitempty"`
-	Metadata       map[string]interface{}   `json:"metadata,omitempty"`
-	CreatedAt      time.Time                `json:"created_at"`
-	UpdatedAt      time.Time                `json:"updated_at"`
-	StartedAt      *time.Time               `json:"started_at,omitempty"`
-	FinishedAt     *time.Time               `json:"finished_at,omitempty"`
+	ID             string                 `json:"id"`
+	RootRunID      string                 `json:"root_run_id"`
+	ParentRunID    string                 `json:"parent_run_id,omitempty"`
+	GroupID        string                 `json:"group_id,omitempty"`
+	GroupItemID    string                 `json:"group_item_id,omitempty"`
+	AttemptIndex   int                    `json:"attempt_index,omitempty"`
+	Kind           RunKind                `json:"kind"`
+	Status         RunStatus              `json:"status"`
+	RuntimeState   agentpkg.RuntimeState  `json:"runtime_state,omitempty"`
+	UserID         string                 `json:"user_id,omitempty"`
+	ConversationID string                 `json:"conversation_id,omitempty"`
+	SessionID      string                 `json:"session_id,omitempty"`
+	AgentID        string                 `json:"agent_id,omitempty"`
+	Goal           string                 `json:"goal"`
+	Model          string                 `json:"model,omitempty"`
+	Result         string                 `json:"result,omitempty"`
+	Error          string                 `json:"error,omitempty"`
+	Depth          int                    `json:"depth"`
+	CurrentStep    int                    `json:"current_step"`
+	Progress       int                    `json:"progress"`
+	WorkspaceRoot  string                 `json:"workspace_root,omitempty"`
+	ArtifactRoot   string                 `json:"artifact_root,omitempty"`
+	SandboxMode    string                 `json:"sandbox_mode,omitempty"`
+	ApprovalMode   ApprovalMode           `json:"approval_mode,omitempty"`
+	MaxDuration    time.Duration          `json:"max_duration,omitempty"`
+	MaxSteps       int                    `json:"max_steps,omitempty"`
+	MaxToolRounds  int                    `json:"max_tool_rounds,omitempty"`
+	MaxSubagents   int                    `json:"max_subagents,omitempty"`
+	MaxDepth       int                    `json:"max_depth,omitempty"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	CreatedAt      time.Time              `json:"created_at"`
+	UpdatedAt      time.Time              `json:"updated_at"`
+	StartedAt      *time.Time             `json:"started_at,omitempty"`
+	FinishedAt     *time.Time             `json:"finished_at,omitempty"`
 }
 
 type RunSpec struct {
@@ -80,6 +84,9 @@ type RunSpec struct {
 	ConversationID string                 `json:"conversation_id,omitempty"`
 	SessionID      string                 `json:"session_id,omitempty"`
 	ParentRunID    string                 `json:"parent_run_id,omitempty"`
+	GroupID        string                 `json:"group_id,omitempty"`
+	GroupItemID    string                 `json:"group_item_id,omitempty"`
+	AttemptIndex   int                    `json:"attempt_index,omitempty"`
 	AgentID        string                 `json:"agent_id,omitempty"`
 	Model          string                 `json:"model,omitempty"`
 	WorkspaceRoot  string                 `json:"workspace_root,omitempty"`
@@ -98,6 +105,8 @@ type RunFilter struct {
 	Kind        RunKind
 	Kinds       []RunKind
 	Statuses    []RunStatus
+	GroupID     string
+	GroupItemID string
 	ParentRunID string
 	RootRunID   string
 	Limit       int
@@ -118,13 +127,13 @@ type RunEvent struct {
 }
 
 type ArtifactRef struct {
-	ID          string `json:"id"`
-	RunID       string `json:"run_id"`
-	Kind        string `json:"kind"`
-	Label       string `json:"label,omitempty"`
-	PathOrURL   string `json:"path_or_url,omitempty"`
-	MIMEType    string `json:"mime_type,omitempty"`
-	SizeBytes   int64  `json:"size_bytes,omitempty"`
+	ID           string `json:"id"`
+	RunID        string `json:"run_id"`
+	Kind         string `json:"kind"`
+	Label        string `json:"label,omitempty"`
+	PathOrURL    string `json:"path_or_url,omitempty"`
+	MIMEType     string `json:"mime_type,omitempty"`
+	SizeBytes    int64  `json:"size_bytes,omitempty"`
 	MetadataJSON string `json:"metadata_json,omitempty"`
 }
 
@@ -164,6 +173,160 @@ type SnapshotDriver interface {
 	Sync(ctx context.Context, run *Run) (*Run, error)
 }
 
+type RunGroupKind string
+
+const (
+	RunGroupKindEval       RunGroupKind = "eval"
+	RunGroupKindExperiment RunGroupKind = "experiment"
+	RunGroupKindBatch      RunGroupKind = "batch"
+)
+
+type RunGroupStatus string
+
+const (
+	RunGroupStatusPending   RunGroupStatus = "pending"
+	RunGroupStatusQueued    RunGroupStatus = "queued"
+	RunGroupStatusRunning   RunGroupStatus = "running"
+	RunGroupStatusScoring   RunGroupStatus = "scoring"
+	RunGroupStatusCompleted RunGroupStatus = "completed"
+	RunGroupStatusPartial   RunGroupStatus = "partial"
+	RunGroupStatusFailed    RunGroupStatus = "failed"
+	RunGroupStatusCancelled RunGroupStatus = "cancelled"
+)
+
+type RunGroupItemStatus string
+
+const (
+	RunGroupItemStatusPending   RunGroupItemStatus = "pending"
+	RunGroupItemStatusQueued    RunGroupItemStatus = "queued"
+	RunGroupItemStatusRunning   RunGroupItemStatus = "running"
+	RunGroupItemStatusScoring   RunGroupItemStatus = "scoring"
+	RunGroupItemStatusPassed    RunGroupItemStatus = "passed"
+	RunGroupItemStatusFailed    RunGroupItemStatus = "failed"
+	RunGroupItemStatusError     RunGroupItemStatus = "error"
+	RunGroupItemStatusCancelled RunGroupItemStatus = "cancelled"
+)
+
+type ScoringMode string
+
+const (
+	ScoringModeRule   ScoringMode = "rule"
+	ScoringModeJudge  ScoringMode = "judge"
+	ScoringModeHybrid ScoringMode = "hybrid"
+)
+
+type ScoreVerdict string
+
+const (
+	ScoreVerdictPass    ScoreVerdict = "pass"
+	ScoreVerdictFail    ScoreVerdict = "fail"
+	ScoreVerdictPartial ScoreVerdict = "partial"
+	ScoreVerdictError   ScoreVerdict = "error"
+)
+
+type GroupSchedulerConfig struct {
+	MaxConcurrency int           `json:"max_concurrency,omitempty"`
+	MaxAttempts    int           `json:"max_attempts,omitempty"`
+	LeaseTTL       time.Duration `json:"lease_ttl,omitempty"`
+	RetryBackoff   time.Duration `json:"retry_backoff,omitempty"`
+}
+
+type GroupScoringConfig struct {
+	Mode          ScoringMode `json:"mode,omitempty"`
+	RuleProfile   string      `json:"rule_profile,omitempty"`
+	JudgeModel    string      `json:"judge_model,omitempty"`
+	PassThreshold float64     `json:"pass_threshold,omitempty"`
+}
+
+type RunGroup struct {
+	ID              string                 `json:"id"`
+	Kind            RunGroupKind           `json:"kind"`
+	Title           string                 `json:"title,omitempty"`
+	Status          RunGroupStatus         `json:"status"`
+	OwnerUserID     string                 `json:"owner_user_id,omitempty"`
+	Subject         string                 `json:"subject,omitempty"`
+	SchedulerConfig GroupSchedulerConfig   `json:"scheduler_config,omitempty"`
+	ScoringConfig   GroupScoringConfig     `json:"scoring_config,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+	Summary         map[string]interface{} `json:"summary,omitempty"`
+	CreatedAt       time.Time              `json:"created_at"`
+	UpdatedAt       time.Time              `json:"updated_at"`
+	StartedAt       *time.Time             `json:"started_at,omitempty"`
+	FinishedAt      *time.Time             `json:"finished_at,omitempty"`
+}
+
+type RunGroupItem struct {
+	ID             string                 `json:"id"`
+	GroupID        string                 `json:"group_id"`
+	Index          int                    `json:"index"`
+	RunKind        RunKind                `json:"run_kind"`
+	Profile        string                 `json:"profile,omitempty"`
+	Input          map[string]interface{} `json:"input,omitempty"`
+	Expected       map[string]interface{} `json:"expected,omitempty"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	Status         RunGroupItemStatus     `json:"status"`
+	LatestRunID    string                 `json:"latest_run_id,omitempty"`
+	AttemptCount   int                    `json:"attempt_count,omitempty"`
+	MaxAttempts    int                    `json:"max_attempts,omitempty"`
+	LeaseOwner     string                 `json:"lease_owner,omitempty"`
+	LeaseExpiresAt *time.Time             `json:"lease_expires_at,omitempty"`
+	CreatedAt      time.Time              `json:"created_at"`
+	UpdatedAt      time.Time              `json:"updated_at"`
+}
+
+type Scorecard struct {
+	ID             string       `json:"id"`
+	GroupID        string       `json:"group_id"`
+	GroupItemID    string       `json:"group_item_id"`
+	RunID          string       `json:"run_id,omitempty"`
+	Mode           ScoringMode  `json:"mode"`
+	Verdict        ScoreVerdict `json:"verdict"`
+	Score          float64      `json:"score"`
+	BreakdownJSON  string       `json:"breakdown_json,omitempty"`
+	EvidenceJSON   string       `json:"evidence_json,omitempty"`
+	JudgeTraceJSON string       `json:"judge_trace_json,omitempty"`
+	CreatedAt      time.Time    `json:"created_at"`
+}
+
+type RunGroupSpec struct {
+	Kind            RunGroupKind           `json:"kind"`
+	Title           string                 `json:"title,omitempty"`
+	Subject         string                 `json:"subject,omitempty"`
+	OwnerUserID     string                 `json:"owner_user_id,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+	SchedulerConfig GroupSchedulerConfig   `json:"scheduler"`
+	ScoringConfig   GroupScoringConfig     `json:"scoring"`
+	Items           []RunGroupItemSpec     `json:"items"`
+}
+
+type RunGroupItemSpec struct {
+	RunKind  RunKind                `json:"run_kind"`
+	Profile  string                 `json:"profile,omitempty"`
+	Input    map[string]interface{} `json:"input,omitempty"`
+	Expected map[string]interface{} `json:"expected,omitempty"`
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type RunGroupFilter struct {
+	OwnerUserID string
+	Kinds       []RunGroupKind
+	Statuses    []RunGroupStatus
+	Limit       int
+}
+
+type RunGroupReport struct {
+	Group         *RunGroup                `json:"group"`
+	Items         []RunGroupItem           `json:"items,omitempty"`
+	VerdictCounts map[string]int           `json:"verdict_counts,omitempty"`
+	OverallScore  float64                  `json:"overall_score,omitempty"`
+	PassRate      float64                  `json:"pass_rate,omitempty"`
+	Breakdown     map[string]interface{}   `json:"breakdown,omitempty"`
+	FailedItems   []map[string]interface{} `json:"failed_items,omitempty"`
+	LinkedRuns    []Run                    `json:"linked_runs,omitempty"`
+	Artifacts     []ArtifactRef            `json:"artifacts,omitempty"`
+	Scorecards    []Scorecard              `json:"scorecards,omitempty"`
+}
+
 func cloneMetadataMap(in map[string]interface{}) map[string]interface{} {
 	if len(in) == 0 {
 		return nil
@@ -196,4 +359,18 @@ func unmarshalMetadata(raw string) map[string]interface{} {
 		return nil
 	}
 	return out
+}
+
+func metadataString(meta map[string]interface{}, key string) string {
+	if len(meta) == 0 {
+		return ""
+	}
+	raw, ok := meta[key]
+	if !ok {
+		return ""
+	}
+	if value, ok := raw.(string); ok {
+		return strings.TrimSpace(value)
+	}
+	return strings.TrimSpace(fmt.Sprint(raw))
 }

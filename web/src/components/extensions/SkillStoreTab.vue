@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   type DiscoverStatusResponse,
@@ -19,13 +19,17 @@ const { t, te, locale } = useI18n()
 const loading = ref(false)
 const loadingMore = ref(false)
 const refreshing = ref(false)
+const initializingMarketplace = ref(false)
 const error = ref<string | null>(null)
 let latestSkillsRequestId = 0
 let latestDetailRequestId = 0
+let latestDiscoverPollId = 0
 let preferredSelectedSkillId: string | null = null
+let componentDisposed = false
 
 const skills = ref<RemoteSkill[]>([])
 const filters = ref<SkillFiltersResponse | null>(null)
+const discoverStatus = ref<DiscoverStatusResponse | null>(null)
 const selectedSkillId = ref<string | null>(null)
 const selectedDetail = ref<MarketplaceSkillDetail | null>(null)
 const detailLoading = ref(false)
@@ -96,6 +100,56 @@ const syncHint = computed(() =>
     'results.syncHint',
     'The catalog refreshes automatically once per day. Use Refresh sources when you need immediate updates.'
   )
+)
+const discoverRunning = computed(() => discoverStatus.value?.running ?? false)
+const showDiscoverProgress = computed(
+  () => initializingMarketplace.value || refreshing.value || discoverRunning.value
+)
+const discoverProgressPercent = computed(() => {
+  if (!showDiscoverProgress.value) return 0
+  const total = discoverStatus.value?.total_sources || 0
+  const processed = discoverStatus.value?.processed_sources || 0
+  if (total > 0) {
+    const inFlightUnits =
+      discoverRunning.value && processed < total ? Math.min(0.45, 1 / total) : 0
+    const rawPercent = Math.round(((processed + inFlightUnits) / total) * 100)
+    return Math.max(processed > 0 ? 14 : 8, Math.min(discoverRunning.value ? 96 : 100, rawPercent))
+  }
+  return initializingMarketplace.value || refreshing.value || discoverRunning.value ? 12 : 100
+})
+const discoverProgressLabel = computed(() =>
+  initializingMarketplace.value
+    ? skillStoreText('status.initializing', 'Loading Skill Store')
+    : skillStoreText('status.syncing', 'Syncing skill store...')
+)
+const discoverProgressMeta = computed(() => {
+  const total = discoverStatus.value?.total_sources || 0
+  const processed = discoverStatus.value?.processed_sources || 0
+  if (total > 0) {
+    return skillStoreText('status.initializingProgress', 'Synced {processed}/{total} sources', {
+      processed,
+      total,
+    })
+  }
+  return skillStoreText(
+    'status.initializingDesc',
+    'Fetching skill data, this may take a moment...'
+  )
+})
+const discoverProgressDescription = computed(() => {
+  const sourceName = discoverStatus.value?.current_source_name
+  if (sourceName) {
+    return skillStoreText('status.initializingSource', 'Current source: {source}', {
+      source: sourceName,
+    })
+  }
+  return skillStoreText(
+    'status.initializingDesc',
+    'Fetching skill data, this may take a moment...'
+  )
+})
+const showResultsLoading = computed(
+  () => (loading.value && !skills.value.length) || (initializingMarketplace.value && !skills.value.length)
 )
 const sortPillOptions = computed(() => [
   { value: 'featured' as const, label: marketplaceText('sort.featured', 'Featured') },
@@ -255,6 +309,26 @@ function marketplaceText(path: string, fallback: string, params?: Record<string,
 
 function normalizeSearchQuery(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
+}
+
+function cloneDiscoverStatus(status?: DiscoverStatusResponse | null): DiscoverStatusResponse | null {
+  if (!status) return null
+  return {
+    ...status,
+    result: status.result ? { ...status.result } : undefined,
+  }
+}
+
+function applyDiscoverStatus(status?: DiscoverStatusResponse | null) {
+  discoverStatus.value = cloneDiscoverStatus(status)
+}
+
+function hasCompletedDiscover(status?: DiscoverStatusResponse | null): boolean {
+  return !!status?.result
+}
+
+function shouldStopDiscoverPolling(requestId: number): boolean {
+  return componentDisposed || latestDiscoverPollId !== requestId
 }
 
 function normalizeTags(skill?: RemoteSkill | null): string[] {
@@ -504,13 +578,17 @@ function sleep(ms: number) {
 }
 
 async function waitForDiscoverCompletion(initial?: DiscoverStatusResponse | null) {
+  const requestId = ++latestDiscoverPollId
   let status = initial ?? null
   const deadline = Date.now() + 10 * 60 * 1000
   while (Date.now() < deadline) {
+    if (shouldStopDiscoverPolling(requestId)) return null
     if (!status || status.running) {
       const response = await skillApi.discoverStatus()
+      if (shouldStopDiscoverPolling(requestId)) return null
       status = response.data
     }
+    applyDiscoverStatus(status)
     if (!status.running) {
       if (status.last_error) {
         throw new Error(status.last_error)
@@ -525,18 +603,64 @@ async function waitForDiscoverCompletion(initial?: DiscoverStatusResponse | null
   )
 }
 
+async function loadMarketplaceCatalog() {
+  await Promise.all([fetchFilters(), fetchSkills(true)])
+}
+
+async function initializeMarketplaceView() {
+  loading.value = true
+  error.value = null
+
+  try {
+    const response = await skillApi.discoverStatus()
+    if (componentDisposed) return
+
+    const status = response.data
+    applyDiscoverStatus(status)
+
+    if (status.running) {
+      initializingMarketplace.value = true
+      await waitForDiscoverCompletion(status)
+    } else if (!hasCompletedDiscover(status)) {
+      initializingMarketplace.value = true
+      const refreshResponse = await skillApi.discoverRefresh()
+      if (componentDisposed) return
+      applyDiscoverStatus(refreshResponse.data)
+      await waitForDiscoverCompletion(refreshResponse.data)
+    }
+
+    if (componentDisposed) return
+    await loadMarketplaceCatalog()
+  } catch (err) {
+    if (componentDisposed) return
+    error.value =
+      err instanceof Error ? err.message : skillStoreText('fetchError', 'Failed to fetch skills')
+  } finally {
+    if (!componentDisposed) {
+      initializingMarketplace.value = false
+      loading.value = false
+    }
+  }
+}
+
 async function triggerRefresh() {
   refreshing.value = true
   error.value = null
   try {
     const response = await skillApi.discoverRefresh()
+    if (componentDisposed) return
+    applyDiscoverStatus(response.data)
     await waitForDiscoverCompletion(response.data)
-    await Promise.all([fetchFilters(), fetchSkills(true)])
+    if (componentDisposed) return
+    await loadMarketplaceCatalog()
   } catch (err) {
+    if (componentDisposed) return
     error.value =
       err instanceof Error ? err.message : skillStoreText('fetchError', 'Failed to fetch skills')
   } finally {
-    refreshing.value = false
+    if (!componentDisposed) {
+      refreshing.value = false
+    }
   }
 }
 
@@ -822,8 +946,13 @@ const hiddenSecurityEvidenceCount = computed(() => {
   return Math.max(0, total - visibleSecurityEvidence.value.length)
 })
 
-onMounted(async () => {
-  await Promise.all([fetchFilters(), fetchSkills(true)])
+onMounted(() => {
+  void initializeMarketplaceView()
+})
+
+onBeforeUnmount(() => {
+  componentDisposed = true
+  latestDiscoverPollId += 1
 })
 </script>
 
@@ -895,7 +1024,7 @@ onMounted(async () => {
           @submit-shortcut="handleSearch"
         />
         <div class="hero-actions">
-          <button class="btn-ghost" :disabled="refreshing" @click="triggerRefresh">
+          <button class="btn-ghost" :disabled="refreshing || discoverRunning" @click="triggerRefresh">
             {{
               refreshing
                 ? commonText('refreshing', 'Refreshing...')
@@ -986,6 +1115,27 @@ onMounted(async () => {
           </span>
         </div>
       </div>
+
+      <div v-if="showDiscoverProgress" class="discover-progress dashboard-card-subsurface">
+        <div class="discover-progress__copy">
+          <span class="section-label">{{ discoverProgressLabel }}</span>
+          <strong>{{ discoverProgressMeta }}</strong>
+          <p>{{ discoverProgressDescription }}</p>
+        </div>
+        <div
+          class="discover-progress__track"
+          role="progressbar"
+          :aria-label="discoverProgressLabel"
+          :aria-valuenow="discoverProgressPercent"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div
+            class="discover-progress__fill"
+            :style="{ width: `${discoverProgressPercent}%` }"
+          ></div>
+        </div>
+      </div>
     </section>
 
     <div v-if="error" class="error-banner">
@@ -1008,9 +1158,11 @@ onMounted(async () => {
           }}</span>
         </header>
 
-        <div v-if="loading && !skills.length" class="loading-state">
+        <div v-if="showResultsLoading" class="loading-state">
           <div class="spinner"></div>
-          <span>{{ commonText('loading', 'Loading') }}</span>
+          <span>{{
+            showDiscoverProgress ? discoverProgressLabel : commonText('loading', 'Loading')
+          }}</span>
         </div>
 
         <div v-else-if="!skills.length" class="empty-state">
@@ -1885,6 +2037,54 @@ onMounted(async () => {
   display: grid;
   gap: 6px;
   margin-top: 8px;
+}
+
+.discover-progress {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.03)),
+    var(--panel-bg);
+}
+
+.discover-progress__copy {
+  display: grid;
+  gap: 4px;
+}
+
+.discover-progress__copy strong {
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.discover-progress__copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.discover-progress__track {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.discover-progress__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #3b82f6 0%, #38bdf8 100%);
+  box-shadow: 0 0 18px rgba(59, 130, 246, 0.28);
+  transition: width 0.45s ease;
 }
 
 .chip-button {

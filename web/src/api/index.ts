@@ -19,6 +19,7 @@ export * from './service'
 export * from './userdata'
 export * from './proxyCache'
 export * from './deepResearch'
+export * from './harness'
 
 export interface HealthStatus {
   status: string

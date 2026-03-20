@@ -7,6 +7,7 @@ import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channelconfig"
 type (
 	HeartbeatConfig     = channelconfig.HeartbeatConfig
 	GroupPolicy         = channelconfig.GroupPolicy
+	GroupMentionPolicy  = channelconfig.GroupMentionPolicy
 	GroupAccessConfig   = channelconfig.GroupAccessConfig
 	Config              = channelconfig.Config
 	TelegramConfig      = channelconfig.TelegramConfig
@@ -26,9 +27,11 @@ type (
 )
 
 const (
-	GroupPolicyOpen      = channelconfig.GroupPolicyOpen
-	GroupPolicyAllowlist = channelconfig.GroupPolicyAllowlist
-	GroupPolicyDisabled  = channelconfig.GroupPolicyDisabled
+	GroupPolicyOpen             = channelconfig.GroupPolicyOpen
+	GroupPolicyAllowlist        = channelconfig.GroupPolicyAllowlist
+	GroupPolicyDisabled         = channelconfig.GroupPolicyDisabled
+	GroupMentionPolicyMentioned = channelconfig.GroupMentionPolicyMentioned
+	GroupMentionPolicyAlways    = channelconfig.GroupMentionPolicyAlways
 )
 
 func DefaultHeartbeatConfig() HeartbeatConfig {

@@ -97,6 +97,29 @@ const isRunning = computed(() => ['pending', 'processing'].includes(displayCard.
 const isFailed = computed(() => displayCard.value.status === 'failed')
 const isCancelled = computed(() => displayCard.value.status === 'cancelled')
 const isSucceeded = computed(() => displayCard.value.status === 'succeeded')
+const shouldShowTaskID = computed(() => isRunning.value && String(displayCard.value.task_id || '').trim())
+const visibleSourceRefs = computed(() => {
+  const labels = sourceRefs.value
+    .map((source) => formatSourceLabel(source))
+    .filter(Boolean)
+  return Array.from(new Set(labels))
+})
+const shouldShowSourceRefs = computed(() => {
+  if (visibleSourceRefs.value.length === 0) return false
+  if (!String(displayCard.value.source_summary || '').trim()) return true
+  return visibleSourceRefs.value.length > 1
+})
+const headerMetaParts = computed(() => {
+  const parts: string[] = []
+  if (shouldShowTaskID.value) {
+    parts.push(`${t('speech.convertTask.task', 'Task')} ${String(displayCard.value.task_id || '').trim()}`)
+  }
+  const targetFormat = String(displayCard.value.target_format || '').trim()
+  if (targetFormat) {
+    parts.push(targetFormat)
+  }
+  return parts
+})
 const progressPercent = computed(() => {
   const raw = Number(displayCard.value.progress || 0)
   if (Number.isNaN(raw) || raw <= 0) return isSucceeded.value ? 100 : 0
@@ -110,6 +133,20 @@ const localizedMessage = computed(() => taskMessage(displayCard.value))
 interface ConvertOutputLocationResponse {
   path?: string
   parent_path?: string
+}
+
+function formatSourceLabel(source: string): string {
+  const trimmed = String(source || '').trim()
+  if (!trimmed) return ''
+  if (trimmed.startsWith('att:') || trimmed.startsWith('out:')) {
+    return trimmed
+  }
+  const segments = trimmed.split(/[\\/]/).filter(Boolean)
+  return segments[segments.length - 1] || trimmed
+}
+
+function outputPathValue(output: ConvertTaskOutput): string {
+  return String(output.path || '').trim()
 }
 
 function revokePreviewObjectUrl(kind: 'audio' | 'video') {
@@ -300,6 +337,22 @@ function humanSize(size?: number): string {
 }
 
 async function revealOutputLocation(output: ConvertTaskOutput) {
+  const directPath = outputPathValue(output)
+  if (directPath) {
+    try {
+      const revealed = await revealInFileManager(directPath)
+      if (!revealed && output.download_url) {
+        await downloadOutput(output)
+      }
+      return
+    } catch {
+      if (output.download_url) {
+        await downloadOutput(output)
+      }
+      return
+    }
+  }
+
   const taskID = String(displayCard.value.task_id || '').trim()
   const outputID = String(output.output_id || '').trim()
   if (!taskID || !outputID) return
@@ -378,9 +431,8 @@ onUnmounted(() => {
             >· {{ displayCard.source_summary }}</span
           >
         </div>
-        <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
-          {{ t('speech.convertTask.task', 'Task') }} {{ displayCard.task_id }}
-          <span v-if="displayCard.target_format">· {{ displayCard.target_format }}</span>
+        <div v-if="headerMetaParts.length > 0" class="text-xs text-gray-500 dark:text-gray-400 truncate">
+          {{ headerMetaParts.join(' · ') }}
         </div>
       </div>
       <button
@@ -411,7 +463,7 @@ onUnmounted(() => {
 
     <div class="px-3 py-3 space-y-3">
       <div
-        v-if="sourceRefs.length > 0"
+        v-if="shouldShowSourceRefs"
         class="rounded-md bg-gray-50 dark:bg-gray-900/50 px-3 py-2"
       >
         <div class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -419,7 +471,7 @@ onUnmounted(() => {
         </div>
         <div class="mt-1 space-y-1">
           <div
-            v-for="source in sourceRefs"
+            v-for="source in visibleSourceRefs"
             :key="source"
             class="text-xs font-mono text-gray-700 dark:text-gray-300 break-all"
           >
@@ -472,7 +524,13 @@ onUnmounted(() => {
             <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
               {{ previewKindLabel(output) }}
               <span v-if="output.size_bytes">· {{ humanSize(output.size_bytes) }}</span>
-              <span v-if="output.ref">· {{ output.ref }}</span>
+            </div>
+            <div
+              v-if="outputPathValue(output)"
+              class="mt-1 text-[11px] font-mono text-gray-500 dark:text-gray-400 truncate"
+              :title="outputPathValue(output)"
+            >
+              {{ outputPathValue(output) }}
             </div>
             <div
               v-if="output.preview_text && output.preview_kind === 'text'"

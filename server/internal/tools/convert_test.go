@@ -13,7 +13,7 @@ import (
 )
 
 func TestParseConvertTaskRequestSupportsNestedCamelCaseArgs(t *testing.T) {
-	req, err := parseConvertTaskRequest(map[string]interface{}{
+	parsed, err := parseConvertTaskRequest(map[string]interface{}{
 		"input": map[string]interface{}{
 			"action":       "tts",
 			"targetFormat": "wav",
@@ -44,6 +44,7 @@ func TestParseConvertTaskRequestSupportsNestedCamelCaseArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseConvertTaskRequest() error = %v", err)
 	}
+	req := parsed.TaskRequest
 	if req.Action != string(convertpkg.ActionTTS) {
 		t.Fatalf("action = %q, want %q", req.Action, convertpkg.ActionTTS)
 	}
@@ -70,6 +71,60 @@ func TestParseConvertTaskRequestSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 }
 
+func TestParseConvertTaskRequestSupportsSimpleInputOutputPaths(t *testing.T) {
+	parsed, err := parseConvertTaskRequest(map[string]interface{}{
+		"input":  "docs/report.docx",
+		"output": "exports/report.pdf",
+	})
+	if err != nil {
+		t.Fatalf("parseConvertTaskRequest() error = %v", err)
+	}
+	if !parsed.SimpleMode {
+		t.Fatal("expected simple mode to be enabled")
+	}
+	req := parsed.TaskRequest
+	if req.Action != string(convertpkg.ActionConvert) {
+		t.Fatalf("action = %q, want %q", req.Action, convertpkg.ActionConvert)
+	}
+	if len(req.Sources) != 1 || req.Sources[0] != "docs/report.docx" {
+		t.Fatalf("sources = %#v, want docs/report.docx", req.Sources)
+	}
+	if req.OutputPath != "exports/report.pdf" {
+		t.Fatalf("output_path = %q, want exports/report.pdf", req.OutputPath)
+	}
+	if req.TargetFormat != "pdf" {
+		t.Fatalf("target_format = %q, want pdf", req.TargetFormat)
+	}
+}
+
+func TestConvertToolResolveLocalPathsSupportsRelativeWorkspacePaths(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "convert_tool_relative.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	service, err := convertpkg.NewService(db, t.TempDir())
+	if err != nil {
+		t.Fatalf("new convert service: %v", err)
+	}
+	defer service.Close()
+
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	tool := NewConvertTool(service, nil, nil, []string{workspaceDir})
+
+	paths, err := tool.resolveLocalPaths(context.Background(), []string{"docs/input.md", "exports/output.pdf"})
+	if err != nil {
+		t.Fatalf("resolveLocalPaths() error = %v", err)
+	}
+	if got, want := paths[0], filepath.Join(workspaceDir, "docs", "input.md"); got != want {
+		t.Fatalf("paths[0] = %q, want %q", got, want)
+	}
+	if got, want := paths[1], filepath.Join(workspaceDir, "exports", "output.pdf"); got != want {
+		t.Fatalf("paths[1] = %q, want %q", got, want)
+	}
+}
+
 func TestConvertToolRequestLocalPathApprovalAllowAlwaysPersistsDirectory(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "convert_tool_test.db"))
 	if err != nil {
@@ -90,38 +145,83 @@ func TestConvertToolRequestLocalPathApprovalAllowAlwaysPersistsDirectory(t *test
 
 	broker := sse.NewBroker()
 	approvals := NewApprovalManager(broker)
-	tool := NewConvertTool(service, approvals, dirStore)
+	userID := "user-convert-test"
+	tool := NewConvertTool(service, approvals, dirStore, nil)
 
 	localFile := filepath.Join(t.TempDir(), "outside", "input.txt")
 	localDir := filepath.Dir(localFile)
 
-	done := make(chan struct{})
+	done := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(WithUserID(context.Background(), userID), 5*time.Second)
+	defer cancel()
 	go func() {
-		defer close(done)
-		deadline := time.Now().Add(2 * time.Second)
-		for time.Now().Before(deadline) {
-			if req := approvals.GetPending("default"); req != nil {
-				approvals.ResolveApproval(req.ID, ApprovalAllowAlways)
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
+		done <- tool.requestLocalPathApproval(ctx, []string{localFile})
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := tool.requestLocalPathApproval(ctx, []string{localFile}); err != nil {
+	deadline := time.After(5 * time.Second)
+	var req *ApprovalRequest
+	for req == nil {
+		select {
+		case <-deadline:
+			t.Fatal("timeout waiting for approval request")
+		default:
+			req = approvals.GetPending(userID)
+			if req == nil {
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+	}
+	if !approvals.ResolveApprovalWithBinding(req.ID, ApprovalAllowAlways, req.BindingHash) {
+		t.Fatalf("failed to resolve pending approval: %+v", req)
+	}
+
+	if err := <-done; err != nil {
 		t.Fatalf("first requestLocalPathApproval() error = %v", err)
 	}
-	<-done
 
 	if entry := dirStore.Match(localDir); entry == nil {
 		t.Fatalf("expected %q to be persisted in dir allowlist", localDir)
 	}
 
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx2, cancel2 := context.WithTimeout(WithUserID(context.Background(), userID), 200*time.Millisecond)
 	defer cancel2()
 	if err := tool.requestLocalPathApproval(ctx2, []string{localFile}); err != nil {
 		t.Fatalf("second requestLocalPathApproval() should skip approval for persisted dir, got %v", err)
+	}
+}
+
+func TestSimpleConvertTaskResultOmitsTaskIDForSyncResults(t *testing.T) {
+	task := &convertpkg.ConvertTask{
+		ID:           "task-sync",
+		Status:       convertpkg.StatusSucceeded,
+		Action:       convertpkg.ActionConvert,
+		Message:      "Document converted",
+		TargetFormat: "pdf",
+	}
+
+	got := simpleConvertTaskResult(task, false)
+	if _, ok := got["task_id"]; ok {
+		t.Fatalf("task_id should be omitted for sync results: %#v", got)
+	}
+	if got["async"] != false {
+		t.Fatalf("async = %#v, want false", got["async"])
+	}
+}
+
+func TestSimpleConvertTaskResultIncludesTaskIDForAsyncResults(t *testing.T) {
+	task := &convertpkg.ConvertTask{
+		ID:           "task-async",
+		Status:       convertpkg.StatusProcessing,
+		Action:       convertpkg.ActionConvert,
+		Message:      "Processing",
+		TargetFormat: "pdf",
+	}
+
+	got := simpleConvertTaskResult(task, true)
+	if got["task_id"] != "task-async" {
+		t.Fatalf("task_id = %#v, want task-async", got["task_id"])
+	}
+	if got["async"] != true {
+		t.Fatalf("async = %#v, want true", got["async"])
 	}
 }

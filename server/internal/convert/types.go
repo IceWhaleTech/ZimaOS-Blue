@@ -108,6 +108,7 @@ type TaskRequest struct {
 	Action       string      `json:"action"`
 	Sources      []string    `json:"sources,omitempty"`
 	TargetFormat string      `json:"target_format,omitempty"`
+	OutputPath   string      `json:"output_path,omitempty"`
 	Text         string      `json:"text,omitempty"`
 	TaskID       string      `json:"task_id,omitempty"`
 	WaitMS       int         `json:"wait_ms,omitempty"`
@@ -123,7 +124,7 @@ type ConvertOutput struct {
 	DownloadURL string            `json:"download_url,omitempty"`
 	Ref         string            `json:"ref,omitempty"`
 	PreviewText string            `json:"preview_text,omitempty"`
-	Path        string            `json:"-"`
+	Path        string            `json:"path,omitempty"`
 }
 
 type ConvertTask struct {

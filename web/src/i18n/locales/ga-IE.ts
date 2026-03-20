@@ -439,6 +439,26 @@ export default {
     toggleFailed: 'Theip ar an gcomhtháthú a athrú',
     fillRequiredFields: 'Líon na réimsí riachtanacha ar dtús',
     viewDocs: 'Féach an doiciméadú',
+    groupAccessTitle: 'Rochtain ar ghrúpaí',
+    groupAccessDesc:
+      'Socraigh riail aontaithe chun a chinneadh an nglacann Blue le teachtaireachtaí grúpa isteach.',
+    groupAccessHint:
+      'Coinníonn Oscailte an t-iompar reatha. Cuireann Díchumasaithe bac ar gach comhrá grúpa. Ní ghlacann an liosta ceadaithe ach leis na comhráite liostaithe.',
+    groupAccessPolicy: 'Polasaí',
+    groupAccessPolicyOpen: 'Oscailte',
+    groupAccessPolicyAllowlist: 'Liosta ceadaithe',
+    groupAccessPolicyDisabled: 'Díchumasaithe',
+    groupAccessMentionPolicy: 'Coinníoll freagartha',
+    groupAccessMentionPolicyMentioned: "Freagair amháin nuair a luaitear Blue le {'@'}",
+    groupAccessMentionPolicyAlways: 'Freagair gach teachtaireacht ghrúpa a cheadaítear',
+    groupAccessMentionHint:
+      "De réir réamhshocraithe, ní fhreagraíonn Blue i ngrúpaí ach amháin nuair a luaitear go sainráite é le {'@'}.",
+    groupAccessAllowedChats: 'Comhráite grúpa ceadaithe',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Iontráil amháin in aghaidh na líne i bhformáid channel:chat_id. Úsáid * mar shaorthacar más gá.',
+    groupAccessSaveFailed: 'Theip ar shocruithe rochtana grúpa a shábháil',
+    groupAccessFormatError: 'Úsáid iontráil channel:chat_id amháin in aghaidh na líne',
     telegramDesc: 'Ceangail le Telegram Bot API',
     telegramHint: "Cruthaigh bot trí {'@'}BotFather agus faigh comhartha do bhot",
     telegramOpenChat: 'Oscail comhrá an bhot',

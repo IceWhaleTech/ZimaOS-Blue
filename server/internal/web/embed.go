@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -22,6 +23,26 @@ var (
 	distDir  string
 	distOnce sync.Once
 )
+
+func startupAssetTraceEnabled() bool {
+	for _, key := range []string{"ZIMAOS_STARTUP_TRACE", "BLUE_STARTUP_TRACE"} {
+		switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+		case "1", "true", "yes", "on":
+			return true
+		}
+	}
+	return false
+}
+
+func shouldLogStartupAsset(path string) bool {
+	if path == "index.html" {
+		return true
+	}
+	if !isVersionedAsset(path) {
+		return false
+	}
+	return strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css")
+}
 
 func extractDir() string {
 	if runtime.GOOS == "linux" {
@@ -196,10 +217,12 @@ func IsEmbedded() bool {
 func RegisterStaticRoutes(e *echo.Echo) {
 	ensureDistFS()
 	e.GET("/*", func(c echo.Context) error {
+		started := time.Now()
+		requestedPath := c.Param("*")
 		if distFS == nil {
 			return echo.ErrNotFound
 		}
-		path := c.Param("*")
+		path := requestedPath
 		if path == "" {
 			path = "index.html"
 		}
@@ -239,6 +262,16 @@ func RegisterStaticRoutes(e *echo.Echo) {
 			c.Response().Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			c.Response().Header().Set("Pragma", "no-cache")
 			c.Response().Header().Set("Expires", "0")
+		}
+
+		if startupAssetTraceEnabled() && shouldLogStartupAsset(path) {
+			log.Printf(
+				"[web][startup-asset] request=%q served=%q bytes=%d duration_ms=%d",
+				requestedPath,
+				path,
+				len(content),
+				time.Since(started).Milliseconds(),
+			)
 		}
 
 		return c.Blob(http.StatusOK, getContentType(path), content)

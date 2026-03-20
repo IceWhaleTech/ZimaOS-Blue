@@ -30,7 +30,8 @@ const (
 	analyzeFallbackReasonAutoRollbackDoc     = "auto_rollback_doc_extract_fallback_rate"
 )
 
-// AnalyzeTool performs deep-dive content analysis and generates HTML reports.
+// AnalyzeTool performs deep-dive content analysis and can return either an
+// inline structured answer or an explicit HTML report.
 type AnalyzeTool struct {
 	mu       sync.RWMutex
 	bridge   LLMBridge
@@ -142,7 +143,7 @@ func (t *AnalyzeTool) SetSmallModelStatsRecorder(recorder SmallModelStatsRecorde
 func (t *AnalyzeTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "analyze",
-		Description: "Deep-dive analysis tool. Gathers data from URLs and web searches, then generates a comprehensive HTML report with statistics, insights, and visualizations. Use when asked to analyze, research, or generate a report on a topic.",
+		Description: "Deep-dive analysis tool. Gathers data from URLs, search queries, and direct text, then returns an inline structured answer by default. Only generate an HTML report when the user explicitly asks for a report or dashboard.",
 		Icon:        "analyze",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -168,6 +169,15 @@ func (t *AnalyzeTool) Definition() ToolDefinition {
 				"lang": map[string]interface{}{
 					"type":        "string",
 					"description": "Output language (default: zh-CN). Examples: zh-CN, en-US",
+				},
+				"output_mode": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{"inline", "report"},
+					"description": "Return mode. Defaults to inline. Use report only when an HTML report or dashboard is explicitly requested.",
+				},
+				"report": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Compatibility alias for output_mode=report.",
 				},
 			},
 			"required": []string{"topic"},
@@ -197,22 +207,22 @@ func (t *AnalyzeTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return nil, errors.New("LLM bridge not available — cannot analyze")
 	}
 
-	return t.runFullAnalysis(ctx, topic, args, lang, bridge, browser, executor, mediaDir)
+	return t.runFullAnalysis(ctx, topic, args, lang, resolveAnalyzeOutputMode(args), bridge, browser, executor, mediaDir)
 }
 
 // runFullAnalysis gathers data from URLs/search, then generates a report.
-func (t *AnalyzeTool) runFullAnalysis(ctx context.Context, topic string, args map[string]interface{}, lang string, bridge LLMBridge, browser BrowserBackend, executor *Executor, mediaDir string) (interface{}, error) {
+func (t *AnalyzeTool) runFullAnalysis(ctx context.Context, topic string, args map[string]interface{}, lang, outputMode string, bridge LLMBridge, browser BrowserBackend, executor *Executor, mediaDir string) (interface{}, error) {
 	rawContent, stats := t.gatherData(ctx, args, lang, browser, executor)
 	if rawContent == "" {
 		return nil, errors.New("no data collected — provide URLs, search queries, or text")
 	}
 	emitAnalyzeCollectionCard(ctx, lang, stats)
 
-	return t.analyzeAndGenerate(ctx, topic, rawContent, lang, bridge, mediaDir)
+	return t.analyzeAndGenerate(ctx, topic, rawContent, lang, outputMode, bridge, mediaDir)
 }
 
-// analyzeAndGenerate runs the LLM analysis pipeline and generates HTML.
-func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent, lang string, bridge LLMBridge, mediaDir string) (interface{}, error) {
+// analyzeAndGenerate runs the LLM analysis pipeline and optionally generates HTML.
+func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent, lang, outputMode string, bridge LLMBridge, mediaDir string) (interface{}, error) {
 	emitAnalyzeProgress(ctx, "doc_extract", analyzeProgressLabel(lang, "doc_extract", 0, 0), "running")
 	docExtract := t.smallModelDocExtract(ctx, topic, rawContent, lang)
 	if docExtract.content != "" {
@@ -236,6 +246,16 @@ func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent,
 		if rt, ok := analysisData["refined_title"].(string); ok && rt != "" {
 			reportTitle = rt
 		}
+	}
+
+	if outputMode != "report" {
+		emitAnalyzeProgress(ctx, "report", analyzeProgressLabel(lang, "report", 0, 0), "skipped", map[string]interface{}{
+			"detail": analyzeLocalized(lang, "Inline answer requested; skipping HTML report generation", "已请求内联回答，跳过 HTML 报告生成"),
+		})
+		emitAnalyzeProgress(ctx, "save_report", analyzeProgressLabel(lang, "save_report", 0, 0), "skipped", map[string]interface{}{
+			"detail": analyzeLocalized(lang, "No report file needed for inline mode", "内联模式无需生成报告文件"),
+		})
+		return buildAnalyzeInlineResult(reportTitle, analysisJSON, analysisData, lang), nil
 	}
 
 	// 3. Generate HTML report
@@ -273,6 +293,116 @@ func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent,
 
 	b, _ := json.Marshal(result)
 	return string(b), nil
+}
+
+func resolveAnalyzeOutputMode(args map[string]interface{}) string {
+	mode := strings.ToLower(strings.TrimSpace(firstCompatString(args, "output_mode", "outputMode")))
+	switch mode {
+	case "report", "html", "dashboard", "visual", "visual_report":
+		return "report"
+	case "inline", "answer", "structured", "":
+	default:
+		return "inline"
+	}
+	if mode == "inline" {
+		return "inline"
+	}
+	if raw, ok := compatArgValue(args, "report", "generate_report", "generateReport", "html_report", "htmlReport"); ok && compatBoolValue(raw, false) {
+		return "report"
+	}
+	return "inline"
+}
+
+func buildAnalyzeInlineResult(topic, analysisJSON string, analysisData map[string]interface{}, lang string) string {
+	result := map[string]interface{}{
+		"success":     true,
+		"topic":       topic,
+		"output_mode": "inline",
+		"message":     analyzeLocalized(lang, fmt.Sprintf("Analysis ready: %s", topic), fmt.Sprintf("分析已完成：%s", topic)),
+		"answer":      buildAnalyzeInlineAnswer(topic, analysisData, analysisJSON, lang),
+	}
+	if len(analysisData) > 0 {
+		result["analysis"] = analysisData
+		if summary := strings.TrimSpace(firstAnalyzeStringValue(analysisData["summary"])); summary != "" {
+			result["summary"] = summary
+		}
+	}
+	b, _ := json.Marshal(result)
+	return string(b)
+}
+
+func buildAnalyzeInlineAnswer(topic string, analysisData map[string]interface{}, fallbackJSON, lang string) string {
+	lines := make([]string, 0, 5)
+	if summary := strings.TrimSpace(firstAnalyzeStringValue(analysisData["summary"])); summary != "" {
+		lines = append(lines, summary)
+	} else if strings.TrimSpace(topic) != "" {
+		lines = append(lines, analyzeLocalized(lang, fmt.Sprintf("Analysis completed for %s.", topic), fmt.Sprintf("已完成对 %s 的分析。", topic)))
+	}
+	if stats := analyzeInlineSection(analysisData["stats"], 3); len(stats) > 0 {
+		lines = append(lines, analyzeLocalized(lang, "Key stats: ", "关键数据：")+strings.Join(stats, "; "))
+	}
+	if insights := analyzeInlineSection(analysisData["insights"], 3); len(insights) > 0 {
+		lines = append(lines, analyzeLocalized(lang, "Key insights: ", "关键洞察：")+strings.Join(insights, "; "))
+	}
+	if recommendations := analyzeInlineSection(analysisData["recommendations"], 3); len(recommendations) > 0 {
+		lines = append(lines, analyzeLocalized(lang, "Recommended next steps: ", "建议下一步：")+strings.Join(recommendations, "; "))
+	}
+	if len(lines) == 0 {
+		return strings.TrimSpace(fallbackJSON)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func analyzeInlineSection(raw interface{}, limit int) []string {
+	items := make([]string, 0, limit)
+	appendItem := func(text string) {
+		text = strings.TrimSpace(text)
+		if text == "" || len(items) >= limit {
+			return
+		}
+		items = append(items, text)
+	}
+	switch typed := raw.(type) {
+	case string:
+		appendItem(typed)
+	case []string:
+		for _, item := range typed {
+			appendItem(item)
+		}
+	case []interface{}:
+		for _, item := range typed {
+			if len(items) >= limit {
+				break
+			}
+			switch entry := item.(type) {
+			case string:
+				appendItem(entry)
+			case map[string]interface{}:
+				appendItem(firstAnalyzeStringValue(entry["value"], entry["label"], entry["name"], entry["title"], entry["summary"], entry["text"]))
+			default:
+				appendItem(fmt.Sprintf("%v", entry))
+			}
+		}
+	case map[string]interface{}:
+		appendItem(firstAnalyzeStringValue(typed["value"], typed["label"], typed["name"], typed["title"], typed["summary"], typed["text"]))
+	}
+	return items
+}
+
+func firstAnalyzeStringValue(values ...interface{}) string {
+	for _, value := range values {
+		switch typed := value.(type) {
+		case string:
+			if trimmed := strings.TrimSpace(typed); trimmed != "" {
+				return trimmed
+			}
+		case fmt.Stringer:
+			if trimmed := strings.TrimSpace(typed.String()); trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+	return ""
 }
 
 // gatherData collects content from URLs, search queries, and direct text.

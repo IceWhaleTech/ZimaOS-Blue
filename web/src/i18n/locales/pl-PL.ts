@@ -438,6 +438,27 @@ export default {
     toggleFailed: 'Nie udało się przełączyć integracji',
     fillRequiredFields: 'Najpierw uzupełnij wymagane pola',
     viewDocs: 'Zobacz dokumentację',
+    groupAccessTitle: 'Dostęp do grup',
+    groupAccessDesc:
+      'Ustaw jedną wspólną regułę określającą, czy Blue przyjmuje przychodzące wiadomości grupowe.',
+    groupAccessHint:
+      'Otwarte zachowuje obecne działanie. Wyłączone blokuje wszystkie czaty grupowe. Lista dozwolonych akceptuje tylko wskazane czaty.',
+    groupAccessPolicy: 'Zasada',
+    groupAccessPolicyOpen: 'Otwarte',
+    groupAccessPolicyAllowlist: 'Lista dozwolonych',
+    groupAccessPolicyDisabled: 'Wyłączone',
+    groupAccessMentionPolicy: 'Warunek odpowiedzi',
+    groupAccessMentionPolicyMentioned:
+      "Odpowiadaj tylko, gdy Blue zostanie oznaczony przez {'@'}",
+    groupAccessMentionPolicyAlways: 'Odpowiadaj na wszystkie dozwolone wiadomości grupowe',
+    groupAccessMentionHint:
+      "Domyślnie Blue odpowiada w grupach tylko wtedy, gdy zostanie wyraźnie oznaczony przez {'@'}.",
+    groupAccessAllowedChats: 'Dozwolone czaty grupowe',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Jeden wpis w wierszu w formacie channel:chat_id. W razie potrzeby użyj * jako symbolu wieloznacznego.',
+    groupAccessSaveFailed: 'Nie udało się zapisać ustawień dostępu do grup',
+    groupAccessFormatError: 'Użyj jednego wpisu channel:chat_id w każdym wierszu',
     telegramDesc: 'Połącz z Telegram Bot API',
     telegramHint: "Utwórz bota przez {'@'}BotFather i uzyskaj token bota",
     telegramOpenChat: 'Otwórz czat bota',

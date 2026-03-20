@@ -389,11 +389,15 @@ type DiscoverResult struct {
 }
 
 type DiscoverStatus struct {
-	Running    bool            `json:"running"`
-	StartedAt  time.Time       `json:"started_at,omitempty"`
-	FinishedAt time.Time       `json:"finished_at,omitempty"`
-	LastError  string          `json:"last_error,omitempty"`
-	Result     *DiscoverResult `json:"result,omitempty"`
+	Running           bool            `json:"running"`
+	StartedAt         time.Time       `json:"started_at,omitempty"`
+	FinishedAt        time.Time       `json:"finished_at,omitempty"`
+	LastError         string          `json:"last_error,omitempty"`
+	TotalSources      int             `json:"total_sources,omitempty"`
+	ProcessedSources  int             `json:"processed_sources,omitempty"`
+	CurrentSourceID   string          `json:"current_source_id,omitempty"`
+	CurrentSourceName string          `json:"current_source_name,omitempty"`
+	Result            *DiscoverResult `json:"result,omitempty"`
 }
 
 type CurationEntry struct {

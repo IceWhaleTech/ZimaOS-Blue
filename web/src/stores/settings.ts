@@ -1,19 +1,54 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import type { ToolDefinition } from '@/api/chat'
-import { toolApi } from '@/api/chat'
-import { providerPoolApi, type Provider, type Model } from '@/api/providerPool'
-import {
-  settingsApi,
-  type Settings,
-  type NoLLMDegradeMode,
-  type SmallModelID,
-  type SmallModelRuntime,
-  type SmallModelStatus,
-  type SmallModelStats,
-  type SmallModelUnavailablePolicy,
+import type { Provider, Model } from '@/api/providerPool'
+import type {
+  Settings,
+  NoLLMDegradeMode,
+  SmallModelID,
+  SmallModelRuntime,
+  SmallModelStatus,
+  SmallModelStats,
+  SmallModelUnavailablePolicy,
 } from '@/api/settings'
-import { claudeCodeApi } from '@/api/claudecode'
+
+type ChatApiModule = typeof import('@/api/chat')
+type ProviderPoolApiModule = typeof import('@/api/providerPool')
+type SettingsApiModule = typeof import('@/api/settings')
+type ClaudeCodeApiModule = typeof import('@/api/claudecode')
+
+let chatApiModulePromise: Promise<ChatApiModule> | null = null
+let providerPoolApiModulePromise: Promise<ProviderPoolApiModule> | null = null
+let settingsApiModulePromise: Promise<SettingsApiModule> | null = null
+let claudeCodeApiModulePromise: Promise<ClaudeCodeApiModule> | null = null
+
+function loadChatApiModule(): Promise<ChatApiModule> {
+  if (!chatApiModulePromise) {
+    chatApiModulePromise = import('@/api/chat')
+  }
+  return chatApiModulePromise
+}
+
+function loadProviderPoolApiModule(): Promise<ProviderPoolApiModule> {
+  if (!providerPoolApiModulePromise) {
+    providerPoolApiModulePromise = import('@/api/providerPool')
+  }
+  return providerPoolApiModulePromise
+}
+
+function loadSettingsApiModule(): Promise<SettingsApiModule> {
+  if (!settingsApiModulePromise) {
+    settingsApiModulePromise = import('@/api/settings')
+  }
+  return settingsApiModulePromise
+}
+
+function loadClaudeCodeApiModule(): Promise<ClaudeCodeApiModule> {
+  if (!claudeCodeApiModulePromise) {
+    claudeCodeApiModulePromise = import('@/api/claudecode')
+  }
+  return claudeCodeApiModulePromise
+}
 
 const STORAGE_KEY = 'zimaos-blue-settings'
 const MAX_TOKENS_MIGRATION_KEY = 'zimaos-blue-max-tokens-migrated-v1'
@@ -188,6 +223,7 @@ export const useSettingsStore = defineStore('settings', () => {
       error.value = null
 
       // Fetch providers from Provider Pool
+      const { providerPoolApi } = await loadProviderPoolApiModule()
       const response = await providerPoolApi.listProviders()
       const poolProviders = response.data.providers || []
       applyPoolProviders(poolProviders)
@@ -254,6 +290,7 @@ export const useSettingsStore = defineStore('settings', () => {
       error.value = null
 
       // Fetch models from Provider Pool
+      const { providerPoolApi } = await loadProviderPoolApiModule()
       const response = await providerPoolApi.fetchProviderModels(targetProviderId)
       const models = response.data.models || []
       const chatModels: ChatModelInfo[] = models
@@ -299,6 +336,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function fetchTools() {
     try {
+      const { toolApi } = await loadChatApiModule()
       const response = await toolApi.list()
       tools.value = response.data
     } catch (e) {
@@ -370,6 +408,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function fetchBackendSettings() {
     try {
       backendSettingsLoading.value = true
+      const { settingsApi } = await loadSettingsApiModule()
       const response = await settingsApi.get()
       backendSettings.value = response.data
     } catch (e) {
@@ -382,6 +421,7 @@ export const useSettingsStore = defineStore('settings', () => {
   // Update backend settings
   async function updateBackendSettings(updates: Partial<Settings>) {
     try {
+      const { settingsApi } = await loadSettingsApiModule()
       const response = await settingsApi.patch(updates)
       backendSettings.value = response.data
     } catch (e) {
@@ -397,6 +437,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function fetchClaudeCodeEnabled() {
     try {
       claudeCodeEnabledLoaded.value = false
+      const { claudeCodeApi } = await loadClaudeCodeApiModule()
       const response = await claudeCodeApi.getConfig()
       claudeCodeEnabled.value = response.data.enabled
     } catch {
@@ -672,6 +713,7 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       smallModelStatusLoading.value = true
       smallModelStatusError.value = null
+      const { settingsApi } = await loadSettingsApiModule()
       const response = await settingsApi.getSmallModelStatus()
       smallModelStatus.value = response.data
       return response.data
@@ -685,11 +727,13 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function startSmallModelDownload() {
+    const { settingsApi } = await loadSettingsApiModule()
     await settingsApi.downloadSmallModel()
     return fetchSmallModelStatus()
   }
 
   async function cancelSmallModelDownload() {
+    const { settingsApi } = await loadSettingsApiModule()
     await settingsApi.cancelSmallModelDownload()
     return fetchSmallModelStatus()
   }
@@ -698,6 +742,7 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       smallModelStatsLoading.value = true
       smallModelStatsError.value = null
+      const { settingsApi } = await loadSettingsApiModule()
       const response = await settingsApi.getSmallModelStats()
       smallModelStats.value = response.data
       return response.data
@@ -711,6 +756,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function resetSmallModelStats() {
+    const { settingsApi } = await loadSettingsApiModule()
     await settingsApi.resetSmallModelStats()
     return fetchSmallModelStats()
   }

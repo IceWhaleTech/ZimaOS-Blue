@@ -48,7 +48,7 @@ const (
 const (
 	ProtocolVersion = "2024-11-05"
 	ServerName      = "blue-mcp"
-	ServerVersion   = "0.10.32"
+	ServerVersion   = "0.10.33"
 )
 
 const (

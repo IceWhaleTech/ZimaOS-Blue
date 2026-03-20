@@ -2,36 +2,89 @@ package tools
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 	"sync/atomic"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	sel "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
 )
 
 // ToolSelectorStats holds cumulative statistics for smart tool selection.
 type ToolSelectorStats struct {
-	Requests     int64 `json:"requests"`      // Total selection requests
-	ToolsTotal   int64 `json:"tools_total"`   // Sum of all tools across requests
-	ToolsSent    int64 `json:"tools_sent"`    // Sum of tools actually sent
-	ToolsSkipped int64 `json:"tools_skipped"` // Sum of tools filtered out
-	TokensSaved  int64 `json:"tokens_saved"`  // Estimated input tokens saved
+	Requests     int64 `json:"requests"`
+	ToolsTotal   int64 `json:"tools_total"`
+	ToolsSent    int64 `json:"tools_sent"`
+	ToolsSkipped int64 `json:"tools_skipped"`
+	TokensSaved  int64 `json:"tokens_saved"`
 }
 
-// ToolSelector performs IR-based tool selection, filtering tool definitions
-// to only those relevant to the user's query. This reduces token usage and
-// improves LLM tool-calling accuracy by removing irrelevant tools.
+// ToolSelectionCandidateDebug captures selector signals for one candidate.
+type ToolSelectionCandidateDebug struct {
+	Name             string   `json:"name"`
+	Score            float64  `json:"score"`
+	MatchedSignals   []string `json:"matched_signals,omitempty"`
+	ConflictFlags    []string `json:"conflict_flags,omitempty"`
+	ConfidenceReason string   `json:"confidence_reason,omitempty"`
+}
+
+// ToolSelectionDebug is returned by dry-run APIs for selector inspection.
+type ToolSelectionDebug struct {
+	QuerySignals selectorSignals               `json:"query_signals"`
+	GatingFlags  []string                      `json:"gating_flags,omitempty"`
+	Candidates   []ToolSelectionCandidateDebug `json:"candidates,omitempty"`
+}
+
+// ToolSelectionResult returns selected tools plus optional debug details.
+type ToolSelectionResult struct {
+	Selected []ToolDefinition   `json:"selected"`
+	Debug    ToolSelectionDebug `json:"debug"`
+}
+
+type toolSelectorCandidate struct {
+	def     ToolDefinition
+	profile sel.SelectorProfile
+	match   sel.MatchResult
+	score   float64
+}
+
+type selectorSignals struct {
+	QuestionPrefix bool `json:"question_prefix,omitempty"`
+	HowToQuestion  bool `json:"definition_or_howto,omitempty"`
+	PlainReply     bool `json:"plain_reply,omitempty"`
+	Negated        bool `json:"negated,omitempty"`
+	Smalltalk      bool `json:"smalltalk,omitempty"`
+	LocalWorkspace bool `json:"local_workspace,omitempty"`
+	LiveWeb        bool `json:"live_web,omitempty"`
+	Productivity   bool `json:"productivity,omitempty"`
+	UIArtifact     bool `json:"ui_artifact,omitempty"`
+	URLPresent     bool `json:"url_present,omitempty"`
+	HighRisk       bool `json:"high_risk,omitempty"`
+}
+
+func fromSharedSignals(signals sel.QueryIntentSignals) selectorSignals {
+	return selectorSignals{
+		QuestionPrefix: signals.QuestionPrefix,
+		HowToQuestion:  signals.HowToQuestion,
+		PlainReply:     signals.PlainReply,
+		Negated:        signals.Negated,
+		Smalltalk:      signals.Smalltalk,
+		LocalWorkspace: signals.LocalWorkspace,
+		LiveWeb:        signals.LiveWeb,
+		Productivity:   signals.Productivity,
+		UIArtifact:     signals.UIArtifact,
+		URLPresent:     signals.URLPresent,
+		HighRisk:       signals.HighRisk,
+	}
+}
+
+// ToolSelector performs heuristic tool selection, filtering tool definitions to
+// only those relevant to the user's query.
 type ToolSelector struct {
-	// MinScore is the minimum BM25 relevance score to include a tool.
-	// Tools scoring below this are excluded. Default: 0.1
-	MinScore float64
-
-	// MaxTools is the maximum number of tools to return. Default: 10
-	MaxTools int
-
-	// AlwaysInclude lists tool names that are always included regardless of score.
+	MinScore      float64
+	MaxTools      int
 	AlwaysInclude []string
 
-	// Atomic counters for stats
 	requests     int64
 	toolsTotal   int64
 	toolsSent    int64
@@ -39,10 +92,10 @@ type ToolSelector struct {
 	tokensSaved  int64
 }
 
-// DefaultToolSelector returns a ToolSelector with sensible defaults.
+// DefaultToolSelector returns a ToolSelector with conservative defaults.
 func DefaultToolSelector() *ToolSelector {
 	return &ToolSelector{
-		MinScore:      0.1,
+		MinScore:      1.15,
 		MaxTools:      10,
 		AlwaysInclude: []string{"exec", "ask"},
 	}
@@ -59,209 +112,238 @@ func (ts *ToolSelector) Stats() ToolSelectorStats {
 	}
 }
 
-// estimateToolTokens estimates the token count for a tool definition.
-// Each tool has name, description, and JSON schema parameters.
-func estimateToolTokens(def ToolDefinition) int {
-	// Base: name + description (~tokens ≈ words * 1.3)
-	words := len(strings.Fields(def.Name + " " + def.Description))
-	tokens := int(float64(words) * 1.3)
-	if tokens < 10 {
-		tokens = 10
-	}
-	// Parameters schema adds significant tokens
-	if len(def.Parameters) > 0 {
-		b, _ := json.Marshal(def.Parameters)
-		// JSON schema: ~1 token per 4 chars
-		tokens += len(b) / 4
-	}
-	return tokens
-}
-
-// toolKeywords maps tool names to additional bilingual keywords for matching.
-// After v0.10.31 migration, only exec remains as a native tool.
-var toolKeywords = map[string]string{
-	"exec":       "执行 运行 命令 shell terminal command run execute script bash",
-	"calculator": "calculate math arithmetic percentage percent tip sum minus plus divide multiply 计算 数学 算术",
-	"network":    "network connectivity dns ping traceroute diagnosis diagnostics 连接 网络 诊断 解析",
-}
-
-// toolDoc combines a tool's name, description, and bilingual keywords
-// into a single searchable document.
-func toolDoc(def ToolDefinition) string {
-	doc := def.Name + " " + def.Description
-	if kw, ok := toolKeywords[def.Name]; ok {
-		doc += " " + kw
-	}
-	return doc
-}
-
 // Select filters tool definitions to those relevant to the user query.
-// Returns all tools if query is empty or if fewer than MaxTools match.
 func (ts *ToolSelector) Select(query string, allDefs []ToolDefinition) []ToolDefinition {
-	if len(allDefs) == 0 || query == "" {
-		return allDefs
+	return ts.SelectDetailed(query, allDefs).Selected
+}
+
+// SelectDetailed returns selected definitions plus debugging details.
+func (ts *ToolSelector) SelectDetailed(query string, allDefs []ToolDefinition) ToolSelectionResult {
+	out := ToolSelectionResult{
+		Debug: ToolSelectionDebug{},
+	}
+	if len(allDefs) == 0 {
+		ts.recordSelectionStats(allDefs, nil)
+		return out
+	}
+	if strings.TrimSpace(query) == "" {
+		out.Selected = append([]ToolDefinition(nil), allDefs...)
+		ts.recordSelectionStats(allDefs, out.Selected)
+		return out
 	}
 
+	signals := sel.AnalyzeQuery(query)
+	out.Debug.QuerySignals = fromSharedSignals(signals)
+	out.Debug.GatingFlags = signals.GatingFlags()
+
+	if shouldSuppressToolSelection(signals) {
+		ts.recordSelectionStats(allDefs, nil)
+		return out
+	}
+
+	alwaysSet := make(map[string]bool, len(ts.AlwaysInclude))
+	for _, name := range ts.AlwaysInclude {
+		alwaysSet[strings.ToLower(strings.TrimSpace(name))] = true
+	}
+
+	minScore := ts.MinScore
+	if minScore <= 0 {
+		minScore = 1.15
+	}
 	maxTools := ts.MaxTools
 	if maxTools <= 0 {
 		maxTools = 10
 	}
 
-	// If we have fewer tools than max, return all (no point filtering)
-	if len(allDefs) <= maxTools {
-		return allDefs
+	candidates := make([]toolSelectorCandidate, 0, len(allDefs))
+	for _, def := range allDefs {
+		profile := buildToolSelectorProfile(def)
+		match := sel.MatchProfile(signals, profile)
+		applyToolHardAnchors(signals, def, &match)
+		if !match.Eligible {
+			continue
+		}
+		candidates = append(candidates, toolSelectorCandidate{
+			def:     def,
+			profile: profile,
+			match:   match,
+			score:   match.Score,
+		})
 	}
 
-	// Build always-include set
-	alwaysSet := make(map[string]bool, len(ts.AlwaysInclude))
-	for _, name := range ts.AlwaysInclude {
-		alwaysSet[name] = true
+	applyToolBM25TieBreak(query, candidates)
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].score == candidates[j].score {
+			return candidates[i].def.Name < candidates[j].def.Name
+		}
+		return candidates[i].score > candidates[j].score
+	})
+
+	out.Debug.Candidates = make([]ToolSelectionCandidateDebug, 0, minInt(len(candidates), 6))
+	for i := 0; i < len(candidates) && i < 6; i++ {
+		out.Debug.Candidates = append(out.Debug.Candidates, ToolSelectionCandidateDebug{
+			Name:             candidates[i].def.Name,
+			Score:            candidates[i].score,
+			MatchedSignals:   append([]string(nil), candidates[i].match.MatchedSignals...),
+			ConflictFlags:    append([]string(nil), candidates[i].match.ConflictFlags...),
+			ConfidenceReason: candidates[i].match.ConfidenceReason,
+		})
 	}
 
-	// Tokenize query
-	queryTokens := pruner.TextTokenize(query)
-	if len(queryTokens) == 0 {
-		return allDefs
+	results := make([]ToolDefinition, 0, minInt(maxTools, len(allDefs)))
+	included := make(map[string]bool, len(allDefs))
+	for _, def := range allDefs {
+		if !alwaysSet[strings.ToLower(strings.TrimSpace(def.Name))] {
+			continue
+		}
+		results = append(results, def)
+		included[def.Name] = true
+		if len(results) >= maxTools {
+			out.Selected = results
+			ts.recordSelectionStats(allDefs, out.Selected)
+			return out
+		}
 	}
 
-	// Build BM25 scorer with tool documents as corpus
+	for _, cand := range candidates {
+		if len(results) >= maxTools {
+			break
+		}
+		if included[cand.def.Name] || cand.score < minScore {
+			continue
+		}
+		results = append(results, cand.def)
+		included[cand.def.Name] = true
+	}
+
+	out.Selected = results
+	ts.recordSelectionStats(allDefs, out.Selected)
+	return out
+}
+
+// estimateToolTokens estimates the token count for a tool definition.
+func estimateToolTokens(def ToolDefinition) int {
+	words := len(strings.Fields(def.Name + " " + def.Description))
+	tokens := int(float64(words) * 1.3)
+	if tokens < 10 {
+		tokens = 10
+	}
+	if len(def.Parameters) > 0 {
+		b, _ := json.Marshal(def.Parameters)
+		tokens += len(b) / 4
+	}
+	return tokens
+}
+
+func applyToolHardAnchors(signals sel.QueryIntentSignals, def ToolDefinition, match *sel.MatchResult) {
+	if match == nil {
+		return
+	}
+	name := strings.ToLower(strings.TrimSpace(def.Name))
+	if name == "browser" && signals.URLPresent {
+		match.Eligible = true
+		match.Anchored = true
+		if match.Score < 4.8 {
+			match.Score = 4.8
+		}
+		match.ConfidenceReason = "url_present_rule"
+		match.ConflictFlags = nil
+		match.MatchedSignals = append(match.MatchedSignals, "rule:url_present")
+		if !containsString(match.DomainHits, sel.DomainLiveWeb) {
+			match.DomainHits = append(match.DomainHits, sel.DomainLiveWeb)
+		}
+		if !containsString(match.DomainHits, sel.DomainURLPresent) {
+			match.DomainHits = append(match.DomainHits, sel.DomainURLPresent)
+		}
+		sort.Strings(match.MatchedSignals)
+	}
+}
+
+func applyToolBM25TieBreak(query string, candidates []toolSelectorCandidate) {
+	if len(candidates) < 2 {
+		return
+	}
 	scorer := pruner.NewBM25Scorer(1.2, 0.75)
-	segments := make([]pruner.Segment, len(allDefs))
-	for i, def := range allDefs {
-		doc := toolDoc(def)
-		segments[i] = pruner.Segment{
+	segments := make([]pruner.Segment, 0, len(candidates))
+	for i, cand := range candidates {
+		doc := buildToolSelectorDoc(cand.def, cand.profile)
+		segments = append(segments, pruner.Segment{
 			Content:   doc,
 			Tokens:    pruner.TextTokenize(doc),
 			StartLine: i,
 			EndLine:   i,
-		}
+		})
 	}
-
 	scored := scorer.Score(query, segments)
-
-	// Also do direct keyword matching as a fallback for short/Chinese queries
-	keywordHits := make(map[int]float64)
-	queryLower := strings.ToLower(query)
-	for i, def := range allDefs {
-		kw, ok := toolKeywords[def.Name]
-		if !ok {
+	for rank, segmentScore := range scored {
+		if segmentScore.Segment.StartLine < 0 || segmentScore.Segment.StartLine >= len(candidates) {
 			continue
 		}
-		// Check if any keyword appears in the query
-		for _, word := range strings.Fields(kw) {
-			if strings.Contains(queryLower, strings.ToLower(word)) {
-				keywordHits[i] += 1.0
-			}
+		bonus := 0.06
+		if rank == 0 {
+			bonus = 0.18
+		} else if rank == 1 {
+			bonus = 0.12
 		}
-		// Also check if tool name appears in query
-		if strings.Contains(queryLower, strings.ToLower(def.Name)) {
-			keywordHits[i] += 2.0
-		}
+		candidates[segmentScore.Segment.StartLine].score += bonus
 	}
+}
 
-	// Merge BM25 scores with keyword hits
-	type candidate struct {
-		idx   int
-		def   ToolDefinition
-		score float64
-	}
-
-	scoreMap := make(map[int]*candidate)
-
-	// Add BM25 scores
-	for _, ss := range scored {
-		idx := ss.Segment.StartLine
-		if idx < 0 || idx >= len(allDefs) {
-			continue
-		}
-		scoreMap[idx] = &candidate{idx: idx, def: allDefs[idx], score: ss.Score}
-	}
-
-	// Boost with keyword hits
-	for idx, hits := range keywordHits {
-		if c, ok := scoreMap[idx]; ok {
-			c.score += hits
-		} else {
-			scoreMap[idx] = &candidate{idx: idx, def: allDefs[idx], score: hits}
-		}
-	}
-
-	// Sort by score descending
-	sorted := make([]*candidate, 0, len(scoreMap))
-	for _, c := range scoreMap {
-		sorted = append(sorted, c)
-	}
-	for i := 0; i < len(sorted)-1; i++ {
-		for j := i + 1; j < len(sorted); j++ {
-			if sorted[j].score > sorted[i].score {
-				sorted[i], sorted[j] = sorted[j], sorted[i]
-			}
-		}
-	}
-
-	// Collect results
-	var results []ToolDefinition
-	included := make(map[string]bool)
-
-	// Always-include tools first
-	for _, def := range allDefs {
-		if alwaysSet[def.Name] {
-			results = append(results, def)
-			included[def.Name] = true
-		}
-	}
-
-	// Add scored candidates
-	minScore := ts.MinScore
-	if minScore <= 0 {
-		minScore = 0.1
-	}
-
-	for _, c := range sorted {
-		if len(results) >= maxTools {
-			break
-		}
-		if included[c.def.Name] {
-			continue
-		}
-		if c.score >= minScore {
-			results = append(results, c.def)
-			included[c.def.Name] = true
-		}
-	}
-
-	// Fallback: if we got very few results, include top candidates
-	if len(results) < 3 && len(sorted) > 0 {
-		for _, c := range sorted {
-			if len(results) >= 3 {
-				break
-			}
-			if !included[c.def.Name] {
-				results = append(results, c.def)
-				included[c.def.Name] = true
-			}
-		}
-	}
-
-	// Record stats
+func (ts *ToolSelector) recordSelectionStats(allDefs, selected []ToolDefinition) {
 	total := int64(len(allDefs))
-	sent := int64(len(results))
+	sent := int64(len(selected))
 	skipped := total - sent
+	if skipped < 0 {
+		skipped = 0
+	}
 	atomic.AddInt64(&ts.requests, 1)
 	atomic.AddInt64(&ts.toolsTotal, total)
 	atomic.AddInt64(&ts.toolsSent, sent)
 	atomic.AddInt64(&ts.toolsSkipped, skipped)
-	// Estimate tokens saved from skipped tools
+
+	included := make(map[string]struct{}, len(selected))
+	for _, def := range selected {
+		included[def.Name] = struct{}{}
+	}
+
 	var savedTokens int64
-	for i, def := range allDefs {
-		if !included[def.Name] {
-			_ = i
-			savedTokens += int64(estimateToolTokens(def))
+	for _, def := range allDefs {
+		if _, ok := included[def.Name]; ok {
+			continue
 		}
+		savedTokens += int64(estimateToolTokens(def))
 	}
 	atomic.AddInt64(&ts.tokensSaved, savedTokens)
+}
 
-	return results
+func shouldSuppressToolSelection(signals sel.QueryIntentSignals) bool {
+	if signals.PlainReply || signals.Smalltalk || signals.Negated {
+		return true
+	}
+	return signals.HowToQuestion && signals.MetaIntent
+}
+
+// LooksLikeWorkspaceFileTask reports whether the user is asking the model to
+// work from files already provided in the workspace.
+func LooksLikeWorkspaceFileTask(query string) bool {
+	signals := sel.AnalyzeQuery(query)
+	return signals.LocalWorkspace
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // SelectFromRegistry is a convenience method that gets definitions from a registry

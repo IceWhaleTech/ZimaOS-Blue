@@ -17,46 +17,76 @@ type ConvertTool struct {
 	service   *convertpkg.Service
 	approvals *ApprovalManager
 	dirStore  *DirAllowlistStore
+	scope     *fsToolScope
 }
 
-func NewConvertTool(service *convertpkg.Service, approvals *ApprovalManager, dirStore *DirAllowlistStore) *ConvertTool {
-	return &ConvertTool{service: service, approvals: approvals, dirStore: dirStore}
+type parsedConvertTaskRequest struct {
+	TaskRequest convertpkg.TaskRequest
+	SimpleMode  bool
 }
 
-func RegisterConvertTool(registry *Registry, service *convertpkg.Service, approvals *ApprovalManager, dirStore *DirAllowlistStore) {
+const (
+	defaultConvertSyncWait      = 20 * time.Second
+	maxConvertWait              = 30 * time.Second
+	largeDocumentAsyncThreshold = 8 << 20
+	largePDFAsyncThreshold      = 12 << 20
+	largeMediaAsyncThreshold    = 64 << 20
+)
+
+func NewConvertTool(service *convertpkg.Service, approvals *ApprovalManager, dirStore *DirAllowlistStore, allowedPaths []string) *ConvertTool {
+	scope := newFSToolScope(allowedPaths)
+	scope = scope.withApprovalFlow(approvals, dirStore)
+	return &ConvertTool{service: service, approvals: approvals, dirStore: dirStore, scope: scope}
+}
+
+func RegisterConvertTool(registry *Registry, service *convertpkg.Service, approvals *ApprovalManager, dirStore *DirAllowlistStore, allowedPaths []string) {
 	if registry == nil || service == nil {
 		return
 	}
-	registry.Register(NewConvertTool(service, approvals, dirStore))
+	registry.Register(NewConvertTool(service, approvals, dirStore, allowedPaths))
 }
 
 func (t *ConvertTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "convert",
-		Description: "Native conversion tool with host capability detection for documents, images, PDF, audio, video, TTS, and file-level ASR. Returns task-based results that can be polled and reused with att:/out: references.",
+		Description: "Convert local files, attachments, and prior outputs. Preferred form: input_path + output_path using relative paths. Normal single-file jobs return synchronously; only heavier jobs return async=true with a task_id for polling.",
 		Icon:        "wand-sparkles",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
-					"type": "string",
-					"enum": []string{"convert", "merge", "split", "trim", "extract_audio", "extract_frames", "tts", "asr", "status", "list", "cancel", "capabilities"},
+					"type":        "string",
+					"description": "Optional. Omit for normal conversions: input_path/output_path defaults to convert, and task_id alone defaults to status.",
+					"enum":        []string{"convert", "merge", "split", "trim", "extract_audio", "extract_frames", "tts", "asr", "status", "list", "cancel", "capabilities"},
+				},
+				"input_path": map[string]interface{}{
+					"type":        "string",
+					"description": "Preferred source file path for simple conversions. Relative paths resolve from the workspace root; absolute local paths are allowed with approval.",
+				},
+				"output_path": map[string]interface{}{
+					"type":        "string",
+					"description": "Preferred destination file path for simple conversions. Relative paths resolve from the workspace root; the output format is inferred from the file extension when possible.",
 				},
 				"sources": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
-					"description": "Only att:<id>, out:<task_id>:<output_id>, or absolute local paths are allowed.",
+					"description": "Legacy multi-source input. Supports att:<id>, out:<task_id>:<output_id>, relative workspace paths, and absolute local paths.",
 				},
-				"target_format": map[string]interface{}{"type": "string"},
-				"text":          map[string]interface{}{"type": "string"},
-				"task_id":       map[string]interface{}{"type": "string"},
-				"wait_ms":       map[string]interface{}{"type": "integer"},
+				"target_format": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional legacy format override. Usually omit this and let output_path's extension decide the format.",
+				},
+				"text": map[string]interface{}{"type": "string"},
+				"task_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Use only to check/cancel an async task, or after convert returned async=true.",
+				},
+				"wait_ms": map[string]interface{}{"type": "integer"},
 				"options": map[string]interface{}{
 					"type":                 "object",
 					"additionalProperties": true,
 				},
 			},
-			"required": []string{"action"},
 		},
 	}
 }
@@ -65,7 +95,7 @@ func (t *ConvertTool) Execute(ctx context.Context, args map[string]interface{}) 
 	if t == nil || t.service == nil {
 		return nil, errors.New("convert service not available")
 	}
-	action := strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command"))
+	action := normalizeConvertAction(args)
 	userID := strings.TrimSpace(GetUserID(ctx))
 	conversationID := strings.TrimSpace(GetSessionID(ctx))
 	switch action {
@@ -92,11 +122,12 @@ func (t *ConvertTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return task, err
 	}
 
-	req, err := parseConvertTaskRequest(args)
+	parsed, err := parseConvertTaskRequest(args)
 	if err != nil {
 		return nil, err
 	}
-	if err := t.requestLocalPathApproval(ctx, req.Sources); err != nil {
+	req, err := t.resolveTaskPaths(ctx, parsed.TaskRequest)
+	if err != nil {
 		return nil, err
 	}
 	task, err := t.service.Submit(ctx, userID, conversationID, req)
@@ -104,49 +135,155 @@ func (t *ConvertTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return nil, err
 	}
 	EmitCard(ctx, convertpkg.CardData(task))
-	if req.WaitMS > 0 {
-		wait := time.Duration(req.WaitMS) * time.Millisecond
-		if wait > 30*time.Second {
-			wait = 30 * time.Second
+
+	if parsed.SimpleMode {
+		if t.shouldReturnAsyncImmediately(req) {
+			return simpleConvertTaskResult(task, true), nil
 		}
+		wait := requestedConvertWait(req.WaitMS)
+		if wait == 0 {
+			wait = defaultConvertSyncWait
+		}
+		waited, waitErr := t.service.WaitForTask(ctx, userID, conversationID, task.ID, wait)
+		if waitErr != nil {
+			return nil, waitErr
+		}
+		if waited != nil {
+			task = waited
+			EmitCard(ctx, convertpkg.CardData(task))
+		}
+		return simpleConvertTaskResult(task, task != nil && !task.Status.IsTerminal()), nil
+	}
+
+	if wait := requestedConvertWait(req.WaitMS); wait > 0 {
 		if waited, waitErr := t.service.WaitForTask(ctx, userID, conversationID, task.ID, wait); waitErr == nil && waited != nil {
 			task = waited
+			EmitCard(ctx, convertpkg.CardData(task))
 		}
 	}
 	return task, nil
 }
 
-func (t *ConvertTool) requestLocalPathApproval(ctx context.Context, sources []string) error {
-	if len(sources) == 0 {
-		return nil
+func (t *ConvertTool) pathScope() *fsToolScope {
+	if t != nil && t.scope != nil {
+		return t.scope
 	}
-	dirs := make([]string, 0, len(sources))
-	for _, source := range sources {
-		trimmed := strings.TrimSpace(source)
-		if trimmed == "" || strings.HasPrefix(trimmed, "att:") || strings.HasPrefix(trimmed, "out:") {
-			continue
+	return newFSToolScope(nil).withApprovalFlow(t.approvals, t.dirStore)
+}
+
+func normalizeConvertAction(args map[string]interface{}) string {
+	action := strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command"))
+	if action != "" {
+		return action
+	}
+	if strings.TrimSpace(firstCompatString(args, "task_id", "taskId", "id")) != "" {
+		return "status"
+	}
+	if hasSimpleConvertPaths(args) {
+		return convertpkg.ActionConvert
+	}
+	if rawSources, ok := compatArgValue(args, "sources"); ok {
+		if sources, err := toStringSlice(rawSources); err == nil && len(sources) > 0 {
+			if strings.TrimSpace(firstCompatString(args, "target_format", "targetFormat", "format")) != "" {
+				return convertpkg.ActionConvert
+			}
 		}
-		if !filepath.IsAbs(trimmed) {
-			return fmt.Errorf("source must be att:<id>, out:<task_id>:<output_id>, or absolute path")
-		}
-		cleanPath, err := filepath.Abs(trimmed)
+	}
+	return ""
+}
+
+func hasSimpleConvertPaths(args map[string]interface{}) bool {
+	return strings.TrimSpace(firstCompatString(
+		args,
+		"input_path", "inputPath", "source_path", "sourcePath", "output_path", "outputPath",
+		"destination_path", "destinationPath", "output", "destination", "dest", "to",
+	)) != ""
+}
+
+func (t *ConvertTool) resolveTaskPaths(ctx context.Context, req convertpkg.TaskRequest) (convertpkg.TaskRequest, error) {
+	if len(req.Sources) > 0 {
+		resolved, err := t.resolveLocalPaths(ctx, req.Sources)
 		if err != nil {
-			return err
+			return req, err
 		}
-		if t.service.IsManagedPath(cleanPath) {
+		req.Sources = resolved
+	}
+	if strings.TrimSpace(req.OutputPath) != "" {
+		resolved, err := t.resolveLocalPaths(ctx, []string{req.OutputPath})
+		if err != nil {
+			return req, err
+		}
+		req.OutputPath = resolved[0]
+	}
+	return req, nil
+}
+
+func (t *ConvertTool) resolveLocalPaths(ctx context.Context, paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	resolved := make([]string, len(paths))
+	dirs := make([]string, 0, len(paths))
+	for i, rawPath := range paths {
+		trimmed := strings.TrimSpace(rawPath)
+		if trimmed == "" || strings.HasPrefix(trimmed, "att:") || strings.HasPrefix(trimmed, "out:") {
+			resolved[i] = trimmed
 			continue
 		}
-		info, err := os.Stat(cleanPath)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
+		absPath, approvalDir, err := t.resolveLocalPathCandidate(ctx, trimmed, false)
+		if err != nil {
+			return nil, err
 		}
-		if err == nil && info.IsDir() {
-			dirs = append(dirs, cleanPath)
-		} else {
-			dirs = append(dirs, filepath.Dir(cleanPath))
+		resolved[i] = absPath
+		if approvalDir != "" {
+			dirs = append(dirs, approvalDir)
 		}
 	}
-	dirs = sortedUniqueStrings(dirs)
+	if err := t.authorizeDirectories(ctx, dirs); err != nil {
+		return nil, err
+	}
+	return resolved, nil
+}
+
+func (t *ConvertTool) requestLocalPathApproval(ctx context.Context, paths []string) error {
+	_, err := t.resolveLocalPaths(ctx, paths)
+	return err
+}
+
+func (t *ConvertTool) resolveLocalPathCandidate(ctx context.Context, rawPath string, allowDot bool) (string, string, error) {
+	scope := t.pathScope()
+	roots := scope.rootsWithContext(ctx)
+	aliases := scope.aliasesWithContext(ctx)
+	for _, aliasRoot := range aliases {
+		roots = append(roots, aliasRoot)
+	}
+	tempScope := &fsToolScope{roots: uniqueCleanPaths(roots)}
+
+	candidate := strings.TrimSpace(rawPath)
+	if resolved, ok := resolveFSAliasPath(candidate, aliases); ok {
+		candidate = resolved
+	}
+	if !filepath.IsAbs(candidate) {
+		absPath, _, _, err := tempScope.resolvePath(candidate, allowDot)
+		return absPath, "", err
+	}
+
+	candidate = filepath.Clean(candidate)
+	absPath, _, _, err := tempScope.resolvePath(candidate, allowDot)
+	if err == nil {
+		return absPath, "", nil
+	}
+	if !strings.Contains(err.Error(), "path escapes workspace root") {
+		return "", "", err
+	}
+	if t.service != nil && t.service.IsManagedPath(candidate) {
+		return candidate, "", nil
+	}
+	return candidate, externalApprovalDir(candidate, allowDot), nil
+}
+
+func (t *ConvertTool) authorizeDirectories(ctx context.Context, dirs []string) error {
+	dirs = uniqueCleanPaths(dirs)
 	if len(dirs) == 0 {
 		return nil
 	}
@@ -163,7 +300,8 @@ func (t *ConvertTool) requestLocalPathApproval(ctx context.Context, sources []st
 		decision, err := t.approvals.RequestApproval(ctx, ApprovalRequest{
 			Type:      "directory",
 			Directory: dir,
-			Security:  "The convert tool wants to read a local file outside the managed conversation workspace.",
+			Command:   "convert " + dir,
+			Security:  "The convert tool wants to access a local path outside the managed conversation workspace.",
 			UserID:    userID,
 		})
 		if err != nil {
@@ -181,19 +319,78 @@ func (t *ConvertTool) requestLocalPathApproval(ctx context.Context, sources []st
 	return nil
 }
 
-func parseConvertTaskRequest(args map[string]interface{}) (convertpkg.TaskRequest, error) {
-	var req convertpkg.TaskRequest
+func (t *ConvertTool) shouldReturnAsyncImmediately(req convertpkg.TaskRequest) bool {
+	switch req.Action {
+	case convertpkg.ActionMerge, convertpkg.ActionSplit, convertpkg.ActionTrim, convertpkg.ActionExtractAudio, convertpkg.ActionExtractFrame:
+		return true
+	}
+	if len(req.Sources) == 0 {
+		return false
+	}
+	sourcePath := strings.TrimSpace(req.Sources[0])
+	if sourcePath == "" || strings.HasPrefix(sourcePath, "att:") || strings.HasPrefix(sourcePath, "out:") {
+		return false
+	}
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(sourcePath))
+	switch {
+	case isConvertVideoExtension(ext):
+		return true
+	case ext == ".pdf" && info.Size() >= largePDFAsyncThreshold:
+		return true
+	case isConvertDocumentExtension(ext) && info.Size() >= largeDocumentAsyncThreshold:
+		return true
+	case info.Size() >= largeMediaAsyncThreshold:
+		return true
+	default:
+		return false
+	}
+}
+
+func parseConvertTaskRequest(args map[string]interface{}) (parsedConvertTaskRequest, error) {
+	var parsed parsedConvertTaskRequest
+	req := &parsed.TaskRequest
 	req.Action = strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command"))
+	if req.Action == "" {
+		req.Action = normalizeConvertAction(args)
+	}
 	req.TargetFormat = strings.TrimSpace(firstCompatString(args, "target_format", "targetFormat", "format"))
-	req.Text = strings.TrimSpace(firstCompatString(args, "text", "input", "content", "message"))
 	req.TaskID = strings.TrimSpace(firstCompatString(args, "task_id", "taskId", "id"))
 	req.WaitMS = compatInt(args, "wait_ms", "waitMs")
+
+	simpleInput := strings.TrimSpace(firstCompatString(args, "input_path", "inputPath", "source_path", "sourcePath"))
+	simpleOutput := strings.TrimSpace(firstCompatString(args, "output_path", "outputPath", "destination_path", "destinationPath", "output", "destination", "dest", "to"))
+	useInputAsPath := simpleInput != "" || (simpleOutput != "" && req.Action != convertpkg.ActionTTS)
+
+	req.Text = strings.TrimSpace(firstCompatString(args, "text", "content", "message"))
+	if req.Text == "" && !useInputAsPath {
+		req.Text = strings.TrimSpace(firstCompatString(args, "input"))
+	}
 	if rawSources, ok := compatArgValue(args, "sources"); ok {
 		sources, err := toStringSlice(rawSources)
 		if err != nil {
-			return req, err
+			return parsed, err
 		}
 		req.Sources = sources
+	}
+	if len(req.Sources) == 0 && useInputAsPath {
+		fallbackInput := strings.TrimSpace(firstCompatString(args, "input", "source", "src", "from"))
+		if simpleInput != "" {
+			fallbackInput = simpleInput
+		}
+		if fallbackInput != "" && req.Action != convertpkg.ActionTTS {
+			req.Sources = []string{fallbackInput}
+		}
+	}
+	if simpleOutput != "" {
+		req.OutputPath = simpleOutput
+	}
+	parsed.SimpleMode = simpleInput != "" || simpleOutput != ""
+	if parsed.SimpleMode && req.Action == "" {
+		req.Action = convertpkg.ActionConvert
 	}
 	if rawOptions, ok := compatArgValue(args, "options"); ok {
 		if optMap, ok := coerceCompatMap(rawOptions); ok {
@@ -203,7 +400,18 @@ func parseConvertTaskRequest(args map[string]interface{}) (convertpkg.TaskReques
 	if req.Action == convertpkg.ActionTTS {
 		req.TargetFormat = strings.TrimSpace(nonEmpty(req.Options.Speech.TTS.Format, req.TargetFormat))
 	}
-	return req, nil
+	if req.OutputPath != "" {
+		outputFormat := inferConvertFormatFromPath(req.OutputPath)
+		if req.TargetFormat == "" {
+			req.TargetFormat = outputFormat
+		} else if outputFormat != "" && normalizeConvertFormatName(outputFormat) != normalizeConvertFormatName(req.TargetFormat) {
+			return parsed, fmt.Errorf("target_format %q does not match output_path extension %q", req.TargetFormat, outputFormat)
+		}
+	}
+	if parsed.SimpleMode && req.Action == convertpkg.ActionConvert && strings.TrimSpace(req.TargetFormat) == "" {
+		return parsed, errors.New("output_path must include a file extension or target_format must be specified")
+	}
+	return parsed, nil
 }
 
 func parseOptions(raw map[string]interface{}) convertpkg.TaskOptions {
@@ -324,6 +532,121 @@ func nonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func requestedConvertWait(waitMS int) time.Duration {
+	if waitMS <= 0 {
+		return 0
+	}
+	wait := time.Duration(waitMS) * time.Millisecond
+	if wait > maxConvertWait {
+		return maxConvertWait
+	}
+	return wait
+}
+
+func simpleConvertTaskResult(task *convertpkg.ConvertTask, async bool) map[string]interface{} {
+	result := map[string]interface{}{
+		"async": async,
+	}
+	if task == nil {
+		return result
+	}
+	if async {
+		result["task_id"] = task.ID
+	}
+	result["status"] = string(task.Status)
+	result["action"] = task.Action
+	result["message"] = task.Message
+	if task.Error != "" {
+		result["error"] = task.Error
+	}
+	if task.TargetFormat != "" {
+		result["target_format"] = task.TargetFormat
+	}
+	if task.TranscriptPreview != "" {
+		result["transcript_preview"] = task.TranscriptPreview
+	}
+	outputs := simpleConvertOutputs(task.Outputs)
+	if len(outputs) > 0 {
+		result["outputs"] = outputs
+		result["output_path"] = outputs[0]["path"]
+		result["output_ref"] = outputs[0]["ref"]
+		result["download_url"] = outputs[0]["download_url"]
+	}
+	return result
+}
+
+func simpleConvertOutputs(outputs []convertpkg.ConvertOutput) []map[string]interface{} {
+	if len(outputs) == 0 {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(outputs))
+	for _, output := range outputs {
+		out = append(out, map[string]interface{}{
+			"output_id":    output.ID,
+			"name":         output.Name,
+			"mime_type":    output.MimeType,
+			"size_bytes":   output.SizeBytes,
+			"preview_kind": string(output.PreviewKind),
+			"download_url": output.DownloadURL,
+			"ref":          output.Ref,
+			"preview_text": output.PreviewText,
+			"path":         output.Path,
+		})
+	}
+	return out
+}
+
+func inferConvertFormatFromPath(path string) string {
+	ext := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), "."))
+	if ext == "" {
+		return ""
+	}
+	return ext
+}
+
+func normalizeConvertFormatName(format string) string {
+	normalized := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(format), "."))
+	switch normalized {
+	case "text":
+		return "txt"
+	default:
+		return normalized
+	}
+}
+
+func isConvertVideoExtension(ext string) bool {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case ".mov", ".mp4", ".m4v", ".avi", ".mkv", ".webm":
+		return true
+	default:
+		return false
+	}
+}
+
+func isConvertDocumentExtension(ext string) bool {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case ".txt", ".text", ".md", ".markdown", ".rtf", ".doc", ".docx", ".odt", ".html", ".htm", ".xml", ".csv", ".tsv", ".pages":
+		return true
+	default:
+		return false
+	}
+}
+
+func uniqueCleanPaths(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	cleaned := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		cleaned = append(cleaned, filepath.Clean(trimmed))
+	}
+	return sortedUniqueStrings(cleaned)
 }
 
 func sortedUniqueStrings(values []string) []string {

@@ -877,6 +877,7 @@ export interface ConvertTaskOutput {
   download_url?: string
   ref?: string
   preview_text?: string
+  path?: string
 }
 
 export interface TypelessCardConvertTask extends TypelessCardBase {

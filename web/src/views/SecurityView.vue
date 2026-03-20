@@ -2369,25 +2369,24 @@ onUnmounted(() => {
   padding: 10px 12px;
   border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 1rem;
-  background: transparent;
-  box-shadow: none;
+  background: #ffffff;
   color: #0f172a;
   text-align: left;
+  box-shadow: none;
   transition:
     border-color 0.22s ease,
-    box-shadow 0.22s ease,
     background-color 0.22s ease,
     color 0.22s ease;
 }
 
 .security-tab-button:hover {
   border-color: rgba(148, 163, 184, 0.52);
-  background: transparent;
+  background: #f8fafc;
 }
 
 .security-tab-button--active {
   border-color: rgba(148, 163, 184, 0.58);
-  background: transparent;
+  background: #f1f5f9;
   color: #0f172a;
 }
 
@@ -3227,14 +3226,14 @@ html.dark .security-tab-button {
 [data-theme='dark'] .security-tab-button:hover,
 html.dark .security-tab-button:hover {
   border-color: rgba(148, 163, 184, 0.28);
-  background: transparent;
+  background: #1f2937;
 }
 
 :root.dark .security-tab-button--active,
 [data-theme='dark'] .security-tab-button--active,
 html.dark .security-tab-button--active {
   border-color: rgba(148, 163, 184, 0.4);
-  background: transparent;
+  background: #1f2937;
 }
 
 :root.dark .security-tab-button,

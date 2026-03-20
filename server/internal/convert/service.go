@@ -140,7 +140,8 @@ func (s *Service) Capabilities(ctx context.Context) Capabilities {
 	actions := supportedActionsForPlatform(runtime.GOOS, hasDocumentEngines, s.ttsProvider.Available(), s.asrProvider.Available())
 	documentFormats := aggregateDocumentFormats(engines)
 	notes := []string{
-		"Absolute local paths are supported.",
+		"Preferred form is input_path + output_path; relative paths resolve from the workspace root.",
+		"Absolute local paths are also supported with approval when needed.",
 		"Conversation attachments use att:<id> references; prior outputs use out:<task_id>:<output_id>.",
 		"Document conversion auto-detects local engines and falls back by priority.",
 		"Advanced PDF/video actions require blue-convert-helper or a local Swift fallback on macOS.",
@@ -294,7 +295,7 @@ func (s *Service) BuildPromptSummary(ctx context.Context, userID, conversationID
 	if len(lines) > limit {
 		lines = lines[:limit]
 	}
-	return "\n\n[convert session sources]\nUse these exact refs with the native convert tool when you need file/TTS/ASR conversion within this conversation.\n" + strings.Join(lines, "\n") + "\n[/convert session sources]\n"
+	return "\n\n[convert session sources]\nPrefer convert with relative input_path/output_path for workspace files. Use these exact att:/out: refs when you need conversation attachments or prior outputs.\n" + strings.Join(lines, "\n") + "\n[/convert session sources]\n"
 }
 
 func (s *Service) GetTask(ctx context.Context, userID, conversationID, taskID string) (*ConvertTask, error) {
@@ -481,6 +482,18 @@ func (s *Service) runTask(ctx context.Context, taskID string, req TaskRequest, r
 			task.Message = "Task failed"
 			task.Error = err.Error()
 		}
+		_ = s.store.UpdateTask(task)
+		return
+	}
+	outputs, err = s.applyRequestedOutputPath(task.ID, req, outputs)
+	if err != nil {
+		task.Outputs = nil
+		task.TranscriptPreview = transcript
+		task.Progress = 100
+		task.CompletedAt = &completedAt
+		task.Status = StatusFailed
+		task.Message = "Task failed"
+		task.Error = err.Error()
 		_ = s.store.UpdateTask(task)
 		return
 	}
@@ -981,6 +994,90 @@ func (s *Service) runHelperOutputs(ctx context.Context, taskID string, payload m
 	return outputs, successMessage, nil
 }
 
+func (s *Service) applyRequestedOutputPath(taskID string, req TaskRequest, outputs []ConvertOutput) ([]ConvertOutput, error) {
+	targetPath := strings.TrimSpace(req.OutputPath)
+	if targetPath == "" {
+		return outputs, nil
+	}
+	if len(outputs) != 1 {
+		return nil, fmt.Errorf("output_path only supports single-output conversions")
+	}
+	current := outputs[0]
+	currentPath := filepath.Clean(strings.TrimSpace(current.Path))
+	if currentPath == "" {
+		return nil, fmt.Errorf("conversion output is missing a file path")
+	}
+	targetAbs, err := filepath.Abs(targetPath)
+	if err != nil {
+		return nil, err
+	}
+	targetAbs = filepath.Clean(targetAbs)
+	if currentPath == targetAbs {
+		return outputs, nil
+	}
+	if info, statErr := os.Stat(targetAbs); statErr == nil {
+		if info.IsDir() {
+			return nil, fmt.Errorf("output_path is a directory: %s", targetAbs)
+		}
+		if removeErr := os.Remove(targetAbs); removeErr != nil {
+			return nil, removeErr
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return nil, statErr
+	}
+	if err := os.MkdirAll(filepath.Dir(targetAbs), 0o750); err != nil {
+		return nil, err
+	}
+	if err := moveConvertOutputFile(currentPath, targetAbs); err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(targetAbs)
+	if err != nil {
+		return nil, err
+	}
+	current.Path = targetAbs
+	current.Name = filepath.Base(targetAbs)
+	current.MimeType = mimeTypeForPath(targetAbs)
+	current.SizeBytes = info.Size()
+	current.PreviewKind = inferPreviewKind(targetAbs)
+	if strings.TrimSpace(taskID) != "" {
+		current.Ref = fmt.Sprintf("out:%s:%s", taskID, current.ID)
+		current.DownloadURL = fmt.Sprintf("/api/v1/convert/tasks/%s/download/%s", taskID, current.ID)
+	}
+	outputs[0] = current
+	return outputs, nil
+}
+
+func moveConvertOutputFile(sourcePath, targetPath string) error {
+	if err := os.Rename(sourcePath, targetPath); err == nil {
+		return nil
+	}
+
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	target, err := os.Create(targetPath)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(target, source); err != nil {
+		target.Close()
+		_ = os.Remove(targetPath)
+		return err
+	}
+	if err := target.Close(); err != nil {
+		_ = os.Remove(targetPath)
+		return err
+	}
+	if err := os.Remove(sourcePath); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *Service) outputForPath(taskID, path, previewText string) (ConvertOutput, error) {
 	cleanPath, err := filepath.Abs(path)
 	if err != nil {
@@ -1134,6 +1231,7 @@ func CardData(task *ConvertTask) map[string]interface{} {
 			"download_url": output.DownloadURL,
 			"ref":          output.Ref,
 			"preview_text": output.PreviewText,
+			"path":         output.Path,
 		})
 	}
 	payload := map[string]interface{}{

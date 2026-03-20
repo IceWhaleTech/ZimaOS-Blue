@@ -872,7 +872,7 @@ func TestSandboxCardDispatch_NoHint(t *testing.T) {
 }
 
 func TestConvertTaskCard(t *testing.T) {
-	card := ToCard("convert", `{"task_id":"task-1","status":"processing","action":"tts","sources":["/tmp/input.md"],"source_summary":"hello","target_format":"wav","progress":35,"message":"Processing","outputs":[]}`)
+	card := ToCard("convert", `{"task_id":"task-1","status":"processing","action":"tts","sources":["/tmp/input.md"],"source_summary":"hello","target_format":"wav","progress":35,"message":"Processing","outputs":[{"output_id":"out-1","name":"speech.wav","path":"/tmp/exports/speech.wav"}]}`)
 	if card == nil {
 		t.Fatal("expected non-nil convert card")
 	}
@@ -891,5 +891,16 @@ func TestConvertTaskCard(t *testing.T) {
 	}
 	if len(sources) != 1 || sources[0] != "/tmp/input.md" {
 		t.Fatalf("sources=%v, want /tmp/input.md", sources)
+	}
+	outputs, ok := card["outputs"].([]interface{})
+	if !ok || len(outputs) != 1 {
+		t.Fatalf("outputs=%T %v, want 1 output", card["outputs"], card["outputs"])
+	}
+	first, ok := outputs[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("outputs[0]=%T, want map[string]interface{}", outputs[0])
+	}
+	if got := first["path"]; got != "/tmp/exports/speech.wav" {
+		t.Fatalf("outputs[0].path=%v, want /tmp/exports/speech.wav", got)
 	}
 }

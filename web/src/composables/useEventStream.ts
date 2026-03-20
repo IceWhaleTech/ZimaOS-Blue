@@ -1,10 +1,19 @@
-import { ref, onUnmounted } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { getCurrentInstance, onUnmounted, ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useNotificationStore } from '@/stores/notification'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useSettingsStore } from '@/stores/settings'
-import { ensureFreshToken } from '@/api/client'
+import { i18n } from '@/i18n'
+
+type ApiClientModule = typeof import('@/api/client')
+let apiClientModulePromise: Promise<ApiClientModule> | null = null
+
+function loadApiClientModule(): Promise<ApiClientModule> {
+  if (!apiClientModulePromise) {
+    apiClientModulePromise = import('@/api/client')
+  }
+  return apiClientModulePromise
+}
 
 // Global event listeners — components can subscribe to specific event types.
 type EventCallback = (data: any) => void
@@ -37,8 +46,8 @@ export function useEventStream() {
   const notificationStore = useNotificationStore()
   const providerPoolStore = useProviderPoolStore()
   const settingsStore = useSettingsStore()
-  const { t } = useI18n()
   let providerResyncTimer: ReturnType<typeof setTimeout> | null = null
+  const t = (key: string) => String(i18n.global.t(key))
 
   function scheduleProviderResync() {
     if (providerResyncTimer) return
@@ -75,6 +84,7 @@ export function useEventStream() {
 
       // Handle 401 — refresh token and retry once
       if (response.status === 401) {
+        const { ensureFreshToken } = await loadApiClientModule()
         const newToken = await ensureFreshToken()
         if (newToken) {
           headers['Authorization'] = `Bearer ${newToken}`
@@ -289,8 +299,10 @@ export function useEventStream() {
     }
   }
 
-  // Auto-cleanup on component unmount
-  onUnmounted(disconnect)
+  // Auto-cleanup when used from a component setup function.
+  if (getCurrentInstance()) {
+    onUnmounted(disconnect)
+  }
 
   return { connected, connect, disconnect }
 }

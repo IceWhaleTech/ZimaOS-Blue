@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -194,47 +195,7 @@ func resolveDefaultModelForCCCLI(model string, handler *claudecode.Handler, pool
 }
 
 func resolveMCPWorkspaceRoot(dataDir string, appCfg *config.Config) string {
-	candidates := make([]string, 0, 4)
-	if appCfg != nil {
-		if v := strings.TrimSpace(appCfg.ClaudeCodeCLI.Backend.WorkspaceDir); v != "" {
-			candidates = append(candidates, v)
-		}
-		if v := strings.TrimSpace(appCfg.ClaudeCode.WorkspaceDir); v != "" {
-			candidates = append(candidates, v)
-		}
-	}
-	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
-		candidates = append(candidates, cwd)
-	}
-	if strings.TrimSpace(dataDir) != "" {
-		candidates = append(candidates, filepath.Join(dataDir, "workspace"))
-	}
-	if len(candidates) == 0 {
-		return "."
-	}
-
-	var fallback string
-	for _, c := range candidates {
-		normalized := strings.TrimSpace(c)
-		if normalized == "" {
-			continue
-		}
-		if !filepath.IsAbs(normalized) {
-			if abs, err := filepath.Abs(normalized); err == nil {
-				normalized = abs
-			}
-		}
-		if fallback == "" {
-			fallback = normalized
-		}
-		if st, err := os.Stat(normalized); err == nil && st.IsDir() {
-			return normalized
-		}
-	}
-	if fallback == "" {
-		return "."
-	}
-	return fallback
+	return ResolveWorkspaceDir(dataDir, appCfg)
 }
 
 type proxyBridgeLLMCaller struct {
@@ -337,6 +298,7 @@ func registerAgentAndMCPRoutes(
 	if toolRegistry == nil {
 		toolRegistry = tools.NewRegistry()
 	}
+	workspaceDir := ResolveWorkspaceDir(cfg.DataDir, deps.Config)
 	executor := tools.NewExecutor(toolRegistry)
 	if deps.ChatHandler != nil {
 		executor.SetTraceStore(deps.ChatHandler.GetToolTraceStore())
@@ -365,7 +327,7 @@ func registerAgentAndMCPRoutes(
 				agentRunner.SetEventObserver(agentDriver)
 				harnessController.RegisterDriver(agentDriver)
 				harnessController.RegisterDriver(subagentDriver)
-				harness.NewAgentCompatHandler(harnessController, agentStore, agentRunner, filepath.Join(cfg.DataDir, "workspace")).RegisterRoutes(agentGroup)
+				harness.NewAgentCompatHandler(harnessController, agentStore, agentRunner, workspaceDir).RegisterRoutes(agentGroup)
 			} else {
 				agent.NewHandler(agentStore, agentRunner).RegisterRoutes(agentGroup)
 			}
@@ -698,6 +660,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	cfg := deps.ServerConfig
 	logger := deps.Logger
 	dataDir := cfg.DataDir
+	workspaceDir := ResolveWorkspaceDir(cfg.DataDir, deps.Config)
+	workspaceAllowedPaths := ResolveBuiltinToolAllowedPaths(deps.Config, cfg.DataDir)
 	kv := deps.ConfigKV // shared kvstore for settings, VAPID keys, toggles, etc.
 	flagEvaluator := deps.FlagEvaluator
 	if flagEvaluator == nil && deps.Config != nil {
@@ -748,6 +712,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	authPageAPIGroup := func(page string) *echo.Group {
 		return api.Group("", deps.AuthMiddleware.Authenticate(), requirePagePermission(page))
 	}
+	protected := v1.Group("")
+	protected.Use(deps.AuthMiddleware.Authenticate())
+	apiProtected := api.Group("")
+	apiProtected.Use(deps.AuthMiddleware.Authenticate())
 
 	// Frontend bootstrap blocks on these authenticated endpoints before the Vue
 	// app mounts, so register them on the fast path with health/system routes.
@@ -761,6 +729,22 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Lightweight health endpoint — registered FIRST so the Tauri health poll
 	// can succeed as soon as the HTTP listener starts, before heavy subsystem init.
 	v1.GET("/health", func(c echo.Context) error {
+		if StartupTraceEnabled() {
+			if mark := strings.TrimSpace(c.QueryParam("startup_mark")); mark != "" {
+				fields := []zap.Field{
+					zap.String("component", "web.bootstrap"),
+					zap.String("label", mark),
+					zap.String("path", c.QueryParam("path")),
+				}
+				if msRaw := strings.TrimSpace(c.QueryParam("startup_ms")); msRaw != "" {
+					if ms, err := strconv.ParseFloat(msRaw, 64); err == nil {
+						fields = append(fields, zap.Float64("client_ms", ms))
+					}
+				}
+				logger.Info("startup-trace", fields...)
+			}
+		}
+
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"status":  "ok",
 			"service": "zimaos-blue",
@@ -777,6 +761,64 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// servable as soon as the HTTP listener starts. Echo matches specific
 	// routes (/api/v1/*) before the wildcard (/*), so order is safe.
 	web.RegisterStaticRoutes(e)
+
+	// The desktop/web shell requests these lightweight authenticated endpoints
+	// immediately after the health check succeeds. Register them on the fast
+	// path so embedded startup does not transiently 404 while deferred init
+	// continues below.
+	settingsHandler := server.NewSettingsHandler(kv)
+	settingsHandler.SetChatHandler(deps.ChatHandler)
+	smManager := smallmodel.NewManager(cfg.DataDir)
+	settingsHandler.SetSmallModelManager(smManager)
+	settingsHandler.RegisterRoutes(authPageV1Group(permission.PageSettings))
+
+	var approvalHandler *networkapi.ApprovalHandler
+	if deps.SSEBroker != nil {
+		sse.NewHandler(deps.SSEBroker).RegisterRoutes(apiProtected.Group("/v1"))
+		approvalHandler = networkapi.NewApprovalHandler(deps.SSEBroker)
+		approvalHandler.RegisterRoutes(apiProtected.Group("/v1"))
+	}
+
+	if deps.ChatHandler != nil {
+		mode := ""
+		if cfg != nil {
+			mode = strings.TrimSpace(cfg.Mode)
+		}
+		supported := runtime.GOOS == "darwin" &&
+			(strings.EqualFold(mode, "embedded") || serviceutil.IsInteractive())
+		voiceWakeManager := voicewake.NewManager(voicewake.ManagerConfig{
+			Settings:  settingsHandler,
+			Submitter: deps.ChatHandler,
+			Supported: supported,
+		})
+		settingsHandler.SetVoiceWakeManager(voiceWakeManager)
+		voicewake.NewHandler(voiceWakeManager).RegisterRoutes(
+			protected.Group("/voice-wake", requirePagePermission(permission.PageSettings)),
+		)
+		if deps.Ctx != nil {
+			go func(done <-chan struct{}) {
+				<-done
+				_ = voiceWakeManager.Close()
+			}(deps.Ctx.Done())
+			_ = voiceWakeManager.Refresh(deps.Ctx)
+		} else {
+			_ = voiceWakeManager.Refresh(context.Background())
+		}
+	}
+
+	tunnelHandler := networkapi.NewTunnelHandler(deps.NgrokConfigStore, cfg.Port)
+	tunnelHandler.SetJWTService(s.JWTService)
+	tunnelHandler.RegisterGroupRoutes(authPageV1Group(permission.PageChannels))
+
+	claudeCodeGroup := authPageV1Group(permission.PageChat).Group("/claudecode")
+	if deps.ClaudeCodeHandler != nil {
+		deps.ClaudeCodeHandler.RegisterRoutes(claudeCodeGroup)
+	} else {
+		stub := featureDisabled("claudecode")
+		claudeCodeGroup.GET("/version", stub)
+		claudeCodeGroup.GET("/config", stub)
+		claudeCodeGroup.Any("/*", stub)
+	}
 
 	// Signal that critical routes (health, system/mode) are ready.
 	// The caller can start the HTTP listener now while heavy subsystems init below.
@@ -1221,10 +1263,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		deps.ExtauthHandler.RegisterRoutes(authGroup)
 	}
 
-	// Protected routes
-	protected := v1.Group("")
-	protected.Use(deps.AuthMiddleware.Authenticate())
-
 	// Gateway REST + WS routes
 	if deps.Gateway != nil {
 		tools.RegisterGatewayTool(s.ToolRegistry, deps.Gateway)
@@ -1299,29 +1337,25 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 	var skillAutoReranker *claudecode.AutoSkillReranker
 
-	// Smart tool selection
-	if deps.Config.ToolCalling.SmartSelection {
-		ts := tools.DefaultToolSelector()
-		if deps.Config.ToolCalling.SmartSelectionMaxTools > 0 {
-			ts.MaxTools = deps.Config.ToolCalling.SmartSelectionMaxTools
-		}
-		deps.ChatHandler.SetToolSelector(ts)
+	// Always wire the selector so runtime settings can actually toggle it.
+	// Benchmark and web-chat flows rely on this being present even when the
+	// persisted config still carries historical defaults.
+	ts := tools.DefaultToolSelector()
+	if deps.Config.ToolCalling.SmartSelectionMaxTools > 0 {
+		ts.MaxTools = deps.Config.ToolCalling.SmartSelectionMaxTools
 	}
+	deps.ChatHandler.SetToolSelector(ts)
 	toolPolicyResolver := tools.NewToolPolicyResolver(deps.Config)
 	deps.ChatHandler.SetToolPolicyResolver(toolPolicyResolver)
 	deps.ChatHandler.SetToolTraceStore(tools.NewToolTraceStore(1000))
 	deps.ChatHandler.SetFlagEvaluator(flagEvaluator)
 
-	// Tool router: dynamic exposure + schema compression (config-driven, default off).
+	// Keep the router available by default so prompt-size reduction and
+	// low-risk exposure filtering work in runtime flows without extra setup.
 	toolRouter := tools.DefaultToolRouter()
-	toolRouter.DynamicExposure = deps.Config.ToolCalling.ToolRouterDynamicExposure
-	toolRouter.SchemaCompression = deps.Config.ToolCalling.ToolRouterSchemaCompression
-	if toolRouter.DynamicExposure || toolRouter.SchemaCompression {
-		deps.ChatHandler.SetToolRouter(toolRouter)
-	}
+	deps.ChatHandler.SetToolRouter(toolRouter)
 	// Smart skill selection (progressive: rule -> IR -> optional rerank)
 	if deps.Config.ToolCalling.SmartSkillSelection {
-		workspaceDir := filepath.Join(cfg.DataDir, "workspace")
 		reranker := claudecode.NewAutoSkillReranker(cfg.DataDir, deps.Config.ToolCalling.SkillRerankModel, claudecode.AutoSkillRerankerOptions{
 			ONNXEnabled:  deps.Config.ToolCalling.SkillRerankEnabled && deps.Config.ToolCalling.SkillRerankONNXEnabled,
 			AutoDownload: deps.Config.ToolCalling.SkillRerankONNXAutoDownload,
@@ -1352,6 +1386,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Deep research service (shared by API + skill executor)
 	deepResearchService := deepresearch.NewService(nil, deepresearch.NewToolWebSearcherWithConfig(webSearchConfig))
 	var harnessController *harness.Controller
+	var harnessGroupDispatcher *harness.GroupDispatcher
 	var harnessRuntimeObserver tools.RuntimeEventObserver
 	var harnessSubagentExecutor tools.SubagentExecutor
 	var harnessWriteGuard tools.WritePathGuard
@@ -1362,6 +1397,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			logger.Warn("Failed to initialize harness store", zap.Error(err))
 		} else {
 			harnessController = harness.NewController(harnessStore, harness.NewPolicyResolver(deps.Config.Harness, &deps.Config.Agents))
+			harnessGroupDispatcher = harness.NewGroupDispatcher(harnessController)
 			harnessRuntimeObserver = harness.NewRuntimeObserver(harnessController)
 			harnessSubagentExecutor = harness.NewSubagentExecutor(harnessController, &deps.Config.Agents)
 			harnessWriteGuard = harness.NewWritePathGuard(harnessController)
@@ -1400,7 +1436,34 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	} else if deps.SSEBroker != nil {
 		deepResearchService.SetEventPublisher(deps.SSEBroker)
 	}
-	tools.RegisterResearchTools(s.ToolRegistry, newDeepResearchToolAdapter(deepResearchService, harnessController, filepath.Join(cfg.DataDir, "workspace")))
+	tools.RegisterResearchTools(s.ToolRegistry, newDeepResearchToolAdapter(deepResearchService, harnessController, workspaceDir))
+	if deps.DB != nil {
+		emailService, err := tools.NewLocalEmailService(deps.DB)
+		if err != nil {
+			logger.Warn("Failed to initialize local email tool", zap.Error(err))
+		} else {
+			emailTool := tools.RegisterEmailTool(s.ToolRegistry, emailService)
+			if sk := s.SkillRegistry.Get("email"); sk != nil {
+				if emailSkill, ok := sk.(*builtin.Email); ok {
+					emailSkill.SetExecutor(emailTool)
+				}
+			}
+		}
+		calendarService, err := tools.NewLocalCalendarService(deps.DB)
+		if err != nil {
+			logger.Warn("Failed to initialize local calendar tool", zap.Error(err))
+		} else {
+			calendarTool := tools.RegisterCalendarTool(s.ToolRegistry, calendarService)
+			if calendarTool != nil && emailService != nil {
+				calendarTool.SetEmailService(emailService)
+			}
+			if sk := s.SkillRegistry.Get("calendar"); sk != nil {
+				if calendarSkill, ok := sk.(*builtin.Calendar); ok {
+					calendarSkill.SetExecutor(calendarTool)
+				}
+			}
+		}
+	}
 
 	// Register auto-reply routes
 	if deps.AutoreplyHandler != nil {
@@ -1464,10 +1527,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	connHandler := connection.NewHandler(connManager)
 	connGroup := protected.Group("/connections", requirePagePermission(permission.PageSecurity))
 	connHandler.RegisterRoutes(connGroup)
-
-	// API protected routes
-	apiProtected := api.Group("")
-	apiProtected.Use(deps.AuthMiddleware.Authenticate())
 
 	// Skill routes
 	skillHandler := server.NewSkillHandler(s.SkillRegistry)
@@ -1604,7 +1663,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				ss.SetCronService(cronAdapter)
 			}
 		}
-		tools.RegisterCronTool(s.ToolRegistry, cronToolAdapter{resolve: deps.CronHandler.GetService})
+		cronTools := cronToolAdapter{resolve: deps.CronHandler.GetService}
+		tools.RegisterCronTool(s.ToolRegistry, cronTools)
+		if calendarTool := tools.GetCalendarTool(s.ToolRegistry); calendarTool != nil {
+			calendarTool.SetCronService(cronTools)
+		}
 		deps.CronHandler.SetServiceInitHook(func(svc *cron.Service) {
 			svc.SetMessageInjector(inject.NewMemoryStoreInjector(s.MemoryStore))
 			if deps.SSEBroker != nil {
@@ -1662,6 +1725,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		pushTools := push.NewToolsAdapter(func() *push.Service { return deps.PushService })
 		tools.RegisterPushTool(s.ToolRegistry, pushTools)
 		tools.RegisterMessageTool(s.ToolRegistry, pushTools)
+		if calendarTool := tools.GetCalendarTool(s.ToolRegistry); calendarTool != nil {
+			calendarTool.SetReminderService(pushTools)
+		}
 		if sk := s.SkillRegistry.Get("reminder"); sk != nil {
 			if r, ok := sk.(*builtin.Reminder); ok {
 				r.SetPushService(push.NewSkillAdapter(func() *push.Service { return deps.PushService }))
@@ -1695,8 +1761,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Analyze: skill-only, executed via `blue analyze`.
 	// AnalyzeTool does the heavy lifting; wired into the Analyze skill.
 	{
-		analyzeTool := tools.NewAnalyzeTool()
-		analyzeTool.SetMediaDir(mediaDir)
+		analyzeTool := tools.RegisterAnalyzeTool(s.ToolRegistry, mediaDir)
 		if deps.LazyBrowserSvc != nil {
 			analyzeTool.SetBrowser(tools.NewLazyRodBrowserBackend(func() *browser.RodService {
 				return deps.LazyBrowserSvc()
@@ -1766,9 +1831,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	{
 		execConfig := tools.DefaultExecConfig()
 		execConfig.DataDir = cfg.DataDir
-		// Restrict exec workdir to the data directory (workspace) by default.
-		// Access to other directories requires user approval via SSE.
-		execConfig.AllowedDirs = []string{cfg.DataDir}
+		// Keep exec aligned with the runtime workspace so no-workdir commands
+		// default into the same root the prompt and file tools advertise.
+		execConfig.AllowedDirs = workspaceAllowedPaths
 		if deps.SSEBroker != nil {
 			execApprovals = tools.NewApprovalManager(deps.SSEBroker)
 			if harnessRuntimeObserver != nil {
@@ -1791,7 +1856,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		tools.RegisterExecTools(s.ToolRegistry, execConfig, execApprovals, deps.SSEBroker, dirStore, sbx)
 		tools.RegisterApprovalAwareFileTools(
 			s.ToolRegistry,
-			[]string{filepath.Join(cfg.DataDir, "workspace")},
+			workspaceAllowedPaths,
 			0,
 			execApprovals,
 			dirStore,
@@ -1815,7 +1880,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			if deps.ChatHandler != nil {
 				deps.ChatHandler.SetConvertSourceProvider(convertService)
 			}
-			tools.RegisterConvertTool(s.ToolRegistry, convertService, execApprovals, dirStore)
+			tools.RegisterConvertTool(
+				s.ToolRegistry,
+				convertService,
+				execApprovals,
+				dirStore,
+				workspaceAllowedPaths,
+			)
 		}
 
 		// Wire audit store for exec commands (reuses blue.db — write volume is low: 1 row per exec).
@@ -2209,7 +2280,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Deep research routes (protected)
 	deepResearchHandler := deepresearch.NewHandler(deepResearchService)
-	if creator := newHarnessResearchCreator(harnessController, deepResearchService, filepath.Join(cfg.DataDir, "workspace")); creator != nil {
+	if creator := newHarnessResearchCreator(harnessController, deepResearchService, workspaceDir); creator != nil {
 		deepResearchHandler.SetJobCreator(creator)
 	}
 	deepResearchHandler.RegisterGroup(protected.Group("/deep-research", requirePagePermission(permission.PageChat)))
@@ -2225,6 +2296,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		harnessHandler.SetDetailProvider(harnessDetailView)
 		harnessHandler.RegisterRoutes(protected.Group("/harness", requirePagePermission(permission.PageTools)))
 		harnessHandler.RegisterRoutes(apiProtected.Group("/harness", requirePagePermission(permission.PageTools)))
+		if harnessGroupDispatcher != nil {
+			go harnessGroupDispatcher.Start(context.Background())
+		}
 		logger.Info("Harness routes registered")
 	}
 
@@ -2987,21 +3061,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(deps.NgrokTunnelMgr, deps.NgrokConfigStore, cfg.Port)
 		remoteAccessHandler.SetJWTService(s.JWTService)
 		remoteAccessHandler.RegisterGroupRoutes(authPageV1Group(permission.PageChannels))
-		tunnelHandler := networkapi.NewTunnelHandler(deps.NgrokConfigStore, cfg.Port)
-		tunnelHandler.RegisterGroupRoutes(authPageV1Group(permission.PageChannels))
 	}
 
 	// Claude Code CLI routes (protected)
 	if deps.ClaudeCodeHandler != nil {
-		claudeCodeGroup := protected.Group("/claudecode", requirePagePermission(permission.PageChat))
-		deps.ClaudeCodeHandler.RegisterRoutes(claudeCodeGroup)
 		deps.ChatHandler.SetClaudeCodeHandler(deps.ClaudeCodeHandler)
-	} else {
-		stub := featureDisabled("claudecode")
-		claudeCodeGroup := protected.Group("/claudecode", requirePagePermission(permission.PageChat))
-		claudeCodeGroup.GET("/version", stub)
-		claudeCodeGroup.GET("/config", stub)
-		claudeCodeGroup.Any("/*", stub)
 	}
 
 	// Memory routes
@@ -3164,32 +3228,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	providerSettingsGroup := protected.Group("/providers/settings", requirePagePermission(permission.PageProviders))
 	providerSettingsHandler.RegisterRoutes(providerSettingsGroup)
 
-	// User settings routes (protected)
-	settingsHandler := server.NewSettingsHandler(kv)
-	settingsHandler.SetChatHandler(deps.ChatHandler)
-	smManager := smallmodel.NewManager(cfg.DataDir)
-	settingsHandler.SetSmallModelManager(smManager)
-	var voiceWakeHandler *voicewake.Handler
-	if deps.ChatHandler != nil {
-		mode := ""
-		if cfg != nil {
-			mode = strings.TrimSpace(cfg.Mode)
-		}
-		supported := runtime.GOOS == "darwin" &&
-			(strings.EqualFold(mode, "embedded") || serviceutil.IsInteractive())
-		voiceWakeManager := voicewake.NewManager(voicewake.ManagerConfig{
-			Settings:  settingsHandler,
-			Submitter: deps.ChatHandler,
-			Supported: supported,
-		})
-		settingsHandler.SetVoiceWakeManager(voiceWakeManager)
-		voiceWakeHandler = voicewake.NewHandler(voiceWakeManager)
-		go func(done <-chan struct{}) {
-			<-done
-			_ = voiceWakeManager.Close()
-		}(deps.Ctx.Done())
-		_ = voiceWakeManager.Refresh(deps.Ctx)
-	}
+	// User settings routes were registered on the startup fast path; continue
+	// wiring runtime integrations now that deferred init is available.
 	smallRuntime := smallmodel.NewLlamaCppRuntime(smManager)
 	deps.ChatHandler.SetSmallModelRuntime(smallRuntime)
 	auxiliaryLLM.SetSmallModel(smallRuntime)
@@ -3206,10 +3246,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		), deps.Config.Session.MaxTokens)
 	} else {
 		deps.ChatHandler.SetCompactorMemoryIntegration(nil, deps.Config.Session.MaxTokens)
-	}
-	settingsHandler.RegisterRoutes(protected.Group("", requirePagePermission(permission.PageSettings)))
-	if voiceWakeHandler != nil {
-		voiceWakeHandler.RegisterRoutes(protected.Group("/voice-wake", requirePagePermission(permission.PageSettings)))
 	}
 	// Also make locale available to provider settings handler
 	providerSettingsHandler.SetSettingsHandler(settingsHandler)
@@ -3328,12 +3364,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		myGroup.GET("/usage", featureDisabled("metrics"))
 	}
 
-	// SSE event stream + tool approval endpoints
-	if deps.SSEBroker != nil {
-		sseHandler := sse.NewHandler(deps.SSEBroker)
-		sseHandler.RegisterRoutes(apiProtected.Group("/v1"))
-
-		approvalHandler := networkapi.NewApprovalHandler(deps.SSEBroker)
+	// SSE event stream + tool approval endpoints were registered on the fast
+	// path; complete the runtime wiring now that deferred init is ready.
+	if approvalHandler != nil {
 		if harnessDetailView != nil {
 			harnessDetailView.approvalHandler = approvalHandler
 		}
@@ -3369,7 +3402,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				}
 			})
 		}
-		approvalHandler.RegisterRoutes(apiProtected.Group("/v1"))
 	}
 
 	logger.Info("All routes registered")

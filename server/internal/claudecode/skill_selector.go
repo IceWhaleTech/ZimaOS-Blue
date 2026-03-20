@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	sel "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
 )
 
 const (
@@ -45,13 +46,23 @@ type SkillCandidate struct {
 
 // Decision is the selector output.
 type Decision struct {
-	Query         string           `json:"query"`
-	SelectedSkill string           `json:"selected_skill"`
-	Confidence    float64          `json:"confidence"`
-	NeedClarify   bool             `json:"need_clarify"`
-	Reason        string           `json:"reason"`
-	Stage         string           `json:"stage"`
-	Candidates    []SkillCandidate `json:"candidates,omitempty"`
+	Query            string           `json:"query"`
+	SelectedSkill    string           `json:"selected_skill"`
+	Confidence       float64          `json:"confidence"`
+	NeedClarify      bool             `json:"need_clarify"`
+	Reason           string           `json:"reason"`
+	Stage            string           `json:"stage"`
+	Candidates       []SkillCandidate `json:"candidates,omitempty"`
+	MatchedSignals   []string         `json:"matched_signals,omitempty"`
+	ConflictFlags    []string         `json:"conflict_flags,omitempty"`
+	ConfidenceReason string           `json:"confidence_reason,omitempty"`
+}
+
+type skillRankedCandidate struct {
+	doc     SkillDoc
+	profile sel.SelectorProfile
+	match   sel.MatchResult
+	score   float64
 }
 
 // PromptHint returns a compact XML block for system prompt injection.
@@ -220,96 +231,174 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 }
 
 func (s *SkillSelector) stage1IR(query string, docs []SkillDoc, threshold float64) Decision {
-	queryTokens := pruner.TextTokenize(query)
-	segments := make([]pruner.Segment, 0, len(docs))
-	for i, doc := range docs {
-		content := skillDocTextForIR(doc)
+	signals := sel.AnalyzeQuery(query)
+	if signals.PlainReply || signals.Smalltalk || signals.Negated {
+		return Decision{
+			Query:         query,
+			NeedClarify:   false,
+			Reason:        "ir_suppressed",
+			Stage:         "ir",
+			ConflictFlags: signals.GatingFlags(),
+		}
+	}
+
+	ranked := make([]skillRankedCandidate, 0, len(docs))
+	for _, doc := range docs {
+		profile := buildSkillSelectorProfile(doc)
+		match := sel.MatchProfile(signals, profile)
+		applySkillHardAnchors(signals, doc, &match)
+		if shouldSuppressDefinitionLikeSkillQuery(signals, match) {
+			continue
+		}
+		if !match.Eligible {
+			continue
+		}
+		ranked = append(ranked, skillRankedCandidate{
+			doc:     doc,
+			profile: profile,
+			match:   match,
+			score:   match.Score,
+		})
+	}
+
+	if len(ranked) == 0 {
+		reason := "ir_no_match"
+		needClarify := true
+		if signals.HowToQuestion || signals.MetaIntent {
+			reason = "ir_definition_like"
+			needClarify = false
+		}
+		return Decision{Query: query, NeedClarify: needClarify, Reason: reason, Stage: "ir", ConflictFlags: signals.GatingFlags()}
+	}
+
+	applySkillBM25TieBreak(query, ranked)
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].score == ranked[j].score {
+			return ranked[i].doc.Name < ranked[j].doc.Name
+		}
+		return ranked[i].score > ranked[j].score
+	})
+	if len(ranked) > defaultSkillTopK {
+		ranked = ranked[:defaultSkillTopK]
+	}
+
+	top1 := ranked[0].score
+	top2 := 0.0
+	if len(ranked) > 1 {
+		top2 = ranked[1].score
+	}
+	scoreGap := top1 - top2
+
+	conf := 0.44
+	if len(ranked[0].match.ExactAliasHits) > 0 {
+		conf += 0.22
+	}
+	if len(ranked[0].match.ActionHits) > 0 && len(ranked[0].match.ObjectHits) > 0 {
+		conf += 0.18
+	}
+	if len(ranked[0].match.ContextHits) > 0 {
+		conf += 0.05
+	}
+	if len(ranked[0].match.DomainHits) > 0 {
+		conf += 0.06
+	}
+	switch {
+	case scoreGap >= 1.2:
+		conf += 0.12
+	case scoreGap >= 0.65:
+		conf += 0.08
+	case scoreGap < 0.35:
+		conf -= 0.08
+	}
+	if len(ranked[0].match.ConflictFlags) > 0 {
+		conf -= 0.18
+	}
+	if signals.HighRisk && conf > 0.72 {
+		conf = 0.72
+	}
+	conf = clampFloat(conf, 0, 1)
+
+	needClarify := conf < threshold || conf < skillSelectorNeedClarifyFloor || len(ranked[0].match.ConflictFlags) > 0
+	result := Decision{
+		Query:            query,
+		SelectedSkill:    ranked[0].doc.Name,
+		Confidence:       conf,
+		NeedClarify:      needClarify,
+		Reason:           "ir_ranked",
+		Stage:            "ir",
+		MatchedSignals:   append([]string(nil), ranked[0].match.MatchedSignals...),
+		ConflictFlags:    append([]string(nil), ranked[0].match.ConflictFlags...),
+		ConfidenceReason: ranked[0].match.ConfidenceReason,
+		Candidates:       make([]SkillCandidate, 0, minInt(3, len(ranked))),
+	}
+	for i := 0; i < len(ranked) && i < 3; i++ {
+		result.Candidates = append(result.Candidates, SkillCandidate{
+			Name:        ranked[i].doc.Name,
+			Score:       ranked[i].score,
+			Description: ranked[i].doc.Description,
+		})
+	}
+	if scoreGap < 0.35 {
+		result.ConfidenceReason += "_gap_small"
+	}
+	return result
+}
+
+func applySkillHardAnchors(signals sel.QueryIntentSignals, doc SkillDoc, match *sel.MatchResult) {
+	if match == nil {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(doc.Name), "browser") && signals.URLPresent {
+		match.Eligible = true
+		match.Anchored = true
+		if match.Score < 4.8 {
+			match.Score = 4.8
+		}
+		match.ConfidenceReason = "url_present_rule"
+		match.ConflictFlags = nil
+		match.MatchedSignals = append(match.MatchedSignals, "rule:url_present")
+		sort.Strings(match.MatchedSignals)
+	}
+}
+
+func shouldSuppressDefinitionLikeSkillQuery(signals sel.QueryIntentSignals, match sel.MatchResult) bool {
+	if len(match.ExactAliasHits) == 0 {
+		return false
+	}
+	if signals.HowToQuestion {
+		return true
+	}
+	return signals.QuestionPrefix && len(match.ObjectHits) == 0
+}
+
+func applySkillBM25TieBreak(query string, ranked []skillRankedCandidate) {
+	if len(ranked) < 2 {
+		return
+	}
+	scorer := pruner.NewBM25Scorer(1.2, 0.75)
+	segments := make([]pruner.Segment, 0, len(ranked))
+	for i, cand := range ranked {
+		docText := skillDocTextForIR(cand.doc)
 		segments = append(segments, pruner.Segment{
-			Content:   content,
-			Tokens:    pruner.TextTokenize(content),
+			Content:   docText,
+			Tokens:    pruner.TextTokenize(docText),
 			StartLine: i,
 			EndLine:   i,
 		})
 	}
-
-	scorer := pruner.NewBM25Scorer(1.2, 0.75)
 	scored := scorer.Score(query, segments)
-
-	type cand struct {
-		doc      SkillDoc
-		score    float64
-		exactHit bool
-		coverage float64
-	}
-	cands := make([]cand, 0, len(scored))
-	for _, ss := range scored {
-		idx := ss.Segment.StartLine
-		if idx < 0 || idx >= len(docs) {
+	for rank, segmentScore := range scored {
+		if segmentScore.Segment.StartLine < 0 || segmentScore.Segment.StartLine >= len(ranked) {
 			continue
 		}
-		d := docs[idx]
-		docText := strings.ToLower(skillDocTextForIR(d))
-		matched := 0
-		for _, t := range queryTokens {
-			if strings.Contains(docText, t) {
-				matched++
-			}
+		bonus := 0.06
+		if rank == 0 {
+			bonus = 0.18
+		} else if rank == 1 {
+			bonus = 0.12
 		}
-		cov := 0.0
-		if len(queryTokens) > 0 {
-			cov = float64(matched) / float64(len(queryTokens))
-		}
-		exact := strings.Contains(strings.ToLower(query), strings.ToLower(d.Name))
-		boost := 0.0
-		if exact {
-			boost += 1.5
-		}
-		if hit := skillAliasKeywordHit(query, d.Name); hit > 0 {
-			boost += float64(hit) * 0.3
-		}
-		cands = append(cands, cand{doc: d, score: ss.Score + boost, exactHit: exact, coverage: cov})
+		ranked[segmentScore.Segment.StartLine].score += bonus
 	}
-
-	if len(cands) == 0 {
-		return Decision{Query: query, NeedClarify: true, Reason: "ir_no_match", Stage: "ir"}
-	}
-
-	sort.Slice(cands, func(i, j int) bool { return cands[i].score > cands[j].score })
-	if len(cands) > defaultSkillTopK {
-		cands = cands[:defaultSkillTopK]
-	}
-	top1 := cands[0].score
-	top2 := 0.0
-	if len(cands) > 1 {
-		top2 = cands[1].score
-	}
-	scoreGap := top1 - top2
-	conf := 0.48 + minFloat(0.2, scoreGap*0.16) + minFloat(0.2, cands[0].coverage*0.2)
-	if cands[0].exactHit {
-		conf += 0.15
-	}
-	if conf > 1 {
-		conf = 1
-	}
-	needClarify := conf < threshold || conf < skillSelectorNeedClarifyFloor
-
-	result := Decision{
-		Query:         query,
-		SelectedSkill: cands[0].doc.Name,
-		Confidence:    conf,
-		NeedClarify:   needClarify,
-		Reason:        "ir_ranked",
-		Stage:         "ir",
-		Candidates:    make([]SkillCandidate, 0, minInt(3, len(cands))),
-	}
-	for i := 0; i < len(cands) && i < 3; i++ {
-		result.Candidates = append(result.Candidates, SkillCandidate{
-			Name:        cands[i].doc.Name,
-			Score:       cands[i].score,
-			Description: cands[i].doc.Description,
-		})
-	}
-	return result
 }
 
 func stage0RuleRoute(query string) Decision {
@@ -319,32 +408,22 @@ func stage0RuleRoute(query string) Decision {
 	}
 	selectSkill := func(name, reason string) Decision {
 		return Decision{
-			Query:         query,
-			SelectedSkill: name,
-			Confidence:    0.95,
-			NeedClarify:   false,
-			Reason:        reason,
-			Stage:         "rule",
+			Query:            query,
+			SelectedSkill:    name,
+			Confidence:       0.95,
+			NeedClarify:      false,
+			Reason:           reason,
+			Stage:            "rule",
+			ConfidenceReason: "explicit_rule",
 		}
 	}
 
-	if strings.HasPrefix(lower, "ask ") || strings.Contains(lower, "澄清") || strings.Contains(lower, "confirm") {
+	if strings.HasPrefix(lower, "ask ") || strings.HasPrefix(lower, "blue ask ") {
 		return selectSkill("ask", "rule_ask")
 	}
-	if strings.Contains(lower, "http://") || strings.Contains(lower, "https://") || strings.Contains(lower, "url") || strings.Contains(lower, "网页") {
+	if strings.Contains(lower, "http://") || strings.Contains(lower, "https://") {
 		return selectSkill("browser", "rule_url")
 	}
-	if strings.Contains(lower, "搜索") || strings.Contains(lower, "search") || strings.Contains(lower, "news") || strings.Contains(lower, "检索") {
-		return selectSkill("web_search", "rule_search")
-	}
-	if strings.Contains(lower, "ui") || strings.Contains(lower, "界面") || strings.Contains(lower, "review") || strings.Contains(lower, "评审") {
-		return selectSkill("ui_reviewer", "rule_ui")
-	}
-	if strings.Contains(lower, "research") || strings.Contains(lower, "调研") || strings.Contains(lower, "深入") || strings.Contains(lower, "查阅") || strings.Contains(lower, "不同时期") || strings.Contains(lower, "观点") {
-		return selectSkill("deep_research", "rule_research")
-	}
-	// Plan tools are no longer auto-routed by generic planning words.
-	// Route only when the user explicitly asks for plan skill commands.
 	if strings.Contains(lower, "plan_create") || strings.Contains(lower, "plan_update") || strings.Contains(lower, "plan_append") {
 		return selectSkill("plan_create", "rule_plan")
 	}
@@ -356,14 +435,14 @@ func stage0RuleRoute(query string) Decision {
 
 func shouldTriggerRerank(query string, d Decision) bool {
 	if d.SelectedSkill == "" {
-		return true
+		return false
 	}
-	if hasHighRiskIntent(strings.ToLower(query)) {
+	if hasHighRiskIntent(strings.ToLower(query)) || d.NeedClarify || len(d.ConflictFlags) > 0 {
 		return true
 	}
 	if len(d.Candidates) >= 2 {
 		gap := d.Candidates[0].Score - d.Candidates[1].Score
-		if gap < 0.18 {
+		if gap < 0.65 {
 			return true
 		}
 	}
@@ -377,51 +456,24 @@ func hasActionAlignment(query, skill string) bool {
 	q := strings.ToLower(query)
 	s := strings.ToLower(skill)
 	pairs := map[string][]string{
-		"web_search":    {"search", "搜索", "检索", "news", "查询"},
-		"browser":       {"url", "网页", "open", "navigate"},
-		"ask":           {"ask", "询问", "确认", "clarify"},
-		"ui_reviewer":   {"ui", "界面", "review", "评审"},
-		"deep_research": {"research", "调研", "深入", "查阅", "观点", "不同时期"},
+		"web_search":    {"search", "搜索", "检索", "news", "sources", "citations"},
+		"browser":       {"url", "网页", "open", "navigate", "visit"},
+		"ask":           {"ask", "询问", "clarify", "question"},
+		"ui_reviewer":   {"ui", "界面", "review", "评审", "screenshot", "design"},
+		"deep_research": {"research", "调研", "深入", "查阅", "观点", "timeline", "sources"},
 	}
 	if kws, ok := pairs[s]; ok {
 		for _, kw := range kws {
-			if strings.Contains(q, kw) {
+			if sel.ContainsTerm(q, kw) {
 				return true
 			}
 		}
 	}
-	return strings.Contains(q, s)
+	return sel.ContainsTerm(q, s) || sel.ContainsTerm(q, sel.HumanizeName(s))
 }
 
 func hasHighRiskIntent(q string) bool {
-	riskWords := []string{"delete", "remove", "drop", "overwrite", "reset", "生产", "线上", "删", "覆盖", "卸载"}
-	for _, w := range riskWords {
-		if strings.Contains(q, w) {
-			return true
-		}
-	}
-	return false
-}
-
-func skillAliasKeywordHit(query, skillName string) int {
-	aliases := map[string][]string{
-		"web_search":    {"search", "搜索", "检索", "news"},
-		"browser":       {"browser", "url", "网页", "navigate", "打开"},
-		"ask":           {"ask", "clarify", "确认", "询问"},
-		"analyze":       {"analyze", "分析"},
-		"ui_reviewer":   {"ui", "review", "评审", "界面"},
-		"deep_research": {"deep", "research", "深入", "调研", "查阅", "观点", "timeline"},
-		"plan_create":   {"plan_create", "plan_update", "plan_append", "blue plan_", "计划工具", "plan tool"},
-		"mgmt":          {"admin", "管理", "settings", "providers"},
-	}
-	lower := strings.ToLower(query)
-	hits := 0
-	for _, kw := range aliases[strings.ToLower(skillName)] {
-		if strings.Contains(lower, kw) {
-			hits++
-		}
-	}
-	return hits
+	return sel.AnalyzeQuery(q).HighRisk
 }
 
 func buildCandidatesFromNames(names string, docs []SkillDoc) []SkillCandidate {

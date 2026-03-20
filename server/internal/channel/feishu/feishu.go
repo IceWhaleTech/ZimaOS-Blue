@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,8 +38,10 @@ type Channel struct {
 	lastReplyAt   *time.Time
 
 	// Lightweight clients (no larksuite SDK)
-	client   *larkClient
-	wsClient *larkWSClient
+	client    *larkClient
+	wsClient  *larkWSClient
+	botName   string
+	botOpenID string
 
 	// Bot commands
 	commandHandlers map[string]BotCommandHandler
@@ -64,6 +67,11 @@ type Channel struct {
 }
 
 const inboundMessageDedupTTL = 10 * time.Minute
+
+var (
+	feishuAtUserIDTagRe = regexp.MustCompile(`(?i)<at[^>]*\buser_id="([^"]+)"[^>]*>([^<]*)</at>`)
+	feishuAtIDTagRe     = regexp.MustCompile(`(?i)<at[^>]*\bid="?([^" >]+)"?[^>]*>([^<]*)</at>`)
+)
 
 // BotCommandHandler handles bot commands.
 type BotCommandHandler func(ctx context.Context, cmd string, args string, chatID string, userID string) (string, error)
@@ -105,6 +113,20 @@ func (c *Channel) ClearTypingReaction(ctx context.Context, messageID string) {
 	c.removeTypingReaction(ctx, messageID)
 }
 
+func (c *Channel) BotMentionTargets() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	targets := make([]string, 0, 2)
+	if strings.TrimSpace(c.botOpenID) != "" {
+		targets = append(targets, c.botOpenID)
+	}
+	if strings.TrimSpace(c.config.AppID) != "" {
+		targets = append(targets, c.config.AppID)
+	}
+	return targets
+}
+
 // Start initializes and starts the Feishu bot with WebSocket long connection.
 func (c *Channel) Start(ctx context.Context) error {
 	c.mu.Lock()
@@ -119,6 +141,12 @@ func (c *Channel) Start(ctx context.Context) error {
 
 	c.client = newLarkClient(c.config.AppID, c.config.AppSecret)
 	c.wsClient = newLarkWSClient(c.config.AppID, c.config.AppSecret, c.logger, c.onWSEvent)
+
+	botInfoCtx, botInfoCancel := context.WithTimeout(c.ctx, 3*time.Second)
+	if err := c.refreshBotInfo(botInfoCtx); err != nil {
+		c.logger.Warn("failed to resolve feishu bot info", zap.Error(err))
+	}
+	botInfoCancel()
 
 	go func() {
 		c.logger.Info("starting feishu websocket connection")
@@ -171,13 +199,14 @@ func (c *Channel) onWSEvent(ctx context.Context, payload []byte) {
 func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessage) {
 	var event struct {
 		Message struct {
-			MessageID   string          `json:"message_id"`
-			ChatID      string          `json:"chat_id"`
-			ChatType    string          `json:"chat_type"`
-			MessageType string          `json:"message_type"`
-			Content     string          `json:"content"`
-			ParentID    string          `json:"parent_id"`
-			CreateTime  json.RawMessage `json:"create_time"`
+			MessageID   string            `json:"message_id"`
+			ChatID      string            `json:"chat_id"`
+			ChatType    string            `json:"chat_type"`
+			MessageType string            `json:"message_type"`
+			Content     string            `json:"content"`
+			Mentions    []incomingMention `json:"mentions"`
+			ParentID    string            `json:"parent_id"`
+			CreateTime  json.RawMessage   `json:"create_time"`
 		} `json:"message"`
 		Sender struct {
 			SenderID struct {
@@ -196,6 +225,7 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 	var content string
 	var attachment *channel.Attachment
 	msgType := msg.MessageType
+	metadata := map[string]interface{}{"msg_type": msgType, "language": "zh-CN"}
 
 	switch msgType {
 	case "text":
@@ -243,6 +273,16 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 		content = msg.Content
 	}
 
+	if mentions, mentionIDs := feishuMentionsMetadata(content, msg.Mentions); len(mentions) > 0 {
+		metadata["mentions"] = mentions
+		if len(mentionIDs) > 0 {
+			metadata["mention_ids"] = mentionIDs
+		}
+		if c.feishuMentionTargetsMatched(mentionIDs) {
+			metadata["mentioned_bot"] = true
+		}
+	}
+
 	chatID := msg.ChatID
 	userID := sender.SenderID.OpenID
 	messageID := msg.MessageID
@@ -270,7 +310,7 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 		Type: c.convertMessageType(msgType), Content: content, Timestamp: msgTimestamp,
 		IsGroup:   msg.ChatType == "group",
 		ReplyToID: msg.ParentID,
-		Metadata:  map[string]interface{}{"msg_type": msgType, "language": "zh-CN"},
+		Metadata:  metadata,
 	}
 	if attachment != nil {
 		channelMsg.Attachments = []channel.Attachment{*attachment}
@@ -745,7 +785,7 @@ func (c *Channel) convertMessageType(msgType string) channel.MessageType {
 func (c *Channel) Info() channel.Info {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return channel.Info{
+	info := channel.Info{
 		Name: "feishu", Type: "feishu", Status: c.status, Enabled: c.config.Enabled,
 		ConnectedAt: c.connectedAt, LastError: c.lastError, LastErrorAt: c.lastErrorAt,
 		MessageCount: c.msgCount.Load(), MessagesReceived: c.msgsReceived.Load(), MessagesSent: c.msgsSent.Load(),
@@ -756,6 +796,13 @@ func (c *Channel) Info() channel.Info {
 			"typing_reaction_enabled": !c.config.DisableTypingReaction,
 		},
 	}
+	if strings.TrimSpace(c.botOpenID) != "" {
+		info.Metadata["bot_open_id"] = c.botOpenID
+	}
+	if strings.TrimSpace(c.botName) != "" {
+		info.Metadata["bot_name"] = c.botName
+	}
+	return info
 }
 
 func (c *Channel) IsConnected() bool {
@@ -765,6 +812,128 @@ func (c *Channel) IsConnected() bool {
 }
 
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
+
+type incomingMention struct {
+	Key    string `json:"key"`
+	Name   string `json:"name"`
+	UserID string `json:"user_id"`
+	ID     struct {
+		OpenID string `json:"open_id"`
+		UserID string `json:"user_id"`
+	} `json:"id"`
+}
+
+func (c *Channel) refreshBotInfo(ctx context.Context) error {
+	if c.client == nil {
+		return fmt.Errorf("feishu client not initialized")
+	}
+	info, err := c.client.getBotInfo(ctx)
+	if err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if info.BotName != "" {
+		c.botName = info.BotName
+	}
+	if info.OpenID != "" {
+		c.botOpenID = info.OpenID
+	}
+	return nil
+}
+
+func (c *Channel) feishuMentionTargetsMatched(mentionIDs []string) bool {
+	if len(mentionIDs) == 0 {
+		return false
+	}
+	targets := make(map[string]struct{})
+	for _, target := range c.BotMentionTargets() {
+		target = strings.ToLower(strings.TrimSpace(target))
+		if target == "" {
+			continue
+		}
+		targets[target] = struct{}{}
+	}
+	if len(targets) == 0 {
+		return false
+	}
+	for _, mentionID := range mentionIDs {
+		mentionID = strings.ToLower(strings.TrimSpace(mentionID))
+		if mentionID == "" {
+			continue
+		}
+		if _, exists := targets[mentionID]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+func feishuMentionsMetadata(text string, rawMentions []incomingMention) ([]map[string]interface{}, []string) {
+	mentions := make([]map[string]interface{}, 0)
+	mentionIDs := make([]string, 0)
+	seenMentions := make(map[string]struct{})
+	seenIDs := make(map[string]struct{})
+
+	appendMention := func(mentionID string, name string, key string) {
+		item := map[string]interface{}{"type": "mention"}
+		mentionID = strings.TrimSpace(mentionID)
+		name = strings.TrimSpace(name)
+		key = strings.TrimSpace(key)
+		if mentionID != "" {
+			item["id"] = mentionID
+		}
+		if name != "" {
+			item["name"] = name
+		}
+		if key != "" {
+			item["key"] = key
+		}
+		if len(item) > 1 {
+			dedupeKey := fmt.Sprintf("%s|%s|%s", mentionID, name, key)
+			if _, exists := seenMentions[dedupeKey]; !exists {
+				seenMentions[dedupeKey] = struct{}{}
+				mentions = append(mentions, item)
+			}
+		}
+		if mentionID != "" {
+			if _, exists := seenIDs[mentionID]; !exists {
+				seenIDs[mentionID] = struct{}{}
+				mentionIDs = append(mentionIDs, mentionID)
+			}
+		}
+	}
+
+	for _, mention := range rawMentions {
+		mentionID := strings.TrimSpace(mention.ID.OpenID)
+		if mentionID == "" {
+			mentionID = strings.TrimSpace(mention.ID.UserID)
+		}
+		if mentionID == "" {
+			mentionID = strings.TrimSpace(mention.UserID)
+		}
+		appendMention(mentionID, mention.Name, mention.Key)
+	}
+
+	for _, match := range feishuAtUserIDTagRe.FindAllStringSubmatch(text, -1) {
+		if len(match) < 3 {
+			continue
+		}
+		appendMention(match[1], match[2], "")
+	}
+	for _, match := range feishuAtIDTagRe.FindAllStringSubmatch(text, -1) {
+		if len(match) < 3 {
+			continue
+		}
+		appendMention(match[1], match[2], "")
+	}
+
+	if len(mentions) == 0 {
+		return nil, nil
+	}
+	return mentions, mentionIDs
+}
 
 func (c *Channel) setError(err string) {
 	c.mu.Lock()

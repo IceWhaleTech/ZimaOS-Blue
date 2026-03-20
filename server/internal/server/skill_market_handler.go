@@ -257,13 +257,17 @@ func (h *SkillHandler) MarketDiscoverSkills(c echo.Context) error {
 		message = "discover already running"
 	}
 	return c.JSON(code, map[string]interface{}{
-		"accepted":    started,
-		"running":     status.Running,
-		"started_at":  status.StartedAt,
-		"finished_at": status.FinishedAt,
-		"last_error":  status.LastError,
-		"result":      status.Result,
-		"message":     message,
+		"accepted":            started,
+		"running":             status.Running,
+		"started_at":          status.StartedAt,
+		"finished_at":         status.FinishedAt,
+		"last_error":          status.LastError,
+		"total_sources":       status.TotalSources,
+		"processed_sources":   status.ProcessedSources,
+		"current_source_id":   status.CurrentSourceID,
+		"current_source_name": status.CurrentSourceName,
+		"result":              status.Result,
+		"message":             message,
 	})
 }
 
@@ -275,11 +279,15 @@ func (h *SkillHandler) MarketDiscoverStatus(c echo.Context) error {
 	}
 	status := h.market.GetDiscoverStatus()
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"running":     status.Running,
-		"started_at":  status.StartedAt,
-		"finished_at": status.FinishedAt,
-		"last_error":  status.LastError,
-		"result":      status.Result,
+		"running":             status.Running,
+		"started_at":          status.StartedAt,
+		"finished_at":         status.FinishedAt,
+		"last_error":          status.LastError,
+		"total_sources":       status.TotalSources,
+		"processed_sources":   status.ProcessedSources,
+		"current_source_id":   status.CurrentSourceID,
+		"current_source_name": status.CurrentSourceName,
+		"result":              status.Result,
 	})
 }
 

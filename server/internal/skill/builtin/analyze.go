@@ -15,7 +15,7 @@ type AnalyzeExecutor interface {
 	Execute(ctx context.Context, args map[string]interface{}) (interface{}, error)
 }
 
-// Analyze is a built-in skill for deep-dive content analysis and report generation.
+// Analyze is a built-in skill for deep-dive content analysis with inline or report output.
 type Analyze struct {
 	manifest *skill.Manifest
 	mu       sync.RWMutex
@@ -29,19 +29,22 @@ func NewAnalyze() *Analyze {
 			ID:          "analyze",
 			Name:        "Analyze",
 			Version:     "1.0.0",
-			Description: "Deep-dive analysis tool. Gathers data from URLs and web searches, then generates a comprehensive HTML report with statistics, insights, and visualizations.",
+			Description: "Deep-dive analysis tool. Gathers data from URLs and searches, returns an inline structured answer by default, and only generates an HTML report when explicitly requested.",
 			Category:    "system",
 			Icon:        "analyze",
-			Tags:        []string{"analyze", "report", "research", "insights", "data"},
+			Tags:        []string{"analyze", "report", "research", "insights", "data", "inline"},
 			Inputs: []skill.Parameter{
 				{Name: "topic", Type: "string", Description: "Analysis topic / report title", Required: true},
 				{Name: "urls", Type: "array", Description: "URLs to scrape for content (max 5)"},
 				{Name: "text", Type: "string", Description: "Direct text content to analyze"},
 				{Name: "search_queries", Type: "array", Description: "Web search queries to gather additional data (max 3)"},
 				{Name: "lang", Type: "string", Description: "Output language (default: zh-CN)"},
+				{Name: "output_mode", Type: "string", Description: "inline (default) or report"},
 			},
 			Outputs: []skill.Parameter{
-				{Name: "report_url", Type: "string", Description: "URL to the generated HTML report"},
+				{Name: "answer", Type: "string", Description: "Inline analysis answer"},
+				{Name: "analysis", Type: "object", Description: "Structured analysis payload"},
+				{Name: "report_url", Type: "string", Description: "Optional URL to the generated HTML report when output_mode=report"},
 			},
 		},
 	}

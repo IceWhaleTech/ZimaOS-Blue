@@ -1,0 +1,50 @@
+[
+  {
+    "id": "mail-budget",
+    "thread_id": "thread-budget",
+    "subject": "Budget approval needed today",
+    "sender_name": "Alice Chen",
+    "sender_email": "alice@example.com",
+    "recipients": ["you@example.com"],
+    "snippet": "Please approve the budget before 5 PM.",
+    "body": "Action required: approve the budget before 5 PM today.",
+    "labels": ["work", "action"],
+    "priority": "high",
+    "unread": true,
+    "archived": false,
+    "received_at": "2026-03-20T08:30:00Z",
+    "updated_at": "2026-03-20T08:30:00Z"
+  },
+  {
+    "id": "mail-planning",
+    "thread_id": "thread-planning",
+    "subject": "Planning meeting moved to 3 PM",
+    "sender_name": "Project Ops",
+    "sender_email": "ops@example.com",
+    "recipients": ["you@example.com"],
+    "snippet": "The planning meeting is now at 3 PM in Horizon Room.",
+    "body": "Please update your calendar for the planning meeting at 3 PM.",
+    "labels": ["work", "calendar"],
+    "priority": "normal",
+    "unread": true,
+    "archived": false,
+    "received_at": "2026-03-20T07:45:00Z",
+    "updated_at": "2026-03-20T07:45:00Z"
+  },
+  {
+    "id": "mail-news",
+    "thread_id": "thread-news",
+    "subject": "Weekly product digest",
+    "sender_name": "News Bot",
+    "sender_email": "news@example.com",
+    "recipients": ["you@example.com"],
+    "snippet": "Highlights from the week.",
+    "body": "This week's product digest covers launches and changelog notes.",
+    "labels": ["newsletter"],
+    "priority": "low",
+    "unread": false,
+    "archived": false,
+    "received_at": "2026-03-19T17:00:00Z",
+    "updated_at": "2026-03-19T17:00:00Z"
+  }
+]

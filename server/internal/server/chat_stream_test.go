@@ -194,6 +194,18 @@ type actionPledgeThenToolCallProxyHandler struct {
 	firstRoundContent  string
 }
 
+// duplicateSummaryIntroAfterToolProxyHandler simulates:
+// 1) first round emits a real tool call
+// 2) second round returns only a summary intro
+// 3) third round repeats the same summary intro
+// The chat layer should synthesize a final fallback summary instead of
+// persisting the repeated intro as the final answer.
+type duplicateSummaryIntroAfterToolProxyHandler struct {
+	callCount          int
+	sawSummaryNudge    bool
+	lastRequestMessage string
+}
+
 // missingTodoAfterToolRoundProxyHandler simulates:
 // 1) first round executes a tool call but emits no TODO checklist
 // 2) second round returns an intermediate toolless reply (still no TODO)
@@ -1144,6 +1156,56 @@ func (h *actionPledgeThenToolCallProxyHandler) ServeHTTP(w http.ResponseWriter, 
 		flush()
 	default:
 		fmt.Fprintf(w, "data: %s\n\n", `{"id":"action_round_3","choices":[{"delta":{"content":"已完成查询并整理：这是 BlueAgent 的最新动态摘要。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	}
+}
+
+func (h *duplicateSummaryIntroAfterToolProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if h.callCount > 1 {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		for i := len(body.Messages) - 1; i >= 0; i-- {
+			if body.Messages[i].Role != "user" {
+				continue
+			}
+			h.lastRequestMessage = body.Messages[i].Content
+			break
+		}
+		h.sawSummaryNudge = h.sawSummaryNudge ||
+			strings.Contains(h.lastRequestMessage, "started a summary intro but stopped early") ||
+			strings.Contains(h.lastRequestMessage, "WITHOUT calling tools")
+	}
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_duplicate_summary_intro"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	switch h.callCount {
+	case 1:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"dup_summary_round_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_dup_summary_1","type":"function","function":{"name":"browser","arguments":"{\"url\":\"https://example.com/blueagent\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	case 2, 3:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"dup_summary_round_2","choices":[{"delta":{"content":"我先根据已完成的工具结果，给你一个简要汇总："},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	default:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"dup_summary_round_done","choices":[{"delta":{"content":"unexpected extra round"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
 	}
 }
@@ -3137,6 +3199,72 @@ func TestStreamMessageAutoContinue_SummaryIntro_ContinuesWithoutPrematureStop(t 
 	}
 	if fakeProxy.sawExecutionNudge {
 		t.Fatalf("expected no execution nudge for summary-intro continuation, last=%q", fakeProxy.lastRequestMessage)
+	}
+}
+
+func TestStreamMessageAutoContinue_SummaryIntro_DuplicateFallsBackToToolResults(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test summary intro duplicate fallback")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def: tools.ToolDefinition{Name: "browser"},
+		result: map[string]interface{}{
+			"title": "BlueAgent 最新动态",
+			"url":   "https://example.com/blueagent",
+		},
+	})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &duplicateSummaryIntroAfterToolProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我查询一下blueagent的新闻","model":"gpt-5.3-codex-spark"}`)
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected 3 proxy calls (tool + summary intro + duplicate summary intro), got %d", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawSummaryNudge {
+		t.Fatalf("expected third request to include summary-continuation nudge, last=%q", fakeProxy.lastRequestMessage)
+	}
+	if !strings.Contains(body, `"process_event":"summary_fallback_used"`) {
+		t.Fatalf("expected summary fallback process event in stream body, body=%s", body)
+	}
+	if !strings.Contains(body, "BlueAgent 最新动态") || !strings.Contains(body, "https://example.com/blueagent") {
+		t.Fatalf("expected fallback summary synthesized from tool results, body=%s", body)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 50, 0)
+	if err != nil {
+		t.Fatalf("failed to load messages: %v", err)
+	}
+	var lastAssistant string
+	for _, msg := range messages {
+		if msg.Role == "assistant" {
+			lastAssistant = strings.TrimSpace(msg.Content)
+		}
+	}
+	if lastAssistant == "我先根据已完成的工具结果，给你一个简要汇总：" {
+		t.Fatalf("expected persisted assistant message to use synthesized fallback, got=%q", lastAssistant)
+	}
+	if !strings.Contains(lastAssistant, "BlueAgent 最新动态") {
+		t.Fatalf("expected persisted assistant fallback summary, got=%q", lastAssistant)
 	}
 }
 

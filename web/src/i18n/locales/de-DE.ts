@@ -2238,6 +2238,26 @@ export default {
     toggleFailed: 'Integration konnte nicht umgeschaltet werden',
     fillRequiredFields: 'Bitte füllen Sie zuerst die Pflichtfelder aus',
     viewDocs: 'Dokumentation ansehen',
+    groupAccessTitle: 'Gruppenzugriff',
+    groupAccessDesc:
+      'Legen Sie eine einheitliche Regel fest, ob Blue eingehende Gruppennachrichten annimmt.',
+    groupAccessHint:
+      'Offen behält das aktuelle Verhalten bei. Deaktiviert blockiert alle Gruppenchats. Die Erlaubnisliste nimmt nur aufgeführte Chats an.',
+    groupAccessPolicy: 'Richtlinie',
+    groupAccessPolicyOpen: 'Offen',
+    groupAccessPolicyAllowlist: 'Erlaubnisliste',
+    groupAccessPolicyDisabled: 'Deaktiviert',
+    groupAccessMentionPolicy: 'Antwortbedingung',
+    groupAccessMentionPolicyMentioned: "Nur antworten, wenn Blue mit {'@'} erwähnt wird",
+    groupAccessMentionPolicyAlways: 'Auf alle erlaubten Gruppennachrichten antworten',
+    groupAccessMentionHint:
+      "Standardmäßig antwortet Blue in Gruppen nur, wenn es ausdrücklich mit {'@'} erwähnt wird.",
+    groupAccessAllowedChats: 'Erlaubte Gruppenchats',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Ein Eintrag pro Zeile im Format channel:chat_id. Verwenden Sie bei Bedarf * als Platzhalter.',
+    groupAccessSaveFailed: 'Speichern der Gruppenzugriffseinstellungen fehlgeschlagen',
+    groupAccessFormatError: 'Verwenden Sie pro Zeile einen channel:chat_id-Eintrag',
     telegramDesc: 'Mit der Telegram Bot API verbinden',
     telegramHint: "Erstellen Sie einen Bot über {'@'}BotFather und holen Sie sich Ihr Bot-Token",
     telegramOpenChat: 'Bot-Chat öffnen',

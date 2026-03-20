@@ -13,6 +13,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a2ui"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -50,8 +51,192 @@ type Services struct {
 	DataDir       string
 }
 
+// ResolveWorkspaceDir returns the shared runtime workspace directory.
+// Explicit non-default workspace settings win; otherwise we keep the
+// historical data-dir workspace to avoid surprising runtime behavior.
+func ResolveWorkspaceDir(dataDir string, appCfg *config.Config) string {
+	candidates := make([]string, 0, 3)
+	if appCfg != nil {
+		if v := normalizeExplicitWorkspaceDir(appCfg.ClaudeCodeCLI.Backend.WorkspaceDir); v != "" {
+			candidates = append(candidates, v)
+		}
+		if v := normalizeExplicitWorkspaceDir(appCfg.ClaudeCode.WorkspaceDir); v != "" {
+			candidates = append(candidates, v)
+		}
+	}
+	if strings.TrimSpace(dataDir) != "" {
+		candidates = append(candidates, filepath.Join(dataDir, "workspace"))
+	}
+	for _, candidate := range candidates {
+		if normalized := normalizeWorkspacePath(candidate); normalized != "" {
+			return normalized
+		}
+	}
+	return "."
+}
+
+func normalizeExplicitWorkspaceDir(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	if filepath.Clean(trimmed) == "." {
+		return ""
+	}
+	return normalizeWorkspacePath(trimmed)
+}
+
+func normalizeWorkspacePath(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	if !filepath.IsAbs(trimmed) {
+		if abs, err := filepath.Abs(trimmed); err == nil {
+			trimmed = abs
+		}
+	}
+	return filepath.Clean(trimmed)
+}
+
+func ResolveBuiltinToolAllowedPaths(appCfg *config.Config, dataDir string) []string {
+	return resolveBuiltinToolAllowedPaths(appCfg, dataDir)
+}
+
+func resolveBuiltinToolAllowedPaths(appCfg *config.Config, dataDir string) []string {
+	workspaceRoot := ResolveWorkspaceDir(dataDir, appCfg)
+
+	paths := make([]string, 0, 4)
+	seen := make(map[string]struct{}, 4)
+	addPath := func(raw string) {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return
+		}
+		clean := normalizeWorkspacePath(trimmed)
+		if clean == "" {
+			return
+		}
+		if _, ok := seen[clean]; !ok {
+			seen[clean] = struct{}{}
+			paths = append(paths, clean)
+		}
+		if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+			resolved = filepath.Clean(resolved)
+			if _, ok := seen[resolved]; !ok {
+				seen[resolved] = struct{}{}
+				paths = append(paths, resolved)
+			}
+		}
+	}
+
+	addPath(workspaceRoot)
+
+	if shouldAllowTmpForWorkspace(paths) {
+		addPath("/tmp")
+		addPath("/private/tmp")
+		if tmpDir := strings.TrimSpace(os.TempDir()); tmpDir != "" {
+			addPath(tmpDir)
+		}
+	}
+
+	return paths
+}
+
+func shouldAllowTmpForWorkspace(paths []string) bool {
+	tempRoots := []string{"/tmp", "/private/tmp"}
+	if tmpDir := strings.TrimSpace(os.TempDir()); tmpDir != "" {
+		tempRoots = append(tempRoots, tmpDir)
+		if resolved, err := filepath.EvalSymlinks(tmpDir); err == nil {
+			tempRoots = append(tempRoots, resolved)
+		}
+	}
+	for _, candidate := range paths {
+		for _, root := range tempRoots {
+			if pathWithinRoot(root, candidate) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func pathWithinRoot(root, target string) bool {
+	root = filepath.Clean(strings.TrimSpace(root))
+	target = filepath.Clean(strings.TrimSpace(target))
+	if root == "" || target == "" {
+		return false
+	}
+	rel, err := filepath.Rel(root, target)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
+}
+
+func openPrimaryDatabase(cfg *ServerConfig, logger *zap.Logger) (*database.SQLiteConn, error) {
+	dbPath := filepath.Join(cfg.DataDir, "blue.db")
+
+	open := func() (*database.SQLiteConn, error) {
+		return database.OpenSQLite(dbPath, nil)
+	}
+
+	dbConn, err := open()
+	if err == nil {
+		return dbConn, nil
+	}
+	if !database.IsSQLiteCorruptionError(err) {
+		return nil, err
+	}
+
+	if logger != nil {
+		logger.Warn("Primary database open reported corruption; attempting startup auto-recovery",
+			zap.String("db_path", dbPath),
+			zap.Error(err),
+		)
+	}
+
+	mgr, mgrErr := backup.NewManager(backup.Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          filepath.Join(cfg.DataDir, "backups"),
+		SkillsPath:    filepath.Join(cfg.DataDir, "workspace", ".claude", "skills"),
+	}, cfg.DataDir, cfg.DataDir)
+	if mgrErr != nil {
+		return nil, fmt.Errorf("open database: %w (init backup manager: %v)", err, mgrErr)
+	}
+
+	result, recoverErr := mgr.CheckAndAutoRecover(context.Background(), []string{dbPath})
+	if recoverErr != nil {
+		return nil, fmt.Errorf("open database: %w (startup auto-recovery failed: %v)", err, recoverErr)
+	}
+
+	if logger != nil && result != nil {
+		if len(result.RepairedDatabases) > 0 {
+			logger.Info("Primary database repaired during startup recovery",
+				zap.Strings("repaired_databases", result.RepairedDatabases),
+			)
+		}
+		if result.Recovered {
+			logger.Info("Primary database restored from backup during startup recovery",
+				zap.Strings("corrupted_databases", result.CorruptedDatabases),
+				zap.String("backup_id", result.BackupID),
+			)
+		}
+	}
+
+	dbConn, retryErr := open()
+	if retryErr != nil {
+		return nil, fmt.Errorf("open database after startup auto-recovery: %w", retryErr)
+	}
+	return dbConn, nil
+}
+
 // InitServices initializes all core services
 func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) (*Services, error) {
+	trace := NewStartupTrace("bootstrap.init_services", logger)
+	trace.Mark("enter")
+
 	s := &Services{
 		Config:  appCfg,
 		Logger:  logger,
@@ -62,14 +247,16 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	if err := os.MkdirAll(cfg.DataDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
+	trace.Mark("data_dir_ready")
 
 	dbPath := filepath.Join(cfg.DataDir, "blue.db")
-	dbConn, err := database.OpenSQLite(dbPath, nil)
+	dbConn, err := openPrimaryDatabase(cfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 	s.DB = dbConn.Writer // backward compat: writer is the default
 	s.DBConn = dbConn
+	trace.Mark("db_opened", zap.String("db_path", dbPath))
 
 	// User service
 	userRepo, err := user.NewSQLiteRepository(s.DB)
@@ -77,6 +264,7 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 		return nil, fmt.Errorf("failed to initialize user repository: %w", err)
 	}
 	s.UserRepo = userRepo
+	trace.Mark("user_repo_ready")
 
 	passwordHasher := password.NewHasher(&password.Config{
 		Memory:      64 * 1024,
@@ -95,6 +283,7 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	})
 
 	s.UserService = user.NewService(userRepo, passwordHasher, passwordPolicy, nil)
+	trace.Mark("user_service_ready")
 
 	// JWT service
 	s.JWTService = auth.NewJWTService(&auth.JWTConfig{
@@ -103,39 +292,44 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 		RefreshExpiration: appCfg.Security.JWT.RefreshExpiration,
 		Issuer:            appCfg.Security.JWT.Issuer,
 	})
+	trace.Mark("jwt_ready")
 
 	// API Key service (shares main DB)
 	s.APIKeyService, err = auth.NewAPIKeyServiceWithDB(s.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API key service: %w", err)
 	}
+	trace.Mark("api_key_service_ready")
 
 	// Memory store (shares main DB)
 	s.MemoryStore, err = memory.NewStoreWithDB(s.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize memory store: %w", err)
 	}
+	trace.Mark("memory_store_ready")
 
 	s.A2UIManager = a2ui.NewManager(logger)
+	trace.Mark("a2ui_ready")
 	s.OCRService = ocrruntime.NewTesseractService(logger, ocrruntime.Config{
 		ModelDir:     filepath.Join(cfg.DataDir, "models", "tesseract"),
 		AutoDownload: true,
 		WorkerCount:  1,
 	})
 	s.PDFService = pdfextract.NewService(logger, s.OCRService)
+	trace.Mark("ocr_pdf_ready")
 
 	// LLM registry
 	s.LLMRegistry = llm.NewProviderRegistry()
 	registerLLMProviders(s.LLMRegistry, appCfg)
+	trace.Mark("llm_registry_ready")
 
 	// Tool registry (read, write, web_search + memory registered lazily)
 	s.ToolRegistry = tools.NewRegistry()
-	workspaceRoot := filepath.Join(cfg.DataDir, "workspace")
 	tools.RegisterBuiltinToolsWithConfig(
 		s.ToolRegistry,
 		buildWebSearchConfig(appCfg),
 		buildWebFetchConfig(appCfg),
-		[]string{workspaceRoot},
+		resolveBuiltinToolAllowedPaths(appCfg, cfg.DataDir),
 		0,
 	)
 	tools.AttachPDFServiceToWebTools(s.ToolRegistry, s.PDFService)
@@ -144,13 +338,17 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	tools.RegisterSessionTools(s.ToolRegistry, sessionListAdapter{store: s.MemoryStore})
 	tools.RegisterCanvasTools(s.ToolRegistry, s.A2UIManager)
 	tools.RegisterPDFTool(s.ToolRegistry, s.PDFService)
+	trace.Mark("tool_registry_ready")
 
 	// Skill registry (for skill list UI and IPC — NOT bridged to LLM tools)
 	s.SkillRegistry = skill.NewRegistry()
 	builtin.RegisterAll(s.SkillRegistry)
+	trace.Mark("skill_registry_ready")
 
 	// Worker pool (shared by echo and echolib)
 	s.WorkerPool = worker.NewPool(context.Background(), 10)
+	trace.Mark("worker_pool_ready")
+	trace.Mark("complete")
 
 	return s, nil
 }

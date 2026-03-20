@@ -440,6 +440,26 @@ export default {
     toggleFailed: "No s'ha pogut canviar l'estat de la integració",
     fillRequiredFields: 'Si us plau, omple primer els camps obligatoris',
     viewDocs: 'Veure documentació',
+    groupAccessTitle: 'Accés als grups',
+    groupAccessDesc:
+      'Defineix una regla unificada perquè Blue accepti missatges entrants de grup.',
+    groupAccessHint:
+      'Obert manté el comportament actual. Desactivat bloqueja tots els xats de grup. La llista permesa només accepta els xats indicats.',
+    groupAccessPolicy: 'Política',
+    groupAccessPolicyOpen: 'Obert',
+    groupAccessPolicyAllowlist: 'Llista permesa',
+    groupAccessPolicyDisabled: 'Desactivat',
+    groupAccessMentionPolicy: 'Condició de resposta',
+    groupAccessMentionPolicyMentioned: "Respon només quan es menciona Blue amb {'@'}",
+    groupAccessMentionPolicyAlways: 'Respon a tots els missatges de grup permesos',
+    groupAccessMentionHint:
+      "Per defecte, Blue només respon als grups quan se'l menciona explícitament amb {'@'}.",
+    groupAccessAllowedChats: 'Xats de grup permesos',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Una entrada per línia en format channel:chat_id. Pots usar * com a comodí si cal.',
+    groupAccessSaveFailed: "No s'han pogut desar els ajustos d'accés als grups",
+    groupAccessFormatError: 'Fes servir una entrada channel:chat_id per línia',
     telegramDesc: 'Connectar amb Telegram Bot API',
     telegramHint: "Crea un bot via {'@'}BotFather i obtén el token del bot",
     telegramOpenChat: 'Obrir xat del bot',

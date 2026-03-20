@@ -437,6 +437,26 @@ export default {
     toggleFailed: 'Uključivanje/isključivanje integracije nije uspjelo',
     fillRequiredFields: 'Ispunite obavezna polja',
     viewDocs: 'Pogledaj dokumentaciju',
+    groupAccessTitle: 'Pristup grupama',
+    groupAccessDesc:
+      'Postavite jedno zajedničko pravilo za to prihvaća li Blue dolazne grupne poruke.',
+    groupAccessHint:
+      'Otvoreno zadržava trenutačno ponašanje. Onemogućeno blokira sve grupne razgovore. Popis dopuštenih prihvaća samo navedene razgovore.',
+    groupAccessPolicy: 'Pravilo',
+    groupAccessPolicyOpen: 'Otvoreno',
+    groupAccessPolicyAllowlist: 'Popis dopuštenih',
+    groupAccessPolicyDisabled: 'Onemogućeno',
+    groupAccessMentionPolicy: 'Uvjet odgovora',
+    groupAccessMentionPolicyMentioned: "Odgovori samo kada je Blue {'@'}spomenut",
+    groupAccessMentionPolicyAlways: 'Odgovori na sve dopuštene grupne poruke',
+    groupAccessMentionHint:
+      "Zadano ponašanje je odgovarati u grupama samo kada je Blue izričito {'@'}spomenut.",
+    groupAccessAllowedChats: 'Dopušteni grupni razgovori',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Jedan unos po retku u formatu channel:chat_id. Po potrebi upotrijebite * kao zamjenski znak.',
+    groupAccessSaveFailed: 'Spremanje postavki pristupa grupama nije uspjelo',
+    groupAccessFormatError: 'Upotrijebite jedan unos channel:chat_id po retku',
     telegramDesc: 'Poveži s Telegram Bot API',
     telegramHint: "Stvorite bota putem {'@'}BotFather i dohvatite token bota",
     telegramOpenChat: 'Otvori chat bota',

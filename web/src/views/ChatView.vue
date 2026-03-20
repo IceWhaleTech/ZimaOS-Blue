@@ -7,6 +7,7 @@ import {
   computed,
   onUnmounted,
   inject,
+  defineAsyncComponent,
   type ComputedRef,
 } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -17,30 +18,40 @@ import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
-import { authFetch } from '@/api/client'
-import ConversationList from '@/components/ConversationList.vue'
-import ChatMessage from '@/components/ChatMessage.vue'
-import ChatInput from '@/components/ChatInput.vue'
 import type { FileAttachment } from '@/components/ChatInput.vue'
-import PresetQuestions from '@/components/onboarding/PresetQuestions.vue'
-import VirtualScroll from '@/components/VirtualScroll.vue'
-import TalkMode from '@/components/chat/TalkMode.vue'
-import ToolApprovalDialog from '@/components/ToolApprovalDialog.vue'
-import ExecApprovalDialog from '@/components/ExecApprovalDialog.vue'
-import MediaParamPanel from '@/components/MediaParamPanel.vue'
-import AgentTaskPanel from '@/components/AgentTaskPanel.vue'
-import DeepResearchTaskDock from '@/components/DeepResearchTaskDock.vue'
-import { agentApi, type AgentTask, type AgentQuestionAnswer } from '@/api/chat'
+import type ChatInputComponent from '@/components/ChatInput.vue'
+import type VirtualScrollComponent from '@/components/VirtualScroll.vue'
+import type { AgentTask, AgentQuestionAnswer } from '@/api/chat'
 import type { DeepResearchJobSummary } from '@/api/deepResearch'
-import { onSSEEvent, offSSEEvent } from '@/composables/useEventStream'
 import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
 import { clearConversationIncrementalStates, parseTypelessContentIncremental } from '@/utils/typeless'
-import { preloadHljs } from '@/utils/markdown'
-import { streamingTTSManager } from '@/api/voice'
 import { formatTokens } from '@/utils/format'
 import { findLatestTodoChecklistSummary } from '@/utils/todoChecklist'
+import { reportStartupMark } from '@/utils/startupTrace'
 import type { Provider } from '@/api/providerPool'
+
+reportStartupMark('chat_view_setup_enter')
+
+const ChatMessage = defineAsyncComponent(() => import('@/components/ChatMessage.vue'))
+const ConversationList = defineAsyncComponent(() => import('@/components/ConversationList.vue'))
+const ChatInput = defineAsyncComponent(() => import('@/components/ChatInput.vue'))
+const VirtualScroll = defineAsyncComponent(() => import('@/components/VirtualScroll.vue'))
+const PresetQuestions = defineAsyncComponent(
+  () => import('@/components/onboarding/PresetQuestions.vue')
+)
+const TalkMode = defineAsyncComponent(() => import('@/components/chat/TalkMode.vue'))
+const ToolApprovalDialog = defineAsyncComponent(
+  () => import('@/components/ToolApprovalDialog.vue')
+)
+const ExecApprovalDialog = defineAsyncComponent(
+  () => import('@/components/ExecApprovalDialog.vue')
+)
+const MediaParamPanel = defineAsyncComponent(() => import('@/components/MediaParamPanel.vue'))
+const AgentTaskPanel = defineAsyncComponent(() => import('@/components/AgentTaskPanel.vue'))
+const DeepResearchTaskDock = defineAsyncComponent(
+  () => import('@/components/DeepResearchTaskDock.vue')
+)
 
 const { t, te, locale } = useI18n()
 const router = useRouter()
@@ -55,6 +66,121 @@ const providerPoolStore = useProviderPoolStore()
 const deepResearchJobs = useDeepResearchJobsStore()
 const mediaGen = useMediaGenerate()
 
+type VoiceApiModule = typeof import('@/api/voice')
+type MarkdownModule = typeof import('@/utils/markdown')
+type ApiClientModule = typeof import('@/api/client')
+type ChatApiModule = typeof import('@/api/chat')
+type EventStreamModule = typeof import('@/composables/useEventStream')
+type IdleWindow = Window & {
+  requestIdleCallback?: (
+    callback: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void,
+    options?: { timeout?: number }
+  ) => number
+  cancelIdleCallback?: (handle: number) => void
+}
+
+let voiceApiModulePromise: Promise<VoiceApiModule> | null = null
+let markdownModulePromise: Promise<MarkdownModule> | null = null
+let apiClientModulePromise: Promise<ApiClientModule> | null = null
+let chatApiModulePromise: Promise<ChatApiModule> | null = null
+let eventStreamModulePromise: Promise<EventStreamModule> | null = null
+const startupBackgroundTaskCleanups: Array<() => void> = []
+let eventStreamListenersRegistered = false
+let viewUnmounted = false
+let initialChatBootstrapStarted = false
+
+function loadVoiceApiModule(): Promise<VoiceApiModule> {
+  if (!voiceApiModulePromise) {
+    voiceApiModulePromise = import('@/api/voice')
+  }
+  return voiceApiModulePromise
+}
+
+function loadMarkdownModule(): Promise<MarkdownModule> {
+  if (!markdownModulePromise) {
+    markdownModulePromise = import('@/utils/markdown')
+  }
+  return markdownModulePromise
+}
+
+function loadApiClientModule(): Promise<ApiClientModule> {
+  if (!apiClientModulePromise) {
+    apiClientModulePromise = import('@/api/client')
+  }
+  return apiClientModulePromise
+}
+
+function loadChatApiModule(): Promise<ChatApiModule> {
+  if (!chatApiModulePromise) {
+    chatApiModulePromise = import('@/api/chat')
+  }
+  return chatApiModulePromise
+}
+
+function loadEventStreamModule(): Promise<EventStreamModule> {
+  if (!eventStreamModulePromise) {
+    eventStreamModulePromise = import('@/composables/useEventStream')
+  }
+  return eventStreamModulePromise
+}
+
+async function registerEventStreamListeners() {
+  if (eventStreamListenersRegistered || viewUnmounted) return
+  const { onSSEEvent } = await loadEventStreamModule()
+  if (viewUnmounted || eventStreamListenersRegistered) return
+  for (const evt of agentEventTypes) onSSEEvent(evt, onAgentEvent)
+  for (const evt of deepResearchEventTypes) onSSEEvent(evt, deepResearchEventHandlers[evt]!)
+  eventStreamListenersRegistered = true
+}
+
+async function unregisterEventStreamListeners() {
+  if (!eventStreamListenersRegistered) return
+  const { offSSEEvent } = await loadEventStreamModule()
+  for (const evt of agentEventTypes) offSSEEvent(evt, onAgentEvent)
+  for (const evt of deepResearchEventTypes) offSSEEvent(evt, deepResearchEventHandlers[evt]!)
+  eventStreamListenersRegistered = false
+}
+
+function syncStreamingTtsLocale(nextLocale: string) {
+  loadVoiceApiModule()
+    .then(({ streamingTTSManager }) => {
+      streamingTTSManager.setLocale(nextLocale)
+    })
+    .catch(() => {})
+}
+
+function scheduleBackgroundTask(task: () => void, timeout = 1500): () => void {
+  const idleWindow = window as IdleWindow
+  if (typeof idleWindow.requestIdleCallback === 'function') {
+    const handle = idleWindow.requestIdleCallback(() => task(), { timeout })
+    return () => {
+      idleWindow.cancelIdleCallback?.(handle)
+    }
+  }
+
+  const handle = window.setTimeout(task, 0)
+  return () => {
+    window.clearTimeout(handle)
+  }
+}
+
+function queueBackgroundTask(task: () => void, timeout = 1500) {
+  startupBackgroundTaskCleanups.push(scheduleBackgroundTask(task, timeout))
+}
+
+function clearBackgroundTasks() {
+  while (startupBackgroundTaskCleanups.length > 0) {
+    startupBackgroundTaskCleanups.pop()?.()
+  }
+}
+
+function queuePostPaintTask(task: () => void) {
+  const handle = window.requestAnimationFrame(() => task())
+  startupBackgroundTaskCleanups.push(() => {
+    window.cancelAnimationFrame(handle)
+  })
+}
+
 const deepResearchEventTypes = [
   'deep_research.job_created',
   'deep_research.job_updated',
@@ -68,9 +194,9 @@ const deepResearchEventHandlers: Record<string, (data: unknown) => void> = Objec
     (data: unknown) => handleDeepResearchEvent(type, data as Record<string, unknown>),
   ])
 )
-streamingTTSManager.setLocale(locale.value)
+syncStreamingTtsLocale(locale.value)
 watch(locale, (newLocale) => {
-  streamingTTSManager.setLocale(newLocale)
+  syncStreamingTtsLocale(newLocale)
 })
 
 // Trial quota animation state
@@ -88,8 +214,8 @@ const messageAreaPaddingClass = computed(() => {
 })
 
 const messagesContainer = ref<HTMLElement | null>(null)
-const virtualScrollRef = ref<InstanceType<typeof VirtualScroll> | null>(null)
-const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
+const virtualScrollRef = ref<InstanceType<typeof VirtualScrollComponent> | null>(null)
+const chatInputRef = ref<InstanceType<typeof ChatInputComponent> | null>(null)
 const messageHeightCache = new Map<string, number>()
 const virtualElementToMessageKey = new Map<HTMLElement, string>()
 const virtualItemElements = new Map<string, HTMLElement>()
@@ -120,6 +246,14 @@ const enhancedModeCardStyle = ref<{ top: string; right: string }>({ top: '0px', 
 
 const enhancedModeCardTitle = computed(() =>
   enhancedModeCardEnabled.value ? t('chat.enhancedMode') : t('chat.enableEnhancedMode')
+)
+
+const initialPrimaryDataHydrating = ref(false)
+const showInitialThreadSkeleton = computed(
+  () =>
+    initialPrimaryDataHydrating.value &&
+    chatStore.messages.length === 0 &&
+    !chatStore.error
 )
 
 const enhancedModeCardDescription = computed(() =>
@@ -197,7 +331,11 @@ watch(
 const showTalkMode = ref(false)
 watch(showTalkMode, (open) => {
   if (open) {
-    streamingTTSManager.stop()
+    loadVoiceApiModule()
+      .then(({ streamingTTSManager }) => {
+        streamingTTSManager.stop()
+      })
+      .catch(() => {})
   }
 })
 
@@ -268,6 +406,7 @@ const shouldCompactStreamingActions = computed(() => {
 
 async function fetchAgentTasks() {
   try {
+    const { agentApi } = await loadChatApiModule()
     const resp = await agentApi.listTasks()
     agentTasks.value = resp.data || []
   } catch {
@@ -277,6 +416,7 @@ async function fetchAgentTasks() {
 
 async function cancelAgentTask(taskId: string) {
   try {
+    const { agentApi } = await loadChatApiModule()
     await agentApi.cancelTask(taskId)
     await fetchAgentTasks()
   } catch (e) {
@@ -286,6 +426,7 @@ async function cancelAgentTask(taskId: string) {
 
 async function deleteAgentTask(taskId: string) {
   try {
+    const { agentApi } = await loadChatApiModule()
     await agentApi.deleteTask(taskId)
     agentTasks.value = agentTasks.value.filter((t) => t.id !== taskId)
   } catch (e) {
@@ -1299,8 +1440,12 @@ function handleCancel() {
   }
 
   // 3. Cancel running agent tasks
-  for (const at of runningAgents) {
-    agentApi.cancelTask(at.id).catch(() => {})
+  if (runningAgents.length > 0) {
+    void loadChatApiModule()
+      .then(({ agentApi }) =>
+        Promise.allSettled(runningAgents.map((at) => agentApi.cancelTask(at.id)))
+      )
+      .catch(() => {})
   }
 
   // 4. Append a stop notification message if any async task was cancelled
@@ -1335,6 +1480,7 @@ function handleInject(message: string) {
 
 async function sendAgentMessage(taskId: string, message: string) {
   try {
+    const { agentApi } = await loadChatApiModule()
     await agentApi.sendMessage(taskId, message)
   } catch (e) {
     console.error('Failed to send message to agent task:', e)
@@ -1343,6 +1489,7 @@ async function sendAgentMessage(taskId: string, message: string) {
 
 async function submitAgentAnswer(taskId: string, answers: AgentQuestionAnswer[]) {
   try {
+    const { agentApi } = await loadChatApiModule()
     await agentApi.submitAnswers(taskId, answers)
     // Clear questions locally after successful submit
     const task = agentTasks.value.find((t) => t.id === taskId)
@@ -1884,70 +2031,121 @@ async function handlePresetQuestionSelect(text: string, attachments?: FileAttach
   await handleSend(text, attachments)
 }
 
+async function hydrateInitialChatState() {
+  if (initialChatBootstrapStarted || viewUnmounted) return
+  initialChatBootstrapStarted = true
+  initialPrimaryDataHydrating.value = true
+  reportStartupMark('chat_view_primary_data_start')
+
+  try {
+    // Fetch conversations and (if URL has conversationId) messages in parallel.
+    // selectConversation only needs the ID, not the conversation list.
+    if (_initConvId) {
+      await Promise.all([chatStore.fetchConversations(), chatStore.selectConversation(_initConvId)])
+    } else {
+      await chatStore.fetchConversations()
+      if (viewUnmounted) return
+
+      // Auto-select first conversation if available and none selected (desktop only)
+      if (
+        !isMobile.value &&
+        !chatStore.currentConversationId &&
+        chatStore.sortedConversations.length > 0 &&
+        chatStore.sortedConversations[0]
+      ) {
+        await chatStore.selectConversation(chatStore.sortedConversations[0].id)
+      }
+    }
+
+    reportStartupMark('chat_view_primary_data_ready', {
+      conversation_count: chatStore.sortedConversations.length,
+      message_count: chatStore.messages.length,
+      has_current_conversation: !!chatStore.currentConversationId,
+    })
+
+    await nextTick()
+    if (viewUnmounted) return
+    reportStartupMark('chat_view_dom_ready', {
+      conversation_count: chatStore.sortedConversations.length,
+      message_count: chatStore.messages.length,
+    })
+  } finally {
+    initialPrimaryDataHydrating.value = false
+  }
+}
+
 onMounted(async () => {
-  // Preload syntax highlighting only once for chat page.
-  preloadHljs().catch(() => {})
+  reportStartupMark('chat_view_mounted')
 
   checkMobile()
   window.addEventListener('resize', checkMobile)
   document.addEventListener('click', handleClickOutside)
 
-  // Preload common card components for better UX
-  componentPool.preload([
-    'progress',
-    'chart',
-    'gallery',
-    'link',
-    'file',
-    'deep-research',
-    'deep-research-progress',
-    'deep-research-event',
-  ])
-  deepResearchJobs.fetchActiveJobs().catch(() => {})
+  await nextTick()
+  reportStartupMark('chat_view_shell_ready', {
+    has_initial_conversation_id: !!_initConvId,
+  })
+  queuePostPaintTask(() => {
+    void hydrateInitialChatState()
+  })
 
-  // Initialize speech services lazily (TTS/STT)
-  authFetch('/api/v1/speech/init', { method: 'POST' }).catch(() => {})
-
-  // Fetch agent tasks (non-blocking) + subscribe to SSE updates
-  fetchAgentTasks()
-  for (const evt of agentEventTypes) onSSEEvent(evt, onAgentEvent)
-  for (const evt of deepResearchEventTypes) onSSEEvent(evt, deepResearchEventHandlers[evt]!)
-
-  // Fetch conversations and (if URL has conversationId) messages in parallel.
-  // selectConversation only needs the ID, not the conversation list.
-  if (_initConvId) {
-    await Promise.all([chatStore.fetchConversations(), chatStore.selectConversation(_initConvId)])
-  } else {
-    await chatStore.fetchConversations()
-    // Auto-select first conversation if available and none selected (desktop only)
-    if (
-      !isMobile.value &&
-      !chatStore.currentConversationId &&
-      chatStore.sortedConversations.length > 0 &&
-      chatStore.sortedConversations[0]
-    ) {
-      await chatStore.selectConversation(chatStore.sortedConversations[0].id)
-    }
-  }
-
-  // Fire secondary data fetches in background — skip if App.vue already loaded them
-  if (providerPoolStore.providers.length === 0) {
-    providerPoolStore
-      .fetchProviders()
-      .then(() => {
-        const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
-        settingsStore.updateFromPoolProviders(llmProviders)
-      })
+  queueBackgroundTask(() => {
+    loadMarkdownModule()
+      .then(({ preloadHljs }) => preloadHljs())
       .catch(() => {})
-  }
-  settingsStore.fetchTools().catch(() => {})
-  providerPoolStore.fetchRoutingMode().catch(() => {})
+  }, 1500)
 
-  // Restore pending confirmations after refresh or missed SSE events.
-  chatStore.recoverPendingConfirmations(false)
+  queueBackgroundTask(() => {
+    componentPool
+      .preload([
+        'progress',
+        'chart',
+        'gallery',
+        'link',
+        'file',
+        'deep-research',
+        'deep-research-progress',
+        'deep-research-event',
+      ])
+      .catch(() => {})
+  }, 2000)
+
+  queueBackgroundTask(() => {
+    deepResearchJobs.fetchActiveJobs().catch(() => {})
+  }, 1000)
+
+  queueBackgroundTask(() => {
+    loadApiClientModule()
+      .then(({ authFetch }) => authFetch('/api/v1/speech/init', { method: 'POST' }))
+      .catch(() => {})
+  }, 2500)
+
+  queueBackgroundTask(() => {
+    fetchAgentTasks()
+    registerEventStreamListeners().catch(() => {})
+  }, 1200)
+
+  queueBackgroundTask(() => {
+    if (providerPoolStore.providers.length === 0) {
+      providerPoolStore
+        .fetchProviders()
+        .then(() => {
+          const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
+          settingsStore.updateFromPoolProviders(llmProviders)
+        })
+        .catch(() => {})
+    }
+    settingsStore.fetchTools().catch(() => {})
+    providerPoolStore.fetchRoutingMode().catch(() => {})
+
+    // Restore pending confirmations after refresh or missed SSE events.
+    chatStore.recoverPendingConfirmations(false)
+  }, 800)
 })
 
 onUnmounted(() => {
+  viewUnmounted = true
+  clearBackgroundTasks()
   messageRenderMetaCache.clear()
   lastRenderMetaLookupKey = ''
   lastRenderMetaLookupMessage = null
@@ -1971,8 +2169,7 @@ onUnmounted(() => {
   }
   window.removeEventListener('resize', checkMobile)
   document.removeEventListener('click', handleClickOutside)
-  for (const evt of agentEventTypes) offSSEEvent(evt, onAgentEvent)
-  for (const evt of deepResearchEventTypes) offSSEEvent(evt, deepResearchEventHandlers[evt]!)
+  void unregisterEventStreamListeners()
 })
 </script>
 
@@ -3114,9 +3311,36 @@ onUnmounted(() => {
                 </button>
               </div>
 
+              <div
+                v-if="showInitialThreadSkeleton"
+                class="h-full flex items-center justify-center p-4 sm:p-6"
+              >
+                <div class="w-full max-w-3xl space-y-4">
+                  <div class="flex justify-start">
+                    <div
+                      class="h-12 w-44 rounded-[1.4rem] bg-gray-200/85 dark:bg-slate-800/80 animate-pulse"
+                    />
+                  </div>
+                  <div class="flex justify-end">
+                    <div
+                      class="h-16 w-64 rounded-[1.6rem] bg-sky-100/80 dark:bg-slate-800/70 animate-pulse"
+                    />
+                  </div>
+                  <div
+                    class="rounded-[1.8rem] border border-slate-200/80 bg-white/85 p-5 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70"
+                  >
+                    <div class="space-y-3">
+                      <div class="h-4 w-28 rounded-full bg-slate-200/90 dark:bg-slate-700/80 animate-pulse" />
+                      <div class="h-4 w-full rounded-full bg-slate-200/90 dark:bg-slate-700/80 animate-pulse" />
+                      <div class="h-4 w-5/6 rounded-full bg-slate-200/90 dark:bg-slate-700/80 animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <!-- Empty state -->
               <div
-                v-if="chatStore.messages.length === 0 && !chatStore.loading"
+                v-else-if="chatStore.messages.length === 0 && !chatStore.loading"
                 class="h-full flex flex-col items-center justify-center p-4"
               >
                 <div class="text-center text-gray-500 dark:text-slate-400 max-w-md mb-8">

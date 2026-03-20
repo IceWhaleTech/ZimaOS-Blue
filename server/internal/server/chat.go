@@ -154,7 +154,7 @@ func (h *ChatHandler) buildDirectoryWhitelistPromptHint() string {
 			sb.WriteString(root)
 		}
 	}
-	sb.WriteString(". Use absolute paths or @alias/... paths for file tools.</dir_whitelist>")
+	sb.WriteString(". Prefer relative paths for files in the current workspace. For these additional roots, use @alias/... when available, or absolute paths if needed.</dir_whitelist>")
 	return sb.String()
 }
 
@@ -632,7 +632,8 @@ func newDeepSearchLoopState(userMessage string, selectedTools []tools.ToolDefini
 func hasSearchCapabilityInToolDefs(defs []tools.ToolDefinition) bool {
 	for _, def := range defs {
 		name := strings.ToLower(strings.TrimSpace(def.Name))
-		if name == "web_search" || name == "exec" {
+		switch name {
+		case "web_search", "research_run", "browser", "web_fetch", "web_read", "web_extract", "web_crawl", "exec":
 			return true
 		}
 	}
@@ -2963,6 +2964,18 @@ func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, 
 		return false
 	}
 	if !h.shouldAutoContinueForReasonWithinBudget(reason, agentMode, state.PseudoToolCallAutoContinueCount, state.ActionPledgeAutoContinueCount, state.MissingTodoAutoContinueCount, state.PendingTodoAutoContinueCount) {
+		if reason == "summary_intro" {
+			if fallback, ok := buildSummaryIntroFallback(req.Messages, 4096, toolFallbackTextOptions{}); ok {
+				resp.Message.Content = fallback
+				state.AwaitingPostToolSummary = false
+				logger.Warn().
+					Int("round", round).
+					Str("reason", reason).
+					Int("tool_messages", len(req.Messages)).
+					Msg("[im] summary_intro auto-continue budget exhausted; using tool-results fallback")
+				return false
+			}
+		}
 		logger.Warn().
 			Int("round", round).
 			Str("reason", reason).
@@ -2986,6 +2999,18 @@ func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, 
 		state.ConsecutiveToollessDups = 1
 	}
 	if shouldStopForDuplicateActionPledge(reason, state.ConsecutiveToollessDups) {
+		if reason == "summary_intro" {
+			if fallback, ok := buildSummaryIntroFallback(req.Messages, 4096, toolFallbackTextOptions{}); ok {
+				resp.Message.Content = fallback
+				state.AwaitingPostToolSummary = false
+				logger.Warn().
+					Int("round", round).
+					Str("reason", reason).
+					Int("consecutive_action_pledge_dups", state.ConsecutiveToollessDups).
+					Msg("[im] summary_intro duplicate auto-continue detected; using tool-results fallback")
+				return false
+			}
+		}
 		logger.Warn().
 			Int("round", round).
 			Str("reason", reason).
@@ -4174,6 +4199,43 @@ func buildToolFallbackTextWithOptions(messages []llm.Message, maxLen int, opts t
 		out = out[:maxLen]
 	}
 	return out, toolCount
+}
+
+func buildSummaryIntroFallback(messages []llm.Message, maxLen int, opts toolFallbackTextOptions) (string, bool) {
+	fallback, toolCount := buildToolFallbackTextWithOptions(messages, maxLen, opts)
+	fallback = strings.TrimSpace(fallback)
+	if toolCount == 0 || fallback == "" {
+		return "", false
+	}
+	useChinese := shouldUseChineseToolFallbackMessage(messages, nil)
+	replacements := [][2]string{
+		{"我先根据已完成的工具结果，给你一个简要汇总：", "根据已完成的工具结果，整理如下："},
+		{"我先根据已完成的工具结果，整理出一版简要摘要：", "根据已完成的工具结果，整理如下："},
+		{"Here is a concise summary based on the completed tool results so far:", "Based on the completed tool results, here are the key takeaways:"},
+		{"Here is a concise fallback summary based on completed tool results:", "Based on the completed tool results, here are the key takeaways:"},
+	}
+	for _, pair := range replacements {
+		if strings.HasPrefix(fallback, pair[0]) {
+			fallback = pair[1] + strings.TrimPrefix(fallback, pair[0])
+			break
+		}
+	}
+	if useChinese {
+		fallback = strings.Replace(
+			fallback,
+			"如需，我可以继续补一版更完整的总结。",
+			"如果你愿意，我可以继续把这份结果扩展成更完整的总结。",
+			1,
+		)
+	} else {
+		fallback = strings.Replace(
+			fallback,
+			"Ask me to retry summarizing for a fuller report.",
+			"If you'd like, I can expand this into a fuller report.",
+			1,
+		)
+	}
+	return fallback, true
 }
 
 // estimateTokens estimates the number of tokens in a text.
@@ -5736,8 +5798,9 @@ func (h *ChatHandler) resolvePromptPolicy() PromptPolicy {
 	)
 }
 
-// selectTools returns tool definitions after selector + router stages.
-func (h *ChatHandler) selectTools(userMessage string, policyReq tools.ToolPolicyRequest) []tools.ToolDefinition {
+// selectToolsDetailed returns tool definitions after selector + router stages
+// plus optional selector debug details.
+func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.ToolPolicyRequest) ([]tools.ToolDefinition, *tools.ToolSelectionDebug) {
 	locale := ""
 	if h.settingsHandler != nil {
 		locale = h.settingsHandler.GetLocale()
@@ -5750,13 +5813,16 @@ func (h *ChatHandler) selectTools(userMessage string, policyReq tools.ToolPolicy
 		allDefs = h.toolPolicyResolver.Filter(policyReq, allDefs)
 	}
 	selected := allDefs
+	var debug *tools.ToolSelectionDebug
 
 	if h.toolSelector != nil && userMessage != "" {
 		// Check runtime setting (default false)
 		if h.settingsHandler != nil && !h.settingsHandler.GetSmartToolSelection() {
 			selected = allDefs
 		} else {
-			selected = h.toolSelector.Select(userMessage, allDefs)
+			detailed := h.toolSelector.SelectDetailed(userMessage, allDefs)
+			selected = detailed.Selected
+			debug = &detailed.Debug
 		}
 	}
 
@@ -5764,6 +5830,7 @@ func (h *ChatHandler) selectTools(userMessage string, policyReq tools.ToolPolicy
 	if h.toolRouter != nil {
 		routed = h.toolRouter.Route(userMessage, policyReq.Model, selected)
 	}
+	routed = preferWorkspaceFileWorkflowTools(userMessage, allDefs, routed)
 
 	names := make([]string, len(routed))
 	for i, d := range routed {
@@ -5780,6 +5847,57 @@ func (h *ChatHandler) selectTools(userMessage string, policyReq tools.ToolPolicy
 		Bool("router_nil", h.toolRouter == nil).
 		Msg("[chat] selectTools")
 
+	return routed, debug
+}
+
+func preferWorkspaceFileWorkflowTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(allDefs) == 0 || !shouldPreferWorkspaceFileWorkflow(userMessage) {
+		return current
+	}
+	filtered := filterToolDefsToNames(allDefs,
+		"read",
+		"write",
+		"ls",
+		"find",
+		"grep",
+		"convert",
+		"pdf",
+		"image",
+	)
+	if len(filtered) == 0 {
+		return current
+	}
+	return filtered
+}
+
+func shouldPreferWorkspaceFileWorkflow(userMessage string) bool {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" || !tools.LooksLikeWorkspaceFileTask(lower) {
+		return false
+	}
+	if containsAnyToolIntent(lower,
+		"bash", "shell", "terminal", "command line", "run command", "execute command",
+		"终端", "命令行", "运行命令", "执行命令",
+	) {
+		return false
+	}
+	if containsAnyToolIntent(lower,
+		"fix bug", "debug", "refactor", "implement", "compile", "build", "run tests", "run test", "unit test", "integration test",
+		"修复", "调试", "重构", "实现", "编译", "构建", "测试",
+	) {
+		return false
+	}
+	return containsAnyToolIntent(lower,
+		"review all files", "read all", "workspace", "folder", "directory", "files in",
+		"summary", "summarize", "summarise", "briefing", "digest", "report", "triage", "compare", "analyze", "analyse",
+		".md", ".txt", ".csv", ".xlsx", ".xls", ".pdf",
+		"工作区", "文件夹", "目录", "文件", "总结", "摘要", "简报", "报告", "归纳", "整理", "分析", "对比",
+	)
+}
+
+// selectTools returns tool definitions after selector + router stages.
+func (h *ChatHandler) selectTools(userMessage string, policyReq tools.ToolPolicyRequest) []tools.ToolDefinition {
+	routed, _ := h.selectToolsDetailed(userMessage, policyReq)
 	return routed
 }
 
@@ -5803,10 +5921,43 @@ func applyDeepResearchPreference(defs []tools.ToolDefinition, deepResearchEnable
 	}
 	filtered := make([]tools.ToolDefinition, 0, len(defs))
 	for _, def := range defs {
-		if def.Name == "deep_research" || def.Name == "deep-research" {
+		switch strings.ToLower(strings.TrimSpace(def.Name)) {
+		case "deep_research", "deep-research", "research_run", "research_status":
 			continue
 		}
 		filtered = append(filtered, def)
+	}
+	return filtered
+}
+
+func applyWritingToolPreference(defs []tools.ToolDefinition, userMessage string) []tools.ToolDefinition {
+	if len(defs) == 0 {
+		return defs
+	}
+	if !isPureWritingIntentMessage(userMessage) {
+		return defs
+	}
+	return nil
+}
+
+func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string) []tools.ToolDefinition {
+	if len(defs) == 0 {
+		return defs
+	}
+	if !shouldPreferDeepSearchReport(userMessage) || !hasToolDefName(defs, "research_run") {
+		return defs
+	}
+	filtered := filterToolDefsToNames(defs,
+		"research_run",
+		"research_status",
+		"browser",
+		"web_fetch",
+		"web_read",
+		"web_extract",
+		"web_crawl",
+	)
+	if len(filtered) == 0 {
+		return defs
 	}
 	return filtered
 }
@@ -5829,6 +5980,40 @@ func applyReminderToolPreference(defs []tools.ToolDefinition, userMessage string
 			filtered = append(filtered, def)
 		}
 	}
+	if len(filtered) == 0 {
+		return defs
+	}
+	return filtered
+}
+
+func applyCalendarToolPreference(defs []tools.ToolDefinition, userMessage string) []tools.ToolDefinition {
+	if len(defs) == 0 {
+		return defs
+	}
+	if tools.LooksLikeWorkspaceFileTask(userMessage) {
+		return defs
+	}
+	if !isCalendarIntentMessage(userMessage) || isReminderIntentMessage(userMessage) || !hasToolDefName(defs, "calendar") {
+		return defs
+	}
+	filtered := filterToolDefsToNames(defs, "calendar")
+	if len(filtered) == 0 {
+		return defs
+	}
+	return filtered
+}
+
+func applyEmailToolPreference(defs []tools.ToolDefinition, userMessage string) []tools.ToolDefinition {
+	if len(defs) == 0 {
+		return defs
+	}
+	if tools.LooksLikeWorkspaceFileTask(userMessage) {
+		return defs
+	}
+	if !isEmailIntentMessage(userMessage) || !hasToolDefName(defs, "email") {
+		return defs
+	}
+	filtered := filterToolDefsToNames(defs, "email")
 	if len(filtered) == 0 {
 		return defs
 	}
@@ -5873,6 +6058,111 @@ func isReminderIntentMessage(userMessage string) bool {
 	}
 
 	return false
+}
+
+func isEmailIntentMessage(userMessage string) bool {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" {
+		return false
+	}
+	if tools.LooksLikeWorkspaceFileTask(lower) {
+		return false
+	}
+	if containsAnyToolIntent(lower,
+		"收件箱", "邮箱", "未读邮件", "归档邮件", "邮件标签", "发件人", "邮件摘要", "邮件检索",
+		"inbox", "mailbox", "unread email", "archive email", "email summary", "email digest",
+	) {
+		return true
+	}
+	if containsAnyToolIntent(lower, "email", "mail", "邮件") &&
+		containsAnyToolIntent(lower, "archive", "archived", "label", "labels", "sender", "from", "unread", "priority", "search", "find", "filter", "归档", "标签", "发件人", "未读", "优先级", "检索", "筛选") {
+		return true
+	}
+	return false
+}
+
+func isCalendarIntentMessage(userMessage string) bool {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" {
+		return false
+	}
+	if tools.LooksLikeWorkspaceFileTask(lower) {
+		return false
+	}
+	if containsAnyToolIntent(lower,
+		"calendar", "agenda", "daily summary", "daily agenda", "today's agenda", "today agenda", "today schedule", "schedule for today",
+		"日历", "日程", "议程", "今天安排", "今日安排", "今天日程", "每日摘要", "日程摘要",
+	) {
+		return true
+	}
+	if containsAnyToolIntent(lower, "meeting", "event", "appointment", "会议", "事件", "预约", "行程") &&
+		containsAnyToolIntent(lower, "today", "tomorrow", "next week", "am", "pm", "tonight", "上午", "下午", "明天", "下周", "今晚", "点") {
+		return true
+	}
+	return false
+}
+
+func isPureWritingIntentMessage(userMessage string) bool {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" {
+		return false
+	}
+	strongWritingIntent := containsAnyToolIntent(lower,
+		"rewrite", "rephrase", "polish", "proofread", "edit this", "improve wording", "make this concise", "make it shorter", "make it more formal",
+		"change the tone", "format this", "turn this into", "draft", "summarize this text",
+		"改写", "重写", "润色", "精简", "扩写", "换个语气", "换一种说法", "校对", "纠正语法", "格式化", "起草", "写一段", "写一封", "总结这段",
+	)
+	if !strongWritingIntent {
+		return false
+	}
+	if isReminderIntentMessage(lower) || isEmailIntentMessage(lower) || isCalendarIntentMessage(lower) {
+		return false
+	}
+	if containsAnyToolIntent(lower,
+		"http://", "https://", "www.", "url", "网页", "网站", "browser", "web search", "search the web",
+		"收件箱", "邮箱", "日历", "日程", "calendar", "inbox",
+		"latest", "news", "sources", "citations", "references", "search", "look up",
+		"最新", "新闻", "来源", "引用", "搜索", "检索",
+	) {
+		return false
+	}
+	return true
+}
+
+func containsAnyToolIntent(message string, cues ...string) bool {
+	for _, cue := range cues {
+		if cue != "" && strings.Contains(message, strings.ToLower(cue)) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasToolDefName(defs []tools.ToolDefinition, name string) bool {
+	target := strings.ToLower(strings.TrimSpace(name))
+	for _, def := range defs {
+		if strings.EqualFold(strings.TrimSpace(def.Name), target) {
+			return true
+		}
+	}
+	return false
+}
+
+func filterToolDefsToNames(defs []tools.ToolDefinition, names ...string) []tools.ToolDefinition {
+	if len(defs) == 0 || len(names) == 0 {
+		return defs
+	}
+	allowed := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		allowed[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+	}
+	filtered := make([]tools.ToolDefinition, 0, len(defs))
+	for _, def := range defs {
+		if _, ok := allowed[strings.ToLower(strings.TrimSpace(def.Name))]; ok {
+			filtered = append(filtered, def)
+		}
+	}
+	return filtered
 }
 
 func hasExplicitSystemReminderTarget(userMessage string) bool {
@@ -10551,7 +10841,11 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		RouteKind: tools.ToolRouteKindChat,
 	})
 	selectedTools = applyDeepResearchPreference(selectedTools, channelDeepResearchEnabled)
+	selectedTools = applyWritingToolPreference(selectedTools, routingMessage)
+	selectedTools = applyResearchToolPreference(selectedTools, routingMessage)
 	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
+	selectedTools = applyCalendarToolPreference(selectedTools, routingMessage)
+	selectedTools = applyEmailToolPreference(selectedTools, routingMessage)
 	req.Tools = defsToLLMTools(selectedTools)
 
 	logger.Info().
@@ -12311,6 +12605,72 @@ func compactToolResultsForLLM(toolCalls []llm.ToolCall, toolResults []llm.Messag
 	return out
 }
 
+func buildPostWriteCompletionNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	if !shouldPreferWorkspaceFileWorkflow(userMessage) {
+		return ""
+	}
+	targets := collectSuccessfulWriteTargets(toolCalls, toolResults)
+	if len(targets) == 0 {
+		return ""
+	}
+	target := targets[0]
+	return fmt.Sprintf("The requested file %q was written successfully. Unless you can point to a specific verified defect, do not call write on that path again in this turn. If needed, read it once to confirm, then provide a brief final answer to the user.", target)
+}
+
+func collectSuccessfulWriteTargets(toolCalls []llm.ToolCall, toolResults []llm.Message) []string {
+	if len(toolResults) == 0 {
+		return nil
+	}
+
+	callByID := make(map[string]llm.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			callByID[id] = tc
+		}
+	}
+
+	out := make([]string, 0, len(toolResults))
+	seen := make(map[string]struct{}, len(toolResults))
+	for i, tr := range toolResults {
+		toolName := ""
+		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
+			toolName = toolCalls[i].Name
+		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			toolName = matched.Name
+		}
+		if path := extractSuccessfulWriteTarget(toolName, tr.Content); path != "" {
+			if _, exists := seen[path]; exists {
+				continue
+			}
+			seen[path] = struct{}{}
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+func extractSuccessfulWriteTarget(toolName, content string) string {
+	switch strings.ToLower(strings.TrimSpace(toolName)) {
+	case "write", "file_write", "write_commit":
+	default:
+		return ""
+	}
+
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(strings.TrimSpace(content)), &payload) != nil || len(payload) == 0 {
+		return ""
+	}
+	success, _ := payload["success"].(bool)
+	if !success {
+		return ""
+	}
+	if appendMode, ok := payload["append"].(bool); ok && appendMode {
+		return ""
+	}
+	path, _ := payload["path"].(string)
+	return strings.TrimSpace(path)
+}
+
 func isSearchLikeToolCallForLLM(tc llm.ToolCall) bool {
 	name := strings.ToLower(strings.TrimSpace(tc.Name))
 	if name == "web_search" {
@@ -13762,7 +14122,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	})
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
+	selectedTools = applyWritingToolPreference(selectedTools, routingMessage)
+	selectedTools = applyResearchToolPreference(selectedTools, routingMessage)
 	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
+	selectedTools = applyCalendarToolPreference(selectedTools, routingMessage)
+	selectedTools = applyEmailToolPreference(selectedTools, routingMessage)
 	if h.shouldRouteToolDispatch(selectedTools) && !shouldPreferDeepSearchReport(routingMessage) {
 		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
 		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
@@ -14181,6 +14545,18 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 								consecutiveToollessAutoContinueDups = 1
 							}
 							if shouldStopForDuplicateActionPledge(reason, consecutiveToollessAutoContinueDups) {
+								if reason == "summary_intro" {
+									if fallback, ok := buildSummaryIntroFallback(chatReq.Messages, 4096, toolFallbackTextOptions{}); ok {
+										resp.Message.Content = fallback
+										awaitingPostToolSummary = false
+										logger.Warn().
+											Int("round", round).
+											Str("reason", reason).
+											Int("consecutive_action_pledge_dups", consecutiveToollessAutoContinueDups).
+											Msg("[chat] summary_intro duplicate auto-continue detected; using tool-results fallback")
+										break
+									}
+								}
 								logger.Warn().
 									Int("round", round).
 									Str("reason", reason).
@@ -14260,6 +14636,18 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 							Int("pending_todo_auto_continue", pendingTodoAutoContinueCount).
 							Int("pending_todo_auto_continue_limit", h.getMaxPendingTodoAutoContinueForMode(agentModeAutoContinue)).
 							Msg("[chat] toolless auto-continue budget exhausted; finishing current round")
+						if reason == "summary_intro" {
+							if fallback, ok := buildSummaryIntroFallback(chatReq.Messages, 4096, toolFallbackTextOptions{}); ok {
+								resp.Message.Content = fallback
+								awaitingPostToolSummary = false
+								logger.Warn().
+									Int("round", round).
+									Str("reason", reason).
+									Int("tool_messages", len(chatReq.Messages)).
+									Msg("[chat] summary_intro auto-continue budget exhausted; using tool-results fallback")
+								break
+							}
+						}
 					}
 				}
 				break
@@ -14298,6 +14686,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						Content: progress,
 					})
 				}
+			}
+			if nudge := buildPostWriteCompletionNudge(routingMessage, resp.Message.ToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
 			}
 			toolSummaries := make([]string, 0, len(toolResults))
 			for _, item := range toolResults {
@@ -15375,7 +15769,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	})
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
+	selectedTools = applyWritingToolPreference(selectedTools, routingMessage)
+	selectedTools = applyResearchToolPreference(selectedTools, routingMessage)
 	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
+	selectedTools = applyCalendarToolPreference(selectedTools, routingMessage)
+	selectedTools = applyEmailToolPreference(selectedTools, routingMessage)
 	if h.shouldRouteToolDispatch(selectedTools) && !shouldPreferDeepSearchReport(routingMessage) {
 		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
 		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
@@ -17037,6 +17435,12 @@ STREAM_LOOP:
 					})
 				}
 			}
+			if nudge := buildPostWriteCompletionNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+			}
 
 			// Persist this round's content as a separate message and notify frontend.
 			// Each tool round becomes its own assistant message for cleaner display,
@@ -17440,6 +17844,29 @@ STREAM_LOOP:
 			preferReminderTool := toolRound == 0 && shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
 			if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
 				if !h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
+					if reason == "summary_intro" {
+						if fallback, ok := buildSummaryIntroFallback(chatReq.Messages, 4096, toolFallbackTextOptions{toolCardsVisible: typelessCardsPersisted}); ok {
+							emitProcessEvent(
+								"summary_fallback_used",
+								"success",
+								imLocalized(streamLang, "Finishing with tool-based summary", "正在根据工具结果完成总结"),
+								imLocalized(
+									streamLang,
+									"The model stopped at a summary intro, so the assistant finished the reply using completed tool results.",
+									"模型停在了总结开头，系统已根据已完成的工具结果补齐最终总结。",
+								),
+								nil,
+							)
+							fullContent = fallback
+							awaitingPostToolSummary = false
+							logger.Warn().
+								Int("tool_round", toolRound).
+								Str("reason", reason).
+								Int("tool_messages", len(chatReq.Messages)).
+								Msg("[chat] stream: summary_intro auto-continue budget exhausted; using tool-results fallback")
+							break
+						}
+					}
 					logger.Warn().
 						Int("tool_round", toolRound).
 						Str("reason", reason).
@@ -17462,6 +17889,29 @@ STREAM_LOOP:
 					consecutiveToollessAutoContinueDups = 1
 				}
 				if shouldStopForDuplicateActionPledge(reason, consecutiveToollessAutoContinueDups) {
+					if reason == "summary_intro" {
+						if fallback, ok := buildSummaryIntroFallback(chatReq.Messages, 4096, toolFallbackTextOptions{toolCardsVisible: typelessCardsPersisted}); ok {
+							emitProcessEvent(
+								"summary_fallback_used",
+								"success",
+								imLocalized(streamLang, "Finishing with tool-based summary", "正在根据工具结果完成总结"),
+								imLocalized(
+									streamLang,
+									"The model repeated a summary intro, so the assistant wrapped up using completed tool results.",
+									"模型重复停在总结开头，系统已根据已完成的工具结果完成收尾总结。",
+								),
+								nil,
+							)
+							fullContent = fallback
+							awaitingPostToolSummary = false
+							logger.Warn().
+								Int("tool_round", toolRound).
+								Str("reason", reason).
+								Int("consecutive_action_pledge_dups", consecutiveToollessAutoContinueDups).
+								Msg("[chat] stream: summary_intro duplicate auto-continue detected; using tool-results fallback")
+							break
+						}
+					}
 					logger.Warn().
 						Int("tool_round", toolRound).
 						Str("reason", reason).
@@ -17926,7 +18376,11 @@ STREAM_LOOP:
 				})
 				injectedTools = applyWebSearchPreference(injectedTools, req.WebSearchEnabled)
 				injectedTools = applyDeepResearchPreference(injectedTools, req.DeepResearchEnabled)
+				injectedTools = applyWritingToolPreference(injectedTools, injectedMsg)
+				injectedTools = applyResearchToolPreference(injectedTools, injectedMsg)
 				injectedTools = applyReminderToolPreference(injectedTools, injectedMsg)
+				injectedTools = applyCalendarToolPreference(injectedTools, injectedMsg)
+				injectedTools = applyEmailToolPreference(injectedTools, injectedMsg)
 
 				// Rebuild chat request
 				chatReq = llm.ChatRequest{

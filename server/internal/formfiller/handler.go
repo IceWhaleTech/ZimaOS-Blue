@@ -3,6 +3,7 @@ package formfiller
 import (
 	"errors"
 	"net/http"
+	"sync"
 
 	"github.com/labstack/echo/v4"
 )
@@ -11,6 +12,9 @@ import (
 type Handler struct {
 	store    *Store
 	detector *Detector
+	initFn   func() (*Store, error)
+	initOnce sync.Once
+	initErr  error
 }
 
 // NewHandler creates a new form filler handler.
@@ -19,6 +23,43 @@ func NewHandler(store *Store) *Handler {
 		store:    store,
 		detector: NewDetector(store.GetPatterns()),
 	}
+}
+
+// NewLazyHandler creates a handler whose store is initialized on first use.
+func NewLazyHandler(initFn func() (*Store, error)) *Handler {
+	return &Handler{initFn: initFn}
+}
+
+func (h *Handler) ensureReady() error {
+	if h.store != nil && h.detector != nil {
+		return nil
+	}
+	if h.initFn == nil {
+		return errors.New("form filler unavailable")
+	}
+	h.initOnce.Do(func() {
+		h.store, h.initErr = h.initFn()
+		if h.initErr == nil && h.store != nil {
+			h.detector = NewDetector(h.store.GetPatterns())
+		}
+	})
+	if h.store == nil {
+		if h.initErr != nil {
+			return h.initErr
+		}
+		return errors.New("form filler unavailable")
+	}
+	return nil
+}
+
+func (h *Handler) unavailable(c echo.Context, err error) error {
+	message := "form filler unavailable"
+	if err != nil {
+		message = err.Error()
+	}
+	return c.JSON(http.StatusServiceUnavailable, map[string]string{
+		"error": message,
+	})
 }
 
 // RegisterRoutes registers the form filler routes.
@@ -47,12 +88,18 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 // ListTemplates returns all templates.
 func (h *Handler) ListTemplates(c echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return h.unavailable(c, err)
+	}
 	templates := h.store.ListTemplates()
 	return c.JSON(http.StatusOK, templates)
 }
 
 // GetTemplate returns a template by ID.
 func (h *Handler) GetTemplate(c echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return h.unavailable(c, err)
+	}
 	id := c.Param("id")
 	template, err := h.store.GetTemplate(id)
 	if err != nil {
@@ -65,6 +112,9 @@ func (h *Handler) GetTemplate(c echo.Context) error {
 
 // CreateTemplate creates a new template.
 func (h *Handler) CreateTemplate(c echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return h.unavailable(c, err)
+	}
 	var req CreateTemplateRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -90,6 +140,9 @@ func (h *Handler) CreateTemplate(c echo.Context) error {
 
 // UpdateTemplate updates an existing template.
 func (h *Handler) UpdateTemplate(c echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return h.unavailable(c, err)
+	}
 	id := c.Param("id")
 
 	var req UpdateTemplateRequest
@@ -111,6 +164,9 @@ func (h *Handler) UpdateTemplate(c echo.Context) error {
 
 // DeleteTemplate deletes a template.
 func (h *Handler) DeleteTemplate(c echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return h.unavailable(c, err)
+	}
 	id := c.Param("id")
 
 	if err := h.store.DeleteTemplate(id); err != nil {
@@ -124,12 +180,18 @@ func (h *Handler) DeleteTemplate(c echo.Context) error {
 
 // GetPatterns returns the field patterns.
 func (h *Handler) GetPatterns(c echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return h.unavailable(c, err)
+	}
 	patterns := h.store.GetPatterns()
 	return c.JSON(http.StatusOK, patterns)
 }
 
 // UpdatePatterns updates the field patterns.
 func (h *Handler) UpdatePatterns(c echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return h.unavailable(c, err)
+	}
 	var patterns map[FieldType][]string
 	if err := c.Bind(&patterns); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -151,6 +213,9 @@ func (h *Handler) UpdatePatterns(c echo.Context) error {
 
 // GetSiteMapping returns a site mapping by domain.
 func (h *Handler) GetSiteMapping(c echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return h.unavailable(c, err)
+	}
 	domain := c.Param("domain")
 
 	mapping, err := h.store.GetSiteMapping(domain)
@@ -170,6 +235,9 @@ func (h *Handler) GetSiteMapping(c echo.Context) error {
 
 // SaveSiteMapping saves a site mapping.
 func (h *Handler) SaveSiteMapping(c echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return h.unavailable(c, err)
+	}
 	domain := c.Param("domain")
 
 	var mapping SiteMapping
@@ -197,6 +265,9 @@ func (h *Handler) SaveSiteMapping(c echo.Context) error {
 
 // DetectFields detects fields from HTML or field attributes.
 func (h *Handler) DetectFields(c echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return h.unavailable(c, err)
+	}
 	var req struct {
 		Fields     []FieldAttributes `json:"fields"`
 		TemplateID string            `json:"template_id,omitempty"`

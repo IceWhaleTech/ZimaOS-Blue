@@ -77,6 +77,54 @@ type larkAPIResp struct {
 	Data json.RawMessage `json:"data"`
 }
 
+type larkBotInfo struct {
+	BotName string
+	OpenID  string
+}
+
+func (c *larkClient) getBotInfo(ctx context.Context) (larkBotInfo, error) {
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return larkBotInfo{}, err
+	}
+	req, _ := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/bot/v3/info", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return larkBotInfo{}, err
+	}
+	defer resp.Body.Close()
+
+	var r struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Bot  struct {
+			BotName string `json:"bot_name"`
+			OpenID  string `json:"open_id"`
+		} `json:"bot"`
+		Data struct {
+			Bot struct {
+				BotName string `json:"bot_name"`
+				OpenID  string `json:"open_id"`
+			} `json:"bot"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return larkBotInfo{}, err
+	}
+	if r.Code != 0 {
+		return larkBotInfo{}, fmt.Errorf("feishu bot info: %d %s", r.Code, r.Msg)
+	}
+	bot := r.Bot
+	if bot.OpenID == "" && bot.BotName == "" {
+		bot = r.Data.Bot
+	}
+	return larkBotInfo{
+		BotName: strings.TrimSpace(bot.BotName),
+		OpenID:  strings.TrimSpace(bot.OpenID),
+	}, nil
+}
+
 func (c *larkClient) addMessageReaction(ctx context.Context, messageID string, emojiType string) (string, error) {
 	token, err := c.getToken(ctx)
 	if err != nil {

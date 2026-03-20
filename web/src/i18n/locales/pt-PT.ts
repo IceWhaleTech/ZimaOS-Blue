@@ -468,6 +468,27 @@ export default {
     saving: 'A guardar...',
     savedSuccessfully: 'Configuração guardada com sucesso',
     saveFailed: 'Falha ao guardar a configuração',
+    groupAccessTitle: 'Acesso a grupos',
+    groupAccessDesc:
+      'Defina uma regra unificada para decidir se o Blue aceita mensagens de grupo recebidas.',
+    groupAccessHint:
+      'Aberto mantém o comportamento atual. Desativado bloqueia todos os chats de grupo. A lista de permissões aceita apenas os chats indicados.',
+    groupAccessPolicy: 'Política',
+    groupAccessPolicyOpen: 'Aberto',
+    groupAccessPolicyAllowlist: 'Lista de permissões',
+    groupAccessPolicyDisabled: 'Desativado',
+    groupAccessMentionPolicy: 'Condição de resposta',
+    groupAccessMentionPolicyMentioned:
+      "Responder apenas quando o Blue for {'@'}mencionado",
+    groupAccessMentionPolicyAlways: 'Responder a todas as mensagens de grupo permitidas',
+    groupAccessMentionHint:
+      "Por predefinição, o Blue só responde em grupos quando é explicitamente {'@'}mencionado.",
+    groupAccessAllowedChats: 'Chats de grupo permitidos',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Uma entrada por linha no formato channel:chat_id. Utilize * como caráter universal se necessário.',
+    groupAccessSaveFailed: 'Falha ao guardar as definições de acesso a grupos',
+    groupAccessFormatError: 'Utilize uma entrada channel:chat_id por linha',
     botUsername: 'Utilizador do bot',
     matrixUserId: 'ID do utilizador',
     password: 'Palavra-passe',

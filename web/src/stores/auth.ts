@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authApi, apiKeyApi } from '@/api/auth'
-import { permissionsApi, type PagePermission } from '@/api/users'
+import type { PagePermission } from '@/constants/pagePermissions'
+import { reportStartupMark } from '@/utils/startupTrace'
 import type { User, ApiKey, CreateApiKeyRequest } from '@/api/auth'
 
 const TOKEN_KEY = 'token'
@@ -33,6 +33,26 @@ function removeStorageItem(key: string): void {
     // Safari private mode or other restrictions
     console.warn(`Failed to remove localStorage item: ${key}`)
   }
+}
+
+type AuthModule = typeof import('@/api/auth')
+type UsersModule = typeof import('@/api/users')
+
+let authModulePromise: Promise<AuthModule> | null = null
+let usersModulePromise: Promise<UsersModule> | null = null
+
+function loadAuthModule(): Promise<AuthModule> {
+  if (!authModulePromise) {
+    authModulePromise = import('@/api/auth')
+  }
+  return authModulePromise
+}
+
+function loadUsersModule(): Promise<UsersModule> {
+  if (!usersModulePromise) {
+    usersModulePromise = import('@/api/users')
+  }
+  return usersModulePromise
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -76,6 +96,7 @@ export const useAuthStore = defineStore('auth', () => {
       loading.value = true
       error.value = null
 
+      const { authApi } = await loadAuthModule()
       const response = await authApi.login({ username, password })
       const data = response.data
 
@@ -115,6 +136,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     try {
+      const { authApi } = await loadAuthModule()
       await authApi.logout()
     } catch {
       // Ignore logout errors
@@ -139,15 +161,19 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       loading.value = true
       error.value = null
+      reportStartupMark('auth_fetch_user_start')
+      const { authApi } = await loadAuthModule()
       // Fetch user info and permissions in parallel
       const [userResponse] = await Promise.all([authApi.me(), fetchPermissions()])
       user.value = userResponse.data
+      reportStartupMark('auth_fetch_user_done')
     } catch (e) {
       // If unauthorized, clear auth
       if ((e as { response?: { status?: number } }).response?.status === 401) {
         clearAuth()
       }
       error.value = e instanceof Error ? e.message : 'Failed to fetch user'
+      reportStartupMark('auth_fetch_user_error')
     } finally {
       loading.value = false
     }
@@ -157,13 +183,16 @@ export const useAuthStore = defineStore('auth', () => {
     if (!token.value) return
 
     try {
+      const { permissionsApi } = await loadUsersModule()
       const response = await permissionsApi.getMyPermissions()
       permissions.value = response.data.permissions ?? []
       permissionsLoaded.value = true
+      reportStartupMark('auth_permissions_loaded')
     } catch {
       // Default to empty permissions on error, but mark as loaded
       permissions.value = []
       permissionsLoaded.value = true
+      reportStartupMark('auth_permissions_failed')
     }
   }
 
@@ -171,6 +200,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!refreshToken.value) return false
 
     try {
+      const { authApi } = await loadAuthModule()
       const response = await authApi.refresh(refreshToken.value)
       token.value = response.data.token
       refreshToken.value = response.data.refresh_token
@@ -187,6 +217,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       loading.value = true
       error.value = null
+      const { authApi } = await loadAuthModule()
       const response = await authApi.updateProfile(data)
       user.value = response.data
       return true
@@ -203,6 +234,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       loading.value = true
       error.value = null
+      const { apiKeyApi } = await loadAuthModule()
       const response = await apiKeyApi.list()
       apiKeys.value = response.data
     } catch (e) {
@@ -216,6 +248,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       loading.value = true
       error.value = null
+      const { apiKeyApi } = await loadAuthModule()
       const response = await apiKeyApi.create(data)
       apiKeys.value = [...apiKeys.value, response.data.api_key]
       return response.data
@@ -231,6 +264,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       loading.value = true
       error.value = null
+      const { apiKeyApi } = await loadAuthModule()
       await apiKeyApi.delete(id)
       apiKeys.value = apiKeys.value.filter((k) => k.id !== id)
       return true

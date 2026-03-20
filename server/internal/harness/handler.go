@@ -49,6 +49,13 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/runs/:id/cancel", h.CancelRun)
 	g.GET("/runs/:id/events", h.ListEvents)
 	g.GET("/runs/:id/artifacts", h.ListArtifacts)
+	g.POST("/groups", h.CreateGroup)
+	g.GET("/groups", h.ListGroups)
+	g.GET("/groups/:id", h.GetGroup)
+	g.GET("/groups/:id/items", h.ListGroupItems)
+	g.GET("/groups/:id/report", h.GetGroupReport)
+	g.POST("/groups/:id/cancel", h.CancelGroup)
+	g.POST("/groups/:id/retry_failed", h.RetryFailedGroup)
 }
 
 func (h *Handler) CreateRun(c echo.Context) error {
@@ -90,11 +97,110 @@ func (h *Handler) ListRuns(c echo.Context) error {
 	if rootID := strings.TrimSpace(c.QueryParam("root_run_id")); rootID != "" {
 		filter.RootRunID = rootID
 	}
+	if groupID := strings.TrimSpace(c.QueryParam("group_id")); groupID != "" {
+		filter.GroupID = groupID
+	}
+	if groupItemID := strings.TrimSpace(c.QueryParam("group_item_id")); groupItemID != "" {
+		filter.GroupItemID = groupItemID
+	}
 	runs, err := h.manager.List(c.Request().Context(), filter)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, runs)
+}
+
+func (h *Handler) CreateGroup(c echo.Context) error {
+	var spec RunGroupSpec
+	if err := c.Bind(&spec); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if userID := harnessUserID(c); userID != "" {
+		spec.OwnerUserID = userID
+	}
+	group, err := h.manager.SubmitGroup(c.Request().Context(), spec)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusCreated, group)
+}
+
+func (h *Handler) ListGroups(c echo.Context) error {
+	filter := RunGroupFilter{
+		OwnerUserID: harnessUserID(c),
+		Limit:       50,
+	}
+	if rawLimit := strings.TrimSpace(c.QueryParam("limit")); rawLimit != "" {
+		if limit, err := strconv.Atoi(rawLimit); err == nil && limit > 0 {
+			filter.Limit = limit
+		}
+	}
+	if kinds := parseRunGroupKinds(c.QueryParams()["kind"], c.QueryParams()["kinds"]); len(kinds) > 0 {
+		filter.Kinds = kinds
+	}
+	if statuses := parseRunGroupStatuses(c.QueryParams()["status"], c.QueryParams()["statuses"]); len(statuses) > 0 {
+		filter.Statuses = statuses
+	}
+	groups, err := h.manager.ListGroups(c.Request().Context(), filter)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, groups)
+}
+
+func (h *Handler) GetGroup(c echo.Context) error {
+	group, err := h.scopedGroup(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "group not found"})
+	}
+	return c.JSON(http.StatusOK, group)
+}
+
+func (h *Handler) ListGroupItems(c echo.Context) error {
+	group, err := h.scopedGroup(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "group not found"})
+	}
+	items, err := h.manager.ListGroupItems(c.Request().Context(), group.ID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) GetGroupReport(c echo.Context) error {
+	group, err := h.scopedGroup(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "group not found"})
+	}
+	report, err := h.manager.GetGroupReport(c.Request().Context(), group.ID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, report)
+}
+
+func (h *Handler) CancelGroup(c echo.Context) error {
+	group, err := h.scopedGroup(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "group not found"})
+	}
+	if err := h.manager.CancelGroup(c.Request().Context(), group.ID, "cancelled by user"); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
+func (h *Handler) RetryFailedGroup(c echo.Context) error {
+	group, err := h.scopedGroup(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "group not found"})
+	}
+	retried, err := h.manager.RetryFailedGroup(c.Request().Context(), group.ID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"retried": retried})
 }
 
 func (h *Handler) GetRun(c echo.Context) error {
@@ -186,6 +292,17 @@ func (h *Handler) scopedRun(c echo.Context) (*Run, error) {
 	return run, nil
 }
 
+func (h *Handler) scopedGroup(c echo.Context) (*RunGroup, error) {
+	group, err := h.manager.GetGroup(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return nil, err
+	}
+	if userID := harnessUserID(c); userID != "" && group.OwnerUserID != "" && group.OwnerUserID != userID {
+		return nil, echo.ErrNotFound
+	}
+	return group, nil
+}
+
 func parseRunKinds(values ...[]string) []RunKind {
 	raw := flattenQueryValues(values...)
 	out := make([]RunKind, 0, len(raw))
@@ -210,6 +327,42 @@ func parseRunStatuses(values ...[]string) []RunStatus {
 	seen := make(map[RunStatus]struct{}, len(raw))
 	for _, item := range raw {
 		status := RunStatus(strings.TrimSpace(item))
+		if status == "" {
+			continue
+		}
+		if _, ok := seen[status]; ok {
+			continue
+		}
+		seen[status] = struct{}{}
+		out = append(out, status)
+	}
+	return out
+}
+
+func parseRunGroupKinds(values ...[]string) []RunGroupKind {
+	raw := flattenQueryValues(values...)
+	out := make([]RunGroupKind, 0, len(raw))
+	seen := make(map[RunGroupKind]struct{}, len(raw))
+	for _, item := range raw {
+		kind := RunGroupKind(strings.TrimSpace(item))
+		if kind == "" {
+			continue
+		}
+		if _, ok := seen[kind]; ok {
+			continue
+		}
+		seen[kind] = struct{}{}
+		out = append(out, kind)
+	}
+	return out
+}
+
+func parseRunGroupStatuses(values ...[]string) []RunGroupStatus {
+	raw := flattenQueryValues(values...)
+	out := make([]RunGroupStatus, 0, len(raw))
+	seen := make(map[RunGroupStatus]struct{}, len(raw))
+	for _, item := range raw {
+		status := RunGroupStatus(strings.TrimSpace(item))
 		if status == "" {
 			continue
 		}

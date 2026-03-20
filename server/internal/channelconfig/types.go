@@ -38,18 +38,31 @@ const (
 	GroupPolicyDisabled GroupPolicy = "disabled"
 )
 
+// GroupMentionPolicy controls whether an allowed group message must mention the bot.
+type GroupMentionPolicy string
+
+const (
+	// GroupMentionPolicyMentioned only accepts group messages that explicitly mention the bot.
+	GroupMentionPolicyMentioned GroupMentionPolicy = "mentioned"
+	// GroupMentionPolicyAlways accepts all allowed group messages without requiring a mention.
+	GroupMentionPolicyAlways GroupMentionPolicy = "always"
+)
+
 // GroupAccessConfig controls inbound group message access across all channels.
 type GroupAccessConfig struct {
 	// Policy controls whether group messages are accepted.
 	Policy GroupPolicy `yaml:"policy" json:"policy"`
+	// MentionPolicy controls whether allowed group messages must mention the bot.
+	MentionPolicy GroupMentionPolicy `yaml:"mention_policy" json:"mention_policy"`
 	// AllowedChatIDs stores per-channel allowed group chat IDs when Policy is allowlist.
 	AllowedChatIDs map[string][]string `yaml:"allowed_chat_ids" json:"allowed_chat_ids"`
 }
 
-// DefaultGroupAccessConfig returns a permissive default that preserves existing behavior.
+// DefaultGroupAccessConfig returns the default inbound group behavior.
 func DefaultGroupAccessConfig() GroupAccessConfig {
 	return GroupAccessConfig{
-		Policy: GroupPolicyOpen,
+		Policy:        GroupPolicyOpen,
+		MentionPolicy: GroupMentionPolicyMentioned,
 	}
 }
 

@@ -418,13 +418,25 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 		t.Fatalf("status code = %d, want %d", statusRec.Code, http.StatusOK)
 	}
 	var statusPayload struct {
-		Running bool `json:"running"`
+		Running          bool   `json:"running"`
+		TotalSources     int    `json:"total_sources"`
+		ProcessedSources int    `json:"processed_sources"`
+		CurrentSourceID  string `json:"current_source_id"`
 	}
 	if err := json.Unmarshal(statusRec.Body.Bytes(), &statusPayload); err != nil {
 		t.Fatalf("decode status payload: %v", err)
 	}
 	if !statusPayload.Running {
 		t.Fatalf("expected running status, payload=%s", statusRec.Body.String())
+	}
+	if statusPayload.TotalSources != 1 {
+		t.Fatalf("total_sources = %d, want 1", statusPayload.TotalSources)
+	}
+	if statusPayload.ProcessedSources != 0 {
+		t.Fatalf("processed_sources = %d, want 0", statusPayload.ProcessedSources)
+	}
+	if statusPayload.CurrentSourceID != "tencent-skillhub" {
+		t.Fatalf("current_source_id = %q, want %q", statusPayload.CurrentSourceID, "tencent-skillhub")
 	}
 
 	close(release)
@@ -440,6 +452,9 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 			t.Fatalf("decode final status payload: %v", err)
 		}
 		if !statusPayload.Running {
+			if statusPayload.ProcessedSources != 1 {
+				t.Fatalf("processed_sources = %d, want 1", statusPayload.ProcessedSources)
+			}
 			return
 		}
 		time.Sleep(20 * time.Millisecond)

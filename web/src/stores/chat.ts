@@ -10,22 +10,95 @@ import type {
   ConversationCommandStatePatch,
   StreamChunk,
 } from '@/api/chat'
-import { conversationApi, messageApi, warmupApi, injectionApi } from '@/api/chat'
-import { approvalApi } from '@/api/approval'
 import type { Decision, ExecDecision } from '@/api/approval'
-import api from '@/api/client'
 import { SSEClient } from '@/utils/sse'
 import type { SSEClientOptions } from '@/utils/sse'
 import { i18n } from '@/i18n'
 import { useSettingsStore } from './settings'
 import { useProviderPoolStore } from './providerPool'
-import { systemApi } from '@/api/system'
 import {
   cloneProcessTrace,
   createProcessTraceItem,
   type ProcessTraceItem,
   type ProcessTraceStatus,
 } from '@/utils/processTrace'
+import { reportStartupMark } from '@/utils/startupTrace'
+
+type ChatApiModule = typeof import('@/api/chat')
+type ApprovalApiModule = typeof import('@/api/approval')
+type ApiClientModule = typeof import('@/api/client')
+type SystemApiModule = typeof import('@/api/system')
+
+let chatApiModulePromise: Promise<ChatApiModule> | null = null
+let approvalApiModulePromise: Promise<ApprovalApiModule> | null = null
+let apiClientModulePromise: Promise<ApiClientModule> | null = null
+let systemApiModulePromise: Promise<SystemApiModule> | null = null
+
+function createLazyApiProxy<T extends object>(load: () => Promise<T>): T {
+  return new Proxy(
+    {},
+    {
+      get(_target, prop) {
+        return async (...args: unknown[]) => {
+          const api = await load()
+          const value = Reflect.get(api as object, prop)
+          if (typeof value !== 'function') {
+            return value
+          }
+          return Reflect.apply(value as (...callArgs: unknown[]) => unknown, api, args)
+        }
+      },
+    }
+  ) as T
+}
+
+async function loadChatApiModule() {
+  if (!chatApiModulePromise) {
+    chatApiModulePromise = import('@/api/chat')
+  }
+  return await chatApiModulePromise
+}
+
+async function loadApprovalApi() {
+  if (!approvalApiModulePromise) {
+    approvalApiModulePromise = import('@/api/approval')
+  }
+  return (await approvalApiModulePromise).approvalApi
+}
+
+async function loadApiClient() {
+  if (!apiClientModulePromise) {
+    apiClientModulePromise = import('@/api/client')
+  }
+  return (await apiClientModulePromise).default
+}
+
+async function loadSystemApi() {
+  if (!systemApiModulePromise) {
+    systemApiModulePromise = import('@/api/system')
+  }
+  return (await systemApiModulePromise).systemApi
+}
+
+const conversationApi = createLazyApiProxy<ChatApiModule['conversationApi']>(async () => {
+  const module = await loadChatApiModule()
+  return module.conversationApi
+})
+const messageApi = createLazyApiProxy<ChatApiModule['messageApi']>(async () => {
+  const module = await loadChatApiModule()
+  return module.messageApi
+})
+const warmupApi = createLazyApiProxy<ChatApiModule['warmupApi']>(async () => {
+  const module = await loadChatApiModule()
+  return module.warmupApi
+})
+const injectionApi = createLazyApiProxy<ChatApiModule['injectionApi']>(async () => {
+  const module = await loadChatApiModule()
+  return module.injectionApi
+})
+const approvalApi = createLazyApiProxy<ApprovalApiModule['approvalApi']>(loadApprovalApi)
+const api = createLazyApiProxy<ApiClientModule['default']>(loadApiClient)
+const systemApi = createLazyApiProxy<SystemApiModule['systemApi']>(loadSystemApi)
 
 const PAGE_SIZE = 50
 const CHAT_MODEL_PREF_KEY = 'chat.modelPreference'
@@ -119,13 +192,42 @@ export function parseToolResults(
       const sources = rawSources
         .map((item) => (typeof item === 'string' ? item.trim() : ''))
         .filter(Boolean)
+      const inputPath =
+        typeof parsedArgs.input_path === 'string'
+          ? parsedArgs.input_path.trim()
+          : typeof parsedArgs.inputPath === 'string'
+            ? parsedArgs.inputPath.trim()
+            : typeof parsedArgs.input === 'string'
+              ? parsedArgs.input.trim()
+              : ''
+      const outputPath =
+        typeof parsedArgs.output_path === 'string'
+          ? parsedArgs.output_path.trim()
+          : typeof parsedArgs.outputPath === 'string'
+            ? parsedArgs.outputPath.trim()
+            : typeof parsedArgs.output === 'string'
+              ? parsedArgs.output.trim()
+              : ''
       const targetFormat =
         typeof parsedArgs.target_format === 'string'
           ? parsedArgs.target_format.trim()
           : typeof parsedArgs.targetFormat === 'string'
             ? parsedArgs.targetFormat.trim()
             : ''
-      if (sources.length > 0) {
+      const primarySource = inputPath || sources[0] || ''
+      if (primarySource) {
+        const sourceLabel =
+          sources.length > 1 && !inputPath
+            ? `${primarySource} +${sources.length - 1} more`
+            : primarySource
+        if (outputPath) {
+          command = `${sourceLabel} -> ${outputPath}`
+        } else {
+          command = targetFormat ? `${sourceLabel} -> ${targetFormat}` : sourceLabel
+        }
+      } else if (outputPath && command) {
+        command = `${command} -> ${outputPath}`
+      } else if (sources.length > 0) {
         const firstSource = sources[0] ?? ''
         const sourceLabel =
           sources.length === 1 ? firstSource : `${firstSource} +${sources.length - 1} more`
@@ -1838,10 +1940,15 @@ export const useChatStore = defineStore('chat', () => {
     try {
       loading.value = true
       error.value = null
+      reportStartupMark('chat_fetch_conversations_start')
       const response = await conversationApi.list()
       conversations.value = response.data
+      reportStartupMark('chat_fetch_conversations_done', {
+        conversation_count: response.data.length,
+      })
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch conversations'
+      reportStartupMark('chat_fetch_conversations_error')
     } finally {
       loading.value = false
     }
@@ -1962,6 +2069,7 @@ export const useChatStore = defineStore('chat', () => {
     stopActiveStreamForConversationSwitch()
 
     currentConversationId.value = id
+    reportStartupMark('chat_select_conversation_start')
     // Don't clear messages immediately to avoid flash
     // Reset pagination state
     hasMoreMessages.value = false
@@ -1981,11 +2089,15 @@ export const useChatStore = defineStore('chat', () => {
         messages.value = fetchedMessages
         hasMoreMessages.value = fetchedMessages.length === PAGE_SIZE
         currentPage.value = 0
+        reportStartupMark('chat_select_conversation_done', {
+          message_count: fetchedMessages.length,
+        })
       }
     } catch (e) {
       if (currentConversationId.value === id) {
         error.value = e instanceof Error ? e.message : 'Failed to fetch messages'
         messages.value = []
+        reportStartupMark('chat_select_conversation_error')
       }
     }
 

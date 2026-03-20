@@ -1,14 +1,25 @@
 [package]
 name = "zimaos-blue"
-version = "0.10.32"
+version = "0.10.33"
 description = "ZimaOS Blue - AI Gateway Desktop Application"
 authors = ["ZimaOS Team"]
 edition = "2021"
 rust-version = "1.70"
+default-run = "zimaos-blue"
+autobins = false
 
 [lib]
 name = "zimaos_blue_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "zimaos-blue"
+path = "src/main.rs"
+
+[[example]]
+name = "embedded_startup_probe"
+path = "examples/embedded_startup_probe.rs"
+required-features = ["startup-probe"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -49,6 +60,7 @@ windows-service = "0.7"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+startup-probe = []
 
 [profile.release]
 panic = "abort"

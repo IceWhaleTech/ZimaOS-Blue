@@ -1,4 +1,6 @@
 import api from './client'
+export { PagePermissions } from '@/constants/pagePermissions'
+export type { PagePermission } from '@/constants/pagePermissions'
 
 // Types
 export interface User {
@@ -107,21 +109,3 @@ export const permissionsApi = {
   getAvailablePermissions: () =>
     api.get<{ permissions: PermissionInfo[] }>('/permissions/available'),
 }
-
-// Page permission constants (must match backend)
-export const PagePermissions = {
-  CHAT: 'page.chat',
-  HOME: 'page.home',
-  CHANNELS: 'page.channels',
-  SETTINGS: 'page.settings',
-  SECURITY: 'page.security',
-  USERS: 'page.users',
-  PROFILE: 'page.profile',
-  PROVIDERS: 'page.providers',
-  AUTOMATION: 'page.automation',
-  PLUGINS: 'page.plugins',
-  TOOLS: 'page.tools',
-  SKILLS: 'page.skills',
-} as const
-
-export type PagePermission = (typeof PagePermissions)[keyof typeof PagePermissions]

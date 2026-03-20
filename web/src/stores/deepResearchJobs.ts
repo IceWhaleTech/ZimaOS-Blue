@@ -2,9 +2,19 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import router from '@/router'
 import { i18n } from '@/i18n'
-import { deepResearchApi, type DeepResearchJobSummary } from '@/api/deepResearch'
+import type { DeepResearchJobSummary } from '@/api/deepResearch'
 import { useChatStore } from '@/stores/chat'
 import { useNotificationStore } from '@/stores/notification'
+
+type DeepResearchApiModule = typeof import('@/api/deepResearch')
+let deepResearchApiModulePromise: Promise<DeepResearchApiModule> | null = null
+
+function loadDeepResearchApiModule(): Promise<DeepResearchApiModule> {
+  if (!deepResearchApiModulePromise) {
+    deepResearchApiModulePromise = import('@/api/deepResearch')
+  }
+  return deepResearchApiModulePromise
+}
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 const EVENT_TO_STATUS: Record<string, string> = {
@@ -147,6 +157,7 @@ export const useDeepResearchJobsStore = defineStore('deepResearchJobs', () => {
   async function fetchActiveJobs() {
     loading.value = true
     try {
+      const { deepResearchApi } = await loadDeepResearchApiModule()
       const response = await deepResearchApi.listJobs('active')
       replaceActiveJobs(response.data || [])
       hydrated.value = true
@@ -213,6 +224,7 @@ export const useDeepResearchJobsStore = defineStore('deepResearchJobs', () => {
   async function cancelJob(jobId: string) {
     const normalizedJobId = normalizeString(jobId)
     if (!normalizedJobId) return
+    const { deepResearchApi } = await loadDeepResearchApiModule()
     await deepResearchApi.cancelJob(normalizedJobId)
     const existing = jobMap.value[normalizedJobId]
     applyJobSnapshot({

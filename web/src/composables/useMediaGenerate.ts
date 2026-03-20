@@ -7,15 +7,46 @@ import type {
   MediaTask,
   DirectGenerateRequest,
 } from '@/api/media'
-import {
-  classifyIntent,
-  directGenerate,
-  getTask,
-  listModels,
-  cancelTask as cancelMediaTask,
-} from '@/api/media'
 import { classifyMediaIntent } from './useMediaIntent'
 import { useChatStore } from '@/stores/chat'
+
+type MediaApiModule = typeof import('@/api/media')
+let mediaApiModulePromise: Promise<MediaApiModule> | null = null
+
+function loadMediaApiModule(): Promise<MediaApiModule> {
+  if (!mediaApiModulePromise) {
+    mediaApiModulePromise = import('@/api/media')
+  }
+  return mediaApiModulePromise
+}
+
+async function listMediaModels() {
+  const { listModels } = await loadMediaApiModule()
+  return listModels()
+}
+
+async function classifyMediaRequest(
+  ...args: Parameters<MediaApiModule['classifyIntent']>
+) {
+  const { classifyIntent } = await loadMediaApiModule()
+  return classifyIntent(...args)
+}
+
+async function directMediaGenerate(req: DirectGenerateRequest) {
+  const { directGenerate } = await loadMediaApiModule()
+  return directGenerate(req)
+}
+
+async function fetchMediaTask(taskId: string) {
+  const { getTask } = await loadMediaApiModule()
+  return getTask(taskId)
+}
+
+function cancelMediaTaskById(taskId: string) {
+  void loadMediaApiModule()
+    .then(({ cancelTask }) => cancelTask(taskId))
+    .catch(() => {})
+}
 
 const MODEL_MEMORY_KEY = 'media-last-model'
 
@@ -88,7 +119,7 @@ export function useMediaGenerate() {
     const now = Date.now()
     if (_mediaAvailable === null || now - _mediaAvailableCheckedAt > AVAILABILITY_CACHE_TTL) {
       try {
-        const allModels = await listModels()
+        const allModels = await listMediaModels()
         _mediaAvailable = allModels.length > 0
       } catch {
         _mediaAvailable = false
@@ -117,7 +148,7 @@ export function useMediaGenerate() {
 
     // Fetch models from server for the detected category
     try {
-      const resp = await classifyIntent(message, hasImages, imageCount, locale)
+      const resp = await classifyMediaRequest(message, hasImages, imageCount, locale)
       if (resp.intent) {
         intent.value = resp.intent
       }
@@ -125,7 +156,7 @@ export function useMediaGenerate() {
         models.value = resp.models
       } else {
         // Fallback: fetch all models and filter
-        const all = await listModels()
+        const all = await listMediaModels()
         models.value = all.filter((m) => m.category === localIntent.category)
         // Also fetch alternative category models if present
         if (localIntent.alternative_category) {
@@ -137,7 +168,7 @@ export function useMediaGenerate() {
     } catch {
       // Server classify failed — use local intent, try to get models
       try {
-        const all = await listModels()
+        const all = await listMediaModels()
         models.value = all.filter((m) => m.category === localIntent.category)
         if (localIntent.alternative_category) {
           alternativeModels.value = all.filter(
@@ -184,7 +215,7 @@ export function useMediaGenerate() {
     // Now load models for the confirmed category
     const category = intent.value.category
     try {
-      const resp = await classifyIntent(
+      const resp = await classifyMediaRequest(
         intent.value.prompt,
         intent.value.has_image,
         intent.value.image_count,
@@ -193,12 +224,12 @@ export function useMediaGenerate() {
       if (resp.models?.length) {
         models.value = resp.models
       } else {
-        const all = await listModels()
+        const all = await listMediaModels()
         models.value = all.filter((m) => m.category === category)
       }
     } catch {
       try {
-        const all = await listModels()
+        const all = await listMediaModels()
         models.value = all.filter((m) => m.category === category)
       } catch {
         // No models available
@@ -303,7 +334,7 @@ export function useMediaGenerate() {
     }
 
     try {
-      const resp = await directGenerate(req)
+      const resp = await directMediaGenerate(req)
 
       // Remember model choice
       if (selectedModel.value) {
@@ -357,7 +388,7 @@ export function useMediaGenerate() {
   async function pollTask(taskId: string, intervalMs = 2000) {
     const poll = async () => {
       try {
-        const t = await getTask(taskId)
+        const t = await fetchMediaTask(taskId)
         task.value = t
         if (t.status === 'succeeded' || t.status === 'failed' || t.status === 'cancelled') {
           generating.value = false
@@ -377,7 +408,7 @@ export function useMediaGenerate() {
     generating.value = false
     // Cancel the backend task if one is active
     if (task.value?.id && !isTerminal.value) {
-      cancelMediaTask(task.value.id).catch(() => {})
+      cancelMediaTaskById(task.value.id)
     }
   }
 

@@ -76,6 +76,8 @@ vi.mock('@/components/formfiller/FormFillerWidget.vue', () => ({
 }))
 
 vi.mock('@/components/onboarding/PreviewOnboardingModal.vue', () => ({
+  __isTeleport: false,
+  __isKeepAlive: false,
   default: {
     name: 'PreviewOnboardingModal',
     template: '<div class="preview-onboarding-modal-stub" />',
@@ -83,6 +85,8 @@ vi.mock('@/components/onboarding/PreviewOnboardingModal.vue', () => ({
 }))
 
 vi.mock('@/components/typeless/FullscreenModal.vue', () => ({
+  __isTeleport: false,
+  __isKeepAlive: false,
   default: {
     name: 'FullscreenModal',
     template: '<div class="fullscreen-modal-stub" />',
@@ -241,14 +245,15 @@ describe('DefaultLayout', () => {
     const wrapper = await mountLayout('/home')
 
     expect(wrapper.find('.layout-window-chrome').exists()).toBe(true)
-    expect(wrapper.find('.layout-window-chrome-pill').exists()).toBe(true)
+    expect(wrapper.find('.layout-window-chrome-pill').exists()).toBe(false)
     expect(wrapper.find('.layout-window-chrome').attributes('data-tauri-drag-region')).toBe('')
+    expect(wrapper.find('.layout-window-chrome-bar').attributes('data-tauri-drag-region')).toBe('')
     expect(wrapper.find('.layout-window-chrome-traffic-slot').exists()).toBe(true)
 
     wrapper.unmount()
   })
 
-  it('hides the centered macOS window title on the chat route', async () => {
+  it('keeps the macOS window chrome titleless on the chat route', async () => {
     setUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
     )
@@ -259,6 +264,20 @@ describe('DefaultLayout', () => {
 
     expect(wrapper.find('.layout-window-chrome').exists()).toBe(true)
     expect(wrapper.find('.layout-window-chrome-pill').exists()).toBe(false)
+    expect(wrapper.find('.layout-window-chrome-bar').attributes('data-tauri-drag-region')).toBe('')
+
+    wrapper.unmount()
+  })
+
+  it('starts dragging when the macOS chrome strip is pressed', async () => {
+    tauriState.isTauri = true
+    tauriState.platform = 'macos'
+
+    const wrapper = await mountLayout('/home')
+
+    await wrapper.get('.layout-window-chrome').trigger('mousedown', { button: 0 })
+
+    expect(tauriState.startWindowDragging).toHaveBeenCalledTimes(1)
 
     wrapper.unmount()
   })

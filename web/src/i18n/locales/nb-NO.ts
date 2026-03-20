@@ -438,6 +438,26 @@ export default {
     toggleFailed: 'Kunne ikke slå av/på integrasjon',
     fillRequiredFields: 'Fyll ut obligatoriske felt først',
     viewDocs: 'Se dokumentasjon',
+    groupAccessTitle: 'Gruppetilgang',
+    groupAccessDesc:
+      'Angi én felles regel for om Blue skal godta innkommende gruppemeldinger.',
+    groupAccessHint:
+      'Åpen beholder dagens oppførsel. Deaktivert blokkerer alle gruppechatter. Tillatelsesliste godtar bare oppførte chatter.',
+    groupAccessPolicy: 'Regel',
+    groupAccessPolicyOpen: 'Åpen',
+    groupAccessPolicyAllowlist: 'Tillatelsesliste',
+    groupAccessPolicyDisabled: 'Deaktivert',
+    groupAccessMentionPolicy: 'Svarbetingelse',
+    groupAccessMentionPolicyMentioned: "Svar bare når Blue blir {'@'}nevnt",
+    groupAccessMentionPolicyAlways: 'Svar på alle tillatte gruppemeldinger',
+    groupAccessMentionHint:
+      "Som standard svarer Blue bare i grupper når den eksplisitt blir {'@'}nevnt.",
+    groupAccessAllowedChats: 'Tillatte gruppechatter',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Én oppføring per linje i formatet channel:chat_id. Bruk * som jokertegn ved behov.',
+    groupAccessSaveFailed: 'Kunne ikke lagre innstillinger for gruppetilgang',
+    groupAccessFormatError: 'Bruk én channel:chat_id-oppføring per linje',
     telegramDesc: 'Koble til Telegram Bot API',
     telegramHint: "Opprett en bot via {'@'}BotFather og få bot-token",
     telegramOpenChat: 'Åpne botchat',

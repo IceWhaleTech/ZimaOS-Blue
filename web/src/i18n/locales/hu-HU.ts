@@ -450,6 +450,27 @@ export default {
     toggleFailed: 'Az integráció átkapcsolása sikertelen',
     fillRequiredFields: 'Töltse ki a kötelező mezőket',
     viewDocs: 'Dokumentáció megtekintése',
+    groupAccessTitle: 'Csoporthozzáférés',
+    groupAccessDesc:
+      'Állítson be egy egységes szabályt arra, hogy a Blue fogadja-e a bejövő csoportüzeneteket.',
+    groupAccessHint:
+      'A Nyitott megtartja a jelenlegi működést. A Letiltva letilt minden csoportos csevegést. Az engedélyezési lista csak a felsorolt csevegéseket fogadja el.',
+    groupAccessPolicy: 'Szabályzat',
+    groupAccessPolicyOpen: 'Nyitott',
+    groupAccessPolicyAllowlist: 'Engedélyezési lista',
+    groupAccessPolicyDisabled: 'Letiltva',
+    groupAccessMentionPolicy: 'Válasz feltétele',
+    groupAccessMentionPolicyMentioned:
+      "Csak akkor válaszoljon, ha a Blue {'@'}említést kap",
+    groupAccessMentionPolicyAlways: 'Válaszoljon minden engedélyezett csoportüzenetre',
+    groupAccessMentionHint:
+      "Alapértelmezés szerint a Blue csak akkor válaszol csoportokban, ha kifejezetten {'@'}meg van említve.",
+    groupAccessAllowedChats: 'Engedélyezett csoportos beszélgetések',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Soronkét egy bejegyzés channel:chat_id formátumban. Szükség esetén használjon * helyettesítő karaktert.',
+    groupAccessSaveFailed: 'Nem sikerült menteni a csoporthozzáférési beállításokat',
+    groupAccessFormatError: 'Soronként egy channel:chat_id bejegyzést használjon',
     telegramDesc: 'Csatlakozás a Telegram Bot API-hoz',
     telegramHint: "Hozzon létre botot a {'@'}BotFather segítségével, és szerezze be a bot tokent",
     telegramOpenChat: 'Bot csevegés megnyitása',

@@ -12,9 +12,11 @@ import (
 
 // Handler handles browser automation HTTP requests.
 type Handler struct {
-	service Service
-	tasks   map[string]*BrowserTask
-	tasksMu sync.RWMutex
+	service        Service
+	serviceFactory func() Service
+	serviceOnce    sync.Once
+	tasks          map[string]*BrowserTask
+	tasksMu        sync.RWMutex
 }
 
 // BrowserTask represents a browser automation task.
@@ -37,6 +39,24 @@ func NewHandler(service Service) *Handler {
 		service: service,
 		tasks:   make(map[string]*BrowserTask),
 	}
+}
+
+// NewLazyHandler creates a browser handler whose service is initialized on demand.
+func NewLazyHandler(factory func() Service) *Handler {
+	return &Handler{
+		serviceFactory: factory,
+		tasks:          make(map[string]*BrowserTask),
+	}
+}
+
+func (h *Handler) getService() Service {
+	if h.service != nil || h.serviceFactory == nil {
+		return h.service
+	}
+	h.serviceOnce.Do(func() {
+		h.service = h.serviceFactory()
+	})
+	return h.service
 }
 
 // RegisterRoutes registers the browser routes.
@@ -231,12 +251,17 @@ func (h *Handler) DeleteTask(c echo.Context) error {
 
 // ListSessions returns all browser sessions.
 func (h *Handler) ListSessions(c echo.Context) error {
+	service := h.getService()
+	if service == nil {
+		return c.JSON(http.StatusOK, []interface{}{})
+	}
+
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
 	defer cancel()
 
 	// Return tabs as sessions for compatibility
-	tabs, err := h.service.Tabs(ctx)
+	tabs, err := service.Tabs(ctx)
 	if err != nil {
 		return c.JSON(http.StatusOK, []interface{}{})
 	}
@@ -245,12 +270,24 @@ func (h *Handler) ListSessions(c echo.Context) error {
 
 // CreateSession creates a new browser session.
 func (h *Handler) CreateSession(c echo.Context) error {
+	service := h.getService()
+	if service == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"id":            "session-" + timeutil.NowTime().Format("20060102150405"),
+			"status":        "idle",
+			"current_url":   "",
+			"page_title":    "",
+			"created_at":    timeutil.NowTime().Format(time.RFC3339),
+			"last_activity": timeutil.NowTime().Format(time.RFC3339),
+		})
+	}
+
 	// Create a context with timeout to prevent hanging
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
 	defer cancel()
 
 	// Try to create a new tab
-	tab, err := h.service.OpenTab(ctx, "about:blank")
+	tab, err := service.OpenTab(ctx, "about:blank")
 	if err != nil {
 		// Return a stub session if browser not available or timeout
 		return c.JSON(http.StatusOK, map[string]interface{}{
@@ -287,12 +324,17 @@ func (h *Handler) GetSession(c echo.Context) error {
 
 // CloseSession closes a browser session.
 func (h *Handler) CloseSession(c echo.Context) error {
+	service := h.getService()
+	if service == nil {
+		return c.NoContent(http.StatusNoContent)
+	}
+
 	id := c.Param("id")
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
 	defer cancel()
 	// Try to close the tab
-	_ = h.service.CloseTab(ctx, id)
+	_ = service.CloseTab(ctx, id)
 	return c.NoContent(http.StatusNoContent)
 }
 
@@ -327,7 +369,12 @@ func (h *Handler) SessionExecute(c echo.Context) error {
 
 // Status returns the browser status.
 func (h *Handler) Status(c echo.Context) error {
-	status, err := h.service.Status(c.Request().Context())
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	status, err := service.Status(c.Request().Context())
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -336,7 +383,12 @@ func (h *Handler) Status(c echo.Context) error {
 
 // Start starts the browser.
 func (h *Handler) Start(c echo.Context) error {
-	err := h.service.Start(c.Request().Context())
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	err := service.Start(c.Request().Context())
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -345,7 +397,12 @@ func (h *Handler) Start(c echo.Context) error {
 
 // Stop stops the browser.
 func (h *Handler) Stop(c echo.Context) error {
-	err := h.service.Stop(c.Request().Context())
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	err := service.Stop(c.Request().Context())
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -354,7 +411,12 @@ func (h *Handler) Stop(c echo.Context) error {
 
 // Tabs returns all open tabs.
 func (h *Handler) Tabs(c echo.Context) error {
-	tabs, err := h.service.Tabs(c.Request().Context())
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	tabs, err := service.Tabs(c.Request().Context())
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -373,7 +435,12 @@ func (h *Handler) OpenTab(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
 	}
 
-	tab, err := h.service.OpenTab(c.Request().Context(), req.URL)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	tab, err := service.OpenTab(c.Request().Context(), req.URL)
 	if err != nil {
 		return mapError(err)
 	}
@@ -387,7 +454,12 @@ func (h *Handler) FocusTab(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "tab id is required")
 	}
 
-	err := h.service.FocusTab(c.Request().Context(), id)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	err := service.FocusTab(c.Request().Context(), id)
 	if err != nil {
 		return mapError(err)
 	}
@@ -401,7 +473,12 @@ func (h *Handler) CloseTab(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "tab id is required")
 	}
 
-	err := h.service.CloseTab(c.Request().Context(), id)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	err := service.CloseTab(c.Request().Context(), id)
 	if err != nil {
 		return mapError(err)
 	}
@@ -418,7 +495,12 @@ func (h *Handler) Navigate(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
 	}
 
-	resp, err := h.service.Navigate(c.Request().Context(), &req)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	resp, err := service.Navigate(c.Request().Context(), &req)
 	if err != nil {
 		return mapError(err)
 	}
@@ -435,7 +517,12 @@ func (h *Handler) Screenshot(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
 	}
 
-	resp, err := h.service.Screenshot(c.Request().Context(), &req)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	resp, err := service.Screenshot(c.Request().Context(), &req)
 	if err != nil {
 		return mapError(err)
 	}
@@ -452,7 +539,12 @@ func (h *Handler) PDF(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
 	}
 
-	resp, err := h.service.PDF(c.Request().Context(), &req)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	resp, err := service.PDF(c.Request().Context(), &req)
 	if err != nil {
 		return mapError(err)
 	}
@@ -466,7 +558,12 @@ func (h *Handler) Snapshot(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	resp, err := h.service.Snapshot(c.Request().Context(), &req)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	resp, err := service.Snapshot(c.Request().Context(), &req)
 	if err != nil {
 		return mapError(err)
 	}
@@ -486,7 +583,12 @@ func (h *Handler) Scrape(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "selectors is required")
 	}
 
-	resp, err := h.service.Scrape(c.Request().Context(), &req)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	resp, err := service.Scrape(c.Request().Context(), &req)
 	if err != nil {
 		return mapError(err)
 	}
@@ -503,7 +605,12 @@ func (h *Handler) Act(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "kind is required")
 	}
 
-	resp, err := h.service.Act(c.Request().Context(), &req)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	resp, err := service.Act(c.Request().Context(), &req)
 	if err != nil {
 		return mapError(err)
 	}
@@ -523,7 +630,12 @@ func (h *Handler) Automate(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "steps is required")
 	}
 
-	resp, err := h.service.Automate(c.Request().Context(), &req)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	resp, err := service.Automate(c.Request().Context(), &req)
 	if err != nil {
 		return mapError(err)
 	}
@@ -537,7 +649,12 @@ func (h *Handler) Console(c echo.Context) error {
 	req.Level = c.QueryParam("level")
 	req.Clear = c.QueryParam("clear") == "true"
 
-	resp, err := h.service.Console(c.Request().Context(), &req)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	resp, err := service.Console(c.Request().Context(), &req)
 	if err != nil {
 		return mapError(err)
 	}
@@ -546,7 +663,12 @@ func (h *Handler) Console(c echo.Context) error {
 
 // ListRecipes returns all available recipes.
 func (h *Handler) ListRecipes(c echo.Context) error {
-	recipes := h.service.Recipes()
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	recipes := service.Recipes()
 	return c.JSON(http.StatusOK, recipes.List())
 }
 
@@ -563,7 +685,12 @@ func (h *Handler) ExecuteRecipe(c echo.Context) error {
 		req.Params = make(map[string]string)
 	}
 
-	resp, err := h.service.ExecuteRecipe(c.Request().Context(), &req)
+	service := h.getService()
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	resp, err := service.ExecuteRecipe(c.Request().Context(), &req)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}

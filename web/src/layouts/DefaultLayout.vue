@@ -1,24 +1,37 @@
 <script setup lang="ts">
 import { RouterView, useRoute } from 'vue-router'
-import { computed, ref, provide, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
-import { useI18n } from 'vue-i18n'
-import AppSidebar from '@/components/AppSidebar.vue'
+import {
+  computed,
+  ref,
+  provide,
+  onMounted,
+  onUnmounted,
+  defineAsyncComponent,
+  type ComponentPublicInstance,
+} from 'vue'
 const FormFillerWidget = defineAsyncComponent(
   () => import('@/components/formfiller/FormFillerWidget.vue')
 )
-import PreviewOnboardingModal from '@/components/onboarding/PreviewOnboardingModal.vue'
-import FullscreenModal from '@/components/typeless/FullscreenModal.vue'
-import GlobalVoiceWakeBanner from '@/components/voicewake/GlobalVoiceWakeBanner.vue'
 import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
 import { usePreviewStore } from '@/stores/preview'
 import { refreshTauriDetection, useTauri } from '@/composables/useTauri'
 import { useSettingsStore } from '@/stores/settings'
 
+const AppSidebar = defineAsyncComponent(() => import('@/components/AppSidebar.vue'))
+const PreviewOnboardingModal = defineAsyncComponent(
+  () => import('@/components/onboarding/PreviewOnboardingModal.vue')
+)
+const FullscreenModal = defineAsyncComponent(
+  () => import('@/components/typeless/FullscreenModal.vue')
+)
+const GlobalVoiceWakeBanner = defineAsyncComponent(
+  () => import('@/components/voicewake/GlobalVoiceWakeBanner.vue')
+)
+
 const previewStore = usePreviewStore()
 const isPreviewMode = computed(() => previewStore.isPreviewMode)
-const { t, te } = useI18n()
 
-const { isTauri, platform, setCloseBehavior } = useTauri()
+const { isTauri, platform, setCloseBehavior, startWindowDragging } = useTauri()
 const settingsStore = useSettingsStore()
 const DESKTOP_SIDEBAR_BREAKPOINT = 1024
 
@@ -28,7 +41,6 @@ const hideLayout = computed(() => route.meta.hideLayout === true)
 const isChatRoute = computed(() => route.path.startsWith('/chat'))
 const isHomeRoute = computed(() => route.name === 'Home' || route.path === '/home')
 const showMacosWindowChrome = computed(() => isTauri.value && platform.value === 'macos')
-const showWindowChromeLabel = computed(() => !isChatRoute.value)
 const showPreviewOnboarding = computed(
   () =>
     isPreviewMode.value &&
@@ -45,62 +57,23 @@ const hasHiddenSidebarViewport = ref(detectHiddenSidebarViewport())
 const showSidebarToggle = computed(() => hasHiddenSidebarViewport.value && !isChatRoute.value)
 
 // Sidebar ref for mobile toggle
-type AppSidebarExposed = InstanceType<typeof AppSidebar> & {
+type AppSidebarExposed = ComponentPublicInstance & {
+  toggle?: () => void
   workspacePanelOpen?: boolean
+  isCollapsed?: boolean
 }
 
 const sidebarRef = ref<AppSidebarExposed | null>(null)
 const workspacePanelOpen = computed(() => Boolean(sidebarRef.value?.workspacePanelOpen))
 const sidebarCollapsed = computed(() => Boolean(sidebarRef.value?.isCollapsed))
 
-function chromeLabel(key: string, fallback: string) {
-  return te(key) ? t(key) : fallback
+function toggleSidebar() {
+  sidebarRef.value?.toggle?.()
 }
 
-const windowChromeSectionLabel = computed(() => {
-  const routeName = typeof route.name === 'string' ? route.name : ''
-  switch (routeName) {
-    case 'Chat':
-      return chromeLabel('nav.chat', 'Chat')
-    case 'Home':
-      return chromeLabel('nav.dashboard', 'Dashboard')
-    case 'Settings':
-      return chromeLabel('nav.settings', 'Settings')
-    case 'Plugins':
-      return chromeLabel('nav.plugins', 'Extensions')
-    case 'Profile':
-      return chromeLabel('nav.profile', 'Profile')
-    case 'VoiceChat':
-      return chromeLabel('voiceView.title', 'Voice')
-    case 'Channels':
-      return chromeLabel('nav.channels', 'Channels')
-    case 'Security':
-      return chromeLabel('nav.security', 'Security')
-    case 'CronJobs':
-      return chromeLabel('nav.automation', 'Automation')
-    case 'AuditLogs':
-      return chromeLabel('audit.title', 'Audit')
-    case 'Billing':
-      return chromeLabel('nav.billing', 'Billing')
-    case 'Tenants':
-      return chromeLabel('tenants.title', 'Workspaces')
-    case 'TenantDetail':
-      return chromeLabel('tenants.title', 'Workspaces')
-    case 'AuthProviders':
-      return chromeLabel('authProviders.title', 'Authentication Providers')
-    case 'Users':
-      return chromeLabel('nav.users', 'Users')
-    case 'Login':
-      return chromeLabel('auth.signIn', 'Sign in')
-    case 'ConnectionError':
-      return chromeLabel('connection.quality.offline', 'Offline')
-    default:
-      return routeName ? routeName.replace(/([a-z])([A-Z])/g, '$1 $2') : 'ZimaOS Blue'
-  }
-})
-
-function toggleSidebar() {
-  sidebarRef.value?.toggle()
+function handleWindowChromeMouseDown(event: MouseEvent) {
+  if (!showMacosWindowChrome.value || event.button !== 0) return
+  void startWindowDragging()
 }
 
 // Provide toggle for child components (e.g. ChatView on mobile)
@@ -143,15 +116,11 @@ onUnmounted(() => {
       v-if="showMacosWindowChrome"
       class="layout-window-chrome"
       data-tauri-drag-region
+      @mousedown="handleWindowChromeMouseDown"
     >
-      <div class="layout-window-chrome-bar" aria-hidden="true">
-        <div class="layout-window-chrome-traffic-slot" aria-hidden="true" />
-        <div v-if="showWindowChromeLabel" class="layout-window-chrome-pill">
-          <span class="layout-window-chrome-app">ZimaOS Blue</span>
-          <span class="layout-window-chrome-divider" aria-hidden="true" />
-          <span class="layout-window-chrome-section">{{ windowChromeSectionLabel }}</span>
-        </div>
-        <div class="layout-window-chrome-trailing" aria-hidden="true" />
+      <div class="layout-window-chrome-bar" aria-hidden="true" data-tauri-drag-region>
+        <div class="layout-window-chrome-traffic-slot" aria-hidden="true" data-tauri-drag-region />
+        <div class="layout-window-chrome-spacer" aria-hidden="true" data-tauri-drag-region />
       </div>
     </header>
 
@@ -169,7 +138,20 @@ onUnmounted(() => {
         'layout-body-chat-nav-hidden': isChatRoute && sidebarCollapsed,
       }"
     >
-      <AppSidebar ref="sidebarRef" />
+      <Suspense>
+        <AppSidebar ref="sidebarRef" />
+        <template #fallback>
+          <aside class="layout-sidebar-loading" aria-hidden="true">
+            <div class="layout-sidebar-loading__logo" />
+            <div class="layout-sidebar-loading__nav">
+              <div class="layout-sidebar-loading__item" />
+              <div class="layout-sidebar-loading__item" />
+              <div class="layout-sidebar-loading__item is-wide" />
+            </div>
+            <div class="layout-sidebar-loading__footer" />
+          </aside>
+        </template>
+      </Suspense>
       <div
         class="layout-right flex-1 min-w-0 min-h-0 flex flex-col"
         :class="{ 'layout-right-with-workspace': workspacePanelOpen }"
@@ -203,7 +185,34 @@ onUnmounted(() => {
               </svg>
             </button>
           </div>
-          <RouterView />
+          <RouterView v-slot="{ Component }">
+            <Suspense v-if="Component">
+              <component :is="Component" />
+              <template #fallback>
+                <div
+                  class="layout-route-loading"
+                  :class="{ 'layout-route-loading-chat': isChatRoute }"
+                  aria-hidden="true"
+                >
+                  <div class="layout-route-loading__hero" />
+                  <div class="layout-route-loading__line is-long" />
+                  <div class="layout-route-loading__line" />
+                  <div class="layout-route-loading__line is-short" />
+                </div>
+              </template>
+            </Suspense>
+            <div
+              v-else
+              class="layout-route-loading"
+              :class="{ 'layout-route-loading-chat': isChatRoute }"
+              aria-hidden="true"
+            >
+              <div class="layout-route-loading__hero" />
+              <div class="layout-route-loading__line is-long" />
+              <div class="layout-route-loading__line" />
+              <div class="layout-route-loading__line is-short" />
+            </div>
+          </RouterView>
         </main>
       </div>
     </div>
@@ -221,7 +230,7 @@ onUnmounted(() => {
 .app-shell {
   --layout-shell-spacing: 0.8rem;
   --layout-shell-offset: calc(var(--layout-shell-spacing) * 2);
-  --layout-chat-top-spacing: var(--layout-shell-spacing);
+  --layout-chat-top-spacing: calc(var(--layout-shell-spacing) + 0.82rem);
   --layout-chat-bottom-spacing: var(--layout-shell-spacing);
   --layout-chat-vertical-offset: calc(
     var(--layout-chat-top-spacing) + var(--layout-chat-bottom-spacing)
@@ -229,6 +238,7 @@ onUnmounted(() => {
   --workspace-dock-width: 28rem;
   --layout-viewport-height: 100vh;
   --layout-window-chrome-height: 0px;
+  --layout-window-drag-height: 0px;
   --layout-content-height: calc(
     var(--layout-viewport-height) - var(--layout-window-chrome-height)
   );
@@ -253,15 +263,15 @@ onUnmounted(() => {
 
 .app-shell-macos-chrome {
   --layout-window-chrome-height: 2.92rem;
-  --layout-chat-top-spacing: 0.34rem;
+  --layout-window-drag-height: 1.7rem;
   --layout-content-height: var(--layout-viewport-height);
 }
 
 .layout-window-chrome {
   position: absolute;
   inset: 0 0 auto 0;
-  z-index: 20;
-  height: var(--layout-window-chrome-height);
+  z-index: 70;
+  height: var(--layout-window-drag-height);
   box-sizing: border-box;
   padding: 0.22rem 0.78rem 0;
   user-select: none;
@@ -273,23 +283,8 @@ onUnmounted(() => {
   box-sizing: border-box;
   min-height: 100%;
   display: grid;
-  grid-template-columns: 4.2rem minmax(0, 1fr) 4.2rem;
+  grid-template-columns: 4.2rem minmax(0, 1fr);
   align-items: center;
-}
-
-.layout-window-chrome-bar,
-.layout-window-chrome-bar * {
-  pointer-events: none;
-}
-
-.layout-window-chrome-pill {
-  justify-self: center;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.42rem;
-  min-width: 0;
-  max-width: min(100%, 20rem);
-  padding: 0;
 }
 
 .layout-window-chrome-traffic-slot {
@@ -297,37 +292,9 @@ onUnmounted(() => {
   min-width: 4.2rem;
 }
 
-.layout-window-chrome-trailing {
-  width: 4.2rem;
-  min-width: 4.2rem;
-}
-
-.layout-window-chrome-app,
-.layout-window-chrome-section {
-  display: inline-flex;
-  align-items: center;
+.layout-window-chrome-spacer {
   min-width: 0;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-}
-
-.layout-window-chrome-app {
-  font-size: 0.68rem;
-  font-weight: 520;
-  color: rgba(15, 23, 42, 0.46);
-}
-
-.layout-window-chrome-section {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: rgba(15, 23, 42, 0.84);
-}
-
-.layout-window-chrome-divider {
-  width: 1px;
-  height: 0.72rem;
-  background: rgba(148, 163, 184, 0.24);
+  min-height: 100%;
 }
 
 .layout-public-view {
@@ -357,35 +324,6 @@ html[data-theme='light'][data-blue-macos-glass='true'] .app-shell {
 html.light[data-blue-macos-glass='true'] .app-shell-home,
 html[data-theme='light'][data-blue-macos-glass='true'] .app-shell-home {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(241, 245, 249, 0.6) 100%);
-}
-
-html[data-blue-macos-glass='true'] .layout-window-chrome-pill {
-  background: transparent;
-}
-
-html.light[data-blue-macos-glass='true'] .layout-window-chrome-pill,
-html[data-theme='light'][data-blue-macos-glass='true'] .layout-window-chrome-pill {
-  background: transparent;
-}
-
-html.light[data-blue-macos-glass='true'] .layout-window-chrome-app,
-html[data-theme='light'][data-blue-macos-glass='true'] .layout-window-chrome-app {
-  color: rgba(15, 23, 42, 0.42);
-}
-
-html.light[data-blue-macos-glass='true'] .layout-window-chrome-section,
-html[data-theme='light'][data-blue-macos-glass='true'] .layout-window-chrome-section {
-  color: rgba(15, 23, 42, 0.82);
-}
-
-html.dark[data-blue-macos-glass='true'] .layout-window-chrome-app,
-html[data-theme='dark'][data-blue-macos-glass='true'] .layout-window-chrome-app {
-  color: rgba(255, 255, 255, 0.44);
-}
-
-html.dark[data-blue-macos-glass='true'] .layout-window-chrome-section,
-html[data-theme='dark'][data-blue-macos-glass='true'] .layout-window-chrome-section {
-  color: rgba(255, 255, 255, 0.86);
 }
 
 html[data-blue-macos-glass='true'] .layout-public-view {
@@ -445,6 +383,148 @@ html.dark .layout-mobile-nav-button:hover {
   background: rgba(15, 23, 42, 0.82);
 }
 
+.layout-sidebar-loading {
+  width: 17rem;
+  flex-shrink: 0;
+  padding: 1rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(248, 250, 252, 0.92));
+}
+
+.layout-sidebar-loading__logo,
+.layout-sidebar-loading__item,
+.layout-sidebar-loading__footer,
+.layout-route-loading__hero,
+.layout-route-loading__line {
+  position: relative;
+  overflow: hidden;
+  background: rgba(226, 232, 240, 0.88);
+  border-radius: 999px;
+}
+
+.layout-sidebar-loading__logo::after,
+.layout-sidebar-loading__item::after,
+.layout-sidebar-loading__footer::after,
+.layout-route-loading__hero::after,
+.layout-route-loading__line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+  animation: layout-loading-shimmer 1.15s ease-in-out infinite;
+}
+
+.layout-sidebar-loading__logo {
+  width: 7.5rem;
+  height: 1.1rem;
+}
+
+.layout-sidebar-loading__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.layout-sidebar-loading__item {
+  height: 2.5rem;
+  border-radius: 1rem;
+}
+
+.layout-sidebar-loading__item.is-wide {
+  width: 88%;
+}
+
+.layout-sidebar-loading__footer {
+  margin-top: auto;
+  height: 3.25rem;
+  border-radius: 1.2rem;
+}
+
+.layout-route-loading {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.layout-route-loading-chat {
+  max-width: 62rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.layout-route-loading__hero {
+  height: 12rem;
+  border-radius: 2rem;
+}
+
+.layout-route-loading__line {
+  height: 1rem;
+}
+
+.layout-route-loading__line.is-long {
+  width: 92%;
+}
+
+.layout-route-loading__line.is-short {
+  width: 62%;
+}
+
+@keyframes layout-loading-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+:root.dark .layout-sidebar-loading,
+[data-theme='dark'] .layout-sidebar-loading,
+html.dark .layout-sidebar-loading {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(15, 23, 42, 0.96));
+  border-right-color: rgba(71, 85, 105, 0.32);
+}
+
+:root.dark .layout-sidebar-loading__logo,
+:root.dark .layout-sidebar-loading__item,
+:root.dark .layout-sidebar-loading__footer,
+:root.dark .layout-route-loading__hero,
+:root.dark .layout-route-loading__line,
+[data-theme='dark'] .layout-sidebar-loading__logo,
+[data-theme='dark'] .layout-sidebar-loading__item,
+[data-theme='dark'] .layout-sidebar-loading__footer,
+[data-theme='dark'] .layout-route-loading__hero,
+[data-theme='dark'] .layout-route-loading__line,
+html.dark .layout-sidebar-loading__logo,
+html.dark .layout-sidebar-loading__item,
+html.dark .layout-sidebar-loading__footer,
+html.dark .layout-route-loading__hero,
+html.dark .layout-route-loading__line {
+  background: rgba(51, 65, 85, 0.88);
+}
+
+:root.dark .layout-sidebar-loading__logo::after,
+:root.dark .layout-sidebar-loading__item::after,
+:root.dark .layout-sidebar-loading__footer::after,
+:root.dark .layout-route-loading__hero::after,
+:root.dark .layout-route-loading__line::after,
+[data-theme='dark'] .layout-sidebar-loading__logo::after,
+[data-theme='dark'] .layout-sidebar-loading__item::after,
+[data-theme='dark'] .layout-sidebar-loading__footer::after,
+[data-theme='dark'] .layout-route-loading__hero::after,
+[data-theme='dark'] .layout-route-loading__line::after,
+html.dark .layout-sidebar-loading__logo::after,
+html.dark .layout-sidebar-loading__item::after,
+html.dark .layout-sidebar-loading__footer::after,
+html.dark .layout-route-loading__hero::after,
+html.dark .layout-route-loading__line::after {
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.2), transparent);
+}
+
 @media (min-width: 1024px) {
   .layout-body {
     --layout-sidebar-height: calc(var(--layout-content-height) - var(--layout-shell-offset));
@@ -488,12 +568,20 @@ html.dark .layout-mobile-nav-button:hover {
 }
 
 @media (max-width: 767px) {
-  .layout-window-chrome {
-    padding-inline: 0.56rem;
+  .layout-sidebar-loading {
+    display: none;
   }
 
-  .layout-window-chrome-pill {
-    max-width: 100%;
+  .layout-route-loading {
+    padding: 1rem;
+  }
+
+  .layout-route-loading__hero {
+    height: 9rem;
+  }
+
+  .layout-window-chrome {
+    padding-inline: 0.56rem;
   }
 
   .layout-window-chrome-traffic-slot {
@@ -501,23 +589,8 @@ html.dark .layout-mobile-nav-button:hover {
     min-width: 3.2rem;
   }
 
-  .layout-window-chrome-trailing {
-    width: 3.2rem;
-    min-width: 3.2rem;
-  }
-
-  .layout-window-chrome-app {
-    display: none;
-  }
-
-  .layout-window-chrome-divider {
-    display: none;
-  }
-
-  .layout-window-chrome-section {
-    max-width: 9rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .layout-window-chrome-bar {
+    grid-template-columns: 3.2rem minmax(0, 1fr);
   }
 }
 </style>

@@ -241,3 +241,9 @@ type TypingReactionCleaner interface {
 type OutboundCapabilityProvider interface {
 	OutboundCapabilities() OutboundCapabilities
 }
+
+// BotMentionTargetProvider is an optional interface for channels to expose the
+// stable bot identities that inbound mentions should be matched against.
+type BotMentionTargetProvider interface {
+	BotMentionTargets() []string
+}

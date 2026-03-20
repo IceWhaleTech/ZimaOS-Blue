@@ -23,7 +23,8 @@ func TestChannelConfigStore_PersistsSettings(t *testing.T) {
 
 	settings := ChannelSettings{
 		GroupAccess: channel.GroupAccessConfig{
-			Policy: channel.GroupPolicyAllowlist,
+			Policy:        channel.GroupPolicyAllowlist,
+			MentionPolicy: channel.GroupMentionPolicyAlways,
 			AllowedChatIDs: map[string][]string{
 				"feishu": {"oc_allowed"},
 			},
@@ -41,6 +42,9 @@ func TestChannelConfigStore_PersistsSettings(t *testing.T) {
 	if got.GroupAccess.Policy != channel.GroupPolicyAllowlist {
 		t.Fatalf("policy = %q, want %q", got.GroupAccess.Policy, channel.GroupPolicyAllowlist)
 	}
+	if got.GroupAccess.MentionPolicy != channel.GroupMentionPolicyAlways {
+		t.Fatalf("mention policy = %q, want %q", got.GroupAccess.MentionPolicy, channel.GroupMentionPolicyAlways)
+	}
 	if len(got.GroupAccess.AllowedChatIDs["feishu"]) != 1 || got.GroupAccess.AllowedChatIDs["feishu"][0] != "oc_allowed" {
 		t.Fatalf("unexpected allowed chat IDs: %#v", got.GroupAccess.AllowedChatIDs)
 	}
@@ -54,7 +58,8 @@ func TestApplyChannelSettings_OverridesGroupAccess(t *testing.T) {
 
 	settings := ChannelSettings{
 		GroupAccess: channel.GroupAccessConfig{
-			Policy: channel.GroupPolicyAllowlist,
+			Policy:        channel.GroupPolicyAllowlist,
+			MentionPolicy: channel.GroupMentionPolicyAlways,
 			AllowedChatIDs: map[string][]string{
 				"feishu": {"oc_allowed"},
 			},
@@ -64,6 +69,9 @@ func TestApplyChannelSettings_OverridesGroupAccess(t *testing.T) {
 	got := ApplyChannelSettings(cfg, settings)
 	if got.GroupAccess.Policy != channel.GroupPolicyAllowlist {
 		t.Fatalf("policy = %q, want %q", got.GroupAccess.Policy, channel.GroupPolicyAllowlist)
+	}
+	if got.GroupAccess.MentionPolicy != channel.GroupMentionPolicyAlways {
+		t.Fatalf("mention policy = %q, want %q", got.GroupAccess.MentionPolicy, channel.GroupMentionPolicyAlways)
 	}
 	if len(got.GroupAccess.AllowedChatIDs["feishu"]) != 1 || got.GroupAccess.AllowedChatIDs["feishu"][0] != "oc_allowed" {
 		t.Fatalf("unexpected allowed chat IDs: %#v", got.GroupAccess.AllowedChatIDs)
@@ -79,7 +87,7 @@ func TestChannelConfigHandler_UpdateSettings_AppliesRuntimeGroupAccess(t *testin
 	handler.SetManager(manager)
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodPut, "/channels/settings", strings.NewReader(`{"group_access":{"policy":"allowlist","allowed_chat_ids":{"feishu":["oc_allowed"]}}}`))
+	req := httptest.NewRequest(http.MethodPut, "/channels/settings", strings.NewReader(`{"group_access":{"policy":"allowlist","mention_policy":"always","allowed_chat_ids":{"feishu":["oc_allowed"]}}}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -95,6 +103,9 @@ func TestChannelConfigHandler_UpdateSettings_AppliesRuntimeGroupAccess(t *testin
 	if gotRuntime.Policy != channel.GroupPolicyAllowlist {
 		t.Fatalf("runtime policy = %q, want %q", gotRuntime.Policy, channel.GroupPolicyAllowlist)
 	}
+	if gotRuntime.MentionPolicy != channel.GroupMentionPolicyAlways {
+		t.Fatalf("runtime mention policy = %q, want %q", gotRuntime.MentionPolicy, channel.GroupMentionPolicyAlways)
+	}
 	if len(gotRuntime.AllowedChatIDs["feishu"]) != 1 || gotRuntime.AllowedChatIDs["feishu"][0] != "oc_allowed" {
 		t.Fatalf("unexpected runtime allowed chat IDs: %#v", gotRuntime.AllowedChatIDs)
 	}
@@ -106,6 +117,9 @@ func TestChannelConfigHandler_UpdateSettings_AppliesRuntimeGroupAccess(t *testin
 	if gotStored.GroupAccess.Policy != channel.GroupPolicyAllowlist {
 		t.Fatalf("stored policy = %q, want %q", gotStored.GroupAccess.Policy, channel.GroupPolicyAllowlist)
 	}
+	if gotStored.GroupAccess.MentionPolicy != channel.GroupMentionPolicyAlways {
+		t.Fatalf("stored mention policy = %q, want %q", gotStored.GroupAccess.MentionPolicy, channel.GroupMentionPolicyAlways)
+	}
 }
 
 func TestChannelConfigHandler_GetSettings_ReturnsRuntimePolicy(t *testing.T) {
@@ -114,7 +128,8 @@ func TestChannelConfigHandler_GetSettings_ReturnsRuntimePolicy(t *testing.T) {
 	store := NewChannelConfigStore(kvstore.NewMemoryStore())
 	manager := channel.NewManager(channel.DefaultConfig(), zap.NewNop())
 	manager.SetGroupAccess(channel.GroupAccessConfig{
-		Policy: channel.GroupPolicyDisabled,
+		Policy:        channel.GroupPolicyDisabled,
+		MentionPolicy: channel.GroupMentionPolicyAlways,
 	})
 
 	handler := NewChannelConfigHandler(store)
@@ -138,6 +153,9 @@ func TestChannelConfigHandler_GetSettings_ReturnsRuntimePolicy(t *testing.T) {
 	}
 	if got.GroupAccess.Policy != channel.GroupPolicyDisabled {
 		t.Fatalf("policy = %q, want %q", got.GroupAccess.Policy, channel.GroupPolicyDisabled)
+	}
+	if got.GroupAccess.MentionPolicy != channel.GroupMentionPolicyAlways {
+		t.Fatalf("mention policy = %q, want %q", got.GroupAccess.MentionPolicy, channel.GroupMentionPolicyAlways)
 	}
 }
 
@@ -175,6 +193,9 @@ func TestChannelConfigStore_GetSettings_DefaultMissing(t *testing.T) {
 	if got.GroupAccess.Policy != channel.GroupPolicyOpen {
 		t.Fatalf("policy = %q, want %q", got.GroupAccess.Policy, channel.GroupPolicyOpen)
 	}
+	if got.GroupAccess.MentionPolicy != channel.GroupMentionPolicyMentioned {
+		t.Fatalf("mention policy = %q, want %q", got.GroupAccess.MentionPolicy, channel.GroupMentionPolicyMentioned)
+	}
 }
 
 func TestChannelConfigStore_RawPersistenceAccessible(t *testing.T) {
@@ -184,7 +205,8 @@ func TestChannelConfigStore_RawPersistenceAccessible(t *testing.T) {
 	store := NewChannelConfigStore(kv)
 	if err := store.SetSettings(ChannelSettings{
 		GroupAccess: channel.GroupAccessConfig{
-			Policy: channel.GroupPolicyAllowlist,
+			Policy:        channel.GroupPolicyAllowlist,
+			MentionPolicy: channel.GroupMentionPolicyAlways,
 			AllowedChatIDs: map[string][]string{
 				"feishu": {"oc_allowed"},
 			},
@@ -199,5 +221,31 @@ func TestChannelConfigStore_RawPersistenceAccessible(t *testing.T) {
 	}
 	if raw.GroupAccess.Policy != channel.GroupPolicyAllowlist {
 		t.Fatalf("raw policy = %q, want %q", raw.GroupAccess.Policy, channel.GroupPolicyAllowlist)
+	}
+	if raw.GroupAccess.MentionPolicy != channel.GroupMentionPolicyAlways {
+		t.Fatalf("raw mention policy = %q, want %q", raw.GroupAccess.MentionPolicy, channel.GroupMentionPolicyAlways)
+	}
+}
+
+func TestChannelConfigHandler_UpdateSettings_RejectsInvalidMentionPolicy(t *testing.T) {
+	t.Parallel()
+
+	handler := NewChannelConfigHandler(NewChannelConfigStore(kvstore.NewMemoryStore()))
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPut, "/channels/settings", strings.NewReader(`{"group_access":{"policy":"open","mention_policy":"sometimes"}}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.UpdateSettings(c)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	httpErr, ok := err.(*echo.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTP error, got %T", err)
+	}
+	if httpErr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", httpErr.Code, http.StatusBadRequest)
 	}
 }

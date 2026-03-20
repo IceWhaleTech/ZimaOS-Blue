@@ -58,6 +58,9 @@ func (c *Controller) Submit(ctx context.Context, spec RunSpec) (*Run, error) {
 		ID:             uuid.NewString(),
 		RootRunID:      "",
 		ParentRunID:    strings.TrimSpace(spec.ParentRunID),
+		GroupID:        strings.TrimSpace(spec.GroupID),
+		GroupItemID:    strings.TrimSpace(spec.GroupItemID),
+		AttemptIndex:   spec.AttemptIndex,
 		Kind:           spec.Kind,
 		Status:         initialStatusForKind(spec.Kind),
 		UserID:         strings.TrimSpace(spec.UserID),
@@ -149,6 +152,9 @@ func (c *Controller) SpawnChild(ctx context.Context, parentID string, spec RunSp
 		ID:             uuid.NewString(),
 		RootRunID:      parent.RootRunID,
 		ParentRunID:    parent.ID,
+		GroupID:        spec.GroupID,
+		GroupItemID:    spec.GroupItemID,
+		AttemptIndex:   spec.AttemptIndex,
 		Kind:           spec.Kind,
 		Status:         initialStatusForKind(spec.Kind),
 		UserID:         spec.UserID,
@@ -332,6 +338,11 @@ func (c *Controller) SyncSnapshot(ctx context.Context, snapshot *Run) error {
 	}
 	snapshot.RootRunID = current.RootRunID
 	snapshot.ParentRunID = current.ParentRunID
+	snapshot.GroupID = current.GroupID
+	snapshot.GroupItemID = current.GroupItemID
+	if snapshot.AttemptIndex <= 0 {
+		snapshot.AttemptIndex = current.AttemptIndex
+	}
 	if snapshot.CreatedAt.IsZero() {
 		snapshot.CreatedAt = current.CreatedAt
 	}

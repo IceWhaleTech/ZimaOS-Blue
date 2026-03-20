@@ -1,22 +1,66 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import {
-  providerPoolApi,
-  type Provider,
-  type Model,
-  type UsageSummary,
-  type IDEInfo,
-  type PricingConfig,
-  type ModelPricing,
-  type ModelParams,
-  type RoutingMode,
-  type LocationStats,
-  type TrialQuotaStatus,
-  type OAuthQuotaInfo,
-  type ProviderVerificationResult,
-  type VerifyProviderCandidateRequest,
+import type {
+  Provider,
+  Model,
+  UsageSummary,
+  IDEInfo,
+  PricingConfig,
+  ModelPricing,
+  ModelParams,
+  RoutingMode,
+  LocationStats,
+  TrialQuotaStatus,
+  OAuthQuotaInfo,
+  ProviderVerificationResult,
+  VerifyProviderCandidateRequest,
 } from '@/api/providerPool'
-import { mediaProviderApi, type MediaProviderConfig } from '@/api/mediaProviders'
+import type { MediaProviderConfig } from '@/api/mediaProviders'
+
+type ProviderPoolApiModule = typeof import('@/api/providerPool')
+type MediaProvidersApiModule = typeof import('@/api/mediaProviders')
+
+let providerPoolApiModulePromise: Promise<ProviderPoolApiModule> | null = null
+let mediaProvidersApiModulePromise: Promise<MediaProvidersApiModule> | null = null
+
+function createLazyApiProxy<T extends object>(load: () => Promise<T>): T {
+  return new Proxy(
+    {},
+    {
+      get(_target, prop) {
+        return async (...args: unknown[]) => {
+          const api = await load()
+          const value = Reflect.get(api as object, prop)
+          if (typeof value !== 'function') {
+            return value
+          }
+          return Reflect.apply(value as (...callArgs: unknown[]) => unknown, api, args)
+        }
+      },
+    }
+  ) as T
+}
+
+async function loadProviderPoolApi() {
+  if (!providerPoolApiModulePromise) {
+    providerPoolApiModulePromise = import('@/api/providerPool')
+  }
+  return (await providerPoolApiModulePromise).providerPoolApi
+}
+
+async function loadMediaProviderApi() {
+  if (!mediaProvidersApiModulePromise) {
+    mediaProvidersApiModulePromise = import('@/api/mediaProviders')
+  }
+  return (await mediaProvidersApiModulePromise).mediaProviderApi
+}
+
+const providerPoolApi = createLazyApiProxy<ProviderPoolApiModule['providerPoolApi']>(
+  loadProviderPoolApi
+)
+const mediaProviderApi = createLazyApiProxy<MediaProvidersApiModule['mediaProviderApi']>(
+  loadMediaProviderApi
+)
 
 export const useProviderPoolStore = defineStore('providerPool', () => {
   // State

@@ -13,8 +13,6 @@ const showUpdateDialog = ref(false)
 const autoCheck = ref(true)
 const checkError = ref<string | null>(null)
 const showUpToDate = ref(false)
-const delayCooldown = ref(0)
-let cooldownTimer: ReturnType<typeof setInterval> | null = null
 
 // Update flow state
 type UpdateState = 'idle' | 'downloading' | 'downloaded' | 'applying' | 'restarting' | 'polling'
@@ -59,23 +57,8 @@ const checkUpdate = async () => {
   }
 }
 
-function startCooldown(seconds: number) {
-  if (cooldownTimer) clearInterval(cooldownTimer)
-  delayCooldown.value = seconds
-  cooldownTimer = setInterval(() => {
-    delayCooldown.value--
-    if (delayCooldown.value <= 0) {
-      clearInterval(cooldownTimer!)
-      cooldownTimer = null
-    }
-  }, 1000)
-}
-
 function applyOTAResult(data: OTAStatus) {
   otaStatus.value = data
-  if (data.delay && data.delay > 0) {
-    startCooldown(data.delay)
-  }
   if (data.update_available) {
     fetchReleaseNotes()
   }
@@ -205,7 +188,6 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (cooldownTimer) clearInterval(cooldownTimer)
   if (progressTimer) clearInterval(progressTimer)
   if (healthTimer) clearInterval(healthTimer)
 })
@@ -470,19 +452,12 @@ onUnmounted(() => {
               <button
                 v-if="updateState === 'idle'"
                 @click="startDownload"
-                :disabled="delayCooldown > 0"
                 class="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
                 :class="
-                  delayCooldown > 0
-                    ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                    : 'bg-gray-800 hover:bg-gray-700 dark:bg-gray-200 dark:hover:bg-gray-300 text-white dark:text-gray-900'
+                  'bg-gray-800 hover:bg-gray-700 dark:bg-gray-200 dark:hover:bg-gray-300 text-white dark:text-gray-900'
                 "
               >
-                {{
-                  delayCooldown > 0
-                    ? `${t('settings.update.download')} (${delayCooldown}s)`
-                    : t('settings.update.download')
-                }}
+                {{ t('common.update') }}
               </button>
 
               <!-- Apply & Restart button (downloaded state) -->

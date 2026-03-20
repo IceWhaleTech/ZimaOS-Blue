@@ -120,12 +120,11 @@ func TestToolSelector_EmptyQuery(t *testing.T) {
 
 func TestToolSelector_FewTools(t *testing.T) {
 	ts := DefaultToolSelector()
-	// With only 3 tools, should return all regardless of query
 	defs := mockToolDefs()[:3]
 
 	selected := ts.Select("random query", defs)
-	if len(selected) != 3 {
-		t.Errorf("with few tools should return all, got %d", len(selected))
+	if len(selected) != 0 {
+		t.Errorf("zero-signal query should not expose unrelated tools, got %v", toolNames(selected))
 	}
 }
 
@@ -152,6 +151,150 @@ func TestDefaultToolSelector_AlwaysIncludesAsk(t *testing.T) {
 	selected := ts.Select("Calculate 2+2", defs)
 	if !containsToolName(selected, "ask") {
 		t.Errorf("default selector should keep ask, got: %v", toolNames(selected))
+	}
+}
+
+func TestToolSelector_PlainReplyQueryPrefersNoTools(t *testing.T) {
+	ts := DefaultToolSelector()
+	defs := append(mockToolDefs(),
+		ToolDefinition{Name: "exec", Description: "Run terminal commands."},
+		ToolDefinition{Name: "ask", Description: "Ask user preference questions."},
+		ToolDefinition{Name: "gateway", Description: "Inspect gateway state."},
+	)
+
+	selected := ts.Select(`Say "Hello, I'm ready!" to confirm you can respond.`, defs)
+	if len(selected) != 0 {
+		t.Fatalf("plain reply query should not expose tools, got: %v", toolNames(selected))
+	}
+}
+
+func TestToolSelector_NoZeroScoreFallbackNoise(t *testing.T) {
+	ts := DefaultToolSelector()
+	ts.MaxTools = 3
+	defs := []ToolDefinition{
+		{Name: "exec", Description: "Run terminal commands."},
+		{Name: "ask", Description: "Ask user preference questions."},
+		{Name: "gateway", Description: "Inspect gateway routes and connections."},
+		{Name: "ppt", Description: "Generate presentation slide assets."},
+		{Name: "calendar", Description: "Create and review calendar events."},
+		{Name: "email", Description: "Search and triage inbox messages."},
+	}
+
+	selected := ts.Select("obscure neutral phrase without tool overlap", defs)
+	if len(selected) > 2 {
+		t.Fatalf("expected selector to avoid arbitrary zero-score fallback, got: %v", toolNames(selected))
+	}
+	if containsToolName(selected, "gateway") || containsToolName(selected, "ppt") {
+		t.Fatalf("selector should not surface unrelated tools on zero-signal query, got: %v", toolNames(selected))
+	}
+}
+
+func TestToolSelector_WorkspaceFileTaskPrefersFileWorkflow(t *testing.T) {
+	ts := DefaultToolSelector()
+	ts.MaxTools = 8
+	defs := []ToolDefinition{
+		{Name: "exec", Description: "Run terminal commands."},
+		{Name: "ask", Description: "Ask user preference questions."},
+		{Name: "read", Description: "Read files from the workspace."},
+		{Name: "ls", Description: "List files in directories."},
+		{Name: "find", Description: "Find text in files."},
+		{Name: "write", Description: "Write files to the workspace."},
+		{Name: "convert", Description: "Convert and parse CSV/XLSX files."},
+		{Name: "calendar", Description: "Create and review calendar events."},
+		{Name: "email", Description: "Search and triage inbox messages."},
+		{Name: "research_run", Description: "Deep research with sources."},
+		{Name: "research_status", Description: "Get deep research job status."},
+		{Name: "reminder", Description: "Create reminders and notifications."},
+	}
+
+	selected := ts.Select("Review all files in the research/ folder and write a daily summary to daily_briefing.md.", defs)
+	names := toolNames(selected)
+
+	if !containsToolName(selected, "read") || !containsToolName(selected, "write") {
+		t.Fatalf("expected file workflow tools for workspace file task, got=%v", names)
+	}
+	if containsToolName(selected, "calendar") || containsToolName(selected, "email") {
+		t.Fatalf("expected local file task to suppress calendar/email tools, got=%v", names)
+	}
+	if containsToolName(selected, "research_run") || containsToolName(selected, "reminder") {
+		t.Fatalf("expected local file task to suppress remote productivity tools, got=%v", names)
+	}
+}
+
+func TestToolSelector_LiveWebQueryAvoidsLocalFileTools(t *testing.T) {
+	ts := DefaultToolSelector()
+	defs := []ToolDefinition{
+		{Name: "web_search", Description: "Search the web for latest sources and references."},
+		{Name: "read", Description: "Read workspace files."},
+		{Name: "write", Description: "Write workspace files."},
+		{Name: "convert", Description: "Convert CSV and XLSX files."},
+		{Name: "exec", Description: "Run terminal commands."},
+	}
+
+	selected := ts.Select("搜索最新新闻并给我来源和引用", defs)
+	names := toolNames(selected)
+	if !containsToolName(selected, "web_search") {
+		t.Fatalf("expected web_search for live web query, got=%v", names)
+	}
+	if containsToolName(selected, "read") || containsToolName(selected, "write") || containsToolName(selected, "convert") {
+		t.Fatalf("expected live web query to suppress local file tools, got=%v", names)
+	}
+}
+
+func TestToolSelector_UIReviewerNeedsUIEvidence(t *testing.T) {
+	ts := DefaultToolSelector()
+	defs := []ToolDefinition{
+		{Name: "ui_reviewer", Description: "Review screenshots and UI layouts."},
+		{Name: "analyze", Description: "Analyze files and reports."},
+		{Name: "read", Description: "Read workspace files."},
+	}
+
+	selected := ts.Select("Review the files in docs/ and summarize the report.", defs)
+	if containsToolName(selected, "ui_reviewer") {
+		t.Fatalf("ui_reviewer should stay hidden without UI evidence, got=%v", toolNames(selected))
+	}
+
+	selected = ts.Select("Review this screenshot and audit the UI layout.", defs)
+	if !containsToolName(selected, "ui_reviewer") {
+		t.Fatalf("expected ui_reviewer when screenshot/UI evidence exists, got=%v", toolNames(selected))
+	}
+}
+
+func TestToolSelector_DefinitionMetaQuerySuppressesTools(t *testing.T) {
+	ts := DefaultToolSelector()
+	defs := []ToolDefinition{
+		{Name: "web_search", Description: "Search the web."},
+		{Name: "browser", Description: "Open web pages."},
+		{Name: "exec", Description: "Run commands."},
+	}
+
+	selected := ts.Select("How to use the web_search tool?", defs)
+	if len(selected) != 0 {
+		t.Fatalf("definition/meta query should suppress tool exposure, got=%v", toolNames(selected))
+	}
+}
+
+func TestLooksLikeWorkspaceFileTask(t *testing.T) {
+	positive := []string{
+		"Review all files in the research/ folder and write a daily summary to daily_briefing.md.",
+		"The emails have been provided to you in the inbox/ folder in your workspace. Read all 13 emails and create a triage report.",
+		"I have two data files in my workspace: quarterly_sales.csv and company_expenses.xlsx. Read and analyze both files.",
+	}
+	for _, query := range positive {
+		if !LooksLikeWorkspaceFileTask(query) {
+			t.Fatalf("expected workspace file task detection for %q", query)
+		}
+	}
+
+	negative := []string{
+		"Create a competitive landscape analysis for the enterprise observability market and save it to market_research.md.",
+		"Archive unread emails from Alice.",
+		"Show me today's calendar.",
+	}
+	for _, query := range negative {
+		if LooksLikeWorkspaceFileTask(query) {
+			t.Fatalf("did not expect workspace file task detection for %q", query)
+		}
 	}
 }
 

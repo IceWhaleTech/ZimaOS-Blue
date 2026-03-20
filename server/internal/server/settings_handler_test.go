@@ -5,20 +5,26 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
 
 func boolPtr(v bool) *bool { return &v }
 
-func TestGetSmartToolSelection_DefaultFalse(t *testing.T) {
+func TestGetSmartToolSelection_DefaultTrue(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
-	if h.GetSmartToolSelection() {
-		t.Fatalf("GetSmartToolSelection() = true, want false")
+	if !h.GetSmartToolSelection() {
+		t.Fatalf("GetSmartToolSelection() = false, want true")
 	}
 }
 
@@ -176,6 +182,93 @@ func TestGetSkillSelectorConfidenceThreshold_Default(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
 	if got := h.GetSkillSelectorConfidenceThreshold(); got != 0.78 {
 		t.Fatalf("GetSkillSelectorConfidenceThreshold() = %v, want 0.78", got)
+	}
+}
+
+func TestSelectorDryRunReturnsDebugSignals(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	smartSkill := true
+	h.settings.SmartSkillSelection = &smartSkill
+
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web for latest sources."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files."})
+
+	chatHandler := NewChatHandler(nil, nil, registry)
+	chatHandler.SetSettingsHandler(h)
+	chatHandler.SetToolSelector(tools.DefaultToolSelector())
+	chatHandler.SetToolRouter(tools.DefaultToolRouter())
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	for _, tc := range []struct {
+		id   string
+		desc string
+	}{
+		{id: "web_search", desc: "search the web"},
+		{id: "browser", desc: "browse urls"},
+	} {
+		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir skill: %v", err)
+		}
+		content := "---\nname: " + tc.id + "\ndescription: " + tc.desc + "\nos: [\"" + runtime.GOOS + "\"]\n---\n# " + tc.id + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatalf("write skill: %v", err)
+		}
+	}
+	chatHandler.SetSkillSelector(claudecode.NewSkillSelector(workspaceDir, claudecode.NewHeuristicSkillReranker()))
+	h.SetChatHandler(chatHandler)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/selector/dry-run", strings.NewReader(`{"query":"搜索最新新闻并给我来源和引用","model":"auto"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{
+		UserID:   "admin-1",
+		Username: "admin",
+		Role:     "admin",
+	}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.SelectorDryRun(c); err != nil {
+		t.Fatalf("SelectorDryRun error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	selectedTools, ok := body["selected_tools"].([]any)
+	if !ok || len(selectedTools) == 0 || selectedTools[0] != "web_search" {
+		t.Fatalf("expected selected_tools to start with web_search, got=%v", body["selected_tools"])
+	}
+
+	toolDebug, ok := body["tool_debug"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected tool_debug payload, got=%T", body["tool_debug"])
+	}
+	querySignals, ok := toolDebug["query_signals"].(map[string]any)
+	if !ok || querySignals["live_web"] != true {
+		t.Fatalf("expected live_web query signal, got=%v", toolDebug["query_signals"])
+	}
+
+	skillDecision, ok := body["skill_decision"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected skill_decision payload, got=%T", body["skill_decision"])
+	}
+	if skillDecision["selected_skill"] != "web_search" {
+		t.Fatalf("expected skill_decision.selected_skill=web_search, got=%v", skillDecision["selected_skill"])
+	}
+	if _, ok := skillDecision["matched_signals"].([]any); !ok {
+		t.Fatalf("expected matched_signals in skill decision, got=%v", skillDecision["matched_signals"])
 	}
 }
 

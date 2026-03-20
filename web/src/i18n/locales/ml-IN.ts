@@ -449,6 +449,27 @@ export default {
     toggleFailed: 'ഇന്റഗ്രേഷൻ ടോഗിൾ ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു',
     fillRequiredFields: 'ആവശ്യമായ ഫീൽഡുകൾ പൂരിപ്പിക്കുക',
     viewDocs: 'ഡോക്യുമെന്റേഷൻ കാണുക',
+    groupAccessTitle: 'ഗ്രൂപ്പ് ആക്സസ്',
+    groupAccessDesc:
+      'Blue ഗ്രൂപ്പുകളിൽ നിന്ന് വരുന്ന സന്ദേശങ്ങൾ സ്വീകരിക്കണോ എന്നതിനുള്ള ഏകീകൃത നിയമം സജ്ജമാക്കുക.',
+    groupAccessHint:
+      'തുറന്നത് നിലവിലെ പ്രവർത്തനം തുടരുന്നു. പ്രവർത്തനരഹിതമാക്കിയാൽ എല്ലാ ഗ്രൂപ്പ് ചാറ്റുകളും തടയും. അനുവദനപ്പട്ടികയിൽ ഉള്ള ചാറ്റുകൾ മാത്രം സ്വീകരിക്കും.',
+    groupAccessPolicy: 'നയം',
+    groupAccessPolicyOpen: 'തുറന്നത്',
+    groupAccessPolicyAllowlist: 'അനുവദനപ്പട്ടിക',
+    groupAccessPolicyDisabled: 'പ്രവർത്തനരഹിതം',
+    groupAccessMentionPolicy: 'മറുപടി നിബന്ധന',
+    groupAccessMentionPolicyMentioned:
+      "Blue നെ {'@'}പരാമർശിച്ചാൽ മാത്രമേ മറുപടി നൽകൂ",
+    groupAccessMentionPolicyAlways: 'അനുവദിച്ച എല്ലാ ഗ്രൂപ്പ് സന്ദേശങ്ങൾക്കും മറുപടി നൽകുക',
+    groupAccessMentionHint:
+      "സ്വതവേ, Blue ഗ്രൂപ്പുകളിൽ വ്യക്തമായി {'@'}പരാമർശിക്കപ്പെട്ടാൽ മാത്രമേ മറുപടി നൽകൂ.",
+    groupAccessAllowedChats: 'അനുവദിച്ച ഗ്രൂപ്പ് ചാറ്റുകൾ',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'ഓരോ വരിയിലും channel:chat_id രൂപത്തിൽ ഒരു എൻട്രി. ആവശ്യമെങ്കിൽ * വൈൽഡ്കാർഡായി ഉപയോഗിക്കുക.',
+    groupAccessSaveFailed: 'ഗ്രൂപ്പ് ആക്സസ് ക്രമീകരണങ്ങൾ സംരക്ഷിക്കാനായില്ല',
+    groupAccessFormatError: 'ഓരോ വരിയിലും ഒരു channel:chat_id എൻട്രി ഉപയോഗിക്കുക',
     telegramDesc: 'Telegram Bot API-യുമായി ബന്ധിപ്പിക്കുക',
     telegramHint: "{'@'}BotFather വഴി ഒരു ബോട്ട് സൃഷ്ടിച്ച് ബോട്ട് ടോക്കൺ നേടുക",
     telegramOpenChat: 'ബോട്ട് ചാറ്റ് തുറക്കുക',

@@ -23,6 +23,7 @@ var (
 	markdownFenceLineRe        = regexp.MustCompile("(?m)^```")
 	markdownBulletLineRe       = regexp.MustCompile(`(?m)^\s{0,3}[-*+]\s+\S`)
 	markdownOrderedLineRe      = regexp.MustCompile(`(?m)^\s{0,3}\d+\.\s+\S`)
+	mentionMarkupTagRe         = regexp.MustCompile(`(?i)</?[^>]+>`)
 )
 
 func resolveOutboundCapabilities(ch Channel) OutboundCapabilities {
@@ -76,7 +77,7 @@ func NewManager(cfg Config, logger *zap.Logger) *Manager {
 		channels:    make(map[string]Channel),
 		logger:      logger,
 		config:      cfg,
-		groupAccess: cloneGroupAccessConfig(cfg.GroupAccess),
+		groupAccess: normalizeRuntimeGroupAccessConfig(cfg.GroupAccess),
 		ctx:         ctx,
 		cancel:      cancel,
 		convStates:  make(map[string]*conversationState),
@@ -219,7 +220,7 @@ func (m *Manager) handleMessages(ch Channel) {
 				m.logger.Debug("message channel closed", zap.String("channel", name))
 				return
 			}
-			if !m.shouldAcceptInboundMessage(name, msg) {
+			if !m.shouldAcceptInboundMessage(ch, msg) {
 				continue
 			}
 
@@ -232,47 +233,67 @@ func (m *Manager) handleMessages(ch Channel) {
 func (m *Manager) SetGroupAccess(cfg GroupAccessConfig) {
 	m.groupAccessMu.Lock()
 	defer m.groupAccessMu.Unlock()
-	m.groupAccess = cloneGroupAccessConfig(cfg)
+	m.groupAccess = normalizeRuntimeGroupAccessConfig(cfg)
 }
 
 // GetGroupAccess returns the current runtime group access policy.
 func (m *Manager) GetGroupAccess() GroupAccessConfig {
 	m.groupAccessMu.RLock()
 	defer m.groupAccessMu.RUnlock()
-	return cloneGroupAccessConfig(m.groupAccess)
+	return normalizeRuntimeGroupAccessConfig(m.groupAccess)
 }
 
-func (m *Manager) shouldAcceptInboundMessage(channelName string, msg Message) bool {
+func (m *Manager) shouldAcceptInboundMessage(ch Channel, msg Message) bool {
 	if !msg.IsGroup {
 		return true
+	}
+
+	channelName := strings.TrimSpace(msg.ChannelName)
+	if ch != nil && strings.TrimSpace(ch.Name()) != "" {
+		channelName = strings.TrimSpace(ch.Name())
 	}
 
 	groupAccess := m.GetGroupAccess()
 	policy := normalizeGroupPolicy(groupAccess.Policy)
 	switch policy {
 	case GroupPolicyDisabled:
-		m.logDroppedGroupMessage(channelName, msg, policy)
+		m.logDroppedGroupMessage(channelName, msg, policy, "")
 		return false
 	case GroupPolicyAllowlist:
-		if isAllowedGroupChat(groupAccess.AllowedChatIDs, channelName, msg.ChatID) {
+		if !isAllowedGroupChat(groupAccess.AllowedChatIDs, channelName, msg.ChatID) {
+			m.logDroppedGroupMessage(channelName, msg, policy, "")
+			return false
+		}
+	}
+
+	mentionPolicy := normalizeGroupMentionPolicy(groupAccess.MentionPolicy)
+	switch mentionPolicy {
+	case GroupMentionPolicyAlways:
+		return true
+	default:
+		if botWasMentioned(ch, msg) {
 			return true
 		}
-		m.logDroppedGroupMessage(channelName, msg, policy)
+		m.logDroppedGroupMessage(channelName, msg, policy, mentionPolicy)
 		return false
-	default:
-		return true
 	}
 }
 
-func (m *Manager) logDroppedGroupMessage(channelName string, msg Message, policy GroupPolicy) {
+func (m *Manager) logDroppedGroupMessage(channelName string, msg Message, policy GroupPolicy, mentionPolicy GroupMentionPolicy) {
 	if strings.TrimSpace(channelName) == "" {
 		channelName = strings.TrimSpace(msg.ChannelName)
 	}
-	m.logger.Info("dropping inbound group message",
+	fields := []zap.Field{
 		zap.String("channel", channelName),
 		zap.String("chat_id", msg.ChatID),
 		zap.String("message_id", msg.ID),
-		zap.String("policy", string(policy)))
+		zap.String("policy", string(policy)),
+	}
+	if mentionPolicy != "" {
+		fields = append(fields, zap.String("mention_policy", string(mentionPolicy)))
+	}
+	m.logger.Info("dropping inbound group message",
+		fields...)
 }
 
 func normalizeGroupPolicy(policy GroupPolicy) GroupPolicy {
@@ -283,6 +304,15 @@ func normalizeGroupPolicy(policy GroupPolicy) GroupPolicy {
 		return GroupPolicyAllowlist
 	default:
 		return GroupPolicyOpen
+	}
+}
+
+func normalizeGroupMentionPolicy(policy GroupMentionPolicy) GroupMentionPolicy {
+	switch strings.ToLower(strings.TrimSpace(string(policy))) {
+	case string(GroupMentionPolicyAlways):
+		return GroupMentionPolicyAlways
+	default:
+		return GroupMentionPolicyMentioned
 	}
 }
 
@@ -310,7 +340,8 @@ func matchesAllowedChatID(allowed []string, chatID string) bool {
 
 func cloneGroupAccessConfig(cfg GroupAccessConfig) GroupAccessConfig {
 	cloned := GroupAccessConfig{
-		Policy: cfg.Policy,
+		Policy:        cfg.Policy,
+		MentionPolicy: cfg.MentionPolicy,
 	}
 	if len(cfg.AllowedChatIDs) == 0 {
 		return cloned
@@ -324,6 +355,146 @@ func cloneGroupAccessConfig(cfg GroupAccessConfig) GroupAccessConfig {
 		cloned.AllowedChatIDs[channelName] = append([]string(nil), chatIDs...)
 	}
 	return cloned
+}
+
+func normalizeRuntimeGroupAccessConfig(cfg GroupAccessConfig) GroupAccessConfig {
+	cloned := cloneGroupAccessConfig(cfg)
+	cloned.Policy = normalizeGroupPolicy(cloned.Policy)
+	cloned.MentionPolicy = normalizeGroupMentionPolicy(cloned.MentionPolicy)
+	return cloned
+}
+
+func botWasMentioned(ch Channel, msg Message) bool {
+	if msg.Metadata == nil {
+		return false
+	}
+	if mentioned, ok := msg.Metadata["mentioned_bot"].(bool); ok && mentioned {
+		return true
+	}
+
+	mentionedTargets := collectMentionTargets(msg.Metadata)
+	if len(mentionedTargets) == 0 {
+		return false
+	}
+
+	botTargets := collectBotMentionTargets(ch)
+	if len(botTargets) == 0 {
+		return false
+	}
+
+	for target := range mentionedTargets {
+		if _, exists := botTargets[target]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+func collectBotMentionTargets(ch Channel) map[string]struct{} {
+	targets := make(map[string]struct{})
+	if ch == nil {
+		return targets
+	}
+
+	if provider, ok := ch.(BotMentionTargetProvider); ok {
+		for _, target := range provider.BotMentionTargets() {
+			addNormalizedMentionTarget(targets, target)
+		}
+	}
+
+	info := ch.Info()
+	for _, key := range []string{"bot_id", "bot_user_id", "bot_open_id", "app_id", "bot_username"} {
+		addNormalizedMentionTargetValue(targets, info.Metadata[key])
+	}
+	return targets
+}
+
+func collectMentionTargets(metadata map[string]interface{}) map[string]struct{} {
+	targets := make(map[string]struct{})
+	if metadata == nil {
+		return targets
+	}
+
+	switch ids := metadata["mention_ids"].(type) {
+	case []string:
+		for _, id := range ids {
+			addNormalizedMentionTarget(targets, id)
+		}
+	case []interface{}:
+		for _, id := range ids {
+			addNormalizedMentionTargetValue(targets, id)
+		}
+	}
+
+	switch mentions := metadata["mentions"].(type) {
+	case []map[string]interface{}:
+		for _, mention := range mentions {
+			addMentionTargetsFromMap(targets, mention)
+		}
+	case []interface{}:
+		for _, raw := range mentions {
+			mention, ok := raw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			addMentionTargetsFromMap(targets, mention)
+		}
+	}
+
+	return targets
+}
+
+func addMentionTargetsFromMap(targets map[string]struct{}, mention map[string]interface{}) {
+	for _, key := range []string{"id", "username", "text"} {
+		addNormalizedMentionTargetValue(targets, mention[key])
+	}
+}
+
+func addNormalizedMentionTargetValue(targets map[string]struct{}, value interface{}) {
+	switch typed := value.(type) {
+	case string:
+		addNormalizedMentionTarget(targets, typed)
+	case fmt.Stringer:
+		addNormalizedMentionTarget(targets, typed.String())
+	case int:
+		addNormalizedMentionTarget(targets, fmt.Sprintf("%d", typed))
+	case int8:
+		addNormalizedMentionTarget(targets, fmt.Sprintf("%d", typed))
+	case int16:
+		addNormalizedMentionTarget(targets, fmt.Sprintf("%d", typed))
+	case int32:
+		addNormalizedMentionTarget(targets, fmt.Sprintf("%d", typed))
+	case int64:
+		addNormalizedMentionTarget(targets, fmt.Sprintf("%d", typed))
+	case uint:
+		addNormalizedMentionTarget(targets, fmt.Sprintf("%d", typed))
+	case uint8:
+		addNormalizedMentionTarget(targets, fmt.Sprintf("%d", typed))
+	case uint16:
+		addNormalizedMentionTarget(targets, fmt.Sprintf("%d", typed))
+	case uint32:
+		addNormalizedMentionTarget(targets, fmt.Sprintf("%d", typed))
+	case uint64:
+		addNormalizedMentionTarget(targets, fmt.Sprintf("%d", typed))
+	}
+}
+
+func addNormalizedMentionTarget(targets map[string]struct{}, value string) {
+	normalized := normalizeMentionTarget(value)
+	if normalized == "" {
+		return
+	}
+	targets[normalized] = struct{}{}
+}
+
+func normalizeMentionTarget(value string) string {
+	normalized := strings.TrimSpace(strings.ToLower(value))
+	if normalized == "" {
+		return ""
+	}
+	normalized = mentionMarkupTagRe.ReplaceAllString(normalized, "")
+	normalized = strings.TrimSpace(strings.TrimPrefix(normalized, "@"))
+	return normalized
 }
 
 func (m *Manager) enqueueConversationMessage(ch Channel, msg Message) {

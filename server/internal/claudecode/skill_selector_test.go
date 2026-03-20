@@ -202,3 +202,163 @@ func TestStage0RuleRoute_RoutesPlanOnlyForExplicitPlanCommands(t *testing.T) {
 		t.Fatalf("expected explicit plan_update command to route plan_create family, got=%+v", d)
 	}
 }
+
+func TestSkillSelector_DefinitionQueryDoesNotAutoRoute(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	for _, tc := range []struct {
+		id   string
+		desc string
+	}{
+		{id: "web_search", desc: "search the web"},
+		{id: "deep_research", desc: "research with citations"},
+	} {
+		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir skill: %v", err)
+		}
+		content := "---\nname: " + tc.id + "\ndescription: " + tc.desc + "\nos: [\"" + runtime.GOOS + "\"]\n---\n# " + tc.id + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatalf("write skill: %v", err)
+		}
+	}
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "What is deep research?", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "" {
+		t.Fatalf("definition query should not auto-route a skill, got=%+v", decision)
+	}
+}
+
+func TestSkillSelector_WorkspaceQueryDoesNotRouteWebSearch(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	for _, tc := range []struct {
+		id   string
+		desc string
+	}{
+		{id: "web_search", desc: "search the web"},
+		{id: "analyze", desc: "analyze workspace files"},
+	} {
+		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir skill: %v", err)
+		}
+		content := "---\nname: " + tc.id + "\ndescription: " + tc.desc + "\nos: [\"" + runtime.GOOS + "\"]\n---\n# " + tc.id + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatalf("write skill: %v", err)
+		}
+	}
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "Review files in the workspace and summarize the report.", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill == "web_search" {
+		t.Fatalf("workspace file task should not route to web_search, got=%+v", decision)
+	}
+	if decision.SelectedSkill != "analyze" {
+		t.Fatalf("expected analyze for workspace file task, got=%+v", decision)
+	}
+}
+
+func TestSkillSelector_RoutesHimalayaForRealEmailCLIQueries(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	for _, tc := range []struct {
+		id   string
+		desc string
+	}{
+		{id: "himalaya", desc: "real email cli for imap and smtp inbox workflows"},
+		{id: "analyze", desc: "analyze workspace files"},
+		{id: "web_search", desc: "search the web"},
+	} {
+		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir skill: %v", err)
+		}
+		content := "---\nname: " + tc.id + "\ndescription: " + tc.desc + "\nos: [\"" + runtime.GOOS + "\"]\n---\n# " + tc.id + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatalf("write skill: %v", err)
+		}
+	}
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "Search my IMAP inbox for unread mail from Alice and reply from the terminal.", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "himalaya" {
+		t.Fatalf("expected himalaya, got=%+v", decision)
+	}
+}
+
+func TestSkillSelector_UIReviewerNeedsUIEvidence(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	for _, tc := range []struct {
+		id   string
+		desc string
+	}{
+		{id: "ui_reviewer", desc: "review screenshots and layouts"},
+		{id: "analyze", desc: "analyze reports"},
+	} {
+		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir skill: %v", err)
+		}
+		content := "---\nname: " + tc.id + "\ndescription: " + tc.desc + "\nos: [\"" + runtime.GOOS + "\"]\n---\n# " + tc.id + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatalf("write skill: %v", err)
+		}
+	}
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "Review the report in docs/ and summarize it.", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill == "ui_reviewer" {
+		t.Fatalf("ui_reviewer should not trigger without UI evidence, got=%+v", decision)
+	}
+
+	decision, err = sel.Select(context.Background(), "Review this screenshot and audit the UI layout.", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "ui_reviewer" {
+		t.Fatalf("expected ui_reviewer with screenshot/UI evidence, got=%+v", decision)
+	}
+}

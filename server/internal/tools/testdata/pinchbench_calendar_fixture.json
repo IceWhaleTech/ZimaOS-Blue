@@ -1,0 +1,28 @@
+[
+  {
+    "id": "event-sync",
+    "title": "Project sync",
+    "location": "Horizon Room",
+    "notes": "Review blockers and final approvals.",
+    "calendar_name": "Work",
+    "status": "confirmed",
+    "start_at": "2026-03-20T11:00:00Z",
+    "end_at": "2026-03-20T12:00:00Z",
+    "all_day": false,
+    "created_at": "2026-03-19T10:00:00Z",
+    "updated_at": "2026-03-20T08:00:00Z"
+  },
+  {
+    "id": "event-review",
+    "title": "Launch review",
+    "location": "Studio B",
+    "notes": "Review launch checklist and rollout owners.",
+    "calendar_name": "Work",
+    "status": "confirmed",
+    "start_at": "2026-03-20T15:00:00Z",
+    "end_at": "2026-03-20T16:00:00Z",
+    "all_day": false,
+    "created_at": "2026-03-19T11:00:00Z",
+    "updated_at": "2026-03-20T08:30:00Z"
+  }
+]

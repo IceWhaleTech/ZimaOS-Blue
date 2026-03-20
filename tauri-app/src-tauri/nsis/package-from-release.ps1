@@ -17,7 +17,15 @@ New-Item -ItemType Directory -Path $filesDir -Force | Out-Null
 Write-Host "[STEP 2] Copying files from release..."
 if (!(Test-Path $releaseDir)) { throw "Release directory not found: $releaseDir" }
 
-Copy-Item -Force "$releaseDir\blue.exe" "$filesDir\blue.exe"
+$sourceExe = if (Test-Path "$releaseDir\blue.exe") {
+    "$releaseDir\blue.exe"
+} elseif (Test-Path "$releaseDir\zimaos-blue.exe") {
+    "$releaseDir\zimaos-blue.exe"
+} else {
+    throw "Neither blue.exe nor zimaos-blue.exe was found in $releaseDir"
+}
+
+Copy-Item -Force $sourceExe "$filesDir\blue.exe"
 Copy-Item -Force "$releaseDir\WebView2Loader.dll" "$filesDir\WebView2Loader.dll"
 if (Test-Path "$releaseDir\uninst.exe") {
     Copy-Item -Force "$releaseDir\uninst.exe" "$filesDir\uninst.exe"

@@ -2243,6 +2243,27 @@ export default {
     toggleFailed: "Impossible d'activer/désactiver l'intégration",
     fillRequiredFields: "Veuillez d'abord remplir les champs obligatoires",
     viewDocs: 'Voir la documentation',
+    groupAccessTitle: 'Accès aux groupes',
+    groupAccessDesc:
+      'Définissez une règle unique pour indiquer si Blue accepte les messages entrants de groupe.',
+    groupAccessHint:
+      'Ouvert conserve le comportement actuel. Désactivé bloque tous les groupes. La liste d’autorisation n’accepte que les chats indiqués.',
+    groupAccessPolicy: 'Politique',
+    groupAccessPolicyOpen: 'Ouvert',
+    groupAccessPolicyAllowlist: 'Liste d’autorisation',
+    groupAccessPolicyDisabled: 'Désactivé',
+    groupAccessMentionPolicy: 'Condition de réponse',
+    groupAccessMentionPolicyMentioned:
+      "Répondre uniquement lorsque Blue est mentionné avec {'@'}",
+    groupAccessMentionPolicyAlways: 'Répondre à tous les messages de groupe autorisés',
+    groupAccessMentionHint:
+      "Par défaut, Blue ne répond dans les groupes que lorsqu'il est explicitement mentionné avec {'@'}.",
+    groupAccessAllowedChats: 'Groupes autorisés',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'Une entrée par ligne au format channel:chat_id. Utilisez * comme joker si nécessaire.',
+    groupAccessSaveFailed: 'Échec de l’enregistrement des paramètres d’accès aux groupes',
+    groupAccessFormatError: 'Utilisez une entrée channel:chat_id par ligne',
     telegramDesc: "Se connecter à l'API Telegram Bot",
     telegramHint: "Créez un bot via {'@'}BotFather et récupérez votre token",
     telegramOpenChat: 'Ouvrir le chat du bot',

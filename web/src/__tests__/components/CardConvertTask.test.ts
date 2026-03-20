@@ -94,6 +94,8 @@ describe('CardConvertTask', () => {
             output_id: 'out-1',
             name: 'speech.wav',
             preview_kind: 'audio',
+            path: '/tmp/exports/speech.wav',
+            ref: 'out:task-1:out-1',
             download_url: '/api/v1/convert/tasks/task-1/download/out-1',
           },
         ],
@@ -129,6 +131,8 @@ describe('CardConvertTask', () => {
     expect(wrapper.find('audio').exists()).toBe(true)
     expect(wrapper.find('audio').attributes('src')).toBe('blob:convert-task-1')
     expect(wrapper.text()).toContain('Download audio')
+    expect(wrapper.text()).toContain('/tmp/exports/speech.wav')
+    expect(wrapper.text()).not.toContain('out:task-1:out-1')
     const hasCancelButton = wrapper
       .findAll('button')
       .some((button) => button.text().includes('Cancel'))
@@ -198,7 +202,32 @@ describe('CardConvertTask', () => {
     expect(wrapper.find('audio').exists()).toBe(false)
   })
 
-  it('renders source refs when the task carries explicit sources', () => {
+  it('renders compact source labels for multi-source tasks', () => {
+    const wrapper = mount(CardConvertTask, {
+      props: {
+        card: makeCard({
+          status: 'succeeded',
+          action: 'convert',
+          target_format: 'pdf',
+          message: 'Completed',
+          sources: [
+            '/Users/orca/.zimaos-blue/data/workspace/phone_specs_2026/完整汇总表格.md',
+            '/tmp/reports/summary-notes.txt',
+          ],
+        }),
+      },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    expect(wrapper.text()).toContain('Sources')
+    expect(wrapper.text()).toContain('完整汇总表格.md')
+    expect(wrapper.text()).toContain('summary-notes.txt')
+    expect(wrapper.text()).not.toContain('/Users/orca/.zimaos-blue/data/workspace/phone_specs_2026/完整汇总表格.md')
+  })
+
+  it('hides the sources section for single-source tasks when source summary already covers it', () => {
     const wrapper = mount(CardConvertTask, {
       props: {
         card: makeCard({
@@ -214,8 +243,8 @@ describe('CardConvertTask', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('Sources')
-    expect(wrapper.text()).toContain('完整汇总表格.md')
+    expect(wrapper.text()).not.toContain('Sources')
+    expect(wrapper.text()).toContain('demo source')
   })
 
   it('localizes stable action and message labels in zh-CN', () => {
@@ -245,7 +274,42 @@ describe('CardConvertTask', () => {
     expect(wrapper.text()).toContain('语音合成')
     expect(wrapper.text()).toContain('任务已取消')
     expect(wrapper.text()).toContain('下载音频')
-    expect(wrapper.text()).toContain('任务 task-1')
+    expect(wrapper.text()).not.toContain('任务 task-1')
+  })
+
+  it('shows task id only while the convert task is still running', () => {
+    const runningWrapper = mount(CardConvertTask, {
+      props: {
+        card: makeCard({
+          status: 'processing',
+          action: 'convert',
+          target_format: 'pdf',
+        }),
+      },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    expect(runningWrapper.text()).toContain('Task task-1')
+    expect(runningWrapper.text()).toContain('pdf')
+
+    const completedWrapper = mount(CardConvertTask, {
+      props: {
+        card: makeCard({
+          status: 'succeeded',
+          action: 'convert',
+          target_format: 'pdf',
+          message: 'Completed',
+        }),
+      },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    expect(completedWrapper.text()).not.toContain('Task task-1')
+    expect(completedWrapper.text()).toContain('pdf')
   })
 
   it('opens output location via location API before revealing in file manager', async () => {
@@ -291,6 +355,42 @@ describe('CardConvertTask', () => {
     )
     expect(revealInFileManagerMock).toHaveBeenCalledWith('/tmp/result.pdf')
     expect(wrapper.text()).toContain('Download PDF')
+  })
+
+  it('reveals output location directly from card output path when available', async () => {
+    const wrapper = mount(CardConvertTask, {
+      props: {
+        card: makeCard({
+          status: 'succeeded',
+          action: 'convert',
+          target_format: 'pdf',
+          message: 'Completed',
+          outputs: [
+            {
+              output_id: 'out-1',
+              name: 'result.pdf',
+              path: '/tmp/direct-result.pdf',
+              preview_kind: 'pdf',
+              download_url: '/api/v1/convert/tasks/task-1/download/out-1',
+            },
+          ],
+        }),
+      },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    expect(wrapper.text()).toContain('/tmp/direct-result.pdf')
+    const locationButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Open location'))
+    expect(locationButton).toBeTruthy()
+    await locationButton!.trigger('click')
+    await flushPromises()
+
+    expect(revealInFileManagerMock).toHaveBeenCalledWith('/tmp/direct-result.pdf')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('falls back to output download when location reveal is unavailable', async () => {

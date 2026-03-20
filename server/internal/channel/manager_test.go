@@ -12,20 +12,22 @@ import (
 
 // mockChannel is a mock implementation of the Channel interface for testing.
 type mockChannel struct {
-	name        string
-	channelType string
-	outbound    OutboundCapabilities
-	enabled     bool
-	connected   bool
-	messages    chan Message
-	mu          sync.RWMutex
-	startErr    error
-	stopErr     error
-	sendErr     error
-	respectCtx  bool
-	msgCount    int64
-	sent        []OutgoingMessage
-	cleared     []string
+	name           string
+	channelType    string
+	outbound       OutboundCapabilities
+	infoMetadata   map[string]interface{}
+	mentionTargets []string
+	enabled        bool
+	connected      bool
+	messages       chan Message
+	mu             sync.RWMutex
+	startErr       error
+	stopErr        error
+	sendErr        error
+	respectCtx     bool
+	msgCount       int64
+	sent           []OutgoingMessage
+	cleared        []string
 }
 
 func newMockChannel(name, channelType string, enabled bool) *mockChannel {
@@ -89,6 +91,10 @@ func (m *mockChannel) Type() string {
 
 func (m *mockChannel) OutboundCapabilities() OutboundCapabilities {
 	return m.outbound
+}
+
+func (m *mockChannel) BotMentionTargets() []string {
+	return append([]string(nil), m.mentionTargets...)
 }
 
 func (m *mockChannel) Start(ctx context.Context) error {
@@ -159,6 +165,7 @@ func (m *mockChannel) Info() Info {
 		Status:       status,
 		Enabled:      m.enabled,
 		MessageCount: m.msgCount,
+		Metadata:     m.infoMetadata,
 	}
 }
 
@@ -902,6 +909,7 @@ func TestManager_MessageHandler_DropsUnlistedGroupWhenGroupAccessAllowlist(t *te
 	cfg.Enabled = true
 	cfg.DefaultTimeoutSeconds = 5
 	cfg.GroupAccess.Policy = GroupPolicyAllowlist
+	cfg.GroupAccess.MentionPolicy = GroupMentionPolicyAlways
 	cfg.GroupAccess.AllowedChatIDs = map[string][]string{
 		"feishu": {"oc_allowed"},
 	}
@@ -949,6 +957,7 @@ func TestManager_MessageHandler_AllowsListedGroupWhenGroupAccessAllowlist(t *tes
 	cfg.Enabled = true
 	cfg.DefaultTimeoutSeconds = 5
 	cfg.GroupAccess.Policy = GroupPolicyAllowlist
+	cfg.GroupAccess.MentionPolicy = GroupMentionPolicyAlways
 	cfg.GroupAccess.AllowedChatIDs = map[string][]string{
 		"feishu": {"oc_allowed"},
 	}
@@ -987,6 +996,156 @@ func TestManager_MessageHandler_AllowsListedGroupWhenGroupAccessAllowlist(t *tes
 	case <-handlerCalled:
 	case <-time.After(2 * time.Second):
 		t.Fatal("handler was not called for allowlisted group message")
+	}
+}
+
+func TestManager_MessageHandler_AllowsMentionedGroupWhenMentionPolicyRequiresMention(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 5
+	cfg.GroupAccess.Policy = GroupPolicyOpen
+	cfg.GroupAccess.MentionPolicy = GroupMentionPolicyMentioned
+
+	mgr := NewManager(cfg, logger)
+
+	ch := newMockChannel("telegram", "telegram", true)
+	ch.mentionTargets = []string{"999", "blue_bot"}
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+
+	handlerCalled := make(chan struct{}, 1)
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		handlerCalled <- struct{}{}
+		return &OutgoingMessage{Content: "Response"}, nil
+	})
+
+	if err := mgr.StartChannel(context.Background(), "telegram"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mgr.Stop(stopCtx)
+	}()
+
+	ch.simulateMessage(Message{
+		ID:      "msg1",
+		ChatID:  "group_1",
+		UserID:  "user1",
+		Content: "@blue_bot hello",
+		IsGroup: true,
+		Metadata: map[string]interface{}{
+			"mention_ids": []string{"999"},
+			"mentions": []map[string]interface{}{
+				{"id": "999", "username": "blue_bot"},
+			},
+		},
+	})
+
+	select {
+	case <-handlerCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler was not called for mentioned group message")
+	}
+}
+
+func TestManager_MessageHandler_DropsUnmentionedGroupWhenMentionPolicyRequiresMention(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 5
+	cfg.GroupAccess.Policy = GroupPolicyOpen
+	cfg.GroupAccess.MentionPolicy = GroupMentionPolicyMentioned
+
+	mgr := NewManager(cfg, logger)
+
+	ch := newMockChannel("telegram", "telegram", true)
+	ch.mentionTargets = []string{"999", "blue_bot"}
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+
+	handlerCalled := make(chan struct{}, 1)
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		handlerCalled <- struct{}{}
+		return &OutgoingMessage{Content: "Response"}, nil
+	})
+
+	if err := mgr.StartChannel(context.Background(), "telegram"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mgr.Stop(stopCtx)
+	}()
+
+	ch.simulateMessage(Message{
+		ID:      "msg1",
+		ChatID:  "group_1",
+		UserID:  "user1",
+		Content: "hello everyone",
+		IsGroup: true,
+		Metadata: map[string]interface{}{
+			"mention_ids": []string{"123"},
+			"mentions": []map[string]interface{}{
+				{"id": "123", "username": "alice"},
+			},
+		},
+	})
+
+	select {
+	case <-handlerCalled:
+		t.Fatal("handler should not be called for unmentioned group message")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestManager_MessageHandler_AllowsGroupWhenMentionPolicyAlways(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 5
+	cfg.GroupAccess.Policy = GroupPolicyOpen
+	cfg.GroupAccess.MentionPolicy = GroupMentionPolicyAlways
+
+	mgr := NewManager(cfg, logger)
+
+	ch := newMockChannel("telegram", "telegram", true)
+	ch.mentionTargets = []string{"999", "blue_bot"}
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+
+	handlerCalled := make(chan struct{}, 1)
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		handlerCalled <- struct{}{}
+		return &OutgoingMessage{Content: "Response"}, nil
+	})
+
+	if err := mgr.StartChannel(context.Background(), "telegram"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mgr.Stop(stopCtx)
+	}()
+
+	ch.simulateMessage(Message{
+		ID:      "msg1",
+		ChatID:  "group_1",
+		UserID:  "user1",
+		Content: "hello everyone",
+		IsGroup: true,
+	})
+
+	select {
+	case <-handlerCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler was not called when mention policy is always")
 	}
 }
 

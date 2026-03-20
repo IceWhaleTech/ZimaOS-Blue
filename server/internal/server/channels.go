@@ -841,9 +841,14 @@ func validateAndNormalizeChannelSettings(settings ChannelSettings) (ChannelSetti
 	settings = normalizeChannelSettings(settings)
 	switch settings.GroupAccess.Policy {
 	case channel.GroupPolicyOpen, channel.GroupPolicyAllowlist, channel.GroupPolicyDisabled:
-		return settings, nil
 	default:
 		return ChannelSettings{}, fmt.Errorf("invalid group access policy")
+	}
+	switch settings.GroupAccess.MentionPolicy {
+	case channel.GroupMentionPolicyMentioned, channel.GroupMentionPolicyAlways:
+		return settings, nil
+	default:
+		return ChannelSettings{}, fmt.Errorf("invalid group mention policy")
 	}
 }
 
@@ -852,6 +857,10 @@ func normalizeChannelSettings(settings ChannelSettings) ChannelSettings {
 	policy := channel.GroupPolicy(strings.ToLower(strings.TrimSpace(string(settings.GroupAccess.Policy))))
 	if policy != "" {
 		normalized.GroupAccess.Policy = policy
+	}
+	mentionPolicy := channel.GroupMentionPolicy(strings.ToLower(strings.TrimSpace(string(settings.GroupAccess.MentionPolicy))))
+	if mentionPolicy != "" {
+		normalized.GroupAccess.MentionPolicy = mentionPolicy
 	}
 	if len(settings.GroupAccess.AllowedChatIDs) == 0 {
 		return normalized

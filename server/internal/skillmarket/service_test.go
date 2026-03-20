@@ -867,6 +867,15 @@ func TestServiceStartDiscoverAsyncReportsStatus(t *testing.T) {
 	if !runningStatus.Running {
 		t.Fatal("expected discover status to report running while request is in flight")
 	}
+	if runningStatus.TotalSources != 1 {
+		t.Fatalf("running status total_sources = %d, want 1", runningStatus.TotalSources)
+	}
+	if runningStatus.ProcessedSources != 0 {
+		t.Fatalf("running status processed_sources = %d, want 0", runningStatus.ProcessedSources)
+	}
+	if runningStatus.CurrentSourceID != "tencent-skillhub" {
+		t.Fatalf("running status current_source_id = %q, want %q", runningStatus.CurrentSourceID, "tencent-skillhub")
+	}
 
 	duplicateStatus, duplicateStarted := svc.StartDiscoverAsync()
 	if duplicateStarted {
@@ -890,6 +899,9 @@ func TestServiceStartDiscoverAsyncReportsStatus(t *testing.T) {
 			}
 			if doneStatus.Result.SourcesProcessed != 1 {
 				t.Fatalf("SourcesProcessed = %d, want 1", doneStatus.Result.SourcesProcessed)
+			}
+			if doneStatus.ProcessedSources != 1 {
+				t.Fatalf("processed_sources = %d, want 1", doneStatus.ProcessedSources)
 			}
 			return
 		}

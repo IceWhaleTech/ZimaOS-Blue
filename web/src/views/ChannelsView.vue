@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, shallowRef, triggerRef } from 'vue'
+import {
+  ref,
+  computed,
+  onMounted,
+  onUnmounted,
+  watch,
+  shallowRef,
+  triggerRef,
+  onErrorCaptured,
+} from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
+import { authFetch } from '@/api/client'
 import {
   getChannelIconOrDefault,
   getChannelIconStyleVars,
@@ -54,10 +64,12 @@ interface ChannelDef {
 }
 
 type GroupAccessPolicy = 'open' | 'allowlist' | 'disabled'
+type GroupMentionPolicy = 'mentioned' | 'always'
 
 interface ChannelSettingsResponse {
   group_access?: {
     policy?: GroupAccessPolicy
+    mention_policy?: GroupMentionPolicy
     allowed_chat_ids?: Record<string, string[]>
   }
 }
@@ -68,9 +80,12 @@ const toggling = ref<string | null>(null)
 const testingConnection = ref<string | null>(null)
 const testResult = ref<{ channelId: string; success: boolean; message: string } | null>(null)
 const groupAccessPolicy = ref<GroupAccessPolicy>('open')
+const groupAccessMentionPolicy = ref<GroupMentionPolicy>('mentioned')
 const groupAccessAllowedChatIDsText = ref('')
 const savingGroupAccess = ref(false)
 const groupAccessResult = ref<{ success: boolean; message: string } | null>(null)
+const channelLoadError = ref<string | null>(null)
+const pageRuntimeError = ref<string | null>(null)
 
 // Resolve a channel error message: prefer i18n key, fallback to raw string
 function resolveChannelError(channel: ChannelDef): string {
@@ -88,6 +103,15 @@ function normalizeGroupAccessPolicy(value: unknown): GroupAccessPolicy {
       return value
     default:
       return 'open'
+  }
+}
+
+function normalizeGroupMentionPolicy(value: unknown): GroupMentionPolicy {
+  switch (value) {
+    case 'always':
+      return value
+    default:
+      return 'mentioned'
   }
 }
 
@@ -141,6 +165,19 @@ function showGroupAccessResult(success: boolean, message: string) {
   }, 3000)
 }
 
+function formatFetchFailureMessage(response: Response, fallback: string, message?: string): string {
+  const status = Number(response.status) || 0
+  if (status === 401) {
+    return 'Channels request was rejected by the server (401).'
+  }
+  if (message && message.trim()) {
+    return message
+  }
+  return status > 0 ? `${fallback} (${status})` : fallback
+}
+
+const pageErrorMessage = computed(() => pageRuntimeError.value || channelLoadError.value)
+
 // Start collapsed; the primary section still keeps locale favorites,
 // self-hosted channels, and any enabled channels visible by default.
 const getInitialShowMoreState = (): boolean => {
@@ -152,7 +189,7 @@ const showMoreChannels = ref(getInitialShowMoreState())
 // Localized channel ordering based on user's language/region
 const getLocalizedChannelOrder = (): string[] => {
   // Priority 1: Use backend settings locale, fallback to current i18n locale
-  const locale = settingsStore.backendSettings.locale || i18nLocale.value || 'en-US'
+  const locale = settingsStore.backendSettings?.locale || i18nLocale.value || 'en-US'
 
   // Chinese regions (Mainland China)
   if (locale === 'zh-CN') {
@@ -1087,7 +1124,7 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
   triggerRef(channelDefs)
 
   try {
-    const response = await fetch(`/api/channels/${channelId}/toggle`, {
+    const response = await authFetch(`/api/channels/${channelId}/toggle`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled }),
@@ -1135,35 +1172,46 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
 
 async function loadChannelConfigs() {
   loading.value = true
+  channelLoadError.value = null
   try {
-    const response = await fetch('/api/channels')
-    if (response.ok) {
-      const data = await response.json()
-      // Merge server data with local channel definitions
-      for (const serverChannel of data.channels || []) {
-        const localChannel = channelMap.value.get(serverChannel.id)
-        if (localChannel) {
-          localChannel.enabled = serverChannel.enabled
-          localChannel.status = serverChannel.status
-          localChannel.lastError = serverChannel.last_error
-          localChannel.lastErrorKey = serverChannel.last_error_key
-          // Update message statistics
-          localChannel.messagesReceived = serverChannel.messages_received
-          localChannel.messagesSent = serverChannel.messages_sent
-          localChannel.lastMessageAt = serverChannel.last_message_at
-          localChannel.lastReplyAt = serverChannel.last_reply_at
-          // Update field values
-          for (const field of localChannel.fields) {
-            if (serverChannel.config && serverChannel.config[field.key]) {
-              field.value = serverChannel.config[field.key]
-            }
+    const response = await authFetch('/api/channels')
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      channelLoadError.value = formatFetchFailureMessage(
+        response,
+        'Failed to load channels.',
+        data?.message
+      )
+      return
+    }
+
+    const data = await response.json()
+    // Merge server data with local channel definitions
+    for (const serverChannel of data.channels || []) {
+      const localChannel = channelMap.value.get(serverChannel.id)
+      if (localChannel) {
+        localChannel.enabled = serverChannel.enabled
+        localChannel.status = serverChannel.status
+        localChannel.lastError = serverChannel.last_error
+        localChannel.lastErrorKey = serverChannel.last_error_key
+        // Update message statistics
+        localChannel.messagesReceived = serverChannel.messages_received
+        localChannel.messagesSent = serverChannel.messages_sent
+        localChannel.lastMessageAt = serverChannel.last_message_at
+        localChannel.lastReplyAt = serverChannel.last_reply_at
+        // Update field values
+        for (const field of localChannel.fields) {
+          if (serverChannel.config && serverChannel.config[field.key]) {
+            field.value = serverChannel.config[field.key]
           }
         }
       }
-      triggerRef(channelDefs)
     }
+    triggerRef(channelDefs)
   } catch (err) {
     console.error('Failed to load channel configs:', err)
+    channelLoadError.value =
+      err instanceof Error && err.message ? err.message : 'Failed to load channels.'
   } finally {
     loading.value = false
   }
@@ -1171,12 +1219,13 @@ async function loadChannelConfigs() {
 
 async function loadChannelSettings() {
   try {
-    const response = await fetch('/api/channels/settings')
+    const response = await authFetch('/api/channels/settings')
     if (!response.ok) return
 
     const data = (await response.json()) as ChannelSettingsResponse
     const groupAccess = data.group_access || {}
     groupAccessPolicy.value = normalizeGroupAccessPolicy(groupAccess.policy)
+    groupAccessMentionPolicy.value = normalizeGroupMentionPolicy(groupAccess.mention_policy)
     groupAccessAllowedChatIDsText.value = formatAllowedChatIDs(groupAccess.allowed_chat_ids)
   } catch (err) {
     console.error('Failed to load channel settings:', err)
@@ -1196,12 +1245,13 @@ async function saveGroupAccessSettings() {
       return
     }
 
-    const response = await fetch('/api/channels/settings', {
+    const response = await authFetch('/api/channels/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         group_access: {
           policy: groupAccessPolicy.value,
+          mention_policy: groupAccessMentionPolicy.value,
           allowed_chat_ids: parsed.allowed_chat_ids,
         },
       }),
@@ -1216,9 +1266,11 @@ async function saveGroupAccessSettings() {
     const settings = (data.settings || data) as ChannelSettingsResponse
     const groupAccess = settings.group_access || {
       policy: groupAccessPolicy.value,
+      mention_policy: groupAccessMentionPolicy.value,
       allowed_chat_ids: parsed.allowed_chat_ids,
     }
     groupAccessPolicy.value = normalizeGroupAccessPolicy(groupAccess.policy)
+    groupAccessMentionPolicy.value = normalizeGroupMentionPolicy(groupAccess.mention_policy)
     groupAccessAllowedChatIDsText.value = formatAllowedChatIDs(groupAccess.allowed_chat_ids)
     showGroupAccessResult(true, t('channels.savedSuccessfully'))
   } catch (err) {
@@ -1240,7 +1292,7 @@ async function saveChannel(channelId: string) {
       config[field.key] = field.value
     }
 
-    const response = await fetch(`/api/channels/${channelId}`, {
+    const response = await authFetch(`/api/channels/${channelId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1303,7 +1355,7 @@ async function pollChannelStatus(channelId: string) {
     attempts++
 
     try {
-      const response = await fetch(`/api/channels/${channelId}/status`)
+      const response = await authFetch(`/api/channels/${channelId}/status`)
       if (!response.ok) {
         // API error, stop polling
         clearInterval(interval)
@@ -1355,7 +1407,7 @@ async function testConnection(channelId: string) {
       config[field.key] = field.value
     }
 
-    const response = await fetch('/api/setup/test-connection', {
+    const response = await authFetch('/api/setup/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: channelId, config }),
@@ -1596,6 +1648,13 @@ watch(
     }
   }
 )
+
+onErrorCaptured((error, _instance, info) => {
+  const message = error instanceof Error ? error.message : String(error)
+  pageRuntimeError.value = message || 'Channels content failed to render.'
+  console.error('Channels page runtime error:', error, info)
+  return false
+})
 </script>
 
 <template>
@@ -1665,7 +1724,46 @@ watch(
         </div>
 
         <div v-else class="channels-board">
-          <div class="channels-board__stack">
+          <div v-if="pageErrorMessage" class="channels-error-banner">
+            <div class="channels-error-banner__icon-shell" aria-hidden="true">
+              <svg class="channels-error-banner__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.85"
+                  d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <div class="channels-error-banner__copy">
+              <h3 class="channels-error-banner__title">Channels did not fully load</h3>
+              <p class="channels-error-banner__description">
+                {{ pageErrorMessage }}
+              </p>
+            </div>
+          </div>
+
+          <div v-if="pageRuntimeError" class="channels-safe-list">
+            <article
+              v-for="channel in orderedChannels"
+              :key="channel.id"
+              class="dashboard-card-surface channels-safe-item"
+            >
+              <div class="channels-safe-item__title-row">
+                <span class="channels-safe-item__title">
+                  {{ channel.nameKey ? t(channel.nameKey) : channel.name || channel.id }}
+                </span>
+                <span class="channels-safe-item__status">
+                  {{ channel.enabled ? t('channels.statusConnected') : t('channels.statusDisconnected') }}
+                </span>
+              </div>
+              <p class="channels-safe-item__description">
+                {{ t(channel.descriptionKey) }}
+              </p>
+            </article>
+          </div>
+
+          <div v-else class="channels-board__stack">
             <div class="channels-policy-card">
               <div class="channels-policy-card__header">
                 <div class="channels-policy-card__identity">
@@ -1718,6 +1816,28 @@ watch(
                   </select>
                   <p class="channels-policy-card__note text-xs text-gray-500 dark:text-slate-300">
                     {{ t('channels.groupAccessHint') }}
+                  </p>
+                </div>
+
+                <div class="space-y-2">
+                  <label
+                    class="channels-policy-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
+                  >
+                    {{ t('channels.groupAccessMentionPolicy') }}
+                  </label>
+                  <select
+                    v-model="groupAccessMentionPolicy"
+                    class="channels-policy-card__select w-full border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                  >
+                    <option value="mentioned">
+                      {{ t('channels.groupAccessMentionPolicyMentioned') }}
+                    </option>
+                    <option value="always">
+                      {{ t('channels.groupAccessMentionPolicyAlways') }}
+                    </option>
+                  </select>
+                  <p class="channels-policy-card__note text-xs text-gray-500 dark:text-slate-300">
+                    {{ t('channels.groupAccessMentionHint') }}
                   </p>
                 </div>
 
@@ -2121,7 +2241,7 @@ watch(
           </div>
 
           <button
-            v-if="!showMoreChannels && secondaryChannels.length > 0"
+            v-if="!pageRuntimeError && !showMoreChannels && secondaryChannels.length > 0"
             class="channels-load-more"
             @click="showMoreChannels = true"
           >
@@ -2137,7 +2257,7 @@ watch(
           </button>
 
           <div
-            v-if="showMoreChannels"
+            v-if="!pageRuntimeError && showMoreChannels"
             class="channels-board__stack channels-board__stack--secondary"
           >
             <ChannelCard
@@ -2359,6 +2479,50 @@ watch(
   content: none;
 }
 
+.channels-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.78rem;
+  padding: 0.88rem 0.96rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(252, 165, 165, 0.7);
+  background: rgba(254, 242, 242, 0.96);
+}
+
+.channels-error-banner__icon-shell {
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 0.7rem;
+  background: rgba(254, 226, 226, 0.9);
+  color: #b91c1c;
+}
+
+.channels-error-banner__icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.channels-error-banner__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.channels-error-banner__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.channels-error-banner__description {
+  margin-top: 0.16rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #b91c1c;
+}
+
 .channels-board__stack {
   position: relative;
   z-index: 1;
@@ -2370,6 +2534,46 @@ watch(
 
 .channels-board__stack--secondary {
   padding-top: 0.18rem;
+}
+
+.channels-safe-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.72rem;
+}
+
+.channels-safe-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  padding: 0.92rem 0.96rem;
+  border-radius: 1rem;
+}
+
+.channels-safe-item__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.72rem;
+}
+
+.channels-safe-item__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.channels-safe-item__status {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #475569;
+}
+
+.channels-safe-item__description {
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: #64748b;
 }
 
 .channels-policy-card {
@@ -2671,6 +2875,10 @@ watch(
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .channels-safe-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .channels-board__stack > .channels-remote-card--expanded,
   .channels-board__stack :deep(.channel-card--expanded) {
     grid-column: 1 / -1;
@@ -2781,5 +2989,49 @@ html.dark .channels-load-more {
   background: #111827;
   border-color: rgba(71, 85, 105, 0.46);
   color: #cbd5e1;
+}
+
+:root.dark .channels-error-banner,
+[data-theme='dark'] .channels-error-banner,
+html.dark .channels-error-banner {
+  border-color: rgba(248, 113, 113, 0.34);
+  background: rgba(69, 10, 10, 0.5);
+}
+
+:root.dark .channels-error-banner__icon-shell,
+[data-theme='dark'] .channels-error-banner__icon-shell,
+html.dark .channels-error-banner__icon-shell {
+  background: rgba(127, 29, 29, 0.65);
+  color: #fca5a5;
+}
+
+:root.dark .channels-error-banner__title,
+[data-theme='dark'] .channels-error-banner__title,
+html.dark .channels-error-banner__title {
+  color: #fecaca;
+}
+
+:root.dark .channels-error-banner__description,
+[data-theme='dark'] .channels-error-banner__description,
+html.dark .channels-error-banner__description {
+  color: #fca5a5;
+}
+
+:root.dark .channels-safe-item__title,
+[data-theme='dark'] .channels-safe-item__title,
+html.dark .channels-safe-item__title {
+  color: #f8fafc;
+}
+
+:root.dark .channels-safe-item__status,
+[data-theme='dark'] .channels-safe-item__status,
+html.dark .channels-safe-item__status {
+  color: #cbd5e1;
+}
+
+:root.dark .channels-safe-item__description,
+[data-theme='dark'] .channels-safe-item__description,
+html.dark .channels-safe-item__description {
+  color: #94a3b8;
 }
 </style>

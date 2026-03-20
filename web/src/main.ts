@@ -3,7 +3,8 @@ import { createPinia } from 'pinia'
 import router from './router'
 import { i18n, initLocale } from './i18n'
 import App from './App.vue'
-import { initTypelessCopyHandler } from './utils/typelessRenderers'
+import { initTypelessCopyHandler } from './utils/typelessClient'
+import { reportStartupMark } from './utils/startupTrace'
 import './style.css'
 
 const app = createApp(App)
@@ -23,19 +24,25 @@ useThemeStore(pinia)
 
 import { useLocaleStore } from './stores/locale'
 
-async function bootstrap() {
-  // Wait for the initial route (including auth guards) before mounting.
-  // This avoids mounting protected layout components on public routes first.
-  await router.isReady()
+function bootstrap() {
+  reportStartupMark('frontend_bootstrap_enter')
+
+  // Mount immediately so the shell can render while the initial route component
+  // and redirects finish resolving in the background.
+  app.mount('#app')
+  reportStartupMark('app_mounted')
+
+  void router.isReady().then(() => {
+    reportStartupMark('router_ready')
+  })
 
   // Load locale in background after mount.
   // The minimal fallback messages in i18n/index.ts cover the brief gap.
-  app.mount('#app')
-
   initLocale().then(() => {
     // Sync locale store after browser language detection completes,
     // so the settings UI shows the correct language.
     useLocaleStore(pinia).syncFromI18n()
+    reportStartupMark('locale_ready')
   })
 }
 

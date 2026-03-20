@@ -72,12 +72,12 @@ import (
 )
 
 var (
-	version   = "0.10.32"
+	version   = "0.10.33"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
 
-func applyPendingBackupRestore(dataDir string, previousCleanShutdown bool) error {
+func applyPendingBackupRestore(dataDir string) (bool, error) {
 	mgr, err := backup.NewManager(backup.Config{
 		Enabled:       true,
 		RetentionDays: 7,
@@ -85,30 +85,84 @@ func applyPendingBackupRestore(dataDir string, previousCleanShutdown bool) error
 		SkillsPath:    filepath.Join(dataDir, "workspace", ".claude", "skills"),
 	}, dataDir, dataDir)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !mgr.HasPendingRestore() {
-		if previousCleanShutdown {
-			return nil
-		}
-		dbPaths, err := backup.DiscoverSQLiteDatabasePaths(dataDir)
-		if err != nil {
-			return err
-		}
-		result, err := mgr.CheckAndAutoRecover(context.Background(), dbPaths)
-		if err != nil {
-			return err
-		}
-		if result != nil && len(result.RepairedDatabases) > 0 {
-			fmt.Fprintf(os.Stderr, "Repaired databases %v in place\n", result.RepairedDatabases)
-		}
-		if result != nil && result.Recovered {
-			fmt.Fprintf(os.Stderr, "Recovered databases %v from backup %s\n", result.CorruptedDatabases, result.BackupID)
-		}
-		return nil
+		return false, nil
 	}
 	_, err = mgr.ApplyPendingRestore(context.Background())
-	return err
+	return true, err
+}
+
+func openPrimaryDatabaseWithStartupRecovery(dataDir string) (*sql.DB, error) {
+	dbPath := filepath.Join(dataDir, "blue.db")
+
+	open := func() (*sql.DB, error) {
+		return dbutil.OpenSQLiteWithRecovery(dbPath, dbPath, func(db *sql.DB) error {
+			// Configure database connection pool (shared by user, memory, apikey tables)
+			db.SetMaxOpenConns(8)
+			db.SetMaxIdleConns(3)
+			db.SetConnMaxLifetime(time.Hour)
+
+			// Enable WAL mode for better concurrency
+			if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+				return fmt.Errorf("enable WAL mode: %w", err)
+			}
+			// Enable foreign keys
+			if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+				return fmt.Errorf("enable foreign keys: %w", err)
+			}
+			if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+				return fmt.Errorf("set synchronous mode: %w", err)
+			}
+			if _, err := db.Exec("PRAGMA cache_size=-2000"); err != nil {
+				return fmt.Errorf("set cache size: %w", err)
+			}
+			db.Exec("PRAGMA shrink_memory")
+			return nil
+		})
+	}
+
+	db, err := open()
+	if err == nil {
+		return db, nil
+	}
+	if !dbutil.IsSQLiteCorruptionError(err) {
+		return nil, err
+	}
+
+	logger.Warn().Err(err).Str("db_path", dbPath).Msg("Primary database open reported corruption, attempting startup auto-recovery")
+
+	mgr, mgrErr := backup.NewManager(backup.Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          filepath.Join(dataDir, "backups"),
+		SkillsPath:    filepath.Join(dataDir, "workspace", ".claude", "skills"),
+	}, dataDir, dataDir)
+	if mgrErr != nil {
+		return nil, fmt.Errorf("open database: %w (init backup manager: %v)", err, mgrErr)
+	}
+
+	result, recoverErr := mgr.CheckAndAutoRecover(context.Background(), []string{dbPath})
+	if recoverErr != nil {
+		return nil, fmt.Errorf("open database: %w (startup auto-recovery failed: %v)", err, recoverErr)
+	}
+
+	if result != nil && len(result.RepairedDatabases) > 0 {
+		logger.Info().Strs("repaired_databases", result.RepairedDatabases).Msg("Primary database repaired during startup recovery")
+	}
+	if result != nil && result.Recovered {
+		logger.Info().
+			Strs("corrupted_databases", result.CorruptedDatabases).
+			Str("backup_id", result.BackupID).
+			Msg("Primary database restored from backup during startup recovery")
+	}
+
+	db, retryErr := open()
+	if retryErr != nil {
+		return nil, fmt.Errorf("open database after startup auto-recovery: %w", retryErr)
+	}
+	return db, nil
 }
 
 func main() {
@@ -199,39 +253,23 @@ func runServer() {
 		logger.Warn().Err(startupIntegrityErr).Msg("Failed to initialize startup integrity state")
 		previousCleanShutdown = false
 	}
-	dbutil.SetStartupQuickCheckEnabled(!previousCleanShutdown)
+	// A dirty previous shutdown alone is not enough to justify a blocking
+	// quick_check on large databases. SQLite WAL recovery handles the common
+	// crash path; explicit restore markers and open-time recovery handle the
+	// real recovery mode cases.
+	dbutil.SetStartupQuickCheckEnabled(false)
 	defer dbutil.SetStartupQuickCheckEnabled(true)
+	appliedPendingRestore, err := applyPendingBackupRestore(dataDir)
 	if previousCleanShutdown {
 		logger.Info().Msg("Skipping proactive startup database scan after previous clean shutdown")
+	} else if !appliedPendingRestore {
+		logger.Info().Msg("Skipping proactive full startup recovery scan; pending restore marker not found and primary database open will perform quick integrity checks")
 	}
-	if err := applyPendingBackupRestore(dataDir, previousCleanShutdown); err != nil {
+	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to apply pending backup restore before database initialization")
 	}
 
-	dbPath := filepath.Join(dataDir, "blue.db")
-	db, err := dbutil.OpenSQLiteWithRecovery(dbPath, dbPath, func(db *sql.DB) error {
-		// Configure database connection pool (shared by user, memory, apikey tables)
-		db.SetMaxOpenConns(8)
-		db.SetMaxIdleConns(3)
-		db.SetConnMaxLifetime(time.Hour)
-
-		// Enable WAL mode for better concurrency
-		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-			return fmt.Errorf("enable WAL mode: %w", err)
-		}
-		// Enable foreign keys
-		if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-			return fmt.Errorf("enable foreign keys: %w", err)
-		}
-		if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
-			return fmt.Errorf("set synchronous mode: %w", err)
-		}
-		if _, err := db.Exec("PRAGMA cache_size=-2000"); err != nil {
-			return fmt.Errorf("set cache size: %w", err)
-		}
-		db.Exec("PRAGMA shrink_memory")
-		return nil
-	})
+	db, err := openPrimaryDatabaseWithStartupRecovery(dataDir)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to open database")
 	}
@@ -374,8 +412,8 @@ func runServer() {
 	// Initialize tools registry and register built-in tools
 	toolRegistry := tools.NewRegistry()
 	webSearchConfig, webFetchConfig := buildBuiltinToolConfigs(cfg)
-	workspaceRoot := filepath.Join(dataDir, "workspace")
-	tools.RegisterBuiltinToolsWithConfig(toolRegistry, webSearchConfig, webFetchConfig, []string{workspaceRoot}, 0)
+	workspaceAllowedPaths := bootstrap.ResolveBuiltinToolAllowedPaths(cfg, dataDir)
+	tools.RegisterBuiltinToolsWithConfig(toolRegistry, webSearchConfig, webFetchConfig, workspaceAllowedPaths, 0)
 	tools.RegisterFactoryToolDefinitions(toolRegistry)
 	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
@@ -411,7 +449,7 @@ func runServer() {
 			err        error
 		)
 		if auditDBPath == "" {
-			auditDBPath = dbPath
+			auditDBPath = filepath.Join(dataDir, "blue.db")
 			auditStore, err = sessionaudit.NewSQLiteStoreWithDB(db, auditCfg)
 		} else {
 			if !filepath.IsAbs(auditDBPath) {
@@ -1078,7 +1116,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}()
 
 	// Initialize workspace (SOUL.md, USER.md, IDENTITY.md, etc.)
-	workspaceMgr := workspace.NewManager(filepath.Join(dataDir, "workspace"))
+	workspaceMgr := workspace.NewManager(bootstrap.ResolveWorkspaceDir(dataDir, cfg))
 	if err := workspaceMgr.EnsureWorkspace(); err != nil {
 		logger.Warn("Failed to initialize workspace", zap.Error(err))
 	}

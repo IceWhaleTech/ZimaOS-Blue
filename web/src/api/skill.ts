@@ -413,6 +413,10 @@ export interface DiscoverStatusResponse {
   started_at?: string
   finished_at?: string
   last_error?: string
+  total_sources?: number
+  processed_sources?: number
+  current_source_id?: string
+  current_source_name?: string
   message?: string
   result?: DiscoverResponse
 }

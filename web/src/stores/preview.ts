@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { previewApi } from '@/api/preview'
 import type { SystemMode, PreviewStatus } from '@/api/preview'
 import { getCachedPreviewMode } from '@/router'
 
@@ -23,6 +22,17 @@ function setStorageItem(key: string, value: string): void {
   }
 }
 
+type PreviewModule = typeof import('@/api/preview')
+
+let previewModulePromise: Promise<PreviewModule> | null = null
+
+function loadPreviewModule(): Promise<PreviewModule> {
+  if (!previewModulePromise) {
+    previewModulePromise = import('@/api/preview')
+  }
+  return previewModulePromise
+}
+
 export const usePreviewStore = defineStore('preview', () => {
   // State
   const systemMode = ref<SystemMode | null>(null)
@@ -42,6 +52,7 @@ export const usePreviewStore = defineStore('preview', () => {
     try {
       loading.value = true
       error.value = null
+      const { previewApi } = await loadPreviewModule()
       const response = await previewApi.getSystemMode()
       systemMode.value = response.data
       initialized.value = true
@@ -77,6 +88,7 @@ export const usePreviewStore = defineStore('preview', () => {
 
     // Fetch a new preview token
     try {
+      const { previewApi } = await loadPreviewModule()
       const response = await previewApi.getPreviewToken()
       if (response.data.token) {
         setStorageItem(PREVIEW_TOKEN_KEY, response.data.token)
@@ -92,6 +104,7 @@ export const usePreviewStore = defineStore('preview', () => {
     try {
       loading.value = true
       error.value = null
+      const { previewApi } = await loadPreviewModule()
       const response = await previewApi.getStatus()
       previewStatus.value = response.data
     } catch (e) {
@@ -105,6 +118,7 @@ export const usePreviewStore = defineStore('preview', () => {
     try {
       loading.value = true
       error.value = null
+      const { previewApi } = await loadPreviewModule()
       const response = await previewApi.upgrade({ username, password })
 
       if (response.data.success) {

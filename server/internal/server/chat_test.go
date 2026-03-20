@@ -159,6 +159,33 @@ func inlinePNGBase64ForChatTest() string {
 	return "ZGF0YQ=="
 }
 
+func TestBuildDirectoryWhitelistPromptHintPrefersRelativePaths(t *testing.T) {
+	ccHandler := claudecode.NewHandler(nil)
+	e := echo.New()
+
+	body := `{"whitelist_enabled":true,"directory_whitelist":[{"path":"/tmp/project","alias":"proj"}]}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/claudecode/config", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+
+	if err := ccHandler.SetConfig(ctx); err != nil {
+		t.Fatalf("SetConfig() error = %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("SetConfig() status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	handler := &ChatHandler{claudeCodeHandler: ccHandler}
+	hint := handler.buildDirectoryWhitelistPromptHint()
+	if !strings.Contains(hint, "Prefer relative paths for files in the current workspace.") {
+		t.Fatalf("hint = %q, want relative path guidance", hint)
+	}
+	if !strings.Contains(hint, "@alias/... when available, or absolute paths if needed") {
+		t.Fatalf("hint = %q, want alias/absolute fallback guidance", hint)
+	}
+}
+
 func (m *webSearchToolMock) Definition() tools.ToolDefinition {
 	return tools.ToolDefinition{
 		Name:        "web_search",
@@ -4442,6 +4469,8 @@ func TestApplyDeepResearchPreference_FalseRemovesTool(t *testing.T) {
 		{Name: "web_search"},
 		{Name: "deep_research"},
 		{Name: "deep-research"},
+		{Name: "research_run"},
+		{Name: "research_status"},
 	}
 	got := applyDeepResearchPreference(defs, &disabled)
 	if len(got) != 1 {

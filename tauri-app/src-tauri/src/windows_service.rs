@@ -20,8 +20,9 @@ pub fn install_service() -> Result<String, String> {
         ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CREATE_SERVICE)
             .map_err(|e| format!("Failed to open service manager: {}", e))?;
 
-    // For Tauri GUI app, the service should use the embedded blue.exe
-    // which is located in the same directory as the Tauri executable
+    // For Tauri GUI app, the service executable lives next to the GUI binary.
+    // Older builds used blue.exe while newer builds may keep the cargo target
+    // name zimaos-blue.exe, so accept either to avoid packaging regressions.
     let tauri_exe_path =
         std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
 
@@ -29,15 +30,17 @@ pub fn install_service() -> Result<String, String> {
         .parent()
         .ok_or_else(|| "Failed to get executable directory".to_string())?;
 
-    // Look for blue.exe in the same directory
-    let service_exe_path = exe_dir.join("blue.exe");
-
-    if !service_exe_path.exists() {
-        return Err(format!(
-            "Service executable not found at: {}. Please ensure blue.exe is in the same directory as the application.",
-            service_exe_path.display()
-        ));
-    }
+    let service_exe_candidates = [exe_dir.join("blue.exe"), exe_dir.join("zimaos-blue.exe")];
+    let service_exe_path = service_exe_candidates
+        .into_iter()
+        .find(|path| path.exists())
+        .ok_or_else(|| {
+            format!(
+                "Service executable not found. Checked: {}, {}",
+                exe_dir.join("blue.exe").display(),
+                exe_dir.join("zimaos-blue.exe").display()
+            )
+        })?;
 
     let service_info = ServiceInfo {
         name: OsString::from(SERVICE_NAME),

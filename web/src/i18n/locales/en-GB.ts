@@ -1206,6 +1206,25 @@ export default {
     toggleFailed: 'Failed to toggle integration',
     fillRequiredFields: 'Please fill in required fields first',
     viewDocs: 'View Documentation',
+    groupAccessTitle: 'Group Access',
+    groupAccessDesc: 'Set one unified rule for whether Blue accepts inbound group messages.',
+    groupAccessHint:
+      'Open keeps current behaviour. Disabled blocks all group chats. Allowlist only accepts listed chats.',
+    groupAccessPolicy: 'Policy',
+    groupAccessPolicyOpen: 'Open',
+    groupAccessPolicyAllowlist: 'Allowlist',
+    groupAccessPolicyDisabled: 'Disabled',
+    groupAccessMentionPolicy: 'Reply Condition',
+    groupAccessMentionPolicyMentioned: 'Only reply when Blue is @mentioned',
+    groupAccessMentionPolicyAlways: 'Reply to all allowed group messages',
+    groupAccessMentionHint:
+      'Default behaviour is to reply in groups only when Blue is explicitly @mentioned.',
+    groupAccessAllowedChats: 'Allowed Group Chats',
+    groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
+    groupAccessAllowedChatsHint:
+      'One entry per line in channel:chat_id format. Use * as a wildcard if needed.',
+    groupAccessSaveFailed: 'Failed to save group access settings',
+    groupAccessFormatError: 'Use one channel:chat_id entry per line',
     // Validation messages (from backend message_key)
     validation: {
       testSuccess: 'Connection successful',

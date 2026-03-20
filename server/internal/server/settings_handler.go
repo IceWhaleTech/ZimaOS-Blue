@@ -290,7 +290,7 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "chat handler not configured"})
 	}
 
-	selectedDefs := chatHandler.selectTools(req.Query, tools.ToolPolicyRequest{
+	selectedDefs, toolDebug := chatHandler.selectToolsDetailed(req.Query, tools.ToolPolicyRequest{
 		Model:     req.Model,
 		RouteKind: tools.ToolRouteKindChat,
 	})
@@ -305,6 +305,9 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 		"smart_tool_selection":  h.GetSmartToolSelection(),
 		"smart_skill_selection": h.GetSmartSkillSelection(),
 		"selected_tools":        toolNames,
+	}
+	if toolDebug != nil {
+		response["tool_debug"] = toolDebug
 	}
 
 	if chatHandler.skillSelector != nil && h.GetSmartSkillSelection() {
@@ -764,12 +767,13 @@ func (h *SettingsHandler) GetVoiceWakeTargetConversationID() string {
 	return strings.TrimSpace(h.settings.VoiceWakeTargetConversationID)
 }
 
-// GetSmartToolSelection returns whether smart tool selection is enabled (default false).
+// GetSmartToolSelection returns whether smart tool selection is enabled.
+// Default on keeps runtime tool exposure compact unless explicitly disabled.
 func (h *SettingsHandler) GetSmartToolSelection() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmartToolSelection == nil {
-		return false
+		return true
 	}
 	return *h.settings.SmartToolSelection
 }

@@ -14,7 +14,7 @@ import (
 
 func newTestHarnessStore(t *testing.T) *SQLiteStore {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "harness-test.db"))
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -256,6 +256,169 @@ func TestSQLiteStore_RecoversRunTreeAfterRestart(t *testing.T) {
 	}
 	if len(artifacts) != 1 || artifacts[0].ID != "artifact-child" {
 		t.Fatalf("unexpected recovered artifacts: %#v", artifacts)
+	}
+}
+
+func TestSQLiteStore_GroupRoundTrip(t *testing.T) {
+	store := newTestHarnessStore(t)
+	ctx := context.Background()
+	group := &RunGroup{
+		ID:          "group-1",
+		Kind:        RunGroupKindEval,
+		Title:       "eval batch",
+		Status:      RunGroupStatusQueued,
+		OwnerUserID: "user-1",
+		Subject:     "score tasks",
+		SchedulerConfig: GroupSchedulerConfig{
+			MaxConcurrency: 2,
+			MaxAttempts:    2,
+			LeaseTTL:       30 * time.Second,
+			RetryBackoff:   2 * time.Second,
+		},
+		ScoringConfig: GroupScoringConfig{
+			Mode:          ScoringModeHybrid,
+			RuleProfile:   "agent_task",
+			JudgeModel:    "heuristic",
+			PassThreshold: 0.6,
+		},
+		Metadata: map[string]interface{}{"suite": "smoke"},
+	}
+	if err := store.CreateGroup(ctx, group); err != nil {
+		t.Fatalf("CreateGroup failed: %v", err)
+	}
+	items := []RunGroupItem{
+		{
+			ID:          "item-1",
+			GroupID:     group.ID,
+			Index:       0,
+			RunKind:     RunKindAgentTask,
+			Profile:     "agent_task",
+			Input:       map[string]interface{}{"goal": "hello"},
+			Expected:    map[string]interface{}{"contains": "done"},
+			Status:      RunGroupItemStatusQueued,
+			MaxAttempts: 2,
+		},
+	}
+	if err := store.CreateGroupItems(ctx, items); err != nil {
+		t.Fatalf("CreateGroupItems failed: %v", err)
+	}
+	if err := store.AttachScorecard(ctx, Scorecard{
+		ID:            "score-1",
+		GroupID:       group.ID,
+		GroupItemID:   items[0].ID,
+		RunID:         "run-1",
+		Mode:          ScoringModeRule,
+		Verdict:       ScoreVerdictPass,
+		Score:         1,
+		BreakdownJSON: `{"checks":[{"name":"contains","passed":true}]}`,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("AttachScorecard failed: %v", err)
+	}
+
+	gotGroup, err := store.GetGroup(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("GetGroup failed: %v", err)
+	}
+	if gotGroup.Kind != group.Kind || gotGroup.OwnerUserID != group.OwnerUserID {
+		t.Fatalf("GetGroup mismatch: %#v", gotGroup)
+	}
+
+	gotItems, err := store.ListGroupItems(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("ListGroupItems failed: %v", err)
+	}
+	if len(gotItems) != 1 || gotItems[0].ID != items[0].ID {
+		t.Fatalf("ListGroupItems returned %#v", gotItems)
+	}
+
+	scorecards, err := store.ListScorecards(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("ListScorecards failed: %v", err)
+	}
+	if len(scorecards) != 1 || scorecards[0].ID != "score-1" {
+		t.Fatalf("ListScorecards returned %#v", scorecards)
+	}
+}
+
+func TestSQLiteStore_MigratesLegacyRunSchema(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "legacy-harness.db")
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	legacySchema := `
+CREATE TABLE harness_runs (
+	id TEXT PRIMARY KEY,
+	root_run_id TEXT NOT NULL,
+	parent_run_id TEXT DEFAULT '',
+	kind TEXT NOT NULL,
+	status TEXT NOT NULL,
+	runtime_state TEXT DEFAULT '',
+	user_id TEXT DEFAULT '',
+	conversation_id TEXT DEFAULT '',
+	session_id TEXT DEFAULT '',
+	agent_id TEXT DEFAULT '',
+	goal TEXT NOT NULL,
+	model TEXT DEFAULT '',
+	result TEXT DEFAULT '',
+	error TEXT DEFAULT '',
+	depth INTEGER NOT NULL DEFAULT 0,
+	current_step INTEGER NOT NULL DEFAULT 0,
+	progress INTEGER NOT NULL DEFAULT 0,
+	workspace_root TEXT DEFAULT '',
+	artifact_root TEXT DEFAULT '',
+	sandbox_mode TEXT DEFAULT '',
+	approval_mode TEXT DEFAULT '',
+	max_duration_ns INTEGER NOT NULL DEFAULT 0,
+	max_steps INTEGER NOT NULL DEFAULT 0,
+	max_tool_rounds INTEGER NOT NULL DEFAULT 0,
+	max_subagents INTEGER NOT NULL DEFAULT 0,
+	max_depth INTEGER NOT NULL DEFAULT 0,
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL,
+	started_at DATETIME,
+	finished_at DATETIME
+);`
+	if _, err := db.Exec(legacySchema); err != nil {
+		t.Fatalf("create legacy schema failed: %v", err)
+	}
+	now := time.Now().UTC()
+	if _, err := db.ExecContext(ctx, `INSERT INTO harness_runs (
+		id, root_run_id, parent_run_id, kind, status, runtime_state, user_id, conversation_id, session_id, agent_id,
+		goal, model, result, error, depth, current_step, progress, workspace_root, artifact_root, sandbox_mode,
+		approval_mode, max_duration_ns, max_steps, max_tool_rounds, max_subagents, max_depth, metadata_json,
+		created_at, updated_at, started_at, finished_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"run-legacy", "run-legacy", "", string(RunKindAgentTask), string(RunStatusCompleted), "", "user-1", "conv-1", "sess-1", "agent-1",
+		"legacy run", "model-x", "done", "", 0, 1, 100, "/tmp/work", "/tmp/artifacts/run-legacy", "workspace",
+		string(ApprovalModeAsk), int64(time.Minute), 5, 5, 0, 0, `{}`,
+		now, now, now, now,
+	); err != nil {
+		t.Fatalf("insert legacy row failed: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close sqlite: %v", err)
+	}
+
+	reopenedDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("reopen sqlite: %v", err)
+	}
+	defer func() { _ = reopenedDB.Close() }()
+	store, err := NewSQLiteStore(reopenedDB)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore failed: %v", err)
+	}
+	run, err := store.GetRun(ctx, "run-legacy")
+	if err != nil {
+		t.Fatalf("GetRun failed after migration: %v", err)
+	}
+	if run.GroupID != "" || run.GroupItemID != "" || run.AttemptIndex != 0 {
+		t.Fatalf("unexpected migrated run fields: %#v", run)
 	}
 }
 
