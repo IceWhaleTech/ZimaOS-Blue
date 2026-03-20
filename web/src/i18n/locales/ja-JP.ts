@@ -1,5 +1,8 @@
 // Japanese (日本語)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('ja-JP')
 
 export default {
   ...enUS,
@@ -129,6 +132,9 @@ export default {
     totalTokens: '合計トークン',
     upload: 'アップロード',
     uploading: 'アップロード中...',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: '送信',
     revoke: '取り消し',
   },
@@ -392,7 +398,9 @@ export default {
     myUsage: 'マイ使用量',
     myProviders: 'マイプロバイダー',
     mySkills: 'マイスキル',
+    harness: harness.nav.harness,
   },
+  harness: harness.harness,
   brand: {
     ...enUS.brand,
     name: 'ZimaOS',

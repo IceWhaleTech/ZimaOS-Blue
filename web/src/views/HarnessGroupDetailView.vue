@@ -40,6 +40,12 @@ function tr(key: string, fallback: string): string {
   return te(key) ? t(key) : fallback
 }
 
+function humanizeEnum(value: string): string {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return value as Record<string, unknown>
@@ -137,6 +143,50 @@ function statusTone(status: string): string {
     default:
       return 'is-muted'
   }
+}
+
+function statusLabel(status?: string | null): string {
+  const value = String(status || '').trim()
+  switch (value) {
+    case 'running':
+      return tr('harness.groups.running', 'Running')
+    case 'failed':
+      return tr('harness.groups.failed', 'Failed')
+    case 'passed':
+      return tr('harness.groups.passed', 'Passed')
+    case 'pass':
+      return tr('harness.group.passVerdict', 'Pass')
+    case 'fail':
+      return tr('harness.group.failVerdict', 'Fail')
+    case 'partial':
+      return tr('harness.group.partialVerdict', 'Partial')
+    case 'error':
+      return tr('harness.group.errorVerdict', 'Error')
+    case 'queued':
+      return tr('harness.group.queuedCount', 'Queued')
+    default:
+      return value ? humanizeEnum(value) : tr('common.notAvailable', 'Not available')
+  }
+}
+
+function kindLabel(kind?: string | null): string {
+  const value = String(kind || '').trim()
+  return value ? humanizeEnum(value) : tr('nav.harness', 'Harness')
+}
+
+function modeLabel(mode?: string | null): string {
+  const value = String(mode || '').trim()
+  return value ? humanizeEnum(value) : tr('common.notAvailable', 'Not available')
+}
+
+function artifactKindLabel(kind?: string | null): string {
+  const value = String(kind || '').trim()
+  return value ? humanizeEnum(value) : tr('common.notAvailable', 'Not available')
+}
+
+function profileLabel(profile?: string | null): string {
+  const value = String(profile || '').trim()
+  return value ? humanizeEnum(value) : tr('harness.group.unprofiled', 'Unprofiled item')
 }
 
 function runPreview(run?: HarnessRunSummary | null): string {
@@ -261,10 +311,10 @@ onUnmounted(() => {
         </RouterLink>
         <div class="hero-heading">
           <span class="kind-chip" :class="group ? `is-${group.kind}` : 'is-eval'">
-            {{ group?.kind || tr('nav.harness', 'Harness') }}
+            {{ kindLabel(group?.kind) }}
           </span>
           <span class="status-chip" :class="statusTone(group?.status || '')">
-            {{ group?.status || tr('common.loading', 'Loading') }}
+            {{ statusLabel(group?.status) }}
           </span>
         </div>
         <h1>{{ group?.title || group?.subject || groupID }}</h1>
@@ -357,7 +407,10 @@ onUnmounted(() => {
       <section class="panel">
         <div class="panel-header">
           <h2>{{ tr('harness.group.scoreDistribution', 'Score distribution') }}</h2>
-          <span class="panel-caption">{{ tr('harness.group.scoringMode', 'Scoring mode') }}: {{ group.scoring_config?.mode || 'hybrid' }}</span>
+          <span class="panel-caption">
+            {{ tr('harness.group.scoringMode', 'Scoring mode') }}:
+            {{ modeLabel(group.scoring_config?.mode || 'hybrid') }}
+          </span>
         </div>
         <div class="verdict-grid">
           <div class="verdict-card">
@@ -397,8 +450,8 @@ onUnmounted(() => {
             <div class="row-primary">
               <div class="row-title-line">
                 <strong>#{{ item.index }}</strong>
-                <span class="status-chip" :class="statusTone(item.status)">{{ item.status }}</span>
-                <span v-if="item.profile" class="profile-chip">{{ item.profile }}</span>
+                <span class="status-chip" :class="statusTone(item.status)">{{ statusLabel(item.status) }}</span>
+                <span v-if="item.profile" class="profile-chip">{{ profileLabel(item.profile) }}</span>
               </div>
               <p class="row-subtitle">
                 {{
@@ -411,7 +464,11 @@ onUnmounted(() => {
               <span>{{ tr('harness.group.attempts', 'Attempts') }}: {{ item.attempt_count }}/{{ item.max_attempts || 1 }}</span>
               <span>
                 {{ tr('harness.group.scorecard', 'Verdict') }}:
-                {{ scorecardByItemID[item.id]?.verdict || tr('common.notAvailable', 'Not available') }}
+                {{
+                  scorecardByItemID[item.id]?.verdict
+                    ? statusLabel(scorecardByItemID[item.id]?.verdict)
+                    : tr('common.notAvailable', 'Not available')
+                }}
               </span>
               <button
                 v-if="item.latest_run_id"
@@ -439,10 +496,10 @@ onUnmounted(() => {
             <div class="failed-header">
               <strong>#{{ entry.item?.index ?? '?' }}</strong>
               <span class="status-chip" :class="statusTone(entry.scorecard?.verdict || entry.item?.status || '')">
-                {{ entry.scorecard?.verdict || entry.item?.status || 'unknown' }}
+                {{ statusLabel(entry.scorecard?.verdict || entry.item?.status || 'unknown') }}
               </span>
             </div>
-            <p class="failed-title">{{ entry.item?.profile || tr('harness.group.unprofiled', 'Unprofiled item') }}</p>
+            <p class="failed-title">{{ profileLabel(entry.item?.profile) }}</p>
             <p class="failed-reason">
               {{ scorecardReason(entry.scorecard) || runPreview(entry.run) || tr('harness.group.noFailureReason', 'No failure reason recorded.') }}
             </p>
@@ -477,10 +534,11 @@ onUnmounted(() => {
               <div>
                 <div class="run-title-line">
                   <strong>{{ run.goal || run.id }}</strong>
-                  <span class="status-chip" :class="statusTone(run.status)">{{ run.status }}</span>
+                  <span class="status-chip" :class="statusTone(run.status)">{{ statusLabel(run.status) }}</span>
                 </div>
                 <p class="run-meta">
-                  {{ run.kind }} · {{ tr('harness.group.attemptIndex', 'Attempt') }} {{ run.attempt_index || 0 }} ·
+                  {{ kindLabel(run.kind) }} ·
+                  {{ tr('harness.group.attemptIndex', 'Attempt') }} {{ run.attempt_index || 0 }} ·
                   {{ formatDate(run.updated_at) }}
                 </p>
               </div>
@@ -502,8 +560,11 @@ onUnmounted(() => {
         <div v-else class="artifact-list">
           <article v-for="artifact in artifacts" :key="artifact.id" class="artifact-card">
             <div>
-              <strong>{{ artifact.label || artifact.kind }}</strong>
-              <p class="artifact-meta">{{ artifact.kind }} · {{ artifact.mime_type || tr('common.notAvailable', 'Not available') }}</p>
+              <strong>{{ artifact.label || artifactKindLabel(artifact.kind) }}</strong>
+              <p class="artifact-meta">
+                {{ artifactKindLabel(artifact.kind) }} ·
+                {{ artifact.mime_type || tr('common.notAvailable', 'Not available') }}
+              </p>
             </div>
             <a
               v-if="artifact.path_or_url && artifactIsURL(artifact)"

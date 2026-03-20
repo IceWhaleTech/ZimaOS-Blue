@@ -1,5 +1,8 @@
 // Swedish (Svenska)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('sv-SE')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Filtrera efter IP',
     allIps: 'Alla IP',
     noData: 'Inga data',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Skicka',
     revoke: 'Återkalla',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'Automatisering',
     security: 'Säkerhet',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Tillägg',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

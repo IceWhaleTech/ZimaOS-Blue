@@ -1753,6 +1753,24 @@ func TestApplyResearchToolPreference(t *testing.T) {
 	}
 }
 
+func TestApplyResearchToolPreference_KeepsFileToolsForReportOutput(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "research_run"},
+		{Name: "research_status"},
+		{Name: "browser"},
+		{Name: "read"},
+		{Name: "write"},
+		{Name: "ls"},
+		{Name: "find"},
+	}
+
+	filtered := applyResearchToolPreference(defs, "Create a competitive market report and save it to market_research.md with sources.")
+	if got := toolNames(filtered); strings.Join(got, ",") != "research_run,research_status,browser,read,write,ls,find" {
+		t.Fatalf("expected research tools plus file output tools, got=%v", got)
+	}
+}
+
 func TestApplyWritingToolPreference(t *testing.T) {
 	defs := []tools.ToolDefinition{
 		{Name: "web_search"},

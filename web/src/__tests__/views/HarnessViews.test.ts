@@ -112,6 +112,8 @@ describe('Harness views', () => {
     expect(wrapper.text()).toContain('Regression batch')
     expect(wrapper.text()).toContain('Validate agent task flows')
     expect(wrapper.text()).toContain('12')
+    expect(wrapper.text()).toContain('Eval')
+    expect(wrapper.text()).toContain('Running')
   })
 
   it('renders the harness group detail report with failed items and runs', async () => {
@@ -239,5 +241,9 @@ describe('Harness views', () => {
     expect(wrapper.text()).toContain('evidence mismatch')
     expect(wrapper.text()).toContain('experiment backend unavailable')
     expect(wrapper.text()).toContain('projection-report')
+    expect(wrapper.text()).toContain('Experiment')
+    expect(wrapper.text()).toContain('Completed')
+    expect(wrapper.text()).toContain('Research')
+    expect(wrapper.text()).toContain('Hybrid')
   })
 })

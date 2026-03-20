@@ -1,5 +1,8 @@
 // Russian (Русский)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('ru-RU')
 
 export default {
   ...enUS,
@@ -48,6 +51,9 @@ export default {
     filterByIp: 'Фильтр по IP',
     allIps: 'Все IP',
     noData: 'Нет данных',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Отправить',
     revoke: 'Отозвать',
   },
@@ -128,7 +134,9 @@ export default {
     automation: 'Автоматизация',
     security: 'Безопасность',
     companion: 'Companion',
+    harness: harness.nav.harness,
   },
+  harness: harness.harness,
   brand: {
     ...enUS.brand,
     name: 'ZimaOS',

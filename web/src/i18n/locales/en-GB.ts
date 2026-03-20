@@ -1,5 +1,8 @@
 // English (UK)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('en-GB')
 
 export default {
   ...enUS,
@@ -1682,6 +1685,9 @@ export default {
     totalTokens: 'Total Tokens',
     upload: 'Upload',
     uploading: 'Uploading...',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     revoke: 'Revoke',
   },
   companion: {
@@ -2700,7 +2706,9 @@ export default {
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
     workspaceTreeRevealFailed: 'Unable to open file location',
+    harness: harness.nav.harness,
   },
+  harness: harness.harness,
   network: {
     accessFromOtherDevices: 'Access from Other Devices',
     localNetwork: 'Local Network',

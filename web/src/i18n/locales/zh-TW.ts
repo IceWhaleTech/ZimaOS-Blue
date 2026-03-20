@@ -1,5 +1,8 @@
 // Traditional Chinese (繁體中文)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('zh-TW')
 
 export default {
   ...enUS,
@@ -128,6 +131,9 @@ export default {
     done: '完成',
     filterByIp: '按 IP 篩選',
     allIps: '所有 IP',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: '傳送',
     revoke: '撤銷',
   },
@@ -365,7 +371,9 @@ export default {
     automation: '自動化',
     security: '安全',
     companion: '監控',
+    harness: harness.nav.harness,
   },
+  harness: harness.harness,
   brand: {
     ...enUS.brand,
     githubTooltip: '開源免費的代理執行時',

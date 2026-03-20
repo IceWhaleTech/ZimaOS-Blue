@@ -103,6 +103,45 @@ func TestSelectTools_DefaultRuntimePrefersWorkspaceFileWorkflow(t *testing.T) {
 	}
 }
 
+func TestSelectTools_ResearchReportKeepsResearchAndWriteTools(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "research_run", Description: "Deep research with sources"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "research_status", Description: "Deep research status"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Fallback browser"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace directories"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find text in files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "grep", Description: "Search file content"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "convert", Description: "Convert local files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Run terminal commands"})
+
+	handler := NewChatHandler(nil, nil, registry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	handler.SetToolSelector(tools.DefaultToolSelector())
+	handler.SetToolRouter(tools.DefaultToolRouter())
+
+	got := handler.selectTools("Create a competitive market research report with sources and save it to market_research.md.", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		RouteKind: tools.ToolRouteKindChat,
+	})
+	if len(got) == 0 {
+		t.Fatal("expected non-empty tool selection")
+	}
+
+	names := make(map[string]bool, len(got))
+	for _, def := range got {
+		names[def.Name] = true
+	}
+	if !names["write"] {
+		t.Fatalf("expected research report flow to keep write available, got=%v", got)
+	}
+	if !names["research_run"] && !names["web_search"] {
+		t.Fatalf("expected research report flow to keep research discovery tools, got=%v", got)
+	}
+}
+
 func TestSelectTools_WorkspaceCodingTaskKeepsExec(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})

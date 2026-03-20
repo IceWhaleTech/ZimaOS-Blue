@@ -1,5 +1,8 @@
 // Italian (Italiano)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('it-IT')
 
 export default {
   ...enUS,
@@ -48,6 +51,9 @@ export default {
     filterByIp: 'Filtra per IP',
     allIps: 'Tutti gli IP',
     noData: 'Nessun dato',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Invia',
     revoke: 'Revoca',
   },
@@ -128,7 +134,9 @@ export default {
     automation: 'Automazione',
     security: 'Sicurezza',
     companion: 'Companion',
+    harness: harness.nav.harness,
   },
+  harness: harness.harness,
   brand: {
     ...enUS.brand,
     name: 'ZimaOS',

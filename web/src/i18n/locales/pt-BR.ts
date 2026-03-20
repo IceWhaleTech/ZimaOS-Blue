@@ -1,5 +1,8 @@
 // Portuguese - Brazil (Português do Brasil)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('pt-BR')
 
 export default {
   ...enUS,
@@ -48,6 +51,9 @@ export default {
     filterByIp: 'Filtrar por IP',
     allIps: 'Todos os IPs',
     noData: 'Sem dados',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Enviar',
     revoke: 'Revogar',
   },
@@ -128,7 +134,9 @@ export default {
     automation: 'Automação',
     security: 'Segurança',
     companion: 'Companion',
+    harness: harness.nav.harness,
   },
+  harness: harness.harness,
   brand: {
     ...enUS.brand,
     name: 'ZimaOS',

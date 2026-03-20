@@ -1,4 +1,8 @@
 // Simplified Chinese (简体中文)
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('zh-CN')
+
 export default {
   common: {
     loading: '加载中...',
@@ -121,6 +125,9 @@ export default {
     totalTokens: 'Token 总数',
     upload: '上传',
     uploading: '上传中...',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: '发送',
     revoke: '撤销',
   },
@@ -278,7 +285,9 @@ export default {
     workspaceTreeCollapseDir: '折叠目录',
     workspaceTreeOpenFailed: '无法打开工作区文件',
     workspaceTreeRevealFailed: '无法打开文件所在位置',
+    harness: harness.nav.harness,
   },
+  harness: harness.harness,
   myUsage: {
     title: '我的用量',
     totalTokens: '总 Token 数',

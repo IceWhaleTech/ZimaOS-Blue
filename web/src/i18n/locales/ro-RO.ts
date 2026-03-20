@@ -1,5 +1,8 @@
 // Romanian (Română)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('ro-RO')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Filtrare după IP',
     allIps: 'Toate IP-urile',
     noData: 'Fără date',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Trimite',
     revoke: 'Revocă',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'Automatizare',
     security: 'Securitate',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Extensii',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

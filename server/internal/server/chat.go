@@ -5830,6 +5830,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	if h.toolRouter != nil {
 		routed = h.toolRouter.Route(userMessage, policyReq.Model, selected)
 	}
+	routed = preferResearchReportWorkflowTools(userMessage, allDefs, routed)
 	routed = preferWorkspaceFileWorkflowTools(userMessage, allDefs, routed)
 
 	names := make([]string, len(routed))
@@ -5848,6 +5849,40 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 		Msg("[chat] selectTools")
 
 	return routed, debug
+}
+
+func preferResearchReportWorkflowTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(allDefs) == 0 || !shouldPreferDeepSearchReport(userMessage) {
+		return current
+	}
+
+	researchTools := filterToolDefsToNames(allDefs,
+		"research_run",
+		"research_status",
+		"browser",
+		"web_search",
+		"web_fetch",
+		"web_read",
+		"web_extract",
+		"web_crawl",
+		"exec",
+	)
+	if target := extractRequestedArtifactPath(userMessage); target != "" {
+		researchTools = mergeToolDefsByName(researchTools, filterToolDefsToNames(allDefs,
+			"read",
+			"write",
+			"ls",
+			"find",
+			"grep",
+			"convert",
+			"pdf",
+			"image",
+		))
+	}
+	if len(researchTools) == 0 {
+		return current
+	}
+	return mergeToolDefsByName(current, researchTools)
 }
 
 func preferWorkspaceFileWorkflowTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
@@ -5944,18 +5979,36 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 	if len(defs) == 0 {
 		return defs
 	}
-	if !shouldPreferDeepSearchReport(userMessage) || !hasToolDefName(defs, "research_run") {
+	if !shouldPreferDeepSearchReport(userMessage) {
 		return defs
 	}
-	filtered := filterToolDefsToNames(defs,
-		"research_run",
-		"research_status",
+
+	keepNames := []string{
 		"browser",
 		"web_fetch",
 		"web_read",
 		"web_extract",
 		"web_crawl",
-	)
+	}
+	if hasToolDefName(defs, "research_run") {
+		keepNames = append([]string{"research_run", "research_status"}, keepNames...)
+	} else {
+		keepNames = append(keepNames, "web_search", "exec")
+	}
+	if target := extractRequestedArtifactPath(userMessage); target != "" {
+		keepNames = append(keepNames,
+			"read",
+			"write",
+			"ls",
+			"find",
+			"grep",
+			"convert",
+			"pdf",
+			"image",
+		)
+	}
+
+	filtered := filterToolDefsToNames(defs, keepNames...)
 	if len(filtered) == 0 {
 		return defs
 	}
@@ -6163,6 +6216,35 @@ func filterToolDefsToNames(defs []tools.ToolDefinition, names ...string) []tools
 		}
 	}
 	return filtered
+}
+
+func mergeToolDefsByName(primary, secondary []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(primary) == 0 {
+		return secondary
+	}
+	if len(secondary) == 0 {
+		return primary
+	}
+
+	merged := make([]tools.ToolDefinition, 0, len(primary)+len(secondary))
+	seen := make(map[string]struct{}, len(primary)+len(secondary))
+	appendUnique := func(defs []tools.ToolDefinition) {
+		for _, def := range defs {
+			name := strings.ToLower(strings.TrimSpace(def.Name))
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			merged = append(merged, def)
+		}
+	}
+
+	appendUnique(primary)
+	appendUnique(secondary)
+	return merged
 }
 
 func hasExplicitSystemReminderTarget(userMessage string) bool {
@@ -12617,6 +12699,23 @@ func buildPostWriteCompletionNudge(userMessage string, toolCalls []llm.ToolCall,
 	return fmt.Sprintf("The requested file %q was written successfully. Unless you can point to a specific verified defect, do not call write on that path again in this turn. If needed, read it once to confirm, then provide a brief final answer to the user.", target)
 }
 
+func buildPostResearchFailureRecoveryNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	if !shouldPreferDeepSearchReport(userMessage) {
+		return ""
+	}
+	if len(collectSuccessfulWriteTargets(toolCalls, toolResults)) > 0 {
+		return ""
+	}
+	if !hasFailedResearchToolResult(toolCalls, toolResults) {
+		return ""
+	}
+	target := extractRequestedArtifactPath(userMessage)
+	if target == "" {
+		return ""
+	}
+	return fmt.Sprintf("Live search/research tools just failed or timed out. Do not stop with a fallback summary. Using your general knowledge plus any successful evidence already gathered, now write the requested report to %q. Include an executive summary, key findings, a comparison table when relevant, and a short note that live retrieval failed so some details may be approximate. After writing the file, give a brief final confirmation.", target)
+}
+
 func collectSuccessfulWriteTargets(toolCalls []llm.ToolCall, toolResults []llm.Message) []string {
 	if len(toolResults) == 0 {
 		return nil
@@ -12647,6 +12746,66 @@ func collectSuccessfulWriteTargets(toolCalls []llm.ToolCall, toolResults []llm.M
 		}
 	}
 	return out
+}
+
+func hasFailedResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
+	if len(toolResults) == 0 {
+		return false
+	}
+
+	callByID := make(map[string]llm.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			callByID[id] = tc
+		}
+	}
+
+	for i, tr := range toolResults {
+		toolName := ""
+		var toolCall llm.ToolCall
+		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
+			toolCall = toolCalls[i]
+			toolName = toolCall.Name
+		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			toolCall = matched
+			toolName = matched.Name
+		}
+		if !isResearchRecoveryToolName(toolName) && !isSearchLikeToolCallForLLM(toolCall) {
+			continue
+		}
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(strings.TrimSpace(tr.Content)), &payload) != nil {
+			continue
+		}
+		if classifyToolFallbackOutcome(payload) == "failed" {
+			return true
+		}
+	}
+	return false
+}
+
+func isResearchRecoveryToolName(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "web_search", "research_run", "research_status", "browser", "web_fetch", "web_read", "web_extract", "web_crawl":
+		return true
+	default:
+		return false
+	}
+}
+
+var requestedArtifactPathRegex = regexp.MustCompile("`([^`]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?))`|\\b([A-Za-z0-9._/\\-]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?))\\b")
+
+func extractRequestedArtifactPath(userMessage string) string {
+	matches := requestedArtifactPathRegex.FindAllStringSubmatch(userMessage, -1)
+	for i := len(matches) - 1; i >= 0; i-- {
+		for _, group := range matches[i][1:] {
+			candidate := strings.TrimSpace(group)
+			if candidate != "" {
+				return candidate
+			}
+		}
+	}
+	return ""
 }
 
 func extractSuccessfulWriteTarget(toolName, content string) string {
@@ -14688,6 +14847,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				}
 			}
 			if nudge := buildPostWriteCompletionNudge(routingMessage, resp.Message.ToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+			}
+			if nudge := buildPostResearchFailureRecoveryNudge(routingMessage, resp.Message.ToolCalls, toolResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
 					Role:    llm.RoleUser,
 					Content: nudge,
@@ -17436,6 +17601,12 @@ STREAM_LOOP:
 				}
 			}
 			if nudge := buildPostWriteCompletionNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+			}
+			if nudge := buildPostResearchFailureRecoveryNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
 					Role:    llm.RoleUser,
 					Content: nudge,

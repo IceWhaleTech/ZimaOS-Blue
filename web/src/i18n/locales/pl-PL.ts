@@ -1,5 +1,8 @@
 // Polish (Polski)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('pl-PL')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Filtruj po IP',
     allIps: 'Wszystkie IP',
     noData: 'Brak danych',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Wyślij',
     revoke: 'Odwołaj',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'Automatyzacja',
     security: 'Bezpieczeństwo',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Rozszerzenia',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

@@ -26,6 +26,12 @@ function tr(key: string, fallback: string): string {
   return te(key) ? t(key) : fallback
 }
 
+function humanizeEnum(value: string): string {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return value as Record<string, unknown>
@@ -98,7 +104,22 @@ function kindTone(kind: string): string {
 }
 
 function statusLabel(status: HarnessRunGroupStatus): string {
-  return status.replace(/_/g, ' ')
+  switch (status) {
+    case 'running':
+      return tr('harness.groups.running', 'Running')
+    case 'failed':
+      return tr('harness.groups.failed', 'Failed')
+    case 'partial':
+      return tr('harness.group.partialVerdict', 'Partial')
+    case 'queued':
+      return tr('harness.group.queuedCount', 'Queued')
+    default:
+      return humanizeEnum(status)
+  }
+}
+
+function kindLabel(kind: string): string {
+  return humanizeEnum(kind)
 }
 
 function formatDate(value?: string | null): string {
@@ -269,7 +290,7 @@ onMounted(() => {
         class="group-card"
       >
         <div class="group-card-header">
-          <span class="kind-chip" :class="kindTone(group.kind)">{{ group.kind }}</span>
+          <span class="kind-chip" :class="kindTone(group.kind)">{{ kindLabel(group.kind) }}</span>
           <span class="status-chip" :class="statusTone(group.status)">{{ statusLabel(group.status) }}</span>
         </div>
 

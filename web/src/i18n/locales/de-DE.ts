@@ -1,5 +1,8 @@
 // German (Deutsch)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('de-DE')
 
 export default {
   ...enUS,
@@ -56,6 +59,9 @@ export default {
     upload: 'Hochladen',
     uploading: 'Wird hochgeladen...',
     noData: 'Keine Daten',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Senden',
     revoke: 'Widerrufen',
   },
@@ -136,7 +142,9 @@ export default {
     automation: 'Automatisierung',
     security: 'Sicherheit',
     companion: 'Companion',
+    harness: harness.nav.harness,
   },
+  harness: harness.harness,
   brand: {
     ...enUS.brand,
     name: 'ZimaOS',

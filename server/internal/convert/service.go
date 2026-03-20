@@ -824,6 +824,21 @@ func (s *Service) convertDocument(ctx context.Context, task *ConvertTask, source
 		return nil, "", fmt.Errorf("target_format is required")
 	}
 
+	if outputPath, preview, handled, err := convertSpreadsheetLocally(s.outputDir(task.ID), source, target); handled {
+		if err != nil {
+			return nil, "", err
+		}
+		output, err := s.outputForPath(task.ID, outputPath, preview)
+		if err != nil {
+			return nil, "", err
+		}
+		if target == "json" || target == "csv" || target == "txt" || target == "md" {
+			output.PreviewKind = PreviewText
+			output.PreviewText = preview
+		}
+		return []ConvertOutput{output}, "Spreadsheet converted", nil
+	}
+
 	engines := availableDocumentEngines(s.documentEngines(ctx))
 	if len(engines) == 0 && !helperSupportsDocumentPDFFallback(sourceExt, target) {
 		return nil, "", fmt.Errorf("no document conversion engine is available on this host")

@@ -1,5 +1,8 @@
 // Norwegian Bokmål (Norsk bokmål)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('nb-NO')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Filtrer etter IP',
     allIps: 'Alle IP-er',
     noData: 'Ingen data',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Send',
     revoke: 'Tilbakekall',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'Automatisering',
     security: 'Sikkerhet',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Utvidelser',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

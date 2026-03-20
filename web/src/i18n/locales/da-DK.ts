@@ -1,5 +1,8 @@
 // Danish (Dansk)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('da-DK')
 
 export default {
   ...enUS,
@@ -24,6 +27,9 @@ export default {
     dismiss: 'Luk',
     done: 'Færdig',
     noData: 'Ingen data',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Send',
     revoke: 'Tilbagekald',
   },
@@ -87,9 +93,11 @@ export default {
     automation: 'Automatisering',
     security: 'Sikkerhed',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Udvidelser',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

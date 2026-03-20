@@ -1,5 +1,8 @@
 // Greek (Ελληνικά)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('el-GR')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Φιλτράρισμα κατά IP',
     allIps: 'Όλες οι διευθύνσεις IP',
     noData: 'Δεν υπάρχουν δεδομένα',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Αποστολή',
     revoke: 'Ανάκληση',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'Αυτοματισμός',
     security: 'Ασφάλεια',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Επεκτάσεις',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

@@ -1,5 +1,8 @@
 // Irish (Gaeilge)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('ga-IE')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Scagadh de réir IP',
     allIps: 'Gach IP',
     noData: 'Gan sonraí',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Seol',
     revoke: 'Cúlghairm',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'Uathoibriú',
     security: 'Slándáil',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Eisínteachtaí',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

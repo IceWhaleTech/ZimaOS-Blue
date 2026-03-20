@@ -1,5 +1,8 @@
 // Czech (Čeština)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('cs-CZ')
 
 export default {
   ...enUS,
@@ -24,6 +27,9 @@ export default {
     dismiss: 'Zavřít',
     done: 'Hotovo',
     noData: 'Žádná data',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Odeslat',
     revoke: 'Odvolat',
   },
@@ -87,9 +93,11 @@ export default {
     automation: 'Automatizace',
     security: 'Zabezpečení',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Rozšíření',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

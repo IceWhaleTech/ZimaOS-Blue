@@ -1,5 +1,8 @@
 // Croatian (Hrvatski)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('hr-HR')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Filtriraj po IP-u',
     allIps: 'Sve IP adrese',
     noData: 'Nema podataka',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Pošalji',
     revoke: 'Opozovi',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'Automatizacija',
     security: 'Sigurnost',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Proširenja',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

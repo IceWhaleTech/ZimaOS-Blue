@@ -1,5 +1,8 @@
 // Slovak (Slovenčina)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('sk-SK')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Filtrovať podľa IP',
     allIps: 'Všetky IP adresy',
     noData: 'Žiadne údaje',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Odoslať',
     revoke: 'Odvolať',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'Automatizácia',
     security: 'Bezpečnosť',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Rozšírenia',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

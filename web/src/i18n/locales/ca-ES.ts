@@ -1,5 +1,8 @@
 // Catalan (Català)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('ca-ES')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Filtrar per IP',
     allIps: 'Totes les IPs',
     noData: 'Sense dades',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Enviar',
     revoke: 'Revocar',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'Automatització',
     security: 'Seguretat',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Extensions',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

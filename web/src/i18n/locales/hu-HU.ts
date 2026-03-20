@@ -1,5 +1,8 @@
 // Hungarian (Magyar)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('hu-HU')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Szűrés IP szerint',
     allIps: 'Összes IP',
     noData: 'Nincs adat',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Küldés',
     revoke: 'Visszavonás',
   },
@@ -79,9 +85,11 @@ export default {
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
     workspaceTreeRevealFailed: 'Unable to open file location',
+    harness: harness.nav.harness,
 
     plugins: 'Bővítmények',
   },
+  harness: harness.harness,
 
   errors: {
     ...enUS.errors,

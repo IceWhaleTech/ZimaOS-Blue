@@ -1,5 +1,8 @@
 // Malayalam (മലയാളം)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('ml-IN')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'IP ద్వారా ఫిల్టర్ చేయండి',
     allIps: 'అన్ని IP లు',
     noData: 'ഡാറ്റയില്ല',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'അയയ്ക്കുക',
     revoke: 'പിന്‍വലിക്കുക',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'ഓട്ടോമേഷൻ',
     security: 'സുരക്ഷ',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'എക്സ്റ്റൻഷനുകൾ',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

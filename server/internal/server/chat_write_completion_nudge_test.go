@@ -61,6 +61,51 @@ func TestCollectSuccessfulWriteTargets_IgnoresAppendWrites(t *testing.T) {
 	}
 }
 
+func TestBuildPostResearchFailureRecoveryNudge_ForFailedResearchReport(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "web_search"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"error":"upstream timeout","status":"timeout"}`},
+	}
+
+	nudge := buildPostResearchFailureRecoveryNudge(
+		"Research the latest AI browser launches with sources and write the report to market_report.md.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected non-empty recovery nudge for failed research tool")
+	}
+	if want := `market_report.md`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to mention target path %q, got=%q", want, nudge)
+	}
+	if want := `write the requested report`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to steer the model back to writing, got=%q", nudge)
+	}
+}
+
+func TestBuildPostResearchFailureRecoveryNudge_RecognizesExecWrappedSearchFailure(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "exec", Arguments: `{"command":"blue web_search query=\"latest AI browser launches\""}`},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"error":"provider unavailable","status":"failed","exit_code":1}`},
+	}
+
+	nudge := buildPostResearchFailureRecoveryNudge(
+		"Please do a comprehensive research report and save it to browser_landscape.md.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected recovery nudge for exec-wrapped web search failure")
+	}
+	if want := `browser_landscape.md`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to mention target path %q, got=%q", want, nudge)
+	}
+}
+
 func containsSubstring(haystack, needle string) bool {
 	return len(needle) > 0 && len(haystack) >= len(needle) && (func() bool {
 		return stringIndex(haystack, needle) >= 0

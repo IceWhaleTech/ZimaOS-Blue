@@ -1,5 +1,8 @@
 // Korean (한국어)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('ko-KR')
 
 export default {
   ...enUS,
@@ -48,6 +51,9 @@ export default {
     filterByIp: 'IP로 필터',
     allIps: '모든 IP',
     noData: '데이터 없음',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: '보내기',
     revoke: '취소',
   },
@@ -258,7 +264,9 @@ export default {
     automation: '자동화',
     security: '보안',
     companion: '컴패니언',
+    harness: harness.nav.harness,
   },
+  harness: harness.harness,
   brand: {
     ...enUS.brand,
     name: 'ZimaOS',

@@ -1,5 +1,8 @@
 // Dutch (Nederlands)
 import enUS from './en-US'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('nl-NL')
 
 export default {
   ...enUS,
@@ -26,6 +29,9 @@ export default {
     filterByIp: 'Filteren op IP',
     allIps: 'Alle IPs',
     noData: 'Geen gegevens',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     send: 'Verzenden',
     revoke: 'Intrekken',
   },
@@ -89,9 +95,11 @@ export default {
     automation: 'Automatisering',
     security: 'Beveiliging',
     companion: 'Companion',
+    harness: harness.nav.harness,
 
     plugins: 'Extensies',
   },
+  harness: harness.harness,
   dashboard: {
     ...enUS.dashboard,
     categories: {

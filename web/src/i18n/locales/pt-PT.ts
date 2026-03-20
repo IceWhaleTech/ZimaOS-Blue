@@ -1,6 +1,9 @@
 // Portuguese - Portugal (Português de Portugal)
 import enUS from './en-US'
 import ptBR from './pt-BR'
+import { getHarnessLocaleOverlay } from '../harness-locale-overrides'
+
+const harness = getHarnessLocaleOverlay('pt-PT')
 
 export default {
   ...ptBR,
@@ -23,6 +26,9 @@ export default {
     loading: 'A carregar...',
     testing: 'A testar...',
     done: 'Concluído',
+    all: harness.common.all,
+    notAvailable: harness.common.notAvailable,
+    updatedAt: harness.common.updatedAt,
     noData: 'Sem dados',
     revoke: 'Revogar',
   },
@@ -87,7 +93,9 @@ export default {
     channels: 'Canais',
     automation: 'Automação',
     security: 'Segurança',
+    harness: harness.nav.harness,
   },
+  harness: harness.harness,
   localeNames: {
     ...ptBR.localeNames,
     'pt-PT': 'Português (Portugal)',
