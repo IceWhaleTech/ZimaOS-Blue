@@ -42,6 +42,9 @@ describe('media fallback override coverage', () => {
     for (const locale of overrideLocales) {
       const localeMessages = overrides[locale]
       expect(localeMessages, `${locale} should define media fallback overrides`).toBeTruthy()
+      if (!localeMessages) {
+        continue
+      }
 
       for (const key of requiredKeys) {
         const value = getByPath(localeMessages, key)

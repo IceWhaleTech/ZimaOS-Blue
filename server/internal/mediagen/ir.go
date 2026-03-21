@@ -35,6 +35,8 @@ type langKeywords struct {
 	animVerbs  []string // animate/move — boost i2v
 	negations  []string // don't/not — suppress
 	questions  []string // how to/what is — suppress
+	metaCues   []string // intent/classifier discussion — suppress
+	metaStrong []string // strong meta-discussion phrases — suppress
 }
 
 // allLangKeywords maps language prefixes to their keyword sets.
@@ -48,6 +50,8 @@ var allLangKeywords = map[string]*langKeywords{
 		animVerbs:  []string{"animate", "move", "come alive", "bring to life", "make it move"},
 		negations:  []string{"don't", "do not", "stop", "cancel", "no more", "not"},
 		questions:  []string{"how to", "how do", "what is", "can you explain", "tell me about", "what does"},
+		metaCues:   []string{"intent", "keyword", "classifier", "classification", "matching", "route", "routing", "rule", "density", "trigger", "false positive"},
+		metaStrong: []string{"keyword matching", "intent classification", "intent classifier", "not this intent"},
 	},
 	"zh": {
 		actions:    []string{"生成", "画", "绘", "制作", "创建", "做", "弄", "设计", "绘制"},
@@ -57,6 +61,8 @@ var allLangKeywords = map[string]*langKeywords{
 		animVerbs:  []string{"动起来", "动画化", "让它动", "变成视频"},
 		negations:  []string{"不要", "别", "停止", "取消", "不用"},
 		questions:  []string{"怎么", "如何", "什么是", "能不能解释", "介绍一下"},
+		metaCues:   []string{"意图", "关键词", "匹配", "命中", "分类", "分类器", "规则", "触发", "密度", "误判"},
+		metaStrong: []string{"不是这个意图", "关键词匹配", "意图分类", "意图识别"},
 	},
 	"ja": {
 		actions:    []string{"生成", "描く", "作る", "作成", "描いて", "書いて", "作って", "デザイン"},
@@ -240,6 +246,8 @@ var allLangKeywords = map[string]*langKeywords{
 	},
 }
 
+var compiledIRLangKeywords = compileLangKeywords(allLangKeywords)
+
 // localeToLangKey maps a locale string (e.g. "zh-CN") to a language key.
 func localeToLangKey(locale string) string {
 	if locale == "" {
@@ -270,175 +278,170 @@ func ClassifyMediaIntent(message string, hasImages bool, imageCount int, locale 
 		return nil
 	}
 
-	lower := strings.ToLower(message)
-	lower = strings.TrimSpace(lower)
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return nil
+	}
 
 	// Determine which language keywords to use
 	langKey := localeToLangKey(locale)
-	kw := allLangKeywords[langKey]
+	kw := compiledIRLangKeywords[langKey]
 	if kw == nil {
-		kw = allLangKeywords["en"]
+		kw = compiledIRLangKeywords["en"]
 	}
 
 	// Also check English as fallback (many users mix English keywords)
-	kwEN := allLangKeywords["en"]
+	kwEN := compiledIRLangKeywords["en"]
 
-	// Layer 0: Negation and question filters
-	if isNegated(lower, kw) || isNegated(lower, kwEN) {
-		return nil
-	}
-	if isQuestion(lower, kw) || isQuestion(lower, kwEN) {
-		return nil
-	}
+	segments := splitIntentSegments(message)
+	totalRunes := len([]rune(strings.ToLower(message)))
 
-	// Layer 1: Keyword matching — find action + noun combinations
-	var (
-		hasAction     bool
-		hasImageNoun  bool
-		hasVideoNoun  bool
-		hasEditVerb   bool
-		hasAnimVerb   bool
-		promptText    = message // default: use full message as prompt
-	)
-
-	// Check primary language
-	hasAction = containsAny(lower, kw.actions)
-	hasImageNoun = containsAny(lower, kw.imageNouns)
-	hasVideoNoun = containsAny(lower, kw.videoNouns)
-	hasEditVerb = containsAny(lower, kw.editVerbs)
-	hasAnimVerb = containsAny(lower, kw.animVerbs)
-
-	// Also check English (fallback for mixed-language input)
-	if langKey != "en" {
-		if !hasAction {
-			hasAction = containsAny(lower, kwEN.actions)
+	var best *segmentIntentCandidate
+	for _, segment := range segments {
+		candidate := classifyMediaIntentSegment(segment, hasImages, imageCount, kw, kwEN, langKey != "en")
+		if candidate == nil {
+			continue
 		}
-		if !hasImageNoun {
-			hasImageNoun = containsAny(lower, kwEN.imageNouns)
+		candidate.Confidence = applyFocusPenalty(candidate.Confidence, candidate.FocusSpan, totalRunes, hasImages)
+		if candidate.Confidence <= 0 {
+			continue
 		}
-		if !hasVideoNoun {
-			hasVideoNoun = containsAny(lower, kwEN.videoNouns)
-		}
-		if !hasEditVerb {
-			hasEditVerb = containsAny(lower, kwEN.editVerbs)
-		}
-		if !hasAnimVerb {
-			hasAnimVerb = containsAny(lower, kwEN.animVerbs)
+		if best == nil || candidate.Confidence > best.Confidence ||
+			(candidate.Confidence == best.Confidence && len([]rune(candidate.Prompt)) < len([]rune(best.Prompt))) {
+			best = candidate
 		}
 	}
 
-	// Layer 2: Context signal boosting + category determination
-	cat := CategoryNone
-	confidence := 0.0
-
-	switch {
-	// KF2V: 2+ images + video/anim intent
-	case imageCount >= 2 && (hasVideoNoun || hasAnimVerb):
-		cat = CategoryKF2V
-		confidence = 0.85
-
-	// I2V: image attached + animate/video keywords
-	case hasImages && hasAnimVerb:
-		cat = CategoryI2V
-		confidence = 0.9
-
-	case hasImages && hasVideoNoun:
-		cat = CategoryI2V
-		confidence = 0.85
-
-	// I2I: image attached + edit keywords
-	case hasImages && hasEditVerb:
-		cat = CategoryI2I
-		confidence = 0.9
-
-	case hasImages && hasAction && hasImageNoun:
-		// Ambiguous: could be i2i or t2i with reference
-		cat = CategoryI2I
-		confidence = 0.7
-
-	// T2V: no image + video keywords
-	case hasAction && hasVideoNoun:
-		cat = CategoryT2V
-		confidence = 0.85
-
-	case hasVideoNoun && !hasAction:
-		// "a video of cats" — implicit generation
-		cat = CategoryT2V
-		confidence = 0.6
-
-	// T2I: no image + image keywords
-	case hasAction && hasImageNoun:
-		cat = CategoryT2I
-		confidence = 0.85
-
-	case hasImageNoun && !hasAction:
-		// "a picture of a sunset" — implicit generation
-		cat = CategoryT2I
-		confidence = 0.5
-	}
-
-	if cat == CategoryNone {
+	if best == nil {
 		return nil
 	}
 
 	return &MediaIntent{
-		Category:   cat,
-		Confidence: confidence,
-		Prompt:     promptText,
+		Category:   best.Category,
+		Confidence: best.Confidence,
+		Prompt:     best.Prompt,
 		HasImage:   hasImages,
 		ImageCount: imageCount,
 	}
 }
 
-// containsAny checks if text contains any of the given substrings.
-// For short Latin substrings (<=4 bytes, ASCII-only), requires word boundary to avoid
-// false matches like "move" inside "remove". Non-ASCII substrings always use simple Contains.
-func containsAny(text string, substrs []string) bool {
-	for _, s := range substrs {
-		idx := strings.Index(text, s)
-		if idx < 0 {
-			continue
-		}
-		// Only apply word boundary check for short ASCII-only strings
-		if len(s) <= 4 && isASCII(s) {
-			if isWordMatch(text, s, idx) {
-				return true
-			}
-			continue
-		}
-		return true
-	}
-	return false
+type segmentIntentCandidate struct {
+	Category   MediaCategory
+	Confidence float64
+	Prompt     string
+	FocusSpan  int
 }
 
-// isASCII returns true if all bytes in s are ASCII.
-func isASCII(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] > 127 {
-			return false
-		}
+func classifyMediaIntentSegment(segment string, hasImages bool, imageCount int, kw, kwEN *compiledLangKeywords, includeEnglishFallback bool) *segmentIntentCandidate {
+	lower := strings.ToLower(strings.TrimSpace(segment))
+	if lower == "" {
+		return nil
 	}
-	return true
-}
 
-// isWordMatch checks if the substring at idx is a whole word (bounded by non-letters).
-func isWordMatch(text, sub string, idx int) bool {
-	// Check character before
-	if idx > 0 {
-		runes := []rune(text[:idx])
-		if len(runes) > 0 && unicode.IsLetter(runes[len(runes)-1]) {
-			return false
-		}
+	// Suppress explicit negations, informational questions, and classifier/meta discussions.
+	if isNegated(lower, kw.raw) {
+		return nil
 	}
-	// Check character after
-	end := idx + len(sub)
-	if end < len(text) {
-		runes := []rune(text[end:])
-		if len(runes) > 0 && unicode.IsLetter(runes[0]) {
-			return false
-		}
+	if includeEnglishFallback && isNegated(lower, kwEN.raw) {
+		return nil
 	}
-	return true
+	if isQuestion(lower, kw.raw) {
+		return nil
+	}
+	if includeEnglishFallback && isQuestion(lower, kwEN.raw) {
+		return nil
+	}
+	if isMetaDiscussion(lower, kw) {
+		return nil
+	}
+	if includeEnglishFallback && isMetaDiscussion(lower, kwEN) {
+		return nil
+	}
+
+	actionMatches := kw.actions.FindMatches(lower)
+	imageMatches := kw.imageNouns.FindMatches(lower)
+	videoMatches := kw.videoNouns.FindMatches(lower)
+	editMatches := kw.editVerbs.FindMatches(lower)
+	animMatches := kw.animVerbs.FindMatches(lower)
+
+	if includeEnglishFallback {
+		actionMatches = append(actionMatches, kwEN.actions.FindMatches(lower)...)
+		imageMatches = append(imageMatches, kwEN.imageNouns.FindMatches(lower)...)
+		videoMatches = append(videoMatches, kwEN.videoNouns.FindMatches(lower)...)
+		editMatches = append(editMatches, kwEN.editVerbs.FindMatches(lower)...)
+		animMatches = append(animMatches, kwEN.animVerbs.FindMatches(lower)...)
+	}
+
+	hasAction := len(actionMatches) > 0
+	hasImageNoun := len(imageMatches) > 0
+	hasVideoNoun := len(videoMatches) > 0
+	hasEditVerb := len(editMatches) > 0
+	hasAnimVerb := len(animMatches) > 0
+
+	cat := CategoryNone
+	confidence := 0.0
+	focusSpan := 0
+
+	switch {
+	case imageCount >= 2 && (hasVideoNoun || hasAnimVerb):
+		cat = CategoryKF2V
+		confidence = 0.85
+		focusSpan = pickMinPositive(minSingleSpan(videoMatches), minSingleSpan(animMatches))
+
+	case hasImages && hasAnimVerb:
+		cat = CategoryI2V
+		confidence = 0.9
+		focusSpan = pickMaxPositive(minSingleSpan(animMatches), minSpanBetween(animMatches, imageMatches))
+
+	case hasImages && hasVideoNoun:
+		cat = CategoryI2V
+		confidence = 0.85
+		focusSpan = pickMaxPositive(minSingleSpan(videoMatches), minSpanBetween(videoMatches, imageMatches))
+
+	case hasImages && hasEditVerb:
+		cat = CategoryI2I
+		confidence = 0.9
+		focusSpan = pickMaxPositive(minSingleSpan(editMatches), minSpanBetween(editMatches, imageMatches))
+
+	case hasImages && hasAction && hasImageNoun:
+		cat = CategoryI2I
+		confidence = 0.7
+		focusSpan = minSpanBetween(actionMatches, imageMatches)
+
+	case hasAction && hasVideoNoun:
+		cat = CategoryT2V
+		confidence = 0.85
+		focusSpan = minSpanBetween(actionMatches, videoMatches)
+
+	case hasVideoNoun && !hasAction:
+		cat = CategoryT2V
+		confidence = 0.6
+		focusSpan = minSingleSpan(videoMatches)
+
+	case hasAction && hasImageNoun:
+		cat = CategoryT2I
+		confidence = 0.85
+		focusSpan = minSpanBetween(actionMatches, imageMatches)
+
+	case hasImageNoun && !hasAction:
+		cat = CategoryT2I
+		confidence = 0.5
+		focusSpan = minSingleSpan(imageMatches)
+	}
+
+	if cat == CategoryNone {
+		return nil
+	}
+	if focusSpan == 0 {
+		focusSpan = len([]rune(lower))
+	}
+
+	return &segmentIntentCandidate{
+		Category:   cat,
+		Confidence: confidence,
+		Prompt:     strings.TrimSpace(segment),
+		FocusSpan:  focusSpan,
+	}
 }
 
 // isNegated checks if the message starts with or contains negation patterns.
@@ -479,4 +482,146 @@ func isQuestion(text string, kw *langKeywords) bool {
 		}
 	}
 	return false
+}
+
+func isMetaDiscussion(text string, kw *compiledLangKeywords) bool {
+	if kw == nil {
+		return false
+	}
+	if kw.metaStrong.Contains(text) {
+		return true
+	}
+	return kw.metaCues.CountDistinct(text) >= 2
+}
+
+func splitIntentSegments(message string) []string {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return nil
+	}
+
+	segments := []string{trimmed}
+	seen := map[string]struct{}{trimmed: {}}
+	for _, raw := range strings.FieldsFunc(trimmed, isIntentBoundary) {
+		segment := strings.TrimSpace(raw)
+		if segment == "" {
+			continue
+		}
+		if _, ok := seen[segment]; ok {
+			continue
+		}
+		seen[segment] = struct{}{}
+		segments = append(segments, segment)
+	}
+	return segments
+}
+
+func isIntentBoundary(r rune) bool {
+	switch r {
+	case '\n', '\r', '\t', ',', '，', '。', '!', '！', '?', '？', ';', '；', ':', '：', '、', '(', ')', '[', ']', '{', '}', '<', '>', '|':
+		return true
+	default:
+		return false
+	}
+}
+
+func minSingleSpan(matches []cueMatch) int {
+	best := 0
+	for _, match := range matches {
+		span := match.end - match.start
+		if span <= 0 {
+			continue
+		}
+		if best == 0 || span < best {
+			best = span
+		}
+	}
+	return best
+}
+
+func minSpanBetween(left, right []cueMatch) int {
+	best := 0
+	for _, l := range left {
+		for _, r := range right {
+			start := l.start
+			if r.start < start {
+				start = r.start
+			}
+			end := l.end
+			if r.end > end {
+				end = r.end
+			}
+			span := end - start
+			if span <= 0 {
+				continue
+			}
+			if best == 0 || span < best {
+				best = span
+			}
+		}
+	}
+	return best
+}
+
+func pickMinPositive(values ...int) int {
+	best := 0
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if best == 0 || value < best {
+			best = value
+		}
+	}
+	return best
+}
+
+func pickMaxPositive(values ...int) int {
+	best := 0
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if value > best {
+			best = value
+		}
+	}
+	return best
+}
+
+func applyFocusPenalty(confidence float64, focusSpan, totalRunes int, hasImages bool) float64 {
+	if confidence <= 0 || focusSpan <= 0 || totalRunes <= 0 {
+		return confidence
+	}
+	if totalRunes <= 16 {
+		return confidence
+	}
+
+	ratio := float64(focusSpan) / float64(totalRunes)
+	if !hasImages && totalRunes >= 72 && ratio < 0.10 {
+		return 0
+	}
+
+	if hasImages {
+		switch {
+		case totalRunes >= 72 && ratio < 0.08:
+			confidence -= 0.25
+		case totalRunes >= 40 && ratio < 0.15:
+			confidence -= 0.10
+		}
+	} else {
+		switch {
+		case totalRunes >= 120 && ratio < 0.15:
+			confidence -= 0.25
+		case totalRunes >= 60 && ratio < 0.20:
+			confidence -= 0.15
+		case totalRunes >= 24 && ratio < 0.12:
+			confidence -= 0.20
+		}
+	}
+
+	if confidence < 0 {
+		return 0
+	}
+	return confidence
 }

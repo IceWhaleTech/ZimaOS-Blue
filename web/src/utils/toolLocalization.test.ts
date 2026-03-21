@@ -31,7 +31,7 @@ const localeMessagesByCode = new Map(
   Object.entries(localeModules).map(([modulePath, mod]) => [
     localeCodeFromFile(fileNameFromModulePath(modulePath)),
     mod.default,
-  ]),
+  ])
 )
 
 const localeCodes = [...localeMessagesByCode.keys()].sort()
@@ -46,21 +46,25 @@ function buildMergedLocaleMessages(locale: string): LocaleMessages {
   const mergedBase = locale === 'en-US' ? baseLocale : deepMergeMessages(baseLocale, localeMessages)
   const withSettingsOverrides = deepMergeMessages(
     mergedBase,
-    (prioritySettingsOverrides as Record<string, LocaleMessages>)[locale] || {},
+    (prioritySettingsOverrides as Record<string, LocaleMessages>)[locale] || {}
   )
   const withSkillToolOverrides = deepMergeMessages(
     withSettingsOverrides,
-    (skillToolOverrides as Record<string, LocaleMessages>)[locale] || {},
+    (skillToolOverrides as Record<string, LocaleMessages>)[locale] || {}
   )
 
   return deepMergeMessages(
     withSkillToolOverrides,
-    (researchToolOverrides as Record<string, LocaleMessages>)[locale] || {},
+    (researchToolOverrides as Record<string, LocaleMessages>)[locale] || {}
   )
 }
 
 const nameCoverage = [
   'cron',
+  'web',
+  'sessions',
+  'file_read',
+  'file_write',
   'read',
   'write',
   'web_search',
@@ -73,17 +77,32 @@ const nameCoverage = [
 
 const descriptionCoverage = [
   {
+    name: 'web',
+    description: 'Unified web tool for searching, reading, extracting, or crawling web content',
+  },
+  {
+    name: 'sessions',
+    description: 'Unified sessions tool for listing, inspecting, creating, and sending messages',
+  },
+  {
     name: 'cron',
     description: 'Create, list, delete, and trigger scheduled tasks (cron jobs)',
   },
   {
+    name: 'file_read',
+    description: 'Read a local file and extract supported document content',
+  },
+  {
+    name: 'file_write',
+    description: 'Write text content to a local file',
+  },
+  {
     name: 'read',
-    description: 'Reads content from a file. Returns the file content as text.',
+    description: 'Read a local file and extract supported document content',
   },
   {
     name: 'write',
-    description:
-      "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does.",
+    description: 'Write text content to a local file',
   },
   {
     name: 'web_search',
@@ -183,15 +202,35 @@ describe('tool page localization coverage', () => {
         const localized = getLocalizedToolDescription(tool.name, tool.description, t, te)
         expect(
           localized.trim().length,
-          `${locale} should provide a description for ${tool.name}`,
+          `${locale} should provide a description for ${tool.name}`
         ).toBeGreaterThan(0)
         if (!locale.startsWith('en')) {
           expect(
             localized,
-            `${locale} should not fall back to the English description for ${tool.name}`,
+            `${locale} should not fall back to the English description for ${tool.name}`
           ).not.toBe(tool.description)
         }
       }
     }
+  })
+
+  it('prefers unified labels and descriptions for legacy alias tools', () => {
+    const messages = buildMergedLocaleMessages('en-US')
+    const t = (key: string) => String(getByPath(messages, key) ?? '')
+    const te = (key: string) => {
+      const value = getByPath(messages, key)
+      return typeof value === 'string' && value.trim().length > 0
+    }
+
+    expect(getLocalizedToolName('web_search', t, te)).toBe('Web')
+    expect(getLocalizedToolName('file_read', t, te)).toBe('File Read')
+    expect(getLocalizedToolName('read', t, te)).toBe('File Read')
+    expect(getLocalizedToolName('sessions_list', t, te)).toBe('Sessions')
+    expect(getLocalizedToolDescription('web_fetch', 'fallback', t, te)).toBe(
+      'Unified web tool for searching, reading, extracting, or crawling web content'
+    )
+    expect(getLocalizedToolDescription('file_read', 'fallback', t, te)).toBe(
+      'Read a local file and extract supported document content'
+    )
   })
 })

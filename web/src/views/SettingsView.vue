@@ -7,6 +7,7 @@ import { type MemoryRecallMode } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore } from '@/stores/theme'
 import { backupApi } from '@/api/index'
+import type { ContextCompressionMode } from '@/api/settings'
 import type { LocaleKey } from '@/i18n'
 import type { BackupInfo } from '@/api/index'
 import ClaudeCodeSettings from '@/components/ClaudeCodeSettings.vue'
@@ -246,10 +247,18 @@ const toolDispatchSuccessRate = computed(() => {
   if (!stats || stats.tool_dispatch_route_attempts <= 0) return 0
   return Math.round((stats.tool_dispatch_route_success / stats.tool_dispatch_route_attempts) * 100)
 })
+const contextCompressSuccessRate = computed(() => {
+  const stats = settingsStore.smallModelStats
+  const attempts = stats?.context_compress_attempts ?? 0
+  const success = stats?.context_compress_success ?? 0
+  if (attempts <= 0) return 0
+  return Math.round((success / attempts) * 100)
+})
 const fallbackReasonEntries = computed(() => {
   const reasons = settingsStore.smallModelStats?.fallback_reasons || {}
   return Object.entries(reasons).sort((a, b) => b[1] - a[1])
 })
+const contextCompressionModes: ContextCompressionMode[] = ['auto', 'small_model', 'offline', 'off']
 
 function parseHumanSizeToBytes(size: string): number {
   const raw = size.trim().replace(/\s+/g, '')
@@ -354,8 +363,16 @@ async function handleSmallModelSummaryEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setSmallModelSummaryEnabled(next))
 }
 
+async function handleSmallModelContextCompressEnabledChange(next: boolean) {
+  await withSmallModelSave(() => settingsStore.setSmallModelContextCompressEnabled(next))
+}
+
 async function handleSmallModelDocExtractEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setSmallModelDocExtractEnabled(next))
+}
+
+async function handleContextCompressionModeChange(mode: ContextCompressionMode) {
+  await withSmallModelSave(() => settingsStore.setContextCompressionMode(mode))
 }
 
 async function handleSmallModelContextPruneEnabledChange(next: boolean) {
@@ -897,9 +914,7 @@ onUnmounted(() => {
                   >
                     <span
                       class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="
-                        settingsStore.agentAutoConfirm ? 'translate-x-5' : 'translate-x-0'
-                      "
+                      :class="settingsStore.agentAutoConfirm ? 'translate-x-5' : 'translate-x-0'"
                     />
                   </button>
                 </div>
@@ -1429,6 +1444,103 @@ onUnmounted(() => {
                   >
                     <div class="flex items-center justify-between gap-3">
                       <div class="font-medium text-gray-900 dark:text-white">
+                        {{ t('settings.smallModel.contextCompression', 'Context Compression') }}
+                      </div>
+                      <button
+                        data-testid="small-model-context-compress-switch"
+                        type="button"
+                        role="switch"
+                        :aria-checked="settingsStore.smallModelContextCompressEnabled"
+                        :disabled="smallModelSaving"
+                        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                        :class="
+                          settingsStore.smallModelContextCompressEnabled
+                            ? 'bg-green-600 dark:bg-green-500'
+                            : 'bg-gray-300 dark:bg-gray-600'
+                        "
+                        @click="
+                          handleSmallModelContextCompressEnabledChange(
+                            !settingsStore.smallModelContextCompressEnabled
+                          )
+                        "
+                      >
+                        <span
+                          class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                          :class="
+                            settingsStore.smallModelContextCompressEnabled
+                              ? 'translate-x-5'
+                              : 'translate-x-0'
+                          "
+                        />
+                      </button>
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {{
+                        settingsStore.smallModelContextCompressEnabled
+                          ? t('common.enabled', 'Enabled')
+                          : t('common.disabled', 'Disabled')
+                      }}
+                    </div>
+                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      {{
+                        t(
+                          'settings.smallModel.contextCompressionHint',
+                          'Lets the lightweight model compress long history, while the latest user message still decides what happens now.'
+                        )
+                      }}
+                    </div>
+                    <div class="mt-3">
+                      <label class="text-xs font-medium text-gray-600 dark:text-gray-300">
+                        {{ t('settings.smallModel.contextCompressionMode', 'Compression Mode') }}
+                      </label>
+                      <select
+                        data-testid="context-compression-mode-select"
+                        :value="settingsStore.contextCompressionMode"
+                        class="settings-select"
+                        :disabled="smallModelSaving"
+                        @change="
+                          handleContextCompressionModeChange(
+                            ($event.target as HTMLSelectElement).value as ContextCompressionMode
+                          )
+                        "
+                      >
+                        <option v-for="mode in contextCompressionModes" :key="mode" :value="mode">
+                          {{
+                            mode === 'auto'
+                              ? t(
+                                  'settings.smallModel.contextCompressionModeAuto',
+                                  'Auto: prefer small-model compression, fallback to offline'
+                                )
+                              : mode === 'small_model'
+                                ? t(
+                                    'settings.smallModel.contextCompressionModeSmallModel',
+                                    'Small Model First'
+                                  )
+                                : mode === 'offline'
+                                  ? t(
+                                      'settings.smallModel.contextCompressionModeOffline',
+                                      'Offline Deterministic'
+                                    )
+                                  : t('settings.smallModel.contextCompressionModeOff', 'Off')
+                          }}
+                        </option>
+                      </select>
+                      <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        {{
+                          t(
+                            'settings.smallModel.contextCompressionModeHint',
+                            'This chooses the compression path only. Current-turn intent still comes from the latest user message.'
+                          )
+                        }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    class="w-full px-3 py-2 rounded-lg text-sm border bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300"
+                  >
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="font-medium text-gray-900 dark:text-white">
                         {{ t('settings.smallModel.docExtract', 'Workflow Document Extraction') }}
                       </div>
                       <button
@@ -1840,6 +1952,40 @@ onUnmounted(() => {
                         class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
                       >
                         <div class="text-gray-500 dark:text-gray-400">
+                          {{
+                            t(
+                              'settings.smallModel.contextCompressionSuccessRate',
+                              'Context Compression Hit Rate'
+                            )
+                          }}
+                        </div>
+                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                          {{ contextCompressSuccessRate }}%
+                        </div>
+                      </div>
+                      <div
+                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                      >
+                        <div class="text-gray-500 dark:text-gray-400">
+                          {{
+                            t(
+                              'settings.smallModel.contextCompressionLatencyMs',
+                              'Context Compression Latency'
+                            )
+                          }}
+                        </div>
+                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                          {{
+                            (
+                              settingsStore.smallModelStats?.context_compress_latency_ms ?? 0
+                            ).toFixed(1)
+                          }}ms
+                        </div>
+                      </div>
+                      <div
+                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                      >
+                        <div class="text-gray-500 dark:text-gray-400">
                           {{ t('settings.smallModel.docExtractLatencyMs', 'Doc Extract Latency') }}
                         </div>
                         <div class="mt-1 font-medium text-gray-900 dark:text-white">
@@ -2037,6 +2183,7 @@ onUnmounted(() => {
             <MemoryManager
               class="settings-embedded-section mx-auto w-full max-w-6xl"
               :memory-recall-mode="settingsStore.memoryRecallMode"
+              :agent-auto-reflect="settingsStore.agentAutoReflect"
               @status-change="showSaveStatus"
               @memory-recall-mode-change="handleMemoryRecallModeChange"
             />

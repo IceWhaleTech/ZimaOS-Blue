@@ -879,14 +879,19 @@ func TestBuildSmartContextCompressedMemoryTracksComparableMessageCounts(t *testi
 	if got.MessageCountAfter != len(got.Messages) {
 		t.Fatalf("MessageCountAfter = %d, want %d", got.MessageCountAfter, len(got.Messages))
 	}
-	if got.MessageCountAfter != 6 {
-		t.Fatalf("MessageCountAfter = %d, want 6", got.MessageCountAfter)
+	if got.MessageCountAfter != 7 {
+		t.Fatalf("MessageCountAfter = %d, want 7", got.MessageCountAfter)
 	}
-	if got.MessageCountAfter >= got.MessageCountBefore {
-		t.Fatalf("expected compacted message count to shrink, before=%d after=%d", got.MessageCountBefore, got.MessageCountAfter)
+	if got.Messages[0].Role != llm.RoleSystem || !strings.Contains(got.Messages[0].Content, "Current-turn anchor") {
+		t.Fatalf("messages[0] = %+v, want current-turn anchor message", got.Messages[0])
 	}
-	if got.Messages[0].Role != llm.RoleSystem || !strings.Contains(got.Messages[0].Content, "Older context summary") {
-		t.Fatalf("messages[0] = %+v, want summary system message", got.Messages[0])
+	if got.Messages[1].Role != llm.RoleSystem || !strings.Contains(got.Messages[1].Content, historicalContextBackgroundPrefix) || !strings.Contains(got.Messages[1].Content, "Older context summary") {
+		t.Fatalf("messages[1] = %+v, want wrapped historical summary message", got.Messages[1])
+	}
+	if cached, ok := h.summaryCache.Get("conv-compaction-counts"); !ok {
+		t.Fatal("expected cached summary to remain available")
+	} else if summary := cached.(*ConversationSummary); strings.Contains(summary.Text, "Current-turn anchor") || strings.Contains(summary.Text, historicalContextBackgroundPrefix) {
+		t.Fatalf("cached summary should remain raw, got %q", summary.Text)
 	}
 }
 
@@ -933,6 +938,28 @@ func TestBuildSmartContextContinuationKeepsFullHistoryUnderSoftThreshold(t *test
 	}
 	if got.MessageCountAfter != len(preloaded) {
 		t.Fatalf("MessageCountAfter = %d, want %d", got.MessageCountAfter, len(preloaded))
+	}
+}
+
+func TestCompressedHistoryContextMessages_KeepsSafetyWrapperCompact(t *testing.T) {
+	latestUser := "What was the root cause and which file changed?"
+	summary := "Goal\n- Debug the login retry regression\n\nDiscoveries\n- API key rotation on 2026-03-18 broke refresh handling in auth/middleware.go.\n- request-id req_9F82B must remain exact."
+
+	msgs := compressedHistoryContextMessages(latestUser, summary)
+	if len(msgs) != 2 {
+		t.Fatalf("compressed history messages = %d, want 2", len(msgs))
+	}
+	if msgs[0].Role != llm.RoleSystem || !strings.Contains(msgs[0].Content, "Current-turn anchor") {
+		t.Fatalf("msgs[0] = %+v, want current-turn anchor system message", msgs[0])
+	}
+	if msgs[1].Role != llm.RoleSystem || !strings.Contains(msgs[1].Content, historicalContextBackgroundPrefix) {
+		t.Fatalf("msgs[1] = %+v, want wrapped historical summary system message", msgs[1])
+	}
+
+	rawTokens := estimateTokens(latestUser) + estimateTokens(summary)
+	wrappedTokens := estimateTokens(msgs[0].Content) + estimateTokens(msgs[1].Content)
+	if wrappedTokens-rawTokens > 100 {
+		t.Fatalf("safety wrapper overhead = %d tokens, want <= 100 (raw=%d wrapped=%d)", wrappedTokens-rawTokens, rawTokens, wrappedTokens)
 	}
 }
 
@@ -1176,6 +1203,63 @@ func TestGenerateSummarySync_UsesSmallModelWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestGenerateSummarySync_UsesSmallModelContextCompressionWhenEnabled(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	smallModelEnabled := true
+	contextCompressEnabled := true
+	settings.settings.SmallModelEnabled = &smallModelEnabled
+	settings.settings.SmallModelContextCompressEnabled = &contextCompressEnabled
+	h.SetSettingsHandler(settings)
+
+	sm := &smallModelRuntimeMock{respText: "Goal\n- Fix login retry ordering\n\nAccomplished\n- [carry-over] Add one regression test\n- I will inspect more logs later\n\nRelevant Files\n- auth/middleware.go"}
+	h.SetSmallModelRuntime(sm)
+
+	allMessages := []memory.Message{
+		{Role: "user", Content: "Fix the login retry ordering"},
+		{Role: "assistant", Content: "I will inspect the middleware ordering first."},
+		{Role: "user", Content: "Keep auth/middleware.go in the summary."},
+		{Role: "assistant", Content: "Noted, I will preserve that path."},
+		{Role: "user", Content: "Also mention the pending regression test."},
+		{Role: "assistant", Content: "I fixed the ordering; one regression test is still pending."},
+		{Role: "user", Content: "Now answer the latest question briefly."},
+	}
+	recent := []llm.Message{
+		{Role: llm.RoleUser, Content: "Keep auth/middleware.go in the summary."},
+		{Role: llm.RoleAssistant, Content: "Noted, I will preserve that path."},
+		{Role: llm.RoleUser, Content: "Also mention the pending regression test."},
+		{Role: llm.RoleAssistant, Content: "I fixed the ordering; one regression test is still pending."},
+		{Role: llm.RoleUser, Content: "Now answer the latest question briefly."},
+	}
+
+	got := h.generateSummarySync(context.Background(), "conv-small-context-compress", allMessages, recent)
+	if got == "" {
+		t.Fatal("expected non-empty summary from small-model context compression")
+	}
+	if strings.Contains(got, "I will inspect more logs later") {
+		t.Fatalf("summary = %q, want process-only chatter omitted", got)
+	}
+	if !strings.Contains(got, "[carry-over]") {
+		t.Fatalf("summary = %q, want carry-over marker preserved", got)
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	snap := h.smallModelStats.Snapshot()
+	if snap.ContextCompressAttempts != 1 || snap.ContextCompressSuccess != 1 {
+		t.Fatalf("unexpected context-compress stats: attempts=%d success=%d", snap.ContextCompressAttempts, snap.ContextCompressSuccess)
+	}
+	if snap.SummaryAttempts != 0 {
+		t.Fatalf("summary attempts = %d, want 0 when context-compress route handled the request", snap.SummaryAttempts)
+	}
+}
+
 func TestGenerateSummarySync_SmallModelSummaryDisabled(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -1197,15 +1281,23 @@ func TestGenerateSummarySync_SmallModelSummaryDisabled(t *testing.T) {
 	allMessages := []memory.Message{
 		{Role: "user", Content: "older context 1"},
 		{Role: "assistant", Content: "older context 2"},
+		{Role: "user", Content: "older context 3"},
+		{Role: "assistant", Content: "older context 4"},
+		{Role: "user", Content: "older context 5"},
+		{Role: "assistant", Content: "older context 6"},
 		{Role: "user", Content: "recent question"},
 	}
 	recent := []llm.Message{
+		{Role: llm.RoleUser, Content: "older context 3"},
+		{Role: llm.RoleAssistant, Content: "older context 4"},
+		{Role: llm.RoleUser, Content: "older context 5"},
+		{Role: llm.RoleAssistant, Content: "older context 6"},
 		{Role: llm.RoleUser, Content: "recent question"},
 	}
 
 	got := h.generateSummarySync(context.Background(), "conv-small-summary-disabled", allMessages, recent)
-	if got != "" {
-		t.Fatalf("summary = %q, want empty when small-model summary is disabled and no proxy bridge", got)
+	if got == "" {
+		t.Fatal("expected offline compression summary when small-model summary is disabled")
 	}
 	if sm.calls != 0 {
 		t.Fatalf("small model calls = %d, want 0 when summary switch disabled", sm.calls)
@@ -1213,5 +1305,172 @@ func TestGenerateSummarySync_SmallModelSummaryDisabled(t *testing.T) {
 	snap := h.smallModelStats.Snapshot()
 	if snap.SummaryAttempts != 0 || snap.SummarySuccess != 0 {
 		t.Fatalf("unexpected summary stats when disabled: attempts=%d success=%d", snap.SummaryAttempts, snap.SummarySuccess)
+	}
+	if !strings.Contains(got, "Goal") && !strings.Contains(got, "Instructions") && !strings.Contains(got, "Discoveries") {
+		t.Fatalf("expected canonical offline summary, got %q", got)
+	}
+}
+
+func TestGenerateSummarySync_ContextCompressionModeOffReturnsEmpty(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	settings.settings.ContextCompressionMode = "off"
+	h.SetSettingsHandler(settings)
+
+	got := h.generateSummarySync(context.Background(), "conv-compression-off", []memory.Message{
+		{Role: "user", Content: "older context 1"},
+		{Role: "assistant", Content: "older context 2"},
+		{Role: "user", Content: "older context 3"},
+		{Role: "assistant", Content: "older context 4"},
+		{Role: "user", Content: "older context 5"},
+		{Role: "assistant", Content: "older context 6"},
+		{Role: "user", Content: "recent question"},
+	}, []llm.Message{{Role: llm.RoleUser, Content: "recent question"}})
+	if got != "" {
+		t.Fatalf("summary = %q, want empty when context_compression_mode=off", got)
+	}
+}
+
+func TestGenerateSummarySync_ContextCompressionModeOfflineSkipsSmallModel(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	smallModelEnabled := true
+	summaryEnabled := true
+	contextCompressEnabled := true
+	settings.settings.SmallModelEnabled = &smallModelEnabled
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	settings.settings.SmallModelContextCompressEnabled = &contextCompressEnabled
+	settings.settings.ContextCompressionMode = "offline"
+	h.SetSettingsHandler(settings)
+
+	sm := &smallModelRuntimeMock{respText: "should not be used in offline mode"}
+	h.SetSmallModelRuntime(sm)
+
+	got := h.generateSummarySync(context.Background(), "conv-compression-offline", []memory.Message{
+		{Role: "user", Content: "older context 1"},
+		{Role: "assistant", Content: "older context 2"},
+		{Role: "user", Content: "older context 3"},
+		{Role: "assistant", Content: "older context 4"},
+		{Role: "user", Content: "older context 5"},
+		{Role: "assistant", Content: "older context 6"},
+		{Role: "user", Content: "recent question"},
+	}, []llm.Message{
+		{Role: llm.RoleUser, Content: "older context 5"},
+		{Role: llm.RoleAssistant, Content: "older context 6"},
+		{Role: llm.RoleUser, Content: "recent question"},
+	})
+	if got == "" {
+		t.Fatal("expected offline summary when context_compression_mode=offline")
+	}
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0 when context_compression_mode=offline", sm.calls)
+	}
+}
+
+func TestGenerateSummarySync_OfflineCompressionDedupesRepeatedGoalFallback(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	mode := "offline"
+	settings.settings.ContextCompressionMode = mode
+	h.SetSettingsHandler(settings)
+
+	all := []memory.Message{
+		{
+			Role: "user",
+			Content: strings.Repeat(
+				"Debug the login retry regression and keep only the durable root cause details. ",
+				6,
+			),
+		},
+		{Role: "assistant", Content: "I am inspecting logs, middleware order, and retry traces before the final answer."},
+		{Role: "user", Content: "Keep auth/middleware.go exact if it matters."},
+		{Role: "assistant", Content: "Noted, I will preserve the exact file path."},
+		{Role: "user", Content: "Also keep the 2026-03-18 date if that was the root cause timing."},
+		{Role: "assistant", Content: "Understood, I will keep the date precise."},
+	}
+	recent := []llm.Message{
+		{Role: llm.RoleUser, Content: "What was the root cause and which file changed?"},
+	}
+	all = append(all, llmMessagesToSummaryMemory(recent)...)
+
+	summary := h.generateSummarySync(context.Background(), "conv-offline-fallback-dedupe", all, recent)
+	if summary == "" {
+		t.Fatal("expected non-empty offline summary")
+	}
+	if !strings.Contains(summary, "Historical task: Debug the login retry regression") {
+		t.Fatalf("expected offline summary goal to be marked historical, got %q", summary)
+	}
+	if strings.Count(summary, "Debug the login retry regression and keep only the durable root cause details.") > 1 {
+		t.Fatalf("expected repeated goal text to be deduped, got %q", summary)
+	}
+}
+
+func TestCompressionHeuristics_HandleNonEnglishProcessAndFormattingMarkers(t *testing.T) {
+	processSamples := []string{
+		"vaig a revisar els registres abans de respondre",
+		"podívám se nejdřív na logy",
+		"jeg vil først tjekke loggene",
+		"voy a revisar los logs antes de responder",
+		"je vais vérifier les traces avant de répondre",
+		"ich werde zuerst die Protokolle prüfen",
+		"prima controllo i log",
+		"ik ga eerst de logs controleren",
+		"vou verificar os logs primeiro",
+		"jag ska först kontrollera loggarna",
+		"θα ελέγξω πρώτα τα αρχεία καταγραφής",
+		"sprawdzę najpierw logi",
+		"сначала проверю логи",
+		"まずログを確認します",
+		"먼저 로그를 확인할게",
+		"我先检查日志",
+		"ഞാൻ ലോഗുകൾ പരിശോധിക്കാം",
+	}
+	for _, sample := range processSamples {
+		if !looksLikeProcessOnlyItem(sample) {
+			t.Fatalf("looksLikeProcessOnlyItem(%q) = false, want true", sample)
+		}
+	}
+
+	formattingSamples := []string{
+		"fes-ne un resum concís",
+		"udělej shrnutí stručně",
+		"gør opsummering kort",
+		"hazlo conciso y no repitas toda la investigación",
+		"gardez le résumé concis",
+		"halte die zusammenfassung kurz",
+		"maak de samenvatting beknopt",
+		"faça um resumo conciso",
+		"håll sammanfattningen kort",
+		"κράτα τη σύνοψη σύντομη",
+		"podsumowanie ma być krótkie",
+		"rezumat concis",
+		"сводка должна быть краткой",
+		"要約は簡潔にして",
+		"요약은 간결하게 해줘",
+		"总结要简洁",
+		"സംഗ്രഹം ചുരുക്കമായി വേണം",
+	}
+	for _, sample := range formattingSamples {
+		if !looksLikeFormattingOnlyInstruction(sample) {
+			t.Fatalf("looksLikeFormattingOnlyInstruction(%q) = false, want true", sample)
+		}
 	}
 }

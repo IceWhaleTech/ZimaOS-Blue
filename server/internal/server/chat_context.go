@@ -1220,11 +1220,8 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 
 		if summaryText != "" {
 			result.Summary = summaryText
-			summaryMsg := llm.Message{
-				Role:    llm.RoleSystem,
-				Content: "Previous conversation context: " + summaryText,
-			}
-			result.Messages = append([]llm.Message{summaryMsg}, recentMessages...)
+			historyMsgs := compressedHistoryContextMessages(params.UserMessage, summaryText)
+			result.Messages = append(historyMsgs, recentMessages...)
 		} else {
 			// Fallback: just use recent messages
 			result.Messages = recentMessages
@@ -1302,8 +1299,15 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 		relevantMessages = append(relevantMessages, cloneLLMMessages(splitRecent)...)
 	}
 
-	if summary := h.generateConversationSummaryWithSmallModel(ctx, olderMessages); summary != "" {
-		summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
+	mode := h.contextCompressionMode()
+	if mode == "off" {
+		return ""
+	}
+
+	cacheSummary := func(summary string) string {
+		if strings.TrimSpace(summary) == "" {
+			return ""
+		}
 		if h.summaryCache != nil {
 			h.summaryCache.Put(convID, &ConversationSummary{
 				Text:         summary,
@@ -1311,6 +1315,22 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 			})
 		}
 		return summary
+	}
+
+	if mode != "offline" {
+		if summary := h.buildSmallModelConversationCompression(ctx, olderMessages, relevantMessages); summary != "" {
+			return cacheSummary(summary)
+		}
+	}
+
+	if mode == "small_model" || mode == "auto" {
+		if summary := h.generateConversationSummaryWithSmallModel(ctx, olderMessages); summary != "" {
+			return cacheSummary(summary)
+		}
+	}
+
+	if summary := h.buildOfflineConversationCompression(olderMessages, relevantMessages); summary != "" {
+		return cacheSummary(summary)
 	}
 
 	if h.proxyBridge == nil {
@@ -1330,6 +1350,7 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 		return ""
 	}
 	summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
+	summary = sanitizeCompressedSummaryOutput(summary)
 
 	// Cache it
 	if h.summaryCache != nil {
@@ -1348,7 +1369,7 @@ func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Messa
 	if h.summaryCache == nil || len(messages) <= 6 {
 		return
 	}
-	if h.proxyBridge == nil && !h.shouldUseSmallModelSummary() {
+	if h.contextCompressionMode() == "off" {
 		return
 	}
 
@@ -1370,13 +1391,33 @@ func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Messa
 		}
 		relevantMessages := append(cloneLLMMessages(olderMessages), cloneLLMMessages(recentMessages)...)
 
-		if summary := h.generateConversationSummaryWithSmallModel(context.Background(), olderMessages); summary != "" {
-			summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
+		mode := h.contextCompressionMode()
+		cacheSummary := func(summary string) {
 			h.summaryCache.Put(convID, &ConversationSummary{
 				Text:         summary,
 				MessageCount: len(msgCopy),
 			})
-			logger.Debug().Str("conv_id", convID).Int("messages", len(msgCopy)).Msg("[context] summary refreshed async via small model")
+		}
+
+		if mode != "offline" {
+			if summary := h.buildSmallModelConversationCompression(context.Background(), olderMessages, relevantMessages); summary != "" {
+				cacheSummary(summary)
+				logger.Debug().Str("conv_id", convID).Int("messages", len(msgCopy)).Msg("[context] summary refreshed async via small-model context compression")
+				return
+			}
+		}
+
+		if mode == "small_model" || mode == "auto" {
+			if summary := h.generateConversationSummaryWithSmallModel(context.Background(), olderMessages); summary != "" {
+				cacheSummary(summary)
+				logger.Debug().Str("conv_id", convID).Int("messages", len(msgCopy)).Msg("[context] summary refreshed async via small model")
+				return
+			}
+		}
+
+		if summary := h.buildOfflineConversationCompression(olderMessages, relevantMessages); summary != "" {
+			cacheSummary(summary)
+			logger.Debug().Str("conv_id", convID).Int("messages", len(msgCopy)).Msg("[context] summary refreshed async via offline compression")
 			return
 		}
 
@@ -1397,6 +1438,7 @@ func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Messa
 			return
 		}
 		summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
+		summary = sanitizeCompressedSummaryOutput(summary)
 
 		h.summaryCache.Put(convID, &ConversationSummary{
 			Text:         summary,

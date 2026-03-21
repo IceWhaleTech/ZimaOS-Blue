@@ -44,6 +44,8 @@ type Repository interface {
 	ExistsByUsername(ctx context.Context, username string) (bool, error)
 	// ExistsByEmail checks if an email exists.
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
+	// AnyUserExists checks if any non-deleted user exists.
+	AnyUserExists(ctx context.Context) (bool, error)
 	// AdminExists checks if any admin user exists.
 	AdminExists(ctx context.Context) (bool, error)
 

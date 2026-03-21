@@ -8,9 +8,11 @@ import type {
   DeepResearchWorkflowPhase,
   DeepResearchObjectMapItem,
   DeepResearchSourceInventoryItem,
+  DeepResearchCalibration,
+  DeepResearchTakeawayCandidate,
 } from '@/types/typeless'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardDeepResearch
@@ -43,6 +45,14 @@ const sourceInventory = computed(() =>
 )
 const sourceInventoryPreview = computed(() => sourceInventory.value.slice(0, 6))
 const coverageSummary = computed(() => props.card.coverage_summary || null)
+const calibration = computed(() => props.card.calibration || null)
+const takeawayCandidates = computed(
+  () => (calibration.value?.takeaway_candidates || []).filter(validTakeawayCandidate)
+)
+
+function tr(key: string, fallback: string): string {
+  return te(key) ? t(key) : fallback
+}
 
 function validCitation(item: unknown): item is DeepResearchCitationItem {
   if (!item || typeof item !== 'object') return false
@@ -59,6 +69,10 @@ function validObjectMapItem(item: unknown): item is DeepResearchObjectMapItem {
 }
 
 function validSourceInventoryItem(item: unknown): item is DeepResearchSourceInventoryItem {
+  return !!item && typeof item === 'object'
+}
+
+function validTakeawayCandidate(item: unknown): item is DeepResearchTakeawayCandidate {
   return !!item && typeof item === 'object'
 }
 
@@ -148,6 +162,56 @@ function objectStatusBadges(item: DeepResearchObjectMapItem): string[] {
   return Object.entries(counts)
     .filter(([, count]) => typeof count === 'number' && count > 0)
     .map(([status, count]) => `${status}: ${count}`)
+}
+
+function calibrationToneClass(calibrationItem: DeepResearchCalibration | null): string {
+  switch (calibrationItem?.recommended_action) {
+    case 'publish':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+    case 'caution':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+    case 'insufficient':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
+    default:
+      return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
+  }
+}
+
+function conflictRiskClass(risk?: string): string {
+  switch (risk) {
+    case 'blocking':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
+    case 'medium':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+    default:
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+  }
+}
+
+function recommendedActionLabel(action?: string): string {
+  switch (action) {
+    case 'publish':
+      return tr('chat.deepResearchCalibrationPublish', 'Publish-ready')
+    case 'caution':
+      return tr('chat.deepResearchCalibrationCaution', 'Use caution')
+    case 'insufficient':
+      return tr('chat.deepResearchCalibrationInsufficient', 'Insufficient')
+    default:
+      return action || '--'
+  }
+}
+
+function conflictRiskLabel(risk?: string): string {
+  switch (risk) {
+    case 'blocking':
+      return tr('chat.deepResearchCalibrationConflictBlocking', 'Blocking conflict')
+    case 'medium':
+      return tr('chat.deepResearchCalibrationConflictMedium', 'Conflict risk')
+    case 'low':
+      return tr('chat.deepResearchCalibrationConflictLow', 'Low conflict risk')
+    default:
+      return risk || '--'
+  }
 }
 </script>
 
@@ -330,6 +394,88 @@ function objectStatusBadges(item: DeepResearchObjectMapItem): string[] {
         </div>
 
         <div class="space-y-4">
+          <section
+            v-if="calibration"
+            class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {{ tr('chat.deepResearchCalibration', 'Calibration') }}
+              </div>
+              <span
+                class="rounded-full px-2.5 py-1 text-xs font-medium"
+                :class="calibrationToneClass(calibration)"
+              >
+                {{ recommendedActionLabel(calibration.recommended_action) }}
+              </span>
+            </div>
+            <div class="mt-3 grid grid-cols-2 gap-3 text-xs">
+              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="text-slate-500 dark:text-slate-400">
+                  {{ tr('chat.deepResearchCalibrationCoverage', 'Coverage') }}
+                </div>
+                <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
+                  {{ formatPercent(calibration.coverage) }}
+                </div>
+              </div>
+              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="text-slate-500 dark:text-slate-400">
+                  {{ tr('chat.deepResearchCalibrationGroundedness', 'Groundedness') }}
+                </div>
+                <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
+                  {{ formatPercent(calibration.groundedness) }}
+                </div>
+              </div>
+              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="text-slate-500 dark:text-slate-400">
+                  {{ tr('chat.deepResearchCalibrationFreshness', 'Freshness') }}
+                </div>
+                <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
+                  {{ formatPercent(calibration.freshness) }}
+                </div>
+              </div>
+              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="text-slate-500 dark:text-slate-400">
+                  {{ tr('chat.deepResearchCalibrationConfidence', 'Calibration confidence') }}
+                </div>
+                <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
+                  {{ formatPercent(calibration.confidence) }}
+                </div>
+              </div>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs">
+              <span class="rounded-full px-2.5 py-1" :class="conflictRiskClass(calibration.conflict_risk)">
+                {{ conflictRiskLabel(calibration.conflict_risk) }}
+              </span>
+              <span
+                class="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              >
+                {{ tr('chat.deepResearchTakeawayCandidates', 'Takeaway candidates') }}
+                {{ takeawayCandidates.length }}
+              </span>
+            </div>
+            <div v-if="takeawayCandidates.length" class="mt-3 space-y-3">
+              <div
+                v-for="(candidate, index) in takeawayCandidates"
+                :key="`${candidate.lesson}-${index}`"
+                class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60"
+              >
+                <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
+                  {{ candidate.lesson }}
+                </div>
+                <div
+                  v-if="candidate.when_to_apply"
+                  class="mt-1 text-xs text-slate-500 dark:text-slate-400 break-words"
+                >
+                  {{ candidate.when_to_apply }}
+                </div>
+                <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 break-words">
+                  {{ candidate.evidence }}
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section
             v-if="isKnowledgeBase && coverageSummary"
             class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50"

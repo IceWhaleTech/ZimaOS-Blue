@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -68,20 +69,15 @@ func NewClaudeProvider(apiKey, baseURL string) *ClaudeProvider {
 	return &ClaudeProvider{
 		apiKey:  apiKey,
 		baseURL: baseURL,
-		client: &http.Client{
-			Timeout: claudeTimeout,
-			Transport: &http.Transport{
-				// Disable response buffering for streaming
-				DisableCompression: true,
-			},
-		},
-		streamClient: &http.Client{
-			// No Timeout — http.Client.Timeout kills long-running SSE streams.
-			// Context cancellation handles cleanup instead.
-			Transport: &http.Transport{
-				DisableCompression: true,
-			},
-		},
+		client: network.NewPooledHTTPClientWithOptions(network.HTTPClientOptions{
+			Timeout:            claudeTimeout,
+			DisableCompression: true,
+		}),
+		// No Timeout — http.Client.Timeout kills long-running SSE streams.
+		// Context cancellation handles cleanup instead.
+		streamClient: network.NewPooledHTTPClientWithOptions(network.HTTPClientOptions{
+			DisableCompression: true,
+		}),
 	}
 }
 

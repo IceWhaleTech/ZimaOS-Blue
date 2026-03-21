@@ -10,9 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 const defaultMiniMaxBaseURL = "https://api.minimax.chat"
@@ -33,7 +34,7 @@ func NewMiniMaxProvider(apiKey, baseURL string) *MiniMaxProvider {
 	return &MiniMaxProvider{
 		apiKey:  apiKey,
 		baseURL: strings.TrimRight(baseURL, "/"),
-		client:  &http.Client{Timeout: 30 * time.Second},
+		client:  network.NewPooledHTTPClient(5 * time.Minute),
 	}
 }
 

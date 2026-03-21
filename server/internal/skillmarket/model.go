@@ -8,6 +8,8 @@ import (
 )
 
 const (
+	DefaultDBFilename = "blue.db"
+
 	DefaultPageSize    = 20
 	DefaultSearchLimit = 100
 
@@ -44,6 +46,7 @@ const (
 
 type Config struct {
 	Enabled                   bool
+	DBPath                    string
 	GitHubToken               string
 	GitHubAPIBaseURL          string
 	ClawHubBaseURL            string
@@ -76,6 +79,7 @@ func DefaultConfig(dataDir, activeSkillsDir string) Config {
 	}
 	return Config{
 		Enabled:                   true,
+		DBPath:                    DefaultDBPath(dataDir),
 		GitHubAPIBaseURL:          "https://api.github.com",
 		ClawHubBaseURL:            "https://www.clawhub.ai",
 		ClawHubMirrorBaseURLs:     nil,
@@ -101,6 +105,13 @@ func DefaultConfig(dataDir, activeSkillsDir string) Config {
 			"https://ghproxy.com/https://raw.githubusercontent.com/IceWhaleTech/ZimaOS-Blue/main/server/skillmarket_curated.yaml",
 		},
 	}
+}
+
+func DefaultDBPath(dataDir string) string {
+	if strings.TrimSpace(dataDir) == "" {
+		return DefaultDBFilename
+	}
+	return filepath.Join(dataDir, DefaultDBFilename)
 }
 
 type SkillDocument struct {

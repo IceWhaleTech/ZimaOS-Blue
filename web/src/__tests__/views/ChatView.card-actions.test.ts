@@ -117,6 +117,20 @@ const mocks = vi.hoisted(() => ({
     cancelJob: vi.fn(),
     consumePendingFocusJobId: vi.fn(),
   },
+  taskProjectionsStore: {
+    currentTasks: [] as Array<Record<string, unknown>>,
+    currentActiveTasks: [] as Array<Record<string, unknown>>,
+    currentTerminalTasks: [] as Array<Record<string, unknown>>,
+    backgroundTasks: [] as Array<Record<string, unknown>>,
+    loading: false,
+    hydrated: true,
+    hasActiveTasks: false,
+    refreshNow: vi.fn(),
+    setConversation: vi.fn(),
+    cancelTask: vi.fn(),
+    openTask: vi.fn(),
+    stopPolling: vi.fn(),
+  },
   mediaGenerate: {
     showPanel: { value: false },
     intent: { value: null },
@@ -152,6 +166,18 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
+const helpers = vi.hoisted(() => ({
+  asAsyncSFCModule(component: Record<string, unknown>) {
+    return {
+      __esModule: true,
+      __isTeleport: false,
+      __isKeepAlive: false,
+      default: component,
+      ...component,
+    }
+  },
+}))
+
 vi.mock('@/stores/chat', () => ({
   useChatStore: () => mocks.chatStore,
 }))
@@ -166,6 +192,10 @@ vi.mock('@/stores/providerPool', () => ({
 
 vi.mock('@/stores/deepResearchJobs', () => ({
   useDeepResearchJobsStore: () => mocks.deepResearchJobsStore,
+}))
+
+vi.mock('@/stores/taskProjections', () => ({
+  useTaskProjectionsStore: () => mocks.taskProjectionsStore,
 }))
 
 vi.mock('@/stores/notification', () => ({
@@ -223,8 +253,8 @@ vi.mock('@/composables/useMediaGenerate', () => ({
   useMediaGenerate: () => mocks.mediaGenerate,
 }))
 
-vi.mock('@/components/ConversationList.vue', () => ({
-  default: {
+vi.mock('@/components/ConversationList.vue', () =>
+  helpers.asAsyncSFCModule({
     name: 'ConversationList',
     props: {
       conversations: { type: Array, default: () => [] },
@@ -246,11 +276,11 @@ vi.mock('@/components/ConversationList.vue', () => ({
         </button>
       </div>
     `,
-  },
-}))
+  })
+)
 
-vi.mock('@/components/ChatInput.vue', () => ({
-  default: {
+vi.mock('@/components/ChatInput.vue', () =>
+  helpers.asAsyncSFCModule({
     name: 'ChatInput',
     props: {
       disabled: { type: Boolean, default: false },
@@ -259,43 +289,78 @@ vi.mock('@/components/ChatInput.vue', () => ({
     },
     template:
       '<div class="chat-input-stub" :data-disabled="String(disabled)" :data-streaming="String(streaming)" :data-can-cancel="String(canCancel)" />',
-  },
-}))
+  })
+)
 
-vi.mock('@/components/onboarding/PresetQuestions.vue', () => ({
-  default: { name: 'PresetQuestions', template: '<div class="preset-questions-stub" />' },
-}))
+vi.mock('@/components/onboarding/PresetQuestions.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'PresetQuestions',
+    template: '<div class="preset-questions-stub" />',
+  })
+)
 
-vi.mock('@/components/VirtualScroll.vue', () => ({
-  default: { name: 'VirtualScroll', template: '<div class="virtual-scroll-stub"><slot /></div>' },
-}))
+vi.mock('@/components/VirtualScroll.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'VirtualScroll',
+    template: '<div class="virtual-scroll-stub"><slot /></div>',
+  })
+)
 
-vi.mock('@/components/chat/TalkMode.vue', () => ({
-  default: { name: 'TalkMode', template: '<div class="talk-mode-stub" />' },
-}))
+vi.mock('@/components/chat/TalkMode.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'TalkMode',
+    template: '<div class="talk-mode-stub" />',
+  })
+)
 
-vi.mock('@/components/ToolApprovalDialog.vue', () => ({
-  default: { name: 'ToolApprovalDialog', template: '<div class="tool-approval-stub" />' },
-}))
+vi.mock('@/components/ToolApprovalDialog.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ToolApprovalDialog',
+    template: '<div class="tool-approval-stub" />',
+  })
+)
 
-vi.mock('@/components/ExecApprovalDialog.vue', () => ({
-  default: { name: 'ExecApprovalDialog', template: '<div class="exec-approval-stub" />' },
-}))
+vi.mock('@/components/ExecApprovalDialog.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ExecApprovalDialog',
+    template: '<div class="exec-approval-stub" />',
+  })
+)
 
-vi.mock('@/components/MediaParamPanel.vue', () => ({
-  default: { name: 'MediaParamPanel', template: '<div class="media-param-panel-stub" />' },
-}))
+vi.mock('@/components/MediaParamPanel.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'MediaParamPanel',
+    template: '<div class="media-param-panel-stub" />',
+  })
+)
 
-vi.mock('@/components/AgentTaskPanel.vue', () => ({
-  default: { name: 'AgentTaskPanel', template: '<div class="agent-task-panel-stub" />' },
-}))
+vi.mock('@/components/AgentTaskPanel.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'AgentTaskPanel',
+    template: '<div class="agent-task-panel-stub" />',
+  })
+)
 
-vi.mock('@/components/DeepResearchTaskDock.vue', () => ({
-  default: {
+vi.mock('@/components/DeepResearchTaskDock.vue', () =>
+  helpers.asAsyncSFCModule({
     name: 'DeepResearchTaskDock',
     template: '<div class="deep-research-task-dock-stub" />',
-  },
-}))
+  })
+)
+
+vi.mock('@/components/UserTaskProjectionCard.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'UserTaskProjectionCard',
+    template: '<div class="agent-task-panel-stub" />',
+  })
+)
+
+vi.mock('@/components/UserTaskProjectionDock.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'UserTaskProjectionDock',
+    template: '<div class="deep-research-task-dock-stub" />',
+  })
+)
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -523,6 +588,15 @@ describe('ChatView page-level card actions', () => {
     mocks.providerPoolStore.fetchRoutingMode.mockReset().mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
     mocks.deepResearchJobsStore.activeJobs = []
+    mocks.taskProjectionsStore.currentTasks = []
+    mocks.taskProjectionsStore.currentActiveTasks = []
+    mocks.taskProjectionsStore.currentTerminalTasks = []
+    mocks.taskProjectionsStore.backgroundTasks = []
+    mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.fetchActiveJobs.mockReset().mockResolvedValue(undefined)
     mocks.deepResearchJobsStore.handleGlobalEvent.mockReset()
     mocks.deepResearchJobsStore.applyJobSnapshot.mockReset()
@@ -842,34 +916,27 @@ describe('ChatView page-level card actions', () => {
         updated_at: '2026-03-08T00:00:00.000Z',
       },
     ]
-    mocks.agentApi.listTasks.mockResolvedValue({
-      data: [
-        {
-          id: 'task-1',
-          user_id: 'user-1',
-          conversation_id: 'conv-agent',
-          goal: 'Investigate regression',
-          plan: [],
-          status: 'planning',
-          current_step: 0,
-          progress: 12,
-          created_at: '2026-03-08T00:00:00.000Z',
-          updated_at: '2026-03-08T00:00:00.000Z',
-        },
-      ],
-    })
-    mocks.deepResearchJobsStore.activeJobs = [
+    mocks.taskProjectionsStore.currentActiveTasks = [
+      {
+        id: 'task-1',
+        kind: 'agent_task',
+        conversation_id: 'conv-agent',
+        title: 'Investigate regression',
+        status: 'running',
+        stage: 'planning',
+        progress: 12,
+        updated_at: '2026-03-08T00:00:00.000Z',
+      },
+    ]
+    mocks.taskProjectionsStore.backgroundTasks = [
       {
         id: 'job-1',
-        job_id: 'job-1',
+        kind: 'research',
         conversation_id: 'conv-research',
-        query: 'Track session badge regressions',
+        title: 'Track session badge regressions',
         status: 'running',
-        stage: 'running',
+        stage: 'working',
         progress: 48,
-        iteration: 1,
-        latest_action: '',
-        latest_gap: '',
         updated_at: '2026-03-08T00:00:00.000Z',
       },
     ]

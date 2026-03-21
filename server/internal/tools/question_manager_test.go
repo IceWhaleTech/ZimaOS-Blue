@@ -34,6 +34,13 @@ func TestQuestionManager_TimeoutActionDefault(t *testing.T) {
 	}
 }
 
+func TestQuestionManager_DefaultTimeoutIsLonger(t *testing.T) {
+	mgr := NewQuestionManager(nil, nil, 0)
+	if got := mgr.resolveTimeout(); got != 5*time.Minute {
+		t.Fatalf("resolveTimeout() = %v, want %v", got, 5*time.Minute)
+	}
+}
+
 func TestQuestionManager_ObserverReceivesLifecycleEvents(t *testing.T) {
 	broker := sse.NewBroker()
 	ch := broker.Subscribe("u1")

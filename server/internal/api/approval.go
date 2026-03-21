@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -259,10 +260,16 @@ func (h *ApprovalHandler) Enqueue(userID string, req *PendingRequest) {
 // AuthorizeToolCall enforces generic tool approval policies at runtime.
 func (h *ApprovalHandler) AuthorizeToolCall(ctx context.Context, req tools.ToolApprovalRequest) (tools.ToolApprovalDecision, error) {
 	mode, source := h.policyMode(req.ToolName)
+	riskLevel := normalizeRiskLevel(req.RiskLevel)
+	if overrideMode, overrideSource, overrideRisk, ok := highRiskToolApprovalOverride(ctx, req, mode); ok {
+		mode = overrideMode
+		source = overrideSource
+		riskLevel = maxApprovalRiskLevel(riskLevel, overrideRisk)
+	}
 	approval := tools.ToolApprovalEnvelope{
 		Mode:         mode,
 		PolicySource: nonEmpty(strings.TrimSpace(req.PolicySource), source),
-		RiskLevel:    normalizeRiskLevel(req.RiskLevel),
+		RiskLevel:    riskLevel,
 		BindingHash:  strings.TrimSpace(req.BindingHash),
 	}
 	decision := tools.ToolApprovalDecision{
@@ -441,6 +448,146 @@ func normalizeRiskLevel(raw string) string {
 		return "medium"
 	default:
 		return "low"
+	}
+}
+
+func highRiskToolApprovalOverride(ctx context.Context, req tools.ToolApprovalRequest, baseMode string) (mode string, source string, risk string, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(baseMode)) {
+	case "ask", "deny":
+		return "", "", "", false
+	}
+	if !strings.EqualFold(strings.TrimSpace(req.ToolName), "file_delete") {
+		return "", "", "", false
+	}
+	if !shouldRequireFileDeleteApproval(ctx, req.Arguments) {
+		return "", "", "", false
+	}
+	return "deny", "approval.tool_risk.file_delete", "critical", true
+}
+
+func shouldRequireFileDeleteApproval(ctx context.Context, args map[string]interface{}) bool {
+	path := approvalStringArg(args, "path")
+	if isRootLikeDeletePath(ctx, path) {
+		return true
+	}
+	if approvalBoolArg(args, "recursive") {
+		return true
+	}
+	return looksLikeDirectoryDeletePath(path)
+}
+
+func approvalStringArg(args map[string]interface{}, key string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return ""
+	}
+	switch v := raw.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case fmt.Stringer:
+		return strings.TrimSpace(v.String())
+	default:
+		return strings.TrimSpace(fmt.Sprint(v))
+	}
+}
+
+func approvalBoolArg(args map[string]interface{}, key string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return false
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "t", "true", "yes", "y", "on":
+			return true
+		}
+	case float64:
+		return v != 0
+	case int:
+		return v != 0
+	case int64:
+		return v != 0
+	}
+	return false
+}
+
+func isRootLikeDeletePath(ctx context.Context, raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false
+	}
+	switch trimmed {
+	case ".", "./", "/", "\\":
+		return true
+	}
+
+	normalized := filepath.Clean(strings.ReplaceAll(trimmed, "\\", "/"))
+	switch normalized {
+	case ".", "/", "/workspace":
+		return true
+	}
+
+	roots, aliases := tools.GetFSScope(ctx)
+	for _, root := range roots {
+		cleanRoot := filepath.Clean(root)
+		if cleanRoot != "" && normalized == cleanRoot {
+			return true
+		}
+	}
+	for alias, target := range aliases {
+		cleanAlias := strings.ToLower(strings.TrimSpace(alias))
+		if cleanAlias == "" {
+			continue
+		}
+		if normalized == cleanAlias || normalized == "@"+cleanAlias || normalized == cleanAlias+":" || normalized == "/"+cleanAlias {
+			return true
+		}
+		cleanTarget := filepath.Clean(target)
+		if cleanTarget != "" && normalized == cleanTarget {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeDirectoryDeletePath(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasSuffix(trimmed, "/") || strings.HasSuffix(trimmed, "\\") {
+		return true
+	}
+	base := filepath.Base(trimmed)
+	return base == "." || base == ".."
+}
+
+func maxApprovalRiskLevel(a, b string) string {
+	if approvalRiskRank(b) > approvalRiskRank(a) {
+		return normalizeRiskLevel(b)
+	}
+	return normalizeRiskLevel(a)
+}
+
+func approvalRiskRank(raw string) int {
+	switch normalizeRiskLevel(raw) {
+	case "critical":
+		return 4
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	default:
+		return 1
 	}
 }
 

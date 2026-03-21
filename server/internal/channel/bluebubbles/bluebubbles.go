@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 // Channel implements the channel.Channel interface for BlueBubbles.
@@ -49,13 +50,11 @@ func New(cfg channel.BlueBubblesConfig, logger *zap.Logger) *Channel {
 	cfg.ServerURL = serverURL
 
 	return &Channel{
-		config:   cfg,
-		logger:   logger.With(zap.String("channel", "bluebubbles")),
-		messages: make(chan channel.Message, 100),
-		status:   channel.StatusDisconnected,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		config:     cfg,
+		logger:     logger.With(zap.String("channel", "bluebubbles")),
+		messages:   make(chan channel.Message, 100),
+		status:     channel.StatusDisconnected,
+		httpClient: network.NewPooledHTTPClient(30 * time.Second),
 	}
 }
 

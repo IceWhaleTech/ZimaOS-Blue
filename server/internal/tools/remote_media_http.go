@@ -11,7 +11,7 @@ import (
 
 func newGuardedMediaHTTPClient(timeout time.Duration) *http.Client {
 	if timeout <= 0 {
-		timeout = 20 * time.Second
+		timeout = 5 * time.Minute
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	baseDial := transport.DialContext

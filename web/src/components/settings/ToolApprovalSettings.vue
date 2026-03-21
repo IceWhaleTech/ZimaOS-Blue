@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { approvalApi } from '@/api/approval'
 import type { ApprovalConfig, Policy } from '@/api/approval'
 import { toolApi } from '@/api/chat'
+import { getLocalizedToolName } from '@/utils/toolLocalization'
 
 const { t, te } = useI18n()
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
@@ -25,6 +26,10 @@ const policyOptions: { value: Policy; labelKey: string }[] = [
 
 function tr(key: string, fallback = ''): string {
   return te(key) ? t(key) : fallback
+}
+
+function getToolLabel(name: string): string {
+  return getLocalizedToolName(name, t, te)
 }
 
 onMounted(async () => {
@@ -152,7 +157,7 @@ function getToolPolicy(toolName: string): Policy {
           >
             <div class="flex-1 min-w-0 mr-3">
               <span class="text-sm text-gray-800 dark:text-gray-200 truncate">{{
-                t(`tools.names.${tool.name}`, tool.name)
+                getToolLabel(tool.name)
               }}</span>
             </div>
             <div class="flex gap-0.5 flex-shrink-0">

@@ -51,7 +51,7 @@ function createTestI18n(locale = 'en-US') {
             },
           },
           actions: {
-            extract_with_web_fetch: 'Extract with Web Fetch',
+            extract_with_web_fetch: 'Extract from Web',
           },
           messages: {
             browser_tab_ready: 'Browser tab ready',
@@ -86,6 +86,7 @@ function createTestI18n(locale = 'en-US') {
         },
         tools: {
           names: {
+            web: 'Web',
             web_crawl: 'Web Crawl',
           },
         },
@@ -121,7 +122,7 @@ function createTestI18n(locale = 'en-US') {
             },
           },
           actions: {
-            extract_with_web_fetch: '使用网页抓取提取',
+            extract_with_web_fetch: '从网页提取',
           },
           messages: {
             browser_tab_ready: '浏览器标签页已就绪',
@@ -154,6 +155,7 @@ function createTestI18n(locale = 'en-US') {
         },
         tools: {
           names: {
+            web: '网页',
             web_crawl: '网页爬取',
           },
         },
@@ -191,14 +193,14 @@ describe('CardResult', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('网页爬取')
+    expect(wrapper.text()).toContain('网页')
     expect(wrapper.text()).toContain('浏览器标签页已就绪')
     expect(wrapper.text()).toContain('最终 URL')
     expect(wrapper.text()).toContain('标题')
     expect(wrapper.text()).toContain('检查点')
     expect(wrapper.text()).toContain('待处理')
     expect(wrapper.text()).toContain('已完成')
-    expect(wrapper.text()).toContain('使用网页抓取提取')
+    expect(wrapper.text()).toContain('从网页提取')
     expect(wrapper.text()).not.toContain('Extract with web_fetch')
   })
 
@@ -220,7 +222,7 @@ describe('CardResult', () => {
     })
 
     expect(wrapper.text()).toContain('Extract readable content')
-    expect(wrapper.text()).not.toContain('使用网页抓取提取')
+    expect(wrapper.text()).not.toContain('从网页提取')
   })
 
   it('translates snake_case detail labels and strategy values', () => {

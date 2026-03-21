@@ -31,8 +31,8 @@ func TestServiceInfoAndExtractTextPDF(t *testing.T) {
 	if info.PageCount != 1 {
 		t.Fatalf("page count = %d, want 1", info.PageCount)
 	}
-	if info.Engine != engineName {
-		t.Fatalf("engine = %q, want %q", info.Engine, engineName)
+	if info.Engine != nativePDFEngineName() {
+		t.Fatalf("engine = %q, want %q", info.Engine, nativePDFEngineName())
 	}
 
 	result, err := svc.Extract(context.Background(), ExtractRequest{Path: path, IncludePages: true})
@@ -41,6 +41,9 @@ func TestServiceInfoAndExtractTextPDF(t *testing.T) {
 	}
 	if !strings.Contains(result.Text, "Hello PDF") {
 		t.Fatalf("text = %q, want Hello PDF", result.Text)
+	}
+	if !strings.Contains(result.RawText, "Hello PDF") {
+		t.Fatalf("raw_text = %q, want Hello PDF", result.RawText)
 	}
 	if len(result.SelectedPages) != 1 || result.SelectedPages[0] != 1 {
 		t.Fatalf("selected pages = %#v, want [1]", result.SelectedPages)
@@ -53,6 +56,41 @@ func TestServiceInfoAndExtractTextPDF(t *testing.T) {
 	}
 	if len(result.Pages) != 1 || !strings.Contains(result.Pages[0].Text, "Hello PDF") {
 		t.Fatalf("pages = %#v", result.Pages)
+	}
+}
+
+func TestCanonicalizeExtractedPDFText_PreservesUsefulLayoutSignals(t *testing.T) {
+	raw := "\u0000Top Categories\nAI & LLMs    287\nSearch & Research    253\n\nCollected:\u00a0February 7, 2026"
+
+	got := canonicalizeExtractedPDFText(raw)
+	want := strings.Join([]string{
+		"Top Categories",
+		"AI & LLMs    287",
+		"Search & Research    253",
+		"",
+		"Collected: February 7, 2026",
+	}, "\n")
+
+	if got != want {
+		t.Fatalf("canonicalizeExtractedPDFText() = %q, want %q", got, want)
+	}
+}
+
+func TestNormalizeText_CleansWrappedListsAndParagraphs(t *testing.T) {
+	raw := "\u0000Executive Summary\nThe gateway exposes a typed\nWebSocket API.\n\n• Scheduled daily brief-\ning + memory write-back\n1) Prompt-injection\ncontainment\n\u00a0\u00a0February 7, 2026\u00a0"
+
+	got := normalizeText(raw)
+	want := strings.Join([]string{
+		"Executive Summary",
+		"The gateway exposes a typed WebSocket API.",
+		"",
+		"- Scheduled daily briefing + memory write-back",
+		"1. Prompt-injection containment",
+		"February 7, 2026",
+	}, "\n")
+
+	if got != want {
+		t.Fatalf("normalizeText() = %q, want %q", got, want)
 	}
 }
 

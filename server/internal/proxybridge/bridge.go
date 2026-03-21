@@ -25,8 +25,12 @@ const (
 	maxSSELineSize = 1 << 20
 	// maxResponseSize caps non-streaming response body to prevent OOM (10MB).
 	maxResponseSize = 10 << 20
-	// defaultTimeout for bridge calls when context has no deadline.
-	defaultTimeout = 30 * time.Second
+	// defaultChatTimeout caps non-streaming bridge calls when the caller did not
+	// provide a deadline.
+	defaultChatTimeout = 10 * time.Minute
+	// defaultStreamTimeout gives slow-to-first-token models and tool-rich prompts
+	// substantially more headroom before the bridge aborts the upstream stream.
+	defaultStreamTimeout = 10 * time.Minute
 )
 
 // ProxyError wraps an HTTP status code from the proxy handler so callers
@@ -97,11 +101,11 @@ func (b *Bridge) SetMetricsRecorder(recorder runtimeMetricsRecorder) {
 }
 
 // ensureTimeout returns a context with a deadline if one isn't already set.
-func ensureTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+func ensureTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	if _, ok := ctx.Deadline(); ok {
 		return ctx, func() {}
 	}
-	return context.WithTimeout(ctx, defaultTimeout)
+	return context.WithTimeout(ctx, timeout)
 }
 
 func decodeResponseBodyByContentEncoding(body []byte, contentEncoding string) ([]byte, error) {
@@ -153,7 +157,7 @@ func decodeResponseBodyByContentEncoding(body []byte, contentEncoding string) ([
 
 // Chat sends a non-streaming request through the proxy pipeline.
 func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
-	ctx, cancel := ensureTimeout(ctx)
+	ctx, cancel := ensureTimeout(ctx, defaultChatTimeout)
 	defer cancel()
 
 	// Reuse caller-provided ResolvedRoute when available so callers can consume
@@ -282,7 +286,7 @@ func (p *pipeResponseWriter) Flush() {
 
 // ChatStream sends a streaming request through the proxy pipeline.
 func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback llm.StreamCallback) error {
-	ctx, cancel := ensureTimeout(ctx)
+	ctx, cancel := ensureTimeout(ctx, defaultStreamTimeout)
 	defer cancel()
 
 	// Check if caller provided a ResolvedRoute to populate

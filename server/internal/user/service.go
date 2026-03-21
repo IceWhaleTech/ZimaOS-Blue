@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
-	"github.com/google/uuid"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 var (
@@ -346,6 +346,11 @@ func (s *Service) GetUserSessions(ctx context.Context, userID uuid.UUID) ([]*Ses
 // ExistsByUsername checks if a username exists.
 func (s *Service) ExistsByUsername(ctx context.Context, username string) (bool, error) {
 	return s.repo.ExistsByUsername(ctx, username)
+}
+
+// AnyUserExists checks if any user exists.
+func (s *Service) AnyUserExists(ctx context.Context) (bool, error) {
+	return s.repo.AnyUserExists(ctx)
 }
 
 // AdminExists checks if any admin user exists.

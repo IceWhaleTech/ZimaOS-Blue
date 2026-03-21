@@ -21,13 +21,11 @@ import (
 )
 
 type Service struct {
-	planner     Planner
-	searcher    Searcher
-	summary     SummarySynthesizer
-	experiment  ExperimentBackend
-	routePolicy RoutePolicy
-	v2Enabled   bool
-	events      EventPublisher
+	planner   Planner
+	searcher  Searcher
+	summary   SummarySynthesizer
+	v2Enabled bool
+	events    EventPublisher
 
 	mu           sync.RWMutex
 	jobs         map[string]*Job
@@ -131,7 +129,6 @@ func NewService(planner Planner, searcher Searcher) *Service {
 	return &Service{
 		planner:               planner,
 		searcher:              searcher,
-		routePolicy:           defaultRoutePolicy(),
 		v2Enabled:             false,
 		jobs:                  make(map[string]*Job),
 		cancelFuncs:           make(map[string]context.CancelFunc),
@@ -154,33 +151,13 @@ func NewService(planner Planner, searcher Searcher) *Service {
 }
 
 func (s *Service) SetRoutePolicy(policy RoutePolicy) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.routePolicy = normalizeRoutePolicy(policy)
-}
-
-func (s *Service) SetExperimentBackend(backend ExperimentBackend) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.experiment = backend
+	_ = policy
 }
 
 func (s *Service) SetEventPublisher(publisher EventPublisher) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.events = publisher
-}
-
-func (s *Service) routePolicySnapshot() RoutePolicy {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.routePolicy
-}
-
-func (s *Service) experimentBackend() ExperimentBackend {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.experiment
 }
 
 func (s *Service) SetSummarySynthesizer(synth SummarySynthesizer) {
@@ -211,7 +188,7 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 	if mode == "" {
 		mode = ModeStandard
 	}
-	requestedRouteMode, effectiveRouteMode, routeReason, err := resolveRouteMode(query, req.RouteMode, s.routePolicySnapshot(), s.experimentBackend() != nil)
+	requestedRouteMode, effectiveRouteMode, routeReason, err := resolveRouteMode(query, req.RouteMode, RoutePolicy{})
 	if err != nil {
 		return nil, err
 	}
@@ -445,10 +422,6 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 
 	job, ok := s.getJobPtr(jobID)
 	if !ok {
-		return
-	}
-	if job.EffectiveRouteMode == RouteModeExperiment {
-		s.runExperimentJob(ctx, job)
 		return
 	}
 	useV2 := s.IsV2Enabled()
@@ -763,9 +736,6 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 		VerificationSummary:  verificationSummary,
 		Tasks:                append([]Task(nil), tasks...),
 	})
-	if job.EffectiveRouteMode == RouteModeHybrid {
-		report = s.mergeExperimentReport(ctx, job, evidence, report)
-	}
 	s.broadcast(jobID, "citation_coverage_updated", map[string]interface{}{
 		"citation_coverage": report.CitationCoverage,
 		"evidence_count":    len(evidence),
@@ -797,169 +767,6 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 		"citation_coverage": report.CitationCoverage,
 	})
 	s.publishJobEventByID("deep_research.job_completed", jobID)
-}
-
-func (s *Service) runExperimentJob(ctx context.Context, job *Job) {
-	backend := s.experimentBackend()
-	if backend == nil {
-		s.failJob(job.ID, "experiment backend is not configured")
-		return
-	}
-	s.updateJob(job.ID, func(j *Job) {
-		j.Stage = "experiment"
-		j.Progress = 30
-		j.Iteration = 1
-		j.LatestAction = "experiment_started"
-	})
-	s.broadcast(job.ID, "experiment_started", map[string]interface{}{
-		"job_id":     job.ID,
-		"route_mode": string(job.EffectiveRouteMode),
-	})
-
-	result, err := backend.Run(ctx, buildExperimentRequest(job, nil, nil))
-	if err != nil {
-		if errors.Is(ctx.Err(), context.Canceled) {
-			s.cancelJobInternal(job.ID)
-			return
-		}
-		s.failJob(job.ID, fmt.Sprintf("experiment failed: %v", err))
-		return
-	}
-	report := reportFromExperimentResult(result)
-	s.updateJob(job.ID, func(j *Job) {
-		j.Status = JobStatusCompleted
-		j.Stage = "completed"
-		j.Progress = 100
-		j.Iteration = 1
-		j.LatestAction = "completed"
-		j.Report = &report
-		now := timeutil.NowTime()
-		j.CompletedAt = &now
-	})
-	s.broadcast(job.ID, "experiment_completed", map[string]interface{}{
-		"job_id":         job.ID,
-		"route_mode":     string(job.EffectiveRouteMode),
-		"finding_count":  len(report.ExperimentFindings()),
-		"artifact_count": len(report.ExperimentArtifacts()),
-	})
-	s.broadcast(job.ID, "job_completed", map[string]interface{}{
-		"iterations":        report.Iterations,
-		"stop_reason":       report.StopReason,
-		"evidence_count":    0,
-		"confidence":        report.Confidence,
-		"citation_coverage": report.CitationCoverage,
-	})
-	s.publishJobEventByID("deep_research.job_completed", job.ID)
-}
-
-func (s *Service) mergeExperimentReport(ctx context.Context, job *Job, evidence []Evidence, report Report) Report {
-	backend := s.experimentBackend()
-	if backend == nil {
-		report.StageErrors = dedupeStrings(append(report.StageErrors, "experiment backend unavailable during hybrid execution"))
-		return report
-	}
-	s.broadcast(job.ID, "experiment_started", map[string]interface{}{
-		"job_id":     job.ID,
-		"route_mode": string(job.EffectiveRouteMode),
-	})
-	result, err := backend.Run(ctx, buildExperimentRequest(job, &report, evidence))
-	if err != nil {
-		report.StageErrors = dedupeStrings(append(report.StageErrors, fmt.Sprintf("experiment validation failed: %v", err)))
-		s.broadcast(job.ID, "stage_warning", map[string]interface{}{
-			"stage":   "experiment",
-			"message": err.Error(),
-		})
-		return report
-	}
-	report.Experiment = experimentReportFromResult(result)
-	if report.Experiment != nil && strings.TrimSpace(report.Experiment.Summary) != "" {
-		if strings.TrimSpace(report.Answer) == "" {
-			report.Answer = strings.TrimSpace(report.Experiment.Summary)
-		} else {
-			report.Answer = strings.TrimSpace(report.Answer) + "\n\nExperiment validation: " + strings.TrimSpace(report.Experiment.Summary)
-		}
-	}
-	if result != nil {
-		report.Confidence = maxFloat(report.Confidence, clampExperimentConfidence(result.Confidence))
-		if len(result.OpenQuestions) > 0 {
-			report.OpenQuestions = dedupeStrings(append(report.OpenQuestions, result.OpenQuestions...))
-		}
-	}
-	s.broadcast(job.ID, "experiment_completed", map[string]interface{}{
-		"job_id":         job.ID,
-		"route_mode":     string(job.EffectiveRouteMode),
-		"finding_count":  len(report.ExperimentFindings()),
-		"artifact_count": len(report.ExperimentArtifacts()),
-	})
-	return report
-}
-
-func buildExperimentRequest(job *Job, report *Report, evidence []Evidence) ExperimentRequest {
-	request := ExperimentRequest{
-		JobID:        job.ID,
-		Query:        job.Query,
-		Lang:         job.Lang,
-		Mode:         job.Mode,
-		RouteMode:    job.EffectiveRouteMode,
-		Budget:       job.Budget,
-		ReportStyle:  job.ReportStyle,
-		StrictEntity: job.StrictEntity,
-	}
-	if len(job.TimeWindows) > 0 {
-		request.TimeWindows = append([]string(nil), job.TimeWindows...)
-	}
-	if report != nil {
-		request.WebReport = cloneReport(report)
-	}
-	if len(evidence) > 0 {
-		request.WebEvidence = append([]Evidence(nil), evidence...)
-	}
-	return request
-}
-
-func reportFromExperimentResult(result *ExperimentResult) Report {
-	report := Report{
-		StopReason: "experiment_completed",
-	}
-	if result == nil {
-		report.Answer = "Experiment completed."
-		return report
-	}
-	report.Answer = strings.TrimSpace(result.Summary)
-	if report.Answer == "" {
-		report.Answer = "Experiment completed."
-	}
-	report.Confidence = clampExperimentConfidence(result.Confidence)
-	report.OpenQuestions = append([]string(nil), result.OpenQuestions...)
-	report.Experiment = experimentReportFromResult(result)
-	return report
-}
-
-func experimentReportFromResult(result *ExperimentResult) *ExperimentReport {
-	if result == nil {
-		return nil
-	}
-	report := &ExperimentReport{
-		Summary:       strings.TrimSpace(result.Summary),
-		Findings:      append([]string(nil), result.Findings...),
-		Artifacts:     append([]ExperimentArtifact(nil), result.Artifacts...),
-		OpenQuestions: append([]string(nil), result.OpenQuestions...),
-		Metadata:      cloneInterfaceMap(result.Metadata),
-	}
-	if report.Summary == "" && len(report.Findings) == 0 && len(report.Artifacts) == 0 && len(report.OpenQuestions) == 0 && len(report.Metadata) == 0 {
-		return nil
-	}
-	return report
-}
-
-func clampExperimentConfidence(value float64) float64 {
-	if value < 0 {
-		return 0
-	}
-	if value > 1 {
-		return 1
-	}
-	return value
 }
 
 func (s *Service) failJob(jobID, msg string) {
@@ -1689,7 +1496,17 @@ func synthesizeReportWithOptions(query, lang string, evidence []Evidence, opts r
 		answer = buildKnowledgeBaseAnswer(query, lang, evidence, citations, timelineSections, openQuestions, opts.VerificationSummary, indexByEvidenceID)
 	}
 	coverage := computeCitationCoverage(answer, len(citations))
-	if coverage < 0.8 {
+	calibration := buildCalibration(
+		evidence,
+		conf,
+		coverage,
+		supportCount,
+		conflictCount,
+		hasConflict,
+		opts.VerificationSummary,
+		opts.StageErrors,
+	)
+	if calibration != nil && calibration.RecommendedAction != calibrationActionPublish {
 		answer = localizedCautiousConclusionPrefix(lang, query) + "\n\n" + answer
 	}
 
@@ -1715,6 +1532,7 @@ func synthesizeReportWithOptions(query, lang string, evidence []Evidence, opts r
 		TimelineSections:     timelineSections,
 		ResearchTrace:        cloneResearchTrace(opts.ResearchTrace),
 		VerificationSummary:  cloneVerificationSummary(opts.VerificationSummary),
+		Calibration:          cloneCalibration(calibration),
 	}
 }
 
@@ -2230,25 +2048,21 @@ func cloneReport(r *Report) *Report {
 	}
 	cp.ResearchTrace = cloneResearchTrace(r.ResearchTrace)
 	cp.VerificationSummary = cloneVerificationSummary(r.VerificationSummary)
-	cp.Experiment = cloneExperimentReport(r.Experiment)
+	cp.Calibration = cloneCalibration(r.Calibration)
 	return &cp
 }
 
-func cloneExperimentReport(report *ExperimentReport) *ExperimentReport {
-	if report == nil {
+func cloneCalibration(calibration *Calibration) *Calibration {
+	if calibration == nil {
 		return nil
 	}
-	cp := *report
-	if report.Findings != nil {
-		cp.Findings = append([]string(nil), report.Findings...)
+	cp := *calibration
+	if calibration.TakeawayCandidates != nil {
+		cp.TakeawayCandidates = append([]TakeawayCandidate(nil), calibration.TakeawayCandidates...)
+		for i := range cp.TakeawayCandidates {
+			cp.TakeawayCandidates[i].EvidenceIDs = append([]string(nil), calibration.TakeawayCandidates[i].EvidenceIDs...)
+		}
 	}
-	if report.Artifacts != nil {
-		cp.Artifacts = append([]ExperimentArtifact(nil), report.Artifacts...)
-	}
-	if report.OpenQuestions != nil {
-		cp.OpenQuestions = append([]string(nil), report.OpenQuestions...)
-	}
-	cp.Metadata = cloneInterfaceMap(report.Metadata)
 	return &cp
 }
 
@@ -2261,20 +2075,6 @@ func cloneInterfaceMap(values map[string]interface{}) map[string]interface{} {
 		cp[k] = v
 	}
 	return cp
-}
-
-func (r Report) ExperimentFindings() []string {
-	if r.Experiment == nil {
-		return nil
-	}
-	return r.Experiment.Findings
-}
-
-func (r Report) ExperimentArtifacts() []ExperimentArtifact {
-	if r.Experiment == nil {
-		return nil
-	}
-	return r.Experiment.Artifacts
 }
 
 func cloneResearchTrace(items []ResearchTraceEntry) []ResearchTraceEntry {

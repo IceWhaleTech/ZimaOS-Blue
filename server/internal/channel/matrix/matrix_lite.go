@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 // matrixClient is a lightweight Matrix Client-Server API client replacing maunium.net/go/mautrix.
@@ -26,7 +28,7 @@ func newMatrixClient(homeserver, userID, accessToken string) *matrixClient {
 		homeserver:  homeserver,
 		userID:      userID,
 		accessToken: accessToken,
-		http:        &http.Client{Timeout: 60 * time.Second},
+		http:        network.NewPooledHTTPClient(5 * time.Minute),
 	}
 }
 
@@ -95,13 +97,13 @@ type matrixEvent struct {
 }
 
 type messageContent struct {
-	MsgType       string       `json:"msgtype"`
-	Body          string       `json:"body"`
-	Format        string       `json:"format,omitempty"`
-	FormattedBody string       `json:"formatted_body,omitempty"`
-	URL           string       `json:"url,omitempty"`
-	Info          *contentInfo `json:"info,omitempty"`
-	RelatesTo     *relatesTo   `json:"m.relates_to,omitempty"`
+	MsgType       string          `json:"msgtype"`
+	Body          string          `json:"body"`
+	Format        string          `json:"format,omitempty"`
+	FormattedBody string          `json:"formatted_body,omitempty"`
+	URL           string          `json:"url,omitempty"`
+	Info          *contentInfo    `json:"info,omitempty"`
+	RelatesTo     *relatesTo      `json:"m.relates_to,omitempty"`
 	NewContent    *messageContent `json:"m.new_content,omitempty"`
 }
 

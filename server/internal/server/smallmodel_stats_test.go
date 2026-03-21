@@ -1,6 +1,7 @@
 package server
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -16,6 +17,9 @@ func TestSmallModelStatsRecordAndReset(t *testing.T) {
 	s.RecordSummaryAttempt()
 	s.RecordSummarySuccess()
 	s.RecordSummaryAttempt()
+	s.RecordContextCompressAttempt()
+	s.RecordContextCompressSuccess()
+	s.RecordContextCompressAttempt()
 	s.RecordDocExtractAttempt()
 	s.RecordDocExtractSuccess()
 	s.RecordDocExtractAttempt()
@@ -23,6 +27,7 @@ func TestSmallModelStatsRecordAndReset(t *testing.T) {
 	s.RecordLatencyWithScene("image_qa", 25*time.Millisecond)
 	s.RecordLatencyWithScene("tool_dispatch", 40*time.Millisecond)
 	s.RecordLatencyWithScene("summary", 50*time.Millisecond)
+	s.RecordLatencyWithScene("context_compress", 35*time.Millisecond)
 	s.RecordLatencyWithScene("doc_extract", 30*time.Millisecond)
 	s.RecordFallback("model_unready")
 	s.RecordFallback("timeout")
@@ -52,6 +57,9 @@ func TestSmallModelStatsRecordAndReset(t *testing.T) {
 	if snap.SummaryAttempts != 2 || snap.SummarySuccess != 1 {
 		t.Fatalf("unexpected summary counters: attempts=%d success=%d", snap.SummaryAttempts, snap.SummarySuccess)
 	}
+	if snap.ContextCompressAttempts != 2 || snap.ContextCompressSuccess != 1 {
+		t.Fatalf("unexpected context_compress counters: attempts=%d success=%d", snap.ContextCompressAttempts, snap.ContextCompressSuccess)
+	}
 	if snap.DocExtractAttempts != 2 || snap.DocExtractSuccess != 1 {
 		t.Fatalf("unexpected doc_extract counters: attempts=%d success=%d", snap.DocExtractAttempts, snap.DocExtractSuccess)
 	}
@@ -61,11 +69,11 @@ func TestSmallModelStatsRecordAndReset(t *testing.T) {
 	if snap.TimeoutTotal != 1 {
 		t.Fatalf("TimeoutTotal = %d, want 1", snap.TimeoutTotal)
 	}
-	if snap.LatencySamples != 5 || snap.LatencyMsTotal != 165 {
+	if snap.LatencySamples != 6 || snap.LatencyMsTotal != 200 {
 		t.Fatalf("unexpected latency counters: samples=%d total=%d", snap.LatencySamples, snap.LatencyMsTotal)
 	}
-	if snap.LatencyMs != 33 {
-		t.Fatalf("LatencyMs = %v, want 33", snap.LatencyMs)
+	if math.Abs(snap.LatencyMs-33.333333333333336) > 1e-9 {
+		t.Fatalf("LatencyMs = %v, want %v", snap.LatencyMs, 33.333333333333336)
 	}
 	if snap.ShortQALatencySamples != 1 || snap.ShortQALatencyMs != 20 {
 		t.Fatalf("unexpected short_qa latency stats: samples=%d avg=%v", snap.ShortQALatencySamples, snap.ShortQALatencyMs)
@@ -78,6 +86,9 @@ func TestSmallModelStatsRecordAndReset(t *testing.T) {
 	}
 	if snap.SummaryLatencySamples != 1 || snap.SummaryLatencyMs != 50 {
 		t.Fatalf("unexpected summary latency stats: samples=%d avg=%v", snap.SummaryLatencySamples, snap.SummaryLatencyMs)
+	}
+	if snap.ContextCompressSamples != 1 || snap.ContextCompressLatencyMs != 35 {
+		t.Fatalf("unexpected context_compress latency stats: samples=%d avg=%v", snap.ContextCompressSamples, snap.ContextCompressLatencyMs)
 	}
 	if snap.DocExtractLatencySamples != 1 || snap.DocExtractLatencyMs != 30 {
 		t.Fatalf("unexpected doc_extract latency stats: samples=%d avg=%v", snap.DocExtractLatencySamples, snap.DocExtractLatencyMs)
@@ -101,6 +112,7 @@ func TestSmallModelStatsRecordAndReset(t *testing.T) {
 		snap.ImageQARouteAttempts != 0 ||
 		snap.ToolDispatchRouteAttempts != 0 ||
 		snap.SummaryAttempts != 0 ||
+		snap.ContextCompressAttempts != 0 ||
 		snap.DocExtractAttempts != 0 ||
 		snap.FallbackTotal != 0 ||
 		snap.TimeoutTotal != 0 ||
@@ -110,6 +122,7 @@ func TestSmallModelStatsRecordAndReset(t *testing.T) {
 		snap.ImageQALatencySamples != 0 ||
 		snap.ToolDispatchLatencySamples != 0 ||
 		snap.SummaryLatencySamples != 0 ||
+		snap.ContextCompressSamples != 0 ||
 		snap.DocExtractLatencySamples != 0 ||
 		snap.AutoRollbackTotal != 0 ||
 		snap.DeepResearchFallback != 0 ||

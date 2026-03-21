@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -91,46 +92,43 @@ const responsesPreviousIDTTL = 24 * time.Hour
 
 // NewStore creates a new memory store.
 func NewStore(dbPath string) (*Store, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
+		// Set connection pool settings for better concurrency
+		db.SetMaxOpenConns(1) // SQLite only supports one writer at a time
+		db.SetMaxIdleConns(1)
+
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return fmt.Errorf("failed to enable WAL mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+			return fmt.Errorf("failed to enable foreign keys: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("failed to set busy timeout: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+			return fmt.Errorf("failed to set synchronous mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
+			return fmt.Errorf("failed to set wal autocheckpoint: %w", err)
+		}
+
+		// Reduce page cache for lower idle memory (~512KB instead of default ~2MB)
+		db.Exec("PRAGMA cache_size=-500")
+
+		store := &Store{db: db}
+		if err := store.migrate(); err != nil {
+			return fmt.Errorf("failed to migrate: %w", err)
+		}
+
+		db.Exec("PRAGMA shrink_memory")
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Set connection pool settings for better concurrency
-	db.SetMaxOpenConns(1) // SQLite only supports one writer at a time
-	db.SetMaxIdleConns(1)
-
-	// Enable WAL mode for better concurrency
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
-	}
-
-	// Enable foreign keys
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
-	}
-
-	// Set busy timeout for concurrent access
-	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
-	}
-
-	// Reduce page cache for lower idle memory (~512KB instead of default ~2MB)
-	db.Exec("PRAGMA cache_size=-500")
-
-	store := &Store{db: db, ownsDB: true}
-	if err := store.migrate(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to migrate: %w", err)
-	}
-
-	// Release unused memory after schema init
-	db.Exec("PRAGMA shrink_memory")
-
-	return store, nil
+	return &Store{db: db, ownsDB: true}, nil
 }
 
 // NewStoreWithDB creates a memory store using an existing shared database connection.

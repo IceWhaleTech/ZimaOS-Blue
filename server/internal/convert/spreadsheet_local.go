@@ -546,6 +546,23 @@ func writeSpreadsheetCSV(path string, workbook *spreadsheetWorkbook) (string, er
 
 func writeSpreadsheetText(path string, workbook *spreadsheetWorkbook) (string, error) {
 	var buf bytes.Buffer
+	writeSpreadsheetTextContent(&buf, workbook)
+	if err := os.WriteFile(path, buf.Bytes(), 0o640); err != nil {
+		return "", err
+	}
+	return spreadsheetPreview(workbook), nil
+}
+
+func spreadsheetTextContent(workbook *spreadsheetWorkbook) string {
+	var buf bytes.Buffer
+	writeSpreadsheetTextContent(&buf, workbook)
+	return buf.String()
+}
+
+func writeSpreadsheetTextContent(buf *bytes.Buffer, workbook *spreadsheetWorkbook) {
+	if buf == nil || workbook == nil {
+		return
+	}
 	for idx, sheet := range workbook.Sheets {
 		if idx > 0 {
 			buf.WriteString("\n\n")
@@ -562,10 +579,6 @@ func writeSpreadsheetText(path string, workbook *spreadsheetWorkbook) (string, e
 			buf.WriteString("\n")
 		}
 	}
-	if err := os.WriteFile(path, buf.Bytes(), 0o640); err != nil {
-		return "", err
-	}
-	return spreadsheetPreview(workbook), nil
 }
 
 func writeSpreadsheetMarkdown(path string, workbook *spreadsheetWorkbook) (string, error) {

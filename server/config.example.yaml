@@ -4,8 +4,8 @@
 server:
   host: "0.0.0.0"
   port: 80
-  read_timeout: "30s"
-  write_timeout: "30s"
+  read_timeout: "5m"
+  write_timeout: "5m"
   idle_timeout: "120s"
 
 log:
@@ -123,7 +123,7 @@ proxy:
     keep_alive_interval: "30s"
     dial_timeout: "30s"
     tls_handshake_timeout: "10s"
-    response_header_timeout: "60s"
+    response_header_timeout: "10m"
     force_http2: true
 
   # Health check configuration
@@ -199,26 +199,68 @@ update:
   backup_count: 3
   storage_path: "./data/updates"
 
-# Tool calling adapters + web search runtime
+# Tool calling adapters + web runtime
 tool_calling:
   auto_detect: true
-  detection_timeout: "5s"
+  detection_timeout: "5m"
   web_search:
     provider: "duckduckgo"  # single provider (legacy)
-    providers: ["duckduckgo"]  # high availability chain, priority order
+    providers: ["duckduckgo", "bing"]  # high availability chain, priority order
     api_key: ""             # required for brave
     base_url: ""            # required for searxng
     max_results: 5
-    timeout: "30s"
+    timeout: "5m"
     safe_search: false
     region: "wt-wt"
+  web_fetch:
+    allow_private_hosts: false
+    timeout: "5m"
+    firecrawl_timeout: "5m"
+  ripgrep:
+    enabled: true
+    auto_download: true
+    allow_system_binary: true
+    cache_dir: ""          # default: <dataDir>/tools/ripgrep
+    mirror_base_url: ""    # deprecated single-mirror override
+    mirror_base_urls:
+      - "https://mirror.ghproxy.com"
+      - "https://gh-proxy.com"
+      - "https://downloads.sourceforge.net/project/ripgrep.mirror"
+
+# Runtime performance and lazy-resource reclaim
+performance:
+  database:
+    pool_size: 10
+    max_idle_conns: 5
+    conn_max_lifetime: "1h"
+    conn_max_idle_time: "10m"
+    wal_mode: true
+    cache_size: 2000
+    page_size: 4096
+    checkpoint_interval: "5m"
+    batch_size: 1000
+    slow_query_threshold: "100ms"
+    enable_query_cache: true
+
+  resource_reclaim:
+    enabled: true
+    browser_idle_after: "10m"
+    workflow_idle_after: "15m"
+    cron_idle_after: "15m"
+    stt_idle_after: "10m"
+    speech_status_does_not_prewarm_stt: true
 
 # Browser automation runtime
 browser:
+  driver: "managed"     # managed (launch isolated Chromium) or relay/cdp (attach to an existing CDP endpoint)
+  relay_enabled: false  # starts Blue's built-in loopback relay for the companion Chrome extension
+  relay_host: "127.0.0.1"
+  relay_port: 18792
+  relay_token: ""       # optional; if empty Blue generates one at startup
   pool_size: 3
   headless: true         # runtime default; chat card "use_browser" opens a visible window automatically
-  default_timeout: 30000
-  max_timeout: 120000
+  default_timeout: 60000
+  max_timeout: 300000
   default_viewport_width: 1920
   default_viewport_height: 1080
   allowed_domains: []
@@ -226,12 +268,13 @@ browser:
   user_agent: ""
   proxy_url: ""
   browser_path: ""      # optional explicit Chrome/Chromium path
+  cdp_url: ""           # external relay/CDP endpoint; leave empty to use Blue's built-in relay when relay_enabled=true
   evaluate_enabled: true
 
 # Harness control plane (runtime-first, benchmark-ready)
 harness:
   enabled: true
-  store_path: "./data/harness.db"
+  store_path: "./data/blue.db"   # shared main DB; legacy harness.db installs are migrated into blue.db
   artifact_root: "./data/harness/artifacts"
   event_retention_days: 30
   default_approval_mode: "ask"   # ask, allow, deny

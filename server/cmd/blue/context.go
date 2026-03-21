@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
 	contextpackembed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack/embedded"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
@@ -98,6 +100,7 @@ type localContextRuntime struct {
 	workspace *workspace.Manager
 	registry  *contextpack.Registry
 	store     *contextpack.AnnotationStore
+	db        *sql.DB
 }
 
 func openLocalContextRuntime() (*localContextRuntime, error) {
@@ -112,22 +115,42 @@ func openLocalContextRuntime() (*localContextRuntime, error) {
 	if err := workspaceMgr.ReleaseContextPacks(contextpackembed.PacksFS); err != nil {
 		return nil, err
 	}
-	store, err := contextpack.NewAnnotationStore(filepath.Join(dataDir, "contextpacks.db"))
+	cfg, err := config.Load("")
 	if err != nil {
+		return nil, err
+	}
+	db, err := openPrimaryDatabaseWithStartupRecovery(dataDir, cfg.Performance.Database)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := contextpack.MigrateLegacyAnnotations(context.Background(), db, dataDir); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	store, err := contextpack.NewAnnotationStoreWithDB(db)
+	if err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	registry := contextpack.NewRegistry(workspaceMgr.ContextDir())
 	registry.SetRefreshTTL(0)
 	if err := registry.Refresh(context.Background()); err != nil {
 		_ = store.Close()
+		_ = db.Close()
 		return nil, err
 	}
-	return &localContextRuntime{workspace: workspaceMgr, registry: registry, store: store}, nil
+	return &localContextRuntime{workspace: workspaceMgr, registry: registry, store: store, db: db}, nil
 }
 
 func closeLocalContextRuntime(rt *localContextRuntime) {
-	if rt != nil && rt.store != nil {
+	if rt == nil {
+		return
+	}
+	if rt.store != nil {
 		_ = rt.store.Close()
+	}
+	if rt.db != nil {
+		_ = rt.db.Close()
 	}
 }
 

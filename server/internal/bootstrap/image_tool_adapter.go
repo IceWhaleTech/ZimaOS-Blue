@@ -3,19 +3,25 @@ package bootstrap
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
 	ocrruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ocr"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-func newImageGenerateAdapter(manager *mediagen.Manager) tools.ImageGenerateFunc {
+func newImageGenerateAdapter(manager *mediagen.Manager, workspaceRoots []string) tools.ImageGenerateFunc {
 	if manager == nil {
 		return nil
 	}
+	fallbackRoots := normalizeImageWorkspaceRoots(workspaceRoots)
 	return func(ctx context.Context, req tools.ImageGenerateRequest) (*tools.ImageTaskResult, error) {
+		lookupUserID := imageTaskLookupUserID(ctx)
 		mediaReq := &mediagen.MediaRequest{
 			Type:           mediagen.MediaTypeImage,
 			Prompt:         req.Prompt,
@@ -26,6 +32,12 @@ func newImageGenerateAdapter(manager *mediagen.Manager) tools.ImageGenerateFunc 
 			Quality:        req.Quality,
 			Style:          req.Style,
 			Extra:          cloneAnyMap(req.Extra),
+		}
+		if req.OutputPath != "" {
+			if mediaReq.Extra == nil {
+				mediaReq.Extra = make(map[string]interface{})
+			}
+			mediaReq.Extra["path"] = req.OutputPath
 		}
 		if req.ReferenceImageURL != "" {
 			mediaReq.ReferenceURL = req.ReferenceImageURL
@@ -48,13 +60,23 @@ func newImageGenerateAdapter(manager *mediagen.Manager) tools.ImageGenerateFunc 
 			if waitTimeout <= 0 {
 				waitTimeout = 120 * time.Second
 			}
-			waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
+			waitBase := context.Background()
+			if lookupUserID != "" {
+				waitBase = tools.WithUserID(waitBase, lookupUserID)
+			}
+			waitCtx, cancel := context.WithTimeout(waitBase, waitTimeout)
 			defer cancel()
-			waitedTask, waitErr := manager.WaitForTask(waitCtx, task.ID)
+			waitedTask, waitErr := waitForImageTask(waitCtx, manager, task.ID, lookupUserID)
 			if waitedTask != nil {
 				task = waitedTask
 			}
 			result := imageTaskFromMediaTask(task, req.Category)
+			if result != nil && req.OutputPath != "" {
+				if result.Request == nil {
+					result.Request = make(map[string]interface{})
+				}
+				result.Request["path"] = req.OutputPath
+			}
 			if waitErr != nil {
 				result.Message = waitErr.Error()
 				if result.Status == "" {
@@ -62,10 +84,196 @@ func newImageGenerateAdapter(manager *mediagen.Manager) tools.ImageGenerateFunc 
 				}
 				return result, nil
 			}
+			saveCtx, scopedOutputPath := withImageOutputWorkspaceScope(ctx, req.OutputPath, fallbackRoots)
+			if savedPath, saveErr := saveGeneratedImageOutput(saveCtx, manager, task, scopedOutputPath, lookupUserID); saveErr == nil && savedPath != "" {
+				if result.Request == nil {
+					result.Request = make(map[string]interface{})
+				}
+				result.Request["path"] = savedPath
+				result.Message = strings.TrimSpace(joinImageMessages(result.Message, fmt.Sprintf("saved generated image to %s", savedPath)))
+			} else if saveErr != nil {
+				result.Message = strings.TrimSpace(joinImageMessages(result.Message, fmt.Sprintf("generated image but failed to save %q: %v", req.OutputPath, saveErr)))
+			}
 			return result, nil
 		}
 		return imageTaskFromMediaTask(task, req.Category), nil
 	}
+}
+
+func normalizeImageWorkspaceRoots(roots []string) []string {
+	out := make([]string, 0, len(roots))
+	seen := make(map[string]struct{}, len(roots))
+	for _, raw := range roots {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+func withImageOutputWorkspaceScope(ctx context.Context, outputPath string, fallbackRoots []string) (context.Context, string) {
+	trimmed := strings.TrimSpace(outputPath)
+	if trimmed == "" {
+		return ctx, trimmed
+	}
+	if rel, ok := relativizeImageOutputPath(trimmed, scopeRootsForImageOutput(ctx, fallbackRoots)); ok {
+		return withImageWorkspaceOverride(ctx, fallbackRoots), rel
+	}
+	if filepath.IsAbs(trimmed) {
+		return ctx, trimmed
+	}
+	roots, aliases := tools.GetFSScope(ctx)
+	if len(roots) > 0 || len(aliases) > 0 {
+		return ctx, trimmed
+	}
+	if len(fallbackRoots) == 0 {
+		return ctx, trimmed
+	}
+	return withImageWorkspaceOverride(ctx, fallbackRoots), trimmed
+}
+
+func withImageWorkspaceOverride(ctx context.Context, fallbackRoots []string) context.Context {
+	if len(fallbackRoots) == 0 {
+		return ctx
+	}
+	scopeAliases := map[string]string{"workspace": fallbackRoots[0]}
+	return tools.WithFSRootOverride(ctx, fallbackRoots, scopeAliases)
+}
+
+func scopeRootsForImageOutput(ctx context.Context, fallbackRoots []string) []string {
+	roots, _ := tools.GetFSScope(ctx)
+	if len(roots) == 0 {
+		return fallbackRoots
+	}
+	combined := make([]string, 0, len(roots)+len(fallbackRoots))
+	seen := make(map[string]struct{}, len(roots)+len(fallbackRoots))
+	for _, root := range append(append([]string{}, roots...), fallbackRoots...) {
+		trimmed := strings.TrimSpace(root)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		combined = append(combined, trimmed)
+	}
+	return combined
+}
+
+func relativizeImageOutputPath(outputPath string, roots []string) (string, bool) {
+	cleanedOutput := filepath.Clean(strings.TrimSpace(outputPath))
+	if cleanedOutput == "" || !filepath.IsAbs(cleanedOutput) {
+		return "", false
+	}
+	for _, root := range roots {
+		cleanedRoot := filepath.Clean(strings.TrimSpace(root))
+		if cleanedRoot == "" || !filepath.IsAbs(cleanedRoot) {
+			continue
+		}
+		rel, err := filepath.Rel(cleanedRoot, cleanedOutput)
+		if err != nil {
+			continue
+		}
+		rel = filepath.Clean(rel)
+		if rel == "." {
+			return "", false
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		return rel, true
+	}
+	return "", false
+}
+
+func imageTaskLookupUserID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if claims, ok := ctx.Value(auth.UserContextKey).(*auth.UserClaims); ok && claims != nil {
+		if userID := strings.TrimSpace(claims.UserID); userID != "" {
+			return userID
+		}
+	}
+	return strings.TrimSpace(tools.GetUserID(ctx))
+}
+
+func waitForImageTask(ctx context.Context, manager *mediagen.Manager, taskID, lookupUserID string) (*mediagen.MediaTask, error) {
+	if manager == nil {
+		return nil, fmt.Errorf("media manager unavailable")
+	}
+	if strings.TrimSpace(lookupUserID) != "" {
+		task, err := manager.WaitForTask(ctx, taskID, lookupUserID)
+		if err == nil || !errors.Is(err, mediagen.ErrTaskNotFound) {
+			return task, err
+		}
+	}
+	return manager.WaitForTask(ctx, taskID)
+}
+
+func saveGeneratedImageOutput(ctx context.Context, manager *mediagen.Manager, task *mediagen.MediaTask, outputPath, lookupUserID string) (string, error) {
+	outputPath = strings.TrimSpace(outputPath)
+	if outputPath == "" || task == nil {
+		return "", nil
+	}
+	if task.Response == nil || len(task.Response.Data) == 0 {
+		var (
+			refreshed *mediagen.MediaTask
+			err       error
+		)
+		if strings.TrimSpace(lookupUserID) != "" {
+			refreshed, err = manager.GetTask(task.ID, lookupUserID)
+			if err != nil && errors.Is(err, mediagen.ErrTaskNotFound) {
+				refreshed, err = manager.GetTask(task.ID)
+			}
+		} else {
+			refreshed, err = manager.GetTask(task.ID)
+		}
+		if err != nil {
+			return "", err
+		}
+		task = refreshed
+	}
+	if task == nil || task.Response == nil || len(task.Response.Data) == 0 {
+		return "", fmt.Errorf("generated image has no output data")
+	}
+
+	first := task.Response.Data[0]
+	var (
+		data []byte
+		err  error
+	)
+	switch {
+	case strings.TrimSpace(first.B64JSON) != "":
+		data, err = decodeCompatImageBase64(first.B64JSON)
+	case strings.TrimSpace(first.URL) != "":
+		data, err = manager.ReadServedURL(first.URL)
+	default:
+		err = fmt.Errorf("generated image has no retrievable asset")
+	}
+	if err != nil {
+		return "", err
+	}
+	return tools.WriteBinaryArtifact(ctx, outputPath, data)
+}
+
+func joinImageMessages(parts ...string) string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+	return strings.Join(out, ". ")
 }
 
 func newImageOCRAdapter(service *ocrruntime.TesseractService) tools.ImageOCRService {

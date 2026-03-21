@@ -7,7 +7,7 @@ import (
 	"fmt"
 )
 
-// MemoryCompatTool exposes OpenClaw-style memory_* names as native wrappers.
+// MemoryCompatTool exposes legacy memory_* names as native wrappers.
 type MemoryCompatTool struct {
 	name          string
 	description   string
@@ -116,7 +116,7 @@ func decodeMemoryCompatResult(result interface{}) interface{} {
 	return result
 }
 
-// RegisterMemoryCompatTools registers OpenClaw-style memory_* wrappers backed by the native memory service.
+// RegisterMemoryCompatTools registers legacy memory_* wrappers backed by the native memory service.
 func RegisterMemoryCompatTools(registry *Registry, memoryService MemoryServiceInterface) {
 	if registry == nil || memoryService == nil {
 		return
@@ -127,6 +127,11 @@ func RegisterMemoryCompatTools(registry *Registry, memoryService MemoryServiceIn
 	registry.Register(newMemoryCompatTool("memory_forget", "Delete a memory entry by ID.", memoryService))
 	for _, alias := range []string{"memory_read", "memory_remember", "memory_store", "memory_delete"} {
 		registry.Register(newMemoryCompatTool(alias, "Hidden legacy memory alias.", memoryService))
-		registry.Disable(alias)
+	}
+	for _, name := range []string{
+		"memory_search", "memory_get", "memory_write", "memory_forget",
+		"memory_read", "memory_remember", "memory_store", "memory_delete",
+	} {
+		registry.Disable(name)
 	}
 }

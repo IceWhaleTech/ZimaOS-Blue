@@ -29,10 +29,11 @@ import (
 
 // WhisperConfig holds the configuration for the Whisper provider.
 type WhisperConfig struct {
-	ModelPath   string
-	DefaultLang string
-	MaxDuration time.Duration
-	Threads     int
+	ModelPath      string
+	DefaultLang    string
+	MaxDuration    time.Duration
+	Threads        int
+	DeferModelLoad bool
 }
 
 // WhisperProvider implements the Provider interface using whisper.cpp.
@@ -56,14 +57,9 @@ func NewWhisperProvider(cfg *WhisperConfig) *WhisperProvider {
 		config:       cfg,
 		modelManager: NewWhisperModelManager(cfg.ModelPath),
 	}
-	// Auto-initialize with persisted model if available
-	if activeModel := p.modelManager.GetActiveModel(); activeModel != "" {
-		modelPath := p.modelManager.GetModelPath(activeModel)
-		if modelPath != "" {
-			if _, err := os.Stat(modelPath); err == nil {
-				_ = p.Initialize(modelPath)
-			}
-		}
+	if !cfg.DeferModelLoad {
+		// Auto-initialize with persisted model if available.
+		_ = p.EnsureInitialized()
 	}
 	return p
 }
@@ -113,6 +109,31 @@ func (p *WhisperProvider) Close() {
 		p.ctx = nil
 	}
 	p.initialized = false
+}
+
+// EnsureInitialized loads the persisted active model on demand.
+func (p *WhisperProvider) EnsureInitialized() error {
+	if p == nil {
+		return ErrProviderNotFound
+	}
+	if p.IsInitialized() {
+		return nil
+	}
+
+	activeModel := p.modelManager.GetActiveModel()
+	if activeModel == "" {
+		return fmt.Errorf("whisper provider not initialized")
+	}
+
+	modelPath := p.modelManager.GetModelPath(activeModel)
+	if modelPath == "" {
+		return fmt.Errorf("active whisper model not found: %s", activeModel)
+	}
+	if _, err := os.Stat(modelPath); err != nil {
+		return fmt.Errorf("active whisper model unavailable: %w", err)
+	}
+
+	return p.Initialize(modelPath)
 }
 
 // Name returns the provider name.

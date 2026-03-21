@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
@@ -145,38 +146,36 @@ type Store struct {
 
 // NewStore creates a new persistence store.
 func NewStore(config Config) (*Store, error) {
-	db, err := sql.Open("sqlite3", config.DBPath)
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(config.DBPath, config.DBPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(2)
+		db.SetMaxIdleConns(1)
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
+			return err
+		}
+
+		store := &Store{db: db, config: config}
+		return store.migrate()
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Connection pool limits
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(1)
-
-	// Enable WAL mode for better concurrency
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, err
-	}
-
-	// Enable foreign keys
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
-		return nil, err
-	}
-
-	store := &Store{
+	return &Store{
 		db:     db,
 		config: config,
-	}
-
-	if err := store.migrate(); err != nil {
-		db.Close()
-		return nil, err
-	}
-
-	return store, nil
+	}, nil
 }
 
 func (s *Store) table() *z.ZormTable {

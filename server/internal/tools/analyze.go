@@ -24,6 +24,7 @@ const (
 	// analyzeLLMRequestTimeout keeps long-form analysis/report calls from being
 	// cut off by bridge fallback timeouts when the parent context has no deadline.
 	analyzeLLMRequestTimeout = 5 * time.Minute
+	analyzeDocExtractTimeout = 5 * time.Minute
 
 	analyzeDocExtractAutoRollbackMinAttempts = 40
 	analyzeDocExtractAutoRollbackMaxFailRate = 0.15
@@ -591,7 +592,7 @@ Source:
 %s
 ---`, topic, lang, raw)
 
-	smCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	smCtx, cancel := context.WithTimeout(ctx, analyzeDocExtractTimeout)
 	defer cancel()
 
 	if stats != nil {

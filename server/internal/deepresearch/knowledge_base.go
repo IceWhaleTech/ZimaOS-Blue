@@ -28,26 +28,7 @@ func queryWantsKnowledgeBaseStyle(query string) bool {
 	if lower == "" {
 		return false
 	}
-	cues := []string{
-		"knowledge base",
-		"knowledge-base",
-		"kb-style",
-		"build a kb",
-		"build a knowledge base",
-		"construct a knowledge base",
-		"documentation pack",
-		"知识库",
-		"构建完整知识库",
-		"整理成知识库",
-		"知识库级",
-		"资料库",
-	}
-	for _, cue := range cues {
-		if strings.Contains(lower, cue) {
-			return true
-		}
-	}
-	return false
+	return knowledgeBaseStyleCueMatcher.Contains(lower)
 }
 
 func localizedKnowledgeBaseHeading(lang, key string) string {

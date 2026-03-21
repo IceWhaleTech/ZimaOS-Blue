@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -42,6 +43,11 @@ type SessionsListTool struct {
 	service SessionsService
 }
 
+// SessionsTool provides a unified action-based surface for session operations.
+type SessionsTool struct {
+	service SessionsService
+}
+
 // SessionsHistoryTool reads session history.
 type SessionsHistoryTool struct {
 	service SessionsService
@@ -65,6 +71,11 @@ type SessionsSendTool struct {
 // NewSessionsListTool creates a native sessions_list tool.
 func NewSessionsListTool(service SessionsService) *SessionsListTool {
 	return &SessionsListTool{service: service}
+}
+
+// NewSessionsTool creates a unified sessions tool.
+func NewSessionsTool(service SessionsService) *SessionsTool {
+	return &SessionsTool{service: service}
 }
 
 // NewSessionsHistoryTool creates a native sessions_history tool.
@@ -101,6 +112,35 @@ func (t *SessionsListTool) Definition() ToolDefinition {
 				"user_id":     map[string]interface{}{"type": "string", "description": "Optional user ID filter"},
 				"pinned_only": map[string]interface{}{"type": "boolean", "description": "If true, return only pinned sessions"},
 			},
+		},
+	}
+}
+
+// Definition returns the unified sessions tool schema.
+func (t *SessionsTool) Definition() ToolDefinition {
+	return ToolDefinition{
+		Name:        "sessions",
+		Description: "Inspect or mutate sessions with one action-based tool. Actions: list, history, status, spawn, send.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"action":          map[string]interface{}{"type": "string", "enum": []string{"list", "history", "status", "spawn", "send"}, "description": "Session action. When omitted, Blue infers it from the provided arguments."},
+				"id":              map[string]interface{}{"type": "string", "description": "Session / conversation ID (history, status, send)."},
+				"limit":           map[string]interface{}{"type": "integer", "description": "List/history max results."},
+				"offset":          map[string]interface{}{"type": "integer", "description": "List/history pagination offset."},
+				"user_id":         map[string]interface{}{"type": "string", "description": "Optional owner filter for list/spawn."},
+				"pinned_only":     map[string]interface{}{"type": "boolean", "description": "If true, list only pinned sessions."},
+				"title":           map[string]interface{}{"type": "string", "description": "Session title for spawn."},
+				"name":            map[string]interface{}{"type": "string", "description": "Alias for title."},
+				"pinned":          map[string]interface{}{"type": "boolean", "description": "Whether the spawned session should be pinned."},
+				"initial_message": map[string]interface{}{"type": "string", "description": "Optional initial message for spawn."},
+				"message":         map[string]interface{}{"type": "string", "description": "Message content for send."},
+				"content":         map[string]interface{}{"type": "string", "description": "Alias for message."},
+				"role":            map[string]interface{}{"type": "string", "description": "Message role for spawn/send."},
+				"provider":        map[string]interface{}{"type": "string", "description": "Optional provider metadata for spawn/send."},
+				"model":           map[string]interface{}{"type": "string", "description": "Optional model metadata for spawn/send."},
+			},
+			"additionalProperties": true,
 		},
 	}
 }
@@ -179,6 +219,28 @@ func (t *SessionsSendTool) Definition() ToolDefinition {
 			},
 			"required": []string{"id"},
 		},
+	}
+}
+
+// Execute dispatches to the appropriate session action.
+func (t *SessionsTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	if t == nil || t.service == nil {
+		return nil, errors.New("sessions service not available")
+	}
+
+	switch resolveSessionsAction(args) {
+	case "history":
+		return NewSessionsHistoryTool(t.service).Execute(ctx, args)
+	case "status":
+		return NewSessionStatusTool(t.service).Execute(ctx, args)
+	case "spawn":
+		return NewSessionsSpawnTool(t.service).Execute(ctx, args)
+	case "send":
+		return NewSessionsSendTool(t.service).Execute(ctx, args)
+	case "", "list":
+		return NewSessionsListTool(t.service).Execute(ctx, args)
+	default:
+		return nil, errors.New("unknown sessions action: use list, history, status, spawn, or send")
 	}
 }
 
@@ -363,6 +425,30 @@ func (t *SessionsSendTool) Execute(ctx context.Context, args map[string]interfac
 	}, nil
 }
 
+func resolveSessionsAction(args map[string]interface{}) string {
+	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
+	if action != "" {
+		return action
+	}
+
+	sessionID := firstCompatString(args, "id", "session_id", "session", "conversation_id")
+	if sessionID != "" {
+		if firstCompatString(args, "message", "content", "text", "input", "prompt") != "" {
+			return "send"
+		}
+		if _, ok := firstCompatValueDeep(args, "limit", "offset"); ok {
+			return "history"
+		}
+		return "status"
+	}
+
+	if firstCompatString(args, "title", "name", "initial_message", "initialMessage") != "" {
+		return "spawn"
+	}
+
+	return "list"
+}
+
 func getRequiredSession(ctx context.Context, service SessionsService, sessionID string) (*SessionSummary, error) {
 	session, err := service.GetSession(ctx, sessionID)
 	if err != nil {
@@ -387,9 +473,13 @@ func RegisterSessionTools(registry *Registry, service SessionsService) {
 	if registry == nil || service == nil {
 		return
 	}
+	registry.Register(NewSessionsTool(service))
 	registry.Register(NewSessionsListTool(service))
 	registry.Register(NewSessionsHistoryTool(service))
 	registry.Register(NewSessionStatusTool(service))
 	registry.Register(NewSessionsSpawnTool(service))
 	registry.Register(NewSessionsSendTool(service))
+	for _, name := range []string{"sessions_list", "sessions_history", "session_status", "sessions_spawn", "sessions_send"} {
+		registry.Disable(name)
+	}
 }

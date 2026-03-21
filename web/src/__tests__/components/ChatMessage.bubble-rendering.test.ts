@@ -3,6 +3,12 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import { i18n } from '@/i18n'
+import {
+  hasTypelessCards,
+  parseTypelessContent,
+  parseTypelessContentIncremental,
+  splitIntoSegments,
+} from '@/utils/typeless'
 
 const chatStore = reactive({
   messages: [] as Array<Record<string, unknown>>,
@@ -129,6 +135,10 @@ describe('ChatMessage bubble rendering', () => {
   beforeEach(() => {
     settingsStore.showToolDetails = true
     chatStore.getMessageMetadata.mockReset().mockReturnValue(null)
+    vi.mocked(hasTypelessCards).mockReturnValue(false)
+    vi.mocked(parseTypelessContent).mockReturnValue(null)
+    vi.mocked(parseTypelessContentIncremental).mockReturnValue(null)
+    vi.mocked(splitIntoSegments).mockReturnValue([])
   })
 
   it('renders normal assistant replies with the bordered assistant bubble class', async () => {
@@ -152,6 +162,100 @@ describe('ChatMessage bubble rendering', () => {
     expect(bubble.classes()).toContain('px-4')
     expect(bubble.classes()).toContain('py-2')
     expect(wrapper.find('.chat-assistant-bubble').exists()).toBe(false)
+  })
+
+  it('keeps card-only deep research timelines inside the assistant bubble', async () => {
+    const timelineCard = {
+      type: 'deep-research-timeline',
+      id: 'timeline-1',
+      query: 'EU AI Act provider obligations',
+      status: 'running',
+      progress: 42,
+      steps: [
+        {
+          type: 'deep-research-event',
+          id: 'timeline-event-1',
+          event_kind: 'planning',
+          status: 'info',
+          summary: 'Planned 5 research task(s)',
+        },
+      ],
+    } as any
+
+    vi.mocked(hasTypelessCards).mockReturnValue(true)
+    vi.mocked(parseTypelessContent).mockReturnValue({
+      text: '[[TYPELESS_CARD:timeline-1]]',
+      cards: [timelineCard],
+    } as any)
+    vi.mocked(splitIntoSegments).mockReturnValue([{ type: 'card', content: timelineCard }] as any)
+
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage('assistant', '[[TYPELESS_CARD:timeline-1]]'),
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: true,
+          Transition: true,
+          TypelessCardComponent: {
+            props: ['card'],
+            template: '<div class="typeless-card-stub">{{ card.type }}</div>',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.chat-assistant-bubble').exists()).toBe(true)
+    expect(wrapper.find('.typeless-card-stub').exists()).toBe(true)
+    expect(wrapper.text()).toContain('deep-research-timeline')
+  })
+
+  it('keeps non-timeline card-only assistant messages rendered without the bubble wrapper', async () => {
+    const resultCard = {
+      type: 'result',
+      id: 'result-1',
+      title: 'Done',
+      status: 'success',
+    } as any
+
+    vi.mocked(hasTypelessCards).mockReturnValue(true)
+    vi.mocked(parseTypelessContent).mockReturnValue({
+      text: '[[TYPELESS_CARD:result-1]]',
+      cards: [resultCard],
+    } as any)
+    vi.mocked(splitIntoSegments).mockReturnValue([{ type: 'card', content: resultCard }] as any)
+
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage('assistant', '[[TYPELESS_CARD:result-1]]'),
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: true,
+          Transition: true,
+          TypelessCardComponent: {
+            props: ['card'],
+            template: '<div class="typeless-card-stub">{{ card.type }}</div>',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.chat-assistant-bubble').exists()).toBe(false)
+    expect(wrapper.find('.typeless-card-stub').exists()).toBe(true)
+    expect(wrapper.text()).toContain('result')
   })
 
   it('keeps a completed assistant bubble visible when only local process details remain', async () => {

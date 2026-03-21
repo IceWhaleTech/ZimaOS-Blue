@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -25,10 +26,8 @@ type ProxyClient struct {
 // NewProxyClient creates a new proxy client
 func NewProxyClient(port int) *ProxyClient {
 	return &ProxyClient{
-		baseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
-		httpClient: &http.Client{
-			Timeout: 5 * time.Minute, // Long timeout for LLM requests
-		},
+		baseURL:    fmt.Sprintf("http://127.0.0.1:%d", port),
+		httpClient: network.NewPooledHTTPClient(5 * time.Minute), // Long timeout for LLM requests
 	}
 }
 

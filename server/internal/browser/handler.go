@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reclaim"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/labstack/echo/v4"
 )
@@ -14,7 +15,8 @@ import (
 type Handler struct {
 	service        Service
 	serviceFactory func() Service
-	serviceOnce    sync.Once
+	lazy           *reclaim.Managed[Service]
+	relayInfo      func() RelayInfo
 	tasks          map[string]*BrowserTask
 	tasksMu        sync.RWMutex
 }
@@ -43,25 +45,101 @@ func NewHandler(service Service) *Handler {
 
 // NewLazyHandler creates a browser handler whose service is initialized on demand.
 func NewLazyHandler(factory func() Service) *Handler {
-	return &Handler{
+	h := &Handler{
 		serviceFactory: factory,
 		tasks:          make(map[string]*BrowserTask),
 	}
+	h.lazy = reclaim.NewManaged[Service](0, func() (Service, error) {
+		if h.serviceFactory == nil {
+			return nil, nil
+		}
+		svc := h.serviceFactory()
+		if svc == nil {
+			return nil, ErrBrowserNotAvailable
+		}
+		return svc, nil
+	}, func(_ context.Context, svc Service) error {
+		if svc == nil {
+			return nil
+		}
+		return svc.Close()
+	})
+	return h
 }
 
 func (h *Handler) getService() Service {
-	if h.service != nil || h.serviceFactory == nil {
+	if h == nil {
+		return nil
+	}
+	if h.service != nil || h.lazy == nil {
 		return h.service
 	}
-	h.serviceOnce.Do(func() {
-		h.service = h.serviceFactory()
-	})
-	return h.service
+	svc, _ := h.lazy.Get()
+	return svc
+}
+
+// GetService returns the current service, creating it if needed.
+func (h *Handler) GetService() Service {
+	return h.getService()
+}
+
+// SetIdleReclaim configures idle reclaim for lazily created browser services.
+func (h *Handler) SetIdleReclaim(idleAfter time.Duration) {
+	if h == nil || h.lazy == nil {
+		return
+	}
+	h.lazy.SetIdleAfter(idleAfter)
+}
+
+func (h *Handler) peekService() Service {
+	if h == nil {
+		return nil
+	}
+	if h.service != nil || h.lazy == nil {
+		return h.service
+	}
+	svc, _ := h.lazy.Peek()
+	return svc
+}
+
+func (h *Handler) acquireService() (Service, func(), error) {
+	if h == nil {
+		return nil, nil, nil
+	}
+	if h.service != nil || h.lazy == nil {
+		return h.service, func() {}, nil
+	}
+	svc, release, err := h.lazy.Acquire()
+	if err != nil {
+		return nil, nil, err
+	}
+	return svc, release, nil
+}
+
+func (h *Handler) acquireStartedService(ctx context.Context) (Service, func(), error) {
+	service, release, err := h.acquireService()
+	if err != nil {
+		return nil, nil, err
+	}
+	if service == nil {
+		return nil, release, nil
+	}
+	if err := service.Start(ctx); err != nil {
+		release()
+		return nil, nil, err
+	}
+	return service, release, nil
+}
+
+// SetRelayInfoProvider configures how relay runtime info is exposed over HTTP.
+func (h *Handler) SetRelayInfoProvider(provider func() RelayInfo) {
+	h.relayInfo = provider
 }
 
 // RegisterRoutes registers the browser routes.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Status and control
+	g.GET("/relay/info", h.RelayInfo)
 	g.GET("/status", h.Status)
 	g.POST("/start", h.Start)
 	g.POST("/stop", h.Stop)
@@ -119,6 +197,14 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/security/blocked", h.AddBlockedDomain)
 	g.DELETE("/security/blocked/:domain", h.RemoveBlockedDomain)
 	g.POST("/security/test", h.TestURL)
+}
+
+// RelayInfo returns built-in browser relay runtime details.
+func (h *Handler) RelayInfo(c echo.Context) error {
+	if h.relayInfo == nil {
+		return c.JSON(http.StatusOK, RelayInfo{})
+	}
+	return c.JSON(http.StatusOK, h.relayInfo())
 }
 
 // ListTasks returns all browser automation tasks.
@@ -251,7 +337,13 @@ func (h *Handler) DeleteTask(c echo.Context) error {
 
 // ListSessions returns all browser sessions.
 func (h *Handler) ListSessions(c echo.Context) error {
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return c.JSON(http.StatusOK, []interface{}{})
 	}
@@ -270,7 +362,13 @@ func (h *Handler) ListSessions(c echo.Context) error {
 
 // CreateSession creates a new browser session.
 func (h *Handler) CreateSession(c echo.Context) error {
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"id":            "session-" + timeutil.NowTime().Format("20060102150405"),
@@ -324,7 +422,13 @@ func (h *Handler) GetSession(c echo.Context) error {
 
 // CloseSession closes a browser session.
 func (h *Handler) CloseSession(c echo.Context) error {
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return c.NoContent(http.StatusNoContent)
 	}
@@ -369,9 +473,9 @@ func (h *Handler) SessionExecute(c echo.Context) error {
 
 // Status returns the browser status.
 func (h *Handler) Status(c echo.Context) error {
-	service := h.getService()
+	service := h.peekService()
 	if service == nil {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+		return c.JSON(http.StatusOK, &StatusResponse{Running: false})
 	}
 
 	status, err := service.Status(c.Request().Context())
@@ -383,12 +487,18 @@ func (h *Handler) Status(c echo.Context) error {
 
 // Start starts the browser.
 func (h *Handler) Start(c echo.Context) error {
-	service := h.getService()
+	service, release, err := h.acquireService()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
 
-	err := service.Start(c.Request().Context())
+	err = service.Start(c.Request().Context())
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -397,12 +507,18 @@ func (h *Handler) Start(c echo.Context) error {
 
 // Stop stops the browser.
 func (h *Handler) Stop(c echo.Context) error {
-	service := h.getService()
+	service, release, err := h.acquireService()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+		return c.JSON(http.StatusOK, map[string]string{"status": "stopped"})
 	}
 
-	err := service.Stop(c.Request().Context())
+	err = service.Stop(c.Request().Context())
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -411,7 +527,13 @@ func (h *Handler) Stop(c echo.Context) error {
 
 // Tabs returns all open tabs.
 func (h *Handler) Tabs(c echo.Context) error {
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -435,7 +557,13 @@ func (h *Handler) OpenTab(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -454,12 +582,18 @@ func (h *Handler) FocusTab(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "tab id is required")
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
 
-	err := service.FocusTab(c.Request().Context(), id)
+	err = service.FocusTab(c.Request().Context(), id)
 	if err != nil {
 		return mapError(err)
 	}
@@ -473,12 +607,18 @@ func (h *Handler) CloseTab(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "tab id is required")
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
 
-	err := service.CloseTab(c.Request().Context(), id)
+	err = service.CloseTab(c.Request().Context(), id)
 	if err != nil {
 		return mapError(err)
 	}
@@ -495,7 +635,13 @@ func (h *Handler) Navigate(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -517,7 +663,13 @@ func (h *Handler) Screenshot(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -539,7 +691,13 @@ func (h *Handler) PDF(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -558,7 +716,13 @@ func (h *Handler) Snapshot(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -583,7 +747,13 @@ func (h *Handler) Scrape(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "selectors is required")
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -605,7 +775,13 @@ func (h *Handler) Act(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "kind is required")
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -630,7 +806,13 @@ func (h *Handler) Automate(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "steps is required")
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -649,7 +831,13 @@ func (h *Handler) Console(c echo.Context) error {
 	req.Level = c.QueryParam("level")
 	req.Clear = c.QueryParam("clear") == "true"
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -663,7 +851,13 @@ func (h *Handler) Console(c echo.Context) error {
 
 // ListRecipes returns all available recipes.
 func (h *Handler) ListRecipes(c echo.Context) error {
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}
@@ -685,7 +879,13 @@ func (h *Handler) ExecuteRecipe(c echo.Context) error {
 		req.Params = make(map[string]string)
 	}
 
-	service := h.getService()
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
 	if service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
 	}

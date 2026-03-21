@@ -14,15 +14,11 @@ func looksLikePersonTimelineResearch(query, lang string) bool {
 		return false
 	}
 
-	if strings.Contains(q, "不同时期") ||
-		strings.Contains(q, "逐一调研") ||
-		strings.Contains(q, "观点演变") ||
-		strings.Contains(q, "互联网分享") ||
-		strings.Contains(q, "person timeline") ||
-		strings.Contains(q, "观点") && strings.Contains(q, "文章") {
+	if personTimelinePrimaryCueMatcher.Contains(q) ||
+		(personTimelineViewCueMatcher.Contains(q) && personTimelineArticleCueMatcher.Contains(q)) {
 		return true
 	}
-	if strings.Contains(q, "调研") && strings.Contains(q, "合伙人") {
+	if personTimelineResearchCueMatcher.Contains(q) && personTimelinePartnerCueMatcher.Contains(q) {
 		return true
 	}
 

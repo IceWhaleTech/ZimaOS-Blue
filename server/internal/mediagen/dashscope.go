@@ -9,9 +9,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 const defaultDashScopeBaseURL = "https://dashscope.aliyuncs.com"
@@ -32,7 +33,7 @@ func NewDashScopeProvider(apiKey, baseURL string) *DashScopeProvider {
 	return &DashScopeProvider{
 		apiKey:  apiKey,
 		baseURL: baseURL,
-		client:  &http.Client{Timeout: 30 * time.Second},
+		client:  network.NewPooledHTTPClient(5 * time.Minute),
 	}
 }
 

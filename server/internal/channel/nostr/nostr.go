@@ -26,6 +26,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 // Config contains Nostr channel configuration.
@@ -240,6 +241,7 @@ type Channel struct {
 	privKey   *ecdsa.PrivateKey
 	pubKeyHex string
 	relayURLs []string
+	client    *http.Client
 
 	mu          sync.RWMutex
 	status      channel.Status
@@ -266,6 +268,7 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 		logger:   logger.With(zap.String("channel", "nostr")),
 		messages: make(chan channel.Message, 100),
 		status:   channel.StatusDisconnected,
+		client:   network.NewPooledHTTPClient(5 * time.Minute),
 		seen:     make(map[string]bool),
 	}
 }
@@ -402,7 +405,6 @@ func (c *Channel) pollRelay(relayURL string) {
 	httpURL = strings.Replace(httpURL, "wss://", "https://", 1)
 	httpURL = strings.Replace(httpURL, "ws://", "http://", 1)
 
-	client := &http.Client{Timeout: 15 * time.Second}
 	sinceTime := time.Now().Unix()
 
 	for {
@@ -432,7 +434,7 @@ func (c *Channel) pollRelay(relayURL string) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 
-		resp, err := client.Do(req)
+		resp, err := c.client.Do(req)
 		if err != nil {
 			c.logger.Debug("relay poll failed", zap.String("relay", relayURL), zap.Error(err))
 			continue
@@ -572,8 +574,6 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 
 	// Publish to all relays
 	eventMsg, _ := json.Marshal([]interface{}{"EVENT", evt})
-	client := &http.Client{Timeout: 10 * time.Second}
-
 	var lastErr error
 	for _, relayURL := range c.relayURLs {
 		httpURL := strings.Replace(relayURL, "wss://", "https://", 1)
@@ -586,7 +586,7 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, err := client.Do(req)
+		resp, err := c.client.Do(req)
 		if err != nil {
 			lastErr = err
 			c.logger.Debug("failed to publish to relay", zap.String("relay", relayURL), zap.Error(err))

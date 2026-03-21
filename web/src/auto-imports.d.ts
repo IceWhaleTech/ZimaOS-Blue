@@ -119,6 +119,7 @@ declare global {
   const useStorage: typeof import('@vueuse/core').useStorage
   const useSystemStore: typeof import('./stores/system').useSystemStore
   const useTTSStore: typeof import('./stores/tts').useTTSStore
+  const useTaskProjectionsStore: typeof import('./stores/taskProjections').useTaskProjectionsStore
   const useTauri: typeof import('./composables/useTauri').useTauri
   const useTemplateRef: typeof import('vue').useTemplateRef
   const useTenantStore: typeof import('./stores/tenant').useTenantStore
@@ -296,6 +297,7 @@ declare module 'vue' {
     readonly useStorage: UnwrapRef<typeof import('@vueuse/core')['useStorage']>
     readonly useSystemStore: UnwrapRef<typeof import('./stores/system')['useSystemStore']>
     readonly useTTSStore: UnwrapRef<typeof import('./stores/tts')['useTTSStore']>
+    readonly useTaskProjectionsStore: UnwrapRef<typeof import('./stores/taskProjections')['useTaskProjectionsStore']>
     readonly useTauri: UnwrapRef<typeof import('./composables/useTauri')['useTauri']>
     readonly useTemplateRef: UnwrapRef<typeof import('vue')['useTemplateRef']>
     readonly useTenantStore: UnwrapRef<typeof import('./stores/tenant')['useTenantStore']>

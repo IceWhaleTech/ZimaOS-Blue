@@ -94,7 +94,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_last_active ON sessions(last_active_at);
 
 // NewSQLiteSessionStore creates a new SQLiteSessionStore.
 func NewSQLiteSessionStore(dbPath string, maxTokens int) (*SQLiteSessionStore, error) {
-	db, err := dbutil.OpenSQLiteWithRecovery(dbPath, dbPath, func(db *sql.DB) error {
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
 		db.SetMaxOpenConns(2)
 		db.SetMaxIdleConns(1)
 
@@ -106,6 +106,12 @@ func NewSQLiteSessionStore(dbPath string, maxTokens int) (*SQLiteSessionStore, e
 		}
 		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
 			return fmt.Errorf("failed to set busy timeout: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+			return fmt.Errorf("failed to set synchronous mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
+			return fmt.Errorf("failed to set wal autocheckpoint: %w", err)
 		}
 		if _, err := db.Exec(sessionSchema); err != nil {
 			return fmt.Errorf("failed to create schema: %w", err)

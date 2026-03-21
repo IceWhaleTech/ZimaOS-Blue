@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
@@ -38,7 +39,7 @@ func newSkillManagerAdapter(
 		registry: registry,
 		scanner:  scanner,
 		dir:      skillsDir,
-		client:   &http.Client{Timeout: 30 * time.Second},
+		client:   network.NewPooledHTTPClient(5 * time.Minute),
 	}
 }
 

@@ -139,7 +139,7 @@ func DefaultConnectionConfig() *ConnectionConfig {
 		KeepAliveInterval:     30 * time.Second,
 		DialTimeout:           10 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
-		ResponseHeaderTimeout: 60 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Minute,
 		ForceHTTP2:            true,
 	}
 }

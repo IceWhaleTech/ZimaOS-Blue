@@ -108,6 +108,13 @@ func TestShouldAutoContinueForActionPledge(t *testing.T) {
 		}
 	})
 
+	t.Run("continues for generic english acknowledgement plus analysis pledge", func(t *testing.T) {
+		current := "I understand the request. Let me analyze the information and proceed with the appropriate action."
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for generic english acknowledgement plus analysis pledge")
+		}
+	})
+
 	t.Run("continues for english recovery redirect", func(t *testing.T) {
 		current := "I noticed I was repeatedly overwriting the same file without making progress, so I stopped before damaging it further. The next step should be to inspect or validate the existing file, or switch to a different approach."
 		if !shouldAutoContinueForActionPledge(current) {
@@ -209,6 +216,102 @@ func TestBuildDeepSearchExecutionHint(t *testing.T) {
 
 	if got := buildDeepSearchExecutionHint("你好"); got != "" {
 		t.Fatalf("expected empty hint for non-research request, got=%q", got)
+	}
+
+	if got := buildDeepSearchExecutionHint("Create a competitive landscape analysis for the enterprise observability market and save it to market_research.md. Use web search if available to gather current information."); got != "" {
+		t.Fatalf("expected fast artifact workflow to skip heavy deep-search hint, got=%q", got)
+	}
+}
+
+func TestShouldPreferFastResearchArtifactWorkflow(t *testing.T) {
+	if !shouldPreferFastResearchArtifactWorkflow("Create a competitive landscape analysis for the enterprise observability market and save it to market_research.md. Use web search if available to gather current information.") {
+		t.Fatal("expected file-writing public research request to prefer fast artifact workflow")
+	}
+	if shouldPreferFastResearchArtifactWorkflow("Please do deep research with citations and save the full report to market_research.md.") {
+		t.Fatal("expected explicit deep-research request to stay on heavy workflow")
+	}
+}
+
+func TestShouldPreferPublicArtifactResearchWorkflow_ForConferenceArtifact(t *testing.T) {
+	prompt := "Find 5 upcoming tech conferences and create events.md with name, date, location, and website for each."
+	if !shouldPreferPublicArtifactResearchWorkflow(prompt) {
+		t.Fatalf("expected conference artifact prompt to prefer public research workflow")
+	}
+	if shouldPreferWorkspaceFileWorkflow(prompt) {
+		t.Fatalf("expected conference artifact prompt not to be treated as workspace-only file workflow")
+	}
+}
+
+func TestShouldPreferWorkspaceFileWorkflow_ForLocalResearchFolderSummary(t *testing.T) {
+	prompt := "Review all files in the research/ folder and write a daily summary to daily_briefing.md."
+	if !shouldPreferWorkspaceFileWorkflow(prompt) {
+		t.Fatalf("expected local research folder summary to stay on workspace file workflow")
+	}
+	if shouldPreferPublicArtifactResearchWorkflow(prompt) {
+		t.Fatalf("expected local research folder summary not to be treated as public research workflow")
+	}
+}
+
+func TestShouldPreferWorkspaceFileWorkflow_DoesNotTreatCodingTaskAsFileSynthesis(t *testing.T) {
+	prompt := "Review all files in the workspace, debug the failing build, and save the findings to triage.md."
+	if shouldPreferWorkspaceFileWorkflow(prompt) {
+		t.Fatalf("expected coding-oriented workspace task to stay out of workspace synthesis workflow")
+	}
+}
+
+func TestShouldPreferWorkspaceFileWorkflow_ForConfigDirectoryEditTask(t *testing.T) {
+	prompt := "I need to update my configuration files for production deployment. Please make the following changes to all config files in the config/ directory and list what changes you made to each file."
+	if !shouldPreferWorkspaceFileWorkflow(prompt) {
+		t.Fatalf("expected explicit config directory edit task to prefer workspace file workflow")
+	}
+	if !shouldPreferWorkspaceEditWorkflow(prompt) {
+		t.Fatalf("expected explicit config directory edit task to prefer compact workspace edit workflow")
+	}
+}
+
+func TestShouldPreferWorkspaceFileWorkflow_ForExplicitMemoryFileStore(t *testing.T) {
+	prompt := "I want you to remember this important information for me. Please save it to a file called `memory/MEMORY.md` so you (or a future session) can recall it later."
+	if !shouldPreferWorkspaceFileWorkflow(prompt) {
+		t.Fatalf("expected explicit memory-file storage prompt to prefer workspace file workflow")
+	}
+}
+
+func TestShouldPreferWorkspaceFileWorkflow_ForExplicitMemoryFileRecall(t *testing.T) {
+	prompt := "I previously saved some personal information in a file called `memory/MEMORY.md`. Please read that file and answer these questions based on what you find in the file."
+	if !shouldPreferWorkspaceFileWorkflow(prompt) {
+		t.Fatalf("expected explicit memory-file recall prompt to prefer workspace file workflow")
+	}
+}
+
+func TestShouldPreferWorkspaceFileWorkflow_ForMultilingualMemoryFileStore(t *testing.T) {
+	prompt := "Recuerda esto por favor y guárdalo en un archivo llamado `memory/MEMORY.md` para recordarlo después."
+	if !shouldPreferWorkspaceFileWorkflow(prompt) {
+		t.Fatalf("expected multilingual memory-file storage prompt to prefer workspace file workflow")
+	}
+}
+
+func TestShouldPreferDirectArtifactWriting_DoesNotTreatLatestNewsArtifactAsPureWriting(t *testing.T) {
+	prompt := "Find the latest AI chip news and create ai_chip_news.md with a short report."
+	if shouldPreferDirectArtifactWriting(prompt) {
+		t.Fatalf("expected latest/news artifact task not to be treated as direct writing")
+	}
+}
+
+func TestShouldBypassSmallModelToolDispatch(t *testing.T) {
+	positive := []string{
+		"Write a 500-word blog post about the benefits of remote work for software developers. Save it to blog_post.md.",
+		"I have a report in openclaw_report.pdf in my workspace. Extract the answers and write them one per line to answer.txt.",
+		"Research the current stock price of Apple (AAPL) and save it to stock_report.txt with the price, date, and a brief market summary.",
+		`Generate an image of a friendly robot sitting in a cozy coffee shop. Save it as "robot_cafe.png".`,
+	}
+	for _, msg := range positive {
+		if !shouldBypassSmallModelToolDispatch(msg) {
+			t.Fatalf("expected small-model tool dispatch bypass for %q", msg)
+		}
+	}
+
+	if shouldBypassSmallModelToolDispatch("请帮我处理这个任务") {
+		t.Fatal("expected generic request to keep small-model tool dispatch available")
 	}
 }
 
@@ -565,6 +668,22 @@ Need include in assistant message header not possible in plaintext.
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false, false, true)
 		if !ok || reason != "pseudo_tool_call" {
 			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("continues on pending file-read wait claim without actual tool call", func(t *testing.T) {
+		current := "I need to wait for all email contents to come back before I can analyze and write the report. The action blocks above have been submitted. Please share the results of those file reads."
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if !ok || reason != "pseudo_tool_call" {
+			t.Fatalf("expected pseudo_tool_call auto-continue for fake pending file reads, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("continues on once the reads resolve claim without actual tool call", func(t *testing.T) {
+		current := "Once the reads resolve, I'll triage the inbox and save the report. Right now I'm waiting for the file reads to come back."
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if !ok || reason != "pseudo_tool_call" {
+			t.Fatalf("expected pseudo_tool_call auto-continue for pending read claim, got ok=%v reason=%q", ok, reason)
 		}
 	})
 
@@ -1748,7 +1867,7 @@ func TestApplyResearchToolPreference(t *testing.T) {
 	}
 
 	filtered := applyResearchToolPreference(defs, "请做一份最新 AI 模型的研究报告，并附来源引用")
-	if got := toolNames(filtered); strings.Join(got, ",") != "research_run,research_status,browser" {
+	if got := toolNames(filtered); strings.Join(got, ",") != "web_search,research_run,research_status,browser" {
 		t.Fatalf("expected research tools + browser, got=%v", got)
 	}
 }
@@ -1766,8 +1885,26 @@ func TestApplyResearchToolPreference_KeepsFileToolsForReportOutput(t *testing.T)
 	}
 
 	filtered := applyResearchToolPreference(defs, "Create a competitive market report and save it to market_research.md with sources.")
-	if got := toolNames(filtered); strings.Join(got, ",") != "research_run,research_status,browser,read,write,ls,find" {
+	if got := toolNames(filtered); strings.Join(got, ",") != "web_search,research_run,research_status,browser,read,write,ls,find" {
 		t.Fatalf("expected research tools plus file output tools, got=%v", got)
+	}
+}
+
+func TestApplyResearchToolPreference_UsesFastArtifactWorkflowForFileReport(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "research_run"},
+		{Name: "research_status"},
+		{Name: "browser"},
+		{Name: "read"},
+		{Name: "write"},
+		{Name: "ls"},
+		{Name: "find"},
+	}
+
+	filtered := applyResearchToolPreference(defs, "Create a competitive market report and save it to market_research.md. Use web search if available to gather current information.")
+	if got := toolNames(filtered); strings.Join(got, ",") != "web_search,browser,read,write,ls,find" {
+		t.Fatalf("expected fast artifact workflow without research_run, got=%v", got)
 	}
 }
 
@@ -1782,6 +1919,235 @@ func TestApplyWritingToolPreference(t *testing.T) {
 	filtered := applyWritingToolPreference(defs, "把这段话改写得更正式一些")
 	if len(filtered) != 0 {
 		t.Fatalf("expected pure writing intent to suppress tools, got=%v", toolNames(filtered))
+	}
+}
+
+func TestApplyWritingToolPreference_KeepsWriteForDirectArtifactWriting(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "write"},
+		{Name: "email"},
+	}
+
+	filtered := applyWritingToolPreference(defs, "Write a professional email declining a meeting request due to schedule conflicts. Save it to email_draft.txt.")
+	if got := toolNames(filtered); strings.Join(got, ",") != "write" {
+		t.Fatalf("expected direct artifact writing prompt to keep write only, got=%v", got)
+	}
+}
+
+func TestApplyWritingToolPreference_KeepsFullFileWorkflowForDirectArtifactWriting(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "read"},
+		{Name: "write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "email"},
+	}
+
+	filtered := applyWritingToolPreference(defs, "Read the document in summary_source.txt and write a concise 3-paragraph summary to summary_output.txt.")
+	if got := toolNames(filtered); strings.Join(got, ",") != "read,write,file_delete,edit,ls,find" {
+		t.Fatalf("expected direct artifact writing prompt to keep full local file workflow, got=%v", got)
+	}
+}
+
+func TestPreferDirectArtifactWritingTools_SelectsWriteForBlogArtifact(t *testing.T) {
+	allDefs := []tools.ToolDefinition{
+		{Name: "email"},
+		{Name: "write"},
+		{Name: "web_search"},
+	}
+
+	filtered := preferDirectArtifactWritingTools(
+		"Write a 500-word blog post about the benefits of remote work for software developers. Save it to blog_post.md.",
+		allDefs,
+		[]tools.ToolDefinition{{Name: "email"}},
+	)
+	if got := toolNames(filtered); strings.Join(got, ",") != "write" {
+		t.Fatalf("expected write-only toolset for direct artifact writing, got=%v", got)
+	}
+}
+
+func TestPreferWorkspaceFileWorkflowTools_UsesMinimalStructuredArtifactWorkflow(t *testing.T) {
+	allDefs := []tools.ToolDefinition{
+		{Name: "file_read"},
+		{Name: "file_write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "grep"},
+		{Name: "convert"},
+		{Name: "pdf"},
+		{Name: "image"},
+		{Name: "calendar"},
+	}
+
+	filtered := preferWorkspaceFileWorkflowTools(
+		"I have a report in openclaw_report.pdf in my workspace. Extract the answers and write them one answer per line to answer.txt.",
+		allDefs,
+		[]tools.ToolDefinition{{Name: "calendar"}},
+	)
+	if got := toolNames(filtered); strings.Join(got, ",") != "file_read,file_write,ls,find,convert,pdf" {
+		t.Fatalf("expected structured artifact workflow to keep only minimal local tools, got=%v", got)
+	}
+}
+
+func TestPreferWorkspaceFileWorkflowTools_StructuredSummaryWorkflowIsNotPDFSpecific(t *testing.T) {
+	allDefs := []tools.ToolDefinition{
+		{Name: "file_read"},
+		{Name: "file_write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "grep"},
+		{Name: "convert"},
+		{Name: "pdf"},
+		{Name: "image"},
+		{Name: "calendar"},
+	}
+
+	filtered := preferWorkspaceFileWorkflowTools(
+		"Read summary_source.txt from my workspace and write a concise three-paragraph summary to summary_output.txt.",
+		allDefs,
+		[]tools.ToolDefinition{{Name: "calendar"}},
+	)
+	if got := toolNames(filtered); strings.Join(got, ",") != "file_read,file_write,ls,find,convert" {
+		t.Fatalf("expected non-PDF structured artifact workflow to keep compact local tools, got=%v", got)
+	}
+}
+
+func TestPreferWorkspaceFileWorkflowTools_UsesCompactWorkflowForExplicitMemoryFilePrompts(t *testing.T) {
+	allDefs := []tools.ToolDefinition{
+		{Name: "memory"},
+		{Name: "file_read"},
+		{Name: "file_write"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "web_search"},
+	}
+
+	filtered := preferWorkspaceFileWorkflowTools(
+		"I previously saved some personal information in a file called `memory/MEMORY.md`. Please read that file and answer these questions.",
+		allDefs,
+		[]tools.ToolDefinition{{Name: "memory"}},
+	)
+	if got := toolNames(filtered); strings.Join(got, ",") != "file_read,file_write,edit,ls,find" {
+		t.Fatalf("expected explicit memory-file workflow to keep compact local tools and drop memory/web detours, got=%v", got)
+	}
+}
+
+func TestExtractRequestedArtifactWriteTarget_IgnoresExplicitMemoryRecallSource(t *testing.T) {
+	prompt := "I previously saved some personal information in a file called `memory/MEMORY.md`. Please read that file and answer these questions based on what you find in the file."
+	if got := extractRequestedArtifactWriteTarget(prompt); got != "" {
+		t.Fatalf("expected explicit memory recall to avoid treating source file as write target, got=%q", got)
+	}
+}
+
+func TestExtractRequestedArtifactWriteTarget_PrefersExplicitOutputPathInMultiFilePrompt(t *testing.T) {
+	prompt := "I have a report in `openclaw_report.pdf` in my workspace. Extract the answers and write them one per line to `answer.txt`."
+	if got := extractRequestedArtifactWriteTarget(prompt); got != "answer.txt" {
+		t.Fatalf("write target = %q, want answer.txt", got)
+	}
+}
+
+func TestExtractRequestedArtifactWriteTarget_PrefersExplicitMemoryStoreTargetInMultiFilePrompt(t *testing.T) {
+	prompt := "Use `memory/MEMORY.md` as the source of truth and save the cleaned summary to `memory/project_summary.md` for future recall."
+	if got := extractRequestedArtifactWriteTarget(prompt); got != "memory/project_summary.md" {
+		t.Fatalf("write target = %q, want memory/project_summary.md", got)
+	}
+}
+
+func TestExtractRequestedArtifactWriteTarget_FailsClosedForAmbiguousMultiFilePrompt(t *testing.T) {
+	prompt := "Compare `draft_v1.md` with `draft_v2.md` and tell me which one is more concise."
+	if got := extractRequestedArtifactWriteTarget(prompt); got != "" {
+		t.Fatalf("expected ambiguous multi-file prompt to avoid inferred write target, got=%q", got)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactWriteRetryNudge_SkipsExplicitMemoryRecall(t *testing.T) {
+	prompt := "I previously saved some personal information in a file called `memory/MEMORY.md`. Please read that file and answer these questions based on what you find in the file."
+	if nudge := buildPostWorkspaceArtifactWriteRetryNudge(prompt); nudge != "" {
+		t.Fatalf("expected no write-retry nudge for explicit memory recall, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationNudge_SkipsAmbiguousMultiFilePrompt(t *testing.T) {
+	prompt := "Compare `draft_v1.md` with `draft_v2.md` and tell me which one is more concise."
+	nudge := buildPostWorkspaceArtifactContinuationNudge(prompt, []llm.ToolCall{
+		{ID: "call-1", Name: "file_read"},
+		{ID: "call-2", Name: "file_read"},
+	}, []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"draft_v1.md","content":"Version one"}`},
+		{Role: llm.RoleTool, ToolCallID: "call-2", Content: `{"path":"draft_v2.md","content":"Version two"}`},
+	})
+
+	if nudge != "" {
+		t.Fatalf("expected ambiguous multi-file prompt not to trigger write continuation nudge, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWriteCompletionNudge_SkipsAmbiguousMultiFilePrompt(t *testing.T) {
+	prompt := "Compare `draft_v1.md` with `draft_v2.md` and tell me which one is more concise."
+	nudge := buildPostWriteCompletionNudge(prompt, []llm.ToolCall{
+		{ID: "call-1", Name: "file_write", Arguments: `{"path":"draft_v2.md","content":"updated"}`},
+	}, []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"success":true,"path":"draft_v2.md"}`},
+	})
+
+	if nudge != "" {
+		t.Fatalf("expected ambiguous multi-file prompt not to stabilize a guessed write target, got=%q", nudge)
+	}
+}
+
+func TestPreferWorkspaceFileWorkflowTools_UsesCompactWorkflowForConfigDirectoryEdits(t *testing.T) {
+	allDefs := []tools.ToolDefinition{
+		{Name: "browser"},
+		{Name: "web"},
+		{Name: "file_read"},
+		{Name: "file_write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "grep"},
+		{Name: "convert"},
+		{Name: "pdf"},
+	}
+
+	filtered := preferWorkspaceFileWorkflowTools(
+		"I need to update my configuration files for production deployment. Please make the following changes to all config files in the config/ directory: replace localhost, update the database names, and list what changes you made to each file.",
+		allDefs,
+		[]tools.ToolDefinition{{Name: "browser"}, {Name: "web"}},
+	)
+	if got := toolNames(filtered); strings.Join(got, ",") != "file_read,file_write,edit,ls,find,grep" {
+		t.Fatalf("expected config directory edit workflow to keep only compact local file tools, got=%v", got)
+	}
+}
+
+func TestPreferDirectArtifactWritingTools_SelectsFullFileWorkflowWhenAvailable(t *testing.T) {
+	allDefs := []tools.ToolDefinition{
+		{Name: "email"},
+		{Name: "read"},
+		{Name: "write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "web_search"},
+	}
+
+	filtered := preferDirectArtifactWritingTools(
+		"Read the document in summary_source.txt and write a concise 3-paragraph summary to summary_output.txt.",
+		allDefs,
+		[]tools.ToolDefinition{{Name: "email"}},
+	)
+	if got := toolNames(filtered); strings.Join(got, ",") != "read,write,file_delete,edit,ls,find" {
+		t.Fatalf("expected full local file workflow for direct artifact writing, got=%v", got)
 	}
 }
 
@@ -1810,6 +2176,533 @@ func TestApplyEmailAndCalendarToolPreference(t *testing.T) {
 	workspaceCalendarTask := applyCalendarToolPreference(defs, "Review all files in the research/ folder and write a daily summary to daily_briefing.md.")
 	if len(workspaceCalendarTask) != len(defs) {
 		t.Fatalf("expected workspace file task to keep full toolset, got=%v", toolNames(workspaceCalendarTask))
+	}
+}
+
+func TestCompiledIntentMatchers_PreserveReminderEmailCalendarAndWritingRouting(t *testing.T) {
+	t.Run("reminder", func(t *testing.T) {
+		if !isReminderIntentMessage("明天下午3点提醒我喝水") {
+			t.Fatal("expected reminder intent to be detected")
+		}
+	})
+
+	t.Run("email", func(t *testing.T) {
+		if !isEmailIntentMessage("Archive unread mail from Alice and label it important.") {
+			t.Fatal("expected email intent to be detected")
+		}
+	})
+
+	t.Run("calendar", func(t *testing.T) {
+		if !isCalendarIntentMessage("Do I have any meetings tomorrow afternoon?") {
+			t.Fatal("expected calendar intent to be detected")
+		}
+	})
+
+	t.Run("pure writing", func(t *testing.T) {
+		if !isPureWritingIntentMessage("Polish this paragraph to sound more formal and concise.") {
+			t.Fatal("expected pure writing intent to be detected")
+		}
+	})
+
+	t.Run("pure writing blocked by research cues", func(t *testing.T) {
+		if isPureWritingIntentMessage("Polish this paragraph, then add the latest sources you can find online.") {
+			t.Fatal("expected research/web cues to keep prompt out of pure writing route")
+		}
+	})
+}
+
+func TestIsCalendarIntentMessage_DoesNotMisclassifyConferenceArtifact(t *testing.T) {
+	prompt := "Find 5 upcoming tech conferences and create events.md with name, date, location, and website for each."
+	if isCalendarIntentMessage(prompt) {
+		t.Fatalf("expected conference artifact prompt not to be treated as calendar intent")
+	}
+}
+
+func TestApplyResearchToolPreference_UsesFastArtifactWorkflowForStockReport(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "web_fetch"},
+		{Name: "web_read"},
+		{Name: "browser"},
+		{Name: "write"},
+		{Name: "read"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "calendar"},
+	}
+
+	filtered := applyResearchToolPreference(defs, "Research the current stock price of Apple (AAPL) and save it to stock_report.txt with the price, date, and a brief market summary.")
+	if got := toolNames(filtered); strings.Join(got, ",") != "web_search,web_fetch,web_read,browser,write,read,ls,find" {
+		t.Fatalf("expected fast research artifact workflow for stock report, got=%v", got)
+	}
+}
+
+func TestApplyResearchToolPreference_UsesUnifiedWebToolForStockReport(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web"},
+		{Name: "browser"},
+		{Name: "write"},
+		{Name: "read"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "calendar"},
+	}
+
+	filtered := applyResearchToolPreference(defs, "Research the current stock price of Apple (AAPL) and save it to stock_report.txt with the price, date, and a brief market summary.")
+	if got := toolNames(filtered); strings.Join(got, ",") != "web,browser,write,read,edit,ls,find" {
+		t.Fatalf("expected unified web tool to be preserved for stock report, got=%v", got)
+	}
+}
+
+func TestApplyImageToolPreference_PrefersImageGenerationAlias(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "image"},
+		{Name: "image_generation"},
+		{Name: "read"},
+		{Name: "write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+	}
+
+	filtered := applyImageToolPreference(defs, `Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as "robot_cafe.png" in the current directory.`)
+	if got := toolNames(filtered); strings.Join(got, ",") != "image_generation,read,write,file_delete,edit,ls,find" {
+		t.Fatalf("expected image generation prompt to keep image tool plus local file workflow, got=%v", got)
+	}
+}
+
+func TestExtractRequestedArtifactPath_FindsImageArtifact(t *testing.T) {
+	got := extractRequestedArtifactPath(`Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as "robot_cafe.png" in the current directory.`)
+	if got != "robot_cafe.png" {
+		t.Fatalf("artifact path = %q, want robot_cafe.png", got)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_ForImageArtifact(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint(`Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as "robot_cafe.png" in the current directory.`)
+	if !containsSubstring(hint, "`path`") {
+		t.Fatalf("expected image hint to mention path parameter, got=%q", hint)
+	}
+	if !containsSubstring(hint, "robot_cafe.png") {
+		t.Fatalf("expected image hint to mention target filename, got=%q", hint)
+	}
+}
+
+func TestIsImageGenerationIntentMessage_UsesSharedIRHeuristics(t *testing.T) {
+	t.Run("accepts explicit image request", func(t *testing.T) {
+		if !isImageGenerationIntentMessage("Generate an image of a calm lakeside cabin at sunrise.") {
+			t.Fatal("expected explicit image request to be detected")
+		}
+	})
+
+	t.Run("accepts image artifact fallback without image noun", func(t *testing.T) {
+		msg := `Draw a friendly robot reading a book and save it as "robot_reader.png".`
+		if !isImageGenerationIntentMessage(msg) {
+			t.Fatal("expected image artifact fallback to detect draw/save-as-png request")
+		}
+	})
+
+	t.Run("suppresses keyword density meta discussion", func(t *testing.T) {
+		msg := "IR匹配关键词的时候，也需要考虑关键词命中的密度吧，比如在一大段文本内部出现了生成图片可能就不是这个意图"
+		if isImageGenerationIntentMessage(msg) {
+			t.Fatal("expected meta discussion about keyword density to stay out of image intent route")
+		}
+	})
+
+	t.Run("keeps image edit wording available", func(t *testing.T) {
+		if !isImageGenerationIntentMessage("Edit this image to remove the background and clean up the edges.") {
+			t.Fatal("expected direct image edit wording to keep image intent route available")
+		}
+	})
+}
+
+func TestApplyImageToolPreference_DoesNotTriggerOnMetaDiscussion(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "image_generation"},
+		{Name: "read"},
+		{Name: "write"},
+		{Name: "web"},
+	}
+
+	msg := "IR匹配关键词的时候，也需要考虑关键词命中的密度吧，比如在一大段文本内部出现了生成图片可能就不是这个意图"
+	filtered := applyImageToolPreference(defs, msg)
+	if got := toolNames(filtered); strings.Join(got, ",") != "image_generation,read,write,web" {
+		t.Fatalf("expected meta discussion to keep original tool set, got=%v", got)
+	}
+}
+
+func TestCollectSuccessfulWriteTargets_IncludesSavedImageArtifact(t *testing.T) {
+	targets := collectSuccessfulWriteTargets([]llm.ToolCall{
+		{ID: "call-1", Name: "image_generation"},
+	}, []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"status":"succeeded","message":"saved generated image to robot_cafe.png","request":{"path":"robot_cafe.png"},"outputs":[{"url":"/api/media/generated/images/robot_cafe.png"}]}`,
+		},
+	})
+
+	if len(targets) != 1 || targets[0] != "robot_cafe.png" {
+		t.Fatalf("expected saved image artifact target, got=%v", targets)
+	}
+}
+
+func TestBuildSuccessfulImageArtifactCompletion(t *testing.T) {
+	completion := buildSuccessfulImageArtifactCompletion(
+		`Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as "robot_cafe.png" in the current directory.`,
+		[]llm.ToolCall{{ID: "call-1", Name: "image_generation"}},
+		[]llm.Message{{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"status":"succeeded","message":"saved generated image to robot_cafe.png","request":{"path":"robot_cafe.png"},"outputs":[{"url":"/api/media/generated/images/robot_cafe.png"}]}`,
+		}},
+	)
+
+	if !strings.Contains(completion, "robot_cafe.png") {
+		t.Fatalf("expected deterministic image completion to mention saved path, got=%q", completion)
+	}
+}
+
+func TestBuildSuccessfulArtifactCompletion_ForWorkspaceSummaryWrite(t *testing.T) {
+	completion := buildSuccessfulArtifactCompletion(
+		"Review all files in the research/ folder and write a comprehensive daily summary to daily_briefing.md.",
+		[]llm.ToolCall{{ID: "call-1", Name: "file_write"}},
+		[]llm.Message{{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"append":false,"path":"daily_briefing.md","size":2168,"success":true}`,
+		}},
+	)
+
+	if !strings.Contains(completion, "daily_briefing.md") {
+		t.Fatalf("expected deterministic artifact completion to mention saved path, got=%q", completion)
+	}
+}
+
+func TestBuildSuccessfulArtifactCompletion_SkipsCodingWrite(t *testing.T) {
+	completion := buildSuccessfulArtifactCompletion(
+		"In this workspace, update main.go and then run the test suite to fix the failing build.",
+		[]llm.ToolCall{{ID: "call-1", Name: "file_write"}},
+		[]llm.Message{{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"append":false,"path":"main.go","size":128,"success":true}`,
+		}},
+	)
+
+	if completion != "" {
+		t.Fatalf("expected no deterministic artifact completion for coding flow, got=%q", completion)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationTools_PrioritizesWritingAfterReads(t *testing.T) {
+	reduced := buildPostWorkspaceArtifactContinuationTools([]llm.Tool{
+		{Name: "file_write"},
+		{Name: "file_read"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "grep"},
+		{Name: "pdf"},
+	}, "Review all files in the emails/ folder and write a summary to alpha_summary.md.", []llm.ToolCall{
+		{ID: "call-1", Name: "file_read"},
+	}, []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"content":"Project Alpha uses PostgreSQL, FastAPI, React, and Kafka."}`},
+	})
+
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+		t.Fatalf("expected continuation tools to preserve file_write, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "ls") || containsLLMToolName(reduced, "find") {
+		t.Fatalf("expected continuation tools to de-prioritize fresh discovery after successful reads, got=%v", reduced)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationNudgeFromHistory_WaitsForRequestedTargetWrite(t *testing.T) {
+	prompt := "Read config.json, extract the API endpoint, create a Python script to call it, and document the process in NOTES.md."
+	nudge := buildPostWorkspaceArtifactContinuationNudgeFromHistory(
+		prompt,
+		[]llm.ToolCall{
+			{ID: "call-2", Name: "file_write", Arguments: `{"path":"call_api.py","content":"print('ok')"}`},
+		},
+		[]llm.Message{
+			{Role: llm.RoleTool, ToolCallID: "call-2", Content: `{"success":true,"path":"call_api.py"}`},
+		},
+		[]llm.ToolCall{
+			{ID: "call-1", Name: "file_read", Arguments: `{"path":"config.json"}`},
+		},
+		[]llm.Message{
+			{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"content":"{\"api\":{\"endpoint\":\"https://api.example.com/v2/data\"}}","path":"config.json"}`},
+		},
+	)
+
+	if !strings.Contains(nudge, "NOTES.md") || !strings.Contains(strings.ToLower(nudge), "save") {
+		t.Fatalf("expected continuation nudge to keep pushing explicit target write after non-target file write, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWriteCompletionNudge_DoesNotStabilizeWrongWriteTarget(t *testing.T) {
+	prompt := "Read config.json, extract the API endpoint, create a Python script to call it, and document the process in NOTES.md."
+	nudge := buildPostWriteCompletionNudge(prompt, []llm.ToolCall{
+		{ID: "call-1", Name: "file_write", Arguments: `{"path":"call_api.py","content":"print('ok')"}`},
+	}, []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"success":true,"path":"call_api.py"}`},
+	})
+
+	if nudge != "" {
+		t.Fatalf("expected write-completion nudge to stay quiet until NOTES.md is written, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationToolsFromHistory_PreservesWriteWhenOnlyNonTargetFileExists(t *testing.T) {
+	reduced := buildPostWorkspaceArtifactContinuationToolsFromHistory([]llm.Tool{
+		{Name: "file_write"},
+		{Name: "file_read"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "grep"},
+	}, "Read config.json, extract the API endpoint, create a Python script to call it, and document the process in NOTES.md.",
+		[]llm.ToolCall{
+			{ID: "call-2", Name: "file_write", Arguments: `{"path":"call_api.py","content":"print('ok')"}`},
+		},
+		[]llm.Message{
+			{Role: llm.RoleTool, ToolCallID: "call-2", Content: `{"success":true,"path":"call_api.py"}`},
+		},
+		[]llm.ToolCall{
+			{ID: "call-1", Name: "file_read", Arguments: `{"path":"config.json"}`},
+		},
+		[]llm.Message{
+			{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"content":"{\"api\":{\"endpoint\":\"https://api.example.com/v2/data\"}}","path":"config.json"}`},
+		},
+	)
+
+	if !containsLLMToolName(reduced, "file_write") {
+		t.Fatalf("expected continuation tools to preserve file_write until NOTES.md is written, got=%v", reduced)
+	}
+}
+
+func TestBuildToolLoopArtifactRecoveryNudge_ForRepeatedFileRead(t *testing.T) {
+	nudge := buildToolLoopArtifactRecoveryNudge(
+		"Read the document in summary_source.txt and write a concise 3-paragraph summary to summary_output.txt.",
+		tools.ToolLoopReasonPollingNoProgress,
+		"file_read:path=summary_source.txt",
+	)
+	if !strings.Contains(nudge, "summary_output.txt") || !strings.Contains(strings.ToLower(nudge), "write") {
+		t.Fatalf("expected repeated file-read loop to force artifact write recovery, got=%q", nudge)
+	}
+}
+
+func TestBuildToolLoopArtifactRecoveryTools_ForRepeatedFileRead(t *testing.T) {
+	reduced := buildToolLoopArtifactRecoveryTools([]llm.Tool{
+		{Name: "web"},
+		{Name: "file_read"},
+		{Name: "file_write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+		{Name: "find"},
+		{Name: "ls"},
+	}, "Read the document in summary_source.txt and write a concise 3-paragraph summary to summary_output.txt.", "file_read:path=summary_source.txt")
+
+	if !containsLLMToolName(reduced, "file_write") {
+		t.Fatalf("expected repeated file-read loop to preserve file_write, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "file_delete") {
+		t.Fatalf("expected repeated file-read loop recovery to drop file_delete in write-only mode, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "file_read") || containsLLMToolName(reduced, "find") || containsLLMToolName(reduced, "ls") {
+		t.Fatalf("expected repeated file-read loop recovery to force write-only workflow, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "web") {
+		t.Fatalf("expected repeated file-read loop recovery to drop web, got=%v", reduced)
+	}
+}
+
+func TestLimitToolCallsForRound_BatchesDistinctFileReads(t *testing.T) {
+	limited, truncated := limitToolCallsForRound([]llm.ToolCall{
+		{ID: "call-1", Name: "file_read", Arguments: `{"path":"emails/1.txt"}`},
+		{ID: "call-2", Name: "file_read", Arguments: `{"path":"emails/2.txt"}`},
+		{ID: "call-3", Name: "file_read", Arguments: `{"path":"emails/3.txt"}`},
+		{ID: "call-4", Name: "file_read", Arguments: `{"path":"emails/4.txt"}`},
+		{ID: "call-5", Name: "file_read", Arguments: `{"path":"emails/5.txt"}`},
+	})
+
+	if !truncated {
+		t.Fatal("expected batched file reads to report truncation when capped")
+	}
+	if len(limited) != maxBatchFileReadCallsPerRound {
+		t.Fatalf("expected %d batched file reads, got %d", maxBatchFileReadCallsPerRound, len(limited))
+	}
+	if limited[0].ID != "call-1" || limited[3].ID != "call-4" {
+		t.Fatalf("expected first four file reads to be preserved, got=%v", limited)
+	}
+}
+
+func TestLimitToolCallsForRound_AllEmailSweepUsesExpandedBatchLimit(t *testing.T) {
+	limited, truncated := limitToolCallsForRound([]llm.ToolCall{
+		{ID: "call-1", Name: "file_read", Arguments: `{"path":"inbox/email_01.txt"}`},
+		{ID: "call-2", Name: "file_read", Arguments: `{"path":"inbox/email_02.txt"}`},
+		{ID: "call-3", Name: "file_read", Arguments: `{"path":"inbox/email_03.txt"}`},
+		{ID: "call-4", Name: "file_read", Arguments: `{"path":"inbox/email_04.txt"}`},
+		{ID: "call-5", Name: "file_read", Arguments: `{"path":"inbox/email_05.txt"}`},
+		{ID: "call-6", Name: "file_read", Arguments: `{"path":"inbox/email_06.txt"}`},
+		{ID: "call-7", Name: "file_read", Arguments: `{"path":"inbox/email_07.txt"}`},
+		{ID: "call-8", Name: "file_read", Arguments: `{"path":"inbox/email_08.txt"}`},
+	}, "Read all 13 emails in the inbox/ folder and save the triage report to triage_report.md.")
+
+	if truncated {
+		t.Fatalf("expected full email sweep to keep all reads in one round, got=%v", limited)
+	}
+	if len(limited) != 8 {
+		t.Fatalf("expected 8 batched file reads, got %d", len(limited))
+	}
+}
+
+func TestLimitToolCallsForRound_BatchesArtifactReadThenWrite(t *testing.T) {
+	limited, truncated := limitToolCallsForRound([]llm.ToolCall{
+		{ID: "call-1", Name: "file_read", Arguments: `{"path":"emails/1.txt"}`},
+		{ID: "call-2", Name: "file_write", Arguments: `{"path":"alpha_summary.md","content":"hi"}`},
+	})
+
+	if truncated {
+		t.Fatal("expected local artifact read/write workflow to remain batched")
+	}
+	if len(limited) != 2 || limited[0].ID != "call-1" || limited[1].ID != "call-2" {
+		t.Fatalf("expected read/write workflow to remain intact, got=%v", limited)
+	}
+}
+
+func TestLimitToolCallsForRound_DedupesRepeatedPDFReadsBeforeWrite(t *testing.T) {
+	limited, truncated := limitToolCallsForRound([]llm.ToolCall{
+		{ID: "call-1", Name: "pdf", Arguments: `{"action":"read","path":"openclaw_report.pdf"}`},
+		{ID: "call-2", Name: "pdf", Arguments: `{"action":"read","path":"openclaw_report.pdf","pages":[4,5,6,7,8,9,10,11]}`},
+		{ID: "call-3", Name: "file_write", Arguments: `{"path":"answer.txt","content":"..."}`},
+	})
+
+	if !truncated {
+		t.Fatal("expected repeated same-source PDF reads to be compacted before write")
+	}
+	if len(limited) != 2 {
+		t.Fatalf("expected compacted read/write workflow, got=%v", limited)
+	}
+	if limited[0].ID != "call-1" || limited[1].ID != "call-3" {
+		t.Fatalf("expected full-source PDF read to win over narrower reread, got=%v", limited)
+	}
+}
+
+func TestLimitToolCallsForRound_PrefersBroaderPDFReadWhenItAppearsLater(t *testing.T) {
+	limited, truncated := limitToolCallsForRound([]llm.ToolCall{
+		{ID: "call-1", Name: "pdf", Arguments: `{"action":"read","path":"openclaw_report.pdf","pages":[4,5]}`},
+		{ID: "call-2", Name: "pdf", Arguments: `{"action":"read","path":"openclaw_report.pdf"}`},
+		{ID: "call-3", Name: "file_write", Arguments: `{"path":"answer.txt","content":"..."}`},
+	})
+
+	if !truncated {
+		t.Fatal("expected repeated same-source PDF reads to be compacted before write")
+	}
+	if len(limited) != 2 {
+		t.Fatalf("expected compacted read/write workflow, got=%v", limited)
+	}
+	if limited[0].ID != "call-2" || limited[1].ID != "call-3" {
+		t.Fatalf("expected broader PDF read to replace narrower earlier slice, got=%v", limited)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_ForWorkspacePDFTask(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("I have a report in openclaw_report.pdf in my workspace. Extract the answers and write them one per line to answer.txt.")
+	if hint == "" {
+		t.Fatal("expected non-empty artifact workflow hint for local PDF task")
+	}
+	if !containsSubstring(hint, "pdf/read path") {
+		t.Fatalf("expected PDF hint to prefer local pdf path, got=%q", hint)
+	}
+	if !containsSubstring(hint, "line-by-line") {
+		t.Fatalf("expected hint to preserve line-based output constraints, got=%q", hint)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_ForInboxTriageTask(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("The emails have been provided to you in the inbox/ folder in your workspace. Read all 13 emails and create a triage report saved to triage_report.md. For each email, assign priority, category, and recommended action.")
+	if hint == "" {
+		t.Fatal("expected non-empty artifact workflow hint for inbox triage task")
+	}
+	if !containsSubstring(hint, "P0 through P4") {
+		t.Fatalf("expected inbox triage hint to preserve canonical priority ordering, got=%q", hint)
+	}
+	if !containsSubstring(hint, "opening summary") {
+		t.Fatalf("expected inbox triage hint to label critical items in the summary, got=%q", hint)
+	}
+	if !containsSubstring(hint, "every email entry") {
+		t.Fatalf("expected inbox triage hint to keep explicit priority labels on each row, got=%q", hint)
+	}
+	if !containsSubstring(hint, "avoid later tables or headings that repeat P0-P4") {
+		t.Fatalf("expected inbox triage hint to discourage reintroducing later P-label headings, got=%q", hint)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_ForExecutiveBriefingTask(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("Review all files in the research/ folder and write a comprehensive daily summary to daily_briefing.md. Highlight the most important items requiring executive attention.")
+	if hint == "" {
+		t.Fatal("expected non-empty artifact workflow hint for executive briefing task")
+	}
+	if !containsSubstring(hint, "highest-impact named customer churn risk") {
+		t.Fatalf("expected executive briefing hint to preserve named customer risks, got=%q", hint)
+	}
+	if !containsSubstring(hint, "top priorities or action section") {
+		t.Fatalf("expected executive briefing hint to promote named risks or opportunities into the final briefing, got=%q", hint)
+	}
+	if !containsSubstring(hint, "Do not collapse named accounts") {
+		t.Fatalf("expected executive briefing hint to keep named entities concrete, got=%q", hint)
+	}
+	if !containsSubstring(hint, "word budget") {
+		t.Fatalf("expected executive briefing hint to keep the output concise, got=%q", hint)
+	}
+	if !containsSubstring(hint, "avoid playful styling") {
+		t.Fatalf("expected executive briefing hint to keep a formal tone, got=%q", hint)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_ForProjectStatusSummaryTask(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("You have access to a collection of emails in the emails/ folder in your workspace. Save the summary to alpha_summary.md with sections Project Overview, Timeline, Key Risks and Issues, Client/Business Impact, and Current Status.")
+	if hint == "" {
+		t.Fatal("expected non-empty artifact workflow hint for project status summary task")
+	}
+	if !containsSubstring(hint, "requested section titles exactly") {
+		t.Fatalf("expected project status hint to preserve the requested section titles, got=%q", hint)
+	}
+	if !containsSubstring(hint, "Before writing, identify") {
+		t.Fatalf("expected project status hint to force explicit pre-write extraction, got=%q", hint)
+	}
+	if !containsSubstring(hint, "original-versus-updated budget and timeline figures") {
+		t.Fatalf("expected project status hint to preserve exact budget and timeline deltas, got=%q", hint)
+	}
+	if !containsSubstring(hint, "causal cross-links") {
+		t.Fatalf("expected project status hint to require explicit cross-links, got=%q", hint)
+	}
+	if !containsSubstring(hint, "major backend, data, and frontend technologies") {
+		t.Fatalf("expected project status hint to require a sufficiently specific tech stack, got=%q", hint)
+	}
+	if !containsSubstring(hint, "Markdown headings") {
+		t.Fatalf("expected project status hint to preserve markdown heading structure when requested, got=%q", hint)
+	}
+	if !containsSubstring(hint, "Keep concrete technology names") {
+		t.Fatalf("expected project status hint to keep concrete values instead of generic paraphrases, got=%q", hint)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_ForExplicitMemoryFileRecall(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("I previously saved some personal information in a file called `memory/MEMORY.md`. Please read that file and answer these questions based on what you find in the file.")
+	if hint == "" {
+		t.Fatal("expected non-empty artifact workflow hint for explicit memory-file recall task")
+	}
+	if !containsSubstring(hint, "read that exact path before answering") {
+		t.Fatalf("expected recall hint to require read-before-answer behavior, got=%q", hint)
+	}
+	if !containsSubstring(hint, "do not substitute another memory path") {
+		t.Fatalf("expected recall hint to forbid path substitution, got=%q", hint)
 	}
 }
 

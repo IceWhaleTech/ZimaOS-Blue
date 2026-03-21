@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Blue Browser Relay",
+  "version": "0.1.0",
+  "description": "Attach Blue to your existing Chrome tab via a local CDP relay server.",
+  "permissions": ["debugger", "tabs", "activeTab", "storage", "alarms", "webNavigation"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_title": "Blue Browser Relay (click to attach/detach)"
+  },
+  "options_ui": { "page": "options.html", "open_in_tab": true }
+}

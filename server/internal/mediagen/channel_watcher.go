@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 // ChannelNotifier is the callback invoked when a channel-sourced task reaches a terminal state.
@@ -45,6 +45,8 @@ type ChannelTaskWatcher struct {
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
 }
+
+var channelWatcherHTTPClient = network.NewPooledHTTPClient(30 * time.Second)
 
 // NewChannelTaskWatcher creates a watcher that polls channel tasks and notifies on completion.
 func NewChannelTaskWatcher(manager *Manager, notifier ChannelNotifier, locale string) *ChannelTaskWatcher {
@@ -337,8 +339,7 @@ func loadAttachmentData(attachments []channel.Attachment, storage *MediaStorage)
 
 // downloadURL fetches a URL and returns the response body.
 func downloadURL(url string) ([]byte, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := channelWatcherHTTPClient.Get(url)
 	if err != nil {
 		return nil, err
 	}

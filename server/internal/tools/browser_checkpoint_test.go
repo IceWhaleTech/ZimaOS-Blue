@@ -29,6 +29,13 @@ func TestIsBrowserActionHighRisk(t *testing.T) {
 	}
 }
 
+func TestBrowserCheckpointManager_DefaultTimeoutIsLonger(t *testing.T) {
+	mgr := NewBrowserCheckpointManager(0)
+	if got := mgr.DefaultTimeout(); got != 5*time.Minute {
+		t.Fatalf("DefaultTimeout() = %v, want %v", got, 5*time.Minute)
+	}
+}
+
 func TestBrowserCheckpointManager_CreateResolve(t *testing.T) {
 	mgr := NewBrowserCheckpointManager(2 * time.Minute)
 	rec := mgr.Create(BrowserCheckpointRequest{

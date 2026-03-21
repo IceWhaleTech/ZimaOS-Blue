@@ -12,7 +12,7 @@ import (
 func TestExecPathGuardProtectsRunWorkspaceAndReservedPaths(t *testing.T) {
 	tmpDir := t.TempDir()
 	artifactBase := filepath.Join(tmpDir, "artifacts")
-	storePath := filepath.Join(tmpDir, "harness.db")
+	storePath := filepath.Join(tmpDir, "blue.db")
 	controller := newWriteGuardController(t, artifactBase, storePath)
 	driver := &stubDriver{kind: RunKindAgentTask}
 	controller.RegisterDriver(driver)
@@ -52,7 +52,7 @@ func TestExecPathGuardProtectsRunWorkspaceAndReservedPaths(t *testing.T) {
 func TestExecPathGuardDeniesOtherRunArtifactRoots(t *testing.T) {
 	tmpDir := t.TempDir()
 	artifactBase := filepath.Join(tmpDir, "artifacts")
-	storePath := filepath.Join(tmpDir, "harness.db")
+	storePath := filepath.Join(tmpDir, "blue.db")
 	controller := newWriteGuardController(t, artifactBase, storePath)
 	driver := &stubDriver{kind: RunKindAgentTask}
 	controller.RegisterDriver(driver)

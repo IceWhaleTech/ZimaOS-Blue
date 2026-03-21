@@ -188,16 +188,9 @@ func TestManagerGenerateUsesWebCanvasFallback(t *testing.T) {
 	defer imageServer.Close()
 
 	manager := NewManager(storage, nil, "zh-CN")
-	var screenshotURL string
-	browserStub := stubFallbackBrowser{
-		screenshot: func(_ context.Context, req *browser.ScreenshotRequest) (*browser.ScreenshotResponse, error) {
-			screenshotURL = req.URL
-			return &browser.ScreenshotResponse{Data: fakeMediaImagePNGBase64, Format: browser.FormatPNG}, nil
-		},
-	}
 	engine := newFallbackEngineForTest(t, storage, stubFallbackSearcher{
 		results: []FallbackSearchResult{{Title: "Cat Article", URL: imageServer.URL + "/article"}},
-	}, browserStub, FallbackConfig{RenderBaseURL: "http://127.0.0.1:8899"})
+	}, nil, FallbackConfig{RenderBaseURL: "http://127.0.0.1:8899"})
 	manager.SetFallbackEngine(engine)
 
 	task, err := manager.Generate(context.Background(), &MediaRequest{
@@ -220,9 +213,6 @@ func TestManagerGenerateUsesWebCanvasFallback(t *testing.T) {
 	if len(task.Response.Data) == 0 || !strings.HasPrefix(task.Response.Data[0].URL, "/api/media/generated/images/") {
 		t.Fatalf("response = %#v, want locally stored image", task.Response)
 	}
-	if !strings.Contains(screenshotURL, "/api/v1/media/fallback/render/") {
-		t.Fatalf("screenshot URL = %q, want fallback render route", screenshotURL)
-	}
 }
 
 func TestManagerGenerateUsesTextPosterWhenSearchHasNoImage(t *testing.T) {
@@ -235,11 +225,7 @@ func TestManagerGenerateUsesTextPosterWhenSearchHasNoImage(t *testing.T) {
 	manager := NewManager(storage, nil, "zh-CN")
 	manager.SetFallbackEngine(newFallbackEngineForTest(t, storage, stubFallbackSearcher{
 		results: nil,
-	}, stubFallbackBrowser{
-		screenshot: func(_ context.Context, req *browser.ScreenshotRequest) (*browser.ScreenshotResponse, error) {
-			return &browser.ScreenshotResponse{Data: fakeMediaImagePNGBase64, Format: browser.FormatPNG}, nil
-		},
-	}, FallbackConfig{}))
+	}, nil, FallbackConfig{}))
 
 	task, err := manager.Generate(context.Background(), &MediaRequest{
 		Type:   MediaTypeImage,
@@ -259,6 +245,36 @@ func TestManagerGenerateUsesTextPosterWhenSearchHasNoImage(t *testing.T) {
 	}
 	if len(task.Response.Data) == 0 || task.Response.Data[0].URL == "" {
 		t.Fatalf("response = %#v, want generated poster asset", task.Response)
+	}
+}
+
+func TestManagerGenerateUsesWebCanvasForDetailedSingleScenePrompt(t *testing.T) {
+	tmp := t.TempDir()
+	storage := NewMediaStorage(tmp, "/api/media/generated")
+	if err := storage.EnsureDirs(); err != nil {
+		t.Fatalf("EnsureDirs: %v", err)
+	}
+
+	manager := NewManager(storage, nil, "zh-CN")
+	manager.SetFallbackEngine(newFallbackEngineForTest(t, storage, stubFallbackSearcher{
+		results: nil,
+	}, nil, FallbackConfig{}))
+
+	task, err := manager.Generate(context.Background(), &MediaRequest{
+		Type:   MediaTypeImage,
+		Prompt: "A friendly robot with warm glowing eyes sitting at a wooden table in a cozy coffee shop, reading an open book. A steaming coffee cup sits nearby. Soft ambient lighting, wooden furniture, bookshelves lining the walls, large windows with warm afternoon light, and a welcoming cheerful atmosphere. Detailed digital illustration.",
+	})
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+	waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	task, err = manager.WaitForTask(waitCtx, task.ID)
+	if err != nil {
+		t.Fatalf("WaitForTask returned error: %v", err)
+	}
+	if task.FallbackInfo == nil || task.FallbackInfo.Strategy != FallbackStrategyWebCanvas {
+		t.Fatalf("fallback_info = %#v, want web_canvas", task.FallbackInfo)
 	}
 }
 
@@ -450,5 +466,26 @@ func TestManagerPrefersRealProviderWhenAvailable(t *testing.T) {
 	}
 	if task.FallbackInfo != nil {
 		t.Fatalf("fallback_info = %#v, want nil when real provider exists", task.FallbackInfo)
+	}
+}
+
+func TestFallbackEngineExposesU2NetPStatus(t *testing.T) {
+	engine := NewFallbackEngine(FallbackConfig{
+		Enabled:         true,
+		DataDir:         t.TempDir(),
+		U2NetPStatusURL: "/api/v1/media/fallback/models/u2netp/status",
+	}, nil, nil, func() FallbackBrowserService { return nil }, "")
+	status, err := engine.GetFallbackModelStatus("u2netp")
+	if err != nil {
+		t.Fatalf("GetFallbackModelStatus returned error: %v", err)
+	}
+	if status == nil {
+		t.Fatal("expected status")
+	}
+	if status.ModelID != "u2netp" {
+		t.Fatalf("model_id = %q, want u2netp", status.ModelID)
+	}
+	if status.State != "not_downloaded" {
+		t.Fatalf("state = %q, want not_downloaded", status.State)
 	}
 }

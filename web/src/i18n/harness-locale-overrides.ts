@@ -375,7 +375,7 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
     harness: {
       groups: {
         subtitle:
-          'Track eval groups, experiment projections, score breakdowns, and retries from one control-plane view.',
+          'Track eval groups, calibration traces, score breakdowns, and retries from one control-plane view.',
         totalGroups: 'Groups',
         activeGroups: 'Active',
         totalItems: 'Items',
@@ -387,7 +387,7 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
         loading: 'Fetching the latest harness group summaries.',
         emptyTitle: 'No harness groups yet',
         emptyDescription:
-          'Groups will appear here once eval batches, experiments, or projected research runs are recorded.',
+          'Groups will appear here once eval batches or research runs are recorded.',
         noSubject: 'No subject provided',
         itemCount: 'Items',
         passRate: 'Pass rate',

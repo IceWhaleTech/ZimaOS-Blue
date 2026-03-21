@@ -1,5 +1,10 @@
 const LOCALIZABLE_ACTION_FALLBACKS: Record<string, string[]> = {
-  extract_with_web_fetch: ['Extract with web_fetch', 'Extract with Web Fetch'],
+  extract_with_web_fetch: [
+    'Extract from web',
+    'Extract from Web',
+    'Extract with web_fetch',
+    'Extract with Web Fetch',
+  ],
   use_browser: ['Use browser'],
   recheck: ['Retry', 'Re-check'],
   check_a11y: ['Accessibility Only'],

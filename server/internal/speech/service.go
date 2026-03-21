@@ -48,6 +48,8 @@ type Service interface {
 	SetASRPermissionDenied(errMsg string)
 	// SetEspeakManager sets the eSpeak manager for status reporting.
 	SetEspeakManager(em *EspeakManager)
+	// SetStatusPrewarmEnabled controls whether GetStatus may trigger lazy STT initialization.
+	SetStatusPrewarmEnabled(enabled bool)
 }
 
 // service implements the Service interface.
@@ -63,6 +65,7 @@ type service struct {
 	initializing  bool
 	asrPermDenied bool   // macOS STT permission denied
 	asrPermError  string // macOS STT permission error message
+	statusPrewarm bool
 	mu            sync.RWMutex
 }
 
@@ -82,9 +85,10 @@ type serviceSnapshot struct {
 // NewService creates a new unified speech service.
 func NewService(cfg *Config, sttSvc stt.Service, ttsSvc tts.Service) Service {
 	s := &service{
-		sttService: sttSvc,
-		ttsService: ttsSvc,
-		config:     cfg,
+		sttService:    sttSvc,
+		ttsService:    ttsSvc,
+		config:        cfg,
+		statusPrewarm: true,
 	}
 
 	// Providers will be initialized on demand
@@ -94,25 +98,27 @@ func NewService(cfg *Config, sttSvc stt.Service, ttsSvc tts.Service) Service {
 // NewServiceWithProviders creates a service with explicit providers.
 func NewServiceWithProviders(cfg *Config, sttSvc stt.Service, ttsSvc tts.Service, asrProvider stt.Provider, ttsProvider tts.Provider) Service {
 	return &service{
-		sttService:  sttSvc,
-		ttsService:  ttsSvc,
-		asrProvider: asrProvider,
-		ttsProvider: ttsProvider,
-		config:      cfg,
-		initialized: asrProvider != nil || ttsProvider != nil,
+		sttService:    sttSvc,
+		ttsService:    ttsSvc,
+		asrProvider:   asrProvider,
+		ttsProvider:   ttsProvider,
+		config:        cfg,
+		initialized:   asrProvider != nil || ttsProvider != nil,
+		statusPrewarm: true,
 	}
 }
 
 // NewServiceWithInitConfig creates a service with lazy initialization config.
 func NewServiceWithInitConfig(cfg *Config, initCfg *InitConfig) Service {
 	return &service{
-		config:     cfg,
-		initConfig: initCfg,
+		config:        cfg,
+		initConfig:    initCfg,
+		statusPrewarm: true,
 	}
 }
 
 // Initialize initializes TTS/STT services lazily.
-func (s *service) Initialize() error {
+func (s *service) Initialize() (err error) {
 	s.mu.Lock()
 	if s.initialized || s.initializing {
 		s.mu.Unlock()
@@ -124,12 +130,14 @@ func (s *service) Initialize() error {
 	defer func() {
 		s.mu.Lock()
 		s.initializing = false
-		s.initialized = true
+		if err == nil {
+			s.initialized = true
+		}
 		s.mu.Unlock()
 	}()
 
 	if s.initConfig == nil {
-		return fmt.Errorf("no init config provided")
+		return s.initializeFromExistingServices()
 	}
 
 	// Initialize TTS provider based on configuration
@@ -210,6 +218,26 @@ func (s *service) Initialize() error {
 	return nil
 }
 
+func (s *service) initializeFromExistingServices() error {
+	snap := s.snapshot()
+	if snap.asrProvider == nil && snap.sttService != nil {
+		provider := snap.sttService.GetWhisperProvider()
+		if provider == nil {
+			return fmt.Errorf("no ASR provider available")
+		}
+		if err := provider.EnsureInitialized(); err != nil {
+			return err
+		}
+		s.SetASRProvider(provider)
+	}
+	if snap.ttsProvider == nil && snap.ttsService != nil && s.config != nil && s.config.TTS.Provider != "" {
+		if provider := snap.ttsService.GetProvider(tts.ProviderType(s.config.TTS.Provider)); provider != nil {
+			s.SetTTSProvider(provider)
+		}
+	}
+	return nil
+}
+
 // IsInitialized returns whether services have been initialized.
 func (s *service) IsInitialized() bool {
 	s.mu.RLock()
@@ -219,12 +247,23 @@ func (s *service) IsInitialized() bool {
 
 // GetStatus returns the unified speech status.
 func (s *service) GetStatus() *StatusResponse {
-	// Ensure services are initialized so permission/readiness state is accurate
-	if !s.IsInitialized() && s.initConfig != nil {
+	// Keep status read-only when configured: avoid implicitly warming heavy STT backends.
+	if s.shouldPrewarmStatus() {
 		_ = s.Initialize()
 	}
 
 	snap := s.snapshot()
+	if snap.asrProvider == nil && snap.sttService != nil {
+		if peekable, ok := snap.sttService.(interface{ PeekWhisperProvider() *stt.WhisperProvider }); ok {
+			snap.asrProvider = peekable.PeekWhisperProvider()
+		}
+		if snap.asrProvider == nil && s.shouldPrewarmStatus() {
+			snap.asrProvider = snap.sttService.GetWhisperProvider()
+		}
+		if snap.asrProvider != nil && snap.asrConfigured == "" {
+			snap.asrConfigured = string(snap.asrProvider.Type())
+		}
+	}
 
 	resp := &StatusResponse{
 		TTS: TTSStatus{
@@ -514,8 +553,14 @@ func (s *service) GetModels() *ModelsResponse {
 // GetASRProvider returns the ASR provider.
 func (s *service) GetASRProvider() stt.Provider {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.asrProvider
+	provider := s.asrProvider
+	sttService := s.sttService
+	s.mu.RUnlock()
+
+	if provider != nil || sttService == nil {
+		return provider
+	}
+	return sttService.GetWhisperProvider()
 }
 
 // GetTTSProvider returns the TTS provider.
@@ -585,6 +630,13 @@ func (s *service) SetEspeakManager(em *EspeakManager) {
 	s.espeakManager = em
 }
 
+// SetStatusPrewarmEnabled controls whether GetStatus may initialize lazy STT providers.
+func (s *service) SetStatusPrewarmEnabled(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.statusPrewarm = enabled
+}
+
 // Transcribe transcribes audio using the configured ASR provider.
 func (s *service) Transcribe(ctx context.Context, req *stt.TranscribeRequest) (*TranscriptionResult, error) {
 	snap := s.snapshot()
@@ -637,6 +689,12 @@ func (s *service) snapshot() serviceSnapshot {
 		snap.editBeforeSend = s.config.ASR.EditBeforeSend
 	}
 	return snap
+}
+
+func (s *service) shouldPrewarmStatus() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.statusPrewarm && !s.initialized && (s.initConfig != nil || s.sttService != nil)
 }
 
 // Error definitions

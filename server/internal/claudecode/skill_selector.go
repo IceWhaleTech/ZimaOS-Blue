@@ -60,9 +60,14 @@ type Decision struct {
 
 type skillRankedCandidate struct {
 	doc     SkillDoc
-	profile sel.SelectorProfile
 	match   sel.MatchResult
 	score   float64
+	docText string
+}
+
+type skillIndexEntry struct {
+	doc    SkillDoc
+	bundle skillSelectorBundle
 }
 
 // PromptHint returns a compact XML block for system prompt injection.
@@ -113,6 +118,7 @@ type SkillSelector struct {
 	mu         sync.RWMutex
 	indexStamp string
 	indexDocs  []SkillDoc
+	indexCache []skillIndexEntry
 
 	cacheMu  sync.RWMutex
 	cache    map[string]cachedSkillDecision
@@ -166,7 +172,7 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 		return d, nil
 	}
 
-	docs, err := s.loadIndex()
+	docs, indexCache, err := s.loadIndex()
 	if err != nil {
 		return Decision{}, err
 	}
@@ -180,7 +186,7 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 		return rule, nil
 	}
 
-	irDecision := s.stage1IR(query, docs, thres)
+	irDecision := s.stage1IR(query, indexCache, thres)
 	if mode == SkillSelectorModeIROnly {
 		s.setCachedDecision(cacheKey, irDecision)
 		return irDecision, nil
@@ -230,7 +236,7 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 	return out, nil
 }
 
-func (s *SkillSelector) stage1IR(query string, docs []SkillDoc, threshold float64) Decision {
+func (s *SkillSelector) stage1IR(query string, docs []skillIndexEntry, threshold float64) Decision {
 	signals := sel.AnalyzeQuery(query)
 	if signals.PlainReply || signals.Smalltalk || signals.Negated {
 		return Decision{
@@ -243,10 +249,9 @@ func (s *SkillSelector) stage1IR(query string, docs []SkillDoc, threshold float6
 	}
 
 	ranked := make([]skillRankedCandidate, 0, len(docs))
-	for _, doc := range docs {
-		profile := buildSkillSelectorProfile(doc)
-		match := sel.MatchProfile(signals, profile)
-		applySkillHardAnchors(signals, doc, &match)
+	for _, entry := range docs {
+		match := sel.MatchProfile(signals, entry.bundle.profile)
+		applySkillHardAnchors(signals, entry.doc, &match)
 		if shouldSuppressDefinitionLikeSkillQuery(signals, match) {
 			continue
 		}
@@ -254,10 +259,10 @@ func (s *SkillSelector) stage1IR(query string, docs []SkillDoc, threshold float6
 			continue
 		}
 		ranked = append(ranked, skillRankedCandidate{
-			doc:     doc,
-			profile: profile,
+			doc:     entry.doc,
 			match:   match,
 			score:   match.Score,
+			docText: entry.bundle.docText,
 		})
 	}
 
@@ -378,10 +383,9 @@ func applySkillBM25TieBreak(query string, ranked []skillRankedCandidate) {
 	scorer := pruner.NewBM25Scorer(1.2, 0.75)
 	segments := make([]pruner.Segment, 0, len(ranked))
 	for i, cand := range ranked {
-		docText := skillDocTextForIR(cand.doc)
 		segments = append(segments, pruner.Segment{
-			Content:   docText,
-			Tokens:    pruner.TextTokenize(docText),
+			Content:   cand.docText,
+			Tokens:    pruner.TextTokenize(cand.docText),
 			StartLine: i,
 			EndLine:   i,
 		})
@@ -551,35 +555,48 @@ func (s *SkillSelector) setCachedDecision(key string, d Decision) {
 	s.cache[key] = cachedSkillDecision{decision: d, expires: time.Now().Add(s.cacheTTL)}
 }
 
-func (s *SkillSelector) loadIndex() ([]SkillDoc, error) {
+func (s *SkillSelector) loadIndex() ([]SkillDoc, []skillIndexEntry, error) {
 	stamp, err := buildSkillRootsStamp(s.workspaceDir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	s.mu.RLock()
 	if s.indexStamp == stamp && len(s.indexDocs) > 0 {
 		out := make([]SkillDoc, len(s.indexDocs))
 		copy(out, s.indexDocs)
+		cache := make([]skillIndexEntry, len(s.indexCache))
+		copy(cache, s.indexCache)
 		s.mu.RUnlock()
-		return out, nil
+		return out, cache, nil
 	}
 	s.mu.RUnlock()
 
 	docs, err := BuildSkillIndex(s.workspaceDir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	indexCache := make([]skillIndexEntry, 0, len(docs))
+	for _, doc := range docs {
+		indexCache = append(indexCache, skillIndexEntry{
+			doc:    doc,
+			bundle: buildSkillSelectorBundle(doc),
+		})
 	}
 
 	s.mu.Lock()
 	s.indexStamp = stamp
 	s.indexDocs = make([]SkillDoc, len(docs))
 	copy(s.indexDocs, docs)
+	s.indexCache = make([]skillIndexEntry, len(indexCache))
+	copy(s.indexCache, indexCache)
 	s.mu.Unlock()
 
 	out := make([]SkillDoc, len(docs))
 	copy(out, docs)
-	return out, nil
+	cache := make([]skillIndexEntry, len(indexCache))
+	copy(cache, indexCache)
+	return out, cache, nil
 }
 
 func buildSkillRootsStamp(workspaceDir string) (string, error) {

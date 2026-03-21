@@ -348,7 +348,10 @@ func TestGetSmallModelDefaults(t *testing.T) {
 	if !h.GetSmallModelAutoDownload() {
 		t.Fatal("GetSmallModelAutoDownload() = false, want true")
 	}
-	if h.GetSmallModelSummaryEnabled() || h.GetSmallModelDocExtractEnabled() || h.GetSmallModelRerankEnabled() || h.GetSmallModelContextPruneEnabled() {
+	if got := h.GetContextCompressionMode(); got != "auto" {
+		t.Fatalf("GetContextCompressionMode() = %q, want %q", got, "auto")
+	}
+	if h.GetSmallModelSummaryEnabled() || h.GetSmallModelContextCompressEnabled() || h.GetSmallModelDocExtractEnabled() || h.GetSmallModelRerankEnabled() || h.GetSmallModelContextPruneEnabled() {
 		t.Fatal("expected phase1 enhancement switches default false")
 	}
 	if h.GetSmallModelMediaIntentEnabled() {

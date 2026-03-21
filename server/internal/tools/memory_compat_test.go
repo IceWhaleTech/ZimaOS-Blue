@@ -12,12 +12,15 @@ func TestRegisterMemoryToolsRegistersCompatWrappers(t *testing.T) {
 
 	RegisterMemoryTools(registry, service)
 
-	if !registry.IsDisabled("memory") {
-		t.Fatal("expected memory tool to stay disabled")
+	if registry.Get("memory") == nil {
+		t.Fatal("expected unified memory tool to be registered")
 	}
 	for _, name := range []string{"memory_search", "memory_get", "memory_write", "memory_forget"} {
 		if registry.Get(name) == nil {
 			t.Fatalf("expected compat wrapper %q to be registered", name)
+		}
+		if !registry.IsDisabled(name) {
+			t.Fatalf("expected compat wrapper %q to be hidden", name)
 		}
 	}
 }

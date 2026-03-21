@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, shallowMount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ChatView from '@/views/ChatView.vue'
 import { i18n } from '@/i18n'
@@ -110,6 +110,20 @@ const mocks = vi.hoisted(() => ({
     cancelJob: vi.fn(),
     consumePendingFocusJobId: vi.fn(),
   },
+  taskProjectionsStore: {
+    currentTasks: [] as Array<Record<string, unknown>>,
+    currentActiveTasks: [] as Array<Record<string, unknown>>,
+    currentTerminalTasks: [] as Array<Record<string, unknown>>,
+    backgroundTasks: [] as Array<Record<string, unknown>>,
+    loading: false,
+    hydrated: true,
+    hasActiveTasks: false,
+    refreshNow: vi.fn(),
+    setConversation: vi.fn(),
+    cancelTask: vi.fn(),
+    openTask: vi.fn(),
+    stopPolling: vi.fn(),
+  },
   mediaGenerate: {
     showPanel: { value: false },
     intent: { value: null as null | Record<string, unknown> },
@@ -153,6 +167,10 @@ vi.mock('@/stores/deepResearchJobs', () => ({
   useDeepResearchJobsStore: () => mocks.deepResearchJobsStore,
 }))
 
+vi.mock('@/stores/taskProjections', () => ({
+  useTaskProjectionsStore: () => mocks.taskProjectionsStore,
+}))
+
 vi.mock('@/api/chat', () => ({
   agentApi: {
     listTasks: (...args: unknown[]) => mocks.agentApi.listTasks(...args),
@@ -191,23 +209,53 @@ vi.mock('@/api/voice', () => ({
   },
 }))
 
-vi.mock('@/components/ChatInput.vue', () => ({
-  default: {
-    name: 'ChatInput',
-    emits: ['send'],
-    methods: {
-      setInput(value: string) {
-        mocks.chatInputSetInput(value)
-      },
-      focus() {},
-      resetWarmup() {},
-    },
-    template:
-      '<button class="chat-input-send-stub" @click="$emit(\'send\', \'need provider\', [])" />',
+const chatInputStub = {
+  name: 'ChatInput',
+  props: {
+    disabled: { type: Boolean, default: false },
+    streaming: { type: Boolean, default: false },
+    canCancel: { type: Boolean, default: false },
   },
-}))
+  emits: ['send'],
+  methods: {
+    setInput(value: string) {
+      mocks.chatInputSetInput(value)
+    },
+    focus() {},
+    resetWarmup() {},
+  },
+  template: '<button class="chat-input-send-stub" @click="$emit(\'send\', \'need provider\', [])" />',
+}
+
+const talkModeStub = {
+  name: 'TalkMode',
+  emits: ['transcript', 'update:modelValue'],
+  template: '<div class="talk-mode-stub" />',
+}
 
 describe('ChatView provider gating', () => {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn().mockImplementation(() => ({
+      matches: false,
+      media: '',
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+  )
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  )
+
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.providerPoolStore.providers = []
@@ -218,12 +266,29 @@ describe('ChatView provider gating', () => {
     mocks.settingsStore.fetchTools.mockResolvedValue(undefined)
     mocks.chatStore.fetchConversations.mockResolvedValue(undefined)
     mocks.chatStore.selectConversation.mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.currentTasks = []
+    mocks.taskProjectionsStore.currentActiveTasks = []
+    mocks.taskProjectionsStore.currentTerminalTasks = []
+    mocks.taskProjectionsStore.backgroundTasks = []
+    mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.fetchActiveJobs.mockResolvedValue(undefined)
     mocks.mediaGenerate.classify.mockResolvedValue(false)
     mocks.authFetch.mockRejectedValue(new Error('ignore'))
     Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true })
     Object.defineProperty(window.navigator, 'userAgent', { value: 'desktop', configurable: true })
   })
+
+  async function settleView() {
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
+  }
 
   async function mountChatView() {
     const router = createRouter({
@@ -236,20 +301,34 @@ describe('ChatView provider gating', () => {
     await router.push('/chat')
     await router.isReady()
 
-    const wrapper = shallowMount(ChatView, {
+    const wrapper = mount(ChatView, {
       global: {
         plugins: [router, i18n],
-        stubs: { teleport: true, ChatInput: false },
+        stubs: {
+          ConversationList: { template: '<div class="conversation-list-stub" />' },
+          ChatMessage: { template: '<div class="chat-message-stub" />' },
+          ChatInput: chatInputStub,
+          VirtualScroll: { template: '<div class="virtual-scroll-stub"><slot /></div>' },
+          PresetQuestions: { template: '<div class="preset-questions-stub" />' },
+          TalkMode: talkModeStub,
+          ToolApprovalDialog: { template: '<div class="tool-approval-stub" />' },
+          ExecApprovalDialog: { template: '<div class="exec-approval-stub" />' },
+          MediaParamPanel: { template: '<div class="media-param-panel-stub" />' },
+          UserTaskProjectionCard: { template: '<div class="agent-task-panel-stub" />' },
+          UserTaskProjectionDock: { template: '<div class="deep-research-task-dock-stub" />' },
+          Teleport: true,
+          Transition: true,
+        },
       },
     })
 
-    await flushPromises()
+    await settleView()
     return wrapper
   }
 
   it('blocks send, opens provider setup dialog, and restores input draft when no provider is configured', async () => {
     const wrapper = await mountChatView()
-    await wrapper.find('.chat-input-send-stub').trigger('click')
+    wrapper.findComponent({ name: 'ChatInput' }).vm.$emit('send', 'need provider', [])
     await flushPromises()
 
     expect(mocks.providerPoolStore.fetchProviders).toHaveBeenCalled()
@@ -293,7 +372,7 @@ describe('ChatView provider gating', () => {
     mocks.providerPoolStore.activeProviders = []
 
     const wrapper = await mountChatView()
-    await wrapper.find('.chat-input-send-stub').trigger('click')
+    wrapper.findComponent({ name: 'ChatInput' }).vm.$emit('send', 'need provider', [])
     await flushPromises()
 
     expect(mocks.providerPoolStore.fetchProviders).not.toHaveBeenCalled()

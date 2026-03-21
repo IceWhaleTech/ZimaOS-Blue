@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // DiskCache provides SQLite-backed cache persistence with TTL expiration.
@@ -25,23 +26,30 @@ func NewDiskCache(dbPath string, ttl time.Duration) *DiskCache {
 		return &DiskCache{ttl: ttl}
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(2)
+		db.SetMaxIdleConns(1)
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
+			return err
+		}
+
+		dc := &DiskCache{db: db}
+		return dc.initSchema()
+	})
 	if err != nil {
 		return &DiskCache{ttl: ttl}
 	}
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(1)
 
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
-
-	dc := &DiskCache{db: db, ttl: ttl}
-	if err := dc.initSchema(); err != nil {
-		db.Close()
-		return &DiskCache{ttl: ttl}
-	}
-
-	return dc
+	return &DiskCache{db: db, ttl: ttl}
 }
 
 func (d *DiskCache) initSchema() error {

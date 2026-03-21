@@ -21,6 +21,20 @@ type FailedItemRow = {
   run?: HarnessRunSummary | null
 }
 
+type ScorecardDiagnosticRow = {
+  id: string
+  itemIndex: number | null
+  verdict: string
+  score: number
+  judgeBackend: string
+  judgeModel: string
+  calibrationRef: string
+  takeawayCandidateCount: number | null
+  proposalCount: number | null
+  proposalIDs: string[]
+  proposalSkippedReason: string
+}
+
 const route = useRoute()
 const { t, te } = useI18n()
 const notification = useNotificationStore()
@@ -68,6 +82,34 @@ function formatDate(value?: string | null): string {
   return new Date(parsed).toLocaleString()
 }
 
+function readText(records: Array<Record<string, unknown> | null>, key: string): string {
+  for (const record of records) {
+    const value = String(record?.[key] || '').trim()
+    if (value) return value
+  }
+  return ''
+}
+
+function readNumber(records: Array<Record<string, unknown> | null>, key: string): number | null {
+  for (const record of records) {
+    const value = Number(record?.[key])
+    if (Number.isFinite(value)) return value
+  }
+  return null
+}
+
+function readStringList(records: Array<Record<string, unknown> | null>, key: string): string[] {
+  for (const record of records) {
+    const value = record?.[key]
+    if (!Array.isArray(value)) continue
+    const items = value
+      .map((entry) => String(entry || '').trim())
+      .filter((entry) => entry.length > 0)
+    if (items.length) return items
+  }
+  return []
+}
+
 function percentLabel(value?: number): string {
   return `${Math.round(Number(value || 0) * 100)}%`
 }
@@ -109,6 +151,43 @@ const scorecardByItemID = computed<Record<string, HarnessScorecard>>(() => {
   }
   return out
 })
+const itemByID = computed<Record<string, HarnessRunGroupItem>>(() => {
+  const out: Record<string, HarnessRunGroupItem> = {}
+  for (const item of items.value) out[item.id] = item
+  return out
+})
+const scorecardDiagnostics = computed<ScorecardDiagnosticRow[]>(() =>
+  scorecards.value.map((card) => {
+    const breakdown = safeJSON(card.breakdown_json)
+    const trace = safeJSON(card.judge_trace_json)
+    const records = [breakdown, trace]
+    return {
+      id: card.id,
+      itemIndex: itemByID.value[card.group_item_id]?.index ?? null,
+      verdict: card.verdict,
+      score: Number(card.score || 0),
+      judgeBackend: readText(records, 'judge_backend'),
+      judgeModel: readText(records, 'judge_model'),
+      calibrationRef: readText(records, 'calibration_ref'),
+      takeawayCandidateCount: readNumber(records, 'takeaway_candidate_count'),
+      proposalCount: readNumber(records, 'proposal_count'),
+      proposalIDs: readStringList(records, 'proposal_ids'),
+      proposalSkippedReason: readText(records, 'proposal_skipped_reason'),
+    }
+  })
+)
+const hasScorecardDiagnostics = computed(() =>
+  scorecardDiagnostics.value.some(
+    (row) =>
+      row.judgeBackend ||
+      row.judgeModel ||
+      row.calibrationRef ||
+      row.takeawayCandidateCount != null ||
+      row.proposalCount != null ||
+      row.proposalIDs.length > 0 ||
+      row.proposalSkippedReason
+  )
+)
 
 const hasTerminalGroup = computed(() => {
   return !group.value || !activeStatuses.has(group.value.status)
@@ -434,6 +513,82 @@ onUnmounted(() => {
           <span>{{ tr('harness.group.queuedCount', 'Queued') }}: {{ summaryCount('queued') + summaryCount('pending') }}</span>
           <span>{{ tr('harness.group.runningCount', 'Running') }}: {{ summaryCount('running') }}</span>
           <span>{{ tr('harness.group.failedCount', 'Failed') }}: {{ summaryCount('failed') + summaryCount('error') }}</span>
+        </div>
+      </section>
+
+      <section v-if="scorecards.length" class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>{{ tr('harness.group.scorecardInsights', 'Calibration & proposal summary') }}</h2>
+            <p class="panel-caption">
+              {{
+                tr(
+                  'harness.group.scorecardInsightsHint',
+                  'Harness surfaces scoring diagnostics here; proposal review still happens in Memory / Self-evolution.'
+                )
+              }}
+            </p>
+          </div>
+          <RouterLink class="inline-link" :to="{ name: 'Settings', query: { tab: 'userdata' } }">
+            {{ tr('harness.group.reviewProposals', 'Review in Memory') }}
+          </RouterLink>
+        </div>
+
+        <div v-if="!hasScorecardDiagnostics" class="empty-state">
+          {{
+            tr(
+              'harness.group.noScorecardInsights',
+              'No calibration or proposal diagnostics were attached to the current scorecards.'
+            )
+          }}
+        </div>
+
+        <div v-else class="table-like">
+          <article v-for="row in scorecardDiagnostics" :key="row.id" class="table-row">
+            <div class="row-primary">
+              <div class="row-title-line">
+                <strong>#{{ row.itemIndex ?? '?' }}</strong>
+                <span class="status-chip" :class="statusTone(row.verdict)">{{ statusLabel(row.verdict) }}</span>
+                <span v-if="row.judgeBackend" class="profile-chip">{{ row.judgeBackend }}</span>
+              </div>
+              <p class="row-subtitle">
+                {{ tr('harness.groups.score', 'Score') }} {{ scoreLabel(row.score) }}
+              </p>
+              <div class="detail-pills">
+                <span v-if="row.judgeModel">
+                  {{ tr('harness.group.judgeModel', 'Judge model') }}: {{ row.judgeModel }}
+                </span>
+                <span v-if="row.calibrationRef">
+                  {{ tr('harness.group.calibrationRef', 'Calibration ref') }}:
+                  {{ row.calibrationRef }}
+                </span>
+                <span v-if="row.takeawayCandidateCount != null">
+                  {{ tr('harness.group.takeawayCandidateCount', 'Takeaway candidates') }}:
+                  {{ row.takeawayCandidateCount }}
+                </span>
+                <span v-if="row.proposalCount != null">
+                  {{ tr('harness.group.proposalCount', 'Proposal count') }}:
+                  {{ row.proposalCount }}
+                </span>
+              </div>
+              <p v-if="row.proposalSkippedReason" class="failed-reason">
+                {{ row.proposalSkippedReason }}
+              </p>
+            </div>
+            <div class="row-metrics">
+              <span v-if="row.proposalIDs.length">
+                {{ tr('harness.group.proposalIds', 'Proposal IDs') }}:
+              </span>
+              <div v-if="row.proposalIDs.length" class="id-stack">
+                <code v-for="proposalID in row.proposalIDs" :key="proposalID" class="run-id">
+                  {{ proposalID }}
+                </code>
+              </div>
+              <span v-else class="panel-caption">
+                {{ tr('harness.group.noProposalIds', 'No review proposals attached') }}
+              </span>
+            </div>
+          </article>
         </div>
       </section>
 
@@ -880,6 +1035,29 @@ onUnmounted(() => {
   font-size: 0.9rem;
 }
 
+.detail-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.detail-pills span {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.id-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-end;
+}
+
 .inline-link {
   padding: 0;
   background: transparent;
@@ -948,6 +1126,10 @@ onUnmounted(() => {
   }
 
   .row-metrics {
+    align-items: flex-start;
+  }
+
+  .id-stack {
     align-items: flex-start;
   }
 }

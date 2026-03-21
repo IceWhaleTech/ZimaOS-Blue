@@ -310,7 +310,7 @@ export default {
         entries_hidden_in_card: 'Entrades ocultes',
       },
       actions: {
-        extract_with_web_fetch: 'Extreu amb captura web',
+        extract_with_web_fetch: 'Extreu del web',
       },
       messages: {
         browser_tab_ready: 'La pestanya del navegador és a punt',
@@ -883,7 +883,7 @@ export default {
         entries_hidden_in_card: 'Skryté položky',
       },
       actions: {
-        extract_with_web_fetch: 'Extrahovat pomocí načtení webu',
+        extract_with_web_fetch: 'Extrahovat z webu',
       },
       messages: {
         browser_tab_ready: 'Karta prohlížeče je připravena',
@@ -1456,7 +1456,7 @@ export default {
         entries_hidden_in_card: 'Skjulte poster',
       },
       actions: {
-        extract_with_web_fetch: 'Udtræk med webhentning',
+        extract_with_web_fetch: 'Udtræk fra web',
       },
       messages: {
         browser_tab_ready: 'Browserfanen er klar',
@@ -2029,7 +2029,7 @@ export default {
         entries_hidden_in_card: 'Versteckte Einträge',
       },
       actions: {
-        extract_with_web_fetch: 'Mit Web-Abruf extrahieren',
+        extract_with_web_fetch: 'Aus dem Web extrahieren',
       },
       messages: {
         browser_tab_ready: 'Browser-Tab ist bereit',
@@ -2605,7 +2605,7 @@ export default {
         entries_hidden_in_card: 'Κρυφές καταχωρήσεις',
       },
       actions: {
-        extract_with_web_fetch: 'Εξαγωγή με ανάκτηση ιστού',
+        extract_with_web_fetch: 'Εξαγωγή από τον ιστό',
       },
       messages: {
         browser_tab_ready: 'Η καρτέλα του προγράμματος περιήγησης είναι έτοιμη',
@@ -3178,7 +3178,7 @@ export default {
         entries_hidden_in_card: 'Hidden Entries',
       },
       actions: {
-        extract_with_web_fetch: 'Extract with Web Fetch',
+        extract_with_web_fetch: 'Extract from Web',
       },
       messages: {
         browser_tab_ready: 'Browser tab ready',
@@ -3756,7 +3756,7 @@ export default {
         entries_hidden_in_card: 'Entradas ocultas',
       },
       actions: {
-        extract_with_web_fetch: 'Extraer con captura web',
+        extract_with_web_fetch: 'Extraer de la web',
       },
       messages: {
         browser_tab_ready: 'La pestaña del navegador está lista',
@@ -4330,7 +4330,7 @@ export default {
         entries_hidden_in_card: 'Entrées masquées',
       },
       actions: {
-        extract_with_web_fetch: 'Extraire avec récupération web',
+        extract_with_web_fetch: 'Extraire du web',
       },
       messages: {
         browser_tab_ready: 'L’onglet du navigateur est prêt',
@@ -4905,7 +4905,7 @@ export default {
         entries_hidden_in_card: 'Iontrálacha folaithe',
       },
       actions: {
-        extract_with_web_fetch: 'Bain amach le gabháil ghréasáin',
+        extract_with_web_fetch: 'Bain amach ón ngréasán',
       },
       messages: {
         browser_tab_ready: 'Tá cluaisín an bhrabhsálaí réidh',
@@ -5479,7 +5479,7 @@ export default {
         entries_hidden_in_card: 'Skriveni unosi',
       },
       actions: {
-        extract_with_web_fetch: 'Izdvoji pomoću web dohvaćanja',
+        extract_with_web_fetch: 'Izdvoji s weba',
       },
       messages: {
         browser_tab_ready: 'Kartica preglednika je spremna',
@@ -6053,7 +6053,7 @@ export default {
         entries_hidden_in_card: 'Rejtett bejegyzések',
       },
       actions: {
-        extract_with_web_fetch: 'Kinyerés webes lekéréssel',
+        extract_with_web_fetch: 'Kinyerés a webről',
       },
       messages: {
         browser_tab_ready: 'A böngészőlap készen áll',
@@ -6629,7 +6629,7 @@ export default {
         entries_hidden_in_card: 'Voci nascoste',
       },
       actions: {
-        extract_with_web_fetch: 'Estrai con recupero web',
+        extract_with_web_fetch: 'Estrai dal web',
       },
       messages: {
         browser_tab_ready: 'La scheda del browser è pronta',
@@ -7202,7 +7202,7 @@ export default {
         entries_hidden_in_card: 'カードで非表示の項目',
       },
       actions: {
-        extract_with_web_fetch: 'Web取得で抽出',
+        extract_with_web_fetch: 'Webから抽出',
       },
       messages: {
         browser_tab_ready: 'ブラウザタブの準備ができました',
@@ -7694,7 +7694,7 @@ export default {
         entries_hidden_in_card: '카드에서 숨겨진 항목',
       },
       actions: {
-        extract_with_web_fetch: '웹 가져오기로 추출',
+        extract_with_web_fetch: '웹에서 추출',
       },
       messages: {
         browser_tab_ready: '브라우저 탭 준비 완료',
@@ -8267,7 +8267,7 @@ export default {
         entries_hidden_in_card: 'കാർഡിൽ മറച്ച എൻട്രികൾ',
       },
       actions: {
-        extract_with_web_fetch: 'വെബ് ഫെച്ചിലൂടെ എടുക്കുക',
+        extract_with_web_fetch: 'വെബിൽ നിന്ന് എടുക്കുക',
       },
       messages: {
         browser_tab_ready: 'ബ്രൗസർ ടാബ് തയ്യാറായി',
@@ -8842,7 +8842,7 @@ export default {
         entries_hidden_in_card: 'Skjulte oppføringer',
       },
       actions: {
-        extract_with_web_fetch: 'Trekk ut med webhenting',
+        extract_with_web_fetch: 'Trekk ut fra nettet',
       },
       messages: {
         browser_tab_ready: 'Nettleserfanen er klar',
@@ -9416,7 +9416,7 @@ export default {
         entries_hidden_in_card: 'Verborgen items',
       },
       actions: {
-        extract_with_web_fetch: 'Extraheren met web ophalen',
+        extract_with_web_fetch: 'Van web extraheren',
       },
       messages: {
         browser_tab_ready: 'Browssertabblad is klaar',
@@ -9989,7 +9989,7 @@ export default {
         entries_hidden_in_card: 'Ukryte wpisy',
       },
       actions: {
-        extract_with_web_fetch: 'Wyodrębnij przez pobieranie z sieci',
+        extract_with_web_fetch: 'Wyodrębnij z sieci',
       },
       messages: {
         browser_tab_ready: 'Karta przeglądarki jest gotowa',
@@ -10562,7 +10562,7 @@ export default {
         entries_hidden_in_card: 'Entradas ocultas',
       },
       actions: {
-        extract_with_web_fetch: 'Extrair com captura web',
+        extract_with_web_fetch: 'Extrair da web',
       },
       messages: {
         browser_tab_ready: 'A aba do navegador está pronta',
@@ -11135,7 +11135,7 @@ export default {
         entries_hidden_in_card: 'Entradas ocultas',
       },
       actions: {
-        extract_with_web_fetch: 'Extrair com recolha web',
+        extract_with_web_fetch: 'Extrair da web',
       },
       messages: {
         browser_tab_ready: 'O separador do navegador está pronto',
@@ -11709,7 +11709,7 @@ export default {
         entries_hidden_in_card: 'Intrări ascunse',
       },
       actions: {
-        extract_with_web_fetch: 'Extrage cu preluare web',
+        extract_with_web_fetch: 'Extrage de pe web',
       },
       messages: {
         browser_tab_ready: 'Fila din browser este pregătită',
@@ -12283,7 +12283,7 @@ export default {
         entries_hidden_in_card: 'Скрытые записи',
       },
       actions: {
-        extract_with_web_fetch: 'Извлечь через веб-загрузку',
+        extract_with_web_fetch: 'Извлечь из веб-страницы',
       },
       messages: {
         browser_tab_ready: 'Вкладка браузера готова',
@@ -12857,7 +12857,7 @@ export default {
         entries_hidden_in_card: 'Skryté položky',
       },
       actions: {
-        extract_with_web_fetch: 'Extrahovať pomocou načítania webu',
+        extract_with_web_fetch: 'Extrahovať z webu',
       },
       messages: {
         browser_tab_ready: 'Karta prehliadača je pripravená',
@@ -13430,7 +13430,7 @@ export default {
         entries_hidden_in_card: 'Dolda poster',
       },
       actions: {
-        extract_with_web_fetch: 'Extrahera med webbhämtning',
+        extract_with_web_fetch: 'Extrahera från webben',
       },
       messages: {
         browser_tab_ready: 'Webbläsarfliken är klar',
@@ -14000,7 +14000,7 @@ export default {
         entries_hidden_in_card: '卡片中隐藏的条目',
       },
       actions: {
-        extract_with_web_fetch: '使用网页抓取提取',
+        extract_with_web_fetch: '从网页提取',
       },
       messages: {
         browser_tab_ready: '浏览器标签页已就绪',
@@ -14490,7 +14490,7 @@ export default {
         entries_hidden_in_card: '卡片中隱藏的項目',
       },
       actions: {
-        extract_with_web_fetch: '使用網頁抓取擷取',
+        extract_with_web_fetch: '從網頁擷取',
       },
       messages: {
         browser_tab_ready: '瀏覽器分頁已就緒',

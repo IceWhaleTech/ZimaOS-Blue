@@ -13,6 +13,8 @@ var (
 	ErrUsernameRequired = errors.New("username is required")
 	// ErrPasswordRequired is returned when password is empty.
 	ErrPasswordRequired = errors.New("password is required")
+	// ErrUsersAlreadyExist is returned when preview upgrade is attempted after any user exists.
+	ErrUsersAlreadyExist = errors.New("users already exist")
 	// ErrAdminAlreadyExists is returned when trying to upgrade but admin already exists.
 	ErrAdminAlreadyExists = errors.New("admin already exists")
 )
@@ -57,13 +59,20 @@ func (s *UpgradeService) Upgrade(ctx context.Context, req *UpgradeRequest) (*Upg
 		return nil, ErrPasswordRequired
 	}
 
-	// Check if admin already exists
+	// Preview upgrade is only valid before the first user is created.
 	adminExists, err := s.userService.AdminExists(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if adminExists {
 		return nil, ErrAdminAlreadyExists
+	}
+	userExists, err := s.userService.AnyUserExists(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if userExists {
+		return nil, ErrUsersAlreadyExist
 	}
 
 	// Create admin user

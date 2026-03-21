@@ -125,6 +125,70 @@ CREATE TABLE IF NOT EXISTS harness_scorecards (
 	judge_trace_json TEXT DEFAULT '',
 	created_at DATETIME NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS harness_datasets (
+	id TEXT PRIMARY KEY,
+	name TEXT NOT NULL,
+	description TEXT DEFAULT '',
+	owner_user_id TEXT DEFAULT '',
+	subject TEXT DEFAULT '',
+	default_run_kind TEXT DEFAULT '',
+	default_profile TEXT DEFAULT '',
+	active_version_id TEXT DEFAULT '',
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS harness_dataset_versions (
+	id TEXT PRIMARY KEY,
+	dataset_id TEXT NOT NULL,
+	version TEXT NOT NULL,
+	manifest_sha256 TEXT DEFAULT '',
+	item_count INTEGER NOT NULL DEFAULT 0,
+	source_type TEXT DEFAULT '',
+	source_ref TEXT DEFAULT '',
+	manifest_json TEXT NOT NULL DEFAULT '{}',
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_by TEXT DEFAULT '',
+	created_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS harness_eval_specs (
+	id TEXT PRIMARY KEY,
+	name TEXT NOT NULL,
+	owner_user_id TEXT DEFAULT '',
+	subject TEXT DEFAULT '',
+	run_kind TEXT NOT NULL,
+	profile TEXT DEFAULT '',
+	dataset_id TEXT DEFAULT '',
+	dataset_version_id TEXT DEFAULT '',
+	scheduler_json TEXT NOT NULL DEFAULT '{}',
+	scoring_json TEXT NOT NULL DEFAULT '{}',
+	runtime_policy_json TEXT NOT NULL DEFAULT '{}',
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS harness_eval_runs (
+	id TEXT PRIMARY KEY,
+	eval_spec_id TEXT NOT NULL,
+	group_id TEXT NOT NULL,
+	dataset_version_id TEXT DEFAULT '',
+	baseline_eval_run_id TEXT DEFAULT '',
+	title TEXT DEFAULT '',
+	owner_user_id TEXT DEFAULT '',
+	status TEXT NOT NULL,
+	trigger_kind TEXT DEFAULT '',
+	trigger_ref TEXT DEFAULT '',
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	summary_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL,
+	started_at DATETIME,
+	finished_at DATETIME
+);
 `
 
 const indexSchemaSQL = `
@@ -145,6 +209,14 @@ CREATE INDEX IF NOT EXISTS idx_harness_run_group_items_status ON harness_run_gro
 CREATE INDEX IF NOT EXISTS idx_harness_run_group_items_lease ON harness_run_group_items(group_id, lease_expires_at);
 CREATE INDEX IF NOT EXISTS idx_harness_scorecards_group ON harness_scorecards(group_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_harness_scorecards_item ON harness_scorecards(group_item_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_datasets_owner ON harness_datasets(owner_user_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_harness_dataset_versions_dataset_version ON harness_dataset_versions(dataset_id, version);
+CREATE INDEX IF NOT EXISTS idx_harness_dataset_versions_dataset ON harness_dataset_versions(dataset_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_eval_specs_owner ON harness_eval_specs(owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_eval_specs_dataset ON harness_eval_specs(dataset_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_eval_runs_spec ON harness_eval_runs(eval_spec_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_harness_eval_runs_group ON harness_eval_runs(group_id);
+CREATE INDEX IF NOT EXISTS idx_harness_eval_runs_owner_status ON harness_eval_runs(owner_user_id, status, created_at DESC);
 `
 
 type SQLiteStore struct {
@@ -267,6 +339,10 @@ func (s *SQLiteStore) ListRuns(ctx context.Context, filter RunFilter) ([]Run, er
 		if len(parts) > 0 {
 			clauses = append(clauses, "status IN ("+strings.Join(parts, ",")+")")
 		}
+	}
+	if v := strings.TrimSpace(filter.ConversationID); v != "" {
+		clauses = append(clauses, "conversation_id = ?")
+		args = append(args, v)
 	}
 	if v := strings.TrimSpace(filter.GroupID); v != "" {
 		clauses = append(clauses, "group_id = ?")

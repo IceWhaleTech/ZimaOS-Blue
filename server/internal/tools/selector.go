@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
@@ -43,9 +44,9 @@ type ToolSelectionResult struct {
 
 type toolSelectorCandidate struct {
 	def     ToolDefinition
-	profile sel.SelectorProfile
 	match   sel.MatchResult
 	score   float64
+	docText string
 }
 
 type selectorSignals struct {
@@ -85,6 +86,7 @@ type ToolSelector struct {
 	MaxTools      int
 	AlwaysInclude []string
 
+	bundleCache  sync.Map
 	requests     int64
 	toolsTotal   int64
 	toolsSent    int64
@@ -157,17 +159,17 @@ func (ts *ToolSelector) SelectDetailed(query string, allDefs []ToolDefinition) T
 
 	candidates := make([]toolSelectorCandidate, 0, len(allDefs))
 	for _, def := range allDefs {
-		profile := buildToolSelectorProfile(def)
-		match := sel.MatchProfile(signals, profile)
-		applyToolHardAnchors(signals, def, &match)
+		bundle := ts.cachedToolSelectorBundle(def)
+		match := sel.MatchProfile(signals, bundle.profile)
+		applyToolHardAnchors(query, signals, def, &match)
 		if !match.Eligible {
 			continue
 		}
 		candidates = append(candidates, toolSelectorCandidate{
 			def:     def,
-			profile: profile,
 			match:   match,
 			score:   match.Score,
+			docText: bundle.docText,
 		})
 	}
 
@@ -235,11 +237,57 @@ func estimateToolTokens(def ToolDefinition) int {
 	return tokens
 }
 
-func applyToolHardAnchors(signals sel.QueryIntentSignals, def ToolDefinition, match *sel.MatchResult) {
+func applyToolHardAnchors(query string, signals sel.QueryIntentSignals, def ToolDefinition, match *sel.MatchResult) {
 	if match == nil {
 		return
 	}
 	name := strings.ToLower(strings.TrimSpace(def.Name))
+	if looksLikeStructuredWorkspaceArtifactTask(query, signals) {
+		allowed := make(map[string]struct{}, 8)
+		for _, toolName := range StructuredWorkspaceArtifactWorkflowToolNames(query) {
+			allowed[toolName] = struct{}{}
+		}
+		if _, ok := allowed[name]; ok {
+			match.Eligible = true
+			match.Anchored = true
+			if match.Score < 4.8 {
+				match.Score = 4.8
+			}
+			match.ConfidenceReason = "structured_workspace_artifact"
+			match.ConflictFlags = nil
+			match.MatchedSignals = append(match.MatchedSignals, "rule:structured_workspace_artifact")
+			if !containsString(match.DomainHits, sel.DomainLocalWorkspace) {
+				match.DomainHits = append(match.DomainHits, sel.DomainLocalWorkspace)
+			}
+			sort.Strings(match.MatchedSignals)
+			return
+		}
+		switch name {
+		case "file_delete", "edit", "grep", "pdf", "image":
+			match.Eligible = false
+			match.Score = 0
+			match.Anchored = false
+			match.ConfidenceReason = "structured_workspace_artifact_pruned"
+			return
+		}
+	}
+	if signals.LocalWorkspace {
+		switch name {
+		case "file_read", "file_write", "file_delete", "edit", "ls", "find", "grep", "convert", "pdf":
+			match.Eligible = true
+			match.Anchored = true
+			if match.Score < 4.2 {
+				match.Score = 4.2
+			}
+			match.ConfidenceReason = "local_workspace_file_workflow"
+			match.ConflictFlags = nil
+			match.MatchedSignals = append(match.MatchedSignals, "rule:local_workspace_file_workflow")
+			if !containsString(match.DomainHits, sel.DomainLocalWorkspace) {
+				match.DomainHits = append(match.DomainHits, sel.DomainLocalWorkspace)
+			}
+			sort.Strings(match.MatchedSignals)
+		}
+	}
 	if name == "browser" && signals.URLPresent {
 		match.Eligible = true
 		match.Anchored = true
@@ -266,10 +314,9 @@ func applyToolBM25TieBreak(query string, candidates []toolSelectorCandidate) {
 	scorer := pruner.NewBM25Scorer(1.2, 0.75)
 	segments := make([]pruner.Segment, 0, len(candidates))
 	for i, cand := range candidates {
-		doc := buildToolSelectorDoc(cand.def, cand.profile)
 		segments = append(segments, pruner.Segment{
-			Content:   doc,
-			Tokens:    pruner.TextTokenize(doc),
+			Content:   cand.docText,
+			Tokens:    pruner.TextTokenize(cand.docText),
 			StartLine: i,
 			EndLine:   i,
 		})
@@ -337,6 +384,16 @@ func containsString(items []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func (ts *ToolSelector) cachedToolSelectorBundle(def ToolDefinition) toolSelectorBundle {
+	key := toolSelectorBundleCacheKey(def)
+	if cached, ok := ts.bundleCache.Load(key); ok {
+		return cached.(toolSelectorBundle)
+	}
+	bundle := buildToolSelectorBundle(def)
+	actual, _ := ts.bundleCache.LoadOrStore(key, bundle)
+	return actual.(toolSelectorBundle)
 }
 
 func minInt(a, b int) int {

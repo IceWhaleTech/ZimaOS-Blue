@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 const (
@@ -63,9 +64,7 @@ func NewWithOptions(cfg channel.ZaloConfig, logger *zap.Logger, apiBaseURL strin
 		messages:   make(chan channel.Message, 100),
 		status:     channel.StatusDisconnected,
 		apiBaseURL: apiBaseURL,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient: network.NewPooledHTTPClient(30 * time.Second),
 	}
 }
 

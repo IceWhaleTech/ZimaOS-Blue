@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
@@ -86,23 +87,23 @@ func WithEncryption(enc *Encryptor) APIKeyServiceOption {
 
 // NewAPIKeyService creates a new API key service with its own SQLite database.
 func NewAPIKeyService(dbPath string, opts ...APIKeyServiceOption) (*APIKeyService, error) {
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(1)
-
-	svc := &APIKeyService{db: db, ownsDB: true}
+	svc := &APIKeyService{ownsDB: true}
 	for _, opt := range opts {
 		opt(svc)
 	}
 
-	if err := svc.initDB(); err != nil {
-		db.Close()
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(2)
+		db.SetMaxIdleConns(1)
+
+		openSvc := &APIKeyService{db: db, encryptor: svc.encryptor}
+		return openSvc.initDB()
+	})
+	if err != nil {
 		return nil, err
 	}
 
+	svc.db = db
 	return svc, nil
 }
 
@@ -123,6 +124,15 @@ func NewAPIKeyServiceWithDB(db *sql.DB, opts ...APIKeyServiceOption) (*APIKeySer
 func (s *APIKeyService) initDB() error {
 	_, err := s.db.Exec(`PRAGMA journal_mode=WAL`)
 	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`PRAGMA synchronous=FULL`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`PRAGMA wal_autocheckpoint=1000`); err != nil {
 		return err
 	}
 	s.db.Exec(`PRAGMA cache_size=-500`)

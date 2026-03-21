@@ -12,6 +12,7 @@ func buildWebFetchConfig(cfg *config.Config) tools.WebFetchConfig {
 	wf := cfg.ToolCalling.WebFetch
 	return tools.WebFetchConfig{
 		Timeout:           wf.Timeout,
+		FirecrawlTimeout:  wf.FirecrawlTimeout,
 		AllowPrivateHosts: wf.AllowPrivateHosts,
 	}
 }

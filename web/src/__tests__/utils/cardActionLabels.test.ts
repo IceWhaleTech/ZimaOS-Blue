@@ -3,7 +3,7 @@ import { shouldTranslateCardActionLabel, translateCardActionLabel } from '@/util
 
 const messages: Record<string, string> = {
   'cardActions.use_browser': '使用浏览器',
-  'cardActions.extract_with_web_fetch': '用 Web Fetch 提取',
+  'cardActions.extract_with_web_fetch': '从网页提取',
   'resultCard.actions.extract_with_web_fetch': '从结果卡提取',
 }
 

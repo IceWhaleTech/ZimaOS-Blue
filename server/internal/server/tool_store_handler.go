@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
@@ -56,9 +57,7 @@ func NewToolStoreHandler(registry *tools.Registry) *ToolStoreHandler {
 		registry:    registry,
 		sources:     make(map[string]*ToolSource),
 		remoteTools: make(map[string]*RemoteTool),
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient:  network.NewPooledHTTPClient(5 * time.Minute),
 	}
 
 	// Register default sources

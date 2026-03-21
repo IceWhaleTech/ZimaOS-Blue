@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,11 +12,24 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
 const maxFileWriteChunkBytes = 32 << 10 // 32 KiB per write call; prefer write_begin/write_chunk/write_commit for larger files.
+
+type fileWriteVerification struct {
+	Size         int64
+	Verified     bool
+	Method       string
+	BytesWritten int64
+}
+
+type BuiltinRuntimeConfig struct {
+	DataDir string
+	Ripgrep config.ToolCallingRipgrepConfig
+}
 
 // FileReadTool reads content from a file.
 type FileReadTool struct {
@@ -23,8 +37,15 @@ type FileReadTool struct {
 	// When empty, current working directory is treated as workspace root.
 	AllowedPaths []string
 	// MaxFileSize is the maximum file size to read (default 2 MiB).
-	MaxFileSize int64
-	scope       *fsToolScope
+	MaxFileSize    int64
+	pdfService     PDFService
+	documentReader DocumentReadService
+	scope          *fsToolScope
+}
+
+// DocumentReadService extracts readable text from local office-style documents.
+type DocumentReadService interface {
+	ReadDocument(ctx context.Context, path string) (*convertpkg.DocumentReadResult, error)
 }
 
 // NewFileReadTool creates a new file read tool.
@@ -33,17 +54,34 @@ func NewFileReadTool(allowedPaths []string, maxFileSize int64) *FileReadTool {
 		maxFileSize = maxFSToolBytes
 	}
 	return &FileReadTool{
-		AllowedPaths: allowedPaths,
-		MaxFileSize:  maxFileSize,
-		scope:        newFSToolScope(allowedPaths),
+		AllowedPaths:   allowedPaths,
+		MaxFileSize:    maxFileSize,
+		documentReader: convertpkg.NewDocumentReader(),
+		scope:          newFSToolScope(allowedPaths),
 	}
+}
+
+// SetPDFService enables PDF-aware reads for local PDF files.
+func (f *FileReadTool) SetPDFService(service PDFService) {
+	if f == nil {
+		return
+	}
+	f.pdfService = service
+}
+
+// SetDocumentReadService enables office-style document reads for local files.
+func (f *FileReadTool) SetDocumentReadService(service DocumentReadService) {
+	if f == nil {
+		return
+	}
+	f.documentReader = service
 }
 
 // Definition returns the tool's definition.
 func (f *FileReadTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "read",
-		Description: "Reads content from a file. Returns the file content as text.",
+		Name:        "file_read",
+		Description: "Reads content from a local file. Returns UTF-8 text for normal files, can extract text/metadata from local PDF files when PDF support is available, and can read local office-style documents such as docx/xlsx/pptx when document extraction support is available.",
 		Icon:        "file-read",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -64,6 +102,41 @@ func (f *FileReadTool) Definition() ToolDefinition {
 					"type":        "integer",
 					"description": "Optional read size cap in bytes (1..2097152)",
 				},
+				"page": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional single 1-based PDF page to extract.",
+				},
+				"pages": map[string]interface{}{
+					"description": "Optional PDF page selection as '1,3-5', a single number, or an array of page numbers.",
+				},
+				"max_pages": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional maximum PDF pages to extract.",
+				},
+				"max_chars": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional maximum PDF characters to return.",
+				},
+				"include_pages": map[string]interface{}{
+					"type":        "boolean",
+					"description": "If true, include per-page PDF text alongside merged text.",
+				},
+				"ocr": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Enable OCR fallback for scanned PDFs.",
+				},
+				"disable_ocr": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Disable OCR fallback for PDFs.",
+				},
+				"vision": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Enable vision fallback for PDFs when available.",
+				},
+				"disable_vision": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Disable vision fallback for PDFs.",
+				},
 			},
 			"required": []string{"path"},
 		},
@@ -72,9 +145,13 @@ func (f *FileReadTool) Definition() ToolDefinition {
 
 // Execute reads the file content.
 func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	path, err := fsAsString(args, "path")
-	if err != nil || path == "" {
-		return nil, errors.New("path must be a non-empty string")
+	path := strings.TrimSpace(firstCompatPathString(args))
+	if path == "" {
+		var err error
+		path, err = fsAsString(args, "path")
+		if err != nil || path == "" {
+			return nil, errors.New("path must be a non-empty string")
+		}
 	}
 	startLine, err := fsAsInt(args, "start_line", 1)
 	if err != nil {
@@ -90,7 +167,7 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	maxBytes = fsClamp(maxBytes, 1, int(f.MaxFileSize))
 
-	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, "read", path, false)
+	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, "file_read", path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -106,6 +183,13 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 
 	if info.IsDir() {
 		return nil, errors.New("path is a directory, not a file")
+	}
+
+	if strings.EqualFold(filepath.Ext(absPath), ".pdf") && f.pdfService != nil {
+		return f.executePDFRead(ctx, absPath, relPath, args)
+	}
+	if f.shouldUseDocumentReader(absPath) {
+		return f.executeDocumentRead(ctx, absPath, relPath, info, startLine, endLine, maxBytes)
 	}
 
 	if info.Size() > f.MaxFileSize {
@@ -172,6 +256,111 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	return string(jsonResult), nil
 }
 
+func (f *FileReadTool) shouldUseDocumentReader(path string) bool {
+	switch strings.ToLower(strings.TrimPrefix(filepath.Ext(path), ".")) {
+	case "docx", "xlsx", "pptx":
+		return true
+	default:
+		return false
+	}
+}
+
+func (f *FileReadTool) executePDFRead(ctx context.Context, absPath, relPath string, args map[string]interface{}) (interface{}, error) {
+	pdfArgs := make(map[string]interface{}, len(args)+1)
+	for key, value := range args {
+		pdfArgs[key] = value
+	}
+	pdfArgs["path"] = absPath
+
+	result, err := NewPDFTool(f.pdfService).Execute(ctx, pdfArgs)
+	if err != nil {
+		return nil, err
+	}
+
+	if payload, ok := result.(map[string]interface{}); ok {
+		if _, exists := payload["path"]; !exists {
+			payload["path"] = relPath
+		}
+		return payload, nil
+	}
+	return result, nil
+}
+
+func (f *FileReadTool) executeDocumentRead(ctx context.Context, absPath, relPath string, info os.FileInfo, startLine, endLine, maxBytes int) (interface{}, error) {
+	if f.documentReader == nil {
+		return nil, fmt.Errorf("file_read does not support %s on this runtime: document extraction is unavailable", strings.TrimPrefix(strings.ToLower(filepath.Ext(absPath)), "."))
+	}
+	result, err := f.documentReader.ReadDocument(ctx, absPath)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, fmt.Errorf("document extraction returned no result for %s", relPath)
+	}
+
+	contentBytes := []byte(result.Text)
+	truncated := false
+	if len(contentBytes) > maxBytes {
+		contentBytes = contentBytes[:maxBytes]
+		truncated = true
+		for len(contentBytes) > 0 && !utf8.Valid(contentBytes) {
+			contentBytes = contentBytes[:len(contentBytes)-1]
+		}
+	}
+	if !utf8.Valid(contentBytes) {
+		return nil, fmt.Errorf("document text is not valid UTF-8: %s", relPath)
+	}
+	content, rangeEnd, totalLines, err := sliceReadContentByLines(string(contentBytes), startLine, endLine)
+	if err != nil {
+		return nil, err
+	}
+
+	response := map[string]interface{}{
+		"path":            relPath,
+		"size":            info.Size(),
+		"start_line":      startLine,
+		"end_line":        rangeEnd,
+		"total_lines":     totalLines,
+		"truncated":       truncated,
+		"content":         content,
+		"document_format": result.Format,
+	}
+	if strings.TrimSpace(result.ExtractedVia) != "" {
+		response["extracted_via"] = result.ExtractedVia
+	}
+	if result.TabularSummary != nil {
+		response["tabular_summary"] = result.TabularSummary
+	}
+	jsonResult, _ := json.Marshal(response)
+	return string(jsonResult), nil
+}
+
+func sliceReadContentByLines(text string, startLine, endLine int) (string, int, int, error) {
+	if startLine < 1 {
+		return "", 0, 0, errors.New("start_line must be >= 1")
+	}
+	lines := strings.Split(text, "\n")
+	totalLines := len(lines)
+	if totalLines == 0 {
+		totalLines = 1
+	}
+	if startLine > totalLines {
+		return "", 0, totalLines, fmt.Errorf("start_line %d out of range (total lines: %d)", startLine, totalLines)
+	}
+	from := startLine - 1
+	to := totalLines
+	if endLine > 0 {
+		to = endLine
+	}
+	if to > totalLines {
+		to = totalLines
+	}
+	if to < startLine {
+		return "", 0, totalLines, errors.New("end_line must be >= start_line")
+	}
+	return strings.Join(lines[from:to], "\n"), to, totalLines, nil
+}
+
 // validatePath checks if the path is allowed.
 func (f *FileReadTool) validatePath(path string) error {
 	_, _, _, err := f.scope.resolvePath(path, false)
@@ -202,7 +391,7 @@ func NewFileWriteTool(allowedPaths []string, maxFileSize int64) *FileWriteTool {
 // Definition returns the tool's definition.
 func (f *FileWriteTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "write",
+		Name:        "file_write",
 		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does. For very large files, prefer write_begin/write_chunk/write_commit; otherwise write the first chunk, then continue with append=true across multiple calls instead of sending one huge payload.",
 		Icon:        "file-write",
 		Parameters: map[string]interface{}{
@@ -236,9 +425,13 @@ func (f *FileWriteTool) Definition() ToolDefinition {
 
 // Execute writes content to the file.
 func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	path, err := fsAsString(args, "path")
-	if err != nil || path == "" {
-		return nil, errors.New("path must be a non-empty string")
+	path := strings.TrimSpace(firstCompatPathString(args))
+	if path == "" {
+		var err error
+		path, err = fsAsString(args, "path")
+		if err != nil || path == "" {
+			return nil, errors.New("path must be a non-empty string")
+		}
 	}
 
 	content, err := fsAsTextContent(args, "content")
@@ -269,7 +462,7 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 		return nil, errors.New("line must be >= 1")
 	}
 
-	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, "write", path, false)
+	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, "file_write", path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -304,52 +497,46 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 		if int64(len(updatedContent)) > f.MaxFileSize {
 			return nil, fmt.Errorf("result too large: %d bytes (max: %d bytes)", len(updatedContent), f.MaxFileSize)
 		}
-		if err := os.WriteFile(absPath, []byte(updatedContent), 0o644); err != nil {
-			return nil, fmt.Errorf("failed to write file: %w", err)
-		}
-		info, _ := os.Stat(absPath)
-		size := int64(0)
-		if info != nil {
-			size = info.Size()
+		verification, err := writeFileOverwriteWithVerification(absPath, []byte(updatedContent))
+		if err != nil {
+			return nil, err
 		}
 		response := map[string]interface{}{
-			"path":    relPath,
-			"size":    size,
-			"success": true,
-			"line":    line,
+			"path":                relPath,
+			"size":                verification.Size,
+			"success":             true,
+			"append":              false,
+			"line":                line,
+			"verified":            verification.Verified,
+			"verification_method": verification.Method,
+			"bytes_written":       verification.BytesWritten,
 		}
 		jsonResult, _ := json.Marshal(response)
 		return string(jsonResult), nil
 	}
 
 	// Write file
+	var verification fileWriteVerification
 	if appendMode {
-		file, err := os.OpenFile(absPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		verification, err = appendFileWithVerification(absPath, content)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open file: %w", err)
-		}
-		defer file.Close()
-		if _, err = file.WriteString(content); err != nil {
-			return nil, fmt.Errorf("failed to write file: %w", err)
+			return nil, err
 		}
 	} else {
-		if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
-			return nil, fmt.Errorf("failed to write file: %w", err)
+		verification, err = writeFileOverwriteWithVerification(absPath, []byte(content))
+		if err != nil {
+			return nil, err
 		}
-	}
-
-	// Get file info after write
-	info, _ := os.Stat(absPath)
-	var size int64
-	if info != nil {
-		size = info.Size()
 	}
 
 	response := map[string]interface{}{
-		"path":    relPath,
-		"size":    size,
-		"success": true,
-		"append":  appendMode,
+		"path":                relPath,
+		"size":                verification.Size,
+		"success":             true,
+		"append":              appendMode,
+		"verified":            verification.Verified,
+		"verification_method": verification.Method,
+		"bytes_written":       verification.BytesWritten,
 	}
 	jsonResult, _ := json.Marshal(response)
 	return string(jsonResult), nil
@@ -357,6 +544,121 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 
 // validatePath checks if the path is allowed.
 func (f *FileWriteTool) validatePath(path string) error {
+	_, _, _, err := f.scope.resolvePath(path, false)
+	return err
+}
+
+type FileDeleteTool struct {
+	AllowedPaths []string
+	scope        *fsToolScope
+}
+
+func NewFileDeleteTool(allowedPaths []string) *FileDeleteTool {
+	return &FileDeleteTool{
+		AllowedPaths: allowedPaths,
+		scope:        newFSToolScope(allowedPaths),
+	}
+}
+
+func (f *FileDeleteTool) Definition() ToolDefinition {
+	return ToolDefinition{
+		Name:        "file_delete",
+		Description: "Deletes a local file or directory. For directories, set recursive=true to remove non-empty contents.",
+		Icon:        "trash",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path": map[string]interface{}{
+					"type":        "string",
+					"description": "The path to the file or directory to delete",
+				},
+				"recursive": map[string]interface{}{
+					"type":        "boolean",
+					"description": "If true, delete directories recursively (default: false)",
+				},
+				"missing_ok": map[string]interface{}{
+					"type":        "boolean",
+					"description": "If true, treat a missing path as a successful no-op (default: false)",
+				},
+			},
+			"required": []string{"path"},
+		},
+	}
+}
+
+func (f *FileDeleteTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	path := strings.TrimSpace(firstCompatPathString(args))
+	if path == "" {
+		var err error
+		path, err = fsAsString(args, "path")
+		if err != nil || path == "" {
+			return nil, errors.New("path must be a non-empty string")
+		}
+	}
+
+	recursive, err := fsAsBool(args, "recursive", false)
+	if err != nil {
+		return nil, err
+	}
+	missingOK, err := fsAsBool(args, "missing_ok", false)
+	if err != nil {
+		return nil, err
+	}
+
+	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, "file_delete", path, false)
+	if err != nil {
+		return nil, err
+	}
+	if err := enforceWritePathGuard(ctx, absPath); err != nil {
+		return nil, err
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) && missingOK {
+			response := map[string]interface{}{
+				"path":       relPath,
+				"success":    true,
+				"deleted":    false,
+				"missing_ok": true,
+			}
+			jsonResult, _ := json.Marshal(response)
+			return string(jsonResult), nil
+		}
+		return nil, err
+	}
+
+	kind := "file"
+	if info.IsDir() {
+		kind = "directory"
+	}
+
+	if info.IsDir() && !recursive {
+		if err := os.Remove(absPath); err != nil {
+			return nil, fmt.Errorf("failed to delete directory %q without recursive=true: %w", relPath, err)
+		}
+	} else if recursive {
+		if err := os.RemoveAll(absPath); err != nil {
+			return nil, fmt.Errorf("failed to delete %s: %w", relPath, err)
+		}
+	} else {
+		if err := os.Remove(absPath); err != nil {
+			return nil, fmt.Errorf("failed to delete file %q: %w", relPath, err)
+		}
+	}
+
+	response := map[string]interface{}{
+		"path":      relPath,
+		"success":   true,
+		"deleted":   true,
+		"kind":      kind,
+		"recursive": recursive,
+	}
+	jsonResult, _ := json.Marshal(response)
+	return string(jsonResult), nil
+}
+
+func (f *FileDeleteTool) validatePath(path string) error {
 	_, _, _, err := f.scope.resolvePath(path, false)
 	return err
 }
@@ -401,6 +703,155 @@ func (f *FileWriteTool) replaceSingleLine(path string, line int, content string)
 	return out, nil
 }
 
+func writeFileOverwriteWithVerification(path string, data []byte) (fileWriteVerification, error) {
+	if err := atomicWriteTextFile(path, data, detectWritableFileMode(path)); err != nil {
+		if size, ok := verifyWrittenFileContent(path, data); ok {
+			return fileWriteVerification{
+				Size:         size,
+				Verified:     true,
+				Method:       "recovered",
+				BytesWritten: int64(len(data)),
+			}, nil
+		}
+		return fileWriteVerification{}, fmt.Errorf("failed to write file: %w", err)
+	}
+	size, ok := verifyWrittenFileContent(path, data)
+	if !ok {
+		return fileWriteVerification{}, errors.New("failed to verify written file content")
+	}
+	return fileWriteVerification{
+		Size:         size,
+		Verified:     true,
+		Method:       "content",
+		BytesWritten: int64(len(data)),
+	}, nil
+}
+
+func appendFileWithVerification(path, content string) (fileWriteVerification, error) {
+	beforeSize := int64(0)
+	if info, err := os.Stat(path); err == nil && info != nil {
+		beforeSize = info.Size()
+	} else if err != nil && !os.IsNotExist(err) {
+		return fileWriteVerification{}, fmt.Errorf("failed to stat existing file: %w", err)
+	}
+
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, detectWritableFileMode(path))
+	if err != nil {
+		return fileWriteVerification{}, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	var writeErr error
+	if _, writeErr = file.WriteString(content); writeErr == nil {
+		writeErr = file.Sync()
+	}
+	closeErr := file.Close()
+	if writeErr == nil {
+		writeErr = closeErr
+	}
+
+	size, method, ok := verifyAppendedFileContent(path, beforeSize, []byte(content))
+	if writeErr != nil {
+		if ok {
+			return fileWriteVerification{
+				Size:         size,
+				Verified:     true,
+				Method:       "recovered",
+				BytesWritten: int64(len(content)),
+			}, nil
+		}
+		return fileWriteVerification{}, fmt.Errorf("failed to write file: %w", writeErr)
+	}
+	if !ok {
+		return fileWriteVerification{}, errors.New("failed to verify appended file content")
+	}
+	return fileWriteVerification{
+		Size:         size,
+		Verified:     true,
+		Method:       method,
+		BytesWritten: int64(len(content)),
+	}, nil
+}
+
+func detectWritableFileMode(path string) os.FileMode {
+	info, err := os.Stat(path)
+	if err == nil && info != nil {
+		if perm := info.Mode().Perm(); perm != 0 {
+			return perm
+		}
+	}
+	return 0o644
+}
+
+func atomicWriteTextFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmpFile, err := os.CreateTemp(dir, ".blue-file-write-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	cleanup := func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+	}
+	if err := tmpFile.Chmod(perm); err != nil {
+		cleanup()
+		return err
+	}
+	if _, err := tmpFile.Write(data); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
+}
+
+func verifyWrittenFileContent(path string, expected []byte) (int64, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, false
+	}
+	if !bytes.Equal(data, expected) {
+		return int64(len(data)), false
+	}
+	return int64(len(data)), true
+}
+
+func verifyAppendedFileContent(path string, beforeSize int64, expected []byte) (int64, string, bool) {
+	info, err := os.Stat(path)
+	if err != nil || info == nil {
+		return 0, "", false
+	}
+	size := info.Size()
+	if size < beforeSize {
+		return size, "", false
+	}
+	if len(expected) == 0 {
+		return size, "stat", true
+	}
+	data, err := os.ReadFile(path)
+	if err == nil && len(data) >= len(expected) {
+		tail := data[len(data)-len(expected):]
+		if bytes.Equal(tail, expected) && size >= beforeSize+int64(len(expected)) {
+			return size, "content", true
+		}
+	}
+	if size >= beforeSize+int64(len(expected)) {
+		return size, "stat", true
+	}
+	return size, "", false
+}
+
 // RegisterBuiltinTools registers built-in core tools with default configuration.
 func RegisterBuiltinTools(registry *Registry) {
 	if registry == nil {
@@ -409,43 +860,45 @@ func RegisterBuiltinTools(registry *Registry) {
 	writeSessions := NewWriteSessionManager(0)
 	registry.Register(NewFileReadTool(nil, 0))
 	registry.Register(NewFileWriteTool(nil, 0))
+	registry.Register(NewFileDeleteTool(nil))
 	registry.Register(NewFileWriteBeginTool(nil, writeSessions))
 	registry.Register(NewFileWriteChunkTool(writeSessions))
 	registry.Register(NewFileWriteCommitTool(writeSessions))
 	registry.Register(NewFileWriteAbortTool(writeSessions))
 	registry.Register(NewEditTool(nil, 0))
 	registry.Register(NewGrepTool(nil, 0))
+	registry.Register(NewRgTool(nil, 0))
 	registry.Register(NewFindTool(nil))
 	registry.Register(NewLsTool(nil))
-	registry.Register(NewWebSearchTool(WebSearchConfig{}))
-	registry.Register(NewWebFetchTool(WebFetchConfig{}))
-	registry.Register(NewWebReadTool(WebFetchConfig{}))
-	registry.Register(NewWebExtractTool(WebFetchConfig{}))
-	registry.Register(NewWebCrawlTool(WebFetchConfig{}))
+	registerWebTools(registry, WebSearchConfig{}, WebFetchConfig{})
 	registry.Register(NewMCPTool(registry))
 }
 
 // RegisterBuiltinToolsWithConfig registers built-in core tools with custom configuration.
 func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearchConfig, webFetchConfig WebFetchConfig, allowedPaths []string, maxFileSize int64) {
+	RegisterBuiltinToolsWithRuntimeConfig(registry, webSearchConfig, webFetchConfig, allowedPaths, maxFileSize, BuiltinRuntimeConfig{})
+}
+
+// RegisterBuiltinToolsWithRuntimeConfig registers built-in tools with runtime resource configuration.
+func RegisterBuiltinToolsWithRuntimeConfig(registry *Registry, webSearchConfig WebSearchConfig, webFetchConfig WebFetchConfig, allowedPaths []string, maxFileSize int64, runtimeCfg BuiltinRuntimeConfig) {
 	if registry == nil {
 		return
 	}
+	ripgrep := newBuiltinRipgrepResolver(runtimeCfg)
 	writeSessions := NewWriteSessionManager(maxFileSize)
 	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
 	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
+	registry.Register(NewFileDeleteTool(allowedPaths))
 	registry.Register(NewFileWriteBeginTool(allowedPaths, writeSessions))
 	registry.Register(NewFileWriteChunkTool(writeSessions))
 	registry.Register(NewFileWriteCommitTool(writeSessions))
 	registry.Register(NewFileWriteAbortTool(writeSessions))
 	registry.Register(NewEditTool(allowedPaths, maxFileSize))
-	registry.Register(NewGrepTool(allowedPaths, maxFileSize))
-	registry.Register(NewFindTool(allowedPaths))
+	registry.Register(NewGrepToolWithRipgrep(allowedPaths, maxFileSize, ripgrep))
+	registry.Register(NewRgToolWithRipgrep(allowedPaths, maxFileSize, ripgrep))
+	registry.Register(NewFindToolWithRipgrep(allowedPaths, ripgrep))
 	registry.Register(NewLsTool(allowedPaths))
-	registry.Register(NewWebSearchTool(webSearchConfig))
-	registry.Register(NewWebFetchTool(webFetchConfig))
-	registry.Register(NewWebReadTool(webFetchConfig))
-	registry.Register(NewWebExtractTool(webFetchConfig))
-	registry.Register(NewWebCrawlTool(webFetchConfig))
+	registerWebTools(registry, webSearchConfig, webFetchConfig)
 	registry.Register(NewMCPTool(registry))
 }
 
@@ -453,16 +906,41 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 // scope as the default builtins plus exec-style approval handling for
 // out-of-scope absolute paths.
 func RegisterApprovalAwareFileTools(registry *Registry, allowedPaths []string, maxFileSize int64, approvals *ApprovalManager, dirStore *DirAllowlistStore) {
+	RegisterApprovalAwareFileToolsWithRuntimeConfig(registry, allowedPaths, maxFileSize, approvals, dirStore, BuiltinRuntimeConfig{})
+}
+
+func RegisterApprovalAwareFileToolsWithRuntimeConfig(registry *Registry, allowedPaths []string, maxFileSize int64, approvals *ApprovalManager, dirStore *DirAllowlistStore, runtimeCfg BuiltinRuntimeConfig) {
 	if registry == nil {
 		return
 	}
+	ripgrep := newBuiltinRipgrepResolver(runtimeCfg)
+	var (
+		pdfService     PDFService
+		documentReader DocumentReadService
+	)
+	if existing := registry.Get("file_read"); existing != nil {
+		if prior, ok := existing.(*FileReadTool); ok {
+			pdfService = prior.pdfService
+			documentReader = prior.documentReader
+		}
+	}
 	read := NewFileReadTool(allowedPaths, maxFileSize)
 	read.scope = read.scope.withApprovalFlow(approvals, dirStore)
+	if pdfService != nil {
+		read.SetPDFService(pdfService)
+	}
+	if documentReader != nil {
+		read.SetDocumentReadService(documentReader)
+	}
 	registry.Register(read)
 
 	write := NewFileWriteTool(allowedPaths, maxFileSize)
 	write.scope = write.scope.withApprovalFlow(approvals, dirStore)
 	registry.Register(write)
+
+	del := NewFileDeleteTool(allowedPaths)
+	del.scope = del.scope.withApprovalFlow(approvals, dirStore)
+	registry.Register(del)
 
 	writeSessions := NewWriteSessionManager(maxFileSize)
 	writeBegin := NewFileWriteBeginTool(allowedPaths, writeSessions)
@@ -476,17 +954,32 @@ func RegisterApprovalAwareFileTools(registry *Registry, allowedPaths []string, m
 	edit.Scope = edit.Scope.withApprovalFlow(approvals, dirStore)
 	registry.Register(edit)
 
-	grep := NewGrepTool(allowedPaths, maxFileSize)
+	grep := NewGrepToolWithRipgrep(allowedPaths, maxFileSize, ripgrep)
 	grep.Scope = grep.Scope.withApprovalFlow(approvals, dirStore)
 	registry.Register(grep)
 
-	find := NewFindTool(allowedPaths)
+	rg := NewRgToolWithRipgrep(allowedPaths, maxFileSize, ripgrep)
+	rg.Scope = rg.Scope.withApprovalFlow(approvals, dirStore)
+	registry.Register(rg)
+
+	find := NewFindToolWithRipgrep(allowedPaths, ripgrep)
 	find.Scope = find.Scope.withApprovalFlow(approvals, dirStore)
 	registry.Register(find)
 
 	ls := NewLsTool(allowedPaths)
 	ls.Scope = ls.Scope.withApprovalFlow(approvals, dirStore)
 	registry.Register(ls)
+}
+
+func newBuiltinRipgrepResolver(runtimeCfg BuiltinRuntimeConfig) ripgrepResolver {
+	if !runtimeCfg.Ripgrep.Enabled {
+		return nil
+	}
+	manager, err := NewRipgrepManager(runtimeCfg.Ripgrep, runtimeCfg.DataDir)
+	if err != nil {
+		return nil
+	}
+	return manager
 }
 
 // RegisterExecTools registers exec + process tools with shared session state.
@@ -532,6 +1025,17 @@ func GetWebFetchTool(registry *Registry) *WebFetchTool {
 	return nil
 }
 
+func GetWebTool(registry *Registry) *WebTool {
+	tool := registry.Get("web")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*WebTool); ok {
+		return t
+	}
+	return nil
+}
+
 func GetWebReadTool(registry *Registry) *WebReadTool {
 	tool := registry.Get("web_read")
 	if tool == nil {
@@ -569,6 +1073,14 @@ func AttachPDFServiceToWebTools(registry *Registry, service PDFService) {
 	if registry == nil || service == nil {
 		return
 	}
+	if tool := registry.Get("file_read"); tool != nil {
+		if t, ok := tool.(*FileReadTool); ok {
+			t.SetPDFService(service)
+		}
+	}
+	if tool := GetWebTool(registry); tool != nil {
+		tool.SetPDFService(service)
+	}
 	if tool := GetWebFetchTool(registry); tool != nil {
 		tool.SetPDFService(service)
 	}
@@ -583,14 +1095,33 @@ func AttachPDFServiceToWebTools(registry *Registry, service PDFService) {
 	}
 }
 
-// RegisterMemoryTools creates a disabled unified memory tool for internal use
-// and native OpenClaw-style memory_* wrappers for model-visible compatibility.
+func registerWebTools(registry *Registry, webSearchConfig WebSearchConfig, webFetchConfig WebFetchConfig) {
+	if registry == nil {
+		return
+	}
+	searchTool := NewWebSearchTool(webSearchConfig)
+	fetchTool := NewWebFetchTool(webFetchConfig)
+	readTool := NewWebReadTool(webFetchConfig)
+	extractTool := NewWebExtractTool(webFetchConfig)
+	crawlTool := NewWebCrawlTool(webFetchConfig)
+	registry.Register(searchTool)
+	registry.Register(fetchTool)
+	registry.Register(readTool)
+	registry.Register(extractTool)
+	registry.Register(crawlTool)
+	registry.Register(NewWebTool(searchTool, fetchTool, readTool, extractTool, crawlTool))
+	for _, name := range []string{"web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
+		registry.Disable(name)
+	}
+}
+
+// RegisterMemoryTools registers the unified memory tool plus legacy
+// memory_* wrappers for compatibility.
 func RegisterMemoryTools(registry *Registry, memoryService MemoryServiceInterface) {
 	if memoryService == nil {
 		return
 	}
 	registry.Register(NewMemoryTool(memoryService))
-	registry.Disable("memory")
 	RegisterMemoryCompatTools(registry, memoryService)
 }
 

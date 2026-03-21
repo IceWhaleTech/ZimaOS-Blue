@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -60,6 +61,11 @@ func NewService(config *Config) (*RodService, error) {
 	}, nil
 }
 
+// UsesRelayDriver reports whether this service attaches to an external or built-in relay/CDP endpoint.
+func (s *RodService) UsesRelayDriver() bool {
+	return s != nil && s.config != nil && s.config.UsesRelayDriver()
+}
+
 // isConnectionClosed checks if an error indicates a dead WebSocket/TCP connection.
 func isConnectionClosed(err error) bool {
 	if err == nil {
@@ -78,7 +84,7 @@ func (s *RodService) removeTab(tab *tabInfo) {
 	s.tabsMu.Lock()
 	delete(s.tabs, tab.targetID)
 	s.tabsMu.Unlock()
-	if tab.page != nil {
+	if tab.page != nil && !s.config.UsesRelayDriver() {
 		_ = tab.page.Close()
 	}
 }
@@ -113,7 +119,7 @@ func (s *RodService) Stop(ctx context.Context) error {
 	// Close all tabs
 	s.tabsMu.Lock()
 	for _, tab := range s.tabs {
-		if tab.page != nil {
+		if tab.page != nil && !s.config.UsesRelayDriver() {
 			_ = tab.page.Close()
 		}
 	}
@@ -157,6 +163,10 @@ func (s *RodService) Status(ctx context.Context) (*StatusResponse, error) {
 
 // Tabs returns all open tabs.
 func (s *RodService) Tabs(ctx context.Context) ([]*Tab, error) {
+	if err := s.syncRelayTabs(ctx); err != nil {
+		return nil, err
+	}
+
 	s.tabsMu.RLock()
 	defer s.tabsMu.RUnlock()
 
@@ -170,6 +180,87 @@ func (s *RodService) Tabs(ctx context.Context) ([]*Tab, error) {
 		})
 	}
 	return tabs, nil
+}
+
+func (s *RodService) syncRelayTabs(ctx context.Context) error {
+	if !s.config.UsesRelayDriver() {
+		return nil
+	}
+
+	browser, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer s.pool.Release(browser)
+
+	pages, err := browser.Pages()
+	if err != nil {
+		return err
+	}
+
+	next := make(map[string]*tabInfo, len(pages))
+	s.tabsMu.Lock()
+	defer s.tabsMu.Unlock()
+
+	activeID := ""
+	firstTargetID := ""
+	for id, tab := range s.tabs {
+		if tab != nil && tab.active {
+			activeID = id
+			break
+		}
+	}
+
+	for _, page := range pages {
+		if page == nil {
+			continue
+		}
+		info, err := page.Info()
+		if err != nil {
+			continue
+		}
+		targetID := string(page.TargetID)
+		if firstTargetID == "" {
+			firstTargetID = targetID
+		}
+		prev := s.tabs[targetID]
+		tab := &tabInfo{
+			page:     page,
+			browser:  browser,
+			targetID: targetID,
+			url:      info.URL,
+			title:    info.Title,
+			active:   prev != nil && prev.active,
+			console:  make([]ConsoleMessage, 0),
+		}
+		if prev != nil {
+			tab.console = prev.console
+		}
+		next[targetID] = tab
+	}
+
+	if len(next) > 0 {
+		if activeID != "" {
+			if tab := next[activeID]; tab != nil {
+				tab.active = true
+			}
+		}
+		hasActive := false
+		for _, tab := range next {
+			if tab.active {
+				hasActive = true
+				break
+			}
+		}
+		if !hasActive {
+			if tab := next[firstTargetID]; tab != nil {
+				tab.active = true
+			}
+		}
+	}
+
+	s.tabs = next
+	return nil
 }
 
 // OpenTab opens a new tab with the given URL.
@@ -280,25 +371,13 @@ func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*Navig
 		return nil, err
 	}
 
-	s.tabsMu.Lock()
-	var tab *tabInfo
-	if req.TargetID != "" {
-		var ok bool
-		tab, ok = s.tabs[req.TargetID]
-		if !ok {
-			s.tabsMu.Unlock()
-			return nil, ErrTabNotFound
-		}
-	} else {
-		// Find active tab
-		for _, t := range s.tabs {
-			if t.active {
-				tab = t
-				break
-			}
-		}
+	tab, err := s.getTab(ctx, req.TargetID)
+	if err != nil && !(errors.Is(err, ErrTabNotFound) && req.TargetID == "") {
+		return nil, err
 	}
-	s.tabsMu.Unlock()
+	if errors.Is(err, ErrTabNotFound) && req.TargetID == "" {
+		tab = nil
+	}
 
 	if tab == nil {
 		// Open new tab
@@ -564,22 +643,9 @@ func (s *RodService) PDF(ctx context.Context, req *PDFRequest) (*PDFResponse, er
 
 // Snapshot returns a structured snapshot of the page.
 func (s *RodService) Snapshot(ctx context.Context, req *SnapshotRequest) (*SnapshotResponse, error) {
-	s.tabsMu.RLock()
-	var tab *tabInfo
-	if req.TargetID != "" {
-		tab = s.tabs[req.TargetID]
-	} else {
-		for _, t := range s.tabs {
-			if t.active {
-				tab = t
-				break
-			}
-		}
-	}
-	s.tabsMu.RUnlock()
-
-	if tab == nil || tab.page == nil {
-		return nil, ErrTabNotFound
+	tab, err := s.getTab(ctx, req.TargetID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get page content
@@ -698,22 +764,9 @@ func (s *RodService) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeRes
 
 // Act performs an action on the page.
 func (s *RodService) Act(ctx context.Context, req *ActRequest) (*ActResponse, error) {
-	s.tabsMu.RLock()
-	var tab *tabInfo
-	if req.TargetID != "" {
-		tab = s.tabs[req.TargetID]
-	} else {
-		for _, t := range s.tabs {
-			if t.active {
-				tab = t
-				break
-			}
-		}
-	}
-	s.tabsMu.RUnlock()
-
-	if tab == nil || tab.page == nil {
-		return nil, ErrTabNotFound
+	tab, err := s.getTab(ctx, req.TargetID)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := GetTimeout(req.Timeout, s.config)
@@ -983,22 +1036,9 @@ func (s *RodService) executeStep(ctx context.Context, page *rod.Page, step *Auto
 
 // Console returns console messages from the page.
 func (s *RodService) Console(ctx context.Context, req *ConsoleRequest) (*ConsoleResponse, error) {
-	s.tabsMu.RLock()
-	var tab *tabInfo
-	if req.TargetID != "" {
-		tab = s.tabs[req.TargetID]
-	} else {
-		for _, t := range s.tabs {
-			if t.active {
-				tab = t
-				break
-			}
-		}
-	}
-	s.tabsMu.RUnlock()
-
-	if tab == nil {
-		return nil, ErrTabNotFound
+	tab, err := s.getTab(ctx, req.TargetID)
+	if err != nil {
+		return nil, err
 	}
 
 	messages := make([]ConsoleMessage, 0)
@@ -1020,7 +1060,11 @@ func (s *RodService) Console(ctx context.Context, req *ConsoleRequest) (*Console
 }
 
 // getTab returns the tab for the given targetID, or the active tab if targetID is empty.
-func (s *RodService) getTab(targetID string) (*tabInfo, error) {
+func (s *RodService) getTab(ctx context.Context, targetID string) (*tabInfo, error) {
+	if err := s.syncRelayTabs(ctx); err != nil {
+		return nil, err
+	}
+
 	s.tabsMu.RLock()
 	defer s.tabsMu.RUnlock()
 	if targetID != "" {
@@ -1043,8 +1087,7 @@ func (s *RodService) getTab(targetID string) (*tabInfo, error) {
 
 // ElementExists reports whether the given selector matches in the current tab.
 func (s *RodService) ElementExists(ctx context.Context, targetID, selector string) (bool, error) {
-	_ = ctx
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return false, err
 	}
@@ -1058,8 +1101,7 @@ func (s *RodService) ElementExists(ctx context.Context, targetID, selector strin
 
 // ExtractFirstFromTab returns the first matching attribute or text content from the current tab.
 func (s *RodService) ExtractFirstFromTab(ctx context.Context, targetID, selector, attribute string) (string, error) {
-	_ = ctx
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return "", err
 	}
@@ -1080,8 +1122,7 @@ func (s *RodService) ExtractFirstFromTab(ctx context.Context, targetID, selector
 
 // PageInfo returns the current URL and title for a tab.
 func (s *RodService) PageInfo(ctx context.Context, targetID string) (string, string, error) {
-	_ = ctx
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return "", "", err
 	}
@@ -1094,12 +1135,11 @@ func (s *RodService) PageInfo(ctx context.Context, targetID string) (string, str
 
 // CookieHeader returns cookies applicable to the target URL from the tab's browser context.
 func (s *RodService) CookieHeader(ctx context.Context, targetID string, targetURL string) (string, error) {
-	_ = ctx
 	normalizedURL, err := s.security.NormalizeAndCheckURL(targetURL)
 	if err != nil {
 		return "", err
 	}
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return "", err
 	}
@@ -1124,7 +1164,7 @@ func (s *RodService) CookieHeader(ctx context.Context, targetID string, targetUR
 // This is much more token-efficient than raw HTML for LLM consumption.
 // Each interactive element gets an @ref that can be used in Act() to target it.
 func (s *RodService) AccessibilityTree(ctx context.Context, targetID string, maxDepth int) (*AccessibilityTreeResponse, error) {
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return nil, err
 	}
@@ -1398,7 +1438,7 @@ func (s *RodService) ActByRef(ctx context.Context, targetID string, ref int, ref
 		return nil, fmt.Errorf("unknown ref @%d", ref)
 	}
 
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return nil, err
 	}
@@ -1438,7 +1478,7 @@ func (s *RodService) ActByRef(ctx context.Context, targetID string, ref int, ref
 // CountInteractiveElements returns the count of interactive elements on the page.
 // This is a lightweight JS call — no DSL building, no ref map.
 func (s *RodService) CountInteractiveElements(ctx context.Context, targetID string) (int, error) {
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return 0, err
 	}
@@ -1465,7 +1505,7 @@ func (s *RodService) CountInteractiveElements(ctx context.Context, targetID stri
 
 // ScreenshotTab takes a screenshot of an existing tab by target ID.
 func (s *RodService) ScreenshotTab(ctx context.Context, targetID string) (string, error) {
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return "", err
 	}
@@ -1493,7 +1533,7 @@ func (s *RodService) ScreenshotViewport(ctx context.Context, targetID string) (s
 
 // ScreenshotViewportRaw takes a viewport-only screenshot and returns raw PNG bytes.
 func (s *RodService) ScreenshotViewportRaw(ctx context.Context, targetID string) ([]byte, error) {
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return nil, err
 	}
@@ -1512,7 +1552,7 @@ func (s *RodService) ScreenshotViewportRaw(ctx context.Context, targetID string)
 
 // ScrollTo scrolls the page to the given absolute position.
 func (s *RodService) ScrollTo(ctx context.Context, targetID string, x, y int) error {
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return err
 	}
@@ -1535,7 +1575,7 @@ func (s *RodService) ScrollTo(ctx context.Context, targetID string, x, y int) er
 
 // PageDimensions returns the viewport height and total scroll height of the page.
 func (s *RodService) PageDimensions(ctx context.Context, targetID string) (viewportH, scrollH int, err error) {
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -1550,7 +1590,7 @@ func (s *RodService) PageDimensions(ctx context.Context, targetID string) (viewp
 
 // SetViewport changes the viewport size of an existing tab.
 func (s *RodService) SetViewport(ctx context.Context, targetID string, width, height int) error {
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return err
 	}
@@ -1564,7 +1604,7 @@ func (s *RodService) SetViewport(ctx context.Context, targetID string, width, he
 // Much lighter than the full accessibility tree — returns a compact DSL with @ref IDs.
 // Each @ref maps to a CSS selector for action targeting.
 func (s *RodService) InteractiveElements(ctx context.Context, targetID string) (*InteractiveElementsResponse, error) {
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return nil, err
 	}
@@ -1687,7 +1727,7 @@ func (s *RodService) ActByInteractiveRef(ctx context.Context, targetID string, r
 		return nil, fmt.Errorf("unknown ref @%d", ref)
 	}
 
-	tab, err := s.getTab(targetID)
+	tab, err := s.getTab(ctx, targetID)
 	if err != nil {
 		return nil, err
 	}

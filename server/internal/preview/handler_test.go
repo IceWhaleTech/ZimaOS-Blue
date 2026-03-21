@@ -302,3 +302,74 @@ func TestHandler_GetPreviewToken_ForbiddenWhenUsersExist(t *testing.T) {
 		t.Errorf("GetPreviewToken() status = %d, want %d (Forbidden)", httpErr.Code, http.StatusForbidden)
 	}
 }
+
+func TestHandler_GetPreviewToken_ForbiddenWhenRegularUserExists(t *testing.T) {
+	handler, userService, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	_, err := userService.Create(ctx, &user.CreateUserRequest{
+		Username: "member",
+		Password: "SecurePass123!",
+		Role:     user.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("failed to create regular user: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/preview/token", nil)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = handler.GetPreviewToken(c)
+	if err == nil {
+		t.Error("GetPreviewToken() expected error when a regular user exists, got nil")
+	}
+
+	httpErr, ok := err.(*echo.HTTPError)
+	if !ok {
+		t.Fatalf("expected echo.HTTPError, got %T", err)
+	}
+	if httpErr.Code != http.StatusForbidden {
+		t.Errorf("GetPreviewToken() status = %d, want %d (Forbidden)", httpErr.Code, http.StatusForbidden)
+	}
+}
+
+func TestHandler_Upgrade_ConflictWhenRegularUserExists(t *testing.T) {
+	handler, userService, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	_, err := userService.Create(ctx, &user.CreateUserRequest{
+		Username: "member",
+		Password: "SecurePass123!",
+		Role:     user.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("failed to create regular user: %v", err)
+	}
+
+	e := echo.New()
+	body := `{"username":"admin","password":"SecurePass456!"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/preview/upgrade", bytes.NewBufferString(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = handler.Upgrade(c)
+	if err == nil {
+		t.Error("Upgrade() expected error when a regular user exists, got nil")
+	}
+
+	httpErr, ok := err.(*echo.HTTPError)
+	if !ok {
+		t.Fatalf("expected echo.HTTPError, got %T", err)
+	}
+	if httpErr.Code != http.StatusConflict {
+		t.Errorf("Upgrade() status = %d, want %d", httpErr.Code, http.StatusConflict)
+	}
+}

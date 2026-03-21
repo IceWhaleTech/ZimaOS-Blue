@@ -26,8 +26,8 @@ type parsedConvertTaskRequest struct {
 }
 
 const (
-	defaultConvertSyncWait      = 20 * time.Second
-	maxConvertWait              = 30 * time.Second
+	defaultConvertSyncWait      = 5 * time.Minute
+	maxConvertWait              = 300 * time.Second
 	largeDocumentAsyncThreshold = 8 << 20
 	largePDFAsyncThreshold      = 12 << 20
 	largeMediaAsyncThreshold    = 64 << 20

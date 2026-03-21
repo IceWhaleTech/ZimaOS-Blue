@@ -53,7 +53,7 @@ func DefaultExecConfig() ExecConfig {
 	return ExecConfig{
 		Host:           "local",
 		Security:       ExecSecurityFull,
-		DefaultTimeout: 30 * time.Second,
+		DefaultTimeout: 5 * time.Minute,
 		MaxTimeout:     30 * time.Minute,
 		MaxOutput:      200_000,
 		SafeBins:       DefaultSafeBins,
@@ -84,7 +84,7 @@ type ExecTool struct {
 // NewExecTool creates a new exec tool.
 func NewExecTool(config ExecConfig, sessions *SessionRegistry, approvals *ApprovalManager, broker *sse.Broker, dirStore *DirAllowlistStore, sbx ...SandboxExecutor) *ExecTool {
 	if config.DefaultTimeout <= 0 {
-		config.DefaultTimeout = 30 * time.Second
+		config.DefaultTimeout = 5 * time.Minute
 	}
 	if config.MaxTimeout <= 0 {
 		config.MaxTimeout = 30 * time.Minute
@@ -234,7 +234,7 @@ func (t *ExecTool) Definition() ToolDefinition {
 		},
 		"timeout": map[string]interface{}{
 			"type":        "number",
-			"description": "Optional timeout in seconds (default 30, max 1800).",
+			"description": "Optional timeout in seconds (default 300, max 1800).",
 		},
 		"pty": map[string]interface{}{
 			"type":        "boolean",

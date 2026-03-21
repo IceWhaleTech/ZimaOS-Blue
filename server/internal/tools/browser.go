@@ -86,11 +86,14 @@ type BrowserTool struct {
 	lastInteractiveRefMap map[int]string
 	lastRefMode           string // "a11y" or "interactive"
 	lastTarget            string
+	relayApprovedSessions map[string]struct{}
 }
 
 // NewBrowserTool creates a new browser tool.
 func NewBrowserTool() *BrowserTool {
-	return &BrowserTool{}
+	return &BrowserTool{
+		relayApprovedSessions: make(map[string]struct{}),
+	}
 }
 
 // SetBackend injects the browser backend.
@@ -126,6 +129,89 @@ func (t *BrowserTool) normalizeScreenshotPayload(data string) string {
 		return data
 	}
 	return savedPath
+}
+
+type relayAwareBrowserBackend interface {
+	UsesRelay(ctx context.Context, targetID string) bool
+}
+
+func (t *BrowserTool) relayApprovalKey(ctx context.Context) string {
+	sessionID := strings.TrimSpace(GetSessionID(ctx))
+	userID := strings.TrimSpace(GetUserID(ctx))
+	switch {
+	case userID != "" && sessionID != "":
+		return userID + ":" + sessionID
+	case sessionID != "":
+		return sessionID
+	default:
+		return ""
+	}
+}
+
+func (t *BrowserTool) relayApprovedForSession(key string) bool {
+	if strings.TrimSpace(key) == "" {
+		return false
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	_, ok := t.relayApprovedSessions[key]
+	return ok
+}
+
+func (t *BrowserTool) markRelayApprovedForSession(key string) {
+	if strings.TrimSpace(key) == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.relayApprovedSessions == nil {
+		t.relayApprovedSessions = make(map[string]struct{})
+	}
+	t.relayApprovedSessions[key] = struct{}{}
+}
+
+func (t *BrowserTool) maybeRequireRelayApproval(ctx context.Context, b BrowserBackend, targetID, checkpointURL, action string) (interface{}, bool, error) {
+	relayBackend, ok := b.(relayAwareBrowserBackend)
+	if !ok || !relayBackend.UsesRelay(ctx, targetID) {
+		return nil, false, nil
+	}
+
+	sessionKey := t.relayApprovalKey(ctx)
+	if t.relayApprovedForSession(sessionKey) {
+		return nil, false, nil
+	}
+
+	if strings.TrimSpace(checkpointURL) == "" {
+		checkpointURL = t.resolveCheckpointURL(ctx, b, targetID)
+	}
+
+	cpResult, hasRequester, cpErr := RequestBrowserCheckpoint(ctx, BrowserCheckpointRequest{
+		Required:  true,
+		RiskLevel: "high",
+		Step:      "relay",
+		Action:    action,
+		URL:       checkpointURL,
+	})
+	if cpErr != nil {
+		return jsonErr(fmt.Sprintf("relay checkpoint failed: %s", cpErr)), true, nil
+	}
+	if !hasRequester {
+		return nil, false, nil
+	}
+	if cpResult.Pending {
+		return jsonResult(map[string]interface{}{
+			"checkpoint_pending": true,
+			"checkpoint_id":      cpResult.CheckpointID,
+			"resume_required":    true,
+			"message":            cpResult.Message,
+		}), true, nil
+	}
+	if cpResult.Decision != BrowserCheckpointApprove {
+		return jsonErr("relay browser session access denied by user"), true, nil
+	}
+
+	t.markRelayApprovedForSession(sessionKey)
+	return nil, false, nil
 }
 
 func (t *BrowserTool) Definition() ToolDefinition {
@@ -232,6 +318,9 @@ func (t *BrowserTool) doNavigate(ctx context.Context, b BrowserBackend, args map
 		return nil, errors.New("url is required for navigate")
 	}
 	targetID := firstCompatString(args, "target_id", "targetId")
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, url, "use_connected_session"); handled || err != nil {
+		return gated, err
+	}
 
 	emitBrowserProgress(ctx, "start", "Starting browser", "running", url)
 	_ = b.Start(ctx)
@@ -256,6 +345,9 @@ func (t *BrowserTool) doNavigate(ctx context.Context, b BrowserBackend, args map
 }
 
 func (t *BrowserTool) doSnapshot(ctx context.Context, b BrowserBackend, targetID string) (interface{}, error) {
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, "", "inspect_connected_session"); handled || err != nil {
+		return gated, err
+	}
 	a11y, err := b.AccessibilityTree(ctx, targetID, 10)
 	if err != nil {
 		return jsonErr(err.Error()), nil
@@ -271,6 +363,9 @@ func (t *BrowserTool) doSnapshot(ctx context.Context, b BrowserBackend, targetID
 }
 
 func (t *BrowserTool) doSnapshotInteractive(ctx context.Context, b BrowserBackend, targetID string) (interface{}, error) {
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, "", "inspect_connected_session"); handled || err != nil {
+		return gated, err
+	}
 	result, err := b.InteractiveElements(ctx, targetID)
 	if err != nil {
 		return jsonErr(err.Error()), nil
@@ -293,6 +388,9 @@ const (
 )
 
 func (t *BrowserTool) doAutoSnapshot(ctx context.Context, b BrowserBackend, targetID string, vision bool) (interface{}, error) {
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, "", "inspect_connected_session"); handled || err != nil {
+		return gated, err
+	}
 	count, err := b.CountInteractiveElements(ctx, targetID)
 	if err != nil {
 		return t.doSnapshotInteractive(ctx, b, targetID)
@@ -412,6 +510,9 @@ func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[stri
 	if targetID == "" {
 		targetID = cachedTarget
 	}
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, "", "use_connected_session"); handled || err != nil {
+		return gated, err
+	}
 
 	if IsBrowserActionHighRisk("act", actType, "") {
 		currentURL := t.resolveCheckpointURL(ctx, b, targetID)
@@ -471,6 +572,9 @@ func (t *BrowserTool) doScreenshot(ctx context.Context, b BrowserBackend, args m
 	if url == "" {
 		return nil, errors.New("url is required for screenshot")
 	}
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, "", url, "use_connected_session"); handled || err != nil {
+		return gated, err
+	}
 	emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "running", url)
 	_ = b.Start(ctx)
 	data, err := b.Screenshot(ctx, url)
@@ -487,6 +591,9 @@ func (t *BrowserTool) doScreenshot(ctx context.Context, b BrowserBackend, args m
 }
 
 func (t *BrowserTool) doTabs(ctx context.Context, b BrowserBackend) (interface{}, error) {
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, "", "", "list_connected_tabs"); handled || err != nil {
+		return gated, err
+	}
 	tabs, err := b.Tabs(ctx)
 	if err != nil {
 		return jsonErr(err.Error()), nil
@@ -506,6 +613,9 @@ func (t *BrowserTool) doClose(ctx context.Context, b BrowserBackend, targetID st
 	}
 	if targetID == "" {
 		return jsonErr("no tab to close — specify target_id"), nil
+	}
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, "", "use_connected_session"); handled || err != nil {
+		return gated, err
 	}
 	if err := b.CloseTab(ctx, targetID); err != nil {
 		return jsonErr(err.Error()), nil
@@ -534,6 +644,10 @@ func (t *BrowserTool) doRecipe(ctx context.Context, b BrowserBackend, args map[s
 				params[k] = v
 			}
 		}
+	}
+	recipeTargetID := firstCompatString(args, "target_id", "targetId")
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, recipeTargetID, strings.TrimSpace(params["url"]), "use_connected_session"); handled || err != nil {
+		return gated, err
 	}
 
 	if IsBrowserActionHighRisk("recipe", "", recipeName) {

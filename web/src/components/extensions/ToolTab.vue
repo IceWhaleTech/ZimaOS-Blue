@@ -87,7 +87,10 @@ const toolCardPalettes: ToolCardPalette[] = [
 ]
 
 function hashSeed(value: string): number {
-  return Array.from(value).reduce((total, char, index) => total + char.charCodeAt(0) * (index + 1), 0)
+  return Array.from(value).reduce(
+    (total, char, index) => total + char.charCodeAt(0) * (index + 1),
+    0
+  )
 }
 
 function getToolPalette(tool: Tool): ToolCardPalette {
@@ -176,8 +179,13 @@ function getToolIconUrl(tool: Tool): string | null {
     browser_click: 'browser',
     browser_read: 'browser',
     browser_screenshot: 'browser',
+    read: 'file-read',
+    file_read: 'file-read',
+    write: 'file-write',
+    file_write: 'file-write',
     memory: 'memory',
     memory_search: 'memory',
+    web: 'web-search',
     web_search: 'web-search',
     scheduler: 'schedule',
     ui_reviewer: 'eye',
@@ -467,7 +475,9 @@ async function handleToggle(tool: Tool) {
                   stroke="currentColor"
                   stroke-width="1.8"
                 >
-                  <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                  <path
+                    d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"
+                  />
                   <path d="m3.3 7 8.7 5 8.7-5" />
                   <path d="M12 22V12" />
                 </svg>
@@ -516,8 +526,7 @@ async function handleToggle(tool: Tool) {
   --tools-shell-bg-top: rgba(255, 255, 255, 0.98);
   --tools-shell-bg-bottom: rgba(239, 244, 249, 0.96);
   --tools-shell-shadow:
-    0 20px 32px -24px rgba(15, 23, 42, 0.14),
-    0 12px 22px -18px rgba(59, 130, 246, 0.08);
+    0 20px 32px -24px rgba(15, 23, 42, 0.14), 0 12px 22px -18px rgba(59, 130, 246, 0.08);
   --tools-shell-hint-bg: rgba(22, 163, 74, 0.12);
   --tools-shell-hint-text: #15803d;
   --tools-stat-border: rgba(203, 213, 225, 0.88);
@@ -528,11 +537,9 @@ async function handleToggle(tool: Tool) {
   --tools-card-bg-top: rgba(255, 255, 255, 0.98);
   --tools-card-bg-bottom: rgba(244, 248, 251, 0.98);
   --tools-card-shadow:
-    0 18px 30px -22px rgba(15, 23, 42, 0.12),
-    0 10px 18px -16px rgba(59, 130, 246, 0.08);
+    0 18px 30px -22px rgba(15, 23, 42, 0.12), 0 10px 18px -16px rgba(59, 130, 246, 0.08);
   --tools-card-shadow-active:
-    0 22px 34px -22px rgba(15, 23, 42, 0.14),
-    0 14px 22px -16px rgba(59, 130, 246, 0.1);
+    0 22px 34px -22px rgba(15, 23, 42, 0.14), 0 14px 22px -16px rgba(59, 130, 246, 0.1);
   --tools-card-title: #0f172a;
   --tools-card-text: #475569;
   --tools-card-outline: rgba(255, 255, 255, 0.8);
@@ -633,8 +640,11 @@ async function handleToggle(tool: Tool) {
   flex-direction: column;
   justify-content: space-between;
   gap: 6px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--tools-stat-bg) 88%, white 4%) 0%, var(--tools-stat-bg) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tools-stat-bg) 88%, white 4%) 0%,
+    var(--tools-stat-bg) 100%
+  );
   color: var(--tools-stat-text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
@@ -681,7 +691,11 @@ async function handleToggle(tool: Tool) {
   border: 1px solid var(--tools-card-border);
   border-radius: 20px;
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--tool-accent-a) 10%, transparent), transparent 32%),
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--tool-accent-a) 10%, transparent),
+      transparent 32%
+    ),
     linear-gradient(180deg, var(--tools-card-bg-top) 0%, var(--tools-card-bg-bottom) 100%);
   box-shadow:
     inset 0 1px 0 var(--tools-card-outline),

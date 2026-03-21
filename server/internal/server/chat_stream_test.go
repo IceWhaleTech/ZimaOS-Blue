@@ -146,6 +146,17 @@ type toolRoundPreContentFailingProxyHandler struct {
 	callCount int
 }
 
+// toolRoundReducedRecoveryProxyHandler simulates:
+// 1) first round emits a tool_call
+// 2) second round fails pre-content when the follow-up payload is large
+// 3) third round succeeds once the chat layer retries with a reduced payload
+type toolRoundReducedRecoveryProxyHandler struct {
+	callCount         int
+	requestBodyLens   []int
+	requestMsgCounts  []int
+	requestToolCounts []int
+}
+
 // toolRoundPinnedProviderFailoverProxyHandler simulates:
 // 1) first round emits a tool_call and pins provider
 // 2) second round fails pre-content while pinned
@@ -936,6 +947,59 @@ func (h *toolRoundPreContentFailingProxyHandler) ServeHTTP(w http.ResponseWriter
 	}
 
 	http.Error(w, `{"error":{"message":"Upstream request failed","type":"upstream_error"}}`, http.StatusBadGateway)
+}
+
+func (h *toolRoundReducedRecoveryProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	rawBody, _ := io.ReadAll(r.Body)
+	_ = r.Body.Close()
+
+	var body struct {
+		Messages []json.RawMessage `json:"messages"`
+		Tools    []json.RawMessage `json:"tools"`
+	}
+	_ = json.NewDecoder(bytes.NewReader(rawBody)).Decode(&body)
+	h.requestBodyLens = append(h.requestBodyLens, len(rawBody))
+	h.requestMsgCounts = append(h.requestMsgCounts, len(body.Messages))
+	h.requestToolCounts = append(h.requestToolCounts, len(body.Tools))
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_tool_round_reduced_recovery"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	if h.callCount == 1 {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		largeIntro := strings.Repeat("大段上下文说明。", 900)
+		fmt.Fprintf(w, "data: %s\n\n", fmt.Sprintf(`{"id":"tool_round_reduced_1","choices":[{"delta":{"content":%q},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`, largeIntro))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_reduced_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_reduced_1","type":"function","function":{"name":"noop_tool","arguments":"{\"task\":\"inspect\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_reduced_1","choices":[{"delta":{},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		return
+	}
+
+	if h.callCount == 2 {
+		http.Error(w, `{"error":{"message":"Upstream request failed","type":"upstream_error"}}`, http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_reduced_2","choices":[{"delta":{"content":"缩减上下文后恢复成功。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func (h *toolRoundOverloadedAfterSearchProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -3765,6 +3829,68 @@ func TestStreamMessage_ToolRoundPreContent502_SkipsChatLayerRetryAmplification(t
 	}
 }
 
+func TestStreamMessage_ToolRoundPreContent502_LargeCodexPayloadUsesReducedRecovery(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test tool-round reduced recovery")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def:    tools.ToolDefinition{Name: "noop_tool"},
+		result: map[string]interface{}{"ok": true},
+	})
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &toolRoundReducedRecoveryProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请执行并返回结果","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, "缩减上下文后恢复成功。") {
+		t.Fatalf("expected reduced recovery content, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	events := extractJSONSSEEvents(t, body)
+	requireProcessEvent(t, events, "continuation_recovery_started", "active")
+	requireProcessEvent(t, events, "continuation_recovery_succeeded", "success")
+
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected exactly 3 proxy calls (tool round + failed large follow-up + reduced recovery), got %d", fakeProxy.callCount)
+	}
+	if len(fakeProxy.requestBodyLens) < 3 {
+		t.Fatalf("expected request size capture for 3 calls, got %v", fakeProxy.requestBodyLens)
+	}
+	if fakeProxy.requestBodyLens[2] >= fakeProxy.requestBodyLens[1] {
+		t.Fatalf("expected reduced recovery payload to shrink request body, lens=%v", fakeProxy.requestBodyLens)
+	}
+}
+
 func TestStreamMessage_AutoContinue_RetriesErrorAfterToolRound(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -4230,8 +4356,8 @@ func TestStreamMessage_ContextCompactionSSEUsesSmartContextCounts(t *testing.T) 
 	if int(before) != 7 {
 		t.Fatalf("before = %d, want 7", int(before))
 	}
-	if int(after) != 6 {
-		t.Fatalf("after = %d, want 6", int(after))
+	if int(after) != 7 {
+		t.Fatalf("after = %d, want 7", int(after))
 	}
 
 	requestCounts := fakeProxy.RequestMsgCounts()

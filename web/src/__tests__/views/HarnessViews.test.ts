@@ -121,10 +121,10 @@ describe('Harness views', () => {
       data: {
         group: {
           id: 'group-1',
-          kind: 'experiment',
-          title: 'Research experiment projection',
+          kind: 'eval',
+          title: 'Research calibration summary',
           status: 'completed',
-          subject: 'Projected experiment',
+          subject: 'Post-research calibration',
           owner_user_id: 'user-1',
           scoring_config: {
             mode: 'hybrid',
@@ -170,8 +170,8 @@ describe('Harness views', () => {
             root_run_id: 'run-1',
             kind: 'research',
             status: 'failed',
-            goal: 'Projected experiment',
-            error: 'experiment backend unavailable',
+            goal: 'Post-research calibration',
+            error: 'conflicting primary-source evidence',
             attempt_index: 1,
             created_at: '2026-03-20T10:00:00Z',
             updated_at: '2026-03-20T10:05:00Z',
@@ -195,7 +195,18 @@ describe('Harness views', () => {
             mode: 'hybrid',
             verdict: 'fail',
             score: 0.4,
-            breakdown_json: JSON.stringify({ reason: 'evidence mismatch' }),
+            breakdown_json: JSON.stringify({
+              reason: 'evidence mismatch',
+              judge_backend: 'llm_evaluator',
+              judge_model: 'gpt-5.4-mini',
+              calibration_ref: 'deep_research:job-1:calibration',
+              takeaway_candidate_count: 2,
+              proposal_count: 1,
+              proposal_ids: ['proposal-1'],
+            }),
+            judge_trace_json: JSON.stringify({
+              proposal_skipped_reason: '',
+            }),
             created_at: '2026-03-20T10:05:00Z',
           },
         ],
@@ -213,7 +224,7 @@ describe('Harness views', () => {
             run: {
               id: 'run-1',
               status: 'failed',
-              error: 'experiment backend unavailable',
+              error: 'conflicting primary-source evidence',
             },
           },
         ],
@@ -236,14 +247,20 @@ describe('Harness views', () => {
 
     expect(getGroupReportMock).toHaveBeenCalledWith('group-1')
     expect(wrapper.find('.harness-detail-page').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Research experiment projection')
-    expect(wrapper.text()).toContain('Projected experiment')
+    expect(wrapper.text()).toContain('Research calibration summary')
+    expect(wrapper.text()).toContain('Post-research calibration')
     expect(wrapper.text()).toContain('evidence mismatch')
-    expect(wrapper.text()).toContain('experiment backend unavailable')
+    expect(wrapper.text()).toContain('conflicting primary-source evidence')
     expect(wrapper.text()).toContain('projection-report')
-    expect(wrapper.text()).toContain('Experiment')
+    expect(wrapper.text()).toContain('Eval')
     expect(wrapper.text()).toContain('Completed')
     expect(wrapper.text()).toContain('Research')
     expect(wrapper.text()).toContain('Hybrid')
+    expect(wrapper.text()).toContain('Calibration & proposal summary')
+    expect(wrapper.text()).toContain('llm_evaluator')
+    expect(wrapper.text()).toContain('gpt-5.4-mini')
+    expect(wrapper.text()).toContain('deep_research:job-1:calibration')
+    expect(wrapper.text()).toContain('proposal-1')
+    expect(wrapper.text()).toContain('Review in Memory')
   })
 })

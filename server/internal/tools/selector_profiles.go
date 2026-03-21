@@ -6,6 +6,19 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
 )
 
+type toolSelectorBundle struct {
+	profile selector.SelectorProfile
+	docText string
+}
+
+func buildToolSelectorBundle(def ToolDefinition) toolSelectorBundle {
+	profile := buildToolSelectorProfile(def)
+	return toolSelectorBundle{
+		profile: profile,
+		docText: buildToolSelectorDoc(def, profile),
+	}
+}
+
 func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 	name := strings.ToLower(strings.TrimSpace(def.Name))
 	human := selector.HumanizeName(name)
@@ -27,9 +40,9 @@ func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 		base.Objects = compactTerms("url", "web", "website", "site", "web page", "webpage", "网页", "网站", "网址")
 		base.ContextCues = compactTerms(append(base.ContextCues, "http://", "https://", "www.")...)
 		base.PreferredDomains = []string{selector.DomainLiveWeb, selector.DomainURLPresent}
-	case "web_search", "search":
+	case "web", "web_search", "search":
 		base.Actions = compactTerms("search", "look up", "lookup", "find", "check", "latest", "news", "搜索", "检索", "查找", "最新", "新闻")
-		base.Objects = compactTerms("web", "news", "source", "sources", "citation", "citations", "reference", "references", "网页", "新闻", "来源", "引用", "参考")
+		base.Objects = compactTerms("web", "url", "page", "site", "news", "source", "sources", "citation", "citations", "reference", "references", "网页", "网站", "网址", "新闻", "来源", "引用", "参考")
 		base.PreferredDomains = []string{selector.DomainLiveWeb}
 		base.ConflictDomains = []string{selector.DomainLocalWorkspace}
 	case "research_run":
@@ -40,7 +53,10 @@ func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 	case "research_status":
 		base.Actions = compactTerms("research status", "status", "job status", "状态", "进度")
 		base.Objects = compactTerms("research", "job", "task", "调研", "任务")
-	case "read", "files":
+	case "sessions":
+		base.Actions = compactTerms("session", "sessions", "conversation", "history", "send", "spawn", "会话", "对话", "历史", "发送", "创建")
+		base.Objects = compactTerms("session", "conversation", "message", "messages", "history", "thread", "会话", "对话", "消息", "历史", "线程")
+	case "read", "file_read", "files":
 		base.Actions = compactTerms("read", "open", "inspect", "review", "查看", "读取", "打开", "检查")
 		base.Objects = compactTerms("file", "files", "content", "contents", "document", "folder", "directory", "path", "repo", "repository", "文件", "内容", "文档", "目录", "路径", "仓库")
 		base.PreferredDomains = []string{selector.DomainLocalWorkspace}
@@ -55,9 +71,20 @@ func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 		base.Objects = compactTerms("files", "text", "pattern", "keyword", "code", "workspace", "文件", "文本", "关键词", "代码", "工作区")
 		base.PreferredDomains = []string{selector.DomainLocalWorkspace}
 		base.ConflictDomains = []string{selector.DomainLiveWeb}
-	case "write":
+	case "grep", "rg":
+		base.ExactAliases = compactTerms(append(base.ExactAliases, "grep", "rg", "ripgrep")...)
+		base.Actions = compactTerms("grep", "rg", "ripgrep", "search", "scan", "match", "查找", "搜索", "检索", "匹配")
+		base.Objects = compactTerms("text", "content", "pattern", "regex", "keyword", "code", "workspace", "文本", "内容", "模式", "正则", "关键词", "代码", "工作区")
+		base.PreferredDomains = []string{selector.DomainLocalWorkspace}
+		base.ConflictDomains = []string{selector.DomainLiveWeb}
+	case "write", "file_write":
 		base.Actions = compactTerms("write", "save", "create", "draft", "export", "append", "写", "写入", "保存", "创建", "导出")
 		base.Objects = compactTerms("file", "report", "summary", "markdown", "document", "文件", "报告", "摘要", "文档")
+		base.PreferredDomains = []string{selector.DomainLocalWorkspace}
+		base.ConflictDomains = []string{selector.DomainLiveWeb}
+	case "delete", "remove", "rm", "unlink", "file_delete":
+		base.Actions = compactTerms("delete", "remove", "clean", "cleanup", "trash", "删", "删除", "移除", "清理")
+		base.Objects = compactTerms("file", "files", "directory", "folder", "artifact", "workspace", "文件", "目录", "文件夹", "产物", "工作区")
 		base.PreferredDomains = []string{selector.DomainLocalWorkspace}
 		base.ConflictDomains = []string{selector.DomainLiveWeb}
 	case "convert":
@@ -65,6 +92,14 @@ func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 		base.Objects = compactTerms("csv", "xlsx", "xls", "spreadsheet", "table", "sheet", "表格", "工作表", "电子表格")
 		base.PreferredDomains = []string{selector.DomainLocalWorkspace}
 		base.ConflictDomains = []string{selector.DomainLiveWeb}
+	case "pdf":
+		base.Actions = compactTerms("read", "extract", "parse", "summarize", "answer", "review", "读取", "提取", "解析", "总结", "回答", "查看")
+		base.Objects = compactTerms("pdf", "document", "paper", "report", "scan", "pages", "table", "pdf文档", "文档", "报告", "扫描件", "页面")
+		base.PreferredDomains = []string{selector.DomainLocalWorkspace}
+		base.ConflictDomains = []string{selector.DomainLiveWeb}
+	case "image", "image_generation", "generate_image", "generateimage":
+		base.Actions = compactTerms("generate", "create", "draw", "edit", "render", "review", "analyze", "compare", "生成", "创建", "绘制", "编辑", "渲染", "看图", "分析图片", "对比图片")
+		base.Objects = compactTerms("image", "images", "picture", "photo", "art", "scene", "illustration", "logo", "screenshot", "png", "jpg", "jpeg", "webp", "图片", "图像", "照片", "插画", "场景", "logo", "截图")
 	case "analyze":
 		base.Actions = compactTerms("analyze", "summarize", "compare", "review", "inspect", "分析", "总结", "比较", "评估", "查看")
 		base.Objects = compactTerms("file", "report", "text", "data", "content", "document", "文件", "报告", "文本", "数据", "内容", "文档")
@@ -152,6 +187,14 @@ func buildToolSelectorDoc(def ToolDefinition, profile selector.SelectorProfile) 
 	parts = append(parts, profile.Objects...)
 	parts = append(parts, profile.ContextCues...)
 	return strings.Join(parts, " ")
+}
+
+func toolSelectorBundleCacheKey(def ToolDefinition) string {
+	var b strings.Builder
+	b.WriteString(strings.ToLower(strings.TrimSpace(def.Name)))
+	b.WriteByte('\x1f')
+	b.WriteString(strings.ToLower(strings.TrimSpace(def.Description)))
+	return b.String()
 }
 
 func compactTerms(terms ...string) []string {

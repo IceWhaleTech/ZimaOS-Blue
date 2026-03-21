@@ -4,9 +4,16 @@ import { createI18n } from 'vue-i18n'
 import { nextTick, reactive } from 'vue'
 
 let mockChatStore: any
+const taskProjectionStoreMock = {
+  refreshNow: vi.fn(),
+}
 
 vi.mock('@/stores/chat', () => ({
   useChatStore: () => mockChatStore,
+}))
+
+vi.mock('@/stores/taskProjections', () => ({
+  useTaskProjectionsStore: () => taskProjectionStoreMock,
 }))
 
 import AskUserQuestionDialog from '@/components/AskUserQuestionDialog.vue'
@@ -95,6 +102,7 @@ describe('AskUserQuestionDialog browser checkpoint', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.spyOn(console, 'log').mockImplementation(() => {})
+    taskProjectionStoreMock.refreshNow.mockReset().mockResolvedValue(undefined)
     mockChatStore = reactive({
       pendingQuestion: null,
       submitQuestionAnswers: vi.fn(),

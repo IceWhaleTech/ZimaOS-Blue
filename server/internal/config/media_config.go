@@ -48,11 +48,11 @@ func DefaultMediaConfig() *MediaConfig {
 	return &MediaConfig{
 		Fallback: MediaFallbackConfig{
 			Enabled:             true,
-			SearchProviderChain: []string{"duckduckgo"},
+			SearchProviderChain: []string{"duckduckgo", "bing"},
 			SearchMaxResults:    6,
 			ScreenshotWidth:     1280,
 			ScreenshotHeight:    896,
-			ComplexPromptChars:  180,
+			ComplexPromptChars:  500,
 			PublicSpaces: []MediaFallbackPublicSpaceConfig{
 				{
 					ID:              "hf-wan21",

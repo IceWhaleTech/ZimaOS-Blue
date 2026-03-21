@@ -56,6 +56,20 @@ const mocks = vi.hoisted(() => ({
     cancelJob: vi.fn(),
     consumePendingFocusJobId: vi.fn(),
   },
+  taskProjectionsStore: {
+    currentTasks: [] as Array<Record<string, unknown>>,
+    currentActiveTasks: [] as Array<Record<string, unknown>>,
+    currentTerminalTasks: [] as Array<Record<string, unknown>>,
+    backgroundTasks: [] as Array<Record<string, unknown>>,
+    loading: false,
+    hydrated: true,
+    hasActiveTasks: false,
+    refreshNow: vi.fn(),
+    setConversation: vi.fn(),
+    cancelTask: vi.fn(),
+    openTask: vi.fn(),
+    stopPolling: vi.fn(),
+  },
   mediaGenerate: {
     showPanel: { value: false },
     intent: { value: null },
@@ -134,6 +148,18 @@ vi.mock('@/api/chat', () => ({
   },
 }))
 
+const helpers = vi.hoisted(() => ({
+  asAsyncSFCModule(component: Record<string, unknown>) {
+    return {
+      __esModule: true,
+      __isTeleport: false,
+      __isKeepAlive: false,
+      default: component,
+      ...component,
+    }
+  },
+}))
+
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => mocks.settingsStore,
 }))
@@ -144,6 +170,10 @@ vi.mock('@/stores/providerPool', () => ({
 
 vi.mock('@/stores/deepResearchJobs', () => ({
   useDeepResearchJobsStore: () => mocks.deepResearchJobsStore,
+}))
+
+vi.mock('@/stores/taskProjections', () => ({
+  useTaskProjectionsStore: () => mocks.taskProjectionsStore,
 }))
 
 vi.mock('@/stores/notification', () => ({
@@ -219,55 +249,93 @@ vi.mock('@/composables/useMediaGenerate', () => ({
   useMediaGenerate: () => mocks.mediaGenerate,
 }))
 
-vi.mock('@/components/ConversationList.vue', () => ({
-  default: { name: 'ConversationList', template: '<div class="conversation-list-stub" />' },
-}))
+vi.mock('@/components/ConversationList.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ConversationList',
+    template: '<div class="conversation-list-stub" />',
+  })
+)
 
-vi.mock('@/components/ChatInput.vue', () => ({
-  default: { name: 'ChatInput', template: '<div class="chat-input-stub" />' },
-}))
+vi.mock('@/components/ChatInput.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ChatInput',
+    template: '<div class="chat-input-stub" />',
+  })
+)
 
-vi.mock('@/components/ChatMessage.vue', () => ({
-  default: {
+vi.mock('@/components/ChatMessage.vue', () =>
+  helpers.asAsyncSFCModule({
     name: 'ChatMessage',
     props: {
       message: { type: Object, required: true },
     },
     template:
       '<div class="chat-message-stub" :data-message-id="message.id" style="height: 100px;">{{ message.content }}</div>',
-  },
-}))
+  })
+)
 
-vi.mock('@/components/onboarding/PresetQuestions.vue', () => ({
-  default: { name: 'PresetQuestions', template: '<div class="preset-questions-stub" />' },
-}))
+vi.mock('@/components/onboarding/PresetQuestions.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'PresetQuestions',
+    template: '<div class="preset-questions-stub" />',
+  })
+)
 
-vi.mock('@/components/chat/TalkMode.vue', () => ({
-  default: { name: 'TalkMode', template: '<div class="talk-mode-stub" />' },
-}))
+vi.mock('@/components/chat/TalkMode.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'TalkMode',
+    template: '<div class="talk-mode-stub" />',
+  })
+)
 
-vi.mock('@/components/ToolApprovalDialog.vue', () => ({
-  default: { name: 'ToolApprovalDialog', template: '<div class="tool-approval-stub" />' },
-}))
+vi.mock('@/components/ToolApprovalDialog.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ToolApprovalDialog',
+    template: '<div class="tool-approval-stub" />',
+  })
+)
 
-vi.mock('@/components/ExecApprovalDialog.vue', () => ({
-  default: { name: 'ExecApprovalDialog', template: '<div class="exec-approval-stub" />' },
-}))
+vi.mock('@/components/ExecApprovalDialog.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ExecApprovalDialog',
+    template: '<div class="exec-approval-stub" />',
+  })
+)
 
-vi.mock('@/components/MediaParamPanel.vue', () => ({
-  default: { name: 'MediaParamPanel', template: '<div class="media-param-panel-stub" />' },
-}))
+vi.mock('@/components/MediaParamPanel.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'MediaParamPanel',
+    template: '<div class="media-param-panel-stub" />',
+  })
+)
 
-vi.mock('@/components/AgentTaskPanel.vue', () => ({
-  default: { name: 'AgentTaskPanel', template: '<div class="agent-task-panel-stub" />' },
-}))
+vi.mock('@/components/AgentTaskPanel.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'AgentTaskPanel',
+    template: '<div class="agent-task-panel-stub" />',
+  })
+)
 
-vi.mock('@/components/DeepResearchTaskDock.vue', () => ({
-  default: {
+vi.mock('@/components/DeepResearchTaskDock.vue', () =>
+  helpers.asAsyncSFCModule({
     name: 'DeepResearchTaskDock',
     template: '<div class="deep-research-task-dock-stub" />',
-  },
-}))
+  })
+)
+
+vi.mock('@/components/UserTaskProjectionCard.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'UserTaskProjectionCard',
+    template: '<div class="agent-task-panel-stub" />',
+  })
+)
+
+vi.mock('@/components/UserTaskProjectionDock.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'UserTaskProjectionDock',
+    template: '<div class="deep-research-task-dock-stub" />',
+  })
+)
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -443,6 +511,15 @@ describe('ChatView virtual scroll integration', () => {
     mocks.providerPoolStore.setRoutingMode.mockReset().mockResolvedValue(undefined)
 
     mocks.deepResearchJobsStore.activeJobs = []
+    mocks.taskProjectionsStore.currentTasks = []
+    mocks.taskProjectionsStore.currentActiveTasks = []
+    mocks.taskProjectionsStore.currentTerminalTasks = []
+    mocks.taskProjectionsStore.backgroundTasks = []
+    mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.fetchActiveJobs.mockReset().mockResolvedValue(undefined)
     mocks.deepResearchJobsStore.handleGlobalEvent.mockReset()
     mocks.deepResearchJobsStore.applyJobSnapshot.mockReset()

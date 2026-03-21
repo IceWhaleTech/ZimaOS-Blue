@@ -145,4 +145,8 @@ type Service interface {
 	GetDefaultProvider() ProviderType
 	// GetWhisperProvider returns the Whisper ASR provider if available.
 	GetWhisperProvider() *WhisperProvider
+	// PeekWhisperProvider returns the current Whisper ASR provider without forcing a full warm init.
+	PeekWhisperProvider() *WhisperProvider
+	// Close releases any held resources.
+	Close() error
 }

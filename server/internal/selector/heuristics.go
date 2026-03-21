@@ -3,7 +3,10 @@ package selector
 import (
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/textmatch"
 )
 
 const (
@@ -45,22 +48,22 @@ func AnalyzeQuery(query string) QueryIntentSignals {
 		return signals
 	}
 
-	signals.QuestionPrefix = hasPrefixTerm(lower, questionPrefixes)
-	signals.HowToQuestion = hasPrefixTerm(lower, howToPrefixes) ||
-		(signals.QuestionPrefix && ContainsAny(lower, usageMetaTerms))
-	signals.MetaIntent = ContainsAny(lower, metaIntentTerms)
-	signals.URLPresent = ContainsAny(lower, []string{"http://", "https://", "www."})
+	signals.QuestionPrefix = questionPrefixMatcher.HasAnyPrefix(lower)
+	signals.HowToQuestion = howToPrefixMatcher.HasAnyPrefix(lower) ||
+		(signals.QuestionPrefix && usageMetaTermMatcher.ContainsAnyFold(lower))
+	signals.MetaIntent = metaIntentTermMatcher.ContainsAnyFold(lower)
+	signals.URLPresent = urlPresentTermMatcher.ContainsAnyFold(lower)
 	signals.LocalWorkspace = detectLocalWorkspace(lower)
-	signals.LiveWeb = signals.URLPresent || ContainsAny(lower, liveWebTerms)
-	signals.Productivity = ContainsAny(lower, productivityTerms)
-	signals.UIArtifact = ContainsAny(lower, uiArtifactTerms)
-	signals.HighRisk = ContainsAny(lower, highRiskTerms)
+	signals.LiveWeb = signals.URLPresent || liveWebTermMatcher.ContainsAnyFold(lower)
+	signals.Productivity = productivityTermMatcher.ContainsAnyFold(lower)
+	signals.UIArtifact = uiArtifactTermMatcher.ContainsAnyFold(lower)
+	signals.HighRisk = highRiskTermMatcher.ContainsAnyFold(lower)
 
 	operational := signals.LocalWorkspace || signals.LiveWeb || signals.Productivity ||
-		signals.UIArtifact || signals.URLPresent || ContainsAny(lower, operationalTerms)
+		signals.UIArtifact || signals.URLPresent || operationalTermMatcher.ContainsAnyFold(lower)
 
-	signals.PlainReply = ContainsAny(lower, plainReplyTerms) && !operational
-	signals.Smalltalk = hasPrefixTerm(lower, smalltalkPrefixes) && !operational
+	signals.PlainReply = plainReplyTermMatcher.ContainsAnyFold(lower) && !operational
+	signals.Smalltalk = smalltalkPrefixMatcher.HasAnyPrefix(lower) && !operational
 	signals.Negated = detectNegation(lower)
 
 	return signals
@@ -157,6 +160,15 @@ type SelectorProfile struct {
 	ConflictDomains   []string
 }
 
+type compiledSelectorProfile struct {
+	raw          SelectorProfile
+	exactAliases *textmatch.FoldedTermMatcher
+	actions      *textmatch.FoldedTermMatcher
+	objects      *textmatch.FoldedTermMatcher
+	contextCues  *textmatch.FoldedTermMatcher
+	negativeCues *textmatch.FoldedTermMatcher
+}
+
 // MatchResult captures structured signal matches for one candidate.
 type MatchResult struct {
 	Name             string   `json:"name"`
@@ -175,23 +187,27 @@ type MatchResult struct {
 }
 
 func MatchProfile(signals QueryIntentSignals, profile SelectorProfile) MatchResult {
+	return matchCompiledProfile(signals, compileSelectorProfile(profile))
+}
+
+func matchCompiledProfile(signals QueryIntentSignals, profile compiledSelectorProfile) MatchResult {
 	query := signals.Normalized
-	result := MatchResult{Name: profile.Name}
+	result := MatchResult{Name: profile.raw.Name}
 	if query == "" {
 		return result
 	}
 
-	result.ExactAliasHits = FindMatches(query, profile.ExactAliases)
-	result.ActionHits = FindMatches(query, profile.Actions)
-	result.ObjectHits = FindMatches(query, profile.Objects)
-	result.ContextHits = FindMatches(query, profile.ContextCues)
-	result.NegativeHits = FindMatches(query, profile.NegativeCues)
-	for _, domain := range profile.PreferredDomains {
+	result.ExactAliasHits = compiledProfileMatches(profile.exactAliases, query)
+	result.ActionHits = compiledProfileMatches(profile.actions, query)
+	result.ObjectHits = compiledProfileMatches(profile.objects, query)
+	result.ContextHits = compiledProfileMatches(profile.contextCues, query)
+	result.NegativeHits = compiledProfileMatches(profile.negativeCues, query)
+	for _, domain := range profile.raw.PreferredDomains {
 		if signals.HasDomain(domain) {
 			result.DomainHits = append(result.DomainHits, domain)
 		}
 	}
-	for _, domain := range profile.ConflictDomains {
+	for _, domain := range profile.raw.ConflictDomains {
 		if signals.HasDomain(domain) {
 			result.ConflictFlags = append(result.ConflictFlags, domain)
 		}
@@ -208,7 +224,7 @@ func MatchProfile(signals QueryIntentSignals, profile SelectorProfile) MatchResu
 		return result
 	}
 
-	if len(profile.RequireAnyDomains) > 0 && len(result.ExactAliasHits) == 0 && !signals.HasAnyDomain(profile.RequireAnyDomains) {
+	if len(profile.raw.RequireAnyDomains) > 0 && len(result.ExactAliasHits) == 0 && !signals.HasAnyDomain(profile.raw.RequireAnyDomains) {
 		result.ConfidenceReason = "missing_required_domain"
 		result.ConflictFlags = append(result.ConflictFlags, "missing_required_domain")
 		result.MatchedSignals = append(result.MatchedSignals, prefixedSignals("action", result.ActionHits)...)
@@ -261,6 +277,13 @@ func MatchProfile(signals QueryIntentSignals, profile SelectorProfile) MatchResu
 	return result
 }
 
+func compiledProfileMatches(matcher *textmatch.FoldedTermMatcher, query string) []string {
+	if matcher == nil || query == "" {
+		return nil
+	}
+	return matcher.FindMatchesFold(query)
+}
+
 func FindMatches(text string, terms []string) []string {
 	if text == "" || len(terms) == 0 {
 		return nil
@@ -293,7 +316,7 @@ func ContainsTerm(text, term string) bool {
 	if text == "" || term == "" {
 		return false
 	}
-	if isASCIITerm(term) {
+	if isASCIITerm(term) && needsASCIIWordBoundary(term) {
 		return containsASCIIWord(text, term)
 	}
 	return strings.Contains(text, term)
@@ -307,17 +330,8 @@ func HumanizeName(name string) string {
 }
 
 func detectLocalWorkspace(lower string) bool {
-	hasContainer := ContainsAny(lower, []string{
-		"workspace", "repo", "repository", "folder", "directory", "path", "branch", "commit",
-		"working tree", "working copy", "project", "in my workspace", "in your workspace",
-		"工作区", "仓库", "目录", "文件夹", "路径", "分支", "提交",
-	})
-	hasFile := ContainsAny(lower, []string{
-		".csv", ".xlsx", ".xls", ".txt", ".md", ".pdf", ".json", ".yaml", ".yml", ".go", ".ts", ".vue",
-	}) && ContainsAny(lower, []string{
-		"workspace", "repo", "repository", "folder", "directory", "provided", "read", "review", "analyze", "summarize", "source", "code",
-		"工作区", "仓库", "目录", "文件夹", "提供", "读取", "查看", "分析", "总结", "代码", "源码",
-	})
+	hasContainer := workspaceContainerMatcher.ContainsAnyFold(lower)
+	hasFile := workspaceFileExtMatcher.ContainsAnyFold(lower) && workspaceFileContextMatcher.ContainsAnyFold(lower)
 	return hasContainer || hasFile
 }
 
@@ -325,33 +339,15 @@ func detectNegation(lower string) bool {
 	if lower == "" {
 		return false
 	}
-	negIdx := firstMatchIndex(lower, negationTerms)
-	if negIdx < 0 {
+	match, ok := negationTermMatcher.FirstMatchFold(lower)
+	if !ok {
 		return false
 	}
-	if negIdx < 12 {
+	if match.Start < 12 {
 		return true
 	}
-	after := strings.TrimLeftFunc(lower[negIdx:], unicode.IsSpace)
-	return ContainsAny(after, followupActionTerms)
-}
-
-func firstMatchIndex(text string, terms []string) int {
-	best := -1
-	for _, term := range terms {
-		term = strings.TrimSpace(strings.ToLower(term))
-		if term == "" {
-			continue
-		}
-		idx := strings.Index(text, term)
-		if idx < 0 {
-			continue
-		}
-		if best < 0 || idx < best {
-			best = idx
-		}
-	}
-	return best
+	after := strings.TrimLeftFunc(string([]rune(lower)[match.Start:]), unicode.IsSpace)
+	return followupActionTermMatcher.ContainsAnyFold(after)
 }
 
 func prefixedSignals(prefix string, values []string) []string {
@@ -390,6 +386,14 @@ func isASCIITerm(s string) bool {
 	return true
 }
 
+func needsASCIIWordBoundary(term string) bool {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return false
+	}
+	return isASCIIWordByte(term[0]) && isASCIIWordByte(term[len(term)-1])
+}
+
 func containsASCIIWord(text, term string) bool {
 	searchFrom := 0
 	for searchFrom <= len(text) {
@@ -423,7 +427,50 @@ func minInt(a, b int) int {
 	return b
 }
 
+func compileSelectorProfile(profile SelectorProfile) compiledSelectorProfile {
+	key := selectorProfileCacheKey(profile)
+	if cached, ok := selectorProfileCache.Load(key); ok {
+		return cached.(compiledSelectorProfile)
+	}
+	compiled := compiledSelectorProfile{
+		raw:          profile,
+		exactAliases: textmatch.NewFoldedTermMatcher(profile.ExactAliases),
+		actions:      textmatch.NewFoldedTermMatcher(profile.Actions),
+		objects:      textmatch.NewFoldedTermMatcher(profile.Objects),
+		contextCues:  textmatch.NewFoldedTermMatcher(profile.ContextCues),
+		negativeCues: textmatch.NewFoldedTermMatcher(profile.NegativeCues),
+	}
+	actual, _ := selectorProfileCache.LoadOrStore(key, compiled)
+	return actual.(compiledSelectorProfile)
+}
+
+func selectorProfileCacheKey(profile SelectorProfile) string {
+	var b strings.Builder
+	writeField := func(name string, values []string) {
+		b.WriteString(name)
+		b.WriteByte('=')
+		for _, value := range values {
+			b.WriteString(value)
+			b.WriteByte('\x1f')
+		}
+		b.WriteByte('\x1e')
+	}
+	b.WriteString(strings.ToLower(strings.TrimSpace(profile.Name)))
+	b.WriteByte('\x1d')
+	writeField("exact", profile.ExactAliases)
+	writeField("action", profile.Actions)
+	writeField("object", profile.Objects)
+	writeField("context", profile.ContextCues)
+	writeField("negative", profile.NegativeCues)
+	writeField("preferred", profile.PreferredDomains)
+	writeField("required", profile.RequireAnyDomains)
+	writeField("conflict", profile.ConflictDomains)
+	return b.String()
+}
+
 var (
+	selectorProfileCache sync.Map
+
 	questionPrefixes = []string{
 		"what is", "what's", "how to", "how do i", "how do", "what does", "什么是", "啥是", "怎么用", "如何使用", "介绍一下", "解释一下",
 	}
@@ -448,6 +495,18 @@ var (
 	}
 	followupActionTerms = []string{
 		"search", "open", "run", "use", "create", "delete", "generate", "执行", "搜索", "打开", "运行", "使用", "创建", "删除",
+	}
+	workspaceContainerTerms = []string{
+		"workspace", "repo", "repository", "folder", "directory", "path", "branch", "commit",
+		"working tree", "working copy", "project", "in my workspace", "in your workspace",
+		"工作区", "仓库", "目录", "文件夹", "路径", "分支", "提交",
+	}
+	workspaceFileExtTerms = []string{
+		".csv", ".xlsx", ".xls", ".txt", ".md", ".pdf", ".json", ".yaml", ".yml", ".go", ".ts", ".vue",
+	}
+	workspaceFileContextTerms = []string{
+		"workspace", "repo", "repository", "folder", "directory", "provided", "read", "review", "analyze", "summarize", "source", "code",
+		"工作区", "仓库", "目录", "文件夹", "提供", "读取", "查看", "分析", "总结", "代码", "源码",
 	}
 	liveWebTerms = []string{
 		"latest", "news", "source", "sources", "citation", "citations", "reference", "references",

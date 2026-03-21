@@ -1,16 +1,15 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -136,6 +135,37 @@ func (s *fsToolScope) resolvePathWithContext(ctx context.Context, toolName, raw 
 		}
 	}
 	return scope.resolvePathWithApproval(ctx, toolName, candidate, allowDot)
+}
+
+// WriteBinaryArtifact writes raw bytes to a scoped workspace path while
+// honoring the same filesystem guardrails as file_write.
+func WriteBinaryArtifact(ctx context.Context, path string, data []byte) (string, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", errors.New("path must be a non-empty string")
+	}
+
+	roots, aliases := GetFSScope(ctx)
+	scopeCtx := ctx
+	if len(roots) > 0 || len(aliases) > 0 {
+		scopeCtx = WithFSRootOverride(ctx, roots, aliases)
+	}
+
+	scope := newFSToolScope(roots)
+	absPath, relPath, _, err := scope.resolvePathWithContext(scopeCtx, "file_write", trimmed, false)
+	if err != nil {
+		return "", err
+	}
+	if err := enforceWritePathGuard(scopeCtx, absPath); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		return "", fmt.Errorf("failed to create directory: %w", err)
+	}
+	if err := os.WriteFile(absPath, data, 0o644); err != nil {
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+	return relPath, nil
 }
 
 func resolveFSAliasPath(raw string, aliases map[string]string) (string, bool) {
@@ -651,19 +681,45 @@ func (t *EditTool) Execute(ctx context.Context, args map[string]interface{}) (in
 type GrepTool struct {
 	Scope       *fsToolScope
 	MaxFileSize int64
+	Name        string
+	Description string
+	Ripgrep     ripgrepResolver
+	ripgrepExec ripgrepExecFunc
 }
 
 func NewGrepTool(allowedPaths []string, maxFileSize int64) *GrepTool {
+	return NewGrepToolWithRipgrep(allowedPaths, maxFileSize, nil)
+}
+
+func NewGrepToolWithRipgrep(allowedPaths []string, maxFileSize int64, resolver ripgrepResolver) *GrepTool {
 	if maxFileSize <= 0 || maxFileSize > maxFSToolBytes {
 		maxFileSize = maxFSToolBytes
 	}
-	return &GrepTool{Scope: newFSToolScope(allowedPaths), MaxFileSize: maxFileSize}
+	return &GrepTool{
+		Scope:       newFSToolScope(allowedPaths),
+		MaxFileSize: maxFileSize,
+		Name:        "grep",
+		Description: "Search text pattern (RE2) across files.",
+		Ripgrep:     resolver,
+		ripgrepExec: defaultRipgrepExec,
+	}
+}
+
+func NewRgTool(allowedPaths []string, maxFileSize int64) *GrepTool {
+	return NewRgToolWithRipgrep(allowedPaths, maxFileSize, nil)
+}
+
+func NewRgToolWithRipgrep(allowedPaths []string, maxFileSize int64, resolver ripgrepResolver) *GrepTool {
+	tool := NewGrepToolWithRipgrep(allowedPaths, maxFileSize, resolver)
+	tool.Name = "rg"
+	tool.Description = "Search text pattern (RE2) across files. Alias of grep with the same schema and result shape."
+	return tool
 }
 
 func (t *GrepTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "grep",
-		Description: "Search text pattern (RE2) across files.",
+		Name:        t.toolName(),
+		Description: t.toolDescription(),
 		Icon:        "search",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -695,139 +751,25 @@ func (t *GrepTool) Definition() ToolDefinition {
 }
 
 func (t *GrepTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	pattern, err := fsAsString(args, "pattern")
-	if err != nil || strings.TrimSpace(pattern) == "" {
-		return nil, errors.New("pattern must be a non-empty string")
-	}
-	searchPath, err := fsOptionalString(args, ".", "path", "path", "file_path", "filePath")
-	if err != nil {
-		return nil, err
-	}
-	maxResults, err := fsAsInt(args, "max_results", 50)
-	if err != nil {
-		return nil, err
-	}
-	maxResults = fsClamp(maxResults, 1, maxFSSearchResults)
-	caseSensitive, err := fsAsBool(args, "case_sensitive", false)
-	if err != nil {
-		return nil, err
-	}
-	includeHidden, err := fsAsBool(args, "include_hidden", false)
-	if err != nil {
-		return nil, err
-	}
-
-	regexPattern := pattern
-	if !caseSensitive {
-		regexPattern = "(?i)" + regexPattern
-	}
-	re, err := regexp.Compile(regexPattern)
-	if err != nil {
-		return nil, fmt.Errorf("invalid regex pattern: %w", err)
-	}
-
-	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, "grep", searchPath, true)
-	if err != nil {
-		return nil, err
-	}
-	info, err := os.Stat(baseAbs)
-	if err != nil {
-		return nil, err
-	}
-
-	type grepMatch struct {
-		Path    string `json:"path"`
-		Line    int    `json:"line"`
-		Column  int    `json:"column"`
-		Preview string `json:"preview"`
-	}
-	matches := make([]grepMatch, 0, maxResults)
-
-	searchFile := func(path string) {
-		if len(matches) >= maxResults {
-			return
-		}
-		fi, err := os.Stat(path)
-		if err != nil || fi.IsDir() || fi.Size() > t.MaxFileSize {
-			return
-		}
-		data, err := os.ReadFile(path)
-		if err != nil || len(data) == 0 {
-			return
-		}
-		if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
-			return
-		}
-		_, relPath, _, relErr := t.Scope.resolvePathWithContext(ctx, "grep", path, false)
-		if relErr != nil {
-			return
-		}
-		lines := strings.Split(string(data), "\n")
-		for i, line := range lines {
-			loc := re.FindStringIndex(line)
-			if loc == nil {
-				continue
-			}
-			matches = append(matches, grepMatch{
-				Path:    relPath,
-				Line:    i + 1,
-				Column:  loc[0] + 1,
-				Preview: fsTruncateRunes(line, 220),
-			})
-			if len(matches) >= maxResults {
-				return
-			}
-		}
-	}
-
-	if info.IsDir() {
-		walkErr := filepath.WalkDir(baseAbs, func(path string, d os.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return nil
-			}
-			if !includeHidden && path != baseAbs && fsIsHiddenName(d.Name()) {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if d.IsDir() {
-				return nil
-			}
-			searchFile(path)
-			if len(matches) >= maxResults {
-				return errFSToolWalkDone
-			}
-			return nil
-		})
-		if walkErr != nil && !errors.Is(walkErr, errFSToolWalkDone) {
-			return nil, walkErr
-		}
-	} else {
-		searchFile(baseAbs)
-	}
-
-	out, err := json.Marshal(map[string]interface{}{
-		"pattern":        pattern,
-		"path":           baseRel,
-		"matches":        matches,
-		"count":          len(matches),
-		"truncated":      len(matches) >= maxResults,
-		"max_results":    maxResults,
-		"case_sensitive": caseSensitive,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return string(out), nil
+	return t.executeGrep(ctx, args)
 }
 
 type FindTool struct {
-	Scope *fsToolScope
+	Scope       *fsToolScope
+	Ripgrep     ripgrepResolver
+	ripgrepExec ripgrepExecFunc
 }
 
 func NewFindTool(allowedPaths []string) *FindTool {
-	return &FindTool{Scope: newFSToolScope(allowedPaths)}
+	return NewFindToolWithRipgrep(allowedPaths, nil)
+}
+
+func NewFindToolWithRipgrep(allowedPaths []string, resolver ripgrepResolver) *FindTool {
+	return &FindTool{
+		Scope:       newFSToolScope(allowedPaths),
+		Ripgrep:     resolver,
+		ripgrepExec: defaultRipgrepExec,
+	}
 }
 
 func (t *FindTool) Definition() ToolDefinition {
@@ -864,138 +806,7 @@ func (t *FindTool) Definition() ToolDefinition {
 }
 
 func (t *FindTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	pattern, err := fsOptionalString(args, "*", "pattern", "pattern", "glob")
-	if err != nil {
-		return nil, err
-	}
-	basePath, err := fsOptionalString(args, ".", "path", "path", "file_path", "filePath")
-	if err != nil {
-		return nil, err
-	}
-	maxDepth, err := fsAsInt(args, "max_depth", defaultFSToolFindDepth)
-	if err != nil {
-		return nil, err
-	}
-	maxDepth = fsClamp(maxDepth, 0, 20)
-	includeHidden, err := fsAsBool(args, "include_hidden", false)
-	if err != nil {
-		return nil, err
-	}
-	typeValue, err := fsOptionalString(args, "all", "type", "type", "file_type", "fileType")
-	if err != nil {
-		return nil, err
-	}
-	typeFilter := "all"
-	n := strings.ToLower(strings.TrimSpace(typeValue))
-	switch n {
-	case "", "all", "file", "dir":
-		if n != "" {
-			typeFilter = n
-		}
-	default:
-		return nil, errors.New("type must be one of: all, file, dir")
-	}
-
-	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, "find", basePath, true)
-	if err != nil {
-		return nil, err
-	}
-	baseInfo, err := os.Stat(baseAbs)
-	if err != nil {
-		return nil, err
-	}
-	if !baseInfo.IsDir() {
-		return nil, fmt.Errorf("path is not a directory: %s", baseRel)
-	}
-
-	type findEntry struct {
-		Path string `json:"path"`
-		Type string `json:"type"`
-		Size int64  `json:"size,omitempty"`
-	}
-	entries := make([]findEntry, 0, 256)
-	truncated := false
-	patternHasSlash := strings.Contains(pattern, "/")
-
-	matchPattern := func(relPath, name string) bool {
-		target := name
-		if patternHasSlash {
-			target = relPath
-		}
-		ok, matchErr := filepath.Match(pattern, target)
-		if matchErr != nil {
-			return false
-		}
-		return ok
-	}
-
-	walkErr := filepath.WalkDir(baseAbs, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-		if path == baseAbs {
-			return nil
-		}
-		rel, relErr := filepath.Rel(baseAbs, path)
-		if relErr != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		depth := strings.Count(rel, "/") + 1
-		if depth > maxDepth {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !includeHidden && fsIsHiddenName(d.Name()) {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		entryType := "file"
-		if d.IsDir() {
-			entryType = "dir"
-		}
-		if typeFilter != "all" && typeFilter != entryType {
-			return nil
-		}
-		if !matchPattern(rel, d.Name()) {
-			return nil
-		}
-		item := findEntry{Path: rel, Type: entryType}
-		if !d.IsDir() {
-			if fi, fiErr := d.Info(); fiErr == nil {
-				item.Size = fi.Size()
-			}
-		}
-		entries = append(entries, item)
-		if len(entries) >= maxFSToolEntries {
-			truncated = true
-			return errFSToolWalkDone
-		}
-		return nil
-	})
-	if walkErr != nil && !errors.Is(walkErr, errFSToolWalkDone) {
-		return nil, walkErr
-	}
-
-	out, err := json.Marshal(map[string]interface{}{
-		"base_path":      baseRel,
-		"pattern":        pattern,
-		"entries":        entries,
-		"count":          len(entries),
-		"truncated":      truncated,
-		"max_depth":      maxDepth,
-		"include_hidden": includeHidden,
-		"type":           typeFilter,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return string(out), nil
+	return t.executeFind(ctx, args)
 }
 
 type LsTool struct {
@@ -1068,9 +879,12 @@ func (t *LsTool) Execute(ctx context.Context, args map[string]interface{}) (inte
 	}
 
 	type listEntry struct {
-		Path string `json:"path"`
-		Type string `json:"type"`
-		Size int64  `json:"size,omitempty"`
+		Path       string `json:"path"`
+		Type       string `json:"type"`
+		Mode       string `json:"mode,omitempty"`
+		Size       int64  `json:"size,omitempty"`
+		ModifiedAt string `json:"modified_at,omitempty"`
+		Display    string `json:"display,omitempty"`
 	}
 	entries := make([]listEntry, 0, 256)
 	truncated := false
@@ -1103,8 +917,13 @@ func (t *LsTool) Execute(ctx context.Context, args map[string]interface{}) (inte
 		item := listEntry{Path: rel, Type: "file"}
 		if d.IsDir() {
 			item.Type = "dir"
-		} else if fi, fiErr := d.Info(); fiErr == nil {
+			item.Path = rel + "/"
+		}
+		if fi, fiErr := d.Info(); fiErr == nil {
+			item.Mode = fi.Mode().String()
 			item.Size = fi.Size()
+			item.ModifiedAt = fi.ModTime().UTC().Format(time.RFC3339)
+			item.Display = formatLongLsEntry(item.Mode, item.Size, fi.ModTime().UTC(), item.Path)
 		}
 		entries = append(entries, item)
 		if len(entries) >= maxEntries {
@@ -1119,6 +938,7 @@ func (t *LsTool) Execute(ctx context.Context, args map[string]interface{}) (inte
 
 	out, err := json.Marshal(map[string]interface{}{
 		"base_path":      baseRel,
+		"format":         "long",
 		"entries":        entries,
 		"count":          len(entries),
 		"truncated":      truncated,
@@ -1130,4 +950,12 @@ func (t *LsTool) Execute(ctx context.Context, args map[string]interface{}) (inte
 		return nil, err
 	}
 	return string(out), nil
+}
+
+func formatLongLsEntry(mode string, size int64, modifiedAt time.Time, path string) string {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		mode = "----------"
+	}
+	return fmt.Sprintf("%s %12d %s %s", mode, size, modifiedAt.Format("2006-01-02 15:04:05"), path)
 }

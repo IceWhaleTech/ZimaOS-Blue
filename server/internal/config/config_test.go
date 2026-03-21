@@ -39,8 +39,8 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Server.Port != 80 {
 		t.Errorf("Server.Port = %v, want %v", cfg.Server.Port, 80)
 	}
-	if cfg.Server.ReadTimeout != 30*time.Second {
-		t.Errorf("Server.ReadTimeout = %v, want %v", cfg.Server.ReadTimeout, 30*time.Second)
+	if cfg.Server.ReadTimeout != 5*time.Minute {
+		t.Errorf("Server.ReadTimeout = %v, want %v", cfg.Server.ReadTimeout, 5*time.Minute)
 	}
 
 	// Log defaults
@@ -58,6 +58,48 @@ func TestLoad_Defaults(t *testing.T) {
 	if !cfg.Browser.Headless {
 		t.Errorf("Browser.Headless = %v, want true", cfg.Browser.Headless)
 	}
+	if cfg.Browser.RelayEnabled {
+		t.Errorf("Browser.RelayEnabled = %v, want false", cfg.Browser.RelayEnabled)
+	}
+	if cfg.Browser.RelayHost != "127.0.0.1" {
+		t.Errorf("Browser.RelayHost = %v, want %v", cfg.Browser.RelayHost, "127.0.0.1")
+	}
+	if cfg.Browser.RelayPort != 18792 {
+		t.Errorf("Browser.RelayPort = %v, want %v", cfg.Browser.RelayPort, 18792)
+	}
+	if cfg.Browser.DefaultTimeout != 60000 {
+		t.Errorf("Browser.DefaultTimeout = %v, want %v", cfg.Browser.DefaultTimeout, 60000)
+	}
+	if cfg.Browser.MaxTimeout != 300000 {
+		t.Errorf("Browser.MaxTimeout = %v, want %v", cfg.Browser.MaxTimeout, 300000)
+	}
+	if cfg.ToolCalling.WebFetch.Timeout != 5*time.Minute {
+		t.Errorf("ToolCalling.WebFetch.Timeout = %v, want %v", cfg.ToolCalling.WebFetch.Timeout, 5*time.Minute)
+	}
+	if cfg.ToolCalling.WebFetch.FirecrawlTimeout != 5*time.Minute {
+		t.Errorf("ToolCalling.WebFetch.FirecrawlTimeout = %v, want %v", cfg.ToolCalling.WebFetch.FirecrawlTimeout, 5*time.Minute)
+	}
+	if cfg.Performance.Database.ConnMaxIdleTime != 10*time.Minute {
+		t.Errorf("Performance.Database.ConnMaxIdleTime = %v, want %v", cfg.Performance.Database.ConnMaxIdleTime, 10*time.Minute)
+	}
+	if !cfg.Performance.ResourceReclaim.Enabled {
+		t.Errorf("Performance.ResourceReclaim.Enabled = %v, want true", cfg.Performance.ResourceReclaim.Enabled)
+	}
+	if cfg.Performance.ResourceReclaim.BrowserIdleAfter != 10*time.Minute {
+		t.Errorf("Performance.ResourceReclaim.BrowserIdleAfter = %v, want %v", cfg.Performance.ResourceReclaim.BrowserIdleAfter, 10*time.Minute)
+	}
+	if cfg.Performance.ResourceReclaim.WorkflowIdleAfter != 15*time.Minute {
+		t.Errorf("Performance.ResourceReclaim.WorkflowIdleAfter = %v, want %v", cfg.Performance.ResourceReclaim.WorkflowIdleAfter, 15*time.Minute)
+	}
+	if cfg.Performance.ResourceReclaim.CronIdleAfter != 15*time.Minute {
+		t.Errorf("Performance.ResourceReclaim.CronIdleAfter = %v, want %v", cfg.Performance.ResourceReclaim.CronIdleAfter, 15*time.Minute)
+	}
+	if cfg.Performance.ResourceReclaim.STTIdleAfter != 10*time.Minute {
+		t.Errorf("Performance.ResourceReclaim.STTIdleAfter = %v, want %v", cfg.Performance.ResourceReclaim.STTIdleAfter, 10*time.Minute)
+	}
+	if !cfg.Performance.ResourceReclaim.SpeechStatusDoesNotPrewarmSTT {
+		t.Errorf("Performance.ResourceReclaim.SpeechStatusDoesNotPrewarmSTT = %v, want true", cfg.Performance.ResourceReclaim.SpeechStatusDoesNotPrewarmSTT)
+	}
 	if !cfg.Session.Audit.Enabled {
 		t.Errorf("Session.Audit.Enabled = %v, want true", cfg.Session.Audit.Enabled)
 	}
@@ -66,12 +108,6 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.Session.Persistence.Path != "./data/blue.db" {
 		t.Errorf("Session.Persistence.Path = %v, want %v", cfg.Session.Persistence.Path, "./data/blue.db")
-	}
-	if cfg.Research.Router.DefaultMode != "web" {
-		t.Errorf("Research.Router.DefaultMode = %v, want %v", cfg.Research.Router.DefaultMode, "web")
-	}
-	if cfg.Research.Autoresearch.Enabled {
-		t.Errorf("Research.Autoresearch.Enabled = %v, want false", cfg.Research.Autoresearch.Enabled)
 	}
 	if cfg.Security.Password.MinLength != 8 {
 		t.Errorf("Security.Password.MinLength = %v, want %v", cfg.Security.Password.MinLength, 8)
@@ -106,8 +142,18 @@ log:
 worker:
   pool_size: 20
 browser:
+  driver: "relay"
+  relay_enabled: true
+  relay_port: 18792
+  relay_token: "relay-test-token"
   headless: false
   pool_size: 1
+  cdp_url: "http://127.0.0.1:18792?token=test-token"
+performance:
+  database:
+    conn_max_idle_time: "2m"
+  resource_reclaim:
+    stt_idle_after: "3m"
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		t.Fatalf("Failed to write config file: %v", err)
@@ -136,41 +182,46 @@ browser:
 	if cfg.Browser.PoolSize != 1 {
 		t.Errorf("Browser.PoolSize = %v, want %v", cfg.Browser.PoolSize, 1)
 	}
+	if got := cfg.Browser.ResolvedDriver(); got != "relay" {
+		t.Errorf("Browser.ResolvedDriver() = %v, want %v", got, "relay")
+	}
+	if !cfg.Browser.RelayEnabled {
+		t.Fatalf("Browser.RelayEnabled = false, want true")
+	}
+	if cfg.Browser.RelayPort != 18792 {
+		t.Fatalf("Browser.RelayPort = %v, want %v", cfg.Browser.RelayPort, 18792)
+	}
+	if cfg.Browser.RelayToken != "relay-test-token" {
+		t.Fatalf("Browser.RelayToken = %v, want %v", cfg.Browser.RelayToken, "relay-test-token")
+	}
+	if cfg.Browser.CDPURL != "http://127.0.0.1:18792?token=test-token" {
+		t.Errorf("Browser.CDPURL = %v, want %v", cfg.Browser.CDPURL, "http://127.0.0.1:18792?token=test-token")
+	}
+	if cfg.Performance.Database.ConnMaxIdleTime != 2*time.Minute {
+		t.Errorf("Performance.Database.ConnMaxIdleTime = %v, want %v", cfg.Performance.Database.ConnMaxIdleTime, 2*time.Minute)
+	}
+	if cfg.Performance.ResourceReclaim.STTIdleAfter != 3*time.Minute {
+		t.Errorf("Performance.ResourceReclaim.STTIdleAfter = %v, want %v", cfg.Performance.ResourceReclaim.STTIdleAfter, 3*time.Minute)
+	}
 }
 
 func TestLoad_FromEnv(t *testing.T) {
 	isolateConfigDiscovery(t)
 
 	// Set environment variables
+	os.Setenv("BLUE_SERVER_HOST", "127.0.0.1")
 	os.Setenv("BLUE_SERVER_PORT", "7070")
 	os.Setenv("BLUE_LOG_LEVEL", "warn")
 	os.Setenv("BLUE_WEB_FETCH_ALLOW_PRIVATE_HOSTS", "true")
 	os.Setenv("BLUE_WEB_FETCH_TIMEOUT", "12s")
-	os.Setenv("BLUE_RESEARCH_DEFAULT_ROUTE_MODE", "hybrid")
-	os.Setenv("BLUE_RESEARCH_ALLOW_EXPERIMENT", "false")
-	os.Setenv("BLUE_RESEARCH_ALLOW_HYBRID", "false")
-	os.Setenv("BLUE_AUTORESEARCH_ENABLED", "true")
-	os.Setenv("BLUE_AUTORESEARCH_COMMAND", "uv")
-	os.Setenv("BLUE_AUTORESEARCH_WORKING_DIR", "/tmp/autoresearch")
-	os.Setenv("BLUE_AUTORESEARCH_ARGS", "[\"run\",\"train.py\",\"--seed\",\"1337\"]")
-	os.Setenv("BLUE_AUTORESEARCH_ARTIFACT_DIR", "/tmp/autoresearch-artifacts")
-	os.Setenv("BLUE_AUTORESEARCH_ENV_JSON", "{\"WANDB_MODE\":\"disabled\",\"CUDA_VISIBLE_DEVICES\":\"0\"}")
-	os.Setenv("BLUE_AUTORESEARCH_TIMEOUT", "30m")
+	os.Setenv("BLUE_WEB_FETCH_FIRECRAWL_TIMEOUT", "18s")
 	defer func() {
+		os.Unsetenv("BLUE_SERVER_HOST")
 		os.Unsetenv("BLUE_SERVER_PORT")
 		os.Unsetenv("BLUE_LOG_LEVEL")
 		os.Unsetenv("BLUE_WEB_FETCH_ALLOW_PRIVATE_HOSTS")
 		os.Unsetenv("BLUE_WEB_FETCH_TIMEOUT")
-		os.Unsetenv("BLUE_RESEARCH_DEFAULT_ROUTE_MODE")
-		os.Unsetenv("BLUE_RESEARCH_ALLOW_EXPERIMENT")
-		os.Unsetenv("BLUE_RESEARCH_ALLOW_HYBRID")
-		os.Unsetenv("BLUE_AUTORESEARCH_ENABLED")
-		os.Unsetenv("BLUE_AUTORESEARCH_COMMAND")
-		os.Unsetenv("BLUE_AUTORESEARCH_WORKING_DIR")
-		os.Unsetenv("BLUE_AUTORESEARCH_ARGS")
-		os.Unsetenv("BLUE_AUTORESEARCH_ARTIFACT_DIR")
-		os.Unsetenv("BLUE_AUTORESEARCH_ENV_JSON")
-		os.Unsetenv("BLUE_AUTORESEARCH_TIMEOUT")
+		os.Unsetenv("BLUE_WEB_FETCH_FIRECRAWL_TIMEOUT")
 	}()
 
 	cfg, err := Load("")
@@ -181,6 +232,9 @@ func TestLoad_FromEnv(t *testing.T) {
 	if cfg.Server.Port != 7070 {
 		t.Errorf("Server.Port = %v, want %v", cfg.Server.Port, 7070)
 	}
+	if cfg.Server.Host != "127.0.0.1" {
+		t.Errorf("Server.Host = %v, want %v", cfg.Server.Host, "127.0.0.1")
+	}
 	if cfg.Log.Level != "warn" {
 		t.Errorf("Log.Level = %v, want %v", cfg.Log.Level, "warn")
 	}
@@ -190,40 +244,7 @@ func TestLoad_FromEnv(t *testing.T) {
 	if cfg.ToolCalling.WebFetch.Timeout != 12*time.Second {
 		t.Fatalf("ToolCalling.WebFetch.Timeout = %v, want %v", cfg.ToolCalling.WebFetch.Timeout, 12*time.Second)
 	}
-	if cfg.Research.Router.DefaultMode != "hybrid" {
-		t.Fatalf("Research.Router.DefaultMode = %v, want %v", cfg.Research.Router.DefaultMode, "hybrid")
-	}
-	if cfg.Research.Router.AllowExperiment {
-		t.Fatal("Research.Router.AllowExperiment = true, want false")
-	}
-	if cfg.Research.Router.AllowHybrid {
-		t.Fatal("Research.Router.AllowHybrid = true, want false")
-	}
-	if !cfg.Research.Autoresearch.Enabled {
-		t.Fatal("Research.Autoresearch.Enabled = false, want true")
-	}
-	if cfg.Research.Autoresearch.Command != "uv" {
-		t.Fatalf("Research.Autoresearch.Command = %v, want %v", cfg.Research.Autoresearch.Command, "uv")
-	}
-	if cfg.Research.Autoresearch.WorkingDir != "/tmp/autoresearch" {
-		t.Fatalf("Research.Autoresearch.WorkingDir = %v, want %v", cfg.Research.Autoresearch.WorkingDir, "/tmp/autoresearch")
-	}
-	if len(cfg.Research.Autoresearch.Args) != 4 {
-		t.Fatalf("len(Research.Autoresearch.Args) = %d, want 4", len(cfg.Research.Autoresearch.Args))
-	}
-	if cfg.Research.Autoresearch.Args[0] != "run" || cfg.Research.Autoresearch.Args[1] != "train.py" {
-		t.Fatalf("Research.Autoresearch.Args = %#v, want [run train.py --seed 1337]", cfg.Research.Autoresearch.Args)
-	}
-	if cfg.Research.Autoresearch.ArtifactDir != "/tmp/autoresearch-artifacts" {
-		t.Fatalf("Research.Autoresearch.ArtifactDir = %v, want %v", cfg.Research.Autoresearch.ArtifactDir, "/tmp/autoresearch-artifacts")
-	}
-	if got := cfg.Research.Autoresearch.Env["WANDB_MODE"]; got != "disabled" {
-		t.Fatalf("Research.Autoresearch.Env[WANDB_MODE] = %q, want %q", got, "disabled")
-	}
-	if got := cfg.Research.Autoresearch.Env["CUDA_VISIBLE_DEVICES"]; got != "0" {
-		t.Fatalf("Research.Autoresearch.Env[CUDA_VISIBLE_DEVICES] = %q, want %q", got, "0")
-	}
-	if cfg.Research.Autoresearch.Timeout != 30*time.Minute {
-		t.Fatalf("Research.Autoresearch.Timeout = %v, want %v", cfg.Research.Autoresearch.Timeout, 30*time.Minute)
+	if cfg.ToolCalling.WebFetch.FirecrawlTimeout != 18*time.Second {
+		t.Fatalf("ToolCalling.WebFetch.FirecrawlTimeout = %v, want %v", cfg.ToolCalling.WebFetch.FirecrawlTimeout, 18*time.Second)
 	}
 }

@@ -23,6 +23,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 // Config contains Twitter/X channel configuration.
@@ -112,7 +113,7 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	return &Channel{
 		config:   cfg,
 		logger:   logger.With(zap.String("channel", "twitter")),
-		client:   &http.Client{Timeout: 30 * time.Second},
+		client:   network.NewPooledHTTPClient(5 * time.Minute),
 		messages: make(chan channel.Message, 100),
 		status:   channel.StatusDisconnected,
 	}

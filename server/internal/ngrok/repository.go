@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -69,20 +70,29 @@ type Repository struct {
 
 // NewRepository creates a new repository.
 func NewRepository(dbPath string) (*Repository, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(2)
+		db.SetMaxIdleConns(1)
+		if _, err := db.Exec(`PRAGMA journal_mode=WAL`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`PRAGMA synchronous=FULL`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`PRAGMA wal_autocheckpoint=1000`); err != nil {
+			return err
+		}
+		repo := &Repository{db: db}
+		return repo.migrate()
+	})
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(1)
 
-	repo := &Repository{db: db}
-	if err := repo.migrate(); err != nil {
-		db.Close()
-		return nil, err
-	}
-
-	return repo, nil
+	return &Repository{db: db}, nil
 }
 
 // Close closes the database connection.

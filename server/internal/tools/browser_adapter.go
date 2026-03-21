@@ -8,55 +8,95 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 )
 
+type rodServiceAcquireFunc func() (*browser.RodService, func(), error)
+
+type rodServiceSource struct {
+	svc     *browser.RodService
+	resolve func() *browser.RodService
+	acquire rodServiceAcquireFunc
+}
+
+type rodServiceLease struct {
+	svc     *browser.RodService
+	release func()
+}
+
+func (l rodServiceLease) close() {
+	if l.release != nil {
+		l.release()
+	}
+}
+
 // RodBrowserBackend adapts browser.RodService to the BrowserBackend interface.
 // Supports lazy initialization and mode-aware routing via context.
 type RodBrowserBackend struct {
-	defaultSvc     *browser.RodService
-	visibleSvc     *browser.RodService
-	resolveDefault func() *browser.RodService
-	resolveVisible func() *browser.RodService
+	defaultSource rodServiceSource
+	visibleSource rodServiceSource
 }
 
 // NewRodBrowserBackend creates a new adapter with a direct service reference.
 func NewRodBrowserBackend(svc *browser.RodService) *RodBrowserBackend {
-	return &RodBrowserBackend{defaultSvc: svc}
+	return &RodBrowserBackend{defaultSource: rodServiceSource{svc: svc}}
 }
 
-// NewLazyRodBrowserBackend creates a lazy adapter that resolves the default service on first use.
+// NewLazyRodBrowserBackend creates a lazy adapter that resolves the default service on demand.
 func NewLazyRodBrowserBackend(resolve func() *browser.RodService) *RodBrowserBackend {
-	return &RodBrowserBackend{resolveDefault: resolve}
+	return &RodBrowserBackend{defaultSource: rodServiceSource{resolve: resolve}}
 }
 
 // NewModeAwareRodBrowserBackend creates an adapter that can route requests to
 // different browser services based on per-request context or tab affinity.
 func NewModeAwareRodBrowserBackend(resolveDefault, resolveVisible func() *browser.RodService) *RodBrowserBackend {
-	return &RodBrowserBackend{resolveDefault: resolveDefault, resolveVisible: resolveVisible}
+	return &RodBrowserBackend{
+		defaultSource: rodServiceSource{resolve: resolveDefault},
+		visibleSource: rodServiceSource{resolve: resolveVisible},
+	}
 }
 
-func (a *RodBrowserBackend) getDefault() (*browser.RodService, error) {
-	if a.defaultSvc != nil {
-		return a.defaultSvc, nil
+// NewLeaseAwareRodBrowserBackend creates an adapter that keeps a managed browser
+// instance alive for the duration of each backend call.
+func NewLeaseAwareRodBrowserBackend(acquireDefault, acquireVisible rodServiceAcquireFunc) *RodBrowserBackend {
+	return &RodBrowserBackend{
+		defaultSource: rodServiceSource{acquire: acquireDefault},
+		visibleSource: rodServiceSource{acquire: acquireVisible},
 	}
-	if a.resolveDefault != nil {
-		a.defaultSvc = a.resolveDefault()
-	}
-	if a.defaultSvc == nil {
-		return nil, fmt.Errorf("browser service not available")
-	}
-	return a.defaultSvc, nil
 }
 
-func (a *RodBrowserBackend) getVisible() (*browser.RodService, error) {
-	if a.visibleSvc != nil {
-		return a.visibleSvc, nil
+func (a *RodBrowserBackend) acquireSource(source rodServiceSource, required bool) (rodServiceLease, error) {
+	switch {
+	case source.acquire != nil:
+		svc, release, err := source.acquire()
+		if err != nil {
+			return rodServiceLease{}, err
+		}
+		if release == nil {
+			release = func() {}
+		}
+		if svc == nil {
+			release()
+		} else {
+			return rodServiceLease{svc: svc, release: release}, nil
+		}
+	case source.svc != nil:
+		return rodServiceLease{svc: source.svc, release: func() {}}, nil
+	case source.resolve != nil:
+		if svc := source.resolve(); svc != nil {
+			return rodServiceLease{svc: svc, release: func() {}}, nil
+		}
 	}
-	if a.resolveVisible != nil {
-		a.visibleSvc = a.resolveVisible()
+
+	if !required {
+		return rodServiceLease{}, nil
 	}
-	if a.visibleSvc == nil {
-		return nil, nil
-	}
-	return a.visibleSvc, nil
+	return rodServiceLease{}, fmt.Errorf("browser service not available")
+}
+
+func (a *RodBrowserBackend) acquireDefault() (rodServiceLease, error) {
+	return a.acquireSource(a.defaultSource, true)
+}
+
+func (a *RodBrowserBackend) acquireVisible() (rodServiceLease, error) {
+	return a.acquireSource(a.visibleSource, false)
 }
 
 func browserHasTarget(ctx context.Context, svc *browser.RodService, targetID string) bool {
@@ -76,65 +116,111 @@ func browserHasTarget(ctx context.Context, svc *browser.RodService, targetID str
 	return false
 }
 
-func (a *RodBrowserBackend) getForTarget(ctx context.Context, targetID string) (*browser.RodService, error) {
-	defaultSvc, defaultErr := a.getDefault()
-	visibleSvc, _ := a.getVisible()
+func browserServiceUnavailable(defaultErr error) error {
+	if defaultErr != nil {
+		return defaultErr
+	}
+	return fmt.Errorf("browser service not available")
+}
+
+func (a *RodBrowserBackend) acquireForTarget(ctx context.Context, targetID string) (rodServiceLease, error) {
 	mode := GetBrowserLaunchMode(ctx)
 	targetID = strings.TrimSpace(targetID)
 
-	if targetID != "" {
-		if mode == BrowserLaunchModeVisible {
-			if browserHasTarget(ctx, visibleSvc, targetID) {
-				return visibleSvc, nil
+	if mode == BrowserLaunchModeVisible {
+		visibleLease, _ := a.acquireVisible()
+		if targetID == "" {
+			if visibleLease.svc != nil {
+				return visibleLease, nil
 			}
-			if browserHasTarget(ctx, defaultSvc, targetID) {
-				return defaultSvc, nil
+			visibleLease.close()
+			defaultLease, defaultErr := a.acquireDefault()
+			if defaultLease.svc != nil {
+				return defaultLease, nil
 			}
-			if visibleSvc != nil {
-				return visibleSvc, nil
-			}
-			if defaultSvc != nil {
-				return defaultSvc, nil
-			}
-			return nil, defaultErr
+			defaultLease.close()
+			return rodServiceLease{}, browserServiceUnavailable(defaultErr)
 		}
-		if browserHasTarget(ctx, defaultSvc, targetID) {
-			return defaultSvc, nil
+
+		if browserHasTarget(ctx, visibleLease.svc, targetID) {
+			return visibleLease, nil
 		}
-		if browserHasTarget(ctx, visibleSvc, targetID) {
-			return visibleSvc, nil
+
+		defaultLease, defaultErr := a.acquireDefault()
+		if browserHasTarget(ctx, defaultLease.svc, targetID) {
+			visibleLease.close()
+			return defaultLease, nil
 		}
+		if visibleLease.svc != nil {
+			defaultLease.close()
+			return visibleLease, nil
+		}
+		if defaultLease.svc != nil {
+			visibleLease.close()
+			return defaultLease, nil
+		}
+		visibleLease.close()
+		defaultLease.close()
+		return rodServiceLease{}, browserServiceUnavailable(defaultErr)
 	}
 
-	if mode == BrowserLaunchModeVisible && visibleSvc != nil {
-		return visibleSvc, nil
+	defaultLease, defaultErr := a.acquireDefault()
+	if targetID == "" {
+		if defaultLease.svc != nil {
+			return defaultLease, nil
+		}
+		defaultLease.close()
+		return rodServiceLease{}, browserServiceUnavailable(defaultErr)
 	}
-	if defaultSvc != nil {
-		return defaultSvc, nil
+
+	if browserHasTarget(ctx, defaultLease.svc, targetID) {
+		return defaultLease, nil
 	}
-	if visibleSvc != nil {
-		return visibleSvc, nil
+
+	visibleLease, _ := a.acquireVisible()
+	if browserHasTarget(ctx, visibleLease.svc, targetID) {
+		defaultLease.close()
+		return visibleLease, nil
 	}
-	if defaultErr != nil {
-		return nil, defaultErr
+	if defaultLease.svc != nil {
+		visibleLease.close()
+		return defaultLease, nil
 	}
-	return nil, fmt.Errorf("browser service not available")
+	if visibleLease.svc != nil {
+		defaultLease.close()
+		return visibleLease, nil
+	}
+	defaultLease.close()
+	visibleLease.close()
+	return rodServiceLease{}, browserServiceUnavailable(defaultErr)
 }
 
 func (a *RodBrowserBackend) Start(ctx context.Context) error {
-	svc, err := a.getForTarget(ctx, "")
+	lease, err := a.acquireForTarget(ctx, "")
 	if err != nil {
 		return err
 	}
-	return svc.Start(ctx)
+	defer lease.close()
+	return lease.svc.Start(ctx)
+}
+
+// UsesRelay reports whether the selected browser service is running in relay/CDP attach mode.
+func (a *RodBrowserBackend) UsesRelay(ctx context.Context, targetID string) bool {
+	lease, err := a.acquireForTarget(ctx, targetID)
+	if err != nil || lease.svc == nil {
+		return false
+	}
+	defer lease.close()
+	return lease.svc.UsesRelayDriver()
 }
 
 func (a *RodBrowserBackend) Navigate(ctx context.Context, url string, targetID string) (BrowserNavResult, error) {
-	svc, err := a.getForTarget(ctx, targetID)
+	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {
 		return BrowserNavResult{}, err
 	}
-	resp, err := svc.Navigate(ctx, &browser.NavigateRequest{URL: url, TargetID: targetID})
+	defer lease.close()
+	resp, err := lease.svc.Navigate(ctx, &browser.NavigateRequest{URL: url, TargetID: targetID})
 	if err != nil {
 		return BrowserNavResult{}, err
 	}
@@ -142,19 +228,21 @@ func (a *RodBrowserBackend) Navigate(ctx context.Context, url string, targetID s
 }
 
 func (a *RodBrowserBackend) CookieHeader(ctx context.Context, targetID string, url string) (string, error) {
-	svc, err := a.getForTarget(ctx, targetID)
+	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {
 		return "", err
 	}
-	return svc.CookieHeader(ctx, targetID, url)
+	defer lease.close()
+	return lease.svc.CookieHeader(ctx, targetID, url)
 }
 
 func (a *RodBrowserBackend) AccessibilityTree(ctx context.Context, targetID string, maxDepth int) (BrowserA11yTreeResult, error) {
-	svc, err := a.getForTarget(ctx, targetID)
+	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {
 		return BrowserA11yTreeResult{}, err
 	}
-	resp, err := svc.AccessibilityTree(ctx, targetID, maxDepth)
+	defer lease.close()
+	resp, err := lease.svc.AccessibilityTree(ctx, targetID, maxDepth)
 	if err != nil {
 		return BrowserA11yTreeResult{}, err
 	}
@@ -165,11 +253,12 @@ func (a *RodBrowserBackend) AccessibilityTree(ctx context.Context, targetID stri
 }
 
 func (a *RodBrowserBackend) InteractiveElements(ctx context.Context, targetID string) (BrowserInteractiveResult, error) {
-	svc, err := a.getForTarget(ctx, targetID)
+	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {
 		return BrowserInteractiveResult{}, err
 	}
-	resp, err := svc.InteractiveElements(ctx, targetID)
+	defer lease.close()
+	resp, err := lease.svc.InteractiveElements(ctx, targetID)
 	if err != nil {
 		return BrowserInteractiveResult{}, err
 	}
@@ -180,37 +269,41 @@ func (a *RodBrowserBackend) InteractiveElements(ctx context.Context, targetID st
 }
 
 func (a *RodBrowserBackend) CountInteractiveElements(ctx context.Context, targetID string) (int, error) {
-	svc, err := a.getForTarget(ctx, targetID)
+	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {
 		return 0, err
 	}
-	return svc.CountInteractiveElements(ctx, targetID)
+	defer lease.close()
+	return lease.svc.CountInteractiveElements(ctx, targetID)
 }
 
 func (a *RodBrowserBackend) ActByRef(ctx context.Context, targetID string, ref int, refMap map[int]int, action string, value string) error {
-	svc, err := a.getForTarget(ctx, targetID)
+	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {
 		return err
 	}
-	_, err = svc.ActByRef(ctx, targetID, ref, refMap, action, value)
+	defer lease.close()
+	_, err = lease.svc.ActByRef(ctx, targetID, ref, refMap, action, value)
 	return err
 }
 
 func (a *RodBrowserBackend) ActByInteractiveRef(ctx context.Context, targetID string, ref int, refMap map[int]string, action string, value string) error {
-	svc, err := a.getForTarget(ctx, targetID)
+	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {
 		return err
 	}
-	_, err = svc.ActByInteractiveRef(ctx, targetID, ref, refMap, action, value)
+	defer lease.close()
+	_, err = lease.svc.ActByInteractiveRef(ctx, targetID, ref, refMap, action, value)
 	return err
 }
 
 func (a *RodBrowserBackend) Screenshot(ctx context.Context, url string) (string, error) {
-	svc, err := a.getForTarget(ctx, "")
+	lease, err := a.acquireForTarget(ctx, "")
 	if err != nil {
 		return "", err
 	}
-	resp, err := svc.Screenshot(ctx, &browser.ScreenshotRequest{URL: url})
+	defer lease.close()
+	resp, err := lease.svc.Screenshot(ctx, &browser.ScreenshotRequest{URL: url})
 	if err != nil {
 		return "", err
 	}
@@ -218,24 +311,29 @@ func (a *RodBrowserBackend) Screenshot(ctx context.Context, url string) (string,
 }
 
 func (a *RodBrowserBackend) ScreenshotTab(ctx context.Context, targetID string) (string, error) {
-	svc, err := a.getForTarget(ctx, targetID)
+	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {
 		return "", err
 	}
-	return svc.ScreenshotTab(ctx, targetID)
+	defer lease.close()
+	return lease.svc.ScreenshotTab(ctx, targetID)
 }
 
 func (a *RodBrowserBackend) CloseTab(ctx context.Context, targetID string) error {
-	svc, err := a.getForTarget(ctx, targetID)
+	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {
 		return err
 	}
-	return svc.CloseTab(ctx, targetID)
+	defer lease.close()
+	return lease.svc.CloseTab(ctx, targetID)
 }
 
 func (a *RodBrowserBackend) Tabs(ctx context.Context) ([]BrowserTabResult, error) {
-	defaultSvc, defaultErr := a.getDefault()
-	visibleSvc, _ := a.getVisible()
+	defaultLease, defaultErr := a.acquireDefault()
+	visibleLease, _ := a.acquireVisible()
+	defer defaultLease.close()
+	defer visibleLease.close()
+
 	seen := make(map[string]struct{})
 	result := make([]BrowserTabResult, 0, 8)
 	appendTabs := func(tabs []*browser.Tab) {
@@ -253,13 +351,13 @@ func (a *RodBrowserBackend) Tabs(ctx context.Context) ([]BrowserTabResult, error
 			result = append(result, BrowserTabResult{TargetID: tab.TargetID, URL: tab.URL, Title: tab.Title, Active: tab.Active})
 		}
 	}
-	if defaultSvc != nil {
-		if tabs, err := defaultSvc.Tabs(ctx); err == nil {
+	if defaultLease.svc != nil {
+		if tabs, err := defaultLease.svc.Tabs(ctx); err == nil {
 			appendTabs(tabs)
 		}
 	}
-	if visibleSvc != nil {
-		if tabs, err := visibleSvc.Tabs(ctx); err == nil {
+	if visibleLease.svc != nil {
+		if tabs, err := visibleLease.svc.Tabs(ctx); err == nil {
 			appendTabs(tabs)
 		}
 	}
@@ -273,11 +371,12 @@ func (a *RodBrowserBackend) Tabs(ctx context.Context) ([]BrowserTabResult, error
 }
 
 func (a *RodBrowserBackend) ExecuteRecipe(ctx context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error) {
-	svc, err := a.getForTarget(ctx, "")
+	lease, err := a.acquireForTarget(ctx, "")
 	if err != nil {
 		return BrowserRecipeResult{}, err
 	}
-	resp, err := svc.ExecuteRecipe(ctx, &browser.RecipeRequest{Recipe: recipe, Params: params})
+	defer lease.close()
+	resp, err := lease.svc.ExecuteRecipe(ctx, &browser.RecipeRequest{Recipe: recipe, Params: params})
 	if err != nil {
 		return BrowserRecipeResult{}, err
 	}
@@ -290,11 +389,12 @@ func (a *RodBrowserBackend) ExecuteRecipe(ctx context.Context, recipe string, pa
 }
 
 func (a *RodBrowserBackend) ListRecipes(ctx context.Context) []BrowserRecipeInfo {
-	svc, err := a.getForTarget(ctx, "")
+	lease, err := a.acquireForTarget(ctx, "")
 	if err != nil {
 		return nil
 	}
-	infos := svc.Recipes().List()
+	defer lease.close()
+	infos := lease.svc.Recipes().List()
 	result := make([]BrowserRecipeInfo, len(infos))
 	for i, info := range infos {
 		result[i] = BrowserRecipeInfo{

@@ -26,11 +26,55 @@ import (
 const (
 	defaultMaxPages        = 20
 	hardMaxPages           = 200
-	defaultMaxChars        = 20000
+	defaultMaxChars        = 50000
 	hardMaxChars           = 200000
 	instanceAcquireTimeout = 30 * time.Second
 	engineName             = "pdfium/webassembly"
 	ocrRenderDPI           = 200
+)
+
+var pdfTextRuneReplacer = strings.NewReplacer(
+	"\u00a0", " ",
+	"\u1680", " ",
+	"\u2000", " ",
+	"\u2001", " ",
+	"\u2002", " ",
+	"\u2003", " ",
+	"\u2004", " ",
+	"\u2005", " ",
+	"\u2006", " ",
+	"\u2007", " ",
+	"\u2008", " ",
+	"\u2009", " ",
+	"\u200a", " ",
+	"\u2028", "\n",
+	"\u2029", "\n",
+	"\u202f", " ",
+	"\u205f", " ",
+	"\u3000", " ",
+	"\u00ad", "",
+	"\u200b", "",
+	"\u200c", "",
+	"\u200d", "",
+	"\u2060", "",
+	"\ufeff", "",
+	"\ufffe", "",
+	"\ufffd", "",
+	"ﬁ", "fi",
+	"ﬂ", "fl",
+	"ﬀ", "ff",
+	"ﬃ", "ffi",
+	"ﬄ", "ffl",
+	"ﬅ", "ft",
+	"ﬆ", "st",
+	"“", "\"",
+	"”", "\"",
+	"„", "\"",
+	"‟", "\"",
+	"‘", "'",
+	"’", "'",
+	"‚", "'",
+	"‛", "'",
 )
 
 // OCRService provides OCR fallback for rendered PDF pages.
@@ -53,6 +97,7 @@ type DocumentInfo struct {
 type PageText struct {
 	Number    int    `json:"number"`
 	Text      string `json:"text"`
+	RawText   string `json:"raw_text,omitempty"`
 	CharCount int    `json:"char_count"`
 	Source    string `json:"source,omitempty"`
 	Empty     bool   `json:"empty,omitempty"`
@@ -73,6 +118,7 @@ type ExtractRequest struct {
 type ExtractResult struct {
 	Document        DocumentInfo `json:"document"`
 	Text            string       `json:"text"`
+	RawText         string       `json:"raw_text,omitempty"`
 	Pages           []PageText   `json:"pages,omitempty"`
 	SelectedPages   []int        `json:"selected_pages,omitempty"`
 	CharCount       int          `json:"char_count"`
@@ -89,7 +135,8 @@ type ExtractResult struct {
 	Warnings        []string     `json:"warnings,omitempty"`
 }
 
-// Service extracts metadata and text from PDFs via PDFium WASM.
+// Service extracts metadata and text from PDFs.
+// On macOS, native PDFKit is treated as the primary extraction path.
 type Service struct {
 	mu       sync.RWMutex
 	logger   *zap.Logger
@@ -144,6 +191,12 @@ func (s *Service) Info(ctx context.Context, path string) (DocumentInfo, error) {
 	if err != nil {
 		return DocumentInfo{}, err
 	}
+	if nativeInfo, ok, nativeErr := tryNativePDFInfo(ctx, resolvedPath, stat); ok {
+		if nativeErr != nil {
+			return DocumentInfo{}, nativeErr
+		}
+		return nativeInfo, nil
+	}
 	instance, err := s.getInstance()
 	if err != nil {
 		return DocumentInfo{}, err
@@ -167,6 +220,12 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResul
 	resolvedPath, stat, err := resolvePath(req.Path)
 	if err != nil {
 		return ExtractResult{}, err
+	}
+	if nativeResult, ok, nativeErr := tryNativePDFExtract(ctx, req, resolvedPath, stat); ok {
+		if nativeErr != nil {
+			return ExtractResult{}, nativeErr
+		}
+		return nativeResult, nil
 	}
 	instance, err := s.getInstance()
 	if err != nil {
@@ -195,6 +254,7 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResul
 	maxChars := clampMaxChars(req.MaxChars)
 	result := ExtractResult{Document: info, Warnings: warnings}
 	remainingChars := maxChars
+	remainingRawChars := maxChars
 	vision := s.visionService()
 
 	for _, pageNumber := range selectedPages {
@@ -208,6 +268,7 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResul
 			return ExtractResult{}, fmt.Errorf("extract page %d: %w", pageNumber, err)
 		}
 
+		rawPageText := canonicalizeExtractedPDFText(pageText.Text)
 		pageOnlyText := normalizeText(pageText.Text)
 		source := "text"
 		if pageOnlyText == "" {
@@ -220,8 +281,10 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResul
 			if err != nil {
 				result.Warnings = append(result.Warnings, fmt.Sprintf("page %d OCR failed: %v", pageNumber, err))
 			} else {
+				rawPageText = effectiveRawPDFText(ocrResult.Text, pageOnlyText)
 				pageOnlyText = normalizeText(ocrResult.Text)
 				if pageOnlyText != "" {
+					rawPageText = effectiveRawPDFText(ocrResult.Text, pageOnlyText)
 					source = "ocr"
 					result.OCRUsed = true
 					result.OCRPages = append(result.OCRPages, pageNumber)
@@ -245,6 +308,7 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResul
 				}
 				pageOnlyText = normalizeText(visionResult.Text)
 				if pageOnlyText != "" {
+					rawPageText = effectiveRawPDFText(visionResult.Text, pageOnlyText)
 					source = "vision"
 					result.VisionUsed = true
 					result.VisionPages = append(result.VisionPages, pageNumber)
@@ -262,6 +326,7 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResul
 		if pageOnlyText == "" {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("page %d has no extractable text", pageNumber))
 		}
+		rawPageText = effectiveRawPDFText(rawPageText, pageOnlyText)
 
 		prefix := resultTextPrefix(pageNumber, len(selectedPages))
 		pageOutput := pageOnlyText
@@ -277,6 +342,18 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResul
 			result.Text += clippedOutput
 			remainingChars -= outputChars
 		}
+		rawOutput := rawPageText
+		if prefix != "" {
+			rawOutput = prefix + rawPageText
+		}
+		clippedRawOutput, rawOutputChars, rawWasClipped := clipRunes(rawOutput, remainingRawChars)
+		if clippedRawOutput != "" {
+			if result.RawText != "" {
+				result.RawText += "\n\n"
+			}
+			result.RawText += clippedRawOutput
+			remainingRawChars -= rawOutputChars
+		}
 
 		result.SelectedPages = append(result.SelectedPages, pageNumber)
 		if req.IncludePages {
@@ -289,10 +366,22 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResul
 				}
 				pageEntryText, pageEntryChars, _ = clipRunes(pageOnlyText, availableForText)
 			}
-			result.Pages = append(result.Pages, PageText{Number: pageNumber, Text: pageEntryText, CharCount: pageEntryChars, Source: source, Empty: pageOnlyText == ""})
+			pageEntryRawText := rawPageText
+			if rawWasClipped {
+				availableForRawText := rawOutputChars - utf8.RuneCountInString(prefix)
+				if availableForRawText < 0 {
+					availableForRawText = 0
+				}
+				pageEntryRawText, _, _ = clipRunes(rawPageText, availableForRawText)
+			}
+			pageEntry := PageText{Number: pageNumber, Text: pageEntryText, CharCount: pageEntryChars, Source: source, Empty: pageOnlyText == ""}
+			if strings.TrimSpace(pageEntryRawText) != "" && strings.TrimSpace(pageEntryRawText) != strings.TrimSpace(pageEntryText) {
+				pageEntry.RawText = pageEntryRawText
+			}
+			result.Pages = append(result.Pages, pageEntry)
 		}
 
-		if wasClipped || remainingChars <= 0 {
+		if wasClipped || rawWasClipped || remainingChars <= 0 || remainingRawChars <= 0 {
 			result.Truncated = true
 			result.Warnings = append(result.Warnings, fmt.Sprintf("output truncated at %d characters", maxChars))
 			break
@@ -484,8 +573,426 @@ func clampMaxChars(value int) int {
 }
 
 func normalizeText(text string) string {
-	text = strings.ReplaceAll(text, "\x00", "")
-	return strings.TrimSpace(text)
+	text = canonicalizePDFText(text)
+	if text == "" {
+		return ""
+	}
+
+	rawLines := strings.Split(text, "\n")
+	lines := make([]string, 0, len(rawLines))
+	for _, raw := range rawLines {
+		line := normalizePDFLine(raw)
+		if line == "" {
+			if len(lines) == 0 || lines[len(lines)-1] == "" {
+				continue
+			}
+			lines = append(lines, "")
+			continue
+		}
+		lines = append(lines, line)
+	}
+
+	lines = mergeWrappedPDFLines(lines)
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func canonicalizeExtractedPDFText(text string) string {
+	return strings.TrimSpace(canonicalizePDFText(text))
+}
+
+func effectiveRawPDFText(rawText, normalizedText string) string {
+	rawText = canonicalizeExtractedPDFText(rawText)
+	if rawText != "" {
+		return rawText
+	}
+	return strings.TrimSpace(normalizedText)
+}
+
+func canonicalizePDFText(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	text = pdfTextRuneReplacer.Replace(text)
+
+	var sb strings.Builder
+	sb.Grow(len(text))
+	for _, r := range text {
+		switch r {
+		case '\n':
+			sb.WriteByte('\n')
+		case '\t':
+			sb.WriteByte(' ')
+		default:
+			if shouldDropPDFRune(r) {
+				continue
+			}
+			if unicode.IsSpace(r) {
+				sb.WriteByte(' ')
+				continue
+			}
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
+func shouldDropPDFRune(r rune) bool {
+	switch r {
+	case 0, 0x000b, 0x000c:
+		return true
+	case 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e:
+		return true
+	default:
+		return unicode.IsControl(r) && r != '\n'
+	}
+}
+
+func normalizePDFLine(line string) string {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return ""
+	}
+	line = normalizePDFListPrefix(line)
+	if !looksLikePDFTableLine(line) {
+		line = collapsePDFSpaces(line)
+	}
+	return strings.TrimSpace(line)
+}
+
+func normalizePDFListPrefix(line string) string {
+	if line == "" {
+		return ""
+	}
+	runes := []rune(line)
+	if len(runes) == 0 {
+		return ""
+	}
+	if isPDFBulletRune(runes[0]) {
+		rest := strings.TrimSpace(string(runes[1:]))
+		if rest == "" {
+			return ""
+		}
+		return "- " + rest
+	}
+
+	fields := strings.Fields(line)
+	if len(fields) >= 2 {
+		if label := trimPDFEnumToken(fields[0]); label != "" {
+			return label + ". " + strings.Join(fields[1:], " ")
+		}
+		if len(fields) >= 3 && isPDFEnumLabel(fields[0]) && isPDFEnumSeparator(fields[1]) {
+			return fields[0] + ". " + strings.Join(fields[2:], " ")
+		}
+	}
+	return line
+}
+
+func isPDFBulletRune(r rune) bool {
+	switch r {
+	case '-', '*', '•', '●', '◦', '▪', '■', '□', '▫', '◆', '◇', '‣', '∙', '·', '◾', '◽', '►', '▸', '▹', '→', '➤', '➢', '➣', '–', '—', '\uf0a7', '\uf0b7':
+		return true
+	default:
+		return false
+	}
+}
+
+func trimPDFEnumToken(token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	last, size := utf8.DecodeLastRuneInString(token)
+	if last == utf8.RuneError || size == 0 {
+		return ""
+	}
+	if !isPDFEnumSeparator(string(last)) && last != '.' {
+		return ""
+	}
+	label := strings.TrimSpace(token[:len(token)-size])
+	if !isPDFEnumLabel(label) {
+		return ""
+	}
+	return label
+}
+
+func isPDFEnumSeparator(token string) bool {
+	switch token {
+	case "-", ":", "：", ")", "]", "}":
+		return true
+	default:
+		return false
+	}
+}
+
+func isPDFEnumLabel(label string) bool {
+	label = strings.TrimSpace(label)
+	if label == "" || utf8.RuneCountInString(label) > 8 {
+		return false
+	}
+	allDigits := true
+	for _, r := range label {
+		if !unicode.IsDigit(r) {
+			allDigits = false
+			break
+		}
+	}
+	if allDigits {
+		return true
+	}
+	runes := []rune(label)
+	if len(runes) == 1 && unicode.IsLetter(runes[0]) {
+		return true
+	}
+	lower := strings.ToLower(label)
+	if utf8.RuneCountInString(lower) > 5 {
+		return false
+	}
+	for _, r := range lower {
+		switch r {
+		case 'i', 'v', 'x':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func looksLikePDFTableLine(line string) bool {
+	if strings.Contains(line, "|") {
+		return true
+	}
+	gaps := 0
+	run := 0
+	for _, r := range line {
+		if r == ' ' {
+			run++
+			continue
+		}
+		if run >= 2 {
+			gaps++
+		}
+		run = 0
+	}
+	if run >= 2 {
+		gaps++
+	}
+	return gaps >= 2
+}
+
+func collapsePDFSpaces(line string) string {
+	var sb strings.Builder
+	sb.Grow(len(line))
+	lastSpace := false
+	for _, r := range line {
+		if r == ' ' {
+			if lastSpace {
+				continue
+			}
+			lastSpace = true
+			sb.WriteByte(' ')
+			continue
+		}
+		lastSpace = false
+		sb.WriteRune(r)
+	}
+	return sb.String()
+}
+
+func mergeWrappedPDFLines(lines []string) []string {
+	if len(lines) == 0 {
+		return nil
+	}
+
+	merged := make([]string, 0, len(lines))
+	current := ""
+	flush := func() {
+		if strings.TrimSpace(current) == "" {
+			return
+		}
+		merged = append(merged, strings.TrimSpace(current))
+		current = ""
+	}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			flush()
+			if len(merged) == 0 || merged[len(merged)-1] == "" {
+				continue
+			}
+			merged = append(merged, "")
+			continue
+		}
+		if current == "" {
+			current = line
+			continue
+		}
+		if shouldMergePDFLines(current, line) {
+			current = joinPDFWrappedLines(current, line)
+			continue
+		}
+		flush()
+		current = line
+	}
+	flush()
+
+	for len(merged) > 0 && merged[0] == "" {
+		merged = merged[1:]
+	}
+	for len(merged) > 0 && merged[len(merged)-1] == "" {
+		merged = merged[:len(merged)-1]
+	}
+	return merged
+}
+
+func shouldMergePDFLines(prev, next string) bool {
+	prev = strings.TrimSpace(prev)
+	next = strings.TrimSpace(next)
+	if prev == "" || next == "" {
+		return false
+	}
+	if looksLikePDFTableLine(prev) || looksLikePDFTableLine(next) {
+		return false
+	}
+	if isPDFListLikeLine(prev) {
+		return !isPDFListLikeLine(next) && !isPDFHeadingLikeLine(next)
+	}
+	if isPDFListLikeLine(next) || isPDFHeadingLikeLine(prev) || isPDFHeadingLikeLine(next) {
+		return false
+	}
+	if endsWithPDFSentenceBoundary(prev) || strings.HasSuffix(prev, ":") {
+		return false
+	}
+	if strings.HasSuffix(prev, "-") && startsWithPDFWord(next) {
+		return true
+	}
+	if endsWithPDFContinuationPunctuation(prev) {
+		return true
+	}
+	if endsWithPDFWord(prev) && startsWithPDFWord(next) {
+		return true
+	}
+	return utf8.RuneCountInString(prev) >= 60 && startsWithPDFWord(next)
+}
+
+func isPDFListLikeLine(line string) bool {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
+		return true
+	}
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return false
+	}
+	return trimPDFEnumToken(fields[0]) != ""
+}
+
+func isPDFHeadingLikeLine(line string) bool {
+	line = strings.TrimSpace(line)
+	if line == "" || isPDFListLikeLine(line) || looksLikePDFTableLine(line) {
+		return false
+	}
+	if utf8.RuneCountInString(line) > 80 {
+		return false
+	}
+	last := lastNonSpacePDFRune(line)
+	switch last {
+	case '.', ',', ';', '?', '!':
+		return false
+	}
+	words := strings.Fields(line)
+	if len(words) == 0 || len(words) > 10 {
+		return false
+	}
+	alphaWords := 0
+	titleishWords := 0
+	for _, word := range words {
+		clean := strings.Trim(word, "\"'`()[]{}.,;:-")
+		if clean == "" {
+			continue
+		}
+		r, _ := utf8.DecodeRuneInString(clean)
+		if !unicode.IsLetter(r) {
+			continue
+		}
+		alphaWords++
+		if clean == strings.ToUpper(clean) || unicode.IsUpper(r) {
+			titleishWords++
+		}
+	}
+	if alphaWords == 0 {
+		return false
+	}
+	if len(words) <= 4 && titleishWords == alphaWords {
+		return true
+	}
+	return alphaWords >= 3 && titleishWords*2 >= alphaWords*3
+}
+
+func endsWithPDFSentenceBoundary(text string) bool {
+	switch lastNonSpacePDFRune(text) {
+	case '.', '!', '?':
+		return true
+	default:
+		return false
+	}
+}
+
+func endsWithPDFContinuationPunctuation(text string) bool {
+	switch lastNonSpacePDFRune(text) {
+	case ',', ';', '/', '(', '[', '{':
+		return true
+	default:
+		return false
+	}
+}
+
+func endsWithPDFWord(text string) bool {
+	last := lastNonSpacePDFRune(text)
+	return unicode.IsLetter(last) || unicode.IsDigit(last) || last == ')' || last == '"' || last == '\''
+}
+
+func startsWithPDFWord(text string) bool {
+	first := firstNonSpacePDFRune(text)
+	return unicode.IsLetter(first) || unicode.IsDigit(first) || first == '(' || first == '[' || first == '"' || first == '\''
+}
+
+func joinPDFWrappedLines(prev, next string) string {
+	prev = strings.TrimSpace(prev)
+	next = strings.TrimSpace(next)
+	if prev == "" {
+		return next
+	}
+	if next == "" {
+		return prev
+	}
+	if strings.HasSuffix(prev, "-") && startsWithPDFWord(next) {
+		trimmedPrev := strings.TrimSuffix(prev, "-")
+		return strings.TrimSpace(trimmedPrev) + next
+	}
+	return prev + " " + next
+}
+
+func lastNonSpacePDFRune(text string) rune {
+	for len(text) > 0 {
+		r, size := utf8.DecodeLastRuneInString(text)
+		if r == utf8.RuneError && size == 0 {
+			return 0
+		}
+		if !unicode.IsSpace(r) {
+			return r
+		}
+		text = text[:len(text)-size]
+	}
+	return 0
+}
+
+func firstNonSpacePDFRune(text string) rune {
+	for _, r := range text {
+		if !unicode.IsSpace(r) {
+			return r
+		}
+	}
+	return 0
 }
 
 func resultTextPrefix(pageNumber, total int) string {

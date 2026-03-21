@@ -46,10 +46,11 @@ func (h *SkillHandler) MarketSearchSkills(c echo.Context) error {
 		HasShellInjection:   parseBoolPtr(c.QueryParam("has_shell_injection")),
 		HasDataExfiltration: parseBoolPtr(c.QueryParam("has_data_exfiltration")),
 	}
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if err != nil || market == nil {
 		return c.JSON(http.StatusOK, h.fallbackMarketSearch(c.Request().Context(), query))
 	}
-	result, err := h.market.Search(c.Request().Context(), query)
+	result, err := market.Search(c.Request().Context(), query)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -58,7 +59,8 @@ func (h *SkillHandler) MarketSearchSkills(c echo.Context) error {
 
 func (h *SkillHandler) MarketTrendingSkills(c echo.Context) error {
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if err != nil || market == nil {
 		resp := h.fallbackMarketSearch(c.Request().Context(), skillmarket.SearchQuery{
 			Category: c.QueryParam("category"),
 			Sort:     "trending",
@@ -74,7 +76,7 @@ func (h *SkillHandler) MarketTrendingSkills(c echo.Context) error {
 			"count":  len(skills),
 		})
 	}
-	skills, err := h.market.Trending(c.Request().Context(), c.QueryParam("category"), limit)
+	skills, err := market.Trending(c.Request().Context(), c.QueryParam("category"), limit)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -86,7 +88,8 @@ func (h *SkillHandler) MarketTrendingSkills(c echo.Context) error {
 
 func (h *SkillHandler) MarketFeaturedSkills(c echo.Context) error {
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if err != nil || market == nil {
 		resp := h.fallbackMarketSearch(c.Request().Context(), skillmarket.SearchQuery{
 			Category: c.QueryParam("category"),
 			Sources:  []string{c.QueryParam("source")},
@@ -103,7 +106,7 @@ func (h *SkillHandler) MarketFeaturedSkills(c echo.Context) error {
 			"count":  len(skills),
 		})
 	}
-	skills, err := h.market.Featured(c.Request().Context(), c.QueryParam("category"), c.QueryParam("source"), limit)
+	skills, err := market.Featured(c.Request().Context(), c.QueryParam("category"), c.QueryParam("source"), limit)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -114,10 +117,11 @@ func (h *SkillHandler) MarketFeaturedSkills(c echo.Context) error {
 }
 
 func (h *SkillHandler) MarketFilters(c echo.Context) error {
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if err != nil || market == nil {
 		return c.JSON(http.StatusOK, h.fallbackMarketFilters(c.Request().Context()))
 	}
-	filters, err := h.market.Filters(c.Request().Context())
+	filters, err := market.Filters(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -125,14 +129,18 @@ func (h *SkillHandler) MarketFilters(c echo.Context) error {
 }
 
 func (h *SkillHandler) MarketSecurityReport(c echo.Context) error {
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if market == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "security report not found"})
 	}
 	id, err := validatedSkillID(c.Param("id"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	report, err := h.market.GetSecurity(c.Request().Context(), id, c.QueryParam("version"))
+	report, err := market.GetSecurity(c.Request().Context(), id, c.QueryParam("version"))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -152,8 +160,12 @@ func (h *SkillHandler) MarketInstallSkill(c echo.Context) error {
 	if !req.AckRisk {
 		req.AckRisk = parseTruthy(c.QueryParam("ack_risk"))
 	}
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if market == nil {
 		if strings.TrimSpace(req.GitHub) != "" {
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "direct github install requires the skill marketplace service"})
 		}
 		result, err := h.legacyMarketInstall(c.Request().Context(), req.ID, getUserIDFromContext(c))
@@ -162,7 +174,10 @@ func (h *SkillHandler) MarketInstallSkill(c echo.Context) error {
 		}
 		return c.JSON(http.StatusOK, result)
 	}
-	result, err := h.market.Install(c.Request().Context(), req)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	result, err := market.Install(c.Request().Context(), req)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
@@ -170,14 +185,15 @@ func (h *SkillHandler) MarketInstallSkill(c echo.Context) error {
 }
 
 func (h *SkillHandler) MarketInstalledSkills(c echo.Context) error {
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if err != nil || market == nil {
 		skills := h.fallbackInstalledSkills()
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"skills": skills,
 			"count":  len(skills),
 		})
 	}
-	skills, err := h.market.ListInstalled(c.Request().Context())
+	skills, err := market.ListInstalled(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -198,7 +214,8 @@ func (h *SkillHandler) MarketUninstallSkill(c echo.Context) error {
 	if info := h.registry.GetInfo(id); info != nil && info.Builtin {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "cannot uninstall builtin skill"})
 	}
-	if h.market == nil {
+	market, marketErr := h.ensureMarketplace()
+	if market == nil {
 		if err := h.legacyMarketUninstall(id); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
@@ -207,7 +224,10 @@ func (h *SkillHandler) MarketUninstallSkill(c echo.Context) error {
 			"skill_id": id,
 		})
 	}
-	if err := h.market.Uninstall(c.Request().Context(), id); err != nil {
+	if marketErr != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": marketErr.Error()})
+	}
+	if err := market.Uninstall(c.Request().Context(), id); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -221,14 +241,18 @@ func (h *SkillHandler) MarketUpdateSkill(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if market == nil {
 		result, err := h.legacyMarketInstall(c.Request().Context(), id, getUserIDFromContext(c))
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, result)
 	}
-	result, err := h.market.Install(c.Request().Context(), skillmarket.InstallRequest{
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	result, err := market.Install(c.Request().Context(), skillmarket.InstallRequest{
 		ID:      id,
 		AckRisk: parseTruthy(c.QueryParam("ack_risk")),
 	})
@@ -239,7 +263,11 @@ func (h *SkillHandler) MarketUpdateSkill(c echo.Context) error {
 }
 
 func (h *SkillHandler) MarketDiscoverSkills(c echo.Context) error {
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if market == nil {
 		if h.syncService != nil {
 			h.syncService.ForceSyncAll(context.Background())
 		}
@@ -250,7 +278,7 @@ func (h *SkillHandler) MarketDiscoverSkills(c echo.Context) error {
 			"failed":            0,
 		})
 	}
-	status, started := h.market.StartDiscoverAsync()
+	status, started := market.StartDiscoverAsync()
 	code := http.StatusAccepted
 	message := "discover started"
 	if !started {
@@ -272,12 +300,16 @@ func (h *SkillHandler) MarketDiscoverSkills(c echo.Context) error {
 }
 
 func (h *SkillHandler) MarketDiscoverStatus(c echo.Context) error {
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if market == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"running": false,
 		})
 	}
-	status := h.market.GetDiscoverStatus()
+	status := market.GetDiscoverStatus()
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"running":             status.Running,
 		"started_at":          status.StartedAt,
@@ -292,13 +324,14 @@ func (h *SkillHandler) MarketDiscoverStatus(c echo.Context) error {
 }
 
 func (h *SkillHandler) MarketListUpdates(c echo.Context) error {
-	if h.market == nil {
+	market, err := h.ensureMarketplace()
+	if err != nil || market == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"updates": []interface{}{},
 			"count":   0,
 		})
 	}
-	updates, err := h.market.ListUpdates(c.Request().Context())
+	updates, err := market.ListUpdates(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}

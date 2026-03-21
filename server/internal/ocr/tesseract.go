@@ -14,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/danlock/gogosseract"
 	"github.com/tetratelabs/wazero"
 	"go.uber.org/zap"
@@ -82,7 +83,7 @@ func NewTesseractService(logger *zap.Logger, cfg Config) *TesseractService {
 		cfg.PreferredModels = []string{"chi_sim", "eng"}
 	}
 	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = &http.Client{Timeout: defaultRequestTimeout}
+		cfg.HTTPClient = network.NewPooledHTTPClient(defaultRequestTimeout)
 	}
 	service := &TesseractService{
 		logger:          logger,

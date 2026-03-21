@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -122,62 +120,6 @@ func (d *ResearchDriver) Publish(userID string, eventType string, data any) {
 		PayloadJSON: payloadJSON,
 		CreatedAt:   timeutil.NowTime(),
 	})
-	if strings.HasSuffix(strings.TrimSpace(eventType), ".job_completed") {
-		d.attachJobArtifacts(context.Background(), jobID)
-	}
-	if strings.HasSuffix(strings.TrimSpace(eventType), ".job_completed") ||
-		strings.HasSuffix(strings.TrimSpace(eventType), ".job_failed") ||
-		strings.HasSuffix(strings.TrimSpace(eventType), ".job_cancelled") {
-		_ = d.manager.SyncExperimentGroupProjection(context.Background(), jobID)
-	}
-}
-
-func (d *ResearchDriver) attachJobArtifacts(ctx context.Context, jobID string) {
-	if d == nil || d.service == nil || d.manager == nil || strings.TrimSpace(jobID) == "" {
-		return
-	}
-	job, err := d.service.GetJob(jobID)
-	if err != nil || job == nil || job.Report == nil || job.Report.Experiment == nil {
-		return
-	}
-	for _, artifact := range job.Report.Experiment.Artifacts {
-		pathOrURL := strings.TrimSpace(artifact.Path)
-		if pathOrURL == "" {
-			pathOrURL = strings.TrimSpace(artifact.URI)
-		}
-		if pathOrURL == "" {
-			continue
-		}
-		metaJSON := ""
-		if raw, err := json.Marshal(map[string]interface{}{"label": artifact.Label, "kind": artifact.Kind}); err == nil {
-			metaJSON = string(raw)
-		}
-		_ = d.manager.AttachArtifact(ctx, harness.ArtifactRef{
-			ID:           uuid.NewString(),
-			RunID:        jobID,
-			Kind:         normalizeArtifactKind(artifact.Kind),
-			Label:        strings.TrimSpace(artifact.Label),
-			PathOrURL:    pathOrURL,
-			MetadataJSON: metaJSON,
-		})
-	}
-}
-
-func normalizeArtifactKind(kind string) string {
-	switch strings.TrimSpace(strings.ToLower(kind)) {
-	case "directory", "dir":
-		return "dir"
-	case "url", "uri":
-		return "url"
-	case "report":
-		return "report"
-	case "log":
-		return "log"
-	case "snapshot":
-		return "snapshot"
-	default:
-		return "file"
-	}
 }
 
 func mapResearchEventType(eventType string) string {
@@ -239,6 +181,30 @@ func jobToRun(existing *harness.Run, job *deepresearch.Job) *harness.Run {
 		finished := *job.CompletedAt
 		run.FinishedAt = &finished
 	}
+	if run.Metadata == nil {
+		run.Metadata = map[string]interface{}{}
+	}
+	run.Metadata["stage"] = strings.TrimSpace(job.Stage)
+	run.Metadata["iteration"] = job.Iteration
+	run.Metadata["latest_action"] = strings.TrimSpace(job.LatestAction)
+	run.Metadata["latest_gap"] = strings.TrimSpace(job.LatestGap)
+	if strings.TrimSpace(string(job.Mode)) != "" {
+		run.Metadata["mode"] = string(job.Mode)
+	}
+	if strings.TrimSpace(string(job.RequestedRouteMode)) != "" {
+		run.Metadata["route_mode"] = string(job.RequestedRouteMode)
+	}
+	if strings.TrimSpace(job.Lang) != "" {
+		run.Metadata["lang"] = strings.TrimSpace(job.Lang)
+	}
+	if strings.TrimSpace(job.ReportStyle) != "" {
+		run.Metadata["report_style"] = strings.TrimSpace(job.ReportStyle)
+	}
+	if job.Report != nil && job.Report.Calibration != nil {
+		run.Metadata["calibration"] = calibrationMetadata(job.Report.Calibration)
+		run.Metadata["calibration_ref"] = "deep_research:" + strings.TrimSpace(job.ID) + ":calibration"
+		run.Metadata["takeaway_candidates"] = takeawayCandidateMetadata(job.Report.Calibration.TakeawayCandidates)
+	}
 	return run
 }
 
@@ -297,4 +263,36 @@ func maxDurationSeconds(duration time.Duration, fallback any) int {
 		return int(duration.Seconds())
 	}
 	return metadataInt(fallback)
+}
+
+func calibrationMetadata(calibration *deepresearch.Calibration) map[string]interface{} {
+	if calibration == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"coverage":           calibration.Coverage,
+		"groundedness":       calibration.Groundedness,
+		"freshness":          calibration.Freshness,
+		"conflict_risk":      strings.TrimSpace(calibration.ConflictRisk),
+		"confidence":         calibration.Confidence,
+		"recommended_action": strings.TrimSpace(calibration.RecommendedAction),
+	}
+}
+
+func takeawayCandidateMetadata(candidates []deepresearch.TakeawayCandidate) []map[string]interface{} {
+	if len(candidates) == 0 {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(candidates))
+	for _, candidate := range candidates {
+		out = append(out, map[string]interface{}{
+			"lesson":        strings.TrimSpace(candidate.Lesson),
+			"when_to_apply": strings.TrimSpace(candidate.WhenToApply),
+			"evidence":      strings.TrimSpace(candidate.Evidence),
+			"evidence_ids":  append([]string(nil), candidate.EvidenceIDs...),
+			"confidence":    candidate.Confidence,
+			"target_file":   strings.TrimSpace(candidate.TargetFile),
+		})
+	}
+	return out
 }

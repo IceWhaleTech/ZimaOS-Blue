@@ -1,0 +1,268 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import type { UserTaskProjection } from '@/api/tasks'
+
+const { t } = useI18n()
+
+const props = withDefaults(
+  defineProps<{
+    task: UserTaskProjection
+    collapseByDefault?: boolean
+  }>(),
+  {
+    collapseByDefault: false,
+  }
+)
+
+const emit = defineEmits<{
+  cancel: [taskId: string]
+  open: [task: UserTaskProjection]
+  message: [taskId: string, message: string]
+}>()
+
+const draftMessage = ref('')
+const expanded = ref(true)
+
+const isTerminal = computed(() =>
+  ['completed', 'failed', 'cancelled'].includes(String(props.task.status || ''))
+)
+
+watch(
+  () => [props.task.id, props.task.status, props.collapseByDefault] as const,
+  () => {
+    expanded.value = !(props.collapseByDefault && isTerminal.value)
+  },
+  { immediate: true }
+)
+
+const progressWidth = computed(() =>
+  `${Math.max(0, Math.min(100, Math.round(Number(props.task.progress || 0))))}%`
+)
+
+const stageLabel = computed(() => {
+  switch (props.task.stage) {
+    case 'planning':
+      return t('chat.taskStagePlanning', 'Planning')
+    case 'working':
+      return t('chat.taskStageWorking', 'Working')
+    case 'verifying':
+      return t('chat.taskStageVerifying', 'Verifying')
+    case 'waiting_user':
+      return t('chat.taskStageWaiting', 'Waiting')
+    case 'completed':
+      return t('chat.taskStageCompleted', 'Completed')
+    case 'failed':
+      return t('chat.taskStageFailed', 'Failed')
+    case 'cancelled':
+      return t('chat.taskStageCancelled', 'Cancelled')
+    default:
+      return props.task.stage
+  }
+})
+
+const stageClass = computed(() => {
+  switch (props.task.stage) {
+    case 'completed':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+    case 'failed':
+      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200'
+    case 'cancelled':
+      return 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+    case 'waiting_user':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+    default:
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'
+  }
+})
+
+const progressClass = computed(() => {
+  switch (props.task.stage) {
+    case 'completed':
+      return 'bg-emerald-500'
+    case 'failed':
+      return 'bg-rose-500'
+    case 'cancelled':
+      return 'bg-slate-400'
+    case 'waiting_user':
+      return 'bg-amber-500'
+    default:
+      return 'bg-blue-500'
+  }
+})
+
+const kindLabel = computed(() =>
+  props.task.kind === 'research'
+    ? t('chat.taskKindResearch', 'Research')
+    : t('chat.taskKindAgent', 'Agent')
+)
+
+const kindIcon = computed(() => (props.task.kind === 'research' ? 'R' : 'A'))
+
+const previewText = computed(() => props.task.error_preview || props.task.result_preview || '')
+
+const blockerLabel = computed(() => {
+  if (!props.task.blocker) return ''
+  switch (props.task.blocker.kind) {
+    case 'approval':
+      return t('chat.taskWaitingForApproval', 'Waiting for your approval')
+    case 'question':
+      return t('chat.taskWaitingForAnswer', 'Waiting for your answer')
+    default:
+      return props.task.blocker.label || ''
+  }
+})
+
+function sendUpdate() {
+  const message = draftMessage.value.trim()
+  if (!message) return
+  emit('message', props.task.id, message)
+  draftMessage.value = ''
+}
+</script>
+
+<template>
+  <section
+    class="my-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/70"
+  >
+    <button
+      v-if="isTerminal && collapseByDefault"
+      type="button"
+      class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+      @click="expanded = !expanded"
+    >
+      <span class="flex min-w-0 items-center gap-3">
+        <span
+          class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+        >
+          {{ kindIcon }}
+        </span>
+        <span class="min-w-0">
+          <span class="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+            {{ task.title }}
+          </span>
+          <span class="block text-xs text-slate-500 dark:text-slate-400">
+            {{ stageLabel }}
+          </span>
+        </span>
+      </span>
+      <svg
+        class="h-4 w-4 flex-shrink-0 text-slate-400 transition-transform"
+        :class="{ 'rotate-180': expanded }"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+      </svg>
+    </button>
+
+    <div v-show="expanded" class="px-4 py-4">
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex min-w-0 items-start gap-3">
+          <span
+            class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          >
+            {{ kindIcon }}
+          </span>
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {{ task.title }}
+              </span>
+              <span
+                class="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                :class="stageClass"
+              >
+                {{ stageLabel }}
+              </span>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400">{{ kindLabel }}</span>
+            </div>
+            <p v-if="task.subtitle" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {{ task.subtitle }}
+            </p>
+          </div>
+        </div>
+
+        <div class="flex shrink-0 items-center gap-2">
+          <button
+            v-if="task.actions.can_open_chat"
+            type="button"
+            class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            @click="emit('open', task)"
+          >
+            {{ t('chat.taskOpenConversation', 'Open conversation') }}
+          </button>
+          <button
+            v-if="task.actions.can_cancel"
+            type="button"
+            class="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-200 dark:hover:bg-rose-950/30"
+            @click="emit('cancel', task.id)"
+          >
+            {{ t('chat.taskCancel', 'Cancel') }}
+          </button>
+        </div>
+      </div>
+
+      <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+        <div class="h-full transition-all duration-300" :class="progressClass" :style="{ width: progressWidth }" />
+      </div>
+
+      <div class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+        {{ Math.max(0, Math.min(100, Math.round(Number(task.progress || 0)))) }}%
+      </div>
+
+      <div
+        v-if="task.blocker"
+        class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+      >
+        {{ blockerLabel }}
+      </div>
+
+      <div
+        v-if="previewText"
+        class="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
+      >
+        {{ previewText }}
+      </div>
+
+      <div v-if="task.artifacts?.length" class="mt-3 flex flex-wrap gap-2">
+        <template v-for="artifact in task.artifacts" :key="`${task.id}-${artifact.kind}-${artifact.label}`">
+          <a
+            v-if="artifact.url"
+            :href="artifact.url"
+            target="_blank"
+            rel="noreferrer"
+            class="rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            {{ artifact.label }}
+          </a>
+          <span
+            v-else
+            class="rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-300"
+          >
+            {{ artifact.label }}
+          </span>
+        </template>
+      </div>
+
+      <div v-if="task.actions.can_send_update" class="mt-3 flex gap-2">
+        <input
+          v-model="draftMessage"
+          type="text"
+          class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          :placeholder="t('chat.taskSendUpdatePlaceholder', 'Send an update to this task')"
+          @keydown.enter.prevent="sendUpdate"
+        />
+        <button
+          type="button"
+          class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="!draftMessage.trim()"
+          @click="sendUpdate"
+        >
+          {{ t('chat.taskSendUpdate', 'Send update') }}
+        </button>
+      </div>
+    </div>
+  </section>
+</template>

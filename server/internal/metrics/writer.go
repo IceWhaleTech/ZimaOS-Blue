@@ -3,9 +3,12 @@ package metrics
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
+
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 )
 
 // MetricsWriter coordinates metrics collection and storage.
@@ -150,7 +153,7 @@ func (w *MetricsWriter) loadPersistedData() {
 }
 
 // persistData saves metrics data to SQLite.
-// On write failure, rotates the corrupt DB and recreates a fresh one.
+// On corruption, rotates the broken DB aside and recreates a fresh one.
 func (w *MetricsWriter) persistData() {
 	if w.sqliteStore == nil {
 		return
@@ -203,8 +206,9 @@ func (w *MetricsWriter) persistData() {
 		}
 	}
 
-	// Self-heal: rotate corrupt DB and recreate
-	if writeErr != nil {
+	// Self-heal only on confirmed corruption; transient IO/lock failures
+	// should not cause us to rotate the metrics database away.
+	if writeErr != nil && dbutil.IsSQLiteCorruptionError(writeErr) {
 		w.resetSQLiteStore()
 	}
 }
@@ -256,7 +260,9 @@ func (w *MetricsWriter) Stop() {
 	}
 }
 
-// resetSQLiteStore closes the broken DB, rotates it, and opens a fresh one.
+// resetSQLiteStore closes the broken DB, first tries to salvage readable data
+// via batch sqlite recovery, and falls back to rotating it to .bak.<timestamp>
+// before opening a fresh database.
 func (w *MetricsWriter) resetSQLiteStore() {
 	if w.sqliteStore == nil {
 		return
@@ -269,7 +275,27 @@ func (w *MetricsWriter) resetSQLiteStore() {
 
 	dbPath := w.sqliteStore.dbPath
 	_ = w.sqliteStore.Close()
-	rotateCorruptDB(dbPath)
+	if repairResult, err := dbutil.RepairSQLiteDatabase(dbPath); err != nil {
+		slog.Warn("metrics sqlite recovery failed; rotating corrupted database and recreating fresh",
+			"db_path", dbPath,
+			"error", err,
+		)
+		if _, rotateErr := dbutil.RotateCorruptSQLiteDatabase(dbPath); rotateErr != nil {
+			slog.Warn("metrics sqlite rotation failed after recovery failure",
+				"db_path", dbPath,
+				"error", rotateErr,
+			)
+			w.sqliteStore = nil
+			return
+		}
+	} else if repairResult != nil && repairResult.PartialImport {
+		slog.Warn("metrics sqlite salvaged via partial batch recovery",
+			"db_path", dbPath,
+			"warning", repairResult.RecoverWarning,
+		)
+	} else {
+		slog.Info("metrics sqlite repaired via batch recovery", "db_path", dbPath)
+	}
 	newStore, err := NewSQLiteStore(dbPath)
 	if err != nil {
 		// Give up on persistence — in-memory metrics still work

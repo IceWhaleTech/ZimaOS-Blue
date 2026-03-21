@@ -53,6 +53,8 @@ type AutoRecoveryResult struct {
 	Recovered bool `json:"recovered"`
 	// RepairedDatabases lists databases salvaged in place without backup rollback.
 	RepairedDatabases []string `json:"repaired_databases,omitempty"`
+	// RepairDetails describes how each repaired database was salvaged.
+	RepairDetails map[string]DatabaseRepairDetail `json:"repair_details,omitempty"`
 	// BackupID is the ID of the backup used for recovery
 	BackupID string `json:"backup_id,omitempty"`
 	// BackupTime is the timestamp of the backup used
@@ -66,6 +68,18 @@ type AutoRecoveryResult struct {
 	// CorruptedDatabases lists the databases that were found corrupted
 	CorruptedDatabases []string `json:"corrupted_databases,omitempty"`
 }
+
+// DatabaseRepairDetail describes how a database was salvaged in place.
+type DatabaseRepairDetail struct {
+	Method        string `json:"method"`
+	PartialImport bool   `json:"partial_import,omitempty"`
+	Warning       string `json:"warning,omitempty"`
+}
+
+const (
+	databaseRepairMethodFTSRebuild   = "fts_rebuild"
+	databaseRepairMethodBatchRecover = "batch_recover"
+)
 
 // CheckAndAutoRecover checks database integrity and automatically recovers from backup if corrupted.
 // This should be called during application startup before opening databases.
@@ -93,14 +107,27 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 					if len(rebuilt) > 0 {
 						if retryErr := database.QuickCheckDatabase(dbPath); retryErr == nil {
 							result.RepairedDatabases = append(result.RepairedDatabases, dbPath)
+							if result.RepairDetails == nil {
+								result.RepairDetails = make(map[string]DatabaseRepairDetail)
+							}
+							result.RepairDetails[dbPath] = DatabaseRepairDetail{Method: databaseRepairMethodFTSRebuild}
 							continue
 						}
 					}
 				} else {
 					fmt.Printf("Warning: failed to rebuild known FTS indexes for %s: %v\n", dbPath, ftsErr)
 				}
-				if _, repairErr := database.RepairSQLiteDatabase(dbPath); repairErr == nil {
+				if repairResult, repairErr := database.RepairSQLiteDatabase(dbPath); repairErr == nil {
 					result.RepairedDatabases = append(result.RepairedDatabases, dbPath)
+					if result.RepairDetails == nil {
+						result.RepairDetails = make(map[string]DatabaseRepairDetail)
+					}
+					detail := DatabaseRepairDetail{Method: databaseRepairMethodBatchRecover}
+					if repairResult != nil {
+						detail.PartialImport = repairResult.PartialImport
+						detail.Warning = repairResult.RecoverWarning
+					}
+					result.RepairDetails[dbPath] = detail
 					continue
 				} else {
 					fmt.Printf("Warning: failed to repair sqlite database %s: %v\n", dbPath, repairErr)
@@ -160,6 +187,7 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 		if restoreResult.Success {
 			result.Recovered = true
 			result.RepairedDatabases = nil
+			result.RepairDetails = nil
 			result.BackupID = backup.ID
 			result.BackupTime = backup.CreatedAt
 			result.FilesRecovered = restoreResult.FilesRestored

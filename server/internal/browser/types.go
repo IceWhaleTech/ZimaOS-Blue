@@ -5,6 +5,9 @@ package browser
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -55,6 +58,13 @@ const (
 	PDFFormatLetter PDFFormat = "Letter"
 	// PDFFormatLegal is Legal paper size.
 	PDFFormatLegal PDFFormat = "Legal"
+)
+
+const (
+	// DefaultRelayHost is the default loopback host for Blue's local browser relay.
+	DefaultRelayHost = "127.0.0.1"
+	// DefaultRelayPort is the default loopback port for Blue's local browser relay.
+	DefaultRelayPort = 18792
 )
 
 // ScreenshotRequest represents a request to capture a screenshot.
@@ -259,6 +269,18 @@ type StepResult struct {
 
 // Config contains browser service configuration.
 type Config struct {
+	// Driver selects how Blue connects to the browser.
+	// Supported values: "managed" (default), "relay", "cdp".
+	Driver string `json:"driver" yaml:"driver"`
+	// RelayEnabled starts Blue's built-in loopback relay server and lets Blue attach
+	// to tabs from the companion Chrome extension.
+	RelayEnabled bool `json:"relay_enabled" yaml:"relay_enabled"`
+	// RelayHost is the loopback host for Blue's built-in relay server.
+	RelayHost string `json:"relay_host" yaml:"relay_host"`
+	// RelayPort is the loopback port for Blue's built-in relay server.
+	RelayPort int `json:"relay_port" yaml:"relay_port"`
+	// RelayToken authenticates CDP and extension clients against Blue's relay server.
+	RelayToken string `json:"relay_token" yaml:"relay_token"`
 	// PoolSize is the maximum number of browser instances.
 	PoolSize int `json:"pool_size" yaml:"pool_size"`
 	// Headless controls whether browsers run without a visible window.
@@ -281,6 +303,11 @@ type Config struct {
 	ProxyURL string `json:"proxy_url" yaml:"proxy_url"`
 	// BrowserPath is the path to the browser executable.
 	BrowserPath string `json:"browser_path" yaml:"browser_path"`
+	// CDPURL attaches Blue to an existing browser or relay via Chrome DevTools Protocol.
+	// Examples:
+	//   http://127.0.0.1:18792?token=...
+	//   ws://127.0.0.1:9222/devtools/browser/<id>
+	CDPURL string `json:"cdp_url" yaml:"cdp_url"`
 	// EvaluateEnabled controls whether JavaScript evaluation is allowed.
 	// When false, act:evaluate and wait --fn are disabled to prevent
 	// prompt injection attacks from executing arbitrary JavaScript.
@@ -292,10 +319,15 @@ type Config struct {
 func DefaultConfig() *Config {
 	evaluateEnabled := true
 	return &Config{
+		Driver:                "managed",
+		RelayEnabled:          false,
+		RelayHost:             DefaultRelayHost,
+		RelayPort:             DefaultRelayPort,
+		RelayToken:            "",
 		PoolSize:              3,
 		Headless:              true,
-		DefaultTimeout:        30000,
-		MaxTimeout:            120000,
+		DefaultTimeout:        60000,
+		MaxTimeout:            300000,
 		DefaultViewportWidth:  1920,
 		DefaultViewportHeight: 1080,
 		AllowedDomains:        []string{},
@@ -303,6 +335,7 @@ func DefaultConfig() *Config {
 		UserAgent:             "",
 		ProxyURL:              "",
 		BrowserPath:           "",
+		CDPURL:                "",
 		EvaluateEnabled:       &evaluateEnabled,
 	}
 }
@@ -313,6 +346,84 @@ func (c *Config) IsEvaluateEnabled() bool {
 		return true // Default to enabled for backwards compatibility
 	}
 	return *c.EvaluateEnabled
+}
+
+// RelayHostOrDefault returns the configured relay host or the loopback default.
+func (c *Config) RelayHostOrDefault() string {
+	host := strings.TrimSpace(c.RelayHost)
+	if host == "" {
+		return DefaultRelayHost
+	}
+	return host
+}
+
+// RelayPortOrDefault returns the configured relay port or the default port.
+func (c *Config) RelayPortOrDefault() int {
+	if c.RelayPort <= 0 || c.RelayPort > 65535 {
+		return DefaultRelayPort
+	}
+	return c.RelayPort
+}
+
+// RelayBaseURL returns the built-in relay HTTP base URL.
+func (c *Config) RelayBaseURL() string {
+	return fmt.Sprintf("http://%s:%d", c.RelayHostOrDefault(), c.RelayPortOrDefault())
+}
+
+// RelayCDPURL returns the built-in relay HTTP endpoint Blue can resolve into a WS URL.
+func (c *Config) RelayCDPURL() string {
+	base := c.RelayBaseURL()
+	token := strings.TrimSpace(c.RelayToken)
+	if token == "" {
+		return base
+	}
+	return base + "?token=" + url.QueryEscape(token)
+}
+
+// EffectiveCDPURL returns the external or built-in relay CDP endpoint Blue should use.
+func (c *Config) EffectiveCDPURL() string {
+	if trimmed := strings.TrimSpace(c.CDPURL); trimmed != "" {
+		return trimmed
+	}
+	if c.RelayEnabled {
+		return c.RelayCDPURL()
+	}
+	return ""
+}
+
+// ResolvedDriver returns the normalized browser driver name.
+func (c *Config) ResolvedDriver() string {
+	driver := strings.ToLower(strings.TrimSpace(c.Driver))
+	switch driver {
+	case "", "managed":
+		if strings.TrimSpace(c.EffectiveCDPURL()) != "" {
+			return "relay"
+		}
+		return "managed"
+	case "relay", "cdp":
+		return "relay"
+	default:
+		if strings.TrimSpace(c.EffectiveCDPURL()) != "" {
+			return "relay"
+		}
+		return "managed"
+	}
+}
+
+// UsesRelayDriver reports whether Blue should attach to an external CDP/relay endpoint.
+func (c *Config) UsesRelayDriver() bool {
+	return c.ResolvedDriver() == "relay"
+}
+
+// EffectivePoolSize returns the runtime pool size after driver-specific normalization.
+func (c *Config) EffectivePoolSize() int {
+	if c.UsesRelayDriver() {
+		return 1
+	}
+	if c.PoolSize <= 0 {
+		return 1
+	}
+	return c.PoolSize
 }
 
 // Service defines the browser automation service interface.

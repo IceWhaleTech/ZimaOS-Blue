@@ -313,7 +313,7 @@ func (s *Service) HandleRequest(w http.ResponseWriter, r *http.Request, webhookI
 
 	// Process event
 	if hasHandler {
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 		defer cancel()
 
 		response, err := handler(ctx, event)

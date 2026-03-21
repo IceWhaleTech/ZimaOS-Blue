@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/rs/zerolog"
 )
 
 func setupWALTestDB(t *testing.T) (*sql.DB, string, func()) {
@@ -61,8 +61,8 @@ func TestWALManager_Configure(t *testing.T) {
 		t.Errorf("JournalMode = %s, want wal", info.JournalMode)
 	}
 
-	if info.SynchronousMode != "NORMAL" {
-		t.Errorf("SynchronousMode = %s, want NORMAL", info.SynchronousMode)
+	if info.SynchronousMode != "FULL" {
+		t.Errorf("SynchronousMode = %s, want FULL", info.SynchronousMode)
 	}
 
 	if info.BusyTimeout != config.BusyTimeout {

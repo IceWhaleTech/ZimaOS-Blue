@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 )
@@ -27,9 +28,7 @@ func NewMediaStorage(baseDir, baseURL string) *MediaStorage {
 	return &MediaStorage{
 		baseDir: baseDir,
 		baseURL: strings.TrimRight(baseURL, "/"),
-		client: &http.Client{
-			Timeout: 60 * time.Second,
-		},
+		client:  network.NewPooledHTTPClient(5 * time.Minute),
 	}
 }
 

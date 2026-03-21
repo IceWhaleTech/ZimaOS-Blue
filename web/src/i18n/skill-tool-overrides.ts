@@ -11,13 +11,16 @@ function cloneValue<T>(value: T): T {
   }
   if (isPlainObject(value)) {
     return Object.fromEntries(
-      Object.entries(value).map(([key, nestedValue]) => [key, cloneValue(nestedValue)]),
+      Object.entries(value).map(([key, nestedValue]) => [key, cloneValue(nestedValue)])
     ) as T
   }
   return value
 }
 
-function mergeMessages<T extends Record<string, unknown>>(base: T, overrides: Record<string, unknown>): T {
+function mergeMessages<T extends Record<string, unknown>>(
+  base: T,
+  overrides: Record<string, unknown>
+): T {
   const merged = cloneValue(base) as Record<string, unknown>
   for (const [key, overrideValue] of Object.entries(overrides)) {
     const baseValue = merged[key]
@@ -186,15 +189,21 @@ function buildLocaleOverrides(pack: {
   skillUI?: readonly (string | undefined)[]
   toolParams?: readonly (string | undefined)[]
 }) {
-  const sharedNames = zipArray(sharedNameMap.map(([key]) => key), pack.sharedNames)
+  const sharedNames = zipArray(
+    sharedNameMap.map(([key]) => key),
+    pack.sharedNames
+  )
   const skillDescriptions = zipArray(
     skillDescriptionMap.map(([key]) => key),
-    pack.skillDescriptions,
+    pack.skillDescriptions
   )
-  const toolOnlyNames = zipArray(toolOnlyNameMap.map(([key]) => key), pack.toolOnlyNames)
+  const toolOnlyNames = zipArray(
+    toolOnlyNameMap.map(([key]) => key),
+    pack.toolOnlyNames
+  )
   const toolDescriptions = zipArray(
     toolDescriptionMap.map(([key]) => key),
-    pack.toolDescriptions,
+    pack.toolDescriptions
   )
   const skillUI = zipArray(skillUIKeys, pack.skillUI)
   const toolParams = zipArray(toolParamKeys, pack.toolParams)
@@ -257,7 +266,7 @@ function buildLocaleOverrides(pack: {
                 },
               }
             : {}),
-          ...((skillUI.emptyTitle || skillUI.emptyDescription)
+          ...(skillUI.emptyTitle || skillUI.emptyDescription
             ? {
                 empty: {
                   ...(skillUI.emptyTitle ? { title: skillUI.emptyTitle } : {}),
@@ -265,7 +274,7 @@ function buildLocaleOverrides(pack: {
                 },
               }
             : {}),
-          ...((skillUI.detailEmptyTitle ||
+          ...(skillUI.detailEmptyTitle ||
           skillUI.detailEmptyDescription ||
           skillUI.required ||
           skillUI.labelId ||
@@ -278,7 +287,7 @@ function buildLocaleOverrides(pack: {
           skillUI.sectionInputs ||
           skillUI.sectionOutputs ||
           skillUI.sectionDocumentation ||
-          skillUI.sectionFrontmatter)
+          skillUI.sectionFrontmatter
             ? {
                 detail: {
                   ...(skillUI.detailEmptyTitle ? { emptyTitle: skillUI.detailEmptyTitle } : {}),
@@ -301,19 +310,21 @@ function buildLocaleOverrides(pack: {
                     ...(skillUI.sectionDocumentation
                       ? { documentation: skillUI.sectionDocumentation }
                       : {}),
-                    ...(skillUI.sectionFrontmatter ? { frontmatter: skillUI.sectionFrontmatter } : {}),
+                    ...(skillUI.sectionFrontmatter
+                      ? { frontmatter: skillUI.sectionFrontmatter }
+                      : {}),
                   },
                 },
               }
             : {}),
-          ...((skillUI.depsTitle ||
+          ...(skillUI.depsTitle ||
           skillUI.depsEligible ||
           skillUI.depsNotEligible ||
           skillUI.depsMissing ||
           skillUI.depsInstall ||
           skillUI.depsInstalling ||
           skillUI.depsInstallSuccess ||
-          skillUI.depsInstallFailed)
+          skillUI.depsInstallFailed
             ? {
                 deps: {
                   ...(skillUI.depsTitle ? { title: skillUI.depsTitle } : {}),
@@ -455,7 +466,7 @@ const localePacks = {
       'Installa',
       'Instal·lant...',
       'Instal·lacio correcta',
-      "Ha fallat la instal·lacio: {message}",
+      'Ha fallat la instal·lacio: {message}',
     ],
     toolParams: [
       'Consulta',
@@ -3561,11 +3572,19 @@ const targetedAdjustments: Record<string, Record<string, unknown>> = {
   'de-DE': {
     skills: {
       builtin: { timer: { name: 'Zeitmesser' }, workflows: { name: 'Arbeitsablaeufe' } },
-      detail: { labels: { version: 'Versionsnummer' }, sections: { frontmatter: 'Metadatenblock' } },
+      detail: {
+        labels: { version: 'Versionsnummer' },
+        sections: { frontmatter: 'Metadatenblock' },
+      },
     },
     tools: {
       names: { timer: 'Zeitmesser', workflows: 'Arbeitsablaeufe' },
-      params: { region: 'Bereich', limit: 'Obergrenze', name: 'Bezeichnung', handler: 'Verarbeiter' },
+      params: {
+        region: 'Bereich',
+        limit: 'Obergrenze',
+        name: 'Bezeichnung',
+        handler: 'Verarbeiter',
+      },
     },
   },
   'el-GR': {
@@ -3580,7 +3599,10 @@ const targetedAdjustments: Record<string, Record<string, unknown>> = {
   },
   'es-ES': {
     skills: {
-      detail: { labels: { version: 'Numero de version' }, sections: { frontmatter: 'Metadatos iniciales' } },
+      detail: {
+        labels: { version: 'Numero de version' },
+        sections: { frontmatter: 'Metadatos iniciales' },
+      },
     },
     tools: { params: { region: 'Zona' } },
   },
@@ -3633,7 +3655,11 @@ const targetedAdjustments: Record<string, Record<string, unknown>> = {
   },
   'it-IT': {
     skills: {
-      builtin: { timer: { name: 'Contatore' }, email: { name: 'Posta elettronica' }, browser: { name: 'Navigatore web' } },
+      builtin: {
+        timer: { name: 'Contatore' },
+        email: { name: 'Posta elettronica' },
+        browser: { name: 'Navigatore web' },
+      },
       detail: { sections: { frontmatter: 'Metadati iniziali' } },
     },
     tools: {
@@ -3648,7 +3674,12 @@ const targetedAdjustments: Record<string, Record<string, unknown>> = {
     },
     tools: {
       names: { timer: 'Tidtaker' },
-      params: { region: 'Omrade', handler: 'Behandler', type: 'Kategori', payload: 'Datanyttelast' },
+      params: {
+        region: 'Omrade',
+        handler: 'Behandler',
+        type: 'Kategori',
+        payload: 'Datanyttelast',
+      },
     },
   },
   'nl-NL': {
@@ -3662,7 +3693,12 @@ const targetedAdjustments: Record<string, Record<string, unknown>> = {
     },
     tools: {
       names: { timer: 'Tijdmeter', crypto: 'Cryptovaluta', browser: 'Webbrowser' },
-      params: { offset: 'Verschuiving', handler: 'Afhandelaar', type: 'Categorie', payload: 'Gegevenslading' },
+      params: {
+        offset: 'Verschuiving',
+        handler: 'Afhandelaar',
+        type: 'Categorie',
+        payload: 'Gegevenslading',
+      },
     },
   },
   'pl-PL': {
@@ -3703,12 +3739,22 @@ const targetedAdjustments: Record<string, Record<string, unknown>> = {
   },
   'sk-SK': {
     skills: { detail: { sections: { frontmatter: 'Uvodne metadata' } } },
-    tools: { params: { region: 'Oblast', limit: 'Obmedzenie', handler: 'Obsluha', payload: 'Datova zataz' } },
+    tools: {
+      params: {
+        region: 'Oblast',
+        limit: 'Obmedzenie',
+        handler: 'Obsluha',
+        payload: 'Datova zataz',
+      },
+    },
   },
   'sv-SE': {
     skills: {
       builtin: { timer: { name: 'Tidtagare' } },
-      detail: { labels: { version: 'Versionsnummer' }, sections: { frontmatter: 'Inledande metadata' } },
+      detail: {
+        labels: { version: 'Versionsnummer' },
+        sections: { frontmatter: 'Inledande metadata' },
+      },
     },
     tools: {
       names: { timer: 'Tidtagare' },
@@ -4295,12 +4341,378 @@ const supplementalToolTranslations: Record<string, Record<string, unknown>> = {
   },
 }
 
+function promoteUnifiedFileToolKeys<T extends Record<string, Record<string, unknown>>>(
+  translations: T
+): T {
+  return Object.fromEntries(
+    Object.entries(translations).map(([locale, localeMessages]) => {
+      const promoted = cloneValue(localeMessages) as Record<string, unknown>
+      const toolsBlock = isPlainObject(promoted.tools)
+        ? (promoted.tools as Record<string, unknown>)
+        : null
+      if (!toolsBlock) {
+        return [locale, promoted]
+      }
+
+      for (const sectionKey of ['descriptions']) {
+        const section = isPlainObject(toolsBlock[sectionKey])
+          ? (toolsBlock[sectionKey] as Record<string, unknown>)
+          : null
+        if (!section) continue
+
+        if (section.read !== undefined) {
+          section.file_read = cloneValue(section.read)
+          delete section.read
+        }
+        if (section.write !== undefined) {
+          section.file_write = cloneValue(section.write)
+          delete section.write
+        }
+      }
+
+      return [locale, promoted]
+    })
+  ) as T
+}
+
+const unifiedToolSurfaceTranslations = promoteUnifiedFileToolKeys({
+  'ca-ES': {
+    tools: {
+      names: { web: 'Web', read: 'Llegir', write: 'Escriure', sessions: 'Sessions' },
+      descriptions: {
+        web: 'Eina web unificada per cercar, llegir, extreure o rastrejar contingut web',
+        read: 'Llegeix un fitxer local i n extreu contingut de documents compatibles',
+        write: 'Escriu contingut de text en un fitxer local',
+        sessions: 'Eina de sessions unificada per llistar, inspeccionar, crear i enviar missatges',
+      },
+    },
+  },
+  'cs-CZ': {
+    tools: {
+      names: { web: 'Web', read: 'Cteni', write: 'Zapis', sessions: 'Relace' },
+      descriptions: {
+        web: 'Sjednoceny webovy nastroj pro hledani, cteni, extrakci a prochazeni weboveho obsahu',
+        read: 'Cte lokalni soubor a extrahuje obsah podporovanych dokumentu',
+        write: 'Zapisuje textovy obsah do lokalniho souboru',
+        sessions: 'Sjednoceny nastroj pro relace: vypis, nahled, vytvoreni a posilani zprav',
+      },
+    },
+  },
+  'da-DK': {
+    tools: {
+      names: { web: 'Web', read: 'Laes', write: 'Skriv', sessions: 'Sessioner' },
+      descriptions: {
+        web: 'Samlet webvaerktoj til at soge, laese, udtraekke og crawle webindhold',
+        read: 'Laeser en lokal fil og udtraekker indhold fra understottede dokumenter',
+        write: 'Skriver tekstindhold til en lokal fil',
+        sessions: 'Samlet sessionsvaerktoj til at vise, inspicere, oprette og sende beskeder',
+      },
+    },
+  },
+  'de-DE': {
+    tools: {
+      names: { web: 'Web', read: 'Lesen', write: 'Schreiben', sessions: 'Sitzungen' },
+      descriptions: {
+        web: 'Vereinheitlichtes Web-Werkzeug zum Suchen, Lesen, Extrahieren und Crawlen von Webinhalten',
+        read: 'Liest eine lokale Datei und extrahiert Inhalte aus unterstutzten Dokumenten',
+        write: 'Schreibt Textinhalt in eine lokale Datei',
+        sessions:
+          'Vereinheitlichtes Sitzungswerkzeug zum Auflisten, Prufen, Erstellen und Senden von Nachrichten',
+      },
+    },
+  },
+  'el-GR': {
+    tools: {
+      names: { web: 'Ιστός', read: 'Ανάγνωση', write: 'Εγγραφή', sessions: 'Συνεδρίες' },
+      descriptions: {
+        web: 'Ενοποιημένο εργαλείο ιστού για αναζήτηση, ανάγνωση, εξαγωγή και ανίχνευση περιεχομένου ιστού',
+        read: 'Διαβάζει ένα τοπικό αρχείο και εξάγει περιεχόμενο από υποστηριζόμενα έγγραφα',
+        write: 'Γράφει κειμενικό περιεχόμενο σε τοπικό αρχείο',
+        sessions:
+          'Ενοποιημένο εργαλείο συνεδριών για λίστα, επιθεώρηση, δημιουργία και αποστολή μηνυμάτων',
+      },
+    },
+  },
+  'en-GB': {
+    tools: {
+      names: { web: 'Web', read: 'Read', write: 'Write', sessions: 'Sessions' },
+      descriptions: {
+        web: 'Unified web tool for searching, reading, extracting, or crawling web content',
+        read: 'Read a local file and extract supported document content',
+        write: 'Write text content to a local file',
+        sessions: 'Unified sessions tool for listing, inspecting, creating, and sending messages',
+      },
+    },
+  },
+  'en-US': {
+    tools: {
+      names: { web: 'Web', read: 'Read', write: 'Write', sessions: 'Sessions' },
+      descriptions: {
+        web: 'Unified web tool for searching, reading, extracting, or crawling web content',
+        read: 'Read a local file and extract supported document content',
+        write: 'Write text content to a local file',
+        sessions: 'Unified sessions tool for listing, inspecting, creating, and sending messages',
+      },
+    },
+  },
+  'es-ES': {
+    tools: {
+      names: { web: 'Web', read: 'Leer', write: 'Escribir', sessions: 'Sesiones' },
+      descriptions: {
+        web: 'Herramienta web unificada para buscar, leer, extraer o rastrear contenido web',
+        read: 'Lee un archivo local y extrae contenido de documentos compatibles',
+        write: 'Escribe contenido de texto en un archivo local',
+        sessions:
+          'Herramienta unificada de sesiones para listar, inspeccionar, crear y enviar mensajes',
+      },
+    },
+  },
+  'fr-FR': {
+    tools: {
+      names: { web: 'Web', read: 'Lire', write: 'Ecrire', sessions: 'Sessions' },
+      descriptions: {
+        web: 'Outil web unifie pour rechercher, lire, extraire ou explorer du contenu web',
+        read: 'Lit un fichier local et extrait le contenu des documents pris en charge',
+        write: 'Ecrit du contenu texte dans un fichier local',
+        sessions: 'Outil de sessions unifie pour lister, inspecter, creer et envoyer des messages',
+      },
+    },
+  },
+  'ga-IE': {
+    tools: {
+      names: { web: 'Greasan', read: 'Leigh', write: 'Scriobh', sessions: 'Seisiuin' },
+      descriptions: {
+        web: 'Uirlis ghreasain aontaithe chun cuardach, leamh, eastoscu nó crawl ar inneachar gréasáin',
+        read: 'Leann comhad local agus baintear amach inneachar doiciméad tacaithe',
+        write: 'Scriobhann inneachar teacs chuig comhad local',
+        sessions:
+          'Uirlis aontaithe seisiun chun liostu, iniuchadh, cruthu agus seoladh teachtaireachtaí',
+      },
+    },
+  },
+  'hr-HR': {
+    tools: {
+      names: { web: 'Web', read: 'Citanje', write: 'Pisanje', sessions: 'Sesije' },
+      descriptions: {
+        web: 'Jedinstveni web alat za pretrazivanje, citanje, izdvajanje i indeksiranje web sadrzaja',
+        read: 'Cita lokalnu datoteku i izdvaja sadrzaj iz podrzanih dokumenata',
+        write: 'Upisuje tekstualni sadrzaj u lokalnu datoteku',
+        sessions: 'Jedinstveni alat za sesije za popis, pregled, stvaranje i slanje poruka',
+      },
+    },
+  },
+  'hu-HU': {
+    tools: {
+      names: { web: 'Web', read: 'Olvasas', write: 'Iras', sessions: 'Munkamenetek' },
+      descriptions: {
+        web: 'Egyseges webes eszkoz a webes tartalmak keresesehez, olvasasahoz, kinyeresehez es bejarasahoz',
+        read: 'Helyi fajlt olvas be, es kinyeri a tamogatott dokumentumok tartalmat',
+        write: 'Szoveges tartalmat ir helyi fajlba',
+        sessions:
+          'Egyseges munkamenet-eszkoz listazashoz, attekinteshez, letrehozashoz es uzenetkuldeshez',
+      },
+    },
+  },
+  'it-IT': {
+    tools: {
+      names: { web: 'Web', read: 'Leggi', write: 'Scrivi', sessions: 'Sessioni' },
+      descriptions: {
+        web: 'Strumento web unificato per cercare, leggere, estrarre o esplorare contenuti web',
+        read: 'Legge un file locale ed estrae il contenuto dei documenti supportati',
+        write: 'Scrive contenuto testuale in un file locale',
+        sessions:
+          'Strumento unificato per le sessioni: elenco, ispezione, creazione e invio di messaggi',
+      },
+    },
+  },
+  'ja-JP': {
+    tools: {
+      names: { web: 'ウェブ', read: '読み取り', write: '書き込み', sessions: 'セッション' },
+      descriptions: {
+        web: 'Web コンテンツの検索、読取、抽出、クロールをまとめて行う統合ツールです',
+        read: 'ローカルファイルを読み取り、対応ドキュメントの内容を抽出します',
+        write: 'テキスト内容をローカルファイルに書き込みます',
+        sessions: '一覧、確認、作成、メッセージ送信をまとめて行う統合セッションツールです',
+      },
+    },
+  },
+  'ko-KR': {
+    tools: {
+      names: { web: '웹', read: '읽기', write: '쓰기', sessions: '세션' },
+      descriptions: {
+        web: '웹 콘텐츠를 검색, 읽기, 추출 또는 크롤링하는 통합 웹 도구입니다',
+        read: '로컬 파일을 읽고 지원되는 문서 콘텐츠를 추출합니다',
+        write: '텍스트 내용을 로컬 파일에 씁니다',
+        sessions: '세션 목록, 확인, 생성, 메시지 전송을 위한 통합 세션 도구입니다',
+      },
+    },
+  },
+  'ml-IN': {
+    tools: {
+      names: { web: 'വെബ്', read: 'വായിക്കുക', write: 'എഴുതുക', sessions: 'സെഷനുകൾ' },
+      descriptions: {
+        web: 'വെബ് ഉള്ളടക്കം തിരയാനും വായിക്കാനും എടുത്തെടുക്കാനും ക്രോൾ ചെയ്യാനും ഉള്ള ഏകീകൃത വെബ് ഉപകരണം',
+        read: 'ലോക്കൽ ഫയൽ വായിച്ച് പിന്തുണക്കുന്ന ഡോക്യുമെന്റുകളുടെ ഉള്ളടക്കം എടുത്തെടുക്കുന്നു',
+        write: 'ടെക്സ്റ്റ് ഉള്ളടക്കം ഒരു ലോക്കൽ ഫയലിലേക്ക് എഴുതുന്നു',
+        sessions:
+          'പട്ടികപ്പെടുത്തൽ, പരിശോധിക്കൽ, സൃഷ്ടിക്കൽ, സന്ദേശം അയയ്ക്കൽ എന്നിവയ്ക്കുള്ള ഏകീകൃത സെഷൻ ഉപകരണം',
+      },
+    },
+  },
+  'nb-NO': {
+    tools: {
+      names: { web: 'Nett', read: 'Les', write: 'Skriv', sessions: 'Okter' },
+      descriptions: {
+        web: 'Samlet nettverktoy for a soke, lese, trekke ut eller krype gjennom nettinnhold',
+        read: 'Leser en lokal fil og trekker ut innhold fra stottede dokumenter',
+        write: 'Skriver tekstinnhold til en lokal fil',
+        sessions: 'Samlet oktverktoy for a liste, inspisere, opprette og sende meldinger',
+      },
+    },
+  },
+  'nl-NL': {
+    tools: {
+      names: { web: 'Web', read: 'Lezen', write: 'Schrijven', sessions: 'Sessies' },
+      descriptions: {
+        web: 'Geunificeerd webhulpmiddel om webinhoud te zoeken, lezen, extraheren of crawlen',
+        read: 'Leest een lokaal bestand en extraheert ondersteunde documentinhoud',
+        write: 'Schrijft tekstinhoud naar een lokaal bestand',
+        sessions:
+          'Geunificeerd sessiehulpmiddel om sessies te tonen, inspecteren, maken en berichten te sturen',
+      },
+    },
+  },
+  'pl-PL': {
+    tools: {
+      names: { web: 'Web', read: 'Odczyt', write: 'Zapis', sessions: 'Sesje' },
+      descriptions: {
+        web: 'Ujednolicone narzedzie webowe do wyszukiwania, czytania, wyodrebniania i przeszukiwania tresci internetowych',
+        read: 'Czyta lokalny plik i wyodrebnia tresc obslugiwanych dokumentow',
+        write: 'Zapisuje tresc tekstowa do lokalnego pliku',
+        sessions:
+          'Ujednolicone narzedzie sesji do listowania, sprawdzania, tworzenia i wysylania wiadomosci',
+      },
+    },
+  },
+  'pt-BR': {
+    tools: {
+      names: { web: 'Web', read: 'Ler', write: 'Escrever', sessions: 'Sessoes' },
+      descriptions: {
+        web: 'Ferramenta web unificada para pesquisar, ler, extrair ou rastrear conteudo da web',
+        read: 'Le um arquivo local e extrai conteudo de documentos suportados',
+        write: 'Escreve conteudo em texto em um arquivo local',
+        sessions:
+          'Ferramenta unificada de sessoes para listar, inspecionar, criar e enviar mensagens',
+      },
+    },
+  },
+  'pt-PT': {
+    tools: {
+      names: { web: 'Web', read: 'Ler', write: 'Escrever', sessions: 'Sessoes' },
+      descriptions: {
+        web: 'Ferramenta web unificada para pesquisar, ler, extrair ou percorrer conteudo web',
+        read: 'Le um ficheiro local e extrai conteudo de documentos suportados',
+        write: 'Escreve conteudo em texto num ficheiro local',
+        sessions:
+          'Ferramenta unificada de sessoes para listar, inspecionar, criar e enviar mensagens',
+      },
+    },
+  },
+  'ro-RO': {
+    tools: {
+      names: { web: 'Web', read: 'Citire', write: 'Scriere', sessions: 'Sesiuni' },
+      descriptions: {
+        web: 'Instrument web unificat pentru cautare, citire, extragere sau parcurgere a continutului web',
+        read: 'Citeste un fisier local si extrage continut din documentele acceptate',
+        write: 'Scrie continut text intr-un fisier local',
+        sessions:
+          'Instrument unificat pentru sesiuni: listare, inspectare, creare si trimitere de mesaje',
+      },
+    },
+  },
+  'ru-RU': {
+    tools: {
+      names: { web: 'Веб', read: 'Чтение', write: 'Запись', sessions: 'Сессии' },
+      descriptions: {
+        web: 'Единый веб-инструмент для поиска, чтения, извлечения и обхода веб-контента',
+        read: 'Читает локальный файл и извлекает содержимое поддерживаемых документов',
+        write: 'Записывает текстовое содержимое в локальный файл',
+        sessions: 'Единый инструмент сессий для списка, просмотра, создания и отправки сообщений',
+      },
+    },
+  },
+  'sk-SK': {
+    tools: {
+      names: { web: 'Web', read: 'Citanie', write: 'Zapis', sessions: 'Relacie' },
+      descriptions: {
+        web: 'Zjednoteny webovy nastroj na hladanie, citanie, extrakciu a prechadzanie weboveho obsahu',
+        read: 'Cita lokalny subor a extrahuje obsah podporovanych dokumentov',
+        write: 'Zapisuje textovy obsah do lokalneho suboru',
+        sessions: 'Zjednoteny nastroj relacii na vypis, kontrolu, vytvaranie a posielanie sprav',
+      },
+    },
+  },
+  'sv-SE': {
+    tools: {
+      names: { web: 'Webb', read: 'Las', write: 'Skriv', sessions: 'Sessioner' },
+      descriptions: {
+        web: 'Enhetligt webbverktyg for att soka, lasa, extrahera eller crawla webbinnehall',
+        read: 'Laser en lokal fil och extraherar innehall fran dokument som stodjs',
+        write: 'Skriver textinnehall till en lokal fil',
+        sessions: 'Enhetligt sessionsverktyg for att lista, granska, skapa och skicka meddelanden',
+      },
+    },
+  },
+  'zh-CN': {
+    tools: {
+      names: { web: '网页', read: '读取', write: '写入', sessions: '会话' },
+      descriptions: {
+        web: '统一的网页工具，可搜索、读取、抽取或抓取网页内容',
+        read: '读取本地文件，并提取支持的文档内容',
+        write: '将文本内容写入本地文件',
+        sessions: '统一管理会话，可列出、查看、创建并发送消息',
+      },
+    },
+  },
+  'zh-TW': {
+    tools: {
+      names: { web: '網頁', read: '讀取', write: '寫入', sessions: '工作階段' },
+      descriptions: {
+        web: '統一的網頁工具，可搜尋、讀取、擷取或爬取網頁內容',
+        read: '讀取本機檔案，並擷取支援文件的內容',
+        write: '將文字內容寫入本機檔案',
+        sessions: '統一管理工作階段，可列出、查看、建立並傳送訊息',
+      },
+    },
+  },
+} satisfies Record<string, Record<string, unknown>>)
+
+const unifiedToolSurfaceTranslationMap = unifiedToolSurfaceTranslations as Record<
+  string,
+  Record<string, unknown>
+>
+
+const skillToolOverrideLocales = Array.from(
+  new Set([
+    ...Object.keys(localePacks),
+    ...Object.keys(targetedAdjustments),
+    ...Object.keys(supplementalToolTranslations),
+    ...Object.keys(unifiedToolSurfaceTranslationMap),
+  ])
+)
+
 export default Object.fromEntries(
-  Object.entries(localePacks).map(([locale, pack]) => [
+  skillToolOverrideLocales.map((locale) => [
     locale,
     mergeMessages(
-      mergeMessages(buildLocaleOverrides(pack), targetedAdjustments[locale] || {}),
-      supplementalToolTranslations[locale] || {},
+      mergeMessages(
+        mergeMessages(
+          buildLocaleOverrides((localePacks as Record<string, Record<string, unknown>>)[locale] || {}),
+          targetedAdjustments[locale] || {}
+        ),
+        supplementalToolTranslations[locale] || {}
+      ),
+      unifiedToolSurfaceTranslationMap[locale] || {}
     ),
   ])
 )

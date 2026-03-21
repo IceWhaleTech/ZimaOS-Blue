@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	xhtml "golang.org/x/net/html"
 )
 
 const (
@@ -19,10 +21,12 @@ const (
 	webSearchFormatXML  = "xml"
 )
 
+var defaultWebSearchProviders = []string{"duckduckgo", "bing"}
+
 // WebSearchConfig holds configuration for the web search tool.
 type WebSearchConfig struct {
 	// Provider specifies the search provider to use.
-	// Supported: "duckduckgo", "searxng", "brave"
+	// Supported: "duckduckgo", "bing", "searxng", "brave"
 	Provider string
 
 	// Providers specifies a prioritized provider list for fallback (high availability).
@@ -76,15 +80,17 @@ func NewWebSearchTool(config WebSearchConfig) *WebSearchTool {
 		config.MaxResults = 5
 	}
 	if config.Timeout <= 0 {
-		config.Timeout = 30 * time.Second
+		config.Timeout = 5 * time.Minute
 	}
 	config.Provider = strings.ToLower(strings.TrimSpace(config.Provider))
 	config.Providers = normalizeProviderList(config.Providers)
 	if len(config.Providers) == 0 {
 		if config.Provider == "" {
-			config.Provider = "duckduckgo"
+			config.Provider = defaultWebSearchProviders[0]
+			config.Providers = append([]string(nil), defaultWebSearchProviders...)
+		} else {
+			config.Providers = []string{config.Provider}
 		}
-		config.Providers = []string{config.Provider}
 	} else if config.Provider == "" {
 		config.Provider = config.Providers[0]
 	}
@@ -123,7 +129,7 @@ func (w *WebSearchTool) Definition() ToolDefinition {
 				},
 				"provider": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional provider override. Supports single provider or fallback list, e.g. 'searxng,brave,duckduckgo'",
+					"description": "Optional provider override. Supports single provider or fallback list, e.g. 'duckduckgo,bing' or 'searxng,brave,duckduckgo'",
 				},
 				"format": map[string]interface{}{
 					"type":        "string",
@@ -181,6 +187,8 @@ func (w *WebSearchTool) searchWithProvider(ctx context.Context, provider, query 
 	switch provider {
 	case "duckduckgo":
 		return w.searchDuckDuckGo(ctx, query, maxResults, region)
+	case "bing":
+		return w.searchBing(ctx, query, maxResults, region)
 	case "searxng":
 		return w.searchSearXNG(ctx, query, maxResults)
 	case "brave":
@@ -347,6 +355,215 @@ func parseDuckDuckGoHTML(html string, maxResults int) []WebSearchResult {
 	}
 
 	return results
+}
+
+// searchBing performs a search using Bing's HTML results page.
+func (w *WebSearchTool) searchBing(ctx context.Context, query string, maxResults int, region string) (*WebSearchResponse, error) {
+	return w.searchBingAtURL(ctx, query, maxResults, region, "https://www.bing.com/search")
+}
+
+func (w *WebSearchTool) searchBingAtURL(ctx context.Context, query string, maxResults int, region string, searchURL string) (*WebSearchResponse, error) {
+	params := url.Values{}
+	params.Set("q", query)
+	params.Set("count", fmt.Sprintf("%d", maxResults))
+	if w.config.SafeSearch {
+		params.Set("adlt", "strict")
+	} else {
+		params.Set("adlt", "off")
+	}
+	if market, country, language := bingLocaleForRegion(region); market != "" {
+		params.Set("mkt", market)
+		if country != "" {
+			params.Set("cc", country)
+		}
+		if language != "" {
+			params.Set("setlang", language)
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", searchURL+"?"+params.Encode(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; ZimaOS-Blue/1.0)")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+
+	resp, err := w.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute search: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("search failed with status: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	results := parseBingHTML(string(body), maxResults)
+	return &WebSearchResponse{
+		Query:      query,
+		Results:    results,
+		TotalCount: len(results),
+		Provider:   "bing",
+	}, nil
+}
+
+func bingLocaleForRegion(region string) (market string, country string, language string) {
+	region = strings.ToLower(strings.TrimSpace(region))
+	if region == "" || region == "wt-wt" {
+		return "", "", ""
+	}
+
+	parts := strings.Split(region, "-")
+	if len(parts) != 2 {
+		return "", "", ""
+	}
+
+	country = strings.ToUpper(strings.TrimSpace(parts[0]))
+	language = strings.ToLower(strings.TrimSpace(parts[1]))
+	if len(country) != 2 || len(language) != 2 {
+		return "", "", ""
+	}
+
+	return fmt.Sprintf("%s-%s", language, country), country, language
+}
+
+// parseBingHTML parses Bing HTML search results.
+func parseBingHTML(rawHTML string, maxResults int) []WebSearchResult {
+	doc, err := xhtml.Parse(strings.NewReader(rawHTML))
+	if err != nil {
+		return nil
+	}
+
+	var results []WebSearchResult
+	var walk func(*xhtml.Node)
+	walk = func(node *xhtml.Node) {
+		if node == nil || len(results) >= maxResults {
+			return
+		}
+		if node.Type == xhtml.ElementNode && node.Data == "li" && webSearchHTMLNodeHasClass(node, "b_algo") {
+			if result, ok := extractBingResult(node); ok {
+				results = append(results, result)
+			}
+			return
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+			if len(results) >= maxResults {
+				return
+			}
+		}
+	}
+	walk(doc)
+
+	return results
+}
+
+func extractBingResult(node *xhtml.Node) (WebSearchResult, bool) {
+	heading := firstWebSearchHTMLDescendant(node, func(n *xhtml.Node) bool {
+		return n.Type == xhtml.ElementNode && n.Data == "h2"
+	})
+	if heading == nil {
+		return WebSearchResult{}, false
+	}
+
+	link := firstWebSearchHTMLDescendant(heading, func(n *xhtml.Node) bool {
+		return n.Type == xhtml.ElementNode && n.Data == "a" && strings.TrimSpace(webSearchHTMLAttr(n, "href")) != ""
+	})
+	if link == nil {
+		return WebSearchResult{}, false
+	}
+
+	title := webSearchHTMLNodeText(link)
+	resultURL := strings.TrimSpace(webSearchHTMLAttr(link, "href"))
+	if title == "" || resultURL == "" {
+		return WebSearchResult{}, false
+	}
+
+	description := ""
+	if caption := firstWebSearchHTMLDescendant(node, func(n *xhtml.Node) bool {
+		return n.Type == xhtml.ElementNode && webSearchHTMLNodeHasClass(n, "b_caption")
+	}); caption != nil {
+		description = webSearchHTMLNodeText(caption)
+	}
+
+	return WebSearchResult{
+		Title:       title,
+		URL:         resultURL,
+		Description: description,
+	}, true
+}
+
+func firstWebSearchHTMLDescendant(node *xhtml.Node, predicate func(*xhtml.Node) bool) *xhtml.Node {
+	if node == nil {
+		return nil
+	}
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if predicate(child) {
+			return child
+		}
+		if match := firstWebSearchHTMLDescendant(child, predicate); match != nil {
+			return match
+		}
+	}
+	return nil
+}
+
+func webSearchHTMLAttr(node *xhtml.Node, key string) string {
+	if node == nil {
+		return ""
+	}
+	for _, attr := range node.Attr {
+		if attr.Key == key {
+			return attr.Val
+		}
+	}
+	return ""
+}
+
+func webSearchHTMLNodeHasClass(node *xhtml.Node, className string) bool {
+	for _, token := range strings.Fields(webSearchHTMLAttr(node, "class")) {
+		if token == className {
+			return true
+		}
+	}
+	return false
+}
+
+func webSearchHTMLNodeText(node *xhtml.Node) string {
+	if node == nil {
+		return ""
+	}
+
+	var builder strings.Builder
+	var walk func(*xhtml.Node)
+	walk = func(current *xhtml.Node) {
+		if current == nil {
+			return
+		}
+		if current.Type == xhtml.TextNode {
+			builder.WriteString(current.Data)
+			builder.WriteByte(' ')
+			return
+		}
+		if current.Type == xhtml.ElementNode {
+			switch current.Data {
+			case "script", "style", "noscript":
+				return
+			}
+		}
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+
+	return strings.Join(strings.Fields(builder.String()), " ")
 }
 
 // searchSearXNG performs a search using a SearXNG instance.

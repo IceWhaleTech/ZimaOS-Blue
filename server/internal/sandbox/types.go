@@ -59,7 +59,7 @@ type Config struct {
 // DefaultConfig returns the default sandbox configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		DefaultTimeout:        30 * time.Second,
+		DefaultTimeout:        5 * time.Minute,
 		MaxTimeout:            5 * time.Minute,
 		MemoryLimit:           256 * 1024 * 1024, // 256 MB
 		CPULimit:              1.0,

@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
+import { useTaskProjectionsStore } from '@/stores/taskProjections'
 
 const { t } = useI18n()
 const chatStore = useChatStore()
+const taskProjections = useTaskProjectionsStore()
 
 const approval = computed(() => chatStore.pendingExecApproval)
 const submittingDecision = ref<'deny' | 'allow-once' | 'allow-always' | null>(null)
@@ -42,6 +44,7 @@ async function runDecision(
   submittingDecision.value = decision
   try {
     await action()
+    await taskProjections.refreshNow().catch(() => {})
   } finally {
     submittingDecision.value = null
   }

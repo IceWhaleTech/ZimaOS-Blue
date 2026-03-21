@@ -27,6 +27,32 @@ type ToolPolicyResolver struct {
 	agentPolicy    map[string]config.ToolPolicyConfig
 }
 
+// defaultChatDirectToolAllowlist keeps the chat-facing first-class tool surface
+// intentionally small. Richer capabilities remain available through exec-routed
+// skills or compat paths without inflating the default tool list.
+var defaultChatDirectToolAllowlist = map[string]struct{}{
+	"browser":          {},
+	"calendar":         {},
+	"convert":          {},
+	"edit":             {},
+	"email":            {},
+	"exec":             {},
+	"file_delete":      {},
+	"file_read":        {},
+	"file_write":       {},
+	"find":             {},
+	"image":            {},
+	"image_generation": {},
+	"ls":               {},
+	"memory":           {},
+	"pdf":              {},
+	"process":          {},
+	"research_run":     {},
+	"research_status":  {},
+	"sessions":         {},
+	"web":              {},
+}
+
 // NewToolPolicyResolver creates a resolver from app config.
 func NewToolPolicyResolver(cfg *config.Config) *ToolPolicyResolver {
 	if cfg == nil {
@@ -68,6 +94,9 @@ func (r *ToolPolicyResolver) Filter(req ToolPolicyRequest, defs []ToolDefinition
 	visible := make(map[string]ToolDefinition, len(defs))
 	for _, def := range defs {
 		visible[def.Name] = def
+	}
+	if r.shouldApplyDefaultChatDirectToolAllowlist(req, hasAgent, providerScope) {
+		r.applyAllowSet(visible, defaultChatDirectToolAllowlist)
 	}
 	r.applyBaseProfile(visible, baseProfile)
 	r.applyAllowDeny(visible, r.globalPolicy)
@@ -117,6 +146,19 @@ func (r *ToolPolicyResolver) providerScope(req ToolPolicyRequest) config.ToolPol
 	return config.ToolPolicyConfig{}
 }
 
+func (r *ToolPolicyResolver) shouldApplyDefaultChatDirectToolAllowlist(req ToolPolicyRequest, hasAgent bool, providerScope config.ToolPolicyConfig) bool {
+	if r == nil || hasAgent || req.RouteKind != ToolRouteKindChat {
+		return false
+	}
+	if toolPolicyConfigured(r.globalPolicy) {
+		return false
+	}
+	if toolPolicyConfigured(providerScope) {
+		return false
+	}
+	return true
+}
+
 func (r *ToolPolicyResolver) agentScope(req ToolPolicyRequest) (config.ToolPolicyConfig, bool) {
 	if r == nil {
 		return config.ToolPolicyConfig{}, false
@@ -143,6 +185,17 @@ func (r *ToolPolicyResolver) applyBaseProfile(visible map[string]ToolDefinition,
 	}
 	for name := range visible {
 		if _, ok := expanded[name]; !ok {
+			delete(visible, name)
+		}
+	}
+}
+
+func (r *ToolPolicyResolver) applyAllowSet(visible map[string]ToolDefinition, allow map[string]struct{}) {
+	if len(visible) == 0 || len(allow) == 0 {
+		return
+	}
+	for name := range visible {
+		if _, ok := allow[strings.ToLower(strings.TrimSpace(name))]; !ok {
 			delete(visible, name)
 		}
 	}
@@ -231,6 +284,13 @@ func cloneToolPolicyScope(scope config.ToolPolicyConfig) config.ToolPolicyConfig
 	cloned.Deny = append([]string(nil), scope.Deny...)
 	cloned.ByProvider = clonePolicyScopes(scope.ByProvider)
 	return cloned
+}
+
+func toolPolicyConfigured(scope config.ToolPolicyConfig) bool {
+	if strings.TrimSpace(scope.Profile) != "" {
+		return true
+	}
+	return len(scope.Allow) > 0 || len(scope.Deny) > 0 || len(scope.ByProvider) > 0
 }
 
 func firstNonEmpty(values ...string) string {

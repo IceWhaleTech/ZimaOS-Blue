@@ -57,3 +57,38 @@ func TestLimitToolCallsForRound(t *testing.T) {
 		})
 	}
 }
+
+func TestLimitToolCallsForRound_BatchesArtifactReads(t *testing.T) {
+	calls := []llm.ToolCall{
+		{ID: "call_1", Name: "pdf", Arguments: `{"path":"report.pdf","pages":[1,2]}`},
+		{ID: "call_2", Name: "pdf", Arguments: `{"path":"report.pdf","pages":[3,4]}`},
+		{ID: "call_3", Name: "convert", Arguments: `{"input_path":"report.pdf","output_path":"report.txt","target_format":"txt"}`},
+	}
+
+	got, cut := limitToolCallsForRound(calls)
+	if cut {
+		t.Fatalf("limitToolCallsForRound() cut = %v, want false", cut)
+	}
+	if len(got) != len(calls) {
+		t.Fatalf("len(got) = %d, want %d", len(got), len(calls))
+	}
+}
+
+func TestLimitToolCallsForRound_BatchesArtifactReadsWithTrailingWrite(t *testing.T) {
+	calls := []llm.ToolCall{
+		{ID: "call_1", Name: "pdf", Arguments: `{"path":"report.pdf","pages":[1,2]}`},
+		{ID: "call_2", Name: "pdf", Arguments: `{"path":"report.pdf","pages":[3,4]}`},
+		{ID: "call_3", Name: "file_write", Arguments: `{"path":"answer.txt","content":"done"}`},
+	}
+
+	got, cut := limitToolCallsForRound(calls)
+	if cut {
+		t.Fatalf("limitToolCallsForRound() cut = %v, want false", cut)
+	}
+	if len(got) != len(calls) {
+		t.Fatalf("len(got) = %d, want %d", len(got), len(calls))
+	}
+	if got[len(got)-1].Name != "file_write" {
+		t.Fatalf("last tool = %#v, want trailing file_write", got[len(got)-1])
+	}
+}

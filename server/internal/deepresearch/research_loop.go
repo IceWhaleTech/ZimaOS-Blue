@@ -609,7 +609,7 @@ func hasOfficialLikeEvidence(evidence []Evidence) bool {
 		switch {
 		case strings.HasSuffix(domain, ".gov"), strings.HasSuffix(domain, ".edu"):
 			return true
-		case strings.Contains(text, "official"), strings.Contains(text, "官方"), strings.Contains(text, "documentation"), strings.Contains(text, "文档"):
+		case officialLikeEvidenceCueMatcher.Contains(text):
 			return true
 		}
 	}
@@ -788,12 +788,7 @@ func queryWantsLatest(query string) bool {
 	if q == "" {
 		return false
 	}
-	for _, marker := range []string{"latest", "recent", "today", "current", "最新", "近期", "最近", "今年"} {
-		if strings.Contains(q, marker) {
-			return true
-		}
-	}
-	return false
+	return latestQueryCueMatcher.Contains(q)
 }
 
 func looksLikeClaimValidation(query string) bool {
@@ -801,13 +796,7 @@ func looksLikeClaimValidation(query string) bool {
 	if q == "" {
 		return false
 	}
-	markers := []string{"是否", "是不是", "真的假的", "confirm", "confirmed", "verify", "verification", "did", "does", "is "}
-	for _, marker := range markers {
-		if strings.Contains(q, marker) {
-			return true
-		}
-	}
-	return false
+	return claimValidationPhraseCueMatcher.Contains(q) || claimValidationQuestionVerbRegex.MatchString(q)
 }
 
 func normalizeAxisID(raw string) string {

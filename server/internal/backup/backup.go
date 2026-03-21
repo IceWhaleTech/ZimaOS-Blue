@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 )
@@ -131,7 +132,15 @@ func shouldSkipBackupDir(name string) bool {
 }
 
 func shouldSkipBackupFile(name string, size int64) bool {
-	if excludedBackupFileNames[strings.ToLower(name)] {
+	lowerName := strings.ToLower(name)
+	if excludedBackupFileNames[lowerName] {
+		return true
+	}
+	if strings.Contains(lowerName, ".bak.") ||
+		strings.Contains(lowerName, ".bad.") ||
+		strings.Contains(lowerName, ".corrupt.") ||
+		strings.Contains(lowerName, ".repair-src.") ||
+		strings.Contains(lowerName, ".repair-out.") {
 		return true
 	}
 	ext := strings.ToLower(filepath.Ext(name))
@@ -278,6 +287,11 @@ func (m *Manager) createWithSource(ctx context.Context, backupType BackupType, s
 	filename := fmt.Sprintf("backup_%s_%s_%s.tar.gz", backupType, timestamp.Format("20060102_150405"), id[:8])
 	backupPath := filepath.Join(m.config.Path, filename)
 
+	checkpointedSQLite, err := m.checkpointSQLiteForBackup(ctx, backupType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to checkpoint sqlite databases before backup: %w", err)
+	}
+
 	// Create backup file
 	file, err := os.Create(backupPath)
 	if err != nil {
@@ -298,32 +312,32 @@ func (m *Manager) createWithSource(ctx context.Context, backupType BackupType, s
 	// Add files based on backup type
 	switch backupType {
 	case BackupTypeFull:
-		if err := m.addDirectory(tarWriter, m.dataDir, "data", &files); err != nil {
+		if err := m.addDirectory(tarWriter, m.dataDir, "data", &files, checkpointedSQLite); err != nil {
 			os.Remove(backupPath)
 			return nil, fmt.Errorf("failed to backup data directory: %w", err)
 		}
-		if err := m.addDirectory(tarWriter, m.configDir, "config", &files); err != nil {
+		if err := m.addDirectory(tarWriter, m.configDir, "config", &files, checkpointedSQLite); err != nil {
 			os.Remove(backupPath)
 			return nil, fmt.Errorf("failed to backup config directory: %w", err)
 		}
 		if m.shouldBackupSkillsIndependently() {
-			if err := m.addDirectory(tarWriter, m.skillsDir, "skills", &files); err != nil {
+			if err := m.addDirectory(tarWriter, m.skillsDir, "skills", &files, checkpointedSQLite); err != nil {
 				os.Remove(backupPath)
 				return nil, fmt.Errorf("failed to backup skills directory: %w", err)
 			}
 		}
 	case BackupTypeConfig:
-		if err := m.addDirectory(tarWriter, m.configDir, "config", &files); err != nil {
+		if err := m.addDirectory(tarWriter, m.configDir, "config", &files, checkpointedSQLite); err != nil {
 			os.Remove(backupPath)
 			return nil, fmt.Errorf("failed to backup config directory: %w", err)
 		}
 	case BackupTypeData:
-		if err := m.addDirectory(tarWriter, m.dataDir, "data", &files); err != nil {
+		if err := m.addDirectory(tarWriter, m.dataDir, "data", &files, checkpointedSQLite); err != nil {
 			os.Remove(backupPath)
 			return nil, fmt.Errorf("failed to backup data directory: %w", err)
 		}
 		if m.shouldBackupSkillsIndependently() {
-			if err := m.addDirectory(tarWriter, m.skillsDir, "skills", &files); err != nil {
+			if err := m.addDirectory(tarWriter, m.skillsDir, "skills", &files, checkpointedSQLite); err != nil {
 				os.Remove(backupPath)
 				return nil, fmt.Errorf("failed to backup skills directory: %w", err)
 			}
@@ -372,6 +386,67 @@ func (m *Manager) createWithSource(ctx context.Context, backupType BackupType, s
 	m.endProgress(nil)
 
 	return info, nil
+}
+
+func (m *Manager) checkpointSQLiteForBackup(ctx context.Context, backupType BackupType) (map[string]struct{}, error) {
+	if ctx != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+	}
+
+	dirs := make([]string, 0, 2)
+	switch backupType {
+	case BackupTypeFull:
+		dirs = append(dirs, m.dataDir, m.configDir)
+	case BackupTypeConfig:
+		dirs = append(dirs, m.configDir)
+	case BackupTypeData:
+		dirs = append(dirs, m.dataDir)
+	}
+
+	checkpointed := make(map[string]struct{})
+	seen := make(map[string]struct{}, len(dirs))
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		clean := filepath.Clean(dir)
+		if _, ok := seen[clean]; ok {
+			continue
+		}
+		seen[clean] = struct{}{}
+
+		if _, err := os.Stat(clean); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("stat %s: %w", clean, err)
+		}
+
+		entries, err := os.ReadDir(clean)
+		if err != nil {
+			return nil, fmt.Errorf("read directory %s: %w", clean, err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !isSQLiteDatabaseFilename(entry.Name()) {
+				continue
+			}
+			dbPath := filepath.Join(clean, entry.Name())
+			ok, err := isSQLiteDatabaseFile(dbPath)
+			if err != nil || !ok {
+				continue
+			}
+			if err := database.CheckpointWALForDatabase(dbPath, database.CheckpointTruncate); err != nil {
+				continue
+			}
+			checkpointed[filepath.Clean(dbPath)] = struct{}{}
+		}
+	}
+
+	return checkpointed, nil
 }
 
 // List returns all available backups
@@ -495,7 +570,7 @@ func (m *Manager) Verify(id string) error {
 	return nil
 }
 
-func (m *Manager) addDirectory(tw *tar.Writer, srcDir, prefix string, files *[]string) error {
+func (m *Manager) addDirectory(tw *tar.Writer, srcDir, prefix string, files *[]string, checkpointedSQLite map[string]struct{}) error {
 	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
 		return nil // Directory doesn't exist, skip
 	}
@@ -538,6 +613,9 @@ func (m *Manager) addDirectory(tw *tar.Writer, srcDir, prefix string, files *[]s
 
 			// Skip files with excluded extensions
 			if info.Mode().IsRegular() {
+				if shouldSkipSQLiteAuxiliaryBackupFile(path, checkpointedSQLite) {
+					continue
+				}
 				if shouldSkipBackupFile(entry.Name(), info.Size()) {
 					continue
 				}
@@ -618,6 +696,47 @@ func (m *Manager) addDirectory(tw *tar.Writer, srcDir, prefix string, files *[]s
 	}
 
 	return nil
+}
+
+func shouldSkipSQLiteAuxiliaryBackupFile(path string, checkpointedSQLite map[string]struct{}) bool {
+	if len(checkpointedSQLite) == 0 {
+		return false
+	}
+	lowerName := strings.ToLower(strings.TrimSpace(filepath.Clean(path)))
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if !strings.HasSuffix(lowerName, suffix) {
+			continue
+		}
+		base := filepath.Clean(strings.TrimSuffix(path, suffix))
+		if _, ok := checkpointedSQLite[base]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func isSQLiteDatabaseFilename(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".db", ".sqlite", ".sqlite3":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSQLiteDatabaseFile(path string) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+
+	header := make([]byte, len("SQLite format 3\x00"))
+	n, err := file.Read(header)
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+	return string(header[:n]) == "SQLite format 3\x00", nil
 }
 
 func (m *Manager) calculateChecksum(path string) (string, error) {

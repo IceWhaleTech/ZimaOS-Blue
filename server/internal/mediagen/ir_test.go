@@ -6,13 +6,13 @@ import (
 
 func TestClassifyMediaIntent_English(t *testing.T) {
 	tests := []struct {
-		name       string
-		msg        string
-		hasImages  bool
-		imgCount   int
-		wantCat    MediaCategory
-		wantNil    bool
-		minConf    float64
+		name      string
+		msg       string
+		hasImages bool
+		imgCount  int
+		wantCat   MediaCategory
+		wantNil   bool
+		minConf   float64
 	}{
 		// --- T2I ---
 		{"t2i basic", "generate an image of a cat", false, 0, CategoryT2I, false, 0.8},
@@ -286,6 +286,92 @@ func TestClassifyMediaIntent_MixedLanguage(t *testing.T) {
 	}
 }
 
+func TestClassifyMediaIntent_DensityAndMetaSuppression(t *testing.T) {
+	tests := []struct {
+		name      string
+		msg       string
+		hasImages bool
+		imgCount  int
+		locale    string
+		wantNil   bool
+		wantCat   MediaCategory
+		minConf   float64
+		maxConf   float64
+	}{
+		{
+			name:    "zh meta discussion",
+			msg:     "IR匹配关键词的时候，也需要考虑关键词命中的密度吧，比如在一大段文本内部出现了生成图片可能就不是这个意图",
+			locale:  "zh-CN",
+			wantNil: true,
+		},
+		{
+			name:    "en meta discussion",
+			msg:     "For the intent classifier, a long paragraph may mention generate images, but that should not trigger this intent because we're discussing keyword matching density.",
+			locale:  "en-US",
+			wantNil: true,
+		},
+		{
+			name:    "zh low density long text",
+			msg:     "这是一段很长的产品说明文本，主要在讨论文档整理、消息同步、权限控制和缓存策略。中间顺带提到系统未来也许会支持生成图片能力，但这里并不是在向你发出生成请求。",
+			locale:  "zh-CN",
+			wantNil: true,
+		},
+		{
+			name:    "en long valid prompt",
+			msg:     "Please generate a highly detailed image of a moonlit harbor with watercolor textures, warm reflections, and soft cinematic lighting.",
+			locale:  "en-US",
+			wantCat: CategoryT2I,
+			minConf: 0.7,
+		},
+		{
+			name:    "single meta cue still allows valid request",
+			msg:     "Generate an image of a delivery route map in a clean infographic style.",
+			locale:  "en-US",
+			wantCat: CategoryT2I,
+			minConf: 0.7,
+		},
+		{
+			name:    "en long weak mention stays suppressed",
+			msg:     "We should write onboarding docs, describe the workspace rules, and somewhere in the middle mention generate image support for future versions.",
+			locale:  "en-US",
+			wantNil: true,
+		},
+		{
+			name:      "i2i remains confident with image context",
+			msg:       "Please edit this image by replacing the background with a warm sunset beach and lightly retouching the colors.",
+			hasImages: true,
+			imgCount:  1,
+			locale:    "en-US",
+			wantCat:   CategoryI2I,
+			minConf:   0.8,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ClassifyMediaIntent(tt.msg, tt.hasImages, tt.imgCount, tt.locale)
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("expected nil, got category=%s confidence=%.2f", got.Category, got.Confidence)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("expected category=%s, got nil", tt.wantCat)
+			}
+			if tt.wantCat != CategoryNone && got.Category != tt.wantCat {
+				t.Fatalf("category: got %s, want %s", got.Category, tt.wantCat)
+			}
+			if tt.minConf > 0 && got.Confidence < tt.minConf {
+				t.Fatalf("confidence: got %.2f, want >= %.2f", got.Confidence, tt.minConf)
+			}
+			if tt.maxConf > 0 && got.Confidence > tt.maxConf {
+				t.Fatalf("confidence: got %.2f, want <= %.2f", got.Confidence, tt.maxConf)
+			}
+		})
+	}
+}
+
 func TestLocaleToLangKey(t *testing.T) {
 	tests := []struct {
 		locale string
@@ -304,8 +390,8 @@ func TestLocaleToLangKey(t *testing.T) {
 		{"ga-IE", "en"}, // Irish → English
 		{"pt-BR", "pt"},
 		{"ru-RU", "ru"},
-		{"", "en"},       // empty → English
-		{"xx-YY", "en"},  // unknown → English
+		{"", "en"},      // empty → English
+		{"xx-YY", "en"}, // unknown → English
 	}
 
 	for _, tt := range tests {

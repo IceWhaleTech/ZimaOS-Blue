@@ -330,8 +330,8 @@ func TestDefaultConfig(t *testing.T) {
 		t.Fatal("DefaultConfig() returned nil")
 	}
 
-	if config.DefaultTimeout != 30*time.Second {
-		t.Errorf("DefaultConfig() DefaultTimeout = %v, want 30s", config.DefaultTimeout)
+	if config.DefaultTimeout != 5*time.Minute {
+		t.Errorf("DefaultConfig() DefaultTimeout = %v, want 5m", config.DefaultTimeout)
 	}
 
 	if config.MaxTimeout != 5*time.Minute {

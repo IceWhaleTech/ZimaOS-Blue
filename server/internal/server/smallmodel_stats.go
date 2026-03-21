@@ -19,6 +19,8 @@ type SmallModelStats struct {
 	ToolDispatchRouteSuccess   int64            `json:"tool_dispatch_route_success"`
 	SummaryAttempts            int64            `json:"summary_attempts"`
 	SummarySuccess             int64            `json:"summary_success"`
+	ContextCompressAttempts    int64            `json:"context_compress_attempts"`
+	ContextCompressSuccess     int64            `json:"context_compress_success"`
 	DocExtractAttempts         int64            `json:"doc_extract_attempts"`
 	DocExtractSuccess          int64            `json:"doc_extract_success"`
 	FallbackTotal              int64            `json:"small_model_fallback_total"`
@@ -38,6 +40,9 @@ type SmallModelStats struct {
 	SummaryLatencyMs           float64          `json:"summary_latency_ms"`
 	SummaryLatencySamples      int64            `json:"summary_latency_samples"`
 	SummaryLatencyTotal        int64            `json:"summary_latency_ms_total"`
+	ContextCompressLatencyMs   float64          `json:"context_compress_latency_ms"`
+	ContextCompressSamples     int64            `json:"context_compress_latency_samples"`
+	ContextCompressTotal       int64            `json:"context_compress_latency_ms_total"`
 	DocExtractLatencyMs        float64          `json:"doc_extract_latency_ms"`
 	DocExtractLatencySamples   int64            `json:"doc_extract_latency_samples"`
 	DocExtractLatencyTotal     int64            `json:"doc_extract_latency_ms_total"`
@@ -107,6 +112,24 @@ func (s *SmallModelStats) RecordSummarySuccess() {
 	s.SummarySuccess++
 }
 
+func (s *SmallModelStats) RecordContextCompressAttempt() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ContextCompressAttempts++
+}
+
+func (s *SmallModelStats) RecordContextCompressSuccess() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ContextCompressSuccess++
+}
+
 func (s *SmallModelStats) RecordDocExtractAttempt() {
 	if s == nil {
 		return
@@ -170,6 +193,9 @@ func (s *SmallModelStats) RecordLatencyWithScene(scene string, d time.Duration) 
 	case "summary":
 		s.SummaryLatencySamples++
 		s.SummaryLatencyTotal += ms
+	case "context_compress":
+		s.ContextCompressSamples++
+		s.ContextCompressTotal += ms
 	case "doc_extract":
 		s.DocExtractLatencySamples++
 		s.DocExtractLatencyTotal += ms
@@ -218,6 +244,8 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 		ToolDispatchRouteSuccess:   s.ToolDispatchRouteSuccess,
 		SummaryAttempts:            s.SummaryAttempts,
 		SummarySuccess:             s.SummarySuccess,
+		ContextCompressAttempts:    s.ContextCompressAttempts,
+		ContextCompressSuccess:     s.ContextCompressSuccess,
 		DocExtractAttempts:         s.DocExtractAttempts,
 		DocExtractSuccess:          s.DocExtractSuccess,
 		FallbackTotal:              s.FallbackTotal,
@@ -232,6 +260,8 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 		ToolDispatchLatencyTotal:   s.ToolDispatchLatencyTotal,
 		SummaryLatencySamples:      s.SummaryLatencySamples,
 		SummaryLatencyTotal:        s.SummaryLatencyTotal,
+		ContextCompressSamples:     s.ContextCompressSamples,
+		ContextCompressTotal:       s.ContextCompressTotal,
 		DocExtractLatencySamples:   s.DocExtractLatencySamples,
 		DocExtractLatencyTotal:     s.DocExtractLatencyTotal,
 		AutoRollbackTotal:          s.AutoRollbackTotal,
@@ -253,6 +283,9 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 	}
 	if cp.SummaryLatencySamples > 0 {
 		cp.SummaryLatencyMs = float64(cp.SummaryLatencyTotal) / float64(cp.SummaryLatencySamples)
+	}
+	if cp.ContextCompressSamples > 0 {
+		cp.ContextCompressLatencyMs = float64(cp.ContextCompressTotal) / float64(cp.ContextCompressSamples)
 	}
 	if cp.DocExtractLatencySamples > 0 {
 		cp.DocExtractLatencyMs = float64(cp.DocExtractLatencyTotal) / float64(cp.DocExtractLatencySamples)
@@ -277,6 +310,8 @@ func (s *SmallModelStats) Reset() {
 	s.ToolDispatchRouteSuccess = 0
 	s.SummaryAttempts = 0
 	s.SummarySuccess = 0
+	s.ContextCompressAttempts = 0
+	s.ContextCompressSuccess = 0
 	s.DocExtractAttempts = 0
 	s.DocExtractSuccess = 0
 	s.FallbackTotal = 0
@@ -296,6 +331,9 @@ func (s *SmallModelStats) Reset() {
 	s.SummaryLatencyMs = 0
 	s.SummaryLatencySamples = 0
 	s.SummaryLatencyTotal = 0
+	s.ContextCompressLatencyMs = 0
+	s.ContextCompressSamples = 0
+	s.ContextCompressTotal = 0
 	s.DocExtractLatencyMs = 0
 	s.DocExtractLatencySamples = 0
 	s.DocExtractLatencyTotal = 0

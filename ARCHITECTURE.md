@@ -330,9 +330,9 @@
 ║  │                  Data Layer                                                                       │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐   │    ║
-║  │  │  SQLite (WAL)  │ │contextpacks.db │ │ workspace/     │ │ plugin-cache/  │ │ models/ +      │   │    ║
-║  │  │  blue.db       │ │ annotations    │ │ SOUL.md        │ │ backups/       │ │ vector store   │   │    ║
-║  │  │ users/auth     │ │ lookups        │ │ memory md      │ │ restore state  │ │ Whisper/OCR    │   │    ║
+║  │  │  SQLite (WAL)  │ │ blue.db tables │ │ workspace/     │ │ plugin-cache/  │ │ models/ +      │   │    ║
+║  │  │  blue.db       │ │ context anns   │ │ SOUL.md        │ │ backups/       │ │ vector store   │   │    ║
+║  │  │ users/auth     │ │ shared runtime │ │ memory md      │ │ restore state  │ │ Whisper/OCR    │   │    ║
 ║  │  │ conv/provider  │ │                │ │ skills/media   │ │                │ │ sqlite-vec/FTS │   │    ║
 ║  │  │ config/harness │ │                │ │                │ │                │ │ hybrid search  │   │    ║
 ║  │  └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘   │    ║
@@ -519,10 +519,10 @@ Chat / agent / workflow issues a tool call
 
 | Location | Purpose |
 | --- | --- |
-| `{dataDir}/blue.db` | Primary SQLite database: users, API keys, permissions, conversations, config KV, provider pool tables, harness state, and other shared runtime data |
+| `{dataDir}/blue.db` | Primary SQLite database: users, API keys, permissions, conversations, config KV, provider pool tables, harness state, context-pack annotations, and other shared runtime data |
 | Optional SQLite stores | Metrics and session audit can use dedicated SQLite files when configured, but default to shared DB usage where possible |
 | `{dataDir}/workspace/` | User-editable runtime workspace: persona/context files such as `SOUL.md`, released context packs, markdown memory content, and related artifacts |
-| `{dataDir}/contextpacks.db` | Context-pack annotation and lookup metadata |
+| Legacy migrated SQLite files | Older installs may contain archived `contextpacks.db.migrated*` artifacts after import into `blue.db` |
 | Memory vector store path | Resolved from memory config for hybrid memory search and embeddings |
 | `{dataDir}/media/` | Generated images, browser captures, and other media task artifacts |
 | `{dataDir}/models/` | Whisper, OCR, embedding, and other downloadable local model assets |

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	ws "github.com/gorilla/websocket"
 )
 
@@ -27,7 +28,7 @@ func newSlackClient(botToken, appToken string) *slackClient {
 		botToken: botToken,
 		appToken: appToken,
 		baseURL:  "https://slack.com/api",
-		http:     &http.Client{Timeout: 30 * time.Second},
+		http:     network.NewPooledHTTPClient(5 * time.Minute),
 	}
 }
 
@@ -169,6 +170,7 @@ func (c *slackClient) getUserInfo(ctx context.Context, userID string) (string, e
 type slackSocketClient struct {
 	appToken string
 	baseURL  string
+	http     *http.Client
 	conn     *ws.Conn
 	mu       sync.Mutex
 	onEvent  func(envelope socketEnvelope)
@@ -186,6 +188,7 @@ func newSlackSocketClient(appToken string, onEvent func(socketEnvelope)) *slackS
 	return &slackSocketClient{
 		appToken: appToken,
 		baseURL:  "https://slack.com/api",
+		http:     network.NewPooledHTTPClient(5 * time.Minute),
 		onEvent:  onEvent,
 	}
 }
@@ -194,7 +197,7 @@ func (c *slackSocketClient) connect(ctx context.Context) error {
 	req, _ := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/apps.connections.open", nil)
 	req.Header.Set("Authorization", "Bearer "+c.appToken)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
 	}

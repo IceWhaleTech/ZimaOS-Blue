@@ -32,19 +32,19 @@ func setupTestUserService(t *testing.T) (*user.Service, func()) {
 	return service, cleanup
 }
 
-func TestModeService_IsPreviewMode_NoAdmin(t *testing.T) {
+func TestModeService_IsPreviewMode_NoUsers(t *testing.T) {
 	userService, cleanup := setupTestUserService(t)
 	defer cleanup()
 
 	modeService := NewModeService(userService)
 
-	// No admin exists, should be preview mode
+	// No users exist, should be preview mode
 	isPreview, err := modeService.IsPreviewMode(context.Background())
 	if err != nil {
 		t.Fatalf("IsPreviewMode() error = %v", err)
 	}
 	if !isPreview {
-		t.Error("IsPreviewMode() = false, want true when no admin exists")
+		t.Error("IsPreviewMode() = false, want true when no users exist")
 	}
 }
 
@@ -99,8 +99,8 @@ func TestModeService_IsPreviewMode_WithRegularUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IsPreviewMode() error = %v", err)
 	}
-	if !isPreview {
-		t.Error("IsPreviewMode() = false, want true when only regular user exists")
+	if isPreview {
+		t.Error("IsPreviewMode() = true, want false when any user exists")
 	}
 }
 

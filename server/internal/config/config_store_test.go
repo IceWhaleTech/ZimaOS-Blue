@@ -155,8 +155,8 @@ func TestLoadOrImport_PreservesMissingNestedSecurityDefaultsFromDB(t *testing.T)
 			720*time.Hour,
 		)
 	}
-	if got.Security.Sandbox.DefaultTimeout != 30*time.Second {
-		t.Fatalf("Security.Sandbox.DefaultTimeout = %v, want %v", got.Security.Sandbox.DefaultTimeout, 30*time.Second)
+	if got.Security.Sandbox.DefaultTimeout != 5*time.Minute {
+		t.Fatalf("Security.Sandbox.DefaultTimeout = %v, want %v", got.Security.Sandbox.DefaultTimeout, 5*time.Minute)
 	}
 }
 

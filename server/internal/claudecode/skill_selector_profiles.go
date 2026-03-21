@@ -6,6 +6,19 @@ import (
 	sel "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
 )
 
+type skillSelectorBundle struct {
+	profile sel.SelectorProfile
+	docText string
+}
+
+func buildSkillSelectorBundle(doc SkillDoc) skillSelectorBundle {
+	profile := buildSkillSelectorProfile(doc)
+	return skillSelectorBundle{
+		profile: profile,
+		docText: skillDocTextForIR(doc),
+	}
+}
+
 func buildSkillSelectorProfile(doc SkillDoc) sel.SelectorProfile {
 	name := strings.ToLower(strings.TrimSpace(doc.Name))
 	human := sel.HumanizeName(name)

@@ -1,4 +1,5 @@
 import type {
+  DeepResearchTimelineStep,
   TypelessCard,
   TypelessCardTable,
   TypelessCardCode,
@@ -14,10 +15,12 @@ import type {
   GalleryImage,
   ListItem,
   ParsedContent,
+  TypelessCardDeepResearchTimeline,
 } from '@/types/typeless'
 import { i18n } from '@/i18n'
 import { TYPELESS_MARKER_START, TYPELESS_MARKER_END } from '@/types/typeless'
 import { isLocalAbsolutePath } from '@/utils/localPath'
+import { getLocalizedToolName } from '@/utils/toolLocalization'
 
 // File extensions for different categories
 const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico']
@@ -646,6 +649,10 @@ function t(key: string, fallback: string, named?: Record<string, string | number
   return result === key ? fallback : result
 }
 
+function te(key: string): boolean {
+  return i18n.global.te(key)
+}
+
 /**
  * Extract tool invocations from a <function_calls> block into StepItems.
  */
@@ -656,7 +663,7 @@ function extractInvocations(innerXml: string): StepItem[] {
   while ((inv = invokeRegex.exec(innerXml)) !== null) {
     const rawName = inv[1] || 'unknown'
     const paramsBlock = inv[2] || ''
-    const displayName = t(`tools.names.${rawName}`, rawName)
+    const displayName = getLocalizedToolName(rawName, (key) => String(i18n.global.t(key)), te)
     const icon = toolIconMap[rawName] || '🔧'
     const keywords: string[] = []
     const tags: string[] = []
@@ -1387,19 +1394,29 @@ function isProgressMergeCandidateCard(card: TypelessCard): boolean {
   return (
     card.type === 'ui-review-progress' ||
     card.type === 'analyze-progress' ||
-    card.type === 'browser-progress'
+    card.type === 'browser-progress' ||
+    card.type === 'deep-research-progress' ||
+    card.type === 'deep-research-event' ||
+    card.type === 'deep-research-timeline'
   )
 }
 
 function getProgressMergeCandidateType(
   card: TypelessCard
-): 'ui-review-progress' | 'analyze-progress' | 'browser-progress' | null {
+): 'ui-review-progress' | 'analyze-progress' | 'browser-progress' | 'deep-research' | null {
   if (
     card.type === 'ui-review-progress' ||
     card.type === 'analyze-progress' ||
     card.type === 'browser-progress'
   ) {
     return card.type
+  }
+  if (
+    card.type === 'deep-research-progress' ||
+    card.type === 'deep-research-event' ||
+    card.type === 'deep-research-timeline'
+  ) {
+    return 'deep-research'
   }
   return null
 }
@@ -1571,22 +1588,33 @@ export function splitIntoSegments(
     return finalize(segments)
   }
 
-  // Merge consecutive ui-review-progress cards into a single aggregated card
+  // Merge consecutive progress-like cards into a single aggregated card
   return finalize(mergeConsecutiveProgressCards(segments))
 }
 
 /**
- * Merge consecutive ui-review-progress card segments into a single card
- * with a `steps` array, so the component renders them as one consolidated view.
- * Also merges consecutive analyze-progress cards the same way.
+ * Merge consecutive progress-like card segments into a single card
+ * so the component renders them as one consolidated view.
  */
 function mergeConsecutiveProgressCards(segments: SplitSegment[]): SplitSegment[] {
   const result: typeof segments = []
   let pendingSteps: TypelessCard[] = []
-  let pendingType: 'ui-review-progress' | 'analyze-progress' | 'browser-progress' | null = null
+  let pendingType:
+    | 'ui-review-progress'
+    | 'analyze-progress'
+    | 'browser-progress'
+    | 'deep-research'
+    | null = null
 
   const flushPending = () => {
     if (pendingSteps.length === 0 || !pendingType) return
+    if (pendingType === 'deep-research') {
+      result.push({ type: 'card', content: mergeDeepResearchTimelineCards(pendingSteps) })
+      pendingSteps = []
+      pendingType = null
+      return
+    }
+
     const dedupedByStep = new Map<string, Record<string, unknown>>()
     const stepOrder: string[] = []
     const flattenedStepRecords: Record<string, unknown>[] = []
@@ -1646,15 +1674,20 @@ function mergeConsecutiveProgressCards(segments: SplitSegment[]): SplitSegment[]
 
   for (const seg of segments) {
     const cardType = seg.type === 'card' ? (seg.content as TypelessCard).type : null
+    const candidateType =
+      seg.type === 'card' ? getProgressMergeCandidateType(seg.content as TypelessCard) : null
     if (
       cardType === 'ui-review-progress' ||
       cardType === 'analyze-progress' ||
-      cardType === 'browser-progress'
+      cardType === 'browser-progress' ||
+      cardType === 'deep-research-progress' ||
+      cardType === 'deep-research-event' ||
+      cardType === 'deep-research-timeline'
     ) {
-      if (pendingType && pendingType !== cardType) {
+      if (pendingType && pendingType !== candidateType) {
         flushPending()
       }
-      pendingType = cardType as 'ui-review-progress' | 'analyze-progress' | 'browser-progress'
+      pendingType = candidateType as typeof pendingType
       pendingSteps.push(seg.content as TypelessCard)
     } else {
       flushPending()
@@ -1663,6 +1696,79 @@ function mergeConsecutiveProgressCards(segments: SplitSegment[]): SplitSegment[]
   }
   flushPending()
   return result
+}
+
+function mergeDeepResearchTimelineCards(cards: TypelessCard[]): TypelessCard {
+  const flattenedSteps: DeepResearchTimelineStep[] = []
+  const firstRecord = (cards[0] || {}) as Record<string, unknown>
+
+  const merged: TypelessCardDeepResearchTimeline = {
+    type: 'deep-research-timeline',
+    id:
+      (typeof firstRecord.id === 'string' && firstRecord.id.trim()) ||
+      (typeof firstRecord.job_id === 'string' && firstRecord.job_id.trim()
+        ? `deep-research-timeline-${String(firstRecord.job_id).trim()}`
+        : 'deep-research-timeline-merged'),
+    steps: flattenedSteps,
+    _streaming: cards.some((card) => card._streaming),
+  }
+
+  const metadataFields = [
+    'job_id',
+    'conversation_id',
+    'query',
+    'mode',
+    'iteration',
+  ]
+  const snapshotFields = [
+    'stage',
+    'status',
+    'progress',
+    'latest_gap',
+    'latest_action',
+  ]
+
+  const assignFields = (record: Record<string, unknown>, fields: string[]) => {
+    const target = merged as unknown as Record<string, unknown>
+    for (const field of fields) {
+      const value = record[field]
+      if (typeof value === 'string') {
+        if (value.trim()) {
+          target[field] = value
+        }
+        continue
+      }
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        target[field] = value
+      }
+    }
+  }
+
+  cards.forEach((card) => {
+    const record = card as unknown as Record<string, unknown>
+    assignFields(record, metadataFields)
+    if (record.type === 'deep-research-progress' || record.type === 'deep-research-timeline') {
+      assignFields(record, snapshotFields)
+    }
+
+    if (
+      record.type === 'deep-research-timeline' &&
+      Array.isArray(record.steps)
+    ) {
+      flattenedSteps.push(
+        ...record.steps.filter(
+          (step): step is DeepResearchTimelineStep => Boolean(step) && typeof step === 'object'
+        )
+      )
+      return
+    }
+
+    if (record.type === 'deep-research-event') {
+      flattenedSteps.push(record as unknown as DeepResearchTimelineStep)
+    }
+  })
+
+  return merged
 }
 
 /**

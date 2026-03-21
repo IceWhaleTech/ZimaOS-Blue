@@ -139,6 +139,57 @@ func TestSessionsListToolExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 }
 
+func TestRegisterSessionToolsHidesCompatAliases(t *testing.T) {
+	registry := NewRegistry()
+	RegisterSessionTools(registry, &stubSessionsService{})
+
+	if registry.Get("sessions") == nil {
+		t.Fatal("expected unified sessions tool to be registered")
+	}
+	for _, name := range []string{"sessions_list", "sessions_history", "session_status", "sessions_spawn", "sessions_send"} {
+		if registry.Get(name) == nil {
+			t.Fatalf("expected compat alias %q to be registered", name)
+		}
+		if !registry.IsDisabled(name) {
+			t.Fatalf("expected compat alias %q to be hidden", name)
+		}
+	}
+}
+
+func TestSessionsToolExecuteInfersStatusAndSend(t *testing.T) {
+	svc := &stubSessionsService{
+		sessions: []SessionSummary{{ID: "conv_1", Title: "First"}},
+		messages: map[string][]SessionMessage{
+			"conv_1": {{ID: "msg_1", Role: "user", Content: "hello"}},
+		},
+	}
+	tool := NewSessionsTool(svc)
+
+	statusResult, err := tool.Execute(context.Background(), map[string]interface{}{"id": "conv_1"})
+	if err != nil {
+		t.Fatalf("status Execute returned error: %v", err)
+	}
+	statusPayload := statusResult.(map[string]interface{})
+	if statusPayload["message_count"].(int) != 1 {
+		t.Fatalf("message_count = %v, want 1", statusPayload["message_count"])
+	}
+
+	sendResult, err := tool.Execute(context.Background(), map[string]interface{}{
+		"id":      "conv_1",
+		"message": "follow up",
+	})
+	if err != nil {
+		t.Fatalf("send Execute returned error: %v", err)
+	}
+	sendPayload := sendResult.(map[string]interface{})
+	if sendPayload["sent"] != true {
+		t.Fatalf("sent = %v, want true", sendPayload["sent"])
+	}
+	if svc.lastAppendSession != "conv_1" || svc.lastAppendMessage.Content != "follow up" {
+		t.Fatalf("unexpected append call: session=%q message=%#v", svc.lastAppendSession, svc.lastAppendMessage)
+	}
+}
+
 func TestSessionsHistoryToolExecute(t *testing.T) {
 	svc := &stubSessionsService{
 		sessions: []SessionSummary{{ID: "conv_1", Title: "First"}},

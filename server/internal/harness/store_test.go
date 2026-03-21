@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -428,5 +429,103 @@ func TestNewPolicyResolverArtifactRoot(t *testing.T) {
 	want := "data/harness/artifacts/run-1"
 	if got != "./"+want && got != want {
 		t.Fatalf("ArtifactRoot() = %q", got)
+	}
+}
+
+func TestNewPolicyResolverUsesSharedBlueDBPath(t *testing.T) {
+	cfg := *config.DefaultHarnessConfig()
+	cfg.StorePath = "./data/harness.db"
+	resolver := NewPolicyResolver(cfg, nil)
+	got := filepath.Clean(resolver.defaults.StorePath)
+	want := filepath.Clean(filepath.Join(".", "data", "blue.db"))
+	if got != want {
+		t.Fatalf("defaults.StorePath = %q, want %q", got, want)
+	}
+}
+
+func TestMigrateLegacyStoreImportsIntoSharedDBAndArchivesLegacyDB(t *testing.T) {
+	dataDir := t.TempDir()
+	legacyPath := LegacyStoreDBPath(dataDir)
+
+	legacyDB, err := sql.Open("sqlite3", legacyPath)
+	if err != nil {
+		t.Fatalf("open legacy harness db: %v", err)
+	}
+	legacyStore, err := NewSQLiteStore(legacyDB)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore(legacy) failed: %v", err)
+	}
+
+	ctx := context.Background()
+	run := &Run{
+		ID:           "run-legacy",
+		RootRunID:    "run-legacy",
+		Kind:         RunKindAgentTask,
+		Status:       RunStatusCompleted,
+		UserID:       "user-1",
+		Goal:         "migrate legacy harness db",
+		ArtifactRoot: "./data/harness/artifacts/run-legacy",
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
+	}
+	if err := legacyStore.CreateRun(ctx, run); err != nil {
+		t.Fatalf("CreateRun(legacy) failed: %v", err)
+	}
+	if err := legacyStore.AppendEvent(ctx, RunEvent{
+		ID:        "event-legacy",
+		RunID:     run.ID,
+		RootRunID: run.RootRunID,
+		Type:      "run_completed",
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("AppendEvent(legacy) failed: %v", err)
+	}
+	if err := legacyDB.Close(); err != nil {
+		t.Fatalf("close legacy db: %v", err)
+	}
+
+	sharedDB, err := sql.Open("sqlite3", filepath.Join(dataDir, "blue.db"))
+	if err != nil {
+		t.Fatalf("open shared db: %v", err)
+	}
+	defer sharedDB.Close()
+
+	result, err := MigrateLegacyStore(ctx, sharedDB, dataDir)
+	if err != nil {
+		t.Fatalf("MigrateLegacyStore() failed: %v", err)
+	}
+	if result == nil {
+		t.Fatal("MigrateLegacyStore() returned nil result")
+	}
+	if result.RowsImported != 2 {
+		t.Fatalf("RowsImported = %d, want 2", result.RowsImported)
+	}
+	if result.ArchivedPath == "" {
+		t.Fatal("ArchivedPath is empty")
+	}
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy harness db to be archived, stat err=%v", err)
+	}
+	if _, err := os.Stat(result.ArchivedPath); err != nil {
+		t.Fatalf("expected archived harness db to exist: %v", err)
+	}
+
+	sharedStore, err := NewSQLiteStore(sharedDB)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore(shared) failed: %v", err)
+	}
+	gotRun, err := sharedStore.GetRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun(shared) failed: %v", err)
+	}
+	if gotRun.Goal != run.Goal {
+		t.Fatalf("shared run goal = %q, want %q", gotRun.Goal, run.Goal)
+	}
+	events, err := sharedStore.ListEvents(ctx, run.ID, 10)
+	if err != nil {
+		t.Fatalf("ListEvents(shared) failed: %v", err)
+	}
+	if len(events) != 1 || events[0].ID != "event-legacy" {
+		t.Fatalf("unexpected shared events: %#v", events)
 	}
 }

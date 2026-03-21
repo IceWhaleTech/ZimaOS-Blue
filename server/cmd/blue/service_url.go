@@ -11,11 +11,7 @@ import (
 )
 
 func getServiceBaseURL() string {
-	host := os.Getenv("BLUE_SERVER_HOST")
-	if host == "" {
-		host = "localhost"
-	}
-	return fmt.Sprintf("http://%s:%d", host, resolveServerPort())
+	return fmt.Sprintf("http://%s:%d", resolveServerHost(), resolveServerPort())
 }
 
 func getServiceAPIBaseURL(path string) string {
@@ -29,6 +25,10 @@ func getServiceAPIBaseURL(path string) string {
 }
 
 func resolveServerPort() int {
+	if port := configuredGatewayPort(); port > 0 {
+		return port
+	}
+
 	if envPort := os.Getenv("BLUE_SERVER_PORT"); envPort != "" {
 		if parsed, err := strconv.Atoi(envPort); err == nil && parsed > 0 {
 			return parsed
@@ -43,6 +43,54 @@ func resolveServerPort() int {
 		return 8081
 	}
 	return 8080
+}
+
+func resolveServerHost() string {
+	if host := normalizeServiceHost(configuredGatewayBind()); host != "" {
+		return host
+	}
+
+	if host := normalizeServiceHost(os.Getenv("BLUE_SERVER_HOST")); host != "" {
+		return host
+	}
+
+	if cfg, err := loadCLIConfig(); err == nil && cfg != nil {
+		if host := normalizeServiceHost(cfg.Server.Host); host != "" {
+			return host
+		}
+	}
+
+	return "localhost"
+}
+
+func applyServerRuntimeOverrides(cfg *config.ServerConfig) {
+	if cfg == nil {
+		return
+	}
+
+	if host := configuredGatewayBind(); host != "" {
+		cfg.Host = host
+	} else if envHost := strings.TrimSpace(os.Getenv("BLUE_SERVER_HOST")); envHost != "" {
+		cfg.Host = envHost
+	}
+
+	if port := configuredGatewayPort(); port > 0 {
+		cfg.Port = port
+	} else if envPort := strings.TrimSpace(os.Getenv("BLUE_SERVER_PORT")); envPort != "" {
+		if parsed, err := strconv.Atoi(envPort); err == nil && parsed > 0 {
+			cfg.Port = parsed
+		}
+	}
+}
+
+func normalizeServiceHost(raw string) string {
+	host := strings.TrimSpace(raw)
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		return ""
+	default:
+		return host
+	}
 }
 
 func loadCLIConfig() (*config.Config, error) {

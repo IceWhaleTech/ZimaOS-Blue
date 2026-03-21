@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	defaultImageDownloadTimeout = 20 * time.Second
+	defaultImageDownloadTimeout = 5 * time.Minute
 	defaultImageReviewMaxInputs = 20
 	maxImageReviewMaxInputs     = 50
 	maxRemoteImageBytes         = 10 << 20
@@ -69,6 +69,7 @@ type ImageGenerateRequest struct {
 	Style                string
 	Category             string
 	Count                int
+	OutputPath           string
 	ReferenceImageURL    string
 	ReferenceImageBase64 string
 	Extra                map[string]interface{}
@@ -170,7 +171,7 @@ type imageReviewInput struct {
 	Value string
 }
 
-// ImageTool provides a native compatibility surface for OpenClaw-style image usage.
+// ImageTool provides a native compatibility surface for legacy image-style requests.
 type ImageTool struct {
 	reviewer   ImageReviewService
 	vision     VLMBridge
@@ -245,12 +246,15 @@ func (t *ImageTool) Definition() ToolDefinition {
 				"style":               map[string]interface{}{"type": "string", "description": "Optional style hint."},
 				"n":                   map[string]interface{}{"type": "integer", "description": "Number of images to generate."},
 				"category":            map[string]interface{}{"type": "string", "description": "Generation category, e.g. t2i or i2i."},
+				"path":                map[string]interface{}{"type": "string", "description": "Optional output file path in the current workspace. When provided and generation succeeds, Blue saves the first generated asset there."},
+				"output_path":         map[string]interface{}{"type": "string", "description": "Alias for path."},
+				"filename":            map[string]interface{}{"type": "string", "description": "Alias for path when the user specified a target filename."},
 				"reference_image":     map[string]interface{}{"type": "string", "description": "Reference image URL for edit/i2i generation."},
 				"image_url":           map[string]interface{}{"type": "string", "description": "Alias for reference_image when generating edits."},
 				"reference_base64":    map[string]interface{}{"type": "string", "description": "Base64 image content for edit/i2i generation."},
 				"task_id":             map[string]interface{}{"type": "string", "description": "Task ID for status/get."},
 				"poll":                map[string]interface{}{"type": "boolean", "description": "Wait for generation completion before returning. Defaults to true."},
-				"wait_timeout_sec":    map[string]interface{}{"type": "integer", "description": "Generation wait timeout in seconds. Defaults to 120."},
+				"wait_timeout_sec":    map[string]interface{}{"type": "integer", "description": "Generation wait timeout in seconds. Defaults to 300."},
 				"url":                 map[string]interface{}{"type": "string", "description": "Target page/image URL for review."},
 				"urls":                map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple page/image URLs for review or recognition."},
 				"image_urls":          map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple direct or signed image URLs for review or recognition."},
@@ -1076,10 +1080,11 @@ func (t *ImageTool) executeGenerate(ctx context.Context, args map[string]interfa
 		Style:                firstCompatString(args, "style"),
 		Category:             firstCompatString(args, "category", "mode", "type"),
 		Count:                compatInt(args, "n", "count", "num_images", "numImages"),
+		OutputPath:           strings.TrimSpace(firstCompatPathString(args)),
 		ReferenceImageURL:    firstCompatString(args, "reference_image", "referenceImage", "reference_url", "referenceUrl", "image_url", "imageUrl"),
 		ReferenceImageBase64: firstCompatString(args, "reference_base64", "referenceBase64", "reference_image_base64", "referenceImageBase64"),
 		Wait:                 true,
-		WaitTimeout:          120 * time.Second,
+		WaitTimeout:          300 * time.Second,
 	}
 	if request.Count <= 0 {
 		request.Count = 1
@@ -1096,6 +1101,12 @@ func (t *ImageTool) executeGenerate(ctx context.Context, args map[string]interfa
 		} else {
 			request.Category = "t2i"
 		}
+	}
+	if request.OutputPath != "" {
+		if request.Extra == nil {
+			request.Extra = make(map[string]interface{})
+		}
+		request.Extra["path"] = request.OutputPath
 	}
 	if wait, ok := compatBoolArg(args, "poll"); ok {
 		request.Wait = wait
@@ -1334,5 +1345,15 @@ func RegisterImageTool(registry *Registry, reviewer ImageReviewService, generate
 	if reviewer == nil && generate == nil && lookup == nil {
 		return
 	}
-	registry.Register(NewImageTool(reviewer, generate, lookup))
+	native := NewImageTool(reviewer, generate, lookup)
+	registry.Register(native)
+	registry.Register(newImageCompatTool(
+		"image_generation",
+		"Generate or edit images with descriptive prompts and optional output file handling.",
+		native,
+	))
+	for _, alias := range []string{"generate_image", "generateImage"} {
+		registry.Register(newImageCompatTool(alias, "Hidden legacy image generation alias.", native))
+		registry.Disable(alias)
+	}
 }

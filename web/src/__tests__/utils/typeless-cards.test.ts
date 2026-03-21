@@ -302,6 +302,44 @@ describe('Typeless Card Parsing', () => {
     expect(mergedProgress.steps).toHaveLength(2)
   })
 
+  it('merges consecutive deep research progress and event cards into a single timeline card', () => {
+    const content = [
+      '```typeless',
+      '{"type":"deep-research-progress","id":"dr-progress-1","job_id":"job-1","query":"EU AI Act provider obligations","mode":"deep","stage":"retrieve","status":"running","progress":34,"iteration":1,"latest_action":"initial_retrieve"}',
+      '```',
+      '',
+      '```typeless',
+      '{"type":"deep-research-event","id":"dr-event-1","job_id":"job-1","query":"EU AI Act provider obligations","mode":"deep","event_kind":"planning","status":"info","summary":"Planned 5 research task(s)","iteration":1,"task_count":5,"tasks":[{"question":"Review provider duties","axis":"official"}]}',
+      '```',
+      '',
+      '```typeless',
+      '{"type":"deep-research-event","id":"dr-event-2","job_id":"job-1","query":"EU AI Act provider obligations","mode":"deep","event_kind":"source","status":"info","summary":"Collected 3 source(s)","iteration":1,"parallelism":4,"sources":[{"title":"EU AI Act text","url":"https://eur-lex.europa.eu/eli/reg/2024/1689/oj","domain":"eur-lex.europa.eu"}]}',
+      '```',
+      '',
+      '```typeless',
+      '{"type":"deep-research","id":"dr-result-1","query":"EU AI Act provider obligations","status":"completed","answer":"Done"}',
+      '```',
+    ].join('\n')
+
+    const result = parseTypelessContent(content)
+    const segments = splitIntoSegments(result.text, result.cards)
+    const cardSegments = segments.filter((segment) => segment.type === 'card')
+
+    expect(cardSegments).toHaveLength(2)
+
+    const mergedTimeline = cardSegments[0]?.content as any
+    expect(mergedTimeline.type).toBe('deep-research-timeline')
+    expect(mergedTimeline.progress).toBe(34)
+    expect(mergedTimeline.iteration).toBe(1)
+    expect(mergedTimeline.steps).toHaveLength(2)
+    expect(mergedTimeline.steps[0]?.event_kind).toBe('planning')
+    expect(mergedTimeline.steps[1]?.event_kind).toBe('source')
+
+    const finalResult = cardSegments[1]?.content as any
+    expect(finalResult.type).toBe('deep-research')
+    expect(finalResult.id).toBe('dr-result-1')
+  })
+
   it('keeps malformed empty placeholders as plain text while parsing later valid placeholders', () => {
     const text = 'prefix [[TYPELESS_CARD:]] mid [[TYPELESS_CARD:card-1]] suffix'
     const cards = [{ type: 'result', id: 'card-1' }] as any
@@ -415,6 +453,62 @@ describe('Typeless Card Parsing', () => {
     const merged = second[0]?.content as any
     expect(merged.type).toBe('ui-review-progress')
     expect(merged.steps).toHaveLength(2)
+  })
+
+  it('keeps appending streamed deep research events into the same merged timeline card', () => {
+    const cards = [
+      {
+        type: 'deep-research-progress',
+        id: 'dr-progress-1',
+        job_id: 'job-1',
+        query: 'Research topic',
+        stage: 'retrieve',
+        status: 'running',
+        progress: 28,
+        iteration: 1,
+      },
+      {
+        type: 'deep-research-event',
+        id: 'dr-event-1',
+        job_id: 'job-1',
+        event_kind: 'planning',
+        status: 'info',
+        summary: 'Planned 4 research task(s)',
+        iteration: 1,
+      },
+      {
+        type: 'deep-research-event',
+        id: 'dr-event-2',
+        job_id: 'job-1',
+        event_kind: 'verification',
+        status: 'info',
+        summary: 'Verification completed',
+        iteration: 1,
+      },
+    ] as any
+    const key = 'conv-1:msg-dr-1'
+
+    const first = splitIntoSegments(
+      '[[TYPELESS_CARD:dr-progress-1]][[TYPELESS_CARD:dr-event-1]]',
+      cards,
+      key
+    )
+    const second = splitIntoSegments(
+      '[[TYPELESS_CARD:dr-progress-1]][[TYPELESS_CARD:dr-event-1]][[TYPELESS_CARD:dr-event-2]]',
+      cards,
+      key
+    )
+
+    expect(first).toHaveLength(1)
+    expect(first[0]?.type).toBe('card')
+    expect((first[0]?.content as any).type).toBe('deep-research-timeline')
+    expect((first[0]?.content as any).steps).toHaveLength(1)
+
+    expect(second).toHaveLength(1)
+    expect(second[0]?.type).toBe('card')
+    expect((second[0]?.content as any).type).toBe('deep-research-timeline')
+    expect((second[0]?.content as any).steps).toHaveLength(2)
+    expect((second[0]?.content as any).steps[1]?.event_kind).toBe('verification')
   })
 
   it('preserves browser progress recipe metadata when merging steps', () => {

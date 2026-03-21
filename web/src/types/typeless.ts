@@ -35,6 +35,7 @@ export type TypelessCardType =
   | 'mermaid'
   | 'search'
   | 'deep-research'
+  | 'deep-research-timeline'
   | 'deep-research-progress'
   | 'deep-research-event'
   | 'ui-review'
@@ -43,6 +44,7 @@ export type TypelessCardType =
   | 'analyze-progress'
   | 'browser-progress'
   | 'web-fetch'
+  | 'model-download-progress'
   | 'convert-task'
   | 'exec'
 
@@ -614,6 +616,25 @@ export interface DeepResearchCoverageSummary {
   insufficient_count?: number
 }
 
+export interface DeepResearchTakeawayCandidate {
+  lesson: string
+  when_to_apply?: string
+  evidence: string
+  evidence_ids?: string[]
+  confidence?: number
+  target_file?: string
+}
+
+export interface DeepResearchCalibration {
+  coverage?: number
+  groundedness?: number
+  freshness?: number
+  conflict_risk?: 'low' | 'medium' | 'blocking' | string
+  confidence?: number
+  recommended_action?: 'publish' | 'caution' | 'insufficient' | string
+  takeaway_candidates?: DeepResearchTakeawayCandidate[]
+}
+
 export interface DeepResearchBrief {
   goal?: string
   entity?: string
@@ -639,6 +660,53 @@ export interface DeepResearchEventVerificationSummary {
   resolved_count?: number
   conflicted_count?: number
   insufficient_count?: number
+}
+
+export interface DeepResearchTimelineStep extends TypelessCardBase {
+  type: 'deep-research-progress' | 'deep-research-event'
+  job_id?: string
+  conversation_id?: string
+  query?: string
+  mode?: 'fast' | 'standard' | 'deep'
+  event_kind?: string
+  status?: string
+  summary?: string
+  brief?: DeepResearchBrief
+  tasks?: DeepResearchPlannedTask[]
+  sources?: DeepResearchLiveSource[]
+  verification?: DeepResearchEventVerificationSummary
+  gap?: string
+  focus?: string
+  follow_up_query?: string
+  stage?: string
+  search_query?: string
+  parallelism?: number
+  source_title?: string
+  stop_reason?: string
+  iteration?: number
+  task_count?: number
+  evidence_count?: number
+  citation_coverage?: number
+  attempt?: number
+  delay_ms?: number
+  progress?: number
+  latest_gap?: string
+  latest_action?: string
+}
+
+export interface TypelessCardDeepResearchTimeline extends TypelessCardBase {
+  type: 'deep-research-timeline'
+  job_id?: string
+  conversation_id?: string
+  query?: string
+  mode?: 'fast' | 'standard' | 'deep'
+  stage?: string
+  status?: string
+  progress?: number
+  iteration?: number
+  latest_gap?: string
+  latest_action?: string
+  steps: DeepResearchTimelineStep[]
 }
 
 export interface TypelessCardDeepResearchEvent extends TypelessCardBase {
@@ -703,6 +771,7 @@ export interface TypelessCardDeepResearch extends TypelessCardBase {
   coverage_summary?: DeepResearchCoverageSummary
   research_trace?: DeepResearchTraceItem[]
   verification_summary?: DeepResearchVerificationSummary
+  calibration?: DeepResearchCalibration
   status?: string
 }
 
@@ -868,6 +937,31 @@ export interface TypelessCardWebFetch extends TypelessCardBase {
   actions?: ActionButton[]
 }
 
+export interface TypelessCardModelDownloadProgress extends TypelessCardBase {
+  type: 'model-download-progress'
+  model_id: string
+  title: string
+  message?: string
+  status: 'not_downloaded' | 'downloading' | 'ready' | 'error'
+  downloading: boolean
+  ready: boolean
+  state?: string
+  error?: string
+  progress?: {
+    file: string
+    file_index: number
+    total_files: number
+    downloaded: number
+    total: number
+    percentage: number
+    speed_human?: string
+    eta?: string
+  }
+  status_url: string
+  poll_interval_ms: number
+  files?: { filename: string; downloaded: boolean; size: string }[]
+}
+
 export interface ConvertTaskOutput {
   output_id: string
   name: string
@@ -956,6 +1050,7 @@ export type TypelessCard =
   | TypelessCardMermaid
   | TypelessCardSearch
   | TypelessCardDeepResearch
+  | TypelessCardDeepResearchTimeline
   | TypelessCardDeepResearchProgress
   | TypelessCardDeepResearchEvent
   | TypelessCardUIReview
@@ -964,6 +1059,7 @@ export type TypelessCard =
   | TypelessCardAnalyzeProgress
   | TypelessCardBrowserProgress
   | TypelessCardWebFetch
+  | TypelessCardModelDownloadProgress
   | TypelessCardConvertTask
   | TypelessCardExec
 

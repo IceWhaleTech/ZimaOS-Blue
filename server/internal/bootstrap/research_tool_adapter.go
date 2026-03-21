@@ -131,29 +131,28 @@ func toToolResearchJob(job *deepresearch.Job) *tools.ResearchJob {
 			"timeline_sections":    append([]deepresearch.TimelineSection(nil), job.Report.TimelineSections...),
 			"research_trace":       append([]deepresearch.ResearchTraceEntry(nil), job.Report.ResearchTrace...),
 			"verification_summary": job.Report.VerificationSummary,
-			"experiment":           cloneExperimentReportForTool(job.Report.Experiment),
+			"calibration":          cloneCalibrationForTool(job.Report.Calibration),
+		}
+		if job.Report.Calibration != nil {
+			out.Report["takeaway_candidates"] = append([]deepresearch.TakeawayCandidate(nil), job.Report.Calibration.TakeawayCandidates...)
 		}
 	}
 	return out
 }
 
-func cloneExperimentReportForTool(report *deepresearch.ExperimentReport) map[string]interface{} {
-	if report == nil {
+func cloneCalibrationForTool(calibration *deepresearch.Calibration) map[string]interface{} {
+	if calibration == nil {
 		return nil
 	}
 	out := map[string]interface{}{
-		"summary":        report.Summary,
-		"findings":       append([]string(nil), report.Findings...),
-		"artifacts":      append([]deepresearch.ExperimentArtifact(nil), report.Artifacts...),
-		"open_questions": append([]string(nil), report.OpenQuestions...),
+		"coverage":           calibration.Coverage,
+		"groundedness":       calibration.Groundedness,
+		"freshness":          calibration.Freshness,
+		"conflict_risk":      calibration.ConflictRisk,
+		"confidence":         calibration.Confidence,
+		"recommended_action": calibration.RecommendedAction,
 	}
-	if len(report.Metadata) > 0 {
-		meta := make(map[string]interface{}, len(report.Metadata))
-		for k, v := range report.Metadata {
-			meta[k] = v
-		}
-		out["metadata"] = meta
-	}
+	out["takeaway_candidates"] = append([]deepresearch.TakeawayCandidate(nil), calibration.TakeawayCandidates...)
 	return out
 }
 

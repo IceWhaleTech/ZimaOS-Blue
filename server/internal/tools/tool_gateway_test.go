@@ -315,6 +315,45 @@ func TestToolGatewayRejectsToolHiddenFromRoute(t *testing.T) {
 	}
 }
 
+func TestToolGatewayNormalizesCompatAliasToUnifiedTool(t *testing.T) {
+	registry := NewRegistry()
+	webTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "web",
+			Description: "web",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"action": map[string]interface{}{"type": "string"},
+					"url":    map[string]interface{}{"type": "string"},
+				},
+				"additionalProperties": true,
+			},
+		},
+	}
+	registry.Register(webTool)
+
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-web-compat",
+		ToolName:   "web_fetch",
+		Arguments:  `{"href":"https://example.com"}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if result.NormalizedCall.ToolName != "web" {
+		t.Fatalf("tool name = %q, want web", result.NormalizedCall.ToolName)
+	}
+	if got := webTool.args["action"]; got != "fetch" {
+		t.Fatalf("action = %v, want fetch", got)
+	}
+	if got := webTool.args["url"]; got != "https://example.com" {
+		t.Fatalf("url = %v, want https://example.com", got)
+	}
+}
+
 func TestToolGatewaySanitizesScalarPayloads(t *testing.T) {
 	registry := NewRegistry()
 	registry.Register(&gatewayResultTool{

@@ -105,6 +105,8 @@ func (h *Handler) Upgrade(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "username is required")
 		case ErrPasswordRequired:
 			return echo.NewHTTPError(http.StatusBadRequest, "password is required")
+		case ErrUsersAlreadyExist:
+			return echo.NewHTTPError(http.StatusConflict, "preview mode is only available before the first user is created")
 		case ErrAdminAlreadyExists:
 			return echo.NewHTTPError(http.StatusConflict, "admin already exists")
 		default:
@@ -186,12 +188,12 @@ func (h *Handler) GetPreviewToken(c echo.Context) error {
 
 	// Security check: ensure no real users exist
 	if h.userService != nil {
-		adminExists, err := h.userService.AdminExists(c.Request().Context())
+		userExists, err := h.userService.AnyUserExists(c.Request().Context())
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to check admin status")
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to check user status")
 		}
-		if adminExists {
-			return echo.NewHTTPError(http.StatusForbidden, "preview token not available after user creation")
+		if userExists {
+			return echo.NewHTTPError(http.StatusForbidden, "preview token not available after a user has been created")
 		}
 	}
 

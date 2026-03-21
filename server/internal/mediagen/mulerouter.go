@@ -12,9 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 // MuleRouterProvider implements MediaProvider using MuleRouter's unified API.
@@ -38,7 +39,7 @@ func NewMuleRouterProvider(apiKey, baseURL string) *MuleRouterProvider {
 	return &MuleRouterProvider{
 		apiKey:  apiKey,
 		baseURL: strings.TrimRight(baseURL, "/"),
-		client:  &http.Client{Timeout: 120 * time.Second},
+		client:  network.NewPooledHTTPClient(5 * time.Minute),
 	}
 }
 

@@ -51,6 +51,68 @@ func newTestServiceWithClient(t *testing.T, client *http.Client) (*Service, func
 	return svc, func() { _ = db.Close() }
 }
 
+func TestNewServiceWithDBPathPersistsAcrossReopen(t *testing.T) {
+	t.Helper()
+
+	tempDir := t.TempDir()
+	activeDir := filepath.Join(tempDir, "active")
+	cacheDir := filepath.Join(tempDir, "cache")
+	dbPath := filepath.Join(tempDir, "skillmarket.db")
+
+	newService := func() *Service {
+		cfg := DefaultConfig(tempDir, activeDir)
+		cfg.CacheRoot = cacheDir
+		cfg.SeedURLs = nil
+		cfg.DBPath = dbPath
+
+		svc, err := NewServiceWithDBPath(dbPath, Options{
+			Config:       cfg,
+			Registry:     skill.NewRegistry(),
+			LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+			Scanner:      NewScanner(nil),
+		})
+		if err != nil {
+			t.Fatalf("NewServiceWithDBPath() error = %v", err)
+		}
+		return svc
+	}
+
+	svc := newService()
+	insertSkillFixture(t, svc, "git-expert", "1.2.3", `---
+id: git-expert
+name: Git Expert
+version: 1.2.3
+description: Expert git workflows
+---
+
+# Git Expert`, RiskLow, 92)
+
+	if err := svc.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("expected db file at %s: %v", dbPath, err)
+	}
+
+	reopened := newService()
+	defer reopened.Close()
+
+	result, err := reopened.Search(context.Background(), SearchQuery{
+		Query:    "git",
+		Page:     1,
+		PageSize: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search() after reopen error = %v", err)
+	}
+	if result.Total != 1 || len(result.Skills) != 1 {
+		t.Fatalf("expected one persisted skill after reopen, got total=%d len=%d", result.Total, len(result.Skills))
+	}
+	if result.Skills[0].Skill.ID != "git-expert" {
+		t.Fatalf("got skill id %q, want git-expert", result.Skills[0].Skill.ID)
+	}
+}
+
 func insertSkillFixture(t *testing.T, svc *Service, id, version, raw string, risk string, score int) {
 	t.Helper()
 	doc := &SkillDocument{

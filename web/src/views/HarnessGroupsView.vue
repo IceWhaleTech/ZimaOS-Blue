@@ -192,7 +192,7 @@ onMounted(() => {
           {{
             tr(
               'harness.groups.subtitle',
-              'Track eval groups, experiment projections, score breakdowns, and retries from one control-plane view.'
+              'Track eval groups, calibration traces, score breakdowns, and retries from one control-plane view.'
             )
           }}
         </p>

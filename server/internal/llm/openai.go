@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -35,13 +36,10 @@ func NewOpenAIProvider(apiKey, baseURL string) *OpenAIProvider {
 	return &OpenAIProvider{
 		apiKey:  apiKey,
 		baseURL: baseURL,
-		client: &http.Client{
-			Timeout: openAITimeout,
-			Transport: &http.Transport{
-				// Disable response buffering for streaming
-				DisableCompression: true,
-			},
-		},
+		client: network.NewPooledHTTPClientWithOptions(network.HTTPClientOptions{
+			Timeout:            openAITimeout,
+			DisableCompression: true,
+		}),
 	}
 }
 

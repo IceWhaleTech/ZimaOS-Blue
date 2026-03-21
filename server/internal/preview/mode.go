@@ -27,14 +27,14 @@ func NewModeService(userService *user.Service) *ModeService {
 }
 
 // IsPreviewMode checks if the system is in preview mode.
-// Preview mode is active when no admin user exists.
+// Preview mode is active when no user exists yet.
 func (s *ModeService) IsPreviewMode(ctx context.Context) (bool, error) {
-	adminExists, err := s.userService.AdminExists(ctx)
+	userExists, err := s.userService.AnyUserExists(ctx)
 	if err != nil {
 		return false, err
 	}
 
-	isPreview := !adminExists
+	isPreview := !userExists
 	return isPreview, nil
 }
 

@@ -173,6 +173,62 @@ func TestLoadContextFiles(t *testing.T) {
 	}
 }
 
+func TestLoadContextFiles_FallsBackToNestedMemoryFile(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureWorkspace()
+
+	rootMemory := filepath.Join(dir, FileMEMORY)
+	if err := os.Remove(rootMemory); err != nil {
+		t.Fatalf("remove root memory: %v", err)
+	}
+	nestedContent := "# Nested Memory\n\n- Favorite language: Rust\n"
+	if err := os.WriteFile(filepath.Join(dir, "memory", FileMEMORY), []byte(nestedContent), 0o644); err != nil {
+		t.Fatalf("write nested memory: %v", err)
+	}
+	mgr.InvalidateFileCache()
+
+	ctx := mgr.LoadContextFiles()
+	if got := ctx[FileMEMORY]; got != nestedContent {
+		t.Fatalf("MEMORY.md context = %q, want nested fallback", got)
+	}
+
+	files := mgr.LoadBootstrapFiles()
+	for _, file := range files {
+		if file.Name != FileMEMORY {
+			continue
+		}
+		if file.Missing {
+			t.Fatal("expected fallback MEMORY.md to be treated as present")
+		}
+		if file.Content != nestedContent {
+			t.Fatalf("bootstrap MEMORY.md = %q, want nested fallback", file.Content)
+		}
+		return
+	}
+	t.Fatal("expected MEMORY.md entry in bootstrap files")
+}
+
+func TestLoadContextFiles_PrefersRootMemoryOverNestedFallback(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureWorkspace()
+
+	rootContent := "# Root Memory\n\n- Use root file.\n"
+	if err := os.WriteFile(filepath.Join(dir, FileMEMORY), []byte(rootContent), 0o644); err != nil {
+		t.Fatalf("write root memory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "memory", FileMEMORY), []byte("# Nested Memory\n\n- Ignore nested.\n"), 0o644); err != nil {
+		t.Fatalf("write nested memory: %v", err)
+	}
+	mgr.InvalidateFileCache()
+
+	ctx := mgr.LoadContextFiles()
+	if got := ctx[FileMEMORY]; got != rootContent {
+		t.Fatalf("MEMORY.md context = %q, want root content", got)
+	}
+}
+
 func TestStaleBootstrapIgnoredAfterUserEdited(t *testing.T) {
 	dir := t.TempDir()
 	mgr := NewManager(dir)

@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -46,21 +48,44 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	db, err := openMetricsDB(dbPath)
-	if err != nil {
-		// DB is corrupt or locked — rename and retry with a fresh one
-		rotateCorruptDB(dbPath)
-		db, err = openMetricsDB(dbPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open database after rotation: %w", err)
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
+		// Connection pool limits
+		db.SetMaxOpenConns(2)
+		db.SetMaxIdleConns(1)
+
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return fmt.Errorf("set metrics journal mode: %w", err)
 		}
-	}
-	store, err := newStoreWithDB(db, dbPath, true)
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("set metrics busy timeout: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+			return fmt.Errorf("set metrics synchronous mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
+			return fmt.Errorf("set metrics wal autocheckpoint: %w", err)
+		}
+		if runtime.GOOS == "darwin" {
+			if _, err := db.Exec("PRAGMA fullfsync=ON"); err != nil {
+				return fmt.Errorf("set metrics fullfsync: %w", err)
+			}
+			if _, err := db.Exec("PRAGMA checkpoint_fullfsync=ON"); err != nil {
+				return fmt.Errorf("set metrics checkpoint_fullfsync: %w", err)
+			}
+		}
+		db.Exec("PRAGMA cache_size=-500") // ~512KB page cache for lower idle memory
+
+		store := &SQLiteStore{db: db}
+		if err := store.initSchema(); err != nil {
+			return fmt.Errorf("failed to initialize schema: %w", err)
+		}
+		db.Exec("PRAGMA shrink_memory")
+		return nil
+	})
 	if err != nil {
-		_ = db.Close()
-		return nil, err
+		return nil, fmt.Errorf("failed to open metrics database: %w", err)
 	}
-	return store, nil
+	return &SQLiteStore{db: db, dbPath: dbPath, ownsDB: true}, nil
 }
 
 // NewSQLiteStoreWithDB reuses an existing SQLite database for metrics persistence.
@@ -69,33 +94,6 @@ func NewSQLiteStoreWithDB(db *sql.DB) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("metrics db is nil")
 	}
 	return newStoreWithDB(db, "", false)
-}
-
-// openMetricsDB opens (or creates) the dedicated metrics SQLite database.
-func openMetricsDB(dbPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
-	}
-
-	// Connection pool limits
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(1)
-
-	// DELETE journal — no -shm/-wal files; metrics are expendable
-	db.Exec("PRAGMA journal_mode=DELETE")
-	db.Exec("PRAGMA busy_timeout=5000")
-	db.Exec("PRAGMA cache_size=-500") // ~512KB page cache for lower idle memory
-
-	return db, nil
-}
-
-// rotateCorruptDB renames a corrupt/locked DB (and its WAL/SHM) out of the way.
-func rotateCorruptDB(dbPath string) {
-	suffix := fmt.Sprintf(".bad.%d", timeutil.Now())
-	os.Rename(dbPath, dbPath+suffix)
-	os.Remove(dbPath + "-wal")
-	os.Remove(dbPath + "-shm")
 }
 
 // initSchema creates the necessary tables.

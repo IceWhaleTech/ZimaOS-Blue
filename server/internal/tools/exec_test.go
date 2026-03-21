@@ -33,6 +33,23 @@ func TestGetShellConfig(t *testing.T) {
 	}
 }
 
+func TestDefaultExecConfigTimeouts(t *testing.T) {
+	config := DefaultExecConfig()
+	if config.DefaultTimeout != 5*time.Minute {
+		t.Fatalf("DefaultTimeout = %v, want %v", config.DefaultTimeout, 5*time.Minute)
+	}
+	if config.MaxTimeout != 30*time.Minute {
+		t.Fatalf("MaxTimeout = %v, want %v", config.MaxTimeout, 30*time.Minute)
+	}
+}
+
+func TestNewApprovalManagerDefaultTimeoutIsLonger(t *testing.T) {
+	mgr := NewApprovalManager(nil)
+	if mgr.timeout != 5*time.Minute {
+		t.Fatalf("approval timeout = %v, want %v", mgr.timeout, 5*time.Minute)
+	}
+}
+
 func TestSanitizeBinaryOutput(t *testing.T) {
 	tests := []struct {
 		input, want string

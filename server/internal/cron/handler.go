@@ -1,10 +1,13 @@
 package cron
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
-	"sync"
+	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reclaim"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 )
@@ -15,9 +18,9 @@ type Handler struct {
 	logger  *zap.Logger
 
 	// Lazy init support
-	once            sync.Once
 	initFn          func() *Service
 	serviceInitHook func(*Service)
+	lazy            *reclaim.Managed[*Service]
 }
 
 // NewHandler creates a new cron handler.
@@ -31,29 +34,68 @@ func NewHandler(service *Service, logger *zap.Logger) *Handler {
 // NewLazyHandler creates a handler that defers Service creation to the first API call.
 // This avoids starting the robfig/cron scheduler goroutine when nobody uses cron.
 func NewLazyHandler(initFn func() *Service, logger *zap.Logger) *Handler {
-	return &Handler{
+	h := &Handler{
 		logger: logger.With(zap.String("handler", "cron")),
 		initFn: initFn,
 	}
+	h.lazy = reclaim.NewManaged[*Service](0, func() (*Service, error) {
+		if h.initFn == nil {
+			return nil, nil
+		}
+		svc := h.initFn()
+		if svc == nil {
+			return nil, fmt.Errorf("cron service unavailable")
+		}
+		return svc, nil
+	}, func(_ context.Context, svc *Service) error {
+		if svc == nil {
+			return nil
+		}
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return svc.Stop(stopCtx)
+	})
+	return h
 }
 
 // svc returns the service, initializing lazily if needed.
 func (h *Handler) svc() *Service {
-	h.once.Do(func() {
-		if h.service == nil && h.initFn != nil {
-			h.service = h.initFn()
-			if h.service != nil && h.serviceInitHook != nil {
-				h.serviceInitHook(h.service)
-			}
-			h.logger.Info("cron service initialized lazily")
-		}
-	})
-	return h.service
+	if h == nil {
+		return nil
+	}
+	if h.service != nil || h.lazy == nil {
+		return h.service
+	}
+	svc, _ := h.lazy.Get()
+	return svc
 }
 
 // GetService returns the cron service for cleanup purposes.
 func (h *Handler) GetService() *Service {
 	return h.svc()
+}
+
+// SetIdleReclaim configures idle reclaim for the lazily initialized cron service.
+func (h *Handler) SetIdleReclaim(idleAfter time.Duration) {
+	if h == nil || h.lazy == nil {
+		return
+	}
+	h.lazy.SetIdleAfter(idleAfter)
+}
+
+func (h *Handler) withService(fn func(*Service) error) error {
+	if h == nil {
+		return nil
+	}
+	if h.service != nil || h.lazy == nil {
+		return fn(h.service)
+	}
+	svc, release, err := h.lazy.Acquire()
+	if err != nil {
+		return err
+	}
+	defer release()
+	return fn(svc)
 }
 
 // SetServiceInitHook configures a callback that runs once the lazy service is created.
@@ -69,6 +111,14 @@ func (h *Handler) SetServiceInitHook(fn func(*Service)) {
 			prev(svc)
 			fn(svc)
 		}
+	}
+	if h.lazy != nil {
+		svc, ok := h.lazy.Peek()
+		h.lazy.SetOnCreateSilently(h.serviceInitHook)
+		if ok && svc != nil {
+			fn(svc)
+		}
+		return
 	}
 	if h.service != nil {
 		fn(h.service)
@@ -138,19 +188,37 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 // @Success 200 {array} Job
 // @Router /api/v1/cron [get]
 func (h *Handler) List(c echo.Context) error {
-	jobs := h.svc().List()
+	var jobs []*Job
+	if err := h.withService(func(svc *Service) error {
+		jobs = svc.List()
+		return nil
+	}); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 	return c.JSON(http.StatusOK, jobs)
 }
 
 // ListWrapped returns cron jobs in the legacy CLI response shape.
 func (h *Handler) ListWrapped(c echo.Context) error {
-	jobs := h.svc().List()
+	var jobs []*Job
+	if err := h.withService(func(svc *Service) error {
+		jobs = svc.List()
+		return nil
+	}); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 	return c.JSON(http.StatusOK, listResponse{Jobs: jobs})
 }
 
 // Status returns scheduler status in the legacy CLI response shape.
 func (h *Handler) Status(c echo.Context) error {
-	service := h.svc()
+	var service *Service
+	if err := h.withService(func(svc *Service) error {
+		service = svc
+		return nil
+	}); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 	jobs := service.List()
 	activeJobs := 0
 	for _, job := range jobs {
@@ -185,7 +253,12 @@ func (h *Handler) Create(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name, schedule, and handler are required"})
 	}
 
-	job, err := h.svc().Create(req.Name, req.Description, req.Schedule, req.Handler, req.Payload)
+	var job *Job
+	err := h.withService(func(svc *Service) error {
+		var err error
+		job, err = svc.Create(req.Name, req.Description, req.Schedule, req.Handler, req.Payload)
+		return err
+	})
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
@@ -204,7 +277,16 @@ func (h *Handler) Create(c echo.Context) error {
 func (h *Handler) Get(c echo.Context) error {
 	id := c.Param("id")
 
-	job, exists := h.svc().Get(id)
+	var (
+		job    *Job
+		exists bool
+	)
+	if err := h.withService(func(svc *Service) error {
+		job, exists = svc.Get(id)
+		return nil
+	}); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 	if !exists {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "job not found"})
 	}
@@ -231,7 +313,9 @@ func (h *Handler) Update(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	if err := h.svc().Update(id, req.Name, req.Description, req.Schedule, req.Payload); err != nil {
+	if err := h.withService(func(svc *Service) error {
+		return svc.Update(id, req.Name, req.Description, req.Schedule, req.Payload)
+	}); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
@@ -248,7 +332,9 @@ func (h *Handler) Update(c echo.Context) error {
 func (h *Handler) Delete(c echo.Context) error {
 	id := c.Param("id")
 
-	if err := h.svc().Delete(id); err != nil {
+	if err := h.withService(func(svc *Service) error {
+		return svc.Delete(id)
+	}); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
@@ -265,7 +351,9 @@ func (h *Handler) Delete(c echo.Context) error {
 func (h *Handler) Enable(c echo.Context) error {
 	id := c.Param("id")
 
-	if err := h.svc().Enable(id); err != nil {
+	if err := h.withService(func(svc *Service) error {
+		return svc.Enable(id)
+	}); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
@@ -282,7 +370,9 @@ func (h *Handler) Enable(c echo.Context) error {
 func (h *Handler) Disable(c echo.Context) error {
 	id := c.Param("id")
 
-	if err := h.svc().Disable(id); err != nil {
+	if err := h.withService(func(svc *Service) error {
+		return svc.Disable(id)
+	}); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
@@ -299,7 +389,9 @@ func (h *Handler) Disable(c echo.Context) error {
 func (h *Handler) Trigger(c echo.Context) error {
 	id := c.Param("id")
 
-	if err := h.svc().Trigger(id); err != nil {
+	if err := h.withService(func(svc *Service) error {
+		return svc.Trigger(id)
+	}); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
@@ -319,7 +411,12 @@ func (h *Handler) GetExecutions(c echo.Context) error {
 	id := c.Param("id")
 	limit := parseExecutionLimit(c)
 
-	executions, err := h.svc().GetExecutions(id, limit)
+	var executions []*JobExecution
+	err := h.withService(func(svc *Service) error {
+		var err error
+		executions, err = svc.GetExecutions(id, limit)
+		return err
+	})
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
@@ -332,7 +429,12 @@ func (h *Handler) GetExecutionsWrapped(c echo.Context) error {
 	id := c.Param("id")
 	limit := parseExecutionLimit(c)
 
-	executions, err := h.svc().GetExecutions(id, limit)
+	var executions []*JobExecution
+	err := h.withService(func(svc *Service) error {
+		var err error
+		executions, err = svc.GetExecutions(id, limit)
+		return err
+	})
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}

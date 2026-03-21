@@ -6,6 +6,7 @@ import { formatToolWarningCodeLabel } from '@/utils/toolWarnings'
 import { translateCardActionLabel } from '@/utils/cardActionLabels'
 import { useTauri } from '@/composables/useTauri'
 import { isApiPath, isHttpUrl, isLocalAbsolutePath } from '@/utils/localPath'
+import { getLocalizedToolName } from '@/utils/toolLocalization'
 
 const { t, te } = useI18n()
 const { openInBrowser } = useTauri()
@@ -285,11 +286,7 @@ function translateResultCardWarning(raw: string): string {
   const directKey = `resultCard.warnings.${normalizeResultCardKey(trimmed)}`
   if (te(directKey)) return t(directKey)
 
-  return translateResultCardPattern(
-    'resultCard.warnings',
-    trimmed,
-    RESULT_CARD_WARNING_PATTERNS
-  )
+  return translateResultCardPattern('resultCard.warnings', trimmed, RESULT_CARD_WARNING_PATTERNS)
 }
 
 function isLikelyLocalFilesystemPath(raw: string): boolean {
@@ -301,11 +298,7 @@ function isLikelyLocalFilesystemPath(raw: string): boolean {
   if (WINDOWS_ABS_PATH_RE.test(trimmed)) return true
   if (!trimmed.startsWith('/')) return false
 
-  const firstSegment = trimmed
-    .slice(1)
-    .split('/')[0]
-    ?.trim()
-    .toLowerCase()
+  const firstSegment = trimmed.slice(1).split('/')[0]?.trim().toLowerCase()
 
   return !!firstSegment && POSIX_LOCAL_ROOT_SEGMENTS.has(firstSegment)
 }
@@ -425,7 +418,11 @@ function extractResolvedImages(
   })
 
   for (const [subKey, subValue] of Object.entries(value)) {
-    if (typeof subValue === 'string' && !isImageDetailLabel(subKey) && !isLikelyImageString(subValue))
+    if (
+      typeof subValue === 'string' &&
+      !isImageDetailLabel(subKey) &&
+      !isLikelyImageString(subValue)
+    )
       continue
     extractResolvedImages(subValue, subKey, items, seen)
   }
@@ -482,9 +479,12 @@ const translatedTitle = computed(() => {
   if (!props.card.title) return ''
   const rawTitle = props.card.title.trim()
   const normalizedTitle = rawTitle.toLowerCase().replace(/\s+/g, '_')
-  const toolKeys = [`tools.names.${rawTitle}`, `tools.names.${normalizedTitle}`]
-  for (const key of toolKeys) {
-    if (te(key)) return t(key)
+  const localizedToolName = getLocalizedToolName(normalizedTitle, t, te)
+  if (
+    localizedToolName !==
+    normalizedTitle.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  ) {
+    return localizedToolName
   }
   const key = 'resultCard.titles.' + normalizedTitle
   const translated = t(key, rawTitle)
@@ -543,12 +543,7 @@ const resolvedImageItems = computed<ResolvedImageItem[]>(() => {
   }
 
   if (parsedMessagePayload.value) {
-    extractResolvedImages(
-      parsedMessagePayload.value,
-      translatedTitle.value || 'image',
-      items,
-      seen
-    )
+    extractResolvedImages(parsedMessagePayload.value, translatedTitle.value || 'image', items, seen)
   }
 
   ;(props.card.details || []).forEach((detail) => {

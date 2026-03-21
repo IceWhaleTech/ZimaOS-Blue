@@ -203,7 +203,8 @@ func (d *GroupDispatcher) processClaimedItem(itemID string, groupID string) {
 		return
 	}
 
-	scorecard := scoreGroupRun(group, item, terminalRun)
+	scorecard := d.manager.scoreGroupRun(ctx, group, item, terminalRun)
+	scorecard = d.manager.annotateResearchProposalSummary(ctx, group, terminalRun, scorecard)
 	if err := d.manager.store.AttachScorecard(ctx, scorecard); err != nil {
 		d.failAttempt(ctx, group, item, terminalRun, err, false)
 		return

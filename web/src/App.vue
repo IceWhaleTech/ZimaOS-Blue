@@ -26,23 +26,28 @@ const bootstrapState = reactive({
   claudeCode: false,
 })
 
-type ProviderLike = { type?: string }
+async function createProtectedBootstrapDeps() {
+  const [eventStreamModule, webPushModule, providerPoolModule, settingsModule] = await Promise.all([
+    import('@/composables/useEventStream'),
+    import('@/composables/useWebPush'),
+    import('@/stores/providerPool'),
+    import('@/stores/settings'),
+  ])
 
-type ProtectedBootstrapDeps = {
-  connectEventStream: () => void
-  subscribeWebPush: () => Promise<boolean>
-  providerPoolStore: {
-    providers: ProviderLike[]
-    fetchProviders: () => Promise<void>
-  }
-  settingsStore: {
-    updateFromPoolProviders: (providers: ProviderLike[]) => void
-    fetchBackendSettings: () => Promise<void>
-    fetchClaudeCodeEnabled: () => Promise<void>
+  const { connect } = eventStreamModule.useEventStream()
+  const { subscribe } = webPushModule.useWebPush()
+
+  return {
+    connectEventStream: connect,
+    subscribeWebPush: subscribe,
+    providerPoolStore: providerPoolModule.useProviderPoolStore(),
+    settingsStore: settingsModule.useSettingsStore(),
   }
 }
 
-let protectedBootstrapPromise: Promise<ProtectedBootstrapDeps> | null = null
+type ProtectedBootstrapDeps = Awaited<ReturnType<typeof createProtectedBootstrapDeps>>
+
+let protectedBootstrapPromise: Promise<ProtectedBootstrapDeps> | undefined
 
 function canEagerRenderProtectedShell(): boolean {
   if (typeof window === 'undefined') return false
@@ -79,23 +84,7 @@ const canPrefetchClaudeCode = computed(() => {
 })
 
 async function loadProtectedBootstrapDeps(): Promise<ProtectedBootstrapDeps> {
-  if (!protectedBootstrapPromise) {
-    protectedBootstrapPromise = Promise.all([
-      import('@/composables/useEventStream'),
-      import('@/composables/useWebPush'),
-      import('@/stores/providerPool'),
-      import('@/stores/settings'),
-    ]).then(([eventStreamModule, webPushModule, providerPoolModule, settingsModule]) => {
-      const { connect } = eventStreamModule.useEventStream()
-      const { subscribe } = webPushModule.useWebPush()
-      return {
-        connectEventStream: connect,
-        subscribeWebPush: subscribe,
-        providerPoolStore: providerPoolModule.useProviderPoolStore(),
-        settingsStore: settingsModule.useSettingsStore(),
-      }
-    })
-  }
+  protectedBootstrapPromise ??= createProtectedBootstrapDeps()
   return protectedBootstrapPromise
 }
 

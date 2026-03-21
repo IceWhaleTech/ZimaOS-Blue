@@ -19,6 +19,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -73,7 +74,7 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	ch := &Channel{
 		config:   cfg,
 		logger:   logger.With(zap.String("channel", "dingtalk")),
-		client:   &http.Client{Timeout: 30 * time.Second},
+		client:   network.NewPooledHTTPClient(5 * time.Minute),
 		messages: make(chan channel.Message, 100),
 		status:   channel.StatusDisconnected,
 	}

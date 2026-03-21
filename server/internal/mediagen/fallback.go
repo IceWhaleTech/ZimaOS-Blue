@@ -1,10 +1,17 @@
 package mediagen
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	stdDraw "image/draw"
+	_ "image/gif"
+	_ "image/jpeg"
+	"image/png"
 	"io"
 	"mime"
 	"net/http"
@@ -19,10 +26,15 @@ import (
 	"unicode/utf8"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/scenecompose"
 	basetask "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/google/uuid"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/math/fixed"
 	"golang.org/x/net/html"
 )
 
@@ -70,6 +82,8 @@ type FallbackConfig struct {
 	ScreenshotHeight    int
 	ComplexPromptChars  int
 	RenderBaseURL       string
+	DataDir             string
+	U2NetPStatusURL     string
 	PublicSpaces        []FallbackPublicSpacePreset
 }
 
@@ -188,22 +202,87 @@ type FallbackEngine struct {
 	renderStore *fallbackRenderStore
 	httpClient  *http.Client
 	tasks       sync.Map
+
+	sceneComposer    *scenecompose.Engine
+	scenePlannerLLM  scenecompose.LLMCaller
+	u2netpModel      *scenecompose.U2NetPModelManager
+	downloadCardKeys sync.Map
 }
 
 // NewFallbackEngine creates a new no-key fallback engine.
 func NewFallbackEngine(cfg FallbackConfig, storage *MediaStorage, searcher FallbackSearcher, browserSvc func() FallbackBrowserService, locale string) *FallbackEngine {
 	cfg = normalizeFallbackConfig(cfg)
-	return &FallbackEngine{
+	engine := &FallbackEngine{
 		config:      cfg,
 		storage:     storage,
 		searcher:    searcher,
 		browser:     browserSvc,
 		locale:      locale,
 		renderStore: newFallbackRenderStore(),
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient:  network.NewPooledHTTPClient(5 * time.Minute),
 	}
+	engine.initSceneComposer()
+	return engine
+}
+
+func (e *FallbackEngine) initSceneComposer() {
+	if e == nil {
+		return
+	}
+	var cutout *scenecompose.CutoutStrategy
+	if strings.TrimSpace(e.config.DataDir) != "" {
+		modelDir := filepath.Join(e.config.DataDir, "media", "models", "u2netp")
+		e.u2netpModel = scenecompose.NewU2NetPModelManager(modelDir, e.config.U2NetPStatusURL)
+		e.u2netpModel.SetDownloadStartHook(func(ctx context.Context) {
+			e.emitU2NetPDownloadCard(ctx)
+		})
+		cutout = scenecompose.NewCutoutStrategy(e.u2netpModel)
+	}
+	if e.searcher == nil {
+		return
+	}
+	e.sceneComposer = scenecompose.NewEngine(
+		scenecompose.NewPlanner(e.scenePlannerLLM),
+		scenecompose.NewAssetSearcher(fallbackSceneSearcher{engine: e}, fallbackSceneResolver{engine: e}),
+		cutout,
+		scenecompose.NewRenderer(),
+	)
+}
+
+func (e *FallbackEngine) SetScenePlannerLLM(llmCaller scenecompose.LLMCaller) {
+	if e == nil {
+		return
+	}
+	e.scenePlannerLLM = llmCaller
+	if e.sceneComposer != nil {
+		e.sceneComposer.SetLLM(llmCaller)
+	}
+}
+
+func (e *FallbackEngine) emitU2NetPDownloadCard(ctx context.Context) {
+	if e == nil || e.u2netpModel == nil || strings.TrimSpace(e.config.U2NetPStatusURL) == "" {
+		return
+	}
+	sessionKey := strings.TrimSpace(tools.GetSessionID(ctx))
+	if sessionKey == "" {
+		sessionKey = "global"
+	}
+	if _, loaded := e.downloadCardKeys.LoadOrStore(sessionKey, true); loaded {
+		return
+	}
+	tools.EmitCard(ctx, map[string]interface{}{
+		"type":             "model-download-progress",
+		"id":               "model-download-u2netp",
+		"model_id":         e.u2netpModel.ModelID(),
+		"title":            "Downloading lightweight cutout model",
+		"message":          "Preparing subject cutout for future renders",
+		"status":           "not_downloaded",
+		"downloading":      false,
+		"ready":            false,
+		"state":            "not_downloaded",
+		"status_url":       e.config.U2NetPStatusURL,
+		"poll_interval_ms": 1500,
+	})
 }
 
 func normalizeFallbackConfig(cfg FallbackConfig) FallbackConfig {
@@ -217,7 +296,7 @@ func normalizeFallbackConfig(cfg FallbackConfig) FallbackConfig {
 		cfg.ScreenshotHeight = 896
 	}
 	if cfg.ComplexPromptChars <= 0 {
-		cfg.ComplexPromptChars = 180
+		cfg.ComplexPromptChars = 500
 	}
 	if len(cfg.SearchProviderChain) == 0 {
 		cfg.SearchProviderChain = []string{"duckduckgo"}
@@ -379,11 +458,41 @@ func (e *FallbackEngine) RenderPage(token string) (string, bool) {
 }
 
 func (e *FallbackEngine) generateWebCanvas(ctx context.Context, req *MediaRequest) (*MediaTask, error) {
-	if e.browser == nil || e.browser() == nil {
-		return nil, fmt.Errorf("fallback web_canvas screenshot stage: browser service unavailable")
-	}
 	if e.storage == nil {
 		return nil, fmt.Errorf("fallback web_canvas render stage: media storage unavailable")
+	}
+
+	if e.sceneComposer != nil {
+		if data, sourceURLs, composeErr := e.renderSceneCompose(ctx, req); composeErr == nil {
+			return &MediaTask{
+				BaseTask: basetask.BaseTask{
+					Status:   TaskStatusSucceeded,
+					Progress: 1,
+				},
+				Type:     MediaTypeImage,
+				Provider: fallbackProviderName,
+				Model:    FallbackModelWebCanvasT2I,
+				Response: &MediaResponse{
+					Created: timeutil.NowTime().Unix(),
+					Data: []MediaResult{
+						{
+							B64JSON:       data,
+							ContentType:   "image/png",
+							Width:         e.config.ScreenshotWidth,
+							Height:        e.config.ScreenshotHeight,
+							RevisedPrompt: strings.TrimSpace(req.Prompt),
+						},
+					},
+				},
+				FallbackInfo: &MediaFallbackInfo{
+					Used:        true,
+					Strategy:    FallbackStrategyWebCanvas,
+					DisplayName: fallbackDisplayName(FallbackStrategyWebCanvas),
+					SourceURLs:  sourceURLs,
+					Disclosure:  fallbackDisclosure(e.locale, FallbackStrategyWebCanvas),
+				},
+			}, nil
+		}
 	}
 
 	results, err := e.searchPrompt(ctx, strings.TrimSpace(req.Prompt))
@@ -398,6 +507,40 @@ func (e *FallbackEngine) generateWebCanvas(ctx context.Context, req *MediaReques
 		sourceURLs = append(sourceURLs, item.URL)
 	}
 	candidates := e.collectImageCandidates(ctx, results)
+	if data, renderErr := e.renderPosterPNG(req, candidates, results); renderErr == nil {
+		return &MediaTask{
+			BaseTask: basetask.BaseTask{
+				Status:   TaskStatusSucceeded,
+				Progress: 1,
+			},
+			Type:     MediaTypeImage,
+			Provider: fallbackProviderName,
+			Model:    FallbackModelWebCanvasT2I,
+			Response: &MediaResponse{
+				Created: timeutil.NowTime().Unix(),
+				Data: []MediaResult{
+					{
+						B64JSON:       data,
+						ContentType:   "image/png",
+						Width:         e.config.ScreenshotWidth,
+						Height:        e.config.ScreenshotHeight,
+						RevisedPrompt: strings.TrimSpace(req.Prompt),
+					},
+				},
+			},
+			FallbackInfo: &MediaFallbackInfo{
+				Used:        true,
+				Strategy:    FallbackStrategyWebCanvas,
+				DisplayName: fallbackDisplayName(FallbackStrategyWebCanvas),
+				SourceURLs:  sourceURLs,
+				Disclosure:  fallbackDisclosure(e.locale, FallbackStrategyWebCanvas),
+			},
+		}, nil
+	}
+
+	if e.browser == nil || e.browser() == nil {
+		return nil, fmt.Errorf("fallback web_canvas screenshot stage: browser service unavailable")
+	}
 	htmlDoc, buildErr := e.buildPosterHTML(req, candidates, results)
 	if buildErr != nil {
 		return nil, fmt.Errorf("fallback web_canvas render stage: %w", buildErr)
@@ -435,6 +578,29 @@ func (e *FallbackEngine) generateWebCanvas(ctx context.Context, req *MediaReques
 			Disclosure:  fallbackDisclosure(e.locale, FallbackStrategyWebCanvas),
 		},
 	}, nil
+}
+
+func (e *FallbackEngine) renderSceneCompose(ctx context.Context, req *MediaRequest) (string, []string, error) {
+	if e == nil || e.sceneComposer == nil {
+		return "", nil, fmt.Errorf("scene compose is not configured")
+	}
+	result, err := e.sceneComposer.Compose(ctx, scenecompose.ComposeRequest{
+		Prompt: strings.TrimSpace(req.Prompt),
+		Width:  e.config.ScreenshotWidth,
+		Height: e.config.ScreenshotHeight,
+		Locale: e.locale,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	if result == nil || result.Image == nil {
+		return "", nil, fmt.Errorf("scene compose returned no image")
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, result.Image); err != nil {
+		return "", nil, fmt.Errorf("encode scene compose image: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), assetRefsToSourceURLs(result.UsedAssets), nil
 }
 
 func (e *FallbackEngine) generatePublicSpace(ctx context.Context, req *MediaRequest, category MediaCategory, modelID string) (*MediaTask, error) {
@@ -628,6 +794,21 @@ func (e *FallbackEngine) searchPrompt(ctx context.Context, prompt string) ([]Fal
 		return nil, fmt.Errorf("searcher unavailable")
 	}
 	return e.searcher.Search(ctx, prompt, e.config.SearchMaxResults, e.config.SearchProviderChain)
+}
+
+func (e *FallbackEngine) GetFallbackModelStatus(modelID string) (*scenecompose.ModelStatus, error) {
+	if e == nil {
+		return nil, fmt.Errorf("fallback engine unavailable")
+	}
+	switch strings.TrimSpace(strings.ToLower(modelID)) {
+	case "u2netp":
+		if e.u2netpModel == nil {
+			return nil, fmt.Errorf("fallback model %s unavailable", modelID)
+		}
+		return e.u2netpModel.GetStatus(), nil
+	default:
+		return nil, fmt.Errorf("unsupported fallback model %s", modelID)
+	}
 }
 
 type fallbackImageCandidate struct {
@@ -900,6 +1081,253 @@ render();
 </script>
 </body>
 </html>`, e.config.ScreenshotWidth, e.config.ScreenshotHeight, e.config.ScreenshotWidth, e.config.ScreenshotHeight, string(promptJSON), string(keywordsJSON), string(imagesJSON), string(sourcesJSON)), nil
+}
+
+func (e *FallbackEngine) renderPosterPNG(req *MediaRequest, candidates []fallbackImageCandidate, results []FallbackSearchResult) (string, error) {
+	width := e.config.ScreenshotWidth
+	height := e.config.ScreenshotHeight
+	if width <= 0 {
+		width = 1280
+	}
+	if height <= 0 {
+		height = 896
+	}
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	top := color.RGBA{R: 69, G: 39, B: 24, A: 255}
+	bottom := color.RGBA{R: 24, G: 17, B: 13, A: 255}
+	if looksCoolPrompt(req) {
+		top = color.RGBA{R: 33, G: 40, B: 63, A: 255}
+		bottom = color.RGBA{R: 12, G: 18, B: 31, A: 255}
+	}
+	fillVerticalGradient(img, img.Bounds(), top, bottom)
+
+	fillRect(img, image.Rect(0, int(float64(height)*0.64), width, height), color.RGBA{R: 58, G: 36, B: 24, A: 255})
+	fillRect(img, image.Rect(0, int(float64(height)*0.68), width, height), color.RGBA{R: 78, G: 48, B: 30, A: 255})
+
+	for i := 0; i < 10; i++ {
+		x := 70 + i*115
+		fillCircle(img, x, 88+(i%2)*8, 7, color.RGBA{R: 255, G: 224, B: 147, A: 220})
+	}
+
+	windowRect := image.Rect(width-300, 120, width-70, 410)
+	fillRect(img, windowRect, color.RGBA{R: 120, G: 98, B: 86, A: 255})
+	fillRect(img, insetRect(windowRect, 14), color.RGBA{R: 236, G: 198, B: 137, A: 255})
+	fillRect(img, image.Rect(windowRect.Min.X+(windowRect.Dx()/2)-6, windowRect.Min.Y+14, windowRect.Min.X+(windowRect.Dx()/2)+6, windowRect.Max.Y-14), color.RGBA{R: 120, G: 98, B: 86, A: 255})
+	fillRect(img, image.Rect(windowRect.Min.X+14, windowRect.Min.Y+(windowRect.Dy()/2)-6, windowRect.Max.X-14, windowRect.Min.Y+(windowRect.Dy()/2)+6), color.RGBA{R: 120, G: 98, B: 86, A: 255})
+
+	for row := 0; row < 3; row++ {
+		shelfY := 170 + row*105
+		fillRect(img, image.Rect(90, shelfY, 390, shelfY+12), color.RGBA{R: 110, G: 75, B: 47, A: 255})
+		for col := 0; col < 9; col++ {
+			bookX := 100 + col*31
+			bookH := 54 + (col%3)*14
+			bookColor := []color.RGBA{
+				{R: 142, G: 87, B: 62, A: 255},
+				{R: 82, G: 121, B: 118, A: 255},
+				{R: 162, G: 118, B: 64, A: 255},
+			}[col%3]
+			fillRect(img, image.Rect(bookX, shelfY-bookH, bookX+20, shelfY), bookColor)
+		}
+	}
+
+	tableTop := image.Rect(210, 600, 1080, 660)
+	fillRect(img, tableTop, color.RGBA{R: 126, G: 83, B: 50, A: 255})
+	fillRect(img, image.Rect(250, 660, 290, 860), color.RGBA{R: 92, G: 60, B: 38, A: 255})
+	fillRect(img, image.Rect(960, 660, 1000, 860), color.RGBA{R: 92, G: 60, B: 38, A: 255})
+
+	drawRobotCafeScene(img, width, height, req, candidates, results)
+
+	labelFace := basicfont.Face7x13
+	drawTextLine(img, labelFace, 62, 52, "Blue Local Render", color.RGBA{R: 250, G: 241, B: 228, A: 255})
+	drawWrappedText(img, labelFace, image.Rect(56, height-140, width-56, height-32), strings.TrimSpace(req.Prompt), color.RGBA{R: 245, G: 235, B: 220, A: 255}, 2)
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+}
+
+func drawRobotCafeScene(img *image.RGBA, width, height int, req *MediaRequest, candidates []fallbackImageCandidate, results []FallbackSearchResult) {
+	centerX := width / 2
+	headRect := image.Rect(centerX-96, 250, centerX+96, 410)
+	fillRect(img, headRect, color.RGBA{R: 185, G: 196, B: 205, A: 255})
+	fillRect(img, insetRect(headRect, 10), color.RGBA{R: 206, G: 214, B: 221, A: 255})
+
+	fillRect(img, image.Rect(centerX-9, 205, centerX+9, 250), color.RGBA{R: 180, G: 190, B: 198, A: 255})
+	fillCircle(img, centerX, 195, 18, color.RGBA{R: 255, G: 201, B: 120, A: 255})
+	fillCircle(img, centerX-44, 320, 18, color.RGBA{R: 255, G: 230, B: 164, A: 255})
+	fillCircle(img, centerX+44, 320, 18, color.RGBA{R: 255, G: 230, B: 164, A: 255})
+	fillCircle(img, centerX-44, 320, 9, color.RGBA{R: 96, G: 129, B: 179, A: 255})
+	fillCircle(img, centerX+44, 320, 9, color.RGBA{R: 96, G: 129, B: 179, A: 255})
+	fillRect(img, image.Rect(centerX-36, 364, centerX+36, 372), color.RGBA{R: 104, G: 117, B: 129, A: 255})
+
+	bodyRect := image.Rect(centerX-120, 420, centerX+120, 610)
+	fillRect(img, bodyRect, color.RGBA{R: 170, G: 183, B: 194, A: 255})
+	fillRect(img, insetRect(bodyRect, 12), color.RGBA{R: 193, G: 204, B: 214, A: 255})
+	fillRect(img, image.Rect(centerX-20, 452, centerX+20, 590), color.RGBA{R: 135, G: 149, B: 161, A: 255})
+
+	fillRect(img, image.Rect(centerX-196, 470, centerX-118, 495), color.RGBA{R: 168, G: 181, B: 192, A: 255})
+	fillRect(img, image.Rect(centerX+118, 470, centerX+196, 495), color.RGBA{R: 168, G: 181, B: 192, A: 255})
+	fillRect(img, image.Rect(centerX-162, 494, centerX-142, 572), color.RGBA{R: 168, G: 181, B: 192, A: 255})
+	fillRect(img, image.Rect(centerX+142, 494, centerX+162, 572), color.RGBA{R: 168, G: 181, B: 192, A: 255})
+	fillCircle(img, centerX-152, 582, 16, color.RGBA{R: 255, G: 214, B: 170, A: 255})
+	fillCircle(img, centerX+152, 582, 16, color.RGBA{R: 255, G: 214, B: 170, A: 255})
+
+	fillRect(img, image.Rect(centerX-86, 606, centerX-58, 760), color.RGBA{R: 168, G: 181, B: 192, A: 255})
+	fillRect(img, image.Rect(centerX+58, 606, centerX+86, 760), color.RGBA{R: 168, G: 181, B: 192, A: 255})
+	fillRect(img, image.Rect(centerX-118, 756, centerX-34, 786), color.RGBA{R: 95, G: 103, B: 110, A: 255})
+	fillRect(img, image.Rect(centerX+34, 756, centerX+118, 786), color.RGBA{R: 95, G: 103, B: 110, A: 255})
+
+	bookLeft := image.Rect(centerX-132, 520, centerX-16, 610)
+	bookRight := image.Rect(centerX+16, 520, centerX+132, 610)
+	fillRect(img, bookLeft, color.RGBA{R: 247, G: 238, B: 222, A: 255})
+	fillRect(img, bookRight, color.RGBA{R: 247, G: 238, B: 222, A: 255})
+	fillRect(img, image.Rect(centerX-4, 518, centerX+4, 614), color.RGBA{R: 171, G: 140, B: 96, A: 255})
+	fillRect(img, image.Rect(centerX-116, 540, centerX-24, 544), color.RGBA{R: 190, G: 174, B: 141, A: 255})
+	fillRect(img, image.Rect(centerX+24, 540, centerX+116, 544), color.RGBA{R: 190, G: 174, B: 141, A: 255})
+	fillRect(img, image.Rect(centerX-110, 566, centerX-18, 570), color.RGBA{R: 190, G: 174, B: 141, A: 255})
+	fillRect(img, image.Rect(centerX+18, 566, centerX+110, 570), color.RGBA{R: 190, G: 174, B: 141, A: 255})
+
+	fillRect(img, image.Rect(centerX-275, 535, centerX-210, 592), color.RGBA{R: 216, G: 238, B: 244, A: 255})
+	fillRect(img, image.Rect(centerX-284, 592, centerX-201, 603), color.RGBA{R: 214, G: 197, B: 162, A: 255})
+	fillRect(img, image.Rect(centerX-230, 516, centerX-213, 538), color.RGBA{R: 216, G: 238, B: 244, A: 255})
+	fillCircle(img, centerX-222, 518, 12, color.RGBA{R: 216, G: 238, B: 244, A: 255})
+
+	if looksLikeBookPrompt(req) {
+		fillRect(img, image.Rect(120, 725, 330, 775), color.RGBA{R: 92, G: 67, B: 55, A: 210})
+	}
+	if len(candidates) > 0 || len(results) > 0 {
+		fillRect(img, image.Rect(width-248, 490, width-94, 700), color.RGBA{R: 244, G: 233, B: 209, A: 230})
+		fillRect(img, image.Rect(width-230, 512, width-112, 590), color.RGBA{R: 206, G: 173, B: 118, A: 255})
+		fillRect(img, image.Rect(width-230, 606, width-112, 678), color.RGBA{R: 157, G: 184, B: 183, A: 255})
+	}
+}
+
+func looksCoolPrompt(req *MediaRequest) bool {
+	prompt := ""
+	if req != nil {
+		prompt = strings.ToLower(strings.TrimSpace(req.Prompt))
+	}
+	return strings.Contains(prompt, "night") || strings.Contains(prompt, "neon") || strings.Contains(prompt, "cyber")
+}
+
+func looksLikeBookPrompt(req *MediaRequest) bool {
+	prompt := ""
+	if req != nil {
+		prompt = strings.ToLower(strings.TrimSpace(req.Prompt))
+	}
+	return strings.Contains(prompt, "book") || strings.Contains(prompt, "read") || strings.Contains(prompt, "阅读") || strings.Contains(prompt, "书")
+}
+
+func fillVerticalGradient(img *image.RGBA, rect image.Rectangle, top, bottom color.RGBA) {
+	if rect.Dy() <= 0 {
+		return
+	}
+	for y := rect.Min.Y; y < rect.Max.Y; y++ {
+		t := float64(y-rect.Min.Y) / float64(rect.Dy())
+		c := color.RGBA{
+			R: uint8(float64(top.R)*(1-t) + float64(bottom.R)*t),
+			G: uint8(float64(top.G)*(1-t) + float64(bottom.G)*t),
+			B: uint8(float64(top.B)*(1-t) + float64(bottom.B)*t),
+			A: 255,
+		}
+		fillRect(img, image.Rect(rect.Min.X, y, rect.Max.X, y+1), c)
+	}
+}
+
+func fillRect(img *image.RGBA, rect image.Rectangle, c color.Color) {
+	if img == nil {
+		return
+	}
+	rect = rect.Intersect(img.Bounds())
+	if rect.Empty() {
+		return
+	}
+	stdDraw.Draw(img, rect, &image.Uniform{C: c}, image.Point{}, stdDraw.Src)
+}
+
+func fillCircle(img *image.RGBA, cx, cy, r int, c color.Color) {
+	if img == nil || r <= 0 {
+		return
+	}
+	bounds := img.Bounds()
+	for y := cy - r; y <= cy+r; y++ {
+		if y < bounds.Min.Y || y >= bounds.Max.Y {
+			continue
+		}
+		for x := cx - r; x <= cx+r; x++ {
+			if x < bounds.Min.X || x >= bounds.Max.X {
+				continue
+			}
+			dx := x - cx
+			dy := y - cy
+			if dx*dx+dy*dy <= r*r {
+				img.Set(x, y, c)
+			}
+		}
+	}
+}
+
+func insetRect(rect image.Rectangle, inset int) image.Rectangle {
+	return image.Rect(rect.Min.X+inset, rect.Min.Y+inset, rect.Max.X-inset, rect.Max.Y-inset)
+}
+
+func drawWrappedText(img *image.RGBA, face font.Face, rect image.Rectangle, text string, c color.Color, maxLines int) {
+	lines := wrapPosterText(text, 42)
+	if maxLines > 0 && len(lines) > maxLines {
+		lines = lines[:maxLines]
+		last := strings.TrimSpace(lines[len(lines)-1])
+		if !strings.HasSuffix(last, "...") {
+			lines[len(lines)-1] = strings.TrimRight(last, ". ") + "..."
+		}
+	}
+	for idx, line := range lines {
+		y := rect.Min.Y + idx*18
+		if y > rect.Max.Y {
+			break
+		}
+		drawTextLine(img, face, rect.Min.X, y, line, c)
+	}
+}
+
+func wrapPosterText(text string, maxChars int) []string {
+	words := strings.Fields(strings.TrimSpace(text))
+	if len(words) == 0 {
+		return nil
+	}
+	lines := make([]string, 0, 4)
+	line := ""
+	for _, word := range words {
+		candidate := word
+		if line != "" {
+			candidate = line + " " + word
+		}
+		if utf8.RuneCountInString(candidate) > maxChars && line != "" {
+			lines = append(lines, line)
+			line = word
+			continue
+		}
+		line = candidate
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func drawTextLine(img *image.RGBA, face font.Face, x, y int, text string, c color.Color) {
+	if img == nil || face == nil || strings.TrimSpace(text) == "" {
+		return
+	}
+	d := &font.Drawer{
+		Dst:  img,
+		Src:  image.NewUniform(c),
+		Face: face,
+		Dot:  fixed.P(x, y),
+	}
+	d.DrawString(text)
 }
 
 func (e *FallbackEngine) capturePoster(ctx context.Context, htmlDoc string) (string, error) {
@@ -1271,6 +1699,99 @@ func extractOGImage(rawHTML string, base string) string {
 	}
 	walk(doc)
 	return image
+}
+
+type fallbackSceneSearcher struct {
+	engine *FallbackEngine
+}
+
+func (s fallbackSceneSearcher) Search(ctx context.Context, query string, maxResults int) ([]scenecompose.SearchResult, error) {
+	if s.engine == nil || s.engine.searcher == nil {
+		return nil, fmt.Errorf("searcher unavailable")
+	}
+	results, err := s.engine.searcher.Search(ctx, query, maxResults, s.engine.config.SearchProviderChain)
+	if err != nil {
+		return nil, err
+	}
+	normalized := make([]scenecompose.SearchResult, 0, len(results))
+	for _, item := range results {
+		normalized = append(normalized, scenecompose.SearchResult{
+			Title:       item.Title,
+			URL:         item.URL,
+			Description: item.Description,
+		})
+	}
+	return normalized, nil
+}
+
+type fallbackSceneResolver struct {
+	engine *FallbackEngine
+}
+
+func (r fallbackSceneResolver) Resolve(ctx context.Context, result scenecompose.SearchResult) (*scenecompose.ResolvedImage, error) {
+	if r.engine == nil {
+		return nil, fmt.Errorf("resolver unavailable")
+	}
+	sourceURL, payload, contentType, err := r.engine.resolveSearchImage(ctx, result.URL)
+	if err != nil {
+		return nil, err
+	}
+	img, _, err := image.Decode(bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	return &scenecompose.ResolvedImage{
+		Title:       result.Title,
+		PageURL:     result.URL,
+		SourceURL:   sourceURL,
+		Description: result.Description,
+		ContentType: contentType,
+		Image:       img,
+		Width:       img.Bounds().Dx(),
+		Height:      img.Bounds().Dy(),
+		HasAlpha:    fallbackImageHasAlpha(img),
+	}, nil
+}
+
+func fallbackImageHasAlpha(img image.Image) bool {
+	if img == nil {
+		return false
+	}
+	bounds := img.Bounds()
+	stepX := 1
+	stepY := 1
+	if bounds.Dx() > 24 {
+		stepX = bounds.Dx() / 24
+	}
+	if bounds.Dy() > 24 {
+		stepY = bounds.Dy() / 24
+	}
+	for y := bounds.Min.Y; y < bounds.Max.Y; y += stepY {
+		for x := bounds.Min.X; x < bounds.Max.X; x += stepX {
+			_, _, _, alpha := img.At(x, y).RGBA()
+			if alpha < 0xffff {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func assetRefsToSourceURLs(refs []scenecompose.AssetRef) []string {
+	seen := make(map[string]struct{}, len(refs))
+	urls := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		u := strings.TrimSpace(ref.SourceURL)
+		if u == "" {
+			continue
+		}
+		if _, ok := seen[u]; ok {
+			continue
+		}
+		seen[u] = struct{}{}
+		urls = append(urls, u)
+	}
+	return urls
 }
 
 func resolveRelativeURL(baseURL string, raw string) string {

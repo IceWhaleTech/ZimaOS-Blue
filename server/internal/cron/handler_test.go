@@ -215,3 +215,33 @@ func TestLazyHandlerServiceInitHookRunsOnceAndAppliesImmediately(t *testing.T) {
 		t.Fatalf("initCalls after second GetService = %d, want 1", initCalls)
 	}
 }
+
+func TestLazyHandlerIdleReclaimsAndRecreatesService(t *testing.T) {
+	var created int
+	h := NewLazyHandler(func() *Service {
+		created++
+		return NewService(DefaultConfig(), zap.NewNop())
+	}, zap.NewNop())
+	h.SetIdleReclaim(20 * time.Millisecond)
+
+	first := h.GetService()
+	if first == nil {
+		t.Fatal("GetService() returned nil")
+	}
+	if created != 1 {
+		t.Fatalf("created after first GetService = %d, want 1", created)
+	}
+
+	time.Sleep(80 * time.Millisecond)
+
+	second := h.GetService()
+	if second == nil {
+		t.Fatal("GetService() second call returned nil")
+	}
+	if created != 2 {
+		t.Fatalf("created after idle reclaim = %d, want 2", created)
+	}
+	if first == second {
+		t.Fatal("expected cron service to be recreated after idle reclaim")
+	}
+}

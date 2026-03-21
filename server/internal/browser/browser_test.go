@@ -14,8 +14,11 @@ func TestDefaultConfig(t *testing.T) {
 
 	assert.Equal(t, 3, config.PoolSize)
 	assert.True(t, config.Headless)
-	assert.Equal(t, 30000, config.DefaultTimeout)
-	assert.Equal(t, 120000, config.MaxTimeout)
+	assert.False(t, config.RelayEnabled)
+	assert.Equal(t, DefaultRelayHost, config.RelayHost)
+	assert.Equal(t, DefaultRelayPort, config.RelayPort)
+	assert.Equal(t, 60000, config.DefaultTimeout)
+	assert.Equal(t, 300000, config.MaxTimeout)
 	assert.Equal(t, 1920, config.DefaultViewportWidth)
 	assert.Equal(t, 1080, config.DefaultViewportHeight)
 	assert.Empty(t, config.AllowedDomains)
@@ -24,8 +27,8 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestGetTimeout(t *testing.T) {
 	config := &Config{
-		DefaultTimeout: 30000,
-		MaxTimeout:     120000,
+		DefaultTimeout: 60000,
+		MaxTimeout:     300000,
 	}
 
 	tests := []struct {
@@ -36,12 +39,12 @@ func TestGetTimeout(t *testing.T) {
 		{
 			name:      "zero uses default",
 			requested: 0,
-			expected:  30 * time.Second,
+			expected:  60 * time.Second,
 		},
 		{
 			name:      "negative uses default",
 			requested: -1,
-			expected:  30 * time.Second,
+			expected:  60 * time.Second,
 		},
 		{
 			name:      "within limits",
@@ -50,8 +53,8 @@ func TestGetTimeout(t *testing.T) {
 		},
 		{
 			name:      "exceeds max uses max",
-			requested: 200000,
-			expected:  120 * time.Second,
+			requested: 400000,
+			expected:  300 * time.Second,
 		},
 	}
 

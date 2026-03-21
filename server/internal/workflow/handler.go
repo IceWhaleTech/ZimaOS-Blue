@@ -3,11 +3,13 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
-	"sync"
+	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reclaim"
 	"github.com/labstack/echo/v4"
 )
 
@@ -16,9 +18,9 @@ type Handler struct {
 	service *WorkflowService
 
 	// Lazy init support
-	once            sync.Once
 	initFn          func() *WorkflowService
 	serviceInitHook func(*WorkflowService)
+	lazy            *reclaim.Managed[*WorkflowService]
 
 	routeMiddlewares []echo.MiddlewareFunc
 }
@@ -30,25 +32,64 @@ func NewHandler(service *WorkflowService) *Handler {
 
 // NewLazyHandler creates a handler that defers WorkflowService creation to the first API call.
 func NewLazyHandler(initFn func() *WorkflowService) *Handler {
-	return &Handler{initFn: initFn}
+	h := &Handler{initFn: initFn}
+	h.lazy = reclaim.NewManaged[*WorkflowService](0, func() (*WorkflowService, error) {
+		if h.initFn == nil {
+			return nil, nil
+		}
+		svc := h.initFn()
+		if svc == nil {
+			return nil, fmt.Errorf("workflow service unavailable")
+		}
+		return svc, nil
+	}, func(_ context.Context, svc *WorkflowService) error {
+		if svc == nil {
+			return nil
+		}
+		return svc.Close()
+	})
+	return h
 }
 
 // svc returns the service, initializing lazily if needed.
 func (h *Handler) svc() *WorkflowService {
-	h.once.Do(func() {
-		if h.service == nil && h.initFn != nil {
-			h.service = h.initFn()
-			if h.service != nil && h.serviceInitHook != nil {
-				h.serviceInitHook(h.service)
-			}
-		}
-	})
-	return h.service
+	if h == nil {
+		return nil
+	}
+	if h.service != nil || h.lazy == nil {
+		return h.service
+	}
+	svc, _ := h.lazy.Get()
+	return svc
 }
 
 // GetService returns the workflow service, triggering lazy init if needed.
 func (h *Handler) GetService() *WorkflowService {
 	return h.svc()
+}
+
+// SetIdleReclaim configures idle reclaim for the lazily initialized workflow service.
+func (h *Handler) SetIdleReclaim(idleAfter time.Duration) {
+	if h == nil || h.lazy == nil {
+		return
+	}
+	h.lazy.SetIdleAfter(idleAfter)
+}
+
+func (h *Handler) withService(fn func(*WorkflowService) error) error {
+	if h == nil {
+		return nil
+	}
+	if h.service != nil || h.lazy == nil {
+		return fn(h.service)
+	}
+
+	svc, release, err := h.lazy.Acquire()
+	if err != nil {
+		return err
+	}
+	defer release()
+	return fn(svc)
 }
 
 // SetServiceInitHook configures a callback that runs once the lazy service is created.
@@ -67,6 +108,14 @@ func (h *Handler) SetServiceInitHook(fn func(*WorkflowService)) {
 			prev(svc)
 			fn(svc)
 		}
+	}
+	if h.lazy != nil {
+		svc, ok := h.lazy.Peek()
+		h.lazy.SetOnCreateSilently(h.serviceInitHook)
+		if ok && svc != nil {
+			fn(svc)
+		}
+		return
 	}
 	if h.service != nil {
 		fn(h.service)
@@ -177,7 +226,12 @@ func (h *Handler) CreateWorkflow(c echo.Context) error {
 		UpdatedBy:   userID,
 	}
 
-	created, err := h.svc().CreateWorkflow(requestContext(c), workflow)
+	var created *Workflow
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		created, err = svc.CreateWorkflow(requestContext(c), workflow)
+		return err
+	})
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
@@ -189,7 +243,12 @@ func (h *Handler) CreateWorkflow(c echo.Context) error {
 func (h *Handler) GetWorkflow(c echo.Context) error {
 	id := c.Param("id")
 
-	workflow, err := h.svc().GetWorkflow(requestContext(c), id)
+	var workflow *Workflow
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		workflow, err = svc.GetWorkflow(requestContext(c), id)
+		return err
+	})
 	if err != nil {
 		if err == ErrWorkflowNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
@@ -228,7 +287,12 @@ func (h *Handler) UpdateWorkflow(c echo.Context) error {
 	}
 
 	// Get existing workflow
-	workflow, err := h.svc().GetWorkflow(requestContext(c), id)
+	var workflow *Workflow
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		workflow, err = svc.GetWorkflow(requestContext(c), id)
+		return err
+	})
 	if err != nil {
 		if err == ErrWorkflowNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
@@ -265,7 +329,12 @@ func (h *Handler) UpdateWorkflow(c echo.Context) error {
 	userID := getContextString(c, "user_id", "anonymous")
 	workflow.UpdatedBy = userID
 
-	updated, err := h.svc().UpdateWorkflow(requestContext(c), workflow)
+	var updated *Workflow
+	err = h.withService(func(svc *WorkflowService) error {
+		var err error
+		updated, err = svc.UpdateWorkflow(requestContext(c), workflow)
+		return err
+	})
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
@@ -277,7 +346,9 @@ func (h *Handler) UpdateWorkflow(c echo.Context) error {
 func (h *Handler) DeleteWorkflow(c echo.Context) error {
 	id := c.Param("id")
 
-	err := h.svc().DeleteWorkflow(requestContext(c), id)
+	err := h.withService(func(svc *WorkflowService) error {
+		return svc.DeleteWorkflow(requestContext(c), id)
+	})
 	if err != nil {
 		if err == ErrWorkflowNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
@@ -317,7 +388,15 @@ func (h *Handler) ListWorkflows(c echo.Context) error {
 		opts.Filters["name"] = name
 	}
 
-	workflows, total, err := h.svc().ListWorkflows(requestContext(c), tenantID, opts)
+	var (
+		workflows []*Workflow
+		total     int
+	)
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		workflows, total, err = svc.ListWorkflows(requestContext(c), tenantID, opts)
+		return err
+	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -334,7 +413,9 @@ func (h *Handler) ListWorkflows(c echo.Context) error {
 func (h *Handler) EnableWorkflow(c echo.Context) error {
 	id := c.Param("id")
 
-	err := h.svc().EnableWorkflow(requestContext(c), id)
+	err := h.withService(func(svc *WorkflowService) error {
+		return svc.EnableWorkflow(requestContext(c), id)
+	})
 	if err != nil {
 		if err == ErrWorkflowNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
@@ -349,7 +430,9 @@ func (h *Handler) EnableWorkflow(c echo.Context) error {
 func (h *Handler) DisableWorkflow(c echo.Context) error {
 	id := c.Param("id")
 
-	err := h.svc().DisableWorkflow(requestContext(c), id)
+	err := h.withService(func(svc *WorkflowService) error {
+		return svc.DisableWorkflow(requestContext(c), id)
+	})
 	if err != nil {
 		if err == ErrWorkflowNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
@@ -367,7 +450,9 @@ func (h *Handler) ValidateWorkflow(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	err := h.svc().ValidateWorkflow(requestContext(c), &workflow)
+	err := h.withService(func(svc *WorkflowService) error {
+		return svc.ValidateWorkflow(requestContext(c), &workflow)
+	})
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"valid": false,
@@ -394,7 +479,12 @@ func (h *Handler) ExecuteWorkflow(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	execution, err := h.svc().ExecuteWorkflow(requestContext(c), id, req.TriggerData)
+	var execution *Execution
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		execution, err = svc.ExecuteWorkflow(requestContext(c), id, req.TriggerData)
+		return err
+	})
 	if err != nil {
 		if err == ErrWorkflowNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
@@ -412,7 +502,12 @@ func (h *Handler) ExecuteWorkflow(c echo.Context) error {
 func (h *Handler) GetExecution(c echo.Context) error {
 	executionID := c.Param("executionId")
 
-	execution, err := h.svc().GetExecution(requestContext(c), executionID)
+	var execution *Execution
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		execution, err = svc.GetExecution(requestContext(c), executionID)
+		return err
+	})
 	if err != nil {
 		if err == ErrExecutionNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "execution not found"})
@@ -439,7 +534,15 @@ func (h *Handler) ListExecutions(c echo.Context) error {
 		opts.Limit, _ = strconv.Atoi(limit)
 	}
 
-	executions, total, err := h.svc().ListExecutions(requestContext(c), workflowID, opts)
+	var (
+		executions []*Execution
+		total      int
+	)
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		executions, total, err = svc.ListExecutions(requestContext(c), workflowID, opts)
+		return err
+	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -456,7 +559,9 @@ func (h *Handler) ListExecutions(c echo.Context) error {
 func (h *Handler) CancelExecution(c echo.Context) error {
 	executionID := c.Param("executionId")
 
-	err := h.svc().CancelExecution(requestContext(c), executionID)
+	err := h.withService(func(svc *WorkflowService) error {
+		return svc.CancelExecution(requestContext(c), executionID)
+	})
 	if err != nil {
 		if err == ErrExecutionNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "execution not found"})
@@ -471,7 +576,12 @@ func (h *Handler) CancelExecution(c echo.Context) error {
 func (h *Handler) RetryExecution(c echo.Context) error {
 	executionID := c.Param("executionId")
 
-	execution, err := h.svc().RetryExecution(requestContext(c), executionID)
+	var execution *Execution
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		execution, err = svc.RetryExecution(requestContext(c), executionID)
+		return err
+	})
 	if err != nil {
 		if err == ErrExecutionNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "execution not found"})
@@ -491,9 +601,14 @@ func (h *Handler) ResumeExecution(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	execution, err := h.svc().ResumeExecution(requestContext(c), executionID, ExecutionResumeInput{
-		Decision: req.Decision,
-		Payload:  req.Payload,
+	var execution *Execution
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		execution, err = svc.ResumeExecution(requestContext(c), executionID, ExecutionResumeInput{
+			Decision: req.Decision,
+			Payload:  req.Payload,
+		})
+		return err
 	})
 	if err != nil {
 		if err == ErrExecutionNotFound {
@@ -521,7 +636,15 @@ func (h *Handler) GetExecutionLogs(c echo.Context) error {
 		opts.Limit, _ = strconv.Atoi(limit)
 	}
 
-	logs, total, err := h.svc().GetExecutionLogs(requestContext(c), executionID, opts)
+	var (
+		logs  []*ExecutionLog
+		total int
+	)
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		logs, total, err = svc.GetExecutionLogs(requestContext(c), executionID, opts)
+		return err
+	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -538,7 +661,12 @@ func (h *Handler) GetExecutionLogs(c echo.Context) error {
 func (h *Handler) GetStats(c echo.Context) error {
 	tenantID := getContextString(c, "tenant_id", "default")
 
-	stats, err := h.svc().GetStats(requestContext(c), tenantID)
+	var stats *Stats
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		stats, err = svc.GetStats(requestContext(c), tenantID)
+		return err
+	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -565,7 +693,12 @@ func (h *Handler) HandleWebhook(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to read body"})
 	}
 
-	execution, err := h.svc().HandleWebhook(c.Request().Context(), path, method, headers, body)
+	var execution *Execution
+	err = h.withService(func(svc *WorkflowService) error {
+		var err error
+		execution, err = svc.HandleWebhook(c.Request().Context(), path, method, headers, body)
+		return err
+	})
 	if err != nil {
 		if err == ErrWorkflowNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "webhook not found"})
@@ -611,7 +744,12 @@ func (h *Handler) ImportWorkflow(c echo.Context) error {
 	workflow.CreatedBy = userID
 	workflow.UpdatedBy = userID
 
-	created, err := h.svc().CreateWorkflow(requestContext(c), &workflow)
+	var created *Workflow
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		created, err = svc.CreateWorkflow(requestContext(c), &workflow)
+		return err
+	})
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
@@ -623,7 +761,12 @@ func (h *Handler) ImportWorkflow(c echo.Context) error {
 func (h *Handler) ExportWorkflow(c echo.Context) error {
 	id := c.Param("id")
 
-	workflow, err := h.svc().GetWorkflow(requestContext(c), id)
+	var workflow *Workflow
+	err := h.withService(func(svc *WorkflowService) error {
+		var err error
+		workflow, err = svc.GetWorkflow(requestContext(c), id)
+		return err
+	})
 	if err != nil {
 		if err == ErrWorkflowNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})

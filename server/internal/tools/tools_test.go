@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -10,6 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
+	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 )
 
 type captureArgsTool struct {
@@ -24,6 +28,20 @@ func (t *captureArgsTool) Definition() ToolDefinition {
 func (t *captureArgsTool) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
 	t.args = args
 	return "ok", nil
+}
+
+type stubDocumentReadService struct {
+	result   *convertpkg.DocumentReadResult
+	err      error
+	lastPath string
+}
+
+func (s *stubDocumentReadService) ReadDocument(_ context.Context, path string) (*convertpkg.DocumentReadResult, error) {
+	s.lastPath = path
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.result, nil
 }
 
 // Test Tool interface
@@ -1079,6 +1097,135 @@ func TestFileReadToolAddsTabularSummaryForCSV(t *testing.T) {
 	}
 }
 
+func TestFileReadToolDelegatesPDFToPDFService(t *testing.T) {
+	path := writeTestPDF(t, "report.pdf", 256)
+	svc := &stubPDFService{extract: pdfextract.ExtractResult{Text: "hello pdf", Document: pdfextract.DocumentInfo{FileName: "report.pdf"}}}
+	tool := NewFileReadTool([]string{filepath.Dir(path)}, 0)
+	tool.SetPDFService(svc)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":      path,
+		"page":      2,
+		"max_chars": 5,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	payload, ok := result.(pdfextract.ExtractResult)
+	if !ok {
+		t.Fatalf("result type = %T, want pdfextract.ExtractResult", result)
+	}
+	if payload.Text != "hello pdf" {
+		t.Fatalf("text = %q, want hello pdf", payload.Text)
+	}
+	if svc.lastExtractReq.Path != path {
+		t.Fatalf("extract path = %q, want %q", svc.lastExtractReq.Path, path)
+	}
+	if len(svc.lastExtractReq.Pages) != 1 || svc.lastExtractReq.Pages[0] != 2 {
+		t.Fatalf("pages = %#v, want [2]", svc.lastExtractReq.Pages)
+	}
+	if svc.lastExtractReq.MaxChars != 5 {
+		t.Fatalf("max_chars = %d, want 5", svc.lastExtractReq.MaxChars)
+	}
+}
+
+func TestFileReadToolReadsXLSXDocuments(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "budget.xlsx")
+	writeTestSpreadsheetXLSX(t, path)
+
+	tool := NewFileReadTool([]string{tmpDir}, 0)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{"path": path})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("failed to parse result: %v", err)
+	}
+	if payload["document_format"] != "xlsx" {
+		t.Fatalf("document_format = %v, want xlsx", payload["document_format"])
+	}
+	if payload["extracted_via"] != "local_spreadsheet" {
+		t.Fatalf("extracted_via = %v, want local_spreadsheet", payload["extracted_via"])
+	}
+	if !strings.Contains(payload["content"].(string), "Sheet: Budget") {
+		t.Fatalf("content = %q, want spreadsheet sheet header", payload["content"])
+	}
+	summary, ok := payload["tabular_summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected tabular_summary, got %#v", payload["tabular_summary"])
+	}
+	sheets, ok := summary["sheet_summaries"].([]interface{})
+	if !ok || len(sheets) != 1 {
+		t.Fatalf("sheet_summaries = %#v, want one summary", summary["sheet_summaries"])
+	}
+}
+
+func TestFileReadToolReadsOfficeDocumentsViaDocumentReader(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "notes.docx")
+	if err := writeTestFile(path, "stub"); err != nil {
+		t.Fatalf("failed to create docx placeholder: %v", err)
+	}
+
+	tool := NewFileReadTool([]string{tmpDir}, 0)
+	reader := &stubDocumentReadService{
+		result: &convertpkg.DocumentReadResult{
+			Format:       "docx",
+			Text:         "Title\nBody",
+			ExtractedVia: "stub:txt",
+		},
+	}
+	tool.SetDocumentReadService(reader)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":       path,
+		"start_line": 2,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("failed to parse result: %v", err)
+	}
+	if payload["content"] != "Body" {
+		t.Fatalf("content = %q, want Body", payload["content"])
+	}
+	if payload["document_format"] != "docx" {
+		t.Fatalf("document_format = %v, want docx", payload["document_format"])
+	}
+	if payload["extracted_via"] != "stub:txt" {
+		t.Fatalf("extracted_via = %v, want stub:txt", payload["extracted_via"])
+	}
+	if reader.lastPath != path {
+		t.Fatalf("reader path = %q, want %q", reader.lastPath, path)
+	}
+}
+
+func TestFileReadToolReturnsDocumentRuntimeErrorWhenReaderUnavailable(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "slides.pptx")
+	if err := writeTestFile(path, "stub"); err != nil {
+		t.Fatalf("failed to create pptx placeholder: %v", err)
+	}
+
+	tool := NewFileReadTool([]string{tmpDir}, 0)
+	tool.SetDocumentReadService(nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{"path": path})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "document extraction is unavailable") {
+		t.Fatalf("error = %v, want unavailable message", err)
+	}
+}
+
 // Test FileRead tool with allowed paths
 func TestFileReadToolAllowedPaths(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -1155,6 +1302,30 @@ func TestFileReadToolNotFound(t *testing.T) {
 	}
 }
 
+func TestFileReadToolAcceptsFilenameAlias(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "filename-read.txt")
+	if err := writeTestFile(target, "hello"); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	tool := NewFileReadTool([]string{tmpDir}, 0)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"filename": target,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("failed to decode read result: %v", err)
+	}
+	if got := payload["content"]; got != "hello" {
+		t.Fatalf("content = %v, want %q", got, "hello")
+	}
+}
+
 // Test FileRead tool missing path
 func TestFileReadToolMissingPath(t *testing.T) {
 	tool := NewFileReadTool(nil, 0)
@@ -1213,6 +1384,15 @@ func TestFileWriteTool(t *testing.T) {
 	if resultMap["success"] != true {
 		t.Error("expected success=true")
 	}
+	if resultMap["verified"] != true {
+		t.Errorf("expected verified=true, got %v", resultMap["verified"])
+	}
+	if got := resultMap["verification_method"]; got != "content" {
+		t.Errorf("verification_method = %v, want %q", got, "content")
+	}
+	if got := int(resultMap["bytes_written"].(float64)); got != len(testContent) {
+		t.Errorf("bytes_written = %d, want %d", got, len(testContent))
+	}
 
 	// Verify file content
 	content, err := readTestFile(testFile)
@@ -1241,13 +1421,23 @@ func TestFileWriteToolAppend(t *testing.T) {
 	}
 
 	// Append more content
-	_, err = tool.Execute(context.Background(), map[string]interface{}{
+	appendResult, err := tool.Execute(context.Background(), map[string]interface{}{
 		"path":    testFile,
 		"content": ", World!",
 		"append":  true,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	var appendResultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(appendResult.(string)), &appendResultMap); err != nil {
+		t.Fatalf("failed to parse append result: %v", err)
+	}
+	if appendResultMap["verified"] != true {
+		t.Errorf("expected append verified=true, got %v", appendResultMap["verified"])
+	}
+	if got := int(appendResultMap["bytes_written"].(float64)); got != len(", World!") {
+		t.Errorf("append bytes_written = %d, want %d", got, len(", World!"))
 	}
 
 	// Verify file content
@@ -1257,6 +1447,78 @@ func TestFileWriteToolAppend(t *testing.T) {
 	}
 	if content != "Hello, World!" {
 		t.Errorf("expected content 'Hello, World!', got '%s'", content)
+	}
+}
+
+func TestFileWriteToolAcceptsFilenameAlias(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "filename-write.txt")
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"filename": target,
+		"content":  "hello",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("failed to read test file: %v", err)
+	}
+	if content != "hello" {
+		t.Fatalf("content = %q, want %q", content, "hello")
+	}
+}
+
+func TestFileDeleteTool(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "delete-me.txt")
+	if err := writeTestFile(target, "bye"); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	tool := NewFileDeleteTool([]string{tmpDir})
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path": target,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var resultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &resultMap); err != nil {
+		t.Fatalf("failed to parse result: %v", err)
+	}
+	if resultMap["success"] != true || resultMap["deleted"] != true {
+		t.Fatalf("unexpected delete result: %+v", resultMap)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("expected target to be deleted, stat err=%v", err)
+	}
+}
+
+func TestFileDeleteToolRecursiveDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "nested")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("failed to create test dir: %v", err)
+	}
+	if err := writeTestFile(filepath.Join(targetDir, "note.txt"), "bye"); err != nil {
+		t.Fatalf("failed to create nested file: %v", err)
+	}
+
+	tool := NewFileDeleteTool([]string{tmpDir})
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":      targetDir,
+		"recursive": true,
+	}); err != nil {
+		t.Fatalf("unexpected recursive delete error: %v", err)
+	}
+
+	if _, err := os.Stat(targetDir); !os.IsNotExist(err) {
+		t.Fatalf("expected directory to be deleted, stat err=%v", err)
 	}
 }
 
@@ -1782,29 +2044,38 @@ func TestFileWriteToolChunkTooLargeSuggestsAppend(t *testing.T) {
 }
 
 func TestFileToolDefinitionsUseNewNames(t *testing.T) {
-	if got := NewFileReadTool(nil, 0).Definition().Name; got != "read" {
-		t.Fatalf("read tool name = %q, want read", got)
+	if got := NewFileReadTool(nil, 0).Definition().Name; got != "file_read" {
+		t.Fatalf("read tool name = %q, want file_read", got)
 	}
-	if got := NewFileWriteTool(nil, 0).Definition().Name; got != "write" {
-		t.Fatalf("write tool name = %q, want write", got)
+	if got := NewFileWriteTool(nil, 0).Definition().Name; got != "file_write" {
+		t.Fatalf("write tool name = %q, want file_write", got)
+	}
+	if got := NewFileDeleteTool(nil).Definition().Name; got != "file_delete" {
+		t.Fatalf("delete tool name = %q, want file_delete", got)
 	}
 }
 
 func TestExecutorLegacyToolNameRemap(t *testing.T) {
 	registry := NewRegistry()
-	readTool := NewMockTool("read", "Read")
+	readTool := NewMockTool("file_read", "Read")
 	readTool.SetResult("ok")
-	writeTool := NewMockTool("write", "Write")
+	writeTool := NewMockTool("file_write", "Write")
 	writeTool.SetResult("ok")
+	deleteTool := NewMockTool("file_delete", "Delete")
+	deleteTool.SetResult("ok")
 	registry.Register(readTool)
 	registry.Register(writeTool)
+	registry.Register(deleteTool)
 
 	executor := NewExecutor(registry)
-	if _, err := executor.Execute(context.Background(), "file_read", map[string]interface{}{"path": "a.txt"}); err != nil {
-		t.Fatalf("file_read compatibility execute failed: %v", err)
+	if _, err := executor.Execute(context.Background(), "read", map[string]interface{}{"path": "a.txt"}); err != nil {
+		t.Fatalf("read compatibility execute failed: %v", err)
 	}
-	if _, err := executor.Execute(context.Background(), "file_write", map[string]interface{}{"path": "a.txt", "content": "x"}); err != nil {
-		t.Fatalf("file_write compatibility execute failed: %v", err)
+	if _, err := executor.Execute(context.Background(), "write", map[string]interface{}{"path": "a.txt", "content": "x"}); err != nil {
+		t.Fatalf("write compatibility execute failed: %v", err)
+	}
+	if _, err := executor.Execute(context.Background(), "delete", map[string]interface{}{"path": "a.txt"}); err != nil {
+		t.Fatalf("delete compatibility execute failed: %v", err)
 	}
 }
 
@@ -1960,12 +2231,23 @@ func TestFileWriteToolLineModeSuccess(t *testing.T) {
 	}
 
 	tool := NewFileWriteTool([]string{tmpDir}, 0)
-	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"path":    target,
 		"content": "BETA",
 		"line":    2,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("line mode write failed: %v", err)
+	}
+	var resultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &resultMap); err != nil {
+		t.Fatalf("parse line mode result: %v", err)
+	}
+	if resultMap["verified"] != true {
+		t.Fatalf("expected line mode verified=true, got %v", resultMap["verified"])
+	}
+	if got := resultMap["verification_method"]; got != "content" {
+		t.Fatalf("verification_method = %v, want %q", got, "content")
 	}
 
 	got, err := readTestFile(target)
@@ -2125,6 +2407,9 @@ func TestGrepTool(t *testing.T) {
 	if count, _ := payload["count"].(float64); count < 2 {
 		t.Fatalf("grep count = %v, want >= 2", payload["count"])
 	}
+	if got, _ := payload["backend"].(string); got != "builtin" {
+		t.Fatalf("grep backend = %q, want builtin", got)
+	}
 }
 
 func TestFindTool(t *testing.T) {
@@ -2153,6 +2438,36 @@ func TestFindTool(t *testing.T) {
 	}
 	if count, _ := payload["count"].(float64); count < 1 {
 		t.Fatalf("find count = %v, want >= 1", payload["count"])
+	}
+	if got, _ := payload["backend"].(string); got != "builtin" {
+		t.Fatalf("find backend = %q, want builtin", got)
+	}
+}
+
+func TestRgTool(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := writeTestFile(filepath.Join(tmpDir, "a.txt"), "hello from rg\n"); err != nil {
+		t.Fatalf("write a.txt: %v", err)
+	}
+
+	tool := NewRgTool([]string{tmpDir}, 0)
+	if got := tool.Definition().Name; got != "rg" {
+		t.Fatalf("definition name = %q, want rg", got)
+	}
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"pattern": "hello",
+		"path":    ".",
+	})
+	if err != nil {
+		t.Fatalf("rg failed: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("decode rg result: %v", err)
+	}
+	if got, _ := payload["backend"].(string); got != "builtin" {
+		t.Fatalf("rg backend = %q, want builtin", got)
 	}
 }
 
@@ -2224,14 +2539,92 @@ func TestLsTool_DefaultsToCurrentDirectoryOnly(t *testing.T) {
 	if _, ok := seen["sub/note.txt"]; ok {
 		t.Fatalf("default ls should not include nested entries: %+v", payload.Entries)
 	}
-	if _, ok := seen["sub"]; !ok {
-		t.Fatalf("expected top-level directory 'sub' in entries: %+v", payload.Entries)
+	if _, ok := seen["sub/"]; !ok {
+		t.Fatalf("expected top-level directory 'sub/' in entries: %+v", payload.Entries)
 	}
 	if _, ok := seen["root.txt"]; !ok {
 		t.Fatalf("expected top-level file 'root.txt' in entries: %+v", payload.Entries)
 	}
 	if payload.Count != len(payload.Entries) {
 		t.Fatalf("count = %d, want %d", payload.Count, len(payload.Entries))
+	}
+}
+
+func TestLsTool_LongFormatIncludesMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	target := filepath.Join(tmpDir, "root.txt")
+	if err := writeTestFile(target, "root"); err != nil {
+		t.Fatalf("write root.txt: %v", err)
+	}
+
+	tool := NewLsTool([]string{tmpDir})
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path": ".",
+	})
+	if err != nil {
+		t.Fatalf("ls failed: %v", err)
+	}
+
+	var payload struct {
+		Format  string `json:"format"`
+		Entries []struct {
+			Path       string `json:"path"`
+			Type       string `json:"type"`
+			Mode       string `json:"mode"`
+			Size       int64  `json:"size"`
+			ModifiedAt string `json:"modified_at"`
+			Display    string `json:"display"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("decode ls result: %v", err)
+	}
+	if payload.Format != "long" {
+		t.Fatalf("format = %q, want long", payload.Format)
+	}
+
+	seenFile := false
+	seenDir := false
+	for _, entry := range payload.Entries {
+		switch entry.Path {
+		case "root.txt":
+			seenFile = true
+			if entry.Type != "file" {
+				t.Fatalf("root.txt type = %q, want file", entry.Type)
+			}
+			if entry.Mode == "" {
+				t.Fatalf("root.txt mode should not be empty")
+			}
+			if entry.Size != 4 {
+				t.Fatalf("root.txt size = %d, want 4", entry.Size)
+			}
+			if entry.ModifiedAt == "" {
+				t.Fatalf("root.txt modified_at should not be empty")
+			}
+			if !strings.Contains(entry.Display, "root.txt") || !strings.Contains(entry.Display, entry.Mode) {
+				t.Fatalf("root.txt display = %q, want long listing with filename and mode", entry.Display)
+			}
+		case "sub/":
+			seenDir = true
+			if entry.Type != "dir" {
+				t.Fatalf("sub/ type = %q, want dir", entry.Type)
+			}
+			if entry.Mode == "" {
+				t.Fatalf("sub/ mode should not be empty")
+			}
+			if !strings.Contains(entry.Display, "sub/") {
+				t.Fatalf("sub/ display = %q, want directory suffix", entry.Display)
+			}
+		}
+	}
+	if !seenFile {
+		t.Fatalf("expected root.txt entry, got %+v", payload.Entries)
+	}
+	if !seenDir {
+		t.Fatalf("expected sub/ entry, got %+v", payload.Entries)
 	}
 }
 
@@ -2282,23 +2675,116 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
 
-	expectedTools := []string{"read", "write", "write_begin", "write_chunk", "write_commit", "write_abort", "edit", "grep", "find", "ls", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl", "mcp"}
+	expectedTools := []string{"file_read", "file_write", "file_delete", "write_begin", "write_chunk", "write_commit", "write_abort", "edit", "grep", "rg", "find", "ls", "web", "mcp"}
 	for _, name := range expectedTools {
 		if registry.Get(name) == nil {
 			t.Errorf("expected tool '%s' to be registered", name)
 		}
 	}
-	if registry.Get("file_read") != nil {
-		t.Errorf("did not expect legacy tool name 'file_read' to be registered")
+	for _, name := range []string{"web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
+		if registry.Get(name) == nil {
+			t.Errorf("expected hidden compat tool '%s' to remain registered", name)
+		}
+		if !registry.IsDisabled(name) {
+			t.Errorf("expected hidden compat tool '%s' to be disabled", name)
+		}
 	}
-	if registry.Get("file_write") != nil {
-		t.Errorf("did not expect legacy tool name 'file_write' to be registered")
+	if registry.Get("read") != nil {
+		t.Errorf("did not expect legacy tool name 'read' to be registered")
+	}
+	if registry.Get("write") != nil {
+		t.Errorf("did not expect legacy tool name 'write' to be registered")
+	}
+}
+
+func TestRegisterApprovalAwareFileTools_PreservesExistingReadServices(t *testing.T) {
+	registry := NewRegistry()
+	RegisterBuiltinTools(registry)
+
+	pdfSvc := &stubPDFService{
+		extract: pdfextract.ExtractResult{
+			Text: "hello from pdf",
+		},
+	}
+	docSvc := &stubDocumentReadService{
+		result: &convertpkg.DocumentReadResult{
+			Text:   "hello from docx",
+			Format: "docx",
+		},
+	}
+	AttachPDFServiceToWebTools(registry, pdfSvc)
+	if read, ok := registry.Get("file_read").(*FileReadTool); ok {
+		read.SetDocumentReadService(docSvc)
+	} else {
+		t.Fatalf("expected file_read tool")
+	}
+
+	RegisterApprovalAwareFileTools(registry, nil, 0, nil, nil)
+
+	read, ok := registry.Get("file_read").(*FileReadTool)
+	if !ok {
+		t.Fatalf("expected re-registered file_read tool")
+	}
+	if read.pdfService != pdfSvc {
+		t.Fatalf("pdf service was not preserved")
+	}
+	if read.documentReader != docSvc {
+		t.Fatalf("document reader was not preserved")
+	}
+}
+
+func TestExecutorNormalizesCompatSessionsAndWebAliasesToUnifiedTools(t *testing.T) {
+	registry := NewRegistry()
+	sessionsTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "sessions",
+			Description: "sessions",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"additionalProperties": true,
+			},
+		},
+	}
+	webTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "web",
+			Description: "web",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"additionalProperties": true,
+			},
+		},
+	}
+	registry.Register(sessionsTool)
+	registry.Register(webTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "sessions_history", map[string]interface{}{"id": "conv_1", "limit": 3}); err != nil {
+		t.Fatalf("execute sessions_history failed: %v", err)
+	}
+	if got := sessionsTool.args["action"]; got != "history" {
+		t.Fatalf("sessions action = %v, want history", got)
+	}
+	if got := sessionsTool.args["id"]; got != "conv_1" {
+		t.Fatalf("sessions id = %v, want conv_1", got)
+	}
+
+	if _, err := executor.Execute(context.Background(), "web_fetch", map[string]interface{}{"href": "https://example.com"}); err != nil {
+		t.Fatalf("execute web_fetch failed: %v", err)
+	}
+	if got := webTool.args["action"]; got != "fetch" {
+		t.Fatalf("web action = %v, want fetch", got)
+	}
+	if got := webTool.args["url"]; got != "https://example.com" {
+		t.Fatalf("web url = %v, want https://example.com", got)
 	}
 }
 
 func TestMCPToolDispatchesBuiltin(t *testing.T) {
 	registry := NewRegistry()
-	target := NewMockTool("read", "Read")
+	target := NewMockTool("file_read", "Read")
 	target.SetResult("ok")
 	registry.Register(target)
 	registry.Register(NewMCPTool(registry))
@@ -2320,7 +2806,7 @@ func TestMCPToolDispatchesBuiltin(t *testing.T) {
 
 func TestMCPToolSupportsNestedParamsArgs(t *testing.T) {
 	registry := NewRegistry()
-	target := &captureArgsTool{def: ToolDefinition{Name: "read", Description: "Read", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"path": map[string]interface{}{"type": "string"}}}}}
+	target := &captureArgsTool{def: ToolDefinition{Name: "file_read", Description: "Read", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"path": map[string]interface{}{"type": "string"}}}}}
 	registry.Register(target)
 	registry.Register(NewMCPTool(registry))
 
@@ -2883,6 +3369,65 @@ func TestExecutorFactoryCompatCoverage_NoErrToolNotFound(t *testing.T) {
 // Helper functions for file tests
 func writeTestFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
+}
+
+func writeTestSpreadsheetXLSX(t *testing.T, path string) {
+	t.Helper()
+
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create xlsx: %v", err)
+	}
+	defer file.Close()
+
+	zw := zip.NewWriter(file)
+	writeZipEntry := func(name, content string) {
+		t.Helper()
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("create zip entry %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatalf("write zip entry %s: %v", name, err)
+		}
+	}
+
+	writeZipEntry("xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Budget" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`)
+	writeZipEntry("xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`)
+	writeZipEntry("xl/sharedStrings.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="3" uniqueCount="3">
+  <si><t>Department</t></si>
+  <si><t>Department</t></si>
+  <si><t>Owner</t></si>
+</sst>`)
+	writeZipEntry("xl/worksheets/sheet1.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="s"><v>0</v></c>
+      <c r="B1" t="s"><v>1</v></c>
+      <c r="D1" t="s"><v>2</v></c>
+    </row>
+    <row r="2">
+      <c r="A2" t="inlineStr"><is><t>Finance</t></is></c>
+      <c r="B2" t="inlineStr"><is><t>Platform</t></is></c>
+      <c r="C2"><v>1200</v></c>
+      <c r="D2" t="inlineStr"><is><t>Alice</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>`)
+
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close xlsx zip: %v", err)
+	}
 }
 
 func readTestFile(path string) (string, error) {

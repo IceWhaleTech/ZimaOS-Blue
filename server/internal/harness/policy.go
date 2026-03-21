@@ -36,7 +36,7 @@ func NewPolicyResolver(cfg config.HarnessConfig, agents *config.AgentsConfig) *P
 	return &PolicyResolver{
 		defaults: Defaults{
 			ArtifactRoot:  strings.TrimSpace(cfg.ArtifactRoot),
-			StorePath:     strings.TrimSpace(cfg.StorePath),
+			StorePath:     resolveSharedStorePath(cfg),
 			ApprovalMode:  ApprovalMode(strings.TrimSpace(cfg.DefaultApprovalMode)),
 			SandboxMode:   strings.TrimSpace(cfg.DefaultSandboxMode),
 			MaxDuration:   cfg.DefaultMaxDuration,
@@ -47,6 +47,31 @@ func NewPolicyResolver(cfg config.HarnessConfig, agents *config.AgentsConfig) *P
 		},
 		agents: agents,
 	}
+}
+
+func resolveSharedStorePath(cfg config.HarnessConfig) string {
+	if artifactRoot := strings.TrimSpace(cfg.ArtifactRoot); artifactRoot != "" {
+		return filepath.Join(resolveDataRootFromArtifactRoot(artifactRoot), "blue.db")
+	}
+	if storePath := strings.TrimSpace(cfg.StorePath); storePath != "" {
+		return filepath.Join(filepath.Dir(storePath), "blue.db")
+	}
+	return filepath.Join(".", "data", "blue.db")
+}
+
+func resolveDataRootFromArtifactRoot(artifactRoot string) string {
+	clean := filepath.Clean(strings.TrimSpace(artifactRoot))
+	if clean == "" || clean == "." {
+		return filepath.Join(".", "data")
+	}
+	if strings.EqualFold(filepath.Base(clean), "artifacts") {
+		parent := filepath.Dir(clean)
+		if strings.EqualFold(filepath.Base(parent), "harness") {
+			return filepath.Dir(parent)
+		}
+		return parent
+	}
+	return filepath.Dir(clean)
 }
 
 func (r *PolicyResolver) Resolve(spec RunSpec) RunSpec {

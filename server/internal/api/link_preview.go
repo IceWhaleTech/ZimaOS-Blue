@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/net/html"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
@@ -39,7 +40,7 @@ func NewLinkPreviewHandler() *LinkPreviewHandler {
 }
 
 func newLinkPreviewHTTPClient() *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport := network.NewPooledTransport(false)
 	baseDial := transport.DialContext
 	if baseDial == nil {
 		dialer := &net.Dialer{Timeout: 10 * time.Second}

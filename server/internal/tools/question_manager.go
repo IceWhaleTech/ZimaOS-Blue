@@ -13,7 +13,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
-const defaultQuestionTimeout = 2 * time.Minute
+const defaultQuestionTimeout = 5 * time.Minute
 
 // QuestionItem describes a single question (one tab in the UI).
 type QuestionItem struct {

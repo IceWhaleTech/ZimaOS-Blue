@@ -84,7 +84,7 @@ watch(
         data-testid="deep-research-task-dock-toggle"
         type="button"
         class="flex min-h-12 w-full items-start gap-3 bg-slate-50/80 px-4 py-3 text-left transition-colors hover:bg-slate-100/80 dark:bg-slate-950/60 dark:hover:bg-slate-900/70"
-        :aria-expanded="String(!collapsed)"
+        :aria-expanded="!collapsed"
         @click="toggleCollapsed"
       >
         <span

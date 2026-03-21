@@ -35,6 +35,7 @@ func NewToolWebSearcherWithConfig(cfg tools.WebSearchConfig) *ToolWebSearcher {
 func NewToolWebSearcher() *ToolWebSearcher {
 	return NewToolWebSearcherWithConfig(tools.WebSearchConfig{
 		Provider:   "duckduckgo",
+		Providers:  []string{"duckduckgo", "bing"},
 		MaxResults: 8,
 		Timeout:    15 * time.Second,
 		Region:     "wt-wt",

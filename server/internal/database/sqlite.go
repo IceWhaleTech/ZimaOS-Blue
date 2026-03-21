@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"runtime"
 	"time"
 )
 
@@ -114,7 +115,7 @@ func openAndConfigure(dsn, dbPath string, readOnly bool, opts *SQLiteOpenOpts) (
 		fmt.Sprintf("PRAGMA busy_timeout=%d", opts.BusyTimeout),
 		"PRAGMA journal_mode=WAL",
 		fmt.Sprintf("PRAGMA cache_size=%d", opts.CacheSize),
-		"PRAGMA synchronous=NORMAL",
+		"PRAGMA synchronous=FULL",
 	}
 	if opts.ForeignKeys {
 		pragmas = append(pragmas, "PRAGMA foreign_keys=ON")
@@ -122,6 +123,12 @@ func openAndConfigure(dsn, dbPath string, readOnly bool, opts *SQLiteOpenOpts) (
 	if !readOnly {
 		// Writer-only optimizations
 		pragmas = append(pragmas, "PRAGMA wal_autocheckpoint=1000")
+		if runtime.GOOS == "darwin" {
+			pragmas = append(pragmas,
+				"PRAGMA fullfsync=ON",
+				"PRAGMA checkpoint_fullfsync=ON",
+			)
+		}
 	}
 
 	return OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
@@ -147,8 +154,15 @@ func OpenSQLiteSimple(path string) (*sql.DB, error) {
 			"PRAGMA busy_timeout=5000",
 			"PRAGMA journal_mode=WAL",
 			"PRAGMA cache_size=-2000",
-			"PRAGMA synchronous=NORMAL",
+			"PRAGMA synchronous=FULL",
 			"PRAGMA foreign_keys=ON",
+			"PRAGMA wal_autocheckpoint=1000",
+		}
+		if runtime.GOOS == "darwin" {
+			pragmas = append(pragmas,
+				"PRAGMA fullfsync=ON",
+				"PRAGMA checkpoint_fullfsync=ON",
+			)
 		}
 		for _, p := range pragmas {
 			if _, err := db.Exec(p); err != nil {

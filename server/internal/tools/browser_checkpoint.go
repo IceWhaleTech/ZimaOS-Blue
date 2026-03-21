@@ -91,7 +91,7 @@ type BrowserCheckpointManager struct {
 // NewBrowserCheckpointManager creates a manager with the given default timeout.
 func NewBrowserCheckpointManager(timeout time.Duration) *BrowserCheckpointManager {
 	if timeout <= 0 {
-		timeout = 2 * time.Minute
+		timeout = 5 * time.Minute
 	}
 	return &BrowserCheckpointManager{
 		pending:   make(map[string]*pendingBrowserCheckpoint),

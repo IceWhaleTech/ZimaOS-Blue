@@ -98,6 +98,110 @@ Git branch review and rebase helper.`
 	}
 }
 
+func TestMarketSearchSkillsLazyFactoryInitializesOnce(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "market.db")
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+
+	activeDir := filepath.Join(tempDir, "active")
+	cfg := skillmarket.DefaultConfig(tempDir, activeDir)
+	cfg.SeedURLs = nil
+
+	seedMarket, err := skillmarket.NewService(db, skillmarket.Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		Scanner:      skillmarket.NewScanner(nil),
+	})
+	if err != nil {
+		t.Fatalf("seed market: %v", err)
+	}
+
+	raw := `---
+id: lazy-market-skill
+name: Lazy Market Skill
+version: 1.0.0
+description: Lazy init fixture
+---
+Search fixture content.`
+	if err := seedMarket.Store().UpsertSkill(context.Background(),
+		&skillmarket.SkillDocument{
+			ID:            "lazy-market-skill",
+			Slug:          "lazy-market-skill",
+			Name:          "Lazy Market Skill",
+			Description:   "Lazy init fixture",
+			Category:      "development",
+			LatestVersion: "1.0.0",
+			RiskLevel:     skillmarket.RiskLow,
+			SecurityScore: 91,
+			Published:     true,
+			SkillContent:  raw,
+		},
+		&skillmarket.SkillVersion{
+			ID:           "lazy-market-skill-version",
+			SkillID:      "lazy-market-skill",
+			Version:      "1.0.0",
+			Checksum:     checksum(raw),
+			RawSkillMD:   raw,
+			ManifestJSON: `{"id":"lazy-market-skill","name":"Lazy Market Skill","version":"1.0.0"}`,
+		},
+		&skillmarket.SecurityReport{
+			ID:             "lazy-market-skill-report",
+			SkillID:        "lazy-market-skill",
+			Version:        "1.0.0",
+			Score:          91,
+			RiskLevel:      skillmarket.RiskLow,
+			ScannerVersion: skillmarket.ScannerVersion,
+			LLMStatus:      "skipped",
+		},
+	); err != nil {
+		t.Fatalf("upsert lazy fixture: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close seed db: %v", err)
+	}
+
+	handler := NewSkillHandler(skill.NewRegistry())
+	defer handler.Close()
+
+	var factoryCalls int
+	handler.SetMarketplaceFactory(func() (*skillmarket.Service, error) {
+		factoryCalls++
+		return skillmarket.NewServiceWithDBPath(dbPath, skillmarket.Options{
+			Config:       cfg,
+			Registry:     skill.NewRegistry(),
+			LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+			Scanner:      skillmarket.NewScanner(nil),
+		})
+	})
+
+	if factoryCalls != 0 {
+		t.Fatalf("factory called before request: %d", factoryCalls)
+	}
+
+	e := echo.New()
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/skills/search?q=lazy", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.MarketSearchSkills(c); err != nil {
+			t.Fatalf("search handler run %d: %v", i+1, err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("run %d status = %d, want %d", i+1, rec.Code, http.StatusOK)
+		}
+	}
+
+	if factoryCalls != 1 {
+		t.Fatalf("factoryCalls = %d, want 1", factoryCalls)
+	}
+}
+
 func TestMarketSearchSkillsFallbackUsesLegacyStore(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "legacy-skill-store.db"))
 	if err != nil {

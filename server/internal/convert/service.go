@@ -881,6 +881,10 @@ func (s *Service) convertDocument(ctx context.Context, task *ConvertTask, source
 }
 
 func (s *Service) convertDocumentWithEngine(ctx context.Context, engine DocumentEngineInfo, sourcePath, outputPath, target string) error {
+	return runDocumentConversionWithEngine(ctx, engine, sourcePath, outputPath, target)
+}
+
+func runDocumentConversionWithEngine(ctx context.Context, engine DocumentEngineInfo, sourcePath, outputPath, target string) error {
 	switch engine.ID {
 	case documentEngineX2T:
 		return runCommand(ctx, engine.Path, sourcePath, outputPath)

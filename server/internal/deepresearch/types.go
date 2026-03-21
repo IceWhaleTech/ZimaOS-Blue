@@ -13,10 +13,7 @@ const (
 type RouteMode string
 
 const (
-	RouteModeAuto       RouteMode = "auto"
-	RouteModeWeb        RouteMode = "web"
-	RouteModeExperiment RouteMode = "experiment"
-	RouteModeHybrid     RouteMode = "hybrid"
+	RouteModeWeb RouteMode = "web"
 )
 
 type JobStatus string
@@ -122,22 +119,26 @@ type Report struct {
 	TimelineSections     []TimelineSection     `json:"timeline_sections,omitempty"`
 	ResearchTrace        []ResearchTraceEntry  `json:"research_trace,omitempty"`
 	VerificationSummary  *VerificationSummary  `json:"verification_summary,omitempty"`
-	Experiment           *ExperimentReport     `json:"experiment,omitempty"`
+	Calibration          *Calibration          `json:"calibration,omitempty"`
 }
 
-type ExperimentReport struct {
-	Summary       string                 `json:"summary,omitempty"`
-	Findings      []string               `json:"findings,omitempty"`
-	Artifacts     []ExperimentArtifact   `json:"artifacts,omitempty"`
-	OpenQuestions []string               `json:"open_questions,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+type Calibration struct {
+	Coverage           float64             `json:"coverage"`
+	Groundedness       float64             `json:"groundedness"`
+	Freshness          float64             `json:"freshness"`
+	ConflictRisk       string              `json:"conflict_risk"`
+	Confidence         float64             `json:"confidence"`
+	RecommendedAction  string              `json:"recommended_action"`
+	TakeawayCandidates []TakeawayCandidate `json:"takeaway_candidates,omitempty"`
 }
 
-type ExperimentArtifact struct {
-	Label string `json:"label,omitempty"`
-	Kind  string `json:"kind,omitempty"`
-	Path  string `json:"path,omitempty"`
-	URI   string `json:"uri,omitempty"`
+type TakeawayCandidate struct {
+	Lesson      string   `json:"lesson"`
+	WhenToApply string   `json:"when_to_apply,omitempty"`
+	Evidence    string   `json:"evidence"`
+	EvidenceIDs []string `json:"evidence_ids,omitempty"`
+	Confidence  float64  `json:"confidence,omitempty"`
+	TargetFile  string   `json:"target_file,omitempty"`
 }
 
 type ResearchTraceEntry struct {
@@ -211,27 +212,4 @@ type JobSummary struct {
 	LatestGap      string    `json:"latest_gap,omitempty"`
 	ConversationID string    `json:"conversation_id,omitempty"`
 	UpdatedAt      time.Time `json:"updated_at"`
-}
-
-type ExperimentRequest struct {
-	JobID        string     `json:"job_id"`
-	Query        string     `json:"query"`
-	Lang         string     `json:"lang,omitempty"`
-	Mode         Mode       `json:"mode"`
-	RouteMode    RouteMode  `json:"route_mode"`
-	Budget       Budget     `json:"budget"`
-	ReportStyle  string     `json:"report_style,omitempty"`
-	StrictEntity bool       `json:"strict_entity,omitempty"`
-	TimeWindows  []string   `json:"time_windows,omitempty"`
-	WebReport    *Report    `json:"web_report,omitempty"`
-	WebEvidence  []Evidence `json:"web_evidence,omitempty"`
-}
-
-type ExperimentResult struct {
-	Summary       string                 `json:"summary,omitempty"`
-	Confidence    float64                `json:"confidence,omitempty"`
-	Findings      []string               `json:"findings,omitempty"`
-	Artifacts     []ExperimentArtifact   `json:"artifacts,omitempty"`
-	OpenQuestions []string               `json:"open_questions,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
 }

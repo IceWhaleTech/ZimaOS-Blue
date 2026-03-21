@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -34,6 +33,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/gateway"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/lifecycle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -48,6 +48,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reclaim"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
@@ -94,29 +95,67 @@ func applyPendingBackupRestore(dataDir string) (bool, error) {
 	return true, err
 }
 
-func openPrimaryDatabaseWithStartupRecovery(dataDir string) (*sql.DB, error) {
+func applyPrimaryDatabasePoolConfig(db *sql.DB, perfCfg config.DatabasePerfConfig) {
+	maxOpen := perfCfg.PoolSize
+	if maxOpen <= 0 {
+		maxOpen = 10
+	}
+	maxIdle := perfCfg.MaxIdleConns
+	if maxIdle <= 0 {
+		maxIdle = 5
+	}
+	if maxIdle > maxOpen {
+		maxIdle = maxOpen
+	}
+	connMaxLifetime := perfCfg.ConnMaxLifetime
+	if connMaxLifetime <= 0 {
+		connMaxLifetime = time.Hour
+	}
+	connMaxIdleTime := perfCfg.ConnMaxIdleTime
+	if connMaxIdleTime <= 0 {
+		connMaxIdleTime = 10 * time.Minute
+	}
+
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(connMaxLifetime)
+	db.SetConnMaxIdleTime(connMaxIdleTime)
+}
+
+func openPrimaryDatabaseWithStartupRecovery(dataDir string, perfCfg config.DatabasePerfConfig) (*sql.DB, error) {
 	dbPath := filepath.Join(dataDir, "blue.db")
 
 	open := func() (*sql.DB, error) {
 		return dbutil.OpenSQLiteWithRecovery(dbPath, dbPath, func(db *sql.DB) error {
-			// Configure database connection pool (shared by user, memory, apikey tables)
-			db.SetMaxOpenConns(8)
-			db.SetMaxIdleConns(3)
-			db.SetConnMaxLifetime(time.Hour)
+			applyPrimaryDatabasePoolConfig(db, perfCfg)
 
-			// Enable WAL mode for better concurrency
-			if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-				return fmt.Errorf("enable WAL mode: %w", err)
+			cacheSize := perfCfg.CacheSize
+			if cacheSize == 0 {
+				cacheSize = 2000
 			}
-			// Enable foreign keys
-			if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-				return fmt.Errorf("enable foreign keys: %w", err)
+			journalMode := "WAL"
+			if !perfCfg.WALMode {
+				journalMode = "DELETE"
 			}
-			if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
-				return fmt.Errorf("set synchronous mode: %w", err)
+
+			pragmas := []string{
+				"PRAGMA busy_timeout=5000",
+				"PRAGMA journal_mode=" + journalMode,
+				"PRAGMA foreign_keys=ON",
+				"PRAGMA synchronous=FULL",
+				fmt.Sprintf("PRAGMA cache_size=-%d", cacheSize),
+				"PRAGMA wal_autocheckpoint=1000",
 			}
-			if _, err := db.Exec("PRAGMA cache_size=-2000"); err != nil {
-				return fmt.Errorf("set cache size: %w", err)
+			if runtime.GOOS == "darwin" {
+				pragmas = append(pragmas,
+					"PRAGMA fullfsync=ON",
+					"PRAGMA checkpoint_fullfsync=ON",
+				)
+			}
+			for _, pragma := range pragmas {
+				if _, err := db.Exec(pragma); err != nil {
+					return fmt.Errorf("exec %q: %w", pragma, err)
+				}
 			}
 			db.Exec("PRAGMA shrink_memory")
 			return nil
@@ -133,6 +172,7 @@ func openPrimaryDatabaseWithStartupRecovery(dataDir string) (*sql.DB, error) {
 
 	logger.Warn().Err(err).Str("db_path", dbPath).Msg("Primary database open reported corruption, attempting startup auto-recovery")
 
+	var recoverErr error
 	mgr, mgrErr := backup.NewManager(backup.Config{
 		Enabled:       true,
 		RetentionDays: 7,
@@ -140,27 +180,48 @@ func openPrimaryDatabaseWithStartupRecovery(dataDir string) (*sql.DB, error) {
 		SkillsPath:    filepath.Join(dataDir, "workspace", ".claude", "skills"),
 	}, dataDir, dataDir)
 	if mgrErr != nil {
-		return nil, fmt.Errorf("open database: %w (init backup manager: %v)", err, mgrErr)
+		recoverErr = fmt.Errorf("init backup manager: %w", mgrErr)
+		logger.Warn().Err(mgrErr).Str("db_path", dbPath).Msg("Failed to initialize backup manager for corrupted primary database, recreating fresh database instead")
+	} else {
+		result, autoRecoverErr := mgr.CheckAndAutoRecover(context.Background(), []string{dbPath})
+		recoverErr = autoRecoverErr
+		if autoRecoverErr == nil {
+			if result != nil && len(result.RepairedDatabases) > 0 {
+				logger.Info().Strs("repaired_databases", result.RepairedDatabases).Msg("Primary database repaired during startup recovery")
+			}
+			if result != nil && result.Recovered {
+				logger.Info().
+					Strs("corrupted_databases", result.CorruptedDatabases).
+					Str("backup_id", result.BackupID).
+					Msg("Primary database restored from backup during startup recovery")
+			}
+
+			db, retryErr := open()
+			if retryErr == nil {
+				return db, nil
+			}
+			if !dbutil.IsSQLiteCorruptionError(retryErr) {
+				return nil, fmt.Errorf("open database after startup auto-recovery: %w", retryErr)
+			}
+			recoverErr = retryErr
+			logger.Warn().Err(retryErr).Str("db_path", dbPath).Msg("Primary database still failed after startup auto-recovery, recreating from .bak backup")
+		} else {
+			logger.Warn().Err(autoRecoverErr).Str("db_path", dbPath).Msg("Startup auto-recovery did not produce a usable primary database, recreating a fresh database")
+		}
 	}
 
-	result, recoverErr := mgr.CheckAndAutoRecover(context.Background(), []string{dbPath})
-	if recoverErr != nil {
-		return nil, fmt.Errorf("open database: %w (startup auto-recovery failed: %v)", err, recoverErr)
+	backupPath, rotateErr := dbutil.RotateCorruptSQLiteDatabase(dbPath)
+	if rotateErr != nil {
+		return nil, fmt.Errorf("open database: %w (startup auto-recovery failed: %v; rotate corrupt database failed: %v)", err, recoverErr, rotateErr)
 	}
-
-	if result != nil && len(result.RepairedDatabases) > 0 {
-		logger.Info().Strs("repaired_databases", result.RepairedDatabases).Msg("Primary database repaired during startup recovery")
-	}
-	if result != nil && result.Recovered {
-		logger.Info().
-			Strs("corrupted_databases", result.CorruptedDatabases).
-			Str("backup_id", result.BackupID).
-			Msg("Primary database restored from backup during startup recovery")
-	}
+	logger.Warn().
+		Str("db_path", dbPath).
+		Str("backup_path", backupPath).
+		Msg("Rotated corrupt primary database to .bak backup and recreating a fresh database")
 
 	db, retryErr := open()
 	if retryErr != nil {
-		return nil, fmt.Errorf("open database after startup auto-recovery: %w", retryErr)
+		return nil, fmt.Errorf("open database after recreating corrupt primary database: %w", retryErr)
 	}
 	return db, nil
 }
@@ -181,7 +242,9 @@ func main() {
 	// On macOS, request speech recognition authorization on thread 0
 	// BEFORE starting the server. runtime.LockOSThread() in macos_init.go
 	// pins this goroutine to thread 0 (required by AppKit/TCC).
-	macosRequestSTTAuthorization()
+	if !shouldSkipStartupSTTAuthorization(os.Args[1:]) {
+		macosRequestSTTAuthorization()
+	}
 
 	// On macOS, the main goroutine (thread 0) must pump the Cocoa run loop
 	// for Speech framework callbacks. Run the server on a goroutine and
@@ -197,6 +260,27 @@ func main() {
 	} else {
 		Execute()
 	}
+}
+
+func shouldSkipStartupSTTAuthorization(args []string) bool {
+	var positional []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--config", "--profile":
+			if i+1 < len(args) {
+				i++
+			}
+		case "--", "-h", "--help", "--dev", "--no-color", "--json", "-v", "--verbose":
+			continue
+		default:
+			positional = append(positional, args[i])
+		}
+	}
+
+	if len(positional) < 2 {
+		return false
+	}
+	return positional[0] == "gateway" && positional[1] == "run"
 }
 
 // runServer is the main server entry point, called by cobra rootCmd
@@ -253,23 +337,22 @@ func runServer() {
 		logger.Warn().Err(startupIntegrityErr).Msg("Failed to initialize startup integrity state")
 		previousCleanShutdown = false
 	}
-	// A dirty previous shutdown alone is not enough to justify a blocking
-	// quick_check on large databases. SQLite WAL recovery handles the common
-	// crash path; explicit restore markers and open-time recovery handle the
-	// real recovery mode cases.
-	dbutil.SetStartupQuickCheckEnabled(false)
+	// After an unclean shutdown, pay the quick_check cost once during startup
+	// so power-loss corruption is surfaced before services begin using blue.db.
+	startupQuickCheckEnabled := !previousCleanShutdown
+	dbutil.SetStartupQuickCheckEnabled(startupQuickCheckEnabled)
 	defer dbutil.SetStartupQuickCheckEnabled(true)
 	appliedPendingRestore, err := applyPendingBackupRestore(dataDir)
 	if previousCleanShutdown {
 		logger.Info().Msg("Skipping proactive startup database scan after previous clean shutdown")
 	} else if !appliedPendingRestore {
-		logger.Info().Msg("Skipping proactive full startup recovery scan; pending restore marker not found and primary database open will perform quick integrity checks")
+		logger.Info().Bool("startup_quick_check", startupQuickCheckEnabled).Msg("Primary database open will run quick integrity checks after an unclean shutdown")
 	}
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to apply pending backup restore before database initialization")
 	}
 
-	db, err := openPrimaryDatabaseWithStartupRecovery(dataDir)
+	db, err := openPrimaryDatabaseWithStartupRecovery(dataDir, cfg.Performance.Database)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to open database")
 	}
@@ -288,6 +371,7 @@ func runServer() {
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to load config from DB, using YAML defaults")
 	}
+	applyServerRuntimeOverrides(&cfg.Server)
 	if result, migrateErr := server.MigrateLegacyProviderSettings(context.Background(), configKV, dataDir); migrateErr != nil {
 		logger.Warn().Err(migrateErr).Msg("Failed to migrate legacy provider settings into config store")
 	} else if result != nil {
@@ -296,6 +380,15 @@ func runServer() {
 			entry = entry.Str("archived_path", result.ArchivedPath)
 		}
 		entry.Msg("Legacy provider settings imported into config store")
+	}
+	if result, migrateErr := harness.MigrateLegacyStore(context.Background(), db, dataDir); migrateErr != nil {
+		logger.Warn().Err(migrateErr).Msg("Failed to migrate legacy harness store")
+	} else if result != nil {
+		entry := logger.Info().Str("source", result.SourcePath).Int("rows_imported", result.RowsImported)
+		if result.ArchivedPath != "" {
+			entry = entry.Str("archived_path", result.ArchivedPath)
+		}
+		entry.Msg("Legacy harness store imported into blue.db")
 	}
 	if cfg.Performance.Database.CheckpointInterval > 0 {
 		dbutil.StartPeriodicWALCheckpoint(
@@ -413,7 +506,10 @@ func runServer() {
 	toolRegistry := tools.NewRegistry()
 	webSearchConfig, webFetchConfig := buildBuiltinToolConfigs(cfg)
 	workspaceAllowedPaths := bootstrap.ResolveBuiltinToolAllowedPaths(cfg, dataDir)
-	tools.RegisterBuiltinToolsWithConfig(toolRegistry, webSearchConfig, webFetchConfig, workspaceAllowedPaths, 0)
+	tools.RegisterBuiltinToolsWithRuntimeConfig(toolRegistry, webSearchConfig, webFetchConfig, workspaceAllowedPaths, 0, tools.BuiltinRuntimeConfig{
+		DataDir: dataDir,
+		Ripgrep: cfg.ToolCalling.Ripgrep,
+	})
 	tools.RegisterFactoryToolDefinitions(toolRegistry)
 	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
@@ -443,24 +539,15 @@ func runServer() {
 			CleanupInterval:  cfg.Session.Audit.CleanupInterval,
 			CleanupBatchSize: cfg.Session.Audit.CleanupBatchSize,
 		}
-		auditDBPath := cfg.Session.Audit.Path
+		auditDBPath := sessionaudit.ResolveDBPath(dataDir, cfg.Session.Audit.Path)
 		var (
 			auditStore *sessionaudit.Store
 			err        error
 		)
-		if auditDBPath == "" {
-			auditDBPath = filepath.Join(dataDir, "blue.db")
-			auditStore, err = sessionaudit.NewSQLiteStoreWithDB(db, auditCfg)
+		if mkErr := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); mkErr != nil {
+			logger.Warn().Err(mkErr).Str("path", auditDBPath).Msg("Failed to create session audit directory")
 		} else {
-			if !filepath.IsAbs(auditDBPath) {
-				// Keep audit DB under dataDir by default for predictable deployment paths.
-				auditDBPath = filepath.Join(dataDir, filepath.Base(auditDBPath))
-			}
-			if mkErr := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); mkErr != nil {
-				logger.Warn().Err(mkErr).Str("path", auditDBPath).Msg("Failed to create session audit directory")
-			} else {
-				auditStore, err = sessionaudit.NewSQLiteStore(auditDBPath, auditCfg)
-			}
+			auditStore, err = sessionaudit.NewSQLiteStore(auditDBPath, auditCfg)
 		}
 		if err != nil {
 			logger.Warn().Err(err).Str("path", auditDBPath).Msg("Failed to initialize session audit store")
@@ -710,6 +797,7 @@ func runServer() {
 		logger.Info().Msg("Workflow service initialized lazily")
 		return svc
 	})
+	workflowHandler.SetIdleReclaim(cfg.Performance.ResourceReclaim.WorkflowIdleAfter)
 
 	// Async initialization for MFA handler
 	go func() {
@@ -738,6 +826,7 @@ func runServer() {
 		}
 		return svc
 	}, zapLogger)
+	cronHandler.SetIdleReclaim(cfg.Performance.ResourceReclaim.CronIdleAfter)
 	logger.Info().Msg("Cron service configured for lazy initialization")
 
 	cronIPC := sockipc.NewCronIPCAdapter(cron.NewSkillAdapter(cronHandler.GetService))
@@ -767,43 +856,92 @@ func runServer() {
 	// Wire browser service — lazy init, creates rod service on first use (for IPC only)
 	var browserBackend tools.BrowserBackend
 	var lazyBrowserSvc func() *browser.RodService
-	var lazyVisibleBrowserSvc func() *browser.RodService
+	var acquireBrowserSvc func() (*browser.RodService, func(), error)
+	var acquireVisibleBrowserSvc func() (*browser.RodService, func(), error)
+	var relayInfoProvider func() browser.RelayInfo
 	{
-		var browserOnce sync.Once
-		var browserSvc *browser.RodService
+		var relayServer *browser.RelayServer
+		relayInfoProvider = func() browser.RelayInfo {
+			if relayServer == nil {
+				return browser.RelayInfo{}
+			}
+			return relayServer.Info()
+		}
+
+		if cfg.Browser.RelayEnabled {
+			extensionDir, err := browser.EnsureRelayExtensionDir(dataDir)
+			if err != nil {
+				logger.Warn().Err(err).Msg("Failed to export browser relay extension assets")
+			}
+
+			relayServer, err = browser.StartRelayServer(&cfg.Browser, extensionDir)
+			if err != nil {
+				logger.Warn().Err(err).Msg("Failed to start browser relay server")
+			} else {
+				info := relayServer.Info()
+				logger.Info().
+					Str("base_url", info.BaseURL).
+					Str("cdp_url", info.CDPURL).
+					Str("extension_dir", info.ExtensionDir).
+					Msg("Browser relay server started")
+				lm.RegisterShutdownHook(func(ctx context.Context) error {
+					return relayServer.Close()
+				})
+			}
+		}
+
+		browserHandler = browser.NewLazyHandler(func() browser.Service {
+			browserService, err := browser.NewService(&cfg.Browser)
+			if err != nil {
+				logger.Warn().Err(err).Msg("Failed to initialize browser service lazily")
+				return nil
+			}
+			return browserService
+		})
+		browserHandler.SetIdleReclaim(cfg.Performance.ResourceReclaim.BrowserIdleAfter)
+		browserHandler.SetRelayInfoProvider(relayInfoProvider)
+
 		headlessBrowserCfg := cfg.Browser
 		headlessBrowserCfg.Headless = true
-		lazyBrowserSvc = func() *browser.RodService {
-			browserOnce.Do(func() {
-				svc, err := browser.NewService(&headlessBrowserCfg)
-				if err != nil {
-					logger.Warn().Err(err).Msg("Failed to create browser service")
-					return
+		headlessBrowserRuntime := reclaim.NewManaged[*browser.RodService](
+			cfg.Performance.ResourceReclaim.BrowserIdleAfter,
+			func() (*browser.RodService, error) {
+				return browser.NewService(&headlessBrowserCfg)
+			},
+			func(_ context.Context, svc *browser.RodService) error {
+				if svc == nil {
+					return nil
 				}
-				browserSvc = svc
-				logger.Info().Msg("Browser service initialized")
-			})
-			return browserSvc
+				return svc.Close()
+			},
+		)
+		acquireBrowserSvc = headlessBrowserRuntime.Acquire
+		lazyBrowserSvc = func() *browser.RodService {
+			svc, err := headlessBrowserRuntime.Get()
+			if err != nil {
+				logger.Warn().Err(err).Msg("Failed to create browser service")
+				return nil
+			}
+			return svc
 		}
 
-		var visibleBrowserOnce sync.Once
-		var visibleBrowserSvc *browser.RodService
 		visibleBrowserCfg := cfg.Browser
 		visibleBrowserCfg.Headless = false
-		lazyVisibleBrowserSvc = func() *browser.RodService {
-			visibleBrowserOnce.Do(func() {
-				svc, err := browser.NewService(&visibleBrowserCfg)
-				if err != nil {
-					logger.Warn().Err(err).Msg("Failed to create visible browser service")
-					return
+		visibleBrowserRuntime := reclaim.NewManaged[*browser.RodService](
+			cfg.Performance.ResourceReclaim.BrowserIdleAfter,
+			func() (*browser.RodService, error) {
+				return browser.NewService(&visibleBrowserCfg)
+			},
+			func(_ context.Context, svc *browser.RodService) error {
+				if svc == nil {
+					return nil
 				}
-				visibleBrowserSvc = svc
-				logger.Info().Msg("Visible browser service initialized")
-			})
-			return visibleBrowserSvc
-		}
+				return svc.Close()
+			},
+		)
+		acquireVisibleBrowserSvc = visibleBrowserRuntime.Acquire
 
-		browserBackend = tools.NewModeAwareRodBrowserBackend(lazyBrowserSvc, lazyVisibleBrowserSvc)
+		browserBackend = tools.NewLeaseAwareRodBrowserBackend(acquireBrowserSvc, acquireVisibleBrowserSvc)
 	}
 
 	// TTS/STT services are initialized lazily when chat page is opened
@@ -859,7 +997,7 @@ func runServer() {
 	whisperModelPath := filepath.Join(dataDir, "whisper-models")
 
 	// Create a lazy-loading STT service that initializes Whisper on first use
-	sttService = stt.NewLazyService(whisperModelPath)
+	sttService = stt.NewLazyService(whisperModelPath, cfg.Performance.ResourceReclaim.STTIdleAfter)
 	logger.Info().Msg("STT service configured for lazy initialization")
 
 	// Register deferred cleanup for metrics services
@@ -992,10 +1130,8 @@ func runServer() {
 
 	// Clean up STT service (important for CGO resources like Whisper)
 	if sttService != nil {
-		if wp := sttService.GetWhisperProvider(); wp != nil {
-			wp.Close()
-			logger.Info().Msg("STT Whisper provider cleaned up")
-		}
+		_ = sttService.Close()
+		logger.Info().Msg("STT service cleaned up")
 	}
 
 	// Clean up TTS service (important for CGO resources like eSpeak-NG)
@@ -1034,7 +1170,8 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	speechService := speech.NewService(&speech.Config{
 		TTS: speech.TTSConfig{Provider: "edge", Model: ""},
 		ASR: speech.ASRConfig{Enabled: true, Provider: asrProvider, EditBeforeSend: true},
-	}, nil, ttsService)
+	}, sttService, ttsService)
+	speechService.SetStatusPrewarmEnabled(!cfg.Performance.ResourceReclaim.SpeechStatusDoesNotPrewarmSTT)
 	if ttsService != nil {
 		if provider := ttsService.GetProvider(tts.ProviderEdge); provider != nil {
 			speechService.SetTTSProvider(provider)
@@ -1077,7 +1214,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 				logger.Warn("macOS native STT init failed, falling back to whisper", zap.Error(err))
 				speechService.SetASRPermissionDenied(err.Error())
 				if sttService != nil {
-					if wp := sttService.GetWhisperProvider(); wp != nil && wp.IsInitialized() {
+					if wp := sttService.PeekWhisperProvider(); wp != nil && wp.IsInitialized() {
 						speechService.SetASRProvider(wp)
 					}
 				}
@@ -1097,17 +1234,21 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			} else {
 				logger.Warn("Windows native ASR init failed, falling back to whisper")
 				if sttService != nil {
-					if wp := sttService.GetWhisperProvider(); wp != nil {
+					if wp := sttService.PeekWhisperProvider(); wp != nil && wp.IsInitialized() {
 						speechService.SetASRProvider(wp)
 					}
 				}
 			}
-		} else if sttService != nil {
-			if wp := sttService.GetWhisperProvider(); wp != nil {
-				speechService.SetASRProvider(wp)
-			}
 		}
-		// Log final ASR provider state
+		// Log final ASR provider state without eagerly constructing Whisper on Linux.
+		if runtime.GOOS == "linux" && sttService != nil {
+			if wp := sttService.PeekWhisperProvider(); wp != nil {
+				logger.Info("Final ASR provider", zap.String("type", string(wp.Type())), zap.String("name", wp.Name()))
+			} else {
+				logger.Info("ASR provider will remain lazily initialized on first speech use")
+			}
+			return
+		}
 		if p := speechService.GetASRProvider(); p != nil {
 			logger.Info("Final ASR provider", zap.String("type", string(p.Type())), zap.String("name", p.Name()))
 		} else {
@@ -1124,7 +1265,19 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		logger.Warn("Failed to release embedded context packs", zap.Error(err))
 	}
 	contextRegistry := contextpack.NewRegistry(workspaceMgr.ContextDir())
-	contextAnnotationStore, err := contextpack.NewAnnotationStore(filepath.Join(dataDir, "contextpacks.db"))
+	if result, migrateErr := contextpack.MigrateLegacyAnnotations(context.Background(), db, dataDir); migrateErr != nil {
+		logger.Warn("Failed to migrate legacy context annotation store", zap.Error(migrateErr))
+	} else if result != nil {
+		fields := []zap.Field{
+			zap.String("source", result.SourcePath),
+			zap.Int("rows_imported", result.RowsImported),
+		}
+		if result.ArchivedPath != "" {
+			fields = append(fields, zap.String("archived_path", result.ArchivedPath))
+		}
+		logger.Info("Legacy context annotation store imported into blue.db", fields...)
+	}
+	contextAnnotationStore, err := contextpack.NewAnnotationStoreWithDB(db)
 	if err != nil {
 		logger.Warn("Failed to initialize context annotation store", zap.Error(err))
 	}

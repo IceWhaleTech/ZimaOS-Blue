@@ -605,16 +605,99 @@ func groundedToolCatalog(registry *tools.Registry) []llm.Tool {
 	defs := registry.DefinitionsForRoute(tools.ToolRouteKindAgent)
 	out := make([]llm.Tool, 0, len(defs)+2)
 	for _, def := range defs {
-		switch def.Name {
-		case "read":
-			out = append(out, llm.Tool{Name: "read_file", Description: def.Description, Parameters: def.Parameters})
-		case "write":
-			out = append(out, llm.Tool{Name: "write_file", Description: def.Description, Parameters: def.Parameters})
+		switch normalizeGroundToolName(def.Name) {
+		case "file_read":
+			out = append(out, llm.Tool{
+				Name:        "file_read",
+				Description: "Read a local workspace file. Accepts path aliases such as path, file_path, filePath, and filename.",
+				Parameters:  groundedFileToolParameters(def.Parameters, false),
+			})
+		case "file_write":
+			out = append(out, llm.Tool{
+				Name:        "file_write",
+				Description: "Write a local workspace file. Accepts path aliases such as path, file_path, filePath, and filename, plus content aliases such as content, text, body, and value.",
+				Parameters:  groundedFileToolParameters(def.Parameters, true),
+			})
 		default:
 			out = append(out, llm.Tool{Name: def.Name, Description: def.Description, Parameters: def.Parameters})
 		}
 	}
 	return out
+}
+
+func groundedFileToolParameters(parameters map[string]any, isWrite bool) map[string]any {
+	cloned := cloneGroundedJSONValue(parameters)
+	schema, ok := cloned.(map[string]any)
+	if !ok || schema == nil {
+		return parameters
+	}
+	props, _ := schema["properties"].(map[string]any)
+	if props == nil {
+		props = make(map[string]any)
+		schema["properties"] = props
+	}
+	pathSchema, _ := props["path"].(map[string]any)
+	if pathSchema == nil {
+		pathSchema = map[string]any{"type": "string", "description": "Workspace file path."}
+		props["path"] = pathSchema
+	}
+	props["file_path"] = cloneGroundedJSONValue(pathSchema)
+	props["filePath"] = cloneGroundedJSONValue(pathSchema)
+	props["filename"] = cloneGroundedJSONValue(pathSchema)
+
+	delete(schema, "required")
+	requirePath := map[string]any{
+		"anyOf": []any{
+			map[string]any{"required": []any{"path"}},
+			map[string]any{"required": []any{"file_path"}},
+			map[string]any{"required": []any{"filePath"}},
+			map[string]any{"required": []any{"filename"}},
+		},
+	}
+	if !isWrite {
+		schema["allOf"] = []any{requirePath}
+		return schema
+	}
+
+	contentSchema, _ := props["content"].(map[string]any)
+	if contentSchema == nil {
+		contentSchema = map[string]any{"type": "string", "description": "File content."}
+		props["content"] = contentSchema
+	}
+	props["text"] = cloneGroundedJSONValue(contentSchema)
+	props["body"] = cloneGroundedJSONValue(contentSchema)
+	props["value"] = cloneGroundedJSONValue(contentSchema)
+	schema["allOf"] = []any{
+		requirePath,
+		map[string]any{
+			"anyOf": []any{
+				map[string]any{"required": []any{"content"}},
+				map[string]any{"required": []any{"text"}},
+				map[string]any{"required": []any{"body"}},
+				map[string]any{"required": []any{"value"}},
+			},
+		},
+	}
+	return schema
+}
+
+func cloneGroundedJSONValue(v any) any {
+	switch typed := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, value := range typed {
+			out[key] = cloneGroundedJSONValue(value)
+		}
+		return out
+	case []any:
+		out := make([]any, len(typed))
+		for i, value := range typed {
+			out[i] = cloneGroundedJSONValue(value)
+		}
+		return out
+	default:
+		return typed
+	}
 }
 
 func combineGroundingStatus(current, next string) string {

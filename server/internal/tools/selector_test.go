@@ -195,10 +195,11 @@ func TestToolSelector_WorkspaceFileTaskPrefersFileWorkflow(t *testing.T) {
 	defs := []ToolDefinition{
 		{Name: "exec", Description: "Run terminal commands."},
 		{Name: "ask", Description: "Ask user preference questions."},
-		{Name: "read", Description: "Read files from the workspace."},
+		{Name: "file_read", Description: "Read files from the workspace."},
 		{Name: "ls", Description: "List files in directories."},
 		{Name: "find", Description: "Find text in files."},
-		{Name: "write", Description: "Write files to the workspace."},
+		{Name: "file_write", Description: "Write files to the workspace."},
+		{Name: "file_delete", Description: "Delete files from the workspace."},
 		{Name: "convert", Description: "Convert and parse CSV/XLSX files."},
 		{Name: "calendar", Description: "Create and review calendar events."},
 		{Name: "email", Description: "Search and triage inbox messages."},
@@ -210,7 +211,7 @@ func TestToolSelector_WorkspaceFileTaskPrefersFileWorkflow(t *testing.T) {
 	selected := ts.Select("Review all files in the research/ folder and write a daily summary to daily_briefing.md.", defs)
 	names := toolNames(selected)
 
-	if !containsToolName(selected, "read") || !containsToolName(selected, "write") {
+	if !containsToolName(selected, "file_read") || !containsToolName(selected, "file_write") || !containsToolName(selected, "file_delete") {
 		t.Fatalf("expected file workflow tools for workspace file task, got=%v", names)
 	}
 	if containsToolName(selected, "calendar") || containsToolName(selected, "email") {
@@ -221,12 +222,75 @@ func TestToolSelector_WorkspaceFileTaskPrefersFileWorkflow(t *testing.T) {
 	}
 }
 
+func TestToolSelector_StructuredWorkspaceArtifactTaskUsesMinimalFileWorkflow(t *testing.T) {
+	ts := DefaultToolSelector()
+	ts.MaxTools = 10
+	defs := []ToolDefinition{
+		{Name: "ask", Description: "Ask user preference questions."},
+		{Name: "file_read", Description: "Read files from the workspace."},
+		{Name: "file_write", Description: "Write files to the workspace."},
+		{Name: "file_delete", Description: "Delete files from the workspace."},
+		{Name: "edit", Description: "Edit files in place."},
+		{Name: "ls", Description: "List files in directories."},
+		{Name: "find", Description: "Find files and text in the workspace."},
+		{Name: "grep", Description: "Search matching lines in files."},
+		{Name: "convert", Description: "Convert, normalize, and extract content from local files in multiple formats."},
+		{Name: "pdf", Description: "Read and extract text from PDF files."},
+		{Name: "image", Description: "Inspect images from the workspace."},
+		{Name: "calendar", Description: "Create and review calendar events."},
+	}
+
+	selected := ts.Select("I have a report in openclaw_report.pdf in my workspace. Extract the answers and write them one answer per line to answer.txt.", defs)
+	names := toolNames(selected)
+
+	for _, required := range []string{"file_read", "file_write", "ls", "find", "convert", "pdf"} {
+		if !containsToolName(selected, required) {
+			t.Fatalf("expected structured local artifact workflow to keep %s, got=%v", required, names)
+		}
+	}
+	for _, excluded := range []string{"file_delete", "edit", "grep", "image", "calendar"} {
+		if containsToolName(selected, excluded) {
+			t.Fatalf("expected structured local artifact workflow to prune %s, got=%v", excluded, names)
+		}
+	}
+}
+
+func TestToolSelector_StructuredWorkspaceArtifactTaskIsNotPDFSpecific(t *testing.T) {
+	ts := DefaultToolSelector()
+	ts.MaxTools = 10
+	defs := []ToolDefinition{
+		{Name: "ask", Description: "Ask user preference questions."},
+		{Name: "file_read", Description: "Read files from the workspace."},
+		{Name: "file_write", Description: "Write files to the workspace."},
+		{Name: "file_delete", Description: "Delete files from the workspace."},
+		{Name: "edit", Description: "Edit files in place."},
+		{Name: "ls", Description: "List files in directories."},
+		{Name: "find", Description: "Find files and text in the workspace."},
+		{Name: "grep", Description: "Search matching lines in files."},
+		{Name: "convert", Description: "Convert, normalize, and extract content from local files in multiple formats."},
+		{Name: "pdf", Description: "Read and extract text from PDF files."},
+		{Name: "calendar", Description: "Create and review calendar events."},
+	}
+
+	selected := ts.Select("Read summary_source.txt from my workspace and write a concise three-paragraph summary to summary_output.txt.", defs)
+	names := toolNames(selected)
+
+	for _, required := range []string{"file_read", "file_write", "ls", "find", "convert"} {
+		if !containsToolName(selected, required) {
+			t.Fatalf("expected structured local artifact workflow to keep %s, got=%v", required, names)
+		}
+	}
+	if containsToolName(selected, "pdf") || containsToolName(selected, "calendar") || containsToolName(selected, "file_delete") {
+		t.Fatalf("expected non-PDF structured local artifact task to stay compact, got=%v", names)
+	}
+}
+
 func TestToolSelector_LiveWebQueryAvoidsLocalFileTools(t *testing.T) {
 	ts := DefaultToolSelector()
 	defs := []ToolDefinition{
 		{Name: "web_search", Description: "Search the web for latest sources and references."},
-		{Name: "read", Description: "Read workspace files."},
-		{Name: "write", Description: "Write workspace files."},
+		{Name: "file_read", Description: "Read workspace files."},
+		{Name: "file_write", Description: "Write workspace files."},
 		{Name: "convert", Description: "Convert CSV and XLSX files."},
 		{Name: "exec", Description: "Run terminal commands."},
 	}
@@ -236,7 +300,7 @@ func TestToolSelector_LiveWebQueryAvoidsLocalFileTools(t *testing.T) {
 	if !containsToolName(selected, "web_search") {
 		t.Fatalf("expected web_search for live web query, got=%v", names)
 	}
-	if containsToolName(selected, "read") || containsToolName(selected, "write") || containsToolName(selected, "convert") {
+	if containsToolName(selected, "file_read") || containsToolName(selected, "file_write") || containsToolName(selected, "convert") {
 		t.Fatalf("expected live web query to suppress local file tools, got=%v", names)
 	}
 }
@@ -246,7 +310,7 @@ func TestToolSelector_UIReviewerNeedsUIEvidence(t *testing.T) {
 	defs := []ToolDefinition{
 		{Name: "ui_reviewer", Description: "Review screenshots and UI layouts."},
 		{Name: "analyze", Description: "Analyze files and reports."},
-		{Name: "read", Description: "Read workspace files."},
+		{Name: "file_read", Description: "Read workspace files."},
 	}
 
 	selected := ts.Select("Review the files in docs/ and summarize the report.", defs)

@@ -9,6 +9,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 // Integration provides ZimaOS-specific functionality.
@@ -69,10 +71,8 @@ func NewIntegration(cfg Config) *Integration {
 	}
 
 	return &Integration{
-		config: cfg,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		config:     cfg,
+		httpClient: network.NewPooledHTTPClient(5 * time.Minute),
 	}
 }
 

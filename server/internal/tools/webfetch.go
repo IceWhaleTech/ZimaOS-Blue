@@ -34,11 +34,11 @@ const (
 	webFetchDefaultMaxChars         = 50_000
 	webFetchDefaultMaxCharsCap      = 200_000
 	webFetchDefaultMaxResponseBytes = 2_000_000
-	webFetchDefaultTimeout          = 20 * time.Second
+	webFetchDefaultTimeout          = 5 * time.Minute
 	webFetchDefaultMaxRedirects     = 3
 	webFetchDefaultCacheTTL         = 5 * time.Minute
 	webFetchDefaultFirecrawlBaseURL = "https://api.firecrawl.dev"
-	webFetchDefaultFirecrawlTimeout = 15 * time.Second
+	webFetchDefaultFirecrawlTimeout = webFetchDefaultTimeout
 	webFetchMinReadableChars        = 240
 	webFetchDefaultUserAgent        = "Mozilla/5.0 (compatible; ZimaOS-Blue/1.0; +https://github.com/IceWhaleTech/ZimaOS-Blue)"
 )
@@ -914,49 +914,14 @@ func detectWebFetchAuthWall(statusCode int, finalURL, title, content string) (bo
 }
 
 func containsWebFetchLoginSignal(lowerURL, lowerTitle, lowerContent string) bool {
-	if strings.Contains(lowerURL, "/login") || strings.Contains(lowerURL, "/signin") || strings.Contains(lowerURL, "authwall") {
+	if containsAnyWebFetchCue(webFetchLoginURLMatcher, lowerURL) {
 		return true
 	}
-	loginSignals := []string{
-		"log in",
-		"sign in",
-		"create account",
-		"create an account",
-		"forgot password",
-		"continue with google",
-		"continue with apple",
-		"continue with email",
-		"password",
-		"username",
-	}
-	matches := 0
-	for _, signal := range loginSignals {
-		if strings.Contains(lowerTitle, signal) || strings.Contains(lowerContent, signal) {
-			matches++
-		}
-	}
-	return matches >= 2
+	return countDistinctWebFetchCues(webFetchLoginFieldMatcher, lowerTitle, lowerContent) >= 2
 }
 
 func containsWebFetchChallengeSignal(lowerURL, lowerTitle, lowerContent string) bool {
-	challengeSignals := []string{
-		"captcha",
-		"verify you are human",
-		"verify you’re human",
-		"are you a robot",
-		"attention required",
-		"access denied",
-		"unusual traffic",
-		"cloudflare",
-		"enable javascript and cookies",
-		"human verification",
-	}
-	for _, signal := range challengeSignals {
-		if strings.Contains(lowerURL, signal) || strings.Contains(lowerTitle, signal) || strings.Contains(lowerContent, signal) {
-			return true
-		}
-	}
-	return false
+	return containsAnyWebFetchCue(webFetchChallengeMatcher, lowerURL, lowerTitle, lowerContent)
 }
 
 func mergeWebFetchCookieHeaders(base, override string) string {

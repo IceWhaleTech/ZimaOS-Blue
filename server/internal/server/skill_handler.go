@@ -20,6 +20,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
@@ -153,8 +154,10 @@ type SkillEventPublisher interface {
 // SkillHandler handles skill-related HTTP requests
 type SkillHandler struct {
 	registry            *skill.Registry
-	store               *skillstore.Store                // Local database store for skills (browse/search only)
-	market              *skillmarket.Service             // Authoritative marketplace service
+	store               *skillstore.Store    // Local database store for skills (browse/search only)
+	market              *skillmarket.Service // Authoritative marketplace service
+	marketFactory       func() (*skillmarket.Service, error)
+	marketMu            sync.Mutex
 	syncService         *skillstore.SyncService          // Sync service for periodic updates
 	featuredLoader      *skillstore.FeaturedSkillsLoader // Featured skills fallback
 	localScanner        *skillstore.LocalSkillScanner    // Local skill discovery
@@ -179,12 +182,10 @@ type SkillHandler struct {
 // NewSkillHandler creates a new skill handler
 func NewSkillHandler(registry *skill.Registry) *SkillHandler {
 	h := &SkillHandler{
-		registry:     registry,
-		sources:      make(map[string]*SkillSource),
-		remoteSkills: make(map[string]*RemoteSkill),
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second, // Per-request timeout
-		},
+		registry:            registry,
+		sources:             make(map[string]*SkillSource),
+		remoteSkills:        make(map[string]*RemoteSkill),
+		httpClient:          network.NewPooledHTTPClient(5 * time.Minute),
 		useMockData:         false, // Default to not using mock data in production
 		useFeaturedFallback: true,  // Default to using featured skills as fallback
 		browseCache: cache.NewGenericCacheWithStats(cache.Config{
@@ -222,7 +223,49 @@ func (h *SkillHandler) SetStore(store *skillstore.Store) {
 
 // SetMarketplace sets the authoritative marketplace service.
 func (h *SkillHandler) SetMarketplace(market *skillmarket.Service) {
+	h.marketMu.Lock()
+	defer h.marketMu.Unlock()
 	h.market = market
+	h.marketFactory = nil
+}
+
+// SetMarketplaceFactory registers a lazy marketplace initializer.
+func (h *SkillHandler) SetMarketplaceFactory(factory func() (*skillmarket.Service, error)) {
+	h.marketMu.Lock()
+	defer h.marketMu.Unlock()
+	h.marketFactory = factory
+}
+
+func (h *SkillHandler) ensureMarketplace() (*skillmarket.Service, error) {
+	h.marketMu.Lock()
+	defer h.marketMu.Unlock()
+	if h.market != nil || h.marketFactory == nil {
+		return h.market, nil
+	}
+	market, err := h.marketFactory()
+	if err != nil {
+		return nil, err
+	}
+	h.market = market
+	return h.market, nil
+}
+
+func (h *SkillHandler) currentMarketplace() *skillmarket.Service {
+	h.marketMu.Lock()
+	defer h.marketMu.Unlock()
+	return h.market
+}
+
+func (h *SkillHandler) Close() error {
+	h.marketMu.Lock()
+	market := h.market
+	h.market = nil
+	h.marketFactory = nil
+	h.marketMu.Unlock()
+	if market == nil {
+		return nil
+	}
+	return market.Close()
 }
 
 // SetSyncService sets the sync service for periodic updates
@@ -421,9 +464,9 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 	}
 	ctx := c.Request().Context()
 
-	if h.market != nil {
+	if market, err := h.ensureMarketplace(); err == nil && market != nil {
 		for _, candidate := range skillIDAliases(id) {
-			if detail, err := h.market.GetSkill(ctx, candidate); err == nil && detail != nil {
+			if detail, err := market.GetSkill(ctx, candidate); err == nil && detail != nil {
 				return c.JSON(http.StatusOK, detail)
 			}
 		}
@@ -1290,12 +1333,12 @@ func (h *SkillHandler) downloadSkillMD(ctx context.Context, id string, rs *Remot
 // Supports both single SKILL.md downloads and full GitHub directory downloads.
 // Publishes progress events via the unified SSE broker.
 func (h *SkillHandler) InstallSkill(c echo.Context) error {
-	if h.market != nil {
+	if market, _ := h.ensureMarketplace(); market != nil {
 		id, err := validatedSkillID(c.Param("id"))
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
-		result, err := h.market.Install(c.Request().Context(), skillmarket.InstallRequest{ID: id})
+		result, err := market.Install(c.Request().Context(), skillmarket.InstallRequest{ID: id})
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
@@ -1470,8 +1513,8 @@ func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 		})
 	}
 
-	if h.market != nil {
-		if err := h.market.Uninstall(c.Request().Context(), id); err != nil {
+	if market, _ := h.ensureMarketplace(); market != nil {
+		if err := market.Uninstall(c.Request().Context(), id); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, map[string]interface{}{
@@ -1595,7 +1638,7 @@ func (h *SkillHandler) refreshSourcesInMemory(c echo.Context) error {
 	h.remoteSkills = make(map[string]*RemoteSkill)
 
 	// Create a context with timeout for external API calls (60 seconds for full pagination)
-	ctx, cancel := context.WithTimeout(c.Request().Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Minute)
 	defer cancel()
 
 	var wg sync.WaitGroup
@@ -2130,13 +2173,13 @@ func (r *RemoteSkillAdapter) Execute(ctx context.Context, input map[string]any) 
 
 // SearchSkills performs full-text search on skills in the local database
 func (h *SkillHandler) SearchSkills(c echo.Context) error {
-	if h.market != nil {
+	if market, _ := h.ensureMarketplace(); market != nil {
 		page, _ := strconv.Atoi(c.QueryParam("page"))
 		pageSize, _ := strconv.Atoi(c.QueryParam("page_size"))
 		if count, _ := strconv.Atoi(c.QueryParam("count")); count > 0 && pageSize == 0 {
 			pageSize = count
 		}
-		result, err := h.market.Search(c.Request().Context(), skillmarket.SearchQuery{
+		result, err := market.Search(c.Request().Context(), skillmarket.SearchQuery{
 			Query:               c.QueryParam("q"),
 			Category:            c.QueryParam("category"),
 			Categories:          parseCSV(c.QueryParam("categories")),
@@ -2281,8 +2324,8 @@ func (h *SkillHandler) SearchSkills(c echo.Context) error {
 
 // GetCategories returns all unique skill categories
 func (h *SkillHandler) GetCategories(c echo.Context) error {
-	if h.market != nil {
-		filters, err := h.market.Filters(c.Request().Context())
+	if market, _ := h.ensureMarketplace(); market != nil {
+		filters, err := market.Filters(c.Request().Context())
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
@@ -2360,14 +2403,14 @@ func (h *SkillHandler) GetStats(c echo.Context) error {
 
 // GetPopularSkills returns the most popular skills by downloads
 func (h *SkillHandler) GetPopularSkills(c echo.Context) error {
-	if h.market != nil {
+	if market, _ := h.ensureMarketplace(); market != nil {
 		limit := 20
 		if l := c.QueryParam("limit"); l != "" {
 			if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 100 {
 				limit = v
 			}
 		}
-		search, err := h.market.Search(c.Request().Context(), skillmarket.SearchQuery{
+		search, err := market.Search(c.Request().Context(), skillmarket.SearchQuery{
 			Sort:     "most_used",
 			Page:     1,
 			PageSize: limit,
@@ -2408,8 +2451,8 @@ func (h *SkillHandler) GetPopularSkills(c echo.Context) error {
 
 // GetRecentSkills returns the most recently updated skills
 func (h *SkillHandler) GetRecentSkills(c echo.Context) error {
-	if h.market != nil {
-		search, err := h.market.Search(c.Request().Context(), skillmarket.SearchQuery{
+	if market, _ := h.ensureMarketplace(); market != nil {
+		search, err := market.Search(c.Request().Context(), skillmarket.SearchQuery{
 			Sort:     "newest",
 			Page:     1,
 			PageSize: 20,
@@ -2505,9 +2548,9 @@ func (h *SkillHandler) TriggerSync(c echo.Context) error {
 // GetFeaturedSkills returns the curated list of featured skills
 // This serves as a fallback when external APIs fail
 func (h *SkillHandler) GetFeaturedSkills(c echo.Context) error {
-	if h.market != nil {
+	if market, _ := h.ensureMarketplace(); market != nil {
 		limit, _ := strconv.Atoi(c.QueryParam("limit"))
-		skills, err := h.market.Featured(c.Request().Context(), c.QueryParam("category"), c.QueryParam("source"), limit)
+		skills, err := market.Featured(c.Request().Context(), c.QueryParam("category"), c.QueryParam("source"), limit)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}

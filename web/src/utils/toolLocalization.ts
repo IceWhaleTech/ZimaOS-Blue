@@ -1,11 +1,35 @@
 type Translate = (key: string) => string
 type HasTranslation = (key: string) => boolean
 
+const PREFERRED_TOOL_NAME_MAP: Record<string, string> = {
+  read: 'file_read',
+  write: 'file_write',
+  memory_search: 'memory',
+  memory_get: 'memory',
+  memory_read: 'memory',
+  memory_write: 'memory',
+  memory_remember: 'memory',
+  memory_store: 'memory',
+  memory_forget: 'memory',
+  memory_delete: 'memory',
+  sessions_list: 'sessions',
+  sessions_history: 'sessions',
+  session_status: 'sessions',
+  sessions_spawn: 'sessions',
+  sessions_send: 'sessions',
+  web_search: 'web',
+  web_fetch: 'web',
+  web_read: 'web',
+  web_extract: 'web',
+  web_crawl: 'web',
+}
+
 const TOOL_NAME_ALIASES: Record<string, string[]> = {
   cron: ['scheduler'],
   image: ['mediagen'],
   message: ['reminder'],
   ppt: ['mediagen'],
+  web: ['web_search'],
 }
 
 const TOOL_DESCRIPTION_KEY_MAP: Record<string, string[]> = {
@@ -36,7 +60,7 @@ const TOOL_DESCRIPTION_KEY_MAP: Record<string, string[]> = {
   notifications: ['skills.builtin.notifications.description'],
   ppt: ['tools.descriptions.mediagen'],
   process: ['skills.builtin.processes.description'],
-  read: ['tools.descriptions.file_read'],
+  file_read: ['tools.descriptions.file_read', 'tools.descriptions.read'],
   reminder: ['skills.builtin.reminder.description'],
   reminders: ['skills.builtin.reminder.description'],
   sandbox: ['skills.builtin.sandbox.description'],
@@ -50,13 +74,14 @@ const TOOL_DESCRIPTION_KEY_MAP: Record<string, string[]> = {
   ui_reviewer: ['skills.builtin.ui-reviewer.description'],
   unit_converter: ['skills.builtin.unit-converter.description'],
   weather: ['skills.builtin.weather.description'],
+  web: ['tools.descriptions.web', 'tools.descriptions.web_search'],
   web_crawl: ['tools.descriptions.web_crawl'],
   web_extract: ['tools.descriptions.web_extract'],
   web_fetch: ['tools.descriptions.web_fetch'],
   web_read: ['tools.descriptions.web_read'],
   web_search: ['tools.descriptions.web_search'],
   workflows: ['skills.builtin.workflows.description'],
-  write: ['tools.descriptions.file_write'],
+  file_write: ['tools.descriptions.file_write', 'tools.descriptions.write'],
 }
 
 function toLegacyToolLabel(toolName: string): string {
@@ -89,7 +114,7 @@ function toLegacyToolLabel(toolName: string): string {
         .filter(Boolean)
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ')
-    }
+  }
 }
 
 function humanizeToolName(toolName: string): string {
@@ -105,32 +130,40 @@ function resolveFirstTranslated(keys: string[], t: Translate, te: HasTranslation
 }
 
 export function getLocalizedToolName(toolName: string, t: Translate, te: HasTranslation): string {
-  const directKey = `tools.names.${toolName}`
+  const preferredToolName = PREFERRED_TOOL_NAME_MAP[toolName] || toolName
+  const directKey = `tools.names.${preferredToolName}`
   if (te(directKey)) return t(directKey)
 
-  const aliases = TOOL_NAME_ALIASES[toolName] || []
+  const aliases = TOOL_NAME_ALIASES[preferredToolName] || []
   const aliasKeys = aliases.map((alias) => `tools.names.${alias}`)
   const aliasValue = resolveFirstTranslated(aliasKeys, t, te)
   if (aliasValue) return aliasValue
 
-  const legacyCandidates = [toolName, ...aliases].map((name) => `tools.names.${toLegacyToolLabel(name)}`)
+  const legacyCandidates = [preferredToolName, ...aliases].map(
+    (name) => `tools.names.${toLegacyToolLabel(name)}`
+  )
   const legacyValue = resolveFirstTranslated(legacyCandidates, t, te)
   if (legacyValue) return legacyValue
 
-  return humanizeToolName(toolName)
+  return humanizeToolName(preferredToolName)
 }
 
 export function getLocalizedToolDescription(
   toolName: string,
   fallbackDescription: string | undefined,
   t: Translate,
-  te: HasTranslation,
+  te: HasTranslation
 ): string {
-  const directKey = `tools.descriptions.${toolName}`
-  if (te(directKey)) return t(directKey)
-
-  const mappedValue = resolveFirstTranslated(TOOL_DESCRIPTION_KEY_MAP[toolName] || [], t, te)
+  const preferredToolName = PREFERRED_TOOL_NAME_MAP[toolName] || toolName
+  const mappedValue = resolveFirstTranslated(
+    TOOL_DESCRIPTION_KEY_MAP[preferredToolName] || [],
+    t,
+    te
+  )
   if (mappedValue) return mappedValue
+
+  const directKey = `tools.descriptions.${preferredToolName}`
+  if (te(directKey)) return t(directKey)
 
   return fallbackDescription || ''
 }

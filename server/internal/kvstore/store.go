@@ -11,9 +11,10 @@ import (
 	"sync"
 	"time"
 
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Common errors
@@ -65,8 +66,8 @@ func (e *entry) isExpired() bool {
 
 // MemoryStore is an in-memory key-value store.
 type MemoryStore struct {
-	mu    sync.RWMutex
-	data  map[string]*entry
+	mu   sync.RWMutex
+	data map[string]*entry
 }
 
 // NewMemoryStore creates a new in-memory store.
@@ -246,33 +247,34 @@ func parseKVTime(s *string) *time.Time {
 
 // NewSQLiteStore creates a new SQLite-backed store with its own database file.
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return fmt.Errorf("failed to enable WAL mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("failed to set busy timeout: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+			return fmt.Errorf("failed to set synchronous mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
+			return fmt.Errorf("failed to set wal autocheckpoint: %w", err)
+		}
+
+		store := &SQLiteStore{db: db}
+		if err := store.migrate(); err != nil {
+			return fmt.Errorf("failed to migrate: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, err
 	}
 
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-
-	// Enable WAL mode
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
-	}
-
-	// Set busy timeout
-	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
-	}
-
-	store := &SQLiteStore{db: db, ownsDB: true}
-	if err := store.migrate(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to migrate: %w", err)
-	}
-
-	return store, nil
+	return &SQLiteStore{db: db, ownsDB: true}, nil
 }
 
 // NewSQLiteStoreWithDB creates a kvstore backed by an existing *sql.DB connection.

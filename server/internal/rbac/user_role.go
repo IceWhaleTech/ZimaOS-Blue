@@ -6,8 +6,9 @@ import (
 	"errors"
 	"time"
 
-	z "github.com/IceWhaleTech/zorm"
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -40,19 +41,18 @@ type UserRoleService struct {
 
 // NewUserRoleService creates a new user role service
 func NewUserRoleService(dbPath string, rbac *RBAC) (*UserRoleService, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	svc := &UserRoleService{rbac: rbac}
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(2)
+		db.SetMaxIdleConns(1)
+		openSvc := &UserRoleService{db: db, rbac: rbac}
+		return openSvc.initDB()
+	})
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(1)
 
-	svc := &UserRoleService{db: db, rbac: rbac}
-	if err := svc.initDB(); err != nil {
-		db.Close()
-		return nil, err
-	}
-
+	svc.db = db
 	return svc, nil
 }
 
@@ -60,6 +60,15 @@ func NewUserRoleService(dbPath string, rbac *RBAC) (*UserRoleService, error) {
 func (s *UserRoleService) initDB() error {
 	_, err := s.db.Exec(`PRAGMA journal_mode=WAL`)
 	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`PRAGMA synchronous=FULL`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`PRAGMA wal_autocheckpoint=1000`); err != nil {
 		return err
 	}
 

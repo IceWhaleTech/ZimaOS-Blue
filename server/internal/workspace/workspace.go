@@ -91,6 +91,27 @@ func (m *Manager) readFileCached(path string) (string, bool) {
 	return content, true
 }
 
+// loadContextFileLocked resolves a well-known workspace context file to content.
+// MEMORY.md supports a backward-compatible fallback to memory/MEMORY.md when the
+// root file is missing or empty. Caller must hold m.mu (at least RLock).
+func (m *Manager) loadContextFileLocked(name string) (string, bool) {
+	primaryPath := m.resolveFilePath(name)
+	primaryContent, primaryOK := m.readFileCached(primaryPath)
+	if name != FileMEMORY {
+		return primaryContent, primaryOK
+	}
+	if primaryOK && strings.TrimSpace(primaryContent) != "" {
+		return primaryContent, true
+	}
+
+	fallbackPath := filepath.Join(m.dir, "memory", FileMEMORY)
+	if fallbackContent, fallbackOK := m.readFileCached(fallbackPath); fallbackOK && strings.TrimSpace(fallbackContent) != "" {
+		return fallbackContent, true
+	}
+
+	return primaryContent, primaryOK
+}
+
 // InvalidateFileCache clears the file cache (call after writes).
 func (m *Manager) InvalidateFileCache() {
 	m.fileCacheMu.Lock()
@@ -270,7 +291,7 @@ func (m *Manager) LoadBootstrapFiles() []BootstrapFile {
 	files := make([]BootstrapFile, 0, len(names)+3) // +3 for bootstrap + daily logs
 
 	for _, name := range names {
-		content, ok := m.readFileCached(m.resolveFilePath(name))
+		content, ok := m.loadContextFileLocked(name)
 		if !ok {
 			files = append(files, BootstrapFile{Name: name, Missing: true})
 			continue
@@ -307,7 +328,7 @@ func (m *Manager) LoadContextFiles() map[string]string {
 	ctx := make(map[string]string, len(names)+3)
 
 	for _, name := range names {
-		s, ok := m.readFileCached(m.resolveFilePath(name))
+		s, ok := m.loadContextFileLocked(name)
 		if !ok || strings.TrimSpace(s) == "" {
 			continue
 		}

@@ -78,7 +78,7 @@ type AntigravityHandler struct {
 func NewAntigravityHandler() *AntigravityHandler {
 	return &AntigravityHandler{
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 5 * time.Minute,
 		},
 		cacheTTL: 5 * time.Minute,
 	}

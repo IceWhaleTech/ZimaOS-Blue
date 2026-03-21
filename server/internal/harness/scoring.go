@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -14,7 +15,18 @@ type scoreAttempt struct {
 	sufficient bool
 }
 
-func scoreGroupRun(group *RunGroup, item *RunGroupItem, run *Run) Scorecard {
+type judgeAttempt struct {
+	card    Scorecard
+	backend string
+	model   string
+}
+
+func (c *Controller) scoreGroupRun(ctx context.Context, group *RunGroup, item *RunGroupItem, run *Run) Scorecard {
+	evaluator, _ := c.integrations()
+	return scoreGroupRunWithContext(ctx, group, item, run, evaluator)
+}
+
+func scoreGroupRunWithContext(ctx context.Context, group *RunGroup, item *RunGroupItem, run *Run, evaluator JudgeEvaluator) Scorecard {
 	threshold := defaultGroupPassThreshold
 	mode := ScoringModeHybrid
 	if group != nil {
@@ -30,35 +42,37 @@ func scoreGroupRun(group *RunGroup, item *RunGroupItem, run *Run) Scorecard {
 	case ScoringModeRule:
 		rule := scoreRunByRule(group, item, run, threshold)
 		if rule.sufficient {
-			return rule.card
+			return annotateScorecard(rule.card, run, "not_used", groupJudgeModel(group))
 		}
-		return makeScorecard(group, item, run, ScoringModeRule, ScoreVerdictPartial, 0.4, map[string]interface{}{
+		card := makeScorecard(group, item, run, ScoringModeRule, ScoreVerdictPartial, 0.4, map[string]interface{}{
 			"scorer":     "rule",
 			"reason":     "insufficient deterministic checks",
 			"sufficient": false,
 		}, scoreEvidence(item, run), nil)
+		return annotateScorecard(card, run, "not_used", groupJudgeModel(group))
 	case ScoringModeJudge:
-		return scoreRunByJudge(group, item, run, threshold)
+		judge := scoreRunByJudge(ctx, group, item, run, threshold, evaluator)
+		return annotateScorecard(judge.card, run, judge.backend, judge.model)
 	default:
 		rule := scoreRunByRule(group, item, run, threshold)
 		if rule.sufficient {
-			return rule.card
+			return annotateScorecard(rule.card, run, "not_used", groupJudgeModel(group))
 		}
 		groundTruth := scoreRunByGroundTruth(group, item, run, threshold)
 		if groundTruth.sufficient {
-			return groundTruth.card
+			return annotateScorecard(groundTruth.card, run, "not_used", groupJudgeModel(group))
 		}
-		judge := scoreRunByJudge(group, item, run, threshold)
+		judge := scoreRunByJudge(ctx, group, item, run, threshold, evaluator)
 		if rule.card.BreakdownJSON != "" || groundTruth.card.BreakdownJSON != "" {
 			breakdown := map[string]interface{}{
 				"scorer":       "hybrid",
 				"rule":         decodeJSONMap(rule.card.BreakdownJSON),
 				"ground_truth": decodeJSONMap(groundTruth.card.BreakdownJSON),
-				"judge":        decodeJSONMap(judge.BreakdownJSON),
+				"judge":        decodeJSONMap(judge.card.BreakdownJSON),
 			}
-			judge.BreakdownJSON = marshalInterface(breakdown)
+			judge.card.BreakdownJSON = marshalInterface(breakdown)
 		}
-		return judge
+		return annotateScorecard(judge.card, run, judge.backend, judge.model)
 	}
 }
 
@@ -186,7 +200,49 @@ func scoreRunByGroundTruth(group *RunGroup, item *RunGroupItem, run *Run, thresh
 	return scoreAttempt{card: card, sufficient: true}
 }
 
-func scoreRunByJudge(group *RunGroup, item *RunGroupItem, run *Run, threshold float64) Scorecard {
+func scoreRunByJudge(ctx context.Context, group *RunGroup, item *RunGroupItem, run *Run, threshold float64, evaluator JudgeEvaluator) judgeAttempt {
+	model := groupJudgeModel(group)
+	calibration := runCalibrationSummary(run)
+	if evaluator != nil && model != "" {
+		result, err := evaluator.Evaluate(ctx, JudgeEvaluationRequest{
+			Model:       model,
+			Group:       group,
+			Item:        item,
+			Run:         run,
+			Calibration: calibration,
+		})
+		if err == nil && result != nil {
+			trace := cloneMap(result.Trace)
+			if trace == nil {
+				trace = map[string]interface{}{}
+			}
+			trace["judge"] = "evaluator"
+			trace["backend"] = strings.TrimSpace(result.Backend)
+			trace["model"] = strings.TrimSpace(result.Model)
+			trace["reason"] = strings.TrimSpace(result.Reason)
+			card := makeScorecard(group, item, run, ScoringModeJudge, result.Verdict, result.Score, map[string]interface{}{
+				"scorer": "judge",
+				"reason": strings.TrimSpace(result.Reason),
+			}, scoreEvidence(item, run), trace)
+			return judgeAttempt{
+				card:    card,
+				backend: firstNonEmpty(strings.TrimSpace(result.Backend), "evaluator"),
+				model:   firstNonEmpty(strings.TrimSpace(result.Model), model),
+			}
+		}
+		card := scoreRunByHeuristicJudge(group, item, run, threshold, model, map[string]interface{}{
+			"judge":           "heuristic",
+			"backend":         "heuristic",
+			"model":           model,
+			"fallback_reason": strings.TrimSpace(err.Error()),
+		})
+		return judgeAttempt{card: card, backend: "heuristic", model: model}
+	}
+	card := scoreRunByHeuristicJudge(group, item, run, threshold, model, nil)
+	return judgeAttempt{card: card, backend: "heuristic", model: model}
+}
+
+func scoreRunByHeuristicJudge(group *RunGroup, item *RunGroupItem, run *Run, threshold float64, model string, extraTrace map[string]interface{}) Scorecard {
 	score := 0.0
 	verdict := ScoreVerdictError
 	reason := "run missing"
@@ -251,13 +307,92 @@ func scoreRunByJudge(group *RunGroup, item *RunGroupItem, run *Run, threshold fl
 
 	trace := map[string]interface{}{
 		"judge":  "heuristic",
-		"model":  groupJudgeModel(group),
+		"model":  model,
 		"reason": reason,
+	}
+	for key, value := range extraTrace {
+		trace[key] = value
 	}
 	return makeScorecard(group, item, run, ScoringModeJudge, verdict, score, map[string]interface{}{
 		"scorer": "judge",
 		"reason": reason,
 	}, scoreEvidence(item, run), trace)
+}
+
+func annotateScorecard(card Scorecard, run *Run, judgeBackend string, judgeModel string) Scorecard {
+	breakdown := decodeJSONMap(card.BreakdownJSON)
+	if breakdown == nil {
+		breakdown = map[string]interface{}{}
+	}
+	breakdown["judge_backend"] = firstNonEmpty(strings.TrimSpace(judgeBackend), "not_used")
+	if strings.TrimSpace(judgeModel) != "" {
+		breakdown["judge_model"] = strings.TrimSpace(judgeModel)
+	}
+	if calibrationRef := metadataString(runMetadata(run), "calibration_ref"); calibrationRef != "" {
+		breakdown["calibration_ref"] = calibrationRef
+	}
+	breakdown["takeaway_candidate_count"] = takeawayCandidateCount(run)
+	card.BreakdownJSON = marshalInterface(breakdown)
+
+	trace := decodeJSONMap(card.JudgeTraceJSON)
+	if trace == nil {
+		trace = map[string]interface{}{}
+	}
+	trace["judge_backend"] = firstNonEmpty(strings.TrimSpace(judgeBackend), "not_used")
+	if strings.TrimSpace(judgeModel) != "" {
+		trace["judge_model"] = strings.TrimSpace(judgeModel)
+	}
+	if calibrationRef := metadataString(runMetadata(run), "calibration_ref"); calibrationRef != "" {
+		trace["calibration_ref"] = calibrationRef
+	}
+	trace["takeaway_candidate_count"] = takeawayCandidateCount(run)
+	card.JudgeTraceJSON = marshalInterface(trace)
+	return card
+}
+
+func runMetadata(run *Run) map[string]interface{} {
+	if run == nil {
+		return nil
+	}
+	return run.Metadata
+}
+
+func runCalibrationSummary(run *Run) map[string]interface{} {
+	meta := runMetadata(run)
+	if meta == nil {
+		return nil
+	}
+	raw, ok := meta["calibration"].(map[string]interface{})
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	return cloneMap(raw)
+}
+
+func cloneMap(in map[string]interface{}) map[string]interface{} {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func takeawayCandidateCount(run *Run) int {
+	meta := runMetadata(run)
+	if meta == nil {
+		return 0
+	}
+	switch value := meta["takeaway_candidates"].(type) {
+	case []interface{}:
+		return len(value)
+	case []map[string]interface{}:
+		return len(value)
+	default:
+		return 0
+	}
 }
 
 func makeScorecard(group *RunGroup, item *RunGroupItem, run *Run, mode ScoringMode, verdict ScoreVerdict, score float64, breakdown map[string]interface{}, evidence map[string]interface{}, judgeTrace map[string]interface{}) Scorecard {

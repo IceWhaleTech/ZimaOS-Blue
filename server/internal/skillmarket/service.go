@@ -25,7 +25,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/crawler"
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -56,9 +58,27 @@ type Service struct {
 	stopCh            chan struct{}
 	discoverMu        sync.Mutex
 	discoverStatus    DiscoverStatus
+	ownsDB            bool
 }
 
 func NewService(db *sql.DB, opts Options) (*Service, error) {
+	return newService(db, opts, false)
+}
+
+func NewServiceWithDBPath(dbPath string, opts Options) (*Service, error) {
+	db, err := dbutil.OpenSQLiteSimple(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open skillmarket db: %w", err)
+	}
+	svc, err := newService(db, opts, true)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return svc, nil
+}
+
+func newService(db *sql.DB, opts Options, ownsDB bool) (*Service, error) {
 	store, err := NewStore(db)
 	if err != nil {
 		return nil, err
@@ -80,9 +100,10 @@ func NewService(db *sql.DB, opts Options) (*Service, error) {
 		httpClient:        opts.HTTPClient,
 		scanner:           opts.Scanner,
 		stopCh:            make(chan struct{}),
+		ownsDB:            ownsDB,
 	}
 	if svc.httpClient == nil {
-		svc.httpClient = &http.Client{Timeout: 30 * time.Second}
+		svc.httpClient = network.NewPooledHTTPClient(5 * time.Minute)
 	}
 	if svc.scanner == nil {
 		svc.scanner = NewScanner(nil)
@@ -169,6 +190,14 @@ func (s *Service) Stop() {
 	s.stopOnce.Do(func() {
 		close(s.stopCh)
 	})
+}
+
+func (s *Service) Close() error {
+	s.Stop()
+	if !s.ownsDB || s.store == nil || s.store.db == nil {
+		return nil
+	}
+	return s.store.db.Close()
 }
 
 func (s *Service) GetDiscoverStatus() DiscoverStatus {

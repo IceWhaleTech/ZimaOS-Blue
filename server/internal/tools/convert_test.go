@@ -225,3 +225,15 @@ func TestSimpleConvertTaskResultIncludesTaskIDForAsyncResults(t *testing.T) {
 		t.Fatalf("async = %#v, want true", got["async"])
 	}
 }
+
+func TestConvertWaitDefaultsAndCapsAreLonger(t *testing.T) {
+	if defaultConvertSyncWait != 5*time.Minute {
+		t.Fatalf("defaultConvertSyncWait = %v, want %v", defaultConvertSyncWait, 5*time.Minute)
+	}
+	if maxConvertWait != 300*time.Second {
+		t.Fatalf("maxConvertWait = %v, want %v", maxConvertWait, 300*time.Second)
+	}
+	if got := requestedConvertWait(600_000); got != 300*time.Second {
+		t.Fatalf("requestedConvertWait clamp = %v, want %v", got, 300*time.Second)
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/scenecompose"
 	basetask "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -169,6 +170,13 @@ func (m *Manager) InitConfigs() {
 
 	// Build priority-sorted providerOrder + modelMap (higher priority wins conflicts)
 	m.rebuildProviderOrderLocked()
+}
+
+func (m *Manager) GetFallbackModelStatus(modelID string) (*scenecompose.ModelStatus, error) {
+	if m == nil || m.fallback == nil {
+		return nil, fmt.Errorf("fallback engine unavailable")
+	}
+	return m.fallback.GetFallbackModelStatus(modelID)
 }
 
 // ListConfigs returns all media provider configurations.
@@ -374,6 +382,14 @@ func (m *Manager) RenderFallbackPage(token string) (string, bool) {
 		return "", false
 	}
 	return fallback.RenderPage(token)
+}
+
+// ReadServedURL reads a locally cached media asset by its served URL.
+func (m *Manager) ReadServedURL(servedURL string) ([]byte, error) {
+	if m == nil || m.storage == nil {
+		return nil, fmt.Errorf("media storage unavailable")
+	}
+	return m.storage.ReadServedURL(servedURL)
 }
 
 // HasActiveProviders returns true if at least one media generation provider is registered.

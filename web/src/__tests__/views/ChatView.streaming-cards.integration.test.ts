@@ -57,6 +57,20 @@ const mocks = vi.hoisted(() => ({
     cancelJob: vi.fn(),
     consumePendingFocusJobId: vi.fn(),
   },
+  taskProjectionsStore: {
+    currentTasks: [] as Array<Record<string, unknown>>,
+    currentActiveTasks: [] as Array<Record<string, unknown>>,
+    currentTerminalTasks: [] as Array<Record<string, unknown>>,
+    backgroundTasks: [] as Array<Record<string, unknown>>,
+    loading: false,
+    hydrated: true,
+    hasActiveTasks: false,
+    refreshNow: vi.fn(),
+    setConversation: vi.fn(),
+    cancelTask: vi.fn(),
+    openTask: vi.fn(),
+    stopPolling: vi.fn(),
+  },
   mediaGenerate: {
     showPanel: { value: false },
     intent: { value: null },
@@ -135,6 +149,18 @@ vi.mock('@/api/chat', () => ({
   },
 }))
 
+const helpers = vi.hoisted(() => ({
+  asAsyncSFCModule(component: Record<string, unknown>) {
+    return {
+      __esModule: true,
+      __isTeleport: false,
+      __isKeepAlive: false,
+      default: component,
+      ...component,
+    }
+  },
+}))
+
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => mocks.settingsStore,
 }))
@@ -145,6 +171,10 @@ vi.mock('@/stores/providerPool', () => ({
 
 vi.mock('@/stores/deepResearchJobs', () => ({
   useDeepResearchJobsStore: () => mocks.deepResearchJobsStore,
+}))
+
+vi.mock('@/stores/taskProjections', () => ({
+  useTaskProjectionsStore: () => mocks.taskProjectionsStore,
 }))
 
 vi.mock('@/stores/notification', () => ({
@@ -220,48 +250,89 @@ vi.mock('@/composables/useMediaGenerate', () => ({
   useMediaGenerate: () => mocks.mediaGenerate,
 }))
 
-vi.mock('@/components/ConversationList.vue', () => ({
-  default: { name: 'ConversationList', template: '<div class="conversation-list-stub" />' },
-}))
+vi.mock('@/components/ConversationList.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ConversationList',
+    template: '<div class="conversation-list-stub" />',
+  })
+)
 
-vi.mock('@/components/ChatInput.vue', () => ({
-  default: { name: 'ChatInput', template: '<div class="chat-input-stub" />' },
-}))
+vi.mock('@/components/ChatInput.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ChatInput',
+    template: '<div class="chat-input-stub" />',
+  })
+)
 
-vi.mock('@/components/onboarding/PresetQuestions.vue', () => ({
-  default: { name: 'PresetQuestions', template: '<div class="preset-questions-stub" />' },
-}))
+vi.mock('@/components/onboarding/PresetQuestions.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'PresetQuestions',
+    template: '<div class="preset-questions-stub" />',
+  })
+)
 
-vi.mock('@/components/VirtualScroll.vue', () => ({
-  default: { name: 'VirtualScroll', template: '<div class="virtual-scroll-stub"><slot /></div>' },
-}))
+vi.mock('@/components/VirtualScroll.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'VirtualScroll',
+    template: '<div class="virtual-scroll-stub"><slot /></div>',
+  })
+)
 
-vi.mock('@/components/chat/TalkMode.vue', () => ({
-  default: { name: 'TalkMode', template: '<div class="talk-mode-stub" />' },
-}))
+vi.mock('@/components/chat/TalkMode.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'TalkMode',
+    template: '<div class="talk-mode-stub" />',
+  })
+)
 
-vi.mock('@/components/ToolApprovalDialog.vue', () => ({
-  default: { name: 'ToolApprovalDialog', template: '<div class="tool-approval-stub" />' },
-}))
+vi.mock('@/components/ToolApprovalDialog.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ToolApprovalDialog',
+    template: '<div class="tool-approval-stub" />',
+  })
+)
 
-vi.mock('@/components/ExecApprovalDialog.vue', () => ({
-  default: { name: 'ExecApprovalDialog', template: '<div class="exec-approval-stub" />' },
-}))
+vi.mock('@/components/ExecApprovalDialog.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ExecApprovalDialog',
+    template: '<div class="exec-approval-stub" />',
+  })
+)
 
-vi.mock('@/components/MediaParamPanel.vue', () => ({
-  default: { name: 'MediaParamPanel', template: '<div class="media-param-panel-stub" />' },
-}))
+vi.mock('@/components/MediaParamPanel.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'MediaParamPanel',
+    template: '<div class="media-param-panel-stub" />',
+  })
+)
 
-vi.mock('@/components/AgentTaskPanel.vue', () => ({
-  default: { name: 'AgentTaskPanel', template: '<div class="agent-task-panel-stub" />' },
-}))
+vi.mock('@/components/AgentTaskPanel.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'AgentTaskPanel',
+    template: '<div class="agent-task-panel-stub" />',
+  })
+)
 
-vi.mock('@/components/DeepResearchTaskDock.vue', () => ({
-  default: {
+vi.mock('@/components/DeepResearchTaskDock.vue', () =>
+  helpers.asAsyncSFCModule({
     name: 'DeepResearchTaskDock',
     template: '<div class="deep-research-task-dock-stub" />',
-  },
-}))
+  })
+)
+
+vi.mock('@/components/UserTaskProjectionCard.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'UserTaskProjectionCard',
+    template: '<div class="agent-task-panel-stub" />',
+  })
+)
+
+vi.mock('@/components/UserTaskProjectionDock.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'UserTaskProjectionDock',
+    template: '<div class="deep-research-task-dock-stub" />',
+  })
+)
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -451,6 +522,15 @@ describe('ChatView streaming card chain integration', () => {
     mocks.approvalApi.updateConfig.mockReset().mockResolvedValue({})
     mocks.systemWriteLog.mockReset().mockResolvedValue(undefined)
     mocks.deepResearchJobsStore.fetchActiveJobs.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.currentTasks = []
+    mocks.taskProjectionsStore.currentActiveTasks = []
+    mocks.taskProjectionsStore.currentTerminalTasks = []
+    mocks.taskProjectionsStore.backgroundTasks = []
+    mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.handleGlobalEvent.mockReset()
     mocks.deepResearchJobsStore.applyJobSnapshot.mockReset()
     mocks.deepResearchJobsStore.openJob.mockReset().mockResolvedValue(undefined)
@@ -1124,6 +1204,127 @@ describe('ChatView streaming card chain integration', () => {
     expect(wrapper.text()).toContain('Object Map')
     expect(wrapper.text()).toContain('Provider obligations')
     expect(wrapper.text()).toContain('Need delegated acts publication date')
+  })
+
+  it('renders streamed deep research process cards as a single timeline bubble and keeps the final result separate', async () => {
+    const progressBlock = makeTypelessBlock({
+      type: 'deep-research-progress',
+      id: 'dr-progress-1',
+      job_id: 'job-1',
+      conversation_id: 'conv-1',
+      query: 'EU AI Act provider obligations',
+      mode: 'deep',
+      stage: 'retrieve',
+      status: 'running',
+      progress: 38,
+      iteration: 1,
+      latest_action: 'initial_retrieve',
+    })
+    const planningBlock = makeTypelessBlock({
+      type: 'deep-research-event',
+      id: 'dr-event-1',
+      job_id: 'job-1',
+      conversation_id: 'conv-1',
+      query: 'EU AI Act provider obligations',
+      mode: 'deep',
+      event_kind: 'planning',
+      status: 'info',
+      summary: 'Planned 5 research task(s)',
+      iteration: 1,
+      task_count: 5,
+      tasks: [{ question: 'Review provider duties', axis: 'official' }],
+    })
+    const sourceBlock = makeTypelessBlock({
+      type: 'deep-research-event',
+      id: 'dr-event-2',
+      job_id: 'job-1',
+      conversation_id: 'conv-1',
+      query: 'EU AI Act provider obligations',
+      mode: 'deep',
+      event_kind: 'source',
+      status: 'info',
+      summary: 'Collected 3 source(s)',
+      iteration: 1,
+      parallelism: 4,
+      sources: [
+        {
+          title: 'EU AI Act text',
+          url: 'https://eur-lex.europa.eu/eli/reg/2024/1689/oj',
+          domain: 'eur-lex.europa.eu',
+        },
+      ],
+    })
+    const finalResultBlock = makeTypelessBlock({
+      type: 'deep-research',
+      id: 'dr-result-1',
+      query: 'EU AI Act provider obligations',
+      mode: 'deep',
+      status: 'completed',
+      answer: 'Provider obligations are organized by role and timeline.',
+      iterations: 2,
+      evidence_count: 3,
+    })
+
+    const persistedMessages = [
+      {
+        id: 'msg-user-dr',
+        conversation_id: 'conv-1',
+        role: 'user',
+        content: 'Research EU AI Act provider obligations.',
+        created_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'msg-assistant-dr-process',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: [progressBlock, planningBlock, sourceBlock].join('\n\n'),
+        created_at: '2026-03-08T00:00:01.000Z',
+      },
+      {
+        id: 'msg-assistant-dr-result',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: finalResultBlock,
+        created_at: '2026-03-08T00:00:02.000Z',
+      },
+    ]
+
+    vi.mocked(messageApi.list)
+      .mockResolvedValueOnce({ data: [] } as never)
+      .mockResolvedValueOnce({ data: persistedMessages } as never)
+
+    mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+      expect(_conversationId).toBe('conv-1')
+      expect(request).toEqual(
+        expect.objectContaining({
+          message: 'Research EU AI Act provider obligations.',
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        })
+      )
+
+      options.onMessage({ delta: `${progressBlock}\n\n`, done: false })
+      options.onMessage({ delta: `${planningBlock}\n\n`, done: false })
+      options.onMessage({ delta: sourceBlock, done: false })
+      options.onNewMessage?.(1)
+      options.onMessage({ delta: finalResultBlock, done: false })
+      options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+    })
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    await store.sendMessage('Research EU AI Act provider obligations.')
+    await settleView()
+
+    expect(store.messages).toEqual(persistedMessages)
+    expect(wrapper.find('#dr-progress-1').exists()).toBe(true)
+    expect(wrapper.find('#dr-result-1').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Planned 5 research task(s)')
+    expect(wrapper.text()).toContain('Collected 3 source(s)')
+    expect(wrapper.text()).toContain('Provider obligations are organized by role and timeline.')
+
+    const timelineRoot = wrapper.get('#dr-progress-1').element as HTMLElement
+    expect(timelineRoot.closest('.chat-assistant-bubble')).not.toBeNull()
   })
 
   it('opens the app sidebar from mobile chat view when the global header is hidden', async () => {

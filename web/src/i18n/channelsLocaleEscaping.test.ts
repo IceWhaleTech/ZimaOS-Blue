@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { createI18n } from 'vue-i18n'
 
 type LocaleLeaf = string | number | boolean | null | undefined
-type LocaleBranch = Record<string, LocaleLeaf | LocaleBranch | LocaleLeaf[] | LocaleBranch[]>
-type ChannelsMessages = { channels?: LocaleBranch }
+type LocaleValue = LocaleLeaf | LocaleNode | LocaleLeaf[] | LocaleNode[]
+interface LocaleNode {
+  [key: string]: LocaleValue
+}
+type ChannelsMessages = { channels?: LocaleNode }
 
 const localeModules = import.meta.glob<{ default: ChannelsMessages }>('./locales/*.ts', {
   eager: true,
@@ -44,9 +47,15 @@ describe('channels locale coverage', () => {
 
     const enUSPath = entries.find(([modulePath]) => modulePath.endsWith('/en-US.ts'))?.[0]
     expect(enUSPath).toBeTruthy()
+    if (!enUSPath) {
+      throw new Error('Missing en-US locale module')
+    }
 
-    const referenceChannels = enUSPath ? localeModules[enUSPath].default?.channels : undefined
+    const referenceChannels = localeModules[enUSPath]?.default?.channels
     expect(referenceChannels).toBeTruthy()
+    if (!referenceChannels) {
+      throw new Error('Missing en-US channels reference')
+    }
 
     const requiredKeys = collectLeafKeys(referenceChannels)
     expect(requiredKeys.length).toBeGreaterThan(0)
@@ -56,6 +65,10 @@ describe('channels locale coverage', () => {
       const locale = localeFromModulePath(modulePath)
       const channels = mod.default?.channels
       expect(channels, `${locale} should expose channels`).toBeTruthy()
+      if (!channels) {
+        missingKeys.push(`${locale}: channels`)
+        continue
+      }
 
       for (const key of requiredKeys) {
         const segments = key.split('.')
@@ -81,9 +94,15 @@ describe('channels locale coverage', () => {
 
     const enUSPath = entries.find(([modulePath]) => modulePath.endsWith('/en-US.ts'))?.[0]
     expect(enUSPath).toBeTruthy()
+    if (!enUSPath) {
+      throw new Error('Missing en-US locale module')
+    }
 
-    const referenceChannels = enUSPath ? localeModules[enUSPath].default?.channels : undefined
+    const referenceChannels = localeModules[enUSPath]?.default?.channels
     expect(referenceChannels).toBeTruthy()
+    if (!referenceChannels) {
+      throw new Error('Missing en-US channels reference')
+    }
 
     const requiredKeys = collectLeafKeys(referenceChannels)
     expect(requiredKeys.length).toBeGreaterThan(0)

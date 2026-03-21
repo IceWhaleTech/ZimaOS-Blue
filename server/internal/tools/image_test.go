@@ -115,6 +115,50 @@ func TestImageToolReviewFallsBackToOCR(t *testing.T) {
 	}
 }
 
+func TestNewImageToolUsesLongerDefaultDownloadTimeout(t *testing.T) {
+	tool := NewImageTool(nil, nil, nil)
+	if tool.httpClient == nil {
+		t.Fatal("expected http client")
+	}
+	if tool.httpClient.Timeout != 5*time.Minute {
+		t.Fatalf("http timeout = %v, want %v", tool.httpClient.Timeout, 5*time.Minute)
+	}
+}
+
+func TestRegisterImageToolRegistersBenchFriendlyAliases(t *testing.T) {
+	registry := NewRegistry()
+	RegisterImageTool(registry, nil, func(_ context.Context, _ ImageGenerateRequest) (*ImageTaskResult, error) {
+		return &ImageTaskResult{
+			ID:     "img-1",
+			Status: "succeeded",
+			Outputs: []ImageAsset{{
+				URL: "/tmp/robot_cafe.png",
+			}},
+		}, nil
+	}, nil)
+
+	if registry.Get("image") == nil {
+		t.Fatal("expected native image tool to be registered")
+	}
+	if registry.Get("image_generation") == nil {
+		t.Fatal("expected image_generation alias to be registered")
+	}
+	if registry.Get("generate_image") == nil || registry.Get("generateImage") == nil {
+		t.Fatal("expected legacy image aliases to remain callable")
+	}
+	if !registry.IsDisabled("generate_image") || !registry.IsDisabled("generateImage") {
+		t.Fatal("expected legacy image aliases to stay hidden from model exposure")
+	}
+
+	visible := registry.List()
+	if !containsString(visible, "image") || !containsString(visible, "image_generation") {
+		t.Fatalf("expected visible image tools to include native and bench alias, got=%v", visible)
+	}
+	if containsString(visible, "generate_image") || containsString(visible, "generateImage") {
+		t.Fatalf("expected legacy aliases to stay hidden, got=%v", visible)
+	}
+}
+
 func TestImageToolGenerateRoutesBananaSlidesToPPTService(t *testing.T) {
 	tool := NewImageTool(nil, func(context.Context, ImageGenerateRequest) (*ImageTaskResult, error) {
 		t.Fatal("plain image generation should not run when ppt slide-asset service is selected")
@@ -703,6 +747,50 @@ func TestImageToolGenerateUsesReferenceInputsForEdit(t *testing.T) {
 	payload := result.(map[string]interface{})
 	if payload["task_id"] != "task-2" {
 		t.Fatalf("task_id = %v, want task-2", payload["task_id"])
+	}
+}
+
+func TestImageToolGenerateCapturesOutputPath(t *testing.T) {
+	var captured ImageGenerateRequest
+	tool := NewImageTool(nil, func(_ context.Context, req ImageGenerateRequest) (*ImageTaskResult, error) {
+		captured = req
+		return &ImageTaskResult{ID: "task-output-path", Status: "succeeded"}, nil
+	}, nil)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "generate",
+		"prompt": "a friendly robot in a cafe",
+		"path":   "robot_cafe.png",
+		"poll":   false,
+	}); err != nil {
+		t.Fatalf("execute generate failed: %v", err)
+	}
+
+	if captured.OutputPath != "robot_cafe.png" {
+		t.Fatalf("output path = %q, want robot_cafe.png", captured.OutputPath)
+	}
+	if got, _ := captured.Extra["path"].(string); got != "robot_cafe.png" {
+		t.Fatalf("extra path = %q, want robot_cafe.png", got)
+	}
+}
+
+func TestImageToolGenerateUsesLongerDefaultWaitTimeout(t *testing.T) {
+	var captured ImageGenerateRequest
+	tool := NewImageTool(nil, func(_ context.Context, req ImageGenerateRequest) (*ImageTaskResult, error) {
+		captured = req
+		return &ImageTaskResult{ID: "task-default-wait", Status: "processing"}, nil
+	}, nil)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "generate",
+		"prompt": "a calm landscape",
+		"poll":   false,
+	}); err != nil {
+		t.Fatalf("execute generate failed: %v", err)
+	}
+
+	if captured.WaitTimeout != 300*time.Second {
+		t.Fatalf("wait timeout = %v, want %v", captured.WaitTimeout, 300*time.Second)
 	}
 }
 

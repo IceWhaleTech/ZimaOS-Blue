@@ -13,8 +13,10 @@ import (
 )
 
 type Controller struct {
-	store    *SQLiteStore
-	resolver *PolicyResolver
+	store          *SQLiteStore
+	resolver       *PolicyResolver
+	judgeEvaluator JudgeEvaluator
+	reflector      ProposalReflector
 
 	mu      sync.RWMutex
 	drivers map[RunKind]Driver

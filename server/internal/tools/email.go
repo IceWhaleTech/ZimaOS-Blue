@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -52,7 +53,23 @@ type EmailSummary struct {
 	ActionableCount   int            `json:"actionable_count"`
 	LabelCounts       map[string]int `json:"label_counts,omitempty"`
 	TopActionItems    []string       `json:"top_action_items,omitempty"`
+	ActionSummary     string         `json:"action_summary,omitempty"`
+	ActionDetails     []EmailAction  `json:"action_details,omitempty"`
 	HighlightMessages []EmailMessage `json:"highlight_messages,omitempty"`
+}
+
+type EmailAction struct {
+	ID              string   `json:"id"`
+	Subject         string   `json:"subject"`
+	Sender          string   `json:"sender,omitempty"`
+	PriorityScore   int      `json:"priority_score"`
+	SuggestedAction string   `json:"suggested_action,omitempty"`
+	UrgencyReason   string   `json:"urgency_reason,omitempty"`
+	DeadlineHints   []string `json:"deadline_hints,omitempty"`
+	DateMentions    []string `json:"date_mentions,omitempty"`
+	MoneyMentions   []string `json:"money_mentions,omitempty"`
+	EntityMentions  []string `json:"entity_mentions,omitempty"`
+	ActionCues      []string `json:"action_cues,omitempty"`
 }
 
 // EmailService is the backing store used by the email tool and daily summary.
@@ -70,6 +87,23 @@ type LocalEmailService struct {
 	db  *sql.DB
 	now func() time.Time
 }
+
+type emailInsight struct {
+	PriorityScore   int
+	SuggestedAction string
+	UrgencyReason   string
+	DeadlineHints   []string
+	DateMentions    []string
+	MoneyMentions   []string
+	EntityMentions  []string
+	ActionCues      []string
+}
+
+var (
+	emailMoneyMentionRegex  = regexp.MustCompile(`(?i)\$\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:[kmb]|arr))?`)
+	emailDateMentionRegex   = regexp.MustCompile(`(?i)\b(?:today|tonight|tomorrow|eod|end of day|before noon|before close|this week|next week|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\s+\d{1,2}(?:,\s*\d{4})?|\d{4}-\d{2}-\d{2}|\d{1,2}:\d{2}\s?(?:am|pm))\b`)
+	emailEntityMentionRegex = regexp.MustCompile(`\b(?:[A-Z][A-Za-z0-9&.-]+(?:\s+[A-Z][A-Za-z0-9&.-]+){0,3}|[A-Z]{2,}(?:\s+[A-Z]{2,}){0,2})\b`)
+)
 
 // NewLocalEmailService creates the email table and returns a local inbox service.
 func NewLocalEmailService(db *sql.DB) (*LocalEmailService, error) {
@@ -235,14 +269,17 @@ func (s *LocalEmailService) List(ctx context.Context, ownerID string, opts Email
 		}
 		result = append(result, msg)
 	}
+	anchor := emailInsightAnchor(result)
 	sort.SliceStable(result, func(i, j int) bool {
-		if result[i].Unread != result[j].Unread {
-			return result[i].Unread
+		left := emailInsightForMessage(result[i], anchor)
+		right := emailInsightForMessage(result[j], anchor)
+		if left.PriorityScore != right.PriorityScore {
+			return left.PriorityScore > right.PriorityScore
 		}
-		if emailPriorityRank(result[i].Priority) != emailPriorityRank(result[j].Priority) {
-			return emailPriorityRank(result[i].Priority) > emailPriorityRank(result[j].Priority)
+		if !result[i].ReceivedAt.Equal(result[j].ReceivedAt) {
+			return result[i].ReceivedAt.After(result[j].ReceivedAt)
 		}
-		return result[i].ReceivedAt.After(result[j].ReceivedAt)
+		return strings.TrimSpace(result[i].Subject) < strings.TrimSpace(result[j].Subject)
 	})
 	limit := opts.Limit
 	if limit <= 0 {
@@ -348,9 +385,11 @@ func (s *LocalEmailService) Summarize(ctx context.Context, ownerID string, opts 
 		Total:       len(messages),
 		LabelCounts: make(map[string]int),
 	}
+	anchor := emailInsightAnchor(messages)
 	type scoredMessage struct {
 		msg   EmailMessage
 		score int
+		meta  emailInsight
 	}
 	scored := make([]scoredMessage, 0, len(messages))
 	for _, msg := range messages {
@@ -363,10 +402,11 @@ func (s *LocalEmailService) Summarize(ctx context.Context, ownerID string, opts 
 		if emailPriorityRank(msg.Priority) >= emailPriorityRank("high") {
 			summary.HighPriority++
 		}
-		score := emailActionScore(msg)
+		meta := emailInsightForMessage(msg, anchor)
+		score := meta.PriorityScore
 		if score > 0 {
 			summary.ActionableCount++
-			scored = append(scored, scoredMessage{msg: msg, score: score})
+			scored = append(scored, scoredMessage{msg: msg, score: score, meta: meta})
 		}
 		for _, label := range normalizeStringList(msg.Labels) {
 			summary.LabelCounts[label]++
@@ -383,10 +423,13 @@ func (s *LocalEmailService) Summarize(ctx context.Context, ownerID string, opts 
 		limit = 3
 	}
 	for i := 0; i < limit; i++ {
-		msg := scored[i].msg
+		item := scored[i]
+		msg := item.msg
 		summary.HighlightMessages = append(summary.HighlightMessages, msg)
-		summary.TopActionItems = append(summary.TopActionItems, formatEmailHighlight(msg))
+		summary.TopActionItems = append(summary.TopActionItems, formatEmailHighlight(msg, item.meta))
+		summary.ActionDetails = append(summary.ActionDetails, emailActionForResult(msg, item.meta))
 	}
+	summary.ActionSummary = buildEmailActionSummary(summary.ActionDetails)
 	return summary, nil
 }
 
@@ -505,23 +548,7 @@ func emailPriorityRank(priority string) int {
 	}
 }
 
-func emailActionScore(msg EmailMessage) int {
-	score := 0
-	if msg.Unread {
-		score += 2
-	}
-	score += emailPriorityRank(msg.Priority) * 2
-	lower := strings.ToLower(strings.Join([]string{msg.Subject, msg.Snippet, msg.Body}, " "))
-	cues := []string{"action required", "approve", "deadline", "today", "urgent", "before", "review"}
-	for _, cue := range cues {
-		if strings.Contains(lower, cue) {
-			score += 2
-		}
-	}
-	return score
-}
-
-func formatEmailHighlight(msg EmailMessage) string {
+func formatEmailHighlight(msg EmailMessage, meta emailInsight) string {
 	subject := strings.TrimSpace(msg.Subject)
 	if subject == "" {
 		subject = "Untitled email"
@@ -531,7 +558,16 @@ func formatEmailHighlight(msg EmailMessage) string {
 		sender = strings.TrimSpace(msg.SenderEmail)
 	}
 	if sender == "" {
+		if meta.SuggestedAction != "" {
+			return fmt.Sprintf("%s (%s)", subject, meta.SuggestedAction)
+		}
 		return subject
+	}
+	if meta.UrgencyReason != "" {
+		return fmt.Sprintf("%s — %s (%s)", subject, sender, meta.UrgencyReason)
+	}
+	if meta.SuggestedAction != "" {
+		return fmt.Sprintf("%s — %s (%s)", subject, sender, meta.SuggestedAction)
 	}
 	return fmt.Sprintf("%s — %s", subject, sender)
 }
@@ -804,6 +840,8 @@ func (t *EmailTool) Execute(ctx context.Context, args map[string]interface{}) (i
 			"actionable_count":    summary.ActionableCount,
 			"label_counts":        summary.LabelCounts,
 			"top_action_items":    append([]string(nil), summary.TopActionItems...),
+			"action_summary":      summary.ActionSummary,
+			"action_details":      append([]EmailAction(nil), summary.ActionDetails...),
 			"emails":              emailMessagesForResult(summary.HighlightMessages, false),
 		}, nil
 	default:
@@ -883,17 +921,40 @@ func normalizeEmailAction(raw string, args map[string]interface{}) string {
 }
 
 func emailMessageForResult(msg EmailMessage, includeBody bool) map[string]interface{} {
+	meta := emailInsightForMessage(msg, msg.ReceivedAt.UTC())
 	result := map[string]interface{}{
-		"id":           msg.ID,
-		"subject":      msg.Subject,
-		"sender_name":  msg.SenderName,
-		"sender_email": msg.SenderEmail,
-		"snippet":      msg.Snippet,
-		"labels":       normalizeStringList(msg.Labels),
-		"priority":     normalizeEmailPriority(msg.Priority),
-		"unread":       msg.Unread,
-		"archived":     msg.Archived,
-		"received_at":  msg.ReceivedAt.UTC().Format(time.RFC3339),
+		"id":             msg.ID,
+		"subject":        msg.Subject,
+		"sender_name":    msg.SenderName,
+		"sender_email":   msg.SenderEmail,
+		"snippet":        msg.Snippet,
+		"labels":         normalizeStringList(msg.Labels),
+		"priority":       normalizeEmailPriority(msg.Priority),
+		"priority_score": meta.PriorityScore,
+		"unread":         msg.Unread,
+		"archived":       msg.Archived,
+		"received_at":    msg.ReceivedAt.UTC().Format(time.RFC3339),
+	}
+	if meta.SuggestedAction != "" {
+		result["suggested_action"] = meta.SuggestedAction
+	}
+	if meta.UrgencyReason != "" {
+		result["urgency_reason"] = meta.UrgencyReason
+	}
+	if len(meta.DeadlineHints) > 0 {
+		result["deadline_hints"] = meta.DeadlineHints
+	}
+	if len(meta.DateMentions) > 0 {
+		result["date_mentions"] = meta.DateMentions
+	}
+	if len(meta.MoneyMentions) > 0 {
+		result["money_mentions"] = meta.MoneyMentions
+	}
+	if len(meta.EntityMentions) > 0 {
+		result["entity_mentions"] = meta.EntityMentions
+	}
+	if len(meta.ActionCues) > 0 {
+		result["action_cues"] = meta.ActionCues
 	}
 	if len(msg.Recipients) > 0 {
 		result["recipients"] = normalizeStringList(msg.Recipients)
@@ -927,8 +988,254 @@ func emailSummaryText(lang string, summary *EmailSummary) string {
 	if summary == nil || len(summary.TopActionItems) == 0 {
 		return emailLocalized(lang, "No urgent email follow-up is needed right now.", "当前没有需要立刻跟进的紧急邮件。")
 	}
+	if strings.TrimSpace(summary.ActionSummary) != "" {
+		return emailLocalized(lang, summary.ActionSummary, summary.ActionSummary)
+	}
 	prefix := emailLocalized(lang, "Focus first on: ", "优先处理：")
 	return prefix + strings.Join(summary.TopActionItems, "; ")
+}
+
+func buildEmailActionSummary(actions []EmailAction) string {
+	if len(actions) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(actions))
+	for _, action := range actions {
+		subject := strings.TrimSpace(action.Subject)
+		if subject == "" {
+			continue
+		}
+		entry := subject
+		if action.SuggestedAction != "" {
+			entry += ": " + action.SuggestedAction
+		}
+		if action.UrgencyReason != "" {
+			entry += " (" + action.UrgencyReason + ")"
+		}
+		parts = append(parts, entry)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Focus first on: " + strings.Join(parts, "; ")
+}
+
+func emailInsightAnchor(messages []EmailMessage) time.Time {
+	var anchor time.Time
+	for _, msg := range messages {
+		if msg.UpdatedAt.After(anchor) {
+			anchor = msg.UpdatedAt
+		}
+		if msg.ReceivedAt.After(anchor) {
+			anchor = msg.ReceivedAt
+		}
+	}
+	if anchor.IsZero() {
+		anchor = time.Now().UTC()
+	}
+	return anchor
+}
+
+func emailInsightForMessage(msg EmailMessage, anchor time.Time) emailInsight {
+	text := strings.Join([]string{msg.Subject, msg.Snippet, msg.Body}, "\n")
+	lower := strings.ToLower(text)
+	actionCues := collectEmailActionCues(lower, msg)
+	deadlineHints := collectEmailDeadlineHints(text)
+	dateMentions := mergeEmailMentions(deadlineHints, collectEmailRegexMatches(emailDateMentionRegex, text))
+	moneyMentions := collectEmailRegexMatches(emailMoneyMentionRegex, text)
+	entityMentions := collectEmailEntityMentions(msg, text)
+
+	score := emailPriorityRank(msg.Priority) * 20
+	reasons := make([]string, 0, 6)
+	if msg.Unread {
+		score += 6
+		reasons = append(reasons, "unread")
+	}
+	if !anchor.IsZero() {
+		latest := msg.ReceivedAt
+		if msg.UpdatedAt.After(latest) {
+			latest = msg.UpdatedAt
+		}
+		switch age := anchor.Sub(latest); {
+		case age <= 6*time.Hour:
+			score += 6
+			reasons = append(reasons, "very recent")
+		case age <= 24*time.Hour:
+			score += 3
+		}
+	}
+	if len(deadlineHints) > 0 {
+		score += 10
+		reasons = append(reasons, "deadline pressure")
+	}
+	if containsAnyFold(lower, "security", "incident", "outage", "breach", "sev-", "critical") {
+		score += 10
+		reasons = append(reasons, "security or incident risk")
+	}
+	if containsAnyFold(lower, "action required", "approve", "approval", "review", "respond", "reply", "sign off") {
+		score += 8
+		reasons = append(reasons, "explicit action requested")
+	}
+	if containsAnyFold(lower, "customer", "client", "renewal", "churn", "pipeline", "arr", "revenue", "upsell") || len(moneyMentions) > 0 {
+		score += 6
+		reasons = append(reasons, "customer or revenue impact")
+	}
+	if containsAnyFold(lower, "newsletter", "digest", "receipt", "fyi only", "no action needed") {
+		score -= 4
+		reasons = append(reasons, "informational only")
+	}
+	if score < 0 {
+		score = 0
+	}
+
+	return emailInsight{
+		PriorityScore:   score,
+		SuggestedAction: suggestEmailAction(msg, lower, deadlineHints),
+		UrgencyReason:   strings.Join(normalizeStringList(reasons), ", "),
+		DeadlineHints:   deadlineHints,
+		DateMentions:    dateMentions,
+		MoneyMentions:   moneyMentions,
+		EntityMentions:  entityMentions,
+		ActionCues:      actionCues,
+	}
+}
+
+func emailActionForResult(msg EmailMessage, meta emailInsight) EmailAction {
+	sender := strings.TrimSpace(msg.SenderName)
+	if sender == "" {
+		sender = strings.TrimSpace(msg.SenderEmail)
+	}
+	return EmailAction{
+		ID:              msg.ID,
+		Subject:         strings.TrimSpace(msg.Subject),
+		Sender:          sender,
+		PriorityScore:   meta.PriorityScore,
+		SuggestedAction: meta.SuggestedAction,
+		UrgencyReason:   meta.UrgencyReason,
+		DeadlineHints:   append([]string(nil), meta.DeadlineHints...),
+		DateMentions:    append([]string(nil), meta.DateMentions...),
+		MoneyMentions:   append([]string(nil), meta.MoneyMentions...),
+		EntityMentions:  append([]string(nil), meta.EntityMentions...),
+		ActionCues:      append([]string(nil), meta.ActionCues...),
+	}
+}
+
+func collectEmailActionCues(lower string, msg EmailMessage) []string {
+	cues := make([]string, 0, 8)
+	if emailPriorityRank(msg.Priority) >= emailPriorityRank("high") {
+		cues = append(cues, "high_priority")
+	}
+	if msg.Unread {
+		cues = append(cues, "unread")
+	}
+	for cue, key := range map[string]string{
+		"action required": "action_required",
+		"approve":         "approval",
+		"approval":        "approval",
+		"review":          "review",
+		"reply":           "reply_needed",
+		"respond":         "reply_needed",
+		"security":        "security",
+		"incident":        "incident",
+		"customer":        "customer",
+		"client":          "customer",
+		"pipeline":        "revenue",
+		"arr":             "revenue",
+		"revenue":         "revenue",
+		"budget":          "budget",
+		"timeline":        "timeline",
+	} {
+		if strings.Contains(lower, cue) {
+			cues = append(cues, key)
+		}
+	}
+	return normalizeStringList(cues)
+}
+
+func suggestEmailAction(msg EmailMessage, lower string, deadlineHints []string) string {
+	switch {
+	case msg.Archived:
+		return "No action needed; already archived"
+	case containsAnyFold(lower, "security", "incident", "outage", "breach", "critical"):
+		return "Investigate immediately and coordinate a response"
+	case containsAnyFold(lower, "approve", "approval", "sign off", "action required"):
+		if len(deadlineHints) > 0 {
+			return "Review and approve today"
+		}
+		return "Review and approve"
+	case containsAnyFold(lower, "reply", "respond", "meeting", "schedule", "calendar", "reschedule"):
+		if len(deadlineHints) > 0 {
+			return "Reply today and confirm next steps"
+		}
+		return "Reply and confirm next steps"
+	case containsAnyFold(lower, "customer", "client", "renewal", "churn", "pipeline", "arr", "revenue", "upsell"):
+		return "Prioritize customer follow-up"
+	case containsAnyFold(lower, "newsletter", "digest", "receipt", "fyi only", "no action needed"):
+		return "Archive or read later"
+	case msg.Unread || emailPriorityRank(msg.Priority) >= emailPriorityRank("high"):
+		return "Review and respond"
+	default:
+		return "Review"
+	}
+}
+
+func collectEmailDeadlineHints(text string) []string {
+	matches := collectEmailRegexMatches(emailDateMentionRegex, text)
+	hints := make([]string, 0, len(matches))
+	for _, match := range matches {
+		lower := strings.ToLower(match)
+		if containsAnyFold(lower, "today", "tonight", "tomorrow", "eod", "end of day", "before", "am", "pm", "noon", "week") {
+			hints = append(hints, match)
+		}
+	}
+	return normalizeStringList(hints)
+}
+
+func collectEmailRegexMatches(re *regexp.Regexp, text string) []string {
+	if re == nil || strings.TrimSpace(text) == "" {
+		return nil
+	}
+	return normalizeStringList(re.FindAllString(text, -1))
+}
+
+func collectEmailEntityMentions(msg EmailMessage, text string) []string {
+	entities := make([]string, 0, 8)
+	if sender := strings.TrimSpace(msg.SenderName); sender != "" {
+		entities = append(entities, sender)
+	}
+	for _, match := range collectEmailRegexMatches(emailEntityMentionRegex, text) {
+		lower := strings.ToLower(match)
+		if containsAnyFold(lower, "subject", "re", "fwd", "today", "tomorrow", "budget", "timeline", "project", "action required") {
+			continue
+		}
+		entities = append(entities, match)
+	}
+	return truncateEmailMentions(normalizeStringList(entities), 6)
+}
+
+func truncateEmailMentions(values []string, max int) []string {
+	if len(values) <= max || max <= 0 {
+		return values
+	}
+	return append([]string(nil), values[:max]...)
+}
+
+func mergeEmailMentions(groups ...[]string) []string {
+	merged := make([]string, 0, 8)
+	for _, group := range groups {
+		merged = append(merged, group...)
+	}
+	return normalizeStringList(merged)
+}
+
+func containsAnyFold(text string, cues ...string) bool {
+	text = strings.ToLower(text)
+	for _, cue := range cues {
+		if cue != "" && strings.Contains(text, strings.ToLower(cue)) {
+			return true
+		}
+	}
+	return false
 }
 
 func emailLocalized(lang, en, zh string) string {

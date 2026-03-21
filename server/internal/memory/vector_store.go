@@ -18,6 +18,7 @@ import (
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3"
 
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -268,55 +269,59 @@ func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite3", cfg.DBPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	ftsEnabled := cfg.EnableFTS
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(
+		cfg.DBPath+"?_journal_mode=WAL&_busy_timeout=5000",
+		cfg.DBPath,
+		func(db *sql.DB) error {
+			db.SetMaxOpenConns(4)
+			db.SetMaxIdleConns(2)
+			if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+				return fmt.Errorf("set vector store synchronous mode: %w", err)
+			}
+			if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
+				return fmt.Errorf("set vector store wal autocheckpoint: %w", err)
+			}
+
+			if _, err := db.Exec(vectorStoreSchema); err != nil {
+				return fmt.Errorf("create vector store schema: %w", err)
+			}
+
+			if !ftsEnabled {
+				if err := dropMemoryFTSTriggers(db); err != nil {
+					return fmt.Errorf("disable FTS triggers: %w", err)
+				}
+			}
+
+			if ftsEnabled {
+				if !supportsFTS5(db) {
+					ftsEnabled = false
+					if err := dropMemoryFTSTriggers(db); err != nil {
+						return fmt.Errorf("disable FTS triggers: %w", err)
+					}
+				} else if _, err := db.Exec(ftsSchema); err != nil {
+					if !isMissingFTSModuleError(err) {
+						return fmt.Errorf("create FTS schema: %w", err)
+					}
+					ftsEnabled = false
+					if err := dropMemoryFTSTriggers(db); err != nil {
+						return fmt.Errorf("disable FTS triggers: %w", err)
+					}
+				}
+			}
+
+			vecSQL := fmt.Sprintf(
+				`CREATE VIRTUAL TABLE IF NOT EXISTS memory_vec USING vec0(embedding int8[%d])`,
+				cfg.EmbeddingDim,
+			)
+			if _, err := db.Exec(vecSQL); err != nil {
+				return fmt.Errorf("create vec0 table: %w", err)
+			}
+			return nil
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("open vector store db: %w", err)
-	}
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(2)
-
-	// Create base schema
-	if _, err := db.Exec(vectorStoreSchema); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("create vector store schema: %w", err)
-	}
-
-	ftsEnabled := cfg.EnableFTS
-	if !ftsEnabled {
-		if err := dropMemoryFTSTriggers(db); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("disable FTS triggers: %w", err)
-		}
-	}
-
-	if ftsEnabled {
-		if !supportsFTS5(db) {
-			ftsEnabled = false
-			if err := dropMemoryFTSTriggers(db); err != nil {
-				db.Close()
-				return nil, fmt.Errorf("disable FTS triggers: %w", err)
-			}
-		} else if _, err := db.Exec(ftsSchema); err != nil {
-			if !isMissingFTSModuleError(err) {
-				db.Close()
-				return nil, fmt.Errorf("create FTS schema: %w", err)
-			}
-			ftsEnabled = false
-			if err := dropMemoryFTSTriggers(db); err != nil {
-				db.Close()
-				return nil, fmt.Errorf("disable FTS triggers: %w", err)
-			}
-		}
-	}
-
-	// Create sqlite-vec virtual table (int8 quantized)
-	vecSQL := fmt.Sprintf(
-		`CREATE VIRTUAL TABLE IF NOT EXISTS memory_vec USING vec0(embedding int8[%d])`,
-		cfg.EmbeddingDim,
-	)
-	if _, err := db.Exec(vecSQL); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("create vec0 table: %w", err)
 	}
 
 	return &VectorStore{

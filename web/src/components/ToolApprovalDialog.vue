@@ -2,9 +2,12 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
+import { useTaskProjectionsStore } from '@/stores/taskProjections'
+import { getLocalizedToolName } from '@/utils/toolLocalization'
 
 const { t, te } = useI18n()
 const chatStore = useChatStore()
+const taskProjections = useTaskProjectionsStore()
 
 const approval = computed(() => chatStore.pendingApproval)
 const submittingDecision = ref<'deny' | 'approve' | 'always-allow' | null>(null)
@@ -12,8 +15,7 @@ const isSubmitting = computed(() => submittingDecision.value !== null)
 
 const translatedToolName = computed(() => {
   if (!approval.value?.tool_name) return ''
-  const key = `tools.names.${approval.value.tool_name}`
-  return te(key) ? t(key) : approval.value.tool_name
+  return getLocalizedToolName(approval.value.tool_name, t, te)
 })
 
 const argsDisplay = computed(() => {
@@ -32,6 +34,7 @@ async function runDecision(
   submittingDecision.value = decision
   try {
     await action()
+    await taskProjections.refreshNow().catch(() => {})
   } finally {
     submittingDecision.value = null
   }

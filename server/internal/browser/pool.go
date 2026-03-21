@@ -3,10 +3,12 @@ package browser
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/cdp"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 
@@ -25,11 +27,13 @@ type Pool struct {
 
 // browserInstance represents a single browser instance in the pool.
 type browserInstance struct {
-	browser   *rod.Browser
-	launcher  *launcher.Launcher // each instance owns its launcher for cleanup
-	inUse     bool
-	createdAt time.Time
-	lastUsed  time.Time
+	browser         *rod.Browser
+	launcher        *launcher.Launcher // each instance owns its launcher for cleanup
+	transportCloser io.Closer
+	managed         bool
+	inUse           bool
+	createdAt       time.Time
+	lastUsed        time.Time
 }
 
 // NewPool creates a new browser pool.
@@ -40,8 +44,8 @@ func NewPool(config *Config) (*Pool, error) {
 
 	p := &Pool{
 		config:    config,
-		available: make(chan *browserInstance, config.PoolSize),
-		browsers:  make([]*browserInstance, 0, config.PoolSize),
+		available: make(chan *browserInstance, config.EffectivePoolSize()),
+		browsers:  make([]*browserInstance, 0, config.EffectivePoolSize()),
 		startTime: timeutil.NowTime(),
 	}
 
@@ -58,7 +62,7 @@ func (p *Pool) Start(ctx context.Context) error {
 	}
 
 	// Pre-create browser instances
-	for i := 0; i < p.config.PoolSize; i++ {
+	for i := 0; i < p.config.EffectivePoolSize(); i++ {
 		instance, err := p.createInstance(ctx)
 		if err != nil {
 			// Clean up any created instances
@@ -89,6 +93,38 @@ func (p *Pool) newLauncher() *launcher.Launcher {
 
 // createInstance creates a new browser instance with its own launcher.
 func (p *Pool) createInstance(ctx context.Context) (*browserInstance, error) {
+	if p.config.UsesRelayDriver() {
+		cdpURL := p.config.EffectiveCDPURL()
+		if cdpURL == "" {
+			return nil, fmt.Errorf("browser cdp_url or built-in relay configuration is required when driver=relay")
+		}
+
+		wsURL, err := resolveCDPWebSocketURL(ctx, cdpURL)
+		if err != nil {
+			return nil, err
+		}
+
+		ws := &cdp.WebSocket{}
+		if err := ws.Connect(ctx, wsURL, nil); err != nil {
+			return nil, err
+		}
+
+		client := cdp.New().Start(ws)
+		browser := rod.New().Client(client)
+		if err := browser.Connect(); err != nil {
+			_ = ws.Close()
+			return nil, err
+		}
+
+		return &browserInstance{
+			browser:         browser,
+			transportCloser: ws,
+			managed:         false,
+			createdAt:       timeutil.NowTime(),
+			lastUsed:        timeutil.NowTime(),
+		}, nil
+	}
+
 	l := p.newLauncher()
 
 	url, err := l.Launch()
@@ -106,6 +142,7 @@ func (p *Pool) createInstance(ctx context.Context) (*browserInstance, error) {
 	return &browserInstance{
 		browser:   browser,
 		launcher:  l,
+		managed:   true,
 		createdAt: timeutil.NowTime(),
 		lastUsed:  timeutil.NowTime(),
 	}, nil
@@ -117,6 +154,15 @@ func (p *Pool) Acquire(ctx context.Context) (*rod.Browser, error) {
 	if p.closed {
 		p.mu.RUnlock()
 		return nil, ErrBrowserNotRunning
+	}
+	if p.config.UsesRelayDriver() {
+		if len(p.browsers) == 0 || p.browsers[0] == nil || p.browsers[0].browser == nil {
+			p.mu.RUnlock()
+			return nil, ErrBrowserNotRunning
+		}
+		browser := p.browsers[0].browser
+		p.mu.RUnlock()
+		return browser, nil
 	}
 	p.mu.RUnlock()
 
@@ -134,6 +180,9 @@ func (p *Pool) Acquire(ctx context.Context) (*rod.Browser, error) {
 
 // Release returns a browser instance to the pool.
 func (p *Pool) Release(browser *rod.Browser) {
+	if p.config.UsesRelayDriver() {
+		return
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -178,8 +227,11 @@ func (p *Pool) Status() *StatusResponse {
 // closeAllInstances closes all browser instances and their launchers.
 func (p *Pool) closeAllInstances() {
 	for _, instance := range p.browsers {
-		if instance.browser != nil {
+		if instance.managed && instance.browser != nil {
 			_ = instance.browser.Close()
+		}
+		if instance.transportCloser != nil {
+			_ = instance.transportCloser.Close()
 		}
 		if instance.launcher != nil {
 			instance.launcher.Cleanup()
@@ -273,7 +325,12 @@ func (p *Pool) replaceInstance(ctx context.Context, deadBrowser *rod.Browser) (*
 	// Find and replace the dead instance
 	for i, instance := range p.browsers {
 		if instance.browser == deadBrowser {
-			_ = instance.browser.Close()
+			if instance.managed && instance.browser != nil {
+				_ = instance.browser.Close()
+			}
+			if instance.transportCloser != nil {
+				_ = instance.transportCloser.Close()
+			}
 			if instance.launcher != nil {
 				instance.launcher.Cleanup()
 			}

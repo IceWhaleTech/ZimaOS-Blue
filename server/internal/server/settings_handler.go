@@ -63,6 +63,8 @@ type Settings struct {
 	SmallModelID                        string   `json:"small_model_id,omitempty"`                            // fixed: qwen3.5-0.8b-gguf-q4km
 	SmallModelAutoDownload              *bool    `json:"small_model_auto_download,omitempty"`                 // default true
 	SmallModelSummaryEnabled            *bool    `json:"small_model_summary_enabled,omitempty"`               // default false
+	ContextCompressionMode              string   `json:"context_compression_mode,omitempty"`                  // off|offline|small_model|auto
+	SmallModelContextCompressEnabled    *bool    `json:"small_model_context_compress_enabled,omitempty"`      // default false
 	SmallModelDocExtractEnabled         *bool    `json:"small_model_doc_extract_enabled,omitempty"`           // default false
 	SmallModelRerankEnabled             *bool    `json:"small_model_rerank_enabled,omitempty"`                // default false
 	SmallModelContextPruneEnabled       *bool    `json:"small_model_context_prune_enabled,omitempty"`         // default false
@@ -623,6 +625,17 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			h.settings.SmallModelSummaryEnabled = &b
 		}
 	}
+	if mode, ok := updates["context_compression_mode"].(string); ok {
+		switch mode {
+		case "off", "offline", "small_model", "auto":
+			h.settings.ContextCompressionMode = mode
+		}
+	}
+	if v, ok := updates["small_model_context_compress_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelContextCompressEnabled = &b
+		}
+	}
 	if v, ok := updates["small_model_doc_extract_enabled"]; ok {
 		if b, isBool := v.(bool); isBool {
 			h.settings.SmallModelDocExtractEnabled = &b
@@ -1163,6 +1176,26 @@ func (h *SettingsHandler) GetSmallModelSummaryEnabled() bool {
 	return *h.settings.SmallModelSummaryEnabled
 }
 
+func (h *SettingsHandler) GetContextCompressionMode() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	switch h.settings.ContextCompressionMode {
+	case "off", "offline", "small_model":
+		return h.settings.ContextCompressionMode
+	default:
+		return "auto"
+	}
+}
+
+func (h *SettingsHandler) GetSmallModelContextCompressEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelContextCompressEnabled == nil {
+		return false
+	}
+	return *h.settings.SmallModelContextCompressEnabled
+}
+
 func (h *SettingsHandler) GetSmallModelDocExtractEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -1339,6 +1372,43 @@ func (h *SettingsHandler) SetSmallModelSummaryEnabled(enabled bool) (bool, error
 		return false, nil
 	}
 	h.settings.SmallModelSummaryEnabled = &enabled
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetSmallModelContextCompressEnabled updates context-compress enhancement switch and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelContextCompressEnabled(enabled bool) (bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelContextCompressEnabled != nil && *h.settings.SmallModelContextCompressEnabled == enabled {
+		return false, nil
+	}
+	h.settings.SmallModelContextCompressEnabled = &enabled
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetContextCompressionMode updates the unified context-compression mode and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetContextCompressionMode(mode string) (bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	switch mode {
+	case "off", "offline", "small_model", "auto":
+	default:
+		mode = "auto"
+	}
+	if h.settings.ContextCompressionMode == mode {
+		return false, nil
+	}
+	h.settings.ContextCompressionMode = mode
 	if err := h.save(); err != nil {
 		return false, err
 	}

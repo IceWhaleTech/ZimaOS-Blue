@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 const (
@@ -30,12 +32,9 @@ func NewOllamaProvider(baseURL string) *OllamaProvider {
 	}
 	return &OllamaProvider{
 		baseURL: baseURL,
-		client: &http.Client{
-			Timeout: ollamaTimeout,
-		},
-		streamClient: &http.Client{
-			// No Timeout for streaming — Ollama local models can be very slow.
-		},
+		client:  network.NewPooledHTTPClient(ollamaTimeout),
+		// No Timeout for streaming — Ollama local models can be very slow.
+		streamClient: network.NewPooledHTTPClientWithOptions(network.HTTPClientOptions{}),
 	}
 }
 
@@ -115,11 +114,11 @@ func (p *OllamaProvider) RefreshModels() []string {
 
 // ollamaRequest represents the Ollama API request format.
 type ollamaRequest struct {
-	Model    string           `json:"model"`
-	Messages []ollamaMessage  `json:"messages"`
-	Stream   bool             `json:"stream"`
-	Options  *ollamaOptions   `json:"options,omitempty"`
-	Tools    []ollamaTool     `json:"tools,omitempty"`
+	Model    string          `json:"model"`
+	Messages []ollamaMessage `json:"messages"`
+	Stream   bool            `json:"stream"`
+	Options  *ollamaOptions  `json:"options,omitempty"`
+	Tools    []ollamaTool    `json:"tools,omitempty"`
 }
 
 type ollamaMessage struct {
@@ -160,11 +159,11 @@ type ollamaResponse struct {
 		Content   string           `json:"content"`
 		ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
 	} `json:"message"`
-	Done              bool   `json:"done"`
-	TotalDuration     int64  `json:"total_duration"`
-	PromptEvalCount   int    `json:"prompt_eval_count"`
-	EvalCount         int    `json:"eval_count"`
-	Error             string `json:"error,omitempty"`
+	Done            bool   `json:"done"`
+	TotalDuration   int64  `json:"total_duration"`
+	PromptEvalCount int    `json:"prompt_eval_count"`
+	EvalCount       int    `json:"eval_count"`
+	Error           string `json:"error,omitempty"`
 }
 
 // Chat sends a chat completion request to Ollama.

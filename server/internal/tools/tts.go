@@ -52,7 +52,7 @@ type TTSBackend interface {
 	StopSpeaking(ctx context.Context) error
 }
 
-// TTSTool provides a native compatibility surface for OpenClaw-style text-to-speech usage.
+// TTSTool provides a native compatibility surface for legacy text-to-speech usage.
 type TTSTool struct {
 	backend TTSBackend
 }

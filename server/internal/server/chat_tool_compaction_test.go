@@ -227,6 +227,46 @@ func TestCompactToolResultContentForLLM_ExecKeepsCoreFields(t *testing.T) {
 	}
 }
 
+func TestCompactToolResultContentForLLM_PDFKeepsDistributedPageExcerpts(t *testing.T) {
+	payload := map[string]interface{}{
+		"document": map[string]interface{}{
+			"path":       "/tmp/workspace/openclaw_report.pdf",
+			"file_name":  "openclaw_report.pdf",
+			"page_count": 6,
+		},
+		"selected_pages": []interface{}{1, 2, 3, 4, 5, 6},
+		"char_count":     24000,
+		"text": strings.Join([]string{
+			"[Page 1]\nExecutive summary and overview " + strings.Repeat("alpha ", 80),
+			"[Page 2]\nSkill registry methodology " + strings.Repeat("beta ", 80),
+			"[Page 3]\nLargest category is AI & LLMs: 287 " + strings.Repeat("gamma ", 80),
+			"[Page 4]\nSecond category is Search & Research: 253 " + strings.Repeat("delta ", 80),
+			"[Page 5]\nGateway exposes a typed WebSocket API " + strings.Repeat("epsilon ", 80),
+			"[Page 6]\nRegistry collected on February 7, 2026 and proposes 6 benchmark tasks " + strings.Repeat("zeta ", 80),
+		}, "\n\n"),
+	}
+	contentBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal pdf payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("pdf", string(contentBytes))
+	if len(compacted) > maxLLMToolOutputBytes {
+		t.Fatalf("compacted pdf output too large: %d", len(compacted))
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted pdf payload: %v", err)
+	}
+	text, _ := out["text"].(string)
+	for _, needle := range []string{"[Page 1]", "[Page 3]", "[Page 6]", "AI & LLMs: 287", "February 7, 2026"} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("expected compacted pdf text to keep %q, got=%q", needle, text)
+		}
+	}
+}
+
 func TestCompactToolResultsForLLM_BoundsResponsesBodySize(t *testing.T) {
 	results := make([]map[string]interface{}, 0, 10)
 	for i := 0; i < 10; i++ {

@@ -101,15 +101,16 @@ type RunSpec struct {
 }
 
 type RunFilter struct {
-	UserID      string
-	Kind        RunKind
-	Kinds       []RunKind
-	Statuses    []RunStatus
-	GroupID     string
-	GroupItemID string
-	ParentRunID string
-	RootRunID   string
-	Limit       int
+	UserID         string
+	Kind           RunKind
+	Kinds          []RunKind
+	Statuses       []RunStatus
+	ConversationID string
+	GroupID        string
+	GroupItemID    string
+	ParentRunID    string
+	RootRunID      string
+	Limit          int
 }
 
 type RunEvent struct {

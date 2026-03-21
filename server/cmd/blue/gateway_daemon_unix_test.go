@@ -17,9 +17,11 @@ func resetGatewayDaemonCLIState(t *testing.T) {
 
 	oldCfgFile, oldDevMode, oldProfile := cfgFile, devMode, profile
 	oldNoColor, oldVerbose := noColor, verbose
+	oldGatewayPort, oldGatewayBind := gatewayPort, gatewayBind
 	t.Cleanup(func() {
 		cfgFile, devMode, profile = oldCfgFile, oldDevMode, oldProfile
 		noColor, verbose = oldNoColor, oldVerbose
+		gatewayPort, gatewayBind = oldGatewayPort, oldGatewayBind
 	})
 
 	cfgFile = ""
@@ -27,6 +29,8 @@ func resetGatewayDaemonCLIState(t *testing.T) {
 	profile = ""
 	noColor = false
 	verbose = false
+	gatewayPort = 0
+	gatewayBind = ""
 }
 
 func TestGatewayProcessArgsIncludeGlobalFlags(t *testing.T) {
@@ -44,6 +48,23 @@ func TestGatewayProcessArgsIncludeGlobalFlags(t *testing.T) {
 	}
 
 	wantSupervisor := []string{"--config", cfgFile, "--dev", "--profile", "ops", "--verbose", "--no-color", "gateway", "supervise"}
+	if got := gatewaySupervisorArgs(); !reflect.DeepEqual(got, wantSupervisor) {
+		t.Fatalf("gatewaySupervisorArgs() = %#v, want %#v", got, wantSupervisor)
+	}
+}
+
+func TestGatewayProcessArgsIncludeBindAndPortOverrides(t *testing.T) {
+	resetGatewayDaemonCLIState(t)
+
+	gatewayPort = 18080
+	gatewayBind = "127.0.0.1"
+
+	wantWorker := []string{"--port", "18080", "--bind", "127.0.0.1", "gateway", "run"}
+	if got := gatewayWorkerArgs(); !reflect.DeepEqual(got, wantWorker) {
+		t.Fatalf("gatewayWorkerArgs() = %#v, want %#v", got, wantWorker)
+	}
+
+	wantSupervisor := []string{"--port", "18080", "--bind", "127.0.0.1", "gateway", "supervise"}
 	if got := gatewaySupervisorArgs(); !reflect.DeepEqual(got, wantSupervisor) {
 		t.Fatalf("gatewaySupervisorArgs() = %#v, want %#v", got, wantSupervisor)
 	}

@@ -12,8 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/html"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"golang.org/x/net/html"
 )
 
 // Result represents a crawled page result
@@ -49,7 +50,7 @@ func DefaultConfig() Config {
 	return Config{
 		MaxDepth:       2,
 		MaxConcurrency: 5,
-		RequestTimeout: 30 * time.Second,
+		RequestTimeout: 5 * time.Minute,
 		UserAgent:      "ZimaOS-Blue-Crawler/1.0",
 		RateLimit:      time.Second,
 		AllowedDomains: nil,
@@ -72,15 +73,16 @@ type Crawler struct {
 func New(config Config) *Crawler {
 	return &Crawler{
 		config: config,
-		client: &http.Client{
-			Timeout: config.RequestTimeout,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		client: func() *http.Client {
+			client := network.NewPooledHTTPClient(config.RequestTimeout)
+			client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 10 {
 					return fmt.Errorf("too many redirects")
 				}
 				return nil
-			},
-		},
+			}
+			return client
+		}(),
 		visited:    make(map[string]bool),
 		rateLimits: make(map[string]time.Time),
 		results:    make(chan Result, 100),

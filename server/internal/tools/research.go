@@ -76,14 +76,14 @@ func RegisterResearchTools(registry *Registry, service ResearchService) {
 func (t *ResearchRunTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "research_run",
-		Description: "Run deep research with route_mode auto|web|experiment|hybrid. Optionally wait for the final report or return a job handle for later polling.",
+		Description: "Run deep research through the built-in web research flow. Optionally wait for the final report or return a job handle for later polling.",
 		Icon:        "research",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"query":                map[string]interface{}{"type": "string", "description": "Research query or objective"},
 				"mode":                 map[string]interface{}{"type": "string", "description": "Research depth: fast, standard, deep"},
-				"route_mode":           map[string]interface{}{"type": "string", "description": "Routing mode: auto, web, experiment, hybrid"},
+				"route_mode":           map[string]interface{}{"type": "string", "description": "Routing mode: web"},
 				"lang":                 map[string]interface{}{"type": "string", "description": "Preferred output language"},
 				"max_sources":          map[string]interface{}{"type": "integer", "description": "Optional source budget override"},
 				"max_seconds":          map[string]interface{}{"type": "integer", "description": "Optional time budget override"},

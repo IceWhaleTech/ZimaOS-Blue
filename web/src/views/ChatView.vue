@@ -16,13 +16,12 @@ import type { ComponentPublicInstance } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
-import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
+import { useTaskProjectionsStore } from '@/stores/taskProjections'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
 import type { FileAttachment } from '@/components/ChatInput.vue'
 import type ChatInputComponent from '@/components/ChatInput.vue'
 import type VirtualScrollComponent from '@/components/VirtualScroll.vue'
-import type { AgentTask, AgentQuestionAnswer } from '@/api/chat'
-import type { DeepResearchJobSummary } from '@/api/deepResearch'
+import type { UserTaskProjection } from '@/api/tasks'
 import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
 import { clearConversationIncrementalStates, parseTypelessContentIncremental } from '@/utils/typeless'
@@ -48,9 +47,11 @@ const ExecApprovalDialog = defineAsyncComponent(
   () => import('@/components/ExecApprovalDialog.vue')
 )
 const MediaParamPanel = defineAsyncComponent(() => import('@/components/MediaParamPanel.vue'))
-const AgentTaskPanel = defineAsyncComponent(() => import('@/components/AgentTaskPanel.vue'))
-const DeepResearchTaskDock = defineAsyncComponent(
-  () => import('@/components/DeepResearchTaskDock.vue')
+const UserTaskProjectionCard = defineAsyncComponent(
+  () => import('@/components/UserTaskProjectionCard.vue')
+)
+const UserTaskProjectionDock = defineAsyncComponent(
+  () => import('@/components/UserTaskProjectionDock.vue')
 )
 
 const { t, te, locale } = useI18n()
@@ -63,7 +64,7 @@ const hasGlobalMobileSidebarToggle = inject<ComputedRef<boolean>>(
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const providerPoolStore = useProviderPoolStore()
-const deepResearchJobs = useDeepResearchJobsStore()
+const taskProjections = useTaskProjectionsStore()
 const mediaGen = useMediaGenerate()
 
 type VoiceApiModule = typeof import('@/api/voice')
@@ -205,12 +206,12 @@ const previousTokens = ref<number | null>(null)
 const RE_TYPELESS_CARD_PLACEHOLDER = /\[\[TYPELESS_CARD:[^\]]+\]\]/g
 const ACTIVE_TODO_PANEL_COLLAPSED_KEY = 'zima.chat.active_todo_collapsed.v1'
 
-const hasActiveDeepResearchJobs = computed(() => deepResearchJobs.activeJobs.length > 0)
+const hasBackgroundTasks = computed(() => taskProjections.backgroundTasks.length > 0)
 const messageAreaPaddingClass = computed(() => {
   if (isMobile.value) {
-    return hasActiveDeepResearchJobs.value ? 'pb-16' : 'pb-6'
+    return hasBackgroundTasks.value ? 'pb-16' : 'pb-6'
   }
-  return hasActiveDeepResearchJobs.value ? 'pb-12' : 'pb-8'
+  return hasBackgroundTasks.value ? 'pb-12' : 'pb-8'
 })
 
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -339,22 +340,11 @@ watch(showTalkMode, (open) => {
   }
 })
 
-// Agent task state
-const agentTasks = ref<AgentTask[]>([])
-const ACTIVE_AGENT_TASK_STATUSES = new Set<AgentTask['status']>([
-  'pending',
-  'planning',
-  'executing',
-  'waiting_input',
-])
-
-function isAgentTaskActive(task: Pick<AgentTask, 'status'> | null | undefined): boolean {
-  return !!task && ACTIVE_AGENT_TASK_STATUSES.has(task.status)
-}
+const currentConversationActiveTasks = computed(() => taskProjections.currentActiveTasks)
 
 const hasCancelableWork = computed(() => {
   if (chatStore.streaming || mediaGen.generating.value) return true
-  return agentTasks.value.some((task) => isAgentTaskActive(task))
+  return currentConversationActiveTasks.value.length > 0
 })
 
 const executingConversationIds = computed(() => {
@@ -368,14 +358,13 @@ const executingConversationIds = computed(() => {
     if (normalizedId) ids.add(normalizedId)
   }
 
-  for (const task of agentTasks.value) {
-    if (!isAgentTaskActive(task)) continue
+  for (const task of taskProjections.currentActiveTasks) {
     const normalizedId = String(task.conversation_id || '').trim()
     if (normalizedId) ids.add(normalizedId)
   }
 
-  for (const job of deepResearchJobs.activeJobs) {
-    const normalizedId = String(job.conversation_id || '').trim()
+  for (const task of taskProjections.backgroundTasks) {
+    const normalizedId = String(task.conversation_id || '').trim()
     if (normalizedId) ids.add(normalizedId)
   }
 
@@ -404,119 +393,29 @@ const shouldCompactStreamingActions = computed(() => {
   return !hasVisibleTextOutsideCards(parsed.text)
 })
 
-async function fetchAgentTasks() {
+async function cancelProjectedTask(taskId: string) {
   try {
-    const { agentApi } = await loadChatApiModule()
-    const resp = await agentApi.listTasks()
-    agentTasks.value = resp.data || []
-  } catch {
-    // Ignore — agent API may not be available
+    await taskProjections.cancelTask(taskId)
+  } catch (e) {
+    console.error('Failed to cancel projected task:', e)
   }
 }
 
-async function cancelAgentTask(taskId: string) {
+async function openProjectedTask(task: UserTaskProjection) {
   try {
-    const { agentApi } = await loadChatApiModule()
-    await agentApi.cancelTask(taskId)
-    await fetchAgentTasks()
+    if (isMobile.value && task.conversation_id) {
+      pageStack.value = [task.conversation_id]
+    }
+    await taskProjections.openTask(task)
   } catch (e) {
-    console.error('Failed to cancel agent task:', e)
-  }
-}
-
-async function deleteAgentTask(taskId: string) {
-  try {
-    const { agentApi } = await loadChatApiModule()
-    await agentApi.deleteTask(taskId)
-    agentTasks.value = agentTasks.value.filter((t) => t.id !== taskId)
-  } catch (e) {
-    console.error('Failed to delete agent task:', e)
+    console.error('Failed to open projected task:', e)
   }
 }
 
 // SSE listener for real-time agent task updates
 function onAgentEvent(data: any) {
   if (!data?.task_id) return
-  // Update the matching task in-place, or re-fetch if not found
-  const idx = agentTasks.value.findIndex((t) => t.id === data.task_id)
-  if (idx >= 0) {
-    const task = agentTasks.value[idx]!
-    if (data.progress !== undefined) task.progress = data.progress
-    if (data.event_type === 'task_completed') {
-      task.status = 'completed'
-      task.result = data.message
-    }
-    if (data.event_type === 'task_failed') {
-      task.status = 'failed'
-      task.error = data.message
-      if (data.output) task.result = data.output
-    }
-    if (data.event_type === 'task_cancelled') {
-      task.status = 'cancelled'
-      task.error = data.message
-      task.questions = undefined
-    }
-    if (data.event_type === 'task_step_completed' && task.plan?.[data.step_index]) {
-      task.plan[data.step_index]!.status = 'completed'
-      task.plan[data.step_index]!.output = data.output
-      if (data.duration_ms)
-        task.plan[data.step_index]!.completed_at = new Date(Date.now()).toISOString()
-    }
-    if (
-      data.event_type === 'task_reflection_started' &&
-      data.step_index !== undefined &&
-      task.plan?.[data.step_index]
-    ) {
-      task.plan[data.step_index]!.status = 'running'
-      task.plan[data.step_index]!.started_at = new Date(Date.now()).toISOString()
-    }
-    if (
-      data.event_type === 'task_reflection_completed' &&
-      data.step_index !== undefined &&
-      task.plan?.[data.step_index]
-    ) {
-      task.plan[data.step_index]!.output = data.output || task.plan[data.step_index]!.output
-      task.plan[data.step_index]!.status = String(data.output || '').startsWith('Reflection error:')
-        ? 'failed'
-        : 'completed'
-      task.plan[data.step_index]!.completed_at = new Date(Date.now()).toISOString()
-    }
-    if (
-      data.event_type === 'task_progress' &&
-      data.step_index !== undefined &&
-      task.plan?.[data.step_index]
-    ) {
-      if (task.plan[data.step_index]!.status === 'pending') {
-        task.plan[data.step_index]!.status = 'running'
-        task.plan[data.step_index]!.started_at = new Date(Date.now()).toISOString()
-      }
-    }
-    if (data.event_type === 'task_user_message' && data.message) {
-      // Append user message to current step's output so it's visible in the panel
-      const stepIdx = task.current_step
-      if (task.plan?.[stepIdx]) {
-        const prev = task.plan[stepIdx]!.output || ''
-        task.plan[stepIdx]!.output = prev + (prev ? '\n' : '') + `[User]: ${data.message}`
-      }
-    }
-    if (data.event_type === 'task_question' && data.questions?.length) {
-      task.questions = data.questions
-      task.status = 'waiting_input'
-    }
-    if (data.event_type === 'task_question_answered') {
-      task.questions = undefined
-      task.status = 'executing'
-    }
-    // Clear questions when task resumes (any progress/step event after question was answered)
-    if (
-      task.questions?.length &&
-      (data.event_type === 'task_progress' || data.event_type === 'task_step_completed')
-    ) {
-      task.questions = undefined
-    }
-  } else {
-    fetchAgentTasks()
-  }
+  void taskProjections.refreshNow().catch(() => {})
 }
 
 const agentEventTypes = [
@@ -1233,6 +1132,7 @@ watch(
       await nextTick()
       scrollToBottom()
     }
+    void taskProjections.setConversation(newId || '').catch(() => {})
   }
 )
 
@@ -1427,9 +1327,7 @@ async function handleVoiceTranscript(text: string) {
 function handleCancel() {
   const hadMediaGen = mediaGen.generating.value
   const mediaType = mediaGen.task.value?.type // 'image' | 'video'
-  const runningAgents = agentTasks.value.filter(
-    (at) => at.status === 'executing' || at.status === 'planning' || at.status === 'pending'
-  )
+  const runningTasks = [...currentConversationActiveTasks.value]
 
   // 1. Cancel chat streaming
   chatStore.cancelStreaming()
@@ -1439,23 +1337,21 @@ function handleCancel() {
     mediaGen.cancel()
   }
 
-  // 3. Cancel running agent tasks
-  if (runningAgents.length > 0) {
-    void loadChatApiModule()
-      .then(({ agentApi }) =>
-        Promise.allSettled(runningAgents.map((at) => agentApi.cancelTask(at.id)))
-      )
-      .catch(() => {})
+  // 3. Cancel running projected tasks in the current conversation
+  if (runningTasks.length > 0) {
+    void Promise.allSettled(runningTasks.map((task) => taskProjections.cancelTask(task.id))).catch(
+      () => {}
+    )
   }
 
   // 4. Append a stop notification message if any async task was cancelled
-  if (hadMediaGen || runningAgents.length > 0) {
+  if (hadMediaGen || runningTasks.length > 0) {
     const parts: string[] = []
     if (hadMediaGen) {
       parts.push(t(mediaType === 'video' ? 'chat.videoGenStopped' : 'chat.imageGenStopped'))
     }
-    for (const at of runningAgents) {
-      parts.push(t('chat.agentTaskStopped', { goal: at.goal }))
+    for (const task of runningTasks) {
+      parts.push(t('chat.agentTaskStopped', { goal: task.title }))
     }
 
     const cleaned = chatStore.messages.filter((m) => !m.id.startsWith('streaming-'))
@@ -1468,8 +1364,8 @@ function handleCancel() {
     })
     chatStore.messages = cleaned
 
-    if (runningAgents.length > 0) {
-      fetchAgentTasks()
+    if (runningTasks.length > 0) {
+      void taskProjections.refreshNow().catch(() => {})
     }
   }
 }
@@ -1482,20 +1378,9 @@ async function sendAgentMessage(taskId: string, message: string) {
   try {
     const { agentApi } = await loadChatApiModule()
     await agentApi.sendMessage(taskId, message)
+    await taskProjections.refreshNow().catch(() => {})
   } catch (e) {
     console.error('Failed to send message to agent task:', e)
-  }
-}
-
-async function submitAgentAnswer(taskId: string, answers: AgentQuestionAnswer[]) {
-  try {
-    const { agentApi } = await loadChatApiModule()
-    await agentApi.submitAnswers(taskId, answers)
-    // Clear questions locally after successful submit
-    const task = agentTasks.value.find((t) => t.id === taskId)
-    if (task) task.questions = undefined
-  } catch (e) {
-    console.error('Failed to submit agent answers:', e)
   }
 }
 
@@ -1826,44 +1711,9 @@ function handleCancelSelection() {
 }
 
 function handleDeepResearchEvent(type: string, data: Record<string, unknown>) {
-  deepResearchJobs.handleGlobalEvent(type, data)
-}
-
-function findDeepResearchJobElement(jobId: string): HTMLElement | null {
-  const normalizedJobId = jobId.trim()
-  if (!normalizedJobId) return null
-  const encodedJobId = encodeURIComponent(normalizedJobId)
-  const candidateIds = [
-    `deep-research-${encodedJobId}`,
-    `deep-research-${normalizedJobId}`,
-    `deep-research-progress-${encodedJobId}`,
-    `deep-research-progress-${normalizedJobId}`,
-  ]
-  for (const id of candidateIds) {
-    const exact = document.getElementById(id)
-    if (exact) return exact
-  }
-
-  const container = messagesContainer.value || document
-  const nodes = Array.from(container.querySelectorAll<HTMLElement>('[id]'))
-  return (
-    nodes.find(
-      (node) =>
-        node.id.startsWith(`deep-research-event-${normalizedJobId}-`) ||
-        node.id.startsWith(`deep-research-event-${encodedJobId}-`)
-    ) || null
-  )
-}
-
-async function focusPendingDeepResearchJob() {
-  const jobId = deepResearchJobs.pendingFocusJobId
-  if (!jobId) return false
-  await nextTick()
-  const target = findDeepResearchJobElement(jobId)
-  if (!target) return false
-  target.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  deepResearchJobs.consumePendingFocusJobId()
-  return true
+  void type
+  void data
+  void taskProjections.refreshNow().catch(() => {})
 }
 
 function getMessageIndex(messageId: string): number {
@@ -1952,28 +1802,6 @@ function handleActiveTodoPanelJump() {
   if (!messageId) return
   void focusMessageById(messageId)
 }
-
-async function handleOpenDeepResearchJob(job: DeepResearchJobSummary) {
-  if (!job.conversation_id) return
-  if (isMobile.value) {
-    pageStack.value = [job.conversation_id]
-  }
-  await deepResearchJobs.openJob(job.job_id, job.conversation_id)
-}
-
-watch(
-  () =>
-    [
-      deepResearchJobs.pendingFocusJobId,
-      chatStore.currentConversationId,
-      chatStore.messages.length,
-    ] as const,
-  async ([jobId]) => {
-    if (!jobId) return
-    await focusPendingDeepResearchJob()
-  },
-  { flush: 'post' }
-)
 
 watch(activeTodoPanelCollapsed, (value) => {
   persistActiveTodoPanelCollapsed(value)
@@ -2104,15 +1932,12 @@ onMounted(async () => {
         'link',
         'file',
         'deep-research',
+        'deep-research-timeline',
         'deep-research-progress',
         'deep-research-event',
       ])
       .catch(() => {})
   }, 2000)
-
-  queueBackgroundTask(() => {
-    deepResearchJobs.fetchActiveJobs().catch(() => {})
-  }, 1000)
 
   queueBackgroundTask(() => {
     loadApiClientModule()
@@ -2121,7 +1946,7 @@ onMounted(async () => {
   }, 2500)
 
   queueBackgroundTask(() => {
-    fetchAgentTasks()
+    taskProjections.setConversation(chatStore.currentConversationId || '').catch(() => {})
     registerEventStreamListeners().catch(() => {})
   }, 1200)
 
@@ -2167,6 +1992,7 @@ onUnmounted(() => {
     window.cancelAnimationFrame(autoScrollRafId)
     autoScrollRafId = null
   }
+  taskProjections.stopPolling()
   window.removeEventListener('resize', checkMobile)
   document.removeEventListener('click', handleClickOutside)
   void unregisterEventStreamListeners()
@@ -3557,16 +3383,16 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <!-- Agent task panels -->
-                <div v-if="agentTasks.length > 0" class="px-4">
-                  <AgentTaskPanel
-                    v-for="task in agentTasks"
+                <!-- Current conversation task projections -->
+                <div v-if="taskProjections.currentTasks.length > 0" class="px-4">
+                  <UserTaskProjectionCard
+                    v-for="task in taskProjections.currentTasks"
                     :key="task.id"
                     :task="task"
-                    @cancel="cancelAgentTask"
-                    @delete="deleteAgentTask"
+                    :collapse-by-default="true"
+                    @cancel="cancelProjectedTask"
+                    @open="openProjectedTask"
                     @message="sendAgentMessage"
-                    @answer="submitAgentAnswer"
                   />
                 </div>
 
@@ -3741,7 +3567,7 @@ onUnmounted(() => {
                     v-if="
                       chatStore.streaming ||
                       mediaGen.generating.value ||
-                      agentTasks.some((at) => at.status === 'executing' || at.status === 'planning')
+                      currentConversationActiveTasks.length > 0
                     "
                     class="flex items-center gap-2 px-4 py-2 glass-card text-red-400 hover:bg-red-500/10 rounded-lg text-sm transition-colors cursor-pointer"
                     @click="handleCancel"
@@ -3974,10 +3800,14 @@ onUnmounted(() => {
             <!-- Input area - floating at bottom (desktop), flex at bottom (mobile) -->
             <div class="chat-input-dock flex-shrink-0">
               <div
-                v-if="hasActiveDeepResearchJobs"
+                v-if="hasBackgroundTasks"
                 class="max-w-5xl mx-auto px-3 sm:px-4 py-1"
               >
-                <DeepResearchTaskDock @view="handleOpenDeepResearchJob" />
+                <UserTaskProjectionDock
+                  :tasks="taskProjections.backgroundTasks"
+                  @open="openProjectedTask"
+                  @cancel="cancelProjectedTask"
+                />
               </div>
               <!-- Media generation param panel -->
               <div v-if="mediaGen.showPanel.value" class="max-w-4xl mx-auto px-3 sm:px-4">

@@ -2,6 +2,7 @@ package selfreflect
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -10,6 +11,8 @@ import (
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
 
 type LLMCaller interface {
@@ -35,13 +38,19 @@ type Step struct {
 }
 
 type Input struct {
-	TaskID             string `json:"task_id,omitempty"`
-	Goal               string `json:"goal"`
-	Plan               []Step `json:"plan,omitempty"`
-	VerificationOutput string `json:"verification_output,omitempty"`
-	FinalStatus        string `json:"final_status,omitempty"`
-	ResultSummary      string `json:"result_summary,omitempty"`
-	FailureReason      string `json:"failure_reason,omitempty"`
+	TaskID             string                 `json:"task_id,omitempty"`
+	Goal               string                 `json:"goal"`
+	Plan               []Step                 `json:"plan,omitempty"`
+	VerificationOutput string                 `json:"verification_output,omitempty"`
+	FinalStatus        string                 `json:"final_status,omitempty"`
+	ResultSummary      string                 `json:"result_summary,omitempty"`
+	FailureReason      string                 `json:"failure_reason,omitempty"`
+	OwnerUserID        string                 `json:"owner_user_id,omitempty"`
+	SourceKind         string                 `json:"source_kind,omitempty"`
+	SourceID           string                 `json:"source_id,omitempty"`
+	EvaluationSummary  map[string]interface{} `json:"evaluation_summary,omitempty"`
+	ProposalCandidates []ProposalCandidate    `json:"proposal_candidates,omitempty"`
+	ProposalMode       ProposalMode           `json:"proposal_mode,omitempty"`
 }
 
 type Lesson struct {
@@ -52,21 +61,33 @@ type Lesson struct {
 }
 
 type Result struct {
-	Summary       string   `json:"summary"`
-	Lessons       []Lesson `json:"lessons,omitempty"`
-	MemoryWritten int      `json:"memory_written"`
-	SkippedReason string   `json:"skipped_reason,omitempty"`
+	Summary              string   `json:"summary"`
+	Lessons              []Lesson `json:"lessons,omitempty"`
+	MemoryWritten        int      `json:"memory_written"`
+	SkippedReason        string   `json:"skipped_reason,omitempty"`
+	ProposalCount        int      `json:"proposal_count,omitempty"`
+	ProposalIDs          []string `json:"proposal_ids,omitempty"`
+	ProposalSkippedReason string  `json:"proposal_skipped_reason,omitempty"`
 }
 
 type Service struct {
-	llm        LLMCaller
-	mu         sync.RWMutex
-	writer     MemoryWriter
-	maxLessons int
+	llm           LLMCaller
+	mu            sync.RWMutex
+	writer        MemoryWriter
+	proposalStore ProposalStore
+	workspaceMgr  *workspace.Manager
+	proposalGate  func() bool
+	maxLessons    int
 }
 
 func NewService(llmCaller LLMCaller, writer MemoryWriter) *Service {
 	return &Service{llm: llmCaller, writer: writer, maxLessons: 3}
+}
+
+func (s *Service) SetLLMCaller(llmCaller LLMCaller) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.llm = llmCaller
 }
 
 func (s *Service) SetMemoryWriter(writer MemoryWriter) {
@@ -75,39 +96,70 @@ func (s *Service) SetMemoryWriter(writer MemoryWriter) {
 	s.writer = writer
 }
 
+func (s *Service) SetProposalStore(store ProposalStore) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.proposalStore = store
+}
+
+func (s *Service) SetWorkspaceManager(mgr *workspace.Manager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.workspaceMgr = mgr
+}
+
+func (s *Service) SetProposalGateFunc(fn func() bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.proposalGate = fn
+}
+
 func (s *Service) Reflect(ctx context.Context, input Input) (*Result, error) {
 	input = normalizeInput(input)
-	if input.Goal == "" && input.ResultSummary == "" && input.FailureReason == "" {
+	hasReflectionRecord := input.Goal != "" || input.ResultSummary != "" || input.FailureReason != ""
+	if !hasReflectionRecord && len(input.ProposalCandidates) == 0 {
 		return &Result{SkippedReason: "reflection requires goal, result_summary, or failure_reason"}, nil
 	}
 
-	result, err := s.generateReflection(ctx, input)
+	result := &Result{}
+	if hasReflectionRecord {
+		parsed, err := s.generateReflection(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		result = parsed
+		result.Summary = strings.TrimSpace(result.Summary)
+		result.Lessons = filterLessons(result.Lessons, input, s.maxLessons)
+		if len(result.Lessons) == 0 {
+			if result.Summary == "" {
+				result.Summary = fallbackSummary(input)
+			}
+			result.SkippedReason = "no grounded lessons passed quality filters"
+		} else {
+			if result.Summary == "" {
+				result.Summary = fallbackSummary(input)
+			}
+			writer := s.memoryWriter()
+			if writer != nil {
+				for _, lesson := range result.Lessons {
+					if err := writer.Write(ctx, formatMemoryEntry(lesson), buildMemoryTags(input, lesson.Kind)); err == nil {
+						result.MemoryWritten++
+					}
+				}
+			}
+		}
+	}
+
+	proposalCount, proposalIDs, proposalSkippedReason, err := s.intakeProposals(ctx, input)
 	if err != nil {
 		return nil, err
 	}
+	result.ProposalCount = proposalCount
+	result.ProposalIDs = proposalIDs
+	result.ProposalSkippedReason = proposalSkippedReason
 
-	result.Summary = strings.TrimSpace(result.Summary)
-	result.Lessons = filterLessons(result.Lessons, input, s.maxLessons)
-	if len(result.Lessons) == 0 {
-		if result.Summary == "" {
-			result.Summary = fallbackSummary(input)
-		}
-		result.SkippedReason = "no grounded lessons passed quality filters"
-		return result, nil
-	}
-
-	if result.Summary == "" {
-		result.Summary = fallbackSummary(input)
-	}
-
-	writer := s.memoryWriter()
-	if writer == nil {
-		return result, nil
-	}
-	for _, lesson := range result.Lessons {
-		if err := writer.Write(ctx, formatMemoryEntry(lesson), buildMemoryTags(input, lesson.Kind)); err == nil {
-			result.MemoryWritten++
-		}
+	if !hasReflectionRecord && result.ProposalCount == 0 && result.ProposalSkippedReason == "" {
+		result.SkippedReason = "reflection requires goal, result_summary, or failure_reason"
 	}
 	return result, nil
 }
@@ -116,6 +168,12 @@ func (s *Service) memoryWriter() MemoryWriter {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.writer
+}
+
+func (s *Service) proposalDependencies() (ProposalStore, *workspace.Manager, func() bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.proposalStore, s.workspaceMgr, s.proposalGate
 }
 
 func (s *Service) generateReflection(ctx context.Context, input Input) (*Result, error) {
@@ -140,6 +198,136 @@ func (s *Service) generateReflection(ctx context.Context, input Input) (*Result,
 		return nil, err
 	}
 	return parsed, nil
+}
+
+func (s *Service) ListProposals(ctx context.Context, filter ProposalFilter) ([]Proposal, error) {
+	store, _, _ := s.proposalDependencies()
+	if store == nil {
+		return nil, fmt.Errorf("proposal store is not configured")
+	}
+	return store.ListProposals(ctx, filter)
+}
+
+func (s *Service) GetProposal(ctx context.Context, id string) (*Proposal, error) {
+	store, _, _ := s.proposalDependencies()
+	if store == nil {
+		return nil, fmt.Errorf("proposal store is not configured")
+	}
+	return store.GetProposal(ctx, strings.TrimSpace(id))
+}
+
+func (s *Service) ReviewProposal(ctx context.Context, id string, status ProposalStatus, reviewNote string) (*Proposal, error) {
+	if status != ProposalStatusApproved && status != ProposalStatusRejected {
+		return nil, fmt.Errorf("invalid proposal status %q", status)
+	}
+	store, _, _ := s.proposalDependencies()
+	if store == nil {
+		return nil, fmt.Errorf("proposal store is not configured")
+	}
+	proposal, err := store.GetProposal(ctx, strings.TrimSpace(id))
+	if err != nil {
+		return nil, err
+	}
+	now := timeutil.NowTime()
+	proposal.Status = status
+	proposal.ReviewNote = strings.TrimSpace(reviewNote)
+	proposal.ReviewedAt = &now
+	if err := store.UpdateProposal(ctx, proposal); err != nil {
+		return nil, err
+	}
+	return store.GetProposal(ctx, proposal.ID)
+}
+
+func (s *Service) intakeProposals(ctx context.Context, input Input) (int, []string, string, error) {
+	if len(input.ProposalCandidates) == 0 {
+		return 0, nil, "", nil
+	}
+	store, mgr, gate := s.proposalDependencies()
+	if gate != nil && !gate() {
+		return 0, nil, "agent_auto_reflect is disabled", nil
+	}
+	if store == nil {
+		return 0, nil, "proposal store is not configured", nil
+	}
+	if mgr == nil {
+		return 0, nil, "workspace manager is not configured", nil
+	}
+	if mode := normalizeProposalMode(input.ProposalMode); mode != ProposalModeReviewOnly {
+		return 0, nil, "unsupported proposal_mode", nil
+	}
+
+	createdIDs := make([]string, 0, len(input.ProposalCandidates))
+	skippedReasons := make([]string, 0, len(input.ProposalCandidates))
+	for _, candidate := range input.ProposalCandidates {
+		proposal, skipReason, err := s.buildProposal(ctx, store, mgr, input, candidate)
+		if err != nil {
+			return len(createdIDs), createdIDs, strings.Join(dedupeStrings(skippedReasons), "; "), err
+		}
+		if proposal == nil {
+			if strings.TrimSpace(skipReason) != "" {
+				skippedReasons = append(skippedReasons, skipReason)
+			}
+			continue
+		}
+		if err := store.CreateProposal(ctx, proposal); err != nil {
+			return len(createdIDs), createdIDs, strings.Join(dedupeStrings(skippedReasons), "; "), err
+		}
+		createdIDs = append(createdIDs, proposal.ID)
+	}
+	if len(createdIDs) == 0 && len(skippedReasons) == 0 {
+		skippedReasons = append(skippedReasons, "no eligible proposal candidates")
+	}
+	return len(createdIDs), createdIDs, strings.Join(dedupeStrings(skippedReasons), "; "), nil
+}
+
+func (s *Service) buildProposal(ctx context.Context, store ProposalStore, mgr *workspace.Manager, input Input, candidate ProposalCandidate) (*Proposal, string, error) {
+	candidate = normalizeProposalCandidate(candidate)
+	if candidate.Lesson == "" || candidate.Evidence == "" {
+		return nil, "candidate missing lesson or evidence", nil
+	}
+	targetFile := strings.TrimSpace(candidate.TargetFile)
+	if targetFile == "" {
+		targetFile = proposalTargetFile
+	}
+	if targetFile != proposalTargetFile {
+		return nil, "proposal target is restricted to AGENTS.md", nil
+	}
+	if len(candidate.EvidenceIDs) == 0 {
+		return nil, "candidate is not evidence-traceable", nil
+	}
+	dedupKey := normalizeDedupKey(candidate.Lesson)
+	if dedupKey == "" {
+		return nil, "candidate lesson did not produce a stable dedup key", nil
+	}
+	existing, err := store.FindProposalByDedup(ctx, dedupKey, targetFile)
+	switch {
+	case err == nil && existing != nil:
+		return nil, "duplicate proposal candidate", nil
+	case err != nil && err != sql.ErrNoRows:
+		return nil, "", err
+	}
+
+	proposal := &Proposal{
+		OwnerUserID:        strings.TrimSpace(input.OwnerUserID),
+		SourceKind:         strings.TrimSpace(input.SourceKind),
+		SourceID:           strings.TrimSpace(input.SourceID),
+		ProposalMode:       ProposalModeReviewOnly,
+		TargetFile:         targetFile,
+		TargetSection:      proposalTargetSection,
+		Status:             ProposalStatusPending,
+		DedupKey:           dedupKey,
+		Lesson:             candidate.Lesson,
+		WhenToApply:        candidate.WhenToApply,
+		Evidence:           candidate.Evidence,
+		EvidenceIDs:        append([]string(nil), candidate.EvidenceIDs...),
+		EvaluationSummary:  cloneInterfaceMap(input.EvaluationSummary),
+		CalibrationSummary: extractCalibrationSummary(input.EvaluationSummary),
+	}
+	proposal.PatchPreview = renderProposalPatchPreview(mgr, proposal)
+	if proposal.PatchPreview == "" {
+		return nil, "failed to render patch preview", nil
+	}
+	return proposal, "", nil
 }
 
 func buildReflectionSystemPrompt() string {
@@ -227,13 +415,44 @@ func normalizeInput(input Input) Input {
 	input.ResultSummary = strings.TrimSpace(input.ResultSummary)
 	input.FailureReason = strings.TrimSpace(input.FailureReason)
 	input.TaskID = strings.TrimSpace(input.TaskID)
+	input.OwnerUserID = strings.TrimSpace(input.OwnerUserID)
+	input.SourceKind = strings.TrimSpace(input.SourceKind)
+	input.SourceID = strings.TrimSpace(input.SourceID)
 	input.FinalStatus = normalizeStatus(input.FinalStatus)
+	input.ProposalMode = normalizeProposalMode(input.ProposalMode)
 	for i := range input.Plan {
 		input.Plan[i].Description = strings.TrimSpace(input.Plan[i].Description)
 		input.Plan[i].Status = normalizeStatus(input.Plan[i].Status)
 		input.Plan[i].Output = strings.TrimSpace(input.Plan[i].Output)
 	}
+	for i := range input.ProposalCandidates {
+		input.ProposalCandidates[i] = normalizeProposalCandidate(input.ProposalCandidates[i])
+	}
 	return input
+}
+
+func normalizeProposalMode(mode ProposalMode) ProposalMode {
+	switch strings.ToLower(strings.TrimSpace(string(mode))) {
+	case "", string(ProposalModeReviewOnly):
+		return ProposalModeReviewOnly
+	default:
+		return ProposalMode(strings.ToLower(strings.TrimSpace(string(mode))))
+	}
+}
+
+func normalizeProposalCandidate(candidate ProposalCandidate) ProposalCandidate {
+	candidate.Lesson = cleanSentence(candidate.Lesson)
+	candidate.WhenToApply = cleanSentence(candidate.WhenToApply)
+	candidate.Evidence = cleanSentence(candidate.Evidence)
+	candidate.TargetFile = strings.TrimSpace(candidate.TargetFile)
+	filteredEvidenceIDs := make([]string, 0, len(candidate.EvidenceIDs))
+	for _, evidenceID := range candidate.EvidenceIDs {
+		if id := strings.TrimSpace(evidenceID); id != "" {
+			filteredEvidenceIDs = append(filteredEvidenceIDs, id)
+		}
+	}
+	candidate.EvidenceIDs = filteredEvidenceIDs
+	return candidate
 }
 
 func normalizeStatus(status string) string {
@@ -433,4 +652,62 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+func cloneInterfaceMap(in map[string]interface{}) map[string]interface{} {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func extractCalibrationSummary(summary map[string]interface{}) map[string]interface{} {
+	if len(summary) == 0 {
+		return nil
+	}
+	if raw, ok := summary["calibration"].(map[string]interface{}); ok && len(raw) > 0 {
+		return cloneInterfaceMap(raw)
+	}
+	out := map[string]interface{}{}
+	for _, key := range []string{
+		"coverage",
+		"groundedness",
+		"freshness",
+		"conflict_risk",
+		"confidence",
+		"recommended_action",
+		"calibration_ref",
+	} {
+		if value, ok := summary[key]; ok {
+			out[key] = value
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func dedupeStrings(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, item := range in {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	return out
 }

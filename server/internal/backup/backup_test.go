@@ -1,6 +1,8 @@
 package backup
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"os"
@@ -1090,6 +1092,233 @@ func TestDiscoverSQLiteDatabasePathsIncludesAdditionalDatabases(t *testing.T) {
 	}
 }
 
+func TestManagerCreateSkipsSQLiteBackupArtifacts(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+
+	files := map[string]string{
+		"blue.db":                         "main",
+		"blue.db.bak.20260320T010203.000": "bak",
+		"metrics.db.bad.123":              "bad",
+		"notes.db.repair-src.123":         "repair-src",
+		"notes.db.repair-out.123":         "repair-out",
+		"session_audit.db.corrupt.legacy": "corrupt",
+		"plain.txt":                       "plain",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dataDir, name), []byte(body), 0644); err != nil {
+			t.Fatalf("failed to write %s: %v", name, err)
+		}
+	}
+
+	m, err := NewManager(Config{Path: backupDir, Enabled: true}, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+	info, err := m.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create backup: %v", err)
+	}
+	filesInBackup, err := m.ListFiles(info.ID)
+	if err != nil {
+		t.Fatalf("failed to list backup files: %v", err)
+	}
+
+	joined := strings.Join(filesInBackup, "\n")
+	for _, unwanted := range []string{
+		"data/blue.db.bak.",
+		"data/metrics.db.bad.",
+		"data/notes.db.repair-src.",
+		"data/notes.db.repair-out.",
+		"data/session_audit.db.corrupt.",
+	} {
+		if strings.Contains(joined, unwanted) {
+			t.Fatalf("unexpected sqlite artifact in backup: %s\nfiles=%v", unwanted, filesInBackup)
+		}
+	}
+	if !strings.Contains(joined, "data/blue.db") {
+		t.Fatalf("expected main sqlite database to remain in backup, files=%v", filesInBackup)
+	}
+}
+
+func TestManagerCreateCheckpointsSQLiteAndSkipsAuxiliaryWALFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+	restoreDataDir := filepath.Join(tmpDir, "restore-data")
+	restoreConfigDir := filepath.Join(tmpDir, "restore-config")
+
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+
+	dbPath := filepath.Join(dataDir, "blue.db")
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open sqlite db %s: %v", dbPath, err)
+	}
+	defer db.Close()
+
+	statements := []string{
+		"PRAGMA journal_mode=WAL",
+		"CREATE TABLE entries (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+	}
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("failed to exec %q on %s: %v", stmt, dbPath, err)
+		}
+	}
+	if _, err := db.Exec("INSERT INTO entries(id, value) VALUES (1, ?)", "from-wal"); err != nil {
+		t.Fatalf("failed to seed sqlite db %s: %v", dbPath, err)
+	}
+	if _, err := os.Stat(dbPath + "-wal"); err != nil {
+		t.Fatalf("expected WAL file for %s: %v", dbPath, err)
+	}
+
+	m, err := NewManager(Config{Path: backupDir, Enabled: true}, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+	info, err := m.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create backup: %v", err)
+	}
+	filesInBackup, err := m.ListFiles(info.ID)
+	if err != nil {
+		t.Fatalf("failed to list backup files: %v", err)
+	}
+
+	joined := strings.Join(filesInBackup, "\n")
+	if !strings.Contains(joined, "data/blue.db") {
+		t.Fatalf("expected backup to include blue.db, files=%v", filesInBackup)
+	}
+	for _, unwanted := range []string{"data/blue.db-wal", "data/blue.db-shm"} {
+		if strings.Contains(joined, unwanted) {
+			t.Fatalf("expected checkpointed backup to skip %s, files=%v", unwanted, filesInBackup)
+		}
+	}
+
+	restoreMgr, err := NewManager(Config{Path: backupDir, Enabled: true}, restoreDataDir, restoreConfigDir)
+	if err != nil {
+		t.Fatalf("failed to create restore manager: %v", err)
+	}
+	opts := DefaultRestoreOptions()
+	opts.CreateCheckpoint = false
+	result, err := restoreMgr.Restore(context.Background(), info.ID, opts)
+	if err != nil {
+		t.Fatalf("failed to restore backup: %v", err)
+	}
+	if !result.Success {
+		t.Fatalf("expected restore success, got %+v", result)
+	}
+
+	if got := readSQLiteValue(t, filepath.Join(restoreDataDir, "blue.db")); got != "from-wal" {
+		t.Fatalf("expected restored sqlite value %q, got %q", "from-wal", got)
+	}
+}
+
+func TestManagerRestoreSkipsSQLiteBackupArtifactsFromLegacyBackup(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		t.Fatalf("failed to create backup dir: %v", err)
+	}
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+
+	m, err := NewManager(Config{Path: backupDir, Enabled: true}, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	backupPath := filepath.Join(backupDir, "legacy_restore.tar.gz")
+	file, err := os.Create(backupPath)
+	if err != nil {
+		t.Fatalf("failed to create backup file: %v", err)
+	}
+	gz := gzip.NewWriter(file)
+	tw := tar.NewWriter(gz)
+	for name, body := range map[string]string{
+		"data/blue.db":                         "main",
+		"data/blue.db.bak.20260320T010203.000": "bak",
+		"data/session_audit.db.corrupt.legacy": "corrupt",
+	} {
+		header := &tar.Header{
+			Name: name,
+			Mode: 0600,
+			Size: int64(len(body)),
+		}
+		if err := tw.WriteHeader(header); err != nil {
+			t.Fatalf("write header %s: %v", name, err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			t.Fatalf("write body %s: %v", name, err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("close tar writer: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("close gzip writer: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close backup file: %v", err)
+	}
+
+	checksum, err := m.calculateChecksum(backupPath)
+	if err != nil {
+		t.Fatalf("calculate checksum: %v", err)
+	}
+	info := &BackupInfo{
+		ID:        "legacy",
+		Path:      backupPath,
+		Type:      string(BackupTypeData),
+		CreatedAt: time.Now(),
+		Checksum:  checksum,
+	}
+	m.backups[info.ID] = info
+
+	opts := DefaultRestoreOptions()
+	opts.CreateCheckpoint = false
+	result, err := m.Restore(context.Background(), info.ID, opts)
+	if err != nil {
+		t.Fatalf("restore legacy backup: %v", err)
+	}
+	if !result.Success {
+		t.Fatalf("expected restore success, got %+v", result)
+	}
+
+	if _, err := os.Stat(filepath.Join(dataDir, "blue.db")); err != nil {
+		t.Fatalf("expected blue.db to be restored: %v", err)
+	}
+	for _, skipped := range []string{
+		filepath.Join(dataDir, "blue.db.bak.20260320T010203.000"),
+		filepath.Join(dataDir, "session_audit.db.corrupt.legacy"),
+	} {
+		if _, err := os.Stat(skipped); !os.IsNotExist(err) {
+			t.Fatalf("expected restore to skip legacy sqlite artifact %s, stat err=%v", skipped, err)
+		}
+	}
+}
+
 func TestCheckAndAutoRecoverRestoresAdditionalDatabase(t *testing.T) {
 	tmpDir := t.TempDir()
 	backupDir := filepath.Join(tmpDir, "backups")
@@ -1137,6 +1366,9 @@ func TestCheckAndAutoRecoverRestoresAdditionalDatabase(t *testing.T) {
 	}
 	if !containsString(result.CorruptedDatabases, auditDB) {
 		t.Fatalf("expected corrupted databases to include %s, got %v", auditDB, result.CorruptedDatabases)
+	}
+	if len(result.RepairDetails) != 0 {
+		t.Fatalf("expected backup restore path to clear repair details, got %+v", result.RepairDetails)
 	}
 
 	if got := readSQLiteValue(t, blueDB); got != "blue-v1" {
@@ -1196,6 +1428,13 @@ func TestCheckAndAutoRecoverPrefersRepairBeforeBackupRestore(t *testing.T) {
 	}
 	if !containsString(result.RepairedDatabases, auditDB) {
 		t.Fatalf("expected repaired databases to include %s, got %v", auditDB, result.RepairedDatabases)
+	}
+	detail, ok := result.RepairDetails[auditDB]
+	if !ok {
+		t.Fatalf("expected repair details for %s, got %+v", auditDB, result.RepairDetails)
+	}
+	if detail.Method != "batch_recover" {
+		t.Fatalf("repair method = %q, want batch_recover", detail.Method)
 	}
 	if len(result.CorruptedDatabases) != 0 {
 		t.Fatalf("expected no remaining corrupted databases, got %v", result.CorruptedDatabases)

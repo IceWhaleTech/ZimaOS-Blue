@@ -77,6 +77,27 @@ func TestPDFToolInfoExecute(t *testing.T) {
 	}
 }
 
+func TestNewPDFToolUsesLongerDefaultDownloadTimeout(t *testing.T) {
+	tool := NewPDFTool(&stubPDFService{})
+	if tool.httpClient == nil {
+		t.Fatal("expected http client")
+	}
+	if tool.httpClient.Timeout != 5*time.Minute {
+		t.Fatalf("http timeout = %v, want %v", tool.httpClient.Timeout, 5*time.Minute)
+	}
+}
+
+func TestRegisterPDFToolLeavesToolEnabled(t *testing.T) {
+	registry := NewRegistry()
+	RegisterPDFTool(registry, &stubPDFService{})
+	if registry.IsDisabled("pdf") {
+		t.Fatal("expected pdf tool to remain enabled")
+	}
+	if _, ok := registry.LookupDefinitionForRoute("pdf", ToolRouteKindChat); !ok {
+		t.Fatal("expected pdf tool definition to be visible for chat route")
+	}
+}
+
 func TestPDFToolInfoExecuteSupportsMultiplePDFs(t *testing.T) {
 	now := time.Now().UTC()
 	path1 := writeTestPDF(t, "one.pdf", 256)
@@ -182,6 +203,30 @@ func TestPDFToolReadExecuteParsesPages(t *testing.T) {
 	}
 	if !svc.lastExtractReq.IncludePages {
 		t.Fatal("expected include_pages=true")
+	}
+}
+
+func TestPDFToolReadExecuteResolvesRelativeWorkspacePath(t *testing.T) {
+	workspaceDir := t.TempDir()
+	path := filepath.Join(workspaceDir, "report.pdf")
+	if err := os.WriteFile(path, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write pdf: %v", err)
+	}
+
+	svc := &stubPDFService{extract: pdfextract.ExtractResult{Text: "hello", Document: pdfextract.DocumentInfo{FileName: "report.pdf"}}}
+	tool := NewPDFTool(svc)
+	ctx := WithFSRootOverride(context.Background(), []string{workspaceDir}, map[string]string{"workspace": workspaceDir})
+
+	result, err := tool.Execute(ctx, map[string]interface{}{"path": "report.pdf"})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(pdfextract.ExtractResult)
+	if payload.Text != "hello" {
+		t.Fatalf("text = %q, want %q", payload.Text, "hello")
+	}
+	if svc.lastExtractReq.Path != path {
+		t.Fatalf("extract path = %q, want %q", svc.lastExtractReq.Path, path)
 	}
 }
 

@@ -29,8 +29,8 @@ type fakeProxyHandler struct {
 	lastLocale   string
 }
 
-func TestEnsureTimeout_DefaultIs30Seconds(t *testing.T) {
-	ctx, cancel := ensureTimeout(context.Background())
+func TestEnsureTimeout_DefaultChatIs10Minutes(t *testing.T) {
+	ctx, cancel := ensureTimeout(context.Background(), defaultChatTimeout)
 	defer cancel()
 
 	deadline, ok := ctx.Deadline()
@@ -39,8 +39,23 @@ func TestEnsureTimeout_DefaultIs30Seconds(t *testing.T) {
 	}
 
 	remaining := time.Until(deadline)
-	if remaining > 31*time.Second || remaining < 29*time.Second {
-		t.Fatalf("unexpected timeout window: %s", remaining)
+	if remaining > 10*time.Minute+time.Second || remaining < 10*time.Minute-time.Second {
+		t.Fatalf("unexpected chat timeout window: %s", remaining)
+	}
+}
+
+func TestEnsureTimeout_DefaultStreamIs10Minutes(t *testing.T) {
+	ctx, cancel := ensureTimeout(context.Background(), defaultStreamTimeout)
+	defer cancel()
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("expected deadline to be set")
+	}
+
+	remaining := time.Until(deadline)
+	if remaining > 10*time.Minute+time.Second || remaining < 10*time.Minute-time.Second {
+		t.Fatalf("unexpected stream timeout window: %s", remaining)
 	}
 }
 

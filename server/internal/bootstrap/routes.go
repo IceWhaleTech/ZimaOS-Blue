@@ -52,6 +52,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
 	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
@@ -937,7 +938,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			if renderPort == 0 {
 				renderPort = deps.ServerConfig.Port
 			}
-			mediaManager.SetFallbackEngine(mediagen.NewFallbackEngine(mediagen.FallbackConfig{
+			fallbackEngine := mediagen.NewFallbackEngine(mediagen.FallbackConfig{
 				Enabled:             fallbackCfg.Enabled,
 				SearchProviderChain: append([]string(nil), fallbackCfg.SearchProviderChain...),
 				SearchMaxResults:    fallbackCfg.SearchMaxResults,
@@ -945,10 +946,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				ScreenshotHeight:    fallbackCfg.ScreenshotHeight,
 				ComplexPromptChars:  fallbackCfg.ComplexPromptChars,
 				RenderBaseURL:       fmt.Sprintf("http://127.0.0.1:%d", renderPort),
+				DataDir:             dataDir,
+				U2NetPStatusURL:     "/api/v1/media/fallback/models/u2netp/status",
 				PublicSpaces:        convertFallbackPublicSpaces(fallbackCfg.PublicSpaces),
 			}, mediaStorage, mediagen.NewToolWebSearcher(webSearchTool), func() mediagen.FallbackBrowserService {
 				return deps.LazyBrowserSvc()
-			}, locale))
+			}, locale)
+			fallbackEngine.SetScenePlannerLLM(newProviderRegistryLLMCaller(s.LLMRegistry))
+			mediaManager.SetFallbackEngine(fallbackEngine)
 		}
 		deps.MediaManager = mediaManager
 
@@ -1385,6 +1390,20 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Deep research service (shared by API + skill executor)
 	deepResearchService := deepresearch.NewService(nil, deepresearch.NewToolWebSearcherWithConfig(webSearchConfig))
+	reflectService := selfreflect.NewService(nil, nil)
+	if deps.DB != nil {
+		proposalStore, err := selfreflect.NewSQLiteProposalStore(deps.DB)
+		if err != nil {
+			logger.Warn("Failed to initialize self-reflect proposal store", zap.Error(err))
+		} else {
+			reflectService.SetProposalStore(proposalStore)
+		}
+	}
+	if deps.WorkspaceHandler != nil {
+		if mgr := deps.WorkspaceHandler.Manager(); mgr != nil {
+			reflectService.SetWorkspaceManager(mgr)
+		}
+	}
 	var harnessController *harness.Controller
 	var harnessGroupDispatcher *harness.GroupDispatcher
 	var harnessRuntimeObserver tools.RuntimeEventObserver
@@ -1397,32 +1416,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			logger.Warn("Failed to initialize harness store", zap.Error(err))
 		} else {
 			harnessController = harness.NewController(harnessStore, harness.NewPolicyResolver(deps.Config.Harness, &deps.Config.Agents))
+			harnessController.SetReflector(reflectService)
 			harnessGroupDispatcher = harness.NewGroupDispatcher(harnessController)
 			harnessRuntimeObserver = harness.NewRuntimeObserver(harnessController)
 			harnessSubagentExecutor = harness.NewSubagentExecutor(harnessController, &deps.Config.Agents)
 			harnessWriteGuard = harness.NewWritePathGuard(harnessController)
 			harnessExecGuard = harness.NewExecPathGuard(harnessController)
-		}
-	}
-	deepResearchService.SetRoutePolicy(deepresearch.RoutePolicy{
-		DefaultMode:     deepresearch.RouteMode(deps.Config.Research.Router.DefaultMode),
-		AllowExperiment: deps.Config.Research.Router.AllowExperiment,
-		AllowHybrid:     deps.Config.Research.Router.AllowHybrid,
-	})
-	if deps.Config.Research.Autoresearch.Enabled {
-		backend, err := deepresearch.NewAutoresearchBackend(deepresearch.AutoresearchBackendConfig{
-			Command:     deps.Config.Research.Autoresearch.Command,
-			Args:        deps.Config.Research.Autoresearch.Args,
-			WorkingDir:  deps.Config.Research.Autoresearch.WorkingDir,
-			Timeout:     deps.Config.Research.Autoresearch.Timeout,
-			ArtifactDir: deps.Config.Research.Autoresearch.ArtifactDir,
-			Env:         deps.Config.Research.Autoresearch.Env,
-		})
-		if err != nil {
-			logger.Warn("Failed to initialize autoresearch backend", zap.Error(err))
-		} else {
-			deepResearchService.SetExperimentBackend(backend)
-			logger.Info("Autoresearch backend enabled for deep research")
 		}
 	}
 	deps.ChatHandler.SetDeepResearchService(deepResearchService)
@@ -1609,23 +1608,27 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			provider.StartAsync()
 			marketEmbedding = provider
 		}
-		market, err := skillmarket.NewService(deps.DB, skillmarket.Options{
-			Config:            marketCfg,
-			Logger:            logger,
-			Registry:          s.SkillRegistry,
-			LocalScanner:      localScanner,
-			EmbeddingProvider: marketEmbedding,
-			HTTPClient:        &http.Client{Timeout: 30 * time.Second},
-			// Keep LLM classification optional; deterministic scanning is always available.
-			Scanner: skillmarket.NewScanner(nil),
-		})
-		if err != nil {
-			logger.Warn("Failed to initialize skill marketplace", zap.Error(err))
-		} else {
-			skillHandler.SetMarketplace(market)
+		skillHandler.SetMarketplaceFactory(func() (*skillmarket.Service, error) {
+			market, err := skillmarket.NewServiceWithDBPath(marketCfg.DBPath, skillmarket.Options{
+				Config:            marketCfg,
+				Logger:            logger,
+				Registry:          s.SkillRegistry,
+				LocalScanner:      localScanner,
+				EmbeddingProvider: marketEmbedding,
+				HTTPClient:        network.NewPooledHTTPClient(5 * time.Minute),
+				// Keep LLM classification optional; deterministic scanning is always available.
+				Scanner: skillmarket.NewScanner(nil),
+			})
+			if err != nil {
+				logger.Warn("Failed to initialize skill marketplace", zap.Error(err), zap.String("db_path", marketCfg.DBPath))
+				return nil, err
+			}
 			market.Start(deps.Ctx)
-			logger.Info("Skill marketplace initialized")
-		}
+			logger.Info("Skill marketplace initialized", zap.String("db_path", marketCfg.DBPath))
+			return market, nil
+		})
+		deps.Closers = append(deps.Closers, skillHandler)
+		logger.Info("Skill marketplace registered for lazy initialization", zap.String("db_path", marketCfg.DBPath))
 	}
 
 	skillHandler.RegisterRoutes(authPageV1Group(permission.PageSkills))
@@ -1692,6 +1695,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if browserTool := tools.GetBrowserTool(s.ToolRegistry); browserTool != nil {
 			browserTool.SetMediaDir(mediaDir)
 		}
+		if webTool := tools.GetWebTool(s.ToolRegistry); webTool != nil {
+			webTool.SetBrowser(deps.BrowserBackend)
+		}
 		if webFetchTool := tools.GetWebFetchTool(s.ToolRegistry); webFetchTool != nil {
 			webFetchTool.SetBrowser(deps.BrowserBackend)
 		}
@@ -1736,7 +1742,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Register native image tool backed by mediagen + ui_reviewer.
-	tools.RegisterImageTool(s.ToolRegistry, deps.UIReviewerTool, newImageGenerateAdapter(deps.MediaManager), newImageTaskLookupAdapter(deps.MediaManager))
+	tools.RegisterImageTool(s.ToolRegistry, deps.UIReviewerTool, newImageGenerateAdapter(deps.MediaManager, workspaceAllowedPaths), newImageTaskLookupAdapter(deps.MediaManager))
 	pptSvc := newPPTService(deps.MediaManager, deps.MediaStorage, deps.UIReviewerTool)
 	tools.RegisterPPTTool(s.ToolRegistry, pptSvc)
 	if tool := s.ToolRegistry.Get("image"); tool != nil {
@@ -1791,19 +1797,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 
-	var reflectService *selfreflect.Service
-
 	// Ask-user-question: QuestionManager for handling question dialogs
 	var questionMgr *tools.QuestionManager
 	if deps.SSEBroker != nil {
-		questionMgr = tools.NewQuestionManager(deps.SSEBroker, nil, 2*time.Minute)
+		questionMgr = tools.NewQuestionManager(deps.SSEBroker, nil, 5*time.Minute)
 		if sk := s.SkillRegistry.Get("ask"); sk != nil {
 			if askSkill, ok := sk.(*builtin.Ask); ok {
 				askSkill.SetQuestioner(&questionManagerAskAdapter{mgr: questionMgr})
 			}
 		}
 	}
-	browserCheckpointMgr := tools.NewBrowserCheckpointManager(2 * time.Minute)
+	browserCheckpointMgr := tools.NewBrowserCheckpointManager(5 * time.Minute)
 	var browserSiteStore *tools.BrowserSiteAllowlistStore
 	if deps.DB != nil {
 		var err error
@@ -1854,12 +1858,16 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			sbx = &sandboxExecAdapter{mgr: deps.SandboxManager}
 		}
 		tools.RegisterExecTools(s.ToolRegistry, execConfig, execApprovals, deps.SSEBroker, dirStore, sbx)
-		tools.RegisterApprovalAwareFileTools(
+		tools.RegisterApprovalAwareFileToolsWithRuntimeConfig(
 			s.ToolRegistry,
 			workspaceAllowedPaths,
 			0,
 			execApprovals,
 			dirStore,
+			tools.BuiltinRuntimeConfig{
+				DataDir: cfg.DataDir,
+				Ripgrep: deps.Config.ToolCalling.Ripgrep,
+			},
 		)
 		convertService, err := convertsvc.NewService(s.DB, cfg.DataDir)
 		if err != nil {
@@ -2296,11 +2304,16 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		harnessHandler.SetDetailProvider(harnessDetailView)
 		harnessHandler.RegisterRoutes(protected.Group("/harness", requirePagePermission(permission.PageTools)))
 		harnessHandler.RegisterRoutes(apiProtected.Group("/harness", requirePagePermission(permission.PageTools)))
-		if harnessGroupDispatcher != nil {
-			go harnessGroupDispatcher.Start(context.Background())
-		}
+		harness.NewUserTaskProjectionHandler(harnessController, harnessDetailView).
+			RegisterRoutes(protected.Group("", requirePagePermission(permission.PageChat)))
+		harness.NewUserTaskProjectionHandler(harnessController, harnessDetailView).
+			RegisterRoutes(apiProtected.Group("", requirePagePermission(permission.PageChat)))
 		logger.Info("Harness routes registered")
 	}
+	selfReflectHandler := selfreflect.NewHandler(reflectService)
+	selfReflectHandler.RegisterRoutes(protected.Group("", requirePagePermission(permission.PageChat)))
+	selfReflectHandler.RegisterRoutes(apiProtected.Group("", requirePagePermission(permission.PageChat)))
+	logger.Info("Self-reflect proposal routes registered")
 
 	// Voice routes - /api/v1/voice/*
 	if deps.VoiceHandler != nil {
@@ -3040,7 +3053,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	agentRunnerRef = registerAgentAndMCPRoutes(protected, v1, s, cfg, deps, logger, agentLLMCaller, harnessController, requirePagePermission(permission.PageTools))
-	reflectService = selfreflect.NewService(auxiliaryLLM, nil)
 	if sk := s.SkillRegistry.Get("self_reflect"); sk != nil {
 		if sr, ok := sk.(*builtin.SelfReflect); ok {
 			sr.SetExecutor(reflectService)
@@ -3233,6 +3245,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	smallRuntime := smallmodel.NewLlamaCppRuntime(smManager)
 	deps.ChatHandler.SetSmallModelRuntime(smallRuntime)
 	auxiliaryLLM.SetSmallModel(smallRuntime)
+	reflectService.SetLLMCaller(auxiliaryLLM)
+	if harnessController != nil {
+		harnessController.SetJudgeEvaluator(harness.NewLLMJudgeEvaluator(auxiliaryLLM))
+	}
 	memoryRefreshCfg := session.DefaultMemoryRefreshConfig()
 	memoryRefreshCfg.Enabled = memoryRefreshCfg.Enabled && deps.Config.Session.Compaction.Enabled && deps.MemoryHandler != nil
 	if memoryRefreshCfg.Enabled {
@@ -3332,6 +3348,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		agentRunnerRef.SetAskTimeoutActionFunc(settingsHandler.GetAgentAskTimeoutAction)
 		agentRunnerRef.SetMaxToolRoundsPerStepFunc(settingsHandler.GetAgentLoopPolicyMaxToolRounds)
 		agentRunnerRef.SetAutoReflectFunc(settingsHandler.GetAgentAutoReflect)
+	}
+	reflectService.SetProposalGateFunc(settingsHandler.GetAgentAutoReflect)
+	if harnessGroupDispatcher != nil {
+		go harnessGroupDispatcher.Start(context.Background())
 	}
 
 	// User-level routes (protected) — /api/v1/my/*

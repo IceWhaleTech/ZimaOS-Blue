@@ -38,6 +38,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -389,11 +390,10 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		fmt.Fprintf(os.Stderr, "Startup integrity state warning: %v\n", startupIntegrityErr)
 		previousCleanShutdown = false
 	}
-	// A dirty previous shutdown alone is not enough to justify a blocking
-	// quick_check on large databases. SQLite WAL recovery handles the common
-	// crash path; explicit restore markers and open-time recovery handle the
-	// real recovery mode cases.
-	dbutil.SetStartupQuickCheckEnabled(false)
+	// After an unclean shutdown, pay the quick_check cost once during startup
+	// so power-loss corruption is surfaced before services begin using blue.db.
+	startupQuickCheckEnabled := !previousCleanShutdown
+	dbutil.SetStartupQuickCheckEnabled(startupQuickCheckEnabled)
 	defer dbutil.SetStartupQuickCheckEnabled(true)
 	trace.Mark("startup_integrity_ready", zap.Bool("previous_clean_shutdown", previousCleanShutdown))
 
@@ -422,7 +422,9 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if previousCleanShutdown {
 		zapLogger.Info("Skipping proactive startup database scan after previous clean shutdown")
 	} else if !appliedPendingRestore {
-		zapLogger.Info("Skipping proactive full startup recovery scan; pending restore marker not found and primary database open will perform quick integrity checks")
+		zapLogger.Info("Primary database open will run quick integrity checks after an unclean shutdown",
+			zap.Bool("startup_quick_check", startupQuickCheckEnabled),
+		)
 	}
 	if err != nil {
 		zapLogger.Warn("Failed to apply pending backup restore before database initialization", zap.Error(err))
@@ -468,6 +470,18 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		}
 		zapLogger.Info("Legacy provider settings imported into config store", fields...)
 	}
+	if result, migrateErr := harness.MigrateLegacyStore(context.Background(), services.DB, dataDir); migrateErr != nil {
+		zapLogger.Warn("Failed to migrate legacy harness store", zap.Error(migrateErr))
+	} else if result != nil {
+		fields := []zap.Field{
+			zap.String("source", result.SourcePath),
+			zap.Int("rows_imported", result.RowsImported),
+		}
+		if result.ArchivedPath != "" {
+			fields = append(fields, zap.String("archived_path", result.ArchivedPath))
+		}
+		zapLogger.Info("Legacy harness store imported into blue.db", fields...)
+	}
 	if cfg.Performance.Database.CheckpointInterval > 0 {
 		dbutil.StartPeriodicWALCheckpoint(
 			ctx,
@@ -507,24 +521,15 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 			CleanupInterval:  cfg.Session.Audit.CleanupInterval,
 			CleanupBatchSize: cfg.Session.Audit.CleanupBatchSize,
 		}
-		auditDBPath := cfg.Session.Audit.Path
+		auditDBPath := sessionaudit.ResolveDBPath(dataDir, cfg.Session.Audit.Path)
 		var (
 			auditStore *sessionaudit.Store
 			err        error
 		)
-		if auditDBPath == "" {
-			auditDBPath = filepath.Join(dataDir, "blue.db")
-			auditStore, err = sessionaudit.NewSQLiteStoreWithDB(services.DB, auditCfg)
+		if mkErr := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); mkErr != nil {
+			zapLogger.Warn("Failed to create session audit directory", zap.String("path", auditDBPath), zap.Error(mkErr))
 		} else {
-			if !filepath.IsAbs(auditDBPath) {
-				// Keep audit DB under dataDir by default for predictable deployment paths.
-				auditDBPath = filepath.Join(dataDir, filepath.Base(auditDBPath))
-			}
-			if mkErr := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); mkErr != nil {
-				zapLogger.Warn("Failed to create session audit directory", zap.String("path", auditDBPath), zap.Error(mkErr))
-			} else {
-				auditStore, err = sessionaudit.NewSQLiteStore(auditDBPath, auditCfg)
-			}
+			auditStore, err = sessionaudit.NewSQLiteStore(auditDBPath, auditCfg)
 		}
 		if err != nil {
 			zapLogger.Warn("Failed to initialize session audit store", zap.String("path", auditDBPath), zap.Error(err))
@@ -630,6 +635,35 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	})
 
 	// Initialize browser handler
+	var relayInfoProvider func() browser.RelayInfo
+	var relayServer *browser.RelayServer
+	relayInfoProvider = func() browser.RelayInfo {
+		if relayServer == nil {
+			return browser.RelayInfo{}
+		}
+		return relayServer.Info()
+	}
+	if cfg.Browser.RelayEnabled {
+		extensionDir, err := browser.EnsureRelayExtensionDir(dataDir)
+		if err != nil {
+			zapLogger.Warn("Failed to export browser relay extension assets", zap.Error(err))
+		}
+		relayServer, err = browser.StartRelayServer(&cfg.Browser, extensionDir)
+		if err != nil {
+			zapLogger.Warn("Failed to start browser relay server", zap.Error(err))
+		} else {
+			info := relayServer.Info()
+			zapLogger.Info("Browser relay server started",
+				zap.String("base_url", info.BaseURL),
+				zap.String("cdp_url", info.CDPURL),
+				zap.String("extension_dir", info.ExtensionDir),
+			)
+			registerCleanup(func() error {
+				return relayServer.Close()
+			})
+		}
+	}
+
 	browserHandler := browser.NewLazyHandler(func() browser.Service {
 		browserService, err := browser.NewService(&cfg.Browser)
 		if err != nil {
@@ -638,6 +672,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		}
 		return browserService
 	})
+	browserHandler.SetRelayInfoProvider(relayInfoProvider)
 
 	// Initialize formfiller handler
 	formfillerHandler := formfiller.NewLazyHandler(func() (*formfiller.Store, error) {
@@ -917,7 +952,19 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		}
 	}()
 	contextRegistry := contextpack.NewRegistry(workspaceMgr.ContextDir())
-	contextAnnotationStore, err := contextpack.NewAnnotationStore(filepath.Join(dataDir, "contextpacks.db"))
+	if result, migrateErr := contextpack.MigrateLegacyAnnotations(context.Background(), services.DB, dataDir); migrateErr != nil {
+		zapLogger.Warn("Failed to migrate legacy context annotation store", zap.Error(migrateErr))
+	} else if result != nil {
+		fields := []zap.Field{
+			zap.String("source", result.SourcePath),
+			zap.Int("rows_imported", result.RowsImported),
+		}
+		if result.ArchivedPath != "" {
+			fields = append(fields, zap.String("archived_path", result.ArchivedPath))
+		}
+		zapLogger.Info("Legacy context annotation store imported into blue.db", fields...)
+	}
+	contextAnnotationStore, err := contextpack.NewAnnotationStoreWithDB(services.DB)
 	if err != nil {
 		zapLogger.Warn("Failed to initialize context annotation store", zap.Error(err))
 	}

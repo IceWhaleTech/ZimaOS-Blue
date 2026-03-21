@@ -128,10 +128,11 @@ func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*Too
 
 	ctx, req = applyToolGatewayContext(ctx, req)
 	result := &ToolGatewayResult{}
+	requestedName := strings.TrimSpace(req.ToolName)
 
-	def, resolvedName, err := g.lookupDefinition(strings.TrimSpace(req.ToolName), req.RouteKind)
+	def, resolvedName, err := g.lookupDefinition(requestedName, req.RouteKind)
 	if err != nil {
-		result.populateError(req.ToolCallID, strings.TrimSpace(req.ToolName), nil, err)
+		result.populateError(req.ToolCallID, requestedName, nil, err)
 		g.recordMetric("tool_call_rejected_total", req, map[string]string{
 			"reason": classifyToolGatewayErrorCode(err),
 		})
@@ -146,6 +147,10 @@ func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*Too
 			"reason": classifyToolGatewayErrorCode(err),
 		})
 		return result, err
+	}
+	args = normalizeCompatArgs(requestedName, resolvedName, args)
+	if normalizedJSON, marshalErr := json.Marshal(args); marshalErr == nil {
+		argsJSON = string(normalizedJSON)
 	}
 	result.NormalizedCall = ToolGatewayCall{
 		ToolCallID:    strings.TrimSpace(req.ToolCallID),
@@ -763,7 +768,7 @@ func inferToolRiskLevel(toolName string) string {
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
 	case "exec":
 		return string(RiskLevelHigh)
-	case "browser", "web_fetch", "web_extract", "web_crawl":
+	case "browser", "web", "web_fetch", "web_extract", "web_crawl":
 		return string(RiskLevelMedium)
 	default:
 		return string(RiskLevelLow)
@@ -772,7 +777,7 @@ func inferToolRiskLevel(toolName string) string {
 
 func isExternalContentTool(toolName string) bool {
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "browser", "web_fetch", "web_read", "web_extract", "web_crawl", "web_search":
+	case "browser", "web", "web_fetch", "web_read", "web_extract", "web_crawl", "web_search":
 		return true
 	default:
 		return false

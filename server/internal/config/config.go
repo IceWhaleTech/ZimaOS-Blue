@@ -367,12 +367,13 @@ type WorkerConfig struct {
 
 // PerformanceConfig holds performance optimization configuration.
 type PerformanceConfig struct {
-	Database    DatabasePerfConfig    `yaml:"database"`
-	Memory      MemoryPerfConfig      `yaml:"memory"`
-	Concurrency ConcurrencyPerfConfig `yaml:"concurrency"`
-	Network     NetworkPerfConfig     `yaml:"network"`
-	Cache       CachePerfConfig       `yaml:"cache"`
-	Profiling   ProfilingPerfConfig   `yaml:"profiling"`
+	Database        DatabasePerfConfig        `yaml:"database"`
+	Memory          MemoryPerfConfig          `yaml:"memory"`
+	Concurrency     ConcurrencyPerfConfig     `yaml:"concurrency"`
+	Network         NetworkPerfConfig         `yaml:"network"`
+	Cache           CachePerfConfig           `yaml:"cache"`
+	Profiling       ProfilingPerfConfig       `yaml:"profiling"`
+	ResourceReclaim ResourceReclaimPerfConfig `yaml:"resource_reclaim"`
 }
 
 // DatabasePerfConfig holds database performance configuration.
@@ -380,6 +381,7 @@ type DatabasePerfConfig struct {
 	PoolSize           int           `yaml:"pool_size"`
 	MaxIdleConns       int           `yaml:"max_idle_conns"`
 	ConnMaxLifetime    time.Duration `yaml:"conn_max_lifetime"`
+	ConnMaxIdleTime    time.Duration `yaml:"conn_max_idle_time"`
 	WALMode            bool          `yaml:"wal_mode"`
 	CacheSize          int           `yaml:"cache_size"`
 	PageSize           int           `yaml:"page_size"`
@@ -387,6 +389,16 @@ type DatabasePerfConfig struct {
 	BatchSize          int           `yaml:"batch_size"`
 	SlowQueryThreshold time.Duration `yaml:"slow_query_threshold"`
 	EnableQueryCache   bool          `yaml:"enable_query_cache"`
+}
+
+// ResourceReclaimPerfConfig holds idle reclaim thresholds for heavy lazy resources.
+type ResourceReclaimPerfConfig struct {
+	Enabled                       bool          `yaml:"enabled"`
+	BrowserIdleAfter              time.Duration `yaml:"browser_idle_after"`
+	WorkflowIdleAfter             time.Duration `yaml:"workflow_idle_after"`
+	CronIdleAfter                 time.Duration `yaml:"cron_idle_after"`
+	STTIdleAfter                  time.Duration `yaml:"stt_idle_after"`
+	SpeechStatusDoesNotPrewarmSTT bool          `yaml:"speech_status_does_not_prewarm_stt"`
 }
 
 // MemoryPerfConfig holds memory performance configuration.
@@ -466,6 +478,9 @@ func Load(configPath string) (*Config, error) {
 
 // applyEnvOverrides applies BLUE_* environment variable overrides to the config.
 func applyEnvOverrides(cfg *Config) {
+	if v := os.Getenv("BLUE_SERVER_HOST"); v != "" {
+		cfg.Server.Host = strings.TrimSpace(v)
+	}
 	if v := os.Getenv("BLUE_SERVER_PORT"); v != "" {
 		if port, err := strconv.Atoi(v); err == nil {
 			cfg.Server.Port = port
@@ -484,46 +499,9 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.ToolCalling.WebFetch.Timeout = timeout
 		}
 	}
-	if v := os.Getenv("BLUE_RESEARCH_DEFAULT_ROUTE_MODE"); v != "" {
-		cfg.Research.Router.DefaultMode = v
-	}
-	if v := os.Getenv("BLUE_RESEARCH_ALLOW_EXPERIMENT"); v != "" {
-		if enabled, err := strconv.ParseBool(v); err == nil {
-			cfg.Research.Router.AllowExperiment = enabled
-		}
-	}
-	if v := os.Getenv("BLUE_RESEARCH_ALLOW_HYBRID"); v != "" {
-		if enabled, err := strconv.ParseBool(v); err == nil {
-			cfg.Research.Router.AllowHybrid = enabled
-		}
-	}
-	if v := os.Getenv("BLUE_AUTORESEARCH_ENABLED"); v != "" {
-		if enabled, err := strconv.ParseBool(v); err == nil {
-			cfg.Research.Autoresearch.Enabled = enabled
-		}
-	}
-	if v := os.Getenv("BLUE_AUTORESEARCH_COMMAND"); v != "" {
-		cfg.Research.Autoresearch.Command = v
-	}
-	if v := os.Getenv("BLUE_AUTORESEARCH_WORKING_DIR"); v != "" {
-		cfg.Research.Autoresearch.WorkingDir = v
-	}
-	if v := os.Getenv("BLUE_AUTORESEARCH_ARGS"); v != "" {
-		if args := parseStringListEnv(v); len(args) > 0 {
-			cfg.Research.Autoresearch.Args = args
-		}
-	}
-	if v := os.Getenv("BLUE_AUTORESEARCH_ARTIFACT_DIR"); v != "" {
-		cfg.Research.Autoresearch.ArtifactDir = v
-	}
-	if v := os.Getenv("BLUE_AUTORESEARCH_ENV_JSON"); v != "" {
-		if parsed := parseStringMapEnv(v); len(parsed) > 0 {
-			cfg.Research.Autoresearch.Env = parsed
-		}
-	}
-	if v := os.Getenv("BLUE_AUTORESEARCH_TIMEOUT"); v != "" {
+	if v := os.Getenv("BLUE_WEB_FETCH_FIRECRAWL_TIMEOUT"); v != "" {
 		if timeout, err := time.ParseDuration(v); err == nil {
-			cfg.Research.Autoresearch.Timeout = timeout
+			cfg.ToolCalling.WebFetch.FirecrawlTimeout = timeout
 		}
 	}
 }
@@ -615,7 +593,7 @@ func defaults() Config {
 	return Config{
 		Server: ServerConfig{
 			Host: "0.0.0.0", Port: 80, PortAutoFallback: true,
-			ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second,
+			ReadTimeout: 5 * time.Minute, WriteTimeout: 5 * time.Minute, IdleTimeout: 120 * time.Second,
 		},
 		Log:    LogConfig{Level: "info", Format: "console", Output: "stdout"},
 		Worker: WorkerConfig{PoolSize: 10, MaxQueueLen: 100},
@@ -629,12 +607,12 @@ func defaults() Config {
 
 		Channels: func() channelconfig.Config {
 			cfg := channelconfig.DefaultConfig()
-			cfg.DefaultTimeoutSeconds = 30
+			cfg.DefaultTimeoutSeconds = 300
 			return cfg
 		}(),
 		Performance: PerformanceConfig{
 			Database: DatabasePerfConfig{
-				PoolSize: 10, MaxIdleConns: 5, ConnMaxLifetime: time.Hour, WALMode: true,
+				PoolSize: 10, MaxIdleConns: 5, ConnMaxLifetime: time.Hour, ConnMaxIdleTime: 10 * time.Minute, WALMode: true,
 				CacheSize: 2000, PageSize: 4096, CheckpointInterval: 5 * time.Minute,
 				BatchSize: 1000, SlowQueryThreshold: 100 * time.Millisecond, EnableQueryCache: true,
 			},
@@ -642,13 +620,21 @@ func defaults() Config {
 			Concurrency: ConcurrencyPerfConfig{WorkerPoolSize: 100, MaxGoroutines: 10000, ChannelBufferSize: 100},
 			Network: NetworkPerfConfig{
 				HTTP2Enabled: true, KeepAliveTimeout: 30 * time.Second, CompressionEnabled: true,
-				CompressionLevel: 6, RequestTimeout: 30 * time.Second, RetryMaxAttempts: 3, RetryBackoffBase: 100 * time.Millisecond,
+				CompressionLevel: 6, RequestTimeout: 5 * time.Minute, RetryMaxAttempts: 3, RetryBackoffBase: 100 * time.Millisecond,
 			},
 			Cache: CachePerfConfig{
 				L1Enabled: true, L1Size: 1000, L1TTL: 5 * time.Minute,
 				L2Enabled: true, L2Path: "./cache", L2Size: "100MB", L2TTL: time.Hour, EvictionPolicy: "lru",
 			},
 			Profiling: ProfilingPerfConfig{PprofEnabled: true, PprofPath: "/debug/pprof", MetricsEnabled: true},
+			ResourceReclaim: ResourceReclaimPerfConfig{
+				Enabled:                       true,
+				BrowserIdleAfter:              10 * time.Minute,
+				WorkflowIdleAfter:             15 * time.Minute,
+				CronIdleAfter:                 15 * time.Minute,
+				STTIdleAfter:                  10 * time.Minute,
+				SpeechStatusDoesNotPrewarmSTT: true,
+			},
 		},
 
 		Security: SecurityConfig{
@@ -658,7 +644,7 @@ func defaults() Config {
 			Password:   PasswordConfig{MinLength: 8, RequireUppercase: true, RequireLowercase: true, RequireNumber: true, RequireSpecial: true, HistoryCount: 5, LockoutThreshold: 5, LockoutDuration: 15 * time.Minute},
 			MFA:        MFAConfig{Enabled: true, Issuer: "ZimaOS-Blue", RecoveryCodesCount: 8},
 			Audit:      AuditConfig{Enabled: true, RetentionDays: 90, ExcludedPaths: []string{"/health", "/metrics"}, CleanupInterval: 24 * time.Hour},
-			Sandbox:    SandboxConfig{Enabled: true, DefaultTimeout: 30 * time.Second, MaxTimeout: 5 * time.Minute, MemoryLimit: "256MB", CPULimit: 1.0, ProcessLimit: 10},
+			Sandbox:    SandboxConfig{Enabled: true, DefaultTimeout: 5 * time.Minute, MaxTimeout: 5 * time.Minute, MemoryLimit: "256MB", CPULimit: 1.0, ProcessLimit: 10},
 			Encryption: EncryptionConfig{KeyPath: "./keys/encryption.key", Algorithm: "aes-256-gcm"},
 		},
 
@@ -681,7 +667,7 @@ func defaults() Config {
 			},
 		},
 		Embedding: EmbeddingConfig{
-			Enabled: false, Provider: "cybertron", Model: "BAAI/bge-small-zh-v1.5", Dimensions: 0, BatchSize: 100, Timeout: 30 * time.Second,
+			Enabled: false, Provider: "cybertron", Model: "BAAI/bge-small-zh-v1.5", Dimensions: 0, BatchSize: 100, Timeout: 5 * time.Minute,
 			Cache:  EmbeddingCacheConfig{Enabled: true, MaxEntries: 10000, TTL: 24 * time.Hour},
 			OpenAI: OpenAIEmbeddingConfig{BaseURL: "https://api.openai.com"},
 			Ollama: OllamaEmbeddingConfig{BaseURL: "http://localhost:11434"},
@@ -733,7 +719,7 @@ func defaults() Config {
 			Connection: proxy.ConnectionConfig{
 				MaxIdleConns: 100, MaxIdleConnsPerHost: 10, MaxConnsPerHost: 100, IdleConnTimeout: 90 * time.Second,
 				KeepAlive: true, KeepAliveInterval: 30 * time.Second, DialTimeout: 30 * time.Second,
-				TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 60 * time.Second, ForceHTTP2: true,
+				TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 10 * time.Minute, ForceHTTP2: true,
 			},
 			HealthCheck:  proxy.HealthCheckConfig{Enabled: true, Interval: 30 * time.Second, Timeout: 10 * time.Second},
 			ModelRouter:  &proxy.ModelRouterConfig{Enabled: false, DefaultFamily: "claude-3"},

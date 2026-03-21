@@ -58,7 +58,7 @@ func (e *SkillExecutor) Execute(ctx context.Context, args map[string]interface{}
 			mode = Mode(strings.TrimSpace(v))
 		}
 	}
-	routeMode := RouteModeAuto
+	routeMode := RouteModeWeb
 	if v := deepResearchCompatString(args, "route_mode", "routeMode"); v != "" {
 		routeMode = RouteMode(strings.TrimSpace(v))
 	}
@@ -786,7 +786,10 @@ func buildDeepResearchResult(current *Job) map[string]interface{} {
 		data["timeline_sections"] = current.Report.TimelineSections
 		data["research_trace"] = current.Report.ResearchTrace
 		data["verification_summary"] = current.Report.VerificationSummary
-		data["experiment"] = current.Report.Experiment
+		data["calibration"] = current.Report.Calibration
+		if current.Report.Calibration != nil {
+			data["takeaway_candidates"] = current.Report.Calibration.TakeawayCandidates
+		}
 	}
 	return data
 }

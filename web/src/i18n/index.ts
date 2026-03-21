@@ -163,12 +163,17 @@ function createLocaleMessageMapLoader(
   }
 }
 
-const loadPriorityLocaleOverrides = createLocaleMessageMapLoader(() => import('./priority-overrides'))
+const loadPriorityLocaleOverrides = createLocaleMessageMapLoader(
+  () => import('./priority-overrides')
+)
 const loadPriorityBillingOverrides = createLocaleMessageMapLoader(
   () => import('./priority-billing-overrides')
 )
 const loadPrioritySettingsOverrides = createLocaleMessageMapLoader(
   () => import('./priority-settings-overrides')
+)
+const loadContextCompressionOverrides = createLocaleMessageMapLoader(
+  () => import('./context-compression-overrides')
 )
 const loadPriorityTranslationOverrides = createLocaleMessageMapLoader(
   () => import('./priority-translation-overrides')
@@ -265,6 +270,7 @@ async function loadLocaleEnhancements(locale: LocaleKey): Promise<void> {
         securityScanDetailOverrides,
         priorityBillingOverrides,
         prioritySettingsOverrides,
+        contextCompressionOverrides,
         priorityTranslationOverrides,
         mediaFallbackOverrides,
         skillToolOverrides,
@@ -277,6 +283,7 @@ async function loadLocaleEnhancements(locale: LocaleKey): Promise<void> {
         loadSecurityScanDetailOverrides(),
         loadPriorityBillingOverrides(),
         loadPrioritySettingsOverrides(),
+        loadContextCompressionOverrides(),
         loadPriorityTranslationOverrides(),
         loadMediaFallbackOverrides(),
         loadSkillToolOverrides(),
@@ -290,12 +297,12 @@ async function loadLocaleEnhancements(locale: LocaleKey): Promise<void> {
       const localizedSecurityScanDetailOverrides = securityScanDetailOverrides[locale] || {}
       const billingOverrides = priorityBillingOverrides[locale] || {}
       const settingsOverrides = prioritySettingsOverrides[locale] || {}
+      const localizedContextCompressionOverrides = contextCompressionOverrides[locale] || {}
       const translationOverrides = priorityTranslationOverrides[locale] || {}
       const localizedMediaFallbackOverrides = mediaFallbackOverrides[locale] || {}
       const localizedSkillToolOverrides = skillToolOverrides[locale] || {}
       const localizedResearchToolOverrides = researchToolOverrides[locale] || {}
-      const localizedSkillStoreMarketplaceOverrides =
-        skillStoreMarketplaceOverrides[locale] || {}
+      const localizedSkillStoreMarketplaceOverrides = skillStoreMarketplaceOverrides[locale] || {}
       const smallModelOverrides = prioritySmallModelOverrides[locale] || {}
       const i18nGlobal = i18n.global as unknown as LocaleComposerBridge
       const currentMessages = i18nGlobal.getLocaleMessage(locale)
@@ -319,8 +326,12 @@ async function loadLocaleEnhancements(locale: LocaleKey): Promise<void> {
         withBillingOverrides,
         settingsOverrides
       )
-      const withTranslationOverrides = deepMergeMessages<LocaleMessages>(
+      const withContextCompressionOverrides = deepMergeMessages<LocaleMessages>(
         withSettingsOverrides,
+        localizedContextCompressionOverrides
+      )
+      const withTranslationOverrides = deepMergeMessages<LocaleMessages>(
+        withContextCompressionOverrides,
         translationOverrides
       )
       const withMediaFallbackOverrides = deepMergeMessages<LocaleMessages>(
@@ -385,10 +396,7 @@ export async function initLocale(): Promise<void> {
       if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
         ;(
           window as Window & {
-            requestIdleCallback: (
-              cb: () => void,
-              options?: { timeout?: number }
-            ) => number
+            requestIdleCallback: (cb: () => void, options?: { timeout?: number }) => number
           }
         ).requestIdleCallback(fn, {
           timeout: LOCALE_ENHANCEMENTS_START_DELAY_MS,

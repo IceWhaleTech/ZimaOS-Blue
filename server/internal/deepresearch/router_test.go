@@ -2,40 +2,36 @@ package deepresearch
 
 import "testing"
 
-func TestClassifyRouteMode(t *testing.T) {
-	tests := []struct {
-		name  string
-		query string
-		want  RouteMode
-	}{
-		{name: "web", query: "Summarize the latest OpenAI announcements with sources", want: RouteModeWeb},
-		{name: "experiment", query: "Run an ablation and benchmark the repo changes", want: RouteModeExperiment},
-		{name: "hybrid", query: "First research the best LoRA setup, then validate it with a benchmark", want: RouteModeHybrid},
+func TestResolveRouteMode_DefaultsToWeb(t *testing.T) {
+	requested, effective, reason, err := resolveRouteMode("Summarize the latest OpenAI announcements with sources", "", RoutePolicy{})
+	if err != nil {
+		t.Fatalf("resolveRouteMode error = %v", err)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, _ := classifyRouteMode(tc.query)
-			if got != tc.want {
-				t.Fatalf("classifyRouteMode(%q) = %q, want %q", tc.query, got, tc.want)
-			}
-		})
+	if requested != RouteModeWeb {
+		t.Fatalf("requested = %q, want %q", requested, RouteModeWeb)
+	}
+	if effective != RouteModeWeb {
+		t.Fatalf("effective = %q, want %q", effective, RouteModeWeb)
+	}
+	if reason == "" {
+		t.Fatal("expected non-empty reason")
 	}
 }
 
 func TestResolveRouteMode_InvalidRequestedMode(t *testing.T) {
-	_, _, _, err := resolveRouteMode("topic", RouteMode("bogus"), defaultRoutePolicy(), false)
+	_, _, _, err := resolveRouteMode("topic", RouteMode("bogus"), RoutePolicy{})
 	if err != ErrInvalidRouteMode {
 		t.Fatalf("resolveRouteMode invalid mode err = %v, want %v", err, ErrInvalidRouteMode)
 	}
 }
 
-func TestResolveRouteMode_DegradesWithoutExperimentBackend(t *testing.T) {
-	requested, effective, reason, err := resolveRouteMode("run an ablation benchmark", RouteModeAuto, defaultRoutePolicy(), false)
+func TestResolveRouteMode_WebRequestStaysWeb(t *testing.T) {
+	requested, effective, reason, err := resolveRouteMode("topic", RouteModeWeb, RoutePolicy{})
 	if err != nil {
 		t.Fatalf("resolveRouteMode error = %v", err)
 	}
-	if requested != RouteModeAuto {
-		t.Fatalf("requested = %q, want %q", requested, RouteModeAuto)
+	if requested != RouteModeWeb {
+		t.Fatalf("requested = %q, want %q", requested, RouteModeWeb)
 	}
 	if effective != RouteModeWeb {
 		t.Fatalf("effective = %q, want %q", effective, RouteModeWeb)

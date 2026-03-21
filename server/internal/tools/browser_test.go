@@ -20,9 +20,13 @@ type browserCompatBackend struct {
 	lastActRef       int
 	lastActAction    string
 	lastActValue     string
+	usesRelay        bool
 }
 
 func (b *browserCompatBackend) Start(context.Context) error { return nil }
+func (b *browserCompatBackend) UsesRelay(context.Context, string) bool {
+	return b.usesRelay
+}
 func (b *browserCompatBackend) Navigate(_ context.Context, url string, targetID string) (BrowserNavResult, error) {
 	b.navigateURL = url
 	b.navigateTargetID = targetID
@@ -254,5 +258,84 @@ func TestBrowserToolScreenshotSavesTempFileWhenMediaDirMissing(t *testing.T) {
 	}
 	if _, err := os.Stat(got); err != nil {
 		t.Fatalf("expected saved screenshot at %s: %v", got, err)
+	}
+}
+
+func TestBrowserToolRelayModeRequiresCheckpoint(t *testing.T) {
+	backend := &browserCompatBackend{usesRelay: true}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	var seen int
+	ctx := WithSessionID(context.Background(), "conv-relay")
+	ctx = WithUserID(ctx, "user-relay")
+	ctx = WithBrowserCheckpointRequester(ctx, func(_ context.Context, req BrowserCheckpointRequest) (BrowserCheckpointResult, error) {
+		seen++
+		if req.Step != "relay" {
+			t.Fatalf("checkpoint step = %q, want relay", req.Step)
+		}
+		if req.Action != "list_connected_tabs" {
+			t.Fatalf("checkpoint action = %q, want list_connected_tabs", req.Action)
+		}
+		return BrowserCheckpointResult{Decision: BrowserCheckpointApprove, CheckpointID: "cp-1"}, nil
+	})
+
+	raw, err := tool.Execute(ctx, map[string]interface{}{"action": "tabs"})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if seen != 1 {
+		t.Fatalf("checkpoint seen = %d, want 1", seen)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["count"]; got != float64(0) {
+		t.Fatalf("count = %v, want 0", got)
+	}
+
+	_, err = tool.Execute(ctx, map[string]interface{}{"action": "tabs"})
+	if err != nil {
+		t.Fatalf("second Execute() error = %v", err)
+	}
+	if seen != 1 {
+		t.Fatalf("checkpoint seen after cached approval = %d, want 1", seen)
+	}
+}
+
+func TestBrowserToolRelayModePendingCheckpointShortCircuits(t *testing.T) {
+	backend := &browserCompatBackend{usesRelay: true}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	ctx := WithSessionID(context.Background(), "conv-relay-pending")
+	ctx = WithBrowserCheckpointRequester(ctx, func(_ context.Context, req BrowserCheckpointRequest) (BrowserCheckpointResult, error) {
+		return BrowserCheckpointResult{
+			Pending:      true,
+			CheckpointID: "cp-pending",
+			Message:      "need confirmation",
+		}, nil
+	})
+
+	raw, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "navigate",
+		"url":    "https://example.com/account",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.navigateURL != "" {
+		t.Fatalf("navigateURL = %q, want empty because execution should pause", backend.navigateURL)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["checkpoint_pending"]; got != true {
+		t.Fatalf("checkpoint_pending = %v, want true", got)
+	}
+	if got := out["checkpoint_id"]; got != "cp-pending" {
+		t.Fatalf("checkpoint_id = %v, want cp-pending", got)
 	}
 }

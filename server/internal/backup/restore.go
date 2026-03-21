@@ -189,6 +189,10 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 		if relPath == "" || relPath == "." {
 			continue
 		}
+		if shouldSkipBackupFile(filepath.Base(relPath), header.Size) {
+			result.FilesSkipped++
+			continue
+		}
 
 		targetPath := filepath.Join(targetDir, relPath)
 

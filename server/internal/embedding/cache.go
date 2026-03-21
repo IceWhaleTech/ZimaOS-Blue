@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Cache caches embeddings to avoid redundant API calls.
@@ -50,23 +51,28 @@ type CacheConfig struct {
 
 // NewCache creates a new embedding cache.
 func NewCache(cfg CacheConfig) (*Cache, error) {
-	db, err := sql.Open("sqlite3", cfg.DBPath)
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(cfg.DBPath, cfg.DBPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(2)
+		db.SetMaxIdleConns(1)
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return fmt.Errorf("failed to enable WAL mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+			return fmt.Errorf("failed to set synchronous mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("failed to set busy timeout: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
+			return fmt.Errorf("failed to set wal autocheckpoint: %w", err)
+		}
+		if _, err := db.Exec(cacheSchema); err != nil {
+			return fmt.Errorf("failed to create cache schema: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open cache database: %w", err)
-	}
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(1)
-
-	// Enable WAL mode
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
-	}
-
-	// Create schema
-	if _, err := db.Exec(cacheSchema); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to create cache schema: %w", err)
 	}
 
 	maxEntries := cfg.MaxEntries

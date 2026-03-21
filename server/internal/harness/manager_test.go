@@ -76,7 +76,7 @@ func newTestController(t *testing.T) *Controller {
 		t.Fatalf("NewSQLiteStore failed: %v", err)
 	}
 	harnessCfg := *config.DefaultHarnessConfig()
-	harnessCfg.StorePath = filepath.Join(tmpDir, "harness.db")
+	harnessCfg.StorePath = filepath.Join(tmpDir, "blue.db")
 	harnessCfg.ArtifactRoot = filepath.Join(tmpDir, "artifacts")
 	return NewController(store, NewPolicyResolver(harnessCfg, nil))
 }

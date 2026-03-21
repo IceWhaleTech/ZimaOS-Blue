@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 type Downloader struct {
@@ -22,7 +24,7 @@ func (d *Downloader) Fetch() (string, string, error) {
 	if timeout == 0 {
 		timeout = 10 * time.Second
 	}
-	httpClient := &http.Client{Timeout: timeout}
+	httpClient := network.NewPooledHTTPClient(timeout)
 	ipv4Client := createIPv4Client(timeout)
 
 	var lastErr error
@@ -75,13 +77,13 @@ func isIPv6RelatedError(err error) bool {
 
 func createIPv4Client(timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}
+	transport := network.NewPooledTransport(false)
+	transport.DialContext = func(ctx context.Context, _ string, addr string) (net.Conn, error) {
+		return dialer.DialContext(ctx, "tcp4", addr)
+	}
 	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, _ string, addr string) (net.Conn, error) {
-				return dialer.DialContext(ctx, "tcp4", addr)
-			},
-		},
+		Timeout:   timeout,
+		Transport: transport,
 	}
 }
 
@@ -90,7 +92,7 @@ func (d *Downloader) FetchIfChanged() (string, string, error) {
 	if timeout == 0 {
 		timeout = 10 * time.Second
 	}
-	httpClient := &http.Client{Timeout: timeout}
+	httpClient := network.NewPooledHTTPClient(timeout)
 
 	var lastErr error
 	for _, url := range ExpandGitHubURL(d.URL) {

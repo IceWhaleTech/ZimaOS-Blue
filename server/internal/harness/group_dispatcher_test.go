@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
 )
 
 type autoCompleteGroupDriver struct {
@@ -41,6 +43,20 @@ func (d *autoCompleteGroupDriver) Start(_ context.Context, run *Run, env RunEnv)
 func (d *autoCompleteGroupDriver) Cancel(_ context.Context, run *Run) error {
 	_ = run
 	return nil
+}
+
+type mockProposalReflector struct {
+	input  selfreflect.Input
+	result *selfreflect.Result
+	err    error
+}
+
+func (m *mockProposalReflector) Reflect(_ context.Context, input selfreflect.Input) (*selfreflect.Result, error) {
+	m.input = input
+	if m.result == nil {
+		m.result = &selfreflect.Result{}
+	}
+	return m.result, m.err
 }
 
 func TestGroupDispatcher_CompletesAndScoresQueuedItem(t *testing.T) {
@@ -191,42 +207,50 @@ func TestGroupDispatcher_RecoversExpiredLease(t *testing.T) {
 	}
 }
 
-func TestController_SyncExperimentGroupProjection(t *testing.T) {
+func TestController_AnnotateResearchProposalSummary(t *testing.T) {
 	controller := newTestController(t)
+	reflector := &mockProposalReflector{result: &selfreflect.Result{
+		ProposalCount:        1,
+		ProposalIDs:          []string{"proposal-1"},
+		ProposalSkippedReason: "",
+	}}
+	controller.SetReflector(reflector)
+
 	run := &Run{
-		ID:            "research-1",
-		RootRunID:     "research-1",
-		Kind:          RunKindResearch,
-		Status:        RunStatusCompleted,
-		UserID:        "user-1",
-		Goal:          "experiment route",
-		Result:        "report ready",
-		Metadata:      map[string]interface{}{"route_mode": "experiment"},
-		ArtifactRoot:  "/tmp/artifacts/research-1",
-		WorkspaceRoot: "/tmp/workspace",
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		ID:     "research-1",
+		Kind:   RunKindResearch,
+		UserID: "user-1",
+		Metadata: map[string]interface{}{
+			"calibration": map[string]interface{}{
+				"confidence":         0.82,
+				"conflict_risk":      "low",
+				"recommended_action": "publish",
+			},
+			"calibration_ref": "deep_research:research-1:calibration",
+			"takeaway_candidates": []interface{}{
+				map[string]interface{}{
+					"lesson":       "Carry calibration-backed lessons into AGENTS review proposals only when evidence ids exist.",
+					"evidence":     "Candidate ev-1 remained traceable to the research report.",
+					"evidence_ids": []interface{}{"ev-1"},
+					"target_file":  "AGENTS.md",
+				},
+			},
+		},
 	}
-	if err := controller.store.CreateRun(context.Background(), run); err != nil {
-		t.Fatalf("CreateRun failed: %v", err)
+	card := controller.annotateResearchProposalSummary(context.Background(), &RunGroup{ID: "group-1"}, run, Scorecard{
+		Verdict:        ScoreVerdictPass,
+		BreakdownJSON:  "{}",
+		JudgeTraceJSON: "{}",
+	})
+	breakdown := decodeJSONMap(card.BreakdownJSON)
+	if got := int(breakdown["proposal_count"].(float64)); got != 1 {
+		t.Fatalf("proposal_count = %d, want 1", got)
 	}
-
-	if err := controller.SyncExperimentGroupProjection(context.Background(), run.ID); err != nil {
-		t.Fatalf("SyncExperimentGroupProjection failed: %v", err)
+	ids, ok := breakdown["proposal_ids"].([]interface{})
+	if !ok || len(ids) != 1 || ids[0] != "proposal-1" {
+		t.Fatalf("proposal_ids = %#v, want [proposal-1]", breakdown["proposal_ids"])
 	}
-
-	groupID := experimentProjectionGroupID(run.ID)
-	report, err := controller.GetGroupReport(context.Background(), groupID)
-	if err != nil {
-		t.Fatalf("GetGroupReport failed: %v", err)
-	}
-	if report.Group.Kind != RunGroupKindExperiment || report.Group.Status != RunGroupStatusCompleted {
-		t.Fatalf("unexpected projection group: %#v", report.Group)
-	}
-	if len(report.Items) != 1 || report.Items[0].LatestRunID != run.ID {
-		t.Fatalf("unexpected projection items: %#v", report.Items)
-	}
-	if len(report.Scorecards) != 1 || report.Scorecards[0].Verdict != ScoreVerdictPass {
-		t.Fatalf("unexpected projection scorecards: %#v", report.Scorecards)
+	if reflector.input.SourceKind != "harness_group" || reflector.input.SourceID != "group-1" {
+		t.Fatalf("unexpected reflector input source: %#v", reflector.input)
 	}
 }

@@ -21,7 +21,7 @@ func NewRodBrowserAdapter(svc *browser.RodService) *RodBrowserAdapter {
 	return &RodBrowserAdapter{svc: svc}
 }
 
-// NewLazyRodBrowserAdapter creates a lazy adapter that resolves the service on first use.
+// NewLazyRodBrowserAdapter creates a lazy adapter that resolves the service on demand.
 func NewLazyRodBrowserAdapter(resolve func() *browser.RodService) *RodBrowserAdapter {
 	return &RodBrowserAdapter{resolve: resolve}
 }
@@ -31,12 +31,11 @@ func (a *RodBrowserAdapter) get() (*browser.RodService, error) {
 		return a.svc, nil
 	}
 	if a.resolve != nil {
-		a.svc = a.resolve()
+		if svc := a.resolve(); svc != nil {
+			return svc, nil
+		}
 	}
-	if a.svc == nil {
-		return nil, fmt.Errorf("browser service not available")
-	}
-	return a.svc, nil
+	return nil, fmt.Errorf("browser service not available")
 }
 
 func (a *RodBrowserAdapter) Start(ctx context.Context) error {

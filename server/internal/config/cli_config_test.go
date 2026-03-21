@@ -120,8 +120,8 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 		t.Error("expected AutoDetect to be true by default")
 	}
 
-	if cfg.DetectionTimeout != 5*time.Second {
-		t.Errorf("expected DetectionTimeout 5s, got %v", cfg.DetectionTimeout)
+	if cfg.DetectionTimeout != 5*time.Minute {
+		t.Errorf("expected DetectionTimeout 5m, got %v", cfg.DetectionTimeout)
 	}
 	if cfg.SmartSelection {
 		t.Error("expected SmartSelection to be false by default")
@@ -160,17 +160,41 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 		t.Errorf("expected SchemaMapping 'auto', got '%s'", cfg.Adapters.CCNexus.SchemaMapping)
 	}
 
-	if cfg.Profile != "full" {
-		t.Errorf("expected Profile full, got %q", cfg.Profile)
+	if cfg.Profile != "" {
+		t.Errorf("expected Profile to be empty by default, got %q", cfg.Profile)
 	}
 	if len(cfg.Profiles["coding"]) == 0 {
 		t.Fatalf("expected coding profile entries to be populated")
 	}
+	if !containsString(cfg.Profiles["minimal"], "sessions") {
+		t.Fatalf("expected minimal profile to include sessions, got %#v", cfg.Profiles["minimal"])
+	}
 	if !containsString(cfg.Profiles["coding"], "group:research") {
 		t.Fatalf("expected coding profile to include group:research, got %#v", cfg.Profiles["coding"])
 	}
+	if !containsString(cfg.Profiles["coding"], "group:web") {
+		t.Fatalf("expected coding profile to include group:web, got %#v", cfg.Profiles["coding"])
+	}
 	if len(cfg.Groups["group:runtime"]) == 0 {
 		t.Fatalf("expected group:runtime entries to be populated")
+	}
+	if !containsString(cfg.Groups["group:fs"], "file_read") || !containsString(cfg.Groups["group:fs"], "file_write") {
+		t.Fatalf("expected group:fs to include file_read/file_write, got %#v", cfg.Groups["group:fs"])
+	}
+	if !containsString(cfg.Groups["group:fs"], "rg") {
+		t.Fatalf("expected group:fs to include rg, got %#v", cfg.Groups["group:fs"])
+	}
+	if containsString(cfg.Groups["group:fs"], "apply_patch") {
+		t.Fatalf("did not expect group:fs to include apply_patch, got %#v", cfg.Groups["group:fs"])
+	}
+	if got := cfg.Groups["group:sessions"]; len(got) != 1 || got[0] != "sessions" {
+		t.Fatalf("expected group:sessions to expose only sessions, got %#v", got)
+	}
+	if got := cfg.Groups["group:memory"]; len(got) != 1 || got[0] != "memory" {
+		t.Fatalf("expected group:memory to expose only memory, got %#v", got)
+	}
+	if got := cfg.Groups["group:web"]; len(got) != 1 || got[0] != "web" {
+		t.Fatalf("expected group:web to expose only web, got %#v", got)
 	}
 	if len(cfg.Groups["group:research"]) == 0 {
 		t.Fatalf("expected group:research entries to be populated")
@@ -185,17 +209,38 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	if cfg.WebSearch.Provider != "duckduckgo" {
 		t.Errorf("expected WebSearch.Provider 'duckduckgo', got %q", cfg.WebSearch.Provider)
 	}
-	if len(cfg.WebSearch.Providers) != 1 || cfg.WebSearch.Providers[0] != "duckduckgo" {
-		t.Errorf("expected WebSearch.Providers ['duckduckgo'], got %#v", cfg.WebSearch.Providers)
+	if len(cfg.WebSearch.Providers) != 2 || cfg.WebSearch.Providers[0] != "duckduckgo" || cfg.WebSearch.Providers[1] != "bing" {
+		t.Errorf("expected WebSearch.Providers ['duckduckgo', 'bing'], got %#v", cfg.WebSearch.Providers)
 	}
 	if cfg.WebSearch.MaxResults != 5 {
 		t.Errorf("expected WebSearch.MaxResults 5, got %d", cfg.WebSearch.MaxResults)
 	}
-	if cfg.WebSearch.Timeout != 30*time.Second {
-		t.Errorf("expected WebSearch.Timeout 30s, got %v", cfg.WebSearch.Timeout)
+	if cfg.WebSearch.Timeout != 5*time.Minute {
+		t.Errorf("expected WebSearch.Timeout 5m, got %v", cfg.WebSearch.Timeout)
 	}
 	if cfg.WebSearch.Region != "wt-wt" {
 		t.Errorf("expected WebSearch.Region 'wt-wt', got %q", cfg.WebSearch.Region)
+	}
+	if cfg.WebFetch.Timeout != 5*time.Minute {
+		t.Errorf("expected WebFetch.Timeout 5m, got %v", cfg.WebFetch.Timeout)
+	}
+	if cfg.WebFetch.FirecrawlTimeout != 5*time.Minute {
+		t.Errorf("expected WebFetch.FirecrawlTimeout 5m, got %v", cfg.WebFetch.FirecrawlTimeout)
+	}
+	if !cfg.Ripgrep.Enabled {
+		t.Error("expected Ripgrep.Enabled to be true by default")
+	}
+	if !cfg.Ripgrep.AutoDownload {
+		t.Error("expected Ripgrep.AutoDownload to be true by default")
+	}
+	if !cfg.Ripgrep.AllowSystemBinary {
+		t.Error("expected Ripgrep.AllowSystemBinary to be true by default")
+	}
+	if cfg.Ripgrep.CacheDir != "" {
+		t.Errorf("expected Ripgrep.CacheDir empty by default, got %q", cfg.Ripgrep.CacheDir)
+	}
+	if len(cfg.Ripgrep.MirrorBaseURLs) != 3 {
+		t.Fatalf("expected 3 ripgrep mirror base urls, got %#v", cfg.Ripgrep.MirrorBaseURLs)
 	}
 }
 

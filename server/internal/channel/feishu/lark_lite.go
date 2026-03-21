@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	ws "github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
@@ -36,7 +37,7 @@ func newLarkClient(appID, appSecret string) *larkClient {
 		appID:     appID,
 		appSecret: appSecret,
 		baseURL:   "https://open.feishu.cn/open-apis",
-		http:      &http.Client{Timeout: 30 * time.Second},
+		http:      network.NewPooledHTTPClient(5 * time.Minute),
 	}
 }
 
@@ -385,6 +386,7 @@ type larkWSClient struct {
 	appSecret string
 	baseURL   string
 	logger    *zap.Logger
+	http      *http.Client
 	conn      *ws.Conn
 	serviceID string
 	connID    string
@@ -412,6 +414,7 @@ func newLarkWSClient(appID, appSecret string, logger *zap.Logger, onEvent func(c
 		appSecret:         appSecret,
 		baseURL:           "https://open.feishu.cn",
 		logger:            logger,
+		http:              network.NewPooledHTTPClient(5 * time.Minute),
 		onEvent:           onEvent,
 		reconnectCount:    -1,
 		reconnectInterval: 2 * time.Minute,
@@ -443,8 +446,7 @@ func (c *larkWSClient) connect(ctx context.Context) error {
 	body, _ := json.Marshal(map[string]string{"AppID": c.appID, "AppSecret": c.appSecret})
 	req, _ := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/callback/ws/endpoint", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	httpClient := &http.Client{Timeout: 15 * time.Second}
-	resp, err := httpClient.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
 	}

@@ -12,9 +12,13 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 const ortVersion = "1.24.1"
+
+var onnxRuntimeHTTPClient = network.NewPooledHTTPClient(10 * time.Minute)
 
 // RuntimeLibPath returns the path to the ONNX Runtime shared library
 // in the given data directory, or empty string if not present.
@@ -98,10 +102,9 @@ func EnsureRuntime(dataDir string) (string, error) {
 	}
 
 	var lastErr error
-	client := &http.Client{Timeout: 10 * time.Minute}
 	for _, url := range urls {
 		log.Printf("[onnx] trying %s", url)
-		resp, err := client.Get(url)
+		resp, err := onnxRuntimeHTTPClient.Get(url)
 		if err != nil {
 			lastErr = err
 			log.Printf("[onnx] failed: %v", err)

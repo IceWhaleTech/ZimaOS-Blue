@@ -608,6 +608,12 @@ func gatewayGlobalArgs() []string {
 	if noColor {
 		args = append(args, "--no-color")
 	}
+	if port := configuredGatewayPort(); port > 0 {
+		args = append(args, "--port", strconv.Itoa(port))
+	}
+	if bind := configuredGatewayBind(); bind != "" {
+		args = append(args, "--bind", bind)
+	}
 	return args
 }
 

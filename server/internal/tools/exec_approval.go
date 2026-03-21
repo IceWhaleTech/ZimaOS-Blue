@@ -28,7 +28,7 @@ const (
 	ApprovalDeny        ApprovalDecision = "deny"
 )
 
-const defaultApprovalTimeout = 2 * time.Minute
+const defaultApprovalTimeout = 5 * time.Minute
 
 // ApprovalRequest is the data sent to the frontend via SSE.
 type ApprovalRequest struct {

@@ -264,13 +264,13 @@ type ToolCallingConfig struct {
 	// ToolRouterSchemaCompression removes non-essential schema fields before prompting.
 	ToolRouterSchemaCompression bool `yaml:"tool_router_schema_compression" json:"tool_router_schema_compression"`
 
-	// Profile selects the global base tool profile.
+	// Profile selects a legacy named base tool policy preset.
 	Profile string `yaml:"profile" json:"profile"`
 
-	// Profiles defines named base tool allowlists.
+	// Profiles defines legacy named tool allowlists kept for compatibility.
 	Profiles map[string][]string `yaml:"profiles" json:"profiles,omitempty"`
 
-	// Groups defines reusable tool groups for allow/deny expansion.
+	// Groups defines reusable tool groups for internal allow/deny expansion.
 	Groups map[string][]string `yaml:"groups" json:"groups,omitempty"`
 
 	// Allow further narrows the globally visible tool set.
@@ -287,6 +287,9 @@ type ToolCallingConfig struct {
 
 	// WebFetch controls the runtime web_fetch tool backend.
 	WebFetch ToolCallingWebFetchConfig `yaml:"web_fetch" json:"web_fetch"`
+
+	// Ripgrep controls the runtime ripgrep backend for local search tools.
+	Ripgrep ToolCallingRipgrepConfig `yaml:"ripgrep" json:"ripgrep"`
 
 	// Adapters holds adapter configurations
 	Adapters ToolCallingAdaptersConfig `yaml:"adapters" json:"adapters"`
@@ -344,6 +347,17 @@ type ToolCallingWebSearchConfig struct {
 type ToolCallingWebFetchConfig struct {
 	AllowPrivateHosts bool          `yaml:"allow_private_hosts" json:"allow_private_hosts"`
 	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
+	FirecrawlTimeout  time.Duration `yaml:"firecrawl_timeout" json:"firecrawl_timeout"`
+}
+
+// ToolCallingRipgrepConfig holds runtime ripgrep configuration.
+type ToolCallingRipgrepConfig struct {
+	Enabled           bool     `yaml:"enabled" json:"enabled"`
+	AutoDownload      bool     `yaml:"auto_download" json:"auto_download"`
+	AllowSystemBinary bool     `yaml:"allow_system_binary" json:"allow_system_binary"`
+	CacheDir          string   `yaml:"cache_dir" json:"cache_dir"`
+	MirrorBaseURL     string   `yaml:"mirror_base_url" json:"mirror_base_url"`
+	MirrorBaseURLs    []string `yaml:"mirror_base_urls" json:"mirror_base_urls,omitempty"`
 }
 
 // DefaultClaudeCodeCLIConfig returns the default CLI configuration.
@@ -459,7 +473,7 @@ func DefaultStatisticsConfig() *StatisticsConfig {
 func DefaultToolCallingConfig() *ToolCallingConfig {
 	return &ToolCallingConfig{
 		AutoDetect:                       true,
-		DetectionTimeout:                 5 * time.Second,
+		DetectionTimeout:                 5 * time.Minute,
 		SmartSelection:                   false,
 		SmartSelectionMaxTools:           10,
 		SmartSkillSelection:              false,
@@ -471,35 +485,48 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 		SkillSelectorConfidenceThreshold: 0.78,
 		ToolRouterDynamicExposure:        false,
 		ToolRouterSchemaCompression:      false,
-		Profile:                          "full",
+		Profile:                          "",
 		Profiles: map[string][]string{
-			"minimal":   {"session_status"},
-			"coding":    {"group:fs", "group:runtime", "group:sessions", "group:memory", "group:research", "apply_patch", "pdf"},
-			"messaging": {"message", "sessions_list", "sessions_history", "sessions_send", "session_status"},
+			"minimal":   {"sessions"},
+			"coding":    {"group:fs", "group:runtime", "group:sessions", "group:memory", "group:research", "group:web"},
+			"messaging": {"message", "sessions"},
 			"full":      {},
 		},
 		Groups: map[string][]string{
 			"group:runtime":    {"exec", "process"},
-			"group:fs":         {"read", "write", "edit", "grep", "find", "ls", "apply_patch"},
-			"group:sessions":   {"sessions_list", "sessions_history", "sessions_send", "sessions_spawn", "session_status"},
-			"group:memory":     {"memory_search", "memory_get", "memory_write", "memory_forget"},
+			"group:fs":         {"file_read", "file_write", "edit", "grep", "rg", "find", "ls"},
+			"group:sessions":   {"sessions"},
+			"group:memory":     {"memory"},
 			"group:research":   {"research_run", "research_status"},
-			"group:web":        {"web_search", "web_fetch", "web_read", "web_extract", "web_crawl"},
+			"group:web":        {"web"},
 			"group:ui":         {"browser", "canvas"},
 			"group:automation": {"cron", "gateway", "nodes"},
 			"group:messaging":  {"message"},
 		},
 		WebSearch: ToolCallingWebSearchConfig{
 			Provider:   "duckduckgo",
-			Providers:  []string{"duckduckgo"},
+			Providers:  []string{"duckduckgo", "bing"},
 			MaxResults: 5,
-			Timeout:    30 * time.Second,
+			Timeout:    5 * time.Minute,
 			SafeSearch: false,
 			Region:     "wt-wt",
 		},
 		WebFetch: ToolCallingWebFetchConfig{
 			AllowPrivateHosts: false,
-			Timeout:           20 * time.Second,
+			Timeout:           5 * time.Minute,
+			FirecrawlTimeout:  5 * time.Minute,
+		},
+		Ripgrep: ToolCallingRipgrepConfig{
+			Enabled:           true,
+			AutoDownload:      true,
+			AllowSystemBinary: true,
+			CacheDir:          "",
+			MirrorBaseURL:     "",
+			MirrorBaseURLs: []string{
+				"https://mirror.ghproxy.com",
+				"https://gh-proxy.com",
+				"https://downloads.sourceforge.net/project/ripgrep.mirror",
+			},
 		},
 		Adapters: ToolCallingAdaptersConfig{
 			CLIProxy: CLIProxyAdapterConfig{

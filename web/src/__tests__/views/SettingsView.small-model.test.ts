@@ -164,7 +164,9 @@ function primeApiMocks() {
       small_model_runtime: 'llama.cpp',
       small_model_id: 'qwen3.5-0.8b-gguf-q4km',
       small_model_summary_enabled: true,
+      small_model_context_compress_enabled: true,
       small_model_doc_extract_enabled: true,
+      context_compression_mode: 'auto',
       small_model_route_image_qa_enabled: true,
       small_model_route_short_qa_enabled: true,
       small_model_route_tool_dispatch_enabled: true,
@@ -203,6 +205,9 @@ function primeApiMocks() {
       tool_dispatch_route_success: 5,
       summary_attempts: 4,
       summary_success: 3,
+      context_compress_attempts: 5,
+      context_compress_success: 4,
+      context_compress_latency_ms: 11,
       doc_extract_attempts: 2,
       doc_extract_success: 1,
       no_provider_deepresearch_total: 2,
@@ -279,6 +284,10 @@ describe('SettingsView small-model controls', () => {
     const featureIntentIRSpy = vi.spyOn(store, 'setFeatureIntentIREnabled').mockResolvedValue()
     const irMasterSpy = vi.spyOn(store, 'setSmallModelIRFeaturesEnabled').mockResolvedValue()
     const summarySpy = vi.spyOn(store, 'setSmallModelSummaryEnabled').mockResolvedValue()
+    const contextCompressSpy = vi
+      .spyOn(store, 'setSmallModelContextCompressEnabled')
+      .mockResolvedValue()
+    const compressionModeSpy = vi.spyOn(store, 'setContextCompressionMode').mockResolvedValue()
     const docExtractSpy = vi.spyOn(store, 'setSmallModelDocExtractEnabled').mockResolvedValue()
     const imageQASpy = vi.spyOn(store, 'setSmallModelRouteImageQAEnabled').mockResolvedValue()
     const shortQASpy = vi.spyOn(store, 'setSmallModelRouteShortQAEnabled').mockResolvedValue()
@@ -343,11 +352,15 @@ describe('SettingsView small-model controls', () => {
     await flushPromises()
     expect(contextPruneSpy).toHaveBeenCalledWith(false)
 
-    expect(wrapper.get('[data-testid="proxy-pruner-switch"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get('[data-testid="proxy-pruner-switch"]').attributes('aria-checked')).toBe(
+      'true'
+    )
     await wrapper.get('[data-testid="proxy-pruner-switch"]').trigger('click')
     await flushPromises()
     expect(proxyCacheApi.updatePrunerConfig).toHaveBeenNthCalledWith(2, { enabled: false })
-    expect(wrapper.get('[data-testid="proxy-pruner-switch"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.get('[data-testid="proxy-pruner-switch"]').attributes('aria-checked')).toBe(
+      'false'
+    )
 
     await wrapper.get('[data-testid="small-model-media-intent-switch"]').trigger('click')
     await flushPromises()
@@ -368,6 +381,14 @@ describe('SettingsView small-model controls', () => {
     await wrapper.get('[data-testid="small-model-summary-switch"]').trigger('click')
     await flushPromises()
     expect(summarySpy).toHaveBeenCalledWith(false)
+
+    await wrapper.get('[data-testid="small-model-context-compress-switch"]').trigger('click')
+    await flushPromises()
+    expect(contextCompressSpy).toHaveBeenCalledWith(false)
+
+    await wrapper.get('[data-testid="context-compression-mode-select"]').setValue('offline')
+    await flushPromises()
+    expect(compressionModeSpy).toHaveBeenCalledWith('offline')
 
     await wrapper.get('[data-testid="small-model-doc-extract-switch"]').trigger('click')
     await flushPromises()
@@ -412,12 +433,12 @@ describe('SettingsView small-model controls', () => {
     })
     await flushPromises()
 
-    expect(
-      wrapper.get('[data-testid="small-model-ir-section-header"]').find('h3').exists()
-    ).toBe(false)
-    expect(
-      wrapper.get('[data-testid="small-model-main-section-header"]').find('h3').exists()
-    ).toBe(false)
+    expect(wrapper.get('[data-testid="small-model-ir-section-header"]').find('h3').exists()).toBe(
+      false
+    )
+    expect(wrapper.get('[data-testid="small-model-main-section-header"]').find('h3').exists()).toBe(
+      false
+    )
 
     wrapper.unmount()
   })

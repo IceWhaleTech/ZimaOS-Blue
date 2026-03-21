@@ -34,6 +34,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
@@ -291,6 +292,7 @@ var reTodoChecklistBlock = regexp.MustCompile(`(?m)(^|\n)([ \t]*[-*]\s+\[(?: |x|
 var reTypelessBlock = regexp.MustCompile("(?s)```typeless\\s*\\n(.*?)\\n```")
 var reAskOptionLine = regexp.MustCompile(`(?m)^[A-E][\.\)]\s+\S+`)
 var reShortAffirmativeEN = regexp.MustCompile(`(?i)^(ok|okay|yes|y|sure|go ahead|continue|sounds good|do it|please continue|let'?s go)$`)
+var reExplicitWorkspaceCollectionCount = regexp.MustCompile(`(?i)\b(\d{1,3})\s+(?:email\s+files?|emails?|files?|documents?|messages?)\b`)
 var reShortAffirmativeIntl = regexp.MustCompile(`(?i)^(继续|继续吧|继续执行|接着|接着做|好的|好|可以|行|嗯|收到|明白|同意|同意了|` +
 	`sí|vale|de acuerdo|continúa|continuar|` +
 	`oui|d'accord|continue|` +
@@ -506,11 +508,154 @@ func shouldPreferDeepSearchReport(message string) bool {
 	return false
 }
 
+func shouldPreferFastResearchArtifactWorkflow(message string) bool {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return false
+	}
+	if extractRequestedArtifactPath(trimmed) == "" {
+		return false
+	}
+	if !shouldPreferDeepSearchReport(trimmed) {
+		return false
+	}
+	if shouldEnforceDeepSearchMinRounds(trimmed) {
+		return false
+	}
+	if hasExplicitHeavyResearchIntent(trimmed) {
+		return false
+	}
+	return true
+}
+
+func hasPublicArtifactResearchCue(message string) bool {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return false
+	}
+	return publicArtifactResearchCueMatcher.ContainsAnyFold(trimmed)
+}
+
+func hasExplicitHeavyResearchIntent(message string) bool {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return false
+	}
+	return heavyResearchIntentCueMatcher.ContainsAnyFold(trimmed)
+}
+
+func shouldUseHeavyResearchWorkflow(message string) bool {
+	if !shouldPreferDeepSearchReport(message) {
+		return false
+	}
+	return !shouldPreferFastResearchArtifactWorkflow(message)
+}
+
+func shouldPreferPublicArtifactResearchWorkflow(message string) bool {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return false
+	}
+	if extractRequestedArtifactPath(trimmed) == "" {
+		return false
+	}
+	if isReminderIntentMessage(trimmed) || isCalendarIntentMessage(trimmed) || isEmailIntentMessage(trimmed) || isImageGenerationIntentMessage(trimmed) {
+		return false
+	}
+	if shouldPreferWorkspaceFileWorkflow(trimmed) {
+		return false
+	}
+	if hasPublicArtifactResearchCue(trimmed) && !hasExplicitHeavyResearchIntent(trimmed) && !hasExplicitWorkspaceSourceCue(trimmed) {
+		return true
+	}
+	if shouldUseHeavyResearchWorkflow(trimmed) {
+		return false
+	}
+	if shouldPreferFastResearchArtifactWorkflow(trimmed) {
+		return true
+	}
+	return hasPublicArtifactResearchCue(trimmed)
+}
+
+func shouldPreferDirectArtifactWriting(message string) bool {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return false
+	}
+	if extractRequestedArtifactPath(trimmed) == "" {
+		return false
+	}
+	if shouldPreferWorkspaceFileWorkflow(trimmed) || shouldUseHeavyResearchWorkflow(trimmed) || shouldPreferPublicArtifactResearchWorkflow(trimmed) {
+		return false
+	}
+	if isReminderIntentMessage(trimmed) || isCalendarIntentMessage(trimmed) || isImageGenerationIntentMessage(trimmed) {
+		return false
+	}
+	if directArtifactWritingBlockerCueMatcher.ContainsAnyFold(trimmed) {
+		return false
+	}
+	return directArtifactWritingCueMatcher.ContainsAnyFold(trimmed)
+}
+
 func buildDeepSearchExecutionHint(userMessage string) string {
-	if !shouldPreferDeepSearchReport(userMessage) {
+	if !shouldUseHeavyResearchWorkflow(userMessage) {
 		return ""
 	}
 	return claudecode.BuildKnowledgeBaseResearchGuidance()
+}
+
+func buildArtifactWorkflowExecutionHint(userMessage string) string {
+	target := extractRequestedArtifactPath(userMessage)
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if target == "" && !isImageGenerationIntentMessage(userMessage) {
+		return ""
+	}
+	if shouldPreferExplicitMemoryFileWorkflow(userMessage) {
+		if isExplicitMemoryFileRecallRequest(userMessage) {
+			return fmt.Sprintf("The user explicitly named %q as the local source of truth. Use file_read to read that exact path before answering, answer only from verified file contents, and do not substitute another memory path or rely on the memory tool or prior conversation memory when this file can be read.", target)
+		}
+		return fmt.Sprintf("The user explicitly asked you to persist information to %q for future recall. Use local file tools first: write the information to that exact path with file_write, create parent directories if needed, optionally verify it with file_read, and do not substitute root MEMORY.md or the memory tool as a replacement for the requested file.", target)
+	}
+	if isImageGenerationIntentMessage(userMessage) {
+		pathHint := ""
+		if isImageArtifactPath(target) {
+			pathHint = fmt.Sprintf(" When the user specified a filename, pass that exact workspace path as the image tool's `path` so the generated asset is saved to %q.", target)
+		}
+		return "This is an image generation request. Use the image_generation tool name when available, keep the local file workflow available together when a filename is requested, craft a descriptive prompt that preserves the requested subject, atmosphere, and scene details, and confirm the saved result in plain language." + pathHint
+	}
+	if shouldPreferWorkspaceFileWorkflow(userMessage) {
+		hint := fmt.Sprintf("This is a local workspace synthesis task. Keep the local file workflow available together: file_read/file_write/file_delete for CRUD, plus ls/find/grep/rg/edit/convert/pdf as needed. Discover and read the relevant files, then write the completed deliverable to %q. Prefer local file tools over browser, email, calendar, or research detours.", target)
+		if isStructuredWorkspaceArtifactTask(userMessage) {
+			hint += " When the request names concrete local source files and a saved output artifact, read those referenced source files directly, prefer one broad extraction pass per source before writing, and avoid redundant narrower rereads of the same source unless one specific answer is still missing."
+		}
+		if shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
+			hint += " When the request covers a folder, inbox, or local collection, read the discovered relevant source set to completion in as few rounds as practical, cover each relevant item exactly once in the final artifact, and keep clearly unrelated noise out of the deliverable."
+		}
+		if looksLikeExecutiveBriefingArtifactTask(lower) {
+			hint += " For executive briefings, lead with 3-5 highest-priority takeaways, then call out risks, opportunities, and explicit actions or decisions. Before writing, identify whether the source materials include a highest-impact named customer churn risk, a highest-impact named upsell target, or a clearest named competitor-displacement opportunity; when present, include the most important ones by name in the top priorities or action section instead of replacing them with only generic aggregates. Do not collapse named accounts, competitors, or material opportunities into vague phrases like customer churn risk or competitive opportunity when the evidence provides a specific name or dollar context. Prefer concise bullets or short paragraphs over large tables unless the user explicitly asked for tables, compress secondary market color aggressively so the critical items stand out, keep the final briefing inside any requested word budget, and avoid playful styling such as emoji headers unless the user asked for that tone."
+		}
+		if looksLikeInboxTriageArtifactTask(lower) {
+			hint += " For inbox triage reports, put the explicit priority label beside the first mention of each key item in the opening summary, including any urgent incident, high-priority client follow-up, or archive/no-action item that you mention there (for example, P0, P1, or P4). Keep one canonical priority-sorted section from P0 through P4, keep the explicit P-label on every email entry in that main section and not only on section headers, and once the report reaches P4 avoid later tables or headings that repeat P0-P4; switch to descriptive labels like Critical Items or Archive instead."
+		}
+		if looksLikeProjectStatusSummaryArtifactTask(lower) {
+			hint += " For project-status summaries synthesized from local emails or documents, preserve the requested section titles exactly and, when the output file is Markdown, render those exact titles as Markdown headings unless the user asked for another format. Before writing, identify the major backend, data, and frontend technologies, the key original and updated budget figures, the key original and updated milestone dates, the major security or compliance findings, and the most recent live/blocked/next status. Present the exact original-versus-updated budget and timeline figures side by side when they changed, summarize the major security or compliance findings with their concrete mitigations, and make causal cross-links explicit so the reader can see what changed the budget, what caused any schedule slip, which customer requests should influence prioritization, and what the most recent status update says is live, blocked, or next. Keep concrete technology names, money figures, dates, client names, and security issue names instead of replacing them with generic paraphrases."
+		}
+		if strings.Contains(lower, ".pdf") {
+			hint += " When a PDF is referenced, use the pdf/read path instead of web tools."
+		}
+		hint += " Follow any explicit structure, paragraph, section, table, or line-by-line constraints from the user. After the file is saved, give a brief confirmation."
+		return hint
+	}
+	if shouldPreferDirectArtifactWriting(userMessage) {
+		return fmt.Sprintf("This is a direct writing task with an explicit output file. Keep the local file workflow tools available together (file_read/file_write/file_delete plus ls/find/grep/rg/edit/convert/pdf when useful), but do not detour through browser, email, calendar, or research tools unless the user explicitly asked for outside information. Write the complete deliverable directly to %q, follow any requested format, tone, length, paragraph, and section constraints, and then give a brief confirmation.", target)
+	}
+	if shouldUseHeavyResearchWorkflow(userMessage) {
+		return fmt.Sprintf("This is a research task with an explicit saved deliverable. Once you have enough evidence, write the full synthesized report to %q instead of stopping at raw notes or search results. Preserve any requested sections, tables, citations, or formatting, then give a brief confirmation.", target)
+	}
+	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
+		return fmt.Sprintf("This is a public-information research task with an explicit output file. Prefer a fast artifact workflow: use the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then write the complete result to %q. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.", target)
+	}
+	return ""
 }
 
 func shouldEnforceDeepSearchMinRounds(message string) bool {
@@ -631,9 +776,8 @@ func newDeepSearchLoopState(userMessage string, selectedTools []tools.ToolDefini
 
 func hasSearchCapabilityInToolDefs(defs []tools.ToolDefinition) bool {
 	for _, def := range defs {
-		name := strings.ToLower(strings.TrimSpace(def.Name))
-		switch name {
-		case "web_search", "research_run", "browser", "web_fetch", "web_read", "web_extract", "web_crawl", "exec":
+		switch normalizeFileToolCompatName(def.Name) {
+		case "web", "research_run", "browser", "exec":
 			return true
 		}
 	}
@@ -834,6 +978,16 @@ func extractSearchQueryFromToolCall(tc llm.ToolCall) string {
 	}
 	switch name {
 	case "web_search":
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(args), &payload) == nil {
+			if q := anyToStringForLLM(payload["query"]); q != "" {
+				return q
+			}
+			if q := anyToStringForLLM(payload["q"]); q != "" {
+				return q
+			}
+		}
+	case "web":
 		var payload map[string]interface{}
 		if json.Unmarshal([]byte(args), &payload) == nil {
 			if q := anyToStringForLLM(payload["query"]); q != "" {
@@ -1835,6 +1989,13 @@ func shouldAutoContinueForActionPledge(currentContent string) bool {
 	}
 	lower := strings.ToLower(s)
 	enPhrases := []string{
+		"i understand the request",
+		"let me analyze",
+		"let me analyse",
+		"i'll analyze",
+		"i will analyze",
+		"i'll analyse",
+		"i will analyse",
 		"i'll check",
 		"i will check",
 		"let me check",
@@ -1844,6 +2005,8 @@ func shouldAutoContinueForActionPledge(currentContent string) bool {
 		"i'm going to check",
 		"one moment while i check",
 		"give me a few seconds",
+		"proceed with the appropriate action",
+		"proceed with the task",
 	}
 	for _, p := range enPhrases {
 		if strings.Contains(lower, p) {
@@ -2289,6 +2452,9 @@ func shouldAutoContinueForPseudoToolCall(currentContent string) bool {
 	if looksLikeToolProtocolDeliberationLeak(currentContent) {
 		return true
 	}
+	if claimsPendingToolResultsWithoutStructuredCalls(currentContent) {
+		return true
+	}
 	if isAwaitingUserInput(currentContent) {
 		return false
 	}
@@ -2383,6 +2549,67 @@ func shouldAutoContinueForPseudoToolCall(currentContent string) bool {
 	}
 	if looksLikeToolProtocolDeliberationLeak(s) {
 		return true
+	}
+	return false
+}
+
+func claimsPendingToolResultsWithoutStructuredCalls(currentContent string) bool {
+	lower := strings.ToLower(strings.TrimSpace(currentContent))
+	if lower == "" {
+		return false
+	}
+
+	strongClaim := false
+	for _, phrase := range []string{
+		"action blocks above have been submitted",
+		"the action blocks above have been submitted",
+	} {
+		if strings.Contains(lower, phrase) {
+			strongClaim = true
+			break
+		}
+	}
+
+	waitCue := false
+	for _, phrase := range []string{
+		"need to wait for",
+		"i need to wait for",
+		"waiting for",
+		"once the reads resolve",
+		"once those reads resolve",
+		"before i can analyze",
+		"before i can write the report",
+		"before i can write the summary",
+		"before i can triage",
+	} {
+		if strings.Contains(lower, phrase) {
+			waitCue = true
+			break
+		}
+	}
+	resultCue := false
+	for _, phrase := range []string{
+		"please share the results of those file reads",
+		"please share the results of these file reads",
+		"please share the read results",
+		"file reads",
+		"reads to come back",
+		"email contents to come back",
+		"tool results to come back",
+		"those reads",
+		"these reads",
+		"read results",
+	} {
+		if strings.Contains(lower, phrase) {
+			resultCue = true
+			break
+		}
+	}
+	if strongClaim || (waitCue && resultCue) {
+		return true
+	}
+	if isAwaitingUserInput(currentContent) {
+		return false
 	}
 	return false
 }
@@ -4788,14 +5015,14 @@ func (h *ChatHandler) buildPreparedBudgetStage2(ctx context.Context, convID, mod
 	leadingSystem, historical, currentTurn := splitPreparedMessagesForBudget(original)
 	older, recent := splitPreparedHistoryByRecentUserTurns(historical, compressedTierRecentRounds)
 	summaryText := h.loadPreparedHistorySummary(ctx, convID, older, recent)
-	out := make([]llm.Message, 0, len(leadingSystem)+len(recent)+len(currentTurn)+1)
-	out = append(out, leadingSystem...)
-	if summaryText != "" {
-		out = append(out, llm.Message{
-			Role:    llm.RoleSystem,
-			Content: "Previous conversation context: " + summaryText,
-		})
+	latestUser := latestUserMessageFromLLM(currentTurn)
+	if latestUser == "" {
+		latestUser = latestUserMessageFromLLM(recent)
 	}
+	historyMsgs := compressedHistoryContextMessages(latestUser, summaryText)
+	out := make([]llm.Message, 0, len(leadingSystem)+len(historyMsgs)+len(recent)+len(currentTurn))
+	out = append(out, leadingSystem...)
+	out = append(out, historyMsgs...)
 	out = append(out, compactPreparedHistoricalMessages(recent)...)
 	out = append(out, currentTurn...)
 	return removeOrphanedToolResults(out), summaryText
@@ -4810,14 +5037,14 @@ func (h *ChatHandler) buildPreparedBudgetStage3(ctx context.Context, convID, mod
 	if summaryText == "" {
 		summaryText = h.loadPreparedHistorySummary(ctx, convID, older, recent)
 	}
-	out := make([]llm.Message, 0, len(leadingSystem)+len(recent)+1)
-	out = append(out, leadingSystem...)
-	if summaryText != "" {
-		out = append(out, llm.Message{
-			Role:    llm.RoleSystem,
-			Content: "Previous conversation context: " + summaryText,
-		})
+	latestUser := latestUserMessageFromLLM(currentTurn)
+	if latestUser == "" {
+		latestUser = latestUserMessageFromLLM(recent)
 	}
+	historyMsgs := compressedHistoryContextMessages(latestUser, summaryText)
+	out := make([]llm.Message, 0, len(leadingSystem)+len(historyMsgs)+len(recent))
+	out = append(out, leadingSystem...)
+	out = append(out, historyMsgs...)
 	out = append(out, recent...)
 	return removeOrphanedToolResults(out), summaryText
 }
@@ -5549,6 +5776,7 @@ type ChatHandler struct {
 	// Performance optimization: async event queue
 	eventQueue chan func()
 	eventStop  chan struct{}
+	closeOnce  sync.Once
 
 	// Performance optimization: Conversation message cache
 	conversationCache *ConversationCache
@@ -5831,7 +6059,10 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 		routed = h.toolRouter.Route(userMessage, policyReq.Model, selected)
 	}
 	routed = preferResearchReportWorkflowTools(userMessage, allDefs, routed)
+	routed = preferPublicArtifactResearchWorkflowTools(userMessage, allDefs, routed)
 	routed = preferWorkspaceFileWorkflowTools(userMessage, allDefs, routed)
+	routed = preferDirectArtifactWritingTools(userMessage, allDefs, routed)
+	routed = preferImageGenerationWorkflowTools(userMessage, allDefs, routed)
 
 	names := make([]string, len(routed))
 	for i, d := range routed {
@@ -5856,9 +6087,7 @@ func preferResearchReportWorkflowTools(userMessage string, allDefs, current []to
 		return current
 	}
 
-	researchTools := filterToolDefsToNames(allDefs,
-		"research_run",
-		"research_status",
+	researchToolNames := []string{
 		"browser",
 		"web_search",
 		"web_fetch",
@@ -5866,18 +6095,14 @@ func preferResearchReportWorkflowTools(userMessage string, allDefs, current []to
 		"web_extract",
 		"web_crawl",
 		"exec",
-	)
+	}
+	if shouldUseHeavyResearchWorkflow(userMessage) {
+		researchToolNames = append([]string{"research_run", "research_status"}, researchToolNames...)
+	}
+	researchTools := filterToolDefsToNames(allDefs, researchToolNames...)
 	if target := extractRequestedArtifactPath(userMessage); target != "" {
-		researchTools = mergeToolDefsByName(researchTools, filterToolDefsToNames(allDefs,
-			"read",
-			"write",
-			"ls",
-			"find",
-			"grep",
-			"convert",
-			"pdf",
-			"image",
-		))
+		_ = target
+		researchTools = mergeToolDefsByName(researchTools, filterToolDefsToNames(allDefs, artifactFileWorkflowToolNames()...))
 	}
 	if len(researchTools) == 0 {
 		return current
@@ -5885,19 +6110,26 @@ func preferResearchReportWorkflowTools(userMessage string, allDefs, current []to
 	return mergeToolDefsByName(current, researchTools)
 }
 
-func preferWorkspaceFileWorkflowTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
-	if len(allDefs) == 0 || !shouldPreferWorkspaceFileWorkflow(userMessage) {
+func preferPublicArtifactResearchWorkflowTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(allDefs) == 0 || !shouldPreferPublicArtifactResearchWorkflow(userMessage) {
 		return current
 	}
 	filtered := filterToolDefsToNames(allDefs,
-		"read",
-		"write",
+		"web_search",
+		"web_fetch",
+		"web_read",
+		"web_extract",
+		"web_crawl",
+		"browser",
+		"file_read",
+		"file_write",
+		"file_delete",
+		"edit",
 		"ls",
 		"find",
 		"grep",
 		"convert",
 		"pdf",
-		"image",
 	)
 	if len(filtered) == 0 {
 		return current
@@ -5905,29 +6137,100 @@ func preferWorkspaceFileWorkflowTools(userMessage string, allDefs, current []too
 	return filtered
 }
 
+func preferWorkspaceFileWorkflowTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(allDefs) == 0 || !shouldPreferWorkspaceFileWorkflow(userMessage) {
+		return current
+	}
+	filtered := filterToolDefsToNames(allDefs, artifactFileWorkflowToolNamesForMessage(userMessage)...)
+	if len(filtered) == 0 {
+		return current
+	}
+	return filtered
+}
+
+func preferDirectArtifactWritingTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(allDefs) == 0 || !shouldPreferDirectArtifactWriting(userMessage) {
+		return current
+	}
+	filtered := filterToolDefsToNames(allDefs, artifactFileWorkflowToolNamesForMessage(userMessage)...)
+	if len(filtered) == 0 {
+		return current
+	}
+	return filtered
+}
+
+func preferImageGenerationWorkflowTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(allDefs) == 0 || !isImageGenerationIntentMessage(userMessage) {
+		return current
+	}
+	if filtered := preferredImageWorkflowToolDefs(allDefs, userMessage); len(filtered) > 0 {
+		return filtered
+	}
+	return current
+}
+
+func shouldPreferExplicitMemoryFileWorkflow(userMessage string) bool {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" || strings.TrimSpace(extractRequestedArtifactPath(userMessage)) == "" {
+		return false
+	}
+	if shouldPreferFastResearchArtifactWorkflow(userMessage) || shouldUseHeavyResearchWorkflow(userMessage) {
+		return false
+	}
+	if shellCommandCueMatcher.ContainsAnyFold(lower) || codeTaskCueMatcher.ContainsAnyFold(lower) {
+		return false
+	}
+	if isReminderIntentMessage(lower) || isEmailIntentMessage(lower) || isCalendarIntentMessage(lower) || isImageGenerationIntentMessage(lower) {
+		return false
+	}
+	return isExplicitMemoryFileStoreRequest(lower) || isExplicitMemoryFileRecallRequest(lower)
+}
+
+func isExplicitMemoryFileStoreRequest(message string) bool {
+	return explicitMemoryFileStoreCueMatcher.ContainsAnyFold(message)
+}
+
+func isExplicitMemoryFileRecallRequest(message string) bool {
+	return explicitMemoryFileRecallCueMatcher.ContainsAnyFold(message)
+}
+
 func shouldPreferWorkspaceFileWorkflow(userMessage string) bool {
 	lower := strings.ToLower(strings.TrimSpace(userMessage))
-	if lower == "" || !tools.LooksLikeWorkspaceFileTask(lower) {
+	if shouldPreferExplicitMemoryFileWorkflow(userMessage) {
+		return true
+	}
+	if lower == "" {
 		return false
 	}
-	if containsAnyToolIntent(lower,
-		"bash", "shell", "terminal", "command line", "run command", "execute command",
-		"终端", "命令行", "运行命令", "执行命令",
-	) {
+	if !tools.LooksLikeWorkspaceFileTask(lower) && !hasExplicitWorkspaceSourceCue(lower) {
 		return false
 	}
-	if containsAnyToolIntent(lower,
-		"fix bug", "debug", "refactor", "implement", "compile", "build", "run tests", "run test", "unit test", "integration test",
-		"修复", "调试", "重构", "实现", "编译", "构建", "测试",
-	) {
+	if hasPublicArtifactResearchCue(lower) && !hasExplicitWorkspaceSourceCue(lower) {
 		return false
 	}
-	return containsAnyToolIntent(lower,
-		"review all files", "read all", "workspace", "folder", "directory", "files in",
-		"summary", "summarize", "summarise", "briefing", "digest", "report", "triage", "compare", "analyze", "analyse",
-		".md", ".txt", ".csv", ".xlsx", ".xls", ".pdf",
-		"工作区", "文件夹", "目录", "文件", "总结", "摘要", "简报", "报告", "归纳", "整理", "分析", "对比",
-	)
+	if shellCommandCueMatcher.ContainsAnyFold(lower) {
+		return false
+	}
+	if codeTaskCueMatcher.ContainsAnyFold(lower) {
+		return false
+	}
+	return workspaceFileWorkflowCueMatcher.ContainsAnyFold(lower)
+}
+
+func shouldPreferWorkspaceEditWorkflow(userMessage string) bool {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" || !shouldPreferWorkspaceFileWorkflow(lower) {
+		return false
+	}
+	return workspaceFileEditCueMatcher.ContainsAnyFold(lower)
+}
+
+func hasExplicitWorkspaceSourceCue(message string) bool {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return false
+	}
+	return explicitWorkspaceSourceCueMatcher.ContainsAnyFold(trimmed)
 }
 
 // selectTools returns tool definitions after selector + router stages.
@@ -5942,7 +6245,8 @@ func applyWebSearchPreference(defs []tools.ToolDefinition, webSearchEnabled *boo
 	}
 	filtered := make([]tools.ToolDefinition, 0, len(defs))
 	for _, def := range defs {
-		if def.Name == "web_search" {
+		switch normalizeFileToolCompatName(def.Name) {
+		case "web", "web_search":
 			continue
 		}
 		filtered = append(filtered, def)
@@ -5969,6 +6273,13 @@ func applyWritingToolPreference(defs []tools.ToolDefinition, userMessage string)
 	if len(defs) == 0 {
 		return defs
 	}
+	if shouldPreferDirectArtifactWriting(userMessage) {
+		filtered := filterToolDefsToNames(defs, artifactFileWorkflowToolNamesForMessage(userMessage)...)
+		if len(filtered) > 0 {
+			return filtered
+		}
+		return defs
+	}
 	if !isPureWritingIntentMessage(userMessage) {
 		return defs
 	}
@@ -5979,33 +6290,84 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 	if len(defs) == 0 {
 		return defs
 	}
-	if !shouldPreferDeepSearchReport(userMessage) {
-		return defs
-	}
-
-	keepNames := []string{
-		"browser",
-		"web_fetch",
-		"web_read",
-		"web_extract",
-		"web_crawl",
-	}
-	if hasToolDefName(defs, "research_run") {
-		keepNames = append([]string{"research_run", "research_status"}, keepNames...)
-	} else {
-		keepNames = append(keepNames, "web_search", "exec")
-	}
-	if target := extractRequestedArtifactPath(userMessage); target != "" {
-		keepNames = append(keepNames,
-			"read",
-			"write",
+	var keepNames []string
+	switch {
+	case shouldUseHeavyResearchWorkflow(userMessage):
+		keepNames = []string{
+			"browser",
+			"web",
+			"web_search",
+			"web_fetch",
+			"web_read",
+			"web_extract",
+			"web_crawl",
+			"exec",
+		}
+		if hasToolDefName(defs, "research_run") {
+			keepNames = append([]string{"research_run", "research_status"}, keepNames...)
+		}
+		if target := extractRequestedArtifactPath(userMessage); target != "" {
+			_ = target
+			keepNames = append(keepNames,
+				"file_read",
+				"file_write",
+				"file_delete",
+				"edit",
+				"ls",
+				"find",
+				"grep",
+				"convert",
+				"pdf",
+				"image",
+			)
+		}
+	case shouldPreferPublicArtifactResearchWorkflow(userMessage):
+		keepNames = []string{
+			"web",
+			"web_search",
+			"web_fetch",
+			"web_read",
+			"web_extract",
+			"web_crawl",
+			"browser",
+			"file_write",
+			"file_read",
+			"file_delete",
+			"edit",
 			"ls",
 			"find",
 			"grep",
 			"convert",
 			"pdf",
-			"image",
-		)
+		}
+	case shouldPreferDeepSearchReport(userMessage):
+		keepNames = []string{
+			"browser",
+			"web",
+			"web_search",
+			"web_fetch",
+			"web_read",
+			"web_extract",
+			"web_crawl",
+			"exec",
+		}
+		if target := extractRequestedArtifactPath(userMessage); target != "" {
+			_ = target
+			keepNames = append(keepNames,
+				"file_read",
+				"file_write",
+				"file_delete",
+				"edit",
+				"ls",
+				"find",
+				"grep",
+				"convert",
+				"pdf",
+				"image",
+			)
+		}
+	default:
+		return defs
 	}
 
 	filtered := filterToolDefsToNames(defs, keepNames...)
@@ -6073,44 +6435,49 @@ func applyEmailToolPreference(defs []tools.ToolDefinition, userMessage string) [
 	return filtered
 }
 
+func applyImageToolPreference(defs []tools.ToolDefinition, userMessage string) []tools.ToolDefinition {
+	if len(defs) == 0 || !isImageGenerationIntentMessage(userMessage) {
+		return defs
+	}
+	if filtered := preferredImageWorkflowToolDefs(defs, userMessage); len(filtered) > 0 {
+		return filtered
+	}
+	return defs
+}
+
+func preferredImageWorkflowToolDefs(defs []tools.ToolDefinition, userMessage string) []tools.ToolDefinition {
+	if len(defs) == 0 {
+		return defs
+	}
+	primary := ""
+	switch {
+	case hasToolDefName(defs, "image_generation"):
+		primary = "image_generation"
+	case hasToolDefName(defs, "image"):
+		primary = "image"
+	default:
+		return defs
+	}
+	filtered := filterToolDefsToNames(defs, primary)
+	if target := extractRequestedArtifactPath(userMessage); isImageArtifactPath(target) {
+		filtered = mergeToolDefsByName(filtered, filterToolDefsToNames(defs,
+			"file_read",
+			"file_write",
+			"file_delete",
+			"edit",
+			"ls",
+			"find",
+		))
+	}
+	return filtered
+}
+
 func isReminderIntentMessage(userMessage string) bool {
 	msg := strings.TrimSpace(userMessage)
 	if msg == "" {
 		return false
 	}
-
-	lower := strings.ToLower(msg)
-	englishSignals := []string{
-		"remind",
-		"reminder",
-		"set reminder",
-		"set a reminder",
-		"notify me",
-		"alert me",
-		"drink water",
-		"hydrate",
-	}
-	for _, signal := range englishSignals {
-		if strings.Contains(lower, signal) {
-			return true
-		}
-	}
-
-	cjkSignals := []string{
-		"提醒",
-		"提醒我",
-		"闹钟",
-		"通知我",
-		"喝水",
-		"记得",
-	}
-	for _, signal := range cjkSignals {
-		if strings.Contains(msg, signal) {
-			return true
-		}
-	}
-
-	return false
+	return reminderIntentCueMatcher.ContainsAnyFold(msg)
 }
 
 func isEmailIntentMessage(userMessage string) bool {
@@ -6121,14 +6488,10 @@ func isEmailIntentMessage(userMessage string) bool {
 	if tools.LooksLikeWorkspaceFileTask(lower) {
 		return false
 	}
-	if containsAnyToolIntent(lower,
-		"收件箱", "邮箱", "未读邮件", "归档邮件", "邮件标签", "发件人", "邮件摘要", "邮件检索",
-		"inbox", "mailbox", "unread email", "archive email", "email summary", "email digest",
-	) {
+	if emailIntentPrimaryCueMatcher.ContainsAnyFold(lower) {
 		return true
 	}
-	if containsAnyToolIntent(lower, "email", "mail", "邮件") &&
-		containsAnyToolIntent(lower, "archive", "archived", "label", "labels", "sender", "from", "unread", "priority", "search", "find", "filter", "归档", "标签", "发件人", "未读", "优先级", "检索", "筛选") {
+	if emailIntentTopicCueMatcher.ContainsAnyFold(lower) && emailIntentActionCueMatcher.ContainsAnyFold(lower) {
 		return true
 	}
 	return false
@@ -6142,17 +6505,125 @@ func isCalendarIntentMessage(userMessage string) bool {
 	if tools.LooksLikeWorkspaceFileTask(lower) {
 		return false
 	}
-	if containsAnyToolIntent(lower,
-		"calendar", "agenda", "daily summary", "daily agenda", "today's agenda", "today agenda", "today schedule", "schedule for today",
-		"日历", "日程", "议程", "今天安排", "今日安排", "今天日程", "每日摘要", "日程摘要",
-	) {
+	if calendarIntentPrimaryCueMatcher.ContainsAnyFold(lower) {
 		return true
 	}
-	if containsAnyToolIntent(lower, "meeting", "event", "appointment", "会议", "事件", "预约", "行程") &&
-		containsAnyToolIntent(lower, "today", "tomorrow", "next week", "am", "pm", "tonight", "上午", "下午", "明天", "下周", "今晚", "点") {
+	if calendarIntentTopicCueMatcher.ContainsAnyFold(lower) && calendarIntentTimeCueMatcher.ContainsAnyFold(lower) {
 		return true
 	}
 	return false
+}
+
+func isImageGenerationIntentMessage(userMessage string) bool {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" {
+		return false
+	}
+	if containsAnyToolIntent(lower,
+		"review image",
+		"analyze image",
+		"describe image",
+		"ocr",
+		"screenshot review",
+		"截图分析",
+		"识图",
+		"图像识别",
+		"看图",
+	) {
+		return false
+	}
+	if intent := mediagen.ClassifyMediaIntent(userMessage, false, 0, ""); intent != nil {
+		switch intent.Category {
+		case mediagen.CategoryT2I:
+			return true
+		case mediagen.CategoryT2V, mediagen.CategoryI2V, mediagen.CategoryKF2V:
+			return false
+		}
+	}
+	if isImageIntentMetaDiscussion(lower) {
+		return false
+	}
+	target := strings.ToLower(strings.TrimSpace(extractRequestedArtifactPath(userMessage)))
+	hasAction := containsAnyToolIntent(lower,
+		"generate",
+		"create",
+		"draw",
+		"render",
+		"illustrate",
+		"make",
+		"paint",
+		"sketch",
+		"design",
+		"edit",
+		"modify",
+		"change",
+		"adjust",
+		"retouch",
+		"remove",
+		"replace",
+		"crop",
+		"photoshop",
+		"生成",
+		"创建",
+		"画",
+		"绘制",
+		"渲染",
+		"设计",
+		"编辑",
+		"修改",
+		"修图",
+		"改图",
+		"去除",
+		"替换",
+		"裁剪",
+	)
+	hasObject := containsAnyToolIntent(lower,
+		"image",
+		"picture",
+		"photo",
+		"illustration",
+		"art",
+		"logo",
+		"poster",
+		"avatar",
+		"png",
+		"jpg",
+		"jpeg",
+		"webp",
+		"gif",
+		"图片",
+		"图像",
+		"照片",
+		"插画",
+		"海报",
+		"头像",
+	) || isImageArtifactPath(target)
+	return hasAction && hasObject
+}
+
+func isImageIntentMetaDiscussion(message string) bool {
+	metaCueCount := 0
+	for _, cue := range []string{
+		"intent", "keyword", "classifier", "classification", "matching", "rule", "density", "false positive",
+		"意图", "关键词", "分类", "分类器", "匹配", "规则", "密度", "误判",
+	} {
+		if cue != "" && strings.Contains(message, cue) {
+			metaCueCount++
+			if metaCueCount >= 2 {
+				return true
+			}
+		}
+	}
+	return containsAnyToolIntent(message,
+		"keyword matching",
+		"intent classification",
+		"intent classifier",
+		"not this intent",
+		"关键词匹配",
+		"意图分类",
+		"意图识别",
+		"不是这个意图",
+	)
 }
 
 func isPureWritingIntentMessage(userMessage string) bool {
@@ -6160,23 +6631,13 @@ func isPureWritingIntentMessage(userMessage string) bool {
 	if lower == "" {
 		return false
 	}
-	strongWritingIntent := containsAnyToolIntent(lower,
-		"rewrite", "rephrase", "polish", "proofread", "edit this", "improve wording", "make this concise", "make it shorter", "make it more formal",
-		"change the tone", "format this", "turn this into", "draft", "summarize this text",
-		"改写", "重写", "润色", "精简", "扩写", "换个语气", "换一种说法", "校对", "纠正语法", "格式化", "起草", "写一段", "写一封", "总结这段",
-	)
-	if !strongWritingIntent {
+	if !pureWritingIntentCueMatcher.ContainsAnyFold(lower) {
 		return false
 	}
 	if isReminderIntentMessage(lower) || isEmailIntentMessage(lower) || isCalendarIntentMessage(lower) {
 		return false
 	}
-	if containsAnyToolIntent(lower,
-		"http://", "https://", "www.", "url", "网页", "网站", "browser", "web search", "search the web",
-		"收件箱", "邮箱", "日历", "日程", "calendar", "inbox",
-		"latest", "news", "sources", "citations", "references", "search", "look up",
-		"最新", "新闻", "来源", "引用", "搜索", "检索",
-	) {
+	if pureWritingBlockerCueMatcher.ContainsAnyFold(lower) {
 		return false
 	}
 	return true
@@ -6191,10 +6652,200 @@ func containsAnyToolIntent(message string, cues ...string) bool {
 	return false
 }
 
+func normalizeFileToolCompatName(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "read", "read_file", "file_read":
+		return "file_read"
+	case "write", "write_file", "file_write":
+		return "file_write"
+	case "delete", "remove", "rm", "unlink", "file_delete":
+		return "file_delete"
+	case "rg":
+		return "grep"
+	case "web", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+		return "web"
+	default:
+		return strings.ToLower(strings.TrimSpace(name))
+	}
+}
+
+func normalizeAssistantToolCallNameForAllowedSet(raw string, allowedTools []llm.Tool) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		// Preserve whitespace-only placeholders until the call is finalized so
+		// partial streamed tool-call state does not collapse to an empty name.
+		return raw
+	}
+	if len(allowedTools) == 0 {
+		return trimmed
+	}
+	for _, tool := range allowedTools {
+		name := strings.TrimSpace(tool.Name)
+		if name == trimmed {
+			return name
+		}
+	}
+	normalized := normalizeFileToolCompatName(trimmed)
+	compatMatch := ""
+	for _, tool := range allowedTools {
+		name := strings.TrimSpace(tool.Name)
+		if name == "" || normalizeFileToolCompatName(name) != normalized {
+			continue
+		}
+		if compatMatch != "" && compatMatch != name {
+			compatMatch = ""
+			break
+		}
+		compatMatch = name
+	}
+	if compatMatch != "" {
+		return compatMatch
+	}
+	folded := strings.ToLower(trimmed)
+	caseInsensitiveMatch := ""
+	for _, tool := range allowedTools {
+		name := strings.TrimSpace(tool.Name)
+		if strings.ToLower(name) != folded {
+			continue
+		}
+		if caseInsensitiveMatch != "" && caseInsensitiveMatch != name {
+			return trimmed
+		}
+		caseInsensitiveMatch = name
+	}
+	if caseInsensitiveMatch != "" {
+		return caseInsensitiveMatch
+	}
+	return trimmed
+}
+
+func sanitizeAssistantToolCallsForAllowedSet(toolCalls []llm.ToolCall, allowedTools []llm.Tool) ([]llm.ToolCall, []string) {
+	if len(toolCalls) == 0 {
+		return toolCalls, nil
+	}
+	out := make([]llm.ToolCall, 0, len(toolCalls))
+	dropped := make([]string, 0)
+	usedIDs := make(map[string]struct{}, len(toolCalls))
+	nextAutoID := 1
+	for _, tc := range toolCalls {
+		rawName := strings.TrimSpace(tc.Name)
+		tc.Name = normalizeAssistantToolCallNameForAllowedSet(tc.Name, allowedTools)
+		name := strings.TrimSpace(tc.Name)
+		if name == "" {
+			if rawName == "" {
+				rawName = "<blank>"
+			}
+			dropped = append(dropped, rawName)
+			continue
+		}
+		tc.Name = name
+		if len(allowedTools) > 0 && !containsLLMToolName(allowedTools, name) {
+			dropped = append(dropped, name)
+			continue
+		}
+		id := strings.TrimSpace(tc.ID)
+		if id == "" {
+			for {
+				candidate := fmt.Sprintf("call_auto_%d", nextAutoID)
+				nextAutoID++
+				if _, exists := usedIDs[candidate]; exists {
+					continue
+				}
+				id = candidate
+				break
+			}
+		} else if _, exists := usedIDs[id]; exists {
+			for {
+				candidate := fmt.Sprintf("%s_%d", id, nextAutoID)
+				nextAutoID++
+				if _, dup := usedIDs[candidate]; dup {
+					continue
+				}
+				id = candidate
+				break
+			}
+		}
+		tc.ID = id
+		usedIDs[id] = struct{}{}
+		out = append(out, tc)
+	}
+	if len(out) == 0 {
+		return nil, dropped
+	}
+	return out, dropped
+}
+
+func artifactFileWorkflowToolNames() []string {
+	return []string{
+		"file_read",
+		"file_write",
+		"file_delete",
+		"edit",
+		"ls",
+		"find",
+		"grep",
+		"rg",
+		"convert",
+		"pdf",
+		"image",
+	}
+}
+
+func workspaceEditWorkflowToolNames() []string {
+	return []string{
+		"file_read",
+		"file_write",
+		"edit",
+		"ls",
+		"find",
+		"grep",
+		"rg",
+	}
+}
+
+func memoryFileWorkflowToolNames() []string {
+	return []string{
+		"file_read",
+		"file_write",
+		"edit",
+		"ls",
+		"find",
+	}
+}
+
+func structuredWorkspaceArtifactWriteCompletionToolNames() []string {
+	return []string{
+		"file_write",
+		"edit",
+		"write_begin",
+		"write_chunk",
+		"write_commit",
+		"file_read",
+	}
+}
+
+func artifactFileWorkflowToolNamesForMessage(userMessage string) []string {
+	if shouldPreferExplicitMemoryFileWorkflow(userMessage) {
+		return memoryFileWorkflowToolNames()
+	}
+	if isStructuredWorkspaceArtifactTask(userMessage) {
+		return tools.StructuredWorkspaceArtifactWorkflowToolNames(userMessage)
+	}
+	if shouldPreferWorkspaceEditWorkflow(userMessage) {
+		return workspaceEditWorkflowToolNames()
+	}
+	return artifactFileWorkflowToolNames()
+}
+
+func isStructuredWorkspaceArtifactTask(userMessage string) bool {
+	return shouldPreferWorkspaceFileWorkflow(userMessage) &&
+		tools.LooksLikeStructuredWorkspaceArtifactTask(userMessage)
+}
+
 func hasToolDefName(defs []tools.ToolDefinition, name string) bool {
-	target := strings.ToLower(strings.TrimSpace(name))
+	target := normalizeFileToolCompatName(name)
 	for _, def := range defs {
-		if strings.EqualFold(strings.TrimSpace(def.Name), target) {
+		if normalizeFileToolCompatName(def.Name) == target {
 			return true
 		}
 	}
@@ -6207,11 +6858,11 @@ func filterToolDefsToNames(defs []tools.ToolDefinition, names ...string) []tools
 	}
 	allowed := make(map[string]struct{}, len(names))
 	for _, name := range names {
-		allowed[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+		allowed[normalizeFileToolCompatName(name)] = struct{}{}
 	}
 	filtered := make([]tools.ToolDefinition, 0, len(defs))
 	for _, def := range defs {
-		if _, ok := allowed[strings.ToLower(strings.TrimSpace(def.Name))]; ok {
+		if _, ok := allowed[normalizeFileToolCompatName(def.Name)]; ok {
 			filtered = append(filtered, def)
 		}
 	}
@@ -6625,7 +7276,7 @@ func shouldTriggerDeepResearchFallbackByIntent(routingMessage string, deepResear
 	if deepResearchEnabled != nil {
 		return *deepResearchEnabled
 	}
-	return shouldPreferDeepSearchReport(routingMessage)
+	return shouldUseHeavyResearchWorkflow(routingMessage)
 }
 
 func (h *ChatHandler) shouldUseDeepResearchFallback(err error, routingMessage string, deepResearchEnabled *bool) bool {
@@ -7205,6 +7856,17 @@ func (h *ChatHandler) shouldRouteToolDispatch(selectedTools []tools.ToolDefiniti
 	return len(selectedTools) > 1
 }
 
+func shouldBypassSmallModelToolDispatch(userMessage string) bool {
+	trimmed := strings.TrimSpace(userMessage)
+	if trimmed == "" {
+		return false
+	}
+	return shouldPreferWorkspaceFileWorkflow(trimmed) ||
+		shouldPreferDirectArtifactWriting(trimmed) ||
+		shouldPreferPublicArtifactResearchWorkflow(trimmed) ||
+		isImageGenerationIntentMessage(trimmed)
+}
+
 func (h *ChatHandler) shouldDisableProxyPruner() bool {
 	if h == nil || h.settingsHandler == nil {
 		return false
@@ -7713,6 +8375,10 @@ func summarizeToolPayloadForFallback(toolName string, payload map[string]interfa
 		if text := summarizeBrowserPayloadForFallback(payload, useChinese); text != "" {
 			return text
 		}
+	case "image", "image_generation":
+		if text := summarizeImagePayloadForFallback(payload, useChinese); text != "" {
+			return text
+		}
 	case "read", "file_read":
 		if text := summarizeFileReadPayloadForFallback(payload, useChinese); text != "" {
 			return text
@@ -7730,6 +8396,34 @@ func summarizeToolPayloadForFallback(toolName string, payload map[string]interfa
 		return text
 	}
 	return summarizeGenericToolPayloadForFallback(toolName, payload, useChinese)
+}
+
+func summarizeImagePayloadForFallback(payload map[string]interface{}, useChinese bool) string {
+	if len(payload) == 0 || classifyToolFallbackOutcome(payload) == "failed" {
+		return ""
+	}
+	path := extractImageArtifactPathFromPayload(payload)
+	if path == "" {
+		path = extractImageArtifactPathFromMessage(payloadStringField(payload, "message"))
+	}
+	outputCount := 0
+	switch outputs := payload["outputs"].(type) {
+	case []interface{}:
+		outputCount = len(outputs)
+	}
+	if path != "" {
+		if useChinese {
+			return fmt.Sprintf("已生成图片并保存到 %q。", path)
+		}
+		return fmt.Sprintf("Generated the image and saved it to %q.", path)
+	}
+	if outputCount > 0 {
+		if useChinese {
+			return fmt.Sprintf("已生成 %d 张图片。", outputCount)
+		}
+		return fmt.Sprintf("Generated %d image(s).", outputCount)
+	}
+	return ""
 }
 
 func summarizeDeepResearchPayloadForFallback(payload map[string]interface{}) string {
@@ -8659,17 +9353,48 @@ func (h *ChatHandler) processEventQueue() {
 
 // Close stops the async event processor.
 func (h *ChatHandler) Close() {
-	close(h.eventStop)
+	if h == nil {
+		return
+	}
+	h.closeOnce.Do(func() {
+		close(h.eventStop)
+		if h.conversationCache != nil {
+			h.conversationCache.Close()
+		}
+		h.resetTransientCaches()
+	})
 }
 
 // Shutdown cancels all active SSE streams and stops the event processor.
 // Call this before httpServer.Shutdown() so long-lived connections close promptly.
 func (h *ChatHandler) Shutdown() {
+	if h == nil {
+		return
+	}
 	h.streamController.CancelAll()
 	if h.sessionAuditStore != nil {
 		_ = h.sessionAuditStore.Close()
 	}
 	h.Close()
+}
+
+func (h *ChatHandler) resetTransientCaches() {
+	if h == nil {
+		return
+	}
+	h.warmupMu.Lock()
+	h.warmupCache = make(map[string]*warmupResult)
+	h.warmupMu.Unlock()
+
+	h.warmupTokenMu.Lock()
+	h.warmupTokens = make(map[string]string)
+	h.warmupTokenMu.Unlock()
+
+	h.providerWarmupsMu.Lock()
+	h.providerWarmups = make(map[string]*providerWarmupState)
+	h.providerWarmupsMu.Unlock()
+
+	h.summaryCache = cache.NewGenericCache[string](cache.Config{MaxSize: 200, DefaultTTL: 30 * time.Minute})
 }
 
 // queueEvent queues an event for async processing. Falls back to sync if queue is full.
@@ -10534,6 +11259,16 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				logger.Error().Err(err).Str("model", req.Model).Msg("LLM chat request failed during checkpoint resume")
 				return "", buildIMChatFailureError(lang, err)
 			}
+			if len(resp.Message.ToolCalls) > 0 {
+				sanitizedCalls, droppedCalls := sanitizeAssistantToolCallsForAllowedSet(resp.Message.ToolCalls, req.Tools)
+				if len(droppedCalls) > 0 {
+					logger.Warn().
+						Int("round", imRound).
+						Str("dropped_tools", strings.Join(droppedCalls, ",")).
+						Msg("[im] dropped assistant tool calls outside the current allowed tool set")
+				}
+				resp.Message.ToolCalls = sanitizedCalls
+			}
 
 			if imRound == 0 && len(resp.Message.ToolCalls) > 0 && resp.ProviderID != "" {
 				ctx = proxy.WithPinnedProvider(ctx, resp.ProviderID)
@@ -10555,7 +11290,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			if resp.Message.Content != "" {
 				h.persistChannelResponse(ctx, convID, sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, req.Model))
 			}
-			limitedToolCalls, truncated := limitToolCallsForRound(resp.Message.ToolCalls)
+			limitedToolCalls, truncated := limitToolCallsForRound(resp.Message.ToolCalls, msg.Content)
 			if truncated {
 				logger.Warn().
 					Int("round", imRound).
@@ -10768,6 +11503,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	extraPrompt := mergeExtraPrompt(
 		skillPrompt,
 		buildDeepSearchExecutionHint(routingMessage),
+		buildArtifactWorkflowExecutionHint(routingMessage),
 	)
 	if extraPrompt != "" || len(systemPromptMessages) == 0 {
 		var selection *contextpack.SelectionSet
@@ -10928,6 +11664,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
 	selectedTools = applyCalendarToolPreference(selectedTools, routingMessage)
 	selectedTools = applyEmailToolPreference(selectedTools, routingMessage)
+	selectedTools = applyImageToolPreference(selectedTools, routingMessage)
 	req.Tools = defsToLLMTools(selectedTools)
 
 	logger.Info().
@@ -11141,7 +11878,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			h.setPreviousResponseID(convID, resp.ID)
 			req.PreviousResponseID = resp.ID
 		}
-		limitedToolCalls, truncated := limitToolCallsForRound(resp.Message.ToolCalls)
+		limitedToolCalls, truncated := limitToolCallsForRound(resp.Message.ToolCalls, routingMessage)
 		if truncated {
 			logger.Warn().
 				Int("round", imRound).
@@ -11188,11 +11925,12 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			}
 			return "", nil
 		}
+		writeTargets := collectSuccessfulWriteTargets(completedCalls, completed)
 		toolSummaries := make([]string, 0, len(completed))
 		for _, item := range completed {
 			toolSummaries = append(toolSummaries, tools.NormalizeToolProgressSummary(item.Content))
 		}
-		if detection := imLoopDetector.Observe(toolLoopSignature(completedCalls), resp.Message.Content, toolSummaries); detection.Abort {
+		if detection := imLoopDetector.Observe(toolLoopSignature(completedCalls), resp.Message.Content, toolSummaries, writeTargets...); detection.Abort {
 			h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
 				"mode":        "im",
 				"reason":      detection.Reason,
@@ -11551,13 +12289,14 @@ const continuationRecoveryStage1 = "silent_recovery_stage1"
 const continuationRecoveryStage2 = "stage2_reduced_payload"
 
 const (
-	continuationRecoveryTailMessages       = 4
-	continuationRecoverySystemMessagesMax  = 2
-	continuationRecoveryToolsMax           = 3
-	continuationRecoverySystemMaxLen       = 2048
-	continuationRecoveryTextPayloadMaxLen  = 2048
-	continuationRecoveryToolPayloadMaxLen  = 2 * 1024
-	continuationRecoveryToolDescPayloadLen = 240
+	continuationRecoveryTailMessages        = 4
+	continuationRecoverySystemMessagesMax   = 2
+	continuationRecoveryToolsMax            = 3
+	continuationRecoverySystemMaxLen        = 2048
+	continuationRecoveryTextPayloadMaxLen   = 2048
+	continuationRecoveryToolPayloadMaxLen   = 2 * 1024
+	continuationRecoveryToolDescPayloadLen  = 240
+	reducedToolRoundRecoveryMinSavingsBytes = 512
 )
 
 // toolCallSignature returns a string key for deduplication of tool calls.
@@ -11714,11 +12453,397 @@ func toolLoopRecoveryMessageKey(reason, signature string) string {
 	}
 }
 
-func limitToolCallsForRound(calls []llm.ToolCall) ([]llm.ToolCall, bool) {
+func isSearchLikeToolLoopSignature(signature string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(signature))
+	if normalized == "" {
+		return false
+	}
+	for _, needle := range []string{
+		"web:",
+		"research_run",
+		"research_status",
+		"web_search",
+		"web_fetch",
+		"web_read",
+		"web_extract",
+		"web_crawl",
+		"browser",
+	} {
+		if strings.Contains(normalized, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func isArtifactCollectionLoopSignature(signature string) bool {
+	if isSearchLikeToolLoopSignature(signature) {
+		return true
+	}
+	normalized := strings.ToLower(strings.TrimSpace(signature))
+	if normalized == "" {
+		return false
+	}
+	for _, needle := range []string{
+		"file_read:",
+		"find:",
+		"ls:",
+		"grep:",
+		"pdf:",
+		"convert:",
+	} {
+		if strings.Contains(normalized, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildArtifactOutcomeRequirement(userMessage, target string) string {
+	target = strings.TrimSpace(target)
+	if target != "" {
+		return fmt.Sprintf("Finish with the outcome that matches the user's request. The user explicitly requested a saved file, so the only acceptable outcome is saving %q.", target)
+	}
+	if extractRequestedArtifactWriteTarget(userMessage) != "" {
+		return "Finish with the outcome that matches the user's request. Because the user requested a saved file, the acceptable outcome is saving that file."
+	}
+	return "Finish with the outcome that matches the user's request: save a file when the user asked for one, otherwise return the final summary directly in the reply."
+}
+
+func buildToolLoopArtifactRecoveryNudge(userMessage, reason, signature string) string {
+	if !isArtifactCollectionLoopSignature(signature) {
+		return ""
+	}
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if target == "" {
+		return ""
+	}
+	return fmt.Sprintf("Tool execution is repeating without clear progress. %s Do not continue looping through more search, browsing, or repeated file discovery/reads. Using the evidence already gathered plus general knowledge where needed, write the requested artifact now, then give a brief final confirmation.", buildArtifactOutcomeRequirement(userMessage, target))
+}
+
+func buildToolLoopArtifactRecoveryTools(tools []llm.Tool, userMessage, signature string) []llm.Tool {
+	if len(tools) == 0 || !isArtifactCollectionLoopSignature(signature) || extractRequestedArtifactWriteTarget(userMessage) == "" {
+		return tools
+	}
+	priority := []string{
+		"file_write",
+		"edit",
+		"write_begin",
+		"write_chunk",
+		"write_commit",
+		"file_read",
+	}
+	indexByName := make(map[string]llm.Tool, len(tools))
+	for _, tool := range tools {
+		name := normalizeFileToolCompatName(tool.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := indexByName[name]; ok {
+			continue
+		}
+		indexByName[name] = tool
+	}
+
+	reduced := make([]llm.Tool, 0, len(priority))
+	for _, name := range priority {
+		tool, ok := indexByName[name]
+		if !ok {
+			continue
+		}
+		reduced = append(reduced, tool)
+	}
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+		return tools
+	}
+	return reduced
+}
+
+func isSearchOnlyArtifactRound(toolCalls []llm.ToolCall) bool {
+	if len(toolCalls) == 0 {
+		return false
+	}
+	for _, tc := range toolCalls {
+		if isResearchRecoveryToolName(tc.Name) || isSearchLikeToolCallForLLM(tc) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+const maxBatchFileReadCallsPerRound = 4
+const maxExhaustiveBatchFileReadCallsPerRound = 16
+
+func limitToolCallsForRound(calls []llm.ToolCall, userMessage ...string) ([]llm.ToolCall, bool) {
 	if len(calls) <= 1 {
 		return calls, false
 	}
+	readLimit := maxBatchFileReadCallsPerRound
+	if len(userMessage) > 0 {
+		readLimit = maxBatchFileReadCallsPerRoundForMessage(userMessage[0])
+	}
+	if batched := selectBatchableArtifactWorkflowCalls(calls, readLimit); len(batched) > 1 {
+		return batched, len(batched) != len(calls)
+	}
+	if batched := selectBatchableFileReadCalls(calls, readLimit); len(batched) > 1 {
+		return batched, len(batched) != len(calls)
+	}
 	return []llm.ToolCall{calls[0]}, true
+}
+
+func maxBatchFileReadCallsPerRoundForMessage(userMessage string) int {
+	if !shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
+		return maxBatchFileReadCallsPerRound
+	}
+	if n := extractExplicitWorkspaceCollectionCount(userMessage); n > maxBatchFileReadCallsPerRound && n < maxExhaustiveBatchFileReadCallsPerRound {
+		return n
+	}
+	return maxExhaustiveBatchFileReadCallsPerRound
+}
+
+func shouldRequireExhaustiveWorkspaceArtifactRead(userMessage string) bool {
+	if !shouldPreferWorkspaceFileWorkflow(userMessage) {
+		return false
+	}
+	if extractRequestedArtifactPath(userMessage) == "" {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" {
+		return false
+	}
+	for _, cue := range []string{
+		"review all files",
+		"read all",
+		"all files",
+		"all emails",
+		"every email",
+		"each email",
+		"every file",
+		"search through all",
+		"entire folder",
+		"whole folder",
+		"entire inbox",
+		"full inbox",
+		"collection of emails",
+		"overflowing email inbox",
+		"检查所有文件",
+		"读取所有",
+		"所有文件",
+		"所有邮件",
+		"遍历全部",
+		"搜索所有",
+	} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return extractExplicitWorkspaceCollectionCount(lower) > 0
+}
+
+func extractExplicitWorkspaceCollectionCount(userMessage string) int {
+	match := reExplicitWorkspaceCollectionCount.FindStringSubmatch(strings.TrimSpace(userMessage))
+	if len(match) != 2 {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(match[1]))
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
+func selectBatchableArtifactWorkflowCalls(calls []llm.ToolCall, readLimit int) []llm.ToolCall {
+	if len(calls) == 0 || readLimit < 1 {
+		return nil
+	}
+	selected := make([]llm.ToolCall, 0, min(len(calls), readLimit+1))
+	seenKeys := make(map[string]struct{}, min(len(calls), readLimit))
+	readCount := 0
+	for i, tc := range calls {
+		switch normalizeFileToolCompatName(tc.Name) {
+		case "file_read", "pdf", "convert":
+			if readCount >= readLimit {
+				break
+			}
+			key := batchableArtifactToolKey(tc)
+			if key == "" {
+				return nil
+			}
+			if _, exists := seenKeys[key]; exists {
+				continue
+			}
+			if compacted, handled := compactSelectedBatchablePDFReads(selected, tc); handled {
+				seenKeys[key] = struct{}{}
+				selected = compacted
+				readCount = len(selected)
+				continue
+			}
+			seenKeys[key] = struct{}{}
+			selected = append(selected, tc)
+			readCount++
+		case "file_write":
+			if i != len(calls)-1 || readCount == 0 {
+				return nil
+			}
+			selected = append(selected, tc)
+		default:
+			return nil
+		}
+	}
+	if len(selected) <= 1 {
+		return nil
+	}
+	return selected
+}
+
+func compactSelectedBatchablePDFReads(selected []llm.ToolCall, candidate llm.ToolCall) ([]llm.ToolCall, bool) {
+	path, fullDoc, ok := batchableArtifactPDFReadInfo(candidate)
+	if !ok || path == "" {
+		return selected, false
+	}
+
+	firstSameSourceIdx := -1
+	sameSourceIdxs := make([]int, 0, 2)
+	for idx, existing := range selected {
+		existingPath, existingFullDoc, existingOK := batchableArtifactPDFReadInfo(existing)
+		if !existingOK || existingPath != path {
+			continue
+		}
+		if existingFullDoc {
+			if fullDoc {
+				selected[idx] = candidate
+			}
+			return selected, true
+		}
+		if firstSameSourceIdx == -1 {
+			firstSameSourceIdx = idx
+		}
+		sameSourceIdxs = append(sameSourceIdxs, idx)
+	}
+
+	if !fullDoc || firstSameSourceIdx == -1 {
+		return selected, false
+	}
+
+	compacted := make([]llm.ToolCall, 0, len(selected)-len(sameSourceIdxs)+1)
+	skip := make(map[int]struct{}, len(sameSourceIdxs))
+	for _, idx := range sameSourceIdxs {
+		skip[idx] = struct{}{}
+	}
+	for idx, existing := range selected {
+		if idx == firstSameSourceIdx {
+			compacted = append(compacted, candidate)
+			continue
+		}
+		if _, shouldSkip := skip[idx]; shouldSkip {
+			continue
+		}
+		compacted = append(compacted, existing)
+	}
+	return compacted, true
+}
+
+func batchableArtifactPDFReadInfo(tc llm.ToolCall) (path string, fullDoc bool, ok bool) {
+	if normalizeFileToolCompatName(tc.Name) != "pdf" {
+		return "", false, false
+	}
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(tc.Arguments), &payload) != nil {
+		return "", false, false
+	}
+	action := extractToolLoopArgString(payload, "action")
+	if action != "" && !strings.EqualFold(action, "read") {
+		return "", false, false
+	}
+	path = extractToolLoopArgString(payload, "path", "pdf", "file")
+	if path == "" {
+		return "", false, false
+	}
+	if _, hasPages := payload["pages"]; hasPages {
+		return path, false, true
+	}
+	if extractToolLoopArgString(payload, "page") != "" {
+		return path, false, true
+	}
+	return path, true, true
+}
+
+func batchableArtifactToolKey(tc llm.ToolCall) string {
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(tc.Arguments), &payload) != nil {
+		return ""
+	}
+	switch normalizeFileToolCompatName(tc.Name) {
+	case "file_read":
+		path := extractToolLoopArgString(payload, "path", "file_path", "filePath", "filename")
+		if path == "" {
+			return ""
+		}
+		return "file_read:" + path
+	case "pdf":
+		path := extractToolLoopArgString(payload, "path", "pdf", "file")
+		if path == "" {
+			return ""
+		}
+		action := extractToolLoopArgString(payload, "action")
+		if action == "" {
+			action = "read"
+		}
+		pages := strings.TrimSpace(anyToStringForLLM(payload["pages"]))
+		if pages == "" {
+			if page := extractToolLoopArgString(payload, "page"); page != "" {
+				pages = page
+			}
+		}
+		return fmt.Sprintf("pdf:%s:%s:%s", action, path, pages)
+	case "convert":
+		inputPath := extractToolLoopArgString(payload, "input_path", "inputPath", "path")
+		if inputPath == "" {
+			return ""
+		}
+		outputPath := extractToolLoopArgString(payload, "output_path", "outputPath")
+		targetFormat := extractToolLoopArgString(payload, "target_format", "targetFormat", "format")
+		return fmt.Sprintf("convert:%s:%s:%s", inputPath, outputPath, targetFormat)
+	default:
+		return ""
+	}
+}
+
+func selectBatchableFileReadCalls(calls []llm.ToolCall, limit int) []llm.ToolCall {
+	if len(calls) == 0 || limit <= 1 {
+		return nil
+	}
+	selected := make([]llm.ToolCall, 0, min(limit, len(calls)))
+	seenPaths := make(map[string]struct{}, min(limit, len(calls)))
+	for _, tc := range calls {
+		switch normalizeFileToolCompatName(tc.Name) {
+		case "file_read":
+		default:
+			return nil
+		}
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(tc.Arguments), &payload) != nil {
+			return nil
+		}
+		path := extractToolLoopArgString(payload, "path", "file_path")
+		if path == "" {
+			return nil
+		}
+		if _, exists := seenPaths[path]; exists {
+			continue
+		}
+		seenPaths[path] = struct{}{}
+		selected = append(selected, tc)
+		if len(selected) >= limit {
+			break
+		}
+	}
+	if len(selected) <= 1 {
+		return nil
+	}
+	return selected
 }
 
 // getMaxToolRounds returns the tool round limit based on agent mode setting.
@@ -11951,6 +13076,49 @@ func continuationRequestStats(chatReq llm.ChatRequest) (hasPrevResponseID bool, 
 	return hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount, storePolicy
 }
 
+func estimateChatRequestBytes(chatReq llm.ChatRequest) int {
+	encoded, err := json.Marshal(chatReq)
+	if err != nil {
+		return 0
+	}
+	return len(encoded)
+}
+
+func buildReducedToolRoundRecoveryRequest(chatReq llm.ChatRequest, toolRound int, fullContent string, err error) (llm.ChatRequest, int, int, bool) {
+	if err == nil || toolRound <= 0 || strings.TrimSpace(fullContent) != "" {
+		return llm.ChatRequest{}, 0, 0, false
+	}
+	pe, ok := err.(*proxybridge.ProxyError)
+	if !ok || pe.StatusCode < http.StatusInternalServerError || pe.IsOverloaded() || pe.IsNoProvider() {
+		return llm.ChatRequest{}, 0, 0, false
+	}
+	bodyLower := strings.ToLower(pe.Body)
+	if strings.Contains(bodyLower, "context canceled") ||
+		strings.Contains(bodyLower, "context cancelled") ||
+		strings.Contains(bodyLower, "deadline exceeded") {
+		return llm.ChatRequest{}, 0, 0, false
+	}
+	if !supportsResponsesContinuation(chatReq.Model) && strings.TrimSpace(chatReq.PreviousResponseID) == "" {
+		return llm.ChatRequest{}, 0, 0, false
+	}
+
+	_, _, _, toolItemsCount, _ := continuationRequestStats(chatReq)
+	if toolItemsCount == 0 {
+		return llm.ChatRequest{}, 0, 0, false
+	}
+
+	originalBytes := estimateChatRequestBytes(chatReq)
+	reducedReq := buildReducedContinuationRecoveryRequest(chatReq)
+	reducedBytes := estimateChatRequestBytes(reducedReq)
+	if reducedBytes <= 0 || reducedBytes >= originalBytes {
+		return llm.ChatRequest{}, originalBytes, reducedBytes, false
+	}
+	if originalBytes-reducedBytes < reducedToolRoundRecoveryMinSavingsBytes {
+		return llm.ChatRequest{}, originalBytes, reducedBytes, false
+	}
+	return reducedReq, originalBytes, reducedBytes, true
+}
+
 func buildReducedContinuationRecoveryRequest(chatReq llm.ChatRequest) llm.ChatRequest {
 	recoveryReq := chatReq
 	reducedMessages := buildReducedContinuationRecoveryMessages(chatReq.Messages)
@@ -12105,10 +13273,10 @@ func buildReducedContinuationRecoveryTools(tools []llm.Tool, messages []llm.Mess
 	}
 
 	if len(needed) == 0 {
-		priority := []string{"exec", "web_search", "read", "browser", "mcp"}
+		priority := []string{"exec", "web", "web_search", "file_read", "browser", "mcp"}
 		indexByName := make(map[string]int, len(tools))
 		for i, t := range tools {
-			name := strings.ToLower(strings.TrimSpace(t.Name))
+			name := normalizeFileToolCompatName(t.Name)
 			if name == "" {
 				continue
 			}
@@ -12197,7 +13365,6 @@ func choosePseudoToolCallPrimaryToolIndex(tools []llm.Tool, preferReminder bool)
 	priority := []string{
 		"exec",
 		"web_search",
-		"read",
 		"file_read",
 		"browser",
 		"ui_reviewer",
@@ -12407,6 +13574,49 @@ func selectPseudoToolCallFallbackModel(currentModel string, availableModels []st
 	}
 
 	return trimModelTrailingSegment(model)
+}
+
+func selectResearchFailureWriteRecoveryModel(currentModel string, availableModels []string) string {
+	if len(availableModels) == 0 {
+		return ""
+	}
+	currentModel = strings.TrimSpace(currentModel)
+	indexByLower := make(map[string]string, len(availableModels))
+	for _, model := range availableModels {
+		trimmed := strings.TrimSpace(model)
+		if trimmed == "" {
+			continue
+		}
+		lower := strings.ToLower(trimmed)
+		if _, exists := indexByLower[lower]; exists {
+			continue
+		}
+		indexByLower[lower] = trimmed
+	}
+	currentLower := strings.ToLower(currentModel)
+	if strings.Contains(currentLower, "claude") {
+		for _, candidate := range []string{"claude-3-5-haiku-20241022", "anthropic.claude-3-5-haiku-20241022-v1:0"} {
+			if model, ok := indexByLower[strings.ToLower(candidate)]; ok && !strings.EqualFold(model, currentModel) {
+				return model
+			}
+		}
+	}
+	if sameFamily := selectPseudoToolCallFallbackModel(currentModel, availableModels); sameFamily != "" && !strings.EqualFold(sameFamily, currentModel) {
+		return sameFamily
+	}
+	preferred := []string{
+		"qwen-turbo",
+		"gpt-4o-mini",
+		"glm-4-flash",
+		"claude-3-5-haiku-20241022",
+		"amazon.nova-lite-v1:0",
+	}
+	for _, candidate := range preferred {
+		if model, ok := indexByLower[strings.ToLower(candidate)]; ok && !strings.EqualFold(model, currentModel) {
+			return model
+		}
+	}
+	return ""
 }
 
 // executeToolCalls executes tool calls and returns tool result messages.
@@ -12688,15 +13898,518 @@ func compactToolResultsForLLM(toolCalls []llm.ToolCall, toolResults []llm.Messag
 }
 
 func buildPostWriteCompletionNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	if !shouldStabilizeArtifactAfterWrite(userMessage) {
+		return ""
+	}
+	target := strings.TrimSpace(extractRequestedArtifactWriteTarget(userMessage))
+	if target != "" {
+		if !hasRequestedArtifactWriteSuccess(userMessage, toolCalls, toolResults) {
+			return ""
+		}
+	} else {
+		targets := collectSuccessfulWriteTargets(toolCalls, toolResults)
+		if len(targets) == 0 {
+			return ""
+		}
+		target = targets[0]
+	}
+	return fmt.Sprintf("The requested file %q was written successfully. Unless you can point to a specific verified defect, do not call write on that path again in this turn. If needed, read it once to confirm, then provide a brief final answer to the user.", target)
+}
+
+func shouldStabilizeArtifactAfterWrite(userMessage string) bool {
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if target == "" || isImageArtifactPath(target) {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if codeTaskCueMatcher.ContainsAnyFold(lower) {
+		return false
+	}
+	return shouldPreferWorkspaceFileWorkflow(userMessage) ||
+		shouldPreferDirectArtifactWriting(userMessage) ||
+		shouldPreferPublicArtifactResearchWorkflow(userMessage) ||
+		shouldUseHeavyResearchWorkflow(userMessage)
+}
+
+func buildPostWriteCompletionTools(tools []llm.Tool, userMessage string) []llm.Tool {
+	if len(tools) == 0 || !shouldStabilizeArtifactAfterWrite(userMessage) {
+		return tools
+	}
+	priority := []string{
+		"file_read",
+		"ls",
+		"find",
+		"grep",
+		"convert",
+		"pdf",
+	}
+	indexByName := make(map[string]llm.Tool, len(tools))
+	for _, tool := range tools {
+		name := normalizeFileToolCompatName(tool.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := indexByName[name]; exists {
+			continue
+		}
+		indexByName[name] = tool
+	}
+	reduced := make([]llm.Tool, 0, len(priority))
+	for _, name := range priority {
+		if tool, ok := indexByName[name]; ok {
+			reduced = append(reduced, tool)
+		}
+	}
+	if len(reduced) == 0 {
+		return nil
+	}
+	return reduced
+}
+
+func buildPostWorkspaceArtifactContinuationNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
 	if !shouldPreferWorkspaceFileWorkflow(userMessage) {
 		return ""
 	}
-	targets := collectSuccessfulWriteTargets(toolCalls, toolResults)
-	if len(targets) == 0 {
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if target == "" {
 		return ""
 	}
-	target := targets[0]
-	return fmt.Sprintf("The requested file %q was written successfully. Unless you can point to a specific verified defect, do not call write on that path again in this turn. If needed, read it once to confirm, then provide a brief final answer to the user.", target)
+	if hasRequestedArtifactWriteSuccess(userMessage, toolCalls, toolResults) {
+		return ""
+	}
+	if !hasWorkspaceArtifactProgress(toolCalls, toolResults) {
+		return ""
+	}
+	nudge := fmt.Sprintf("This is still a local workspace synthesis task for %q. You must finish with exactly one acceptable outcome: (1) save the requested file, or (2) if no file was requested, return the final summary directly in the reply. For this request, the only acceptable outcome is saving %q. Do not stop after listing files, searching, or extracting raw content. Do not guess new filenames that were not actually discovered. Continue from the evidence you already gathered, use local file tools only as needed, then write the completed deliverable in this turn. Prefer pdf/convert/file_read for local sources and avoid browser, email, calendar, or research detours unless the user explicitly asked for them.", target, target)
+	if isStructuredWorkspaceArtifactTask(userMessage) && hasWorkspaceArtifactContentEvidence(toolCalls, toolResults) {
+		nudge += " You already have sufficient successful local source evidence for this local structured-output task. Do not reopen the same source in narrower slices or chase alternate tables when the needed answers are already present; write the requested artifact from the gathered evidence now."
+	}
+	if !hasPendingWorkspaceArtifactSourceReads(userMessage, toolCalls, toolResults) && hasWorkspaceArtifactContentEvidence(toolCalls, toolResults) {
+		nudge += " All discovered relevant local sources are already covered. Do not continue with more ls/find/pdf/convert/file_read passes unless you can name one specific missing fact that is not yet in the gathered evidence."
+	}
+	if extra := buildWorkspaceNumberedAnswerPrecisionHint(userMessage); extra != "" {
+		nudge += " " + extra
+	}
+	return nudge + " After saving the file, give a brief final confirmation."
+}
+
+func buildPostWorkspaceArtifactContinuationNudgeFromHistory(userMessage string, currentToolCalls []llm.ToolCall, currentToolResults []llm.Message, historyToolCalls []llm.ToolCall, historyToolResults []llm.Message) string {
+	if nudge := buildPostWorkspaceArtifactCoverageContinuationNudge(userMessage, historyToolCalls, historyToolResults); nudge != "" {
+		return nudge
+	}
+	combinedCalls := append(append([]llm.ToolCall(nil), historyToolCalls...), currentToolCalls...)
+	combinedResults := append(append([]llm.Message(nil), historyToolResults...), currentToolResults...)
+	return buildPostWorkspaceArtifactContinuationNudge(userMessage, combinedCalls, combinedResults)
+}
+
+func buildPostWorkspaceArtifactCoverageContinuationNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	if !shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
+		return ""
+	}
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if target == "" {
+		return ""
+	}
+	pending, discoveredCount, readCount := pendingWorkspaceArtifactSourcePaths(userMessage, toolCalls, toolResults)
+	if len(pending) == 0 || discoveredCount == 0 {
+		return ""
+	}
+
+	previewCount := min(len(pending), 8)
+	preview := strings.Join(pending[:previewCount], ", ")
+	if len(pending) > previewCount {
+		preview += fmt.Sprintf(", +%d more", len(pending)-previewCount)
+	}
+
+	return fmt.Sprintf(
+		"This local workspace synthesis task asks for complete source coverage before writing %q. You have discovered %d candidate local files and only read %d so far. Continue reading the remaining relevant local files before writing the final artifact. Remaining files include: %s. Do not stop at partial notes, partial classification, or partial summaries yet. After the relevant files are covered, write the completed deliverable and give a brief confirmation.",
+		target,
+		discoveredCount,
+		readCount,
+		preview,
+	)
+}
+
+func buildPostWorkspaceArtifactContinuationTools(tools []llm.Tool, userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) []llm.Tool {
+	if len(tools) == 0 || !shouldPreferWorkspaceFileWorkflow(userMessage) {
+		return tools
+	}
+	if extractRequestedArtifactWriteTarget(userMessage) == "" || hasRequestedArtifactWriteSuccess(userMessage, toolCalls, toolResults) || !hasWorkspaceArtifactProgress(toolCalls, toolResults) {
+		return tools
+	}
+
+	hasContentEvidence := hasWorkspaceArtifactContentEvidence(toolCalls, toolResults)
+	pendingReads := hasPendingWorkspaceArtifactSourceReads(userMessage, toolCalls, toolResults)
+	priority := []string{
+		"file_write",
+		"edit",
+		"write_begin",
+		"write_chunk",
+		"write_commit",
+		"file_read",
+		"grep",
+		"convert",
+		"pdf",
+	}
+	if hasContentEvidence && !pendingReads {
+		priority = structuredWorkspaceArtifactWriteCompletionToolNames()
+	} else if !hasContentEvidence {
+		priority = append(priority, "ls", "find")
+	} else if pendingReads {
+		priority = append(priority, "ls", "find")
+	}
+	indexByName := make(map[string]llm.Tool, len(tools))
+	for _, tool := range tools {
+		name := normalizeFileToolCompatName(tool.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := indexByName[name]; ok {
+			continue
+		}
+		indexByName[name] = tool
+	}
+
+	reduced := make([]llm.Tool, 0, len(priority))
+	for _, name := range priority {
+		tool, ok := indexByName[name]
+		if !ok {
+			continue
+		}
+		reduced = append(reduced, tool)
+	}
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+		return tools
+	}
+	return reduced
+}
+
+func hasRequestedArtifactWriteSuccess(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
+	target := normalizeWorkspaceArtifactComparablePath(extractRequestedArtifactWriteTarget(userMessage))
+	targets := collectSuccessfulWriteTargets(toolCalls, toolResults)
+	if len(targets) == 0 {
+		return false
+	}
+	if target == "" {
+		return true
+	}
+	for _, candidate := range targets {
+		if normalizeWorkspaceArtifactComparablePath(candidate) == target {
+			return true
+		}
+	}
+	return false
+}
+
+func buildPostWorkspaceArtifactContinuationToolsFromHistory(tools []llm.Tool, userMessage string, currentToolCalls []llm.ToolCall, currentToolResults []llm.Message, historyToolCalls []llm.ToolCall, historyToolResults []llm.Message) []llm.Tool {
+	if reduced := buildPostWorkspaceArtifactCoverageContinuationTools(tools, userMessage, historyToolCalls, historyToolResults); len(reduced) > 0 {
+		return reduced
+	}
+	combinedCalls := append(append([]llm.ToolCall(nil), historyToolCalls...), currentToolCalls...)
+	combinedResults := append(append([]llm.Message(nil), historyToolResults...), currentToolResults...)
+	return buildPostWorkspaceArtifactContinuationTools(tools, userMessage, combinedCalls, combinedResults)
+}
+
+func buildPostWorkspaceArtifactCoverageContinuationTools(tools []llm.Tool, userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) []llm.Tool {
+	if len(tools) == 0 || !shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
+		return nil
+	}
+	pending, _, _ := pendingWorkspaceArtifactSourcePaths(userMessage, toolCalls, toolResults)
+	if len(pending) == 0 {
+		return nil
+	}
+
+	priority := []string{
+		"file_read",
+		"pdf",
+		"convert",
+		"grep",
+		"ls",
+		"find",
+		"file_write",
+		"edit",
+		"write_begin",
+		"write_chunk",
+		"write_commit",
+	}
+	indexByName := make(map[string]llm.Tool, len(tools))
+	for _, tool := range tools {
+		name := normalizeFileToolCompatName(tool.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := indexByName[name]; ok {
+			continue
+		}
+		indexByName[name] = tool
+	}
+
+	reduced := make([]llm.Tool, 0, len(priority))
+	for _, name := range priority {
+		if tool, ok := indexByName[name]; ok {
+			reduced = append(reduced, tool)
+		}
+	}
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_read") {
+		return nil
+	}
+	return reduced
+}
+
+func pendingWorkspaceArtifactSourcePaths(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) ([]string, int, int) {
+	if !shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
+		return nil, 0, 0
+	}
+	discovered := collectWorkspaceDiscoveredFilePaths(toolCalls, toolResults)
+	if len(discovered) == 0 {
+		return nil, 0, 0
+	}
+	discoveredSet := make(map[string]struct{}, len(discovered))
+	for _, path := range discovered {
+		discoveredSet[path] = struct{}{}
+	}
+
+	readSet := collectWorkspaceReadSourcePaths(toolCalls, toolResults)
+	target := normalizeWorkspaceArtifactComparablePath(extractRequestedArtifactWriteTarget(userMessage))
+	pending := make([]string, 0, len(discovered))
+	readCount := 0
+	for _, path := range discovered {
+		if path == "" || path == target {
+			continue
+		}
+		if _, ok := readSet[path]; ok {
+			readCount++
+			continue
+		}
+		pending = append(pending, path)
+	}
+	return pending, len(discoveredSet), readCount
+}
+
+func hasPendingWorkspaceArtifactSourceReads(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
+	pending, _, _ := pendingWorkspaceArtifactSourcePaths(userMessage, toolCalls, toolResults)
+	return len(pending) > 0
+}
+
+func collectWorkspaceDiscoveredFilePaths(toolCalls []llm.ToolCall, toolResults []llm.Message) []string {
+	if len(toolCalls) == 0 || len(toolResults) == 0 {
+		return nil
+	}
+
+	callByID := make(map[string]llm.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			callByID[id] = tc
+		}
+	}
+
+	out := make([]string, 0, 16)
+	seen := make(map[string]struct{}, 16)
+	for i, tr := range toolResults {
+		toolName := ""
+		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
+			toolName = toolCalls[i].Name
+		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			toolName = matched.Name
+		}
+		toolName = normalizeFileToolCompatName(toolName)
+		if toolName != "ls" && toolName != "find" {
+			continue
+		}
+
+		payload := parseWorkspaceArtifactResultPayload(tr.Content)
+		if len(payload) == 0 || classifyToolFallbackOutcome(payload) == "failed" {
+			continue
+		}
+		base := strings.TrimSpace(payloadStringField(payload, "base_path"))
+		if base == "" {
+			base = strings.TrimSpace(payloadStringField(payload, "path"))
+		}
+		rows, ok := payload["entries"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, row := range rows {
+			entry, ok := row.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			entryType := strings.ToLower(strings.TrimSpace(anyToStringForLLM(entry["type"])))
+			if entryType != "" && entryType != "file" {
+				continue
+			}
+			entryPath := strings.TrimSpace(anyToStringForLLM(entry["path"]))
+			if entryPath == "" {
+				entryPath = strings.TrimSpace(anyToStringForLLM(entry["name"]))
+			}
+			fullPath := normalizeWorkspaceDiscoveredPath(base, entryPath)
+			if fullPath == "" {
+				continue
+			}
+			if _, ok := seen[fullPath]; ok {
+				continue
+			}
+			seen[fullPath] = struct{}{}
+			out = append(out, fullPath)
+		}
+	}
+	return out
+}
+
+func collectWorkspaceReadSourcePaths(toolCalls []llm.ToolCall, toolResults []llm.Message) map[string]struct{} {
+	readSet := make(map[string]struct{}, 16)
+	if len(toolCalls) == 0 || len(toolResults) == 0 {
+		return readSet
+	}
+
+	callByID := make(map[string]llm.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			callByID[id] = tc
+		}
+	}
+
+	for i, tr := range toolResults {
+		toolName := ""
+		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
+			toolName = toolCalls[i].Name
+		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			toolName = matched.Name
+		}
+		switch normalizeFileToolCompatName(toolName) {
+		case "file_read", "pdf", "convert":
+		default:
+			continue
+		}
+
+		payload := parseWorkspaceArtifactResultPayload(tr.Content)
+		if len(payload) == 0 || classifyToolFallbackOutcome(payload) == "failed" {
+			continue
+		}
+		path := normalizeWorkspaceArtifactComparablePath(workspaceArtifactPayloadPath(payload))
+		if path == "" {
+			continue
+		}
+		readSet[path] = struct{}{}
+	}
+	return readSet
+}
+
+func normalizeWorkspaceDiscoveredPath(base, entry string) string {
+	entry = strings.TrimSpace(entry)
+	if entry == "" {
+		return ""
+	}
+	normalizedEntry := normalizeWorkspaceArtifactComparablePath(entry)
+	if normalizedEntry == "" {
+		return ""
+	}
+	if filepath.IsAbs(normalizedEntry) || strings.HasPrefix(normalizedEntry, "@") {
+		return normalizedEntry
+	}
+	normalizedBase := normalizeWorkspaceArtifactComparablePath(base)
+	if normalizedBase == "" || normalizedBase == "." {
+		return normalizedEntry
+	}
+	if normalizedEntry == normalizedBase || strings.HasPrefix(normalizedEntry, normalizedBase+"/") {
+		return normalizedEntry
+	}
+	return normalizeWorkspaceArtifactComparablePath(filepath.ToSlash(filepath.Join(normalizedBase, normalizedEntry)))
+}
+
+func normalizeWorkspaceArtifactComparablePath(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "@") {
+		return raw
+	}
+	cleaned := filepath.ToSlash(filepath.Clean(filepath.FromSlash(raw)))
+	cleaned = strings.TrimPrefix(cleaned, "./")
+	if cleaned == "." {
+		return ""
+	}
+	return cleaned
+}
+
+func hasWorkspaceArtifactContentEvidence(toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
+	if len(toolCalls) == 0 || len(toolResults) == 0 {
+		return false
+	}
+
+	callByID := make(map[string]llm.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			callByID[id] = tc
+		}
+	}
+
+	for i, tr := range toolResults {
+		toolName := ""
+		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
+			toolName = toolCalls[i].Name
+		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			toolName = matched.Name
+		}
+		switch normalizeFileToolCompatName(toolName) {
+		case "file_read", "convert", "pdf":
+			if workspaceArtifactToolResultShowsProgress(tr.Content) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasWorkspaceArtifactProgress(toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
+	if len(toolCalls) == 0 || len(toolResults) == 0 {
+		return false
+	}
+
+	callByID := make(map[string]llm.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			callByID[id] = tc
+		}
+	}
+
+	for i, tr := range toolResults {
+		toolName := ""
+		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
+			toolName = toolCalls[i].Name
+		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			toolName = matched.Name
+		}
+		if !isWorkspaceArtifactProgressTool(toolName) {
+			continue
+		}
+		if workspaceArtifactToolResultShowsProgress(tr.Content) {
+			return true
+		}
+	}
+	return false
+}
+
+func isWorkspaceArtifactProgressTool(name string) bool {
+	switch normalizeFileToolCompatName(name) {
+	case "file_read", "ls", "find", "grep", "convert", "pdf":
+		return true
+	default:
+		return false
+	}
+}
+
+func workspaceArtifactToolResultShowsProgress(content string) bool {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return false
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &payload); err == nil && len(payload) > 0 {
+		return classifyToolFallbackOutcome(payload) != "failed"
+	}
+	return true
 }
 
 func buildPostResearchFailureRecoveryNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
@@ -12709,11 +14422,28 @@ func buildPostResearchFailureRecoveryNudge(userMessage string, toolCalls []llm.T
 	if !hasFailedResearchToolResult(toolCalls, toolResults) {
 		return ""
 	}
-	target := extractRequestedArtifactPath(userMessage)
+	target := extractRequestedArtifactWriteTarget(userMessage)
 	if target == "" {
 		return ""
 	}
 	return fmt.Sprintf("Live search/research tools just failed or timed out. Do not stop with a fallback summary. Using your general knowledge plus any successful evidence already gathered, now write the requested report to %q. Include an executive summary, key findings, a comparison table when relevant, and a short note that live retrieval failed so some details may be approximate. After writing the file, give a brief final confirmation.", target)
+}
+
+func buildPostSuccessfulResearchWriteNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	if !shouldPreferDeepSearchReport(userMessage) {
+		return ""
+	}
+	if len(collectSuccessfulWriteTargets(toolCalls, toolResults)) > 0 {
+		return ""
+	}
+	if !hasCompletedResearchToolResult(toolCalls, toolResults) || hasFailedResearchToolResult(toolCalls, toolResults) || hasEmptyResearchToolResult(toolCalls, toolResults) {
+		return ""
+	}
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if target == "" {
+		return ""
+	}
+	return fmt.Sprintf("Deep research already returned usable evidence. Do not start another broad search pass or another full research run. Use the completed research plus your general knowledge to write the requested report to %q now. Only if one or two specific facts still need verification, use at most a couple of focused web_fetch/web_read calls against the most relevant public source URLs already surfaced by the completed research. Include an executive summary, competitor sections, pricing notes, market trends, and a comparison table. After writing the file, give a brief final confirmation.", target)
 }
 
 func buildPostEmptyResearchResultNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
@@ -12726,18 +14456,18 @@ func buildPostEmptyResearchResultNudge(userMessage string, toolCalls []llm.ToolC
 	if !hasEmptyResearchToolResult(toolCalls, toolResults) {
 		return ""
 	}
-	target := extractRequestedArtifactPath(userMessage)
+	target := extractRequestedArtifactWriteTarget(userMessage)
 	if target == "" {
 		return ""
 	}
-	return fmt.Sprintf("Deep research returned no usable evidence. For public research like this, do not switch to interactive browser navigation unless login or page interaction is truly required. Prefer web_search, web_fetch, or web_read on public sources. If live retrieval still does not produce enough evidence, write the requested report to %q using your general knowledge plus any successful evidence already gathered. Include an executive summary, key findings, a comparison table when relevant, and a short note about limited live evidence.", target)
+	return fmt.Sprintf("Deep research returned no usable evidence. For public research like this, do not switch to interactive browser navigation unless login or page interaction is truly required. Prefer the unified web tool (or web_search/web_fetch/web_read compatibility actions) on public sources. If live retrieval still does not produce enough evidence, write the requested report to %q using your general knowledge plus any successful evidence already gathered. Include an executive summary, key findings, a comparison table when relevant, and a short note about limited live evidence.", target)
 }
 
 func buildPostResearchFailureRecoveryRetryNudge(userMessage string) string {
 	if !shouldPreferDeepSearchReport(userMessage) {
 		return ""
 	}
-	target := extractRequestedArtifactPath(userMessage)
+	target := extractRequestedArtifactWriteTarget(userMessage)
 	if target == "" {
 		return ""
 	}
@@ -12756,21 +14486,183 @@ func shouldRetryPendingResearchWrite(userMessage, currentContent string, pending
 	return !isAwaitingUserInput(currentContent)
 }
 
+func buildResearchFailureRetryMessages(userMessage string) []llm.Message {
+	userMessage = strings.TrimSpace(userMessage)
+	retryNudge := strings.TrimSpace(buildPostResearchFailureRecoveryRetryNudge(userMessage))
+	if userMessage == "" || retryNudge == "" {
+		return nil
+	}
+	return []llm.Message{
+		{Role: llm.RoleUser, Content: userMessage},
+		{Role: llm.RoleUser, Content: retryNudge},
+	}
+}
+
+func buildWorkspaceArtifactRecoveryRetryMessages(userMessage, signature string) []llm.Message {
+	userMessage = strings.TrimSpace(userMessage)
+	retryNudge := strings.TrimSpace(buildToolLoopArtifactRecoveryNudge(userMessage, "recovery_retry", signature))
+	if userMessage == "" || retryNudge == "" {
+		return nil
+	}
+	return []llm.Message{
+		{Role: llm.RoleUser, Content: userMessage},
+		{Role: llm.RoleUser, Content: retryNudge},
+	}
+}
+
+func buildPostWorkspaceArtifactWriteRetryNudge(userMessage string) string {
+	if !shouldPreferWorkspaceFileWorkflow(userMessage) {
+		return ""
+	}
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if target == "" {
+		return ""
+	}
+	nudge := fmt.Sprintf("The local evidence is already sufficient and the final artifact is still not saved. Do not keep reading the same files, do not switch to a narrower late-file subset unless one specific answer is still missing, and do not continue analysis-only replies. Use file_write (or edit/write_begin/write_chunk/write_commit if needed) to save the completed deliverable to %q now, using the evidence already gathered in the conversation.", target)
+	if shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
+		nudge += " Cover each discovered relevant source exactly once in the final artifact and leave clearly unrelated noise out."
+	}
+	nudge += " Preserve any explicit sections, chronology, per-item classifications, priority/category/action fields, or requested exclusions from the original request."
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if looksLikeExecutiveBriefingArtifactTask(lower) {
+		nudge += " Keep the most important named customer risk, named upsell target, and named competitor opportunity explicit when the evidence contains them; do not replace them with only generic category labels."
+	}
+	if looksLikeProjectStatusSummaryArtifactTask(lower) {
+		nudge += " Reproduce any explicitly requested section titles exactly, keep concrete technology names, exact money figures, exact milestone dates, exact security finding labels, and latest status details, and show original-versus-updated values explicitly when the evidence shows both."
+	}
+	if extra := buildWorkspaceNumberedAnswerPrecisionHint(userMessage); extra != "" {
+		nudge += " " + extra
+	}
+	return nudge + " After saving the file, give a brief final confirmation."
+}
+
+func buildWorkspaceNumberedAnswerPrecisionHint(userMessage string) string {
+	if len(extractNumberedQuestions(userMessage)) < 2 {
+		return ""
+	}
+	return "For numbered question tasks, answer each line in order using the exact phrase or value already present in the gathered evidence. Preserve important qualifiers such as exact category labels, file names, dates, and modifiers like \"typed\" instead of paraphrasing them away."
+}
+
+func workspaceArtifactWriteRecoveryThreshold(userMessage string) int {
+	if shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
+		return 1
+	}
+	if len(extractNumberedQuestions(userMessage)) >= 2 {
+		return 2
+	}
+	return 3
+}
+
+func shouldRetryPendingWorkspaceArtifactWrite(userMessage, currentContent string, pending bool, retries int) bool {
+	if !pending || retries >= 2 {
+		return false
+	}
+	if strings.TrimSpace(buildPostWorkspaceArtifactWriteRetryNudge(userMessage)) == "" {
+		return false
+	}
+	return !isAwaitingUserInput(currentContent)
+}
+
+func hasSavedWorkspaceArtifactOnDisk(ctx context.Context, userMessage string) bool {
+	target := strings.TrimSpace(extractRequestedArtifactWriteTarget(userMessage))
+	if target == "" {
+		return false
+	}
+	absPath, ok := resolveScopedWorkspaceArtifactPath(ctx, target)
+	if !ok {
+		return false
+	}
+	info, err := os.Stat(absPath)
+	return err == nil && info != nil && !info.IsDir()
+}
+
+func resolveScopedWorkspaceArtifactPath(ctx context.Context, target string) (string, bool) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", false
+	}
+	if filepath.IsAbs(target) {
+		return filepath.Clean(target), true
+	}
+	roots, aliases := tools.GetFSScope(ctx)
+	if resolved, ok := resolveScopedWorkspaceAliasPath(target, aliases); ok {
+		return resolved, true
+	}
+	if len(roots) == 0 {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", false
+		}
+		roots = []string{cwd}
+	}
+	relPath := filepath.Clean(filepath.FromSlash(target))
+	if relPath == "." || relPath == "" || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) || relPath == ".." {
+		return "", false
+	}
+	return filepath.Clean(filepath.Join(roots[0], relPath)), true
+}
+
+func resolveScopedWorkspaceAliasPath(raw string, aliases map[string]string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || len(aliases) == 0 {
+		return "", false
+	}
+	if strings.HasPrefix(trimmed, "@") {
+		ref := strings.TrimPrefix(trimmed, "@")
+		parts := strings.SplitN(ref, "/", 2)
+		alias := strings.ToLower(strings.TrimSpace(parts[0]))
+		root, ok := aliases[alias]
+		if !ok {
+			return "", false
+		}
+		if len(parts) == 1 || strings.TrimSpace(parts[1]) == "" {
+			return filepath.Clean(root), true
+		}
+		return filepath.Clean(filepath.Join(root, filepath.FromSlash(parts[1]))), true
+	}
+	if idx := strings.IndexByte(trimmed, ':'); idx > 0 {
+		alias := strings.ToLower(strings.TrimSpace(trimmed[:idx]))
+		root, ok := aliases[alias]
+		if !ok {
+			return "", false
+		}
+		rest := strings.TrimLeft(trimmed[idx+1:], "/\\")
+		if rest == "" {
+			return filepath.Clean(root), true
+		}
+		return filepath.Clean(filepath.Join(root, filepath.FromSlash(rest))), true
+	}
+	return "", false
+}
+
+func buildWorkspaceArtifactWriteRetryMessages(userMessage string) []llm.Message {
+	userMessage = strings.TrimSpace(userMessage)
+	retryNudge := strings.TrimSpace(buildPostWorkspaceArtifactWriteRetryNudge(userMessage))
+	if userMessage == "" || retryNudge == "" {
+		return nil
+	}
+	return []llm.Message{
+		{Role: llm.RoleUser, Content: userMessage},
+		{Role: llm.RoleUser, Content: retryNudge},
+	}
+}
+
 func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string) []llm.Tool {
-	if len(tools) == 0 || extractRequestedArtifactPath(userMessage) == "" {
+	if len(tools) == 0 || extractRequestedArtifactWriteTarget(userMessage) == "" {
 		return tools
 	}
 	priority := []string{
+		"web",
 		"web_search",
 		"web_fetch",
 		"web_read",
 		"web_extract",
 		"web_crawl",
-		"write",
+		"file_write",
 		"write_begin",
 		"write_chunk",
 		"write_commit",
-		"read",
+		"file_read",
 		"ls",
 		"find",
 		"grep",
@@ -12778,7 +14670,7 @@ func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string)
 	}
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
-		name := strings.ToLower(strings.TrimSpace(tool.Name))
+		name := normalizeFileToolCompatName(tool.Name)
 		if name == "" {
 			continue
 		}
@@ -12803,15 +14695,15 @@ func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string)
 }
 
 func buildResearchFailureRecoveryTools(tools []llm.Tool, userMessage string) []llm.Tool {
-	if len(tools) == 0 || extractRequestedArtifactPath(userMessage) == "" {
+	if len(tools) == 0 || extractRequestedArtifactWriteTarget(userMessage) == "" {
 		return tools
 	}
 	priority := []string{
-		"write",
+		"file_write",
 		"write_begin",
 		"write_chunk",
 		"write_commit",
-		"read",
+		"file_read",
 		"ls",
 		"find",
 		"grep",
@@ -12819,7 +14711,7 @@ func buildResearchFailureRecoveryTools(tools []llm.Tool, userMessage string) []l
 	}
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
-		name := strings.ToLower(strings.TrimSpace(tool.Name))
+		name := normalizeFileToolCompatName(tool.Name)
 		if name == "" {
 			continue
 		}
@@ -12837,7 +14729,88 @@ func buildResearchFailureRecoveryTools(tools []llm.Tool, userMessage string) []l
 		}
 		reduced = append(reduced, tool)
 	}
-	if len(reduced) == 0 || !containsLLMToolName(reduced, "write") {
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+		return tools
+	}
+	return reduced
+}
+
+func buildWorkspaceArtifactWriteRecoveryTools(tools []llm.Tool, userMessage string) []llm.Tool {
+	if len(tools) == 0 || extractRequestedArtifactWriteTarget(userMessage) == "" {
+		return tools
+	}
+	priority := []string{
+		"file_write",
+		"edit",
+		"write_begin",
+		"write_chunk",
+		"write_commit",
+		"file_read",
+	}
+	indexByName := make(map[string]llm.Tool, len(tools))
+	for _, tool := range tools {
+		name := normalizeFileToolCompatName(tool.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := indexByName[name]; ok {
+			continue
+		}
+		indexByName[name] = tool
+	}
+
+	reduced := make([]llm.Tool, 0, len(priority))
+	for _, name := range priority {
+		tool, ok := indexByName[name]
+		if !ok {
+			continue
+		}
+		reduced = append(reduced, tool)
+	}
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+		return tools
+	}
+	return reduced
+}
+
+func buildSuccessfulResearchWriteTools(tools []llm.Tool, userMessage string) []llm.Tool {
+	if len(tools) == 0 || extractRequestedArtifactPath(userMessage) == "" {
+		return tools
+	}
+	priority := []string{
+		"file_write",
+		"write_begin",
+		"write_chunk",
+		"write_commit",
+		"file_read",
+		"web_fetch",
+		"web_read",
+		"ls",
+		"find",
+		"grep",
+		"convert",
+	}
+	indexByName := make(map[string]llm.Tool, len(tools))
+	for _, tool := range tools {
+		name := normalizeFileToolCompatName(tool.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := indexByName[name]; ok {
+			continue
+		}
+		indexByName[name] = tool
+	}
+
+	reduced := make([]llm.Tool, 0, len(priority))
+	for _, name := range priority {
+		tool, ok := indexByName[name]
+		if !ok {
+			continue
+		}
+		reduced = append(reduced, tool)
+	}
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
 		return tools
 	}
 	return reduced
@@ -12911,6 +14884,50 @@ func hasFailedResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Mes
 	return false
 }
 
+func hasCompletedResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
+	if len(toolResults) == 0 {
+		return false
+	}
+
+	callByID := make(map[string]llm.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			callByID[id] = tc
+		}
+	}
+
+	for i, tr := range toolResults {
+		toolName := ""
+		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
+			toolName = toolCalls[i].Name
+		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			toolName = matched.Name
+		}
+		if !strings.EqualFold(strings.TrimSpace(toolName), "research_run") {
+			continue
+		}
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(strings.TrimSpace(tr.Content)), &payload) != nil || len(payload) == 0 {
+			continue
+		}
+		if classifyToolFallbackOutcome(payload) == "failed" {
+			continue
+		}
+		if evidenceCount, ok := payload["evidence_count"].(float64); ok && evidenceCount > 0 {
+			return true
+		}
+		if answer, _ := payload["answer"].(string); strings.TrimSpace(answer) != "" {
+			return true
+		}
+		if report, ok := payload["report"].(map[string]interface{}); ok {
+			if answer, _ := report["answer"].(string); strings.TrimSpace(answer) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func hasEmptyResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
 	if len(toolResults) == 0 {
 		return false
@@ -12957,54 +14974,432 @@ func hasEmptyResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Mess
 
 func isResearchRecoveryToolName(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "web_search", "research_run", "research_status", "browser", "web_fetch", "web_read", "web_extract", "web_crawl":
+	case "web", "web_search", "research_run", "research_status", "browser", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return true
 	default:
 		return false
 	}
 }
 
-var requestedArtifactPathRegex = regexp.MustCompile("`([^`]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?))`|\\b([A-Za-z0-9._/\\-]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?))\\b")
+var requestedArtifactPathRegex = regexp.MustCompile("`([^`]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))`|\\b([A-Za-z0-9._/\\-]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))\\b")
+var savedGeneratedImagePathRegex = regexp.MustCompile(`(?i)\bsaved generated image to\s+["']?([^"'\n]+?\.(?:png|jpe?g|webp|gif))["']?`)
+var artifactWriteTargetPrepCueRegex = regexp.MustCompile(`(?is)(?:write|save|saved|output|export|append|store|persist|create|generate|generated|draft|produce|document|summari[sz]e|record|capture|extract|answer|list)[^\n]{0,96}(?:to|as|into|in|under|at)\s*$|(?:写(?:到|入|进)|保存(?:到|为|在)|输出到|导出到|生成到|存(?:到|入|在)|记录到|整理到|总结到|提取到|写成)\s*$`)
+var artifactWriteTargetDirectCueRegex = regexp.MustCompile(`(?is)(?:create|generate|generated|draft|produce|output|export|write)\s*$|(?:创建|生成|写入|写出)\s*$`)
+
+type artifactPathCandidate struct {
+	path  string
+	start int
+	end   int
+}
 
 func extractRequestedArtifactPath(userMessage string) string {
-	matches := requestedArtifactPathRegex.FindAllStringSubmatch(userMessage, -1)
-	for i := len(matches) - 1; i >= 0; i-- {
-		for _, group := range matches[i][1:] {
-			candidate := strings.TrimSpace(group)
-			if candidate != "" {
-				return candidate
+	candidates := extractArtifactPathCandidates(userMessage)
+	for i := len(candidates) - 1; i >= 0; i-- {
+		if candidate := strings.TrimSpace(candidates[i].path); candidate != "" {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func extractRequestedArtifactWriteTarget(userMessage string) string {
+	target := strings.TrimSpace(extractRequestedArtifactPathForWrite(userMessage))
+	if target == "" {
+		return ""
+	}
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" {
+		return target
+	}
+	if isExplicitMemoryFileRecallRequest(lower) && !isExplicitMemoryFileStoreRequest(lower) {
+		return ""
+	}
+	return target
+}
+
+func isImageArtifactPath(path string) bool {
+	switch strings.ToLower(strings.TrimSpace(filepath.Ext(path))) {
+	case ".png", ".jpg", ".jpeg", ".webp", ".gif":
+		return true
+	default:
+		return false
+	}
+}
+
+func extractArtifactPathCandidates(userMessage string) []artifactPathCandidate {
+	if strings.TrimSpace(userMessage) == "" {
+		return nil
+	}
+	matches := requestedArtifactPathRegex.FindAllStringSubmatchIndex(userMessage, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	out := make([]artifactPathCandidate, 0, len(matches))
+	for _, match := range matches {
+		for group := 0; group < 2; group++ {
+			startIdx := 2 + group*2
+			if startIdx+1 >= len(match) {
+				continue
+			}
+			start, end := match[startIdx], match[startIdx+1]
+			if start < 0 || end <= start || end > len(userMessage) {
+				continue
+			}
+			candidate := strings.TrimSpace(userMessage[start:end])
+			if candidate == "" {
+				continue
+			}
+			out = append(out, artifactPathCandidate{
+				path:  candidate,
+				start: start,
+				end:   end,
+			})
+		}
+	}
+	return out
+}
+
+func extractRequestedArtifactPathForWrite(userMessage string) string {
+	candidates := extractArtifactPathCandidates(userMessage)
+	if len(candidates) == 0 {
+		return ""
+	}
+	if len(candidates) == 1 {
+		return strings.TrimSpace(candidates[0].path)
+	}
+
+	bestScore := 0
+	bestIndex := -1
+	tied := false
+	for i, candidate := range candidates {
+		score := scoreArtifactWriteTargetCandidate(userMessage, candidate)
+		if score <= 0 {
+			continue
+		}
+		if score > bestScore {
+			bestScore = score
+			bestIndex = i
+			tied = false
+			continue
+		}
+		if score == bestScore {
+			tied = true
+		}
+	}
+	if bestIndex < 0 || bestScore <= 0 || tied {
+		return ""
+	}
+	return strings.TrimSpace(candidates[bestIndex].path)
+}
+
+func scoreArtifactWriteTargetCandidate(userMessage string, candidate artifactPathCandidate) int {
+	if candidate.start < 0 || candidate.end < candidate.start || candidate.start > len(userMessage) {
+		return 0
+	}
+	beforeStart := max(0, candidate.start-128)
+	before := strings.TrimSpace(strings.ToLower(userMessage[beforeStart:candidate.start]))
+	before = strings.TrimRight(before, " \t\r\n`'\"")
+	if before == "" {
+		return 0
+	}
+	switch {
+	case artifactWriteTargetPrepCueRegex.MatchString(before):
+		return 3
+	case artifactWriteTargetDirectCueRegex.MatchString(before):
+		return 2
+	default:
+		return 0
+	}
+}
+
+func extractSuccessfulWriteTarget(toolName, content string) string {
+	switch strings.ToLower(strings.TrimSpace(toolName)) {
+	case "write", "file_write", "write_commit":
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(strings.TrimSpace(content)), &payload) != nil || len(payload) == 0 {
+			return ""
+		}
+		success, _ := payload["success"].(bool)
+		if !success {
+			return ""
+		}
+		if appendMode, ok := payload["append"].(bool); ok && appendMode {
+			return ""
+		}
+		path, _ := payload["path"].(string)
+		return strings.TrimSpace(path)
+	case "image", "image_generation":
+		return extractSuccessfulImageArtifactTarget(content)
+	default:
+		return ""
+	}
+}
+
+func extractSuccessfulImageArtifactTarget(content string) string {
+	payload := parseImageArtifactPayload(content)
+	if len(payload) == 0 || classifyToolFallbackOutcome(payload) == "failed" {
+		return ""
+	}
+	if path := extractImageArtifactPathFromPayload(payload); path != "" {
+		return path
+	}
+	return extractImageArtifactPathFromMessage(payloadStringField(payload, "message"))
+}
+
+func parseImageArtifactPayload(content string) map[string]interface{} {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil
+	}
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(content), &payload) == nil && len(payload) > 0 {
+		return payload
+	}
+	return nil
+}
+
+func extractImageArtifactPathFromPayload(payload map[string]interface{}) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	for _, candidate := range []map[string]interface{}{
+		payload,
+		payloadMapField(payload, "request"),
+		payloadMapField(payload, "task"),
+		payloadMapFieldFromJSONString(payload, "task"),
+		payloadMapField(payloadMapField(payload, "data"), "request"),
+		payloadMapField(payloadMapField(payload, "data"), "task"),
+		payloadMapFieldFromJSONString(payloadMapField(payload, "data"), "task"),
+	} {
+		if len(candidate) == 0 {
+			continue
+		}
+		for _, key := range []string{"path", "output_path", "filename"} {
+			if path := payloadStringField(candidate, key); path != "" {
+				return path
 			}
 		}
 	}
 	return ""
 }
 
-func extractSuccessfulWriteTarget(toolName, content string) string {
-	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "write", "file_write", "write_commit":
-	default:
+func payloadMapField(payload map[string]interface{}, key string) map[string]interface{} {
+	if len(payload) == 0 {
+		return nil
+	}
+	if raw, ok := payload[key].(map[string]interface{}); ok {
+		return raw
+	}
+	return nil
+}
+
+func payloadMapFieldFromJSONString(payload map[string]interface{}, key string) map[string]interface{} {
+	if len(payload) == 0 {
+		return nil
+	}
+	raw, ok := payload[key]
+	if !ok {
+		return nil
+	}
+	text, ok := raw.(string)
+	if !ok || strings.TrimSpace(text) == "" {
+		return nil
+	}
+	var parsed map[string]interface{}
+	if json.Unmarshal([]byte(text), &parsed) != nil || len(parsed) == 0 {
+		return nil
+	}
+	return parsed
+}
+
+func extractImageArtifactPathFromMessage(message string) string {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return ""
+	}
+	match := savedGeneratedImagePathRegex.FindStringSubmatch(message)
+	if len(match) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(match[1])
+}
+
+func buildSuccessfulImageArtifactCompletion(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	target := extractRequestedArtifactPath(userMessage)
+	if !isImageArtifactPath(target) {
+		return ""
+	}
+	for _, path := range collectSuccessfulWriteTargets(toolCalls, toolResults) {
+		if !isImageArtifactPath(path) {
+			continue
+		}
+		return fmt.Sprintf("Generated the requested image and saved it to %q.", path)
+	}
+	return ""
+}
+
+func buildSuccessfulArtifactCompletion(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	if completion := buildSuccessfulImageArtifactCompletion(userMessage, toolCalls, toolResults); completion != "" {
+		return completion
+	}
+	if !shouldStabilizeArtifactAfterWrite(userMessage) {
 		return ""
 	}
 
-	var payload map[string]interface{}
-	if json.Unmarshal([]byte(strings.TrimSpace(content)), &payload) != nil || len(payload) == 0 {
+	target := strings.TrimSpace(extractRequestedArtifactWriteTarget(userMessage))
+	if target == "" {
+		targets := collectSuccessfulWriteTargets(toolCalls, toolResults)
+		if len(targets) == 0 {
+			return ""
+		}
+		target = targets[0]
+	}
+	if target == "" || isImageArtifactPath(target) {
 		return ""
 	}
-	success, _ := payload["success"].(bool)
-	if !success {
+	if extractRequestedArtifactWriteTarget(userMessage) != "" && !hasRequestedArtifactWriteSuccess(userMessage, toolCalls, toolResults) {
 		return ""
 	}
-	if appendMode, ok := payload["append"].(bool); ok && appendMode {
-		return ""
+	return fmt.Sprintf("Saved the requested file to %q.", target)
+}
+
+func looksLikeExecutiveBriefingArtifactTask(lower string) bool {
+	for _, cue := range []string{
+		"executive assistant",
+		"executive summary",
+		"executive briefing",
+		"daily briefing",
+		"daily brief",
+		"daily summary",
+		"briefing",
+		"简报",
+		"日报",
+		"每日总结",
+		"高管",
+	} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
 	}
-	path, _ := payload["path"].(string)
-	return strings.TrimSpace(path)
+	return false
+}
+
+func looksLikeInboxTriageArtifactTask(lower string) bool {
+	if lower == "" {
+		return false
+	}
+	hasInboxDomain := false
+	for _, cue := range []string{
+		"inbox",
+		"email inbox",
+		"mailbox",
+		"emails",
+		"messages",
+		"收件箱",
+		"邮件",
+		"邮箱",
+	} {
+		if strings.Contains(lower, cue) {
+			hasInboxDomain = true
+			break
+		}
+	}
+	if !hasInboxDomain {
+		return false
+	}
+	for _, cue := range []string{
+		"triage",
+		"priorit",
+		"priority",
+		"recommended action",
+		"day plan",
+		"分类",
+		"优先级",
+		"整理",
+		"归类",
+	} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeProjectStatusSummaryArtifactTask(lower string) bool {
+	if lower == "" {
+		return false
+	}
+	hasProjectCue := false
+	for _, cue := range []string{
+		"project overview",
+		"current status",
+		"timeline",
+		"budget",
+		"project status",
+		"status update",
+		"project",
+		"项目",
+		"进度",
+		"状态",
+		"预算",
+		"时间线",
+	} {
+		if strings.Contains(lower, cue) {
+			hasProjectCue = true
+			break
+		}
+	}
+	if !hasProjectCue {
+		return false
+	}
+	hasCollectionCue := false
+	for _, cue := range []string{
+		"emails/",
+		"emails",
+		"folder",
+		"directory",
+		"documents",
+		"workspace",
+		"邮件",
+		"文件夹",
+		"目录",
+		"文档",
+	} {
+		if strings.Contains(lower, cue) {
+			hasCollectionCue = true
+			break
+		}
+	}
+	if !hasCollectionCue {
+		return false
+	}
+	for _, cue := range []string{
+		"timeline",
+		"budget",
+		"technology",
+		"tech stack",
+		"security",
+		"client/business impact",
+		"current status",
+		"timeline",
+		"风险",
+		"预算",
+		"技术",
+		"安全",
+		"当前状态",
+	} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsLLMToolName(tools []llm.Tool, name string) bool {
-	target := strings.ToLower(strings.TrimSpace(name))
+	target := normalizeFileToolCompatName(name)
 	for _, tool := range tools {
-		if strings.EqualFold(strings.TrimSpace(tool.Name), target) {
+		if normalizeFileToolCompatName(tool.Name) == target {
 			return true
 		}
 	}
@@ -13015,6 +15410,17 @@ func isSearchLikeToolCallForLLM(tc llm.ToolCall) bool {
 	name := strings.ToLower(strings.TrimSpace(tc.Name))
 	if name == "web_search" {
 		return true
+	}
+	if name == "web" {
+		if strings.TrimSpace(tc.Arguments) == "" {
+			return true
+		}
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(tc.Arguments), &payload) != nil {
+			return true
+		}
+		action := strings.ToLower(strings.TrimSpace(anyToStringForLLM(payload["action"])))
+		return action == "" || action == "search" || action == "fetch" || action == "read" || action == "extract" || action == "crawl"
 	}
 	if name != "exec" {
 		return false
@@ -13167,6 +15573,18 @@ func compactToolResultContentForLLM(toolName, content string) string {
 	case "web_search":
 		if m, ok := payload.(map[string]interface{}); ok {
 			payload = compactWebSearchPayloadForLLM(m)
+		} else {
+			payload = compactJSONValueForLLM(payload, 0)
+		}
+	case "pdf":
+		if m, ok := payload.(map[string]interface{}); ok {
+			payload = compactPDFPayloadForLLM(m)
+		} else {
+			payload = compactJSONValueForLLM(payload, 0)
+		}
+	case "file_read":
+		if m, ok := payload.(map[string]interface{}); ok && isPDFPayloadForLLM(m) {
+			payload = compactPDFPayloadForLLM(m)
 		} else {
 			payload = compactJSONValueForLLM(payload, 0)
 		}
@@ -13363,6 +15781,252 @@ func compactWebSearchPayloadForLLM(payload map[string]interface{}) map[string]in
 		}
 	}
 	return out
+}
+
+func isPDFPayloadForLLM(payload map[string]interface{}) bool {
+	if len(payload) == 0 {
+		return false
+	}
+	path := strings.ToLower(strings.TrimSpace(anyToStringForLLM(payload["path"])))
+	if path == "" {
+		if doc, ok := payload["document"].(map[string]interface{}); ok {
+			path = strings.ToLower(strings.TrimSpace(anyToStringForLLM(doc["path"])))
+		}
+	}
+	if strings.HasSuffix(path, ".pdf") {
+		return true
+	}
+	if _, ok := payload["selected_pages"]; ok {
+		return true
+	}
+	if _, ok := payload["raw_text"]; ok {
+		return true
+	}
+	if doc, ok := payload["document"].(map[string]interface{}); ok {
+		if pageCount := anyToIntForLLM(doc["page_count"]); pageCount > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func compactPDFPayloadForLLM(payload map[string]interface{}) map[string]interface{} {
+	if len(payload) == 0 {
+		return map[string]interface{}{}
+	}
+
+	out := make(map[string]interface{}, 12)
+	if doc, ok := payload["document"].(map[string]interface{}); ok && len(doc) > 0 {
+		docOut := make(map[string]interface{}, 6)
+		for _, key := range []string{"file_name", "path", "page_count", "engine", "size_bytes"} {
+			if value, exists := doc[key]; exists {
+				docOut[key] = compactJSONValueForLLM(value, 1)
+			}
+		}
+		if len(docOut) > 0 {
+			out["document"] = docOut
+		}
+	}
+
+	for _, key := range []string{
+		"selected_pages", "char_count", "truncated", "ocr_used", "ocr_pages",
+		"vision_used", "vision_pages", "warnings",
+	} {
+		if value, ok := payload[key]; ok {
+			out[key] = compactJSONValueForLLM(value, 1)
+		}
+	}
+
+	if text := strings.TrimSpace(anyToStringForLLM(payload["text"])); text != "" {
+		out["text"] = compactPDFTextForLLM(text, 6, 3600)
+	}
+	if rawText := strings.TrimSpace(anyToStringForLLM(payload["raw_text"])); rawText != "" {
+		compactedRaw := compactPDFTextForLLM(rawText, 4, 2200)
+		if compactedRaw != anyToStringForLLM(out["text"]) {
+			out["raw_text"] = compactedRaw
+		}
+	}
+
+	if pages, ok := payload["pages"].([]interface{}); ok && len(pages) > 0 {
+		compactedPages := compactPDFPagesForLLM(pages, 4)
+		if len(compactedPages) > 0 {
+			out["pages"] = compactedPages
+		}
+	}
+
+	if len(out) == 0 {
+		return compactJSONValueForLLM(payload, 0).(map[string]interface{})
+	}
+	return out
+}
+
+func compactPDFPagesForLLM(pages []interface{}, limit int) []interface{} {
+	if len(pages) == 0 || limit <= 0 {
+		return nil
+	}
+	indexes := selectDistributedIndexesForLLM(len(pages), limit)
+	out := make([]interface{}, 0, len(indexes))
+	for _, idx := range indexes {
+		row, ok := pages[idx].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		entry := make(map[string]interface{}, 4)
+		if number := anyToIntForLLM(row["number"]); number > 0 {
+			entry["number"] = number
+		}
+		if source := strings.TrimSpace(anyToStringForLLM(row["source"])); source != "" {
+			entry["source"] = source
+		}
+		if text := strings.TrimSpace(anyToStringForLLM(row["text"])); text != "" {
+			entry["text"] = sampleLongTextForLLM(text, 420)
+		}
+		if rawText := strings.TrimSpace(anyToStringForLLM(row["raw_text"])); rawText != "" {
+			compactedRaw := sampleLongTextForLLM(rawText, 320)
+			if compactedRaw != anyToStringForLLM(entry["text"]) {
+				entry["raw_text"] = compactedRaw
+			}
+		}
+		if len(entry) > 0 {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+func compactPDFTextForLLM(text string, pageLimit, charBudget int) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	sections := splitPDFSectionsForLLM(text)
+	if len(sections) == 0 {
+		return sampleLongTextForLLM(text, charBudget)
+	}
+	indexes := selectDistributedIndexesForLLM(len(sections), pageLimit)
+	if len(indexes) == 0 {
+		return sampleLongTextForLLM(text, charBudget)
+	}
+
+	out := make([]string, 0, len(indexes))
+	remaining := charBudget
+	for i, idx := range indexes {
+		section := strings.TrimSpace(sections[idx])
+		if section == "" {
+			continue
+		}
+		remainingSections := len(indexes) - i
+		perSection := remaining
+		if remainingSections > 0 {
+			perSection = remaining / remainingSections
+		}
+		if perSection < 220 {
+			perSection = 220
+		}
+		if excerpt := sampleLongTextForLLM(section, perSection); excerpt != "" {
+			out = append(out, excerpt)
+			remaining -= len(excerpt)
+			if remaining <= 0 {
+				break
+			}
+		}
+	}
+	if len(out) == 0 {
+		return sampleLongTextForLLM(text, charBudget)
+	}
+	return strings.Join(out, "\n\n")
+}
+
+func splitPDFSectionsForLLM(text string) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	lines := strings.Split(text, "\n")
+	sections := make([]string, 0, 8)
+	var current strings.Builder
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[Page ") && strings.HasSuffix(trimmed, "]") {
+			if strings.TrimSpace(current.String()) != "" {
+				sections = append(sections, strings.TrimSpace(current.String()))
+				current.Reset()
+			}
+		}
+		if current.Len() > 0 {
+			current.WriteString("\n")
+		}
+		current.WriteString(line)
+	}
+	if strings.TrimSpace(current.String()) != "" {
+		sections = append(sections, strings.TrimSpace(current.String()))
+	}
+	if len(sections) <= 1 {
+		return nil
+	}
+	return sections
+}
+
+func sampleLongTextForLLM(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if text == "" || limit <= 0 {
+		return ""
+	}
+	if len(text) <= limit {
+		return text
+	}
+	if limit < 192 {
+		return truncateUTF8Bytes(text, limit)
+	}
+
+	headBudget := limit / 2
+	tailBudget := limit - headBudget - len("\n...\n")
+	if tailBudget < 64 {
+		tailBudget = 64
+		headBudget = limit - tailBudget - len("\n...\n")
+	}
+	head := truncateUTF8Bytes(text, headBudget)
+	tail := truncateUTF8TailBytes(text, tailBudget)
+	if strings.TrimSpace(head) == strings.TrimSpace(tail) {
+		return truncateUTF8Bytes(text, limit)
+	}
+	return strings.TrimSpace(head) + "\n...\n" + strings.TrimSpace(tail)
+}
+
+func selectDistributedIndexesForLLM(total, limit int) []int {
+	if total <= 0 || limit <= 0 {
+		return nil
+	}
+	if total <= limit {
+		out := make([]int, 0, total)
+		for i := 0; i < total; i++ {
+			out = append(out, i)
+		}
+		return out
+	}
+	indexSet := make(map[int]struct{}, limit)
+	order := make([]int, 0, limit)
+	add := func(idx int) {
+		if idx < 0 || idx >= total {
+			return
+		}
+		if _, exists := indexSet[idx]; exists {
+			return
+		}
+		indexSet[idx] = struct{}{}
+		order = append(order, idx)
+	}
+	add(0)
+	add(total - 1)
+	for i := 1; len(order) < limit && i < total-1; i++ {
+		idx := int(float64(i) * float64(total-1) / float64(limit-1))
+		add(idx)
+	}
+	sort.Ints(order)
+	if len(order) > limit {
+		order = order[:limit]
+	}
+	return order
 }
 
 func parseSearchResultsForLLM(v interface{}) ([]searchResultForLLM, bool) {
@@ -13689,6 +16353,20 @@ func truncateUTF8Bytes(s string, maxBytes int) string {
 		return suffix[:maxBytes]
 	}
 	return s[:cut] + suffix
+}
+
+func truncateUTF8TailBytes(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	start := len(s) - maxBytes
+	for start < len(s) && !utf8.ValidString(s[start:]) {
+		start++
+	}
+	if start >= len(s) {
+		return ""
+	}
+	return s[start:]
 }
 
 func applyToolResultsTotalBudgetForLLM(results []llm.Message, totalBudget int) []llm.Message {
@@ -14204,6 +16882,100 @@ type ContextTrimInfo struct {
 	FallbackProvider string `json:"fallback_provider,omitempty"`
 }
 
+func normalizePromptGuardConversationTitle(title string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(title)), " "))
+}
+
+func looksLikeInternalEvaluatorConversationTitle(title string) bool {
+	normalized := normalizePromptGuardConversationTitle(title)
+	if normalized == "" {
+		return false
+	}
+	for _, token := range []string{"judge", "grader", "evaluator", "evaluation"} {
+		if strings.Contains(normalized, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeStructuredEvaluatorPrompt(message string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(message)), " "))
+	if normalized == "" {
+		return false
+	}
+
+	markers := 0
+	strongMarkers := 0
+	countMarker := func(ok bool, strong bool) {
+		if !ok {
+			return
+		}
+		markers++
+		if strong {
+			strongMarkers++
+		}
+	}
+
+	countMarker(strings.Contains(normalized, "you are a grading function"), true)
+	countMarker(strings.Contains(normalized, "your only job is to output a single json object"), true)
+	countMarker(strings.Contains(normalized, "respond with only a json object"), true)
+	countMarker(strings.Contains(normalized, "respond with only this json structure"), true)
+	countMarker(strings.Contains(normalized, "agent transcript (summarized)") || strings.Contains(normalized, "agent transcript"), false)
+	countMarker(strings.Contains(normalized, "grading rubric"), false)
+	countMarker(strings.Contains(normalized, "score each criterion from 0.0 to 1.0") || strings.Contains(normalized, "score each criterion"), false)
+	countMarker(strings.Contains(normalized, "do not use any tools"), false)
+	countMarker(strings.Contains(message, `{"scores":`) && strings.Contains(strings.ToLower(message), `"notes":`), true)
+
+	return strongMarkers >= 2 && markers >= 5
+}
+
+func shouldDisableToolUseForStructuredEvaluatorConversation(title, message string) bool {
+	if !looksLikeStructuredEvaluatorPrompt(message) {
+		return false
+	}
+	return looksLikeInternalEvaluatorConversationTitle(title)
+}
+
+func (h *ChatHandler) isStructuredEvaluatorConversation(ctx context.Context, convID, message string) (string, bool) {
+	if h == nil || h.store == nil || strings.TrimSpace(convID) == "" {
+		return "", false
+	}
+	conv, err := h.store.GetConversation(ctx, convID)
+	if err != nil || conv == nil {
+		return "", false
+	}
+	title := strings.TrimSpace(conv.Title)
+	return title, shouldDisableToolUseForStructuredEvaluatorConversation(title, message)
+}
+
+func (h *ChatHandler) shouldBypassPromptGuard(ctx context.Context, convID, message string) bool {
+	title, ok := h.isStructuredEvaluatorConversation(ctx, convID, message)
+	if !ok {
+		return false
+	}
+
+	logger.Info().
+		Str("conversation_id", convID).
+		Str("conversation_title", title).
+		Msg("[chat] bypassing prompt guard for structured evaluator conversation")
+	return true
+}
+
+func (h *ChatHandler) detectPromptGuardBlock(ctx context.Context, convID, message string) *promptguard.DetectionResult {
+	if h == nil || h.promptGuard == nil {
+		return nil
+	}
+	result := h.promptGuard.Detect(message)
+	if result == nil || !result.IsThreat {
+		return nil
+	}
+	if h.shouldBypassPromptGuard(ctx, convID, message) {
+		return nil
+	}
+	return result
+}
+
 // SendMessage sends a message and gets a response from the LLM.
 func (h *ChatHandler) SendMessage(c echo.Context) error {
 	convID := c.Param("id")
@@ -14261,24 +17033,21 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Check for prompt injection
-	if h.promptGuard != nil {
-		result := h.promptGuard.Detect(req.Message)
-		if result.IsThreat {
-			// Record security event to companion
-			if h.companionManager != nil {
-				sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
-				if sessionID != "" {
-					h.emitSecurityEvent(c.Request().Context(), sessionID, result)
-				}
+	if result := h.detectPromptGuardBlock(c.Request().Context(), convID, req.Message); result != nil {
+		// Record security event to companion
+		if h.companionManager != nil {
+			sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
+			if sessionID != "" {
+				h.emitSecurityEvent(c.Request().Context(), sessionID, result)
 			}
-			// Return error to user
-			return c.JSON(http.StatusForbidden, map[string]interface{}{
-				"success":      false,
-				"blocked":      true,
-				"message":      "Message blocked due to security policy",
-				"threat_level": result.ThreatLevel.String(),
-			})
 		}
+		// Return error to user
+		return c.JSON(http.StatusForbidden, map[string]interface{}{
+			"success":      false,
+			"blocked":      true,
+			"message":      "Message blocked due to security policy",
+			"threat_level": result.ThreatLevel.String(),
+		})
 	}
 
 	// Check trial quota before proceeding
@@ -14308,6 +17077,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if c.Response().Committed {
 		return nil
 	}
+	structuredEvaluatorNoToolsTitle, structuredEvaluatorNoTools := h.isStructuredEvaluatorConversation(c.Request().Context(), convID, req.Message)
 
 	// Store user message
 	var memoryAttachments []memory.MessageAttachment
@@ -14396,6 +17166,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		h.buildConvertSourcePrompt(c.Request().Context(), convID, h.getUserID(c)),
 		skillPrompt,
 		buildDeepSearchExecutionHint(routingMessage),
+		buildArtifactWorkflowExecutionHint(routingMessage),
 	)
 	if systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, extraPrompt); len(systemPromptMessages) > 0 {
 		logger.Info().Int("system_blocks", len(systemPromptMessages)).Msg("[chat] SendMessage: injected structured system prompt")
@@ -14467,7 +17238,17 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
 	selectedTools = applyCalendarToolPreference(selectedTools, routingMessage)
 	selectedTools = applyEmailToolPreference(selectedTools, routingMessage)
-	if h.shouldRouteToolDispatch(selectedTools) && !shouldPreferDeepSearchReport(routingMessage) {
+	selectedTools = applyImageToolPreference(selectedTools, routingMessage)
+	if structuredEvaluatorNoTools {
+		selectedTools = nil
+		logger.Info().
+			Str("conversation_id", convID).
+			Str("conversation_title", structuredEvaluatorNoToolsTitle).
+			Msg("[chat] disabling tool exposure for structured evaluator conversation")
+	}
+	if h.shouldRouteToolDispatch(selectedTools) &&
+		!shouldPreferDeepSearchReport(routingMessage) &&
+		!shouldBypassSmallModelToolDispatch(routingMessage) {
 		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
 		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
 		routeCancel()
@@ -14536,6 +17317,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	var resp *llm.ChatResponse
 	var accumulatedToolRoundInputTokens, accumulatedToolRoundOutputTokens int64
 	todoContent := ""
+	workspaceArtifactHistoryTarget := extractRequestedArtifactPath(routingMessage)
+	workspaceArtifactHistoryCalls := make([]llm.ToolCall, 0, 8)
+	workspaceArtifactHistoryResults := make([]llm.Message, 0, 8)
 
 	// Build context with locale for tool execution.
 	// Use WithoutCancel so long-running tools (e.g. browser) survive request disconnects.
@@ -14671,9 +17455,16 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		awaitingPostToolSummary := false
 		researchFailureWriteRecoveryPending := false
 		researchFailureWriteRecoveryRetries := 0
+		workspaceArtifactWriteRecoveryPending := false
+		workspaceArtifactWriteRecoveryRetries := 0
 		prevToollessAutoContinueSig := ""
 		consecutiveToollessAutoContinueDups := 0
 		toolLoopRecoveryUsed := false
+		workspaceArtifactWriteRecoveryUsed := false
+		searchArtifactRecoveryUsed := false
+		searchArtifactRoundsWithoutWrite := 0
+		workspaceArtifactEvidenceRoundsWithoutWrite := 0
+		staleIntentGuardTrips := 0
 		var toolLoopDetector tools.ToolLoopDetector
 		agentModeAutoContinue := isAgentMode
 		maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
@@ -14719,11 +17510,24 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						llmCtx = proxy.WithDisableResponsesContinuation(llmCtx)
 					}
 					if retryNudge := buildPostResearchFailureRecoveryRetryNudge(routingMessage); retryNudge != "" {
-						chatReq.Messages = append(chatReq.Messages,
-							llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
-							llm.Message{Role: llm.RoleUser, Content: retryNudge},
-						)
+						if retryMessages := buildResearchFailureRetryMessages(routingMessage); len(retryMessages) > 0 {
+							chatReq.Messages = retryMessages
+						} else {
+							chatReq.Messages = append(chatReq.Messages,
+								llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
+								llm.Message{Role: llm.RoleUser, Content: retryNudge},
+							)
+						}
 						chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
+						if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.listAvailableModelIDs()); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
+							prevModel := chatReq.Model
+							chatReq.Model = fallbackModel
+							logger.Warn().Err(err).Int("round", round).
+								Int("recovery_retry", researchFailureWriteRecoveryRetries).
+								Str("previous_model", prevModel).
+								Str("fallback_model", fallbackModel).
+								Msg("[chat] research recovery switched to faster fallback model")
+						}
 						logger.Warn().Err(err).Int("round", round).
 							Int("recovery_retry", researchFailureWriteRecoveryRetries).
 							Msg("[chat] research recovery follow-up failed; nudging fresh write continuation before fallback")
@@ -14784,6 +17588,27 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				}
 				// Graceful fallback: if a later round fails but we have tool results, use them
 				if round > 0 && err != nil {
+					if artifactFallback, ok := h.tryDeterministicResearchArtifactOrchestration(toolCtx, routingMessage, "", chatReq.Messages); ok {
+						logger.Warn().
+							Err(err).
+							Int("round", round).
+							Str("conv_id", convID).
+							Str("target", extractRequestedArtifactPath(routingMessage)).
+							Msg("[chat] tool round failed; finalized requested research artifact with deterministic orchestration")
+						resp = &llm.ChatResponse{
+							Model:      "research-artifact-orchestration",
+							Provider:   "local",
+							ProviderID: "local",
+							Message: llm.Message{
+								Role:    llm.RoleAssistant,
+								Content: artifactFallback.Content,
+							},
+						}
+						err = nil
+					}
+				}
+				// Graceful fallback: if a later round fails but we have tool results, use them
+				if round > 0 && err != nil {
 					fallback, toolResultCount := buildToolFallbackText(chatReq.Messages, 4096)
 					if toolResultCount > 0 {
 						logger.Warn().Err(err).Int("round", round).Int("tool_results", toolResultCount).
@@ -14793,6 +17618,16 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 					}
 				}
 				break
+			}
+			if len(resp.Message.ToolCalls) > 0 {
+				sanitizedCalls, droppedCalls := sanitizeAssistantToolCallsForAllowedSet(resp.Message.ToolCalls, chatReq.Tools)
+				if len(droppedCalls) > 0 {
+					logger.Warn().
+						Int("round", round).
+						Str("dropped_tools", strings.Join(droppedCalls, ",")).
+						Msg("[chat] dropped assistant tool calls outside the current allowed tool set")
+				}
+				resp.Message.ToolCalls = sanitizedCalls
 			}
 			// Accumulate usage for intermediate tool rounds so trial quota (and
 			// metrics) reflects the full request cost, not just the final round.
@@ -14902,17 +17737,79 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						llmCtx = proxy.WithDisableResponsesContinuation(llmCtx)
 					}
 					if retryNudge := buildPostResearchFailureRecoveryRetryNudge(routingMessage); retryNudge != "" {
-						chatReq.Messages = append(chatReq.Messages,
-							llm.Message{Role: llm.RoleAssistant, Content: buildToollessAutoContinueAssistantContent(resp.Message.Content, "action_pledge")},
-							llm.Message{Role: llm.RoleUser, Content: retryNudge},
-						)
+						if retryMessages := buildResearchFailureRetryMessages(routingMessage); len(retryMessages) > 0 {
+							chatReq.Messages = retryMessages
+						} else {
+							chatReq.Messages = append(chatReq.Messages,
+								llm.Message{Role: llm.RoleAssistant, Content: buildToollessAutoContinueAssistantContent(resp.Message.Content, "action_pledge")},
+								llm.Message{Role: llm.RoleUser, Content: retryNudge},
+							)
+						}
 						chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
+						if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.listAvailableModelIDs()); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
+							prevModel := chatReq.Model
+							chatReq.Model = fallbackModel
+							logger.Warn().
+								Int("round", round).
+								Int("recovery_retry", researchFailureWriteRecoveryRetries).
+								Str("previous_model", prevModel).
+								Str("fallback_model", fallbackModel).
+								Msg("[chat] pending research write switched to faster fallback model")
+						}
 						prevToollessAutoContinueSig = ""
 						consecutiveToollessAutoContinueDups = 0
 						logger.Warn().
 							Int("round", round).
 							Int("recovery_retry", researchFailureWriteRecoveryRetries).
 							Msg("[chat] pending research report still not saved after toolless reply; forcing write continuation")
+						resp = nil
+						err = nil
+						continue
+					}
+				}
+				if workspaceArtifactWriteRecoveryPending && len(extractNumberedQuestions(routingMessage)) >= 2 {
+					if artifactFallback, ok := h.tryLLMWorkspaceArtifactOrchestration(llmCtx, chatReq.Model, routingMessage, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults); ok {
+						workspaceArtifactWriteRecoveryPending = false
+						workspaceArtifactWriteRecoveryRetries = 0
+						workspaceArtifactEvidenceRoundsWithoutWrite = 0
+						searchArtifactRoundsWithoutWrite = 0
+						resp.Message.Content = artifactFallback.Content
+						if strings.TrimSpace(artifactFallback.Model) != "" {
+							resp.Model = artifactFallback.Model
+						}
+						if strings.TrimSpace(artifactFallback.Provider) != "" {
+							resp.Provider = artifactFallback.Provider
+						}
+						if strings.TrimSpace(artifactFallback.ProviderID) != "" {
+							resp.ProviderID = artifactFallback.ProviderID
+						}
+						awaitingPostToolSummary = false
+					}
+				}
+				if shouldRetryPendingWorkspaceArtifactWrite(routingMessage, resp.Message.Content, workspaceArtifactWriteRecoveryPending, workspaceArtifactWriteRecoveryRetries) {
+					if hasSavedWorkspaceArtifactOnDisk(toolCtx, routingMessage) {
+						workspaceArtifactWriteRecoveryPending = false
+						workspaceArtifactWriteRecoveryRetries = 0
+						workspaceArtifactEvidenceRoundsWithoutWrite = 0
+						searchArtifactRoundsWithoutWrite = 0
+						resp.Message.Content = buildWorkspaceArtifactOrchestrationConfirmation(extractRequestedArtifactPath(routingMessage))
+					}
+				}
+				if shouldRetryPendingWorkspaceArtifactWrite(routingMessage, resp.Message.Content, workspaceArtifactWriteRecoveryPending, workspaceArtifactWriteRecoveryRetries) {
+					workspaceArtifactWriteRecoveryRetries++
+					if strings.TrimSpace(chatReq.PreviousResponseID) != "" {
+						chatReq.PreviousResponseID = ""
+						llmCtx = proxy.WithDisableResponsesContinuation(llmCtx)
+					}
+					if retryMessages := buildWorkspaceArtifactWriteRetryMessages(routingMessage); len(retryMessages) > 0 {
+						chatReq.Messages = retryMessages
+						chatReq.Tools = buildWorkspaceArtifactWriteRecoveryTools(chatReq.Tools, routingMessage)
+						prevToollessAutoContinueSig = ""
+						consecutiveToollessAutoContinueDups = 0
+						logger.Warn().
+							Int("round", round).
+							Int("recovery_retry", workspaceArtifactWriteRecoveryRetries).
+							Msg("[chat] pending workspace artifact still not saved after toolless reply; forcing write continuation")
 						resp = nil
 						err = nil
 						continue
@@ -15049,12 +17946,78 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			pendingTodoAutoContinueCount = 0
 			prevToollessAutoContinueSig = ""
 			consecutiveToollessAutoContinueDups = 0
+			limitedToolCalls, truncated := limitToolCallsForRound(resp.Message.ToolCalls, routingMessage)
+			if truncated {
+				logger.Warn().
+					Int("round", round).
+					Int("original_tool_calls", len(resp.Message.ToolCalls)).
+					Str("kept_tool", limitedToolCalls[0].Name).
+					Msg("[chat] limiting tool round to first tool call")
+			}
+			resp.Message.ToolCalls = limitedToolCalls
+			if guard := latestIntentVsCarryover(chatReq.Messages, routingMessage, resp.Message.ToolCalls); guard.ShouldPause {
+				staleIntentGuardTrips++
+				logger.Warn().
+					Int("round", round).
+					Str("reason", guard.Reason).
+					Bool("question_like", guard.QuestionLike).
+					Bool("explicit_override", guard.ExplicitOverride).
+					Bool("explicit_resume", guard.ExplicitResume).
+					Bool("low_overlap", guard.LowOverlap).
+					Msg("[chat] paused stale carry-over tool execution in favor of latest user intent")
+				if staleIntentGuardTrips > 1 {
+					resp = &llm.ChatResponse{
+						Model:      chatReq.Model,
+						Provider:   strings.TrimSpace(resp.Provider),
+						ProviderID: strings.TrimSpace(resp.ProviderID),
+						Message: llm.Message{
+							Role:    llm.RoleAssistant,
+							Content: buildLatestIntentPauseFallbackReply(routingMessage),
+						},
+					}
+					break
+				}
+				chatReq.PreviousResponseID = ""
+				llmCtx = proxy.WithDisableResponsesContinuation(llmCtx)
+				chatReq.Messages = append(chatReq.Messages,
+					llm.Message{Role: llm.RoleAssistant, Content: pausedCarryOverAssistantContent},
+					llm.Message{Role: llm.RoleUser, Content: buildLatestIntentPauseNudge(routingMessage)},
+				)
+				resp = nil
+				err = nil
+				awaitingPostToolSummary = false
+				continue
+			}
+			staleIntentGuardTrips = 0
 			// Execute tool calls and feed results back
 			logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
 			toolResults := h.executeToolCalls(toolCtx, resp.Message.ToolCalls)
-			if len(collectSuccessfulWriteTargets(resp.Message.ToolCalls, toolResults)) > 0 {
+			if workspaceArtifactHistoryTarget != "" {
+				workspaceArtifactHistoryCalls = append(workspaceArtifactHistoryCalls, resp.Message.ToolCalls...)
+				workspaceArtifactHistoryResults = append(workspaceArtifactHistoryResults, toolResults...)
+			}
+			writeTargets := collectSuccessfulWriteTargets(resp.Message.ToolCalls, toolResults)
+			if len(writeTargets) > 0 {
 				researchFailureWriteRecoveryPending = false
 				researchFailureWriteRecoveryRetries = 0
+				workspaceArtifactWriteRecoveryPending = false
+				workspaceArtifactWriteRecoveryRetries = 0
+				searchArtifactRoundsWithoutWrite = 0
+				workspaceArtifactEvidenceRoundsWithoutWrite = 0
+			} else if extractRequestedArtifactPath(routingMessage) != "" && isSearchOnlyArtifactRound(resp.Message.ToolCalls) {
+				searchArtifactRoundsWithoutWrite++
+				workspaceArtifactEvidenceRoundsWithoutWrite = 0
+			} else if workspaceArtifactHistoryTarget != "" && hasWorkspaceArtifactContentEvidence(resp.Message.ToolCalls, toolResults) {
+				if hasPendingWorkspaceArtifactSourceReads(routingMessage, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults) {
+					workspaceArtifactEvidenceRoundsWithoutWrite = 0
+					searchArtifactRoundsWithoutWrite = 0
+				} else {
+					workspaceArtifactEvidenceRoundsWithoutWrite++
+					searchArtifactRoundsWithoutWrite = 0
+				}
+			} else {
+				searchArtifactRoundsWithoutWrite = 0
+				workspaceArtifactEvidenceRoundsWithoutWrite = 0
 			}
 			deepSearchState.observeToolRound(resp.Message.ToolCalls, toolResults)
 			planChecklist, planChecklistUpdated := extractPlanChecklistFromToolRound(resp.Message.ToolCalls, toolResults)
@@ -15069,6 +18032,23 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			chatReq.Messages = append(chatReq.Messages, compactAssistantToolContextForLLM(resp.Message))
 			chatReq.Messages = append(chatReq.Messages, toolResultsForLLM...)
 			awaitingPostToolSummary = len(toolResults) > 0
+			if completion := buildSuccessfulArtifactCompletion(routingMessage, resp.Message.ToolCalls, toolResults); completion != "" {
+				resp = &llm.ChatResponse{
+					Model:      resp.Model,
+					Provider:   resp.Provider,
+					ProviderID: resp.ProviderID,
+					Message: llm.Message{
+						Role:    llm.RoleAssistant,
+						Content: completion,
+					},
+					Usage: llm.Usage{
+						CompletionTokens: estimateTokens(completion),
+						TotalTokens:      estimateTokens(completion),
+					},
+				}
+				awaitingPostToolSummary = false
+				break
+			}
 			if todoContent != "" {
 				if progress := extractTodoProgress(todoContent); progress != "" {
 					chatReq.Messages = append(chatReq.Messages, llm.Message{
@@ -15082,6 +18062,55 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 					Role:    llm.RoleUser,
 					Content: nudge,
 				})
+				chatReq.Tools = buildPostWriteCompletionTools(chatReq.Tools, routingMessage)
+			}
+			if nudge := buildPostWorkspaceArtifactContinuationNudgeFromHistory(routingMessage, resp.Message.ToolCalls, toolResults, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+				chatReq.Tools = buildPostWorkspaceArtifactContinuationToolsFromHistory(chatReq.Tools, routingMessage, resp.Message.ToolCalls, toolResults, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults)
+			}
+			if !workspaceArtifactWriteRecoveryUsed && workspaceArtifactEvidenceRoundsWithoutWrite >= workspaceArtifactWriteRecoveryThreshold(routingMessage) {
+				if len(extractNumberedQuestions(routingMessage)) >= 2 {
+					if artifactFallback, ok := h.tryLLMWorkspaceArtifactOrchestration(llmCtx, chatReq.Model, routingMessage, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults); ok {
+						workspaceArtifactWriteRecoveryUsed = true
+						workspaceArtifactWriteRecoveryPending = false
+						workspaceArtifactWriteRecoveryRetries = 0
+						workspaceArtifactEvidenceRoundsWithoutWrite = 0
+						resp = &llm.ChatResponse{
+							Model:      artifactFallback.Model,
+							Provider:   artifactFallback.Provider,
+							ProviderID: artifactFallback.ProviderID,
+							Message: llm.Message{
+								Role:    llm.RoleAssistant,
+								Content: artifactFallback.Content,
+							},
+						}
+						logger.Warn().
+							Int("round", round).
+							Str("conv_id", convID).
+							Str("target", extractRequestedArtifactPath(routingMessage)).
+							Msg("[chat] repeated local evidence collection without write progress; finalized numbered artifact via synthesis orchestration")
+						break
+					}
+				}
+				if nudge := buildPostWorkspaceArtifactWriteRetryNudge(routingMessage); nudge != "" {
+					workspaceArtifactWriteRecoveryUsed = true
+					workspaceArtifactWriteRecoveryPending = true
+					workspaceArtifactWriteRecoveryRetries = 0
+					workspaceArtifactEvidenceRoundsWithoutWrite = 0
+					chatReq.Messages = append(chatReq.Messages, llm.Message{
+						Role:    llm.RoleUser,
+						Content: nudge,
+					})
+					chatReq.Tools = buildWorkspaceArtifactWriteRecoveryTools(chatReq.Tools, routingMessage)
+					logger.Warn().
+						Int("round", round).
+						Str("conv_id", convID).
+						Str("target", extractRequestedArtifactPath(routingMessage)).
+						Msg("[chat] repeated local evidence collection without write progress; forcing workspace artifact write recovery")
+				}
 			}
 			if nudge := buildPostEmptyResearchResultNudge(routingMessage, resp.Message.ToolCalls, toolResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
@@ -15089,6 +18118,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 					Content: nudge,
 				})
 				chatReq.Tools = buildEmptyResearchResultRecoveryTools(chatReq.Tools, routingMessage)
+			}
+			if nudge := buildPostSuccessfulResearchWriteNudge(routingMessage, resp.Message.ToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+				chatReq.Tools = buildSuccessfulResearchWriteTools(chatReq.Tools, routingMessage)
 			}
 			if nudge := buildPostResearchFailureRecoveryNudge(routingMessage, resp.Message.ToolCalls, toolResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
@@ -15099,17 +18135,40 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				researchFailureWriteRecoveryPending = true
 				researchFailureWriteRecoveryRetries = 0
 			}
+			if !searchArtifactRecoveryUsed && searchArtifactRoundsWithoutWrite >= 2 {
+				if nudge := buildToolLoopArtifactRecoveryNudge(routingMessage, "repeated_search_rounds", "web_search"); nudge != "" {
+					searchArtifactRecoveryUsed = true
+					searchArtifactRoundsWithoutWrite = 0
+					chatReq.Messages = append(chatReq.Messages, llm.Message{
+						Role:    llm.RoleUser,
+						Content: nudge,
+					})
+					chatReq.Tools = buildToolLoopArtifactRecoveryTools(chatReq.Tools, routingMessage, "web_search")
+					logger.Warn().
+						Int("round", round).
+						Str("conv_id", convID).
+						Str("target", extractRequestedArtifactPath(routingMessage)).
+						Msg("[chat] repeated search-only rounds without write progress; forcing artifact write recovery")
+				}
+			}
 			toolSummaries := make([]string, 0, len(toolResults))
 			for _, item := range toolResults {
 				toolSummaries = append(toolSummaries, tools.NormalizeToolProgressSummary(item.Content))
 			}
-			if detection := toolLoopDetector.Observe(toolLoopSignature(resp.Message.ToolCalls), resp.Message.Content, toolSummaries); detection.Abort {
+			if detection := toolLoopDetector.Observe(toolLoopSignature(resp.Message.ToolCalls), resp.Message.Content, toolSummaries, writeTargets...); detection.Abort {
 				if !toolLoopRecoveryUsed {
 					toolLoopRecoveryUsed = true
 					chatReq.Messages = append(chatReq.Messages, llm.Message{
 						Role:    llm.RoleUser,
 						Content: buildLocalizedToolLoopRecoveryNudge(webLang, detection.Reason, detection.Signature),
 					})
+					if nudge := buildToolLoopArtifactRecoveryNudge(routingMessage, detection.Reason, detection.Signature); nudge != "" {
+						chatReq.Messages = append(chatReq.Messages, llm.Message{
+							Role:    llm.RoleUser,
+							Content: nudge,
+						})
+						chatReq.Tools = buildToolLoopArtifactRecoveryTools(chatReq.Tools, routingMessage, detection.Signature)
+					}
 					logger.Warn().
 						Int("round", round).
 						Str("reason", detection.Reason).
@@ -15119,6 +18178,26 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 					resp = nil
 					err = nil
 					continue
+				}
+				if !workspaceArtifactWriteRecoveryUsed {
+					if retryMessages := buildWorkspaceArtifactRecoveryRetryMessages(routingMessage, detection.Signature); len(retryMessages) > 0 {
+						workspaceArtifactWriteRecoveryUsed = true
+						workspaceArtifactWriteRecoveryPending = true
+						workspaceArtifactWriteRecoveryRetries = 0
+						chatReq.Messages = retryMessages
+						chatReq.Tools = buildWorkspaceArtifactWriteRecoveryTools(buildToolLoopArtifactRecoveryTools(chatReq.Tools, routingMessage, detection.Signature), routingMessage)
+						chatReq.PreviousResponseID = ""
+						llmCtx = proxy.WithDisableResponsesContinuation(llmCtx)
+						logger.Warn().
+							Int("round", round).
+							Str("reason", detection.Reason).
+							Int("streak", detection.Streak).
+							Str("signature", detection.Signature).
+							Msg("[chat] artifact loop repeated; restarting with write-focused recovery round")
+						resp = nil
+						err = nil
+						continue
+					}
 				}
 				h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
 					"mode":        "non_stream",
@@ -15256,6 +18335,33 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				}
 				break
 			}
+		}
+	}
+	if resp != nil && len(resp.Message.ToolCalls) == 0 {
+		if artifactFallback, ok := h.tryLLMWorkspaceArtifactOrchestration(llmCtx, chatReq.Model, routingMessage, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults); ok {
+			logger.Warn().
+				Str("conv_id", convID).
+				Str("target", extractRequestedArtifactPath(routingMessage)).
+				Msg("[chat] finalized missing workspace artifact with synthesis orchestration")
+			resp.Message.Content = artifactFallback.Content
+			if strings.TrimSpace(artifactFallback.Model) != "" {
+				resp.Model = artifactFallback.Model
+			}
+			if strings.TrimSpace(artifactFallback.Provider) != "" {
+				resp.Provider = artifactFallback.Provider
+			}
+			if strings.TrimSpace(artifactFallback.ProviderID) != "" {
+				resp.ProviderID = artifactFallback.ProviderID
+			}
+		}
+	}
+	if resp != nil && len(resp.Message.ToolCalls) == 0 {
+		if artifactFallback, ok := h.tryDeterministicResearchArtifactOrchestration(toolCtx, routingMessage, resp.Message.Content, chatReq.Messages); ok {
+			logger.Warn().
+				Str("conv_id", convID).
+				Str("target", extractRequestedArtifactPath(routingMessage)).
+				Msg("[chat] finalized missing research artifact with deterministic orchestration")
+			resp.Message.Content = artifactFallback.Content
 		}
 	}
 
@@ -15902,24 +19008,21 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	// Check for prompt injection
-	if h.promptGuard != nil {
-		result := h.promptGuard.Detect(req.Message)
-		if result.IsThreat {
-			// Record security event to companion
-			if h.companionManager != nil {
-				sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
-				if sessionID != "" {
-					h.emitSecurityEvent(c.Request().Context(), sessionID, result)
-				}
+	if result := h.detectPromptGuardBlock(c.Request().Context(), convID, req.Message); result != nil {
+		// Record security event to companion
+		if h.companionManager != nil {
+			sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
+			if sessionID != "" {
+				h.emitSecurityEvent(c.Request().Context(), sessionID, result)
 			}
-			// Return error to user
-			return c.JSON(http.StatusForbidden, map[string]interface{}{
-				"success":      false,
-				"blocked":      true,
-				"message":      "Message blocked due to security policy",
-				"threat_level": result.ThreatLevel.String(),
-			})
 		}
+		// Return error to user
+		return c.JSON(http.StatusForbidden, map[string]interface{}{
+			"success":      false,
+			"blocked":      true,
+			"message":      "Message blocked due to security policy",
+			"threat_level": result.ThreatLevel.String(),
+		})
 	}
 
 	// Check trial quota before proceeding
@@ -15950,6 +19053,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return nil
 	}
 	providerName := "auto"
+	structuredEvaluatorNoToolsTitle, structuredEvaluatorNoTools := h.isStructuredEvaluatorConversation(c.Request().Context(), convID, req.Message)
 
 	// [CONTINUE_AFTER_CANCEL] is a special marker sent when the frontend auto-resumes
 	// a cancelled pre-TTFT stream. The original user message is already persisted in DB,
@@ -16021,6 +19125,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		h.buildConvertSourcePrompt(c.Request().Context(), convID, h.getUserID(c)),
 		warmupSkillPrompt,
 		buildDeepSearchExecutionHint(req.Message),
+		buildArtifactWorkflowExecutionHint(req.Message),
 	)
 	systemPromptMessages, _ := h.buildSystemPromptMessages(warmupPromptCtx, extraPrompt)
 
@@ -16106,6 +19211,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		h.buildConvertSourcePrompt(c.Request().Context(), convID, h.getUserID(c)),
 		skillPrompt,
 		buildDeepSearchExecutionHint(routingMessage),
+		buildArtifactWorkflowExecutionHint(routingMessage),
 	)
 	systemPromptMessages, contextSelection := h.buildSystemPromptMessages(promptCtx, extraPrompt)
 	h.recordContextPackAudit(promptCtx, convID, contextSelection)
@@ -16180,7 +19286,17 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
 	selectedTools = applyCalendarToolPreference(selectedTools, routingMessage)
 	selectedTools = applyEmailToolPreference(selectedTools, routingMessage)
-	if h.shouldRouteToolDispatch(selectedTools) && !shouldPreferDeepSearchReport(routingMessage) {
+	selectedTools = applyImageToolPreference(selectedTools, routingMessage)
+	if structuredEvaluatorNoTools {
+		selectedTools = nil
+		logger.Info().
+			Str("conversation_id", convID).
+			Str("conversation_title", structuredEvaluatorNoToolsTitle).
+			Msg("[chat] disabling stream tool exposure for structured evaluator conversation")
+	}
+	if h.shouldRouteToolDispatch(selectedTools) &&
+		!shouldPreferDeepSearchReport(routingMessage) &&
+		!shouldBypassSmallModelToolDispatch(routingMessage) {
 		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
 		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
 		routeCancel()
@@ -16632,6 +19748,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var deepSearchForceReason string
 	var prevToolSig string          // signature of previous round's tool calls for duplicate detection
 	var consecutiveDups int         // count of consecutive identical tool call rounds
+	var staleIntentGuardTrips int   // count guard-triggered redirections away from stale carry-over
 	var typelessCardsPersisted bool // true once tool result cards are appended to persisted content
 	var streamLoopDetector tools.ToolLoopDetector
 	isAgentMode = h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
@@ -16857,6 +19974,7 @@ STREAM_LOOP:
 			// Collect tool calls from stream chunks (merge partial arguments)
 			if len(chunk.ToolCalls) > 0 {
 				for _, tc := range chunk.ToolCalls {
+					tc.Name = normalizeAssistantToolCallNameForAllowedSet(tc.Name, chatReq.Tools)
 					if tc.ID != "" && tc.Name != "" {
 						// New tool call — strip bogus initial arguments from some providers.
 						if tc.Arguments == "null" || tc.Arguments == "undefined" {
@@ -17363,6 +20481,76 @@ STREAM_LOOP:
 					nil,
 				)
 			}
+			if err != nil && fullContent == "" && !streamErrorHandled && ctx.Err() == nil && h.proxyBridge != nil {
+				reducedRecoveryReq, originalBytes, reducedBytes, ok := buildReducedToolRoundRecoveryRequest(chatReq, toolRound, fullContent, err)
+				if ok {
+					hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount, storePolicy := continuationRequestStats(chatReq)
+					reducedHasPrevResponseID, _, reducedInputItemsCount, reducedToolItemsCount, _ := continuationRequestStats(reducedRecoveryReq)
+					logger.Warn().
+						Err(err).
+						Int("tool_round", toolRound).
+						Bool("has_prev_response_id", hasPrevResponseID).
+						Int("instructions_len", instructionsLen).
+						Int("input_items_count", inputItemsCount).
+						Int("tool_items_count", toolItemsCount).
+						Int("request_bytes", originalBytes).
+						Int("reduced_request_bytes", reducedBytes).
+						Str("store_policy", storePolicy).
+						Str("recovery_stage", continuationRecoveryStage2).
+						Msg("[chat] tool round pre-content failed — attempting reduced recovery payload")
+					emitProcessEvent(
+						"continuation_recovery_started",
+						"active",
+						"Recovering response",
+						continuationRecoveryStage2,
+						map[string]interface{}{
+							"process_original_bytes": originalBytes,
+							"process_reduced_bytes":  reducedBytes,
+						},
+					)
+					streamErrorHandled = false
+					recoveryErr := h.proxyBridge.ChatStream(ctx, reducedRecoveryReq, streamCb)
+					if recoveryErr == nil {
+						if hasPrevResponseID || reducedHasPrevResponseID {
+							h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage2, true, err)
+						}
+						chatReq = reducedRecoveryReq
+						err = nil
+						emitProcessEvent(
+							"continuation_recovery_succeeded",
+							"success",
+							"Recovery succeeded",
+							continuationRecoveryStage2,
+							nil,
+						)
+						logger.Info().
+							Int("tool_round", toolRound).
+							Bool("has_prev_response_id", reducedHasPrevResponseID).
+							Int("input_items_count", reducedInputItemsCount).
+							Int("tool_items_count", reducedToolItemsCount).
+							Int("request_bytes", originalBytes).
+							Int("reduced_request_bytes", reducedBytes).
+							Str("recovery_stage", continuationRecoveryStage2).
+							Msg("[chat] tool round reduced recovery succeeded")
+					} else {
+						err = recoveryErr
+						emitProcessEvent(
+							"continuation_recovery_failed",
+							"error",
+							"Recovery failed",
+							continuationRecoveryStage2,
+							nil,
+						)
+						logger.Warn().
+							Err(recoveryErr).
+							Int("tool_round", toolRound).
+							Int("request_bytes", originalBytes).
+							Int("reduced_request_bytes", reducedBytes).
+							Str("recovery_stage", continuationRecoveryStage2).
+							Msg("[chat] tool round reduced recovery failed")
+					}
+				}
+			}
 
 			// Tool-round resilience: if a follow-up round fails pre-content on a
 			// pinned provider, retry once without pinning so router failover can
@@ -17538,6 +20726,16 @@ STREAM_LOOP:
 		if actualModel != "" {
 			logger.Info().Str("model", actualModel).Msg("[chat] stream: recovered model from ResolvedRoute fallback")
 		}
+		if len(streamToolCalls) > 0 {
+			sanitizedCalls, droppedCalls := sanitizeAssistantToolCallsForAllowedSet(streamToolCalls, chatReq.Tools)
+			if len(droppedCalls) > 0 {
+				logger.Warn().
+					Int("tool_round", toolRound).
+					Str("dropped_tools", strings.Join(droppedCalls, ",")).
+					Msg("[chat] stream: dropped assistant tool calls outside the current allowed tool set")
+			}
+			streamToolCalls = sanitizedCalls
+		}
 
 		// Mid-stream retry: if content was already streamed and error is not user-cancel,
 		// retry indefinitely with exponential backoff until user cancels the stream.
@@ -17625,7 +20823,7 @@ STREAM_LOOP:
 			} else {
 				flushPendingDelta(true)
 			}
-			limitedToolCalls, truncated := limitToolCallsForRound(streamToolCalls)
+			limitedToolCalls, truncated := limitToolCallsForRound(streamToolCalls, routingMessage)
 			if truncated {
 				logger.Warn().
 					Int("tool_round", toolRound).
@@ -17669,6 +20867,41 @@ STREAM_LOOP:
 				break STREAM_LOOP
 			}
 
+			if guard := latestIntentVsCarryover(chatReq.Messages, routingMessage, streamToolCalls); guard.ShouldPause {
+				staleIntentGuardTrips++
+				logger.Warn().
+					Int("tool_round", toolRound).
+					Str("reason", guard.Reason).
+					Bool("question_like", guard.QuestionLike).
+					Bool("explicit_override", guard.ExplicitOverride).
+					Bool("explicit_resume", guard.ExplicitResume).
+					Bool("low_overlap", guard.LowOverlap).
+					Msg("[chat] stream: paused stale carry-over tool execution in favor of latest user intent")
+				if staleIntentGuardTrips > 1 {
+					fallbackMsg := buildLatestIntentPauseFallbackReply(routingMessage)
+					emitSSE(map[string]interface{}{
+						"delta":     fallbackMsg,
+						"done":      false,
+						"stream_id": streamID,
+					})
+					fullContent += fallbackMsg
+					totalDeltaChars += len(fallbackMsg)
+					break STREAM_LOOP
+				}
+				dropPendingVisibleDelta()
+				chatReq.PreviousResponseID = ""
+				ctx = proxy.WithDisableResponsesContinuation(ctx)
+				chatReq.Messages = append(chatReq.Messages,
+					llm.Message{Role: llm.RoleAssistant, Content: pausedCarryOverAssistantContent},
+					llm.Message{Role: llm.RoleUser, Content: buildLatestIntentPauseNudge(routingMessage)},
+				)
+				streamToolCalls = nil
+				awaitingPostToolSummary = false
+				fullContent = ""
+				continue
+			}
+
+			staleIntentGuardTrips = 0
 			logger.Info().Int("round", toolRound).Int("tool_calls", len(streamToolCalls)).Msg("[chat] stream: executing tool calls")
 			// Send tool execution status to client (include tool names for UI display)
 			toolNames := make([]string, len(streamToolCalls))
@@ -17795,11 +21028,12 @@ STREAM_LOOP:
 			for _, item := range toolResults {
 				toolSummaries = append(toolSummaries, tools.NormalizeToolProgressSummary(item.Content))
 			}
-			if len(collectSuccessfulWriteTargets(streamToolCalls, toolResults)) > 0 {
+			writeTargets := collectSuccessfulWriteTargets(streamToolCalls, toolResults)
+			if len(writeTargets) > 0 {
 				researchFailureWriteRecoveryPending = false
 				researchFailureWriteRecoveryRetries = 0
 			}
-			if detection := streamLoopDetector.Observe(toolLoopSignature(streamToolCalls), assistantContextContent, toolSummaries); detection.Abort {
+			if detection := streamLoopDetector.Observe(toolLoopSignature(streamToolCalls), assistantContextContent, toolSummaries, writeTargets...); detection.Abort {
 				h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
 					"mode":        "stream",
 					"reason":      detection.Reason,
@@ -17836,6 +21070,24 @@ STREAM_LOOP:
 			chatReq.Messages = append(chatReq.Messages, assistantMsg)
 			chatReq.Messages = append(chatReq.Messages, toolResultsForLLM...)
 			awaitingPostToolSummary = len(toolResults) > 0
+			if completion := buildSuccessfulArtifactCompletion(routingMessage, streamToolCalls, toolResults); completion != "" {
+				delta := completion
+				if strings.TrimSpace(fullContent) != "" && !strings.Contains(fullContent, completion) {
+					delta = "\n\n" + completion
+				}
+				if !strings.Contains(fullContent, completion) {
+					fullContent += delta
+					totalDeltaChars += len(delta)
+					emitSSE(map[string]interface{}{
+						"delta":     delta,
+						"done":      false,
+						"stream_id": streamID,
+					})
+				}
+				awaitingPostToolSummary = false
+				accumulateCompletedRoundUsage()
+				break STREAM_LOOP
+			}
 
 			// Inject TODO progress so the LLM knows which task to work on next.
 			// This uses the latest todoContent (already advanced above if tools succeeded).
@@ -17852,6 +21104,14 @@ STREAM_LOOP:
 					Role:    llm.RoleUser,
 					Content: nudge,
 				})
+				chatReq.Tools = buildPostWriteCompletionTools(chatReq.Tools, routingMessage)
+			}
+			if nudge := buildPostWorkspaceArtifactContinuationNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+				chatReq.Tools = buildPostWorkspaceArtifactContinuationTools(chatReq.Tools, routingMessage, streamToolCalls, toolResults)
 			}
 			if nudge := buildPostEmptyResearchResultNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
@@ -17859,6 +21119,13 @@ STREAM_LOOP:
 					Content: nudge,
 				})
 				chatReq.Tools = buildEmptyResearchResultRecoveryTools(chatReq.Tools, routingMessage)
+			}
+			if nudge := buildPostSuccessfulResearchWriteNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+				chatReq.Tools = buildSuccessfulResearchWriteTools(chatReq.Tools, routingMessage)
 			}
 			if nudge := buildPostResearchFailureRecoveryNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
@@ -18156,11 +21423,24 @@ STREAM_LOOP:
 						ctx = proxy.WithDisableResponsesContinuation(ctx)
 					}
 					if retryNudge := buildPostResearchFailureRecoveryRetryNudge(routingMessage); retryNudge != "" {
-						chatReq.Messages = append(chatReq.Messages,
-							llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
-							llm.Message{Role: llm.RoleUser, Content: retryNudge},
-						)
+						if retryMessages := buildResearchFailureRetryMessages(routingMessage); len(retryMessages) > 0 {
+							chatReq.Messages = retryMessages
+						} else {
+							chatReq.Messages = append(chatReq.Messages,
+								llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
+								llm.Message{Role: llm.RoleUser, Content: retryNudge},
+							)
+						}
 						chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
+						if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.listAvailableModelIDs()); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
+							prevModel := chatReq.Model
+							chatReq.Model = fallbackModel
+							logger.Warn().Err(err).Int("tool_round", toolRound).
+								Int("recovery_retry", researchFailureWriteRecoveryRetries).
+								Str("previous_model", prevModel).
+								Str("fallback_model", fallbackModel).
+								Msg("[chat] stream research recovery switched to faster fallback model")
+						}
 						logger.Warn().Err(err).Int("tool_round", toolRound).
 							Int("recovery_retry", researchFailureWriteRecoveryRetries).
 							Msg("[chat] stream: research recovery follow-up failed; nudging fresh write continuation before fallback")
@@ -18294,11 +21574,25 @@ STREAM_LOOP:
 				ctx = proxy.WithDisableResponsesContinuation(ctx)
 			}
 			if retryNudge := buildPostResearchFailureRecoveryRetryNudge(routingMessage); retryNudge != "" {
-				chatReq.Messages = append(chatReq.Messages,
-					llm.Message{Role: llm.RoleAssistant, Content: buildToollessAutoContinueAssistantContent(fullContent, "action_pledge")},
-					llm.Message{Role: llm.RoleUser, Content: retryNudge},
-				)
+				if retryMessages := buildResearchFailureRetryMessages(routingMessage); len(retryMessages) > 0 {
+					chatReq.Messages = retryMessages
+				} else {
+					chatReq.Messages = append(chatReq.Messages,
+						llm.Message{Role: llm.RoleAssistant, Content: buildToollessAutoContinueAssistantContent(fullContent, "action_pledge")},
+						llm.Message{Role: llm.RoleUser, Content: retryNudge},
+					)
+				}
 				chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
+				if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.listAvailableModelIDs()); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
+					prevModel := chatReq.Model
+					chatReq.Model = fallbackModel
+					logger.Warn().
+						Int("tool_round", toolRound).
+						Int("recovery_retry", researchFailureWriteRecoveryRetries).
+						Str("previous_model", prevModel).
+						Str("fallback_model", fallbackModel).
+						Msg("[chat] stream pending research write switched to faster fallback model")
+				}
 				accumulateCompletedRoundUsage()
 				fullContent = ""
 				streamCompleted = false
@@ -18638,6 +21932,25 @@ STREAM_LOOP:
 			}
 		}
 	}
+	if err == nil && streamCompleted {
+		if artifactFallback, ok := h.tryDeterministicResearchArtifactOrchestration(ctx, routingMessage, fullContent, chatReq.Messages); ok {
+			delta := artifactFallback.Content
+			if strings.TrimSpace(fullContent) != "" {
+				delta = "\n\n" + delta
+			}
+			emitSSE(map[string]interface{}{
+				"delta":     delta,
+				"done":      false,
+				"stream_id": streamID,
+			})
+			fullContent += delta
+			totalDeltaChars += len(delta)
+			logger.Warn().
+				Str("conv_id", convID).
+				Str("target", extractRequestedArtifactPath(routingMessage)).
+				Msg("[chat] stream: finalized missing research artifact with deterministic orchestration")
+		}
+	}
 
 	// Handle stream completion or error
 	// Safeguard: if the done chunk was deferred (LLM returned empty on a tool round),
@@ -18839,7 +22152,7 @@ STREAM_LOOP:
 				}
 				skillPrompt, selectedSkill := h.resolveSkillSelection(ctx, injectedMsg)
 				promptCtx := h.buildContextPackRequestContext(ctx, convID, userID, string(streamLang), "web", injectedMsg, selectedSkill)
-				if systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, mergeExtraPrompt(skillPrompt, buildDeepSearchExecutionHint(injectedMsg))); len(systemPromptMessages) > 0 {
+				if systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, mergeExtraPrompt(skillPrompt, buildDeepSearchExecutionHint(injectedMsg), buildArtifactWorkflowExecutionHint(injectedMsg))); len(systemPromptMessages) > 0 {
 					compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
 					h.recordContextPackAudit(promptCtx, convID, selection)
 				}
@@ -18856,6 +22169,7 @@ STREAM_LOOP:
 				injectedTools = applyReminderToolPreference(injectedTools, injectedMsg)
 				injectedTools = applyCalendarToolPreference(injectedTools, injectedMsg)
 				injectedTools = applyEmailToolPreference(injectedTools, injectedMsg)
+				injectedTools = applyImageToolPreference(injectedTools, injectedMsg)
 
 				// Rebuild chat request
 				chatReq = llm.ChatRequest{
@@ -19680,6 +22994,7 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 		summary = string(runes[:1400]) + "..."
 	}
 	summary = claudecode.NormalizeStructuredSummary(summary, "", messages)
+	summary = sanitizeCompressedSummaryOutput(summary)
 	if summary == "" {
 		h.smallModelStats.RecordFallback(smallmodel.FallbackReasonLowConfidence)
 		return ""

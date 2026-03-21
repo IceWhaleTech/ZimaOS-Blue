@@ -11,10 +11,11 @@ import (
 
 // WhisperConfig holds the configuration for the Whisper provider.
 type WhisperConfig struct {
-	ModelPath   string
-	DefaultLang string
-	MaxDuration time.Duration
-	Threads     int
+	ModelPath      string
+	DefaultLang    string
+	MaxDuration    time.Duration
+	Threads        int
+	DeferModelLoad bool
 }
 
 // WhisperProvider is a stub when whisper is not compiled in.
@@ -34,10 +35,18 @@ func NewWhisperProvider(cfg *WhisperConfig) *WhisperProvider {
 }
 
 func (p *WhisperProvider) Initialize(modelPath string) error {
+	p.mu.Lock()
+	p.config.ModelPath = modelPath
+	p.initialized = true
+	p.mu.Unlock()
 	return fmt.Errorf("whisper not compiled in")
 }
 
-func (p *WhisperProvider) Close() {}
+func (p *WhisperProvider) Close() {
+	p.mu.Lock()
+	p.initialized = false
+	p.mu.Unlock()
+}
 
 func (p *WhisperProvider) Name() string       { return "Whisper (stub)" }
 func (p *WhisperProvider) Type() ProviderType { return ProviderWhisper }
@@ -61,7 +70,18 @@ func (p *WhisperProvider) MaxDuration() time.Duration {
 	return 30 * time.Second
 }
 
-func (p *WhisperProvider) IsInitialized() bool { return false }
+func (p *WhisperProvider) IsInitialized() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.initialized
+}
+
+func (p *WhisperProvider) EnsureInitialized() error {
+	if p.IsInitialized() {
+		return nil
+	}
+	return fmt.Errorf("whisper not compiled in")
+}
 
 func (p *WhisperProvider) GetModelStatus() ModelStatus {
 	return ModelStatus{Ready: false}

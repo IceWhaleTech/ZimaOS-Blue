@@ -432,7 +432,7 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 | Feb 11–12, 2026 | — | Personality refactor; channel enhancement; CLI management commands (config, cron, health, logs, models, plugins) |
 | Feb 13, 2026 | — | Project rebrand: Echo → Blue; ACME cert management; service management i18n |
 | Feb 14, 2026 | v0.10.25 | CC Cache two-level caching (L1 memory + L2 disk) for API Proxy |
-| Feb 15, 2026 | v0.10.27–v0.10.28 | Memory service refactor (progressive search + dual-write backend); Encryption settings; Architecture docs; Context pruner (in progress) |
+| Feb 15, 2026 | v0.10.27–v0.10.28 | Memory service refactor (progressive search + dual-write backend); Encryption settings; Architecture docs; Context pruner |
 
 ---
 

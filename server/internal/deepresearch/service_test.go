@@ -43,17 +43,6 @@ func (m *mockSummarySynth) Summarize(ctx context.Context, input SummaryInput) (s
 	return m.summarize(ctx, input)
 }
 
-type mockExperimentBackend struct {
-	run func(ctx context.Context, req ExperimentRequest) (*ExperimentResult, error)
-}
-
-func (m *mockExperimentBackend) Run(ctx context.Context, req ExperimentRequest) (*ExperimentResult, error) {
-	if m == nil || m.run == nil {
-		return &ExperimentResult{Summary: "experiment ok"}, nil
-	}
-	return m.run(ctx, req)
-}
-
 func waitForTerminalJob(t *testing.T, svc *Service, jobID string, timeout time.Duration) *Job {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -149,7 +138,7 @@ func TestServiceCreateJobFailure(t *testing.T) {
 	}
 }
 
-func TestServiceCreateJob_DegradesExperimentRouteWithoutBackend(t *testing.T) {
+func TestServiceCreateJobRejectsUnsupportedRoute(t *testing.T) {
 	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
 		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
 			return []SearchHit{{Title: "Doc A", URL: "https://example.com/a", Description: "A"}}, nil
@@ -159,100 +148,10 @@ func TestServiceCreateJob_DegradesExperimentRouteWithoutBackend(t *testing.T) {
 	job, err := svc.CreateJob(context.Background(), CreateJobRequest{
 		Query:     "Run an ablation benchmark for this change",
 		Mode:      ModeStandard,
-		RouteMode: RouteModeExperiment,
+		RouteMode: RouteMode("experiment"),
 	})
-	if err != nil {
-		t.Fatalf("create job failed: %v", err)
-	}
-	if job.EffectiveRouteMode != RouteModeWeb {
-		t.Fatalf("effective route mode = %q, want %q", job.EffectiveRouteMode, RouteModeWeb)
-	}
-	if job.RouteReason == "" {
-		t.Fatal("expected degrade reason")
-	}
-	current := waitForTerminalJob(t, svc, job.ID, 2*time.Second)
-	if current.Status != JobStatusCompleted {
-		t.Fatalf("status = %s, want completed", current.Status)
-	}
-	if current.Report == nil || current.Report.Answer == "" {
-		t.Fatal("expected synthesized web report after degrade")
-	}
-}
-
-func TestServiceCreateJob_ExperimentRouteUsesBackend(t *testing.T) {
-	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
-		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
-			return nil, errors.New("web search should not run in pure experiment mode")
-		},
-	})
-	svc.SetExperimentBackend(&mockExperimentBackend{
-		run: func(ctx context.Context, req ExperimentRequest) (*ExperimentResult, error) {
-			if req.RouteMode != RouteModeExperiment {
-				t.Fatalf("route mode = %q, want %q", req.RouteMode, RouteModeExperiment)
-			}
-			return &ExperimentResult{
-				Summary:    "Experiment summary",
-				Confidence: 0.91,
-				Findings:   []string{"improved eval by 3%"},
-			}, nil
-		},
-	})
-
-	job, err := svc.CreateJob(context.Background(), CreateJobRequest{
-		Query:     "Run an experiment benchmark",
-		Mode:      ModeStandard,
-		RouteMode: RouteModeExperiment,
-	})
-	if err != nil {
-		t.Fatalf("create job failed: %v", err)
-	}
-	if job.EffectiveRouteMode != RouteModeExperiment {
-		t.Fatalf("effective route mode = %q, want %q", job.EffectiveRouteMode, RouteModeExperiment)
-	}
-	current := waitForTerminalJob(t, svc, job.ID, 2*time.Second)
-	if current.Status != JobStatusCompleted {
-		t.Fatalf("status = %s, want completed", current.Status)
-	}
-	if current.Report == nil || current.Report.Experiment == nil {
-		t.Fatal("expected experiment report")
-	}
-	if got := current.Report.Answer; got != "Experiment summary" {
-		t.Fatalf("answer = %q, want %q", got, "Experiment summary")
-	}
-}
-
-func TestServiceCreateJob_HybridRouteMergesExperimentResults(t *testing.T) {
-	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
-		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
-			return []SearchHit{{Title: "Doc A", URL: "https://example.com/a", Description: "A"}}, nil
-		},
-	})
-	svc.SetExperimentBackend(&mockExperimentBackend{
-		run: func(ctx context.Context, req ExperimentRequest) (*ExperimentResult, error) {
-			if req.RouteMode != RouteModeHybrid {
-				t.Fatalf("route mode = %q, want %q", req.RouteMode, RouteModeHybrid)
-			}
-			if req.WebReport == nil {
-				t.Fatal("expected web report for hybrid run")
-			}
-			return &ExperimentResult{Summary: "Validated with a quick benchmark", Confidence: 0.77}, nil
-		},
-	})
-
-	job, err := svc.CreateJob(context.Background(), CreateJobRequest{
-		Query:     "Research the best setup and then validate with a benchmark",
-		Mode:      ModeStandard,
-		RouteMode: RouteModeHybrid,
-	})
-	if err != nil {
-		t.Fatalf("create job failed: %v", err)
-	}
-	current := waitForTerminalJob(t, svc, job.ID, 2*time.Second)
-	if current.Report == nil || current.Report.Experiment == nil {
-		t.Fatal("expected merged experiment report")
-	}
-	if !strings.Contains(current.Report.Answer, "Experiment validation") {
-		t.Fatalf("answer = %q, want experiment merge note", current.Report.Answer)
+	if err != ErrInvalidRouteMode {
+		t.Fatalf("create job err = %v, want %v (job=%#v)", err, ErrInvalidRouteMode, job)
 	}
 }
 

@@ -204,7 +204,7 @@ func servicePort(flags cliFlags) int {
 	if flags.devMode {
 		return 8081
 	}
-	return 8080
+	return 80
 }
 
 func runLauncherStatus(flags cliFlags) {

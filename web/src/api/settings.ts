@@ -4,6 +4,7 @@ export type SmallModelRuntime = 'llama.cpp'
 export type SmallModelID = 'qwen3.5-0.8b-gguf-q4km'
 export type NoLLMDegradeMode = 'deepresearch'
 export type SmallModelUnavailablePolicy = 'ir_first'
+export type ContextCompressionMode = 'off' | 'offline' | 'small_model' | 'auto'
 
 // User settings stored on backend
 export interface Settings {
@@ -34,8 +35,10 @@ export interface Settings {
   small_model_id?: SmallModelID // Fixed: qwen3.5-0.8b-gguf-q4km
   small_model_auto_download?: boolean // Auto download small model (default true)
   small_model_summary_enabled?: boolean // Phase1 default false
+  small_model_context_compress_enabled?: boolean // Separate long-context compression switch
   small_model_doc_extract_enabled?: boolean // Phase1 default false
   small_model_rerank_enabled?: boolean // Phase1 default false
+  context_compression_mode?: ContextCompressionMode // Unified history compression policy
   small_model_context_prune_enabled?: boolean // Phase1 default false
   small_model_media_intent_enabled?: boolean // Phase1 default false
   offline_ir_fallback_enabled?: boolean // Offline IR fallback (default false)
@@ -121,6 +124,8 @@ export interface SmallModelStats {
   tool_dispatch_route_success: number
   summary_attempts: number
   summary_success: number
+  context_compress_attempts?: number
+  context_compress_success?: number
   doc_extract_attempts: number
   doc_extract_success: number
   small_model_fallback_total?: number
@@ -135,6 +140,8 @@ export interface SmallModelStats {
   tool_dispatch_latency_samples?: number
   summary_latency_ms?: number
   summary_latency_samples?: number
+  context_compress_latency_ms?: number
+  context_compress_latency_samples?: number
   doc_extract_latency_ms?: number
   doc_extract_latency_samples?: number
   auto_rollback_total?: number

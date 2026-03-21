@@ -2,9 +2,11 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
+import { useTaskProjectionsStore } from '@/stores/taskProjections'
 
 const { t, te } = useI18n()
 const chatStore = useChatStore()
+const taskProjections = useTaskProjectionsStore()
 
 const question = computed(() => {
   const q = chatStore.pendingQuestion
@@ -277,7 +279,7 @@ watch(question, (q) => {
   }
 })
 
-function submit() {
+async function submit() {
   if (!question.value || !canSubmit.value) return
   const result = question.value.questions.map((q) => {
     const ans = answers.value[q.id] || { selected: [], otherText: '' }
@@ -293,19 +295,21 @@ function submit() {
       other_text: textOnly || otherSelected ? ans.otherText : '',
     }
   })
-  chatStore.submitQuestionAnswers(result)
+  await chatStore.submitQuestionAnswers(result)
+  await taskProjections.refreshNow().catch(() => {})
 }
 
-function dismiss() {
+async function dismiss() {
   if (isCheckpointQuestion.value) {
     const q = currentQuestion.value
     if (q) {
       answers.value[q.id] = { selected: ['cancel'], otherText: '' }
-      submit()
+      await submit()
       return
     }
   }
-  chatStore.dismissQuestion()
+  await chatStore.dismissQuestion()
+  await taskProjections.refreshNow().catch(() => {})
 }
 </script>
 

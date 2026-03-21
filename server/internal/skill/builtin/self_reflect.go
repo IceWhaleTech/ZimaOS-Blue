@@ -38,12 +38,20 @@ func NewSelfReflect() *SelfReflect {
 				{Name: "final_status", Type: "string", Description: "completed|failed|partial", Required: true},
 				{Name: "result_summary", Type: "string", Description: "Task outcome summary"},
 				{Name: "failure_reason", Type: "string", Description: "Failure reason if the task failed"},
+				{Name: "source_kind", Type: "string", Description: "Optional source kind for human-review proposals"},
+				{Name: "source_id", Type: "string", Description: "Optional source identifier for human-review proposals"},
+				{Name: "evaluation_summary", Type: "object", Description: "Optional calibration or evaluator summary"},
+				{Name: "proposal_candidates", Type: "array", Description: "Optional review-only AGENTS.md proposal candidates"},
+				{Name: "proposal_mode", Type: "string", Description: "Optional proposal mode; only review_only is supported"},
 			},
 			Outputs: []skill.Parameter{
 				{Name: "summary", Type: "string", Description: "Short reflection summary"},
 				{Name: "lessons", Type: "array", Description: "Grounded reusable lessons"},
 				{Name: "memory_written", Type: "number", Description: "Number of memory entries written"},
 				{Name: "skipped_reason", Type: "string", Description: "Reason reflection was skipped or filtered"},
+				{Name: "proposal_count", Type: "number", Description: "Number of AGENTS.md review proposals created"},
+				{Name: "proposal_ids", Type: "array", Description: "Created proposal ids"},
+				{Name: "proposal_skipped_reason", Type: "string", Description: "Reason proposal creation was skipped"},
 			},
 		},
 	}
@@ -61,12 +69,17 @@ func (s *SelfReflect) Validate(input map[string]any) error {
 	goal, _ := input["goal"].(string)
 	resultSummary, _ := input["result_summary"].(string)
 	failureReason, _ := input["failure_reason"].(string)
-	if goal == "" && resultSummary == "" && failureReason == "" {
+	_, hasProposalCandidates := input["proposal_candidates"].([]interface{})
+	hasReflectionRecord := goal != "" || resultSummary != "" || failureReason != ""
+	if !hasReflectionRecord && !hasProposalCandidates {
 		return fmt.Errorf("goal is required")
 	}
 	status, _ := input["final_status"].(string)
-	if status == "" {
+	if hasReflectionRecord && status == "" {
 		return fmt.Errorf("final_status is required")
+	}
+	if status == "" {
+		return nil
 	}
 	switch status {
 	case "completed", "failed", "partial":
@@ -96,6 +109,11 @@ func (s *SelfReflect) Execute(ctx context.Context, input map[string]any) (*skill
 		FinalStatus:        asString(input["final_status"]),
 		ResultSummary:      asString(input["result_summary"]),
 		FailureReason:      asString(input["failure_reason"]),
+		SourceKind:         asString(input["source_kind"]),
+		SourceID:           asString(input["source_id"]),
+		EvaluationSummary:  asMap(input["evaluation_summary"]),
+		ProposalCandidates: parseProposalCandidates(input["proposal_candidates"]),
+		ProposalMode:       selfreflect.ProposalMode(asString(input["proposal_mode"])),
 	}
 	mergeStepOutputs(parsed.Plan, input["step_outputs"])
 
@@ -108,6 +126,9 @@ func (s *SelfReflect) Execute(ctx context.Context, input map[string]any) (*skill
 		"lessons":        result.Lessons,
 		"memory_written": result.MemoryWritten,
 		"skipped_reason": result.SkippedReason,
+		"proposal_count": result.ProposalCount,
+		"proposal_ids":   result.ProposalIDs,
+		"proposal_skipped_reason": result.ProposalSkippedReason,
 	}), nil
 }
 
@@ -156,4 +177,45 @@ func mergeStepOutputs(steps []selfreflect.Step, raw any) {
 func asString(value any) string {
 	s, _ := value.(string)
 	return s
+}
+
+func asMap(value any) map[string]any {
+	m, _ := value.(map[string]any)
+	return m
+}
+
+func parseProposalCandidates(raw any) []selfreflect.ProposalCandidate {
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]selfreflect.ProposalCandidate, 0, len(items))
+	for _, item := range items {
+		value, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		out = append(out, selfreflect.ProposalCandidate{
+			Lesson:      asString(value["lesson"]),
+			WhenToApply: asString(value["when_to_apply"]),
+			Evidence:    asString(value["evidence"]),
+			EvidenceIDs: parseStringArray(value["evidence_ids"]),
+			TargetFile:  asString(value["target_file"]),
+		})
+	}
+	return out
+}
+
+func parseStringArray(raw any) []string {
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if value := asString(item); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }

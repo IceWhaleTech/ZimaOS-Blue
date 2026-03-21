@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -22,15 +23,20 @@ type ToolLoopDetection struct {
 	Signature string `json:"signature,omitempty"`
 }
 
+type toolLoopRound struct {
+	toolSignature    string
+	outcomeSignature string
+}
+
 // ToolLoopDetector tracks recent tool rounds to detect loop patterns at runtime.
 type ToolLoopDetector struct {
-	lastToolSignature     string
-	duplicateRounds       int
-	lastCombinedSignature string
-	stableRounds          int
-	lastErrorSignature    string
-	errorRounds           int
-	recentToolSignatures  []string
+	lastToolSignature       string
+	duplicateRounds         int
+	lastNoProgressSignature string
+	noProgressRounds        int
+	lastErrorSignature      string
+	errorRounds             int
+	recentRounds            []toolLoopRound
 }
 
 var (
@@ -39,10 +45,16 @@ var (
 )
 
 // Observe records one completed tool round and reports whether the loop should abort.
-func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, toolSummaries []string) ToolLoopDetection {
+func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, toolSummaries []string, progressMarkers ...string) ToolLoopDetection {
 	normalizedToolSig := normalizeToolLoopText(toolSignature)
 	normalizedDecision := normalizeToolLoopText(assistantDecision)
 	normalizedSummaries := normalizeToolLoopSummaries(toolSummaries)
+	normalizedProgress := normalizeToolLoopProgressMarkers(progressMarkers)
+
+	if len(normalizedProgress) > 0 {
+		d.reset()
+		return ToolLoopDetection{}
+	}
 
 	if normalizedToolSig != "" {
 		if normalizedToolSig == d.lastToolSignature {
@@ -51,18 +63,18 @@ func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, tool
 			d.lastToolSignature = normalizedToolSig
 			d.duplicateRounds = 1
 		}
-		d.recentToolSignatures = append(d.recentToolSignatures, normalizedToolSig)
-		if len(d.recentToolSignatures) > 4 {
-			d.recentToolSignatures = append([]string(nil), d.recentToolSignatures[len(d.recentToolSignatures)-4:]...)
-		}
 	}
 
-	combined := normalizedToolSig + "|" + strings.Join(normalizedSummaries, "|")
-	if combined == d.lastCombinedSignature {
-		d.stableRounds++
+	outcomeSig := strings.Join(normalizedSummaries, "|")
+	if outcomeSig == "" {
+		outcomeSig = "empty"
+	}
+	noProgressSig := normalizedToolSig + "|" + outcomeSig
+	if noProgressSig == d.lastNoProgressSignature {
+		d.noProgressRounds++
 	} else {
-		d.lastCombinedSignature = combined
-		d.stableRounds = 1
+		d.lastNoProgressSignature = noProgressSig
+		d.noProgressRounds = 1
 	}
 
 	allErrors := len(normalizedSummaries) > 0
@@ -73,7 +85,7 @@ func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, tool
 		}
 	}
 	if allErrors {
-		errorSig := normalizedDecision + "|" + strings.Join(normalizedSummaries, "|")
+		errorSig := normalizedToolSig + "|" + normalizedDecision + "|" + outcomeSig
 		if errorSig == d.lastErrorSignature {
 			d.errorRounds++
 		} else {
@@ -93,25 +105,41 @@ func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, tool
 		d.errorRounds = 0
 	}
 
-	if detectsToolPingPong(d.recentToolSignatures) {
+	d.recentRounds = append(d.recentRounds, toolLoopRound{
+		toolSignature:    normalizedToolSig,
+		outcomeSignature: outcomeSig,
+	})
+	if len(d.recentRounds) > 4 {
+		d.recentRounds = append([]toolLoopRound(nil), d.recentRounds[len(d.recentRounds)-4:]...)
+	}
+
+	if detectsToolPingPong(d.recentRounds) {
+		window := d.recentRounds
+		if len(window) > 4 {
+			window = window[len(window)-4:]
+		}
+		sigs := make([]string, 0, len(window))
+		for _, round := range window {
+			sigs = append(sigs, round.toolSignature)
+		}
 		return ToolLoopDetection{
 			Abort:     true,
 			Reason:    ToolLoopReasonPingPong,
-			Streak:    len(d.recentToolSignatures),
-			Signature: strings.Join(d.recentToolSignatures, " -> "),
+			Streak:    len(window),
+			Signature: strings.Join(sigs, " -> "),
 		}
 	}
 
-	if d.stableRounds >= 3 {
+	if d.noProgressRounds >= 3 {
 		return ToolLoopDetection{
 			Abort:     true,
 			Reason:    ToolLoopReasonPollingNoProgress,
-			Streak:    d.stableRounds,
-			Signature: combined,
+			Streak:    d.noProgressRounds,
+			Signature: noProgressSig,
 		}
 	}
 
-	if d.duplicateRounds >= 3 {
+	if !isKnownPollingToolLoopSignature(normalizedToolSig) && d.duplicateRounds >= 4 {
 		return ToolLoopDetection{
 			Abort:     true,
 			Reason:    ToolLoopReasonIdenticalRepeat,
@@ -121,6 +149,16 @@ func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, tool
 	}
 
 	return ToolLoopDetection{}
+}
+
+func (d *ToolLoopDetector) reset() {
+	d.lastToolSignature = ""
+	d.duplicateRounds = 0
+	d.lastNoProgressSignature = ""
+	d.noProgressRounds = 0
+	d.lastErrorSignature = ""
+	d.errorRounds = 0
+	d.recentRounds = nil
 }
 
 // NormalizeToolProgressSummary extracts a compact, stable summary for loop detection.
@@ -135,12 +173,40 @@ func NormalizeToolProgressSummary(content string) string {
 		if errMsg := extractToolLoopStringValue(obj, "error"); errMsg != "" {
 			return "error:" + normalizeToolLoopText(errMsg)
 		}
+
+		parts := make([]string, 0, 8)
 		if status := extractToolLoopStringValue(obj, "status"); status != "" {
-			return "status:" + normalizeToolLoopText(status)
+			parts = append(parts, "status:"+normalizeToolLoopText(status))
+		}
+		if success, ok := extractToolLoopBoolValue(obj, "success"); ok {
+			if success {
+				parts = append(parts, "success:true")
+			} else {
+				parts = append(parts, "success:false")
+			}
 		}
 		if summary := extractToolLoopStringValue(obj, "summary"); summary != "" {
-			return "summary:" + normalizeToolLoopText(summary)
+			parts = append(parts, "summary:"+normalizeToolLoopText(summary))
 		}
+		for _, key := range []string{"path", "file_path", "url", "query", "session_id", "sessionId"} {
+			if value := extractToolLoopStringValue(obj, key); value != "" {
+				parts = append(parts, key+":"+normalizeToolLoopText(value))
+			}
+		}
+		for _, key := range []string{"evidence_count", "results_count", "count", "total", "total_results"} {
+			if value, ok := extractToolLoopNumericValue(obj, key); ok {
+				parts = append(parts, key+":"+normalizeToolLoopText(value))
+			}
+		}
+		for _, key := range []string{"results", "items", "evidence"} {
+			if length, ok := extractToolLoopArrayLength(obj, key); ok {
+				parts = append(parts, key+"_len:"+normalizeToolLoopText(length))
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "|")
+		}
+
 		keys := make([]string, 0, len(obj))
 		for key := range obj {
 			keys = append(keys, key)
@@ -188,16 +254,58 @@ func normalizeToolLoopText(content string) string {
 	return normalized
 }
 
-func detectsToolPingPong(signatures []string) bool {
-	if len(signatures) < 4 {
+func normalizeToolLoopProgressMarkers(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		normalized := normalizeToolLoopText(value)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func detectsToolPingPong(rounds []toolLoopRound) bool {
+	if len(rounds) < 4 {
 		return false
 	}
-	window := signatures[len(signatures)-4:]
-	return window[0] != "" &&
-		window[1] != "" &&
-		window[0] != window[1] &&
-		window[0] == window[2] &&
-		window[1] == window[3]
+	window := rounds[len(rounds)-4:]
+	return window[0].toolSignature != "" &&
+		window[1].toolSignature != "" &&
+		window[0].outcomeSignature != "" &&
+		window[1].outcomeSignature != "" &&
+		window[0].toolSignature != window[1].toolSignature &&
+		window[0].toolSignature == window[2].toolSignature &&
+		window[1].toolSignature == window[3].toolSignature &&
+		window[0].outcomeSignature == window[2].outcomeSignature &&
+		window[1].outcomeSignature == window[3].outcomeSignature
+}
+
+func isKnownPollingToolLoopSignature(signature string) bool {
+	normalized := normalizeToolLoopText(signature)
+	if normalized == "" {
+		return false
+	}
+	if strings.HasPrefix(normalized, "command_status:") || strings.HasPrefix(normalized, "research_status:") {
+		return true
+	}
+	if !strings.HasPrefix(normalized, "process:") {
+		return false
+	}
+	return strings.Contains(normalized, `"action":"poll"`) ||
+		strings.Contains(normalized, `"action":"log"`) ||
+		strings.Contains(normalized, "action=poll") ||
+		strings.Contains(normalized, "action=log")
 }
 
 func trimStructuredToolLoopContent(content string) string {
@@ -218,4 +326,43 @@ func extractToolLoopStringValue(obj map[string]interface{}, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(str)
+}
+
+func extractToolLoopBoolValue(obj map[string]interface{}, key string) (bool, bool) {
+	value, ok := obj[key]
+	if !ok {
+		return false, false
+	}
+	b, ok := value.(bool)
+	return b, ok
+}
+
+func extractToolLoopNumericValue(obj map[string]interface{}, key string) (string, bool) {
+	value, ok := obj[key]
+	if !ok {
+		return "", false
+	}
+	switch v := value.(type) {
+	case float64:
+		return fmt.Sprintf("%.0f", v), true
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return "", false
+		}
+		return strings.TrimSpace(v), true
+	default:
+		return "", false
+	}
+}
+
+func extractToolLoopArrayLength(obj map[string]interface{}, key string) (string, bool) {
+	value, ok := obj[key]
+	if !ok {
+		return "", false
+	}
+	items, ok := value.([]interface{})
+	if !ok {
+		return "", false
+	}
+	return fmt.Sprintf("%d", len(items)), true
 }

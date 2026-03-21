@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import MemoryManager from '@/components/MemoryManager.vue'
 import { i18n } from '@/i18n'
 import { memoryApi } from '@/api/memory'
+import { selfReflectApi } from '@/api/selfReflect'
 
 vi.mock('@/api/memory', () => ({
   memoryApi: {
@@ -15,6 +16,16 @@ vi.mock('@/api/memory', () => ({
     stats: vi.fn(),
     exportMarkdown: vi.fn(),
     importMarkdown: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/selfReflect', () => ({
+  selfReflectApi: {
+    listProposals: vi.fn(),
+    getProposal: vi.fn(),
+    getPatchPreview: vi.fn(),
+    approveProposal: vi.fn(),
+    rejectProposal: vi.fn(),
   },
 }))
 
@@ -43,6 +54,41 @@ function mountManager() {
       },
     },
   })
+}
+
+function proposalPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'proposal-1',
+    source_kind: 'harness_group',
+    source_id: 'group-1',
+    proposal_mode: 'review_only',
+    target_file: 'AGENTS.md',
+    status: 'pending',
+    lesson: 'Keep low-coverage findings explicitly cautious.',
+    when_to_apply: 'When citation coverage stays below the publish threshold.',
+    evidence: 'Coverage was 72% and one claim remained unresolved.',
+    evidence_ids: ['ev-1', 'ev-2'],
+    evaluation_summary: {
+      verdict: 'partial',
+      score: 0.78,
+      judge_backend: 'llm_evaluator',
+      judge_model: 'gpt-5.4-mini',
+      calibration_ref: 'deep_research:job-1:calibration',
+      takeaway_candidate_count: 1,
+    },
+    calibration_summary: {
+      coverage: 0.72,
+      groundedness: 0.84,
+      freshness: 0.66,
+      conflict_risk: 'medium',
+      confidence: 0.79,
+      recommended_action: 'caution',
+    },
+    patch_preview: '@@ section: Research Takeaways @@',
+    created_at: '2026-03-01T00:00:00Z',
+    updated_at: '2026-03-01T00:00:00Z',
+    ...overrides,
+  }
 }
 
 function byId(wrapper: VueWrapper, id: string) {
@@ -107,6 +153,15 @@ describe('MemoryManager', () => {
     vi.mocked(memoryApi.exportMarkdown).mockResolvedValue({ data: '# export' } as never)
     vi.mocked(memoryApi.importMarkdown).mockResolvedValue({
       data: { imported: 0, skipped: 0, errors: [] },
+    } as never)
+    vi.mocked(selfReflectApi.listProposals).mockResolvedValue({ data: [] } as never)
+    vi.mocked(selfReflectApi.getProposal).mockRejectedValue(new Error('proposal not found'))
+    vi.mocked(selfReflectApi.getPatchPreview).mockRejectedValue(new Error('patch not found'))
+    vi.mocked(selfReflectApi.approveProposal).mockResolvedValue({
+      data: proposalPayload({ status: 'approved', review_note: 'Looks good', reviewed_at: '2026-03-02T00:00:00Z' }),
+    } as never)
+    vi.mocked(selfReflectApi.rejectProposal).mockResolvedValue({
+      data: proposalPayload({ status: 'rejected', review_note: 'Needs stronger grounding', reviewed_at: '2026-03-02T00:00:00Z' }),
     } as never)
   })
 
@@ -456,6 +511,68 @@ describe('MemoryManager', () => {
 
     expect(wrapper.text()).toContain('export failed: network down')
     expect(wrapper.emitted('status-change')).toBeFalsy()
+
+    wrapper.unmount()
+  })
+
+  it('renders and reviews self-reflect proposals with patch previews', async () => {
+    const currentProposal = proposalPayload()
+    vi.mocked(selfReflectApi.listProposals).mockImplementation(async () => ({
+      data: [currentProposal],
+    }) as never)
+    vi.mocked(selfReflectApi.getProposal).mockImplementation(async () => ({
+      data: currentProposal,
+    }) as never)
+    vi.mocked(selfReflectApi.getPatchPreview).mockImplementation(async () => ({
+      data: {
+        id: currentProposal.id,
+        target_file: currentProposal.target_file,
+        patch_preview: '@@ section: Research Takeaways @@\n+- Keep low-coverage findings explicitly cautious.',
+      },
+    }) as never)
+    vi.mocked(selfReflectApi.approveProposal).mockImplementation(async (_id: string, note: string) => {
+      currentProposal.status = 'approved'
+      currentProposal.review_note = note
+      currentProposal.reviewed_at = '2026-03-02T00:00:00Z'
+      return { data: currentProposal } as never
+    })
+
+    const wrapper = mountManager()
+    await flushPromises()
+
+    expect(selfReflectApi.listProposals).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('Self-evolution review queue')
+    expect(wrapper.text()).toContain('Keep low-coverage findings explicitly cautious.')
+    expect(wrapper.text()).toContain('@@ section: Research Takeaways @@')
+
+    await byId(wrapper, 'memory-proposal-note').setValue('Ship this as a guarded takeaway')
+    await byId(wrapper, 'memory-proposal-approve').trigger('click')
+    await flushPromises()
+
+    expect(selfReflectApi.approveProposal).toHaveBeenCalledWith(
+      'proposal-1',
+      'Ship this as a guarded takeaway'
+    )
+    expect(wrapper.text()).toContain('Approved')
+
+    wrapper.unmount()
+  })
+
+  it('shows the proposal-generation banner when agent auto-reflect is disabled', async () => {
+    const wrapper = mount(MemoryManager, {
+      props: {
+        agentAutoReflect: false,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Agent auto-reflect is disabled')
 
     wrapper.unmount()
   })

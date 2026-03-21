@@ -24,12 +24,11 @@ func (a *browserSkillAdapter) get() (*browser.RodService, error) {
 		return a.svc, nil
 	}
 	if a.resolve != nil {
-		a.svc = a.resolve()
+		if svc := a.resolve(); svc != nil {
+			return svc, nil
+		}
 	}
-	if a.svc == nil {
-		return nil, fmt.Errorf("browser service not available")
-	}
-	return a.svc, nil
+	return nil, fmt.Errorf("browser service not available")
 }
 
 func (a *browserSkillAdapter) Start(ctx context.Context) error {

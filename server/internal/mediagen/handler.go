@@ -96,6 +96,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/images/generations", h.GenerateImage)
 	g.POST("/videos/generations", h.GenerateVideo)
 	g.GET("/fallback/render/:token", h.RenderFallbackPage)
+	g.GET("/fallback/models/:id/status", h.GetFallbackModelStatus)
 	g.GET("/tasks/:id", h.GetTask)
 	g.POST("/tasks/:id/cancel", h.CancelTask)
 	g.POST("/tasks/:id/retry", h.RetryTask)
@@ -119,6 +120,14 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/providers/:id/keys", h.SetProviderKey)
 	g.DELETE("/providers/:id/keys", h.RemoveProviderKey)
 	g.POST("/providers/:id/test", h.TestProvider)
+}
+
+func (h *Handler) GetFallbackModelStatus(c echo.Context) error {
+	status, err := h.manager.GetFallbackModelStatus(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, status)
 }
 
 // RegisterStorageRoutes registers the static file serving route for generated media.

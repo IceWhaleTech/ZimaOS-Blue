@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -32,10 +33,6 @@ var gatewayRunCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run the service in foreground",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Override port if specified
-		if gatewayPort != 0 {
-			// TODO: Pass to server config
-		}
 		runServer()
 	},
 }
@@ -141,8 +138,8 @@ var gatewayUninstallCmd = &cobra.Command{
 
 func init() {
 	// Gateway flags
-	gatewayRunCmd.Flags().IntVar(&gatewayPort, "port", 0, "port to listen on (default 8080)")
-	gatewayRunCmd.Flags().StringVar(&gatewayBind, "bind", "", "address to bind to (default 0.0.0.0)")
+	gatewayCmd.PersistentFlags().IntVar(&gatewayPort, "port", 0, "port to listen on (default from config)")
+	gatewayCmd.PersistentFlags().StringVar(&gatewayBind, "bind", "", "address to bind to (default from config)")
 
 	// Add subcommands
 	gatewayCmd.AddCommand(gatewayRunCmd)
@@ -154,4 +151,15 @@ func init() {
 	gatewayCmd.AddCommand(gatewayInstallCmd)
 	gatewayCmd.AddCommand(gatewayUninstallCmd)
 	gatewayCmd.AddCommand(gatewaySuperviseCmd)
+}
+
+func configuredGatewayBind() string {
+	return strings.TrimSpace(gatewayBind)
+}
+
+func configuredGatewayPort() int {
+	if gatewayPort > 0 {
+		return gatewayPort
+	}
+	return 0
 }

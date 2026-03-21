@@ -1,9 +1,13 @@
 package server
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 func TestBuildPostWriteCompletionNudge_ForWorkspaceSummaryWrite(t *testing.T) {
@@ -27,6 +31,188 @@ func TestBuildPostWriteCompletionNudge_ForWorkspaceSummaryWrite(t *testing.T) {
 	}
 }
 
+func TestBuildPostWorkspaceArtifactContinuationNudge_AfterDiscoveryRequiresWrite(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "ls"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"research","entries":[{"name":"market.md"},{"name":"customer.txt"}],"status":"success"}`},
+	}
+
+	nudge := buildPostWorkspaceArtifactContinuationNudge(
+		"Review all files in the research/ folder and write a daily summary to daily_briefing.md.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected continuation nudge after successful workspace discovery")
+	}
+	if want := `daily_briefing.md`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to mention target path %q, got=%q", want, nudge)
+	}
+	if want := `Do not stop after listing files`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to block discovery-only stopping, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactCoverageContinuationNudge_WhenSomeFilesRemainUnread(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "ls"},
+		{ID: "call-2", Name: "file_read"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"base_path":"emails","entries":[{"path":"alpha_01.txt","type":"file"},{"path":"alpha_02.txt","type":"file"},{"path":"alpha_03.txt","type":"file"}],"status":"success"}`},
+		{Role: llm.RoleTool, ToolCallID: "call-2", Content: `{"path":"emails/alpha_01.txt","content":"Project Alpha kickoff"}`},
+	}
+
+	nudge := buildPostWorkspaceArtifactCoverageContinuationNudge(
+		"Review all files in the emails/ folder and write a summary to alpha_summary.md.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected coverage continuation nudge while files remain unread")
+	}
+	if want := `complete source coverage`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected coverage nudge to mention complete source coverage, got=%q", nudge)
+	}
+	if want := `alpha_02.txt`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected coverage nudge to list unread files, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationNudge_NumberedQuestionsPreserveExactPhrases(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "pdf"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"openclaw_report.pdf","selected_pages":[1,2,3],"text":"typed WebSocket API"}`},
+	}
+
+	nudge := buildPostWorkspaceArtifactContinuationNudge(
+		"I have a report in my workspace as openclaw_report.pdf. Write the answers one per line to answer.txt.\n1. What type of API does the gateway expose?\n2. What date was the registry collected?",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected continuation nudge for numbered local QA task")
+	}
+	if want := `Preserve important qualifiers`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected numbered-question precision hint, got=%q", nudge)
+	}
+	if want := `"typed"`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected precision hint to mention exact typed qualifier, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationNudge_SkipsAfterSuccessfulWrite(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "file_write"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"daily_briefing.md","size":2168,"success":true,"append":false}`},
+	}
+
+	nudge := buildPostWorkspaceArtifactContinuationNudge(
+		"Review all files in the research/ folder and write a daily summary to daily_briefing.md.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge != "" {
+		t.Fatalf("expected no continuation nudge after successful write, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactWriteRetryNudge_NumberedQuestionsPreserveExactPhrases(t *testing.T) {
+	nudge := buildPostWorkspaceArtifactWriteRetryNudge(
+		"I have a report in my workspace as openclaw_report.pdf. Write the answers one per line to answer.txt.\n1. What type of API does the gateway expose?\n2. What date was the registry collected?",
+	)
+	if nudge == "" {
+		t.Fatal("expected retry nudge for numbered local QA task")
+	}
+	if want := `exact phrase or value`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected retry nudge to reinforce exact evidence usage, got=%q", nudge)
+	}
+	if want := `narrower late-file subset`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected retry nudge to block late-file narrowing, got=%q", nudge)
+	}
+}
+
+func TestWorkspaceArtifactWriteRecoveryThreshold_NumberedQuestionsRecoverEarlier(t *testing.T) {
+	if got := workspaceArtifactWriteRecoveryThreshold("Write a summary to output.txt."); got != 3 {
+		t.Fatalf("threshold for ordinary artifact = %d, want 3", got)
+	}
+	if got := workspaceArtifactWriteRecoveryThreshold("1. What is the date?\n2. What is the API type?\nWrite the answers to answer.txt."); got != 2 {
+		t.Fatalf("threshold for numbered question artifact = %d, want 2", got)
+	}
+	if got := workspaceArtifactWriteRecoveryThreshold("Review all files in the emails/ folder and write a summary to alpha_summary.md."); got != 1 {
+		t.Fatalf("threshold for exhaustive collection artifact = %d, want 1", got)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationTools_WhenAllSourcesCovered_PrefersWriteFirst(t *testing.T) {
+	toolsIn := []llm.Tool{
+		{Name: "file_write"},
+		{Name: "edit"},
+		{Name: "write_begin"},
+		{Name: "write_chunk"},
+		{Name: "write_commit"},
+		{Name: "file_read"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "grep"},
+		{Name: "convert"},
+		{Name: "pdf"},
+	}
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "ls"},
+		{ID: "call-2", Name: "file_read"},
+		{ID: "call-3", Name: "file_read"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"base_path":"emails","entries":[{"path":"alpha_01.txt","type":"file"},{"path":"alpha_02.txt","type":"file"}],"status":"success"}`},
+		{Role: llm.RoleTool, ToolCallID: "call-2", Content: `{"path":"emails/alpha_01.txt","content":"Kickoff budget $340K"}`},
+		{Role: llm.RoleTool, ToolCallID: "call-3", Content: `{"path":"emails/alpha_02.txt","content":"Updated timeline and security findings"}`},
+	}
+
+	reduced := buildPostWorkspaceArtifactContinuationTools(
+		toolsIn,
+		"Review all files in the emails/ folder and write a summary to alpha_summary.md.",
+		toolCalls,
+		toolResults,
+	)
+	if !containsLLMToolName(reduced, "file_write") || !containsLLMToolName(reduced, "file_read") {
+		t.Fatalf("expected write-first recovery tools to keep file_write and file_read, got=%v", reduced)
+	}
+	for _, blocked := range []string{"ls", "find", "convert", "pdf"} {
+		if containsLLMToolName(reduced, blocked) {
+			t.Fatalf("expected %s to be dropped after source coverage completed, got=%v", blocked, reduced)
+		}
+	}
+}
+
+func TestBuildWorkspaceArtifactWriteRecoveryTools_KeepsFileReadForVerification(t *testing.T) {
+	toolsIn := []llm.Tool{
+		{Name: "file_write"},
+		{Name: "edit"},
+		{Name: "write_begin"},
+		{Name: "write_chunk"},
+		{Name: "write_commit"},
+		{Name: "file_read"},
+		{Name: "ls"},
+	}
+	reduced := buildWorkspaceArtifactWriteRecoveryTools(
+		toolsIn,
+		"Review all files in the emails/ folder and write a summary to alpha_summary.md.",
+	)
+	if !containsLLMToolName(reduced, "file_read") {
+		t.Fatalf("expected file_read to remain available for verification, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "ls") {
+		t.Fatalf("expected ls to be removed from write recovery tools, got=%v", reduced)
+	}
+}
+
 func TestBuildPostWriteCompletionNudge_SkipsCodingFlow(t *testing.T) {
 	toolCalls := []llm.ToolCall{
 		{ID: "call-1", Name: "write"},
@@ -42,6 +228,51 @@ func TestBuildPostWriteCompletionNudge_SkipsCodingFlow(t *testing.T) {
 	)
 	if nudge != "" {
 		t.Fatalf("expected no nudge for coding flow, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWriteCompletionNudge_ForDirectArtifactWriting(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "file_write"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"email_draft.txt","size":320,"success":true,"append":false}`},
+	}
+
+	nudge := buildPostWriteCompletionNudge(
+		"Write a professional email declining a meeting request due to schedule conflicts. Save it to email_draft.txt.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected write-completion nudge for direct artifact writing")
+	}
+	if want := `email_draft.txt`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to mention direct-writing target %q, got=%q", want, nudge)
+	}
+}
+
+func TestBuildPostWriteCompletionTools_RemovesWriteAfterSuccessfulArtifactWrite(t *testing.T) {
+	toolsIn := []llm.Tool{
+		{Name: "file_write"},
+		{Name: "file_read"},
+		{Name: "find"},
+		{Name: "ls"},
+		{Name: "web"},
+	}
+
+	reduced := buildPostWriteCompletionTools(
+		toolsIn,
+		"Write a professional email declining a meeting request due to schedule conflicts. Save it to email_draft.txt.",
+	)
+	if containsLLMToolName(reduced, "file_write") {
+		t.Fatalf("expected write tool to be removed after successful artifact write, got=%v", reduced)
+	}
+	if !containsLLMToolName(reduced, "file_read") {
+		t.Fatalf("expected file_read to remain for final verification, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "web") {
+		t.Fatalf("expected web tool to be removed after successful artifact write, got=%v", reduced)
 	}
 }
 
@@ -136,6 +367,7 @@ func TestBuildEmptyResearchResultRecoveryTools_PrefersSearchAndWriteWithoutBrows
 		{Name: "web_search"},
 		{Name: "web_fetch"},
 		{Name: "write"},
+		{Name: "file_delete"},
 		{Name: "read"},
 	}
 
@@ -150,6 +382,58 @@ func TestBuildEmptyResearchResultRecoveryTools_PrefersSearchAndWriteWithoutBrows
 		if tool.Name == "browser" {
 			t.Fatalf("expected browser to be removed from empty-research recovery toolset, got=%v", reduced)
 		}
+		if tool.Name == "file_delete" {
+			t.Fatalf("expected file_delete to be removed from empty-research recovery toolset, got=%v", reduced)
+		}
+	}
+}
+
+func TestBuildPostSuccessfulResearchWriteNudge_PushesTowardReport(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "research_run"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"status":"completed","evidence_count":8,"answer":"Datadog, New Relic, Dynatrace, Elastic, and Splunk are the top players."}`},
+	}
+
+	nudge := buildPostSuccessfulResearchWriteNudge(
+		"Create a competitive market report and save it to market_research.md with sources.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected successful-research write nudge")
+	}
+	if want := `market_research.md`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to mention target path %q, got=%q", want, nudge)
+	}
+	if want := `Do not start another broad search pass`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to block another broad search pass, got=%q", nudge)
+	}
+}
+
+func TestBuildSuccessfulResearchWriteTools_RemovesResearchRun(t *testing.T) {
+	tools := []llm.Tool{
+		{Name: "research_run"},
+		{Name: "research_status"},
+		{Name: "web_fetch"},
+		{Name: "web_search"},
+		{Name: "write"},
+		{Name: "file_delete"},
+		{Name: "read"},
+	}
+
+	reduced := buildSuccessfulResearchWriteTools(tools, "Write the report to market_research.md after research.")
+	if len(reduced) == 0 {
+		t.Fatal("expected reduced toolset")
+	}
+	if got := reduced[0].Name; got != "write" {
+		t.Fatalf("expected write to lead reduced toolset, got=%q", got)
+	}
+	for _, tool := range reduced {
+		if tool.Name == "research_run" || tool.Name == "research_status" || tool.Name == "web_search" || tool.Name == "file_delete" {
+			t.Fatalf("expected full research and broad search tools to be removed after successful research, got=%v", reduced)
+		}
 	}
 }
 
@@ -159,6 +443,7 @@ func TestBuildResearchFailureRecoveryTools_ReducesToWriteWorkflow(t *testing.T) 
 		{Name: "browser"},
 		{Name: "web_search"},
 		{Name: "write"},
+		{Name: "file_delete"},
 		{Name: "read"},
 		{Name: "find"},
 	}
@@ -171,9 +456,70 @@ func TestBuildResearchFailureRecoveryTools_ReducesToWriteWorkflow(t *testing.T) 
 		t.Fatalf("expected write to be first reduced tool, got=%q", got)
 	}
 	for _, tool := range reduced {
-		if tool.Name == "web_search" || tool.Name == "browser" || tool.Name == "research_run" {
+		if tool.Name == "web_search" || tool.Name == "browser" || tool.Name == "research_run" || tool.Name == "file_delete" {
 			t.Fatalf("expected search tools to be removed from recovery toolset, got=%v", reduced)
 		}
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationTools_DropsFileDeleteDuringWriteFocusedContinuation(t *testing.T) {
+	reduced := buildPostWorkspaceArtifactContinuationTools([]llm.Tool{
+		{Name: "file_write"},
+		{Name: "file_read"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "grep"},
+		{Name: "pdf"},
+	}, "Review openclaw_report.pdf and write the answers to answer.txt.", []llm.ToolCall{
+		{ID: "call-1", Name: "pdf"},
+	}, []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"openclaw_report.pdf","selected_pages":[1],"text":"typed WebSocket API"}`},
+	})
+
+	if !containsLLMToolName(reduced, "file_write") {
+		t.Fatalf("expected continuation tools to preserve file_write, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "file_delete") {
+		t.Fatalf("expected continuation tools to drop file_delete once evidence is sufficient, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "pdf") || containsLLMToolName(reduced, "file_read") {
+		t.Fatalf("expected structured local artifact continuation to converge directly to write tools, got=%v", reduced)
+	}
+}
+
+func TestBuildWorkspaceArtifactWriteRecoveryTools_DropsFileDelete(t *testing.T) {
+	reduced := buildWorkspaceArtifactWriteRecoveryTools([]llm.Tool{
+		{Name: "file_write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+		{Name: "write_begin"},
+		{Name: "write_chunk"},
+		{Name: "write_commit"},
+	}, "Write the answers to answer.txt.")
+
+	if !containsLLMToolName(reduced, "file_write") {
+		t.Fatalf("expected recovery tools to preserve file_write, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "file_delete") {
+		t.Fatalf("expected recovery tools to drop file_delete, got=%v", reduced)
+	}
+}
+
+func TestHasSavedWorkspaceArtifactOnDisk_UsesScopedWorkspacePath(t *testing.T) {
+	workspaceDir := t.TempDir()
+	answerPath := filepath.Join(workspaceDir, "answer.txt")
+	if err := os.WriteFile(answerPath, []byte("ok\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	ctx := tools.WithFSRootOverride(context.Background(), []string{workspaceDir}, map[string]string{"workspace": workspaceDir})
+	if !hasSavedWorkspaceArtifactOnDisk(ctx, "Write the answers to answer.txt.") {
+		t.Fatal("expected scoped workspace artifact to be detected on disk")
+	}
+	if hasSavedWorkspaceArtifactOnDisk(ctx, "Write the answers to missing.txt.") {
+		t.Fatal("expected missing scoped artifact to stay false")
 	}
 }
 
@@ -222,6 +568,86 @@ func TestShouldRetryPendingResearchWrite_SkipsAfterRetryBudget(t *testing.T) {
 		maxResearchFailureWriteRecoveryRetries,
 	) {
 		t.Fatal("expected retry budget to stop forced continuation")
+	}
+}
+
+func TestBuildResearchFailureRetryMessages_CompactsToFreshWritePrompt(t *testing.T) {
+	messages := buildResearchFailureRetryMessages(
+		"Create a competitive market report with sources and save it to market_research.md.",
+	)
+	if len(messages) != 2 {
+		t.Fatalf("expected compact retry context with 2 messages, got=%d", len(messages))
+	}
+	if messages[0].Role != llm.RoleUser || !containsSubstring(messages[0].Content, "market_research.md") {
+		t.Fatalf("expected original user task to be preserved, got=%+v", messages[0])
+	}
+	if messages[1].Role != llm.RoleUser || !containsSubstring(messages[1].Content, "write the requested report") {
+		t.Fatalf("expected write-focused retry nudge, got=%+v", messages[1])
+	}
+}
+
+func TestSelectResearchFailureWriteRecoveryModel_PrefersFastModel(t *testing.T) {
+	got := selectResearchFailureWriteRecoveryModel(
+		"claude-haiku-4-5-20251001",
+		[]string{"claude-haiku-4-5-20251001", "gpt-4o-mini", "qwen-turbo"},
+	)
+	if got != "qwen-turbo" {
+		t.Fatalf("expected qwen-turbo fast fallback, got=%q", got)
+	}
+}
+
+func TestSelectResearchFailureWriteRecoveryModel_FallsBackToSiblingFamily(t *testing.T) {
+	got := selectResearchFailureWriteRecoveryModel(
+		"claude-haiku-4-5-20251001",
+		[]string{"claude-haiku-4-5-20251001", "claude-3-5-haiku-20241022"},
+	)
+	if got != "claude-3-5-haiku-20241022" {
+		t.Fatalf("expected sibling-family fallback model, got=%q", got)
+	}
+}
+
+func TestBuildToolLoopArtifactRecoveryNudge_PushesSearchLoopTowardWrite(t *testing.T) {
+	nudge := buildToolLoopArtifactRecoveryNudge(
+		"Create a competitive market report and save it to market_research.md with sources.",
+		tools.ToolLoopReasonPollingNoProgress,
+		`web_fetch:{"url":"https://example.com/a"}|status:completed|url:https://example.com/a`,
+	)
+	if nudge == "" {
+		t.Fatal("expected artifact recovery nudge")
+	}
+	if want := `market_research.md`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected artifact nudge to mention target path %q, got=%q", want, nudge)
+	}
+	if want := `Do not continue looping through more search or browser calls`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected artifact nudge to stop loop, got=%q", nudge)
+	}
+}
+
+func TestBuildToolLoopArtifactRecoveryTools_ReducesToWriteWorkflow(t *testing.T) {
+	toolset := []llm.Tool{
+		{Name: "web_fetch"},
+		{Name: "web_search"},
+		{Name: "browser"},
+		{Name: "write"},
+		{Name: "read"},
+		{Name: "grep"},
+	}
+
+	reduced := buildToolLoopArtifactRecoveryTools(
+		toolset,
+		"Create a competitive market report and save it to market_research.md with sources.",
+		`web_search:{"query":"apm vendors"} -> web_fetch:{"url":"https://example.com"}`,
+	)
+	if len(reduced) == 0 {
+		t.Fatal("expected reduced toolset")
+	}
+	if got := reduced[0].Name; got != "write" {
+		t.Fatalf("expected write-first recovery toolset, got=%q", got)
+	}
+	for _, tool := range reduced {
+		if tool.Name == "web_fetch" || tool.Name == "web_search" || tool.Name == "browser" {
+			t.Fatalf("expected search/browser tools to be removed, got=%v", reduced)
+		}
 	}
 }
 

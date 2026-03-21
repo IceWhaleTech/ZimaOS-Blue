@@ -99,7 +99,7 @@ func (e *GroundedExecutor) Execute(ctx context.Context, task *Task, stepIndex, p
 		StepIndex:    stepIndex,
 		PlannerRound: plannerRound,
 		Tool:         normalizeGroundToolName(nextTool.Tool),
-		Args:         cloneJSONMap(nextTool.Args),
+		Args:         normalizeGroundToolArgs(normalizeGroundToolName(nextTool.Tool), cloneJSONMap(nextTool.Args)),
 		CreatedAt:    time.Now().UTC(),
 	}
 	startedAt := time.Now().UTC()
@@ -184,10 +184,10 @@ func (e *GroundedExecutor) Execute(ctx context.Context, task *Task, stepIndex, p
 func (e *GroundedExecutor) resolveTool(name string) (string, error) {
 	normalized := normalizeGroundToolName(name)
 	switch normalized {
-	case "read_file":
-		return "read", nil
-	case "write_file":
-		return "write", nil
+	case "file_read":
+		return "file_read", nil
+	case "file_write":
+		return "file_write", nil
 	case "ask":
 		return "ask", nil
 	default:
@@ -202,6 +202,35 @@ func (e *GroundedExecutor) resolveTool(name string) (string, error) {
 		}
 		return name, nil
 	}
+}
+
+func normalizeGroundToolArgs(tool string, args map[string]any) map[string]any {
+	if len(args) == 0 {
+		return args
+	}
+	normalized := cloneJSONMap(args)
+	switch normalizeGroundToolName(tool) {
+	case "file_read", "file_write":
+		if strings.TrimSpace(asString(normalized["path"])) == "" {
+			for _, key := range []string{"file_path", "filePath", "filename"} {
+				if path := strings.TrimSpace(asString(normalized[key])); path != "" {
+					normalized["path"] = path
+					break
+				}
+			}
+		}
+	}
+	if normalizeGroundToolName(tool) == "file_write" {
+		if _, ok := normalized["content"]; !ok {
+			for _, key := range []string{"text", "body", "value"} {
+				if value, ok := normalized[key]; ok {
+					normalized["content"] = value
+					break
+				}
+			}
+		}
+	}
+	return normalized
 }
 
 func (e *GroundedExecutor) makeResult(call GroundedToolCall, exitCode int, ok bool, normalized any, stderr string, startedAt, finishedAt time.Time) GroundedToolResult {

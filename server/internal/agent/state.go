@@ -391,9 +391,9 @@ func normalizeGroundPath(path string) string {
 func normalizeGroundToolName(name string) string {
 	switch strings.TrimSpace(strings.ToLower(name)) {
 	case "read", "read_file", "file_read":
-		return "read_file"
+		return "file_read"
 	case "write", "write_file", "file_write":
-		return "write_file"
+		return "file_write"
 	default:
 		return strings.TrimSpace(strings.ToLower(name))
 	}
@@ -413,7 +413,12 @@ func pathFromResult(result any, args map[string]any) string {
 	if path := asString(extractField(result, "path")); path != "" {
 		return path
 	}
-	return asString(args["path"])
+	for _, key := range []string{"path", "file_path", "filePath", "filename"} {
+		if path := asString(args[key]); path != "" {
+			return path
+		}
+	}
+	return ""
 }
 
 func extractField(value any, key string) any {

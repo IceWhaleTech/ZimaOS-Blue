@@ -105,10 +105,10 @@ func scoreEntityEvidence(entityTokens []string, ev Evidence, negKeywords []strin
 			break
 		}
 	}
-	if strongHit && strings.Contains(text, "合伙人") {
+	if strongHit && entityPartnerCueMatcher.Contains(text) {
 		score += 0.08
 	}
-	if strongHit && (strings.Contains(text, "ventures") || strings.Contains(text, "创投") || strings.Contains(text, "vc")) {
+	if strongHit && entityVentureCueMatcher.Contains(text) {
 		score += 0.08
 	}
 	for _, kw := range negKeywords {
@@ -177,16 +177,10 @@ func classifyClaimPolarity(text string) claimPolarity {
 	if t == "" {
 		return claimPolarityNeutral
 	}
-	neg := []string{
-		"not", "no ", "deny", "denied", "dispute", "conflict", "uncertain", "unconfirmed", "rumor", "rumour", "false",
-		"并非", "不是", "否认", "争议", "矛盾", "未证实", "传闻", "不实",
+	if claimNegativeCueMatcher.Contains(t) || claimNegativeNoRegex.MatchString(t) {
+		return claimPolarityNegative
 	}
-	for _, marker := range neg {
-		if strings.Contains(t, marker) {
-			return claimPolarityNegative
-		}
-	}
-	if strings.Contains(t, "confirmed") || strings.Contains(t, "official") || strings.Contains(t, "发布") || strings.Contains(t, "宣布") {
+	if claimPositiveCueMatcher.Contains(t) {
 		return claimPolarityPositive
 	}
 	return claimPolarityNeutral

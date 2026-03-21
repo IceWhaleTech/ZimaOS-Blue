@@ -165,6 +165,20 @@ describe('Deep research cards', () => {
             distinct_domain_count: 2,
             open_question_count: 1,
           },
+          calibration: {
+            coverage: 0.82,
+            groundedness: 0.91,
+            freshness: 0.68,
+            conflict_risk: 'medium',
+            confidence: 0.79,
+            recommended_action: 'caution',
+            takeaway_candidates: [
+              {
+                lesson: 'Keep the final conclusion explicitly cautious when coverage stays below 80%.',
+                evidence: 'Citation coverage stayed near the caution threshold.',
+              },
+            ],
+          },
           object_map: [
             {
               id: 'overview',
@@ -195,6 +209,9 @@ describe('Deep research cards', () => {
 
     expect(wrapper.text()).toContain('Workflow phases')
     expect(wrapper.text()).toContain('Coverage Summary')
+    expect(wrapper.text()).toContain('Calibration')
+    expect(wrapper.text()).toContain('Use caution')
+    expect(wrapper.text()).toContain('Takeaway candidates 1')
     expect(wrapper.text()).toContain('Object Map')
     expect(wrapper.text()).toContain('Overview')
     expect(wrapper.text()).toContain('Official docs')

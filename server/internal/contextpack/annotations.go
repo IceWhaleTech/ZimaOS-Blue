@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -39,18 +40,27 @@ func NewAnnotationStore(path string) (*AnnotationStore, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("annotation db path is empty")
 	}
-	db, err := sql.Open("sqlite3", path)
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(path, path, func(db *sql.DB) error {
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+		if _, err := db.Exec(`PRAGMA journal_mode=WAL`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`PRAGMA synchronous=FULL`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`PRAGMA wal_autocheckpoint=1000`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(annotationSchema); err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	if _, err := db.Exec(`PRAGMA journal_mode=WAL`); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	if _, err := db.Exec(annotationSchema); err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	return &AnnotationStore{db: db, ownsDB: true}, nil

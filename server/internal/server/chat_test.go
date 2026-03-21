@@ -2516,12 +2516,19 @@ func TestFitPreparedMessagesToBudgetStage2Summary(t *testing.T) {
 		if current.ContextTrim.Stage != 2 {
 			t.Fatalf("context trim stage = %d, want 2", current.ContextTrim.Stage)
 		}
+		foundAnchor := false
 		foundSummary := false
 		for _, msg := range current.Messages {
+			if msg.Role == llm.RoleSystem && strings.Contains(msg.Content, "Current-turn anchor") &&
+				strings.Contains(msg.Content, "Answer the latest question briefly") {
+				foundAnchor = true
+			}
 			if msg.Role == llm.RoleSystem && strings.Contains(msg.Content, "Cached summary") {
 				foundSummary = true
-				break
 			}
+		}
+		if !foundAnchor {
+			t.Fatalf("stage2 messages did not include latest-intent anchor: %#v", current.Messages)
 		}
 		if !foundSummary {
 			t.Fatalf("stage2 messages did not include cached summary: %#v", current.Messages)
@@ -2529,6 +2536,53 @@ func TestFitPreparedMessagesToBudgetStage2Summary(t *testing.T) {
 		return
 	}
 	t.Fatal("expected at least one context window to fit at stage 2")
+}
+
+func TestPreparedBudgetStagesWrapHistoricalSummaryAsBackgroundOnly(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.summaryCache.Put("conv-stage-anchor", &ConversationSummary{
+		Text:         "Goal\n- Continue the old implementation\n\nAccomplished\n- Pending: finish the migration",
+		MessageCount: 8,
+	})
+
+	messages := []llm.Message{{Role: llm.RoleSystem, Content: "system prompt"}}
+	for i := 0; i < 4; i++ {
+		messages = append(messages,
+			llm.Message{Role: llm.RoleUser, Content: strings.Repeat(fmt.Sprintf("user-%d background ", i), 40)},
+			llm.Message{Role: llm.RoleAssistant, Content: strings.Repeat(fmt.Sprintf("assistant-%d details ", i), 40)},
+		)
+	}
+	messages = append(messages, llm.Message{Role: llm.RoleUser, Content: "先解释原因，不要继续旧任务"})
+
+	stage2Messages, stageSummary := handler.buildPreparedBudgetStage2(context.Background(), "conv-stage-anchor", "stage-anchor-model", messages)
+	stage3Messages, _ := handler.buildPreparedBudgetStage3(context.Background(), "conv-stage-anchor", "stage-anchor-model", messages, stageSummary)
+
+	for _, stageMsgs := range [][]llm.Message{stage2Messages, stage3Messages} {
+		foundAnchor := false
+		foundWrappedSummary := false
+		for _, msg := range stageMsgs {
+			if msg.Role == llm.RoleSystem && strings.Contains(msg.Content, "Current-turn anchor") &&
+				strings.Contains(msg.Content, "先解释原因，不要继续旧任务") {
+				foundAnchor = true
+			}
+			if msg.Role == llm.RoleSystem && strings.Contains(msg.Content, historicalContextBackgroundPrefix) &&
+				strings.Contains(msg.Content, historicalCarryOverReminder) {
+				foundWrappedSummary = true
+			}
+		}
+		if !foundAnchor {
+			t.Fatalf("expected latest-intent anchor in prepared stage messages: %#v", stageMsgs)
+		}
+		if !foundWrappedSummary {
+			t.Fatalf("expected wrapped historical summary in prepared stage messages: %#v", stageMsgs)
+		}
+	}
+
+	if cached, ok := handler.summaryCache.Get("conv-stage-anchor"); !ok {
+		t.Fatal("expected cached summary to remain present")
+	} else if summary := cached.(*ConversationSummary); strings.Contains(summary.Text, historicalContextBackgroundPrefix) || strings.Contains(summary.Text, "Current-turn anchor") {
+		t.Fatalf("cached summary should remain raw, got %q", summary.Text)
+	}
 }
 
 func TestFitPreparedMessagesToBudgetKeepsOriginalBelowPressureThreshold(t *testing.T) {
@@ -5398,6 +5452,60 @@ func TestChatHandlerSendMessage_ToolDispatchInvalidChoiceFallsBackToDefaultTools
 	}
 }
 
+func TestChatHandlerSendMessage_ToolDispatchBypassesWorkspaceArtifactWorkflow(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Tool Dispatch Workspace Bypass")
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "read", Description: "read"}})
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "write", Description: "write"}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := false
+	toolDispatchEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{respText: "write"}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"I have a report in openclaw_report.pdf in my workspace. Extract the answers and write them one per line to answer.txt.","provider":"capture","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0 for workspace artifact workflow", sm.calls)
+	}
+
+	lastReq := capture.LastRequest()
+	if got := len(lastReq.Tools); got != 2 {
+		t.Fatalf("tool count = %d, want 2", got)
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.ToolDispatchRouteAttempts != 0 || stats.ToolDispatchRouteSuccess != 0 {
+		t.Fatalf("unexpected tool dispatch stats: %+v", stats)
+	}
+}
+
 func TestChatHandlerStreamMessage_ToolDispatchRoutesToSmallModel(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -5451,6 +5559,151 @@ func TestChatHandlerStreamMessage_ToolDispatchRoutesToSmallModel(t *testing.T) {
 	stats := handler.smallModelStats.Snapshot()
 	if stats.ToolDispatchRouteAttempts != 1 || stats.ToolDispatchRouteSuccess != 1 {
 		t.Fatalf("unexpected tool dispatch stats: %+v", stats)
+	}
+}
+
+func TestChatHandlerStreamMessage_ToolDispatchBypassesImageWorkflow(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Tool Dispatch Image Bypass")
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "image_generation", Description: "image generation"}})
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "write", Description: "write"}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := false
+	toolDispatchEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{respText: "write"}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as robot_cafe.png in the current directory.","provider":"capture","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0 for image workflow", sm.calls)
+	}
+
+	lastReq := capture.LastRequest()
+	if got := len(lastReq.Tools); got != 2 {
+		t.Fatalf("tool count = %d, want 2", got)
+	}
+	if got := lastReq.Tools[0].Name; got != "image_generation" {
+		t.Fatalf("selected tool = %q, want image_generation", got)
+	}
+	if got := lastReq.Tools[1].Name; got != "write" {
+		t.Fatalf("selected tool = %q, want write", got)
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.ToolDispatchRouteAttempts != 0 || stats.ToolDispatchRouteSuccess != 0 {
+		t.Fatalf("unexpected tool dispatch stats: %+v", stats)
+	}
+}
+
+func TestChatHandlerSendMessage_ImageArtifactSuccessSkipsChecklistBootstrap(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Image Artifact Completion")
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-image",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "image-round-1",
+				Model: "claude-opus-4-6",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_image_1",
+						Name:      "image_generation",
+						Arguments: `{"prompt":"A friendly robot sitting in a cozy coffee shop, reading a book.","path":"robot_cafe.png"}`,
+					}},
+				},
+				Usage: llm.Usage{PromptTokens: 48, CompletionTokens: 12, TotalTokens: 60},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def: tools.ToolDefinition{
+			Name:        "image_generation",
+			Description: "mock image generation",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"additionalProperties": true,
+			},
+		},
+		result: map[string]interface{}{
+			"status":  "succeeded",
+			"message": "saved generated image to robot_cafe.png",
+			"request": map[string]interface{}{"path": "robot_cafe.png"},
+			"outputs": []map[string]interface{}{
+				{"url": "/api/media/generated/images/robot_cafe.png"},
+			},
+		},
+	})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settings.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settings)
+
+	e := echo.New()
+	reqBody := `{"message":"Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as \"robot_cafe.png\" in the current directory.","provider":"scripted-image","model":"claude-opus-4-6"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 1 {
+		t.Fatalf("expected exactly 1 LLM round after deterministic image completion, got %d", scripted.CallCount())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, `Generated the requested image and saved it to "robot_cafe.png".`) {
+		t.Fatalf("expected deterministic completion message, got %q", content)
+	}
+	if strings.Contains(content, "bootstrap an agent mode checklist") || strings.Contains(content, "haven't provided a specific task yet") {
+		t.Fatalf("expected checklist bootstrap path to be skipped, got %q", content)
 	}
 }
 

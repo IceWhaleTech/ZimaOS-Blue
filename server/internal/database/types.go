@@ -9,12 +9,12 @@ import (
 
 // QueryStats holds statistics for a query execution.
 type QueryStats struct {
-	Query       string        `json:"query"`
-	Duration    time.Duration `json:"duration"`
-	RowsScanned int64         `json:"rows_scanned"`
-	RowsReturned int64        `json:"rows_returned"`
-	IndexUsed   string        `json:"index_used,omitempty"`
-	FullScan    bool          `json:"full_scan"`
+	Query        string        `json:"query"`
+	Duration     time.Duration `json:"duration"`
+	RowsScanned  int64         `json:"rows_scanned"`
+	RowsReturned int64         `json:"rows_returned"`
+	IndexUsed    string        `json:"index_used,omitempty"`
+	FullScan     bool          `json:"full_scan"`
 }
 
 // OptimizerConfig holds configuration for the query optimizer.
@@ -88,7 +88,7 @@ func DefaultWALConfig() WALConfig {
 		CacheSize:           -10000, // 10MB
 		PageSize:            4096,
 		BusyTimeout:         5000,
-		SynchronousMode:     "NORMAL",
+		SynchronousMode:     "FULL",
 	}
 }
 
@@ -119,13 +119,13 @@ func DefaultPoolConfig() PoolConfig {
 
 // QueryPlan represents the result of EXPLAIN QUERY PLAN.
 type QueryPlan struct {
-	ID          int    `json:"id"`
-	Parent      int    `json:"parent"`
-	NotUsed     int    `json:"not_used"`
-	Detail      string `json:"detail"`
-	SelectID    int    `json:"select_id,omitempty"`
-	Order       int    `json:"order,omitempty"`
-	From        int    `json:"from,omitempty"`
+	ID       int    `json:"id"`
+	Parent   int    `json:"parent"`
+	NotUsed  int    `json:"not_used"`
+	Detail   string `json:"detail"`
+	SelectID int    `json:"select_id,omitempty"`
+	Order    int    `json:"order,omitempty"`
+	From     int    `json:"from,omitempty"`
 }
 
 // IndexInfo represents information about a database index.

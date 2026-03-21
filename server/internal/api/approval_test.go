@@ -222,3 +222,57 @@ func TestApprovalAuthorizeToolCallObserverLifecycle(t *testing.T) {
 		t.Fatalf("decision = %q, want approve", observer.resolved[0].Decision)
 	}
 }
+
+func TestApprovalAuthorizeToolCall_DeniesRecursiveFileDelete(t *testing.T) {
+	h := NewApprovalHandler(nil)
+
+	decision, err := h.AuthorizeToolCall(context.Background(), tools.ToolApprovalRequest{
+		ToolName: "file_delete",
+		Arguments: map[string]interface{}{
+			"path":      "/workspace",
+			"recursive": true,
+		},
+		RouteKind: tools.ToolRouteKindAgent,
+		SessionID: "conv-file-delete",
+		UserID:    "user-1",
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeToolCall() error = %v", err)
+	}
+	if decision.Allowed {
+		t.Fatal("expected recursive file_delete to be denied")
+	}
+	if !decision.Approval.Required {
+		t.Fatal("expected denial to be surfaced as a required approval decision")
+	}
+	if decision.Approval.RiskLevel != "critical" {
+		t.Fatalf("risk = %q, want critical", decision.Approval.RiskLevel)
+	}
+	if len(h.pending) != 0 {
+		t.Fatalf("expected high-risk file_delete denial to avoid pending approvals, got=%d", len(h.pending))
+	}
+	if !strings.Contains(decision.Approval.Reason, "blocked by approval policy") {
+		t.Fatalf("expected denial reason, got=%q", decision.Approval.Reason)
+	}
+}
+
+func TestApprovalAuthorizeToolCall_AutoAllowsSimpleFileDelete(t *testing.T) {
+	h := NewApprovalHandler(nil)
+
+	decision, err := h.AuthorizeToolCall(context.Background(), tools.ToolApprovalRequest{
+		ToolName: "file_delete",
+		Arguments: map[string]interface{}{
+			"path": "scratch.txt",
+		},
+		RouteKind: tools.ToolRouteKindAgent,
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeToolCall() error = %v", err)
+	}
+	if !decision.Allowed {
+		t.Fatal("expected simple file delete to remain auto-allowed")
+	}
+	if decision.Approval.Required {
+		t.Fatal("expected no approval requirement for simple file delete")
+	}
+}

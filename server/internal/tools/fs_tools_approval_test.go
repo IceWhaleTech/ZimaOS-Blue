@@ -24,6 +24,12 @@ func approvalAwareWriteTool(allowedPaths []string, approvals *ApprovalManager, d
 	return tool
 }
 
+func approvalAwareDeleteTool(allowedPaths []string, approvals *ApprovalManager, dirStore *DirAllowlistStore) *FileDeleteTool {
+	tool := NewFileDeleteTool(allowedPaths)
+	tool.scope = tool.scope.withApprovalFlow(approvals, dirStore)
+	return tool
+}
+
 func approvalAwareLsTool(allowedPaths []string, approvals *ApprovalManager, dirStore *DirAllowlistStore) *LsTool {
 	tool := NewLsTool(allowedPaths)
 	tool.Scope = tool.Scope.withApprovalFlow(approvals, dirStore)
@@ -78,24 +84,24 @@ func TestFSToolsExternalAbsolutePathsRequestApproval(t *testing.T) {
 		wantApprovedPath string
 	}{
 		{
-			name: "read",
+			name: "file_read",
 			run: func() (interface{}, error) {
 				return approvalAwareReadTool([]string{workspaceRoot}, approvals, dirStore).Execute(context.Background(), map[string]interface{}{
 					"path": externalFile,
 				})
 			},
-			wantCommand:      "read " + externalFile,
+			wantCommand:      "file_read " + externalFile,
 			wantApprovedPath: externalRoot,
 		},
 		{
-			name: "write",
+			name: "file_write",
 			run: func() (interface{}, error) {
 				return approvalAwareWriteTool([]string{workspaceRoot}, approvals, dirStore).Execute(context.Background(), map[string]interface{}{
 					"path":    filepath.Join(externalRoot, "written.txt"),
 					"content": "hello",
 				})
 			},
-			wantCommand:      "write " + filepath.Join(externalRoot, "written.txt"),
+			wantCommand:      "file_write " + filepath.Join(externalRoot, "written.txt"),
 			wantApprovedPath: externalRoot,
 		},
 		{
@@ -106,6 +112,18 @@ func TestFSToolsExternalAbsolutePathsRequestApproval(t *testing.T) {
 				})
 			},
 			wantCommand:      "ls " + externalRoot,
+			wantApprovedPath: externalRoot,
+		},
+		{
+			name: "file_delete",
+			run: func() (interface{}, error) {
+				target := filepath.Join(externalRoot, "delete-me.txt")
+				writeFile(t, target, "bye")
+				return approvalAwareDeleteTool([]string{workspaceRoot}, approvals, dirStore).Execute(context.Background(), map[string]interface{}{
+					"path": target,
+				})
+			},
+			wantCommand:      "file_delete " + filepath.Join(externalRoot, "delete-me.txt"),
 			wantApprovedPath: externalRoot,
 		},
 	}
@@ -128,7 +146,7 @@ func TestFSToolsExternalAbsolutePathsRequestApproval(t *testing.T) {
 			if req.Command != tt.wantCommand {
 				t.Fatalf("approval command = %q, want %q", req.Command, tt.wantCommand)
 			}
-			approvals.ResolveApproval(req.ID, ApprovalAllowOnce)
+			approvals.ResolveApprovalWithBinding(req.ID, ApprovalAllowOnce, req.BindingHash)
 
 			select {
 			case err := <-done:
@@ -167,7 +185,7 @@ func TestFSToolAllowOnceOnlyAppliesToCurrentCall(t *testing.T) {
 		firstDone <- err
 	}()
 	firstReq := waitApprovalRequest(t, ch)
-	approvals.ResolveApproval(firstReq.ID, ApprovalAllowOnce)
+	approvals.ResolveApprovalWithBinding(firstReq.ID, ApprovalAllowOnce, firstReq.BindingHash)
 	if err := <-firstDone; err != nil {
 		t.Fatalf("first execution failed: %v", err)
 	}
@@ -181,7 +199,7 @@ func TestFSToolAllowOnceOnlyAppliesToCurrentCall(t *testing.T) {
 	if secondReq.ID == firstReq.ID {
 		t.Fatalf("expected a new approval request ID, got reused %q", secondReq.ID)
 	}
-	approvals.ResolveApproval(secondReq.ID, ApprovalAllowOnce)
+	approvals.ResolveApprovalWithBinding(secondReq.ID, ApprovalAllowOnce, secondReq.BindingHash)
 	if err := <-secondDone; err != nil {
 		t.Fatalf("second execution failed: %v", err)
 	}
@@ -214,7 +232,7 @@ func TestFSToolAllowAlwaysPersistsDirectory(t *testing.T) {
 		done <- err
 	}()
 	req := waitApprovalRequest(t, ch)
-	approvals.ResolveApproval(req.ID, ApprovalAllowAlways)
+	approvals.ResolveApprovalWithBinding(req.ID, ApprovalAllowAlways, req.BindingHash)
 	if err := <-done; err != nil {
 		t.Fatalf("first execution failed: %v", err)
 	}
@@ -268,7 +286,7 @@ func TestFSToolApprovalDenyAndTimeoutReturnHelpfulErrors(t *testing.T) {
 			done <- err
 		}()
 		req := waitApprovalRequest(t, ch)
-		approvals.ResolveApproval(req.ID, ApprovalDeny)
+		approvals.ResolveApprovalWithBinding(req.ID, ApprovalDeny, req.BindingHash)
 
 		err = <-done
 		if err == nil || !strings.Contains(err.Error(), "path access denied") {

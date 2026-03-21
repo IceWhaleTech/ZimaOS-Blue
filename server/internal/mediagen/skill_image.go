@@ -148,7 +148,7 @@ func (t *ImageGenerateSkill) Execute(ctx context.Context, args map[string]interf
 
 	// Wait for completion — image generation typically takes 15-60s.
 	// Use a generous timeout to avoid premature cancellation.
-	waitCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
 	task, err = t.manager.WaitForTask(waitCtx, task.ID)

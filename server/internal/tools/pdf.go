@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	defaultPDFDownloadTimeout = 20 * time.Second
+	defaultPDFDownloadTimeout = 5 * time.Minute
 	maxPDFInputs              = 10
 	defaultPDFMaxBytesMB      = 10
 	hardPDFMaxBytesMB         = 100
@@ -39,6 +39,7 @@ type resolvedPDFInput struct {
 type PDFTool struct {
 	service    PDFService
 	httpClient *http.Client
+	scope      *fsToolScope
 }
 
 // NewPDFTool creates a new PDF tool.
@@ -46,6 +47,7 @@ func NewPDFTool(service PDFService) *PDFTool {
 	return &PDFTool{
 		service:    service,
 		httpClient: newGuardedMediaHTTPClient(defaultPDFDownloadTimeout),
+		scope:      newFSToolScope(nil),
 	}
 }
 
@@ -78,7 +80,7 @@ func (t *PDFTool) Definition() ToolDefinition {
 				"page":           map[string]interface{}{"type": "integer", "description": "Single 1-based page number to extract."},
 				"pages":          map[string]interface{}{"description": "Page selection as '1,3-5', a single number, or an array of page numbers."},
 				"max_pages":      map[string]interface{}{"type": "integer", "description": "Maximum pages to extract. Defaults to 20."},
-				"max_chars":      map[string]interface{}{"type": "integer", "description": "Maximum characters to return. Defaults to 20000."},
+				"max_chars":      map[string]interface{}{"type": "integer", "description": "Maximum characters to return. Defaults to 50000."},
 				"max_bytes_mb":   map[string]interface{}{"type": "integer", "description": "Maximum size per PDF in MB. Defaults to 10."},
 				"include_pages":  map[string]interface{}{"type": "boolean", "description": "Include per-page extracted text alongside the merged text."},
 				"ocr":            map[string]interface{}{"type": "boolean", "description": "Enable OCR fallback for scanned or image-only PDF pages. Defaults to true."},
@@ -263,10 +265,14 @@ func (t *PDFTool) resolvePDFInput(ctx context.Context, ref string, maxBytes int6
 			if err != nil {
 				return resolvedPDFInput{}, err
 			}
-			if err := validateLocalPDFSize(localPath, maxBytes); err != nil {
+			resolvedPath, err := t.resolveLocalPDFPath(ctx, localPath)
+			if err != nil {
 				return resolvedPDFInput{}, err
 			}
-			return resolvedPDFInput{Original: trimmed, Path: localPath}, nil
+			if err := validateLocalPDFSize(resolvedPath, maxBytes); err != nil {
+				return resolvedPDFInput{}, err
+			}
+			return resolvedPDFInput{Original: trimmed, Path: resolvedPath}, nil
 		case "http", "https":
 			localPath, err := t.downloadRemotePDF(ctx, trimmed, maxBytes)
 			if err != nil {
@@ -277,10 +283,35 @@ func (t *PDFTool) resolvePDFInput(ctx context.Context, ref string, maxBytes int6
 			return resolvedPDFInput{}, fmt.Errorf("unsupported pdf reference scheme %q", parsed.Scheme)
 		}
 	}
-	if err := validateLocalPDFSize(trimmed, maxBytes); err != nil {
+	resolvedPath, err := t.resolveLocalPDFPath(ctx, trimmed)
+	if err != nil {
 		return resolvedPDFInput{}, err
 	}
-	return resolvedPDFInput{Original: trimmed, Path: trimmed}, nil
+	if err := validateLocalPDFSize(resolvedPath, maxBytes); err != nil {
+		return resolvedPDFInput{}, err
+	}
+	return resolvedPDFInput{Original: trimmed, Path: resolvedPath}, nil
+}
+
+func (t *PDFTool) resolveLocalPDFPath(ctx context.Context, raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", errors.New("pdf reference cannot be empty")
+	}
+	if t != nil && t.scope != nil {
+		absPath, _, _, err := t.scope.resolvePathWithContext(ctx, "pdf", trimmed, false)
+		if err == nil {
+			return absPath, nil
+		}
+		if filepath.IsAbs(trimmed) {
+			return filepath.Clean(trimmed), nil
+		}
+	}
+	absPath, err := filepath.Abs(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("resolve pdf path: %w", err)
+	}
+	return absPath, nil
 }
 
 func (t *PDFTool) downloadRemotePDF(ctx context.Context, targetURL string, maxBytes int64) (string, error) {

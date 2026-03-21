@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 )
 
 // CommandHandler is a function that handles bot commands.
@@ -141,10 +142,10 @@ func (c *Channel) Start(ctx context.Context) error {
 			c.setError(fmt.Sprintf("invalid proxy URL: %v", err))
 			return fmt.Errorf("invalid proxy URL: %w", err)
 		}
+		transport := network.NewPooledTransport(false)
+		transport.Proxy = http.ProxyURL(proxyURL)
 		httpClient := &http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyURL(proxyURL),
-			},
+			Transport: transport,
 		}
 		bot, err = tgbotapi.NewBotAPIWithClient(c.config.BotToken, tgbotapi.APIEndpoint, httpClient)
 	} else {

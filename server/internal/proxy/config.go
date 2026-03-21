@@ -157,7 +157,7 @@ func DefaultProxyConfig() *ProxyConfig {
 			KeepAliveInterval:     30 * time.Second,
 			DialTimeout:           10 * time.Second,
 			TLSHandshakeTimeout:   5 * time.Second,
-			ResponseHeaderTimeout: 120 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Minute,
 			ForceHTTP2:            true,
 		},
 		HealthCheck: HealthCheckConfig{

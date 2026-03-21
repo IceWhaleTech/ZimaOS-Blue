@@ -10,9 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 const defaultGeminiBaseURL = "https://generativelanguage.googleapis.com"
@@ -34,7 +35,7 @@ func NewGeminiProvider(apiKey, baseURL string) *GeminiProvider {
 	return &GeminiProvider{
 		apiKey:  apiKey,
 		baseURL: baseURL,
-		client:  &http.Client{Timeout: 120 * time.Second},
+		client:  network.NewPooledHTTPClient(5 * time.Minute),
 	}
 }
 
@@ -169,8 +170,8 @@ func (p *GeminiProvider) Poll(_ context.Context, taskID string) (*MediaTask, err
 // Gemini API types
 
 type geminiRequest struct {
-	Contents         []geminiContent  `json:"contents"`
-	GenerationConfig geminiGenConfig  `json:"generationConfig"`
+	Contents         []geminiContent `json:"contents"`
+	GenerationConfig geminiGenConfig `json:"generationConfig"`
 }
 
 type geminiContent struct {

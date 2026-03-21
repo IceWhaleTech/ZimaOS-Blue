@@ -219,16 +219,21 @@ fn about_blank_webview_url() -> tauri::WebviewUrl {
     )
 }
 
-fn server_origin(app_handle: &tauri::AppHandle) -> Option<String> {
-    let state = app_handle.try_state::<AppState>()?;
-    if !*state.server_running.lock().unwrap() {
+fn server_origin_from_parts(server_running: bool, port: u16, use_https: bool) -> Option<String> {
+    if !server_running {
         return None;
     }
 
-    let port = *state.server_port.lock().unwrap();
-    let use_https = *state.use_https.lock().unwrap();
     let protocol = if use_https { "https" } else { "http" };
     Some(format!("{}://localhost:{}", protocol, port))
+}
+
+fn server_origin(app_handle: &tauri::AppHandle) -> Option<String> {
+    let state = app_handle.try_state::<AppState>()?;
+    let server_running = *state.server_running.lock().unwrap();
+    let port = *state.server_port.lock().unwrap();
+    let use_https = *state.use_https.lock().unwrap();
+    server_origin_from_parts(server_running, port, use_https)
 }
 
 fn webview_url_for_path(app_handle: &tauri::AppHandle, path: &str) -> tauri::WebviewUrl {
@@ -997,7 +1002,7 @@ mod tests {
     use super::{
         build_args_string, cli_compatible_data_dir_for_home, embedded_server_port_bind_timeout,
         parent_directory_for_reveal_fallback, parse_bool_env_flag, reveal_path_with_fallback,
-        stt_auth_startup_enabled, CliArgs,
+        server_origin_from_parts, stt_auth_startup_enabled, CliArgs,
     };
     #[cfg(target_os = "macos")]
     use super::{macos_app_bundle_path, should_relaunch_bundle_via_open};
@@ -1042,6 +1047,23 @@ mod tests {
             std::time::Duration::from_secs(90)
         );
         assert!(embedded_server_port_bind_timeout(true) > embedded_server_port_bind_timeout(false));
+    }
+
+    #[test]
+    fn server_origin_from_parts_returns_none_when_server_not_running() {
+        assert_eq!(server_origin_from_parts(false, 80, false), None);
+    }
+
+    #[test]
+    fn server_origin_from_parts_uses_actual_fallback_port_when_running() {
+        assert_eq!(
+            server_origin_from_parts(true, 43127, false),
+            Some("http://localhost:43127".to_string())
+        );
+        assert_eq!(
+            server_origin_from_parts(true, 43127, true),
+            Some("https://localhost:43127".to_string())
+        );
     }
 
     #[test]

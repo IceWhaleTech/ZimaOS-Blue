@@ -14,11 +14,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/hkdf"
 )
 
 const whatsappMediaMACLength = 10
+
+var whatsappMediaHTTPClient = network.NewPooledHTTPClient(2 * time.Minute)
 
 // DownloadMedia downloads media from a received message.
 func (c *Channel) DownloadMedia(ctx context.Context, mediaURL string, mediaKey []byte, fileEncSHA256 []byte, fileSHA256 []byte, fileLength uint64, mediaType string) ([]byte, error) {
@@ -82,7 +85,7 @@ func fetchWhatsAppMedia(ctx context.Context, mediaURL string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(req)
+	resp, err := whatsappMediaHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

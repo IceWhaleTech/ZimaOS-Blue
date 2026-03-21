@@ -20,19 +20,23 @@ type browserCheckpointLocaleStrings struct {
 	ReplyHint       string
 	StepAct         string
 	StepRecipe      string
+	StepRelay       string
 	ActionClick     string
 	ActionType      string
 	ActionSelect    string
 	ActionSubmit    string
+	ActionRelayUse  string
+	ActionRelayTabs string
+	ActionRelayView string
 	RecipeLogin     string
 	RecipeFillForm  string
 }
 
 var browserCheckpointStrings = map[i18n.Language]browserCheckpointLocaleStrings{
-	i18n.LangEnUS: {Header: "Confirm", Question: "Browser action needs confirmation. Continue?", Continue: "Continue", Cancel: "Cancel", StepLabel: "Step", ActionLabel: "Action", URLLabel: "URL", ScreenshotLabel: "Screenshot", IMIntro: "High-risk browser action needs confirmation.", ReplyHint: "Reply `1` to continue or `2` to cancel.", StepAct: "Interaction", StepRecipe: "Recipe", ActionClick: "Click", ActionType: "Type", ActionSelect: "Select", ActionSubmit: "Submit", RecipeLogin: "Log in", RecipeFillForm: "Fill form"},
-	i18n.LangEnGB: {Header: "Confirm", Question: "Browser action needs confirmation. Continue?", Continue: "Continue", Cancel: "Cancel", StepLabel: "Step", ActionLabel: "Action", URLLabel: "URL", ScreenshotLabel: "Screenshot", IMIntro: "High-risk browser action needs confirmation.", ReplyHint: "Reply `1` to continue or `2` to cancel.", StepAct: "Interaction", StepRecipe: "Recipe", ActionClick: "Click", ActionType: "Type", ActionSelect: "Select", ActionSubmit: "Submit", RecipeLogin: "Log in", RecipeFillForm: "Fill form"},
-	i18n.LangZhCN: {Header: "确认", Question: "浏览器操作需要确认。是否继续？", Continue: "继续", Cancel: "取消", StepLabel: "步骤", ActionLabel: "动作", URLLabel: "URL", ScreenshotLabel: "截图", IMIntro: "高风险浏览器操作需要确认。", ReplyHint: "回复 `1` 继续，或回复 `2` 取消。", StepAct: "交互", StepRecipe: "配方", ActionClick: "点击", ActionType: "输入", ActionSelect: "选择", ActionSubmit: "提交", RecipeLogin: "登录", RecipeFillForm: "填写表单"},
-	i18n.LangZhTW: {Header: "確認", Question: "瀏覽器操作需要確認。是否繼續？", Continue: "繼續", Cancel: "取消", StepLabel: "步驟", ActionLabel: "動作", URLLabel: "URL", ScreenshotLabel: "截圖", IMIntro: "高風險瀏覽器操作需要確認。", ReplyHint: "回覆 `1` 繼續，或回覆 `2` 取消。", StepAct: "互動", StepRecipe: "配方", ActionClick: "點擊", ActionType: "輸入", ActionSelect: "選取", ActionSubmit: "提交", RecipeLogin: "登入", RecipeFillForm: "填寫表單"},
+	i18n.LangEnUS: {Header: "Confirm", Question: "Browser action needs confirmation. Continue?", Continue: "Continue", Cancel: "Cancel", StepLabel: "Step", ActionLabel: "Action", URLLabel: "URL", ScreenshotLabel: "Screenshot", IMIntro: "High-risk browser action needs confirmation.", ReplyHint: "Reply `1` to continue or `2` to cancel.", StepAct: "Interaction", StepRecipe: "Recipe", StepRelay: "Relay mode", ActionClick: "Click", ActionType: "Type", ActionSelect: "Select", ActionSubmit: "Submit", ActionRelayUse: "Use connected browser session", ActionRelayTabs: "List connected tabs", ActionRelayView: "Inspect connected page", RecipeLogin: "Log in", RecipeFillForm: "Fill form"},
+	i18n.LangEnGB: {Header: "Confirm", Question: "Browser action needs confirmation. Continue?", Continue: "Continue", Cancel: "Cancel", StepLabel: "Step", ActionLabel: "Action", URLLabel: "URL", ScreenshotLabel: "Screenshot", IMIntro: "High-risk browser action needs confirmation.", ReplyHint: "Reply `1` to continue or `2` to cancel.", StepAct: "Interaction", StepRecipe: "Recipe", StepRelay: "Relay mode", ActionClick: "Click", ActionType: "Type", ActionSelect: "Select", ActionSubmit: "Submit", ActionRelayUse: "Use connected browser session", ActionRelayTabs: "List connected tabs", ActionRelayView: "Inspect connected page", RecipeLogin: "Log in", RecipeFillForm: "Fill form"},
+	i18n.LangZhCN: {Header: "确认", Question: "浏览器操作需要确认。是否继续？", Continue: "继续", Cancel: "取消", StepLabel: "步骤", ActionLabel: "动作", URLLabel: "URL", ScreenshotLabel: "截图", IMIntro: "高风险浏览器操作需要确认。", ReplyHint: "回复 `1` 继续，或回复 `2` 取消。", StepAct: "交互", StepRecipe: "配方", StepRelay: "Relay 模式", ActionClick: "点击", ActionType: "输入", ActionSelect: "选择", ActionSubmit: "提交", ActionRelayUse: "使用已连接的浏览器会话", ActionRelayTabs: "查看已连接标签页", ActionRelayView: "查看已连接页面", RecipeLogin: "登录", RecipeFillForm: "填写表单"},
+	i18n.LangZhTW: {Header: "確認", Question: "瀏覽器操作需要確認。是否繼續？", Continue: "繼續", Cancel: "取消", StepLabel: "步驟", ActionLabel: "動作", URLLabel: "URL", ScreenshotLabel: "截圖", IMIntro: "高風險瀏覽器操作需要確認。", ReplyHint: "回覆 `1` 繼續，或回覆 `2` 取消。", StepAct: "互動", StepRecipe: "配方", StepRelay: "Relay 模式", ActionClick: "點擊", ActionType: "輸入", ActionSelect: "選取", ActionSubmit: "提交", ActionRelayUse: "使用已連接的瀏覽器工作階段", ActionRelayTabs: "檢視已連接分頁", ActionRelayView: "檢視已連接頁面", RecipeLogin: "登入", RecipeFillForm: "填寫表單"},
 	i18n.LangJaJP: {Header: "確認", Question: "ブラウザー操作に確認が必要です。続行しますか？", Continue: "続行", Cancel: "キャンセル", StepLabel: "手順", ActionLabel: "操作", URLLabel: "URL", ScreenshotLabel: "スクリーンショット", IMIntro: "高リスクのブラウザー操作には確認が必要です。", ReplyHint: "`1` で続行、`2` でキャンセルしてください。", StepAct: "操作", StepRecipe: "レシピ", ActionClick: "クリック", ActionType: "入力", ActionSelect: "選択", ActionSubmit: "送信", RecipeLogin: "ログイン", RecipeFillForm: "フォーム入力"},
 	i18n.LangKoKR: {Header: "확인", Question: "브라우저 작업은 확인이 필요합니다. 계속할까요?", Continue: "계속", Cancel: "취소", StepLabel: "단계", ActionLabel: "작업", URLLabel: "URL", ScreenshotLabel: "스크린샷", IMIntro: "고위험 브라우저 작업은 확인이 필요합니다.", ReplyHint: "계속하려면 `1`, 취소하려면 `2`로 답하세요.", StepAct: "상호작용", StepRecipe: "레시피", ActionClick: "클릭", ActionType: "입력", ActionSelect: "선택", ActionSubmit: "제출", RecipeLogin: "로그인", RecipeFillForm: "양식 작성"},
 	i18n.LangDeDE: {Header: "Bestätigen", Question: "Browser-Aktion benötigt Bestätigung. Fortfahren?", Continue: "Fortfahren", Cancel: "Abbrechen", StepLabel: "Schritt", ActionLabel: "Aktion", URLLabel: "URL", ScreenshotLabel: "Screenshot", IMIntro: "Browser-Aktion mit hohem Risiko benötigt Bestätigung.", ReplyHint: "Mit `1` fortfahren oder mit `2` abbrechen.", StepAct: "Interaktion", StepRecipe: "Rezept", ActionClick: "Klicken", ActionType: "Eingeben", ActionSelect: "Auswählen", ActionSubmit: "Absenden", RecipeLogin: "Anmelden", RecipeFillForm: "Formular ausfüllen"},
@@ -83,6 +87,11 @@ func localizedBrowserCheckpointStep(lang i18n.Language, step string) string {
 		return localized.StepAct
 	case "recipe":
 		return localized.StepRecipe
+	case "relay":
+		if strings.TrimSpace(localized.StepRelay) != "" {
+			return localized.StepRelay
+		}
+		return "Relay mode"
 	default:
 		return step
 	}
@@ -110,6 +119,21 @@ func localizedBrowserCheckpointAction(lang i18n.Language, step, action string) s
 			return localized.RecipeLogin
 		case "fill_form":
 			return localized.RecipeFillForm
+		}
+	case "relay":
+		switch normalizedAction {
+		case "use_connected_session":
+			if strings.TrimSpace(localized.ActionRelayUse) != "" {
+				return localized.ActionRelayUse
+			}
+		case "list_connected_tabs":
+			if strings.TrimSpace(localized.ActionRelayTabs) != "" {
+				return localized.ActionRelayTabs
+			}
+		case "inspect_connected_session":
+			if strings.TrimSpace(localized.ActionRelayView) != "" {
+				return localized.ActionRelayView
+			}
 		}
 	}
 	return action

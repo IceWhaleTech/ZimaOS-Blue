@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import type { ToolDefinition } from '@/api/chat'
 import type { Provider, Model } from '@/api/providerPool'
 import type {
+  ContextCompressionMode,
   Settings,
   NoLLMDegradeMode,
   SmallModelID,
@@ -483,6 +484,9 @@ export const useSettingsStore = defineStore('settings', () => {
   const smallModelSummaryEnabled = computed(
     () => backendSettings.value.small_model_summary_enabled ?? false
   )
+  const smallModelContextCompressEnabled = computed(
+    () => backendSettings.value.small_model_context_compress_enabled ?? false
+  )
   const smallModelDocExtractEnabled = computed(
     () => backendSettings.value.small_model_doc_extract_enabled ?? false
   )
@@ -524,6 +528,11 @@ export const useSettingsStore = defineStore('settings', () => {
   const agentLoopPolicyPendingTodoBudget = computed(
     () => backendSettings.value.agent_loop_policy_pending_todo_budget ?? 3
   )
+  const contextCompressionMode = computed<ContextCompressionMode>(() => {
+    const mode = backendSettings.value.context_compression_mode
+    if (mode === 'off' || mode === 'offline' || mode === 'small_model') return mode
+    return 'auto'
+  })
   const smallModelContextPruneEnabled = computed(
     () => backendSettings.value.small_model_context_prune_enabled ?? false
   )
@@ -607,6 +616,10 @@ export const useSettingsStore = defineStore('settings', () => {
     await updateBackendSettings({ small_model_summary_enabled: enabled })
   }
 
+  async function setSmallModelContextCompressEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_context_compress_enabled: enabled })
+  }
+
   async function setSmallModelDocExtractEnabled(enabled: boolean) {
     await updateBackendSettings({ small_model_doc_extract_enabled: enabled })
   }
@@ -661,6 +674,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setAgentLoopPolicyPendingTodoBudget(value: number) {
     await updateBackendSettings({ agent_loop_policy_pending_todo_budget: value })
+  }
+
+  async function setContextCompressionMode(mode: ContextCompressionMode) {
+    await updateBackendSettings({ context_compression_mode: mode })
   }
 
   async function setSmallModelContextPruneEnabled(enabled: boolean) {
@@ -794,6 +811,7 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelID,
     smallModelAutoDownload,
     smallModelSummaryEnabled,
+    smallModelContextCompressEnabled,
     smallModelDocExtractEnabled,
     smallModelRerankEnabled,
     smartToolSelection,
@@ -808,6 +826,7 @@ export const useSettingsStore = defineStore('settings', () => {
     agentLoopPolicyActionPledgeBudget,
     agentLoopPolicyMissingTodoBudget,
     agentLoopPolicyPendingTodoBudget,
+    contextCompressionMode,
     smallModelContextPruneEnabled,
     smallModelMediaIntentEnabled,
     offlineIRFallbackEnabled,
@@ -855,6 +874,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setSmallModelEnabled,
     setSmallModelAutoDownload,
     setSmallModelSummaryEnabled,
+    setSmallModelContextCompressEnabled,
     setSmallModelDocExtractEnabled,
     setSmallModelRerankEnabled,
     setSmartToolSelection,
@@ -869,6 +889,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setAgentLoopPolicyActionPledgeBudget,
     setAgentLoopPolicyMissingTodoBudget,
     setAgentLoopPolicyPendingTodoBudget,
+    setContextCompressionMode,
     setSmallModelContextPruneEnabled,
     setSmallModelMediaIntentEnabled,
     setOfflineIRFallbackEnabled,

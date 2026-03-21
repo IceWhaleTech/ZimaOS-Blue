@@ -55,6 +55,32 @@ func TestOpenSQLiteSimpleWrapsCorruptionError(t *testing.T) {
 	}
 }
 
+func TestOpenSQLiteWithRecoveryAndRecreateRotatesCorruptDatabase(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "recreate.db")
+	if err := os.WriteFile(path, []byte("not-a-sqlite-database"), 0o600); err != nil {
+		t.Fatalf("write corrupt db: %v", err)
+	}
+
+	db, err := database.OpenSQLiteWithRecoveryAndRecreate(path, path, func(db *sql.DB) error {
+		_, err := db.Exec(`CREATE TABLE IF NOT EXISTS entries (id INTEGER PRIMARY KEY, value TEXT)`)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("expected recreate helper to recover by rebuilding db, got %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`INSERT INTO entries(value) VALUES('ok')`); err != nil {
+		t.Fatalf("fresh db should accept writes: %v", err)
+	}
+	if matches, err := filepath.Glob(path + ".bak.*"); err != nil {
+		t.Fatalf("glob recreated backup: %v", err)
+	} else if len(matches) != 1 {
+		t.Fatalf("expected one rotated .bak file, got %v", matches)
+	}
+}
+
 func TestOpenSQLiteSimpleRepairsRecoverableCorruption(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "recoverable.db")
@@ -77,10 +103,39 @@ func TestOpenSQLiteSimpleRepairsRecoverableCorruption(t *testing.T) {
 	if err := database.CheckDatabaseIntegrity(path); err != nil {
 		t.Fatalf("repaired db failed integrity check: %v", err)
 	}
-	if matches, err := filepath.Glob(path + ".corrupt.*"); err != nil {
+	if matches, err := filepath.Glob(path + ".bak.*"); err != nil {
 		t.Fatalf("glob repair backup: %v", err)
-	} else if len(matches) != 1 {
-		t.Fatalf("expected one preserved corrupt backup, got %v", matches)
+	} else if len(matches) != 0 {
+		t.Fatalf("expected successful repair to remove temporary .bak files, got %v", matches)
+	}
+}
+
+func TestRotateCorruptSQLiteDatabaseMovesPrimaryAndAuxFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "blue.db")
+	writeSQLiteEntry(t, path, "hello")
+	if err := os.WriteFile(path+"-wal", []byte("wal"), 0o600); err != nil {
+		t.Fatalf("write wal sidecar: %v", err)
+	}
+	if err := os.WriteFile(path+"-shm", []byte("shm"), 0o600); err != nil {
+		t.Fatalf("write shm sidecar: %v", err)
+	}
+
+	backupPath, err := database.RotateCorruptSQLiteDatabase(path)
+	if err != nil {
+		t.Fatalf("RotateCorruptSQLiteDatabase() error = %v", err)
+	}
+	if !strings.Contains(backupPath, ".bak.") {
+		t.Fatalf("backup path = %q, want .bak timestamp suffix", backupPath)
+	}
+
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if _, err := os.Stat(path + suffix); !os.IsNotExist(err) {
+			t.Fatalf("expected %s to be rotated away, stat err = %v", path+suffix, err)
+		}
+		if _, err := os.Stat(backupPath + suffix); err != nil {
+			t.Fatalf("expected rotated artifact %s to exist: %v", backupPath+suffix, err)
+		}
 	}
 }
 

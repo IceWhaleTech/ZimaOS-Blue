@@ -359,14 +359,21 @@ func (e *Executor) Execute(ctx context.Context, name string, args map[string]int
 
 func normalizeCompatToolName(name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "file_read":
-		return "read"
-	case "file_write":
-		return "write"
+	case "read":
+		return "file_read"
+	case "write":
+		return "file_write"
+	case "delete", "remove", "rm", "unlink":
+		return "file_delete"
+	case "sessions_list", "sessions_history", "session_status",
+		"sessions_spawn", "sessions_send":
+		return "sessions"
 	case "memory_search", "memory_get", "memory_read",
 		"memory_write", "memory_remember", "memory_store",
 		"memory_forget", "memory_delete":
 		return "memory"
+	case "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+		return "web"
 	default:
 		return name
 	}
@@ -376,28 +383,97 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 	switch strings.ToLower(strings.TrimSpace(normalizedName)) {
 	case "exec":
 		return normalizeExecCompatArgs(args)
-	case "read":
+	case "file_read":
 		return normalizeFileReadCompatArgs(args)
-	case "write":
+	case "file_write":
 		return normalizeFileWriteCompatArgs(args)
+	case "file_delete":
+		return normalizeFileDeleteCompatArgs(args)
 	case "edit":
 		return normalizeEditCompatArgs(args)
-	case "grep":
+	case "grep", "rg":
 		return normalizeGrepCompatArgs(args)
 	case "find":
 		return normalizeFindCompatArgs(args)
 	case "ls":
 		return normalizeLsCompatArgs(args)
+	case "sessions":
+		return normalizeSessionsCompatArgs(rawName, args)
 	case "memory":
 		return normalizeMemoryCompatArgs(rawName, args)
-	case "web_search":
-		return normalizeWebSearchCompatArgs(rawName, args)
-	case "web_fetch":
-		return normalizeWebFetchCompatArgs(rawName, args)
+	case "web":
+		return normalizeWebCompatArgs(rawName, args)
 	case "browser":
 		return normalizeBrowserCompatArgs(rawName, args)
 	default:
 		return args
+	}
+}
+
+func normalizeSessionsCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(args)+1)
+	for k, v := range args {
+		normalized[k] = v
+	}
+	if strings.TrimSpace(asString(normalized["action"])) != "" {
+		return normalized
+	}
+	switch strings.ToLower(strings.TrimSpace(rawName)) {
+	case "sessions_list":
+		normalized["action"] = "list"
+	case "sessions_history":
+		normalized["action"] = "history"
+	case "session_status":
+		normalized["action"] = "status"
+	case "sessions_spawn":
+		normalized["action"] = "spawn"
+	case "sessions_send":
+		normalized["action"] = "send"
+	}
+	return normalized
+}
+
+func normalizeWebCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(args)+1)
+	for k, v := range args {
+		normalized[k] = v
+	}
+	switch strings.ToLower(strings.TrimSpace(rawName)) {
+	case "web_search":
+		normalized["action"] = "search"
+		return normalizeWebSearchCompatArgs(rawName, normalized)
+	case "web_fetch":
+		normalized["action"] = "fetch"
+		return normalizeWebFetchCompatArgs(rawName, normalized)
+	case "web_read":
+		normalized["action"] = "read"
+		return normalizeWebReadCompatArgs(normalized)
+	case "web_extract":
+		normalized["action"] = "extract"
+		return normalizeWebExtractCompatArgs(normalized)
+	case "web_crawl":
+		normalized["action"] = "crawl"
+		return normalizeWebCrawlCompatArgs(normalized)
+	default:
+		action := resolveWebAction(normalized)
+		if action == "" {
+			return normalized
+		}
+		normalized["action"] = action
+		switch action {
+		case "search":
+			return normalizeWebSearchCompatArgs(rawName, normalized)
+		case "fetch":
+			return normalizeWebFetchCompatArgs(rawName, normalized)
+		case "read":
+			return normalizeWebReadCompatArgs(normalized)
+		case "extract":
+			return normalizeWebExtractCompatArgs(normalized)
+		case "crawl":
+			return normalizeWebCrawlCompatArgs(normalized)
+		default:
+			return normalized
+		}
 	}
 }
 
@@ -580,6 +656,58 @@ func normalizeFileWriteCompatArgs(args map[string]interface{}) map[string]interf
 		if _, hasLine := normalized["line"]; !hasLine {
 			if line, ok := nested["line"]; ok {
 				normalized["line"] = line
+			}
+		}
+	}
+
+	return normalized
+}
+
+func normalizeFileDeleteCompatArgs(args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+
+	normalized := make(map[string]interface{}, len(args)+4)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	if strings.TrimSpace(asString(normalized["path"])) == "" {
+		if path := firstCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["recursive"]; !ok {
+		if recursive, ok := firstCompatValue(normalized, "recursive", "recursive_delete", "recursiveDelete"); ok {
+			normalized["recursive"] = recursive
+		}
+	}
+	if _, ok := normalized["missing_ok"]; !ok {
+		if missingOK, ok := firstCompatValue(normalized, "missing_ok", "missingOk", "ignore_missing", "ignoreMissing"); ok {
+			normalized["missing_ok"] = missingOK
+		}
+	}
+
+	for _, key := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(normalized[key])
+		if !ok {
+			continue
+		}
+
+		if strings.TrimSpace(asString(normalized["path"])) == "" {
+			if path := firstCompatPathString(nested); path != "" {
+				normalized["path"] = path
+			}
+		}
+		if _, hasRecursive := normalized["recursive"]; !hasRecursive {
+			if recursive, ok := firstCompatValue(nested, "recursive", "recursive_delete", "recursiveDelete"); ok {
+				normalized["recursive"] = recursive
+			}
+		}
+		if _, hasMissingOK := normalized["missing_ok"]; !hasMissingOK {
+			if missingOK, ok := firstCompatValue(nested, "missing_ok", "missingOk", "ignore_missing", "ignoreMissing"); ok {
+				normalized["missing_ok"] = missingOK
 			}
 		}
 	}

@@ -239,6 +239,66 @@ func TestWebSearchTool_UnsupportedProvider(t *testing.T) {
 	}
 }
 
+func TestWebSearchTool_Bing(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("q"); got != "test query" {
+			t.Fatalf("unexpected query: %q", got)
+		}
+		if got := r.URL.Query().Get("mkt"); got != "en-US" {
+			t.Fatalf("unexpected mkt: %q", got)
+		}
+		if got := r.URL.Query().Get("cc"); got != "US" {
+			t.Fatalf("unexpected cc: %q", got)
+		}
+		if got := r.URL.Query().Get("setlang"); got != "en" {
+			t.Fatalf("unexpected setlang: %q", got)
+		}
+		if got := r.URL.Query().Get("adlt"); got != "strict" {
+			t.Fatalf("unexpected adlt: %q", got)
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`
+<html><body><ol id="b_results">
+  <li class="b_algo">
+    <h2><a href="https://example.com/1">Test Result 1</a></h2>
+    <div class="b_caption"><p>Description 1</p></div>
+  </li>
+  <li class="b_algo">
+    <h2><a href="https://example.com/2">Test Result 2</a></h2>
+    <div class="b_caption"><p>Description 2</p></div>
+  </li>
+</ol></body></html>`))
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider:   "bing",
+		SafeSearch: true,
+	})
+	tool.httpClient = server.Client()
+
+	response, err := tool.searchBingAtURL(context.Background(), "test query", 2, "us-en", server.URL+"/search")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if response.Provider != "bing" {
+		t.Fatalf("provider = %q, want %q", response.Provider, "bing")
+	}
+	if len(response.Results) != 2 {
+		t.Fatalf("len(results) = %d, want 2", len(response.Results))
+	}
+	if response.Results[0].Title != "Test Result 1" {
+		t.Fatalf("title = %q, want %q", response.Results[0].Title, "Test Result 1")
+	}
+	if response.Results[0].URL != "https://example.com/1" {
+		t.Fatalf("url = %q, want %q", response.Results[0].URL, "https://example.com/1")
+	}
+	if response.Results[0].Description != "Description 1" {
+		t.Fatalf("description = %q, want %q", response.Results[0].Description, "Description 1")
+	}
+}
+
 func TestWebSearchTool_ProviderFallback(t *testing.T) {
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
@@ -583,15 +643,15 @@ func TestWebSearchConfig_Defaults(t *testing.T) {
 		t.Errorf("expected default MaxResults 5, got %d", tool.config.MaxResults)
 	}
 
-	if tool.config.Timeout != 30*time.Second {
-		t.Errorf("expected default Timeout 30s, got %v", tool.config.Timeout)
+	if tool.config.Timeout != 5*time.Minute {
+		t.Errorf("expected default Timeout 5m, got %v", tool.config.Timeout)
 	}
 
 	if tool.config.Provider != "duckduckgo" {
 		t.Errorf("expected default Provider 'duckduckgo', got '%s'", tool.config.Provider)
 	}
-	if len(tool.config.Providers) != 1 || tool.config.Providers[0] != "duckduckgo" {
-		t.Errorf("expected default Providers ['duckduckgo'], got %#v", tool.config.Providers)
+	if len(tool.config.Providers) != 2 || tool.config.Providers[0] != "duckduckgo" || tool.config.Providers[1] != "bing" {
+		t.Errorf("expected default Providers ['duckduckgo', 'bing'], got %#v", tool.config.Providers)
 	}
 
 	if tool.config.Region != "wt-wt" {

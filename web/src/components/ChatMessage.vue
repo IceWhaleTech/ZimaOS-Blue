@@ -28,6 +28,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { isTtsAutoPlayEnabled, isTtsSpeechMuted } from '@/utils/ttsPreferences'
 import { buildChatCardUiStateKey } from '@/utils/chatCardUiState'
 import type { ProcessTraceItem } from '@/utils/processTrace'
+import { getLocalizedToolName } from '@/utils/toolLocalization'
 
 const { t, te } = useI18n()
 const providerPoolStore = useProviderPoolStore()
@@ -371,7 +372,8 @@ const userEditTextareaRef = ref<HTMLTextAreaElement | null>(null)
 
 const canEditUserMessage = computed(() => {
   if (!isUser.value || props.isStreaming || isMultiSelectMode.value) return false
-  if (props.message.id.startsWith('temp-') || props.message.id.startsWith('streaming-')) return false
+  if (props.message.id.startsWith('temp-') || props.message.id.startsWith('streaming-'))
+    return false
   return !isSpecialUserPlaceholder.value
 })
 
@@ -506,15 +508,11 @@ function getLatestProcessTraceByPriority(
 }
 
 const activeRecoveryProcessTrace = computed(() =>
-  trackStreamingState.value
-    ? getLatestProcessTraceByPriority(['retry', 'recovery'])
-    : null
+  trackStreamingState.value ? getLatestProcessTraceByPriority(['retry', 'recovery']) : null
 )
 
 const activeLifecycleProcessTrace = computed(() =>
-  trackStreamingState.value
-    ? getLatestProcessTraceByPriority(['lifecycle', 'confirmation'])
-    : null
+  trackStreamingState.value ? getLatestProcessTraceByPriority(['lifecycle', 'confirmation']) : null
 )
 
 function processTraceToCardItem(item: ProcessTraceItem, index: number): ToolResultItem {
@@ -547,7 +545,9 @@ const streamingProcessTraceCards = computed(() => {
 })
 
 const hasStreamingProcessDetails = computed(
-  () => trackStreamingState.value && (streamingProcessTraceCards.value.length > 0 || chatStore.toolResults.length > 0)
+  () =>
+    trackStreamingState.value &&
+    (streamingProcessTraceCards.value.length > 0 || chatStore.toolResults.length > 0)
 )
 
 const hasPersistedProcessDetails = computed(
@@ -1078,6 +1078,7 @@ const RESULT_CARD_TYPES = new Set([
   'ui-review-progress',
   'analyze-progress',
   'browser-progress',
+  'deep-research-timeline',
   'deep-research-progress',
   'deep-research-event',
   'web-fetch',
@@ -1271,6 +1272,10 @@ const EMPTY_SEGMENT_RENDER_STATE: SegmentRenderState = {
   cardOnly: null,
   hasCards: false,
   isCardOnly: false,
+}
+
+function shouldKeepAssistantBubbleForCardOnly(cards: ContentSegment[]): boolean {
+  return cards.length > 0 && cards.every((segment) => (segment.content as TypelessCard).type === 'deep-research-timeline')
 }
 
 const SEGMENT_RENDER_CACHE_KEY = '__zima_chat_segment_render_cache_v1__'
@@ -1631,7 +1636,7 @@ const segmentRenderState = computed(() => {
     rendered.push({ ...segment, html })
   }
 
-  const isCardOnly = hasCards && !hasNonEmptyText
+  const isCardOnly = hasCards && !hasNonEmptyText && !shouldKeepAssistantBubbleForCardOnly(cardCandidates)
   const nextState: SegmentRenderState = {
     rendered,
     cardOnly: isCardOnly ? cardCandidates : null,
@@ -2341,12 +2346,9 @@ function isPlaceholderContent(content: string): boolean {
   return false
 }
 
-// Format internal tool name via i18n (e.g. "web_search" → "网页搜索" in zh-CN)
+// Format internal or compat tool names via the shared localization helper.
 function formatToolName(name: string): string {
-  const key = `tools.names.${name}`
-  if (te(key)) return t(key)
-  // Fallback: title-case the snake_case name
-  return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  return getLocalizedToolName(name, t, te)
 }
 
 // Get file icon based on extension
@@ -2968,9 +2970,7 @@ async function handleMobileDelete() {
                   :action-loading="isCardActionLoading((segment.content as TypelessCard).id)"
                   :active-action-id="activeCardActionId((segment.content as TypelessCard).id)"
                   :action-error="cardActionErrorMessage((segment.content as TypelessCard).id)"
-                  :ui-state-key="
-                    getCardUiStateKey(segment.content as TypelessCard, segment.key)
-                  "
+                  :ui-state-key="getCardUiStateKey(segment.content as TypelessCard, segment.key)"
                   class="my-3 -mx-1"
                   @action="handleCardAction"
                   @select="handleCardSelect"
@@ -2981,17 +2981,10 @@ async function handleMobileDelete() {
             <div v-else-if="!isContentEmpty" class="prose-content" v-html="renderedContent" />
             <div v-if="showProcessDetailsToggle" class="assistant-process-toggle-row">
               <button class="assistant-process-toggle" @click.stop="toggleProcessDetails">
-                {{
-                  processDetailsExpanded
-                    ? t('chat.hideToolDetails')
-                    : t('chat.showToolDetails')
-                }}
+                {{ processDetailsExpanded ? t('chat.hideToolDetails') : t('chat.showToolDetails') }}
               </button>
             </div>
-            <div
-              v-if="showPersistedProcessPanel"
-              class="tool-detail-cards my-2 -mx-1"
-            >
+            <div v-if="showPersistedProcessPanel" class="tool-detail-cards my-2 -mx-1">
               <ToolDetailCard
                 v-for="item in effectiveProcessToolResults"
                 :key="item.id"
@@ -3263,7 +3256,10 @@ async function handleMobileDelete() {
               <template v-if="isLastAssistantMessage && !isStreaming">
                 <button
                   class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  @click="emit('continue'); closeMobileActions()"
+                  @click="
+                    emit('continue');
+                    closeMobileActions();
+                  "
                 >
                   <svg
                     class="w-5 h-5 text-gray-600 dark:text-gray-400"
@@ -3290,7 +3286,10 @@ async function handleMobileDelete() {
                 </button>
                 <button
                   class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  @click="emit('regenerate'); closeMobileActions()"
+                  @click="
+                    emit('regenerate');
+                    closeMobileActions();
+                  "
                 >
                   <svg
                     class="w-5 h-5 text-gray-600 dark:text-gray-400"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // service implements the Service interface.
@@ -98,6 +99,9 @@ func (s *service) TranscribeWithProvider(ctx context.Context, providerType Provi
 	if !ok {
 		return nil, ErrProviderNotFound
 	}
+	if err := ensureProviderInitialized(provider); err != nil {
+		return nil, err
+	}
 
 	return provider.Transcribe(ctx, req)
 }
@@ -110,6 +114,9 @@ func (s *service) TranscribeStream(ctx context.Context, req *TranscribeRequest, 
 
 	if !ok {
 		return ErrProviderNotFound
+	}
+	if err := ensureProviderInitialized(provider); err != nil {
+		return err
 	}
 
 	return provider.TranscribeStream(ctx, req, callback)
@@ -144,49 +151,162 @@ func (s *service) GetWhisperProvider() *WhisperProvider {
 	return nil
 }
 
+// PeekWhisperProvider returns the current Whisper ASR provider without creating a new one.
+func (s *service) PeekWhisperProvider() *WhisperProvider {
+	return s.GetWhisperProvider()
+}
+
+// Close releases all provider resources held by the service.
+func (s *service) Close() error {
+	s.mu.RLock()
+	providers := make([]Provider, 0, len(s.providers))
+	for _, provider := range s.providers {
+		providers = append(providers, provider)
+	}
+	s.mu.RUnlock()
+
+	for _, provider := range providers {
+		if closer, ok := provider.(interface{ Close() }); ok {
+			closer.Close()
+		}
+	}
+	return nil
+}
+
 // lazyService implements lazy initialization for STT service.
 type lazyService struct {
 	modelPath string
-	service   Service
-	provider  *WhisperProvider
-	once      sync.Once
-	mu        sync.RWMutex
+	idleAfter time.Duration
+
+	mu       sync.Mutex
+	service  Service
+	provider *WhisperProvider
+	timer    *time.Timer
+	inUse    int
 }
 
 // NewLazyService creates a new STT service that initializes Whisper on first use.
-func NewLazyService(modelPath string) Service {
+func NewLazyService(modelPath string, idleAfter time.Duration) Service {
 	return &lazyService{
 		modelPath: modelPath,
+		idleAfter: idleAfter,
 	}
 }
 
-func (s *lazyService) init() {
-	s.once.Do(func() {
+func (s *lazyService) getRuntime() (*WhisperProvider, Service) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.timer != nil {
+		s.timer.Stop()
+		s.timer = nil
+	}
+
+	if s.provider == nil {
 		s.provider = NewWhisperProvider(&WhisperConfig{
-			ModelPath: s.modelPath,
+			ModelPath:      s.modelPath,
+			DeferModelLoad: true,
 		})
 		s.service = NewServiceWithProvider(s.provider)
-	})
+	}
+
+	return s.provider, s.service
+}
+
+func (s *lazyService) acquireRuntime() (*WhisperProvider, Service, func()) {
+	provider, service := s.getRuntime()
+
+	s.mu.Lock()
+	s.inUse++
+	s.mu.Unlock()
+
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			s.release()
+		})
+	}
+	return provider, service, release
+}
+
+func (s *lazyService) release() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.inUse > 0 {
+		s.inUse--
+	}
+	if s.inUse != 0 || s.provider == nil || s.idleAfter <= 0 {
+		return
+	}
+	if s.timer != nil {
+		s.timer.Stop()
+	}
+	s.timer = time.AfterFunc(s.idleAfter, s.reclaimIdle)
+}
+
+func (s *lazyService) touch() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.inUse != 0 || s.provider == nil || s.idleAfter <= 0 {
+		return
+	}
+	if s.timer != nil {
+		s.timer.Stop()
+	}
+	s.timer = time.AfterFunc(s.idleAfter, s.reclaimIdle)
+}
+
+func (s *lazyService) reclaimIdle() {
+	s.mu.Lock()
+	if s.inUse != 0 || s.provider == nil {
+		s.timer = nil
+		s.mu.Unlock()
+		return
+	}
+	provider := s.provider
+	s.timer = nil
+	s.mu.Unlock()
+
+	provider.Close()
 }
 
 func (s *lazyService) Transcribe(ctx context.Context, req *TranscribeRequest) (*TranscribeResponse, error) {
-	s.init()
-	return s.service.Transcribe(ctx, req)
+	provider, service, release := s.acquireRuntime()
+	defer release()
+
+	if err := ensureWhisperProviderInitialized(provider); err != nil {
+		return nil, err
+	}
+	return service.Transcribe(ctx, req)
 }
 
 func (s *lazyService) TranscribeWithProvider(ctx context.Context, providerType ProviderType, req *TranscribeRequest) (*TranscribeResponse, error) {
-	s.init()
-	return s.service.TranscribeWithProvider(ctx, providerType, req)
+	provider, service, release := s.acquireRuntime()
+	defer release()
+
+	if providerType == ProviderWhisper {
+		if err := ensureWhisperProviderInitialized(provider); err != nil {
+			return nil, err
+		}
+	}
+	return service.TranscribeWithProvider(ctx, providerType, req)
 }
 
 func (s *lazyService) TranscribeStream(ctx context.Context, req *TranscribeRequest, callback StreamCallback) error {
-	s.init()
-	return s.service.TranscribeStream(ctx, req, callback)
+	provider, service, release := s.acquireRuntime()
+	defer release()
+
+	if err := ensureWhisperProviderInitialized(provider); err != nil {
+		return err
+	}
+	return service.TranscribeStream(ctx, req, callback)
 }
 
 func (s *lazyService) ListProviders() []ProviderType {
-	s.init()
-	return s.service.ListProviders()
+	_, service := s.getRuntime()
+	s.touch()
+	return service.ListProviders()
 }
 
 func (s *lazyService) GetDefaultProvider() ProviderType {
@@ -194,6 +314,43 @@ func (s *lazyService) GetDefaultProvider() ProviderType {
 }
 
 func (s *lazyService) GetWhisperProvider() *WhisperProvider {
-	s.init()
+	provider, _ := s.getRuntime()
+	s.touch()
+	return provider
+}
+
+func (s *lazyService) PeekWhisperProvider() *WhisperProvider {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.provider
+}
+
+func (s *lazyService) Close() error {
+	s.mu.Lock()
+	if s.timer != nil {
+		s.timer.Stop()
+		s.timer = nil
+	}
+	provider := s.provider
+	s.inUse = 0
+	s.mu.Unlock()
+
+	if provider != nil {
+		provider.Close()
+	}
+	return nil
+}
+
+func ensureProviderInitialized(provider Provider) error {
+	if whisperProvider, ok := provider.(*WhisperProvider); ok {
+		return ensureWhisperProviderInitialized(whisperProvider)
+	}
+	return nil
+}
+
+func ensureWhisperProviderInitialized(provider *WhisperProvider) error {
+	if provider == nil {
+		return ErrProviderNotFound
+	}
+	return provider.EnsureInitialized()
 }

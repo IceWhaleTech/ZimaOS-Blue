@@ -52,8 +52,15 @@ func WrapSQLiteOpenError(dbPath string, err error) error {
 
 // SQLiteRepairResult describes an in-place repair of a SQLite database file.
 type SQLiteRepairResult struct {
-	BackupPath string `json:"backup_path"`
+	// BackupPath is set only when a rotated corrupt copy is intentionally retained.
+	BackupPath string `json:"backup_path,omitempty"`
 	Repaired   bool   `json:"repaired"`
+	// PartialImport indicates sqlite3 .recover reported problems but enough
+	// readable data was batch-imported to produce a healthy replacement DB.
+	PartialImport bool `json:"partial_import,omitempty"`
+	// RecoverWarning captures sqlite3 .recover/import warnings when the repair
+	// still succeeded overall.
+	RecoverWarning string `json:"recover_warning,omitempty"`
 }
 
 // OpenSQLiteWithRecovery opens a SQLite database and retries after best-effort
@@ -177,6 +184,31 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 	}
 }
 
+// OpenSQLiteWithRecoveryAndRecreate opens a SQLite database, attempts the normal
+// recovery flow, and if the database still appears corrupted, rotates the old
+// file set to .bak.<timestamp> before creating a fresh database in its place.
+func OpenSQLiteWithRecoveryAndRecreate(dsn, dbPath string, configure func(*sql.DB) error) (*sql.DB, error) {
+	db, err := OpenSQLiteWithRecovery(dsn, dbPath, configure)
+	if err == nil || !IsSQLiteCorruptionError(err) {
+		return db, err
+	}
+
+	if strings.TrimSpace(dbPath) == "" {
+		dbPath = dsn
+	}
+
+	backupPath, rotateErr := RotateCorruptSQLiteDatabase(dbPath)
+	if rotateErr != nil {
+		return nil, fmt.Errorf("sqlite database %s remains corrupted: %w (rotate to .bak failed: %v)", dbPath, err, rotateErr)
+	}
+
+	db, retryErr := OpenSQLiteWithRecovery(dsn, dbPath, configure)
+	if retryErr != nil {
+		return nil, fmt.Errorf("recreate sqlite database %s after rotating corrupt copy to %s: %w", dbPath, backupPath, retryErr)
+	}
+	return db, nil
+}
+
 func shouldQuickCheckSQLitePath(dbPath string) bool {
 	dbPath = strings.TrimSpace(dbPath)
 	return dbPath != "" && dbPath != ":memory:" && StartupQuickCheckEnabled()
@@ -214,8 +246,9 @@ func quickCheckOpenDatabase(db *sql.DB) error {
 }
 
 // RepairSQLiteDatabase tries to salvage a corrupted SQLite database using the
-// sqlite3 CLI's .recover command, then atomically replaces the original file
-// while preserving the corrupted copy beside it for inspection.
+// sqlite3 CLI's .recover command, then atomically replaces the original file.
+// The corrupt copy is rotated aside only during installation and removed once
+// the recovered database has been verified and installed successfully.
 func RepairSQLiteDatabase(dbPath string) (*SQLiteRepairResult, error) {
 	dbPath = strings.TrimSpace(dbPath)
 	if dbPath == "" {
@@ -234,9 +267,8 @@ func RepairSQLiteDatabase(dbPath string) (*SQLiteRepairResult, error) {
 	suffix := time.Now().UTC().Format("20060102T150405.000000000")
 	snapshotPath := dbPath + ".repair-src." + suffix
 	recoveredPath := dbPath + ".repair-out." + suffix
-	backupPath := dbPath + ".corrupt." + suffix
+	backupPath := corruptSQLiteBackupPath(dbPath, suffix)
 	replacedOriginal := false
-	keepBackup := false
 
 	defer removeSQLiteArtifacts(snapshotPath)
 	defer func() {
@@ -245,7 +277,7 @@ func RepairSQLiteDatabase(dbPath string) (*SQLiteRepairResult, error) {
 		}
 	}()
 	defer func() {
-		if replacedOriginal && !keepBackup {
+		if replacedOriginal {
 			_ = restoreSQLiteArtifacts(backupPath, dbPath)
 		}
 	}()
@@ -253,15 +285,22 @@ func RepairSQLiteDatabase(dbPath string) (*SQLiteRepairResult, error) {
 	if err := copySQLiteArtifacts(dbPath, snapshotPath); err != nil {
 		return nil, fmt.Errorf("failed to snapshot database before repair: %w", err)
 	}
-	if err := runSQLiteRecover(snapshotPath, recoveredPath); err != nil {
-		return nil, fmt.Errorf("failed to recover sqlite database %s: %w", dbPath, err)
-	}
+	recoverErr := runSQLiteRecover(snapshotPath, recoveredPath)
 	if info, err := os.Stat(recoveredPath); err != nil {
+		if recoverErr != nil {
+			return nil, fmt.Errorf("failed to recover sqlite database %s: %w", dbPath, recoverErr)
+		}
 		return nil, fmt.Errorf("sqlite recovery did not produce %s: %w", recoveredPath, err)
 	} else if info.Size() == 0 {
+		if recoverErr != nil {
+			return nil, fmt.Errorf("sqlite recovery produced an empty database file: %w", recoverErr)
+		}
 		return nil, fmt.Errorf("sqlite recovery produced an empty database file")
 	}
 	if err := CheckDatabaseIntegrity(recoveredPath); err != nil {
+		if recoverErr != nil {
+			return nil, fmt.Errorf("recovered sqlite database failed integrity check after partial import: %w (recover warnings: %v)", err, recoverErr)
+		}
 		return nil, fmt.Errorf("recovered sqlite database failed integrity check: %w", err)
 	}
 	if err := rotateSQLiteArtifacts(dbPath, backupPath); err != nil {
@@ -271,13 +310,44 @@ func RepairSQLiteDatabase(dbPath string) (*SQLiteRepairResult, error) {
 	if err := os.Rename(recoveredPath, dbPath); err != nil {
 		return nil, fmt.Errorf("failed to install repaired database %s: %w", dbPath, err)
 	}
-	keepBackup = true
 	replacedOriginal = false
+	removeSQLiteArtifacts(backupPath)
 
 	return &SQLiteRepairResult{
-		BackupPath: backupPath,
-		Repaired:   true,
+		Repaired:       true,
+		PartialImport:  recoverErr != nil,
+		RecoverWarning: repairWarningString(recoverErr),
 	}, nil
+}
+
+func repairWarningString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return strings.TrimSpace(err.Error())
+}
+
+// RotateCorruptSQLiteDatabase moves a corrupted SQLite database and its
+// auxiliary files out of the way so callers can recreate a fresh database.
+func RotateCorruptSQLiteDatabase(dbPath string) (string, error) {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" {
+		return "", fmt.Errorf("database path is empty")
+	}
+	if dbPath == ":memory:" {
+		return "", fmt.Errorf("sqlite rotation requires a filesystem path")
+	}
+
+	suffix := time.Now().UTC().Format("20060102T150405.000000000")
+	backupPath := corruptSQLiteBackupPath(dbPath, suffix)
+	if err := rotateSQLiteArtifacts(dbPath, backupPath); err != nil {
+		return "", err
+	}
+	return backupPath, nil
+}
+
+func corruptSQLiteBackupPath(dbPath, suffix string) string {
+	return dbPath + ".bak." + suffix
 }
 
 func copySQLiteArtifacts(srcBase, dstBase string) error {
@@ -388,8 +458,16 @@ func runSQLiteRecover(srcPath, dstPath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), sqliteRecoverTimeout)
 	defer cancel()
 
-	recoverCmd := exec.CommandContext(ctx, "sqlite3", srcPath, ".recover")
-	importCmd := exec.CommandContext(ctx, "sqlite3", dstPath)
+	recoverCmd := exec.CommandContext(ctx, "sqlite3", "-batch", srcPath, ".recover --ignore-freelist")
+	importCmd := exec.CommandContext(
+		ctx,
+		"sqlite3",
+		"-batch",
+		"-cmd", "PRAGMA journal_mode=OFF",
+		"-cmd", "PRAGMA synchronous=OFF",
+		"-cmd", "PRAGMA temp_store=MEMORY",
+		dstPath,
+	)
 
 	recoverOut, err := recoverCmd.StdoutPipe()
 	if err != nil {

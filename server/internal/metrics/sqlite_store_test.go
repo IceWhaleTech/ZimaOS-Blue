@@ -41,6 +41,23 @@ func TestNewSQLiteStore_CreatesDirectory(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestNewSQLiteStore_ConfiguresWALAndFullSync(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_metrics.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	require.NoError(t, err)
+	defer store.Close()
+
+	var journalMode string
+	require.NoError(t, store.db.QueryRow("PRAGMA journal_mode").Scan(&journalMode))
+	assert.Equal(t, "wal", journalMode)
+
+	var syncMode int
+	require.NoError(t, store.db.QueryRow("PRAGMA synchronous").Scan(&syncMode))
+	assert.Equal(t, 2, syncMode)
+}
+
 func TestSQLiteStore_TokenUsage(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_metrics.db")

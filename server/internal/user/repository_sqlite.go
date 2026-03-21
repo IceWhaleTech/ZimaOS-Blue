@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SQLiteRepository implements Repository using SQLite.
@@ -355,6 +355,19 @@ func (r *SQLiteRepository) ExistsByEmail(ctx context.Context, email string) (boo
 	)
 	if err != nil {
 		return false, fmt.Errorf("failed to check email: %w", err)
+	}
+	return count > 0, nil
+}
+
+// AnyUserExists checks if any non-deleted user exists.
+func (r *SQLiteRepository) AnyUserExists(ctx context.Context) (bool, error) {
+	var count int64
+	_, err := r.usersTable(ctx).Select(&count,
+		z.Fields("count(1)"),
+		z.Where(z.IsNull("deleted_at")),
+	)
+	if err != nil {
+		return false, fmt.Errorf("failed to check user existence: %w", err)
 	}
 	return count > 0, nil
 }

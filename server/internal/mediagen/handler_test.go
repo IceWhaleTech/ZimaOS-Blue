@@ -272,3 +272,39 @@ func TestHandlerGetMediaStatsScopesToUser(t *testing.T) {
 		t.Fatalf("stats = %#v, want one succeeded task for user-b", stats)
 	}
 }
+
+func TestHandlerGetFallbackModelStatus(t *testing.T) {
+	manager := NewManager(nil, nil, "")
+	engine := NewFallbackEngine(FallbackConfig{
+		Enabled:         true,
+		DataDir:         t.TempDir(),
+		U2NetPStatusURL: "/api/v1/media/fallback/models/u2netp/status",
+	}, nil, nil, func() FallbackBrowserService { return nil }, "")
+	manager.SetFallbackEngine(engine)
+	handler := NewHandler(manager, nil, "")
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/fallback/models/u2netp/status", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/api/v1/media/fallback/models/:id/status")
+	c.SetParamNames("id")
+	c.SetParamValues("u2netp")
+
+	if err := handler.GetFallbackModelStatus(c); err != nil {
+		t.Fatalf("GetFallbackModelStatus returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["model_id"] != "u2netp" {
+		t.Fatalf("model_id = %#v, want u2netp", body["model_id"])
+	}
+	if body["state"] != "not_downloaded" {
+		t.Fatalf("state = %#v, want not_downloaded", body["state"])
+	}
+}

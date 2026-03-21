@@ -75,8 +75,10 @@ describe('settings store - small model integration', () => {
     expect(store.smallModelID).toBe('qwen3.5-0.8b-gguf-q4km')
     expect(store.smallModelAutoDownload).toBe(true)
     expect(store.smallModelSummaryEnabled).toBe(false)
+    expect(store.smallModelContextCompressEnabled).toBe(false)
     expect(store.smallModelDocExtractEnabled).toBe(false)
     expect(store.smallModelRerankEnabled).toBe(false)
+    expect(store.contextCompressionMode).toBe('auto')
     expect(store.smallModelRouteImageQAEnabled).toBe(false)
     expect(store.smallModelRouteShortQAEnabled).toBe(false)
     expect(store.smallModelRouteToolDispatchEnabled).toBe(false)
@@ -117,11 +119,23 @@ describe('settings store - small model integration', () => {
     const store = useSettingsStore()
     vi.mocked(settingsApi.patch).mockResolvedValue({ data: {} } as never)
 
+    await store.setSmallModelContextCompressEnabled(true)
+    expect(settingsApi.patch).toHaveBeenNthCalledWith(1, {
+      small_model_context_compress_enabled: true,
+    })
+
+    await store.setContextCompressionMode('offline')
+    expect(settingsApi.patch).toHaveBeenNthCalledWith(2, {
+      context_compression_mode: 'offline',
+    })
+
     await store.setSmallModelRouteImageQAEnabled(false)
-    expect(settingsApi.patch).toHaveBeenCalledWith({ small_model_route_image_qa_enabled: false })
+    expect(settingsApi.patch).toHaveBeenNthCalledWith(3, {
+      small_model_route_image_qa_enabled: false,
+    })
 
     await store.setSmallModelRouteShortQAEnabled(false)
-    expect(settingsApi.patch).toHaveBeenNthCalledWith(2, {
+    expect(settingsApi.patch).toHaveBeenNthCalledWith(4, {
       small_model_route_short_qa_enabled: false,
     })
 

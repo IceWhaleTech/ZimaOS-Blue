@@ -41,9 +41,9 @@ func TestUpgradeService_Upgrade_Success(t *testing.T) {
 	ctx := context.Background()
 
 	// Verify we're in preview mode
-	adminExists, _ := userService.AdminExists(ctx)
-	if adminExists {
-		t.Fatal("expected no admin to exist initially")
+	userExists, _ := userService.AnyUserExists(ctx)
+	if userExists {
+		t.Fatal("expected no user to exist initially")
 	}
 
 	// Upgrade
@@ -67,7 +67,7 @@ func TestUpgradeService_Upgrade_Success(t *testing.T) {
 	}
 
 	// Verify admin now exists
-	adminExists, _ = userService.AdminExists(ctx)
+	adminExists, _ := userService.AdminExists(ctx)
 	if !adminExists {
 		t.Error("expected admin to exist after upgrade")
 	}
@@ -129,6 +129,30 @@ func TestUpgradeService_Upgrade_AdminAlreadyExists(t *testing.T) {
 	}
 }
 
+func TestUpgradeService_Upgrade_UsersAlreadyExist(t *testing.T) {
+	upgradeService, userService, cleanup := setupTestUpgradeService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	_, err := userService.Create(ctx, &user.CreateUserRequest{
+		Username: "member",
+		Password: "SecurePass123!",
+		Role:     user.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("failed to create existing user: %v", err)
+	}
+
+	_, err = upgradeService.Upgrade(ctx, &UpgradeRequest{
+		Username: "admin",
+		Password: "SecurePass456!",
+	})
+	if err != ErrUsersAlreadyExist {
+		t.Errorf("Upgrade() error = %v, want %v", err, ErrUsersAlreadyExist)
+	}
+}
+
 func TestUpgradeService_Upgrade_WeakPassword(t *testing.T) {
 	upgradeService, _, cleanup := setupTestUpgradeService(t)
 	defer cleanup()
@@ -166,7 +190,7 @@ func TestUpgradeService_Upgrade_DuplicateUsername(t *testing.T) {
 		Username: "admin",
 		Password: "SecurePass456!",
 	})
-	if err != user.ErrUsernameExists {
-		t.Errorf("Upgrade() error = %v, want %v", err, user.ErrUsernameExists)
+	if err != ErrUsersAlreadyExist {
+		t.Errorf("Upgrade() error = %v, want %v", err, ErrUsersAlreadyExist)
 	}
 }

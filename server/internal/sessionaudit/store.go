@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -89,6 +90,23 @@ CREATE INDEX IF NOT EXISTS idx_session_tool_audit_tool_call
 	ON session_tool_audit_logs(tool_call_id);
 `
 
+const DefaultDBFilename = "session_audit.db"
+
+// ResolveDBPath returns the effective audit DB path.
+// Empty paths default to a dedicated session_audit.db under dataDir so tool
+// payload logging does not contend with the main blue.db conversation store.
+func ResolveDBPath(dataDir, configuredPath string) string {
+	configuredPath = strings.TrimSpace(configuredPath)
+	if configuredPath == "" {
+		configuredPath = DefaultDBFilename
+	}
+	if filepath.IsAbs(configuredPath) || strings.TrimSpace(dataDir) == "" {
+		return configuredPath
+	}
+	// Keep relative audit DB paths under dataDir for predictable deployment paths.
+	return filepath.Join(dataDir, filepath.Base(configuredPath))
+}
+
 func normalizeStoreConfig(cfg StoreConfig) StoreConfig {
 	if cfg.CleanupBatchSize <= 0 {
 		cfg.CleanupBatchSize = DefaultStoreConfig().CleanupBatchSize
@@ -128,7 +146,7 @@ func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
 		return nil, fmt.Errorf("session audit db path is empty")
 	}
 
-	db, err := dbutil.OpenSQLiteWithRecovery(dbPath, dbPath, func(db *sql.DB) error {
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
 
@@ -137,6 +155,12 @@ func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
 		}
 		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
 			return fmt.Errorf("set busy timeout: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+			return fmt.Errorf("set synchronous mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
+			return fmt.Errorf("set wal autocheckpoint: %w", err)
 		}
 		return nil
 	})
