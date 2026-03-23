@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { classifyMediaIntent } from './useMediaIntent'
+import { classifyMediaIntent, MEDIA_INTENT_SUPPORTED_LOCALES } from './useMediaIntent'
 
 describe('classifyMediaIntent', () => {
+  it('tracks 27 supported locales for media intent detection', () => {
+    expect(MEDIA_INTENT_SUPPORTED_LOCALES).toHaveLength(27)
+  })
+
   it('suppresses meta discussion about keyword matching density', () => {
     const result = classifyMediaIntent(
       'IR匹配关键词的时候，也需要考虑关键词命中的密度吧，比如在一大段文本内部出现了生成图片可能就不是这个意图',
@@ -57,5 +61,46 @@ describe('classifyMediaIntent', () => {
 
     expect(result?.category).toBe('i2i')
     expect(result?.confidence ?? 0).toBeGreaterThanOrEqual(0.8)
+  })
+
+  it('detects nanoslides prompts across all supported locales', () => {
+    for (const locale of MEDIA_INTENT_SUPPORTED_LOCALES) {
+      const result = classifyMediaIntent('nanoslides quarterly strategy summary', false, 0, locale)
+
+      expect(result?.category, locale).toBe('t2i')
+      expect(result?.params?.quality_profile, locale).toBe('ppt')
+      expect(result?.params?.style_preset, locale).toBe('nano_slides')
+    }
+  })
+
+  it('detects Chinese slide prompts as PPT-oriented media generation', () => {
+    const result = classifyMediaIntent('帮我做一页幻灯片，标题：2026 产品战略', false, 0, 'zh-CN')
+
+    expect(result?.category).toBe('t2i')
+    expect(result?.params?.quality_profile).toBe('ppt')
+  })
+
+  it('detects German presentation requests with localized cues', () => {
+    const result = classifyMediaIntent(
+      'Bitte erstelle eine Präsentation für den Quartalsplan',
+      false,
+      0,
+      'de-DE'
+    )
+
+    expect(result?.category).toBe('t2i')
+    expect(result?.params?.quality_profile).toBe('ppt')
+  })
+
+  it('detects Russian slide requests with localized cues', () => {
+    const result = classifyMediaIntent(
+      'Создай слайд с итогами продаж за квартал',
+      false,
+      0,
+      'ru-RU'
+    )
+
+    expect(result?.category).toBe('t2i')
+    expect(result?.params?.quality_profile).toBe('ppt')
   })
 })

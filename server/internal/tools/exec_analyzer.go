@@ -18,14 +18,14 @@ const (
 
 // RiskScore is the result of analyzing a command's risk profile.
 type RiskScore struct {
-	Total       int            `json:"total"`
-	Destructive int            `json:"destructive"`
-	Privilege   int            `json:"privilege"`
-	Network     int            `json:"network"`
-	Persistence int            `json:"persistence"`
-	System      int            `json:"system"`
-	Reasons     []string       `json:"reasons"`
-	Level       RiskLevel      `json:"level"`
+	Total       int       `json:"total"`
+	Destructive int       `json:"destructive"`
+	Privilege   int       `json:"privilege"`
+	Network     int       `json:"network"`
+	Persistence int       `json:"persistence"`
+	System      int       `json:"system"`
+	Reasons     []string  `json:"reasons"`
+	Level       RiskLevel `json:"level"`
 }
 
 // RiskLevel is a human-readable risk classification.
@@ -138,6 +138,27 @@ var riskRules = func() []riskRule {
 // AnalyzeRisk scores a command string against the risk rules.
 // Scores are additive but capped per category to avoid double-counting.
 func AnalyzeRisk(command string) RiskScore {
+	return analyzeRisk(command, nil)
+}
+
+// AnalyzeRiskWithSuppressedReasons scores a command while omitting selected
+// risk reasons that have already been explicitly approved at runtime.
+func AnalyzeRiskWithSuppressedReasons(command string, suppressedReasons []string) RiskScore {
+	if len(suppressedReasons) == 0 {
+		return analyzeRisk(command, nil)
+	}
+	suppressed := make(map[string]struct{}, len(suppressedReasons))
+	for _, reason := range suppressedReasons {
+		reason = strings.TrimSpace(reason)
+		if reason == "" {
+			continue
+		}
+		suppressed[reason] = struct{}{}
+	}
+	return analyzeRisk(command, suppressed)
+}
+
+func analyzeRisk(command string, suppressedReasons map[string]struct{}) RiskScore {
 	var score RiskScore
 	catScores := map[RiskCategory]*int{
 		RiskDestructive: &score.Destructive,
@@ -149,6 +170,11 @@ func AnalyzeRisk(command string) RiskScore {
 
 	for _, rule := range riskRules {
 		if rule.re.MatchString(command) {
+			if suppressedReasons != nil {
+				if _, ok := suppressedReasons[rule.reason]; ok {
+					continue
+				}
+			}
 			ptr := catScores[rule.category]
 			*ptr += rule.score
 			score.Reasons = append(score.Reasons, rule.reason)

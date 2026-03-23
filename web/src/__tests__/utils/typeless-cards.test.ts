@@ -267,6 +267,47 @@ describe('Typeless Card Parsing', () => {
     expect(full.text).not.toContain('```typeless')
   })
 
+  it('parses later typeless cards when earlier card JSON contains a literal typeless marker', () => {
+    const content = [
+      '```typeless',
+      '{"type":"web-fetch","id":"card-literal-marker","title":"Doc","status":"success","content":"literal marker ```typeless inside text"}',
+      '```',
+      '',
+      '```typeless',
+      '{"type":"result","id":"card-after-literal-marker","title":"Done","status":"success"}',
+      '```',
+    ].join('\n')
+
+    const result = parseTypelessContent(content)
+
+    expect(result.cards).toHaveLength(2)
+    expect(result.cards.find((card) => (card as any).id === 'card-literal-marker')).toBeTruthy()
+    expect(
+      result.cards.find((card) => (card as any).id === 'card-after-literal-marker')
+    ).toBeTruthy()
+    expect(result.text).not.toContain('```typeless')
+  })
+
+  it('does not invent a streaming card from a literal typeless marker inside completed card JSON', () => {
+    const content = [
+      '```typeless',
+      '{"type":"web-fetch","id":"card-fake-inner-stream","title":"Doc","status":"success","content":"literal marker ```typeless {\\"type\\":\\"info\\",\\"content\\":\\"fake\\"} inside text"}',
+      '```',
+    ].join('\n')
+
+    const result = parseTypelessContentIncremental(
+      content,
+      'msg-fake-inner-stream',
+      'conv-fake-inner-stream'
+    )
+
+    expect(result.cards).toHaveLength(1)
+    expect((result.cards[0] as any).id).toBe('card-fake-inner-stream')
+    expect((result.cards[0] as any)._streaming).toBeUndefined()
+    expect(result.text).toContain('[[TYPELESS_CARD:card-fake-inner-stream]]')
+    expect(result.cards.some((card) => (card as any)._streaming)).toBe(false)
+  })
+
   it('parses multiple consecutive typeless blocks and keeps ui-review progress cards', () => {
     const content = [
       '```typeless',

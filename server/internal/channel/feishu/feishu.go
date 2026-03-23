@@ -452,14 +452,9 @@ func (c *Channel) SendText(ctx context.Context, chatID string, text string, repl
 	// Humanize: strip markdown formatting for IM readability
 	text, _ = humanizer.HumanizeForPreset(text, "")
 	content, _ := json.Marshal(map[string]string{"text": text})
-	receiveIDType := "chat_id"
-	if strings.HasPrefix(chatID, "ou_") {
-		receiveIDType = "open_id"
-	} else if strings.HasPrefix(chatID, "on_") {
-		receiveIDType = "union_id"
-	}
-	c.removeTypingReaction(ctx, replyToID)
-	if err := c.client.sendMessage(ctx, receiveIDType, chatID, "text", string(content), replyToID); err != nil {
+	reactionTarget, sendReplyTarget := c.resolveOutboundReplyTargets(replyToID)
+	c.removeTypingReaction(ctx, reactionTarget)
+	if err := c.client.sendMessage(ctx, resolveReceiveIDType(chatID), chatID, "text", string(content), sendReplyTarget); err != nil {
 		return err
 	}
 	c.msgsSent.Add(1)
@@ -474,8 +469,9 @@ func (c *Channel) sendTextWithID(ctx context.Context, chatID string, text string
 	text, _ = humanizer.HumanizeForPreset(text, "")
 	content, _ := json.Marshal(map[string]string{"text": text})
 	receiveIDType := resolveReceiveIDType(chatID)
-	c.removeTypingReaction(ctx, replyToID)
-	messageID, err := c.client.sendMessageWithID(ctx, receiveIDType, chatID, "text", string(content), replyToID)
+	reactionTarget, sendReplyTarget := c.resolveOutboundReplyTargets(replyToID)
+	c.removeTypingReaction(ctx, reactionTarget)
+	messageID, err := c.client.sendMessageWithID(ctx, receiveIDType, chatID, "text", string(content), sendReplyTarget)
 	if err != nil {
 		return "", err
 	}
@@ -537,12 +533,8 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, 
 		return fmt.Errorf("no binary data in attachment (URL: %s)", att.URL)
 	}
 
-	receiveIDType := "chat_id"
-	if strings.HasPrefix(chatID, "ou_") {
-		receiveIDType = "open_id"
-	} else if strings.HasPrefix(chatID, "on_") {
-		receiveIDType = "union_id"
-	}
+	receiveIDType := resolveReceiveIDType(chatID)
+	reactionTarget, sendReplyTarget := c.resolveOutboundReplyTargets(replyToID)
 
 	switch att.Type {
 	case channel.MessageTypeImage:
@@ -551,8 +543,8 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, 
 			return fmt.Errorf("upload image: %w", err)
 		}
 		content, _ := json.Marshal(map[string]string{"image_key": imageKey})
-		c.removeTypingReaction(ctx, replyToID)
-		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "image", string(content), replyToID); err != nil {
+		c.removeTypingReaction(ctx, reactionTarget)
+		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "image", string(content), sendReplyTarget); err != nil {
 			return err
 		}
 		c.msgsSent.Add(1)
@@ -574,8 +566,8 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, 
 			return fmt.Errorf("upload video cover: %w", err)
 		}
 		content, _ := json.Marshal(map[string]string{"file_key": fileKey, "image_key": imageKey})
-		c.removeTypingReaction(ctx, replyToID)
-		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "media", string(content), replyToID); err != nil {
+		c.removeTypingReaction(ctx, reactionTarget)
+		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "media", string(content), sendReplyTarget); err != nil {
 			return err
 		}
 		c.msgsSent.Add(1)
@@ -599,8 +591,8 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, 
 			return fmt.Errorf("upload file: %w", err)
 		}
 		content, _ := json.Marshal(map[string]string{"file_key": fileKey})
-		c.removeTypingReaction(ctx, replyToID)
-		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "file", string(content), replyToID); err != nil {
+		c.removeTypingReaction(ctx, reactionTarget)
+		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "file", string(content), sendReplyTarget); err != nil {
 			return err
 		}
 		c.msgsSent.Add(1)
@@ -617,8 +609,9 @@ func (c *Channel) SendCard(ctx context.Context, chatID string, cardJSON string) 
 
 func (c *Channel) sendCardMessage(ctx context.Context, chatID string, cardJSON string, replyToID string) error {
 	receiveIDType := resolveReceiveIDType(chatID)
-	c.removeTypingReaction(ctx, replyToID)
-	if err := c.client.sendMessage(ctx, receiveIDType, chatID, "interactive", cardJSON, replyToID); err != nil {
+	reactionTarget, sendReplyTarget := c.resolveOutboundReplyTargets(replyToID)
+	c.removeTypingReaction(ctx, reactionTarget)
+	if err := c.client.sendMessage(ctx, receiveIDType, chatID, "interactive", cardJSON, sendReplyTarget); err != nil {
 		return err
 	}
 	c.msgsSent.Add(1)
@@ -631,8 +624,9 @@ func (c *Channel) sendCardMessage(ctx context.Context, chatID string, cardJSON s
 
 func (c *Channel) sendCardMessageWithID(ctx context.Context, chatID string, cardJSON string, replyToID string) (string, error) {
 	receiveIDType := resolveReceiveIDType(chatID)
-	c.removeTypingReaction(ctx, replyToID)
-	messageID, err := c.client.sendMessageWithID(ctx, receiveIDType, chatID, "interactive", cardJSON, replyToID)
+	reactionTarget, sendReplyTarget := c.resolveOutboundReplyTargets(replyToID)
+	c.removeTypingReaction(ctx, reactionTarget)
+	messageID, err := c.client.sendMessageWithID(ctx, receiveIDType, chatID, "interactive", cardJSON, sendReplyTarget)
 	if err != nil {
 		return "", err
 	}
@@ -794,6 +788,7 @@ func (c *Channel) Info() channel.Info {
 			"app_id":                  c.config.AppID,
 			"connection":              "websocket",
 			"typing_reaction_enabled": !c.config.DisableTypingReaction,
+			"reply_mode":              c.replyMode(),
 		},
 	}
 	if strings.TrimSpace(c.botOpenID) != "" {
@@ -1056,12 +1051,13 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 			return err
 		}
 		receiveIDType := resolveReceiveIDType(chatID)
+		reactionTarget, sendReplyTarget := c.resolveOutboundReplyTargets(replyToID)
 		if messageID == "" {
 			if !clearedReaction {
-				c.removeTypingReaction(ctx, replyToID)
+				c.removeTypingReaction(ctx, reactionTarget)
 				clearedReaction = true
 			}
-			sentID, err := c.client.sendMessageWithID(ctx, receiveIDType, chatID, "interactive", cardJSON, replyToID)
+			sentID, err := c.client.sendMessageWithID(ctx, receiveIDType, chatID, "interactive", cardJSON, sendReplyTarget)
 			if err != nil {
 				return err
 			}
@@ -1104,6 +1100,21 @@ func resolveReceiveIDType(chatID string) string {
 		return "union_id"
 	}
 	return "chat_id"
+}
+
+func (c *Channel) resolveOutboundReplyTargets(replyToID string) (reactionTarget string, sendReplyTarget string) {
+	reactionTarget = strings.TrimSpace(replyToID)
+	if c.config.SessionMode {
+		return reactionTarget, ""
+	}
+	return reactionTarget, reactionTarget
+}
+
+func (c *Channel) replyMode() string {
+	if c.config.SessionMode {
+		return "session"
+	}
+	return "reply"
 }
 
 func buildStreamingCardJSON(text string, final bool) (string, error) {

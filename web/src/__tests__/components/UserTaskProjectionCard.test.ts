@@ -27,6 +27,27 @@ function createTestI18n() {
           taskSendUpdate: 'Send update',
           taskWaitingForApproval: 'Waiting for your approval',
           taskWaitingForAnswer: 'Waiting for your answer',
+          taskRuntimeExecute: 'Executing',
+          deepResearchSourceInventory: 'Source Inventory',
+          deepResearchPublishedAt: 'Published',
+          deepResearchFetchedAt: 'Fetched',
+          deepResearchRelevance: 'Rel',
+          deepResearchCredibility: 'Cred',
+          deepResearchStageCompleted: 'Completed',
+          deepResearchActionCompleted: 'Completed',
+        },
+      },
+      'zh-CN': {
+        chat: {
+          taskStageCompleted: '已完成',
+          taskOpenConversation: '打开会话',
+          deepResearchSourceInventory: '来源清单',
+          deepResearchPublishedAt: '发布时间',
+          deepResearchFetchedAt: '抓取时间',
+          deepResearchRelevance: '相关性',
+          deepResearchCredibility: '可信度',
+          deepResearchStageCompleted: '已完成',
+          deepResearchActionCompleted: '已完成',
         },
       },
     },
@@ -70,6 +91,7 @@ describe('UserTaskProjectionCard', () => {
 
     expect(wrapper.text()).toContain('Ship the migration')
     expect(wrapper.text()).toContain('Waiting')
+    expect(wrapper.text()).toContain('Executing')
     expect(wrapper.text()).toContain('Waiting for your approval')
     expect(wrapper.text()).toContain('Drafted the plan')
     expect(wrapper.text()).toContain('Summary')
@@ -80,5 +102,59 @@ describe('UserTaskProjectionCard', () => {
 
     expect(wrapper.emitted('message')?.[0]).toEqual(['task-1', 'Keep the final answer concise'])
     expect(wrapper.emitted('cancel')?.[0]).toEqual(['task-1'])
+  })
+
+  it('localizes collapsed research details and shows the source inventory once expanded', async () => {
+    const i18n = createTestI18n()
+    i18n.global.locale.value = 'zh-CN'
+
+    const wrapper = mount(UserTaskProjectionCard, {
+      props: {
+        collapseByDefault: true,
+        task: {
+          id: 'task-research-1',
+          kind: 'research',
+          scope: 'current',
+          conversation_id: 'conv-1',
+          title: 'Agent memory systems',
+          subtitle: 'completed·completed·需要补足概览证据',
+          status: 'completed',
+          stage: 'completed',
+          progress: 100,
+          result_preview: '谨慎结论：请结合原始来源再次核验。',
+          research_sources: [
+            {
+              title: 'MemGPT paper',
+              url: 'https://example.com/memgpt',
+              domain: 'example.com',
+              source_type: 'paper',
+              published_at: '2026-03-20T00:00:00.000Z',
+              relevance_score: 0.98,
+              credibility_score: 0.95,
+            },
+          ],
+          actions: {
+            can_cancel: false,
+            can_open_chat: true,
+            can_send_update: false,
+          },
+          updated_at: '2026-03-20T12:00:00.000Z',
+        },
+      },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    expect(wrapper.text()).toContain('Agent memory systems')
+
+    await wrapper.get('button').trigger('click')
+
+    expect((wrapper.text().match(/Agent memory systems/g) || []).length).toBe(1)
+    expect(wrapper.text()).toContain('已完成 · 已完成 · 需要补足概览证据')
+    expect(wrapper.text()).toContain('来源清单')
+    expect(wrapper.get('a[href="https://example.com/memgpt"]').isVisible()).toBe(true)
+    expect(wrapper.text()).toContain('MemGPT paper')
+    expect(wrapper.text()).toContain('谨慎结论：请结合原始来源再次核验。')
   })
 })

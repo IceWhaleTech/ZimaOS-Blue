@@ -532,6 +532,23 @@ watch(
     }
   }
 )
+
+function zoomIn() {
+  scale.value = Math.min(scale.value + 0.1, 3)
+  draw()
+}
+
+function zoomOut() {
+  scale.value = Math.max(scale.value - 0.1, 0.3)
+  draw()
+}
+
+function resetView() {
+  scale.value = 1
+  offsetX.value = 0
+  offsetY.value = 0
+  draw()
+}
 </script>
 
 <template>
@@ -572,7 +589,7 @@ watch(
       <button
         class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.zoomIn')"
-        @click="scale = Math.min(scale + 0.1, 3); draw()"
+        @click="zoomIn"
       >
         <svg
           class="w-4 h-4 text-gray-600 dark:text-gray-400"
@@ -591,7 +608,7 @@ watch(
       <button
         class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.zoomOut')"
-        @click="scale = Math.max(scale - 0.1, 0.3); draw()"
+        @click="zoomOut"
       >
         <svg
           class="w-4 h-4 text-gray-600 dark:text-gray-400"
@@ -610,7 +627,7 @@ watch(
       <button
         class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.reset')"
-        @click="scale = 1; offsetX = 0; offsetY = 0; draw()"
+        @click="resetView"
       >
         <svg
           class="w-4 h-4 text-gray-600 dark:text-gray-400"

@@ -83,6 +83,16 @@ func TestUserTaskProjectionService_ListScopesAndBlockers(t *testing.T) {
 			"stage":         "verify",
 			"latest_action": "cross-checking vendors",
 			"latest_gap":    "missing EU pricing",
+			"source_inventory": []map[string]interface{}{
+				{
+					"title":             "Primary vendor pricing page",
+					"url":               "https://example.com/pricing",
+					"domain":            "example.com",
+					"source_type":       "web",
+					"relevance_score":   0.98,
+					"credibility_score": 0.94,
+				},
+			},
 		},
 	})
 	if err != nil {
@@ -175,6 +185,9 @@ func TestUserTaskProjectionService_ListScopesAndBlockers(t *testing.T) {
 	}
 	if background[0].Subtitle == "" {
 		t.Fatalf("expected research subtitle from metadata")
+	}
+	if len(background[0].ResearchSources) != 1 || background[0].ResearchSources[0].Title != "Primary vendor pricing page" {
+		t.Fatalf("unexpected research sources: %#v", background[0].ResearchSources)
 	}
 	if !background[0].Actions.CanOpenChat {
 		t.Fatalf("expected background task to allow opening chat")

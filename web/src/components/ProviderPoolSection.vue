@@ -6,7 +6,7 @@ import { useRoute } from 'vue-router'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useNotificationStore } from '@/stores/notification'
 import ProviderIcon from '@/components/ProviderIcon.vue'
-import type { Provider, Model, ProviderVerificationResult } from '@/api/providerPool'
+import type { Provider, Model, ProviderVerificationResult, APIFormat } from '@/api/providerPool'
 import { providerPoolApi } from '@/api/providerPool'
 import { formatTokens } from '@/utils/format'
 import { getLocalizedMediaModelName } from '@/utils/mediaModelLocalization'
@@ -84,6 +84,22 @@ const uploadingIcon = ref(false)
 const draggedProvider = ref<Provider | null>(null)
 const dragOverProvider = ref<string | null>(null)
 
+type EditableCustomProviderFormat = 'auto' | 'openai' | 'responses' | 'anthropic' | 'google'
+
+const editableCustomProviderFormatOptions: Array<{
+  value: EditableCustomProviderFormat
+  apiFormat?: APIFormat
+}> = [
+  { value: 'auto' },
+  { value: 'openai', apiFormat: 'openai' },
+  { value: 'responses', apiFormat: 'responses' },
+  { value: 'anthropic', apiFormat: 'anthropic' },
+  { value: 'google', apiFormat: 'google' },
+]
+
+const customProviderFormatDraft = ref<EditableCustomProviderFormat>('auto')
+const savingCustomProviderFormat = ref<string | null>(null)
+
 // New provider form
 const newProvider = ref({
   name: '',
@@ -91,6 +107,7 @@ const newProvider = ref({
   api_key: '',
   priority: 50,
   location: 'cloud' as 'cloud' | 'local',
+  format: 'auto' as EditableCustomProviderFormat,
 })
 const showNewProviderApiKey = ref(false)
 const addingProvider = ref(false)
@@ -233,9 +250,39 @@ const supportsProviderVerification = computed(() => {
   return !!provider && provider.type !== 'trial' && provider.type !== 'media'
 })
 
+function getCustomProviderFormatValue(provider?: Provider | null): EditableCustomProviderFormat {
+  if (!provider || provider.type !== 'custom') return 'auto'
+  if (provider.api_format_mode === 'pinned') {
+    switch (provider.api_format) {
+      case 'openai':
+      case 'responses':
+      case 'anthropic':
+      case 'google':
+        return provider.api_format
+    }
+  }
+  return 'auto'
+}
+
 let providerSelectionSeq = 0
 
 // Refresh models when provider changes
+watch(
+  () =>
+    [
+      displayProvider.value?.id,
+      displayProvider.value?.api_format,
+      displayProvider.value?.api_format_mode,
+    ] as const,
+  ([providerId]) => {
+    if (providerId && savingCustomProviderFormat.value === providerId) {
+      return
+    }
+    customProviderFormatDraft.value = getCustomProviderFormatValue(displayProvider.value)
+  },
+  { immediate: true }
+)
+
 watch(
   () => displayProvider.value,
   async (provider) => {
@@ -290,6 +337,32 @@ async function saveBaseUrl(providerId: string) {
 
 function cancelEditBaseUrl() {
   editingBaseUrl.value = false
+}
+
+async function saveCustomProviderFormat(nextValue: EditableCustomProviderFormat) {
+  const provider = displayProvider.value
+  if (!provider || provider.type !== 'custom') return
+
+  const previousValue = getCustomProviderFormatValue(provider)
+  if (nextValue === previousValue) {
+    customProviderFormatDraft.value = previousValue
+    return
+  }
+
+  savingCustomProviderFormat.value = provider.id
+  try {
+    const payload =
+      nextValue === 'auto'
+        ? { api_format_mode: 'auto' }
+        : { api_format: nextValue as APIFormat, api_format_mode: 'pinned' }
+    const updatedProvider = await store.updateProvider(provider.id, payload as Partial<Provider>)
+    customProviderFormatDraft.value = getCustomProviderFormatValue(updatedProvider)
+  } catch (e) {
+    console.error('Failed to update provider format:', e)
+    customProviderFormatDraft.value = previousValue
+  } finally {
+    savingCustomProviderFormat.value = null
+  }
 }
 
 // Translate backend health check error codes to i18n messages
@@ -613,6 +686,8 @@ async function addCustomProvider() {
       api_key: trimmedApiKey || undefined,
       priority: newProvider.value.priority,
       location: newProvider.value.location,
+      api_format: newProvider.value.format === 'auto' ? undefined : newProvider.value.format,
+      api_format_mode: newProvider.value.format === 'auto' ? 'auto' : 'pinned',
       type: 'custom',
     } as any)
 
@@ -713,7 +788,14 @@ async function addCustomProvider() {
 
     showAddModal.value = false
     showNewProviderApiKey.value = false
-    newProvider.value = { name: '', base_url: '', api_key: '', priority: 50, location: 'cloud' }
+    newProvider.value = {
+      name: '',
+      base_url: '',
+      api_key: '',
+      priority: 50,
+      location: 'cloud',
+      format: 'auto',
+    }
   } catch (e) {
     console.error('Failed to add provider:', e)
     notification.error(t('providerPool.addFailed'), e instanceof Error ? e.message : '', {
@@ -2112,6 +2194,47 @@ onMounted(() => {
             </div>
           </div>
 
+          <!-- Custom Provider API Format -->
+          <div v-if="displayProvider!.type === 'custom'" class="mb-4">
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <div>
+                <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('providerPool.apiFormatLabel') }}
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('providerPool.apiFormatHint') }}
+                </p>
+              </div>
+              <span
+                v-if="savingCustomProviderFormat === displayProvider!.id"
+                class="text-xs text-gray-500 dark:text-gray-400"
+              >
+                {{ t('common.saving') }}
+              </span>
+            </div>
+            <select
+              v-model="customProviderFormatDraft"
+              data-testid="custom-provider-format-select"
+              :disabled="savingCustomProviderFormat === displayProvider!.id"
+              class="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+              @change="saveCustomProviderFormat(customProviderFormatDraft)"
+            >
+              <option
+                v-for="option in editableCustomProviderFormatOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ t(`providerPool.apiFormatOptions.${option.value}`) }}
+              </option>
+            </select>
+            <p
+              v-if="customProviderFormatDraft === 'auto' && displayProvider!.api_format"
+              class="mt-2 text-xs text-gray-500 dark:text-gray-400"
+            >
+              {{ t('providerPool.apiFormatAutoDetected', { format: displayProvider!.api_format }) }}
+            </p>
+          </div>
+
           <!-- Provider Verification & Recommendation -->
           <div
             v-if="supportsProviderVerification"
@@ -2930,6 +3053,26 @@ onMounted(() => {
                 placeholder="https://api.example.com/v1"
                 class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
               />
+            </div>
+            <div>
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                t('providerPool.apiFormatLabel')
+              }}</label>
+              <select
+                v-model="newProvider.format"
+                data-testid="new-provider-format-select"
+                :disabled="addingProvider"
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+              >
+                <option
+                  v-for="option in editableCustomProviderFormatOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ t(`providerPool.apiFormatOptions.${option.value}`) }}
+                </option>
+              </select>
+              <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.apiFormatHint') }}</p>
             </div>
             <div>
               <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{

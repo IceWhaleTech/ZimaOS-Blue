@@ -25,6 +25,8 @@ const props = withDefaults(
     backups?: BackupInfo[]
     loading?: boolean
     restoring?: boolean
+    restoringId?: string | null
+    deletingId?: string | null
     creating?: boolean
     progress?: BackupProgress | null
   }>(),
@@ -32,6 +34,8 @@ const props = withDefaults(
     backups: () => [],
     loading: false,
     restoring: false,
+    restoringId: null,
+    deletingId: null,
     creating: false,
     progress: null,
   }
@@ -73,6 +77,10 @@ const displayBackups = computed(() => (props.backups ?? []).map(mapToDisplay))
 
 const sortedBackups = computed(() =>
   [...displayBackups.value].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+)
+const isRestoring = computed(() => props.restoring || !!props.restoringId)
+const hasActiveBackupOperation = computed(
+  () => props.creating || isRestoring.value || !!props.deletingId
 )
 
 function formatSize(bytes: number): string {
@@ -139,6 +147,7 @@ function getStatusIcon(status: BackupStatus): string {
 }
 
 function handleCreate() {
+  if (hasActiveBackupOperation.value) return
   const name = newBackupName.value.trim() || `Backup ${new Date().toISOString().split('T')[0]}`
   emit('create', newBackupType.value, name)
   closeModal()
@@ -151,12 +160,14 @@ function closeModal() {
 }
 
 function confirmRestore(backup: BackupDisplay) {
+  if (hasActiveBackupOperation.value) return
   if (confirm(t('backup.confirmRestore', { date: formatDate(backup.createdAt) }))) {
     emit('restore', backup.id)
   }
 }
 
 function confirmDelete(backup: BackupDisplay) {
+  if (hasActiveBackupOperation.value) return
   if (confirm(t('backup.confirmDelete'))) {
     emit('delete', backup.id)
   }
@@ -172,16 +183,18 @@ function confirmDelete(backup: BackupDisplay) {
     >
       <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('backup.title') }}</h2>
       <button
-        class="px-3.5 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
+        data-testid="backup-create-button"
+        :disabled="hasActiveBackupOperation"
+        class="px-3.5 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         @click="showCreateModal = true"
       >
-        {{ t('backup.create') }}
+        {{ creating ? t('common.creating') : t('backup.create') }}
       </button>
     </div>
 
     <!-- Restore in progress banner -->
     <div
-      v-if="restoring"
+      v-if="isRestoring"
       class="px-5 py-2.5 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800"
     >
       <div class="flex items-center gap-3 mb-2">
@@ -327,9 +340,10 @@ function confirmDelete(backup: BackupDisplay) {
 
           <div class="flex items-center gap-1.5 ml-3">
             <button
+              :data-testid="`backup-download-${backup.id}`"
               class="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
               title="Download"
-              :disabled="backup.status !== 'completed'"
+              :disabled="backup.status !== 'completed' || hasActiveBackupOperation"
               @click="emit('download', backup.id)"
             >
               <svg
@@ -348,12 +362,35 @@ function confirmDelete(backup: BackupDisplay) {
               </svg>
             </button>
             <button
+              :data-testid="`backup-restore-${backup.id}`"
               class="p-1.5 text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:text-white dark:hover:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
               title="Restore"
-              :disabled="backup.status !== 'completed' || restoring"
+              :disabled="backup.status !== 'completed' || hasActiveBackupOperation"
               @click="confirmRestore(backup)"
             >
               <svg
+                v-if="restoringId === backup.id"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              <svg
+                v-else
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
                 fill="none"
@@ -369,11 +406,35 @@ function confirmDelete(backup: BackupDisplay) {
               </svg>
             </button>
             <button
+              :data-testid="`backup-delete-${backup.id}`"
               class="p-1.5 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
               title="Delete"
+              :disabled="hasActiveBackupOperation"
               @click="confirmDelete(backup)"
             >
               <svg
+                v-if="deletingId === backup.id"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              <svg
+                v-else
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
                 fill="none"
@@ -437,15 +498,17 @@ function confirmDelete(backup: BackupDisplay) {
           >
             <button
               class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              :disabled="creating"
               @click="closeModal"
             >
               {{ t('common.cancel') }}
             </button>
             <button
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors"
+              :disabled="creating"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               @click="handleCreate"
             >
-              {{ t('backup.create') }}
+              {{ creating ? t('common.creating') : t('backup.create') }}
             </button>
           </div>
         </div>

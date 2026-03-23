@@ -81,8 +81,7 @@ const recentProcessTrace = computed(() =>
 )
 
 const fullProcessTrace = computed(() =>
-  [...localProcessTrace.value, ...chatStore.processTrace]
-    .sort((a, b) => b.timestamp - a.timestamp)
+  [...localProcessTrace.value, ...chatStore.processTrace].sort((a, b) => b.timestamp - a.timestamp)
 )
 
 const hasProcessTrace = computed(() => fullProcessTrace.value.length > 0)
@@ -329,10 +328,7 @@ function handleBargeIn() {
       category: 'audio',
       status: 'active',
       label: t('chat.stillListening'),
-      detail: resolveTraceText(
-        'details.bargeIn',
-        'Playback stopped so you can continue speaking.'
-      ),
+      detail: resolveTraceText('details.bargeIn', 'Playback stopped so you can continue speaking.'),
     },
     { replaceLatestByEvent: true }
   )
@@ -607,7 +603,9 @@ async function startListening() {
             event: 'talk_request_summary',
             category: 'summary',
             status: 'info',
-            label: interrupted ? t('chat.talkMode.interruptReady') : t('chat.talkMode.requestReady'),
+            label: interrupted
+              ? t('chat.talkMode.interruptReady')
+              : t('chat.talkMode.requestReady'),
             command: summarizeText(transcript),
             detail: buildRequestDetail(transcript, interrupted),
           })
@@ -768,7 +766,8 @@ async function playResponseTTS(text: string) {
           category: 'tts',
           status: 'error',
           label: t('chat.ttsError'),
-          detail: e?.message || resolveTraceText('details.ttsPlaybackFailed', 'TTS playback failed.'),
+          detail:
+            e?.message || resolveTraceText('details.ttsPlaybackFailed', 'TTS playback failed.'),
         },
         { replaceLatestByEvent: true }
       )
@@ -807,7 +806,13 @@ watch(
 )
 
 watch(
-  () => [chatStore.streaming, chatStore.sending, chatStore.toolExecuting, chatStore.awaitingConfirmation, chatStore.processTrace.length],
+  () => [
+    chatStore.streaming,
+    chatStore.sending,
+    chatStore.toolExecuting,
+    chatStore.awaitingConfirmation,
+    chatStore.processTrace.length,
+  ],
   () => {
     if (localPhase.value === 'requesting' && (chatStore.streaming || chatStore.sending)) {
       setLocalPhase(null)
@@ -950,9 +955,16 @@ onUnmounted(() => {
               class="relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer"
               :class="{
                 'bg-green-500 hover:bg-green-600': conversationState === 'listening',
-                'bg-amber-500': conversationState === 'preparing_audio' || conversationState === 'uploading_audio' || conversationState === 'transcribing',
-                'bg-sky-500': conversationState === 'requesting' || conversationState === 'waiting_response' || conversationState === 'tts_preparing',
-                'bg-orange-500': conversationState === 'retrying' || conversationState === 'tool_processing',
+                'bg-amber-500':
+                  conversationState === 'preparing_audio' ||
+                  conversationState === 'uploading_audio' ||
+                  conversationState === 'transcribing',
+                'bg-sky-500':
+                  conversationState === 'requesting' ||
+                  conversationState === 'waiting_response' ||
+                  conversationState === 'tts_preparing',
+                'bg-orange-500':
+                  conversationState === 'retrying' || conversationState === 'tool_processing',
                 'bg-rose-500': conversationState === 'awaiting_confirmation',
                 'bg-indigo-500': conversationState === 'speaking',
                 'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400':
@@ -1016,12 +1028,7 @@ onUnmounted(() => {
                   d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
                 />
               </svg>
-              <svg
-                v-else
-                class="w-10 h-10 text-white animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <svg v-else class="w-10 h-10 text-white animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle
                   class="opacity-25"
                   cx="12"
@@ -1044,10 +1051,7 @@ onUnmounted(() => {
 
             <div v-if="conversationState === 'uploading_audio'" class="talk-upload-progress mt-3">
               <div class="talk-upload-progress__track">
-                <div
-                  class="talk-upload-progress__fill"
-                  :style="{ width: `${uploadPercent}%` }"
-                />
+                <div class="talk-upload-progress__fill" :style="{ width: `${uploadPercent}%` }" />
               </div>
               <div class="talk-upload-progress__meta">{{ uploadPercent }}%</div>
             </div>
@@ -1060,9 +1064,7 @@ onUnmounted(() => {
                 class="talk-process-panel__toggle"
                 @click="processDetailsExpanded = !processDetailsExpanded"
               >
-                {{
-                  processDetailsExpanded ? t('chat.hideToolDetails') : t('chat.showToolDetails')
-                }}
+                {{ processDetailsExpanded ? t('chat.hideToolDetails') : t('chat.showToolDetails') }}
               </button>
             </div>
 

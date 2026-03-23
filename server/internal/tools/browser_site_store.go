@@ -109,24 +109,31 @@ func (s *BrowserSiteAllowlistStore) Match(rawURLOrOrigin, userID string) *Browse
 		return nil
 	}
 
-	row := s.db.QueryRow(
-		`SELECT id, origin, added_at, last_used, approved_by FROM browser_site_allowlist WHERE origin = ? AND approved_by = ? LIMIT 1`,
-		origin,
-		normalizeBrowserSiteApprovedBy(userID),
-	)
-	var entry BrowserSiteAllowlistEntry
-	var addedAt string
-	var lastUsed string
-	if err := row.Scan(&entry.ID, &entry.Origin, &addedAt, &lastUsed, &entry.ApprovedBy); err != nil {
-		return nil
+	candidates := []string{normalizeBrowserSiteApprovedBy(userID)}
+	if candidates[0] != "default" {
+		candidates = append(candidates, "default")
 	}
-	entry.AddedAt, _ = time.Parse(time.RFC3339, addedAt)
-	entry.LastUsed, _ = time.Parse(time.RFC3339, lastUsed)
+	for _, approvedBy := range candidates {
+		row := s.db.QueryRow(
+			`SELECT id, origin, added_at, last_used, approved_by FROM browser_site_allowlist WHERE origin = ? AND approved_by = ? LIMIT 1`,
+			origin,
+			approvedBy,
+		)
+		var entry BrowserSiteAllowlistEntry
+		var addedAt string
+		var lastUsed string
+		if err := row.Scan(&entry.ID, &entry.Origin, &addedAt, &lastUsed, &entry.ApprovedBy); err != nil {
+			continue
+		}
+		entry.AddedAt, _ = time.Parse(time.RFC3339, addedAt)
+		entry.LastUsed, _ = time.Parse(time.RFC3339, lastUsed)
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, _ = s.db.Exec(`UPDATE browser_site_allowlist SET last_used = ? WHERE id = ?`, now, entry.ID)
+		now := time.Now().UTC().Format(time.RFC3339)
+		_, _ = s.db.Exec(`UPDATE browser_site_allowlist SET last_used = ? WHERE id = ?`, now, entry.ID)
 
-	return &entry
+		return &entry
+	}
+	return nil
 }
 
 // List returns all approved browser origins.

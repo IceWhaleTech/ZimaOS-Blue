@@ -189,6 +189,33 @@ CREATE TABLE IF NOT EXISTS harness_eval_runs (
 	started_at DATETIME,
 	finished_at DATETIME
 );
+
+CREATE TABLE IF NOT EXISTS harness_baselines (
+	id TEXT PRIMARY KEY,
+	name TEXT NOT NULL,
+	subject TEXT DEFAULT '',
+	owner_user_id TEXT DEFAULT '',
+	eval_spec_id TEXT NOT NULL,
+	eval_run_id TEXT NOT NULL,
+	is_default INTEGER NOT NULL DEFAULT 0,
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS harness_comparison_reports (
+	id TEXT PRIMARY KEY,
+	owner_user_id TEXT DEFAULT '',
+	baseline_id TEXT DEFAULT '',
+	eval_spec_id TEXT NOT NULL,
+	base_eval_run_id TEXT NOT NULL,
+	target_eval_run_id TEXT NOT NULL,
+	summary_json TEXT NOT NULL DEFAULT '{}',
+	regressions_json TEXT NOT NULL DEFAULT '[]',
+	improvements_json TEXT NOT NULL DEFAULT '[]',
+	scorer_delta_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL
+);
 `
 
 const indexSchemaSQL = `
@@ -217,6 +244,11 @@ CREATE INDEX IF NOT EXISTS idx_harness_eval_specs_dataset ON harness_eval_specs(
 CREATE INDEX IF NOT EXISTS idx_harness_eval_runs_spec ON harness_eval_runs(eval_spec_id, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_harness_eval_runs_group ON harness_eval_runs(group_id);
 CREATE INDEX IF NOT EXISTS idx_harness_eval_runs_owner_status ON harness_eval_runs(owner_user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_baselines_owner ON harness_baselines(owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_baselines_spec ON harness_baselines(eval_spec_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_harness_baselines_default_spec ON harness_baselines(eval_spec_id) WHERE is_default = 1;
+CREATE INDEX IF NOT EXISTS idx_harness_comparison_reports_target ON harness_comparison_reports(target_eval_run_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_comparison_reports_spec ON harness_comparison_reports(eval_spec_id, created_at DESC);
 `
 
 type SQLiteStore struct {

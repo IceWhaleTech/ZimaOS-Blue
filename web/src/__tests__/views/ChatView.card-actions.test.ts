@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { reactive } from 'vue'
 import ChatView from '@/views/ChatView.vue'
 import { i18n, setLocale } from '@/i18n'
 
@@ -25,10 +26,13 @@ const mocks = vi.hoisted(() => ({
     hasMoreMessages: false,
     isMultiSelectMode: false,
     isPreTTFT: false,
+    isRecovering: false,
+    isStreamInterrupted: false,
     loading: false,
     loadingMore: false,
     messages: [] as Array<Record<string, unknown>>,
     modelPreference: 'auto',
+    recentTodoCompletion: null as null | { messageId: string; todoCardId?: string },
     searching: false,
     securityBlocked: null,
     selectedMessageIds: new Set<string>(),
@@ -37,6 +41,7 @@ const mocks = vi.hoisted(() => ({
     streamProgress: null,
     statusStartedAt: 0,
     statusSummary: null,
+    streamUIState: { phase: 'idle' },
     streaming: false,
     streamingContent: '',
     executingConversationIds: [] as string[],
@@ -70,6 +75,7 @@ const mocks = vi.hoisted(() => ({
     clearStreamError: vi.fn(),
     clearSecurityBlocked: vi.fn(),
     cancelStreaming: vi.fn(),
+    retryInterruptedStreamRecovery: vi.fn(),
     cancelPreTTFT: vi.fn(),
     deleteSelectedMessages: vi.fn(),
     enterMultiSelectMode: vi.fn(),
@@ -165,6 +171,13 @@ const mocks = vi.hoisted(() => ({
     remove: vi.fn(),
   },
 }))
+
+mocks.chatStore = reactive(mocks.chatStore)
+mocks.settingsStore = reactive(mocks.settingsStore)
+mocks.providerPoolStore = reactive(mocks.providerPoolStore)
+mocks.deepResearchJobsStore = reactive(mocks.deepResearchJobsStore)
+mocks.taskProjectionsStore = reactive(mocks.taskProjectionsStore)
+mocks.mediaGenerate = reactive(mocks.mediaGenerate)
 
 const helpers = vi.hoisted(() => ({
   asAsyncSFCModule(component: Record<string, unknown>) {
@@ -511,10 +524,12 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.hasMoreMessages = false
     mocks.chatStore.isMultiSelectMode = false
     mocks.chatStore.isPreTTFT = false
+    mocks.chatStore.isRecovering = false
     mocks.chatStore.loading = false
     mocks.chatStore.loadingMore = false
     mocks.chatStore.messages = []
     mocks.chatStore.modelPreference = 'auto'
+    mocks.chatStore.recentTodoCompletion = null
     mocks.chatStore.searching = false
     mocks.chatStore.securityBlocked = null
     mocks.chatStore.selectedMessageIds = new Set<string>()
@@ -523,6 +538,7 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.streamProgress = null
     mocks.chatStore.statusStartedAt = 0
     mocks.chatStore.statusSummary = null
+    mocks.chatStore.streamUIState = { phase: 'idle' }
     mocks.chatStore.streaming = false
     mocks.chatStore.streamingContent = ''
     mocks.chatStore.executingConversationIds = []
@@ -667,6 +683,43 @@ describe('ChatView page-level card actions', () => {
     expect(mocks.settingsStore.setShowToolDetails).toHaveBeenCalledWith(true)
   })
 
+  it('shows the routing mode control beside enhanced mode and work details', async () => {
+    const activeProvider = {
+      id: 'openai',
+      type: 'builtin',
+      enabled: true,
+      status: 'active',
+    } as Record<string, unknown>
+
+    mocks.providerPoolStore.providers = [activeProvider]
+    mocks.providerPoolStore.enabledProviders = [activeProvider]
+    mocks.providerPoolStore.activeProviders = [activeProvider]
+    mocks.providerPoolStore.cloudProviders = [activeProvider]
+    mocks.providerPoolStore.hasCloudProviders = true
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-routing', content: 'Need routing access' },
+    ])
+
+    const actions = wrapper.get('.chat-thread-actions')
+    const detailButton = actions
+      .findAll('button')
+      .find(
+        (button) =>
+          button.classes().includes('chat-thread-detail-btn') &&
+          !button.classes().includes('chat-thread-routing-btn')
+      )
+    expect(detailButton?.exists()).toBe(true)
+
+    const routingButton = actions.find('button.chat-thread-routing-btn')
+    expect(routingButton.exists()).toBe(true)
+
+    await routingButton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.routing-menu-floating').exists()).toBe(true)
+  })
+
   it('renders the latest todo checklist status above the composer', async () => {
     const scrollIntoViewMock = vi.fn()
     Object.defineProperty(Element.prototype, 'scrollIntoView', {
@@ -723,6 +776,39 @@ describe('ChatView page-level card actions', () => {
 
     expect(panelIndex).toBeGreaterThanOrEqual(0)
     expect(inputIndex).toBeGreaterThan(panelIndex)
+  })
+
+  it('hides the active todo panel after a completion-style final summary', async () => {
+    const wrapper = await mountChatViewWithMessages([
+      {
+        id: 'msg-checklist',
+        content: '- [x] 收集信息\n- [ ] 最终总结\n\n我先整理交付结果。',
+        todo_card_id: 'todo-checklist-msg-checklist',
+      },
+      {
+        id: 'msg-final',
+        content: '任务已完成。\n完成内容：已输出最终结论。\n使用方法：直接查看上面的结果。',
+      },
+    ])
+
+    expect(wrapper.find('[data-testid="active-todo-panel"]').exists()).toBe(false)
+  })
+
+  it('hides the active todo panel when the latest checklist has an explicit completion signal', async () => {
+    mocks.chatStore.recentTodoCompletion = {
+      messageId: 'msg-checklist',
+      todoCardId: 'todo-checklist-msg-checklist',
+    }
+
+    const wrapper = await mountChatViewWithMessages([
+      {
+        id: 'msg-checklist',
+        content: '- [x] 收集信息\n- [ ] 输出最终总结',
+        todo_card_id: 'todo-checklist-msg-checklist',
+      },
+    ])
+
+    expect(wrapper.find('[data-testid="active-todo-panel"]').exists()).toBe(false)
   })
 
   it('toggles waiting indicator, stop button, and input disabled state across conversation switches', async () => {

@@ -1,0 +1,341 @@
+package tools
+
+import (
+	"strings"
+	"unicode"
+)
+
+const officeZeroWidthChars = "\u200b\u200c\u200d\ufeff"
+
+func cleanupOfficeDocSpec(spec officeDocSpec) officeDocSpec {
+	spec.Title = officeCleanDocText(spec.Title)
+	spec.Subtitle = officeCleanDocText(spec.Subtitle)
+	spec.Summary = officeJoinDocParagraphs(officeCleanupDocStringList(splitOfficeParagraphs(spec.Summary)))
+	spec.Paragraphs = officeCleanupDocStringList(spec.Paragraphs)
+	spec.Notes = officeCleanupDocStringList(spec.Notes)
+
+	sections := make([]officeDocSection, 0, len(spec.Sections))
+	for _, section := range spec.Sections {
+		section.Heading = officeCleanDocText(section.Heading)
+		section.Paragraphs = officeCleanupDocStringList(section.Paragraphs)
+		section.Bullets = officeCleanupDocStringList(section.Bullets)
+		section.Table = officeCleanupDocTable(section.Table)
+		if section.Heading == "" && len(section.Paragraphs) == 0 && len(section.Bullets) == 0 && section.Table == nil {
+			continue
+		}
+		sections = append(sections, section)
+	}
+	spec.Sections = sections
+	return spec
+}
+
+func officeCleanupDocTable(table *officeTableSpec) *officeTableSpec {
+	if table == nil {
+		return nil
+	}
+	cleaned := &officeTableSpec{
+		Headers: make([]string, 0, len(table.Headers)),
+		Rows:    make([][]string, 0, len(table.Rows)),
+	}
+	for _, header := range table.Headers {
+		cleaned.Headers = append(cleaned.Headers, officeCleanDocText(header))
+	}
+	for _, row := range table.Rows {
+		cleanedRow := make([]string, 0, len(row))
+		nonEmpty := false
+		for _, cell := range row {
+			value := officeCleanDocText(cell)
+			if value != "" {
+				nonEmpty = true
+			}
+			cleanedRow = append(cleanedRow, value)
+		}
+		if nonEmpty {
+			cleaned.Rows = append(cleaned.Rows, cleanedRow)
+		}
+	}
+	if len(cleaned.Headers) == 0 && len(cleaned.Rows) == 0 {
+		return nil
+	}
+	return cleaned
+}
+
+func officeCleanupDocStringList(values []string) []string {
+	out := make([]string, 0, len(values))
+	fingerprints := make([]string, 0, len(values))
+	for _, value := range values {
+		cleaned := officeDedupeAdjacentSentences(officeCleanDocText(value))
+		if cleaned == "" {
+			continue
+		}
+		fingerprint := officeDocFingerprint(cleaned)
+		if fingerprint == "" {
+			continue
+		}
+		if idx := officeFindDuplicateDocString(fingerprints, fingerprint); idx >= 0 {
+			if officeDocQuality(cleaned) > officeDocQuality(out[idx]) {
+				out[idx] = cleaned
+				fingerprints[idx] = fingerprint
+			}
+			continue
+		}
+		out = append(out, cleaned)
+		fingerprints = append(fingerprints, fingerprint)
+	}
+	return out
+}
+
+func officeFindDuplicateDocString(existing []string, candidate string) int {
+	for idx, current := range existing {
+		if current == candidate || officeDocNearDuplicate(current, candidate) {
+			return idx
+		}
+	}
+	return -1
+}
+
+func officeDocNearDuplicate(left, right string) bool {
+	if left == "" || right == "" {
+		return false
+	}
+	shorter, longer := left, right
+	if runeCount(shorter) > runeCount(longer) {
+		shorter, longer = longer, shorter
+	}
+	if runeCount(shorter) < 12 {
+		return false
+	}
+	return strings.Contains(longer, shorter) && runeCount(shorter)*100 >= runeCount(longer)*88
+}
+
+func officeDocQuality(text string) int {
+	score := runeCount(officeDocFingerprint(text)) * 10
+	if last := officeLastNonSpaceRune(text); officeIsSentenceEnding(last) {
+		score++
+	}
+	return score
+}
+
+func officeJoinDocParagraphs(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.Join(values, "\n\n")
+}
+
+func officeCleanDocText(text string) string {
+	text = officeNormalizeInlineWhitespace(text)
+	if text == "" {
+		return ""
+	}
+	previous := ""
+	for previous != text {
+		previous = text
+		text = officeTrimDocSpacing(text)
+		for strings.Contains(text, "【【") {
+			text = strings.ReplaceAll(text, "【【", "【")
+		}
+		for strings.Contains(text, "】】") {
+			text = strings.ReplaceAll(text, "】】", "】")
+		}
+		for strings.Contains(text, "【】") {
+			text = strings.ReplaceAll(text, "【】", "")
+		}
+		text = officeNormalizeInlineWhitespace(text)
+	}
+	return text
+}
+
+func officeNormalizeInlineWhitespace(text string) string {
+	var sb strings.Builder
+	lastWasSpace := false
+	for _, r := range text {
+		switch {
+		case strings.ContainsRune(officeZeroWidthChars, r):
+			continue
+		case r == '\u00a0' || r == '\u3000':
+			r = ' '
+		}
+		if unicode.IsSpace(r) {
+			if sb.Len() == 0 || lastWasSpace {
+				continue
+			}
+			sb.WriteByte(' ')
+			lastWasSpace = true
+			continue
+		}
+		sb.WriteRune(r)
+		lastWasSpace = false
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func officeTrimDocSpacing(text string) string {
+	runes := []rune(text)
+	var sb strings.Builder
+	lastWritten := rune(0)
+	for idx, r := range runes {
+		if !unicode.IsSpace(r) {
+			sb.WriteRune(r)
+			lastWritten = r
+			continue
+		}
+		next := officeNextNonSpaceRune(runes, idx+1)
+		if officeShouldDropDocSpace(lastWritten, next) {
+			continue
+		}
+		if sb.Len() == 0 || lastWritten == ' ' {
+			continue
+		}
+		sb.WriteByte(' ')
+		lastWritten = ' '
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func officeShouldDropDocSpace(prev, next rune) bool {
+	if prev == 0 || next == 0 {
+		return true
+	}
+	if officeIsOpenPunctuation(prev) || officeIsClosePunctuation(next) {
+		return true
+	}
+	return officeIsCJK(prev) && officeIsCJK(next)
+}
+
+func officeDedupeAdjacentSentences(text string) string {
+	sentences := officeSplitSentences(text)
+	if len(sentences) <= 1 {
+		return text
+	}
+	out := make([]string, 0, len(sentences))
+	lastFingerprint := ""
+	for _, sentence := range sentences {
+		cleaned := officeNormalizeInlineWhitespace(sentence)
+		if cleaned == "" {
+			continue
+		}
+		fingerprint := officeDocFingerprint(cleaned)
+		if fingerprint != "" && fingerprint == lastFingerprint {
+			continue
+		}
+		out = append(out, cleaned)
+		lastFingerprint = fingerprint
+	}
+	return officeJoinTextFragments(out)
+}
+
+func officeSplitSentences(text string) []string {
+	var (
+		out []string
+		sb  strings.Builder
+	)
+	flush := func() {
+		if sentence := officeNormalizeInlineWhitespace(sb.String()); sentence != "" {
+			out = append(out, sentence)
+		}
+		sb.Reset()
+	}
+	for _, r := range text {
+		sb.WriteRune(r)
+		if officeIsSentenceEnding(r) {
+			flush()
+		}
+	}
+	flush()
+	return out
+}
+
+func officeDocFingerprint(text string) string {
+	var sb strings.Builder
+	for _, r := range text {
+		switch {
+		case unicode.IsLetter(r):
+			sb.WriteRune(unicode.ToLower(r))
+		case unicode.IsDigit(r):
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
+func officeJoinTextFragments(fragments []string) string {
+	var sb strings.Builder
+	for _, fragment := range fragments {
+		part := officeNormalizeInlineWhitespace(fragment)
+		if part == "" {
+			continue
+		}
+		if sb.Len() == 0 {
+			sb.WriteString(part)
+			continue
+		}
+		prev := officeLastNonSpaceRune(sb.String())
+		next := officeFirstNonSpaceRune(part)
+		if officeShouldInsertFragmentSpace(prev, next) {
+			sb.WriteByte(' ')
+		}
+		sb.WriteString(part)
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func officeShouldInsertFragmentSpace(prev, next rune) bool {
+	if prev == 0 || next == 0 {
+		return false
+	}
+	if officeIsOpenPunctuation(prev) || officeIsClosePunctuation(next) {
+		return false
+	}
+	if officeIsSentenceEnding(prev) {
+		return !officeIsCJK(next)
+	}
+	if officeIsCJK(prev) || officeIsCJK(next) {
+		return false
+	}
+	return true
+}
+
+func officeFirstNonSpaceRune(text string) rune {
+	for _, r := range text {
+		if !unicode.IsSpace(r) {
+			return r
+		}
+	}
+	return 0
+}
+
+func officeLastNonSpaceRune(text string) rune {
+	runes := []rune(text)
+	for idx := len(runes) - 1; idx >= 0; idx-- {
+		if !unicode.IsSpace(runes[idx]) {
+			return runes[idx]
+		}
+	}
+	return 0
+}
+
+func officeNextNonSpaceRune(runes []rune, start int) rune {
+	for idx := start; idx < len(runes); idx++ {
+		if !unicode.IsSpace(runes[idx]) {
+			return runes[idx]
+		}
+	}
+	return 0
+}
+
+func officeIsSentenceEnding(r rune) bool {
+	return strings.ContainsRune("。！？!?；;.:：", r)
+}
+
+func officeIsOpenPunctuation(r rune) bool {
+	return strings.ContainsRune("([{<\"'“‘【《「『", r)
+}
+
+func officeIsClosePunctuation(r rune) bool {
+	return strings.ContainsRune(")]}>\"'”’】》」』，。！？!?；;：:、,.", r)
+}
+
+func officeIsCJK(r rune) bool {
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul)
+}

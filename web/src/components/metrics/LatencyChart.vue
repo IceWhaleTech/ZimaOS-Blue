@@ -189,42 +189,42 @@ const percentileBars = computed(() => {
           </h4>
 
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div class="dashboard-card-subsurface latency-performance-speed-card p-4">
-            <div class="text-sm text-blue-600 dark:text-blue-400">
-              {{ t('metrics.currentSpeed') }}
+            <div class="dashboard-card-subsurface latency-performance-speed-card p-4">
+              <div class="text-sm text-blue-600 dark:text-blue-400">
+                {{ t('metrics.currentSpeed') }}
+              </div>
+              <div class="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                {{ formatRate(speedData?.current?.tokens_per_second) }}
+              </div>
+              <div class="text-xs text-blue-500 dark:text-blue-400">
+                {{ t('metrics.tokensPerSecond') }}
+              </div>
             </div>
-            <div class="text-2xl font-bold text-blue-700 dark:text-blue-300">
-              {{ formatRate(speedData?.current?.tokens_per_second) }}
+            <div class="dashboard-card-subsurface latency-performance-speed-card p-4">
+              <div class="text-sm text-green-600 dark:text-green-400">
+                {{ t('metrics.avgSpeed') }}
+              </div>
+              <div class="text-2xl font-bold text-green-700 dark:text-green-300">
+                {{ formatRate(speedData?.average?.tokens_per_second) }}
+              </div>
+              <div class="text-xs text-green-500 dark:text-green-400">
+                {{ t('metrics.tokensPerSecond') }}
+              </div>
             </div>
-            <div class="text-xs text-blue-500 dark:text-blue-400">
-              {{ t('metrics.tokensPerSecond') }}
+            <div class="dashboard-card-subsurface latency-performance-speed-card p-4">
+              <div class="text-sm text-purple-600 dark:text-purple-400">
+                {{ t('metrics.timeToFirstToken') }}
+              </div>
+              <div class="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                {{
+                  speedData?.current?.time_to_first_token_ms == null
+                    ? '-'
+                    : formatLatency(speedData.current.time_to_first_token_ms)
+                }}
+              </div>
+              <div class="text-xs text-purple-500 dark:text-purple-400">TTFT</div>
             </div>
           </div>
-          <div class="dashboard-card-subsurface latency-performance-speed-card p-4">
-            <div class="text-sm text-green-600 dark:text-green-400">
-              {{ t('metrics.avgSpeed') }}
-            </div>
-            <div class="text-2xl font-bold text-green-700 dark:text-green-300">
-              {{ formatRate(speedData?.average?.tokens_per_second) }}
-            </div>
-            <div class="text-xs text-green-500 dark:text-green-400">
-              {{ t('metrics.tokensPerSecond') }}
-            </div>
-          </div>
-          <div class="dashboard-card-subsurface latency-performance-speed-card p-4">
-            <div class="text-sm text-purple-600 dark:text-purple-400">
-              {{ t('metrics.timeToFirstToken') }}
-            </div>
-            <div class="text-2xl font-bold text-purple-700 dark:text-purple-300">
-              {{
-                speedData?.current?.time_to_first_token_ms == null
-                  ? '-'
-                  : formatLatency(speedData.current.time_to_first_token_ms)
-              }}
-            </div>
-            <div class="text-xs text-purple-500 dark:text-purple-400">TTFT</div>
-          </div>
-        </div>
 
           <div class="text-center text-sm text-gray-500 dark:text-gray-400">
             {{ t('metrics.basedOn', { count: formatCount(latencyData.samples ?? 0) }) }}

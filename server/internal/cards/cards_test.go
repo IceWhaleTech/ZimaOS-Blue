@@ -20,6 +20,8 @@ func TestToCard(t *testing.T) {
 		{"calculator_invalid", "calculator", `not json`, "", true},
 		{"web_search", "web_search", `{"query":"go","results":[{"title":"Go"}],"total_count":1}`, "search", false},
 		{"web_search_empty", "web_search", `{"query":"go","results":[],"total_count":0}`, "", true},
+		{"web_query", "web_query", `{"status":"ok","mode":"search_read","title":"Example","content":"Hello world","target_url":"https://example.com","final_url":"https://example.com","sources":[{"title":"Example","url":"https://example.com","selected":true}],"warnings":[],"next_action":"none","diagnostics":{"route":"search_read","attempts":[],"candidate_count":1,"selected_source":1,"degraded":false}}`, "result", false},
+		{"web_query_video", "web_query", `{"status":"ok","mode":"video_read","title":"Demo video","content":"Transcript preview","target_url":"https://www.youtube.com/watch?v=demo","final_url":"https://www.youtube.com/watch?v=demo","media":{"platform":"youtube","language":"en"},"page":{"content":"Page summary"},"transcript":{"source":"subtitle_manual","language":"en","text":"Transcript preview"},"sources":[{"title":"Transcript","url":"https://www.youtube.com/api/timedtext","selected":true}],"warnings":[],"next_action":"none","diagnostics":{"route":"video_url","attempts":[],"candidate_count":1,"selected_source":1,"degraded":false}}`, "result", false},
 		{"web_fetch_warning", "web_fetch", `{"url":"https://www.reddit.com/r/test","title":"Sign in","content":"Log in to continue","content_type":"text/html","extract_mode":"text","extractor":"html","warning":"page appears to be a login wall; use browser or pass browser_target_id","warning_code":"login_wall"}`, "web-fetch", false},
 		{"deep_research", "deep_research", `{"query":"go","mode":"standard","answer":"summary","confidence":0.9,"evidence_count":2,"citations":[{"title":"A","url":"https://example.com"}]}`, "deep-research", false},
 		{"current_time", "current_time", `{"datetime":"2025-01-01","timezone":"UTC","unix":1735689600}`, "result", false},
@@ -89,6 +91,37 @@ func TestImageCard_MapsTaskEnvelopeToMediaGenerate(t *testing.T) {
 	}
 	if got := images[0]["caption"]; got != "sunset city" {
 		t.Fatalf("image caption=%v, want sunset city", got)
+	}
+}
+
+func TestWebQueryCardIncludesMediaSummaryAndPreview(t *testing.T) {
+	card := ToCard("web_query", `{"status":"ok","title":"Launch Post","content":"Readable article body","target_url":"https://example.com/launch","final_url":"https://example.com/launch","media":{"summary":"Hero image shows an analytics dashboard.","items":[{"url":"https://example.com/images/hero.png","alt":"Launch dashboard hero","analysis":"Analytics dashboard with KPI cards and a chart."}]}}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["image"]; got != "https://example.com/images/hero.png" {
+		t.Fatalf("image=%v, want hero preview url", got)
+	}
+	images, ok := card["images"].([]map[string]interface{})
+	if !ok || len(images) != 1 {
+		t.Fatalf("images=%T %v, want one preview item", card["images"], card["images"])
+	}
+	if got := images[0]["caption"]; got != "Analytics dashboard with KPI cards and a chart." {
+		t.Fatalf("caption=%v, want media analysis caption", got)
+	}
+	details, ok := card["details"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("details=%T, want []map[string]interface{}", card["details"])
+	}
+	foundSummary := false
+	for _, detail := range details {
+		if detail["label"] == "media_summary" && strings.Contains(detail["value"].(string), "analytics dashboard") {
+			foundSummary = true
+			break
+		}
+	}
+	if !foundSummary {
+		t.Fatalf("details=%v, want media_summary entry", details)
 	}
 }
 

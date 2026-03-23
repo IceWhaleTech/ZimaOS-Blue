@@ -21,6 +21,20 @@ type Store struct {
 	ftsEnabled bool
 }
 
+const sqliteSafeMaxBindVars = 900
+
+type SkillUpsertRecord struct {
+	Doc     *SkillDocument
+	Version *SkillVersion
+	Report  *SecurityReport
+}
+
+type SkillBatchUpsertResult struct {
+	Inserted int
+	Updated  int
+	Skipped  int
+}
+
 func NewStore(db *sql.DB) (*Store, error) {
 	s := &Store{db: db}
 	if err := s.initSchema(); err != nil {
@@ -484,7 +498,160 @@ func decodeFindings(raw string) []SecurityFinding {
 }
 
 func (s *Store) UpsertSkill(ctx context.Context, doc *SkillDocument, version *SkillVersion, report *SecurityReport) error {
+	_, err := s.UpsertSkillBatch(ctx, []*SkillUpsertRecord{{
+		Doc:     doc,
+		Version: version,
+		Report:  report,
+	}})
+	return err
+}
+
+func (s *Store) UpsertSkillBatch(ctx context.Context, records []*SkillUpsertRecord) (*SkillBatchUpsertResult, error) {
+	records = dedupeSkillUpsertRecords(records)
+	if len(records) == 0 {
+		return &SkillBatchUpsertResult{}, nil
+	}
+
 	now := timeutil.NowTime()
+	for _, record := range records {
+		normalizeSkillUpsertRecord(record, now)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	existingSkillIDs, err := s.fetchExistingSkillIDs(ctx, tx, records)
+	if err != nil {
+		return nil, err
+	}
+	result := &SkillBatchUpsertResult{}
+	newRecords := make([]*SkillUpsertRecord, 0, len(records))
+	updateRecords := make([]*SkillUpsertRecord, 0, len(records))
+	appliedRecords := make([]*SkillUpsertRecord, 0, len(records))
+	for _, record := range records {
+		if record == nil || record.Doc == nil {
+			continue
+		}
+		if err := s.applySkillCuration(ctx, tx, record.Doc); err != nil {
+			return nil, err
+		}
+		if _, exists := existingSkillIDs[record.Doc.ID]; !exists {
+			newRecords = append(newRecords, record)
+			appliedRecords = append(appliedRecords, record)
+			result.Inserted++
+			continue
+		}
+		shouldReplaceDoc, err := shouldReplaceSkillDocument(ctx, tx, record.Doc.ID, record.Doc.SourceID)
+		if err != nil {
+			return nil, err
+		}
+		if !shouldReplaceDoc {
+			result.Skipped++
+			continue
+		}
+		updateRecords = append(updateRecords, record)
+		appliedRecords = append(appliedRecords, record)
+		result.Updated++
+	}
+
+	if err := s.insertSkillDocsIgnore(ctx, tx, newRecords); err != nil {
+		return nil, err
+	}
+	if err := s.updateSkillDocs(ctx, tx, updateRecords); err != nil {
+		return nil, err
+	}
+
+	existingVersionIDs, err := s.fetchExistingVersionIDs(ctx, tx, appliedRecords)
+	if err != nil {
+		return nil, err
+	}
+	newVersionRecords := make([]*SkillUpsertRecord, 0, len(appliedRecords))
+	updateVersionRecords := make([]*SkillUpsertRecord, 0, len(appliedRecords))
+	for _, record := range appliedRecords {
+		if record == nil || record.Doc == nil || record.Version == nil {
+			continue
+		}
+		key := skillVersionKey(record.Version.SkillID, record.Version.Version)
+		if existingID, exists := existingVersionIDs[key]; exists {
+			record.Version.ID = existingID
+			updateVersionRecords = append(updateVersionRecords, record)
+			continue
+		}
+		newVersionRecords = append(newVersionRecords, record)
+	}
+	if err := s.insertSkillVersionsIgnore(ctx, tx, newVersionRecords); err != nil {
+		return nil, err
+	}
+	if err := s.updateSkillVersions(ctx, tx, updateVersionRecords); err != nil {
+		return nil, err
+	}
+
+	existingReportIDs, err := s.fetchExistingReportIDs(ctx, tx, appliedRecords)
+	if err != nil {
+		return nil, err
+	}
+	newReportRecords := make([]*SkillUpsertRecord, 0, len(appliedRecords))
+	updateReportRecords := make([]*SkillUpsertRecord, 0, len(appliedRecords))
+	for _, record := range appliedRecords {
+		if record == nil || record.Report == nil || record.Version == nil {
+			continue
+		}
+		record.Report.SkillVersionID = record.Version.ID
+		record.Report.SkillID = record.Version.SkillID
+		record.Report.Version = record.Version.Version
+		if existingID, exists := existingReportIDs[record.Version.ID]; exists {
+			record.Report.ID = existingID
+			updateReportRecords = append(updateReportRecords, record)
+			continue
+		}
+		newReportRecords = append(newReportRecords, record)
+	}
+	if err := s.insertSkillReportsIgnore(ctx, tx, newReportRecords); err != nil {
+		return nil, err
+	}
+	if err := s.updateSkillReports(ctx, tx, updateReportRecords); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func dedupeSkillUpsertRecords(records []*SkillUpsertRecord) []*SkillUpsertRecord {
+	if len(records) <= 1 {
+		return records
+	}
+	indexByID := make(map[string]int, len(records))
+	deduped := make([]*SkillUpsertRecord, 0, len(records))
+	for _, record := range records {
+		if record == nil || record.Doc == nil {
+			continue
+		}
+		id := strings.TrimSpace(record.Doc.ID)
+		if id == "" {
+			deduped = append(deduped, record)
+			continue
+		}
+		if existingIndex, exists := indexByID[id]; exists {
+			deduped[existingIndex] = record
+			continue
+		}
+		indexByID[id] = len(deduped)
+		deduped = append(deduped, record)
+	}
+	return deduped
+}
+
+func normalizeSkillUpsertRecord(record *SkillUpsertRecord, now time.Time) {
+	if record == nil || record.Doc == nil {
+		return
+	}
+	doc := record.Doc
 	if doc.CreatedAt.IsZero() {
 		doc.CreatedAt = now
 	}
@@ -526,20 +693,64 @@ func (s *Store) UpsertSkill(ctx context.Context, doc *SkillDocument, version *Sk
 		doc.VulnerabilityStatus = VulnerabilityStatusNotApplicable
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
+	if record.Version != nil {
+		if record.Version.ID == "" {
+			record.Version.ID = uuid.NewString()
+		}
+		if record.Version.SkillID == "" {
+			record.Version.SkillID = doc.ID
+		}
+		if record.Version.CreatedAt.IsZero() {
+			record.Version.CreatedAt = now
+		}
+		record.Version.UpdatedAt = now
+		if record.Version.ReleasedAt.IsZero() {
+			record.Version.ReleasedAt = doc.LastUpdated
+		}
+		if record.Version.ScannedAt.IsZero() {
+			record.Version.ScannedAt = now
+		}
 	}
-	defer tx.Rollback()
 
-	shouldReplaceDoc, err := shouldReplaceSkillDocument(ctx, tx, doc.ID, doc.SourceID)
-	if err != nil {
-		return err
+	if record.Report != nil {
+		if record.Report.ID == "" {
+			record.Report.ID = uuid.NewString()
+		}
+		if strings.TrimSpace(record.Report.RiskLevel) == "" {
+			record.Report.RiskLevel = doc.RiskLevel
+		}
+		if strings.TrimSpace(record.Report.SecurityBadge) == "" {
+			record.Report.SecurityBadge = doc.SecurityBadge
+		}
+		if strings.TrimSpace(record.Report.VulnerabilityStatus) == "" {
+			record.Report.VulnerabilityStatus = doc.VulnerabilityStatus
+		}
+		if strings.TrimSpace(record.Report.InstallSurface.InstallType) == "" {
+			record.Report.InstallSurface.InstallType = doc.InstallType
+		}
+		if strings.TrimSpace(record.Report.InstallSurface.ArtifactKind) == "" {
+			record.Report.InstallSurface.ArtifactKind = doc.ArtifactKind
+		}
+		if !record.Report.InstallSurface.Installable {
+			record.Report.InstallSurface.Installable = doc.Installable
+		}
+		if !record.Report.InstallSurface.HasBinary {
+			record.Report.InstallSurface.HasBinary = doc.HasBinary
+		}
+		if !record.Report.InstallSurface.HasScripts {
+			record.Report.InstallSurface.HasScripts = doc.HasScripts
+		}
+		if record.Report.CreatedAt.IsZero() {
+			record.Report.CreatedAt = now
+		}
+		record.Report.UpdatedAt = now
 	}
-	if !shouldReplaceDoc {
+}
+
+func (s *Store) applySkillCuration(ctx context.Context, tx *sql.Tx, doc *SkillDocument) error {
+	if doc == nil {
 		return nil
 	}
-
 	var hidden int
 	var featuredRank int
 	var boostWeight float64
@@ -558,166 +769,420 @@ func (s *Store) UpsertSkill(ctx context.Context, doc *SkillDocument, version *Sk
 			doc.Published = false
 		}
 	case sql.ErrNoRows:
+		return nil
 	default:
 		return err
 	}
+	return nil
+}
 
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO skills (
-			id, slug, name, description, author, repo_url, homepage, download_url, stars, downloads, tags, category,
-			security_score, permissions, latest_version, risk_level, security_badge, installable, install_type,
-			artifact_kind, vulnerability_status, has_vulnerabilities, has_prompt_injection, has_shell_injection,
-			has_data_exfiltration, has_binary, has_scripts, popularity_score, trending_score, scan_status,
-			content_sha256, published, source_id, source_name, source_group, source_type, skill_path,
-			skill_content, embedding_json, embedding_model, curated_rank, curated_boost, curated_label,
-			curated_reason, last_updated, last_crawled_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			slug=excluded.slug,
-			name=excluded.name,
-			description=excluded.description,
-			author=excluded.author,
-			repo_url=excluded.repo_url,
-			homepage=excluded.homepage,
-			download_url=excluded.download_url,
-			stars=excluded.stars,
-			downloads=excluded.downloads,
-			tags=excluded.tags,
-			category=excluded.category,
-			security_score=excluded.security_score,
-			permissions=excluded.permissions,
-			latest_version=excluded.latest_version,
-			risk_level=excluded.risk_level,
-			security_badge=excluded.security_badge,
-			installable=excluded.installable,
-			install_type=excluded.install_type,
-			artifact_kind=excluded.artifact_kind,
-			vulnerability_status=excluded.vulnerability_status,
-			has_vulnerabilities=excluded.has_vulnerabilities,
-			has_prompt_injection=excluded.has_prompt_injection,
-			has_shell_injection=excluded.has_shell_injection,
-			has_data_exfiltration=excluded.has_data_exfiltration,
-			has_binary=excluded.has_binary,
-			has_scripts=excluded.has_scripts,
-			popularity_score=excluded.popularity_score,
-			trending_score=excluded.trending_score,
-			scan_status=excluded.scan_status,
-			content_sha256=excluded.content_sha256,
-			published=excluded.published,
-			source_id=excluded.source_id,
-			source_name=excluded.source_name,
-			source_group=excluded.source_group,
-			source_type=excluded.source_type,
-			skill_path=excluded.skill_path,
-			skill_content=excluded.skill_content,
-			embedding_json=excluded.embedding_json,
-			embedding_model=excluded.embedding_model,
-			curated_rank=excluded.curated_rank,
-			curated_boost=excluded.curated_boost,
-			curated_label=excluded.curated_label,
-			curated_reason=excluded.curated_reason,
-			last_updated=excluded.last_updated,
-			last_crawled_at=excluded.last_crawled_at,
-			updated_at=excluded.updated_at
-	`, doc.ID, doc.Slug, doc.Name, doc.Description, doc.Author, doc.RepoURL, doc.Homepage,
-		doc.DownloadURL, doc.Stars, doc.Downloads, encodeStrings(doc.Tags), doc.Category,
-		doc.SecurityScore, encodeStrings(doc.Permissions), doc.LatestVersion, doc.RiskLevel,
-		doc.SecurityBadge, boolToInt(doc.Installable), doc.InstallType, doc.ArtifactKind,
-		doc.VulnerabilityStatus, boolToInt(doc.HasVulnerabilities), boolToInt(doc.HasPromptInjection),
-		boolToInt(doc.HasShellInjection), boolToInt(doc.HasDataExfiltration), boolToInt(doc.HasBinary),
-		boolToInt(doc.HasScripts), doc.PopularityScore, doc.TrendingScore, doc.ScanStatus,
-		doc.ContentSHA256, boolToInt(doc.Published), doc.SourceID, doc.SourceName, doc.SourceGroup,
-		doc.SourceType, doc.SkillPath, doc.SkillContent, doc.EmbeddingJSON, doc.EmbeddingModel,
-		doc.CuratedRank, doc.CuratedBoost, doc.CuratedLabel, doc.CuratedReason, doc.LastUpdated,
-		doc.LastCrawledAt, doc.CreatedAt, doc.UpdatedAt,
-	); err != nil {
-		return err
+func collectSkillIDs(records []*SkillUpsertRecord) []string {
+	seen := make(map[string]struct{}, len(records))
+	ids := make([]string, 0, len(records))
+	for _, record := range records {
+		if record == nil || record.Doc == nil {
+			continue
+		}
+		id := strings.TrimSpace(record.Doc.ID)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
 	}
+	return ids
+}
 
-	if version != nil {
-		if version.ID == "" {
-			version.ID = uuid.NewString()
+func (s *Store) fetchExistingSkillIDs(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) (map[string]struct{}, error) {
+	ids := collectSkillIDs(records)
+	result := make(map[string]struct{}, len(ids))
+	for start := 0; start < len(ids); start += sqliteSafeMaxBindVars {
+		end := start + sqliteSafeMaxBindVars
+		if end > len(ids) {
+			end = len(ids)
 		}
-		if version.CreatedAt.IsZero() {
-			version.CreatedAt = now
+		chunk := ids[start:end]
+		args := make([]interface{}, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
 		}
-		version.UpdatedAt = now
-		if version.ReleasedAt.IsZero() {
-			version.ReleasedAt = now
+		rows, err := tx.QueryContext(ctx, `
+			SELECT id
+			FROM skills
+			WHERE id IN (`+placeholders(len(chunk))+`)`,
+			args...,
+		)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			result[id] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+	return result, nil
+}
+
+func maxRowsPerInsert(columnsPerRow int) int {
+	if columnsPerRow <= 0 {
+		return 1
+	}
+	rows := sqliteSafeMaxBindVars / columnsPerRow
+	if rows < 1 {
+		return 1
+	}
+	return rows
+}
+
+func groupedPlaceholders(rows, columns int) string {
+	if rows <= 0 || columns <= 0 {
+		return ""
+	}
+	group := "(" + placeholders(columns) + ")"
+	return strings.TrimSuffix(strings.Repeat(group+",", rows), ",")
+}
+
+func (s *Store) insertSkillDocsIgnore(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	const columnsPerRow = 48
+	for start := 0; start < len(records); start += maxRowsPerInsert(columnsPerRow) {
+		end := start + maxRowsPerInsert(columnsPerRow)
+		if end > len(records) {
+			end = len(records)
+		}
+		chunk := records[start:end]
+		args := make([]interface{}, 0, len(chunk)*columnsPerRow)
+		for _, record := range chunk {
+			doc := record.Doc
+			args = append(args,
+				doc.ID, doc.Slug, doc.Name, doc.Description, doc.Author, doc.RepoURL, doc.Homepage,
+				doc.DownloadURL, doc.Stars, doc.Downloads, encodeStrings(doc.Tags), doc.Category,
+				doc.SecurityScore, encodeStrings(doc.Permissions), doc.LatestVersion, doc.RiskLevel,
+				doc.SecurityBadge, boolToInt(doc.Installable), doc.InstallType, doc.ArtifactKind,
+				doc.VulnerabilityStatus, boolToInt(doc.HasVulnerabilities), boolToInt(doc.HasPromptInjection),
+				boolToInt(doc.HasShellInjection), boolToInt(doc.HasDataExfiltration), boolToInt(doc.HasBinary),
+				boolToInt(doc.HasScripts), doc.PopularityScore, doc.TrendingScore, doc.ScanStatus,
+				doc.ContentSHA256, boolToInt(doc.Published), doc.SourceID, doc.SourceName, doc.SourceGroup,
+				doc.SourceType, doc.SkillPath, doc.SkillContent, doc.EmbeddingJSON, doc.EmbeddingModel,
+				doc.CuratedRank, doc.CuratedBoost, doc.CuratedLabel, doc.CuratedReason, doc.LastUpdated,
+				doc.LastCrawledAt, doc.CreatedAt, doc.UpdatedAt,
+			)
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO skill_versions (
-				id, skill_id, version, commit_hash, source_url, checksum, skill_path,
-				raw_skill_md, manifest_json, released_at, scanned_at, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(skill_id, version) DO UPDATE SET
-				commit_hash=excluded.commit_hash,
-				source_url=excluded.source_url,
-				checksum=excluded.checksum,
-				skill_path=excluded.skill_path,
-				raw_skill_md=excluded.raw_skill_md,
-				manifest_json=excluded.manifest_json,
-				released_at=excluded.released_at,
-				scanned_at=excluded.scanned_at,
-				updated_at=excluded.updated_at
-		`, version.ID, version.SkillID, version.Version, version.CommitHash, version.SourceURL,
-			version.Checksum, version.SkillPath, version.RawSkillMD, version.ManifestJSON,
-			version.ReleasedAt, version.ScannedAt, version.CreatedAt, version.UpdatedAt,
+			INSERT OR IGNORE INTO skills (
+				id, slug, name, description, author, repo_url, homepage, download_url, stars, downloads, tags, category,
+				security_score, permissions, latest_version, risk_level, security_badge, installable, install_type,
+				artifact_kind, vulnerability_status, has_vulnerabilities, has_prompt_injection, has_shell_injection,
+				has_data_exfiltration, has_binary, has_scripts, popularity_score, trending_score, scan_status,
+				content_sha256, published, source_id, source_name, source_group, source_type, skill_path,
+				skill_content, embedding_json, embedding_model, curated_rank, curated_boost, curated_label,
+				curated_reason, last_updated, last_crawled_at, created_at, updated_at
+			) VALUES `+groupedPlaceholders(len(chunk), columnsPerRow),
+			args...,
 		); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	if report != nil && version != nil {
-		if report.ID == "" {
-			report.ID = uuid.NewString()
+func (s *Store) updateSkillDocs(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	stmt, err := tx.PrepareContext(ctx, `
+		UPDATE skills SET
+			slug=?, name=?, description=?, author=?, repo_url=?, homepage=?, download_url=?, stars=?, downloads=?, tags=?, category=?,
+			security_score=?, permissions=?, latest_version=?, risk_level=?, security_badge=?, installable=?, install_type=?,
+			artifact_kind=?, vulnerability_status=?, has_vulnerabilities=?, has_prompt_injection=?, has_shell_injection=?,
+			has_data_exfiltration=?, has_binary=?, has_scripts=?, popularity_score=?, trending_score=?, scan_status=?,
+			content_sha256=?, published=?, source_id=?, source_name=?, source_group=?, source_type=?, skill_path=?,
+			skill_content=?, embedding_json=?, embedding_model=?, curated_rank=?, curated_boost=?, curated_label=?,
+			curated_reason=?, last_updated=?, last_crawled_at=?, updated_at=?
+		WHERE id = ?
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, record := range records {
+		doc := record.Doc
+		if _, err := stmt.ExecContext(ctx,
+			doc.Slug, doc.Name, doc.Description, doc.Author, doc.RepoURL, doc.Homepage, doc.DownloadURL,
+			doc.Stars, doc.Downloads, encodeStrings(doc.Tags), doc.Category, doc.SecurityScore,
+			encodeStrings(doc.Permissions), doc.LatestVersion, doc.RiskLevel, doc.SecurityBadge,
+			boolToInt(doc.Installable), doc.InstallType, doc.ArtifactKind, doc.VulnerabilityStatus,
+			boolToInt(doc.HasVulnerabilities), boolToInt(doc.HasPromptInjection), boolToInt(doc.HasShellInjection),
+			boolToInt(doc.HasDataExfiltration), boolToInt(doc.HasBinary), boolToInt(doc.HasScripts),
+			doc.PopularityScore, doc.TrendingScore, doc.ScanStatus, doc.ContentSHA256, boolToInt(doc.Published),
+			doc.SourceID, doc.SourceName, doc.SourceGroup, doc.SourceType, doc.SkillPath, doc.SkillContent,
+			doc.EmbeddingJSON, doc.EmbeddingModel, doc.CuratedRank, doc.CuratedBoost, doc.CuratedLabel,
+			doc.CuratedReason, doc.LastUpdated, doc.LastCrawledAt, doc.UpdatedAt, doc.ID,
+		); err != nil {
+			return err
 		}
-		report.SkillVersionID = version.ID
-		report.SkillID = version.SkillID
-		report.Version = version.Version
-		if report.CreatedAt.IsZero() {
-			report.CreatedAt = now
+	}
+	return nil
+}
+
+func skillVersionKey(skillID, version string) string {
+	return skillID + "\x00" + version
+}
+
+func (s *Store) fetchExistingVersionIDs(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) (map[string]string, error) {
+	skillIDs := make([]string, 0, len(records))
+	seen := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		if record == nil || record.Version == nil {
+			continue
 		}
-		report.UpdatedAt = now
+		id := strings.TrimSpace(record.Version.SkillID)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		skillIDs = append(skillIDs, id)
+	}
+	result := make(map[string]string, len(skillIDs))
+	for start := 0; start < len(skillIDs); start += sqliteSafeMaxBindVars {
+		end := start + sqliteSafeMaxBindVars
+		if end > len(skillIDs) {
+			end = len(skillIDs)
+		}
+		chunk := skillIDs[start:end]
+		args := make([]interface{}, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		rows, err := tx.QueryContext(ctx, `
+			SELECT id, skill_id, version
+			FROM skill_versions
+			WHERE skill_id IN (`+placeholders(len(chunk))+`)`,
+			args...,
+		)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id, skillID, version string
+			if err := rows.Scan(&id, &skillID, &version); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			result[skillVersionKey(skillID, version)] = id
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+	return result, nil
+}
+
+func (s *Store) insertSkillVersionsIgnore(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	const columnsPerRow = 13
+	for start := 0; start < len(records); start += maxRowsPerInsert(columnsPerRow) {
+		end := start + maxRowsPerInsert(columnsPerRow)
+		if end > len(records) {
+			end = len(records)
+		}
+		chunk := records[start:end]
+		args := make([]interface{}, 0, len(chunk)*columnsPerRow)
+		for _, record := range chunk {
+			version := record.Version
+			args = append(args,
+				version.ID, version.SkillID, version.Version, version.CommitHash, version.SourceURL,
+				version.Checksum, version.SkillPath, version.RawSkillMD, version.ManifestJSON,
+				version.ReleasedAt, version.ScannedAt, version.CreatedAt, version.UpdatedAt,
+			)
+		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO skill_security_reports (
+			INSERT OR IGNORE INTO skill_versions (
+				id, skill_id, version, commit_hash, source_url, checksum, skill_path,
+				raw_skill_md, manifest_json, released_at, scanned_at, created_at, updated_at
+			) VALUES `+groupedPlaceholders(len(chunk), columnsPerRow),
+			args...,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) updateSkillVersions(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	stmt, err := tx.PrepareContext(ctx, `
+		UPDATE skill_versions SET
+			commit_hash=?, source_url=?, checksum=?, skill_path=?, raw_skill_md=?, manifest_json=?,
+			released_at=?, scanned_at=?, updated_at=?
+		WHERE skill_id = ? AND version = ?
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, record := range records {
+		version := record.Version
+		if _, err := stmt.ExecContext(ctx,
+			version.CommitHash, version.SourceURL, version.Checksum, version.SkillPath,
+			version.RawSkillMD, version.ManifestJSON, version.ReleasedAt, version.ScannedAt,
+			version.UpdatedAt, version.SkillID, version.Version,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) fetchExistingReportIDs(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) (map[string]string, error) {
+	versionIDs := make([]string, 0, len(records))
+	seen := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		if record == nil || record.Version == nil {
+			continue
+		}
+		id := strings.TrimSpace(record.Version.ID)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		versionIDs = append(versionIDs, id)
+	}
+	result := make(map[string]string, len(versionIDs))
+	for start := 0; start < len(versionIDs); start += sqliteSafeMaxBindVars {
+		end := start + sqliteSafeMaxBindVars
+		if end > len(versionIDs) {
+			end = len(versionIDs)
+		}
+		chunk := versionIDs[start:end]
+		args := make([]interface{}, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		rows, err := tx.QueryContext(ctx, `
+			SELECT id, skill_version_id
+			FROM skill_security_reports
+			WHERE skill_version_id IN (`+placeholders(len(chunk))+`)`,
+			args...,
+		)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id, skillVersionID string
+			if err := rows.Scan(&id, &skillVersionID); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			result[skillVersionID] = id
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+	return result, nil
+}
+
+func (s *Store) insertSkillReportsIgnore(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	const columnsPerRow = 23
+	for start := 0; start < len(records); start += maxRowsPerInsert(columnsPerRow) {
+		end := start + maxRowsPerInsert(columnsPerRow)
+		if end > len(records) {
+			end = len(records)
+		}
+		chunk := records[start:end]
+		args := make([]interface{}, 0, len(chunk)*columnsPerRow)
+		for _, record := range chunk {
+			report := record.Report
+			args = append(args,
+				report.ID, report.SkillVersionID, report.SkillID, report.Version, report.Score,
+				report.RiskLevel, report.SecurityBadge, report.VulnerabilityStatus, encodeJSON(report.Risks),
+				encodeStrings(report.Permissions), encodeStrings(report.Secrets), encodeStrings(report.Vulnerabilities),
+				encodeJSON(report.InstallSurface), encodeJSON(report.Evidence), report.InstallSurface.ArtifactKind,
+				boolToInt(report.HasPromptInjection), boolToInt(report.HasShellInjection), boolToInt(report.HasDataExfiltration),
+				report.ScannerVersion, report.LLMStatus, report.LLMVerdictJSON, report.CreatedAt, report.UpdatedAt,
+			)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT OR IGNORE INTO skill_security_reports (
 				id, skill_version_id, skill_id, version, score, risk_level, security_badge,
 				vulnerability_status, risks_json, permissions_json, secrets_json, vulnerabilities_json,
 				install_surface_json, evidence_json, artifact_kind, has_prompt_injection,
 				has_shell_injection, has_data_exfiltration, scanner_version,
 				llm_status, llm_verdict_json, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(skill_version_id) DO UPDATE SET
-				score=excluded.score,
-				risk_level=excluded.risk_level,
-				security_badge=excluded.security_badge,
-				vulnerability_status=excluded.vulnerability_status,
-				risks_json=excluded.risks_json,
-				permissions_json=excluded.permissions_json,
-				secrets_json=excluded.secrets_json,
-				vulnerabilities_json=excluded.vulnerabilities_json,
-				install_surface_json=excluded.install_surface_json,
-				evidence_json=excluded.evidence_json,
-				artifact_kind=excluded.artifact_kind,
-				has_prompt_injection=excluded.has_prompt_injection,
-				has_shell_injection=excluded.has_shell_injection,
-				has_data_exfiltration=excluded.has_data_exfiltration,
-				scanner_version=excluded.scanner_version,
-				llm_status=excluded.llm_status,
-				llm_verdict_json=excluded.llm_verdict_json,
-				updated_at=excluded.updated_at
-		`, report.ID, report.SkillVersionID, report.SkillID, report.Version, report.Score,
-			report.RiskLevel, report.SecurityBadge, report.VulnerabilityStatus, encodeJSON(report.Risks),
-			encodeStrings(report.Permissions), encodeStrings(report.Secrets), encodeStrings(report.Vulnerabilities),
-			encodeJSON(report.InstallSurface), encodeJSON(report.Evidence), report.InstallSurface.ArtifactKind,
-			boolToInt(report.HasPromptInjection), boolToInt(report.HasShellInjection), boolToInt(report.HasDataExfiltration),
-			report.ScannerVersion, report.LLMStatus, report.LLMVerdictJSON, report.CreatedAt, report.UpdatedAt,
+			) VALUES `+groupedPlaceholders(len(chunk), columnsPerRow),
+			args...,
 		); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	return tx.Commit()
+func (s *Store) updateSkillReports(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	stmt, err := tx.PrepareContext(ctx, `
+		UPDATE skill_security_reports SET
+			score=?, risk_level=?, security_badge=?, vulnerability_status=?, risks_json=?, permissions_json=?,
+			secrets_json=?, vulnerabilities_json=?, install_surface_json=?, evidence_json=?, artifact_kind=?,
+			has_prompt_injection=?, has_shell_injection=?, has_data_exfiltration=?, scanner_version=?,
+			llm_status=?, llm_verdict_json=?, updated_at=?
+		WHERE skill_version_id = ?
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, record := range records {
+		report := record.Report
+		if _, err := stmt.ExecContext(ctx,
+			report.Score, report.RiskLevel, report.SecurityBadge, report.VulnerabilityStatus,
+			encodeJSON(report.Risks), encodeStrings(report.Permissions), encodeStrings(report.Secrets),
+			encodeStrings(report.Vulnerabilities), encodeJSON(report.InstallSurface), encodeJSON(report.Evidence),
+			report.InstallSurface.ArtifactKind, boolToInt(report.HasPromptInjection), boolToInt(report.HasShellInjection),
+			boolToInt(report.HasDataExfiltration), report.ScannerVersion, report.LLMStatus,
+			report.LLMVerdictJSON, report.UpdatedAt, report.SkillVersionID,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func shouldReplaceSkillDocument(ctx context.Context, tx *sql.Tx, skillID, incomingSourceID string) (bool, error) {

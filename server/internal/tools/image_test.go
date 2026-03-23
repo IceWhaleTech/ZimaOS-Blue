@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 )
 
 type imageReviewMock struct {
@@ -59,10 +61,35 @@ func (m *imageVisionMock) ChatWithVision(_ context.Context, prompt string, image
 	return m.resp, nil
 }
 
+type imageProviderVisionMock struct {
+	prompt   string
+	image    string
+	analysis string
+	handled  bool
+	calls    int
+	err      error
+}
+
+func (m *imageProviderVisionMock) Analyze(_ context.Context, prompt string, imageBase64 string) (string, bool, error) {
+	m.calls++
+	m.prompt = prompt
+	m.image = imageBase64
+	return m.analysis, m.handled, m.err
+}
+
 type imageOCRMock struct {
-	image []byte
-	resp  ImageOCRResult
-	err   error
+	image      []byte
+	resp       ImageOCRResult
+	allowEmpty bool
+	err        error
+}
+
+type imageSmallModelMock struct {
+	resp    string
+	err     error
+	ready   bool
+	calls   int
+	lastReq smallmodel.GenerateRequest
 }
 
 type pptGenerateMock struct {
@@ -84,10 +111,23 @@ func (m *pptGenerateMock) Generate(_ context.Context, req PPTRequest) (*PPTResul
 
 func (m *imageOCRMock) Extract(_ context.Context, imagePNG []byte) (ImageOCRResult, error) {
 	m.image = append([]byte(nil), imagePNG...)
-	if m.resp.Text == "" && m.err == nil {
+	if m.resp.Text == "" && m.err == nil && !m.allowEmpty {
 		m.resp = ImageOCRResult{Text: "ocr text", Engine: "tesseract/wasm", Model: "eng"}
 	}
 	return m.resp, m.err
+}
+
+func (m *imageSmallModelMock) Generate(_ context.Context, req smallmodel.GenerateRequest) (*smallmodel.GenerateResponse, error) {
+	m.calls++
+	m.lastReq = req
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &smallmodel.GenerateResponse{Text: m.resp}, nil
+}
+
+func (m *imageSmallModelMock) Ready() bool {
+	return m.ready
 }
 
 func TestImageToolReviewFallsBackToOCR(t *testing.T) {
@@ -115,6 +155,435 @@ func TestImageToolReviewFallsBackToOCR(t *testing.T) {
 	}
 }
 
+func TestImageToolReviewUsesProviderAwareVisionForMiniMax(t *testing.T) {
+	vision := &imageVisionMock{resp: "generic vision should not run"}
+	providerVision := &imageProviderVisionMock{handled: true, analysis: "minimax direct vision"}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetProviderVision(providerVision)
+
+	ctx := WithProviderID(context.Background(), "minimax")
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"image":  inlinePNGBase64(t),
+		"prompt": "What is shown?",
+	})
+	if err != nil {
+		t.Fatalf("execute minimax direct vision failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "vision" {
+		t.Fatalf("mode = %v, want vision", payload["mode"])
+	}
+	if payload["analysis"] != "minimax direct vision" {
+		t.Fatalf("analysis = %v, want minimax direct vision", payload["analysis"])
+	}
+	if providerVision.calls != 1 {
+		t.Fatalf("provider vision calls = %d, want 1", providerVision.calls)
+	}
+	if vision.calls != 0 {
+		t.Fatalf("generic vision calls = %d, want 0", vision.calls)
+	}
+}
+
+func TestImageToolReviewNonMiniMaxKeepsGenericVisionPath(t *testing.T) {
+	vision := &imageVisionMock{resp: "generic vision"}
+	providerVision := &imageProviderVisionMock{handled: false, analysis: "minimax direct vision"}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetProviderVision(providerVision)
+
+	ctx := WithProviderID(context.Background(), "openai")
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"image":  inlinePNGBase64(t),
+		"prompt": "What is shown?",
+	})
+	if err != nil {
+		t.Fatalf("execute generic vision failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["analysis"] != "generic vision" {
+		t.Fatalf("analysis = %v, want generic vision", payload["analysis"])
+	}
+	if providerVision.calls != 1 {
+		t.Fatalf("provider vision calls = %d, want 1", providerVision.calls)
+	}
+	if vision.calls != 1 {
+		t.Fatalf("generic vision calls = %d, want 1", vision.calls)
+	}
+}
+
+func TestImageToolReviewOCROnlyBypassesVision(t *testing.T) {
+	vision := &imageVisionMock{resp: "vision should not run"}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "ocr only text", Engine: "tesseract/wasm", Model: "eng"}}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetOCRService(ocr)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"analysis_mode": "ocr_only",
+	})
+	if err != nil {
+		t.Fatalf("execute ocr_only review failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "ocr" {
+		t.Fatalf("mode = %v, want ocr", payload["mode"])
+	}
+	if vision.calls != 0 {
+		t.Fatalf("vision calls = %d, want 0", vision.calls)
+	}
+}
+
+func TestImageToolReviewOCRFirstUsesOCRBeforeVision(t *testing.T) {
+	vision := &imageVisionMock{resp: "vision should not run"}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Revenue 18%\nARR 120k\nActive users 2400", Engine: "tesseract/wasm", Model: "eng"}}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetOCRService(ocr)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"prompt":        "Extract the visible text from this dashboard screenshot.",
+		"analysis_mode": "ocr_first",
+	})
+	if err != nil {
+		t.Fatalf("execute ocr_first review failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "ocr" {
+		t.Fatalf("mode = %v, want ocr", payload["mode"])
+	}
+	if payload["ocr_sufficient"] != true {
+		t.Fatalf("ocr_sufficient = %v, want true", payload["ocr_sufficient"])
+	}
+	if vision.calls != 0 {
+		t.Fatalf("vision calls = %d, want 0", vision.calls)
+	}
+}
+
+func TestImageToolReviewOCRFirstFallsBackToVisionWhenOCRIsSparse(t *testing.T) {
+	vision := &imageVisionMock{resp: "The image shows an analytics dashboard with KPI cards and a line chart."}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Q3", Engine: "tesseract/wasm", Model: "eng"}}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetOCRService(ocr)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"prompt":        "What is shown in this dashboard screenshot?",
+		"analysis_mode": "ocr_first",
+	})
+	if err != nil {
+		t.Fatalf("execute sparse-ocr review failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "vision" {
+		t.Fatalf("mode = %v, want vision", payload["mode"])
+	}
+	if payload["fallback_from"] != "ocr" {
+		t.Fatalf("fallback_from = %v, want ocr", payload["fallback_from"])
+	}
+	if payload["fallback_reason"] != "ocr_insufficient" {
+		t.Fatalf("fallback_reason = %v, want ocr_insufficient", payload["fallback_reason"])
+	}
+	if payload["ocr_sufficient"] != false {
+		t.Fatalf("ocr_sufficient = %v, want false", payload["ocr_sufficient"])
+	}
+	if payload["ocr_preview"] != "Q3" {
+		t.Fatalf("ocr_preview = %v, want Q3", payload["ocr_preview"])
+	}
+	if vision.calls != 1 {
+		t.Fatalf("vision calls = %d, want 1", vision.calls)
+	}
+}
+
+func TestImageToolReviewOCRFirstUsesSmallModelBeforeVisionWhenOCRIsSparse(t *testing.T) {
+	vision := &imageVisionMock{resp: "vision should not run"}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Q3", Engine: "tesseract/wasm", Model: "eng"}}
+	sm := &imageSmallModelMock{ready: true, resp: "A KPI dashboard with cards and a line chart."}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetOCRService(ocr)
+	tool.SetSmallModelRuntime(sm)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"prompt":        "What is shown in this dashboard screenshot?",
+		"analysis_mode": "ocr_first",
+	})
+	if err != nil {
+		t.Fatalf("execute sparse-ocr with small model failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "small_model" {
+		t.Fatalf("mode = %v, want small_model", payload["mode"])
+	}
+	if payload["fallback_from"] != "ocr" {
+		t.Fatalf("fallback_from = %v, want ocr", payload["fallback_from"])
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if len(sm.lastReq.Images) != 1 {
+		t.Fatalf("small model images = %d, want 1", len(sm.lastReq.Images))
+	}
+	if vision.calls != 0 {
+		t.Fatalf("vision calls = %d, want 0", vision.calls)
+	}
+}
+
+func TestImageToolReviewOCRFirstFallsBackToVisionWhenSmallModelIsTooSparse(t *testing.T) {
+	vision := &imageVisionMock{resp: "The screenshot shows a KPI dashboard with cards and a line chart."}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Q3", Engine: "tesseract/wasm", Model: "eng"}}
+	sm := &imageSmallModelMock{ready: true, resp: "unclear screenshot"}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetOCRService(ocr)
+	tool.SetSmallModelRuntime(sm)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"prompt":        "What is shown in this dashboard screenshot?",
+		"analysis_mode": "ocr_first",
+	})
+	if err != nil {
+		t.Fatalf("execute sparse-ocr with sparse small model failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "vision" {
+		t.Fatalf("mode = %v, want vision", payload["mode"])
+	}
+	if payload["fallback_from"] != "small_model" {
+		t.Fatalf("fallback_from = %v, want small_model", payload["fallback_from"])
+	}
+	if payload["fallback_reason"] != "small_model_insufficient_after_ocr" {
+		t.Fatalf("fallback_reason = %v, want small_model_insufficient_after_ocr", payload["fallback_reason"])
+	}
+	if payload["small_model_sufficient"] != false {
+		t.Fatalf("small_model_sufficient = %v, want false", payload["small_model_sufficient"])
+	}
+	if payload["small_model_preview"] != "unclear screenshot" {
+		t.Fatalf("small_model_preview = %v, want unclear screenshot", payload["small_model_preview"])
+	}
+	if vision.calls != 1 {
+		t.Fatalf("vision calls = %d, want 1", vision.calls)
+	}
+}
+
+func TestImageToolReviewOCRFirstFallsBackToVision(t *testing.T) {
+	vision := &imageVisionMock{resp: "vision rescue"}
+	ocr := &imageOCRMock{resp: ImageOCRResult{}, allowEmpty: true}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetOCRService(ocr)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"analysis_mode": "ocr_first",
+	})
+	if err != nil {
+		t.Fatalf("execute ocr_first fallback review failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "vision" {
+		t.Fatalf("mode = %v, want vision", payload["mode"])
+	}
+	if payload["fallback_from"] != "ocr" {
+		t.Fatalf("fallback_from = %v, want ocr", payload["fallback_from"])
+	}
+	if vision.calls != 1 {
+		t.Fatalf("vision calls = %d, want 1", vision.calls)
+	}
+}
+
+func TestImageToolReviewOCRFirstReturnsOCRWhenVisionUnavailableAfterSparseOCR(t *testing.T) {
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Q3", Engine: "tesseract/wasm", Model: "eng"}}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetOCRService(ocr)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"prompt":        "What is shown in this dashboard screenshot?",
+		"analysis_mode": "ocr_first",
+	})
+	if err != nil {
+		t.Fatalf("execute sparse-ocr without vision failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "ocr" {
+		t.Fatalf("mode = %v, want ocr", payload["mode"])
+	}
+	if payload["ocr_sufficient"] != false {
+		t.Fatalf("ocr_sufficient = %v, want false", payload["ocr_sufficient"])
+	}
+	if payload["fallback_reason"] != "vision_unavailable_after_insufficient_ocr" {
+		t.Fatalf("fallback_reason = %v, want vision_unavailable_after_insufficient_ocr", payload["fallback_reason"])
+	}
+	warnings, ok := payload["warnings"].([]string)
+	if !ok || len(warnings) == 0 {
+		t.Fatalf("warnings = %#v, want non-empty []string", payload["warnings"])
+	}
+}
+
+func TestImageToolReviewOCRFirstReturnsOCRWhenMiniMaxDirectVisionFails(t *testing.T) {
+	vision := &imageVisionMock{resp: "generic vision should not run"}
+	providerVision := &imageProviderVisionMock{handled: true, err: errors.New("minimax direct vision failed")}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Q3", Engine: "tesseract/wasm", Model: "eng"}}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetProviderVision(providerVision)
+	tool.SetOCRService(ocr)
+
+	ctx := WithProviderID(context.Background(), "minimax")
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"prompt":        "What is shown in this dashboard screenshot?",
+		"analysis_mode": "ocr_first",
+	})
+	if err != nil {
+		t.Fatalf("execute ocr_first minimax failure fallback failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "ocr" {
+		t.Fatalf("mode = %v, want ocr", payload["mode"])
+	}
+	if payload["fallback_reason"] != "vision_unavailable_after_insufficient_ocr" {
+		t.Fatalf("fallback_reason = %v, want vision_unavailable_after_insufficient_ocr", payload["fallback_reason"])
+	}
+	if providerVision.calls != 1 {
+		t.Fatalf("provider vision calls = %d, want 1", providerVision.calls)
+	}
+	if vision.calls != 0 {
+		t.Fatalf("generic vision calls = %d, want 0", vision.calls)
+	}
+}
+
+func TestImageToolReviewCheapFirstUsesSmallModel(t *testing.T) {
+	vision := &imageVisionMock{resp: "vision should not run"}
+	sm := &imageSmallModelMock{ready: true, resp: "A product hero image with a server device."}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetSmallModelRuntime(sm)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"prompt":        "Describe the product image briefly.",
+		"analysis_mode": "cheap_first",
+	})
+	if err != nil {
+		t.Fatalf("execute cheap_first review failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "small_model" {
+		t.Fatalf("mode = %v, want small_model", payload["mode"])
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if vision.calls != 0 {
+		t.Fatalf("vision calls = %d, want 0", vision.calls)
+	}
+}
+
+func TestImageToolReviewCheapFirstFallsBackToVision(t *testing.T) {
+	vision := &imageVisionMock{resp: "vision rescue"}
+	sm := &imageSmallModelMock{ready: false}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetSmallModelRuntime(sm)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"prompt":        "Describe the product image briefly.",
+		"analysis_mode": "cheap_first",
+	})
+	if err != nil {
+		t.Fatalf("execute cheap_first fallback failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "vision" {
+		t.Fatalf("mode = %v, want vision", payload["mode"])
+	}
+	if payload["fallback_from"] != "small_model" {
+		t.Fatalf("fallback_from = %v, want small_model", payload["fallback_from"])
+	}
+	if vision.calls != 1 {
+		t.Fatalf("vision calls = %d, want 1", vision.calls)
+	}
+}
+
+func TestImageToolReviewCheapFirstUsesOCRWhenMiniMaxDirectVisionFails(t *testing.T) {
+	vision := &imageVisionMock{resp: "generic vision should not run"}
+	providerVision := &imageProviderVisionMock{handled: true, err: errors.New("minimax direct vision failed")}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "ocr fallback text", Engine: "tesseract/wasm", Model: "eng"}}
+	sm := &imageSmallModelMock{ready: false}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetProviderVision(providerVision)
+	tool.SetOCRService(ocr)
+	tool.SetSmallModelRuntime(sm)
+
+	ctx := WithProviderID(context.Background(), "minimax")
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"prompt":        "Describe the product image briefly.",
+		"analysis_mode": "cheap_first",
+	})
+	if err != nil {
+		t.Fatalf("execute cheap_first minimax fallback failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "ocr" {
+		t.Fatalf("mode = %v, want ocr", payload["mode"])
+	}
+	if payload["fallback_from"] != "vision" {
+		t.Fatalf("fallback_from = %v, want vision", payload["fallback_from"])
+	}
+	if providerVision.calls != 1 {
+		t.Fatalf("provider vision calls = %d, want 1", providerVision.calls)
+	}
+	if vision.calls != 0 {
+		t.Fatalf("generic vision calls = %d, want 0", vision.calls)
+	}
+}
+
+func TestImageToolReviewCheapFirstFallsBackToVisionWhenSmallModelIsTooSparse(t *testing.T) {
+	vision := &imageVisionMock{resp: "A product hero image with a server device on a clean backdrop."}
+	sm := &imageSmallModelMock{ready: true, resp: "unclear"}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+	tool.SetSmallModelRuntime(sm)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"image":         inlinePNGBase64(t),
+		"prompt":        "Describe the product image briefly.",
+		"analysis_mode": "cheap_first",
+	})
+	if err != nil {
+		t.Fatalf("execute cheap_first sparse-small-model fallback failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "vision" {
+		t.Fatalf("mode = %v, want vision", payload["mode"])
+	}
+	if payload["fallback_from"] != "small_model" {
+		t.Fatalf("fallback_from = %v, want small_model", payload["fallback_from"])
+	}
+	if payload["fallback_reason"] != "small_model_insufficient" {
+		t.Fatalf("fallback_reason = %v, want small_model_insufficient", payload["fallback_reason"])
+	}
+	if payload["small_model_sufficient"] != false {
+		t.Fatalf("small_model_sufficient = %v, want false", payload["small_model_sufficient"])
+	}
+	if payload["small_model_preview"] != "unclear" {
+		t.Fatalf("small_model_preview = %v, want unclear", payload["small_model_preview"])
+	}
+	if vision.calls != 1 {
+		t.Fatalf("vision calls = %d, want 1", vision.calls)
+	}
+}
+
 func TestNewImageToolUsesLongerDefaultDownloadTimeout(t *testing.T) {
 	tool := NewImageTool(nil, nil, nil)
 	if tool.httpClient == nil {
@@ -125,7 +594,7 @@ func TestNewImageToolUsesLongerDefaultDownloadTimeout(t *testing.T) {
 	}
 }
 
-func TestRegisterImageToolRegistersBenchFriendlyAliases(t *testing.T) {
+func TestRegisterImageToolKeepsLegacyAliasesCallableButHidden(t *testing.T) {
 	registry := NewRegistry()
 	RegisterImageTool(registry, nil, func(_ context.Context, _ ImageGenerateRequest) (*ImageTaskResult, error) {
 		return &ImageTaskResult{
@@ -146,15 +615,15 @@ func TestRegisterImageToolRegistersBenchFriendlyAliases(t *testing.T) {
 	if registry.Get("generate_image") == nil || registry.Get("generateImage") == nil {
 		t.Fatal("expected legacy image aliases to remain callable")
 	}
-	if !registry.IsDisabled("generate_image") || !registry.IsDisabled("generateImage") {
+	if !registry.IsDisabled("image_generation") || !registry.IsDisabled("generate_image") || !registry.IsDisabled("generateImage") {
 		t.Fatal("expected legacy image aliases to stay hidden from model exposure")
 	}
 
 	visible := registry.List()
-	if !containsString(visible, "image") || !containsString(visible, "image_generation") {
-		t.Fatalf("expected visible image tools to include native and bench alias, got=%v", visible)
+	if !containsString(visible, "image") {
+		t.Fatalf("expected visible image tools to include native tool, got=%v", visible)
 	}
-	if containsString(visible, "generate_image") || containsString(visible, "generateImage") {
+	if containsString(visible, "image_generation") || containsString(visible, "generate_image") || containsString(visible, "generateImage") {
 		t.Fatalf("expected legacy aliases to stay hidden, got=%v", visible)
 	}
 }
@@ -176,7 +645,21 @@ func TestImageToolGenerateRoutesBananaSlidesToPPTService(t *testing.T) {
 		"review_threshold":    82.0,
 		"review_retry_budget": 1.0,
 		"reference_images":    []interface{}{"https://example.com/ref-1.png", "https://example.com/ref-2.png"},
-		"source":              "ppt",
+		"layout_spec": map[string]interface{}{
+			"template_id": "split",
+			"elements": []map[string]interface{}{
+				{
+					"kind":      "text",
+					"text":      "Revenue growth",
+					"font_role": "title",
+					"x":         96,
+					"y":         120,
+					"width":     420,
+					"height":    96,
+				},
+			},
+		},
+		"source": "ppt",
 	})
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
@@ -199,6 +682,33 @@ func TestImageToolGenerateRoutesBananaSlidesToPPTService(t *testing.T) {
 	}
 	if service.req.Source != "ppt" {
 		t.Fatalf("source = %q, want ppt", service.req.Source)
+	}
+	if service.req.LayoutSpec == nil {
+		t.Fatal("expected layout_spec to be forwarded to PPT service")
+	}
+}
+
+func TestImageToolGenerateRoutesNanoSlidesAliasToPPTService(t *testing.T) {
+	tool := NewImageTool(nil, func(context.Context, ImageGenerateRequest) (*ImageTaskResult, error) {
+		t.Fatal("plain image generation should not run when nano slides ppt service is selected")
+		return nil, nil
+	}, nil)
+	service := &pptGenerateMock{}
+	tool.SetPPTService(service)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"prompt":       "Create a strategy summary slide",
+		"style_preset": "nano slides",
+		"source":       "slides",
+	})
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if _, ok := result.(*PPTResult); !ok {
+		t.Fatalf("result type = %T, want *PPTResult", result)
+	}
+	if service.req.StylePreset != "nano slides" {
+		t.Fatalf("style_preset = %q, want original nano alias preserved for service normalization", service.req.StylePreset)
 	}
 }
 

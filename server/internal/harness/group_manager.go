@@ -292,14 +292,18 @@ func (c *Controller) refreshGroupSummary(ctx context.Context, groupID string) (*
 	}
 	counts := make(map[string]int)
 	var (
-		activeQueued  int
-		activeRunning int
-		activeScoring int
-		totalAttempts int
-		totalScore    float64
-		ratedCount    int
-		passedCount   int
+		activeQueued         int
+		activeRunning        int
+		activeScoring        int
+		totalAttempts        int
+		totalScore           float64
+		ratedCount           int
+		passedCount          int
+		verificationPassed   int
+		evidenceBackedPasses int
+		retryRecoveredCount  int
 	)
+	failureLabelCounts := make(map[string]int)
 	for _, item := range items {
 		counts[string(item.Status)]++
 		totalAttempts += item.AttemptCount
@@ -314,8 +318,23 @@ func (c *Controller) refreshGroupSummary(ctx context.Context, groupID string) (*
 		if card, ok := latestCards[item.ID]; ok {
 			totalScore += card.Score
 			ratedCount++
+			breakdown := decodeJSONMap(card.BreakdownJSON)
+			if passed, ok := mapBool(breakdown, "verification_passed"); ok && passed {
+				verificationPassed++
+			}
+			if label := metadataString(breakdown, "failure_label"); label != "" {
+				failureLabelCounts[label]++
+			}
 			if card.Verdict == ScoreVerdictPass {
 				passedCount++
+				if evidenceScore, ok := breakdown["evidence_score"].(float64); ok && evidenceScore >= 0.8 {
+					evidenceBackedPasses++
+				} else if passed, ok := mapBool(breakdown, "verification_passed"); ok && passed {
+					evidenceBackedPasses++
+				}
+				if item.AttemptCount > 1 {
+					retryRecoveredCount++
+				}
 			}
 			counts["verdict:"+string(card.Verdict)]++
 		}
@@ -325,6 +344,16 @@ func (c *Controller) refreshGroupSummary(ctx context.Context, groupID string) (*
 	if ratedCount > 0 {
 		summary["overall_score"] = totalScore / float64(ratedCount)
 		summary["pass_rate"] = float64(passedCount) / float64(len(items))
+		summary["verification_pass_rate"] = float64(verificationPassed) / float64(ratedCount)
+	}
+	if passedCount > 0 {
+		summary["evidence_backed_pass_rate"] = float64(evidenceBackedPasses) / float64(passedCount)
+	}
+	if retryRecoveredCount > 0 {
+		summary["retry_recovered_count"] = retryRecoveredCount
+	}
+	if len(failureLabelCounts) > 0 {
+		summary["failure_label_counts"] = failureLabelCounts
 	}
 	group.Summary = summary
 	if group.StartedAt == nil && (activeRunning > 0 || activeScoring > 0 || totalAttempts > 0) {

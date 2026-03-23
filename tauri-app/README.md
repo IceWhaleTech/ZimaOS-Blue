@@ -91,6 +91,25 @@ make tauri-package
 make tauri-build
 ```
 
+macOS 下两者行为不同：
+
+- `make tauri-build`：只执行普通 `tauri build`，会产出 `.app` / `.dmg`，但默认不做 notarization。
+- `make tauri-package`：走 `tauri-app/build.sh` 的完整后处理流程，负责签名、提交 Apple notarization、`staple` 和本地校验。
+- `make tauri-verify-macos-package`：验证当前已构建的 `.app` 是否通过签名校验，以及 `.dmg` 是否带有 stapled notarization ticket。
+
+默认情况下，`make tauri-package` 在 macOS 上要求以下环境变量齐全，否则会直接失败，避免误产出未公证包：
+
+- `APPLE_SIGNING_IDENTITY`
+- `APPLE_ID`
+- `APPLE_TEAM_ID`
+- `APPLE_APP_PASSWORD`
+
+如果只是本地临时验证、明确接受未公证包，可以显式关闭严格检查：
+
+```bash
+MACOS_REQUIRE_NOTARIZATION=0 make tauri-package
+```
+
 ### 清理构建产物
 
 ```bash
@@ -131,11 +150,12 @@ tauri-app/
 
 ## 跨平台构建
 
-本地只能构建当前平台的包。跨平台构建请使用 GitHub Actions：
+本地只能构建当前平台的包。跨平台 release 包由 GitHub Release 工作流负责：
 
 ```bash
-# 推送代码后，在 GitHub Actions 手动触发
-# Actions → Build Tauri App → Run workflow → 选择平台
+# GitHub 上创建 Release 后自动触发
+# Actions → Release
+# macOS 的 release DMG 会在该流程中签名、公证、staple，并执行校验
 ```
 
 支持的平台：
@@ -166,6 +186,13 @@ tauri-app/
 # 检查文件是否存在
 ls -la tauri-app/src-tauri/lib/libblue.a
 ```
+
+### macOS 包未经过公证
+
+- 如果你运行的是 `make tauri-build`，这是预期行为；该命令不负责 notarization。
+- 需要可分发的 macOS 包时，请使用 `make tauri-package`。
+- 如果 `make tauri-package` 失败，请先检查 `APPLE_SIGNING_IDENTITY`、`APPLE_ID`、`APPLE_TEAM_ID`、`APPLE_APP_PASSWORD` 是否已设置。
+- 如需复核当前产物，可运行 `make tauri-verify-macos-package`。
 
 ### 链接错误：undefined symbols
 

@@ -8,8 +8,7 @@ export default {
       descriptions: {
         research_run:
           "Executa una recerca profunda. Pots esperar l'informe final o obtenir un ID de tasca per consultar-lo més tard.",
-        research_status:
-          "Obtén l'estat actual o l'informe final d'una tasca de recerca profunda.",
+        research_status: "Obtén l'estat actual o l'informe final d'una tasca de recerca profunda.",
       },
     },
   },
@@ -22,8 +21,7 @@ export default {
       descriptions: {
         research_run:
           'Spustí hloubkový průzkum. Můžete počkat na závěrečnou zprávu nebo získat ID úlohy pro pozdější kontrolu.',
-        research_status:
-          'Získá aktuální stav nebo závěrečnou zprávu úlohy hloubkového průzkumu.',
+        research_status: 'Získá aktuální stav nebo závěrečnou zprávu úlohy hloubkového průzkumu.',
       },
     },
   },
@@ -78,8 +76,7 @@ export default {
       descriptions: {
         research_run:
           'Run deep research. You can wait for the final report or get a job ID to check later.',
-        research_status:
-          'Get the current status or final report for a deep research job.',
+        research_status: 'Get the current status or final report for a deep research job.',
       },
     },
   },
@@ -92,8 +89,7 @@ export default {
       descriptions: {
         research_run:
           'Run deep research. You can wait for the final report or get a job ID to check later.',
-        research_status:
-          'Get the current status or final report for a deep research job.',
+        research_status: 'Get the current status or final report for a deep research job.',
       },
     },
   },
@@ -190,8 +186,7 @@ export default {
       descriptions: {
         research_run:
           'ディープリサーチを実行します。最終レポートを待つことも、後で確認するためのジョブ ID を受け取ることもできます。',
-        research_status:
-          'ディープリサーチ ジョブの現在の状態または最終レポートを取得します。',
+        research_status: 'ディープリサーチ ジョブの現在の状態または最終レポートを取得します。',
       },
     },
   },
@@ -231,8 +226,7 @@ export default {
       descriptions: {
         research_run:
           'Kjører dypsøk. Du kan vente på den endelige rapporten eller få en jobb-ID for å sjekke senere.',
-        research_status:
-          'Henter gjeldende status eller endelig rapport for en dypsøk-jobb.',
+        research_status: 'Henter gjeldende status eller endelig rapport for en dypsøk-jobb.',
       },
     },
   },
@@ -329,8 +323,7 @@ export default {
       descriptions: {
         research_run:
           'Spustí hĺbkový výskum. Môžete počkať na záverečnú správu alebo získať ID úlohy na neskoršiu kontrolu.',
-        research_status:
-          'Získa aktuálny stav alebo záverečnú správu úlohy hĺbkového výskumu.',
+        research_status: 'Získa aktuálny stav alebo záverečnú správu úlohy hĺbkového výskumu.',
       },
     },
   },
@@ -343,8 +336,7 @@ export default {
       descriptions: {
         research_run:
           'Kör djupsökning. Du kan vänta på slutrapporten eller få ett jobb-ID för att kontrollera senare.',
-        research_status:
-          'Hämtar aktuell status eller slutrapport för ett djupsökningsjobb.',
+        research_status: 'Hämtar aktuell status eller slutrapport för ett djupsökningsjobb.',
       },
     },
   },

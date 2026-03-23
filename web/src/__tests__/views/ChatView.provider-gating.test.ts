@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { reactive } from 'vue'
 import ChatView from '@/views/ChatView.vue'
 import { i18n } from '@/i18n'
 
@@ -21,6 +22,8 @@ const mocks = vi.hoisted(() => ({
     hasMoreMessages: false,
     isMultiSelectMode: false,
     isPreTTFT: false,
+    isRecovering: false,
+    isStreamInterrupted: false,
     loading: false,
     loadingMore: false,
     messages: [] as Array<Record<string, unknown>>,
@@ -31,6 +34,7 @@ const mocks = vi.hoisted(() => ({
     sending: false,
     streamError: null as null | string,
     streamProgress: null as null | string,
+    streamUIState: { phase: 'idle' },
     streaming: false,
     streamingContent: '',
     sortedConversations: [] as Array<Record<string, unknown>>,
@@ -63,6 +67,7 @@ const mocks = vi.hoisted(() => ({
     clearStreamError: vi.fn(),
     clearSecurityBlocked: vi.fn(),
     cancelStreaming: vi.fn(),
+    retryInterruptedStreamRecovery: vi.fn(),
     cancelPreTTFT: vi.fn(),
     deleteSelectedMessages: vi.fn(),
     enterMultiSelectMode: vi.fn(),
@@ -151,6 +156,13 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
+mocks.chatStore = reactive(mocks.chatStore)
+mocks.settingsStore = reactive(mocks.settingsStore)
+mocks.providerPoolStore = reactive(mocks.providerPoolStore)
+mocks.deepResearchJobsStore = reactive(mocks.deepResearchJobsStore)
+mocks.taskProjectionsStore = reactive(mocks.taskProjectionsStore)
+mocks.mediaGenerate = reactive(mocks.mediaGenerate)
+
 vi.mock('@/stores/chat', () => ({
   useChatStore: () => mocks.chatStore,
 }))
@@ -224,7 +236,8 @@ const chatInputStub = {
     focus() {},
     resetWarmup() {},
   },
-  template: '<button class="chat-input-send-stub" @click="$emit(\'send\', \'need provider\', [])" />',
+  template:
+    '<button class="chat-input-send-stub" @click="$emit(\'send\', \'need provider\', [])" />',
 }
 
 const talkModeStub = {
@@ -261,6 +274,8 @@ describe('ChatView provider gating', () => {
     mocks.providerPoolStore.providers = []
     mocks.providerPoolStore.enabledProviders = []
     mocks.providerPoolStore.activeProviders = []
+    mocks.chatStore.isRecovering = false
+    mocks.chatStore.streamUIState = { phase: 'idle' }
     mocks.providerPoolStore.fetchProviders.mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchRoutingMode.mockResolvedValue(undefined)
     mocks.settingsStore.fetchTools.mockResolvedValue(undefined)
@@ -336,7 +351,9 @@ describe('ChatView provider gating', () => {
     expect(mocks.mediaGenerate.classify).not.toHaveBeenCalled()
     expect(mocks.chatInputSetInput).toHaveBeenCalledWith('need provider')
     expect(wrapper.text()).toContain('Set up an AI provider to start chatting')
-    expect(wrapper.text()).toContain('Your draft has been kept locally so you can continue after setup.')
+    expect(wrapper.text()).toContain(
+      'Your draft has been kept locally so you can continue after setup.'
+    )
   })
 
   it('shows setup guidance in the empty state when no provider is configured', async () => {
@@ -384,7 +401,9 @@ describe('ChatView provider gating', () => {
       'No AI provider is available right now'
     )
     expect(wrapper.text()).toContain('openai')
-    expect(wrapper.text()).toContain('Authentication failed. Recheck the API key or OAuth connection.')
+    expect(wrapper.text()).toContain(
+      'Authentication failed. Recheck the API key or OAuth connection.'
+    )
   })
 
   it('shows the enhanced mode info card on hover when Claude Code CLI is enabled', async () => {

@@ -179,6 +179,12 @@ func (e *SkillExecutor) Execute(ctx context.Context, args map[string]interface{}
 			if claims := normalizeDeepResearchEventStringList(payload["must_verify_claims"]); len(claims) > 0 {
 				brief["must_verify_claims"] = claims
 			}
+			if retryContext := strings.TrimSpace(deepResearchString(payload["retry_context"])); retryContext != "" {
+				brief["retry_context"] = retryContext
+			}
+			if retryQueries := normalizeDeepResearchEventStringList(payload["retry_queries"]); len(retryQueries) > 0 {
+				brief["retry_queries"] = retryQueries
+			}
 			if len(brief) > 0 {
 				card["brief"] = brief
 			}
@@ -764,10 +770,14 @@ func buildDeepResearchResult(current *Job) map[string]interface{} {
 		"time_windows":         current.TimeWindows,
 		"report_style":         current.ReportStyle,
 	}
+	if workflowPhases := deepResearchWorkflowPhases(current.Status, current.Stage); len(workflowPhases) > 0 {
+		data["workflow_phases"] = workflowPhases
+	}
+	if sourceInventory := buildKnowledgeBaseSourceInventory(current.Evidence); len(sourceInventory) > 0 {
+		data["source_inventory"] = sourceInventory
+	}
 	if isKnowledgeBaseReportStyle(current.ReportStyle) {
-		data["workflow_phases"] = deepResearchWorkflowPhases(current.Status, current.Stage)
 		data["object_map"] = buildKnowledgeBaseObjectMap(current.Query, current.Lang, current.Tasks)
-		data["source_inventory"] = buildKnowledgeBaseSourceInventory(current.Evidence)
 		data["coverage_summary"] = buildKnowledgeBaseCoverage(current)
 	}
 	if current.Report != nil {

@@ -32,14 +32,19 @@ export interface PresetQuestionAttachment {
   name: string
   mime_type: string
   // For demo purposes, we use a placeholder URL or generate simple content
-  placeholder?: 'sample-image' | 'sample-document'
+  placeholder?: string
 }
 
 export interface PresetQuestion {
   id: string
+  title?: string
+  description?: string
+  prompt?: string
   text: string
   category: string
+  tags?: string[]
   icon?: string
+  editorial_score?: number
   attachments?: PresetQuestionAttachment[]
 }
 

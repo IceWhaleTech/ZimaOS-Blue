@@ -1311,7 +1311,7 @@ func TestGenerateSummarySync_SmallModelSummaryDisabled(t *testing.T) {
 	}
 }
 
-func TestGenerateSummarySync_ContextCompressionModeOffReturnsEmpty(t *testing.T) {
+func TestGenerateSummarySync_LegacyOffModeFallsBackToAutomaticCompression(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("memory.NewStore: %v", err)
@@ -1332,8 +1332,8 @@ func TestGenerateSummarySync_ContextCompressionModeOffReturnsEmpty(t *testing.T)
 		{Role: "assistant", Content: "older context 6"},
 		{Role: "user", Content: "recent question"},
 	}, []llm.Message{{Role: llm.RoleUser, Content: "recent question"}})
-	if got != "" {
-		t.Fatalf("summary = %q, want empty when context_compression_mode=off", got)
+	if got == "" {
+		t.Fatal("expected legacy off mode to fall back to automatic compression")
 	}
 }
 

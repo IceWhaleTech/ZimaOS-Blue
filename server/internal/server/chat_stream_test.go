@@ -123,6 +123,15 @@ type autoContinueScriptedProxyHandler struct {
 	requestModels            []string
 }
 
+// checklistArtifactWriteProxyHandler simulates:
+// 1) first round emits a canonical TODO checklist
+// 2) second round executes a successful write_commit for the requested artifact
+// The chat layer should finalize the tracked TODO and emit todo_completed.
+type checklistArtifactWriteProxyHandler struct {
+	callCount          int
+	lastRequestMessage string
+}
+
 // toolCallThenTextProxyHandler simulates a round that emits text, then tool_call,
 // then more text in the same round. The post-tool-call text should be suppressed
 // from user-visible SSE deltas.
@@ -226,6 +235,23 @@ type missingTodoAfterToolRoundProxyHandler struct {
 	sawMissingTodoNudge      bool
 	sawMissingNextStepsNudge bool
 	lastRequestMessage       string
+}
+
+// questionLikeMissingTodoContinuationProxyHandler simulates:
+//  1. a question-like request that first executes a read-only tool round
+//  2. the post-tool follow-up returns a non-completion progress reply with no
+//     canonical checklist, so agent-mode missing_todo auto-continue kicks in
+//  3. the missing_todo continuation round then emits a side-effecting write tool call
+//  4. the final round returns a completion summary
+//
+// This regression test guards against stale carry-over pause logic treating the
+// internal missing_todo continuation nudge as if it were still the original
+// question-like user intent and incorrectly blocking the write tool call.
+type questionLikeMissingTodoContinuationProxyHandler struct {
+	callCount            int
+	secondRequestMessage string
+	thirdRequestMessage  string
+	sawMissingTodoNudge  bool
 }
 
 // checklistToolRoundNoUpdateProxyHandler simulates:
@@ -857,6 +883,46 @@ func (h *autoContinueScriptedProxyHandler) ServeHTTP(w http.ResponseWriter, r *h
 	}
 }
 
+func (h *checklistArtifactWriteProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	var body struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	for i := len(body.Messages) - 1; i >= 0; i-- {
+		if body.Messages[i].Role != "user" {
+			continue
+		}
+		h.lastRequestMessage = body.Messages[i].Content
+		break
+	}
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_checklist_artifact_write"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+
+	switch h.callCount {
+	case 1:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"artifact_round_1","choices":[{"delta":{"content":"- [x] 收集信息\n- [ ] 将完整报告写入 reports/final.md"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+	case 2:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"artifact_round_2","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_artifact_write_1","type":"function","function":{"name":"write_commit","arguments":"{\"path\":\"reports/final.md\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+	default:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"artifact_round_final","choices":[{"delta":{"content":"unexpected extra round"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+	}
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func (h *toolCallThenTextProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.callCount++
 
@@ -1319,6 +1385,62 @@ func (h *missingTodoAfterToolRoundProxyHandler) ServeHTTP(w http.ResponseWriter,
 		flush()
 	default:
 		fmt.Fprintf(w, "data: %s\n\n", `{"id":"missing_todo_round_3","choices":[{"delta":{"content":"任务已完成。最终总结：实现可用并已验证。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	}
+}
+
+func (h *questionLikeMissingTodoContinuationProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if h.callCount > 1 {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		for i := len(body.Messages) - 1; i >= 0; i-- {
+			if body.Messages[i].Role != "user" {
+				continue
+			}
+			if h.callCount == 2 {
+				h.secondRequestMessage = body.Messages[i].Content
+			}
+			if h.callCount == 3 {
+				h.thirdRequestMessage = body.Messages[i].Content
+				h.sawMissingTodoNudge = strings.Contains(h.thirdRequestMessage, "checklist bootstrap required")
+			}
+			break
+		}
+	}
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_question_like_missing_todo_continuation"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	switch h.callCount {
+	case 1:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"question_like_missing_todo_round_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_question_like_noop_1","type":"function","function":{"name":"noop_tool","arguments":"{\"task\":\"inspect\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	case 2:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"question_like_missing_todo_round_2","choices":[{"delta":{"content":"已执行第一步，接下来继续优化实现。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	case 3:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"question_like_missing_todo_round_2","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_question_like_write_1","type":"function","function":{"name":"write","arguments":"{\"path\":\"investigation_notes.md\",\"content\":\"continued evidence\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	default:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"question_like_missing_todo_round_3","choices":[{"delta":{"content":"任务已完成。最终总结：我已继续执行验证并写出结果。\n\nIf you'd like, I can also help with:\n1. No further action needed."},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
 	}
 }
@@ -3384,6 +3506,66 @@ func TestStreamMessageAutoContinue_AgentMode_MissingTodoAfterToolRound(t *testin
 	}
 }
 
+func TestStreamMessageAutoContinue_QuestionLikeMissingTodoContinuationBypassesStaleCarryOverGuard(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test question-like missing_todo continuation")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "noop_tool"}, result: map[string]interface{}{"ok": true}})
+	writeTool := &countingSideEffectTool{name: "write"}
+	toolRegistry.Register(writeTool)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "gpt-5.3-codex-spark",
+		ContextWindow: 2048,
+	}}))
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	smartToolSelection := false
+	settingsHandler.settings.SmartToolSelection = &smartToolSelection
+	handler.SetSettingsHandler(settingsHandler)
+
+	seedCompressedHistoryForGuardTest(t, store, handler, conv.ID)
+
+	fakeProxy := &questionLikeMissingTodoContinuationProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"先解释为什么 deep research 会提前停下，然后继续查完并给我最终结论","model":"gpt-5.3-codex-spark"}`)
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if strings.Contains(body, "暂停之前那个旧的写入任务") {
+		t.Fatalf("expected no stale carry-over pause fallback, body=%s", body)
+	}
+	if fakeProxy.callCount != 4 {
+		t.Fatalf("expected 4 proxy calls (tool round + progress reply + missing_todo continuation + completion), got %d", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawMissingTodoNudge {
+		t.Fatalf("expected third request to carry missing_todo nudge, got second=%q third=%q", fakeProxy.secondRequestMessage, fakeProxy.thirdRequestMessage)
+	}
+	if writeTool.CallCount() != 1 {
+		t.Fatalf("write tool calls = %d, want 1 after continuation bypasses stale carry-over guard", writeTool.CallCount())
+	}
+	if !strings.Contains(body, "任务已完成。最终总结：我已继续执行验证并写出结果。") {
+		t.Fatalf("expected completion summary after write tool execution, body=%s", body)
+	}
+}
+
 func TestStreamMessageAutoContinue_ToolRoundWithoutChecklistUpdate_DoesNotImplicitlyAdvanceTodo(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -3523,6 +3705,148 @@ func TestStreamMessageAutoContinue_ToollessChecklistEcho_DoesNotKeepUpdatingTodo
 		if strings.Contains(m.Content, "- [x] 收集信息") {
 			t.Fatalf("expected toolless checklist echo not to update persisted canonical checklist, got=%q", m.Content)
 		}
+	}
+}
+
+func TestStreamMessageAutoContinue_ToollessArtifactDelivery_CompletesPendingWriteTodo(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test toolless artifact-delivery todo completion")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		roundContents: []string{
+			"- [x] 抓取桌面端页面截图\n- [ ] 将完整报告（问题标注 + 对比度建议 + Hero HTML/CSS 示例）写入文件并输出",
+			"已将完整报告写入 `ui-review/完整报告.md`，可以直接查看。",
+		},
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"继续推进这个任务直到完成","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 2 {
+		t.Fatalf("expected 2 proxy calls (initial checklist + artifact delivery), got %d", fakeProxy.callCount)
+	}
+	if got := strings.Count(body, `"todo_updated":true`); got != 2 {
+		t.Fatalf("expected todo bootstrap plus artifact-delivery completion update, got %d; body=%s", got, body)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 50, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+
+	foundCheckedChecklist := false
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "- [x] 将完整报告（问题标注 + 对比度建议 + Hero HTML/CSS 示例）写入文件并输出") {
+			foundCheckedChecklist = true
+			break
+		}
+	}
+	if !foundCheckedChecklist {
+		t.Fatalf("expected persisted checklist to mark artifact delivery as complete, messages=%+v", messages)
+	}
+}
+
+func TestStreamMessageAutoContinue_ToolRoundArtifactWrite_EmitsTodoCompleted(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test tool-round artifact delivery todo completion")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def: tools.ToolDefinition{Name: "write_commit"},
+		result: map[string]interface{}{
+			"success": true,
+			"path":    "reports/final.md",
+		},
+	})
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), toolRegistry)
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	fakeProxy := &checklistArtifactWriteProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	body := runStreamTurn(
+		t,
+		handler,
+		conv.ID,
+		`{"message":"继续执行并把完整报告写到 reports/final.md","model":"gpt-5.3-codex-spark"}`,
+	)
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 2 {
+		t.Fatalf("expected 2 proxy calls (checklist + write tool round), got %d", fakeProxy.callCount)
+	}
+	if !strings.Contains(body, `"todo_updated":true`) || !strings.Contains(body, `"todo_completed":true`) {
+		t.Fatalf("expected todo completion SSE events after write tool round, body=%s", body)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 50, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+
+	foundCheckedChecklist := false
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "- [x] 将完整报告写入 reports/final.md") {
+			foundCheckedChecklist = true
+			break
+		}
+	}
+	if !foundCheckedChecklist {
+		t.Fatalf("expected persisted checklist to mark write_commit delivery as complete, messages=%+v", messages)
 	}
 }
 

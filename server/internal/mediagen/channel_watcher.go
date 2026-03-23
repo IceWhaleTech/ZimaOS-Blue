@@ -146,15 +146,15 @@ func (w *ChannelTaskWatcher) pollUntilDone(taskID, channelName, chatID string, l
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
-	// Timeout after 10 minutes to avoid leaked goroutines
-	timeout := time.After(10 * time.Minute)
+	// Keep channel watchers alive for very long-running local/video fallbacks.
+	timeout := time.After(6 * time.Hour)
 
 	for {
 		select {
 		case <-w.ctx.Done():
 			return
 		case <-timeout:
-			log.Printf("[channel-watcher] task %s timed out after 10m", taskID)
+			log.Printf("[channel-watcher] task %s timed out after 6h", taskID)
 			w.mu.Lock()
 			notifier := w.notifier
 			w.mu.Unlock()

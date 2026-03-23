@@ -324,7 +324,8 @@ const selectedLocaleOption = computed({
 const autoSaveFeedbackText = computed(() => {
   if (autoSaveState.value === 'saving') return t('common.saving')
   if (autoSaveState.value === 'saved') return t('common.saved')
-  if (autoSaveState.value === 'error') return requestError.value || t('speech.voiceWake.messages.unavailable')
+  if (autoSaveState.value === 'error')
+    return requestError.value || t('speech.voiceWake.messages.unavailable')
   return ''
 })
 const autoSaveFeedbackClass = computed(() => {
@@ -876,11 +877,7 @@ onUnmounted(() => {
           </p>
         </div>
       </div>
-      <label
-        v-if="supportsConfiguration"
-        data-testid="voicewake-header-toggle"
-        class="shrink-0"
-      >
+      <label v-if="supportsConfiguration" data-testid="voicewake-header-toggle" class="shrink-0">
         <span class="sr-only">{{ `${t('common.enable')} ${t('speech.voiceWake.title')}` }}</span>
         <span
           class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
@@ -992,11 +989,7 @@ onUnmounted(() => {
                 :disabled="saving"
                 @change="flushDraftSettings"
               >
-                <option
-                  v-for="lang in offlineLanguageOptions"
-                  :key="lang"
-                  :value="lang"
-                >
+                <option v-for="lang in offlineLanguageOptions" :key="lang" :value="lang">
                   {{ langName(lang) }}
                 </option>
               </select>

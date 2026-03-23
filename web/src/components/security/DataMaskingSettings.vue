@@ -116,7 +116,9 @@ async function fetchMaskingData(showLoader = true) {
 
     if (maskingRes) maskingStats.value = maskingRes.data
     if (maskingRulesRes) {
-      maskingRules.value = Array.isArray(maskingRulesRes.data.rules) ? maskingRulesRes.data.rules : []
+      maskingRules.value = Array.isArray(maskingRulesRes.data.rules)
+        ? maskingRulesRes.data.rules
+        : []
       defaultMaskingRules.value = Array.isArray(maskingRulesRes.data.default_rules)
         ? maskingRulesRes.data.default_rules
         : []
@@ -203,7 +205,10 @@ async function deleteCustomMaskingRule(rule: MaskingRule) {
         rule_count: Math.max(0, maskingStats.value.rule_count - 1),
       }
     }
-    feedbackSuccess.value = tr('apiProxy.customMaskingDeleteSuccess', 'Custom masking rule deleted.')
+    feedbackSuccess.value = tr(
+      'apiProxy.customMaskingDeleteSuccess',
+      'Custom masking rule deleted.'
+    )
   } catch (error: unknown) {
     feedbackError.value = getErrorMessage(
       error,
@@ -294,10 +299,14 @@ onMounted(() => {
       <div class="space-y-4 border-t border-gray-100 pt-4 dark:border-white/10">
         <div>
           <div class="mb-2 flex items-center justify-between gap-3">
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+            <p
+              class="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400"
+            >
               {{ tr('apiProxy.builtinMaskingRules', 'Built-in rules') }}
             </p>
-            <span class="text-xs text-gray-500 dark:text-gray-400">{{ builtinMaskingRules.length }}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{
+              builtinMaskingRules.length
+            }}</span>
           </div>
           <div v-if="builtinMaskingRules.length > 0" class="space-y-1.5">
             <div
@@ -346,10 +355,14 @@ onMounted(() => {
 
         <div>
           <div class="mb-2 flex items-center justify-between gap-3">
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+            <p
+              class="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400"
+            >
               {{ tr('apiProxy.customMaskingListTitle', 'Custom rules') }}
             </p>
-            <span class="text-xs text-gray-500 dark:text-gray-400">{{ customMaskingRules.length }}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{
+              customMaskingRules.length
+            }}</span>
           </div>
           <div v-if="customMaskingRules.length > 0" class="space-y-1.5">
             <div
@@ -363,7 +376,9 @@ onMounted(() => {
                     <p class="text-sm font-medium text-gray-900 dark:text-white">
                       {{ getMaskingRuleName(rule) }}
                     </p>
-                    <span class="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-600 dark:text-gray-200">
+                    <span
+                      class="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-600 dark:text-gray-200"
+                    >
                       {{ tr('apiProxy.maskingCategories.custom', 'Custom') }}
                     </span>
                   </div>
@@ -394,7 +409,11 @@ onMounted(() => {
                     class="shrink-0 rounded-full bg-red-100 px-2 py-1 text-[10px] font-medium text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
                     @click="deleteCustomMaskingRule(rule)"
                   >
-                    {{ deletingMaskingRuleId === rule.id ? tr('common.loading', 'Loading') : t('common.delete') }}
+                    {{
+                      deletingMaskingRuleId === rule.id
+                        ? tr('common.loading', 'Loading')
+                        : t('common.delete')
+                    }}
                   </button>
                 </div>
               </div>
@@ -434,7 +453,9 @@ onMounted(() => {
               }}
             </p>
           </div>
-          <span class="rounded-full bg-white/80 dark:bg-slate-800/80 px-2.5 py-1 text-[11px] font-medium text-gray-600 dark:text-slate-300">
+          <span
+            class="rounded-full bg-white/80 dark:bg-slate-800/80 px-2.5 py-1 text-[11px] font-medium text-gray-600 dark:text-slate-300"
+          >
             {{ customMaskingRules.length }} {{ tr('apiProxy.maskingCategories.custom', 'Custom') }}
           </span>
         </div>
@@ -483,9 +504,7 @@ onMounted(() => {
               type="text"
               data-testid="masking-custom-pattern"
               class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-mono text-gray-900 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:focus:border-gray-300 dark:focus:ring-gray-300/10"
-              :placeholder="
-                tr('apiProxy.customMaskingPatternPlaceholder', 'Example: TKT-\\d{6}')
-              "
+              :placeholder="tr('apiProxy.customMaskingPatternPlaceholder', 'Example: TKT-\\d{6}')"
             />
           </label>
 
@@ -499,9 +518,13 @@ onMounted(() => {
               data-testid="masking-custom-replacement"
               class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-mono text-gray-900 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:focus:border-gray-300 dark:focus:ring-gray-300/10"
               :placeholder="
-                tr('apiProxy.customMaskingReplacementPlaceholder', 'Example: 【{MASKED}】[TICKET]', {
-                  maskLabel: '{MASKED}',
-                })
+                tr(
+                  'apiProxy.customMaskingReplacementPlaceholder',
+                  'Example: 【{MASKED}】[TICKET]',
+                  {
+                    maskLabel: '{MASKED}',
+                  }
+                )
               "
             />
           </label>
@@ -531,8 +554,19 @@ onMounted(() => {
               fill="none"
               viewBox="0 0 24 24"
             >
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
             {{ tr('apiProxy.customMaskingAdd', 'Add rule') }}
           </button>

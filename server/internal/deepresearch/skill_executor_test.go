@@ -294,6 +294,12 @@ func TestSkillExecutorExecute_ResultIncludesTraceAndVerificationSummary(t *testi
 	if _, ok := data["verification_summary"].(*VerificationSummary); !ok {
 		t.Fatalf("expected verification_summary in result, got %#v", data["verification_summary"])
 	}
+	if _, ok := data["source_inventory"].([]map[string]interface{}); !ok {
+		t.Fatalf("expected source_inventory in result, got %#v", data["source_inventory"])
+	}
+	if _, ok := data["workflow_phases"].([]map[string]interface{}); !ok {
+		t.Fatalf("expected workflow_phases in result, got %#v", data["workflow_phases"])
+	}
 }
 
 func TestSkillExecutorExecute_KnowledgeBaseStyleIncludesArtifacts(t *testing.T) {

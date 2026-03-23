@@ -30,3 +30,27 @@ func TestLazyRodBrowserAdapterDoesNotCacheResolvedService(t *testing.T) {
 		t.Fatalf("get() second = %p, want %p", second, svcs[1])
 	}
 }
+
+func TestLeaseAwareRodBrowserAdapterReleasesService(t *testing.T) {
+	svc := &browser.RodService{}
+	releases := 0
+	adapter := NewLeaseAwareRodBrowserAdapter(func() (*browser.RodService, func(), error) {
+		return svc, func() { releases++ }, nil
+	})
+
+	lease, err := adapter.acquire()
+	if err != nil {
+		t.Fatalf("acquire() error = %v", err)
+	}
+	if lease.svc != svc {
+		t.Fatalf("acquire() service = %p, want %p", lease.svc, svc)
+	}
+	if releases != 0 {
+		t.Fatalf("release count before close = %d, want 0", releases)
+	}
+
+	lease.close()
+	if releases != 1 {
+		t.Fatalf("release count after close = %d, want 1", releases)
+	}
+}

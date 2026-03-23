@@ -97,11 +97,11 @@ const isRunning = computed(() => ['pending', 'processing'].includes(displayCard.
 const isFailed = computed(() => displayCard.value.status === 'failed')
 const isCancelled = computed(() => displayCard.value.status === 'cancelled')
 const isSucceeded = computed(() => displayCard.value.status === 'succeeded')
-const shouldShowTaskID = computed(() => isRunning.value && String(displayCard.value.task_id || '').trim())
+const shouldShowTaskID = computed(
+  () => isRunning.value && String(displayCard.value.task_id || '').trim()
+)
 const visibleSourceRefs = computed(() => {
-  const labels = sourceRefs.value
-    .map((source) => formatSourceLabel(source))
-    .filter(Boolean)
+  const labels = sourceRefs.value.map((source) => formatSourceLabel(source)).filter(Boolean)
   return Array.from(new Set(labels))
 })
 const shouldShowSourceRefs = computed(() => {
@@ -112,7 +112,9 @@ const shouldShowSourceRefs = computed(() => {
 const headerMetaParts = computed(() => {
   const parts: string[] = []
   if (shouldShowTaskID.value) {
-    parts.push(`${t('speech.convertTask.task', 'Task')} ${String(displayCard.value.task_id || '').trim()}`)
+    parts.push(
+      `${t('speech.convertTask.task', 'Task')} ${String(displayCard.value.task_id || '').trim()}`
+    )
   }
   const targetFormat = String(displayCard.value.target_format || '').trim()
   if (targetFormat) {
@@ -160,10 +162,7 @@ function revokePreviewObjectUrl(kind: 'audio' | 'video') {
   }
 }
 
-async function loadPreviewSource(
-  output: ConvertTaskOutput | undefined,
-  kind: 'audio' | 'video'
-) {
+async function loadPreviewSource(output: ConvertTaskOutput | undefined, kind: 'audio' | 'video') {
   const rawUrl = String(output?.download_url || '').trim()
   const target = kind === 'audio' ? primaryAudioSrc : primaryVideoSrc
   const seq = kind === 'audio' ? ++audioPreviewSeq : ++videoPreviewSeq
@@ -431,7 +430,10 @@ onUnmounted(() => {
             >· {{ displayCard.source_summary }}</span
           >
         </div>
-        <div v-if="headerMetaParts.length > 0" class="text-xs text-gray-500 dark:text-gray-400 truncate">
+        <div
+          v-if="headerMetaParts.length > 0"
+          class="text-xs text-gray-500 dark:text-gray-400 truncate"
+        >
           {{ headerMetaParts.join(' · ') }}
         </div>
       </div>
@@ -462,11 +464,10 @@ onUnmounted(() => {
     </div>
 
     <div class="px-3 py-3 space-y-3">
-      <div
-        v-if="shouldShowSourceRefs"
-        class="rounded-md bg-gray-50 dark:bg-gray-900/50 px-3 py-2"
-      >
-        <div class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+      <div v-if="shouldShowSourceRefs" class="rounded-md bg-gray-50 dark:bg-gray-900/50 px-3 py-2">
+        <div
+          class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
+        >
           {{ t('speech.convertTask.sources', 'Sources') }}
         </div>
         <div class="mt-1 space-y-1">
@@ -498,13 +499,7 @@ onUnmounted(() => {
         {{ displayCard.transcript_preview }}
       </div>
 
-      <audio
-        v-if="primaryAudioSrc"
-        class="w-full"
-        controls
-        preload="none"
-        :src="primaryAudioSrc"
-      />
+      <audio v-if="primaryAudioSrc" class="w-full" controls preload="none" :src="primaryAudioSrc" />
       <video
         v-if="primaryVideoSrc"
         class="w-full rounded bg-black"

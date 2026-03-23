@@ -29,6 +29,7 @@ export default {
       },
       closeBehavior: 'Comportament en tancar',
       closeBehaviorMinimize: 'Minimitza a la safata',
+      closeBehaviorMinimizeMenuBar: 'Minimitza a la barra de menús',
       closeBehaviorQuit: 'Surt',
       closeBehaviorSaved: "S'ha desat el comportament en tancar",
       network: {
@@ -524,6 +525,7 @@ export default {
       },
       closeBehavior: 'Chování při zavření',
       closeBehaviorMinimize: 'Minimalizovat do lišty',
+      closeBehaviorMinimizeMenuBar: 'Minimalizovat do lišty nabídek',
       closeBehaviorQuit: 'Ukončit',
       closeBehaviorSaved: 'Chování při zavření uloženo',
       network: {
@@ -1018,6 +1020,7 @@ export default {
       },
       closeBehavior: 'Lukkeadfærd',
       closeBehaviorMinimize: 'Minimer til systembakken',
+      closeBehaviorMinimizeMenuBar: 'Minimer til menulinjen',
       closeBehaviorQuit: 'Afslut',
       closeBehaviorSaved: 'Lukkeadfærd gemt',
       network: {
@@ -1512,6 +1515,7 @@ export default {
       },
       closeBehavior: 'Verhalten beim Schließen',
       closeBehaviorMinimize: 'In den Infobereich minimieren',
+      closeBehaviorMinimizeMenuBar: 'In die Menüleiste minimieren',
       closeBehaviorQuit: 'Beenden',
       closeBehaviorSaved: 'Verhalten beim Schließen gespeichert',
       network: {
@@ -1972,6 +1976,7 @@ export default {
       },
       closeBehavior: 'Συμπεριφορά κατά το κλείσιμο',
       closeBehaviorMinimize: 'Ελαχιστοποίηση στο δίσκο συστήματος',
+      closeBehaviorMinimizeMenuBar: 'Ελαχιστοποίηση στη γραμμή μενού',
       closeBehaviorQuit: 'Έξοδος',
       closeBehaviorSaved: 'Η συμπεριφορά κλεισίματος αποθηκεύτηκε',
       network: {
@@ -2622,7 +2627,7 @@ export default {
     },
     tools: {
       names: {
-        analyze: 'Analysis',
+        analyze: 'Analysis Report',
         auto_reply: 'Auto-reply',
         browser: 'Browser',
         calculator: 'Calculator',
@@ -2871,6 +2876,7 @@ export default {
       },
       closeBehavior: 'Comportamiento al cerrar',
       closeBehaviorMinimize: 'Minimizar a la bandeja',
+      closeBehaviorMinimizeMenuBar: 'Minimizar a la barra de menús',
       closeBehaviorQuit: 'Salir',
       closeBehaviorSaved: 'Comportamiento al cerrar guardado',
       network: {
@@ -3331,6 +3337,7 @@ export default {
       },
       closeBehavior: 'Comportement à la fermeture',
       closeBehaviorMinimize: 'Réduire dans la zone de notification',
+      closeBehaviorMinimizeMenuBar: 'Réduire dans la barre des menus',
       closeBehaviorQuit: 'Quitter',
       closeBehaviorSaved: 'Comportement à la fermeture enregistré',
       network: {
@@ -3792,6 +3799,7 @@ export default {
       },
       closeBehavior: 'Iompar dúnta',
       closeBehaviorMinimize: 'Íoslaghdaigh go dtí an tráidire',
+      closeBehaviorMinimizeMenuBar: 'Íoslaghdaigh go dtí an barra roghchláir',
       closeBehaviorQuit: 'Scoir',
       closeBehaviorSaved: 'Sábháladh an t-iompar dúnta',
       network: {
@@ -4351,6 +4359,7 @@ export default {
       },
       closeBehavior: 'Ponašanje pri zatvaranju',
       closeBehaviorMinimize: 'Minimiziraj u traku',
+      closeBehaviorMinimizeMenuBar: 'Minimiziraj na traku izbornika',
       closeBehaviorQuit: 'Izađi',
       closeBehaviorSaved: 'Ponašanje pri zatvaranju spremljeno',
       network: {
@@ -4908,6 +4917,7 @@ export default {
       },
       closeBehavior: 'Bezárási viselkedés',
       closeBehaviorMinimize: 'Kis méretre a tálcára',
+      closeBehaviorMinimizeMenuBar: 'Kis méretre a menüsávra',
       closeBehaviorQuit: 'Kilépés',
       closeBehaviorSaved: 'A bezárási viselkedés mentve',
       network: {
@@ -5465,6 +5475,7 @@ export default {
       },
       closeBehavior: 'Comportamento alla chiusura',
       closeBehaviorMinimize: "Riduci nell'area di notifica",
+      closeBehaviorMinimizeMenuBar: 'Riduci nella barra dei menu',
       closeBehaviorQuit: 'Esci',
       closeBehaviorSaved: 'Comportamento alla chiusura salvato',
       network: {
@@ -6197,6 +6208,7 @@ export default {
       },
       closeBehavior: '닫기 동작',
       closeBehaviorMinimize: '트레이로 최소화',
+      closeBehaviorMinimizeMenuBar: '메뉴 막대로 최소화',
       closeBehaviorQuit: '종료',
       closeBehaviorSaved: '닫기 동작이 저장되었습니다',
       network: {
@@ -6652,6 +6664,7 @@ export default {
       },
       closeBehavior: 'അടയ്ക്കൽ പെരുമാറ്റം',
       closeBehaviorMinimize: 'ട്രേയിലേക്ക് ചുരുക്കുക',
+      closeBehaviorMinimizeMenuBar: 'മെനു ബാറിലേക്ക് ചുരുക്കുക',
       closeBehaviorQuit: 'പുറത്തുകടക്കുക',
       closeBehaviorSaved: 'അടയ്ക്കൽ പെരുമാറ്റം സംരക്ഷിച്ചു',
       network: {
@@ -7208,6 +7221,7 @@ export default {
       },
       closeBehavior: 'Lukkeatferd',
       closeBehaviorMinimize: 'Minimer til systemfeltet',
+      closeBehaviorMinimizeMenuBar: 'Minimer til menylinjen',
       closeBehaviorQuit: 'Avslutt',
       closeBehaviorSaved: 'Lukkeatferd lagret',
       network: {
@@ -7762,6 +7776,7 @@ export default {
       },
       closeBehavior: 'Gedrag bij sluiten',
       closeBehaviorMinimize: 'Minimaliseren naar systeemvak',
+      closeBehaviorMinimizeMenuBar: 'Minimaliseren naar de menubalk',
       closeBehaviorQuit: 'Afsluiten',
       closeBehaviorSaved: 'Gedrag bij sluiten opgeslagen',
       network: {
@@ -8260,6 +8275,7 @@ export default {
       },
       closeBehavior: 'Zachowanie przy zamykaniu',
       closeBehaviorMinimize: 'Minimalizuj do zasobnika',
+      closeBehaviorMinimizeMenuBar: 'Minimalizuj do paska menu',
       closeBehaviorQuit: 'Zakończ',
       closeBehaviorSaved: 'Zachowanie przy zamykaniu zapisane',
       network: {
@@ -8754,6 +8770,7 @@ export default {
       },
       closeBehavior: 'Comportamento ao fechar',
       closeBehaviorMinimize: 'Minimizar para a bandeja',
+      closeBehaviorMinimizeMenuBar: 'Minimizar para a barra de menus',
       closeBehaviorQuit: 'Sair',
       closeBehaviorSaved: 'Comportamento ao fechar salvo',
       network: {
@@ -9245,6 +9262,7 @@ export default {
       },
       closeBehavior: 'Comportamento ao fechar',
       closeBehaviorMinimize: 'Minimizar para a área de notificação',
+      closeBehaviorMinimizeMenuBar: 'Minimizar para a barra de menus',
       closeBehaviorQuit: 'Sair',
       closeBehaviorSaved: 'Comportamento ao fechar guardado',
       network: {
@@ -9736,6 +9754,7 @@ export default {
       },
       closeBehavior: 'Comportament la închidere',
       closeBehaviorMinimize: 'Minimizează în tavă',
+      closeBehaviorMinimizeMenuBar: 'Minimizează în bara de meniu',
       closeBehaviorQuit: 'Ieșire',
       closeBehaviorSaved: 'Comportamentul la închidere a fost salvat',
       network: {
@@ -10291,6 +10310,7 @@ export default {
       },
       closeBehavior: 'Поведение при закрытии',
       closeBehaviorMinimize: 'Свернуть в трей',
+      closeBehaviorMinimizeMenuBar: 'Свернуть в строку меню',
       closeBehaviorQuit: 'Выйти',
       closeBehaviorSaved: 'Поведение при закрытии сохранено',
       network: {
@@ -10781,6 +10801,7 @@ export default {
       },
       closeBehavior: 'Správanie pri zatvorení',
       closeBehaviorMinimize: 'Minimalizovať do lišty',
+      closeBehaviorMinimizeMenuBar: 'Minimalizovať do panela s ponukami',
       closeBehaviorQuit: 'Ukončiť',
       closeBehaviorSaved: 'Správanie pri zatvorení uložené',
       network: {
@@ -11338,6 +11359,7 @@ export default {
       },
       closeBehavior: 'Beteende vid stängning',
       closeBehaviorMinimize: 'Minimera till aktivitetsfältet',
+      closeBehaviorMinimizeMenuBar: 'Minimera till menyraden',
       closeBehaviorQuit: 'Avsluta',
       closeBehaviorSaved: 'Beteende vid stängning sparat',
       network: {
@@ -11858,7 +11880,7 @@ export default {
     },
     tools: {
       names: {
-        analyze: '分析',
+        analyze: '分析报告',
         auto_reply: '自动回复',
         browser: '浏览器',
         calculator: '计算器',
@@ -12018,7 +12040,7 @@ export default {
     },
     tools: {
       names: {
-        analyze: '分析',
+        analyze: '分析報告',
         auto_reply: '自動回覆',
         browser: '瀏覽器',
         calculator: '計算機',

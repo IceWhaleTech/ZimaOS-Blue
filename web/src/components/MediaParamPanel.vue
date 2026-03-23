@@ -2,7 +2,10 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MediaCategory, MediaIntent, MediaModelInfo } from '@/api/media'
-import { getLocalizedMediaModelName } from '@/utils/mediaModelLocalization'
+import {
+  getLocalizedMediaModelName,
+  getMediaFallbackStyleLabel,
+} from '@/utils/mediaModelLocalization'
 
 const props = defineProps<{
   intent: MediaIntent
@@ -46,6 +49,34 @@ const categoryIcon = computed(() => {
       return '🎥'
     default:
       return '✨'
+  }
+})
+
+const intentStyleLabel = computed(() => {
+  return getMediaFallbackStyleLabel({
+    style_preset:
+      typeof props.intent.params?.style_preset === 'string' ? props.intent.params.style_preset : '',
+  })
+})
+
+const intentModeLabel = computed(() => {
+  return props.intent.params?.quality_profile === 'ppt' ? 'ppt' : ''
+})
+
+const intentMetaLabels = computed(() => {
+  return [intentStyleLabel.value, intentModeLabel.value].filter(
+    (label): label is string => typeof label === 'string' && label.trim().length > 0
+  )
+})
+
+const intentToneClass = computed(() => {
+  switch (intentStyleLabel.value) {
+    case 'nanoslides':
+      return 'mpp-meta--nanoslides'
+    case 'bananaslides':
+      return 'mpp-meta--bananaslides'
+    default:
+      return ''
   }
 })
 
@@ -100,6 +131,12 @@ function modelLabel(model: MediaModelInfo): string {
         <div class="mpp-prompt-text">{{ intent.prompt }}</div>
       </div>
 
+      <div v-if="intentMetaLabels.length > 0" class="mpp-meta" :class="intentToneClass">
+        <span v-for="label in intentMetaLabels" :key="label" class="mpp-meta-pill">
+          {{ label }}
+        </span>
+      </div>
+
       <div class="mpp-actions">
         <button class="mpp-btn mpp-btn-secondary" @click="emit('dismiss')">
           {{ t('media.noChat') }}
@@ -137,6 +174,12 @@ function modelLabel(model: MediaModelInfo): string {
 
       <div v-if="intent.prompt" class="mpp-prompt">
         <div class="mpp-prompt-text">{{ intent.prompt }}</div>
+      </div>
+
+      <div v-if="intentMetaLabels.length > 0" class="mpp-meta" :class="intentToneClass">
+        <span v-for="label in intentMetaLabels" :key="label" class="mpp-meta-pill">
+          {{ label }}
+        </span>
       </div>
 
       <div class="mpp-controls" v-if="models.length > 0">
@@ -350,6 +393,66 @@ function modelLabel(model: MediaModelInfo): string {
 [data-theme='dark'] .mpp-prompt-text {
   background: #0f172a;
   border-color: #334155;
+}
+
+.mpp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mpp-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #dbe4f0;
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.98), rgba(236, 246, 255, 0.98)),
+    #fff;
+  color: #27405a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mpp-meta--nanoslides .mpp-meta-pill {
+  border-color: #b6c8de;
+  background:
+    linear-gradient(135deg, rgba(236, 245, 255, 0.98), rgba(224, 235, 246, 0.98)),
+    #fff;
+  color: #17334d;
+}
+
+.mpp-meta--bananaslides .mpp-meta-pill {
+  border-color: #e7c17a;
+  background:
+    linear-gradient(135deg, rgba(255, 245, 214, 0.98), rgba(255, 236, 180, 0.98)),
+    #fff8e1;
+  color: #714d02;
+}
+
+:root.dark .mpp-meta-pill,
+[data-theme='dark'] .mpp-meta-pill {
+  border-color: #3d536a;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(20, 31, 53, 0.96));
+  color: #dbeafe;
+}
+
+:root.dark .mpp-meta--nanoslides .mpp-meta-pill,
+[data-theme='dark'] .mpp-meta--nanoslides .mpp-meta-pill {
+  border-color: #4e6985;
+  background: linear-gradient(135deg, rgba(18, 33, 54, 0.98), rgba(27, 45, 70, 0.98));
+}
+
+:root.dark .mpp-meta--bananaslides .mpp-meta-pill,
+[data-theme='dark'] .mpp-meta--bananaslides .mpp-meta-pill {
+  border-color: #7d6631;
+  background: linear-gradient(135deg, rgba(63, 46, 10, 0.98), rgba(83, 59, 12, 0.98));
+  color: #fde68a;
 }
 
 /* Controls */

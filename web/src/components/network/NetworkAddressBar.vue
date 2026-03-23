@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useNetwork } from '@/composables/useNetwork'
+import { getPreferredNetworkAddress, useNetwork } from '@/composables/useNetwork'
 import { useTauri } from '@/composables/useTauri'
 
 const { t } = useI18n()
@@ -10,24 +10,9 @@ const { isTauri, browserName, openInBrowser } = useTauri()
 
 const opening = ref(false)
 
-const preferredAddress = computed(() => {
-  if (!addresses.value) return null
-
-  // In Tauri desktop app, fix the port in the preferred address
-  // The backend may return port 0, so we use the current window's port
-  if (isTauri.value && addresses.value.preferred) {
-    try {
-      const url = new URL(addresses.value.preferred)
-      url.port = window.location.port
-      return url.toString()
-    } catch {
-      // Fallback to current location if URL parsing fails
-      return `${window.location.protocol}//${window.location.host}`
-    }
-  }
-
-  return addresses.value.preferred
-})
+const preferredAddress = computed(() =>
+  getPreferredNetworkAddress(addresses.value, { isTauri: isTauri.value })
+)
 
 const showButton = computed(() => {
   // Only show in Tauri desktop app and when LAN addresses are available

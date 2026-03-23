@@ -83,6 +83,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/videogen"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voicewake"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
@@ -307,19 +308,27 @@ func registerAgentAndMCPRoutes(
 
 	var agentRunnerRef *agent.Runner
 	if deps.DB != nil && deps.SSEBroker != nil && agentLLMCaller != nil {
+		agentStoreInitStart := time.Now()
 		agentStore, agentErr := agent.NewStore(deps.DB)
 		if agentErr != nil {
-			logger.Warn("Failed to initialize agent store", zap.Error(agentErr))
+			logger.Warn("Failed to initialize agent store", zap.Error(agentErr), zap.Duration("elapsed", time.Since(agentStoreInitStart)))
 			stub := featureDisabled("agent")
 			agentGroup := protected.Group("/agent")
 			agentGroup.Any("/*", stub)
 		} else {
-			// Recover stale tasks from previous crash
-			if recovered, err := agentStore.RecoverStaleTasks(context.Background()); err != nil {
-				logger.Warn("Failed to recover stale agent tasks", zap.Error(err))
-			} else if recovered > 0 {
-				logger.Info("Recovered stale agent tasks", zap.Int64("count", recovered))
-			}
+			logger.Info("Agent store initialized", zap.Duration("elapsed", time.Since(agentStoreInitStart)))
+			// Recover stale tasks from previous crash in background so startup is not blocked
+			go func() {
+				recoveryStart := time.Now()
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				recovered, err := agentStore.RecoverStaleTasks(ctx)
+				if err != nil {
+					logger.Warn("Failed to recover stale agent tasks", zap.Error(err), zap.Duration("elapsed", time.Since(recoveryStart)))
+					return
+				}
+				logger.Info("Stale agent task recovery completed", zap.Int64("count", recovered), zap.Duration("elapsed", time.Since(recoveryStart)))
+			}()
 			agentRunner := agent.NewRunner(agentStore, agentLLMCaller, toolRegistry, executor, deps.SSEBroker, agent.RunnerConfig{})
 			agentGroup := protected.Group("/agent")
 			if harnessController != nil {
@@ -466,25 +475,27 @@ func buildUpdateResumeRecoverer(cronHandler *cron.Handler, logger *zap.Logger) u
 
 // RoutesDeps holds all dependencies needed for route registration
 type RoutesDeps struct {
-	DB               *sql.DB
-	Config           *config.Config
-	ServerConfig     *ServerConfig
-	Services         *Services
-	Logger           *zap.Logger
-	Ctx              context.Context
-	MetricsWriter    *metrics.MetricsWriter
-	MetricsCollector *metrics.Collector
-	FlagEvaluator    *config.FlagEvaluator
-	ChatHandler      *server.ChatHandler
-	PluginRegistry   *plugin.Registry
-	PluginStore      *plugin.Store
-	ExtauthService   extauth.Service
-	ExtauthHandler   *extauth.Handler
-	AutoreplyService *autoreply.Service
-	AutoreplyHandler *autoreply.Handler
-	AuthMiddleware   *auth.AuthMiddleware
-	APIKeyHandler    *auth.APIKeyHandler
-	UserHandler      *user.Handler
+	DB     *sql.DB
+	Config *config.Config
+	// DisablePromptGuard disables chat prompt interception for controlled runs.
+	DisablePromptGuard bool
+	ServerConfig       *ServerConfig
+	Services           *Services
+	Logger             *zap.Logger
+	Ctx                context.Context
+	MetricsWriter      *metrics.MetricsWriter
+	MetricsCollector   *metrics.Collector
+	FlagEvaluator      *config.FlagEvaluator
+	ChatHandler        *server.ChatHandler
+	PluginRegistry     *plugin.Registry
+	PluginStore        *plugin.Store
+	ExtauthService     extauth.Service
+	ExtauthHandler     *extauth.Handler
+	AutoreplyService   *autoreply.Service
+	AutoreplyHandler   *autoreply.Handler
+	AuthMiddleware     *auth.AuthMiddleware
+	APIKeyHandler      *auth.APIKeyHandler
+	UserHandler        *user.Handler
 	// Additional handlers
 	BackupHandler      *backup.Handler
 	SecurityHandler    *security.Handler
@@ -526,11 +537,13 @@ type RoutesDeps struct {
 	CronIPC        sockipc.CronBackend
 
 	// Consolidated init deps (previously only in cmd/blue/main.go)
-	SkillEmbedFS        fs.FS            // embedded SKILL.md filesystem for ReleaseSkills
-	SandboxManager      *sandbox.Manager // for sandbox skill wiring
-	SystemPromptBuilder *claudecode.SystemPromptBuilder
-	LazyBrowserSvc      func() *browser.RodService // for UI reviewer lazy adapter
-	BrowserBackend      tools.BrowserBackend       // for browser tool + IPC
+	SkillEmbedFS              fs.FS            // embedded SKILL.md filesystem for ReleaseSkills
+	SandboxManager            *sandbox.Manager // for sandbox skill wiring
+	SystemPromptBuilder       *claudecode.SystemPromptBuilder
+	LazyBrowserSvc            func() *browser.RodService // for UI reviewer lazy adapter
+	AcquireBrowserSvc         func() (*browser.RodService, func(), error)
+	AcquireFallbackBrowserSvc func() (*browser.RodService, func(), error)
+	BrowserBackend            tools.BrowserBackend // for browser tool + IPC
 
 	// Closers collects io.Closers started during route registration.
 	// The caller should close them on shutdown (e.g., via lifecycle hooks).
@@ -660,6 +673,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	s := deps.Services
 	cfg := deps.ServerConfig
 	logger := deps.Logger
+	registerStart := time.Now()
+	trace := NewStartupTrace("bootstrap.register_routes", logger)
+	trace.Mark("enter")
 	dataDir := cfg.DataDir
 	workspaceDir := ResolveWorkspaceDir(cfg.DataDir, deps.Config)
 	workspaceAllowedPaths := ResolveBuiltinToolAllowedPaths(deps.Config, cfg.DataDir)
@@ -767,11 +783,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// immediately after the health check succeeds. Register them on the fast
 	// path so embedded startup does not transiently 404 while deferred init
 	// continues below.
+	settingsInitStart := time.Now()
 	settingsHandler := server.NewSettingsHandler(kv)
 	settingsHandler.SetChatHandler(deps.ChatHandler)
 	smManager := smallmodel.NewManager(cfg.DataDir)
 	settingsHandler.SetSmallModelManager(smManager)
 	settingsHandler.RegisterRoutes(authPageV1Group(permission.PageSettings))
+	logger.Info("Settings fast path initialized", zap.Duration("elapsed", time.Since(settingsInitStart)))
 
 	var approvalHandler *networkapi.ApprovalHandler
 	if deps.SSEBroker != nil {
@@ -801,9 +819,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				<-done
 				_ = voiceWakeManager.Close()
 			}(deps.Ctx.Done())
-			_ = voiceWakeManager.Refresh(deps.Ctx)
+			if settingsHandler.GetVoiceWakeEnabled() {
+				_ = voiceWakeManager.Refresh(deps.Ctx)
+			}
 		} else {
-			_ = voiceWakeManager.Refresh(context.Background())
+			if settingsHandler.GetVoiceWakeEnabled() {
+				_ = voiceWakeManager.Refresh(context.Background())
+			}
 		}
 	}
 
@@ -922,21 +944,28 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		mediaManager := mediagen.NewManager(mediaStorage, mediaConfigStore, locale)
 		mediaManager.InitConfigs()
-		if deps.Config != nil && deps.LazyBrowserSvc != nil {
+		if deps.Config != nil && (deps.AcquireBrowserSvc != nil || deps.LazyBrowserSvc != nil) {
 			fallbackCfg := deps.Config.Media.Fallback
-			webSearchTool := tools.NewWebSearchTool(tools.WebSearchConfig{
-				Provider:   fallbackFirstProvider(fallbackCfg.SearchProviderChain),
-				Providers:  append([]string(nil), fallbackCfg.SearchProviderChain...),
-				MaxResults: fallbackCfg.SearchMaxResults,
-				Timeout:    deps.Config.ToolCalling.WebSearch.Timeout,
-				SafeSearch: deps.Config.ToolCalling.WebSearch.SafeSearch,
-				Region:     deps.Config.ToolCalling.WebSearch.Region,
-				APIKey:     deps.Config.ToolCalling.WebSearch.APIKey,
-				BaseURL:    deps.Config.ToolCalling.WebSearch.BaseURL,
-			})
+			webSearchCfg := buildWebSearchConfig(deps.Config)
+			webSearchCfg.Provider = fallbackFirstProvider(fallbackCfg.SearchProviderChain)
+			webSearchCfg.Providers = append([]string(nil), fallbackCfg.SearchProviderChain...)
+			webSearchCfg.MaxResults = fallbackCfg.SearchMaxResults
+			webSearchTool := tools.NewWebSearchTool(webSearchCfg)
 			renderPort := server.GetActualPort()
 			if renderPort == 0 {
 				renderPort = deps.ServerConfig.Port
+			}
+			browserFactory := func() mediagen.FallbackBrowserService {
+				switch {
+				case deps.AcquireFallbackBrowserSvc != nil:
+					return newLeaseAwareFallbackBrowserAdapter(deps.AcquireFallbackBrowserSvc)
+				case deps.AcquireBrowserSvc != nil:
+					return newLeaseAwareFallbackBrowserAdapter(deps.AcquireBrowserSvc)
+				case deps.LazyBrowserSvc != nil:
+					return deps.LazyBrowserSvc()
+				default:
+					return nil
+				}
 			}
 			fallbackEngine := mediagen.NewFallbackEngine(mediagen.FallbackConfig{
 				Enabled:             fallbackCfg.Enabled,
@@ -948,11 +977,24 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				RenderBaseURL:       fmt.Sprintf("http://127.0.0.1:%d", renderPort),
 				DataDir:             dataDir,
 				U2NetPStatusURL:     "/api/v1/media/fallback/models/u2netp/status",
-				PublicSpaces:        convertFallbackPublicSpaces(fallbackCfg.PublicSpaces),
-			}, mediaStorage, mediagen.NewToolWebSearcher(webSearchTool), func() mediagen.FallbackBrowserService {
-				return deps.LazyBrowserSvc()
-			}, locale)
+				NativeVideo: mediagen.FallbackNativeVideoConfig{
+					Enabled:            fallbackCfg.NativeVideo.Enabled,
+					FPS:                fallbackCfg.NativeVideo.FPS,
+					DefaultDurationSec: fallbackCfg.NativeVideo.DefaultDurationSec,
+					MaxDurationSec:     fallbackCfg.NativeVideo.MaxDurationSec,
+					PollInterval:       fallbackCfg.NativeVideo.PollInterval,
+					StallTimeout:       fallbackCfg.NativeVideo.StallTimeout,
+					MaxRuntime:         fallbackCfg.NativeVideo.MaxRuntime,
+					HelperPath:         fallbackCfg.NativeVideo.HelperPath,
+					AudioMode:          fallbackCfg.NativeVideo.AudioMode,
+				},
+				PublicSpaces: convertFallbackPublicSpaces(fallbackCfg.PublicSpaces),
+			}, mediaStorage, mediagen.NewToolWebSearcher(webSearchTool), browserFactory, locale)
 			fallbackEngine.SetScenePlannerLLM(newProviderRegistryLLMCaller(s.LLMRegistry))
+			if deps.SpeechHandler != nil {
+				fallbackEngine.SetTTSService(deps.SpeechHandler.Service().GetTTSService())
+			}
+			fallbackEngine.SetNativeVideoGenerator(videogen.NewHelperRunner(fallbackCfg.NativeVideo.HelperPath))
 			mediaManager.SetFallbackEngine(fallbackEngine)
 		}
 		deps.MediaManager = mediaManager
@@ -965,6 +1007,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			mediaManager.SetTaskStore(taskStore)
 			mediaManager.RecoverTasks()
 		}
+		deps.Closers = append(deps.Closers, mediaManager)
 
 		// Channel task watcher: monitors channel-sourced tasks and sends results back.
 		// Notifier is set later by main.go after the channel manager is available.
@@ -1334,11 +1377,20 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		billingGroup.Any("/*", stub)
 	}
 
-	// Set prompt guard on chat handler
-	promptGuard := promptguard.NewDetector(promptguard.DefaultDetectorConfig())
-	deps.ChatHandler.SetPromptGuard(promptGuard)
-	if deps.SecurityHandler != nil {
-		deps.SecurityHandler.SetPromptGuard(promptGuard)
+	// Set prompt guard on chat handler unless explicitly disabled for a
+	// controlled benchmark or other trusted local run.
+	if deps.DisablePromptGuard {
+		deps.ChatHandler.SetPromptGuard(nil)
+		if deps.SecurityHandler != nil {
+			deps.SecurityHandler.SetPromptGuard(nil)
+		}
+		logger.Warn("Chat prompt interception disabled via CLI flag")
+	} else {
+		promptGuard := promptguard.NewDetector(promptguard.DefaultDetectorConfig())
+		deps.ChatHandler.SetPromptGuard(promptGuard)
+		if deps.SecurityHandler != nil {
+			deps.SecurityHandler.SetPromptGuard(promptGuard)
+		}
 	}
 	var skillAutoReranker *claudecode.AutoSkillReranker
 
@@ -1366,9 +1418,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			AutoDownload: deps.Config.ToolCalling.SkillRerankONNXAutoDownload,
 		})
 		skillAutoReranker = reranker
-		if deps.Config.ToolCalling.SkillRerankEnabled {
-			reranker.WarmupAsync()
-		}
 		ss := claudecode.NewSkillSelector(workspaceDir, reranker)
 		deps.ChatHandler.SetSkillSelector(ss)
 	}
@@ -1474,10 +1523,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	networkHandler.RegisterGroupRoutes(authPageV1Group(permission.PageSettings))
 	// Add LAN addresses to CORS allowed origins after actual port is known
 	server.OnServerStart(func(port int) {
-		h := networkapi.NewNetworkHandler(port)
-		if err := h.InitializeCORSOrigins(); err != nil {
-			logger.Warn("Failed to initialize CORS origins from network addresses", zap.Error(err))
-		}
+		go func() {
+			start := time.Now()
+			h := networkapi.NewNetworkHandler(port)
+			if err := h.InitializeCORSOrigins(); err != nil {
+				logger.Warn("Failed to initialize CORS origins from network addresses", zap.Error(err), zap.Duration("elapsed", time.Since(start)))
+				return
+			}
+			logger.Info("CORS origins initialized from network addresses", zap.Duration("elapsed", time.Since(start)))
+		}()
 	})
 
 	// Link preview routes
@@ -1543,7 +1597,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		syncService := skillstore.NewSyncService(skillStoreDb, syncConfig, slog.Default())
 		skillHandler.SetSyncService(syncService)
 		syncService.Start(deps.Ctx)
-		logger.Info("Skill sync service started")
+		logger.Info("Skill sync service configured for lazy initialization")
 	}
 
 	// Set skills directory for install/uninstall (filesystem-based)
@@ -1556,22 +1610,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Initialize featured skills loader
 	featuredDataPath := filepath.Join(cfg.DataDir, "featured_skills.json")
 	featuredLoader := skillstore.NewFeaturedSkillsLoader(featuredDataPath)
-	if err := featuredLoader.Load(); err != nil {
-		logger.Warn("Failed to load featured skills", zap.Error(err))
-	} else {
-		skillHandler.SetFeaturedLoader(featuredLoader)
-		logger.Info("Featured skills loaded", zap.Int("count", len(featuredLoader.GetAll())))
-	}
+	skillHandler.SetFeaturedLoader(featuredLoader)
+	logger.Info("Featured skills loader configured for lazy initialization", zap.String("path", featuredDataPath))
 
 	// Initialize local skill scanner
 	localScanner := skillstore.NewLocalSkillScanner(skillsDir)
 	skillHandler.SetLocalScanner(localScanner)
-	// Initial scan to discover released skills
-	if err := localScanner.Scan(); err != nil {
-		logger.Warn("Initial local skill scan failed", zap.Error(err))
-	} else {
-		logger.Info("Local skill scanner initialized", zap.Int("count", localScanner.Count()))
-	}
+	logger.Info("Local skill scanner configured for lazy initialization", zap.String("path", skillsDir))
 
 	// Initialize the authoritative SQLite-backed skills marketplace.
 	if deps.Config == nil || deps.Config.SkillMarket.Enabled {
@@ -1598,15 +1643,20 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 
 		var marketEmbedding embedding.Provider
-		if deps.Config != nil && deps.Config.Embedding.Enabled && strings.EqualFold(deps.Config.Embedding.Provider, "cybertron") {
-			provider := embedding.NewCybertronProvider(embedding.CybertronConfig{
-				ModelsDir:  embedding.PrepareSharedModelCache(cfg.DataDir, deps.Config.Memory.VectorStore.DBPath, deps.Config.Embedding.Model),
-				Model:      deps.Config.Embedding.Model,
-				Dimensions: deps.Config.Embedding.Dimensions,
-				Timeout:    deps.Config.Embedding.Timeout,
+		var marketEmbeddingOnce sync.Once
+		resolveMarketEmbedding := func() embedding.Provider {
+			if deps.Config == nil || !deps.Config.Embedding.Enabled || !strings.EqualFold(deps.Config.Embedding.Provider, "cybertron") {
+				return nil
+			}
+			marketEmbeddingOnce.Do(func() {
+				marketEmbedding = embedding.NewCybertronProvider(embedding.CybertronConfig{
+					ModelsDir:  embedding.PrepareSharedModelCache(cfg.DataDir, deps.Config.Memory.VectorStore.DBPath, deps.Config.Embedding.Model),
+					Model:      deps.Config.Embedding.Model,
+					Dimensions: deps.Config.Embedding.Dimensions,
+					Timeout:    deps.Config.Embedding.Timeout,
+				})
 			})
-			provider.StartAsync()
-			marketEmbedding = provider
+			return marketEmbedding
 		}
 		skillHandler.SetMarketplaceFactory(func() (*skillmarket.Service, error) {
 			market, err := skillmarket.NewServiceWithDBPath(marketCfg.DBPath, skillmarket.Options{
@@ -1614,8 +1664,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				Logger:            logger,
 				Registry:          s.SkillRegistry,
 				LocalScanner:      localScanner,
-				EmbeddingProvider: marketEmbedding,
+				EmbeddingProvider: resolveMarketEmbedding(),
 				HTTPClient:        network.NewPooledHTTPClient(5 * time.Minute),
+				RemoteReader:      newSkillMarketRemoteReader(s.ToolRegistry),
+				DiscoverEventBroadcaster: func(eventType string, data any) {
+					if deps.SSEBroker != nil {
+						deps.SSEBroker.Broadcast(eventType, data)
+					}
+				},
 				// Keep LLM classification optional; deterministic scanning is always available.
 				Scanner: skillmarket.NewScanner(nil),
 			})
@@ -1646,12 +1702,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			if err := mgr.ReleaseSkills(deps.SkillEmbedFS); err != nil {
 				logger.Warn("Failed to release embedded skills", zap.Error(err))
 			}
-			// Re-scan after releasing — the initial scan ran before skills were extracted
-			if err := localScanner.Scan(); err != nil {
-				logger.Warn("Post-release skill scan failed", zap.Error(err))
-			} else {
-				logger.Info("Skills re-scanned after release", zap.Int("count", localScanner.Count()))
-			}
+			localScanner.Invalidate()
 		}
 	}
 
@@ -1684,9 +1735,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		})
 	}
 	// Browser + UI reviewer: wire backends for IPC and LLM tool use.
-	if deps.LazyBrowserSvc != nil {
+	if deps.AcquireBrowserSvc != nil || deps.LazyBrowserSvc != nil {
 		uiTool := &tools.UIReviewerTool{}
-		uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(deps.LazyBrowserSvc))
+		if deps.AcquireBrowserSvc != nil {
+			uiTool.SetBrowser(tools.NewLeaseAwareRodBrowserAdapter(deps.AcquireBrowserSvc))
+		} else {
+			uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(deps.LazyBrowserSvc))
+		}
 		uiTool.SetMediaDir(mediaDir)
 		deps.UIReviewerTool = uiTool
 	}
@@ -1708,20 +1763,33 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			webExtractTool.SetBrowser(deps.BrowserBackend)
 		}
 	}
+	if deps.STTService != nil {
+		tools.AttachSTTServiceToWebTools(s.ToolRegistry, deps.STTService)
+	}
 	// Wire browser backend into browser skill
-	if deps.BrowserBackend != nil {
+	if deps.BrowserBackend != nil || deps.AcquireBrowserSvc != nil || deps.LazyBrowserSvc != nil {
 		if sk := s.SkillRegistry.Get("browser"); sk != nil {
 			if br, ok := sk.(*builtin.Browser); ok {
-				br.SetBrowserService(newLazyBrowserSkillAdapter(deps.LazyBrowserSvc))
+				switch {
+				case deps.AcquireBrowserSvc != nil:
+					br.SetBrowserService(newLeaseAwareBrowserSkillAdapter(deps.AcquireBrowserSvc))
+				case deps.LazyBrowserSvc != nil:
+					br.SetBrowserService(newLazyBrowserSkillAdapter(deps.LazyBrowserSvc))
+				}
 				br.SetMediaDir(mediaDir)
 			}
 		}
 	}
 	// Wire browser backend into ui_reviewer skill
-	if deps.LazyBrowserSvc != nil {
+	if deps.AcquireBrowserSvc != nil || deps.LazyBrowserSvc != nil {
 		if sk := s.SkillRegistry.Get("ui_reviewer"); sk != nil {
 			if ur, ok := sk.(*builtin.UIReviewer); ok {
-				ur.SetBrowserService(newLazyBrowserSkillAdapter(deps.LazyBrowserSvc))
+				switch {
+				case deps.AcquireBrowserSvc != nil:
+					ur.SetBrowserService(newLeaseAwareBrowserSkillAdapter(deps.AcquireBrowserSvc))
+				case deps.LazyBrowserSvc != nil:
+					ur.SetBrowserService(newLazyBrowserSkillAdapter(deps.LazyBrowserSvc))
+				}
 			}
 		}
 	}
@@ -1743,11 +1811,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Register native image tool backed by mediagen + ui_reviewer.
 	tools.RegisterImageTool(s.ToolRegistry, deps.UIReviewerTool, newImageGenerateAdapter(deps.MediaManager, workspaceAllowedPaths), newImageTaskLookupAdapter(deps.MediaManager))
-	pptSvc := newPPTService(deps.MediaManager, deps.MediaStorage, deps.UIReviewerTool)
+	pptSvc := newPPTService(deps.MediaManager, deps.MediaStorage, deps.UIReviewerTool, newProviderRegistryLLMCaller(s.LLMRegistry))
 	tools.RegisterPPTTool(s.ToolRegistry, pptSvc)
 	if tool := s.ToolRegistry.Get("image"); tool != nil {
 		if imageTool, ok := tool.(*tools.ImageTool); ok {
 			imageTool.SetOCRService(newImageOCRAdapter(s.OCRService))
+			imageTool.SetProviderVision(tools.NewMiniMaxImageVision(deps.ProviderPool))
 			imageTool.SetPPTService(pptSvc)
 		}
 	}
@@ -1768,10 +1837,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// AnalyzeTool does the heavy lifting; wired into the Analyze skill.
 	{
 		analyzeTool := tools.RegisterAnalyzeTool(s.ToolRegistry, mediaDir)
-		if deps.LazyBrowserSvc != nil {
-			analyzeTool.SetBrowser(tools.NewLazyRodBrowserBackend(func() *browser.RodService {
-				return deps.LazyBrowserSvc()
-			}))
+		if deps.BrowserBackend != nil {
+			analyzeTool.SetBrowser(deps.BrowserBackend)
+		} else if deps.LazyBrowserSvc != nil {
+			analyzeTool.SetBrowser(tools.NewLazyRodBrowserBackend(deps.LazyBrowserSvc))
 		}
 		analyzeTool.SetExecutor(tools.NewExecutor(s.ToolRegistry))
 		deps.AnalyzeTool = analyzeTool
@@ -1814,6 +1883,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		browserSiteStore, err = tools.NewBrowserSiteAllowlistStore(deps.DB)
 		if err != nil {
 			slog.Warn("failed to create browser site allowlist store", "error", err)
+		} else if deps.Config != nil {
+			for _, site := range deps.Config.Browser.ExpandedTrustedSites() {
+				if err := browserSiteStore.Add(site, ""); err != nil {
+					slog.Warn("failed to seed trusted browser site", "site", site, "error", err)
+				}
+			}
 		}
 	}
 	if deps.ChatHandler != nil {
@@ -2302,8 +2377,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			questionMgr:   questionMgr,
 		}
 		harnessHandler.SetDetailProvider(harnessDetailView)
-		harnessHandler.RegisterRoutes(protected.Group("/harness", requirePagePermission(permission.PageTools)))
-		harnessHandler.RegisterRoutes(apiProtected.Group("/harness", requirePagePermission(permission.PageTools)))
+		harnessHandler.RegisterRoutes(protected.Group("/harness", requirePagePermission(permission.PageSecurity)))
+		harnessHandler.RegisterRoutes(apiProtected.Group("/harness", requirePagePermission(permission.PageSecurity)))
 		harness.NewUserTaskProjectionHandler(harnessController, harnessDetailView).
 			RegisterRoutes(protected.Group("", requirePagePermission(permission.PageChat)))
 		harness.NewUserTaskProjectionHandler(harnessController, harnessDetailView).
@@ -2352,6 +2427,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if convertHandler != nil {
 		convertHandler.RegisterRoutes(protected.Group("/convert", requirePagePermission(permission.PageChat)))
 		logger.Info("Convert routes registered")
+		trace.Mark("convert_routes_registered")
 	}
 
 	// Form filler routes are now public (registered above in v1)
@@ -2360,10 +2436,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if deps.CompanionHandler != nil {
 		deps.CompanionHandler.RegisterGroupRoutes(authPageV1Group(permission.PageSecurity))
 		deps.CompanionHandler.RegisterCompatGroupRoutes(authPageAPIGroup(permission.PageSecurity))
+		trace.Mark("companion_routes_registered")
 	}
 	if deps.CompanionWSHandler != nil {
 		deps.CompanionWSHandler.RegisterGroupRoutes(authPageV1Group(permission.PageSecurity))
 		deps.CompanionWSHandler.RegisterCompatGroupRoutes(authPageAPIGroup(permission.PageSecurity))
+		trace.Mark("companion_ws_routes_registered")
 	}
 	if deps.CompanionHandler == nil {
 		stub := featureDisabled("companion")
@@ -2371,9 +2449,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Provider pool routes (protected)
-	var oauthManager *oauth.Manager // hoisted for proxy handler wiring
+	var oauthManager *oauth.LazyManager // hoisted for proxy handler wiring
 	if deps.ProviderPool != nil {
 		providerPoolHandler := providerpool.NewHandler(deps.ProviderPool)
+		trace.Mark("provider_pool_handler_created")
 		providerPoolHandler.SetMediaPricingLookup(func(modelID string) *providerpool.MediaPricingInfo {
 			mp := mediagen.GetMediaModelPricing(modelID)
 			if mp == nil {
@@ -2381,6 +2460,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			}
 			return &providerpool.MediaPricingInfo{Price: mp.OutputPrice, Unit: string(mp.Unit)}
 		})
+		trace.Mark("provider_pool_media_pricing_lookup_wired")
 
 		// Wire media pricing updates from remote model_pricing.json
 		deps.ProviderPool.SetMediaPricingApplier(func(modelID string, outputPrice float64, unit string) {
@@ -2389,12 +2469,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				Unit:        mediagen.MediaPricingUnit(unit),
 			})
 		})
+		trace.Mark("provider_pool_media_pricing_applier_wired")
 
-		// Initialize OAuth manager for OAuth-based providers (SQLite-backed)
-		oauthStore, oauthErr := oauth.NewSQLiteTokenStore(deps.DB)
-		if oauthErr != nil {
-			logger.Warn("Failed to initialize OAuth store", zap.Error(oauthErr))
-		} else {
+		// Initialize OAuth manager for OAuth-based providers lazily so startup does
+		// not block on SQLite token migration / dedup work.
+		oauthManager = oauth.NewLazyManager(func() (*oauth.Manager, error) {
+			oauthStore, oauthErr := oauth.NewSQLiteTokenStore(deps.DB)
+			if oauthErr != nil {
+				logger.Warn("Failed to initialize OAuth store", zap.Error(oauthErr))
+				return nil, oauthErr
+			}
+
 			// Migrate legacy JSON tokens if present
 			legacyPath := filepath.Join(dataDir, "providers", "providers", "oauth_tokens.json")
 			if err := oauthStore.MigrateFromJSON(legacyPath); err != nil {
@@ -2407,28 +2492,34 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			if err := oauthStore.Deduplicate(); err != nil {
 				logger.Warn("Failed to deduplicate OAuth tokens", zap.Error(err))
 			}
-			oauthManager = oauth.NewManager(oauthStore)
-			providerPoolHandler.SetOAuthManager(oauthManager)
-			// Register all OAuth callback paths (one for each provider type)
-			providerPoolHandler.RegisterOAuthCallbackRoute(e, oauth.AllProviderConfigs())
-
-			// Set OAuth redirect port after server starts (uses actual port, not hardcoded 51121)
-			server.OnServerStart(func(port int) {
-				if oauthManager != nil && port > 0 {
-					oauthManager.SetPort(port)
-					logger.Info("OAuth redirect port set to server port", zap.Int("port", port))
-				}
-			})
-
-			// Start periodic OAuth token refresh to keep short-lived tokens usable.
-			server.OnServerStart(func(port int) {
-				if oauthManager != nil {
-					oauthManager.StartAutoRefresh(context.Background(), 5*time.Minute)
-				}
-			})
-
+			return oauth.NewManager(oauthStore), nil
+		})
+		oauthManager.OnReady(func(*oauth.Manager) {
 			logger.Info("OAuth manager initialized for provider pool")
-		}
+		})
+		providerPoolHandler.SetOAuthManager(oauthManager)
+		trace.Mark("provider_pool_oauth_manager_wired")
+		// Register all OAuth callback paths (one for each provider type)
+		providerPoolHandler.RegisterOAuthCallbackRoute(e, oauth.AllProviderConfigs())
+		trace.Mark("provider_pool_oauth_callbacks_registered")
+
+		// Set OAuth redirect port after server starts (uses actual port, not hardcoded 51121)
+		server.OnServerStart(func(port int) {
+			if oauthManager != nil && port > 0 {
+				oauthManager.SetPort(port)
+				logger.Info("OAuth redirect port set to server port", zap.Int("port", port))
+			}
+		})
+
+		// Start periodic OAuth token refresh to keep short-lived tokens usable.
+		server.OnServerStart(func(port int) {
+			if oauthManager != nil {
+				oauthManager.StartAutoRefresh(context.Background(), 5*time.Minute)
+			}
+		})
+
+		logger.Info("OAuth manager scheduled for background initialization")
+		trace.Mark("provider_pool_oauth_background_scheduled")
 
 		providersGroup := protected.Group("/providers", requirePagePermission(permission.PageProviders))
 		providerPoolHandler.RegisterRoutes(providersGroup)
@@ -2440,6 +2531,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		providerPoolHandler.RegisterPricingRoutes(pricingGroup)
 		configGroup := protected.Group("/config", requirePagePermission(permission.PageProviders))
 		providerPoolHandler.RegisterConfigRoutes(configGroup)
+		trace.Mark("provider_pool_routes_registered")
 
 		// Proxy failover routes are registered below in the proxy block
 		// so they share the same FailoverConfig pointer as the actual failover handler.
@@ -2729,17 +2821,22 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		// Dynamic tier resolver: classifies models by pricing for smart routing
 		tierResolver := proxy.NewTierResolver()
 		if deps.ProviderPool != nil && deps.ProviderPool.Router != nil {
-			models := deps.ProviderPool.Router.ListAvailableModels()
-			if tierResolver.Resolve(models) {
-				slog.Info("Tier resolver initialized", "stats", tierResolver.Stats())
+			router := deps.ProviderPool.Router
+			var tierResolverLogOnce sync.Once
+			resolveTiersAsync := func(reason string) {
+				go func() {
+					if tierResolver.Resolve(router.ListAvailableModels()) {
+						tierResolverLogOnce.Do(func() {
+							slog.Info("Tier resolver initialized", "reason", reason, "stats", tierResolver.Stats())
+						})
+					}
+				}()
 			}
+			resolveTiersAsync("startup")
 			// Re-resolve tiers when providers change (async to avoid deadlock)
 			if deps.ProviderPool.Registry != nil {
-				router := deps.ProviderPool.Router
 				deps.ProviderPool.Registry.AddProviderChangeListener(func(_ *providerpool.Provider, _ string) {
-					go func() {
-						tierResolver.Resolve(router.ListAvailableModels())
-					}()
+					resolveTiersAsync("provider_change")
 				})
 			}
 		}
@@ -2803,7 +2900,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			slog.Warn("Failed to create shared kvstore, toggles will not persist")
 		} else {
 			toggleStore = proxy.NewToggleStore(kv)
-			if saved, loadErr := toggleStore.Load(context.Background()); loadErr == nil && saved != nil {
+			toggleLoadStart := time.Now()
+			saved, loadErr := toggleStore.Load(context.Background())
+			slog.Info("Feature toggles load completed", "found", saved != nil, "elapsed", time.Since(toggleLoadStart))
+			if loadErr != nil {
+				slog.Warn("Failed to load feature toggles", "error", loadErr, "elapsed", time.Since(toggleLoadStart))
+			} else if saved != nil {
 				// Migrate v0 → v1: old installs had routing/prompt_cache off by default.
 				// These should be on unless the user explicitly disabled them, but v0 has no
 				// way to distinguish "never set" from "explicitly off". Flip them on once.
@@ -2913,6 +3015,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		// Wire VLM bridge into UI reviewer tool (for IPC-based SKILL)
 		if deps.UIReviewerTool != nil {
 			deps.UIReviewerTool.SetVLMBridge(tools.NewProxyBridgeVLMAdapter(bridge))
+		}
+		if deps.MediaManager != nil {
+			deps.MediaManager.SetFallbackVisionBridge(tools.NewProxyBridgeVLMAdapter(bridge))
 		}
 		// Wire VLM bridge into PDF extraction fallback for scanned pages.
 		if s.PDFService != nil {
@@ -3245,6 +3350,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	smallRuntime := smallmodel.NewLlamaCppRuntime(smManager)
 	deps.ChatHandler.SetSmallModelRuntime(smallRuntime)
 	auxiliaryLLM.SetSmallModel(smallRuntime)
+	if tool := s.ToolRegistry.Get("image"); tool != nil {
+		if imageTool, ok := tool.(*tools.ImageTool); ok {
+			imageTool.SetSmallModelRuntime(smallRuntime)
+			imageTool.SetSmallModelEnabledFunc(func() bool {
+				return settingsHandler.GetSmallModelEnabled() && settingsHandler.GetSmallModelRouteImageQAEnabled()
+			})
+		}
+	}
 	reflectService.SetLLMCaller(auxiliaryLLM)
 	if harnessController != nil {
 		harnessController.SetJudgeEvaluator(harness.NewLLMJudgeEvaluator(auxiliaryLLM))
@@ -3358,21 +3471,23 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	myGroup := protected.Group("/my", requirePagePermission(permission.PageProfile))
 
 	// Per-user provider config
+	userProviderInitStart := time.Now()
 	userProviderHandler, err := server.NewUserProviderHandler(deps.DB, s.LLMRegistry)
 	if err != nil {
-		logger.Warn("Failed to initialize user provider handler", zap.Error(err))
+		logger.Warn("Failed to initialize user provider handler", zap.Error(err), zap.Duration("elapsed", time.Since(userProviderInitStart)))
 	} else {
 		userProviderHandler.RegisterRoutes(myGroup.Group("/providers"))
-		logger.Info("User provider routes registered")
+		logger.Info("User provider routes registered", zap.Duration("elapsed", time.Since(userProviderInitStart)))
 	}
 
 	// Per-user skill config
+	userSkillInitStart := time.Now()
 	userSkillHandler, err := server.NewUserSkillHandler(deps.DB, skillsDir)
 	if err != nil {
-		logger.Warn("Failed to initialize user skill handler", zap.Error(err))
+		logger.Warn("Failed to initialize user skill handler", zap.Error(err), zap.Duration("elapsed", time.Since(userSkillInitStart)))
 	} else {
 		userSkillHandler.RegisterRoutes(myGroup.Group("/skills"))
-		logger.Info("User skill routes registered")
+		logger.Info("User skill routes registered", zap.Duration("elapsed", time.Since(userSkillInitStart)))
 	}
 
 	// Per-user usage metrics
@@ -3424,7 +3539,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 
-	logger.Info("All routes registered")
+	logger.Info("All routes registered", zap.Duration("elapsed", time.Since(registerStart)))
 	return apiProtected
 }
 
@@ -3478,6 +3593,8 @@ func convertFallbackPublicSpaces(spaces []config.MediaFallbackPublicSpaceConfig)
 			ProcessingSelectors:     append([]string(nil), preset.ProcessingSelectors...),
 			ErrorSelectors:          append([]string(nil), preset.ErrorSelectors...),
 			PollInterval:            preset.PollInterval,
+			StallTimeout:            preset.StallTimeout,
+			MaxRuntime:              preset.MaxRuntime,
 			Timeout:                 preset.Timeout,
 		})
 	}

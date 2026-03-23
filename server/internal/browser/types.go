@@ -107,6 +107,20 @@ type ScreenshotResponse struct {
 	Title string `json:"title"`
 }
 
+// SessionScreenshot stores a captured session frame for monitor playback.
+type SessionScreenshot struct {
+	// Data is the base64-encoded PNG payload.
+	Data string `json:"data"`
+	// URL is the tab URL at capture time.
+	URL string `json:"url,omitempty"`
+	// Title is the tab title at capture time.
+	Title string `json:"title,omitempty"`
+	// CapturedAt is the RFC3339 timestamp when the frame was stored.
+	CapturedAt string `json:"captured_at"`
+	// Scope describes the capture mode (for example viewport or full_page).
+	Scope string `json:"scope,omitempty"`
+}
+
 // PDFRequest represents a request to generate a PDF.
 type PDFRequest struct {
 	// URL is the page URL to convert.
@@ -308,36 +322,160 @@ type Config struct {
 	//   http://127.0.0.1:18792?token=...
 	//   ws://127.0.0.1:9222/devtools/browser/<id>
 	CDPURL string `json:"cdp_url" yaml:"cdp_url"`
+	// TrustedSites seeds browser checkpoint auto-approval with exact origins or hosts.
+	TrustedSites []string `json:"trusted_sites" yaml:"trusted_sites"`
+	// TrustedSitePresets expands built-in trusted-site origin bundles.
+	// Supported presets: "browser_common", "relay_focused".
+	TrustedSitePresets []string `json:"trusted_site_presets" yaml:"trusted_site_presets"`
+	// RelayPreferredSites lists hosts/origins that should prefer relay/local Chrome.
+	RelayPreferredSites []string `json:"relay_preferred_sites" yaml:"relay_preferred_sites"`
+	// RelayPreferredSitePresets expands built-in relay site bundles.
+	// Supported presets: "browser_common", "relay_focused".
+	RelayPreferredSitePresets []string `json:"relay_preferred_site_presets" yaml:"relay_preferred_site_presets"`
+	// RelayPreferredFallbackDriver controls which driver Blue should retry with when
+	// a relay-preferred site cannot be served by relay/local Chrome.
+	// Supported values: "managed", "relay", "" (defaults to managed).
+	RelayPreferredFallbackDriver string `json:"relay_preferred_fallback_driver" yaml:"relay_preferred_fallback_driver"`
 	// EvaluateEnabled controls whether JavaScript evaluation is allowed.
 	// When false, act:evaluate and wait --fn are disabled to prevent
 	// prompt injection attacks from executing arbitrary JavaScript.
 	// Default: true
 	EvaluateEnabled *bool `json:"evaluate_enabled" yaml:"evaluate_enabled"`
+	// NetworkObserveEnabled controls whether Blue records lightweight browser
+	// network telemetry for retrieval fallback and adapter synthesis.
+	NetworkObserveEnabled bool `json:"network_observe_enabled" yaml:"network_observe_enabled"`
+	// SessionScreenshotRetention controls how long monitor frame history is kept
+	// in memory. It is derived from companion session retention at runtime.
+	SessionScreenshotRetention time.Duration `json:"-" yaml:"-"`
 }
 
 // DefaultConfig returns the default configuration.
 func DefaultConfig() *Config {
 	evaluateEnabled := true
 	return &Config{
-		Driver:                "managed",
-		RelayEnabled:          false,
-		RelayHost:             DefaultRelayHost,
-		RelayPort:             DefaultRelayPort,
-		RelayToken:            "",
-		PoolSize:              3,
-		Headless:              true,
-		DefaultTimeout:        60000,
-		MaxTimeout:            300000,
-		DefaultViewportWidth:  1920,
-		DefaultViewportHeight: 1080,
-		AllowedDomains:        []string{},
-		BlockedDomains:        []string{},
-		UserAgent:             "",
-		ProxyURL:              "",
-		BrowserPath:           "",
-		CDPURL:                "",
-		EvaluateEnabled:       &evaluateEnabled,
+		Driver:                       "managed",
+		RelayEnabled:                 false,
+		RelayHost:                    DefaultRelayHost,
+		RelayPort:                    DefaultRelayPort,
+		RelayToken:                   "",
+		PoolSize:                     3,
+		Headless:                     true,
+		DefaultTimeout:               60000,
+		MaxTimeout:                   300000,
+		DefaultViewportWidth:         1920,
+		DefaultViewportHeight:        1080,
+		AllowedDomains:               []string{},
+		BlockedDomains:               []string{},
+		UserAgent:                    "",
+		ProxyURL:                     "",
+		BrowserPath:                  "",
+		CDPURL:                       "",
+		TrustedSites:                 []string{},
+		TrustedSitePresets:           []string{},
+		RelayPreferredSites:          []string{},
+		RelayPreferredSitePresets:    []string{},
+		RelayPreferredFallbackDriver: "managed",
+		EvaluateEnabled:              &evaluateEnabled,
+		NetworkObserveEnabled:        true,
+		SessionScreenshotRetention:   30 * 24 * time.Hour,
 	}
+}
+
+// Clone returns a deep copy of the browser configuration.
+func (c *Config) Clone() *Config {
+	if c == nil {
+		return DefaultConfig()
+	}
+	cloned := *c
+	cloned.AllowedDomains = append([]string(nil), c.AllowedDomains...)
+	cloned.BlockedDomains = append([]string(nil), c.BlockedDomains...)
+	cloned.TrustedSites = append([]string(nil), c.TrustedSites...)
+	cloned.TrustedSitePresets = append([]string(nil), c.TrustedSitePresets...)
+	cloned.RelayPreferredSites = append([]string(nil), c.RelayPreferredSites...)
+	cloned.RelayPreferredSitePresets = append([]string(nil), c.RelayPreferredSitePresets...)
+	if c.EvaluateEnabled != nil {
+		enabled := *c.EvaluateEnabled
+		cloned.EvaluateEnabled = &enabled
+	}
+	return &cloned
+}
+
+// CloneForDriver returns a deep copy of the config forced to the requested driver.
+func (c *Config) CloneForDriver(driver string) *Config {
+	cloned := c.Clone()
+	switch normalizeBrowserDriverName(driver) {
+	case "managed":
+		cloned.Driver = "managed"
+		cloned.RelayEnabled = false
+		cloned.CDPURL = ""
+	case "relay":
+		cloned.Driver = "relay"
+	}
+	return cloned
+}
+
+func normalizeBrowserDriverName(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "relay", "cdp":
+		return "relay"
+	case "", "managed":
+		return "managed"
+	default:
+		return ""
+	}
+}
+
+// ExpandedTrustedSites returns the merged explicit trusted sites and preset origins.
+func (c *Config) ExpandedTrustedSites() []string {
+	if c == nil {
+		return nil
+	}
+	return mergeStringLists(c.TrustedSites, ExpandTrustedSitePresets(c.TrustedSitePresets))
+}
+
+// ExpandedRelayPreferredSites returns the merged explicit relay-preferred site
+// patterns and preset host bundles.
+func (c *Config) ExpandedRelayPreferredSites() []string {
+	if c == nil {
+		return nil
+	}
+	return mergeStringLists(c.RelayPreferredSites, ExpandRelayPreferredSitePresets(c.RelayPreferredSitePresets))
+}
+
+// RelayPreferredFallback resolves the configured fallback driver for relay-preferred sites.
+func (c *Config) RelayPreferredFallback() string {
+	if c == nil {
+		return "managed"
+	}
+	switch normalizeBrowserDriverName(c.RelayPreferredFallbackDriver) {
+	case "relay":
+		return "relay"
+	case "managed":
+		return "managed"
+	default:
+		return "managed"
+	}
+}
+
+func mergeStringLists(primary, secondary []string) []string {
+	if len(primary) == 0 && len(secondary) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(primary)+len(secondary))
+	out := make([]string, 0, len(primary)+len(secondary))
+	for _, raw := range append(append([]string(nil), primary...), secondary...) {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
 }
 
 // IsEvaluateEnabled returns whether JavaScript evaluation is enabled.
@@ -529,6 +667,25 @@ type NavigateResponse struct {
 	Title string `json:"title"`
 	// TargetID is the tab ID.
 	TargetID string `json:"target_id"`
+}
+
+// ObservedNetworkEvent is a lightweight network capture entry from a tab.
+type ObservedNetworkEvent struct {
+	Method       string            `json:"method,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	Status       int               `json:"status,omitempty"`
+	ContentType  string            `json:"content_type,omitempty"`
+	ResourceType string            `json:"resource_type,omitempty"`
+	Initiator    string            `json:"initiator,omitempty"`
+	DurationMS   int64             `json:"duration_ms,omitempty"`
+	Headers      map[string]string `json:"headers,omitempty"`
+	BodySample   string            `json:"body_sample,omitempty"`
+}
+
+// ObservedNetworkResult returns recent browser network activity for a target tab.
+type ObservedNetworkResult struct {
+	TargetID string                 `json:"target_id,omitempty"`
+	Events   []ObservedNetworkEvent `json:"events,omitempty"`
 }
 
 // SnapshotRequest represents a request for a page snapshot.

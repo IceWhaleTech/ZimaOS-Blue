@@ -37,12 +37,11 @@
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 18px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--glass-bg, rgba(255, 255, 255, 0.08)) 88%, white 3%) 0%,
-      var(--glass-bg, rgba(255, 255, 255, 0.05)) 100%
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--glass-bg, rgba(255, 255, 255, 0.08)) 88%, white 3%) 0%,
+    var(--glass-bg, rgba(255, 255, 255, 0.05)) 100%
+  );
   box-shadow: var(--extension-hero-shadow);
 }
 

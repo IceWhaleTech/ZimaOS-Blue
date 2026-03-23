@@ -79,6 +79,8 @@ type ExecTool struct {
 	pinnedSkills map[string]struct{} // pinned skill names for short-circuit (e.g. web_search, browser)
 	skillSelect  SkillSelectFunc     // may be nil; selector fallback for unknown skills
 	autoConfirm  func() bool         // optional dynamic auto-confirm getter
+	approvalMu   sync.RWMutex
+	approvedCmds map[string]struct{} // exact command digests approved with "allow always"
 }
 
 // NewExecTool creates a new exec tool.
@@ -97,15 +99,16 @@ func NewExecTool(config ExecConfig, sessions *SessionRegistry, approvals *Approv
 		policy = *config.Policy
 	}
 	return &ExecTool{
-		config:    config,
-		policy:    policy,
-		sessions:  sessions,
-		approvals: approvals,
-		broker:    broker,
-		safeBins:  BuildSafeBinsSet(config.SafeBins),
-		dirStore:  dirStore,
-		sandbox:   firstOrNilIface(sbx),
-		retries:   NewRetryTracker(policy.MaxRetries, policy.RetryWindow),
+		config:       config,
+		policy:       policy,
+		sessions:     sessions,
+		approvals:    approvals,
+		broker:       broker,
+		safeBins:     BuildSafeBinsSet(config.SafeBins),
+		dirStore:     dirStore,
+		sandbox:      firstOrNilIface(sbx),
+		retries:      NewRetryTracker(policy.MaxRetries, policy.RetryWindow),
+		approvedCmds: make(map[string]struct{}),
 	}
 }
 
@@ -193,6 +196,64 @@ func (t *ExecTool) getShellConfig() (string, []string) {
 // when the DB is available (deferred wiring pattern).
 func (t *ExecTool) SetAuditStore(store *ExecAuditStore) {
 	t.audit = store
+}
+
+func (t *ExecTool) isCommandApprovedAlways(command string) bool {
+	if t == nil {
+		return false
+	}
+	digest := approvalCommandDigest(command)
+	t.approvalMu.RLock()
+	defer t.approvalMu.RUnlock()
+	_, ok := t.approvedCmds[digest]
+	return ok
+}
+
+func (t *ExecTool) rememberApprovedCommand(command string) {
+	if t == nil {
+		return
+	}
+	digest := approvalCommandDigest(command)
+	t.approvalMu.Lock()
+	defer t.approvalMu.Unlock()
+	t.approvedCmds[digest] = struct{}{}
+}
+
+func (t *ExecTool) requestCommandSafetyApproval(ctx context.Context, command, workdir, host string, match *CommandSafetyMatch) error {
+	if match == nil || !match.RequiresApproval {
+		return nil
+	}
+	if t.isCommandApprovedAlways(command) {
+		return nil
+	}
+	if t.approvals == nil {
+		return fmt.Errorf("exec blocked: %s requires approval and no approval manager is configured", match.Reason)
+	}
+
+	userID := GetUserID(ctx)
+	decision, err := t.approvals.RequestApproval(ctx, ApprovalRequest{
+		Type:         "command",
+		Command:      command,
+		Workdir:      workdir,
+		Host:         host,
+		Security:     string(t.config.Security),
+		UserID:       userID,
+		PolicySource: "exec_command_safety",
+		RiskLevel:    string(match.RiskLevel),
+	})
+	if err != nil {
+		return fmt.Errorf("exec denied: approval failed: %w", err)
+	}
+
+	switch decision {
+	case ApprovalAllowOnce:
+		return nil
+	case ApprovalAllowAlways:
+		t.rememberApprovedCommand(command)
+		return nil
+	default:
+		return errors.New("exec denied: user denied the command")
+	}
 }
 
 // HasSandbox returns true if sandbox execution is available.
@@ -321,8 +382,8 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 						} else {
 							fwdArgs["input"] = restArgs
 						}
-					} else {
-						// No arguments provided — reject rather than forwarding an empty call.
+					} else if !toolAllowsEmptyExecForward(tool) {
+						// No arguments provided and the tool schema marks parameters as required.
 						return nil, fmt.Errorf(
 							"%s requires arguments. Call the %s tool directly with the proper parameters instead of using exec",
 							firstWord, firstWord,
@@ -397,10 +458,18 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		hostArg = t.config.Host
 	}
 
-	// Dangerous command blocklist — always enforced regardless of security mode.
-	if err := ValidateCommandSafety(command); err != nil {
-		t.recordAudit(ctx, command, workdirArg, 100, RiskLevelCritical, "blocked", nil, 0, 0, 0, err.Error())
-		return nil, err
+	safetyMatch := MatchCommandSafety(command)
+	if safetyMatch != nil {
+		if safetyMatch.RequiresApproval {
+			if err := t.requestCommandSafetyApproval(ctx, command, workdirArg, hostArg, safetyMatch); err != nil {
+				t.recordAudit(ctx, command, workdirArg, 100, safetyMatch.RiskLevel, "blocked", nil, 0, 0, 0, err.Error())
+				return nil, err
+			}
+		} else {
+			err := fmt.Errorf("exec blocked: %s", safetyMatch.Reason)
+			t.recordAudit(ctx, command, workdirArg, 100, safetyMatch.RiskLevel, "blocked", nil, 0, 0, 0, err.Error())
+			return nil, err
+		}
 	}
 
 	// Command length check.
@@ -411,6 +480,9 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	// Risk scoring — evaluate command risk and enforce policy threshold.
 	risk := AnalyzeRisk(command)
+	if safetyMatch != nil && safetyMatch.RequiresApproval {
+		risk = AnalyzeRiskWithSuppressedReasons(command, safetyMatch.SuppressRiskReasons)
+	}
 	if risk.Total >= t.policy.MaxRiskThreshold {
 		err := fmt.Errorf("exec blocked: risk score %d (%s) exceeds policy threshold %d. Reasons: %s",
 			risk.Total, risk.Level, t.policy.MaxRiskThreshold, strings.Join(risk.Reasons, ", "))
@@ -944,6 +1016,9 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 	// - For blue prefix calls: fall through to normal exec when no fallback is available.
 	if err != nil {
 		if strings.Contains(err.Error(), "unknown skill") || strings.Contains(err.Error(), "is disabled") {
+			if toolResp, toolOK := t.tryToolCompatFallback(ctx, execSkillName, input); toolOK {
+				return toolResp, true
+			}
 			if t.skillSelect != nil {
 				decision := t.skillSelect(ctx, strings.TrimSpace(rest))
 				if decision.SelectedSkill != "" {
@@ -999,6 +1074,49 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 	}
 
 	return t.buildSkillResult(ctx, execSkillName, data, warnings), true
+}
+
+func (t *ExecTool) tryToolCompatFallback(ctx context.Context, skillName string, input map[string]any) (interface{}, bool) {
+	if t == nil || t.registry == nil {
+		return nil, false
+	}
+
+	trimmed := strings.TrimSpace(skillName)
+	if trimmed == "" {
+		return nil, false
+	}
+
+	actualTool := trimmed
+	if t.registry.Get(trimmed) == nil {
+		normalized := normalizeCompatToolName(trimmed)
+		if normalized == trimmed || t.registry.Get(normalized) == nil {
+			return nil, false
+		}
+		actualTool = normalized
+	}
+
+	args := make(map[string]interface{}, len(input))
+	for k, v := range input {
+		args[k] = v
+	}
+
+	result, err := NewExecutor(t.registry).Execute(ctx, trimmed, args)
+	if err != nil {
+		slog.Warn("[exec] tool compat fallback failed",
+			"skill", trimmed,
+			"tool", actualTool,
+			"err", err)
+		return nil, false
+	}
+
+	slog.Info("[exec] tool compat fallback succeeded",
+		"skill", trimmed,
+		"tool", actualTool)
+
+	if forwarded, ok := result.(*ForwardedResult); ok {
+		return forwarded, true
+	}
+	return &ForwardedResult{ActualTool: actualTool, Result: result}, true
 }
 
 func (t *ExecTool) buildSkillResult(ctx context.Context, skillName string, data map[string]string, warnings []string) interface{} {
@@ -1417,6 +1535,21 @@ func hasNonEmptyInputKey(input map[string]any, keys ...string) bool {
 		}
 	}
 	return false
+}
+
+func toolAllowsEmptyExecForward(tool Tool) bool {
+	if tool == nil {
+		return false
+	}
+	params := tool.Definition().Parameters
+	if len(params) == 0 {
+		return true
+	}
+	required, err := normalizeStringSlice(params["required"])
+	if err != nil {
+		return false
+	}
+	return len(required) == 0
 }
 
 func appendParsedKeyValue(out map[string]any, key, value string) {

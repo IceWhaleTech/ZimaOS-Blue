@@ -21,6 +21,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
+
 	_ "golang.org/x/image/webp"
 )
 
@@ -29,9 +31,25 @@ const (
 	defaultImageReviewMaxInputs = 20
 	maxImageReviewMaxInputs     = 50
 	maxRemoteImageBytes         = 10 << 20
+
+	imageAnalysisModeAuto       = "auto"
+	imageAnalysisModeCheapFirst = "cheap_first"
+	imageAnalysisModeOCRFirst   = "ocr_first"
+	imageAnalysisModeOCROnly    = "ocr_only"
+	imageAnalysisModeVisionOnly = "vision_only"
+
+	imageAnalysisPreviewMaxChars = 160
 )
 
-var errImageURLNotDirect = errors.New("url does not point to a direct image")
+var (
+	errImageURLNotDirect          = errors.New("url does not point to a direct image")
+	errImageVisionEmpty           = errors.New("image vision returned empty analysis")
+	errImageVisionUnavailable     = errors.New("image vision service not available")
+	errImageSmallModelEmpty       = errors.New("image small model returned empty analysis")
+	errImageSmallModelUnavailable = errors.New("image small model service not available")
+	errImageOCRUnavailable        = errors.New("image OCR service not available")
+	errImageOCREmpty              = errors.New("image OCR returned empty text")
+)
 
 var imageCompareStopWords = map[string]struct{}{
 	"the": {}, "this": {}, "that": {}, "with": {}, "from": {}, "into": {}, "there": {}, "their": {}, "about": {},
@@ -57,6 +75,11 @@ type ImageOCRResult struct {
 // ImageOCRService extracts text from inline images as a local fallback.
 type ImageOCRService interface {
 	Extract(ctx context.Context, imagePNG []byte) (ImageOCRResult, error)
+}
+
+// ProviderAwareImageVision optionally handles provider-specific image understanding.
+type ProviderAwareImageVision interface {
+	Analyze(ctx context.Context, prompt, imageBase64 string) (analysis string, handled bool, err error)
 }
 
 // ImageGenerateRequest is the normalized request shape used by the native image tool.
@@ -114,6 +137,9 @@ type MediaFallbackInfo struct {
 	SourceURLs  []string `json:"source_urls,omitempty"`
 	SpaceURL    string   `json:"space_url,omitempty"`
 	Disclosure  string   `json:"disclosure"`
+	RenderMode  string   `json:"render_mode,omitempty"`
+	TemplateID  string   `json:"template_id,omitempty"`
+	StylePreset string   `json:"style_preset,omitempty"`
 }
 
 // ImageGenerateFunc starts or waits on an image generation task.
@@ -127,6 +153,7 @@ type PPTRequest struct {
 	Description       string   `json:"description,omitempty"`
 	AspectRatio       string   `json:"aspect_ratio,omitempty"`
 	ReferenceImages   []string `json:"reference_images,omitempty"`
+	LayoutSpec        any      `json:"layout_spec,omitempty"`
 	StylePreset       string   `json:"style_preset,omitempty"`
 	Theme             string   `json:"style_theme,omitempty"`
 	Source            string   `json:"source,omitempty"`
@@ -171,15 +198,36 @@ type imageReviewInput struct {
 	Value string
 }
 
+type imageOCRSufficiency struct {
+	Sufficient bool
+	Reason     string
+	Chars      int
+	Words      int
+	Lines      int
+	Digits     int
+}
+
+type imageSmallModelSufficiency struct {
+	Sufficient bool
+	Reason     string
+	Chars      int
+	Words      int
+	Lines      int
+	Digits     int
+}
+
 // ImageTool provides a native compatibility surface for legacy image-style requests.
 type ImageTool struct {
-	reviewer   ImageReviewService
-	vision     VLMBridge
-	ocr        ImageOCRService
-	generate   ImageGenerateFunc
-	lookup     ImageTaskLookupFunc
-	ppt        PPTGenerateService
-	httpClient *http.Client
+	reviewer          ImageReviewService
+	vision            VLMBridge
+	providerVision    ProviderAwareImageVision
+	smallModel        smallmodel.Runtime
+	smallModelEnabled func() bool
+	ocr               ImageOCRService
+	generate          ImageGenerateFunc
+	lookup            ImageTaskLookupFunc
+	ppt               PPTGenerateService
+	httpClient        *http.Client
 }
 
 // NewImageTool creates a new native image tool.
@@ -198,6 +246,30 @@ func (t *ImageTool) SetVisionBridge(bridge VLMBridge) {
 		return
 	}
 	t.vision = bridge
+}
+
+// SetProviderVision injects optional provider-aware image understanding.
+func (t *ImageTool) SetProviderVision(vision ProviderAwareImageVision) {
+	if t == nil {
+		return
+	}
+	t.providerVision = vision
+}
+
+// SetSmallModelRuntime injects the optional local multimodal runtime used for cheap image QA.
+func (t *ImageTool) SetSmallModelRuntime(rt smallmodel.Runtime) {
+	if t == nil {
+		return
+	}
+	t.smallModel = rt
+}
+
+// SetSmallModelEnabledFunc injects an optional gate for small-model image routing.
+func (t *ImageTool) SetSmallModelEnabledFunc(fn func() bool) {
+	if t == nil {
+		return
+	}
+	t.smallModelEnabled = fn
 }
 
 // SetOCRService injects the local OCR fallback used for inline image recognition.
@@ -238,30 +310,35 @@ func (t *ImageTool) Definition() ToolDefinition {
 					"enum":        []string{"generate", "edit", "review", "analyze", "compare", "status", "get", "ppt"},
 					"description": "Action to perform. Auto-detected from task_id, prompt, and image/url inputs.",
 				},
-				"prompt":              map[string]interface{}{"type": "string", "description": "Prompt for image generation or editing."},
-				"negative_prompt":     map[string]interface{}{"type": "string", "description": "Optional negative prompt for generation."},
-				"model":               map[string]interface{}{"type": "string", "description": "Optional image model ID."},
-				"size":                map[string]interface{}{"type": "string", "description": "Requested output size, e.g. 1024x1024."},
-				"quality":             map[string]interface{}{"type": "string", "description": "Optional quality hint."},
-				"style":               map[string]interface{}{"type": "string", "description": "Optional style hint."},
-				"n":                   map[string]interface{}{"type": "integer", "description": "Number of images to generate."},
-				"category":            map[string]interface{}{"type": "string", "description": "Generation category, e.g. t2i or i2i."},
-				"path":                map[string]interface{}{"type": "string", "description": "Optional output file path in the current workspace. When provided and generation succeeds, Blue saves the first generated asset there."},
-				"output_path":         map[string]interface{}{"type": "string", "description": "Alias for path."},
-				"filename":            map[string]interface{}{"type": "string", "description": "Alias for path when the user specified a target filename."},
-				"reference_image":     map[string]interface{}{"type": "string", "description": "Reference image URL for edit/i2i generation."},
-				"image_url":           map[string]interface{}{"type": "string", "description": "Alias for reference_image when generating edits."},
-				"reference_base64":    map[string]interface{}{"type": "string", "description": "Base64 image content for edit/i2i generation."},
-				"task_id":             map[string]interface{}{"type": "string", "description": "Task ID for status/get."},
-				"poll":                map[string]interface{}{"type": "boolean", "description": "Wait for generation completion before returning. Defaults to true."},
-				"wait_timeout_sec":    map[string]interface{}{"type": "integer", "description": "Generation wait timeout in seconds. Defaults to 300."},
-				"url":                 map[string]interface{}{"type": "string", "description": "Target page/image URL for review."},
-				"urls":                map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple page/image URLs for review or recognition."},
-				"image_urls":          map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple direct or signed image URLs for review or recognition."},
-				"image":               map[string]interface{}{"type": "string", "description": "Base64 image data for review."},
-				"images":              map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple base64 image payloads for recognition in one call."},
-				"compare":             map[string]interface{}{"type": "boolean", "description": "When reviewing multiple images, emphasize shared themes and differences in a structured compare payload."},
-				"max_images":          map[string]interface{}{"type": "integer", "description": "Maximum number of unique images/URLs to review after dedupe. Defaults to 20."},
+				"prompt":           map[string]interface{}{"type": "string", "description": "Prompt for image generation or editing."},
+				"negative_prompt":  map[string]interface{}{"type": "string", "description": "Optional negative prompt for generation."},
+				"model":            map[string]interface{}{"type": "string", "description": "Optional image model ID."},
+				"size":             map[string]interface{}{"type": "string", "description": "Requested output size, e.g. 1024x1024."},
+				"quality":          map[string]interface{}{"type": "string", "description": "Optional quality hint."},
+				"style":            map[string]interface{}{"type": "string", "description": "Optional style hint."},
+				"n":                map[string]interface{}{"type": "integer", "description": "Number of images to generate."},
+				"category":         map[string]interface{}{"type": "string", "description": "Generation category, e.g. t2i or i2i."},
+				"path":             map[string]interface{}{"type": "string", "description": "Optional output file path in the current workspace. When provided and generation succeeds, Blue saves the first generated asset there."},
+				"output_path":      map[string]interface{}{"type": "string", "description": "Alias for path."},
+				"filename":         map[string]interface{}{"type": "string", "description": "Alias for path when the user specified a target filename."},
+				"reference_image":  map[string]interface{}{"type": "string", "description": "Reference image URL for edit/i2i generation."},
+				"image_url":        map[string]interface{}{"type": "string", "description": "Alias for reference_image when generating edits."},
+				"reference_base64": map[string]interface{}{"type": "string", "description": "Base64 image content for edit/i2i generation."},
+				"task_id":          map[string]interface{}{"type": "string", "description": "Task ID for status/get."},
+				"poll":             map[string]interface{}{"type": "boolean", "description": "Wait for generation completion before returning. Defaults to true."},
+				"wait_timeout_sec": map[string]interface{}{"type": "integer", "description": "Generation wait timeout in seconds. Defaults to 300."},
+				"url":              map[string]interface{}{"type": "string", "description": "Target page/image URL for review."},
+				"urls":             map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple page/image URLs for review or recognition."},
+				"image_urls":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple direct or signed image URLs for review or recognition."},
+				"image":            map[string]interface{}{"type": "string", "description": "Base64 image data for review."},
+				"images":           map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple base64 image payloads for recognition in one call."},
+				"compare":          map[string]interface{}{"type": "boolean", "description": "When reviewing multiple images, emphasize shared themes and differences in a structured compare payload."},
+				"max_images":       map[string]interface{}{"type": "integer", "description": "Maximum number of unique images/URLs to review after dedupe. Defaults to 20."},
+				"analysis_mode": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{imageAnalysisModeAuto, imageAnalysisModeCheapFirst, imageAnalysisModeOCRFirst, imageAnalysisModeOCROnly, imageAnalysisModeVisionOnly},
+					"description": "Recognition strategy for direct images. auto keeps the existing vision-first flow with OCR fallback; cheap_first prefers the local small multimodal model before full vision; ocr_first prefers OCR before escalating; ocr_only avoids vision; vision_only avoids OCR.",
+				},
 				"lang":                map[string]interface{}{"type": "string", "description": "Output language for review."},
 				"device":              map[string]interface{}{"type": "string", "description": "desktop or mobile for URL review."},
 				"wait_ms":             map[string]interface{}{"type": "number", "description": "Extra page wait time for review_url."},
@@ -269,8 +346,9 @@ func (t *ImageTool) Definition() ToolDefinition {
 				"format":              map[string]interface{}{"type": "string", "description": "Review output format: json or human."},
 				"aspect_ratio":        map[string]interface{}{"type": "string", "description": "Optional aspect ratio for supported generation models."},
 				"resolution":          map[string]interface{}{"type": "string", "description": "Optional resolution tier for supported generation models."},
-				"reference_images":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional reference images for banana_slides PPT slide-asset generation."},
-				"style_preset":        map[string]interface{}{"type": "string", "description": "Optional generation preset. Use banana_slides for PPT slide visuals."},
+				"reference_images":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional reference images for bananaslides or nanoslides PPT slide-asset generation."},
+				"layout_spec":         map[string]interface{}{"type": "object", "description": "Optional structured PPT layout spec with canvas, background, and positioned text/image blocks for direct fallback rendering."},
+				"style_preset":        map[string]interface{}{"type": "string", "description": "Optional generation preset. Use bananaslides or nanoslides for PPT slide visuals."},
 				"quality_profile":     map[string]interface{}{"type": "string", "description": "Optional review profile. Use ppt to trigger PPT slide-asset generation."},
 				"review_threshold":    map[string]interface{}{"type": "number", "description": "Optional review threshold for PPT slide-asset generation."},
 				"review_retry_budget": map[string]interface{}{"type": "integer", "description": "Optional retry budget for PPT slide-asset generation."},
@@ -568,6 +646,7 @@ func firstNonEmptyImage(values ...string) string {
 }
 
 func (t *ImageTool) executeSingleReviewInput(ctx context.Context, prompt string, args map[string]interface{}, input imageReviewInput) (interface{}, error) {
+	analysisMode := parseImageAnalysisMode(args)
 	switch input.Kind {
 	case "inline":
 		decoded, err := decodeCompatInlineImage(input.Value)
@@ -578,9 +657,9 @@ func (t *ImageTool) executeSingleReviewInput(ctx context.Context, prompt string,
 		meta := map[string]interface{}{"source": "inline"}
 		if normalizeErr != nil {
 			meta["warnings"] = []string{"inline image could not be normalized; trying raw bytes fallback"}
-			return t.analyzeImageBytes(ctx, prompt, input.Value, decoded, meta)
+			return t.analyzeImageBytes(ctx, prompt, input.Value, decoded, meta, analysisMode)
 		}
-		return t.analyzeImageBytes(ctx, prompt, base64.StdEncoding.EncodeToString(normalized), normalized, meta)
+		return t.analyzeImageBytes(ctx, prompt, base64.StdEncoding.EncodeToString(normalized), normalized, meta, analysisMode)
 	case "file":
 		localPath, imageBytes, err := readLocalImageBytes(input.Value)
 		if err != nil {
@@ -599,14 +678,14 @@ func (t *ImageTool) executeSingleReviewInput(ctx context.Context, prompt string,
 		} else {
 			meta["warnings"] = []string{"local image could not be normalized for vision; trying OCR fallback"}
 		}
-		return t.analyzeImageBytes(ctx, prompt, visionBase64, ocrBytes, meta)
+		return t.analyzeImageBytes(ctx, prompt, visionBase64, ocrBytes, meta, analysisMode)
 	case "url":
 		targetURL := input.Value
 		if looksLikeDirectImageURL(targetURL) {
-			return t.analyzeRemoteImageURL(ctx, prompt, targetURL)
+			return t.analyzeRemoteImageURL(ctx, prompt, targetURL, analysisMode)
 		}
 		if t.shouldProbeRemoteImageURL(args, targetURL) {
-			result, err := t.tryAnalyzeRemoteImageURL(ctx, prompt, targetURL)
+			result, err := t.tryAnalyzeRemoteImageURL(ctx, prompt, targetURL, analysisMode)
 			if err == nil {
 				return result, nil
 			}
@@ -806,7 +885,7 @@ func resolveImageLocalPath(raw string) (string, error) {
 	return trimmed, nil
 }
 
-func (t *ImageTool) tryAnalyzeRemoteImageURL(ctx context.Context, prompt, targetURL string) (interface{}, error) {
+func (t *ImageTool) tryAnalyzeRemoteImageURL(ctx context.Context, prompt, targetURL, analysisMode string) (interface{}, error) {
 	isImage, err := t.probeRemoteImageURL(ctx, targetURL)
 	if err != nil {
 		return nil, err
@@ -814,10 +893,10 @@ func (t *ImageTool) tryAnalyzeRemoteImageURL(ctx context.Context, prompt, target
 	if !isImage {
 		return nil, errImageURLNotDirect
 	}
-	return t.analyzeRemoteImageURL(ctx, prompt, targetURL)
+	return t.analyzeRemoteImageURL(ctx, prompt, targetURL, analysisMode)
 }
 
-func (t *ImageTool) analyzeRemoteImageURL(ctx context.Context, prompt, targetURL string) (interface{}, error) {
+func (t *ImageTool) analyzeRemoteImageURL(ctx context.Context, prompt, targetURL, analysisMode string) (interface{}, error) {
 	imageBytes, err := t.downloadRemoteImage(ctx, targetURL)
 	if err != nil {
 		return nil, err
@@ -835,14 +914,412 @@ func (t *ImageTool) analyzeRemoteImageURL(ctx context.Context, prompt, targetURL
 	} else {
 		meta["warnings"] = []string{"remote image could not be normalized for vision; trying OCR fallback"}
 	}
-	return t.analyzeImageBytes(ctx, prompt, visionBase64, ocrBytes, meta)
+	return t.analyzeImageBytes(ctx, prompt, visionBase64, ocrBytes, meta, analysisMode)
 }
 
-func (t *ImageTool) analyzeImageBytes(ctx context.Context, prompt, visionBase64 string, ocrBytes []byte, meta map[string]interface{}) (interface{}, error) {
-	var visionErr error
-	if t.vision != nil && strings.TrimSpace(visionBase64) != "" {
-		analysis, err := t.vision.ChatWithVision(ctx, prompt, visionBase64)
-		if err == nil && strings.TrimSpace(analysis) != "" {
+func (t *ImageTool) analyzeImageBytes(ctx context.Context, prompt, visionBase64 string, ocrBytes []byte, meta map[string]interface{}, analysisMode string) (interface{}, error) {
+	switch normalizeImageAnalysisMode(analysisMode) {
+	case imageAnalysisModeOCROnly:
+		return t.performOCRImageAnalysis(ctx, prompt, ocrBytes, meta)
+	case imageAnalysisModeVisionOnly:
+		return t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
+	case imageAnalysisModeCheapFirst:
+		smallPayload, smallErr := t.performSmallModelImageAnalysis(ctx, prompt, visionBase64, meta)
+		if smallErr == nil {
+			assessment := assessSmallModelImageSufficiency(prompt, asString(smallPayload["analysis"]))
+			annotateSmallModelPayloadWithSufficiency(smallPayload, assessment)
+			if assessment.Sufficient {
+				return smallPayload, nil
+			}
+			visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
+			if visionErr == nil {
+				visionPayload["fallback_from"] = "small_model"
+				visionPayload["fallback_reason"] = "small_model_insufficient"
+				annotatePayloadWithSmallModelFallback(visionPayload, smallPayload, assessment)
+				return visionPayload, nil
+			}
+			ocrPayload, ocrErr := t.performOCRImageAnalysis(ctx, prompt, ocrBytes, meta)
+			if ocrErr == nil {
+				ocrPayload["fallback_from"] = "vision"
+				ocrPayload["fallback_reason"] = "vision_unavailable_after_insufficient_small_model"
+				annotatePayloadWithSmallModelFallback(ocrPayload, smallPayload, assessment)
+				ocrPayload["warnings"] = appendStringSlices(ocrPayload["warnings"], []string{
+					"small model summary may be incomplete for this prompt; returning OCR fallback after vision was unavailable",
+				})
+				return ocrPayload, nil
+			}
+			smallPayload["fallback_reason"] = "vision_unavailable_after_insufficient_small_model"
+			smallPayload["warnings"] = appendStringSlices(smallPayload["warnings"], []string{
+				"small model summary may be incomplete for this prompt; higher-fidelity fallback unavailable",
+			})
+			return smallPayload, nil
+		}
+		visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
+		if visionErr == nil {
+			visionPayload["fallback_from"] = "small_model"
+			return visionPayload, nil
+		}
+		ocrPayload, ocrErr := t.performOCRImageAnalysis(ctx, prompt, ocrBytes, meta)
+		if ocrErr == nil {
+			ocrPayload["fallback_from"] = "vision"
+			ocrPayload["warnings"] = appendStringSlices(ocrPayload["warnings"], []string{
+				"small model and vision analysis were unavailable; returning OCR fallback",
+			})
+			return ocrPayload, nil
+		}
+		return nil, fmt.Errorf("image analysis failed: small_model: %v; vision: %v; ocr: %w", smallErr, visionErr, ocrErr)
+	case imageAnalysisModeOCRFirst:
+		ocrPayload, ocrErr := t.performOCRImageAnalysis(ctx, prompt, ocrBytes, meta)
+		if ocrErr == nil {
+			assessment := assessImageOCRSufficiency(prompt, asString(ocrPayload["text"]))
+			annotateOCRPayloadWithSufficiency(ocrPayload, assessment)
+			if assessment.Sufficient {
+				return ocrPayload, nil
+			}
+			smallPayload, smallErr := t.performSmallModelImageAnalysis(ctx, prompt, visionBase64, meta)
+			if smallErr == nil {
+				smallAssessment := assessSmallModelImageSufficiency(prompt, asString(smallPayload["analysis"]))
+				annotateSmallModelPayloadWithSufficiency(smallPayload, smallAssessment)
+				smallPayload["fallback_from"] = "ocr"
+				smallPayload["fallback_reason"] = "ocr_insufficient"
+				annotatePayloadWithOCRFallback(smallPayload, ocrPayload, assessment)
+				if smallAssessment.Sufficient {
+					return smallPayload, nil
+				}
+				visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
+				if visionErr == nil {
+					visionPayload["fallback_from"] = "small_model"
+					visionPayload["fallback_reason"] = "small_model_insufficient_after_ocr"
+					annotatePayloadWithOCRFallback(visionPayload, ocrPayload, assessment)
+					annotatePayloadWithSmallModelFallback(visionPayload, smallPayload, smallAssessment)
+					return visionPayload, nil
+				}
+				smallPayload["fallback_reason"] = "vision_unavailable_after_insufficient_small_model"
+				smallPayload["warnings"] = appendStringSlices(smallPayload["warnings"], []string{
+					"small model summary may be incomplete for this prompt; vision fallback unavailable",
+				})
+				return smallPayload, nil
+			}
+			visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
+			if visionErr == nil {
+				visionPayload["fallback_from"] = "ocr"
+				visionPayload["fallback_reason"] = "ocr_insufficient"
+				annotatePayloadWithOCRFallback(visionPayload, ocrPayload, assessment)
+				return visionPayload, nil
+			}
+			ocrPayload["warnings"] = appendStringSlices(ocrPayload["warnings"], []string{
+				"OCR result may be incomplete for this prompt; vision fallback unavailable",
+			})
+			ocrPayload["fallback_reason"] = "vision_unavailable_after_insufficient_ocr"
+			return ocrPayload, nil
+		}
+		smallPayload, smallErr := t.performSmallModelImageAnalysis(ctx, prompt, visionBase64, meta)
+		if smallErr == nil {
+			smallPayload["fallback_from"] = "ocr"
+			return smallPayload, nil
+		}
+		visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
+		if visionErr == nil {
+			visionPayload["fallback_from"] = "ocr"
+			return visionPayload, nil
+		}
+		return nil, fmt.Errorf("image analysis failed: ocr: %v; small_model: %v; vision: %w", ocrErr, smallErr, visionErr)
+	default:
+		visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
+		if visionErr == nil {
+			return visionPayload, nil
+		}
+		ocrPayload, ocrErr := t.performOCRImageAnalysis(ctx, prompt, ocrBytes, meta)
+		if ocrErr == nil {
+			ocrPayload["fallback_from"] = "vision"
+			return ocrPayload, nil
+		}
+		return nil, fmt.Errorf("image analysis failed: vision: %v; ocr: %w", visionErr, ocrErr)
+	}
+}
+
+func parseImageAnalysisMode(args map[string]interface{}) string {
+	return normalizeImageAnalysisMode(firstCompatString(args, "analysis_mode", "analysisMode"))
+}
+
+func normalizeImageAnalysisMode(raw string) string {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	switch mode {
+	case "", imageAnalysisModeAuto, "full", "vision_first", "vision-first":
+		return imageAnalysisModeAuto
+	case imageAnalysisModeCheapFirst, "cheap-first", "small_model", "small-model", "smallmodel", "mini":
+		return imageAnalysisModeCheapFirst
+	case "ocr", "text", imageAnalysisModeOCROnly:
+		return imageAnalysisModeOCROnly
+	case imageAnalysisModeOCRFirst, "ocr-first", "prefer_ocr", "prefer-ocr", "cheap":
+		return imageAnalysisModeOCRFirst
+	case imageAnalysisModeVisionOnly, "vision", "vlm":
+		return imageAnalysisModeVisionOnly
+	default:
+		return imageAnalysisModeAuto
+	}
+}
+
+func (t *ImageTool) smallModelReady() bool {
+	if t == nil || t.smallModel == nil || !t.smallModel.Ready() {
+		return false
+	}
+	if t.smallModelEnabled != nil && !t.smallModelEnabled() {
+		return false
+	}
+	return true
+}
+
+func (t *ImageTool) performSmallModelImageAnalysis(ctx context.Context, prompt, visionBase64 string, meta map[string]interface{}) (map[string]interface{}, error) {
+	if !t.smallModelReady() {
+		return nil, errImageSmallModelUnavailable
+	}
+	if strings.TrimSpace(visionBase64) == "" {
+		return nil, errImageSmallModelUnavailable
+	}
+	trimmedPrompt := strings.TrimSpace(prompt)
+	if trimmedPrompt == "" {
+		trimmedPrompt = "Describe the image briefly."
+	}
+	resp, err := t.smallModel.Generate(ctx, smallmodel.GenerateRequest{
+		Prompt:      "You are a concise visual assistant. Answer briefly using the attached image and the user's request. If the image is unclear, say so instead of guessing.\n\nUser: " + trimmedPrompt + "\nAssistant:",
+		MaxTokens:   400,
+		Temperature: 0.1,
+		Images: []smallmodel.ImageInput{{
+			MimeType: "image/png",
+			Data:     visionBase64,
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || strings.TrimSpace(resp.Text) == "" {
+		return nil, errImageSmallModelEmpty
+	}
+	payload := map[string]interface{}{
+		"mode":     "small_model",
+		"prompt":   prompt,
+		"analysis": strings.TrimSpace(resp.Text),
+		"provider": "smallmodel",
+	}
+	mergeImageMeta(payload, meta)
+	return payload, nil
+}
+
+func assessImageOCRSufficiency(prompt, text string) imageOCRSufficiency {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return imageOCRSufficiency{Reason: "ocr_empty"}
+	}
+	chars := len([]rune(text))
+	words := len(strings.Fields(text))
+	lines := countNonEmptyImageLines(text)
+	digits := countImageDigits(text)
+	preferOCR := promptPrefersImageOCR(prompt)
+	preferVision := promptPrefersImageVision(prompt)
+
+	switch {
+	case chars >= 140:
+		return imageOCRSufficiency{Sufficient: true, Reason: "rich_ocr_text", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	case lines >= 4 && chars >= 60:
+		return imageOCRSufficiency{Sufficient: true, Reason: "multi_line_ocr_text", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	case digits >= 8 && chars >= 32:
+		return imageOCRSufficiency{Sufficient: true, Reason: "numeric_ocr_signal", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	}
+
+	if preferVision {
+		if chars >= 80 && (lines >= 3 || words >= 12) {
+			return imageOCRSufficiency{Sufficient: true, Reason: "vision_prompt_but_ocr_is_rich", Chars: chars, Words: words, Lines: lines, Digits: digits}
+		}
+		return imageOCRSufficiency{Reason: "prompt_requests_visual_details_beyond_sparse_ocr", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	}
+
+	if preferOCR {
+		if chars >= 18 && (words >= 3 || digits >= 2 || lines >= 2) {
+			return imageOCRSufficiency{Sufficient: true, Reason: "prompt_prefers_text_and_ocr_has_signal", Chars: chars, Words: words, Lines: lines, Digits: digits}
+		}
+		if chars >= 32 {
+			return imageOCRSufficiency{Sufficient: true, Reason: "prompt_prefers_text_and_ocr_has_length", Chars: chars, Words: words, Lines: lines, Digits: digits}
+		}
+	}
+
+	switch {
+	case chars < 18 && lines <= 1 && digits < 2:
+		return imageOCRSufficiency{Reason: "ocr_text_too_short", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	case words < 4 && digits < 4 && lines <= 1:
+		return imageOCRSufficiency{Reason: "ocr_text_too_sparse", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	case chars >= 36 && (words >= 6 || digits >= 4 || lines >= 2):
+		return imageOCRSufficiency{Sufficient: true, Reason: "moderate_ocr_signal", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	default:
+		return imageOCRSufficiency{Reason: "ocr_text_may_be_incomplete", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	}
+}
+
+func annotateOCRPayloadWithSufficiency(payload map[string]interface{}, assessment imageOCRSufficiency) {
+	if payload == nil {
+		return
+	}
+	payload["ocr_sufficient"] = assessment.Sufficient
+	if assessment.Reason != "" {
+		payload["ocr_sufficiency_reason"] = assessment.Reason
+	}
+	if assessment.Chars > 0 {
+		payload["ocr_chars"] = assessment.Chars
+	}
+}
+
+func annotatePayloadWithOCRFallback(payload, ocrPayload map[string]interface{}, assessment imageOCRSufficiency) {
+	if payload == nil {
+		return
+	}
+	payload["ocr_sufficient"] = assessment.Sufficient
+	if assessment.Reason != "" {
+		payload["ocr_sufficiency_reason"] = assessment.Reason
+	}
+	if assessment.Chars > 0 {
+		payload["ocr_chars"] = assessment.Chars
+	}
+	if preview := strings.TrimSpace(asString(ocrPayload["text"])); preview != "" {
+		payload["ocr_preview"] = truncateRunes(preview, imageAnalysisPreviewMaxChars)
+	}
+}
+
+func assessSmallModelImageSufficiency(prompt, text string) imageSmallModelSufficiency {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return imageSmallModelSufficiency{Reason: "small_model_empty"}
+	}
+	chars := len([]rune(text))
+	words := len(strings.Fields(text))
+	lines := countNonEmptyImageLines(text)
+	digits := countImageDigits(text)
+	lower := strings.ToLower(text)
+	preferOCR := promptPrefersImageOCR(prompt)
+	preferVision := promptPrefersImageVision(prompt)
+
+	if looksLikeUncertainImageAnalysis(lower) && chars < 96 {
+		return imageSmallModelSufficiency{Reason: "small_model_uncertain", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	}
+
+	switch {
+	case chars >= 80:
+		return imageSmallModelSufficiency{Sufficient: true, Reason: "rich_small_model_summary", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	case lines >= 2 && chars >= 48:
+		return imageSmallModelSufficiency{Sufficient: true, Reason: "multi_line_small_model_summary", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	}
+
+	if preferVision {
+		if chars >= 24 && words >= 5 {
+			return imageSmallModelSufficiency{Sufficient: true, Reason: "visual_summary_present", Chars: chars, Words: words, Lines: lines, Digits: digits}
+		}
+		return imageSmallModelSufficiency{Reason: "small_model_visual_summary_too_sparse", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	}
+
+	if preferOCR {
+		if chars >= 36 && (words >= 6 || digits >= 4 || lines >= 2) {
+			return imageSmallModelSufficiency{Sufficient: true, Reason: "text_heavy_summary_present", Chars: chars, Words: words, Lines: lines, Digits: digits}
+		}
+		return imageSmallModelSufficiency{Reason: "small_model_summary_too_sparse_for_text_prompt", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	}
+
+	if chars >= 28 && words >= 5 {
+		return imageSmallModelSufficiency{Sufficient: true, Reason: "moderate_small_model_signal", Chars: chars, Words: words, Lines: lines, Digits: digits}
+	}
+	return imageSmallModelSufficiency{Reason: "small_model_summary_too_short", Chars: chars, Words: words, Lines: lines, Digits: digits}
+}
+
+func annotateSmallModelPayloadWithSufficiency(payload map[string]interface{}, assessment imageSmallModelSufficiency) {
+	if payload == nil {
+		return
+	}
+	payload["small_model_sufficient"] = assessment.Sufficient
+	if assessment.Reason != "" {
+		payload["small_model_sufficiency_reason"] = assessment.Reason
+	}
+	if assessment.Chars > 0 {
+		payload["small_model_chars"] = assessment.Chars
+	}
+}
+
+func annotatePayloadWithSmallModelFallback(payload, smallPayload map[string]interface{}, assessment imageSmallModelSufficiency) {
+	if payload == nil {
+		return
+	}
+	payload["small_model_sufficient"] = assessment.Sufficient
+	if assessment.Reason != "" {
+		payload["small_model_sufficiency_reason"] = assessment.Reason
+	}
+	if assessment.Chars > 0 {
+		payload["small_model_chars"] = assessment.Chars
+	}
+	if preview := strings.TrimSpace(asString(smallPayload["analysis"])); preview != "" {
+		payload["small_model_preview"] = truncateRunes(preview, imageAnalysisPreviewMaxChars)
+	}
+}
+
+func looksLikeUncertainImageAnalysis(lower string) bool {
+	return stringContainsAnyImage(lower,
+		"can't tell", "cannot tell", "not sure", "unclear", "uncertain",
+		"unable to determine", "difficult to determine", "hard to tell",
+		"hard to see", "hard to read", "too blurry", "blurry", "low resolution")
+}
+
+func promptPrefersImageOCR(prompt string) bool {
+	lower := strings.ToLower(strings.TrimSpace(prompt))
+	return stringContainsAnyImage(lower,
+		"ocr", "extract the text", "read the text", "transcribe", "visible text",
+		"screenshot", "chart", "table", "dashboard", "diagram", "document", "invoice", "receipt", "menu", "form")
+}
+
+func promptPrefersImageVision(prompt string) bool {
+	lower := strings.ToLower(strings.TrimSpace(prompt))
+	return stringContainsAnyImage(lower,
+		"describe the image", "describe the visual", "what is shown", "what's shown", "photo",
+		"person", "people", "scene", "product", "device", "appearance", "look like", "color", "style")
+}
+
+func stringContainsAnyImage(input string, markers ...string) bool {
+	for _, marker := range markers {
+		if marker != "" && strings.Contains(input, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func countNonEmptyImageLines(text string) int {
+	count := 0
+	for _, line := range strings.Split(text, "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func countImageDigits(text string) int {
+	count := 0
+	for _, r := range text {
+		if unicode.IsDigit(r) {
+			count++
+		}
+	}
+	return count
+}
+
+func (t *ImageTool) performVisionImageAnalysis(ctx context.Context, prompt, visionBase64 string, meta map[string]interface{}) (map[string]interface{}, error) {
+	if strings.TrimSpace(visionBase64) == "" {
+		return nil, errors.New("image format is not supported by vision path")
+	}
+	if t.providerVision != nil {
+		analysis, handled, err := t.providerVision.Analyze(ctx, prompt, visionBase64)
+		if handled {
+			if err != nil {
+				return nil, err
+			}
+			if strings.TrimSpace(analysis) == "" {
+				return nil, errImageVisionEmpty
+			}
 			payload := map[string]interface{}{
 				"mode":     "vision",
 				"prompt":   prompt,
@@ -851,44 +1328,53 @@ func (t *ImageTool) analyzeImageBytes(ctx context.Context, prompt, visionBase64 
 			mergeImageMeta(payload, meta)
 			return payload, nil
 		}
-		visionErr = err
-	} else if t.vision != nil && strings.TrimSpace(visionBase64) == "" {
-		visionErr = errors.New("image format is not supported by vision path")
 	}
-	if t.ocr != nil && len(ocrBytes) > 0 {
-		ocrResult, err := t.ocr.Extract(ctx, ocrBytes)
-		if err == nil && strings.TrimSpace(ocrResult.Text) != "" {
-			payload := map[string]interface{}{
-				"mode":       "ocr",
-				"prompt":     prompt,
-				"analysis":   ocrResult.Text,
-				"text":       ocrResult.Text,
-				"ocr_engine": ocrResult.Engine,
-				"ocr_model":  ocrResult.Model,
-			}
-			mergeImageMeta(payload, meta)
-			if len(ocrResult.Warnings) > 0 {
-				payload["warnings"] = appendStringSlices(payload["warnings"], ocrResult.Warnings)
-			}
-			if visionErr != nil {
-				payload["fallback_from"] = "vision"
-			}
-			return payload, nil
-		}
-		if err != nil {
-			if visionErr != nil {
-				return nil, fmt.Errorf("image analysis failed: vision: %v; ocr: %w", visionErr, err)
-			}
-			return nil, err
-		}
-		if visionErr == nil {
-			return nil, errors.New("image OCR returned empty text")
-		}
+	if t.vision == nil {
+		return nil, errImageVisionUnavailable
 	}
-	if visionErr != nil {
-		return nil, visionErr
+	analysis, err := t.vision.ChatWithVision(ctx, prompt, visionBase64)
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("image recognition service not available")
+	if strings.TrimSpace(analysis) == "" {
+		return nil, errImageVisionEmpty
+	}
+	payload := map[string]interface{}{
+		"mode":     "vision",
+		"prompt":   prompt,
+		"analysis": analysis,
+	}
+	mergeImageMeta(payload, meta)
+	return payload, nil
+}
+
+func (t *ImageTool) performOCRImageAnalysis(ctx context.Context, prompt string, ocrBytes []byte, meta map[string]interface{}) (map[string]interface{}, error) {
+	if t.ocr == nil {
+		return nil, errImageOCRUnavailable
+	}
+	if len(ocrBytes) == 0 {
+		return nil, errImageOCRUnavailable
+	}
+	ocrResult, err := t.ocr.Extract(ctx, ocrBytes)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(ocrResult.Text) == "" {
+		return nil, errImageOCREmpty
+	}
+	payload := map[string]interface{}{
+		"mode":       "ocr",
+		"prompt":     prompt,
+		"analysis":   ocrResult.Text,
+		"text":       ocrResult.Text,
+		"ocr_engine": ocrResult.Engine,
+		"ocr_model":  ocrResult.Model,
+	}
+	mergeImageMeta(payload, meta)
+	if len(ocrResult.Warnings) > 0 {
+		payload["warnings"] = appendStringSlices(payload["warnings"], ocrResult.Warnings)
+	}
+	return payload, nil
 }
 
 func (t *ImageTool) probeRemoteImageURL(ctx context.Context, targetURL string) (bool, error) {
@@ -1161,6 +1647,7 @@ func buildPPTRequest(args map[string]interface{}) (PPTRequest, error) {
 		Description:       description,
 		AspectRatio:       firstCompatString(args, "aspect_ratio", "aspectRatio"),
 		ReferenceImages:   referenceImages,
+		LayoutSpec:        compatValue(args, "layout_spec", "layoutSpec", "ppt_layout_spec", "slide_layout_spec"),
 		StylePreset:       firstCompatString(args, "style_preset", "stylePreset"),
 		Theme:             firstCompatString(args, "style_theme", "styleTheme", "theme", "brand_guidance", "brandGuidance"),
 		Source:            firstCompatString(args, "source", "origin"),
@@ -1206,14 +1693,17 @@ func collectPPTReferenceImages(args map[string]interface{}) ([]string, error) {
 }
 
 func shouldUsePPT(args map[string]interface{}) bool {
-	stylePreset := strings.ToLower(strings.TrimSpace(firstCompatString(args, "style_preset", "stylePreset")))
+	stylePreset := normalizePPTStylePreset(firstCompatString(args, "style_preset", "stylePreset"))
 	qualityProfile := strings.ToLower(strings.TrimSpace(firstCompatString(args, "quality_profile", "qualityProfile")))
 	source := strings.ToLower(strings.TrimSpace(firstCompatString(args, "source", "origin")))
 	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
 	if action == "ppt" {
 		return true
 	}
-	if stylePreset == "banana_slides" || qualityProfile == "ppt" {
+	if stylePreset == "banana_slides" || stylePreset == "nano_slides" || qualityProfile == "ppt" {
+		return true
+	}
+	if _, ok := compatArgValue(args, "layout_spec", "layoutSpec", "ppt_layout_spec", "slide_layout_spec"); ok {
 		return true
 	}
 	for _, hint := range []string{"ppt", "slide", "deck", "material"} {
@@ -1222,6 +1712,17 @@ func shouldUsePPT(args map[string]interface{}) bool {
 		}
 	}
 	return false
+}
+
+func normalizePPTStylePreset(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "banana_slides", "bananaslides", "banana slides", "banana-slides":
+		return "banana_slides"
+	case "nano_slides", "nanoslides", "nano slides", "nano-slides":
+		return "nano_slides"
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
 }
 
 func compatFloat64(args map[string]interface{}, keys ...string) float64 {
@@ -1247,6 +1748,15 @@ func compatFloat64(args map[string]interface{}, keys ...string) float64 {
 		}
 	}
 	return 0
+}
+
+func compatValue(args map[string]interface{}, keys ...string) any {
+	for _, key := range keys {
+		if value, ok := compatArgValue(args, key); ok {
+			return value
+		}
+	}
+	return nil
 }
 
 func imageAction(args map[string]interface{}) string {
@@ -1347,12 +1857,15 @@ func RegisterImageTool(registry *Registry, reviewer ImageReviewService, generate
 	}
 	native := NewImageTool(reviewer, generate, lookup)
 	registry.Register(native)
-	registry.Register(newImageCompatTool(
-		"image_generation",
-		"Generate or edit images with descriptive prompts and optional output file handling.",
-		native,
-	))
-	for _, alias := range []string{"generate_image", "generateImage"} {
+	if webTool := GetWebQueryTool(registry); webTool != nil {
+		webTool.SetImageTool(native)
+	}
+	if legacyTool := registry.Get("web"); legacyTool != nil {
+		if webTool, ok := legacyTool.(*WebTool); ok {
+			webTool.SetImageTool(native)
+		}
+	}
+	for _, alias := range []string{"image_generation", "generate_image", "generateImage"} {
 		registry.Register(newImageCompatTool(alias, "Hidden legacy image generation alias.", native))
 		registry.Disable(alias)
 	}

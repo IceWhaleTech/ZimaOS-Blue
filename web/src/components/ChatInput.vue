@@ -4,6 +4,12 @@ import { useI18n } from 'vue-i18n'
 import { AudioRecorder, voiceApi } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { convertToWav } from '@/utils/audioConverter'
+import {
+  clearDraftAttachments as clearStoredDraftAttachments,
+  loadDraftAttachments as loadStoredDraftAttachments,
+  saveDraftAttachments as saveStoredDraftAttachments,
+  type DraftAttachmentPayload,
+} from '@/utils/chatDraftAttachmentStorage'
 import { EnergyVAD } from '@/utils/vad'
 import ImagePreview from '@/components/chat/ImagePreview.vue'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
@@ -50,9 +56,7 @@ const props = defineProps<{
   canCancel?: boolean
   maxFileSize?: number // in bytes, default 10MB
   allowedTypes?: string[] // MIME types
-  routingStatus?: string
-  routingIcon?: string
-  routingTitle?: string
+  conversationId?: string
 }>()
 
 const emit = defineEmits<{
@@ -62,7 +66,7 @@ const emit = defineEmits<{
   openTalkMode: []
   warmup: []
   'cancel-pre-ttft': []
-  'toggle-routing-menu': [trigger: HTMLElement]
+  'draft-change': [message: string]
 }>()
 
 const message = ref('')
@@ -82,6 +86,7 @@ const isCompact = ref(false)
 const isMobile = ref(false)
 const showMobileMenu = ref(false)
 const mobileMenuRef = ref<HTMLDivElement | null>(null)
+const compactModeInfoCard = ref<null | 'research' | 'loop' | 'report' | 'ui'>(null)
 
 // Voice mode state (compact: replace textarea with voice button)
 const voiceMode = ref(false)
@@ -101,24 +106,53 @@ const showImagePreview = ref(false)
 const previewImageSrc = ref('')
 const previewImageAlt = ref('')
 
-const DRAFT_STORAGE_KEY = 'zima.chat.input_draft.v1'
+const LEGACY_DRAFT_STORAGE_KEY = 'zima.chat.input_draft.v1'
+const DRAFT_STORAGE_KEY_PREFIX = 'zima.chat.input_draft.v2'
+const NEW_CHAT_DRAFT_SCOPE = '__new__'
+const MAX_TEXTAREA_HEIGHT = 200
+const COMPACT_TEXTAREA_MIN_HEIGHT = 40
+const DESKTOP_TEXTAREA_MIN_HEIGHT = 43
 const sendIconPath = 'M12 18.5V5.5m0 0L6.75 10.75M12 5.5l5.25 5.25'
 
-function loadDraftFromStorage(): string {
+const draftStorageScope = computed(() => {
+  const conversationId = props.conversationId?.trim()
+  return conversationId || NEW_CHAT_DRAFT_SCOPE
+})
+
+const draftStorageKey = computed(() => `${DRAFT_STORAGE_KEY_PREFIX}:${draftStorageScope.value}`)
+let attachmentDraftRestoreRequestId = 0
+
+function readDraftFromStorage(key: string): string {
   try {
-    return localStorage.getItem(DRAFT_STORAGE_KEY) || ''
+    return localStorage.getItem(key) || ''
   } catch {
     return ''
   }
 }
 
-function persistDraftToStorage(value: string) {
+function loadDraftFromStorage(key: string, allowLegacy = false): string {
+  const draft = readDraftFromStorage(key)
+  if (draft || !allowLegacy) {
+    return draft
+  }
+
+  try {
+    return localStorage.getItem(LEGACY_DRAFT_STORAGE_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+function persistDraftToStorage(key: string, value: string, clearLegacy = false) {
   try {
     if (value) {
-      localStorage.setItem(DRAFT_STORAGE_KEY, value)
-      return
+      localStorage.setItem(key, value)
+    } else {
+      localStorage.removeItem(key)
     }
-    localStorage.removeItem(DRAFT_STORAGE_KEY)
+    if (clearLegacy) {
+      localStorage.removeItem(LEGACY_DRAFT_STORAGE_KEY)
+    }
   } catch {
     // Ignore storage errors (private mode/quota)
   }
@@ -227,10 +261,14 @@ const deepResearchInfoTags = computed(() => [
   t('chat.deepResearchCitations', 'Citations'),
 ])
 
+const analyzeReportInfoTags = computed(() => [
+  t('chat.analyzeReportHoverTagReport', 'Report'),
+  t('chat.analyzeReportHoverTagInsights', 'Insights'),
+  t('chat.analyzeReportHoverTagRecommendations', 'Recommendations'),
+])
+
 const ralphLoopAutoConfirmStateLabel = computed(() =>
-  settingsStore.agentAutoConfirm
-    ? t('common.enabled', 'Enabled')
-    : t('common.disabled', 'Disabled')
+  settingsStore.agentAutoConfirm ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')
 )
 
 const ralphLoopInfoTags = computed(() => [
@@ -240,21 +278,71 @@ const ralphLoopInfoTags = computed(() => [
   `${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel.value}`,
 ])
 
-const routingChipClasses = computed(() => ({
-  'is-error': props.routingStatus === 'error',
-  'is-pending': props.routingStatus === 'pending',
-  'is-none': props.routingStatus === 'none',
-}))
+const uiReviewInfoTags = computed(() => [
+  t('uiReview.visual', 'Visual'),
+  t('chat.uiReviewHoverUsability', 'Usability'),
+  t('uiReview.accessibility', 'Accessibility'),
+])
 
-const showRoutingStatusDot = computed(() =>
-  Boolean(props.routingStatus && props.routingStatus !== 'active')
-)
+const compactModeInfoCardMeta = computed(() => {
+  if (compactModeInfoCard.value === 'research') {
+    return {
+      kind: 'research' as const,
+      title: t('ui.deepResearchTitle'),
+      state: chatStore.deepResearchEnabled
+        ? t('common.enabled', 'Enabled')
+        : t('common.disabled', 'Disabled'),
+      description: t(
+        'chat.deepResearchHoverDescription',
+        'Launch a structured research workflow with retrieval, verification, and source-backed answers.'
+      ),
+      tags: deepResearchInfoTags.value,
+    }
+  }
 
-const routingStatusDotClasses = computed(() => ({
-  'is-error': props.routingStatus === 'error',
-  'is-pending': props.routingStatus === 'pending',
-  'is-none': props.routingStatus === 'none',
-}))
+  if (compactModeInfoCard.value === 'loop') {
+    return {
+      kind: 'loop' as const,
+      title: t('chat.taskLoop'),
+      state: settingsStore.agentMode
+        ? t('common.enabled', 'Enabled')
+        : t('common.disabled', 'Disabled'),
+      description: t(
+        'chat.ralphLoopHoverDescription',
+        'Let the agent plan, use tools, apply changes, and keep iterating until the task lands cleanly.'
+      ),
+      tags: ralphLoopInfoTags.value,
+    }
+  }
+
+  if (compactModeInfoCard.value === 'report') {
+    return {
+      kind: 'report' as const,
+      title: t('chat.analyzeReportShortcutTitle', 'Analysis Report'),
+      state: t('chat.analyzeReportHoverState', 'Prompt template'),
+      description: t(
+        'chat.analyzeReportHoverDescription',
+        'Turn URLs, search results, or pasted text into a structured report with findings, comparisons, and recommendations.'
+      ),
+      tags: analyzeReportInfoTags.value,
+    }
+  }
+
+  if (compactModeInfoCard.value === 'ui') {
+    return {
+      kind: 'ui' as const,
+      title: t('chat.uiReviewShortcutTitle', 'UI Review'),
+      state: t('chat.uiReviewHoverState', 'Prompt template'),
+      description: t(
+        'chat.uiReviewHoverDescription',
+        'Audit a page or screenshot for visual quality, interaction clarity, and accessibility, then list concrete issues and fixes.'
+      ),
+      tags: uiReviewInfoTags.value,
+    }
+  }
+
+  return null
+})
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 15)
@@ -288,8 +376,74 @@ async function createPreview(file: File): Promise<string | undefined> {
   return undefined
 }
 
+function invalidatePendingAttachmentRestore() {
+  attachmentDraftRestoreRequestId += 1
+}
+
+function mapAttachmentToDraftPayload(attachment: FileAttachment): DraftAttachmentPayload {
+  return {
+    id: attachment.id,
+    name: attachment.name,
+    type: attachment.type,
+    duration: attachment.duration,
+    lastModified: attachment.file.lastModified,
+    blob: attachment.file,
+  }
+}
+
+async function mapDraftPayloadToAttachment(
+  attachment: DraftAttachmentPayload
+): Promise<FileAttachment> {
+  const file = new File([attachment.blob], attachment.name, {
+    type: attachment.type,
+    lastModified: attachment.lastModified ?? Date.now(),
+  })
+  return {
+    id: attachment.id || generateId(),
+    file,
+    name: attachment.name,
+    size: file.size,
+    type: attachment.type,
+    preview: await createPreview(file),
+    duration: attachment.duration,
+  }
+}
+
+async function persistAttachmentsForStorageKey(key: string, nextAttachments: FileAttachment[]) {
+  if (nextAttachments.length === 0) {
+    await clearStoredDraftAttachments(key)
+    return
+  }
+
+  await saveStoredDraftAttachments(
+    key,
+    nextAttachments.map((attachment) => mapAttachmentToDraftPayload(attachment))
+  )
+}
+
+function persistAttachmentsForCurrentConversation(nextAttachments = attachments.value) {
+  return persistAttachmentsForStorageKey(draftStorageKey.value, nextAttachments)
+}
+
+async function restoreAttachmentsForCurrentConversation() {
+  const requestId = ++attachmentDraftRestoreRequestId
+  const key = draftStorageKey.value
+  attachments.value = []
+
+  const storedAttachments = await loadStoredDraftAttachments(key)
+  if (requestId !== attachmentDraftRestoreRequestId || key !== draftStorageKey.value) {
+    return
+  }
+
+  attachments.value = await Promise.all(
+    storedAttachments.map((attachment) => mapDraftPayloadToAttachment(attachment))
+  )
+}
+
 async function addFiles(files: FileList | File[]) {
+  invalidatePendingAttachmentRestore()
   const fileArray = Array.from(files)
+  const nextAttachments = [...attachments.value]
 
   for (const file of fileArray) {
     // Check file size
@@ -305,13 +459,13 @@ async function addFiles(files: FileList | File[]) {
     }
 
     // Check for duplicates
-    if (attachments.value.some((a) => a.name === file.name && a.size === file.size)) {
+    if (nextAttachments.some((a) => a.name === file.name && a.size === file.size)) {
       continue
     }
 
     const preview = await createPreview(file)
 
-    attachments.value.push({
+    nextAttachments.push({
       id: generateId(),
       file,
       name: file.name,
@@ -320,10 +474,15 @@ async function addFiles(files: FileList | File[]) {
       preview,
     })
   }
+
+  attachments.value = nextAttachments
+  await persistAttachmentsForCurrentConversation(nextAttachments)
 }
 
 function removeAttachment(id: string) {
+  invalidatePendingAttachmentRestore()
   attachments.value = attachments.value.filter((a) => a.id !== id)
+  void persistAttachmentsForCurrentConversation(attachments.value)
 }
 
 function handleFileSelect(event: Event) {
@@ -401,7 +560,9 @@ function handleSend() {
     emit('inject', message.value.trim())
   } else {
     emit('send', message.value.trim(), [...attachments.value])
+    invalidatePendingAttachmentRestore()
     attachments.value = []
+    void persistAttachmentsForCurrentConversation([])
   }
   message.value = ''
   warmupSent.value = false // Reset so next typing triggers warmup again
@@ -417,18 +578,63 @@ function clearMessage() {
   textareaRef.value?.focus()
 }
 
-function handleRoutingMenuTrigger(event: MouseEvent) {
-  const trigger = event.currentTarget
-  if (trigger instanceof HTMLElement) {
-    emit('toggle-routing-menu', trigger)
+function insertShortcutPrompt(prompt: string) {
+  const trimmedPrompt = prompt.trim()
+  if (!trimmedPrompt) return
+
+  if (isCompact.value && voiceMode.value) {
+    voiceMode.value = false
   }
+  compactModeInfoCard.value = null
+
+  const currentMessage = message.value.trimEnd()
+  if (currentMessage.endsWith(trimmedPrompt)) {
+    nextTick(() => textareaRef.value?.focus())
+    return
+  }
+
+  message.value = currentMessage ? `${currentMessage}\n\n${trimmedPrompt}` : trimmedPrompt
+  handleInput()
+  nextTick(() => {
+    textareaRef.value?.focus()
+    const end = message.value.length
+    textareaRef.value?.setSelectionRange(end, end)
+  })
+}
+
+function handleAnalyzeReportShortcut() {
+  insertShortcutPrompt(
+    t(
+      'chat.analyzeReportPrompt',
+      'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:'
+    )
+  )
+}
+
+function handleUIReviewShortcut() {
+  insertShortcutPrompt(
+    t(
+      'chat.uiReviewPrompt',
+      'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility'
+    )
+  )
+}
+
+function toggleCompactModeInfo(kind: 'research' | 'loop' | 'report' | 'ui') {
+  compactModeInfoCard.value = compactModeInfoCard.value === kind ? null : kind
+}
+
+function closeCompactModeInfo() {
+  compactModeInfoCard.value = null
 }
 
 function toggleDeepResearch() {
+  compactModeInfoCard.value = null
   chatStore.setDeepResearchEnabled(!chatStore.deepResearchEnabled)
 }
 
 function toggleAgentMode() {
+  compactModeInfoCard.value = null
   settingsStore.setAgentMode(!settingsStore.agentMode).catch((err) => {
     console.error('Failed to update Ralph Loop mode:', err)
   })
@@ -904,6 +1110,7 @@ function stopDictation() {
 
 // Cleanup on unmount
 onUnmounted(() => {
+  void persistAttachmentsForCurrentConversation([...attachments.value])
   if (recorder.value) {
     recorder.value.stop()
   }
@@ -927,6 +1134,7 @@ function checkMobile() {
   isMobile.value = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua)
   if (!isCompact.value) {
     showMobileMenu.value = false
+    compactModeInfoCard.value = null
   }
 }
 
@@ -976,14 +1184,35 @@ onMounted(() => {
   window.addEventListener('resize', checkMobile)
   document.addEventListener('click', handleClickOutside)
 
-  const cachedDraft = loadDraftFromStorage()
-  if (cachedDraft) {
-    setInput(cachedDraft)
-  }
+  restoreDraftForCurrentConversation()
 })
 
 watch(message, (nextMessage) => {
-  persistDraftToStorage(nextMessage)
+  emit('draft-change', nextMessage)
+  persistDraftToStorage(
+    draftStorageKey.value,
+    nextMessage,
+    draftStorageScope.value === NEW_CHAT_DRAFT_SCOPE
+  )
+})
+
+watch(draftStorageKey, (nextKey, previousKey) => {
+  if (previousKey && previousKey !== nextKey) {
+    persistDraftToStorage(
+      previousKey,
+      message.value,
+      previousKey === `${DRAFT_STORAGE_KEY_PREFIX}:${NEW_CHAT_DRAFT_SCOPE}`
+    )
+    void persistAttachmentsForStorageKey(previousKey, [...attachments.value])
+  }
+  restoreDraftForCurrentConversation()
+})
+
+watch(textareaRef, (textarea) => {
+  if (!textarea) return
+  nextTick(() => {
+    resizeTextarea()
+  })
 })
 
 function focus() {
@@ -991,16 +1220,17 @@ function focus() {
 }
 
 function resizeTextarea() {
-  if (!textareaRef.value) return
+  const textarea = textareaRef.value
+  if (!textarea) return
 
-  textareaRef.value.style.height = 'auto'
+  textarea.style.height = 'auto'
 
-  if (isCompact.value) {
-    textareaRef.value.style.height = `${Math.min(textareaRef.value.scrollHeight, 200)}px`
-    return
-  }
+  const minHeight = isCompact.value ? COMPACT_TEXTAREA_MIN_HEIGHT : DESKTOP_TEXTAREA_MIN_HEIGHT
+  const contentHeight = Math.max(textarea.scrollHeight, minHeight)
+  const nextHeight = Math.min(contentHeight, MAX_TEXTAREA_HEIGHT)
 
-  textareaRef.value.style.height = ''
+  textarea.style.height = `${nextHeight}px`
+  textarea.style.overflowY = contentHeight > MAX_TEXTAREA_HEIGHT ? 'auto' : 'hidden'
 }
 
 function setInput(text: string) {
@@ -1008,6 +1238,19 @@ function setInput(text: string) {
   nextTick(() => {
     resizeTextarea()
   })
+}
+
+function restoreTextDraftForCurrentConversation() {
+  const cachedDraft = loadDraftFromStorage(
+    draftStorageKey.value,
+    draftStorageScope.value === NEW_CHAT_DRAFT_SCOPE
+  )
+  setInput(cachedDraft)
+}
+
+function restoreDraftForCurrentConversation() {
+  restoreTextDraftForCurrentConversation()
+  void restoreAttachmentsForCurrentConversation()
 }
 
 function resetWarmup() {
@@ -1021,13 +1264,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 <template>
   <div
     class="chat-input-wrapper"
-    :class="
-      isMobile
-        ? 'px-3 pb-0 pt-0'
-        : isCompact
-          ? 'px-3 pb-0 pt-0'
-          : 'px-3 sm:px-4 pb-0 pt-0.5'
-    "
+    :class="isMobile ? 'px-3 pb-0 pt-0' : isCompact ? 'px-3 pb-0 pt-0' : 'px-3 sm:px-4 pb-0 pt-0.5'"
   >
     <div
       class="chat-input-container p-2.5 sm:px-3.5 sm:py-2.5 max-w-5xl mx-auto"
@@ -1187,75 +1424,204 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
         </label>
       </div>
 
-      <div v-if="isCompact" class="composer-mode-row mb-3">
-        <button
-          class="mode-chip mode-chip-research"
-          :class="{ 'is-active': chatStore.deepResearchEnabled }"
-          :aria-pressed="chatStore.deepResearchEnabled"
-          :title="t('ui.deepResearchTitle')"
-          @click="toggleDeepResearch"
-        >
-          <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="1.7"
-              d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
-            />
-          </svg>
-          <span class="mode-chip__label">{{ t('ui.deepResearchTitle') }}</span>
-        </button>
+      <div v-if="isCompact" class="compact-mode-section mb-3">
+        <div class="composer-mode-row">
+          <div class="compact-mode-action">
+            <button
+              class="mode-chip mode-chip-research"
+              :class="{ 'is-active': chatStore.deepResearchEnabled }"
+              :aria-pressed="chatStore.deepResearchEnabled"
+              :title="t('ui.deepResearchTitle')"
+              @click="toggleDeepResearch"
+            >
+              <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
+                />
+              </svg>
+              <span class="mode-chip__label">{{ t('ui.deepResearchTitle') }}</span>
+            </button>
+            <button
+              class="compact-mode-info-toggle compact-mode-info-toggle--research"
+              :aria-expanded="compactModeInfoCard === 'research'"
+              :title="t('chat.showShortcutDetails', 'Show details')"
+              @click.stop="toggleCompactModeInfo('research')"
+            >
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <circle cx="12" cy="12" r="8.25" stroke-width="1.8" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                  d="M12 10.5v4.25M12 7.9h.01"
+                />
+              </svg>
+            </button>
+          </div>
 
-        <button
-          class="mode-chip mode-chip-loop"
-          :class="{ 'is-active-agent': settingsStore.agentMode }"
-          :aria-pressed="settingsStore.agentMode"
-          :title="`${t('chat.taskLoop')} · ${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel}`"
-          @click="toggleAgentMode"
-          @contextmenu="handleAgentModeContextMenu"
-        >
-          <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="1.7"
-              d="M9 4.75h6a1.75 1.75 0 011.75 1.75v10.75A1.75 1.75 0 0115 19H9a1.75 1.75 0 01-1.75-1.75V6.5A1.75 1.75 0 019 4.75z"
-            />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="1.7"
-              d="M9.75 3h4.5M10.25 9h4M10.25 12h4M10.25 15h2.5"
-            />
-          </svg>
-          <span class="mode-chip__label">{{ t('chat.taskLoop') }}</span>
-        </button>
+          <div class="compact-mode-action">
+            <button
+              class="mode-chip mode-chip-loop"
+              :class="{ 'is-active-agent': settingsStore.agentMode }"
+              :aria-pressed="settingsStore.agentMode"
+              :title="`${t('chat.taskLoop')} · ${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel}`"
+              @click="toggleAgentMode"
+              @contextmenu="handleAgentModeContextMenu"
+            >
+              <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  d="M9 4.75h6a1.75 1.75 0 011.75 1.75v10.75A1.75 1.75 0 0115 19H9a1.75 1.75 0 01-1.75-1.75V6.5A1.75 1.75 0 019 4.75z"
+                />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  d="M9.75 3h4.5M10.25 9h4M10.25 12h4M10.25 15h2.5"
+                />
+              </svg>
+              <span class="mode-chip__label">{{ t('chat.taskLoop') }}</span>
+            </button>
+            <button
+              class="compact-mode-info-toggle compact-mode-info-toggle--loop"
+              :aria-expanded="compactModeInfoCard === 'loop'"
+              :title="t('chat.showShortcutDetails', 'Show details')"
+              @click.stop="toggleCompactModeInfo('loop')"
+            >
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <circle cx="12" cy="12" r="8.25" stroke-width="1.8" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                  d="M12 10.5v4.25M12 7.9h.01"
+                />
+              </svg>
+            </button>
+          </div>
 
-        <button
-          class="mode-chip mode-chip-routing routing-menu-anchor"
-          :class="routingChipClasses"
-          :title="props.routingTitle || t('chat.routingMode.title')"
-          @click.stop="handleRoutingMenuTrigger"
+          <div class="compact-mode-action">
+            <button
+              class="mode-chip mode-chip-report"
+              :title="t('chat.analyzeReportShortcutTitle', 'Analysis Report')"
+              @click="handleAnalyzeReportShortcut"
+            >
+              <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  d="M7.75 4.75h6.5L18.25 8.75v8.5A1.75 1.75 0 0116.5 19h-8A1.75 1.75 0 016.75 17.25V6.5A1.75 1.75 0 018.5 4.75z"
+                />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  d="M10 11.25h4M10 14h5M10 16.75h3.25M14.25 4.75V8.5h3.75"
+                />
+              </svg>
+              <span class="mode-chip__label">{{
+                t('chat.analyzeReportShortcutTitle', 'Analysis Report')
+              }}</span>
+            </button>
+            <button
+              class="compact-mode-info-toggle compact-mode-info-toggle--report"
+              :aria-expanded="compactModeInfoCard === 'report'"
+              :title="t('chat.showShortcutDetails', 'Show details')"
+              @click.stop="toggleCompactModeInfo('report')"
+            >
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <circle cx="12" cy="12" r="8.25" stroke-width="1.8" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                  d="M12 10.5v4.25M12 7.9h.01"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div class="compact-mode-action">
+            <button
+              class="mode-chip mode-chip-ui"
+              :title="t('chat.uiReviewShortcutTitle', 'UI Review')"
+              @click="handleUIReviewShortcut"
+            >
+              <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  d="M2.75 12s3.25-5.25 9.25-5.25S21.25 12 21.25 12s-3.25 5.25-9.25 5.25S2.75 12 2.75 12z"
+                />
+                <circle cx="12" cy="12" r="2.5" stroke-width="1.7" />
+              </svg>
+              <span class="mode-chip__label">{{
+                t('chat.uiReviewShortcutTitle', 'UI Review')
+              }}</span>
+            </button>
+            <button
+              class="compact-mode-info-toggle compact-mode-info-toggle--ui"
+              :aria-expanded="compactModeInfoCard === 'ui'"
+              :title="t('chat.showShortcutDetails', 'Show details')"
+              @click.stop="toggleCompactModeInfo('ui')"
+            >
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <circle cx="12" cy="12" r="8.25" stroke-width="1.8" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                  d="M12 10.5v4.25M12 7.9h.01"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-if="compactModeInfoCardMeta"
+          class="compact-mode-info-card"
+          :class="`compact-mode-info-card--${compactModeInfoCardMeta.kind}`"
         >
-          <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <circle cx="7" cy="7" r="1.5" stroke-width="1.8" />
-            <circle cx="17" cy="7" r="1.5" stroke-width="1.8" />
-            <circle cx="12" cy="17" r="1.5" stroke-width="1.8" />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="1.8"
-              d="M7 8.5v1.5A2 2 0 009 12h6a2 2 0 002-2V8.5M12 12v3.5"
-            />
-          </svg>
-          <span class="mode-chip__label">{{ t('chat.routingMode.title') }}</span>
-          <span
-            v-if="showRoutingStatusDot"
-            class="mode-chip__status-dot"
-            :class="routingStatusDotClasses"
-          />
-        </button>
+          <div class="compact-mode-info-card__header">
+            <div class="compact-mode-info-card__eyebrow">{{ compactModeInfoCardMeta.state }}</div>
+            <button
+              class="compact-mode-info-card__close"
+              :title="t('chat.hideShortcutDetails', 'Hide details')"
+              @click="closeCompactModeInfo"
+            >
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2.2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+          <div class="compact-mode-info-card__title">{{ compactModeInfoCardMeta.title }}</div>
+          <p class="compact-mode-info-card__description">
+            {{ compactModeInfoCardMeta.description }}
+          </p>
+          <div class="compact-mode-info-card__chips">
+            <span
+              v-for="tag in compactModeInfoCardMeta.tags"
+              :key="`${compactModeInfoCardMeta.kind}-${tag}`"
+              class="compact-mode-info-card__chip"
+            >
+              {{ tag }}
+            </span>
+          </div>
+        </div>
       </div>
 
       <div :class="isCompact ? 'flex items-center gap-2 sm:gap-3' : 'desktop-composer-root'">
@@ -1751,11 +2117,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                   </svg>
                 </button>
 
-                <div
-                  v-if="isRecording"
-                  class="desktop-recording-indicator"
-                  aria-live="polite"
-                >
+                <div v-if="isRecording" class="desktop-recording-indicator" aria-live="polite">
                   <span class="desktop-recording-indicator__dot"></span>
                   <span>{{ t('chat.recording') }} {{ recordingDuration }}s</span>
                 </div>
@@ -1838,9 +2200,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                     :class="{ 'is-active-agent': settingsStore.agentMode }"
                     :aria-label="t('chat.taskLoop')"
                     :aria-pressed="settingsStore.agentMode"
-                    :title="
-                      `${t('chat.taskLoop')} · ${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel}`
-                    "
+                    :title="`${t('chat.taskLoop')} · ${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel}`"
                     @click="toggleAgentMode"
                     @contextmenu="handleAgentModeContextMenu"
                   >
@@ -1916,35 +2276,148 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                     </div>
                   </div>
                 </div>
-                <button
-                  class="mode-chip desktop-mode-chip mode-chip-routing routing-menu-anchor"
-                  :class="routingChipClasses"
-                  :title="props.routingTitle || t('chat.routingMode.title')"
-                  @click.stop="handleRoutingMenuTrigger"
-                >
-                  <svg
-                    class="mode-chip__icon"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+                <div class="mode-chip-hover-shell mode-chip-hover-shell--report">
+                  <button
+                    class="mode-chip desktop-mode-chip mode-chip-report"
+                    :aria-label="t('chat.analyzeReportShortcutTitle', 'Analysis Report')"
+                    @click="handleAnalyzeReportShortcut"
                   >
-                    <circle cx="7" cy="7" r="1.5" stroke-width="1.8" />
-                    <circle cx="17" cy="7" r="1.5" stroke-width="1.8" />
-                    <circle cx="12" cy="17" r="1.5" stroke-width="1.8" />
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.8"
-                      d="M7 8.5v1.5A2 2 0 009 12h6a2 2 0 002-2V8.5M12 12v3.5"
-                    />
-                  </svg>
-                  <span class="mode-chip__label">{{ t('chat.routingMode.title') }}</span>
-                  <span
-                    v-if="showRoutingStatusDot"
-                    class="mode-chip__status-dot"
-                    :class="routingStatusDotClasses"
-                  />
-                </button>
+                    <svg
+                      class="mode-chip__icon"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.7"
+                        d="M7.75 4.75h6.5L18.25 8.75v8.5A1.75 1.75 0 0116.5 19h-8A1.75 1.75 0 016.75 17.25V6.5A1.75 1.75 0 018.5 4.75z"
+                      />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.7"
+                        d="M10 11.25h4M10 14h5M10 16.75h3.25M14.25 4.75V8.5h3.75"
+                      />
+                    </svg>
+                    <span class="mode-chip__label">{{
+                      t('chat.analyzeReportShortcutTitle', 'Analysis Report')
+                    }}</span>
+                  </button>
+                  <div class="mode-info-card mode-info-card--report" aria-hidden="true">
+                    <div class="mode-info-card__hero">
+                      <div class="mode-info-card__hero-orb">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.7"
+                            d="M7.75 4.75h6.5L18.25 8.75v8.5A1.75 1.75 0 0116.5 19h-8A1.75 1.75 0 016.75 17.25V6.5A1.75 1.75 0 018.5 4.75z"
+                          />
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.7"
+                            d="M10 11.25h4M10 14h5M10 16.75h3.25M14.25 4.75V8.5h3.75"
+                          />
+                        </svg>
+                      </div>
+                      <div class="mode-info-card__hero-meters" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </div>
+                      <span class="mode-info-card__state">{{
+                        t('chat.analyzeReportHoverState', 'Prompt template')
+                      }}</span>
+                    </div>
+                    <div class="mode-info-card__title">
+                      {{ t('chat.analyzeReportShortcutTitle', 'Analysis Report') }}
+                    </div>
+                    <p class="mode-info-card__description">
+                      {{
+                        t(
+                          'chat.analyzeReportHoverDescription',
+                          'Turn URLs, search results, or pasted text into a structured report with findings, comparisons, and recommendations.'
+                        )
+                      }}
+                    </p>
+                    <div class="mode-info-card__chips">
+                      <span
+                        v-for="tag in analyzeReportInfoTags"
+                        :key="tag"
+                        class="mode-info-card__chip"
+                      >
+                        {{ tag }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div class="mode-chip-hover-shell mode-chip-hover-shell--ui">
+                  <button
+                    class="mode-chip desktop-mode-chip mode-chip-ui"
+                    :aria-label="t('chat.uiReviewShortcutTitle', 'UI Review')"
+                    @click="handleUIReviewShortcut"
+                  >
+                    <svg
+                      class="mode-chip__icon"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.7"
+                        d="M2.75 12s3.25-5.25 9.25-5.25S21.25 12 21.25 12s-3.25 5.25-9.25 5.25S2.75 12 2.75 12z"
+                      />
+                      <circle cx="12" cy="12" r="2.5" stroke-width="1.7" />
+                    </svg>
+                    <span class="mode-chip__label">{{
+                      t('chat.uiReviewShortcutTitle', 'UI Review')
+                    }}</span>
+                  </button>
+                  <div class="mode-info-card mode-info-card--ui" aria-hidden="true">
+                    <div class="mode-info-card__hero">
+                      <div class="mode-info-card__hero-orb">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.7"
+                            d="M2.75 12s3.25-5.25 9.25-5.25S21.25 12 21.25 12s-3.25 5.25-9.25 5.25S2.75 12 2.75 12z"
+                          />
+                          <circle cx="12" cy="12" r="2.5" stroke-width="1.7" />
+                        </svg>
+                      </div>
+                      <div class="mode-info-card__hero-meters" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </div>
+                      <span class="mode-info-card__state">{{
+                        t('chat.uiReviewHoverState', 'Prompt template')
+                      }}</span>
+                    </div>
+                    <div class="mode-info-card__title">
+                      {{ t('chat.uiReviewShortcutTitle', 'UI Review') }}
+                    </div>
+                    <p class="mode-info-card__description">
+                      {{
+                        t(
+                          'chat.uiReviewHoverDescription',
+                          'Audit a page or screenshot for visual quality, interaction clarity, and accessibility, then list concrete issues and fixes.'
+                        )
+                      }}
+                    </p>
+                    <div class="mode-info-card__chips">
+                      <span v-for="tag in uiReviewInfoTags" :key="tag" class="mode-info-card__chip">
+                        {{ tag }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2260,6 +2733,16 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
   --mode-card-shadow-rgb: 245, 158, 11;
 }
 
+.mode-info-card--report {
+  --mode-card-accent-rgb: 245, 158, 11;
+  --mode-card-shadow-rgb: 249, 115, 22;
+}
+
+.mode-info-card--ui {
+  --mode-card-accent-rgb: 14, 165, 233;
+  --mode-card-shadow-rgb: 20, 184, 166;
+}
+
 .mode-info-card__hero {
   position: relative;
   display: flex;
@@ -2337,8 +2820,11 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
   display: block;
   height: 0.42rem;
   border-radius: 999px;
-  background:
-    linear-gradient(90deg, rgba(var(--mode-card-accent-rgb), 0.84), rgba(var(--mode-card-accent-rgb), 0.22));
+  background: linear-gradient(
+    90deg,
+    rgba(var(--mode-card-accent-rgb), 0.84),
+    rgba(var(--mode-card-accent-rgb), 0.22)
+  );
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
@@ -2456,8 +2942,11 @@ html.dark .mode-info-card__hero-orb {
 :root.dark .mode-info-card__hero-meters span,
 [data-theme='dark'] .mode-info-card__hero-meters span,
 html.dark .mode-info-card__hero-meters span {
-  background:
-    linear-gradient(90deg, rgba(var(--mode-card-accent-rgb), 0.94), rgba(255, 255, 255, 0.22));
+  background: linear-gradient(
+    90deg,
+    rgba(var(--mode-card-accent-rgb), 0.94),
+    rgba(255, 255, 255, 0.22)
+  );
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
@@ -2506,6 +2995,193 @@ html.dark .mode-info-card__chip {
 
 .composer-mode-row::-webkit-scrollbar {
   display: none;
+}
+
+.compact-mode-section {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.compact-mode-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  flex: 0 0 auto;
+}
+
+.compact-mode-info-toggle {
+  width: 1.82rem;
+  height: 1.82rem;
+  border-radius: 999px;
+  border: 1px solid rgba(216, 222, 229, 0.92);
+  background: rgba(255, 255, 255, 0.96);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(100, 116, 139);
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.compact-mode-info-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.compact-mode-info-toggle svg {
+  width: 0.88rem;
+  height: 0.88rem;
+}
+
+.compact-mode-info-toggle--research {
+  border-color: rgba(74, 222, 128, 0.56);
+  color: rgb(22, 163, 74);
+  background: rgba(240, 253, 244, 0.98);
+}
+
+.compact-mode-info-toggle--research:hover {
+  border-color: rgba(34, 197, 94, 0.8);
+  background: rgba(220, 252, 231, 1);
+  color: rgb(21, 128, 61);
+}
+
+.compact-mode-info-toggle--loop {
+  border-color: rgba(165, 180, 252, 0.72);
+  color: rgb(79, 70, 229);
+  background: rgba(238, 242, 255, 0.98);
+}
+
+.compact-mode-info-toggle--loop:hover {
+  border-color: rgba(99, 102, 241, 0.84);
+  background: rgba(224, 231, 255, 1);
+  color: rgb(67, 56, 202);
+}
+
+.compact-mode-info-toggle--report {
+  border-color: rgba(251, 191, 36, 0.66);
+  color: rgb(217, 119, 6);
+  background: rgba(255, 251, 235, 0.98);
+}
+
+.compact-mode-info-toggle--report:hover {
+  border-color: rgba(245, 158, 11, 0.84);
+  background: rgba(254, 243, 199, 0.98);
+  color: rgb(180, 83, 9);
+}
+
+.compact-mode-info-toggle--ui {
+  border-color: rgba(56, 189, 248, 0.58);
+  color: rgb(2, 132, 199);
+  background: rgba(240, 249, 255, 0.98);
+}
+
+.compact-mode-info-toggle--ui:hover {
+  border-color: rgba(14, 165, 233, 0.82);
+  background: rgba(224, 242, 254, 1);
+  color: rgb(3, 105, 161);
+}
+
+.compact-mode-info-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.15rem;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  padding: 0.95rem 1rem 1rem;
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(var(--compact-mode-card-accent-rgb), 0.15),
+      transparent 42%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.74),
+    0 18px 36px -28px rgba(15, 23, 42, 0.22);
+}
+
+.compact-mode-info-card--report {
+  --compact-mode-card-accent-rgb: 245, 158, 11;
+}
+
+.compact-mode-info-card--research {
+  --compact-mode-card-accent-rgb: 34, 197, 94;
+}
+
+.compact-mode-info-card--loop {
+  --compact-mode-card-accent-rgb: 59, 130, 246;
+}
+
+.compact-mode-info-card--ui {
+  --compact-mode-card-accent-rgb: 14, 165, 233;
+}
+
+.compact-mode-info-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.compact-mode-info-card__eyebrow {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(71, 85, 105, 0.86);
+}
+
+.compact-mode-info-card__close {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  background: rgba(255, 255, 255, 0.84);
+  color: rgba(71, 85, 105, 0.9);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.compact-mode-info-card__close svg {
+  width: 0.82rem;
+  height: 0.82rem;
+}
+
+.compact-mode-info-card__title {
+  margin-top: 0.52rem;
+  color: rgba(15, 23, 42, 0.96);
+  font-size: 0.96rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.compact-mode-info-card__description {
+  margin-top: 0.42rem;
+  color: rgba(71, 85, 105, 0.95);
+  font-size: 0.78rem;
+  line-height: 1.58;
+}
+
+.compact-mode-info-card__chips {
+  margin-top: 0.78rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.compact-mode-info-card__chip {
+  padding: 0.36rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  background: rgba(255, 255, 255, 0.82);
+  color: rgba(30, 41, 59, 0.92);
+  font-size: 0.67rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .composer-toolbar-btn {
@@ -2751,47 +3427,68 @@ html.dark .mode-info-card__chip {
   background: rgba(219, 234, 254, 1);
 }
 
-.mode-chip-routing {
-  color: rgb(219, 39, 119);
-  border-color: rgba(244, 114, 182, 0.82);
-  background: rgba(255, 255, 255, 0.98);
+.mode-chip-report {
+  color: rgb(146, 64, 14);
+  border-color: rgba(251, 191, 36, 0.66);
+  background: rgba(255, 251, 235, 0.96);
 }
 
-.mode-chip-routing .mode-chip__icon {
-  color: rgb(236, 72, 153);
+.mode-chip-report .mode-chip__icon {
+  color: rgb(217, 119, 6);
 }
 
-.mode-chip-routing.is-error {
-  color: rgb(219, 39, 119);
-  border-color: rgba(244, 114, 182, 0.82);
-  background: rgba(255, 255, 255, 0.98);
+.mode-chip-report:hover {
+  color: rgb(120, 53, 15);
+  border-color: rgba(245, 158, 11, 0.8);
+  background: rgba(254, 243, 199, 0.96);
 }
 
-.mode-chip-routing.is-pending {
-  color: rgb(219, 39, 119);
-  border-color: rgba(244, 114, 182, 0.82);
-  background: rgba(255, 255, 255, 0.98);
+.desktop-mode-chip.mode-chip-report {
+  color: rgb(146, 64, 14);
+  border-color: rgba(251, 191, 36, 0.66);
+  background: rgba(255, 251, 235, 0.98);
 }
 
-.mode-chip-routing.is-none {
-  color: rgb(219, 39, 119);
-  border-color: rgba(244, 114, 182, 0.82);
-  background: rgba(255, 255, 255, 0.98);
+.desktop-mode-chip.mode-chip-report .mode-chip__icon {
+  color: rgb(217, 119, 6);
 }
 
-.desktop-mode-chip.mode-chip-routing {
-  color: rgb(236, 72, 153);
-  border-color: rgba(244, 114, 182, 0.88);
-  background: rgba(253, 242, 248, 0.98);
+.desktop-mode-chip.mode-chip-report:hover {
+  color: rgb(120, 53, 15);
+  border-color: rgba(245, 158, 11, 0.84);
+  background: rgba(254, 243, 199, 0.98);
 }
 
-.desktop-mode-chip.mode-chip-routing .mode-chip__icon {
-  color: rgb(236, 72, 153);
+.mode-chip-ui {
+  color: rgb(8, 47, 73);
+  border-color: rgba(56, 189, 248, 0.58);
+  background: rgba(240, 249, 255, 0.96);
 }
 
-.desktop-mode-chip.mode-chip-routing:hover {
-  border-color: rgba(244, 114, 182, 0.96);
-  background: rgba(252, 231, 243, 1);
+.mode-chip-ui .mode-chip__icon {
+  color: rgb(2, 132, 199);
+}
+
+.mode-chip-ui:hover {
+  color: rgb(12, 74, 110);
+  border-color: rgba(14, 165, 233, 0.78);
+  background: rgba(224, 242, 254, 0.98);
+}
+
+.desktop-mode-chip.mode-chip-ui {
+  color: rgb(8, 47, 73);
+  border-color: rgba(56, 189, 248, 0.58);
+  background: rgba(240, 249, 255, 0.98);
+}
+
+.desktop-mode-chip.mode-chip-ui .mode-chip__icon {
+  color: rgb(2, 132, 199);
+}
+
+.desktop-mode-chip.mode-chip-ui:hover {
+  color: rgb(12, 74, 110);
+  border-color: rgba(14, 165, 233, 0.82);
+  background: rgba(224, 242, 254, 1);
 }
 
 .desktop-compose-main {
@@ -3188,33 +3885,177 @@ html.dark .mode-info-card__chip {
   background: rgba(30, 64, 175, 0.42);
 }
 
-:root.dark .mode-chip-routing,
-[data-theme='dark'] .mode-chip-routing {
-  color: rgb(244, 114, 182);
-  border-color: rgba(236, 72, 153, 0.58);
-  background: rgba(15, 23, 42, 0.72);
+:root.dark .compact-mode-info-toggle,
+[data-theme='dark'] .compact-mode-info-toggle {
+  border-color: rgba(71, 85, 105, 0.76);
+  background: rgba(30, 41, 59, 0.9);
+  color: rgb(203, 213, 225);
 }
 
-:root.dark .mode-chip-routing .mode-chip__icon,
-[data-theme='dark'] .mode-chip-routing .mode-chip__icon {
-  color: rgb(244, 114, 182);
+:root.dark .compact-mode-info-toggle--research,
+[data-theme='dark'] .compact-mode-info-toggle--research {
+  color: rgb(110, 231, 183);
+  border-color: rgba(52, 211, 153, 0.42);
+  background: rgba(6, 78, 59, 0.28);
 }
 
-:root.dark .mode-chip-routing.is-error,
-:root.dark .mode-chip-routing.is-pending,
-:root.dark .mode-chip-routing.is-none,
-[data-theme='dark'] .mode-chip-routing.is-error,
-[data-theme='dark'] .mode-chip-routing.is-pending,
-[data-theme='dark'] .mode-chip-routing.is-none {
-  color: rgb(244, 114, 182);
-  border-color: rgba(236, 72, 153, 0.58);
-  background: rgba(15, 23, 42, 0.72);
+:root.dark .compact-mode-info-toggle--research:hover,
+[data-theme='dark'] .compact-mode-info-toggle--research:hover {
+  color: rgb(167, 243, 208);
+  border-color: rgba(74, 222, 128, 0.56);
+  background: rgba(6, 95, 70, 0.38);
 }
 
-:root.dark .desktop-mode-chip.mode-chip-routing,
-[data-theme='dark'] .desktop-mode-chip.mode-chip-routing {
-  border-color: rgba(236, 72, 153, 0.7);
-  background: rgba(80, 7, 36, 0.28);
+:root.dark .compact-mode-info-toggle--loop,
+[data-theme='dark'] .compact-mode-info-toggle--loop {
+  color: rgb(196, 181, 253);
+  border-color: rgba(99, 102, 241, 0.42);
+  background: rgba(30, 64, 175, 0.24);
+}
+
+:root.dark .compact-mode-info-toggle--loop:hover,
+[data-theme='dark'] .compact-mode-info-toggle--loop:hover {
+  color: rgb(224, 231, 255);
+  border-color: rgba(129, 140, 248, 0.56);
+  background: rgba(30, 64, 175, 0.34);
+}
+
+:root.dark .mode-chip-report,
+[data-theme='dark'] .mode-chip-report {
+  color: rgb(253, 230, 138);
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(120, 53, 15, 0.24);
+}
+
+:root.dark .mode-chip-report .mode-chip__icon,
+[data-theme='dark'] .mode-chip-report .mode-chip__icon {
+  color: rgb(251, 191, 36);
+}
+
+:root.dark .mode-chip-report:hover,
+[data-theme='dark'] .mode-chip-report:hover {
+  color: rgb(254, 243, 199);
+  border-color: rgba(251, 191, 36, 0.54);
+  background: rgba(146, 64, 14, 0.34);
+}
+
+:root.dark .desktop-mode-chip.mode-chip-report,
+[data-theme='dark'] .desktop-mode-chip.mode-chip-report {
+  color: rgb(253, 230, 138);
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(120, 53, 15, 0.24);
+}
+
+:root.dark .desktop-mode-chip.mode-chip-report:hover,
+[data-theme='dark'] .desktop-mode-chip.mode-chip-report:hover {
+  color: rgb(254, 243, 199);
+  border-color: rgba(251, 191, 36, 0.58);
+  background: rgba(146, 64, 14, 0.36);
+}
+
+:root.dark .compact-mode-info-toggle--report,
+[data-theme='dark'] .compact-mode-info-toggle--report {
+  color: rgb(251, 191, 36);
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(120, 53, 15, 0.28);
+}
+
+:root.dark .compact-mode-info-toggle--report:hover,
+[data-theme='dark'] .compact-mode-info-toggle--report:hover {
+  color: rgb(253, 230, 138);
+  border-color: rgba(251, 191, 36, 0.56);
+  background: rgba(146, 64, 14, 0.36);
+}
+
+:root.dark .mode-chip-ui,
+[data-theme='dark'] .mode-chip-ui {
+  color: rgb(186, 230, 253);
+  border-color: rgba(14, 165, 233, 0.42);
+  background: rgba(8, 47, 73, 0.28);
+}
+
+:root.dark .mode-chip-ui .mode-chip__icon,
+[data-theme='dark'] .mode-chip-ui .mode-chip__icon {
+  color: rgb(56, 189, 248);
+}
+
+:root.dark .mode-chip-ui:hover,
+[data-theme='dark'] .mode-chip-ui:hover {
+  color: rgb(224, 242, 254);
+  border-color: rgba(56, 189, 248, 0.58);
+  background: rgba(12, 74, 110, 0.34);
+}
+
+:root.dark .desktop-mode-chip.mode-chip-ui,
+[data-theme='dark'] .desktop-mode-chip.mode-chip-ui {
+  color: rgb(186, 230, 253);
+  border-color: rgba(14, 165, 233, 0.42);
+  background: rgba(8, 47, 73, 0.28);
+}
+
+:root.dark .desktop-mode-chip.mode-chip-ui:hover,
+[data-theme='dark'] .desktop-mode-chip.mode-chip-ui:hover {
+  color: rgb(224, 242, 254);
+  border-color: rgba(56, 189, 248, 0.6);
+  background: rgba(12, 74, 110, 0.38);
+}
+
+:root.dark .compact-mode-info-toggle--ui,
+[data-theme='dark'] .compact-mode-info-toggle--ui {
+  color: rgb(56, 189, 248);
+  border-color: rgba(14, 165, 233, 0.42);
+  background: rgba(8, 47, 73, 0.32);
+}
+
+:root.dark .compact-mode-info-toggle--ui:hover,
+[data-theme='dark'] .compact-mode-info-toggle--ui:hover {
+  color: rgb(125, 211, 252);
+  border-color: rgba(56, 189, 248, 0.58);
+  background: rgba(12, 74, 110, 0.4);
+}
+
+:root.dark .compact-mode-info-card,
+[data-theme='dark'] .compact-mode-info-card {
+  border-color: rgba(148, 163, 184, 0.2);
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(var(--compact-mode-card-accent-rgb), 0.26),
+      transparent 44%
+    ),
+    linear-gradient(180deg, rgba(11, 18, 32, 0.98), rgba(15, 23, 42, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 22px 42px -28px rgba(15, 23, 42, 0.62);
+}
+
+:root.dark .compact-mode-info-card__eyebrow,
+[data-theme='dark'] .compact-mode-info-card__eyebrow {
+  color: rgba(148, 163, 184, 0.92);
+}
+
+:root.dark .compact-mode-info-card__close,
+[data-theme='dark'] .compact-mode-info-card__close {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+:root.dark .compact-mode-info-card__title,
+[data-theme='dark'] .compact-mode-info-card__title {
+  color: rgba(248, 250, 252, 0.98);
+}
+
+:root.dark .compact-mode-info-card__description,
+[data-theme='dark'] .compact-mode-info-card__description {
+  color: rgba(203, 213, 225, 0.92);
+}
+
+:root.dark .compact-mode-info-card__chip,
+[data-theme='dark'] .compact-mode-info-card__chip {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(241, 245, 249, 0.96);
 }
 
 :root.dark .desktop-inline-icon-btn,
@@ -3418,10 +4259,7 @@ textarea::-webkit-scrollbar-thumb:hover {
   overflow: hidden;
   border: 1px solid rgba(96, 165, 250, 0.34);
   color: var(--chat-send-fg, rgb(239, 246, 255));
-  background: var(
-    --chat-send-bg,
-    linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)
-  );
+  background: var(--chat-send-bg, linear-gradient(180deg, #3b82f6 0%, #2563eb 100%));
   box-shadow: var(
     --chat-send-shadow,
     inset 0 1px 0 rgba(255, 255, 255, 0.24),

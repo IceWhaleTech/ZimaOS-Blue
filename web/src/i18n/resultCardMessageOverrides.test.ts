@@ -24,7 +24,10 @@ const localeModules = import.meta.glob<{ default: LocaleMessages }>('./locales/*
   eager: true,
 })
 
-const localeCodes = Object.keys(localeModules).map(fileNameFromModulePath).map(localeCodeFromFile).sort()
+const localeCodes = Object.keys(localeModules)
+  .map(fileNameFromModulePath)
+  .map(localeCodeFromFile)
+  .sort()
 
 const requiredKeys = [
   'resultCard.messages.file_written_successfully',
@@ -59,7 +62,10 @@ describe('result card message override coverage', () => {
       for (const key of requiredKeys) {
         const value = getByPath(resolvedLocaleMessages, key)
         expect(typeof value, `${locale} should declare ${key}`).toBe('string')
-        expect(String(value).trim().length, `${locale} should not leave ${key} empty`).toBeGreaterThan(0)
+        expect(
+          String(value).trim().length,
+          `${locale} should not leave ${key} empty`
+        ).toBeGreaterThan(0)
       }
     }
   })

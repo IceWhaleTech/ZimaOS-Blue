@@ -95,6 +95,24 @@ const baseLocaleKeys = [
   'common.success',
   'chat.taskLoop',
   'chat.deepResearchParallelism',
+  'chat.deepResearchCalibrationPublish',
+  'chat.deepResearchCalibrationCaution',
+  'chat.deepResearchCalibrationConflictBlocking',
+  'chat.deepResearchCalibrationConflictLow',
+  'chat.deepResearchExpandDetails',
+  'chat.deepResearchCollapseDetails',
+  'chat.deepResearchSearchQuery',
+  'chat.deepResearchFocus',
+  'chat.presetQuestions.title',
+  'chat.presetQuestions.focus',
+  'chat.presetQuestions.interests.personalKnowledge',
+  'chat.presetQuestions.interests.learningGrowth',
+  'chat.presetQuestions.interests.contentCreation',
+  'chat.presetQuestions.interests.marketInvesting',
+  'chat.presetQuestions.interests.productDesign',
+  'chat.presetQuestions.interests.userResearch',
+  'chat.presetQuestions.interests.psychologicalExploration',
+  'chat.presetQuestions.interests.philosophicalDialogue',
   'resourceChart.recentTrend',
   'settings.workspaceBasics',
   'settings.providerMatrix',
@@ -128,6 +146,24 @@ const baseLocaleKeys = [
 
 const overrideKeys = [
   'chat.deepResearchParallelism',
+  'chat.deepResearchCalibrationPublish',
+  'chat.deepResearchCalibrationCaution',
+  'chat.deepResearchCalibrationConflictBlocking',
+  'chat.deepResearchCalibrationConflictLow',
+  'chat.deepResearchExpandDetails',
+  'chat.deepResearchCollapseDetails',
+  'chat.deepResearchSearchQuery',
+  'chat.deepResearchFocus',
+  'chat.presetQuestions.title',
+  'chat.presetQuestions.focus',
+  'chat.presetQuestions.interests.personalKnowledge',
+  'chat.presetQuestions.interests.learningGrowth',
+  'chat.presetQuestions.interests.contentCreation',
+  'chat.presetQuestions.interests.marketInvesting',
+  'chat.presetQuestions.interests.productDesign',
+  'chat.presetQuestions.interests.userResearch',
+  'chat.presetQuestions.interests.psychologicalExploration',
+  'chat.presetQuestions.interests.philosophicalDialogue',
   'resourceChart.recentTrend',
   'settings.workspaceBasics',
   'settings.providerMatrix',
@@ -227,7 +263,9 @@ describe('priority translation override coverage', () => {
   })
 
   it('defines the recent translation keys for every non-primary locale in the dedicated override file', () => {
-    const overrideLocales = Object.keys(priorityTranslationOverrides).sort()
+    const overrideLocales = Object.keys(priorityTranslationOverrides)
+      .filter((locale) => !['en-US', 'zh-CN'].includes(locale))
+      .sort()
     const expectedLocales = localeCodes
       .filter((locale) => !['en-US', 'zh-CN'].includes(locale))
       .sort()

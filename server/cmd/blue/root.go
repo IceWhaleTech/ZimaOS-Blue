@@ -10,12 +10,13 @@ import (
 
 var (
 	// Global flags
-	cfgFile    string
-	devMode    bool
-	profile    string
-	noColor    bool
-	jsonOutput bool
-	verbose    bool
+	cfgFile           string
+	devMode           bool
+	profile           string
+	noColor           bool
+	jsonOutput        bool
+	verbose           bool
+	disableIntercepts bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -53,6 +54,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable ANSI colors")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output in JSON format")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.PersistentFlags().BoolVar(&disableIntercepts, "no-intercept", false, "disable chat prompt interception for controlled runs such as pinchbench")
 
 	// Add subcommands
 	rootCmd.AddCommand(statusCmd)

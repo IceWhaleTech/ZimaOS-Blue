@@ -173,6 +173,7 @@ export interface StreamChunk {
   new_message?: boolean
   // TODO advancement event — server updated a TODO checklist message in DB
   todo_updated?: boolean
+  todo_completed?: boolean
   message_id?: string
   todo_card_id?: string
   content?: string

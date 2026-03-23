@@ -88,6 +88,9 @@ func writeMediaRequestError(c echo.Context, err error) error {
 	if errors.Is(err, ErrUnsupportedType) {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
+	if errors.Is(err, ErrManagerClosed) {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+	}
 	return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 }
 
@@ -673,6 +676,12 @@ func (h *Handler) DirectGenerate(c echo.Context) error {
 	source := req.Source
 	if source == "" {
 		source = "web"
+	}
+	if mediaReq.Extra == nil {
+		mediaReq.Extra = map[string]any{}
+	}
+	if _, ok := mediaReq.Extra["source"]; !ok {
+		mediaReq.Extra["source"] = source
 	}
 
 	resolvedConversationUserID := ""

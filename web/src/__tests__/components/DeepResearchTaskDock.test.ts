@@ -108,9 +108,9 @@ describe('DeepResearchTaskDock', () => {
       },
     })
 
-    expect(wrapper.get('[data-testid="deep-research-task-dock-toggle"]').attributes('aria-expanded')).toBe(
-      'false'
-    )
+    expect(
+      wrapper.get('[data-testid="deep-research-task-dock-toggle"]').attributes('aria-expanded')
+    ).toBe('false')
     expect(wrapper.find('[data-testid="deep-research-task-dock-details"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Running research tasks')
     expect(wrapper.text()).toContain('Planning')
@@ -120,9 +120,9 @@ describe('DeepResearchTaskDock', () => {
 
     await wrapper.get('[data-testid="deep-research-task-dock-toggle"]').trigger('click')
 
-    expect(wrapper.get('[data-testid="deep-research-task-dock-toggle"]').attributes('aria-expanded')).toBe(
-      'true'
-    )
+    expect(
+      wrapper.get('[data-testid="deep-research-task-dock-toggle"]').attributes('aria-expanded')
+    ).toBe('true')
     expect(wrapper.text()).toContain('Track active deep research jobs across conversations.')
     expect(wrapper.text()).toContain('Compare browser grounding changes')
     expect(wrapper.text()).toContain('Need one primary source')
@@ -137,9 +137,9 @@ describe('DeepResearchTaskDock', () => {
       },
     })
 
-    expect(wrapper.get('[data-testid="deep-research-task-dock-toggle"]').attributes('aria-expanded')).toBe(
-      'true'
-    )
+    expect(
+      wrapper.get('[data-testid="deep-research-task-dock-toggle"]').attributes('aria-expanded')
+    ).toBe('true')
 
     await wrapper.get('[data-testid="deep-research-task-dock-view-job-1"]').trigger('click')
     expect(wrapper.emitted('view')).toBeTruthy()

@@ -123,9 +123,7 @@ describe('UpdateSettings', () => {
 
     await flushPromises()
 
-    const updateButton = wrapper
-      .findAll('button')
-      .find((node) => node.text().trim() === 'Update')
+    const updateButton = wrapper.findAll('button').find((node) => node.text().trim() === 'Update')
 
     expect(updateButton).toBeTruthy()
     expect(updateButton!.attributes('disabled')).toBeUndefined()

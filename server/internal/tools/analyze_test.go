@@ -115,6 +115,9 @@ type mockBrowserBackend struct {
 	cookieURL   string
 	cookieTabID string
 	closeCalled bool
+	observed    BrowserObservedNetworkResult
+	observeErr  error
+	waitIdleErr error
 }
 
 func (m *mockBrowserBackend) Start(_ context.Context) error { return m.startErr }
@@ -135,6 +138,12 @@ func (m *mockBrowserBackend) CookieHeader(_ context.Context, targetID, url strin
 	m.cookieTabID = targetID
 	m.cookieURL = url
 	return m.cookieValue, m.cookieErr
+}
+func (m *mockBrowserBackend) ObserveNetwork(_ context.Context, _ string, _ int, _ bool) (BrowserObservedNetworkResult, error) {
+	return m.observed, m.observeErr
+}
+func (m *mockBrowserBackend) WaitNetworkIdle(_ context.Context, _ string, _ int, _ int) error {
+	return m.waitIdleErr
 }
 func (m *mockBrowserBackend) AccessibilityTree(_ context.Context, _ string, _ int) (BrowserA11yTreeResult, error) {
 	return m.a11yResult, m.a11yErr

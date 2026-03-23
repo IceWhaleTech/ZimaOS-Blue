@@ -3,11 +3,14 @@ package claudecode
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/embedded"
 )
 
 var skillScriptPathRegexp = regexp.MustCompile(`(?i)(?:^|[\s` + "`" + `\(\[])((?:\./)?scripts/[a-z0-9._/\-]+)`)
@@ -659,13 +662,8 @@ func PinnedSkills() []string {
 // FormatPinnedSkills reads only the pinned skills from disk and formats them
 // as compact XML for the system prompt. Returns empty string if none found.
 func FormatPinnedSkills(workspaceDir string) string {
-	skillRoots := resolveSkillRoots(workspaceDir)
-	if len(skillRoots) == 0 {
-		return ""
-	}
-
 	foundByName := make(map[string]SkillEntry, len(pinnedSkills))
-	for _, root := range skillRoots {
+	for _, root := range resolveSkillRoots(workspaceDir) {
 		for _, name := range pinnedSkills {
 			// First hit wins: workspace skill overrides default ~/.claude/skills.
 			if _, exists := foundByName[name]; exists {
@@ -682,6 +680,21 @@ func FormatPinnedSkills(workspaceDir string) string {
 			}
 			foundByName[name] = se
 		}
+	}
+	for _, name := range pinnedSkills {
+		if _, exists := foundByName[name]; exists {
+			continue
+		}
+		embeddedPath := path.Join("skills", name, "SKILL.md")
+		data, err := embedded.SkillsFS.ReadFile(embeddedPath)
+		if err != nil {
+			continue
+		}
+		se := parseSkillEntry(name, "embedded:"+embeddedPath, data)
+		if !se.Enabled || !skillPlatformMatch(se.OS) {
+			continue
+		}
+		foundByName[name] = se
 	}
 
 	var found []SkillEntry

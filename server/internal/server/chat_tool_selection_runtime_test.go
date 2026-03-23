@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
@@ -11,7 +13,7 @@ func TestSelectTools_DefaultRuntimePrefersRelevantSubset(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "email", Description: "Email inbox search and triage"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling and agenda"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "research_run", Description: "Deep research with sources"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "process", Description: "Inspect long-running processes"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Run terminal commands"})
@@ -68,8 +70,7 @@ func TestSelectTools_DefaultRuntimePrefersWorkspaceFileWorkflow(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling and agenda"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "email", Description: "Email inbox search and triage"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "research_run", Description: "Deep research with sources"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "research_status", Description: "Deep research status"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace directories"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find text in files"})
@@ -98,15 +99,14 @@ func TestSelectTools_DefaultRuntimePrefersWorkspaceFileWorkflow(t *testing.T) {
 	if !names["read"] || !names["write"] || !names["ls"] || !names["find"] {
 		t.Fatalf("expected file workflow tools in selected set, got=%v", got)
 	}
-	if names["calendar"] || names["email"] || names["research_run"] || names["exec"] {
+	if names["calendar"] || names["email"] || names["deep_research"] || names["exec"] {
 		t.Fatalf("expected workspace file task to avoid calendar/email/research tools, got=%v", got)
 	}
 }
 
 func TestSelectTools_ResearchReportKeepsResearchAndWriteTools(t *testing.T) {
 	registry := tools.NewRegistry()
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "research_run", Description: "Deep research with sources"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "research_status", Description: "Deep research status"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Fallback browser"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
@@ -137,7 +137,7 @@ func TestSelectTools_ResearchReportKeepsResearchAndWriteTools(t *testing.T) {
 	if !names["write"] {
 		t.Fatalf("expected research report flow to keep write available, got=%v", got)
 	}
-	if !names["research_run"] && !names["web_search"] {
+	if !names["deep_research"] && !names["web_search"] {
 		t.Fatalf("expected research report flow to keep research discovery tools, got=%v", got)
 	}
 }
@@ -169,5 +169,79 @@ func TestSelectTools_WorkspaceCodingTaskKeepsExec(t *testing.T) {
 	}
 	if !names["exec"] {
 		t.Fatalf("expected coding task to keep exec available, got=%v", got)
+	}
+}
+
+func TestSelectTools_DeepResearchToggleForceExposesResearchAskAndFileOps(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "ask", Description: "Ask user preference questions"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "memory", Description: "Recall prior context"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Run terminal commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_fetch", Description: "Fetch a known page"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_read", Description: "Read a normalized page"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_crawl", Description: "Crawl web sources"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Fallback browser"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace directories"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find text in files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "grep", Description: "Search file content"})
+
+	handler := NewChatHandler(nil, nil, registry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	handler.SetToolSelector(tools.DefaultToolSelector())
+	handler.SetToolRouter(tools.DefaultToolRouter())
+
+	enabled := true
+	got := handler.selectTools("投资人问，你们blue在memory layer做了哪些创新？为什么它的上下文治理能力比openclaw好？我们具体现有方案和它的区别是什么？Agent行业SOTA的方案是什么？", tools.ToolPolicyRequest{
+		Model:               "claude-3-5-haiku-20241022",
+		RouteKind:           tools.ToolRouteKindChat,
+		DeepResearchEnabled: &enabled,
+	})
+	names := make(map[string]bool, len(got))
+	for _, def := range got {
+		names[def.Name] = true
+	}
+	for _, required := range []string{"ask", "deep_research", "read", "write", "ls", "find"} {
+		if !names[required] {
+			t.Fatalf("expected %s in selected set, got=%v", required, got)
+		}
+	}
+	if !names["browser"] && !names["web_search"] && !names["web_fetch"] && !names["web_read"] && !names["web_crawl"] {
+		t.Fatalf("expected at least one web research tool in selected set, got=%v", got)
+	}
+}
+
+func TestResolveSkillSelectionForRequest_DeepResearchToggleForcesSkill(t *testing.T) {
+	handler := NewChatHandler(nil, nil, tools.NewRegistry())
+
+	enabled := true
+	prompt, selectedSkill := handler.resolveSkillSelectionForRequest(
+		context.Background(),
+		"投资人问，你们blue在memory layer做了哪些创新？为什么它的上下文治理能力比openclaw好？我们具体现有方案和它的区别是什么？Agent行业SOTA的方案是什么？",
+		&enabled,
+	)
+	if selectedSkill != "deep_research" {
+		t.Fatalf("expected deep_research skill, got %q", selectedSkill)
+	}
+	if !strings.Contains(prompt, `stage="forced"`) || !strings.Contains(prompt, `selected="deep_research"`) {
+		t.Fatalf("expected forced deep_research skill hint, got %q", prompt)
+	}
+}
+
+func TestShouldForceRequestAgentMode_DeepResearchToggleRequiresStructuredResearchCue(t *testing.T) {
+	enabled := true
+	disabled := false
+
+	if !shouldForceRequestAgentMode("What are the current best practices for agent memory systems?", &enabled) {
+		t.Fatal("expected strong deep research prompt to force request agent mode")
+	}
+	if shouldForceRequestAgentMode("请用一句话比较 A 和 B。", &enabled) {
+		t.Fatal("expected short comparative prompt not to force request agent mode")
+	}
+	if shouldForceRequestAgentMode("What are the current best practices for agent memory systems?", &disabled) {
+		t.Fatal("expected disabled deep research toggle not to force request agent mode")
 	}
 }

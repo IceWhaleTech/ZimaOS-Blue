@@ -120,6 +120,29 @@ func TestResearchRunToolSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 }
 
+func TestDeepResearchTool_StatusAction(t *testing.T) {
+	service := &mockResearchService{
+		get: func(id, userID string) (*ResearchJob, error) {
+			if id != "job-3" {
+				t.Fatalf("id = %q, want %q", id, "job-3")
+			}
+			return &ResearchJob{ID: id, Status: "completed", Answer: "report"}, nil
+		},
+	}
+	tool := NewDeepResearchTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "status",
+		"job_id": "job-3",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["answer"]; got != "report" {
+		t.Fatalf("answer = %v, want report", got)
+	}
+}
+
 func TestResearchStatusToolSupportsNestedCamelCaseArgs(t *testing.T) {
 	service := &mockResearchService{
 		get: func(id, userID string) (*ResearchJob, error) {

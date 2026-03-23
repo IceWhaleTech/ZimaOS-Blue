@@ -116,11 +116,7 @@ describe('CardConvertTask', () => {
     await flushPromises()
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      '/api/v1/convert/tasks/task-1',
-      undefined
-    )
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/convert/tasks/task-1', undefined)
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       '/api/v1/convert/tasks/task-1/download/out-1',
@@ -163,10 +159,9 @@ describe('CardConvertTask', () => {
     await wrapper.get('button').trigger('click')
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/convert/tasks/task-1/cancel',
-      { method: 'POST' }
-    )
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/convert/tasks/task-1/cancel', {
+      method: 'POST',
+    })
     expect(wrapper.text()).toContain('Task cancelled')
     expect(wrapper.find('button').exists()).toBe(false)
   })
@@ -224,7 +219,9 @@ describe('CardConvertTask', () => {
     expect(wrapper.text()).toContain('Sources')
     expect(wrapper.text()).toContain('完整汇总表格.md')
     expect(wrapper.text()).toContain('summary-notes.txt')
-    expect(wrapper.text()).not.toContain('/Users/orca/.zimaos-blue/data/workspace/phone_specs_2026/完整汇总表格.md')
+    expect(wrapper.text()).not.toContain(
+      '/Users/orca/.zimaos-blue/data/workspace/phone_specs_2026/完整汇总表格.md'
+    )
   })
 
   it('hides the sources section for single-source tasks when source summary already covers it', () => {

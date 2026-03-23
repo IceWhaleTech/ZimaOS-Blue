@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { UserTaskProjection } from '@/api/tasks'
+import type { UserTaskProjection, UserTaskResearchSource } from '@/api/tasks'
+import {
+  localizeTaskProjectionSubtitle,
+  localizeTaskProjectionTitle,
+} from '@/utils/taskProjectionText'
 
 const { t } = useI18n()
 
@@ -36,8 +40,8 @@ watch(
   { immediate: true }
 )
 
-const progressWidth = computed(() =>
-  `${Math.max(0, Math.min(100, Math.round(Number(props.task.progress || 0))))}%`
+const progressWidth = computed(
+  () => `${Math.max(0, Math.min(100, Math.round(Number(props.task.progress || 0))))}%`
 )
 
 const stageLabel = computed(() => {
@@ -98,8 +102,18 @@ const kindLabel = computed(() =>
 )
 
 const kindIcon = computed(() => (props.task.kind === 'research' ? 'R' : 'A'))
+const localizedTitle = computed(() =>
+  localizeTaskProjectionTitle(props.task.title, props.task.kind, t)
+)
+const localizedSubtitle = computed(() =>
+  localizeTaskProjectionSubtitle(props.task.subtitle, props.task.kind, t)
+)
 
 const previewText = computed(() => props.task.error_preview || props.task.result_preview || '')
+const usesCollapsedHeaderOnly = computed(() => isTerminal.value && props.collapseByDefault)
+const researchSources = computed<UserTaskResearchSource[]>(() =>
+  props.task.kind === 'research' ? props.task.research_sources || [] : []
+)
 
 const blockerLabel = computed(() => {
   if (!props.task.blocker) return ''
@@ -118,6 +132,28 @@ function sendUpdate() {
   if (!message) return
   emit('message', props.task.id, message)
   draftMessage.value = ''
+}
+
+function formatDate(value?: string): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString()
+}
+
+function formatScore(value?: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '--'
+  return value.toFixed(2)
+}
+
+function domainOf(source: UserTaskResearchSource): string {
+  if (source.domain) return source.domain
+  if (!source.url) return ''
+  try {
+    return new URL(source.url).hostname.replace(/^www\./, '')
+  } catch {
+    return source.url
+  }
 }
 </script>
 
@@ -139,7 +175,7 @@ function sendUpdate() {
         </span>
         <span class="min-w-0">
           <span class="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-            {{ task.title }}
+            {{ localizedTitle }}
           </span>
           <span class="block text-xs text-slate-500 dark:text-slate-400">
             {{ stageLabel }}
@@ -158,7 +194,10 @@ function sendUpdate() {
     </button>
 
     <div v-show="expanded" class="px-4 py-4">
-      <div class="flex items-start justify-between gap-3">
+      <div
+        v-if="!usesCollapsedHeaderOnly"
+        class="flex items-start justify-between gap-3"
+      >
         <div class="flex min-w-0 items-start gap-3">
           <span
             class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
@@ -168,18 +207,15 @@ function sendUpdate() {
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <span class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                {{ task.title }}
+                {{ localizedTitle }}
               </span>
-              <span
-                class="rounded-full px-2.5 py-1 text-[11px] font-medium"
-                :class="stageClass"
-              >
+              <span class="rounded-full px-2.5 py-1 text-[11px] font-medium" :class="stageClass">
                 {{ stageLabel }}
               </span>
               <span class="text-[11px] text-slate-500 dark:text-slate-400">{{ kindLabel }}</span>
             </div>
-            <p v-if="task.subtitle" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {{ task.subtitle }}
+            <p v-if="localizedSubtitle" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {{ localizedSubtitle }}
             </p>
           </div>
         </div>
@@ -204,8 +240,38 @@ function sendUpdate() {
         </div>
       </div>
 
+      <div v-else class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0 flex-1">
+          <p v-if="localizedSubtitle" class="text-xs text-slate-500 dark:text-slate-400">
+            {{ localizedSubtitle }}
+          </p>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+          <button
+            v-if="task.actions.can_open_chat"
+            type="button"
+            class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            @click="emit('open', task)"
+          >
+            {{ t('chat.taskOpenConversation', 'Open conversation') }}
+          </button>
+          <button
+            v-if="task.actions.can_cancel"
+            type="button"
+            class="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-200 dark:hover:bg-rose-950/30"
+            @click="emit('cancel', task.id)"
+          >
+            {{ t('chat.taskCancel', 'Cancel') }}
+          </button>
+        </div>
+      </div>
+
       <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-        <div class="h-full transition-all duration-300" :class="progressClass" :style="{ width: progressWidth }" />
+        <div
+          class="h-full transition-all duration-300"
+          :class="progressClass"
+          :style="{ width: progressWidth }"
+        />
       </div>
 
       <div class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
@@ -220,6 +286,55 @@ function sendUpdate() {
       </div>
 
       <div
+        v-if="researchSources.length"
+        class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-950/50"
+      >
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-xs font-semibold text-slate-700 dark:text-slate-200">
+            {{ t('chat.deepResearchSourceInventory', 'Source Inventory') }}
+          </div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400">
+            {{ researchSources.length }}
+          </div>
+        </div>
+        <div class="mt-3 space-y-2">
+          <a
+            v-for="(source, index) in researchSources"
+            :key="`${source.url || source.title}-${index}`"
+            :href="source.url || undefined"
+            :target="source.url ? '_blank' : undefined"
+            :rel="source.url ? 'noopener noreferrer' : undefined"
+            class="block rounded-xl border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-900/70"
+          >
+            <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
+              {{ source.title }}
+            </div>
+            <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 break-words">
+              {{ domainOf(source) || source.source_type || '--' }}
+              <template v-if="domainOf(source) && source.source_type">
+                · {{ source.source_type }}
+              </template>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+              <span v-if="source.published_at">
+                {{ t('chat.deepResearchPublishedAt', 'Published') }} {{ formatDate(source.published_at) }}
+              </span>
+              <span v-if="source.fetched_at">
+                {{ t('chat.deepResearchFetchedAt', 'Fetched') }} {{ formatDate(source.fetched_at) }}
+              </span>
+              <span>
+                {{ t('chat.deepResearchRelevance', 'Rel') }} {{ formatScore(source.relevance_score) }}
+              </span>
+              <span>
+                {{ t('chat.deepResearchCredibility', 'Cred') }}
+                {{ formatScore(source.credibility_score) }}
+              </span>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <div
         v-if="previewText"
         class="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
       >
@@ -227,7 +342,10 @@ function sendUpdate() {
       </div>
 
       <div v-if="task.artifacts?.length" class="mt-3 flex flex-wrap gap-2">
-        <template v-for="artifact in task.artifacts" :key="`${task.id}-${artifact.kind}-${artifact.label}`">
+        <template
+          v-for="artifact in task.artifacts"
+          :key="`${task.id}-${artifact.kind}-${artifact.label}`"
+        >
           <a
             v-if="artifact.url"
             :href="artifact.url"

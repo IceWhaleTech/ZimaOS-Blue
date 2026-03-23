@@ -369,6 +369,21 @@ func TestLatestIntentVsCarryover_TreatsExtractPromptAsAllowedInvestigation(t *te
 	}
 }
 
+func TestShouldApplyLatestIntentCarryoverGuard_SkipsInternalContinuationNudge(t *testing.T) {
+	prompt := "Why did Blue's deep research stop before finishing?"
+	historySummary := "Goal\n- Continue editing docs/old_plan.md\n\nAccomplished\n- Pending: finish docs/old_plan.md migration"
+	messages := append(
+		compressedHistoryContextMessages(prompt, historySummary),
+		llm.Message{Role: llm.RoleUser, Content: prompt},
+		llm.Message{Role: llm.RoleAssistant, Content: "- [ ] gather evidence\n- [ ] write final report"},
+		llm.Message{Role: llm.RoleUser, Content: "Deep-search guard: do not finalize yet. Search rounds completed: 1/2. Run at least one more web_search round with a different query angle and preferably new sources."},
+	)
+
+	if shouldApplyLatestIntentCarryoverGuard(messages, prompt) {
+		t.Fatalf("expected internal continuation nudge to bypass stale carry-over guard")
+	}
+}
+
 func reportCandidate(report contextCompressionBenchmarkReport, name string) contextCompressionCandidateReport {
 	for _, candidate := range report.Candidates {
 		if candidate.Name == name {

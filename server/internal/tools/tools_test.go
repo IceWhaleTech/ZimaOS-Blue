@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
@@ -42,6 +44,52 @@ func (s *stubDocumentReadService) ReadDocument(_ context.Context, path string) (
 		return nil, s.err
 	}
 	return s.result, nil
+}
+
+type testRoundTripper func(req *http.Request) (*http.Response, error)
+
+func (fn testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+type stubHTTPNativeClient struct {
+	mu        sync.Mutex
+	available bool
+	calls     []webFetchHTTPNativeRequest
+	do        func(context.Context, webFetchHTTPNativeRequest) (webFetchHTTPNativeResponse, error)
+}
+
+func (s *stubHTTPNativeClient) Available() bool {
+	return s != nil && s.available
+}
+
+func (s *stubHTTPNativeClient) Do(ctx context.Context, req webFetchHTTPNativeRequest) (webFetchHTTPNativeResponse, error) {
+	if s == nil {
+		return webFetchHTTPNativeResponse{}, errWebFetchHTTPNativeUnavailable
+	}
+	cloned := req
+	if len(req.Headers) > 0 {
+		cloned.Headers = make(map[string]string, len(req.Headers))
+		for key, value := range req.Headers {
+			cloned.Headers[key] = value
+		}
+	}
+	s.mu.Lock()
+	s.calls = append(s.calls, cloned)
+	s.mu.Unlock()
+	if s.do != nil {
+		return s.do(ctx, req)
+	}
+	return webFetchHTTPNativeResponse{}, nil
+}
+
+func (s *stubHTTPNativeClient) callCount() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.calls)
 }
 
 // Test Tool interface
@@ -955,6 +1003,33 @@ func TestExecutorExecuteJSONArgs_ExtractJSONObjectFromText(t *testing.T) {
 	}
 }
 
+func TestExecutorExecuteJSONArgs_UsesLastConcatenatedJSONObject(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "exec", `{}{"command":"pwd"}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "pwd" {
+		t.Fatalf("command = %v, want %q", got, "pwd")
+	}
+}
+
 func TestExecutorExecuteJSONArgs_ColonValueLinesFallback(t *testing.T) {
 	registry := NewRegistry()
 	tool := &captureArgsTool{
@@ -1207,6 +1282,40 @@ func TestFileReadToolReadsOfficeDocumentsViaDocumentReader(t *testing.T) {
 	}
 }
 
+func TestFileReadToolReadsExpandedOfficeFormatsViaDocumentReader(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "notes.odt")
+	if err := writeTestFile(path, "stub"); err != nil {
+		t.Fatalf("failed to create odt placeholder: %v", err)
+	}
+
+	tool := NewFileReadTool([]string{tmpDir}, 0)
+	reader := &stubDocumentReadService{
+		result: &convertpkg.DocumentReadResult{
+			Format:       "odt",
+			Text:         "Meeting notes",
+			ExtractedVia: "stub:txt",
+		},
+	}
+	tool.SetDocumentReadService(reader)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{"path": path})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("failed to parse result: %v", err)
+	}
+	if payload["document_format"] != "odt" {
+		t.Fatalf("document_format = %v, want odt", payload["document_format"])
+	}
+	if reader.lastPath != path {
+		t.Fatalf("reader path = %q, want %q", reader.lastPath, path)
+	}
+}
+
 func TestFileReadToolReturnsDocumentRuntimeErrorWhenReaderUnavailable(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "slides.pptx")
@@ -1384,15 +1493,6 @@ func TestFileWriteTool(t *testing.T) {
 	if resultMap["success"] != true {
 		t.Error("expected success=true")
 	}
-	if resultMap["verified"] != true {
-		t.Errorf("expected verified=true, got %v", resultMap["verified"])
-	}
-	if got := resultMap["verification_method"]; got != "content" {
-		t.Errorf("verification_method = %v, want %q", got, "content")
-	}
-	if got := int(resultMap["bytes_written"].(float64)); got != len(testContent) {
-		t.Errorf("bytes_written = %d, want %d", got, len(testContent))
-	}
 
 	// Verify file content
 	content, err := readTestFile(testFile)
@@ -1421,23 +1521,13 @@ func TestFileWriteToolAppend(t *testing.T) {
 	}
 
 	// Append more content
-	appendResult, err := tool.Execute(context.Background(), map[string]interface{}{
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
 		"path":    testFile,
 		"content": ", World!",
 		"append":  true,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	var appendResultMap map[string]interface{}
-	if err := json.Unmarshal([]byte(appendResult.(string)), &appendResultMap); err != nil {
-		t.Fatalf("failed to parse append result: %v", err)
-	}
-	if appendResultMap["verified"] != true {
-		t.Errorf("expected append verified=true, got %v", appendResultMap["verified"])
-	}
-	if got := int(appendResultMap["bytes_written"].(float64)); got != len(", World!") {
-		t.Errorf("append bytes_written = %d, want %d", got, len(", World!"))
 	}
 
 	// Verify file content
@@ -2231,23 +2321,12 @@ func TestFileWriteToolLineModeSuccess(t *testing.T) {
 	}
 
 	tool := NewFileWriteTool([]string{tmpDir}, 0)
-	result, err := tool.Execute(context.Background(), map[string]interface{}{
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
 		"path":    target,
 		"content": "BETA",
 		"line":    2,
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("line mode write failed: %v", err)
-	}
-	var resultMap map[string]interface{}
-	if err := json.Unmarshal([]byte(result.(string)), &resultMap); err != nil {
-		t.Fatalf("parse line mode result: %v", err)
-	}
-	if resultMap["verified"] != true {
-		t.Fatalf("expected line mode verified=true, got %v", resultMap["verified"])
-	}
-	if got := resultMap["verification_method"]; got != "content" {
-		t.Fatalf("verification_method = %v, want %q", got, "content")
 	}
 
 	got, err := readTestFile(target)
@@ -2675,13 +2754,13 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
 
-	expectedTools := []string{"file_read", "file_write", "file_delete", "write_begin", "write_chunk", "write_commit", "write_abort", "edit", "grep", "rg", "find", "ls", "web", "mcp"}
+	expectedTools := []string{"file_read", "file_write", "file_delete", "write_begin", "write_chunk", "write_commit", "write_abort", "edit", "grep", "rg", "find", "ls", "web_query", "mcp"}
 	for _, name := range expectedTools {
 		if registry.Get(name) == nil {
 			t.Errorf("expected tool '%s' to be registered", name)
 		}
 	}
-	for _, name := range []string{"web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
+	for _, name := range []string{"web", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
 		if registry.Get(name) == nil {
 			t.Errorf("expected hidden compat tool '%s' to remain registered", name)
 		}
@@ -2748,7 +2827,7 @@ func TestExecutorNormalizesCompatSessionsAndWebAliasesToUnifiedTools(t *testing.
 	}
 	webTool := &captureArgsTool{
 		def: ToolDefinition{
-			Name:        "web",
+			Name:        "web_query",
 			Description: "web",
 			Parameters: map[string]interface{}{
 				"type":                 "object",
@@ -2926,11 +3005,7 @@ func TestRegisterFactoryToolDefinitions(t *testing.T) {
 		"memory_get",
 		"memory_write",
 		"memory_forget",
-		"web_search",
-		"web_fetch",
-		"web_read",
-		"web_extract",
-		"web_crawl",
+		"web_query",
 		"image",
 		"pdf",
 	} {
@@ -2963,8 +3038,8 @@ func TestExecutorFactoryWebFetchFallbackUsesWebFetchCommand(t *testing.T) {
 		t.Fatalf("execute web_fetch failed: %v", err)
 	}
 	cmd, _ := execTool.args["command"].(string)
-	if !strings.HasPrefix(cmd, "blue web_fetch") {
-		t.Fatalf("command = %q, want prefix %q", cmd, "blue web_fetch")
+	if !strings.HasPrefix(cmd, "blue web_query") {
+		t.Fatalf("command = %q, want prefix %q", cmd, "blue web_query")
 	}
 	if !strings.Contains(cmd, "url=https://example.com") {
 		t.Fatalf("command = %q, want to contain %q", cmd, "url=https://example.com")

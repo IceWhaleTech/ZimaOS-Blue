@@ -25,6 +25,20 @@ const requiredPaths = [
   'chat.taskCancelled',
   'chat.taskWaitingForApproval',
   'chat.taskWaitingForAnswer',
+  'chat.taskDefaultResearchTitle',
+  'chat.taskDefaultAgentTitle',
+  'chat.taskRuntimePending',
+  'chat.taskRuntimeIntake',
+  'chat.taskRuntimeClarify',
+  'chat.taskRuntimePlan',
+  'chat.taskRuntimeConfirmGate',
+  'chat.taskRuntimeExecute',
+  'chat.taskRuntimeVerify',
+  'chat.taskRuntimeReflect',
+  'chat.taskRuntimeReport',
+  'chat.taskRuntimeRecover',
+  'chat.taskRuntimeDone',
+  'chat.taskRuntimeAborted',
 ] as const
 
 const localeModules = import.meta.glob('@/i18n/locales/*.ts', { eager: true }) as Record<
@@ -86,7 +100,10 @@ describe('task projection locale coverage', () => {
       for (const path of requiredPaths) {
         const value = getPathValue(messages, path)
         expect(typeof value, `${fileName} should expose ${path}`).toBe('string')
-        expect(String(value).trim().length, `${fileName} should not leave ${path} empty`).toBeGreaterThan(0)
+        expect(
+          String(value).trim().length,
+          `${fileName} should not leave ${path} empty`
+        ).toBeGreaterThan(0)
       }
     }
   })

@@ -168,8 +168,7 @@ function handleKeydown(event: KeyboardEvent) {
     linear-gradient(120deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 52%);
   opacity: 0.26;
   pointer-events: none;
-  transition:
-    opacity 0.35s ease;
+  transition: opacity 0.35s ease;
 }
 
 .semantic-search-shell::after {

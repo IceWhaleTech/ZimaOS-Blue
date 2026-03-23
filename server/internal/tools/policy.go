@@ -9,12 +9,13 @@ import (
 
 // ToolPolicyRequest carries runtime selection hints.
 type ToolPolicyRequest struct {
-	Provider   string
-	ProviderID string
-	Model      string
-	AgentID    string
-	SessionID  string
-	RouteKind  ToolRouteKind
+	Provider            string
+	ProviderID          string
+	Model               string
+	AgentID             string
+	SessionID           string
+	RouteKind           ToolRouteKind
+	DeepResearchEnabled *bool
 }
 
 // ToolPolicyResolver narrows the visible tool surface before selection/routing.
@@ -31,26 +32,26 @@ type ToolPolicyResolver struct {
 // intentionally small. Richer capabilities remain available through exec-routed
 // skills or compat paths without inflating the default tool list.
 var defaultChatDirectToolAllowlist = map[string]struct{}{
-	"browser":          {},
-	"calendar":         {},
-	"convert":          {},
-	"edit":             {},
-	"email":            {},
-	"exec":             {},
-	"file_delete":      {},
-	"file_read":        {},
-	"file_write":       {},
-	"find":             {},
-	"image":            {},
-	"image_generation": {},
-	"ls":               {},
-	"memory":           {},
-	"pdf":              {},
-	"process":          {},
-	"research_run":     {},
-	"research_status":  {},
-	"sessions":         {},
-	"web":              {},
+	"ask":           {},
+	"browser":       {},
+	"calendar":      {},
+	"convert":       {},
+	"edit":          {},
+	"email":         {},
+	"exec":          {},
+	"file_delete":   {},
+	"file_read":     {},
+	"file_write":    {},
+	"find":          {},
+	"grep":          {},
+	"image":         {},
+	"ls":            {},
+	"memory":        {},
+	"pdf":           {},
+	"process":       {},
+	"deep_research": {},
+	"sessions":      {},
+	"web":           {},
 }
 
 // NewToolPolicyResolver creates a resolver from app config.
@@ -184,7 +185,7 @@ func (r *ToolPolicyResolver) applyBaseProfile(visible map[string]ToolDefinition,
 		return
 	}
 	for name := range visible {
-		if _, ok := expanded[name]; !ok {
+		if _, ok := expanded[normalizeToolPolicyName(name)]; !ok {
 			delete(visible, name)
 		}
 	}
@@ -195,7 +196,7 @@ func (r *ToolPolicyResolver) applyAllowSet(visible map[string]ToolDefinition, al
 		return
 	}
 	for name := range visible {
-		if _, ok := allow[strings.ToLower(strings.TrimSpace(name))]; !ok {
+		if _, ok := allow[normalizeToolPolicyName(name)]; !ok {
 			delete(visible, name)
 		}
 	}
@@ -207,13 +208,17 @@ func (r *ToolPolicyResolver) applyAllowDeny(visible map[string]ToolDefinition, s
 	}
 	if expanded := r.expandEntries(scope.Allow); len(expanded) > 0 {
 		for name := range visible {
-			if _, ok := expanded[name]; !ok {
+			if _, ok := expanded[normalizeToolPolicyName(name)]; !ok {
 				delete(visible, name)
 			}
 		}
 	}
-	for name := range r.expandEntries(scope.Deny) {
-		delete(visible, name)
+	if denied := r.expandEntries(scope.Deny); len(denied) > 0 {
+		for name := range visible {
+			if _, ok := denied[normalizeToolPolicyName(name)]; ok {
+				delete(visible, name)
+			}
+		}
 	}
 }
 
@@ -232,7 +237,7 @@ func (r *ToolPolicyResolver) expandEntries(entries []string) map[string]struct{}
 	out := make(map[string]struct{})
 	var visit func(string)
 	visit = func(entry string) {
-		key := strings.ToLower(strings.TrimSpace(entry))
+		key := normalizeToolPolicyName(entry)
 		if key == "" {
 			return
 		}
@@ -248,6 +253,27 @@ func (r *ToolPolicyResolver) expandEntries(entries []string) map[string]struct{}
 		visit(entry)
 	}
 	return out
+}
+
+func normalizeToolPolicyName(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "read", "read_file", "file_read":
+		return "file_read"
+	case "write", "write_file", "file_write":
+		return "file_write"
+	case "delete", "remove", "rm", "unlink", "file_delete":
+		return "file_delete"
+	case "rg":
+		return "grep"
+	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+		return "web"
+	case "image", "image_generation", "generate_image", "generateimage":
+		return "image"
+	case "deep_research", "deep-research", "research_run", "research_status":
+		return "deep_research"
+	default:
+		return strings.ToLower(strings.TrimSpace(name))
+	}
 }
 
 func clonePolicyMap(input map[string][]string) map[string][]string {

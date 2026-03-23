@@ -337,9 +337,9 @@ describe('VoiceWakeSettingsSection', () => {
     const wrapper = mountSection('zh-CN')
     await flushPromises()
 
-    expect((wrapper.get('[data-testid="voicewake-locale"]').element as HTMLSelectElement).value).toBe(
-      'zh-CN'
-    )
+    expect(
+      (wrapper.get('[data-testid="voicewake-locale"]').element as HTMLSelectElement).value
+    ).toBe('zh-CN')
     wrapper.unmount()
   })
 
@@ -353,9 +353,9 @@ describe('VoiceWakeSettingsSection', () => {
     const wrapper = mountSection('ja-JP')
     await flushPromises()
 
-    expect((wrapper.get('[data-testid="voicewake-locale"]').element as HTMLSelectElement).value).toBe(
-      'en-US'
-    )
+    expect(
+      (wrapper.get('[data-testid="voicewake-locale"]').element as HTMLSelectElement).value
+    ).toBe('en-US')
     wrapper.unmount()
   })
 

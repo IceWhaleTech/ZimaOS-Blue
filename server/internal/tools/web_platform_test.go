@@ -3,12 +3,15 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 )
 
@@ -51,6 +54,93 @@ func TestWebReadToolExecute_StaticHTML(t *testing.T) {
 	}
 }
 
+func TestWebReadToolExecute_UsesHTTPNativeForPreferredHosts(t *testing.T) {
+	native := &stubHTTPNativeClient{
+		available: true,
+		do: func(_ context.Context, req webFetchHTTPNativeRequest) (webFetchHTTPNativeResponse, error) {
+			return webFetchHTTPNativeResponse{
+				FinalURL:    req.URL,
+				StatusCode:  http.StatusOK,
+				ContentType: "text/html; charset=utf-8",
+				Body:        []byte(`<!doctype html><html><head><title>Native Read</title></head><body><main><h1>Native Read</h1><p>This readable article came from the internal native HTTP lane because the host matched a configured preference. It keeps the public tool interface unchanged while still allowing the runtime to choose a different backend under the hood.</p></main></body></html>`),
+			}, nil
+		},
+	}
+
+	tool := NewWebReadTool(WebFetchConfig{
+		Timeout:               5 * time.Second,
+		AllowPrivateHosts:     true,
+		HTTPNativeEnabled:     true,
+		HTTPNativePreferHosts: []string{"thepaper.cn"},
+	})
+	tool.runtime.base.nativeClient = native
+	tool.runtime.base.httpClient.Transport = testRoundTripper(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("unexpected net/http request for preferred native host: %s", req.URL.String())
+		return nil, errors.New("unexpected net/http request")
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":    "https://news.thepaper.cn/story",
+		"format": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	data := parseWebPlatformResult(t, result)
+	if data["source"] != webAccessSourceHTTPNative {
+		t.Fatalf("source = %v, want %q", data["source"], webAccessSourceHTTPNative)
+	}
+	if native.callCount() != 1 {
+		t.Fatalf("native call count = %d, want 1", native.callCount())
+	}
+}
+
+func TestWebReadToolExecute_FallsBackToHTTPNativeOnTransportError(t *testing.T) {
+	native := &stubHTTPNativeClient{
+		available: true,
+		do: func(_ context.Context, req webFetchHTTPNativeRequest) (webFetchHTTPNativeResponse, error) {
+			return webFetchHTTPNativeResponse{
+				FinalURL:    req.URL,
+				StatusCode:  http.StatusOK,
+				ContentType: "text/html; charset=utf-8",
+				Body:        []byte(`<!doctype html><html><head><title>Native Fallback</title></head><body><main><h1>Native Fallback</h1><p>This document was recovered after the ordinary Go HTTP transport hit a TLS-level failure. The read pipeline should still surface the final source as http_native so diagnostics reflect the backend that actually won.</p></main></body></html>`),
+			}, nil
+		},
+	}
+
+	tool := NewWebReadTool(WebFetchConfig{
+		Timeout:           5 * time.Second,
+		AllowPrivateHosts: true,
+		HTTPNativeEnabled: true,
+	})
+	tool.runtime.base.nativeClient = native
+	httpCalls := 0
+	tool.runtime.base.httpClient.Transport = testRoundTripper(func(req *http.Request) (*http.Response, error) {
+		httpCalls++
+		return nil, errors.New("tls: handshake failure")
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":    "https://example.com/native-fallback",
+		"format": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	if httpCalls != 1 {
+		t.Fatalf("net/http call count = %d, want 1", httpCalls)
+	}
+	if native.callCount() != 1 {
+		t.Fatalf("native call count = %d, want 1", native.callCount())
+	}
+	data := parseWebPlatformResult(t, result)
+	if data["source"] != webAccessSourceHTTPNative {
+		t.Fatalf("source = %v, want %q", data["source"], webAccessSourceHTTPNative)
+	}
+}
+
 func TestWebReadToolExecute_PDFViaHTTP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/pdf")
@@ -79,6 +169,43 @@ func TestWebReadToolExecute_PDFViaHTTP(t *testing.T) {
 	content, _ := data["content"].(string)
 	if !strings.Contains(content, "Visible PDF content") {
 		t.Fatalf("content = %q, want extracted pdf text", content)
+	}
+}
+
+func TestWebReadToolExecute_DocumentViaHTTP(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		_, _ = w.Write([]byte("stub xlsx bytes"))
+	}))
+	defer srv.Close()
+
+	tool := NewWebReadTool(WebFetchConfig{Timeout: 5 * time.Second, AllowPrivateHosts: true})
+	tool.SetDocumentReadService(&stubDocumentReadService{
+		result: &convertpkg.DocumentReadResult{
+			Format:       "xlsx",
+			Text:         "Sheet: Budget\nRevenue\t120",
+			ExtractedVia: "stub:csv",
+		},
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":    srv.URL + "/budget.xlsx",
+		"format": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	data := parseWebPlatformResult(t, result)
+	if data["source"] != webAccessSourceHTTP {
+		t.Fatalf("source = %v, want %q", data["source"], webAccessSourceHTTP)
+	}
+	if data["title"] != "budget.xlsx" {
+		t.Fatalf("title = %v, want %q", data["title"], "budget.xlsx")
+	}
+	content, _ := data["content"].(string)
+	if !strings.Contains(content, "Sheet: Budget") || !strings.Contains(content, "Revenue") {
+		t.Fatalf("content = %q, want extracted office text", content)
 	}
 }
 
@@ -162,6 +289,63 @@ func TestWebReadToolExecute_InteractiveRequired(t *testing.T) {
 	}
 	if data["source"] != webAccessSourceHTTP {
 		t.Fatalf("source = %v, want %q", data["source"], webAccessSourceHTTP)
+	}
+}
+
+func TestWebReadToolExecute_ProxyFetcherFallsBackToJinaReader(t *testing.T) {
+	var firecrawlHits atomic.Int32
+	firecrawlSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		firecrawlHits.Add(1)
+		http.Error(w, "firecrawl unavailable", http.StatusBadGateway)
+	}))
+	defer firecrawlSrv.Close()
+
+	var jinaHits atomic.Int32
+	jinaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jinaHits.Add(1)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("# Proxy Family Title\n\nRecovered through the jina reader proxy fetcher."))
+	}))
+	defer jinaSrv.Close()
+
+	tool := NewWebReadTool(WebFetchConfig{
+		Timeout:               5 * time.Second,
+		AllowPrivateHosts:     true,
+		FirecrawlEnabled:      true,
+		FirecrawlAPIKey:       "firecrawl-test",
+		FirecrawlBaseURL:      firecrawlSrv.URL,
+		FirecrawlTimeout:      5 * time.Second,
+		JinaReaderEnabled:     true,
+		JinaReaderBaseURL:     jinaSrv.URL,
+		JinaReaderTimeout:     5 * time.Second,
+		ProxyFetcherProviders: []string{webFetchProxyProviderFirecrawl, webFetchProxyProviderJinaReader},
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":    "https://example.com/private",
+		"lane":   webAccessLaneProxyFetcher,
+		"format": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if firecrawlHits.Load() != 1 {
+		t.Fatalf("firecrawl hit count = %d, want 1", firecrawlHits.Load())
+	}
+	if jinaHits.Load() != 1 {
+		t.Fatalf("jina hit count = %d, want 1", jinaHits.Load())
+	}
+
+	data := parseWebPlatformResult(t, result)
+	if data["source"] != webAccessSourceProxyFetcher {
+		t.Fatalf("source = %v, want %q", data["source"], webAccessSourceProxyFetcher)
+	}
+	if data["title"] != "Proxy Family Title" {
+		t.Fatalf("title = %v, want %q", data["title"], "Proxy Family Title")
+	}
+	content, _ := data["content"].(string)
+	if !strings.Contains(content, "Recovered through the jina reader proxy fetcher.") {
+		t.Fatalf("content = %q, want jina reader fallback content", content)
 	}
 }
 

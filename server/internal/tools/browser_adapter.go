@@ -27,6 +27,35 @@ func (l rodServiceLease) close() {
 	}
 }
 
+func acquireRodServiceSource(source rodServiceSource, required bool) (rodServiceLease, error) {
+	switch {
+	case source.acquire != nil:
+		svc, release, err := source.acquire()
+		if err != nil {
+			return rodServiceLease{}, err
+		}
+		if release == nil {
+			release = func() {}
+		}
+		if svc == nil {
+			release()
+		} else {
+			return rodServiceLease{svc: svc, release: release}, nil
+		}
+	case source.svc != nil:
+		return rodServiceLease{svc: source.svc, release: func() {}}, nil
+	case source.resolve != nil:
+		if svc := source.resolve(); svc != nil {
+			return rodServiceLease{svc: svc, release: func() {}}, nil
+		}
+	}
+
+	if !required {
+		return rodServiceLease{}, nil
+	}
+	return rodServiceLease{}, fmt.Errorf("browser service not available")
+}
+
 // RodBrowserBackend adapts browser.RodService to the BrowserBackend interface.
 // Supports lazy initialization and mode-aware routing via context.
 type RodBrowserBackend struct {
@@ -63,32 +92,7 @@ func NewLeaseAwareRodBrowserBackend(acquireDefault, acquireVisible rodServiceAcq
 }
 
 func (a *RodBrowserBackend) acquireSource(source rodServiceSource, required bool) (rodServiceLease, error) {
-	switch {
-	case source.acquire != nil:
-		svc, release, err := source.acquire()
-		if err != nil {
-			return rodServiceLease{}, err
-		}
-		if release == nil {
-			release = func() {}
-		}
-		if svc == nil {
-			release()
-		} else {
-			return rodServiceLease{svc: svc, release: release}, nil
-		}
-	case source.svc != nil:
-		return rodServiceLease{svc: source.svc, release: func() {}}, nil
-	case source.resolve != nil:
-		if svc := source.resolve(); svc != nil {
-			return rodServiceLease{svc: svc, release: func() {}}, nil
-		}
-	}
-
-	if !required {
-		return rodServiceLease{}, nil
-	}
-	return rodServiceLease{}, fmt.Errorf("browser service not available")
+	return acquireRodServiceSource(source, required)
 }
 
 func (a *RodBrowserBackend) acquireDefault() (rodServiceLease, error) {
@@ -130,11 +134,12 @@ func (a *RodBrowserBackend) acquireForTarget(ctx context.Context, targetID strin
 	if mode == BrowserLaunchModeVisible {
 		visibleLease, _ := a.acquireVisible()
 		if targetID == "" {
+			defaultLease, defaultErr := a.acquireDefault()
 			if visibleLease.svc != nil {
+				defaultLease.close()
 				return visibleLease, nil
 			}
 			visibleLease.close()
-			defaultLease, defaultErr := a.acquireDefault()
 			if defaultLease.svc != nil {
 				return defaultLease, nil
 			}
@@ -234,6 +239,45 @@ func (a *RodBrowserBackend) CookieHeader(ctx context.Context, targetID string, u
 	}
 	defer lease.close()
 	return lease.svc.CookieHeader(ctx, targetID, url)
+}
+
+func (a *RodBrowserBackend) ObserveNetwork(ctx context.Context, targetID string, maxEntries int, clear bool) (BrowserObservedNetworkResult, error) {
+	lease, err := a.acquireForTarget(ctx, targetID)
+	if err != nil {
+		return BrowserObservedNetworkResult{}, err
+	}
+	defer lease.close()
+	resp, err := lease.svc.ObserveNetwork(ctx, targetID, maxEntries, clear)
+	if err != nil {
+		return BrowserObservedNetworkResult{}, err
+	}
+	result := BrowserObservedNetworkResult{
+		TargetID: resp.TargetID,
+		Events:   make([]BrowserNetworkEvent, 0, len(resp.Events)),
+	}
+	for _, event := range resp.Events {
+		result.Events = append(result.Events, BrowserNetworkEvent{
+			Method:       event.Method,
+			URL:          event.URL,
+			Status:       event.Status,
+			ContentType:  event.ContentType,
+			ResourceType: event.ResourceType,
+			Initiator:    event.Initiator,
+			DurationMS:   event.DurationMS,
+			Headers:      cloneStringMap(event.Headers),
+			BodySample:   event.BodySample,
+		})
+	}
+	return result, nil
+}
+
+func (a *RodBrowserBackend) WaitNetworkIdle(ctx context.Context, targetID string, idleMS int, timeoutMS int) error {
+	lease, err := a.acquireForTarget(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	defer lease.close()
+	return lease.svc.WaitNetworkIdle(ctx, targetID, idleMS, timeoutMS)
 }
 
 func (a *RodBrowserBackend) AccessibilityTree(ctx context.Context, targetID string, maxDepth int) (BrowserA11yTreeResult, error) {
@@ -404,4 +448,15 @@ func (a *RodBrowserBackend) ListRecipes(ctx context.Context) []BrowserRecipeInfo
 		}
 	}
 	return result
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]string, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
 }

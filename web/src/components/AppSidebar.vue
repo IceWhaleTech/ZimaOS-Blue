@@ -12,6 +12,8 @@ import type { Conversation, Message } from '@/api/chat'
 import { PagePermissions } from '@/constants/pagePermissions'
 import { storeToRefs } from 'pinia'
 import { useTauri } from '@/composables/useTauri'
+import { useBrowserMonitor } from '@/composables/useBrowserMonitor'
+import { getPreferredNetworkAddress, useNetwork } from '@/composables/useNetwork'
 import { isLocalAbsolutePath } from '@/utils/localPath'
 import { resetPreviewModeStatus } from '@/router'
 import { extractLocalPathCandidatesFromCard } from '@/utils/workspaceGeneratedFiles'
@@ -127,17 +129,26 @@ const GITHUB_REPO_URL = 'https://github.com/IceWhaleTech/ZimaOS-Blue'
 const { t, te } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const browserMonitor = useBrowserMonitor()
 const systemStore = useSystemStore()
 const authStore = useAuthStore()
 const previewStore = usePreviewStore()
 const themeStore = useThemeStore()
-const { isTauri, platform, openInBrowser, revealInFileManager, startWindowDragging } = useTauri()
+const { isTauri, platform, browserName, openInBrowser, revealInFileManager, startWindowDragging } =
+  useTauri()
+const {
+  addresses: networkAddresses,
+  loading: networkAddressesLoading,
+  fetchAddresses: fetchNetworkAddresses,
+} = useNetwork({ autoFetch: false })
 const { health } = storeToRefs(systemStore)
 const { isAdmin } = storeToRefs(authStore)
 const { isPreviewMode } = storeToRefs(previewStore)
 
 // Mobile menu state
 const isOpen = ref(false)
+const externalBrowserOpening = ref(false)
+const networkAddressesRequested = ref(false)
 
 // Collapsed state (desktop only)
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
@@ -1120,8 +1131,44 @@ const sidebarStatusLabel = computed(() => {
   if (sidebarStatusHealthy.value) return t('common.online')
   return String(health.value?.status || '').trim()
 })
+const preferredExternalBrowserAddress = computed(() =>
+  getPreferredNetworkAddress(networkAddresses.value, { isTauri: isTauri.value })
+)
+const showExternalBrowserButton = computed(
+  () => isTauri.value && (networkAddresses.value?.lan.length || 0) > 0
+)
+const showExpandedUtilityLabels = computed(
+  () => !isCollapsed.value && !isPreviewMode.value && !showExternalBrowserButton.value
+)
+const externalBrowserButtonTitle = computed(() => {
+  if (showExternalBrowserButton.value) {
+    if (!te('network.openIn')) return `Open in ${browserName.value}`
+    return t('network.openIn', { browser: browserName.value })
+  }
+  return tr('network.openInBrowser', 'Open in Browser')
+})
 const githubButtonTitle = computed(() => tr('brand.githubTooltip', 'Open GitHub'))
 const githubButtonLabel = computed(() => 'GitHub')
+const browserMonitorButtonLabel = computed(() => tr('browserMonitor.buttonLabel', 'Monitor'))
+const browserMonitorActivitySummary = computed(() => {
+  const parts: string[] = []
+  if (browserMonitor.activeTaskCount.value > 0) {
+    parts.push(
+      `${browserMonitor.activeTaskCount.value} ${tr('browserMonitor.tasksShort', 'tasks')}`
+    )
+  }
+  if (browserMonitor.sessionCount.value > 0) {
+    parts.push(`${browserMonitor.sessionCount.value} ${tr('browserMonitor.tabsShort', 'tabs')}`)
+  }
+  return parts.join(' · ')
+})
+const browserMonitorButtonTitle = computed(() => {
+  const action = browserMonitor.isOpen.value
+    ? tr('browserMonitor.hideTooltip', 'Hide execution monitor')
+    : tr('browserMonitor.showTooltip', 'Show execution monitor')
+  const summary = browserMonitorActivitySummary.value.trim()
+  return summary ? `${action} · ${summary}` : action
+})
 const themeButtonLabel = computed(() =>
   isDarkTheme.value ? tr('common.light', 'Light') : tr('common.dark', 'Dark')
 )
@@ -1143,8 +1190,33 @@ function handlePreviewUpgradeSuccess(): void {
   window.location.reload()
 }
 
+watch(
+  isTauri,
+  (desktop) => {
+    if (!desktop || networkAddressesRequested.value) return
+    networkAddressesRequested.value = true
+    void fetchNetworkAddresses()
+  },
+  { immediate: true }
+)
+
 function openGithubRepo(): void {
   void openInBrowser(GITHUB_REPO_URL)
+}
+
+function toggleBrowserMonitor(): void {
+  browserMonitor.toggleMonitor({ expandWhenOpening: true })
+}
+
+async function openExternalBrowser(): Promise<void> {
+  if (!preferredExternalBrowserAddress.value || externalBrowserOpening.value) return
+
+  externalBrowserOpening.value = true
+  try {
+    await openInBrowser(preferredExternalBrowserAddress.value)
+  } finally {
+    externalBrowserOpening.value = false
+  }
 }
 
 function toggleSidebarTheme(): void {
@@ -1177,10 +1249,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
       @mousedown="handleWindowDragMouseDown"
     />
     <div class="sidebar-card flex flex-1 min-h-0 flex-col">
-      <div
-        class="sidebar-brand-shell"
-        :class="isCollapsed ? 'px-2 pb-2.5' : 'px-3.5 pb-2.5'"
-      >
+      <div class="sidebar-brand-shell" :class="isCollapsed ? 'px-2 pb-2.5' : 'px-3.5 pb-2.5'">
         <div class="sidebar-brand-row flex items-center justify-between gap-2">
           <RouterLink
             to="/"
@@ -1467,10 +1536,93 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             ]"
           >
             <button
+              v-if="showExternalBrowserButton"
               type="button"
               class="sidebar-utility-button"
-              :class="{ 'sidebar-utility-button-expanded': !isCollapsed && !isPreviewMode }"
+              data-testid="sidebar-open-external-browser"
+              :title="externalBrowserButtonTitle"
+              :aria-label="externalBrowserButtonTitle"
+              :disabled="externalBrowserOpening || networkAddressesLoading"
+              @click="openExternalBrowser"
+            >
+              <svg
+                v-if="externalBrowserOpening || networkAddressesLoading"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-[1.05rem] w-[1.05rem] animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              <svg
+                v-else
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-[1.05rem] w-[1.05rem]"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                  d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              class="sidebar-utility-button"
+              :class="{
+                'sidebar-utility-button-active': browserMonitor.isOpen.value,
+                'sidebar-utility-button-expanded': showExpandedUtilityLabels,
+              }"
+              :title="browserMonitorButtonTitle"
+              :aria-label="browserMonitorButtonTitle"
+              data-testid="sidebar-toggle-browser-monitor"
+              @click="toggleBrowserMonitor"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-[1.05rem] w-[1.05rem]"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                  d="M3 5.75A2.75 2.75 0 0 1 5.75 3h12.5A2.75 2.75 0 0 1 21 5.75v8.5A2.75 2.75 0 0 1 18.25 17H13l-3.5 4v-4H5.75A2.75 2.75 0 0 1 3 14.25v-8.5Zm4.5 2.75h2.25m4.5 0h2.25M7.5 12h9"
+                />
+              </svg>
+              <span v-if="showExpandedUtilityLabels" class="sidebar-utility-label">{{
+                browserMonitorButtonLabel
+              }}</span>
+            </button>
+
+            <button
+              type="button"
+              class="sidebar-utility-button"
+              :class="{ 'sidebar-utility-button-expanded': showExpandedUtilityLabels }"
               :title="githubButtonTitle"
+              data-testid="sidebar-open-github"
               aria-label="Open GitHub"
               @click="openGithubRepo"
             >
@@ -1485,7 +1637,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                   d="M12 0C5.373 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386C24 5.373 18.627 0 12 0z"
                 />
               </svg>
-              <span v-if="!isCollapsed && !isPreviewMode" class="sidebar-utility-label">{{
+              <span v-if="showExpandedUtilityLabels" class="sidebar-utility-label">{{
                 githubButtonLabel
               }}</span>
             </button>
@@ -1495,7 +1647,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
               class="sidebar-utility-button"
               :class="{
                 'sidebar-utility-button-active': isDarkTheme,
-                'sidebar-utility-button-expanded': !isCollapsed && !isPreviewMode,
+                'sidebar-utility-button-expanded': showExpandedUtilityLabels,
               }"
               :title="themeButtonTitle"
               :aria-label="themeButtonTitle"
@@ -1533,7 +1685,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                   d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z"
                 />
               </svg>
-              <span v-if="!isCollapsed && !isPreviewMode" class="sidebar-utility-label">{{
+              <span v-if="showExpandedUtilityLabels" class="sidebar-utility-label">{{
                 themeButtonLabel
               }}</span>
             </button>
@@ -2269,6 +2421,12 @@ html[data-blue-macos-glass='true'] .sidebar-card {
   background: rgba(243, 244, 246, 0.9);
   border-color: rgba(203, 213, 225, 0.96);
   transform: translateY(-1px);
+}
+
+.sidebar-utility-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  transform: none;
 }
 
 .sidebar-utility-label {

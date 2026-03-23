@@ -24,7 +24,10 @@ import type VirtualScrollComponent from '@/components/VirtualScroll.vue'
 import type { UserTaskProjection } from '@/api/tasks'
 import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
-import { clearConversationIncrementalStates, parseTypelessContentIncremental } from '@/utils/typeless'
+import {
+  clearConversationIncrementalStates,
+  parseTypelessContentIncremental,
+} from '@/utils/typeless'
 import { formatTokens } from '@/utils/format'
 import { findLatestTodoChecklistSummary } from '@/utils/todoChecklist'
 import { reportStartupMark } from '@/utils/startupTrace'
@@ -40,12 +43,8 @@ const PresetQuestions = defineAsyncComponent(
   () => import('@/components/onboarding/PresetQuestions.vue')
 )
 const TalkMode = defineAsyncComponent(() => import('@/components/chat/TalkMode.vue'))
-const ToolApprovalDialog = defineAsyncComponent(
-  () => import('@/components/ToolApprovalDialog.vue')
-)
-const ExecApprovalDialog = defineAsyncComponent(
-  () => import('@/components/ExecApprovalDialog.vue')
-)
+const ToolApprovalDialog = defineAsyncComponent(() => import('@/components/ToolApprovalDialog.vue'))
+const ExecApprovalDialog = defineAsyncComponent(() => import('@/components/ExecApprovalDialog.vue'))
 const MediaParamPanel = defineAsyncComponent(() => import('@/components/MediaParamPanel.vue'))
 const UserTaskProjectionCard = defineAsyncComponent(
   () => import('@/components/UserTaskProjectionCard.vue')
@@ -249,12 +248,19 @@ const enhancedModeCardTitle = computed(() =>
   enhancedModeCardEnabled.value ? t('chat.enhancedMode') : t('chat.enableEnhancedMode')
 )
 
+const presetQuestionDraft = ref('')
+const presetQuestionContextText = computed(() => {
+  const recentMessages = chatStore.messages
+    .slice(-6)
+    .map((message) => String(message.content || '').trim())
+    .filter(Boolean)
+    .join('\n')
+  return [recentMessages, presetQuestionDraft.value.trim()].filter(Boolean).join('\n')
+})
+
 const initialPrimaryDataHydrating = ref(false)
 const showInitialThreadSkeleton = computed(
-  () =>
-    initialPrimaryDataHydrating.value &&
-    chatStore.messages.length === 0 &&
-    !chatStore.error
+  () => initialPrimaryDataHydrating.value && chatStore.messages.length === 0 && !chatStore.error
 )
 
 const enhancedModeCardDescription = computed(() =>
@@ -343,9 +349,17 @@ watch(showTalkMode, (open) => {
 const currentConversationActiveTasks = computed(() => taskProjections.currentActiveTasks)
 
 const hasCancelableWork = computed(() => {
-  if (chatStore.streaming || mediaGen.generating.value) return true
+  if (chatStore.streaming || chatStore.isRecovering || mediaGen.generating.value) return true
   return currentConversationActiveTasks.value.length > 0
 })
+
+const chatInputDisabled = computed(
+  () => (chatStore.sending && !chatStore.isPreTTFT) || chatStore.isRecovering
+)
+
+const showStreamStatusRail = computed(
+  () => chatStore.streamUIState.phase !== 'idle' && chatStore.streamUIState.phase !== 'completed'
+)
 
 const executingConversationIds = computed(() => {
   const ids = new Set<string>()
@@ -378,7 +392,9 @@ function hasVisibleTextOutsideCards(content: string): boolean {
 const shouldCompactStreamingActions = computed(() => {
   if (!hasCancelableWork.value) return false
 
-  const lastMessage = [...chatStore.messages].reverse().find((message) => message.role === 'assistant')
+  const lastMessage = [...chatStore.messages]
+    .reverse()
+    .find((message) => message.role === 'assistant')
   if (!lastMessage || lastMessage.role !== 'assistant') return false
   if (typeof lastMessage.content !== 'string' || !lastMessage.content.trim()) return false
 
@@ -438,6 +454,7 @@ const VIRTUAL_SCROLL_THRESHOLD = 50
 
 // Whether to use virtual scrolling
 const useVirtualScroll = computed(() => chatStore.messages.length > VIRTUAL_SCROLL_THRESHOLD)
+const virtualScrollOverscan = computed(() => (isMobile.value ? 3 : 5))
 
 // ID of the last assistant message (for Continue/Regenerate in mobile action sheet)
 const lastAssistantMessageId = computed(() => {
@@ -491,6 +508,7 @@ type MessageMemoDepsTuple = [
   isMobile: boolean,
   isMultiSelectMode: boolean,
   isSelected: boolean,
+  showExternalStatusRail: boolean,
 ]
 
 type MessageRenderBindings = {
@@ -500,6 +518,7 @@ type MessageRenderBindings = {
   isMobile: boolean
   isSelected: boolean
   isMultiSelectMode: boolean
+  showExternalStatusRail: boolean
 }
 
 type MessageRenderMeta = {
@@ -540,6 +559,8 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
   const isSelected = chatStore.isMultiSelectMode
     ? chatStore.selectedMessageIds.has(message.id)
     : false
+  const showExternalStatusRail =
+    showStreamStatusRail.value && isStreaming && message.id === streamingMessageId.value
 
   const cached = messageRenderMetaCache.get(cacheKey)
   if (
@@ -552,7 +573,8 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     cached.memoDeps[6] === showTalkMode.value &&
     cached.memoDeps[7] === isMobile.value &&
     cached.memoDeps[8] === chatStore.isMultiSelectMode &&
-    cached.memoDeps[9] === isSelected
+    cached.memoDeps[9] === isSelected &&
+    cached.memoDeps[10] === showExternalStatusRail
   ) {
     lastRenderMetaLookupKey = cacheKey
     lastRenderMetaLookupMessage = message
@@ -571,6 +593,7 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     isMobile.value,
     chatStore.isMultiSelectMode,
     isSelected,
+    showExternalStatusRail,
   ]
 
   const bindings: MessageRenderBindings = {
@@ -580,6 +603,7 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     isMobile: isMobile.value,
     isSelected,
     isMultiSelectMode: chatStore.isMultiSelectMode,
+    showExternalStatusRail,
   }
 
   const nextMeta: MessageRenderMeta = {
@@ -667,7 +691,8 @@ function getChatMessageElementId(messageId: string): string {
 
 function providerStatusLabel(status: Provider['status']) {
   if (status === 'active') return chatTextWithFallback('chat.noProvider.statusActive', 'Active')
-  if (status === 'inactive') return chatTextWithFallback('chat.noProvider.statusInactive', 'Inactive')
+  if (status === 'inactive')
+    return chatTextWithFallback('chat.noProvider.statusInactive', 'Inactive')
   return chatTextWithFallback('chat.noProvider.statusError', 'Error')
 }
 
@@ -729,7 +754,10 @@ function summarizeProviderIssue(error?: string, status?: Provider['status']) {
 function buildProviderGuidanceCopy(mode: 'unconfigured' | 'unavailable') {
   if (mode === 'unavailable') {
     return {
-      eyebrow: chatTextWithFallback('chat.noProvider.unavailableEyebrow', 'Temporarily unavailable'),
+      eyebrow: chatTextWithFallback(
+        'chat.noProvider.unavailableEyebrow',
+        'Temporarily unavailable'
+      ),
       title: chatTextWithFallback(
         'chat.noProvider.unavailableTitle',
         'No AI provider is available right now'
@@ -762,11 +790,15 @@ function buildProviderGuidanceCopy(mode: 'unconfigured' | 'unavailable') {
   }
 }
 
-const providerConfigDialogCopy = computed(() => buildProviderGuidanceCopy(providerConfigDialogMode.value))
+const providerConfigDialogCopy = computed(() =>
+  buildProviderGuidanceCopy(providerConfigDialogMode.value)
+)
 const activeTodoPanelCollapsed = ref(loadActiveTodoPanelCollapsed())
 const focusedTodoMessageId = ref<string | null>(null)
 let focusedTodoMessageTimer: ReturnType<typeof setTimeout> | null = null
-const activeTodoSummary = computed(() => findLatestTodoChecklistSummary(chatStore.messages))
+const activeTodoSummary = computed(() =>
+  findLatestTodoChecklistSummary(chatStore.messages, chatStore.recentTodoCompletion)
+)
 const activeTodoProgressText = computed(() => {
   const summary = activeTodoSummary.value
   if (!summary) return ''
@@ -833,7 +865,9 @@ const providerAttentionMode = computed<'unconfigured' | 'unavailable'>(() =>
   hasConfiguredProviders.value ? 'unavailable' : 'unconfigured'
 )
 const needsProviderAttention = computed(() => !hasProvisionallyAvailableProviders.value)
-const providerInlineGuidanceCopy = computed(() => buildProviderGuidanceCopy(providerAttentionMode.value))
+const providerInlineGuidanceCopy = computed(() =>
+  buildProviderGuidanceCopy(providerAttentionMode.value)
+)
 const providerAttentionItems = computed(() =>
   enabledLlmProviders.value.slice(0, 3).map((provider) => ({
     id: provider.id,
@@ -916,6 +950,18 @@ const fixedModelLabel = computed(() => {
   if (chatStore.modelPreference === 'auto') return t('chat.routingMode.highAvailability')
   return chatStore.modelPreference
 })
+
+const routingButtonTitle = computed(
+  () => `${t('chat.routingMode.title')} · ${routingModeInfo.value.label} · ${fixedModelLabel.value}`
+)
+
+const showRoutingStatusDot = computed(() => providerStatus.value.status !== 'active')
+
+const routingStatusDotClasses = computed(() => ({
+  'is-error': providerStatus.value.status === 'error',
+  'is-pending': providerStatus.value.status === 'pending',
+  'is-none': providerStatus.value.status === 'none',
+}))
 
 const routingStrategyLabel = computed(() =>
   isSingleModelMode.value
@@ -1480,8 +1526,13 @@ function toggleRoutingMenu(trigger?: HTMLElement | null) {
   updateRoutingMenuPosition()
 }
 
-function handleRoutingMenuTrigger(trigger: HTMLElement) {
-  toggleRoutingMenu(trigger)
+function handleRoutingMenuButtonClick(event: MouseEvent) {
+  const trigger = event.currentTarget
+  if (trigger instanceof HTMLElement) {
+    toggleRoutingMenu(trigger)
+    return
+  }
+  toggleRoutingMenu()
 }
 
 function selectRoutingMode(mode: 'auto' | 'cloud' | 'local') {
@@ -1668,6 +1719,10 @@ async function handleMessageEditResubmit(messageId: string, content: string) {
 }
 
 function handleStreamRetry() {
+  if (chatStore.isStreamInterrupted) {
+    chatStore.retryInterruptedStreamRecovery()
+    return
+  }
   chatStore.clearStreamError()
   chatStore.regenerateMessage()
 }
@@ -1681,10 +1736,7 @@ function closeProviderConfigDialog() {
   showProviderConfigDialog.value = false
 }
 
-function openProviderConfigDialog(
-  mode: 'unconfigured' | 'unavailable',
-  messageToRestore?: string
-) {
+function openProviderConfigDialog(mode: 'unconfigured' | 'unavailable', messageToRestore?: string) {
   providerConfigDialogMode.value = mode
   providerConfigDialogHasDraft.value = Boolean(messageToRestore?.trim())
   showProviderConfigDialog.value = true
@@ -1857,6 +1909,10 @@ async function ensureLlmProviderConfigured(messageToRestore?: string) {
 // Handle preset question selection
 async function handlePresetQuestionSelect(text: string, attachments?: FileAttachment[]) {
   await handleSend(text, attachments)
+}
+
+function handleDraftChange(message: string) {
+  presetQuestionDraft.value = message
 }
 
 async function hydrateInitialChatState() {
@@ -2277,12 +2333,7 @@ onUnmounted(() => {
                 </div>
                 <div class="enhanced-mode-hover-card__hero-copy">
                   <div class="enhanced-mode-hover-card__eyebrow">
-                    {{
-                      t(
-                        'chat.enhancedModeHoverPoweredBy',
-                        'Powered by Claude Code CLI'
-                      )
-                    }}
+                    {{ t('chat.enhancedModeHoverPoweredBy', 'Powered by Claude Code CLI') }}
                   </div>
                   <div class="enhanced-mode-hover-card__title">{{ enhancedModeCardTitle }}</div>
                 </div>
@@ -2885,6 +2936,36 @@ onUnmounted(() => {
                           {{ t('chat.showToolDetails') }}
                         </div>
                       </button>
+
+                      <button
+                        class="quick-action-tile"
+                        :class="{ 'is-active': showRoutingMenu }"
+                        :title="routingButtonTitle"
+                        @click="handleRoutingMenuButtonClick"
+                      >
+                        <div class="flex items-center justify-between">
+                          <svg
+                            class="w-5 h-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <circle cx="7" cy="7" r="1.5" stroke-width="1.8" />
+                            <circle cx="17" cy="7" r="1.5" stroke-width="1.8" />
+                            <circle cx="12" cy="17" r="1.5" stroke-width="1.8" />
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="1.8"
+                              d="M7 8.5v1.5A2 2 0 009 12h6a2 2 0 002-2V8.5M12 12v3.5"
+                            />
+                          </svg>
+                          <span class="quick-action-pill">{{ routingModeInfo.label }}</span>
+                        </div>
+                        <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">
+                          {{ t('chat.routingMode.title') }}
+                        </div>
+                      </button>
                     </div>
                   </div>
                   <div class="h-[env(safe-area-inset-bottom)]" />
@@ -3044,6 +3125,35 @@ onUnmounted(() => {
                       : t('chat.showToolDetails')
                   }}</span>
                 </button>
+                <button
+                  class="chat-thread-detail-btn chat-thread-routing-btn inline-flex items-center gap-2 transition-colors cursor-pointer routing-menu-anchor"
+                  :class="{ 'is-active': showRoutingMenu }"
+                  :title="routingButtonTitle"
+                  @click.stop="handleRoutingMenuButtonClick"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  >
+                    <circle cx="7" cy="7" r="1.5" />
+                    <circle cx="17" cy="7" r="1.5" />
+                    <circle cx="12" cy="17" r="1.5" />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M7 8.5v1.5A2 2 0 009 12h6a2 2 0 002-2V8.5M12 12v3.5"
+                    />
+                  </svg>
+                  <span>{{ t('chat.routingMode.title') }}</span>
+                  <span
+                    v-if="showRoutingStatusDot"
+                    class="chat-thread-routing-btn__status"
+                    :class="routingStatusDotClasses"
+                  />
+                </button>
               </div>
             </div>
             <Transition name="slide-fade">
@@ -3061,7 +3171,10 @@ onUnmounted(() => {
                   :class="{ 'trial-quota-pulse': tokenAnimating }"
                 >
                   <div class="chat-trial-inline-copy flex items-center gap-2 min-w-0">
-                    <span class="chat-trial-inline-gift" :class="{ 'animate-bounce': tokenAnimating }">
+                    <span
+                      class="chat-trial-inline-gift"
+                      :class="{ 'animate-bounce': tokenAnimating }"
+                    >
                       🎁
                     </span>
                     <span
@@ -3156,9 +3269,15 @@ onUnmounted(() => {
                     class="rounded-[1.8rem] border border-slate-200/80 bg-white/85 p-5 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70"
                   >
                     <div class="space-y-3">
-                      <div class="h-4 w-28 rounded-full bg-slate-200/90 dark:bg-slate-700/80 animate-pulse" />
-                      <div class="h-4 w-full rounded-full bg-slate-200/90 dark:bg-slate-700/80 animate-pulse" />
-                      <div class="h-4 w-5/6 rounded-full bg-slate-200/90 dark:bg-slate-700/80 animate-pulse" />
+                      <div
+                        class="h-4 w-28 rounded-full bg-slate-200/90 dark:bg-slate-700/80 animate-pulse"
+                      />
+                      <div
+                        class="h-4 w-full rounded-full bg-slate-200/90 dark:bg-slate-700/80 animate-pulse"
+                      />
+                      <div
+                        class="h-4 w-5/6 rounded-full bg-slate-200/90 dark:bg-slate-700/80 animate-pulse"
+                      />
                     </div>
                   </div>
                 </div>
@@ -3169,16 +3288,16 @@ onUnmounted(() => {
                 v-else-if="chatStore.messages.length === 0 && !chatStore.loading"
                 class="h-full flex flex-col items-center justify-center p-4"
               >
-                <div class="text-center text-gray-500 dark:text-slate-400 max-w-md mb-8">
+                <div class="text-center text-gray-500 dark:text-slate-400 max-w-md mb-5">
                   <img
                     src="/logo.svg"
                     alt="Logo"
-                    class="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-4 opacity-80 dark:opacity-60"
+                    class="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 opacity-80 dark:opacity-60"
                   />
-                  <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-1">
+                  <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-1">
                     {{ t('chat.startConversation') }}
                   </h3>
-                  <p class="text-sm text-gray-500 dark:text-slate-400">
+                  <p class="text-[13px] text-gray-500 dark:text-slate-400">
                     {{ t('chat.startConversationDesc') }}
                   </p>
                 </div>
@@ -3209,7 +3328,9 @@ onUnmounted(() => {
                       </svg>
                     </div>
                     <div class="min-w-0 flex-1">
-                      <p class="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                      <p
+                        class="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500"
+                      >
                         {{ providerInlineGuidanceCopy.eyebrow }}
                       </p>
                       <h4 class="text-base font-semibold text-slate-900 dark:text-white">
@@ -3219,7 +3340,10 @@ onUnmounted(() => {
                         {{ providerInlineGuidanceCopy.description }}
                       </p>
                       <div
-                        v-if="providerAttentionMode === 'unavailable' && providerAttentionItems.length > 0"
+                        v-if="
+                          providerAttentionMode === 'unavailable' &&
+                          providerAttentionItems.length > 0
+                        "
                         class="mt-4 rounded-2xl border border-slate-200 bg-slate-50/90 p-3 dark:border-slate-700 dark:bg-slate-950/50"
                       >
                         <div
@@ -3239,7 +3363,9 @@ onUnmounted(() => {
                             class="rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900/70"
                           >
                             <div class="flex items-center justify-between gap-3">
-                              <div class="min-w-0 text-sm font-medium text-slate-900 dark:text-white">
+                              <div
+                                class="min-w-0 text-sm font-medium text-slate-900 dark:text-white"
+                              >
                                 {{ item.name }}
                               </div>
                               <span
@@ -3290,11 +3416,15 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Preset Questions -->
-                <PresetQuestions v-if="!needsProviderAttention" @select="handlePresetQuestionSelect" />
+                <PresetQuestions
+                  v-if="!needsProviderAttention"
+                  :context-text="presetQuestionContextText"
+                  @select="handlePresetQuestionSelect"
+                />
 
                 <div
                   v-if="!isMobile"
-                  class="mt-8 text-xs text-gray-400 dark:text-slate-500 text-center"
+                  class="mt-5 text-[11px] text-gray-400 dark:text-slate-500 text-center"
                 >
                   <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
                   <p class="space-x-4">
@@ -3335,7 +3465,7 @@ onUnmounted(() => {
                   :items="chatStore.messages"
                   :item-key="getMessageRenderKey"
                   :estimated-item-height="120"
-                  :overscan="5"
+                  :overscan="virtualScrollOverscan"
                   :scroll-container="messagesContainer"
                   class="pb-4"
                   @visible-range-change="handleVisibleRangeChange"
@@ -3396,6 +3526,43 @@ onUnmounted(() => {
                   />
                 </div>
 
+                <Transition name="fade">
+                  <div v-if="showStreamStatusRail" class="flex justify-center py-2">
+                    <div class="chat-stream-status-rail">
+                      <div class="chat-stream-status-rail__copy">
+                        <span class="chat-stream-status-rail__badge">
+                          {{ chatStore.streamUIState.phase.replace('_', ' ') }}
+                        </span>
+                        <span class="chat-stream-status-rail__label">
+                          {{ chatStore.streamUIState.label || t('chat.waitingThinking') }}
+                        </span>
+                        <span
+                          v-if="chatStore.streamUIState.detail"
+                          class="chat-stream-status-rail__detail"
+                        >
+                          {{ chatStore.streamUIState.detail }}
+                        </span>
+                      </div>
+                      <div class="chat-stream-status-rail__actions">
+                        <button
+                          v-if="chatStore.streamUIState.phase === 'interrupted'"
+                          class="chat-stream-status-rail__action"
+                          @click="handleStreamRetry"
+                        >
+                          {{ t('common.retry') }}
+                        </button>
+                        <button
+                          v-if="chatStore.isRecovering"
+                          class="chat-stream-status-rail__action is-danger"
+                          @click="handleCancel"
+                        >
+                          {{ t('chat.stopGenerating') }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </Transition>
+
                 <!-- Context trim indicator (pruning/compaction) -->
                 <Transition name="fade">
                   <div v-if="showContextTrim" class="flex justify-center py-2">
@@ -3404,7 +3571,9 @@ onUnmounted(() => {
                     >
                       <svg
                         class="w-3.5 h-3.5 flex-shrink-0"
-                        :class="{ 'animate-pulse': chatStore.contextTrimInfo?.type === 'compacting' }"
+                        :class="{
+                          'animate-pulse': chatStore.contextTrimInfo?.type === 'compacting',
+                        }"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -3464,6 +3633,8 @@ onUnmounted(() => {
                         ? t('chat.streamEmpty')
                         : chatStore.streamError === 'streamError'
                           ? t('chat.streamError')
+                          : chatStore.streamError === 'contextWindowExceeded'
+                            ? t('chat.contextWindowExceeded')
                           : chatStore.streamError === 'providerNoResponse'
                             ? t('chat.providerNoResponse')
                             : chatStore.streamError === 'providerReturnedEmpty'
@@ -3510,7 +3681,10 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <!-- Awaiting-user-input indicator -->
-                <div v-if="showAwaitingConfirmation && !chatStore.streaming" class="flex justify-center py-2">
+                <div
+                  v-if="showAwaitingConfirmation && !chatStore.streaming"
+                  class="flex justify-center py-2"
+                >
                   <div
                     class="flex items-center gap-2 px-3 py-1.5 text-xs text-amber-500 dark:text-amber-300 bg-amber-500/10 rounded-full"
                   >
@@ -3799,10 +3973,7 @@ onUnmounted(() => {
 
             <!-- Input area - floating at bottom (desktop), flex at bottom (mobile) -->
             <div class="chat-input-dock flex-shrink-0">
-              <div
-                v-if="hasBackgroundTasks"
-                class="max-w-5xl mx-auto px-3 sm:px-4 py-1"
-              >
+              <div v-if="hasBackgroundTasks" class="max-w-5xl mx-auto px-3 sm:px-4 py-1">
                 <UserTaskProjectionDock
                   :tasks="taskProjections.backgroundTasks"
                   @open="openProjectedTask"
@@ -3895,7 +4066,12 @@ onUnmounted(() => {
                         :class="{ 'is-checked': item.checked }"
                         aria-hidden="true"
                       >
-                        <svg v-if="item.checked" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg
+                          v-if="item.checked"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
                           <path
                             stroke-linecap="round"
                             stroke-linejoin="round"
@@ -3912,19 +4088,17 @@ onUnmounted(() => {
               </div>
               <ChatInput
                 ref="chatInputRef"
-                :disabled="chatStore.sending && !chatStore.isPreTTFT"
+                :disabled="chatInputDisabled"
                 :streaming="chatStore.streaming"
                 :can-cancel="hasCancelableWork"
-                :routing-status="providerStatus.status"
-                :routing-icon="routingModeInfo.icon"
-                :routing-title="`${t('chat.routingMode.title')} · ${routingModeInfo.label} · ${fixedModelLabel}`"
+                :conversation-id="chatStore.currentConversationId || undefined"
                 @send="handleSend"
+                @draft-change="handleDraftChange"
                 @inject="handleInject"
                 @cancel="handleCancel"
                 @cancel-pre-ttft="chatStore.cancelPreTTFT()"
                 @warmup="chatStore.warmupConversation()"
                 @open-talk-mode="showTalkMode = true"
-                @toggle-routing-menu="handleRoutingMenuTrigger"
               />
             </div>
           </section>
@@ -3960,7 +4134,9 @@ onUnmounted(() => {
             class="w-full max-w-md mx-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden"
           >
             <div class="p-6 text-center">
-              <p class="mb-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-gray-400 dark:text-gray-500">
+              <p
+                class="mb-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-gray-400 dark:text-gray-500"
+              >
                 {{ providerConfigDialogCopy.eyebrow }}
               </p>
               <div
@@ -4339,6 +4515,32 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
     0 10px 22px -20px rgba(14, 165, 233, 0.42);
 }
 
+.chat-thread-routing-btn {
+  margin-left: 0.12rem;
+  position: relative;
+}
+
+.chat-thread-routing-btn__status {
+  width: 0.46rem;
+  height: 0.46rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.9);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
+  flex-shrink: 0;
+}
+
+.chat-thread-routing-btn__status.is-error {
+  background: rgb(244, 63, 94);
+}
+
+.chat-thread-routing-btn__status.is-pending {
+  background: rgb(245, 158, 11);
+}
+
+.chat-thread-routing-btn__status.is-none {
+  background: rgb(148, 163, 184);
+}
+
 .chat-topbar {
   --chat-header-pad-x: var(--chat-pane-pad-x);
   --chat-header-pad-y: var(--chat-pane-pad-y);
@@ -4664,8 +4866,7 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
   padding: 0.72rem 0.76rem;
   border-radius: 0.92rem;
   border: 1px solid rgba(203, 213, 225, 0.88);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.9));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.9));
   color: rgba(30, 41, 59, 0.94);
   font-size: 0.72rem;
   font-weight: 600;
@@ -4709,6 +4910,86 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
   scroll-padding-top: 1rem;
   scroll-padding-bottom: 10.75rem;
   padding-inline: clamp(0.45rem, 1.3vw, 1.2rem);
+}
+
+.chat-stream-status-rail {
+  width: min(100%, 56rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.72rem 0.9rem;
+  border: 1px solid rgba(191, 219, 254, 0.78);
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(239, 246, 255, 0.92));
+  box-shadow: 0 18px 36px -34px rgba(37, 99, 235, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.chat-stream-status-rail__copy {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.6rem;
+}
+
+.chat-stream-status-rail__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
+  background: rgba(219, 234, 254, 0.96);
+  color: rgb(29, 78, 216);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chat-stream-status-rail__label {
+  min-width: 0;
+  color: rgb(15, 23, 42);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.chat-stream-status-rail__detail {
+  min-width: 0;
+  color: rgba(71, 85, 105, 0.96);
+  font-size: 0.82rem;
+}
+
+.chat-stream-status-rail__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.chat-stream-status-rail__action {
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 999px;
+  padding: 0.34rem 0.76rem;
+  background: rgba(255, 255, 255, 0.86);
+  color: rgb(51, 65, 85);
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.chat-stream-status-rail__action:hover {
+  background: rgba(248, 250, 252, 1);
+  border-color: rgba(96, 165, 250, 0.48);
+  color: rgb(30, 64, 175);
+}
+
+.chat-stream-status-rail__action.is-danger:hover {
+  border-color: rgba(248, 113, 113, 0.5);
+  color: rgb(185, 28, 28);
 }
 
 .chat-thread-shell-desktop .chat-messages-area {
@@ -4951,6 +5232,42 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-input-dock {
   background: transparent;
 }
 
+:root.dark .chat-stream-status-rail,
+[data-theme='dark'] .chat-stream-status-rail {
+  border-color: rgba(59, 130, 246, 0.3);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.86));
+  box-shadow: 0 20px 38px -32px rgba(2, 6, 23, 0.72);
+}
+
+:root.dark .chat-stream-status-rail__badge,
+[data-theme='dark'] .chat-stream-status-rail__badge {
+  background: rgba(30, 64, 175, 0.36);
+  color: rgb(191, 219, 254);
+}
+
+:root.dark .chat-stream-status-rail__label,
+[data-theme='dark'] .chat-stream-status-rail__label {
+  color: rgb(226, 232, 240);
+}
+
+:root.dark .chat-stream-status-rail__detail,
+[data-theme='dark'] .chat-stream-status-rail__detail {
+  color: rgba(191, 219, 254, 0.78);
+}
+
+:root.dark .chat-stream-status-rail__action,
+[data-theme='dark'] .chat-stream-status-rail__action {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.78);
+  color: rgb(226, 232, 240);
+}
+
+:root.dark .chat-stream-status-rail__action:hover,
+[data-theme='dark'] .chat-stream-status-rail__action:hover {
+  border-color: rgba(96, 165, 250, 0.42);
+  color: rgb(191, 219, 254);
+}
+
 :root.dark .chat-desktop-shell .chat-workspace,
 [data-theme='dark'] .chat-desktop-shell .chat-workspace {
   background: transparent;
@@ -5183,6 +5500,11 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
     0 12px 24px -22px rgba(14, 165, 233, 0.42);
 }
 
+:root.dark .chat-thread-routing-btn__status,
+[data-theme='dark'] .chat-thread-routing-btn__status {
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.92);
+}
+
 :root.dark .enhanced-mode-hover-card,
 [data-theme='dark'] .enhanced-mode-hover-card {
   border-color: rgba(71, 85, 105, 0.76);
@@ -5263,8 +5585,7 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
 :root.dark .enhanced-mode-hover-card__item,
 [data-theme='dark'] .enhanced-mode-hover-card__item {
   border-color: rgba(71, 85, 105, 0.72);
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.88));
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.88));
   color: rgba(241, 245, 249, 0.94);
 }
 
@@ -5759,6 +6080,18 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
 }
 
 @media (max-width: 640px) {
+  .chat-stream-status-rail {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 0.72rem 0.8rem;
+  }
+
+  .chat-stream-status-rail__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
   .chat-topbar {
     --chat-header-pad-x: 0.82rem;
     --chat-header-pad-y: 0.72rem;

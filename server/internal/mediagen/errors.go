@@ -10,4 +10,5 @@ var (
 	ErrGenerationCancelled = errors.New("mediagen: generation cancelled")
 	ErrTimeout             = errors.New("mediagen: generation timed out")
 	ErrNoResults           = errors.New("mediagen: no results returned")
+	ErrManagerClosed       = errors.New("mediagen: manager shutting down")
 )

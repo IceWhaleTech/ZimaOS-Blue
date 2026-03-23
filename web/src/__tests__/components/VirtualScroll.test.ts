@@ -223,11 +223,7 @@ describe('VirtualScroll', () => {
     await wrapper.vm.$nextTick()
     await flushRafChain()
 
-    const nextItems = [
-      { id: 'older-0' },
-      { id: 'older-1' },
-      ...initialItems,
-    ]
+    const nextItems = [{ id: 'older-0' }, { id: 'older-1' }, ...initialItems]
     await wrapper.setProps({
       itemCount: nextItems.length,
       items: nextItems,

@@ -196,6 +196,27 @@ func TestShouldPreferDeepSearchReport(t *testing.T) {
 	}
 }
 
+func TestShouldForceResearchToolExposure(t *testing.T) {
+	enabled := true
+	disabled := false
+
+	if !shouldForceResearchToolExposure("投资人问，你们blue在memory layer做了哪些创新？为什么它的上下文治理能力比openclaw好？我们具体现有方案和它的区别是什么？Agent行业SOTA的方案是什么？", &enabled) {
+		t.Fatal("expected multi-part comparative prompt to force research tool exposure when deep research is enabled")
+	}
+
+	if shouldForceResearchToolExposure("请用一句话比较 A 和 B。", &enabled) {
+		t.Fatal("expected short comparative prompt not to force research tool exposure")
+	}
+
+	if !shouldForceResearchToolExposure("What are the current best practices for agent memory systems?", &enabled) {
+		t.Fatal("expected best-practices prompt to force research tool exposure")
+	}
+
+	if shouldForceResearchToolExposure("What are the current best practices for agent memory systems?", &disabled) {
+		t.Fatal("expected disabled deep research toggle not to force research tool exposure")
+	}
+}
+
 func TestBuildDeepSearchExecutionHint(t *testing.T) {
 	hint := buildDeepSearchExecutionHint("帮我查 BlueAgent 最新动态并做完整报告")
 	if hint == "" {
@@ -768,6 +789,15 @@ Need include in assistant message header not possible in plaintext.
 		}
 	})
 
+	t.Run("agent mode requests todo reconciliation for wrap-up reply with pending checklist", func(t *testing.T) {
+		current := "交付如下：我先给你当前结果和后续建议。后续建议：可以继续补一轮验证。"
+		tracked := "- [x] 收集信息\n- [ ] 输出最终报告"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, tracked, true, true)
+		if !ok || reason != "todo_reconcile" {
+			t.Fatalf("expected todo_reconcile auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
 	t.Run("agent mode does not request next-step guidance when already present", func(t *testing.T) {
 		current := "任务已完成。完成内容：已执行。使用方法：已验证。如果你愿意，我还可以帮你：1. 如果你愿意，我可以帮你运行一轮回归测试。"
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true)
@@ -967,6 +997,51 @@ func TestSyncTrackedTodoAfterToolRound(t *testing.T) {
 		}
 		if got != tracked {
 			t.Fatalf("unexpected checklist mutation without explicit update: %q", got)
+		}
+	})
+
+	t.Run("completes remaining items when tool round produces the requested artifact", func(t *testing.T) {
+		tracked := "- [x] gather facts\n- [ ] save final report"
+		toolCalls := []llm.ToolCall{{ID: "call-write-1", Name: "write_commit"}}
+		toolResults := []llm.Message{
+			{
+				Role:       llm.RoleTool,
+				ToolCallID: "call-write-1",
+				Content:    `{"success":true,"path":"reports/final.md"}`,
+			},
+		}
+
+		got, changed := reconcileTrackedTodoAfterToolRound(
+			tracked,
+			"Please write the final report to reports/final.md.",
+			toolCalls,
+			toolResults,
+			"",
+			false,
+			false,
+		)
+		want := "- [x] gather facts\n- [x] save final report"
+		if !changed {
+			t.Fatal("expected checklist to be completed after explicit artifact delivery")
+		}
+		if got != want {
+			t.Fatalf("unexpected checklist after artifact delivery: %q", got)
+		}
+	})
+}
+
+func TestSyncTrackedTodoAfterCompletionSignal(t *testing.T) {
+	t.Run("completes all remaining items for an explicit artifact delivery reply", func(t *testing.T) {
+		tracked := "- [x] gather facts\n- [ ] write final report\n- [ ] share final answer"
+		current := "Saved the requested file to \"reports/final.md\"."
+
+		got, changed := syncTrackedTodoAfterCompletionSignal(tracked, current)
+		want := "- [x] gather facts\n- [x] write final report\n- [x] share final answer"
+		if !changed {
+			t.Fatal("expected explicit delivery reply to complete remaining todo items")
+		}
+		if got != want {
+			t.Fatalf("unexpected checklist after explicit delivery reply: %q", got)
 		}
 	})
 }
@@ -1330,6 +1405,10 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	}
 	if !strings.Contains(pendingTodo, "at least one real tool call") {
 		t.Fatalf("expected pending_todo nudge to enforce real execution, got=%q", pendingTodo)
+	}
+	todoReconcile := buildToollessAutoContinueNudgeForReason(true, "todo_reconcile")
+	if !strings.Contains(todoReconcile, "plan_update") || !strings.Contains(todoReconcile, "canonical TODO checklist") {
+		t.Fatalf("expected todo_reconcile nudge to require checklist synchronization, got=%q", todoReconcile)
 	}
 	missingNextSteps := buildToollessAutoContinueNudgeForReason(true, "missing_next_steps")
 	if !strings.Contains(missingNextSteps, "WITHOUT calling tools") || !strings.Contains(missingNextSteps, "If you'd like, I can also help with") {
@@ -2255,7 +2334,7 @@ func TestApplyResearchToolPreference_UsesUnifiedWebToolForStockReport(t *testing
 	}
 }
 
-func TestApplyImageToolPreference_PrefersImageGenerationAlias(t *testing.T) {
+func TestApplyImageToolPreference_PrefersNativeImageTool(t *testing.T) {
 	defs := []tools.ToolDefinition{
 		{Name: "image"},
 		{Name: "image_generation"},
@@ -2268,7 +2347,7 @@ func TestApplyImageToolPreference_PrefersImageGenerationAlias(t *testing.T) {
 	}
 
 	filtered := applyImageToolPreference(defs, `Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as "robot_cafe.png" in the current directory.`)
-	if got := toolNames(filtered); strings.Join(got, ",") != "image_generation,read,write,file_delete,edit,ls,find" {
+	if got := toolNames(filtered); strings.Join(got, ",") != "image,read,write,file_delete,edit,ls,find" {
 		t.Fatalf("expected image generation prompt to keep image tool plus local file workflow, got=%v", got)
 	}
 }
@@ -2320,7 +2399,7 @@ func TestIsImageGenerationIntentMessage_UsesSharedIRHeuristics(t *testing.T) {
 
 func TestApplyImageToolPreference_DoesNotTriggerOnMetaDiscussion(t *testing.T) {
 	defs := []tools.ToolDefinition{
-		{Name: "image_generation"},
+		{Name: "image"},
 		{Name: "read"},
 		{Name: "write"},
 		{Name: "web"},
@@ -2328,14 +2407,14 @@ func TestApplyImageToolPreference_DoesNotTriggerOnMetaDiscussion(t *testing.T) {
 
 	msg := "IR匹配关键词的时候，也需要考虑关键词命中的密度吧，比如在一大段文本内部出现了生成图片可能就不是这个意图"
 	filtered := applyImageToolPreference(defs, msg)
-	if got := toolNames(filtered); strings.Join(got, ",") != "image_generation,read,write,web" {
+	if got := toolNames(filtered); strings.Join(got, ",") != "image,read,write,web" {
 		t.Fatalf("expected meta discussion to keep original tool set, got=%v", got)
 	}
 }
 
-func TestCollectSuccessfulWriteTargets_IncludesSavedImageArtifact(t *testing.T) {
+func TestCollectSuccessfulWriteTargets_IncludesSavedImageArtifactFromLegacyAlias(t *testing.T) {
 	targets := collectSuccessfulWriteTargets([]llm.ToolCall{
-		{ID: "call-1", Name: "image_generation"},
+		{ID: "call-1", Name: "generateImage"},
 	}, []llm.Message{
 		{
 			Role:       llm.RoleTool,
@@ -2352,7 +2431,7 @@ func TestCollectSuccessfulWriteTargets_IncludesSavedImageArtifact(t *testing.T) 
 func TestBuildSuccessfulImageArtifactCompletion(t *testing.T) {
 	completion := buildSuccessfulImageArtifactCompletion(
 		`Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as "robot_cafe.png" in the current directory.`,
-		[]llm.ToolCall{{ID: "call-1", Name: "image_generation"}},
+		[]llm.ToolCall{{ID: "call-1", Name: "generate_image"}},
 		[]llm.Message{{
 			Role:       llm.RoleTool,
 			ToolCallID: "call-1",

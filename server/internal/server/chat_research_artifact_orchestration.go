@@ -95,7 +95,7 @@ func (h *ChatHandler) executeDeterministicArtifactWrite(ctx context.Context, tc 
 		return llm.Message{}, false
 	}
 
-	raw, err := normalizeDeterministicToolResult(result)
+	raw, err := json.Marshal(result)
 	if err != nil || len(raw) == 0 {
 		return llm.Message{}, false
 	}
@@ -105,31 +105,6 @@ func (h *ChatHandler) executeDeterministicArtifactWrite(ctx context.Context, tc 
 		ToolCallID: tc.ID,
 		Content:    string(raw),
 	}, true
-}
-
-func normalizeDeterministicToolResult(result interface{}) ([]byte, error) {
-	switch typed := result.(type) {
-	case string:
-		trimmed := strings.TrimSpace(typed)
-		if trimmed == "" {
-			return nil, nil
-		}
-		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
-			return []byte(trimmed), nil
-		}
-		return json.Marshal(trimmed)
-	case []byte:
-		trimmed := strings.TrimSpace(string(typed))
-		if trimmed == "" {
-			return nil, nil
-		}
-		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
-			return []byte(trimmed), nil
-		}
-		return json.Marshal(trimmed)
-	default:
-		return json.Marshal(result)
-	}
 }
 
 func shouldUseDeterministicResearchArtifactOrchestration(userMessage, currentContent string, messages []llm.Message) bool {
@@ -295,7 +270,7 @@ func collectResearchArtifactEvidence(messages []llm.Message) researchArtifactEvi
 					Vendor:  inferCompetitiveVendor(row.Title + " " + row.URL + " " + row.Description),
 				})
 			}
-		case "research_run", "deep_research", "deep-research":
+		case "research_run", "research_status", "deep_research", "deep-research":
 			appendAnswer(anyToStringForLLM(payload["answer"]))
 			if report, ok := payload["report"].(map[string]interface{}); ok {
 				appendAnswer(anyToStringForLLM(report["answer"]))

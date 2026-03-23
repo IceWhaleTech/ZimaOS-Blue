@@ -66,6 +66,51 @@ func TestGetTimeout(t *testing.T) {
 	}
 }
 
+func TestCleanupExpiredMonitorFramesUsesRetention(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.SessionScreenshotRetention = 24 * time.Hour
+
+	service, err := NewService(cfg)
+	require.NoError(t, err)
+
+	now := time.Now()
+	service.tabs["tab-live"] = &tabInfo{targetID: "tab-live", active: true}
+	service.tabs[detachedMonitorTargetID] = &tabInfo{
+		targetID: detachedMonitorTargetID,
+		detached: true,
+	}
+	service.screenshotHistory["tab-live"] = []SessionScreenshot{
+		{
+			Data:       "old-frame",
+			CapturedAt: now.Add(-72 * time.Hour).Format(time.RFC3339),
+			Title:      "Old frame",
+		},
+		{
+			Data:       "fresh-frame",
+			CapturedAt: now.Add(-2 * time.Hour).Format(time.RFC3339),
+			Title:      "Fresh frame",
+		},
+	}
+	service.screenshotHistory[detachedMonitorTargetID] = []SessionScreenshot{
+		{
+			Data:       "stale-detached",
+			CapturedAt: now.Add(-72 * time.Hour).Format(time.RFC3339),
+			Title:      "Detached frame",
+		},
+	}
+
+	service.CleanupExpiredMonitorFrames()
+
+	history := service.SessionScreenshotHistory("tab-live")
+	require.Len(t, history, 1)
+	assert.Equal(t, "fresh-frame", history[0].Data)
+	assert.Equal(t, "Fresh frame", history[0].Title)
+	assert.Nil(t, service.SessionScreenshotHistory(detachedMonitorTargetID))
+
+	_, detachedExists := service.tabs[detachedMonitorTargetID]
+	assert.False(t, detachedExists)
+}
+
 func TestSecurityChecker_CheckURL(t *testing.T) {
 	tests := []struct {
 		name           string

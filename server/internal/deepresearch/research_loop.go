@@ -26,6 +26,8 @@ type researchBrief struct {
 	Axes             []researchAxis
 	WantsLatest      bool
 	PersonTimeline   bool
+	RetryContext     string
+	RetryQueries     []string
 }
 
 type researchAxis struct {
@@ -47,7 +49,7 @@ type researchGap struct {
 	EvidenceIDs []string
 }
 
-func buildResearchBrief(query, lang string, timeWindows []string, reportStyle string) researchBrief {
+func buildResearchBrief(query, lang string, timeWindows []string, reportStyle string, retryContext string, retryFeedback map[string]interface{}) researchBrief {
 	q := strings.TrimSpace(query)
 	brief := researchBrief{
 		Query:         q,
@@ -99,6 +101,7 @@ func buildResearchBrief(query, lang string, timeWindows []string, reportStyle st
 			fmt.Sprintf("%s identity/background", entity),
 			fmt.Sprintf("%s viewpoint evolution", entity),
 		})
+		applyRetryGuidance(&brief, lang, retryContext, retryFeedback)
 		return brief
 	}
 
@@ -113,7 +116,78 @@ func buildResearchBrief(query, lang string, timeWindows []string, reportStyle st
 	if looksLikeClaimValidation(q) {
 		brief.MustVerifyClaims = []string{q}
 	}
+	applyRetryGuidance(&brief, lang, retryContext, retryFeedback)
 	return brief
+}
+
+func applyRetryGuidance(brief *researchBrief, lang, retryContext string, retryFeedback map[string]interface{}) {
+	if brief == nil {
+		return
+	}
+	retryContext = strings.TrimSpace(retryContext)
+	if retryContext == "" && len(retryFeedback) == 0 {
+		return
+	}
+	failureLabel := retryString(retryFeedback["failure_label"])
+	summary := retryString(retryFeedback["summary"])
+	failedChecks := retryStringSlice(retryFeedback["failed_checks"])
+	failedArtifacts := retryStringSlice(retryFeedback["failed_artifacts"])
+	claims := retryMustVerifyClaims(lang, summary, failedChecks, failedArtifacts, retryContext)
+	queries := retryAxisQueryHints(brief.Query, lang, failureLabel, summary, failedChecks, failedArtifacts)
+	if retryContext == "" && len(claims) == 0 && len(queries) == 0 {
+		return
+	}
+	brief.RetryContext = retryContext
+	if len(claims) > 0 {
+		brief.MustVerifyClaims = dedupeStrings(append(claims, brief.MustVerifyClaims...))
+	}
+	if len(queries) == 0 {
+		queries = []string{buildPrimarySourceQuery(brief.Query, lang)}
+	}
+	brief.RetryQueries = dedupeStrings(queries)
+	retryAxis := researchAxis{
+		ID:        "retry",
+		Label:     localizedAxisLabel(lang, "retry", "Retry recovery"),
+		Priority:  1,
+		QueryHint: brief.RetryQueries[0],
+	}
+	brief.Axes = append([]researchAxis{retryAxis}, brief.Axes...)
+}
+
+func prependRetryPlanningTasks(tasks []Task, brief researchBrief) []Task {
+	if len(brief.RetryQueries) == 0 {
+		return tasks
+	}
+	seen := make(map[string]struct{}, len(tasks)+len(brief.RetryQueries))
+	out := make([]Task, 0, len(tasks)+len(brief.RetryQueries))
+	nextID := 1
+	addTask := func(task Task) {
+		key := strings.ToLower(strings.TrimSpace(task.Question))
+		if key == "" {
+			return
+		}
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, task)
+	}
+	for _, query := range brief.RetryQueries {
+		addTask(Task{
+			ID:       fmt.Sprintf("task_retry_%d", nextID),
+			Question: strings.TrimSpace(query),
+			Priority: 1,
+			Depth:    1,
+			Status:   "pending",
+			Axis:     "retry",
+			Category: "retry_recovery",
+		})
+		nextID++
+	}
+	for _, task := range tasks {
+		addTask(task)
+	}
+	return out
 }
 
 func annotateTasksWithBrief(tasks []Task, brief researchBrief) []Task {
@@ -672,6 +746,11 @@ func axisGapQueries(brief researchBrief, axis researchAxis, lang string) []strin
 	}
 	base := firstNonEmpty(axis.QueryHint, brief.Query)
 	switch axis.ID {
+	case "retry":
+		if len(brief.RetryQueries) > 0 {
+			return append([]string(nil), brief.RetryQueries...)
+		}
+		return []string{buildPrimarySourceQuery(brief.Query, lang)}
 	case "latest":
 		return freshnessGapQueries(base, lang)
 	case "official":
@@ -783,6 +862,125 @@ func buildOfficialPersonPeriodQuery(entity, period, lang string) string {
 	return fmt.Sprintf("%s %s official interview primary source", entity, period)
 }
 
+func retryStringSlice(raw interface{}) []string {
+	switch typed := raw.(type) {
+	case []string:
+		return dedupeStrings(append([]string(nil), typed...))
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text := strings.TrimSpace(fmt.Sprint(item))
+			if text != "" && text != "<nil>" {
+				out = append(out, text)
+			}
+		}
+		return dedupeStrings(out)
+	default:
+		return nil
+	}
+}
+
+func retryString(raw interface{}) string {
+	if raw == nil {
+		return ""
+	}
+	text := strings.TrimSpace(fmt.Sprint(raw))
+	if text == "" || text == "<nil>" {
+		return ""
+	}
+	return text
+}
+
+func retryMustVerifyClaims(lang, summary string, failedChecks, failedArtifacts []string, retryContext string) []string {
+	claims := make([]string, 0, 4)
+	if summary != "" && summary != "<nil>" {
+		claims = append(claims, localizedRetryClaim(lang, summary))
+	}
+	for _, detail := range limitRetryStrings(failedChecks, 2) {
+		claims = append(claims, localizedRetryClaim(lang, detail))
+	}
+	for _, detail := range limitRetryStrings(failedArtifacts, 1) {
+		claims = append(claims, localizedRetryClaim(lang, detail))
+	}
+	if len(claims) == 0 && strings.TrimSpace(retryContext) != "" {
+		claims = append(claims, localizedRetryClaim(lang, localizedRetryFallback(lang)))
+	}
+	return dedupeStrings(claims)
+}
+
+func retryAxisQueryHints(query, lang, failureLabel, summary string, failedChecks, failedArtifacts []string) []string {
+	details := limitRetryStrings(append(append([]string(nil), failedChecks...), failedArtifacts...), 2)
+	if len(details) == 0 && summary != "" && summary != "<nil>" {
+		details = []string{summary}
+	}
+	out := make([]string, 0, 3)
+	for _, detail := range details {
+		if q := buildRetryDetailQuery(query, detail, lang); q != "" {
+			out = append(out, q)
+		}
+	}
+	switch strings.TrimSpace(failureLabel) {
+	case "required_check_missing", "verification_failed", "missing_artifact":
+		out = append(out, buildPrimarySourceQuery(query, lang))
+	case "tool_selection_error", "forbidden_tool_used":
+		out = append(out, buildOfficialQuery(query, lang))
+	default:
+		out = append(out, buildPrimarySourceQuery(query, lang))
+	}
+	return dedupeStrings(out)
+}
+
+func buildRetryDetailQuery(query, detail, lang string) string {
+	detail = retryQueryTerm(detail)
+	if detail == "" {
+		return ""
+	}
+	if normalizeResearchLang(lang, query) == researchLangZH {
+		return fmt.Sprintf("%s %s 一手来源 核验", query, detail)
+	}
+	return fmt.Sprintf("%s %s primary source verification", query, detail)
+}
+
+func retryQueryTerm(detail string) string {
+	detail = strings.TrimSpace(detail)
+	if detail == "" || detail == "<nil>" {
+		return ""
+	}
+	if idx := strings.Index(detail, "("); idx > 0 {
+		detail = detail[:idx]
+	}
+	detail = strings.TrimSpace(strings.Trim(detail, ":-.,;"))
+	return strings.Join(strings.Fields(detail), " ")
+}
+
+func localizedRetryClaim(lang, detail string) string {
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		return ""
+	}
+	if isResearchLangZH(lang, "") {
+		return fmt.Sprintf("重试重点：%s", detail)
+	}
+	return fmt.Sprintf("Retry target: %s", detail)
+}
+
+func localizedRetryFallback(lang string) string {
+	if isResearchLangZH(lang, "") {
+		return "先修正上一轮 Harness 指出的失败点，再结束本轮研究"
+	}
+	return "correct the previous harness failure before concluding the research run"
+}
+
+func limitRetryStrings(items []string, maxItems int) []string {
+	if len(items) == 0 || maxItems <= 0 {
+		return nil
+	}
+	if len(items) <= maxItems {
+		return append([]string(nil), items...)
+	}
+	return append([]string(nil), items[:maxItems]...)
+}
+
 func queryWantsLatest(query string) bool {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {
@@ -818,128 +1016,426 @@ func timelineAxisID(idx int) string {
 }
 
 func localizedAxisLabel(lang, axisID, fallback string) string {
-	if normalizeResearchLang(lang, axisID) == researchLangZH {
-		switch axisID {
-		case "identity_validation":
-			return "身份核验"
-		case "internet_footprint":
-			return "互联网足迹"
-		case "overview":
-			return "概览"
-		case "latest":
-			return "最新动态"
-		case "official":
-			return "官方来源"
-		case "comparison":
-			return "对比信息"
-		case "best_practices":
-			return "最佳实践"
-		case "research":
-			return "研究"
+	locale := deepResearchLocaleKey(lang, axisID)
+	if labels, ok := deepResearchAxisLabelTranslations[axisID]; ok {
+		if text := deepResearchLocalizedText(locale, labels); text != "" {
+			return text
 		}
 	}
 	return fallback
 }
 
 func localizedFocusLabel(lang, key, fallback string) string {
-	if normalizeResearchLang(lang, key) == researchLangZH {
-		switch key {
-		case "source_diversity":
-			return "来源多样性"
-		case "freshness":
-			return "时效性"
-		case "claim_validation":
-			return "结论核验"
+	locale := deepResearchLocaleKey(lang, key)
+	if labels, ok := deepResearchFocusLabelTranslations[key]; ok {
+		if text := deepResearchLocalizedText(locale, labels); text != "" {
+			return text
 		}
 	}
 	return fallback
 }
 
 func localizedGapText(lang, focus, fallback string) string {
-	if normalizeResearchLang(lang, focus) == researchLangZH {
-		switch fallback {
-		case "Need evidence coverage":
+	switch fallback {
+	case "Need evidence coverage":
+		switch parseResearchLocale(lang, focus) {
+		case "zh-CN":
 			return fmt.Sprintf("需要补足%s证据", focus)
-		case "Need primary or official sources":
-			return fmt.Sprintf("需要补充%s的一手/官方来源", focus)
-		case "Need broader evidence coverage":
-			return fmt.Sprintf("需要扩展%s证据覆盖", focus)
-		case "Need broader source diversity":
-			return "需要扩展来源多样性"
-		case "Need fresher sources":
-			return "需要更新近的来源"
-		case "Resolve conflicting claims":
-			return "需要消解冲突结论"
+		case "zh-TW":
+			return fmt.Sprintf("需要補足%s證據", focus)
+		case "ja-JP":
+			return "根拠の補強が必要です"
+		case "ko-KR":
+			return "근거 보강이 필요합니다"
+		case "de-DE":
+			return "Mehr Belege werden benötigt"
+		case "fr-FR":
+			return "Davantage de preuves sont nécessaires"
+		case "es-ES":
+			return "Se necesita más evidencia"
+		case "it-IT":
+			return "Sono necessarie più prove"
+		case "pt-BR", "pt-PT":
+			return "São necessárias mais evidências"
+		case "ru-RU":
+			return "Нужно больше доказательств"
+		case "pl-PL":
+			return "Potrzeba więcej dowodów"
+		case "nl-NL":
+			return "Er is meer bewijs nodig"
+		case "sv-SE":
+			return "Mer bevis behövs"
+		case "da-DK":
+			return "Der er brug for mere evidens"
+		case "nb-NO":
+			return "Det trengs mer dokumentasjon"
+		case "cs-CZ":
+			return "Je potřeba více důkazů"
+		case "sk-SK":
+			return "Je potrebných viac dôkazov"
+		case "hu-HU":
+			return "Több bizonyíték szükséges"
+		case "ro-RO":
+			return "Sunt necesare mai multe dovezi"
+		case "hr-HR":
+			return "Potrebno je više dokaza"
+		case "el-GR":
+			return "Χρειάζονται περισσότερα αποδεικτικά στοιχεία"
+		case "ca-ES":
+			return "Calen més proves"
+		case "ga-IE":
+			return "Tá níos mó fianaise de dhíth"
+		case "ml-IN":
+			return "കൂടുതൽ തെളിവുകൾ ആവശ്യമാണ്"
+		default:
+			return fallback
 		}
+	case "Need primary or official sources":
+		switch parseResearchLocale(lang, focus) {
+		case "zh-CN":
+			return fmt.Sprintf("需要补充%s的一手/官方来源", focus)
+		case "zh-TW":
+			return fmt.Sprintf("需要補充%s的一手/官方來源", focus)
+		case "ja-JP":
+			return "一次情報または公式ソースが必要です"
+		case "ko-KR":
+			return "1차 또는 공식 출처가 필요합니다"
+		case "de-DE":
+			return "Primär- oder offizielle Quellen werden benötigt"
+		case "fr-FR":
+			return "Des sources primaires ou officielles sont nécessaires"
+		case "es-ES":
+			return "Se necesitan fuentes primarias u oficiales"
+		case "it-IT":
+			return "Sono necessarie fonti primarie o ufficiali"
+		case "pt-BR", "pt-PT":
+			return "São necessárias fontes primárias ou oficiais"
+		case "ru-RU":
+			return "Нужны первичные или официальные источники"
+		case "pl-PL":
+			return "Potrzebne są źródła pierwotne lub oficjalne"
+		case "nl-NL":
+			return "Primaire of officiële bronnen zijn nodig"
+		case "sv-SE":
+			return "Primära eller officiella källor behövs"
+		case "da-DK":
+			return "Primære eller officielle kilder er nødvendige"
+		case "nb-NO":
+			return "Primære eller offisielle kilder trengs"
+		case "cs-CZ":
+			return "Jsou potřeba primární nebo oficiální zdroje"
+		case "sk-SK":
+			return "Sú potrebné primárne alebo oficiálne zdroje"
+		case "hu-HU":
+			return "Elsődleges vagy hivatalos forrásokra van szükség"
+		case "ro-RO":
+			return "Sunt necesare surse primare sau oficiale"
+		case "hr-HR":
+			return "Potrebni su primarni ili službeni izvori"
+		case "el-GR":
+			return "Χρειάζονται πρωτογενείς ή επίσημες πηγές"
+		case "ca-ES":
+			return "Calen fonts primàries o oficials"
+		case "ga-IE":
+			return "Tá príomhfhoinsí nó foinsí oifigiúla de dhíth"
+		case "ml-IN":
+			return "പ്രാഥമികമോ ഔദ്യോഗികമോ ആയ ഉറവിടങ്ങൾ ആവശ്യമാണ്"
+		default:
+			return fallback
+		}
+	case "Need broader evidence coverage":
+		switch parseResearchLocale(lang, focus) {
+		case "zh-CN":
+			return fmt.Sprintf("需要扩展%s证据覆盖", focus)
+		case "zh-TW":
+			return fmt.Sprintf("需要擴展%s證據覆蓋", focus)
+		case "ja-JP":
+			return "より広い根拠の裏付けが必要です"
+		case "ko-KR":
+			return "더 폭넓은 근거 확보가 필요합니다"
+		case "de-DE":
+			return "Eine breitere Evidenzabdeckung wird benötigt"
+		case "fr-FR":
+			return "Une couverture de preuves plus large est nécessaire"
+		case "es-ES":
+			return "Se necesita una cobertura de evidencia más amplia"
+		case "it-IT":
+			return "È necessaria una copertura probatoria più ampia"
+		case "pt-BR", "pt-PT":
+			return "É necessária uma cobertura de evidências mais ampla"
+		case "ru-RU":
+			return "Нужно более широкое покрытие доказательствами"
+		case "pl-PL":
+			return "Potrzebne jest szersze pokrycie dowodami"
+		case "nl-NL":
+			return "Er is bredere bewijsdekking nodig"
+		case "sv-SE":
+			return "Bredare bevisunderlag behövs"
+		case "da-DK":
+			return "Der er brug for bredere evidensdækning"
+		case "nb-NO":
+			return "Det trengs bredere bevisdekning"
+		case "cs-CZ":
+			return "Je potřeba širší pokrytí důkazy"
+		case "sk-SK":
+			return "Je potrebné širšie pokrytie dôkazmi"
+		case "hu-HU":
+			return "Szélesebb bizonyíték-lefedettség szükséges"
+		case "ro-RO":
+			return "Este necesară o acoperire mai largă a dovezilor"
+		case "hr-HR":
+			return "Potrebna je šira pokrivenost dokazima"
+		case "el-GR":
+			return "Χρειάζεται ευρύτερη κάλυψη αποδεικτικών στοιχείων"
+		case "ca-ES":
+			return "Cal una cobertura de proves més àmplia"
+		case "ga-IE":
+			return "Tá clúdach fianaise níos leithne de dhíth"
+		case "ml-IN":
+			return "കൂടുതൽ വ്യാപകമായ തെളിവ് കവറേജ് ആവശ്യമാണ്"
+		default:
+			return fallback
+		}
+	case "Need broader source diversity":
+		switch parseResearchLocale(lang, focus) {
+		case "zh-CN":
+			return "需要扩展来源多样性"
+		case "zh-TW":
+			return "需要擴展來源多樣性"
+		case "ja-JP":
+			return "情報源の多様性を広げる必要があります"
+		case "ko-KR":
+			return "출처 다양성을 더 넓혀야 합니다"
+		case "de-DE":
+			return "Die Quellenvielfalt muss erweitert werden"
+		case "fr-FR":
+			return "Il faut élargir la diversité des sources"
+		case "es-ES":
+			return "Hay que ampliar la diversidad de fuentes"
+		case "it-IT":
+			return "Occorre ampliare la diversità delle fonti"
+		case "pt-BR", "pt-PT":
+			return "É preciso ampliar a diversidade de fontes"
+		case "ru-RU":
+			return "Нужно расширить разнообразие источников"
+		case "pl-PL":
+			return "Trzeba poszerzyć różnorodność źródeł"
+		case "nl-NL":
+			return "De brondiversiteit moet worden vergroot"
+		case "sv-SE":
+			return "Källmångfalden behöver breddas"
+		case "da-DK":
+			return "Kildediversiteten skal udvides"
+		case "nb-NO":
+			return "Kildemangfoldet må utvides"
+		case "cs-CZ":
+			return "Je potřeba rozšířit rozmanitost zdrojů"
+		case "sk-SK":
+			return "Je potrebné rozšíriť rozmanitosť zdrojov"
+		case "hu-HU":
+			return "Bővíteni kell a források sokféleségét"
+		case "ro-RO":
+			return "Diversitatea surselor trebuie extinsă"
+		case "hr-HR":
+			return "Treba proširiti raznolikost izvora"
+		case "el-GR":
+			return "Χρειάζεται ευρύτερη ποικιλία πηγών"
+		case "ca-ES":
+			return "Cal ampliar la diversitat de fonts"
+		case "ga-IE":
+			return "Ní mór éagsúlacht na bhfoinsí a leathnú"
+		case "ml-IN":
+			return "ഉറവിടങ്ങളുടെ വൈവിധ്യം വികസിപ്പിക്കണം"
+		default:
+			return fallback
+		}
+	case "Need fresher sources":
+		switch parseResearchLocale(lang, focus) {
+		case "zh-CN":
+			return "需要更新近的来源"
+		case "zh-TW":
+			return "需要更新近的來源"
+		case "ja-JP":
+			return "より新しい情報源が必要です"
+		case "ko-KR":
+			return "더 최신 출처가 필요합니다"
+		case "de-DE":
+			return "Aktuellere Quellen werden benötigt"
+		case "fr-FR":
+			return "Des sources plus récentes sont nécessaires"
+		case "es-ES":
+			return "Se necesitan fuentes más recientes"
+		case "it-IT":
+			return "Sono necessarie fonti più recenti"
+		case "pt-BR", "pt-PT":
+			return "São necessárias fontes mais recentes"
+		case "ru-RU":
+			return "Нужны более свежие источники"
+		case "pl-PL":
+			return "Potrzebne są nowsze źródła"
+		case "nl-NL":
+			return "Meer recente bronnen zijn nodig"
+		case "sv-SE":
+			return "Nyare källor behövs"
+		case "da-DK":
+			return "Nyere kilder er nødvendige"
+		case "nb-NO":
+			return "Nyere kilder trengs"
+		case "cs-CZ":
+			return "Jsou potřeba aktuálnější zdroje"
+		case "sk-SK":
+			return "Sú potrebné novšie zdroje"
+		case "hu-HU":
+			return "Frissebb forrásokra van szükség"
+		case "ro-RO":
+			return "Sunt necesare surse mai recente"
+		case "hr-HR":
+			return "Potrebni su noviji izvori"
+		case "el-GR":
+			return "Χρειάζονται πιο πρόσφατες πηγές"
+		case "ca-ES":
+			return "Calen fonts més recents"
+		case "ga-IE":
+			return "Tá foinsí níos nuaí de dhíth"
+		case "ml-IN":
+			return "കൂടുതൽ പുതിയത് ആയ ഉറവിടങ്ങൾ ആവശ്യമാണ്"
+		default:
+			return fallback
+		}
+	case "Resolve conflicting claims":
+		switch parseResearchLocale(lang, focus) {
+		case "zh-CN":
+			return "需要消解冲突结论"
+		case "zh-TW":
+			return "需要消解衝突結論"
+		case "ja-JP":
+			return "矛盾する主張を解消してください"
+		case "ko-KR":
+			return "상충하는 주장을 해소해야 합니다"
+		case "de-DE":
+			return "Widersprüchliche Aussagen müssen geklärt werden"
+		case "fr-FR":
+			return "Il faut résoudre les affirmations contradictoires"
+		case "es-ES":
+			return "Hay que resolver las afirmaciones contradictorias"
+		case "it-IT":
+			return "Occorre risolvere le affermazioni contrastanti"
+		case "pt-BR", "pt-PT":
+			return "É preciso resolver as alegações conflitantes"
+		case "ru-RU":
+			return "Нужно устранить противоречащие утверждения"
+		case "pl-PL":
+			return "Należy rozstrzygnąć sprzeczne twierdzenia"
+		case "nl-NL":
+			return "Tegenstrijdige beweringen moeten worden opgehelderd"
+		case "sv-SE":
+			return "Motstridiga påståenden måste redas ut"
+		case "da-DK":
+			return "Modstridende påstande skal afklares"
+		case "nb-NO":
+			return "Motstridende påstander må avklares"
+		case "cs-CZ":
+			return "Je potřeba vyřešit rozporná tvrzení"
+		case "sk-SK":
+			return "Je potrebné vyriešiť protichodné tvrdenia"
+		case "hu-HU":
+			return "Fel kell oldani az ellentmondó állításokat"
+		case "ro-RO":
+			return "Trebuie rezolvate afirmațiile contradictorii"
+		case "hr-HR":
+			return "Treba razriješiti proturječne tvrdnje"
+		case "el-GR":
+			return "Πρέπει να επιλυθούν οι αντικρουόμενοι ισχυρισμοί"
+		case "ca-ES":
+			return "Cal resoldre les afirmacions contradictòries"
+		case "ga-IE":
+			return "Ní mór éilimh chontrártha a réiteach"
+		case "ml-IN":
+			return "വിരുദ്ധമായ അവകാശവാദങ്ങൾ പരിഹരിക്കണം"
+		default:
+			return fallback
+		}
+	default:
+		return fallback
 	}
-	return fallback
 }
 
 func localizedGapSummary(lang, focus string, evidenceCount, domainCount int) string {
-	if normalizeResearchLang(lang, focus) == researchLangZH {
-		return fmt.Sprintf("%s仅覆盖 %d 条证据 / %d 个来源域名，需要继续深挖。", focus, evidenceCount, domainCount)
+	locale := deepResearchLocaleKey(lang, focus)
+	if text := deepResearchLocalizedText(locale, deepResearchGapSummaryTemplates); text != "" {
+		return fmt.Sprintf(text, focus, evidenceCount, domainCount)
 	}
 	return fmt.Sprintf("%s only covers %d evidence item(s) across %d domain(s); follow-up research is needed.", focus, evidenceCount, domainCount)
 }
 
 func localizedOfficialGapSummary(lang, focus string) string {
-	if normalizeResearchLang(lang, focus) == researchLangZH {
-		return fmt.Sprintf("%s尚未拿到稳定的一手/官方来源支撑。", focus)
+	locale := deepResearchLocaleKey(lang, focus)
+	if text := deepResearchLocalizedText(locale, deepResearchOfficialGapSummaryTemplates); text != "" {
+		return fmt.Sprintf(text, focus)
 	}
 	return fmt.Sprintf("%s still lacks stable primary or official sources.", focus)
 }
 
 func localizedResolvedSummary(lang, focus string, evidenceCount, domainCount int) string {
-	if normalizeResearchLang(lang, focus) == researchLangZH {
-		return fmt.Sprintf("%s已覆盖 %d 条证据 / %d 个来源域名。", focus, evidenceCount, domainCount)
+	locale := deepResearchLocaleKey(lang, focus)
+	if text := deepResearchLocalizedText(locale, deepResearchResolvedSummaryTemplates); text != "" {
+		return fmt.Sprintf(text, focus, evidenceCount, domainCount)
 	}
 	return fmt.Sprintf("%s is covered by %d evidence item(s) across %d domain(s).", focus, evidenceCount, domainCount)
 }
 
 func localizedDiversityGapSummary(lang string, domainCount int) string {
-	if isResearchLangZH(lang, "") {
-		return fmt.Sprintf("当前仅覆盖 %d 个来源域名，需要扩展来源多样性。", domainCount)
+	locale := deepResearchLocaleKey(lang, "")
+	if text := deepResearchLocalizedText(locale, deepResearchDiversityGapSummaryTemplates); text != "" {
+		return fmt.Sprintf(text, domainCount)
 	}
 	return fmt.Sprintf("Only %d unique domain(s) were collected; broaden source diversity.", domainCount)
 }
 
 func localizedDiversityResolvedSummary(lang string, domainCount int) string {
-	if isResearchLangZH(lang, "") {
-		return fmt.Sprintf("当前已覆盖 %d 个来源域名。", domainCount)
+	locale := deepResearchLocaleKey(lang, "")
+	if text := deepResearchLocalizedText(locale, deepResearchDiversityResolvedSummaryTemplates); text != "" {
+		return fmt.Sprintf(text, domainCount)
 	}
 	return fmt.Sprintf("Coverage spans %d unique domain(s).", domainCount)
 }
 
 func localizedFreshnessGapSummary(lang string, year int) string {
-	if isResearchLangZH(lang, "") {
-		if year > 0 {
-			return fmt.Sprintf("最新可确认年份为 %d，时效性不足。", year)
+	locale := deepResearchLocaleKey(lang, "")
+	if year > 0 {
+		if text := deepResearchLocalizedText(locale, deepResearchFreshnessGapSummaryWithYearTemplates); text != "" {
+			return fmt.Sprintf(text, year)
 		}
-		return "未能确认足够新的来源。"
 	}
 	if year > 0 {
 		return fmt.Sprintf("The newest confirmed evidence is from %d, which is not fresh enough.", year)
+	}
+	if text := deepResearchLocalizedText(locale, deepResearchFreshnessGapSummaryNoYearTranslations); text != "" {
+		return text
 	}
 	return "No fresh evidence could be confirmed."
 }
 
 func localizedFreshnessResolvedSummary(lang string, year int) string {
-	if isResearchLangZH(lang, "") {
-		return fmt.Sprintf("已覆盖到 %d 年的较新来源。", year)
+	locale := deepResearchLocaleKey(lang, "")
+	if text := deepResearchLocalizedText(locale, deepResearchFreshnessResolvedSummaryTemplates); text != "" {
+		return fmt.Sprintf(text, year)
 	}
 	return fmt.Sprintf("Fresh evidence reaches %d.", year)
 }
 
 func localizedConflictGapSummary(lang string, supportCount, conflictCount int) string {
-	if isResearchLangZH(lang, "") {
-		return fmt.Sprintf("检测到 %d 组支持信号和 %d 组冲突信号，需要回查官方/一手来源。", supportCount, conflictCount)
+	locale := deepResearchLocaleKey(lang, "")
+	if text := deepResearchLocalizedText(locale, deepResearchConflictGapSummaryTemplates); text != "" {
+		return fmt.Sprintf(text, supportCount, conflictCount)
 	}
 	return fmt.Sprintf("Detected %d supporting claim group(s) and %d conflicting group(s); verify against primary or official sources.", supportCount, conflictCount)
 }
 
 func localizedConflictResolvedSummary(lang string, supportCount int) string {
-	if isResearchLangZH(lang, "") {
-		return fmt.Sprintf("主要结论已被 %d 组支持信号覆盖。", supportCount)
+	locale := deepResearchLocaleKey(lang, "")
+	if text := deepResearchLocalizedText(locale, deepResearchConflictResolvedSummaryTemplates); text != "" {
+		return fmt.Sprintf(text, supportCount)
 	}
 	return fmt.Sprintf("Core conclusions are supported across %d claim group(s).", supportCount)
 }

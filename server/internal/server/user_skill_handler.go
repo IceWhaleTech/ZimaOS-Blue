@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -83,13 +84,14 @@ func (h *UserSkillHandler) listInstalledSkills() []installedSkillInfo {
 		if !entry.IsDir() {
 			continue
 		}
-		skillPath := filepath.Join(h.skillsDir, entry.Name(), "SKILL.md")
-		if _, err := os.Stat(skillPath); err != nil {
+		skillDir := filepath.Join(h.skillsDir, entry.Name())
+		entryDoc, err := skillbundle.FindEntryDocumentInDir(skillDir)
+		if err != nil {
 			continue
 		}
 		name := entry.Name()
 		// Try to parse name from frontmatter
-		if data, err := os.ReadFile(skillPath); err == nil {
+		if data, err := os.ReadFile(entryDoc.Path); err == nil {
 			if parsed := parseFrontmatterField(string(data), "name"); parsed != "" {
 				name = parsed
 			}

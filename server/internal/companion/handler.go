@@ -1,6 +1,7 @@
 package companion
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"net/http"
@@ -17,8 +18,10 @@ import (
 
 // Handler handles REST API requests for the companion service.
 type Handler struct {
-	manager *Manager
-	storage Storage
+	manager           *Manager
+	storage           Storage
+	onCleanup         func(context.Context, RetentionConfig) error
+	onRetentionChange func(context.Context, RetentionConfig) error
 
 	// singleflight for deduplicating concurrent requests
 	sfGroup singleflight.Group
@@ -51,6 +54,24 @@ func NewHandler(manager *Manager, storage Storage) *Handler {
 // NewLazyHandler creates a handler that defers service creation to the first API call.
 func NewLazyHandler(initFn func() (*Manager, Storage)) *Handler {
 	return &Handler{initFn: initFn}
+}
+
+// SetCleanupHook registers an optional cleanup hook that runs alongside the
+// companion retention cleanup flow.
+func (h *Handler) SetCleanupHook(fn func(context.Context, RetentionConfig) error) {
+	if h == nil {
+		return
+	}
+	h.onCleanup = fn
+}
+
+// SetRetentionChangeHook registers an optional hook that runs whenever the
+// companion retention settings are updated.
+func (h *Handler) SetRetentionChangeHook(fn func(context.Context, RetentionConfig) error) {
+	if h == nil {
+		return
+	}
+	h.onRetentionChange = fn
 }
 
 // ensureInit initializes the handler lazily if needed.
@@ -602,6 +623,11 @@ func (h *Handler) UpdateSettings(c echo.Context) error {
 	}
 
 	h.manager.UpdateRetentionConfig(&req.Retention)
+	if h.onRetentionChange != nil {
+		if err := h.onRetentionChange(c.Request().Context(), req.Retention); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "retention sync failed: " + err.Error()})
+		}
+	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"message":   "settings updated",
@@ -623,6 +649,17 @@ func (h *Handler) TriggerCleanup(c echo.Context) error {
 			Message: "cleanup failed: " + err.Error(),
 			Success: false,
 		})
+	}
+	if h.onCleanup != nil {
+		retention := h.manager.GetRetentionConfig()
+		if retention != nil {
+			if err := h.onCleanup(c.Request().Context(), *retention); err != nil {
+				return c.JSON(http.StatusInternalServerError, CleanupResponse{
+					Message: "cleanup failed: " + err.Error(),
+					Success: false,
+				})
+			}
+		}
 	}
 
 	return c.JSON(http.StatusOK, CleanupResponse{

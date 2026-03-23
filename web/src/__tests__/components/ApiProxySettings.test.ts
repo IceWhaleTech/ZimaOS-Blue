@@ -1,12 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const {
-  getFailoverConfig,
-  updateFailoverConfig,
-  getSettings,
-  getToolStats,
-} = vi.hoisted(() => ({
+const { getFailoverConfig, updateFailoverConfig, getSettings, getToolStats } = vi.hoisted(() => ({
   getFailoverConfig: vi.fn(),
   updateFailoverConfig: vi.fn(),
   getSettings: vi.fn(),

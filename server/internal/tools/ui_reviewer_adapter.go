@@ -12,46 +12,63 @@ import (
 // RodBrowserAdapter adapts browser.RodService to the UIReviewBrowser interface.
 // Supports lazy initialization via a resolve function.
 type RodBrowserAdapter struct {
-	svc     *browser.RodService
-	resolve func() *browser.RodService
+	source rodServiceSource
 }
 
 // NewRodBrowserAdapter creates a new adapter with a direct service reference.
 func NewRodBrowserAdapter(svc *browser.RodService) *RodBrowserAdapter {
-	return &RodBrowserAdapter{svc: svc}
+	return &RodBrowserAdapter{source: rodServiceSource{svc: svc}}
 }
 
 // NewLazyRodBrowserAdapter creates a lazy adapter that resolves the service on demand.
 func NewLazyRodBrowserAdapter(resolve func() *browser.RodService) *RodBrowserAdapter {
-	return &RodBrowserAdapter{resolve: resolve}
+	return &RodBrowserAdapter{source: rodServiceSource{resolve: resolve}}
+}
+
+// NewLeaseAwareRodBrowserAdapter creates a lazy adapter that keeps a managed
+// browser instance alive for the duration of each UI review call.
+func NewLeaseAwareRodBrowserAdapter(acquire rodServiceAcquireFunc) *RodBrowserAdapter {
+	return &RodBrowserAdapter{source: rodServiceSource{acquire: acquire}}
 }
 
 func (a *RodBrowserAdapter) get() (*browser.RodService, error) {
-	if a.svc != nil {
-		return a.svc, nil
+	if a == nil {
+		return nil, fmt.Errorf("browser service not available")
 	}
-	if a.resolve != nil {
-		if svc := a.resolve(); svc != nil {
+	switch {
+	case a.source.svc != nil:
+		return a.source.svc, nil
+	case a.source.resolve != nil:
+		if svc := a.source.resolve(); svc != nil {
 			return svc, nil
 		}
 	}
 	return nil, fmt.Errorf("browser service not available")
 }
 
+func (a *RodBrowserAdapter) acquire() (rodServiceLease, error) {
+	if a == nil {
+		return rodServiceLease{}, fmt.Errorf("browser service not available")
+	}
+	return acquireRodServiceSource(a.source, true)
+}
+
 func (a *RodBrowserAdapter) Start(ctx context.Context) error {
-	svc, err := a.get()
+	lease, err := a.acquire()
 	if err != nil {
 		return err
 	}
-	return svc.Start(ctx)
+	defer lease.close()
+	return lease.svc.Start(ctx)
 }
 
 func (a *RodBrowserAdapter) NavigateURL(ctx context.Context, url string) (UIReviewNavResult, error) {
-	svc, err := a.get()
+	lease, err := a.acquire()
 	if err != nil {
 		return UIReviewNavResult{}, err
 	}
-	resp, err := svc.Navigate(ctx, &browser.NavigateRequest{URL: url})
+	defer lease.close()
+	resp, err := lease.svc.Navigate(ctx, &browser.NavigateRequest{URL: url})
 	if err != nil {
 		return UIReviewNavResult{}, err
 	}
@@ -63,11 +80,12 @@ func (a *RodBrowserAdapter) NavigateURL(ctx context.Context, url string) (UIRevi
 }
 
 func (a *RodBrowserAdapter) GetAccessibilityTree(ctx context.Context, targetID string, maxDepth int) (UIReviewA11yResult, error) {
-	svc, err := a.get()
+	lease, err := a.acquire()
 	if err != nil {
 		return UIReviewA11yResult{}, err
 	}
-	resp, err := svc.AccessibilityTree(ctx, targetID, maxDepth)
+	defer lease.close()
+	resp, err := lease.svc.AccessibilityTree(ctx, targetID, maxDepth)
 	if err != nil {
 		return UIReviewA11yResult{}, err
 	}
@@ -75,51 +93,57 @@ func (a *RodBrowserAdapter) GetAccessibilityTree(ctx context.Context, targetID s
 }
 
 func (a *RodBrowserAdapter) ScreenshotTab(ctx context.Context, targetID string) (string, error) {
-	svc, err := a.get()
+	lease, err := a.acquire()
 	if err != nil {
 		return "", err
 	}
-	return svc.ScreenshotTab(ctx, targetID)
+	defer lease.close()
+	return lease.svc.ScreenshotTab(ctx, targetID)
 }
 
 func (a *RodBrowserAdapter) CloseTab(ctx context.Context, targetID string) error {
-	svc, err := a.get()
+	lease, err := a.acquire()
 	if err != nil {
 		return err
 	}
-	return svc.CloseTab(ctx, targetID)
+	defer lease.close()
+	return lease.svc.CloseTab(ctx, targetID)
 }
 
 func (a *RodBrowserAdapter) SetViewport(ctx context.Context, targetID string, width, height int) error {
-	svc, err := a.get()
+	lease, err := a.acquire()
 	if err != nil {
 		return err
 	}
-	return svc.SetViewport(ctx, targetID, width, height)
+	defer lease.close()
+	return lease.svc.SetViewport(ctx, targetID, width, height)
 }
 
 func (a *RodBrowserAdapter) ScrollTo(ctx context.Context, targetID string, x, y int) error {
-	svc, err := a.get()
+	lease, err := a.acquire()
 	if err != nil {
 		return err
 	}
-	return svc.ScrollTo(ctx, targetID, x, y)
+	defer lease.close()
+	return lease.svc.ScrollTo(ctx, targetID, x, y)
 }
 
 func (a *RodBrowserAdapter) PageDimensions(ctx context.Context, targetID string) (int, int, error) {
-	svc, err := a.get()
+	lease, err := a.acquire()
 	if err != nil {
 		return 0, 0, err
 	}
-	return svc.PageDimensions(ctx, targetID)
+	defer lease.close()
+	return lease.svc.PageDimensions(ctx, targetID)
 }
 
 func (a *RodBrowserAdapter) ScreenshotViewportRaw(ctx context.Context, targetID string) ([]byte, error) {
-	svc, err := a.get()
+	lease, err := a.acquire()
 	if err != nil {
 		return nil, err
 	}
-	return svc.ScreenshotViewportRaw(ctx, targetID)
+	defer lease.close()
+	return lease.svc.ScreenshotViewportRaw(ctx, targetID)
 }
 
 // ProxyBridgeVLMAdapter adapts proxybridge.Bridge to the VLMBridge interface.

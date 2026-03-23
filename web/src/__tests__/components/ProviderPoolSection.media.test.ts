@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
     fetchProviders: vi.fn(),
     fetchCustomPricing: vi.fn(),
     refreshModels: vi.fn(),
+    updateProvider: vi.fn(),
   },
   notificationStore: {
     success: vi.fn(),
@@ -66,6 +67,16 @@ function createTestI18n() {
         },
         providerPool: {
           description: 'LLM 配置',
+          apiFormatLabel: '格式类型',
+          apiFormatHint: '默认使用自动检测，也可以手动固定为某一种 API 格式。修改后会立即生效。',
+          apiFormatAutoDetected: '当前自动检测结果：{format}',
+          apiFormatOptions: {
+            auto: '自动检测',
+            openai: 'OpenAI 兼容',
+            responses: 'Responses',
+            anthropic: 'Anthropic',
+            google: 'Google Gemini',
+          },
           verifySection: '验证与推荐',
           verifyHint: '探测当前提供商并给出推荐的 API 格式与 Base URL。',
           verifyRun: '验证',
@@ -106,6 +117,8 @@ function createProvider(type: 'media' | 'custom') {
     enabled: true,
     status: 'active',
     base_url: 'https://example.com/v1',
+    api_format: 'openai',
+    api_format_mode: 'auto',
     priority: 10,
     api_keys: [],
   }
@@ -141,6 +154,10 @@ describe('ProviderPoolSection media verification gating', () => {
     mocks.providerPoolStore.fetchProviders.mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchCustomPricing.mockResolvedValue([])
     mocks.providerPoolStore.refreshModels.mockResolvedValue({ success: true, models: [] })
+    mocks.providerPoolStore.updateProvider.mockImplementation(async (_id, updates) => ({
+      ...(mocks.providerPoolStore.selectedProvider || {}),
+      ...updates,
+    }))
   })
 
   it('hides verify and recommend for media providers', async () => {
@@ -165,5 +182,48 @@ describe('ProviderPoolSection media verification gating', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('验证与推荐')
+  })
+
+  it('shows custom format selector and saves pinned formats immediately', async () => {
+    const provider = createProvider('custom')
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const select = wrapper.find('[data-testid="custom-provider-format-select"]')
+    expect(select.exists()).toBe(true)
+
+    await select.setValue('anthropic')
+    await flushPromises()
+
+    expect(mocks.providerPoolStore.updateProvider).toHaveBeenCalledWith(provider.id, {
+      api_format: 'anthropic',
+      api_format_mode: 'pinned',
+    })
+  })
+
+  it('switches custom format back to auto-detect immediately', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      api_format: 'anthropic',
+      api_format_mode: 'pinned',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const select = wrapper.find('[data-testid="custom-provider-format-select"]')
+    await select.setValue('auto')
+    await flushPromises()
+
+    expect(mocks.providerPoolStore.updateProvider).toHaveBeenCalledWith(provider.id, {
+      api_format_mode: 'auto',
+    })
   })
 })

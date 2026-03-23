@@ -75,9 +75,10 @@ describe('skill store marketplace taxonomy translations', () => {
       for (const key of requiredMarketplaceKeys) {
         const value = getByPath(messages, key)
         expect(typeof value, `${locale} should expose ${key}`).toBe('string')
-        expect(String(value).trim().length, `${locale} should not leave ${key} empty`).toBeGreaterThan(
-          0
-        )
+        expect(
+          String(value).trim().length,
+          `${locale} should not leave ${key} empty`
+        ).toBeGreaterThan(0)
       }
     }
   })

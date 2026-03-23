@@ -220,7 +220,9 @@ const currentPreview = computed(() => {
             @mousemove="onResultMouseMove"
             @mouseleave="onResultMouseLeave"
           >
-            <div class="w-4 h-4 mt-0.5 flex-shrink-0 rounded-sm bg-gray-100 dark:bg-gray-700 relative">
+            <div
+              class="w-4 h-4 mt-0.5 flex-shrink-0 rounded-sm bg-gray-100 dark:bg-gray-700 relative"
+            >
               <svg
                 aria-hidden="true"
                 xmlns="http://www.w3.org/2000/svg"

@@ -2,6 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UserTaskProjection } from '@/api/tasks'
+import {
+  localizeTaskProjectionSubtitle,
+  localizeTaskProjectionTitle,
+} from '@/utils/taskProjectionText'
 
 const TASK_DOCK_COLLAPSED_KEY = 'zima.chat.task_projection_dock_collapsed.v1'
 
@@ -54,6 +58,14 @@ function stageLabel(stage?: string) {
   }
 }
 
+function taskTitle(task: UserTaskProjection): string {
+  return localizeTaskProjectionTitle(task.title, task.kind, t)
+}
+
+function taskSubtitle(task: UserTaskProjection): string {
+  return localizeTaskProjectionSubtitle(task.subtitle, task.kind, t)
+}
+
 watch(
   () => props.tasks.length,
   (count) => {
@@ -90,7 +102,9 @@ watch(collapsed, (value) => {
             </span>
           </span>
 
-          <span class="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span
+            class="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+          >
             <span
               v-if="leadTask"
               class="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
@@ -100,7 +114,7 @@ watch(collapsed, (value) => {
             <span v-if="leadTask">{{ Math.round(leadTask.progress || 0) }}%</span>
             <span class="min-w-0 flex-1 truncate">
               {{
-                leadTask?.title ||
+                (leadTask ? taskTitle(leadTask) : '') ||
                 t('chat.taskRunningElsewhere', 'Track active work running in other conversations.')
               }}
             </span>
@@ -114,7 +128,12 @@ watch(collapsed, (value) => {
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M19 9l-7 7-7-7"
+          />
         </svg>
       </button>
 
@@ -129,7 +148,9 @@ watch(collapsed, (value) => {
         >
           <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <div
+                class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+              >
                 <span
                   class="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
                 >
@@ -143,15 +164,17 @@ watch(collapsed, (value) => {
                 }}</span>
               </div>
               <div class="mt-2 break-words text-sm font-medium text-slate-800 dark:text-slate-100">
-                {{ task.title }}
+                {{ taskTitle(task) }}
               </div>
-              <div v-if="task.subtitle" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {{ task.subtitle }}
+              <div v-if="taskSubtitle(task)" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {{ taskSubtitle(task) }}
               </div>
               <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                 <div
                   class="h-full bg-blue-500 transition-all duration-300"
-                  :style="{ width: `${Math.max(0, Math.min(100, Math.round(task.progress || 0)))}%` }"
+                  :style="{
+                    width: `${Math.max(0, Math.min(100, Math.round(task.progress || 0)))}%`,
+                  }"
                 />
               </div>
             </div>

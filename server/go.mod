@@ -17,6 +17,7 @@ require (
 	github.com/go-jose/go-jose/v3 v3.0.4
 	github.com/go-ole/go-ole v1.3.0
 	github.com/go-rod/rod v0.116.2
+	github.com/go-rod/stealth v0.4.9
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/go-webauthn/webauthn v0.15.0
 	github.com/goccy/go-json v0.10.5

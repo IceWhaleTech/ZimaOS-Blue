@@ -218,7 +218,7 @@ const (
 	toolCallStyleGuidance = "<tool_style>Do not narrate routine tool calls. Narrate only for multi-step work, complex problems, sensitive actions, or when asked. Keep narration brief.</tool_style>" +
 		"<research_style>For latest/news/deep-research requests, run multiple search rounds before concluding and return one complete report with key findings plus source links. For GitHub repository research, check the corresponding DeepWiki materials first when available (for example `deepwiki.com/&lt;owner&gt;/&lt;repo&gt;`) before opening github.com pages, then use GitHub for primary-source verification or details that DeepWiki does not cover. For lightweight lookup requests, summarize key findings and then suggest next steps.</research_style>"
 
-	webToolRoutingGuidance = "<web_tools>Use web_search when you need to discover, compare, or verify links/sources and do not yet have the right URL. Use web_fetch for the fastest lightweight HTTP read of a known public URL when a simple readable extract is enough. Use web_read when the user already gave a URL and wants normalized main content, especially when you may need headers/cookies, browser_target_id reuse, or lane-aware reading. Use browser first for login flows, CAPTCHA/challenges, JS-heavy pages, scrolling/clicking/forms, screenshots, or any live interaction. If web_fetch returns warning_code=login_wall, challenge, or browser_required, or web_read returns warning_codes including login_wall, challenge, or browser_required, immediately switch to browser. Preferred ladder: web_search -> web_fetch or web_read -> browser. Final web fallback is browser. When available, reuse browser session state with browser_target_id.</web_tools>"
+	webToolRoutingGuidance = "<web_tools>Use web_query as the default web tool for both queries and URLs. Give it one input and let it discover links, read the best page, retry, and degrade automatically. Use browser first for login flows, CAPTCHA/challenges, JS-heavy pages, scrolling/clicking/forms, screenshots, or any live interaction. If web_query returns warnings or next_action indicating login_wall, challenge, browser_required, or retry_browser, immediately switch to browser. Final web fallback is browser. When available, reuse browser session state with browser_target_id. Legacy web_search, web_fetch, web_read, web_extract, and web_crawl names still exist only for compatibility.</web_tools>"
 
 	blueCoreRulesGuidance = "<blue_core_rules>" +
 		"<rule>Brevity is mandatory: one sentence when possible, no fluff.</rule>" +
@@ -497,6 +497,9 @@ func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder, hasSandbox b
 	if b.toolRegistry.Get("write") != nil || b.toolRegistry.Get("file_write") != nil {
 		sb.WriteString("<write_guide>For large file writes, prefer write_begin + repeated write_chunk + write_commit. If you must use write directly, never send one huge write payload: write the first chunk, then continue with smaller chunks using append=true.</write_guide>")
 	}
+	if b.toolRegistry.Get("office") != nil {
+		sb.WriteString("<office_guide>For polished .xlsx or .docx artifacts, prefer office over raw file_write so styles, layout, and typography are generated natively.</office_guide>")
+	}
 	b.writeExecGuidanceTo(sb, hasSandbox)
 	sb.WriteString("</tool_guidance>")
 	return true
@@ -580,10 +583,6 @@ func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 // Only pinned/important skills are listed explicitly. The LLM is told
 // where to discover additional skills on disk.
 func (b *SystemPromptBuilder) buildSkillsSection() string {
-	if b.config.WorkspaceDir == "" {
-		return ""
-	}
-
 	b.skillsCacheMu.Lock()
 	defer b.skillsCacheMu.Unlock()
 
@@ -592,10 +591,10 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). For reminders, prefer `blue reminder.add message=\"...\" time=...` or repeating `blue reminder.add message=\"...\" every=2m until=\"2026-03-17 22:00\"` (or call tool `reminder` directly); do not use `blue reminder --help` as an execution step. Use `scheduler` for cron-style automation jobs, not ordinary user reminders. ")
-	sb.WriteString("Routing: ask→ask, discover links/no URL→web_search, known public URL quick read→web_fetch, known URL normalized/session-aware read→web_read, login/JS/forms/screenshots/live interaction→browser, UI review→ui_reviewer, PPT/slide visuals→ppt, analyze→analyze, reminder/alert→reminder, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. If web_fetch returns warning_code=login_wall, challenge, or browser_required, or web_read returns warning_codes including those values, switch to browser. Final web fallback→browser. ")
+	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_query input=\"latest news\"`). For reminders, prefer `blue reminder.add message=\"...\" time=...` or repeating `blue reminder.add message=\"...\" every=2m until=\"2026-03-17 22:00\"` (or call tool `reminder` directly); do not use `blue reminder --help` as an execution step. Use `scheduler` for cron-style automation jobs, not ordinary user reminders. ")
+	sb.WriteString("Routing: ask→ask, normal web discovery/read→web_query, login/JS/forms/screenshots/live interaction→browser, UI review→ui_reviewer, PPT/slide visuals→ppt, analyze→analyze, reminder/alert→reminder, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. If web_query reports login_wall, challenge, browser_required, or next_action=retry_browser, switch to browser. Final web fallback→browser. ")
 	sb.WriteString("Use progressive skill selection: prefer routed/pinned commands first, then inspect likely SKILL.md files on demand. ")
-	sb.WriteString("More skills in workspace `.claude/skills/` and user default `~/.claude/skills/`.")
+	sb.WriteString("More skills in workspace `.claude/skills/` when available and user default `~/.claude/skills/`. Core built-in skills are preloaded below.")
 
 	// Only pinned skills get listed explicitly
 	sb.WriteString(FormatPinnedSkills(b.config.WorkspaceDir))

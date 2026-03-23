@@ -427,6 +427,9 @@ jobs:
             --wait
 
           xcrun stapler staple "$DMG_FILE"
+          MACOS_APP_PATH="tauri-app/src-tauri/target/release/bundle/macos/ZimaOS Blue.app" \
+          MACOS_DMG_PATH="$DMG_FILE" \
+          bash tauri-app/verify-macos-package.sh
 
       - name: Cleanup keychain
         if: always()

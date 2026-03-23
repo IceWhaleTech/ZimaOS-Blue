@@ -382,6 +382,19 @@ description: Browser from home path
 	}
 }
 
+func TestFormatPinnedSkills_FallsBackToEmbeddedBuiltins(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	got := FormatPinnedSkills("")
+	if !contains(got, `<pinned_skills>`) {
+		t.Fatalf("expected pinned_skills output, got: %q", got)
+	}
+	if !contains(got, `name="ask"`) {
+		t.Fatalf("expected embedded ask skill fallback, got: %q", got)
+	}
+}
+
 func TestParseSkillEntry_StructuredSections(t *testing.T) {
 	md := `---
 name: youtube-video-analyzer

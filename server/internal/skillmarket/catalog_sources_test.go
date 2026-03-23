@@ -115,7 +115,7 @@ Help with rebase, review, and branch cleanup.
 		SourceGroup: "skillhub",
 		Enabled:     true,
 	}
-	if err := svc.discoverFromHTMLCatalog(context.Background(), source, run); err != nil {
+	if err := svc.discoverFromHTMLCatalog(context.Background(), source, 0, &DiscoverResult{}, run); err != nil {
 		t.Fatalf("discover html catalog: %v", err)
 	}
 	if run.Discovered != 3 {
@@ -239,7 +239,7 @@ Use bash to inspect files quickly.
 		SourceGroup: "skillhub",
 		Enabled:     true,
 	}
-	if err := svc.discoverFromHTMLCatalog(context.Background(), source, run); err != nil {
+	if err := svc.discoverFromHTMLCatalog(context.Background(), source, 0, &DiscoverResult{}, run); err != nil {
 		t.Fatalf("discover html catalog: %v", err)
 	}
 
@@ -277,5 +277,96 @@ Use bash to inspect files quickly.
 	}
 	if detail.Security == nil {
 		t.Fatal("expected security report for embedded skill page")
+	}
+}
+
+func TestDiscoverFromHTMLCatalogTraversesBeyondLegacyPageCap(t *testing.T) {
+	const totalPages = 35
+
+	pageHits := make(map[string]int)
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/skills/", func(w http.ResponseWriter, r *http.Request) {
+		pageID := strings.TrimPrefix(r.URL.Path, "/skills/page-")
+		pageHits[pageID]++
+		index := 0
+		if _, err := fmt.Sscanf(pageID, "%d", &index); err != nil || index < 1 || index > totalPages {
+			http.NotFound(w, r)
+			return
+		}
+
+		nextLink := ""
+		if index < totalPages {
+			nextLink = fmt.Sprintf(`<a href="/skills/page-%d">Next</a>`, index+1)
+		}
+		_, _ = w.Write([]byte(fmt.Sprintf(`
+<html>
+  <head>
+    <title>Catalog Skill %d</title>
+    <meta name="description" content="Catalog-only skill page %d">
+  </head>
+  <body>
+    <p>Catalog page %d</p>
+    %s
+  </body>
+</html>`, index, index, index, nextLink)))
+	})
+
+	tempDir := t.TempDir()
+	db, err := sql.Open("sqlite3", filepath.Join(tempDir, "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	cfg := DefaultConfig(tempDir, filepath.Join(tempDir, "active"))
+	cfg.CacheRoot = filepath.Join(tempDir, "cache")
+	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.SeedURLs = nil
+	cfg.HTMLCatalogCrawlBatchPages = 3
+	cfg.HTMLCatalogCrawlMaxPages = 40
+
+	svc, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(filepath.Join(tempDir, "active")),
+		Scanner:      NewScanner(nil),
+		HTTPClient:   server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	run := &CrawlRun{}
+	source := Source{
+		ID:          "skillhub-club",
+		Type:        "html_catalog",
+		BaseURL:     server.URL + "/skills/page-1",
+		DisplayName: "SkillHub Club",
+		SourceGroup: "skillhub",
+		Enabled:     true,
+	}
+	if err := svc.discoverFromHTMLCatalog(context.Background(), source, 0, &DiscoverResult{}, run); err != nil {
+		t.Fatalf("discover html catalog: %v", err)
+	}
+	if run.Discovered != totalPages {
+		t.Fatalf("run.Discovered = %d, want %d", run.Discovered, totalPages)
+	}
+	if pageHits["35"] == 0 {
+		t.Fatalf("expected crawler to reach page 35, hits=%v", pageHits)
+	}
+
+	detail, err := svc.GetSkill(context.Background(), "skillhub-catalog-skill-35")
+	if err != nil {
+		t.Fatalf("GetSkill(skillhub-catalog-skill-35) error = %v", err)
+	}
+	if detail == nil {
+		t.Fatal("expected final catalog page to be indexed")
+	}
+	if detail.Skill.Installable {
+		t.Fatalf("expected catalog-only page to remain non-installable, got %+v", detail.Skill)
 	}
 }

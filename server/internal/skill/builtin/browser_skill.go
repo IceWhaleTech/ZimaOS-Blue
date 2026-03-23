@@ -113,7 +113,7 @@ func NewBrowser() *Browser {
 				{
 					Name:        "url",
 					Type:        "string",
-					Description: "URL to navigate to (required for navigate, screenshot)",
+					Description: "URL to navigate to (required for navigate; optional for screenshot when capturing the current tab or a target_id tab)",
 					Required:    false,
 				},
 				{
@@ -250,13 +250,13 @@ func (b *Browser) Validate(input map[string]any) error {
 		return fmt.Errorf("invalid action: %s", actionStr)
 	}
 	switch actionStr {
-	case "navigate", "screenshot":
+	case "navigate":
 		if _, ok := input["url"]; !ok {
 			return fmt.Errorf("url is required for %s", actionStr)
 		}
 	case "act":
 		if _, ok := input["ref"]; !ok {
-			return fmt.Errorf("ref is required for act (use @N from the accessibility tree)")
+			return fmt.Errorf("ref is required for act (pass 12 or \"@12\" from the accessibility tree)")
 		}
 		if actType == "" {
 			return fmt.Errorf("act_type is required for act (click, type, focus, hover, scroll, select)")
@@ -329,12 +329,13 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		return b.autoSnapshot(ctx, svc, targetID, vision)
 
 	case "act":
-		ref := 0
-		switch r := input["ref"].(type) {
-		case float64:
-			ref = int(r)
-		case int:
-			ref = r
+		rawRef, ok := input["ref"]
+		if !ok {
+			return skill.NewErrorResult(fmt.Errorf("ref is required for act (pass 12 or \"@12\" from the accessibility tree)")), nil
+		}
+		ref, ok := tools.CoerceBrowserRef(rawRef)
+		if !ok {
+			return skill.NewErrorResult(fmt.Errorf("ref must be an integer or @N string for act")), nil
 		}
 		value, _ := input["value"].(string)
 
@@ -370,21 +371,41 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 
 	case "screenshot":
 		url, _ := input["url"].(string)
-		if url == "" {
-			return skill.NewErrorResult(fmt.Errorf("url is required for screenshot")), nil
-		}
+		targetID, _ := input["target_id"].(string)
 		_ = svc.Start(ctx)
 
-		data, err := svc.Screenshot(ctx, url)
+		var (
+			data    string
+			err     error
+			message string
+		)
+		switch {
+		case url != "":
+			data, err = svc.Screenshot(ctx, url)
+			message = fmt.Sprintf("Screenshot captured for %s", url)
+		case targetID != "":
+			data, err = svc.ScreenshotTab(ctx, targetID)
+			message = fmt.Sprintf("Screenshot captured for tab %s", targetID)
+		default:
+			data, err = svc.ScreenshotTab(ctx, "")
+			message = "Screenshot captured for active tab"
+		}
 		if err != nil {
 			return skill.NewErrorResult(err), nil
 		}
 		data = b.normalizeScreenshotPayload(data)
 
-		return skill.NewResult(map[string]any{
+		out := map[string]any{
 			"screenshot": data,
-			"message":    fmt.Sprintf("Screenshot captured for %s", url),
-		}), nil
+			"message":    message,
+		}
+		if targetID != "" {
+			out["target_id"] = targetID
+		}
+		if url != "" {
+			out["url"] = url
+		}
+		return skill.NewResult(out), nil
 
 	case "tabs":
 		tabs, err := svc.Tabs(ctx)

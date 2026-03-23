@@ -21,7 +21,6 @@ export function initTypelessCopyHandler(): void {
         console.error('Failed to copy code:', err)
       }
     }
-
   ;(
     window as unknown as { __typelessToggleCodeCollapse?: (toggleButtonId: string) => void }
   ).__typelessToggleCodeCollapse = (toggleButtonId: string) => {
@@ -56,7 +55,6 @@ export function initTypelessCopyHandler(): void {
     fade?.classList.remove('hidden')
     button.textContent = expandLabel
   }
-
   ;(
     window as unknown as { __typelessCopyTerminal?: (terminalId: string) => void }
   ).__typelessCopyTerminal = async (terminalId: string) => {
@@ -81,7 +79,6 @@ export function initTypelessCopyHandler(): void {
       console.error('Failed to copy terminal content:', err)
     }
   }
-
   ;(
     window as unknown as {
       __typelessOpenFullscreen?: (type: string, dataJson: string, isBase64?: boolean) => void

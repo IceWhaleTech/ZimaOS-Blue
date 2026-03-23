@@ -222,6 +222,32 @@ func TestSkillIntegration_BrowserScreenshot(t *testing.T) {
 	}
 }
 
+func TestSkillIntegration_BrowserScreenshotTargetID(t *testing.T) {
+	conn, cleanup := setupAllSkills(t)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "browser.screenshot", Params: map[string]string{"target_id": "tab-1"}})
+	if resp.Status != "ok" {
+		t.Fatalf("browser.screenshot target_id: status=%q error=%q", resp.Status, resp.Error)
+	}
+	if resp.Data["screenshot"] != "base64-tab-png" {
+		t.Errorf("screenshot = %q", resp.Data["screenshot"])
+	}
+}
+
+func TestSkillIntegration_BrowserScreenshotActiveTabDefault(t *testing.T) {
+	conn, cleanup := setupAllSkills(t)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "browser.screenshot"})
+	if resp.Status != "ok" {
+		t.Fatalf("browser.screenshot default: status=%q error=%q", resp.Status, resp.Error)
+	}
+	if resp.Data["screenshot"] != "base64-tab-png" {
+		t.Errorf("screenshot = %q", resp.Data["screenshot"])
+	}
+}
+
 func TestSkillIntegration_BrowserTabs(t *testing.T) {
 	conn, cleanup := setupAllSkills(t)
 	defer cleanup()

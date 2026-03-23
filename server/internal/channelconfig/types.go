@@ -157,6 +157,8 @@ type FeishuConfig struct {
 	EncryptKey        string `yaml:"encrypt_key"`
 	// DisableTypingReaction disables the transient Typing reaction indicator.
 	DisableTypingReaction bool `yaml:"disable_typing_reaction"`
+	// SessionMode sends replies as plain chat messages instead of the reply endpoint.
+	SessionMode bool `yaml:"session_mode"`
 }
 
 // MatrixConfig contains Matrix configuration.

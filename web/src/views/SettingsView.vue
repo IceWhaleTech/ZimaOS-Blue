@@ -3,9 +3,9 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
-import { type MemoryRecallMode } from '@/stores/settings'
+import { type CloseBehavior, type MemoryRecallMode } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
-import { useThemeStore } from '@/stores/theme'
+import { useThemeStore, type Theme } from '@/stores/theme'
 import { backupApi } from '@/api/index'
 import type { ContextCompressionMode } from '@/api/settings'
 import type { LocaleKey } from '@/i18n'
@@ -30,7 +30,7 @@ const router = useRouter()
 const settingsStore = useSettingsStore()
 const localeStore = useLocaleStore()
 const themeStore = useThemeStore()
-const { isTauri, setCloseBehavior } = useTauri()
+const { isTauri, platform, setCloseBehavior } = useTauri()
 
 interface SaveStatusAction {
   label: string
@@ -75,6 +75,23 @@ const tabIcons: Record<TabType, string> = {
     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>',
   userdata:
     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>',
+}
+
+const themeOptions: Theme[] = ['light', 'dark', 'system']
+
+const themeIcons: Record<Theme, string> = {
+  light:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 3v1.5m0 15V21m9-9h-1.5m-15 0H3m15.364 6.364l-1.06-1.06M6.697 6.697l-1.06-1.06m12.727 0l-1.06 1.06M6.697 17.303l-1.06 1.06"/><circle cx="12" cy="12" r="3.5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" fill="none"/>',
+  dark: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>',
+  system:
+    '<rect x="3.75" y="4.5" width="16.5" height="11.5" rx="2" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" fill="none"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19.5h6m-4.5-3.5v3.5m3-3.5v3.5"/>',
+}
+
+const closeBehaviorIcons: Record<CloseBehavior, string> = {
+  quit:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.5 5.25H8.25A2.25 2.25 0 006 7.5v9a2.25 2.25 0 002.25 2.25h5.25"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.25 8.25L18 12m0 0l-3.75 3.75M18 12H9.75"/>',
+  minimize:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5.25 17.25h13.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.25 10.5L12 14.25l3.75-3.75"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 5.25v9"/>',
 }
 
 // Timezone
@@ -136,6 +153,7 @@ const backups = ref<BackupInfo[]>([])
 const backupsLoading = ref(false)
 const backupCreating = ref(false)
 const backupRestoring = ref<string | null>(null)
+const backupDeleting = ref<string | null>(null)
 
 function clearSaveStatus() {
   if (saveStatusTimer) {
@@ -174,6 +192,18 @@ function handleCloseBehaviorChange(behavior: 'quit' | 'minimize') {
   settingsStore.setCloseBehavior(behavior)
   setCloseBehavior(behavior)
   showSaveStatus(t('settings.closeBehaviorSaved'))
+}
+
+function closeBehaviorLabel(behavior: CloseBehavior) {
+  if (behavior === 'quit') {
+    return t('settings.closeBehaviorQuit')
+  }
+
+  if (platform.value === 'macos') {
+    return tWithFallback('settings.closeBehaviorMinimizeMenuBar', 'Minimize to Menu Bar')
+  }
+
+  return t('settings.closeBehaviorMinimize')
 }
 
 async function handleMemoryRecallModeChange(mode: MemoryRecallMode) {
@@ -258,7 +288,7 @@ const fallbackReasonEntries = computed(() => {
   const reasons = settingsStore.smallModelStats?.fallback_reasons || {}
   return Object.entries(reasons).sort((a, b) => b[1] - a[1])
 })
-const contextCompressionModes: ContextCompressionMode[] = ['auto', 'small_model', 'offline', 'off']
+const contextCompressionModes: ContextCompressionMode[] = ['auto', 'small_model', 'offline']
 
 function parseHumanSizeToBytes(size: string): number {
   const raw = size.trim().replace(/\s+/g, '')
@@ -544,6 +574,7 @@ async function fetchBackups() {
 }
 
 async function createBackup() {
+  if (backupCreating.value) return
   backupCreating.value = true
   try {
     await backupApi.create()
@@ -557,7 +588,7 @@ async function createBackup() {
 }
 
 function onBackupCreate(_type: string, _name: string) {
-  createBackup()
+  void createBackup()
 }
 
 function onBackupDownload(_id: string) {
@@ -565,6 +596,7 @@ function onBackupDownload(_id: string) {
 }
 
 async function restoreBackup(id: string) {
+  if (backupRestoring.value) return
   if (!confirm(t('system.confirmRestore'))) return
   backupRestoring.value = id
   try {
@@ -590,13 +622,17 @@ async function restoreBackup(id: string) {
 }
 
 async function deleteBackup(id: string) {
+  if (backupDeleting.value) return
   if (!confirm(t('system.confirmDeleteBackup'))) return
+  backupDeleting.value = id
   try {
     await backupApi.delete(id)
     backups.value = backups.value.filter((b) => b.id !== id)
     showSaveStatus(t('system.backupDeleted'))
   } catch (e) {
     console.error('Failed to delete backup:', e)
+  } finally {
+    backupDeleting.value = null
   }
 }
 
@@ -739,16 +775,25 @@ onUnmounted(() => {
                 <div class="settings-card-heading">
                   <label class="settings-field-label">{{ t('common.theme') }}</label>
                 </div>
-                <div class="settings-pill-group">
+                <div class="settings-theme-group" role="group" :aria-label="t('common.theme')">
                   <button
-                    v-for="theme in ['light', 'dark', 'system'] as const"
+                    v-for="theme in themeOptions"
                     :key="theme"
                     type="button"
-                    class="settings-pill-button"
-                    :class="{ 'settings-pill-button--active': themeStore.theme === theme }"
+                    class="settings-theme-button"
+                    :class="{ 'settings-theme-button--active': themeStore.theme === theme }"
+                    :title="t(`common.${theme}`)"
+                    :aria-label="t(`common.${theme}`)"
+                    :aria-pressed="themeStore.theme === theme"
                     @click="themeStore.setTheme(theme)"
                   >
-                    {{ t(`common.${theme}`) }}
+                    <svg
+                      class="settings-theme-button__icon"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      v-html="themeIcons[theme]"
+                    />
                   </button>
                 </div>
               </div>
@@ -757,7 +802,7 @@ onUnmounted(() => {
                 <div class="settings-card-heading">
                   <label class="settings-field-label">{{ t('settings.closeBehavior') }}</label>
                 </div>
-                <div class="settings-pill-group">
+                <div class="settings-pill-group" role="group" :aria-label="t('settings.closeBehavior')">
                   <button
                     v-for="behavior in ['quit', 'minimize'] as const"
                     :key="behavior"
@@ -766,9 +811,21 @@ onUnmounted(() => {
                     :class="{
                       'settings-pill-button--active': settingsStore.closeBehavior === behavior,
                     }"
+                    :title="closeBehaviorLabel(behavior)"
+                    :aria-label="closeBehaviorLabel(behavior)"
+                    :aria-pressed="settingsStore.closeBehavior === behavior"
                     @click="handleCloseBehaviorChange(behavior)"
                   >
-                    {{ t(`settings.closeBehavior${behavior === 'quit' ? 'Quit' : 'Minimize'}`) }}
+                    <span class="settings-pill-button__icon-shell" aria-hidden="true">
+                      <svg
+                        class="settings-pill-button__icon"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        v-html="closeBehaviorIcons[behavior]"
+                      />
+                    </span>
+                    <span class="settings-pill-button__label">{{ closeBehaviorLabel(behavior) }}</span>
                   </button>
                 </div>
               </div>
@@ -1516,12 +1573,10 @@ onUnmounted(() => {
                                     'settings.smallModel.contextCompressionModeSmallModel',
                                     'Small Model First'
                                   )
-                                : mode === 'offline'
-                                  ? t(
-                                      'settings.smallModel.contextCompressionModeOffline',
-                                      'Offline Deterministic'
-                                    )
-                                  : t('settings.smallModel.contextCompressionModeOff', 'Off')
+                                : t(
+                                    'settings.smallModel.contextCompressionModeOffline',
+                                    'Offline Deterministic'
+                                  )
                           }}
                         </option>
                       </select>
@@ -1529,7 +1584,7 @@ onUnmounted(() => {
                         {{
                           t(
                             'settings.smallModel.contextCompressionModeHint',
-                            'This chooses the compression path only. Current-turn intent still comes from the latest user message.'
+                            'Compression triggers automatically under context pressure. This only chooses which compression path to prefer.'
                           )
                         }}
                       </div>
@@ -2221,7 +2276,9 @@ onUnmounted(() => {
               class="settings-embedded-section mx-auto w-full max-w-6xl"
               :backups="backups"
               :loading="backupsLoading"
-              :restoring="backupRestoring !== null"
+              :creating="backupCreating"
+              :restoring-id="backupRestoring"
+              :deleting-id="backupDeleting"
               @create="onBackupCreate"
               @restore="restoreBackup"
               @delete="deleteBackup"
@@ -2553,20 +2610,75 @@ input[type='range']::-moz-range-thumb {
 
 .settings-pill-group {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
   gap: 0.6rem;
   margin-top: 0.9rem;
 }
 
+.settings-theme-group {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.settings-theme-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.72);
+  color: #475569;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.settings-theme-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(var(--settings-accent), 0.26);
+  color: #0f172a;
+}
+
+.settings-theme-button:focus-visible {
+  outline: none;
+  border-color: rgba(var(--settings-accent), 0.45);
+  box-shadow: 0 0 0 4px rgba(var(--settings-accent), 0.12);
+}
+
+.settings-theme-button__icon {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.settings-theme-button--active {
+  border-color: rgba(var(--settings-accent), 0.36);
+  background: rgba(var(--settings-accent), 0.14);
+  color: #0f172a;
+  box-shadow: none;
+}
+
 .settings-pill-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  width: 100%;
   min-height: 2.7rem;
-  padding: 0.65rem 0.8rem;
+  padding: 0.75rem 0.9rem;
   border-radius: 0.95rem;
   border: 1px solid rgba(148, 163, 184, 0.24);
   background: rgba(255, 255, 255, 0.72);
   color: #475569;
   font-size: 0.85rem;
   font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,
@@ -2580,11 +2692,45 @@ input[type='range']::-moz-range-thumb {
   border-color: rgba(var(--settings-accent), 0.26);
 }
 
+.settings-pill-button:focus-visible {
+  outline: none;
+  border-color: rgba(var(--settings-accent), 0.45);
+  box-shadow: 0 0 0 4px rgba(var(--settings-accent), 0.12);
+}
+
+.settings-pill-button__icon-shell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.8rem;
+  background: rgba(148, 163, 184, 0.12);
+  color: inherit;
+  flex-shrink: 0;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.settings-pill-button__icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.settings-pill-button__label {
+  min-width: 0;
+}
+
 .settings-pill-button--active {
   border-color: rgba(var(--settings-accent), 0.36);
   background: rgba(var(--settings-accent), 0.14);
   color: #0f172a;
   box-shadow: none;
+}
+
+.settings-pill-button--active .settings-pill-button__icon-shell {
+  background: rgba(var(--settings-accent), 0.16);
 }
 
 .settings-tab-beta {
@@ -2729,6 +2875,9 @@ html.dark .settings-tab-nav {
 :root.dark .settings-select,
 [data-theme='dark'] .settings-select,
 html.dark .settings-select,
+:root.dark .settings-theme-button,
+[data-theme='dark'] .settings-theme-button,
+html.dark .settings-theme-button,
 :root.dark .settings-pill-button,
 [data-theme='dark'] .settings-pill-button,
 html.dark .settings-pill-button {
@@ -2745,9 +2894,24 @@ html.dark .settings-field-label {
 
 :root.dark .settings-pill-button--active,
 [data-theme='dark'] .settings-pill-button--active,
-html.dark .settings-pill-button--active {
+html.dark .settings-pill-button--active,
+:root.dark .settings-theme-button--active,
+[data-theme='dark'] .settings-theme-button--active,
+html.dark .settings-theme-button--active {
   color: #f8fafc;
   background: rgba(var(--settings-accent), 0.18);
+}
+
+:root.dark .settings-pill-button__icon-shell,
+[data-theme='dark'] .settings-pill-button__icon-shell,
+html.dark .settings-pill-button__icon-shell {
+  background: rgba(148, 163, 184, 0.14);
+}
+
+:root.dark .settings-pill-button--active .settings-pill-button__icon-shell,
+[data-theme='dark'] .settings-pill-button--active .settings-pill-button__icon-shell,
+html.dark .settings-pill-button--active .settings-pill-button__icon-shell {
+  background: rgba(var(--settings-accent), 0.22);
 }
 
 :root.dark .settings-tab-beta,

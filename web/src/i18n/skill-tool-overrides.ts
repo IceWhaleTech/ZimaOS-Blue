@@ -88,6 +88,7 @@ const skillDescriptionMap: Array<[string, string]> = [
 ]
 
 const toolOnlyNameMap: Array<[string, string]> = [
+  ['webQuery', 'web_query'],
   ['webFetch', 'web_fetch'],
   ['webRead', 'web_read'],
   ['webExtract', 'web_extract'],
@@ -105,6 +106,7 @@ const toolOnlyNameMap: Array<[string, string]> = [
 ]
 
 const toolDescriptionMap: Array<[string, string]> = [
+  ['webQuery', 'web_query'],
   ['webFetch', 'web_fetch'],
   ['webRead', 'web_read'],
   ['webExtract', 'web_extract'],
@@ -4707,7 +4709,9 @@ export default Object.fromEntries(
     mergeMessages(
       mergeMessages(
         mergeMessages(
-          buildLocaleOverrides((localePacks as Record<string, Record<string, unknown>>)[locale] || {}),
+          buildLocaleOverrides(
+            (localePacks as Record<string, Record<string, unknown>>)[locale] || {}
+          ),
           targetedAdjustments[locale] || {}
         ),
         supplementalToolTranslations[locale] || {}

@@ -203,6 +203,29 @@ func TestManagerRefreshStateTransitions(t *testing.T) {
 	}
 }
 
+func TestManagerInitialStatusReflectsDisabledConfigWithoutRefresh(t *testing.T) {
+	manager := NewManager(ManagerConfig{
+		Settings: &fakeSettingsSource{
+			enabled: false,
+			target:  "conv-1",
+			locale:  "en-US",
+		},
+		Supported: true,
+		Runtime:   &fakeRuntime{},
+	})
+
+	status := manager.Status()
+	if status.Reason != "disabled" {
+		t.Fatalf("status.Reason = %q, want disabled", status.Reason)
+	}
+	if status.Enabled {
+		t.Fatal("status.Enabled = true, want false")
+	}
+	if status.TargetConversationID != "conv-1" {
+		t.Fatalf("status.TargetConversationID = %q, want conv-1", status.TargetConversationID)
+	}
+}
+
 func TestManagerRefreshPreservesProbedPermissionsWhenDisabled(t *testing.T) {
 	previousProbe := probePermissionStatus
 	probePermissionStatus = func() permissionStatus {

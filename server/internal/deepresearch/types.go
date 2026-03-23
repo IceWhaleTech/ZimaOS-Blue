@@ -34,33 +34,35 @@ type Budget struct {
 }
 
 type Job struct {
-	ID                 string     `json:"id"`
-	ConversationID     string     `json:"conversation_id,omitempty"`
-	UserID             string     `json:"user_id,omitempty"`
-	TenantID           string     `json:"tenant_id,omitempty"`
-	Query              string     `json:"query"`
-	Lang               string     `json:"lang,omitempty"`
-	Mode               Mode       `json:"mode"`
-	RequestedRouteMode RouteMode  `json:"requested_route_mode,omitempty"`
-	EffectiveRouteMode RouteMode  `json:"effective_route_mode,omitempty"`
-	RouteReason        string     `json:"route_reason,omitempty"`
-	StrictEntity       bool       `json:"strict_entity,omitempty"`
-	TimeWindows        []string   `json:"time_windows,omitempty"`
-	ReportStyle        string     `json:"report_style,omitempty"`
-	Status             JobStatus  `json:"status"`
-	Budget             Budget     `json:"budget"`
-	Progress           int        `json:"progress"`
-	Stage              string     `json:"stage,omitempty"`
-	Iteration          int        `json:"iteration,omitempty"`
-	LatestGap          string     `json:"latest_gap,omitempty"`
-	LatestAction       string     `json:"latest_action,omitempty"`
-	Error              string     `json:"error,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
-	CompletedAt        *time.Time `json:"completed_at,omitempty"`
-	Tasks              []Task     `json:"tasks,omitempty"`
-	Evidence           []Evidence `json:"evidence,omitempty"`
-	Report             *Report    `json:"report,omitempty"`
+	ID                 string                 `json:"id"`
+	ConversationID     string                 `json:"conversation_id,omitempty"`
+	UserID             string                 `json:"user_id,omitempty"`
+	TenantID           string                 `json:"tenant_id,omitempty"`
+	Query              string                 `json:"query"`
+	RetryContext       string                 `json:"retry_context,omitempty"`
+	RetryFeedback      map[string]interface{} `json:"retry_feedback,omitempty"`
+	Lang               string                 `json:"lang,omitempty"`
+	Mode               Mode                   `json:"mode"`
+	RequestedRouteMode RouteMode              `json:"requested_route_mode,omitempty"`
+	EffectiveRouteMode RouteMode              `json:"effective_route_mode,omitempty"`
+	RouteReason        string                 `json:"route_reason,omitempty"`
+	StrictEntity       bool                   `json:"strict_entity,omitempty"`
+	TimeWindows        []string               `json:"time_windows,omitempty"`
+	ReportStyle        string                 `json:"report_style,omitempty"`
+	Status             JobStatus              `json:"status"`
+	Budget             Budget                 `json:"budget"`
+	Progress           int                    `json:"progress"`
+	Stage              string                 `json:"stage,omitempty"`
+	Iteration          int                    `json:"iteration,omitempty"`
+	LatestGap          string                 `json:"latest_gap,omitempty"`
+	LatestAction       string                 `json:"latest_action,omitempty"`
+	Error              string                 `json:"error,omitempty"`
+	CreatedAt          time.Time              `json:"created_at"`
+	UpdatedAt          time.Time              `json:"updated_at"`
+	CompletedAt        *time.Time             `json:"completed_at,omitempty"`
+	Tasks              []Task                 `json:"tasks,omitempty"`
+	Evidence           []Evidence             `json:"evidence,omitempty"`
+	Report             *Report                `json:"report,omitempty"`
 }
 
 type Task struct {
@@ -186,18 +188,20 @@ type Event struct {
 }
 
 type CreateJobRequest struct {
-	RequestedID    string    `json:"requested_id,omitempty"`
-	UserID       string    `json:"user_id,omitempty"`
-	TenantID     string    `json:"tenant_id,omitempty"`
-	ConversationID string  `json:"conversation_id,omitempty"`
-	Query        string    `json:"query"`
-	Mode         Mode      `json:"mode,omitempty"`
-	RouteMode    RouteMode `json:"route_mode,omitempty"`
-	Lang         string    `json:"lang,omitempty"`
-	Budget       *Budget   `json:"budget,omitempty"`
-	StrictEntity *bool     `json:"strict_entity,omitempty"`
-	TimeWindows  []string  `json:"time_windows,omitempty"`
-	ReportStyle  string    `json:"report_style,omitempty"`
+	RequestedID    string                 `json:"requested_id,omitempty"`
+	UserID         string                 `json:"user_id,omitempty"`
+	TenantID       string                 `json:"tenant_id,omitempty"`
+	ConversationID string                 `json:"conversation_id,omitempty"`
+	Query          string                 `json:"query"`
+	RetryContext   string                 `json:"retry_context,omitempty"`
+	RetryFeedback  map[string]interface{} `json:"retry_feedback,omitempty"`
+	Mode           Mode                   `json:"mode,omitempty"`
+	RouteMode      RouteMode              `json:"route_mode,omitempty"`
+	Lang           string                 `json:"lang,omitempty"`
+	Budget         *Budget                `json:"budget,omitempty"`
+	StrictEntity   *bool                  `json:"strict_entity,omitempty"`
+	TimeWindows    []string               `json:"time_windows,omitempty"`
+	ReportStyle    string                 `json:"report_style,omitempty"`
 }
 
 type JobSummary struct {

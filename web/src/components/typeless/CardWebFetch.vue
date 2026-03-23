@@ -240,7 +240,9 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
         <div class="px-4 py-3 border-b" :class="toneClasses.header">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+              <div
+                class="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400"
+              >
                 <span
                   v-if="hostname"
                   class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5"

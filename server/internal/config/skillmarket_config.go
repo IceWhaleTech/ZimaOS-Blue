@@ -2,6 +2,15 @@ package config
 
 import "time"
 
+var defaultSkillMarketSeedURLs = []string{
+	"https://github.com/topics/claude-code",
+	"https://github.com/topics/ai-agent",
+	"https://github.com/ComposioHQ/awesome-claude-skills",
+	"https://github.com/VoltAgent/awesome-openclaw-skills",
+	"https://github.com/sickn33/antigravity-awesome-skills/tree/main/skills",
+	"https://github.com/VoltAgent/awesome-agent-skills",
+}
+
 type SkillMarketConfig struct {
 	Enabled                   bool          `yaml:"enabled"`
 	SeedURLs                  []string      `yaml:"seed_urls"`
@@ -26,7 +35,7 @@ type SkillMarketConfig struct {
 func DefaultSkillMarketConfig() *SkillMarketConfig {
 	return &SkillMarketConfig{
 		Enabled:                   true,
-		SeedURLs:                  []string{"https://github.com/topics/claude-code", "https://github.com/topics/ai-agent"},
+		SeedURLs:                  append([]string(nil), defaultSkillMarketSeedURLs...),
 		ClawHubMirrorBaseURLs:     nil,
 		TencentSkillHubAPIBaseURL: "https://lightmake.site",
 		SkillHubBaseURL:           "https://www.skillhub.club",

@@ -12,11 +12,15 @@ const toolStore = useToolStore()
 const searchQuery = ref('')
 const filterCategory = ref<string>('all')
 
-const isChineseLocale = computed(() => locale.value.toLowerCase().startsWith('zh'))
+function browseText(key: string, fallback: string): string {
+  return te(key) ? t(key) : fallback
+}
+
 const galleryHint = computed(() =>
-  isChineseLocale.value
-    ? '以卡片方式浏览工具，快速查看用途、参数规模，并直接启用或停用。'
-    : 'Browse tools as cards, review what they do, and toggle them on or off quickly.'
+  browseText(
+    'extensions.browse.toolGalleryHint',
+    'Browse tools as cards, review what they do, and toggle them on or off quickly.'
+  )
 )
 
 type ToolCardPalette = {
@@ -112,11 +116,11 @@ function getToolAccentStyle(tool: Tool): Record<string, string> {
 }
 
 function getToolName(tool: Tool): string {
-  return getLocalizedToolName(tool.name, t, te)
+  return getLocalizedToolName(tool.id || tool.name, t, te)
 }
 
 function getToolDescription(tool: Tool): string {
-  return getLocalizedToolDescription(tool.name, tool.description, t, te)
+  return getLocalizedToolDescription(tool.id || tool.name, tool.description, t, te)
 }
 
 function getToolMetaLabel(tool: Tool): string {
@@ -199,7 +203,7 @@ function getToolIconUrl(tool: Tool): string | null {
     video_generate: 'mediagen',
     ppt: 'mediagen',
   }
-  const iconName = iconMap[tool.name]
+  const iconName = iconMap[tool.id || tool.name]
   if (iconName) return `/icons/tools/${iconName}.svg`
   return null
 }
@@ -560,13 +564,64 @@ async function handleToggle(tool: Tool) {
   --tools-chip-primary-bg: rgba(239, 246, 255, 0.96);
   --tools-chip-text: #334155;
   --tools-chip-soft-text: #64748b;
+  --tools-chip-soft-bg: rgba(255, 255, 255, 0.56);
   --tools-meta-border: rgba(203, 213, 225, 0.88);
   --tools-detail-label: #64748b;
   --tools-detail-code-bg: rgba(241, 245, 249, 0.98);
   --tools-detail-code-border: rgba(203, 213, 225, 0.86);
+  --tools-empty-bg: rgba(255, 255, 255, 0.72);
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+:root.dark .tool-gallery,
+[data-theme='dark'] .tool-gallery,
+html.dark .tool-gallery {
+  --tools-shell-border: rgba(71, 85, 105, 0.62);
+  --tools-shell-bg-top: rgba(30, 41, 59, 0.96);
+  --tools-shell-bg-bottom: rgba(17, 24, 39, 0.98);
+  --tools-shell-shadow:
+    0 16px 28px -26px rgba(2, 6, 23, 0.82), 0 12px 20px -18px rgba(59, 130, 246, 0.12);
+  --tools-shell-hint-bg: rgba(34, 197, 94, 0.16);
+  --tools-shell-hint-text: #86efac;
+  --tools-stat-border: rgba(71, 85, 105, 0.56);
+  --tools-stat-bg: rgba(15, 23, 42, 0.76);
+  --tools-stat-text: #94a3b8;
+  --tools-stat-value: #e2e8f0;
+  --tools-card-border: rgba(71, 85, 105, 0.62);
+  --tools-card-bg-top: rgba(30, 41, 59, 0.96);
+  --tools-card-bg-bottom: rgba(17, 24, 39, 0.98);
+  --tools-card-shadow:
+    0 16px 28px -26px rgba(2, 6, 23, 0.82), 0 10px 18px -16px rgba(59, 130, 246, 0.12);
+  --tools-card-shadow-active:
+    0 20px 30px -24px rgba(2, 6, 23, 0.88), 0 12px 20px -18px rgba(59, 130, 246, 0.16);
+  --tools-card-title: #e2e8f0;
+  --tools-card-text: #94a3b8;
+  --tools-card-outline: rgba(148, 163, 184, 0.08);
+  --tools-badge-border: rgba(71, 85, 105, 0.48);
+  --tools-badge-bg: rgba(15, 23, 42, 0.76);
+  --tools-badge-text: #cbd5e1;
+  --tools-state-border: rgba(71, 85, 105, 0.48);
+  --tools-state-bg: rgba(15, 23, 42, 0.72);
+  --tools-state-text: #cbd5e1;
+  --tools-state-enabled-text: #86efac;
+  --tools-state-enabled-bg: rgba(34, 197, 94, 0.14);
+  --tools-state-enabled-border: rgba(74, 222, 128, 0.34);
+  --tools-state-disabled-text: #94a3b8;
+  --tools-state-disabled-bg: rgba(30, 41, 59, 0.82);
+  --tools-state-disabled-border: rgba(71, 85, 105, 0.48);
+  --tools-chip-border: rgba(71, 85, 105, 0.46);
+  --tools-chip-bg: rgba(15, 23, 42, 0.76);
+  --tools-chip-primary-bg: rgba(30, 64, 175, 0.22);
+  --tools-chip-text: #cbd5e1;
+  --tools-chip-soft-text: #94a3b8;
+  --tools-chip-soft-bg: rgba(30, 41, 59, 0.72);
+  --tools-meta-border: rgba(71, 85, 105, 0.42);
+  --tools-detail-label: #94a3b8;
+  --tools-detail-code-bg: rgba(15, 23, 42, 0.88);
+  --tools-detail-code-border: rgba(71, 85, 105, 0.46);
+  --tools-empty-bg: rgba(15, 23, 42, 0.76);
 }
 
 .tools-showcase {
@@ -950,7 +1005,7 @@ async function handleToggle(tool: Tool) {
 
 .tool-showcase-card__chip--soft {
   color: var(--tools-chip-soft-text);
-  background: rgba(255, 255, 255, 0.56);
+  background: var(--tools-chip-soft-bg);
 }
 
 .list-empty {
@@ -960,7 +1015,7 @@ async function handleToggle(tool: Tool) {
   border: 1px dashed var(--tools-stat-border);
   border-radius: 24px;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--tools-empty-bg);
 }
 
 .list-empty svg {

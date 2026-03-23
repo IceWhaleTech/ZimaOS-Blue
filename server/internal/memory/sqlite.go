@@ -46,7 +46,7 @@ type Conversation struct {
 
 // MessageAttachment represents an attachment in a message.
 type MessageAttachment struct {
-	Type     string  `json:"type"`               // "image", "file", or "audio"
+	Type     string  `json:"type"`               // "image", "file", "audio", or "video"
 	Name     string  `json:"name"`               // filename
 	MimeType string  `json:"mime_type"`          // MIME type
 	Data     string  `json:"data"`               // base64 encoded data
@@ -82,9 +82,16 @@ type ConversationCommandState struct {
 
 // Store provides conversation storage using SQLite.
 type Store struct {
-	db     *sql.DB
-	mu     sync.Mutex // Mutex for write operations
-	ownsDB bool       // true if this Store opened the DB and should close it
+	db          *sql.DB
+	mu          sync.Mutex // Mutex for write operations
+	ownsDB      bool       // true if this Store opened the DB and should close it
+	dbPath      string
+	options     StoreOptions
+	bgDone      chan struct{}
+	bgWG        sync.WaitGroup
+	bgStarted   bool
+	bgCloseOnce sync.Once
+	recoveryMu  sync.Mutex
 }
 
 // responsesPreviousIDTTL limits how long continuation IDs are considered valid.
@@ -92,49 +99,31 @@ const responsesPreviousIDTTL = 24 * time.Hour
 
 // NewStore creates a new memory store.
 func NewStore(dbPath string) (*Store, error) {
-	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
-		// Set connection pool settings for better concurrency
-		db.SetMaxOpenConns(1) // SQLite only supports one writer at a time
-		db.SetMaxIdleConns(1)
+	return NewStoreWithOptions(dbPath, DefaultStoreOptions())
+}
 
-		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-			return fmt.Errorf("failed to enable WAL mode: %w", err)
-		}
-		if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-			return fmt.Errorf("failed to enable foreign keys: %w", err)
-		}
-		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-			return fmt.Errorf("failed to set busy timeout: %w", err)
-		}
-		if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
-			return fmt.Errorf("failed to set synchronous mode: %w", err)
-		}
-		if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
-			return fmt.Errorf("failed to set wal autocheckpoint: %w", err)
-		}
-
-		// Reduce page cache for lower idle memory (~512KB instead of default ~2MB)
-		db.Exec("PRAGMA cache_size=-500")
-
-		store := &Store{db: db}
-		if err := store.migrate(); err != nil {
-			return fmt.Errorf("failed to migrate: %w", err)
-		}
-
-		db.Exec("PRAGMA shrink_memory")
-		return nil
-	})
+// NewStoreWithOptions creates a new owned memory store with custom SQLite settings.
+func NewStoreWithOptions(dbPath string, opts StoreOptions) (*Store, error) {
+	db, err := openOwnedStoreDB(dbPath, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	return &Store{db: db, ownsDB: true}, nil
+	store := &Store{
+		db:      db,
+		ownsDB:  true,
+		dbPath:  dbPath,
+		options: normalizeStoreOptions(dbPath, opts),
+		bgDone:  make(chan struct{}),
+	}
+	store.startOwnedLoops()
+	return store, nil
 }
 
 // NewStoreWithDB creates a memory store using an existing shared database connection.
 // The caller is responsible for managing the DB lifecycle (pragmas, connection pool, close).
 func NewStoreWithDB(db *sql.DB) (*Store, error) {
-	store := &Store{db: db, ownsDB: false}
+	store := &Store{db: db, ownsDB: false, options: DefaultStoreOptions()}
 	if err := store.migrate(); err != nil {
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
@@ -163,8 +152,23 @@ func (s *Store) migrate() error {
 		provider TEXT,
 		model TEXT,
 		stats TEXT,
+		attachments TEXT,
+		has_attachments BOOLEAN NOT NULL DEFAULT 0,
 		created_at DATETIME NOT NULL,
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+	);
+
+	CREATE TABLE IF NOT EXISTS message_attachments (
+		message_id TEXT NOT NULL,
+		attachment_index INTEGER NOT NULL,
+		type TEXT NOT NULL DEFAULT '',
+		name TEXT NOT NULL DEFAULT '',
+		mime_type TEXT NOT NULL DEFAULT '',
+		duration REAL NOT NULL DEFAULT 0,
+		file_path TEXT NOT NULL,
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY (message_id, attachment_index),
+		FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
 	);
 
 	CREATE TABLE IF NOT EXISTS conversation_runtime_state (
@@ -217,6 +221,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE messages ADD COLUMN model TEXT",
 		"ALTER TABLE messages ADD COLUMN stats TEXT",
 		"ALTER TABLE messages ADD COLUMN attachments TEXT",
+		"ALTER TABLE messages ADD COLUMN has_attachments BOOLEAN NOT NULL DEFAULT 0",
 		"ALTER TABLE messages ADD COLUMN tool_name TEXT",
 		"ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT ''",
 		"ALTER TABLE conversations ADD COLUMN pinned BOOLEAN DEFAULT 0",
@@ -231,6 +236,7 @@ func (s *Store) migrate() error {
 	s.db.Exec("CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id)")
 	// Create index for pinned conversations
 	s.db.Exec("CREATE INDEX IF NOT EXISTS idx_conversations_pinned ON conversations(pinned)")
+	s.db.Exec("CREATE INDEX IF NOT EXISTS idx_message_attachments_message_id ON message_attachments(message_id)")
 
 	return nil
 }
@@ -238,7 +244,13 @@ func (s *Store) migrate() error {
 // Close closes the database connection if this Store owns it.
 func (s *Store) Close() error {
 	if s.ownsDB {
-		return s.db.Close()
+		s.stopOwnedLoops()
+		if s.db != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			_ = s.checkpoint(ctx, dbutil.CheckpointTruncate)
+			cancel()
+			return s.db.Close()
+		}
 	}
 	return nil
 }
@@ -537,56 +549,114 @@ func (s *Store) SearchConversations(ctx context.Context, query string, limit int
 
 // AddMessage adds a message to a conversation.
 func (s *Store) AddMessage(ctx context.Context, conversationID string, msg Message, userID ...string) (*Message, error) {
-	if err := s.ensureConversationAccess(ctx, conversationID, normalizeConversationScope(userID)); err != nil {
+	return s.addMessage(ctx, conversationID, msg, false, userID...)
+}
+
+// AddMessageTrusted adds a message without re-checking conversation ownership.
+func (s *Store) AddMessageTrusted(ctx context.Context, conversationID string, msg Message) (*Message, error) {
+	return s.addMessage(ctx, conversationID, msg, true)
+}
+
+func (s *Store) addMessage(ctx context.Context, conversationID string, msg Message, trusted bool, userID ...string) (*Message, error) {
+	if !trusted {
+		if err := s.ensureConversationAccess(ctx, conversationID, normalizeConversationScope(userID)); err != nil {
+			return nil, err
+		}
+	}
+
+	var persisted Message
+	err := s.retryOnCorruption(func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		persisted = msg
+		if strings.TrimSpace(persisted.ID) == "" {
+			persisted.ID = uuid.New().String()
+		}
+		persisted.ConversationID = conversationID
+		if persisted.CreatedAt.IsZero() {
+			persisted.CreatedAt = timeutil.NowTime()
+		}
+
+		var toolCallsJSON []byte
+		if len(persisted.ToolCalls) > 0 {
+			var err error
+			toolCallsJSON, err = json.Marshal(persisted.ToolCalls)
+			if err != nil {
+				return fmt.Errorf("failed to marshal tool calls: %w", err)
+			}
+		}
+
+		var statsJSON []byte
+		if persisted.Stats != nil {
+			var err error
+			statsJSON, err = json.Marshal(persisted.Stats)
+			if err != nil {
+				return fmt.Errorf("failed to marshal stats: %w", err)
+			}
+		}
+
+		var attachmentsJSON []byte
+		hasAttachments := len(persisted.Attachments) > 0
+		if hasAttachments && !s.shouldExternalizeAttachments() {
+			var err error
+			attachmentsJSON, err = json.Marshal(persisted.Attachments)
+			if err != nil {
+				return fmt.Errorf("failed to marshal attachments: %w", err)
+			}
+		}
+
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin add message tx: %w", err)
+		}
+		defer tx.Rollback()
+
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO messages (
+				id, conversation_id, role, content, tool_calls, tool_call_id, tool_name,
+				provider, model, stats, attachments, has_attachments, created_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			persisted.ID,
+			persisted.ConversationID,
+			persisted.Role,
+			persisted.Content,
+			toolCallsJSON,
+			persisted.ToolCallID,
+			persisted.ToolName,
+			persisted.Provider,
+			persisted.Model,
+			statsJSON,
+			attachmentsJSON,
+			hasAttachments,
+			persisted.CreatedAt,
+		); err != nil {
+			return fmt.Errorf("failed to add message: %w", err)
+		}
+
+		if hasAttachments && s.shouldExternalizeAttachments() {
+			if err := s.persistExternalAttachmentsTx(ctx, tx, persisted.ID, persisted.Attachments, persisted.CreatedAt); err != nil {
+				return err
+			}
+		}
+
+		if _, err := tx.ExecContext(ctx,
+			"UPDATE conversations SET updated_at = ? WHERE id = ?",
+			timeutil.NowTime(),
+			conversationID,
+		); err != nil {
+			return fmt.Errorf("failed to update conversation timestamp: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit add message tx: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	msg.ID = uuid.New().String()
-	msg.ConversationID = conversationID
-	msg.CreatedAt = timeutil.NowTime()
-
-	var toolCallsJSON []byte
-	if len(msg.ToolCalls) > 0 {
-		var err error
-		toolCallsJSON, err = json.Marshal(msg.ToolCalls)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal tool calls: %w", err)
-		}
-	}
-
-	var statsJSON []byte
-	if msg.Stats != nil {
-		var err error
-		statsJSON, err = json.Marshal(msg.Stats)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal stats: %w", err)
-		}
-	}
-
-	var attachmentsJSON []byte
-	if len(msg.Attachments) > 0 {
-		var err error
-		attachmentsJSON, err = json.Marshal(msg.Attachments)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal attachments: %w", err)
-		}
-	}
-
-	_, err := s.db.ExecContext(ctx,
-		"INSERT INTO messages (id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		msg.ID, msg.ConversationID, msg.Role, msg.Content, toolCallsJSON, msg.ToolCallID, msg.ToolName, msg.Provider, msg.Model, statsJSON, attachmentsJSON, msg.CreatedAt,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to add message: %w", err)
-	}
-
-	// Update conversation's updated_at
-	s.db.ExecContext(ctx, "UPDATE conversations SET updated_at = ? WHERE id = ?", timeutil.NowTime(), conversationID)
-
-	return &msg, nil
+	return &persisted, nil
 }
 
 // UpdateMessageContent updates the content (and optionally stats) of an existing message.
@@ -597,39 +667,130 @@ func (s *Store) UpdateMessageContent(ctx context.Context, messageID, content str
 
 // UpdateMessageContentFull updates a message's content, stats, and optionally provider/model.
 func (s *Store) UpdateMessageContentFull(ctx context.Context, messageID, content, provider, model string, stats *MessageStats) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.retryOnCorruption(func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 
-	if stats != nil {
-		statsJSON, err := json.Marshal(stats)
-		if err != nil {
-			return fmt.Errorf("failed to marshal stats: %w", err)
+		if stats != nil {
+			statsJSON, err := json.Marshal(stats)
+			if err != nil {
+				return fmt.Errorf("failed to marshal stats: %w", err)
+			}
+			if provider != "" || model != "" {
+				_, err = s.db.ExecContext(ctx,
+					"UPDATE messages SET content = ?, stats = ?, provider = COALESCE(NULLIF(?, ''), provider), model = COALESCE(NULLIF(?, ''), model) WHERE id = ?",
+					content, statsJSON, provider, model, messageID,
+				)
+			} else {
+				_, err = s.db.ExecContext(ctx,
+					"UPDATE messages SET content = ?, stats = ? WHERE id = ?",
+					content, statsJSON, messageID,
+				)
+			}
+			return err
 		}
 		if provider != "" || model != "" {
-			_, err = s.db.ExecContext(ctx,
-				"UPDATE messages SET content = ?, stats = ?, provider = COALESCE(NULLIF(?, ''), provider), model = COALESCE(NULLIF(?, ''), model) WHERE id = ?",
-				content, statsJSON, provider, model, messageID,
+			_, err := s.db.ExecContext(ctx,
+				"UPDATE messages SET content = ?, provider = COALESCE(NULLIF(?, ''), provider), model = COALESCE(NULLIF(?, ''), model) WHERE id = ?",
+				content, provider, model, messageID,
 			)
-		} else {
-			_, err = s.db.ExecContext(ctx,
-				"UPDATE messages SET content = ?, stats = ? WHERE id = ?",
-				content, statsJSON, messageID,
-			)
+			return err
 		}
-		return err
-	}
-	if provider != "" || model != "" {
 		_, err := s.db.ExecContext(ctx,
-			"UPDATE messages SET content = ?, provider = COALESCE(NULLIF(?, ''), provider), model = COALESCE(NULLIF(?, ''), model) WHERE id = ?",
-			content, provider, model, messageID,
+			"UPDATE messages SET content = ? WHERE id = ?",
+			content, messageID,
 		)
 		return err
+	})
+}
+
+// UpsertMessageContentFullTrusted inserts a message when absent or updates draft/final content in place.
+func (s *Store) UpsertMessageContentFullTrusted(ctx context.Context, msg Message) error {
+	if strings.TrimSpace(msg.ID) == "" {
+		return fmt.Errorf("message id is required")
 	}
-	_, err := s.db.ExecContext(ctx,
-		"UPDATE messages SET content = ? WHERE id = ?",
-		content, messageID,
-	)
-	return err
+	if strings.TrimSpace(msg.ConversationID) == "" {
+		return fmt.Errorf("conversation id is required")
+	}
+	if strings.TrimSpace(msg.Role) == "" {
+		msg.Role = "assistant"
+	}
+	if msg.CreatedAt.IsZero() {
+		msg.CreatedAt = timeutil.NowTime()
+	}
+
+	return s.retryOnCorruption(func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin upsert message tx: %w", err)
+		}
+		defer tx.Rollback()
+
+		var statsJSON []byte
+		if msg.Stats != nil {
+			statsJSON, err = json.Marshal(msg.Stats)
+			if err != nil {
+				return fmt.Errorf("failed to marshal stats: %w", err)
+			}
+		}
+
+		res, err := tx.ExecContext(ctx,
+			`UPDATE messages
+			SET content = ?,
+			    stats = CASE WHEN ? IS NULL THEN stats ELSE ? END,
+			    provider = COALESCE(NULLIF(?, ''), provider),
+			    model = COALESCE(NULLIF(?, ''), model)
+			WHERE id = ?`,
+			msg.Content,
+			statsJSON,
+			statsJSON,
+			msg.Provider,
+			msg.Model,
+			msg.ID,
+		)
+		if err != nil {
+			return fmt.Errorf("update message content: %w", err)
+		}
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("message upsert rows affected: %w", err)
+		}
+		if rowsAffected == 0 {
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO messages (
+					id, conversation_id, role, content, tool_calls, tool_call_id, tool_name,
+					provider, model, stats, attachments, has_attachments, created_at
+				) VALUES (?, ?, ?, ?, NULL, '', '', ?, ?, ?, NULL, 0, ?)`,
+				msg.ID,
+				msg.ConversationID,
+				msg.Role,
+				msg.Content,
+				msg.Provider,
+				msg.Model,
+				statsJSON,
+				msg.CreatedAt,
+			); err != nil {
+				return fmt.Errorf("insert message content: %w", err)
+			}
+		}
+
+		if _, err := tx.ExecContext(ctx,
+			"UPDATE conversations SET updated_at = ? WHERE id = ?",
+			timeutil.NowTime(),
+			msg.ConversationID,
+		); err != nil {
+			return fmt.Errorf("update conversation timestamp: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit upsert message tx: %w", err)
+		}
+		return nil
+	})
 }
 
 // GetMessages retrieves messages for a conversation.
@@ -637,69 +798,20 @@ func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, o
 	if err := s.ensureConversationAccess(ctx, conversationID, normalizeConversationScope(userID)); err != nil {
 		return nil, err
 	}
-
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC LIMIT ? OFFSET ?",
-		conversationID, limit, offset,
+	messages, err := s.queryMessages(
+		ctx,
+		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, has_attachments, created_at
+		FROM messages
+		WHERE conversation_id = ?
+		ORDER BY created_at ASC, rowid ASC
+		LIMIT ? OFFSET ?`,
+		[]any{conversationID, limit, offset},
+		true,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages: %w", err)
 	}
-	defer rows.Close()
-
-	var messages []Message
-	for rows.Next() {
-		var msg Message
-		var toolCallsJSON sql.NullString
-		var toolCallID sql.NullString
-		var toolName sql.NullString
-		var provider sql.NullString
-		var model sql.NullString
-		var statsJSON sql.NullString
-		var attachmentsJSON sql.NullString
-
-		if err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &toolCallsJSON, &toolCallID, &toolName, &provider, &model, &statsJSON, &attachmentsJSON, &msg.CreatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan message: %w", err)
-		}
-
-		if toolCallsJSON.Valid && toolCallsJSON.String != "" {
-			if err := json.Unmarshal([]byte(toolCallsJSON.String), &msg.ToolCalls); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal tool calls: %w", err)
-			}
-		}
-
-		if toolCallID.Valid {
-			msg.ToolCallID = toolCallID.String
-		}
-		if toolName.Valid {
-			msg.ToolName = toolName.String
-		}
-
-		if provider.Valid {
-			msg.Provider = provider.String
-		}
-
-		if model.Valid {
-			msg.Model = model.String
-		}
-
-		if statsJSON.Valid && statsJSON.String != "" {
-			msg.Stats = &MessageStats{}
-			if err := json.Unmarshal([]byte(statsJSON.String), msg.Stats); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal stats: %w", err)
-			}
-		}
-
-		if attachmentsJSON.Valid && attachmentsJSON.String != "" {
-			if err := json.Unmarshal([]byte(attachmentsJSON.String), &msg.Attachments); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal attachments: %w", err)
-			}
-		}
-
-		messages = append(messages, msg)
-	}
-
-	return messages, rows.Err()
+	return messages, nil
 }
 
 // GetRecentMessages retrieves the latest messages for a conversation and returns
@@ -711,80 +823,24 @@ func (s *Store) GetRecentMessages(ctx context.Context, conversationID string, li
 	if limit <= 0 {
 		return nil, nil
 	}
-
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at
+	messages, err := s.queryMessages(
+		ctx,
+		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, has_attachments, created_at
 		FROM (
-			SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at, rowid
+			SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, has_attachments, created_at, rowid
 			FROM messages
 			WHERE conversation_id = ?
 			ORDER BY created_at DESC, rowid DESC
 			LIMIT ?
 		)
-		ORDER BY created_at ASC, rowid ASC
-	`, conversationID, limit)
+		ORDER BY created_at ASC, rowid ASC`,
+		[]any{conversationID, limit},
+		true,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get recent messages: %w", err)
 	}
-	defer rows.Close()
-
-	var messages []Message
-	for rows.Next() {
-		var msg Message
-		var toolCallsJSON sql.NullString
-		var toolCallID sql.NullString
-		var toolName sql.NullString
-		var provider sql.NullString
-		var model sql.NullString
-		var statsJSON sql.NullString
-		var attachmentsJSON sql.NullString
-
-		err := rows.Scan(
-			&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content,
-			&toolCallsJSON, &toolCallID, &toolName, &provider, &model,
-			&statsJSON, &attachmentsJSON, &msg.CreatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan message: %w", err)
-		}
-
-		if toolCallsJSON.Valid && toolCallsJSON.String != "" {
-			if err := json.Unmarshal([]byte(toolCallsJSON.String), &msg.ToolCalls); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal tool calls: %w", err)
-			}
-		}
-
-		if toolCallID.Valid {
-			msg.ToolCallID = toolCallID.String
-		}
-		if toolName.Valid {
-			msg.ToolName = toolName.String
-		}
-		if provider.Valid {
-			msg.Provider = provider.String
-		}
-		if model.Valid {
-			msg.Model = model.String
-		}
-
-		if statsJSON.Valid && statsJSON.String != "" {
-			var stats MessageStats
-			if err := json.Unmarshal([]byte(statsJSON.String), &stats); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal stats: %w", err)
-			}
-			msg.Stats = &stats
-		}
-
-		if attachmentsJSON.Valid && attachmentsJSON.String != "" {
-			if err := json.Unmarshal([]byte(attachmentsJSON.String), &msg.Attachments); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal attachments: %w", err)
-			}
-		}
-
-		messages = append(messages, msg)
-	}
-
-	return messages, rows.Err()
+	return messages, nil
 }
 
 // CountMessages returns the number of persisted messages in a conversation.
@@ -815,7 +871,7 @@ func (s *Store) GetLatestAssistantMessage(ctx context.Context, conversationID st
 	}
 
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at
+		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, has_attachments, created_at
 		FROM messages
 		WHERE conversation_id = ? AND role = 'assistant'
 		ORDER BY created_at DESC, rowid DESC
@@ -823,51 +879,35 @@ func (s *Store) GetLatestAssistantMessage(ctx context.Context, conversationID st
 		conversationID,
 	)
 
-	var msg Message
-	var toolCallsJSON sql.NullString
-	var toolCallID sql.NullString
-	var toolName sql.NullString
-	var provider sql.NullString
-	var model sql.NullString
-	var statsJSON sql.NullString
-	var attachmentsJSON sql.NullString
-
-	if err := row.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &toolCallsJSON, &toolCallID, &toolName, &provider, &model, &statsJSON, &attachmentsJSON, &msg.CreatedAt); err != nil {
+	scanned, err := s.scanMessageRow(row, true)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to scan latest assistant message: %w", err)
 	}
-
-	if toolCallsJSON.Valid && toolCallsJSON.String != "" {
-		if err := json.Unmarshal([]byte(toolCallsJSON.String), &msg.ToolCalls); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal tool calls: %w", err)
+	msg := scanned.message
+	if scanned.hasAttachments {
+		attachments, err := s.loadExternalAttachments(ctx, msg.ID)
+		if err != nil {
+			return nil, err
 		}
-	}
-	if toolCallID.Valid {
-		msg.ToolCallID = toolCallID.String
-	}
-	if toolName.Valid {
-		msg.ToolName = toolName.String
-	}
-	if provider.Valid {
-		msg.Provider = provider.String
-	}
-	if model.Valid {
-		msg.Model = model.String
-	}
-	if statsJSON.Valid && statsJSON.String != "" {
-		msg.Stats = &MessageStats{}
-		if err := json.Unmarshal([]byte(statsJSON.String), msg.Stats); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal stats: %w", err)
+		if len(attachments) > 0 {
+			msg.Attachments = attachments
+		} else {
+			attachments, err := parseLegacyAttachments(scanned.legacyAttachments)
+			if err != nil {
+				return nil, err
+			}
+			msg.Attachments = attachments
 		}
-	}
-	if attachmentsJSON.Valid && attachmentsJSON.String != "" {
-		if err := json.Unmarshal([]byte(attachmentsJSON.String), &msg.Attachments); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal attachments: %w", err)
+	} else {
+		attachments, err := parseLegacyAttachments(scanned.legacyAttachments)
+		if err != nil {
+			return nil, err
 		}
+		msg.Attachments = attachments
 	}
-
 	return &msg, nil
 }
 
@@ -1191,32 +1231,25 @@ func (s *Store) SetConversationPreviousResponseID(ctx context.Context, conversat
 	}
 
 	now := timeutil.NowTime()
+	return s.retryOnCorruption(func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	_, err := s.db.ExecContext(
-		ctx,
-		`INSERT INTO conversation_runtime_state (conversation_id, provider_id, model_id, previous_response_id, assistant_message_id, updated_at)
-		VALUES (?, '', '', ?, '', ?)
-		ON CONFLICT(conversation_id, provider_id, model_id)
-		DO UPDATE SET previous_response_id = excluded.previous_response_id, updated_at = excluded.updated_at`,
-		conversationID,
-		responseID,
-		now,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to set conversation previous response id: %w", err)
-	}
-
-	// Best-effort TTL cleanup for this conversation key.
-	_, _ = s.db.ExecContext(
-		ctx,
-		`DELETE FROM conversation_runtime_state WHERE conversation_id = ? AND updated_at < ?`,
-		conversationID,
-		now.Add(-responsesPreviousIDTTL),
-	)
-	return nil
+		_, err := s.db.ExecContext(
+			ctx,
+			`INSERT INTO conversation_runtime_state (conversation_id, provider_id, model_id, previous_response_id, assistant_message_id, updated_at)
+			VALUES (?, '', '', ?, '', ?)
+			ON CONFLICT(conversation_id, provider_id, model_id)
+			DO UPDATE SET previous_response_id = excluded.previous_response_id, updated_at = excluded.updated_at`,
+			conversationID,
+			responseID,
+			now,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to set conversation previous response id: %w", err)
+		}
+		return nil
+	})
 }
 
 // ClearConversationPreviousResponseID removes persisted continuation IDs for a conversation.
@@ -1226,15 +1259,17 @@ func (s *Store) ClearConversationPreviousResponseID(ctx context.Context, convers
 		return nil
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.retryOnCorruption(func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 
-	if _, err := s.db.ExecContext(
-		ctx,
-		`DELETE FROM conversation_runtime_state WHERE conversation_id = ?`,
-		conversationID,
-	); err != nil {
-		return fmt.Errorf("failed to clear conversation previous response id: %w", err)
-	}
-	return nil
+		if _, err := s.db.ExecContext(
+			ctx,
+			`DELETE FROM conversation_runtime_state WHERE conversation_id = ?`,
+			conversationID,
+		); err != nil {
+			return fmt.Errorf("failed to clear conversation previous response id: %w", err)
+		}
+		return nil
+	})
 }

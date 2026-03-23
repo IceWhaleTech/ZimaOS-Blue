@@ -41,6 +41,7 @@ const props = defineProps<{
   isSelected?: boolean
   isMultiSelectMode?: boolean
   disableAutoTTS?: boolean
+  showExternalStatusRail?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -127,6 +128,7 @@ type InlineImageParseResult = { images: InlineImageInfo[]; strippedText: string 
 type RuntimeProcessMessage = Message & {
   local_process_tool_results?: ToolResultItem[]
 }
+type MessageAttachment = NonNullable<Message['attachments']>[number]
 const INLINE_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g
 const INLINE_IMAGE_STRIP_RE = /\n*!\[[^\]]*\]\([^)]+\)/g
 const INLINE_IMAGE_CACHE_KEY = '__zima_chat_inline_image_cache_v1__'
@@ -178,113 +180,180 @@ const parsedInlineContent = computed(() => {
   return parseInlineImagesCached(props.message.content)
 })
 
-// Throttle streaming content updates to one render per animation frame.
-const throttledStreamingContent = ref(props.message.content)
-let streamingRenderRafId: number | null = null
-let streamingRenderFallbackTimer: ReturnType<typeof setTimeout> | null = null
-let pendingStreamingContent = props.message.content
-let lastStreamingFlushedContent = props.message.content
-let lastStreamingFlushAt = Date.now()
+// Adaptive streaming reveal: slow deltas feel closer to per-character typing,
+// while bursty deltas collapse into short word/sentence chunks.
+const revealedStreamingContent = ref(props.message.content)
+let streamingRevealTimer: ReturnType<typeof setTimeout> | null = null
+let streamingRevealTarget = props.message.content
+let lastStreamingTargetAt = Date.now()
 
-const STREAMING_RENDER_MIN_DELTA = 12
-const STREAMING_RENDER_MAX_DEFER_MS = 72
-const RE_STREAMING_RENDER_FLUSH_HINT = /[.!?。！？\n\r`*_#\[\]|]/
+const STREAMING_REVEAL_TICK_MS = 18
+const STREAMING_REVEAL_FAST_THRESHOLD_MS = 28
+const STREAMING_REVEAL_MEDIUM_THRESHOLD_MS = 56
+const RE_STREAMING_IMMEDIATE_FLUSH = /```|\n\n|\r\n\r\n|\|\s*[-:]+\s*\|/
+const STREAMING_BOUNDARY_CHARS = new Set([
+  ' ',
+  '\n',
+  '\t',
+  '.',
+  ',',
+  '!',
+  '?',
+  ';',
+  ':',
+  '，',
+  '。',
+  '！',
+  '？',
+  '；',
+  '：',
+])
 
-function hasStreamingRenderFlushHint(content: string): boolean {
-  return RE_STREAMING_RENDER_FLUSH_HINT.test(content)
+function clearStreamingRevealTimer() {
+  if (!streamingRevealTimer) return
+  clearTimeout(streamingRevealTimer)
+  streamingRevealTimer = null
 }
 
-function clearStreamingRenderFallbackTimer() {
-  if (!streamingRenderFallbackTimer) return
-  clearTimeout(streamingRenderFallbackTimer)
-  streamingRenderFallbackTimer = null
+function flushStreamingReveal(nextContent = streamingRevealTarget) {
+  clearStreamingRevealTimer()
+  streamingRevealTarget = nextContent
+  revealedStreamingContent.value = nextContent
 }
 
-function flushStreamingContent(nextContent: string) {
-  throttledStreamingContent.value = nextContent
-  lastStreamingFlushedContent = nextContent
-  lastStreamingFlushAt = Date.now()
-}
+function takeBoundaryChunk(delta: string, minChars: number, maxChars: number): string {
+  const glyphs = Array.from(delta)
+  if (glyphs.length <= maxChars) return delta
 
-function syncStreamingContentNow(nextContent: string) {
-  pendingStreamingContent = nextContent
-  clearStreamingRenderFallbackTimer()
-  if (streamingRenderRafId !== null) {
-    window.cancelAnimationFrame(streamingRenderRafId)
-    streamingRenderRafId = null
-  }
-  flushStreamingContent(nextContent)
-}
-
-function scheduleStreamingContentUpdate(nextContent: string) {
-  pendingStreamingContent = nextContent
-
-  // Skip immediate frame updates for tiny plain-text appends.
-  if (nextContent.startsWith(lastStreamingFlushedContent)) {
-    const delta = nextContent.slice(lastStreamingFlushedContent.length)
-    const shouldDefer =
-      delta.length > 0 &&
-      delta.length < STREAMING_RENDER_MIN_DELTA &&
-      !hasStreamingRenderFlushHint(delta) &&
-      Date.now() - lastStreamingFlushAt < STREAMING_RENDER_MAX_DEFER_MS
-
-    if (shouldDefer) {
-      if (!streamingRenderFallbackTimer) {
-        const wait = STREAMING_RENDER_MAX_DEFER_MS - (Date.now() - lastStreamingFlushAt)
-        streamingRenderFallbackTimer = setTimeout(
-          () => {
-            streamingRenderFallbackTimer = null
-            if (streamingRenderRafId !== null) return
-            streamingRenderRafId = window.requestAnimationFrame(() => {
-              streamingRenderRafId = null
-              flushStreamingContent(pendingStreamingContent)
-            })
-          },
-          Math.max(8, wait)
-        )
-      }
-      return
+  for (let index = Math.max(0, minChars - 1); index < Math.min(glyphs.length, maxChars); index++) {
+    if (STREAMING_BOUNDARY_CHARS.has(glyphs[index] || '')) {
+      return glyphs.slice(0, index + 1).join('')
     }
   }
 
-  clearStreamingRenderFallbackTimer()
-  if (streamingRenderRafId !== null) return
-  streamingRenderRafId = window.requestAnimationFrame(() => {
-    streamingRenderRafId = null
-    flushStreamingContent(pendingStreamingContent)
-  })
+  return glyphs.slice(0, maxChars).join('')
+}
+
+function nextStreamingRevealChunk(delta: string, firstChunk = false): string {
+  const glyphs = Array.from(delta)
+  if (glyphs.length <= 2) return delta
+  if (firstChunk) return glyphs.slice(0, 1).join('')
+  if (RE_STREAMING_IMMEDIATE_FLUSH.test(delta)) return delta
+
+  const sinceTarget = Date.now() - lastStreamingTargetAt
+  if (sinceTarget < STREAMING_REVEAL_FAST_THRESHOLD_MS || glyphs.length >= 18) {
+    return takeBoundaryChunk(delta, 6, 18)
+  }
+  if (sinceTarget < STREAMING_REVEAL_MEDIUM_THRESHOLD_MS || glyphs.length >= 8) {
+    return takeBoundaryChunk(delta, 3, 8)
+  }
+  return glyphs.slice(0, Math.min(2, glyphs.length)).join('')
+}
+
+function advanceStreamingReveal() {
+  clearStreamingRevealTimer()
+  if (revealedStreamingContent.value === streamingRevealTarget) return
+  if (chatStore.toolExecuting || chatStore.awaitingConfirmation) {
+    flushStreamingReveal()
+    return
+  }
+
+  const delta = streamingRevealTarget.slice(revealedStreamingContent.value.length)
+  if (!delta) {
+    flushStreamingReveal()
+    return
+  }
+
+  const nextChunk = nextStreamingRevealChunk(delta, revealedStreamingContent.value.length === 0)
+  revealedStreamingContent.value += nextChunk
+
+  if (revealedStreamingContent.value !== streamingRevealTarget) {
+    streamingRevealTimer = setTimeout(advanceStreamingReveal, STREAMING_REVEAL_TICK_MS)
+  }
+}
+
+function scheduleStreamingReveal(nextContent: string) {
+  streamingRevealTarget = nextContent
+  lastStreamingTargetAt = Date.now()
+
+  if (!trackStreamingState.value) {
+    flushStreamingReveal(nextContent)
+    return
+  }
+
+  if (
+    !nextContent.startsWith(revealedStreamingContent.value) ||
+    RE_STREAMING_IMMEDIATE_FLUSH.test(nextContent.slice(revealedStreamingContent.value.length))
+  ) {
+    flushStreamingReveal(nextContent)
+    return
+  }
+
+  if (revealedStreamingContent.value === '' && nextContent) {
+    revealedStreamingContent.value = nextStreamingRevealChunk(nextContent, true)
+  }
+
+  if (revealedStreamingContent.value === nextContent) {
+    clearStreamingRevealTimer()
+    return
+  }
+
+  if (!streamingRevealTimer) {
+    streamingRevealTimer = setTimeout(advanceStreamingReveal, STREAMING_REVEAL_TICK_MS)
+  }
 }
 
 watch(
   () => props.message.content,
   (content) => {
     if (trackStreamingState.value) {
-      scheduleStreamingContentUpdate(content)
+      scheduleStreamingReveal(content)
       return
     }
-    syncStreamingContentNow(content)
+    flushStreamingReveal(content)
   },
   { immediate: true }
 )
 
 watch(
   () => trackStreamingState.value,
-  () => {
-    syncStreamingContentNow(props.message.content)
+  (trackStreaming) => {
+    if (!trackStreaming) {
+      flushStreamingReveal(props.message.content)
+      return
+    }
+    scheduleStreamingReveal(props.message.content)
   }
 )
 
 watch(
-  () => [trackStreamingState.value, chatStore.toolExecuting] as const,
-  ([trackStreaming, toolExecuting]) => {
-    if (trackStreaming && toolExecuting) {
-      syncStreamingContentNow(props.message.content)
+  () =>
+    [
+      trackStreamingState.value,
+      chatStore.toolExecuting,
+      chatStore.awaitingConfirmation,
+      (chatStore as { streamUIState?: { phase?: string } }).streamUIState?.phase || '',
+    ] as const,
+  ([trackStreaming, toolExecuting, awaitingConfirmation, phase]) => {
+    if (
+      !trackStreaming ||
+      toolExecuting ||
+      awaitingConfirmation ||
+      phase === 'recovering' ||
+      phase === 'interrupted'
+    ) {
+      flushStreamingReveal(props.message.content)
+      return
     }
+    scheduleStreamingReveal(props.message.content)
   }
 )
 
 const renderSourceContent = computed(() =>
-  trackStreamingState.value ? throttledStreamingContent.value : props.message.content
+  trackStreamingState.value ? revealedStreamingContent.value : props.message.content
+)
+const showStreamingCaret = computed(
+  () => trackStreamingState.value && !chatStore.toolExecuting && !chatStore.awaitingConfirmation
 )
 
 const STREAMING_TYPELESS_HINT_TAIL = 4
@@ -395,10 +464,47 @@ watch(
 const isSpeaking = ref(false)
 const ttsError = ref<string | null>(null)
 
+type AttachmentPreviewState = {
+  type: 'image' | 'text' | 'markdown' | 'pdf' | 'file'
+  src: string
+  name: string
+  mimeType?: string
+  content?: string
+}
+
 // Attachment preview state
-const previewAttachment = ref<{ type: string; src: string; name: string; content?: string } | null>(
-  null
-)
+const previewAttachment = ref<AttachmentPreviewState | null>(null)
+
+const previewAttachmentHtml = computed(() => {
+  if (previewAttachment.value?.type !== 'markdown') return ''
+  return renderMarkdownCached(
+    previewAttachment.value.content || '',
+    `attachment-preview:${previewAttachment.value.name}`
+  )
+})
+
+const previewAttachmentBadge = computed(() => {
+  if (!previewAttachment.value) return ''
+
+  const filename = previewAttachment.value.name || ''
+  const ext = filename.includes('.') ? filename.split('.').pop()?.trim().toUpperCase() || '' : ''
+  if (ext) return ext.length <= 6 ? ext : ext.slice(0, 6)
+
+  if (previewAttachment.value.type === 'markdown') return 'MD'
+  if (previewAttachment.value.type === 'pdf') return 'PDF'
+  if (previewAttachment.value.type === 'image') return 'IMAGE'
+  if (previewAttachment.value.type === 'text') return 'TEXT'
+  return 'FILE'
+})
+
+const previewAttachmentKindLabel = computed(() => {
+  if (!previewAttachment.value) return ''
+  if (previewAttachment.value.type === 'markdown') return 'Markdown preview'
+  if (previewAttachment.value.type === 'text') return 'Text preview'
+  if (previewAttachment.value.type === 'pdf') return 'PDF preview'
+  if (previewAttachment.value.type === 'image') return 'Image preview'
+  return 'File preview'
+})
 
 // Voice message playback state
 const playingAudioId = ref<number | null>(null)
@@ -515,39 +621,29 @@ const activeLifecycleProcessTrace = computed(() =>
   trackStreamingState.value ? getLatestProcessTraceByPriority(['lifecycle', 'confirmation']) : null
 )
 
-function processTraceToCardItem(item: ProcessTraceItem, index: number): ToolResultItem {
-  let icon: ToolResultItem['icon'] = '✓'
-  if (item.status === 'pending' || item.status === 'active') {
-    icon = '⏳'
-  } else if (item.status === 'error') {
-    icon = '✗'
-  }
-  return {
-    name: item.event,
-    id: `${item.id}:${index}`,
-    command: item.command || '',
-    icon,
-    status: item.label,
-    output: item.detail || '',
-    timestamp: item.timestamp,
-  }
-}
-
-const streamingProcessTraceCards = computed(() => {
+const orderedStreamingProcessTrace = computed(() => {
   if (!trackStreamingState.value || !isAssistant.value) return []
-  const ranked = [...chatStore.processTrace].sort((a, b) => {
+  return [...chatStore.processTrace].sort((a, b) => {
     const rankA = a.category === 'summary' ? 0 : 1
     const rankB = b.category === 'summary' ? 0 : 1
     if (rankA !== rankB) return rankA - rankB
     return a.timestamp - b.timestamp
   })
-  return ranked.map(processTraceToCardItem)
 })
+
+function getProcessTraceToneClass(item: ProcessTraceItem): string {
+  if (item.status === 'error') return 'assistant-process-trace-dot--error'
+  if (item.status === 'active' || item.status === 'pending') {
+    return 'assistant-process-trace-dot--active'
+  }
+  if (item.status === 'success') return 'assistant-process-trace-dot--success'
+  return 'assistant-process-trace-dot--info'
+}
 
 const hasStreamingProcessDetails = computed(
   () =>
     trackStreamingState.value &&
-    (streamingProcessTraceCards.value.length > 0 || chatStore.toolResults.length > 0)
+    (orderedStreamingProcessTrace.value.length > 0 || chatStore.toolResults.length > 0)
 )
 
 const hasPersistedProcessDetails = computed(
@@ -584,7 +680,11 @@ const assistantStatusLabel = computed(() => {
 })
 
 const showAssistantStatusBar = computed(
-  () => trackStreamingState.value && isAssistant.value && !!assistantStatusLabel.value
+  () =>
+    !props.showExternalStatusRail &&
+    trackStreamingState.value &&
+    isAssistant.value &&
+    !!assistantStatusLabel.value
 )
 const showAssistantStatusOnly = computed(() => isContentEmpty.value && showAssistantStatusBar.value)
 const assistantStatusVariantClass = computed(() => {
@@ -981,8 +1081,6 @@ const assistantTextState = computed<AssistantTextState>(() => {
   return saveCache({ html, isEmpty: false })
 })
 
-const renderedContent = computed(() => assistantTextState.value.html)
-
 // Whether bubble content is empty (only indicators showing)
 const isContentEmpty = computed(() => {
   return (
@@ -1275,7 +1373,10 @@ const EMPTY_SEGMENT_RENDER_STATE: SegmentRenderState = {
 }
 
 function shouldKeepAssistantBubbleForCardOnly(cards: ContentSegment[]): boolean {
-  return cards.length > 0 && cards.every((segment) => (segment.content as TypelessCard).type === 'deep-research-timeline')
+  return (
+    cards.length > 0 &&
+    cards.every((segment) => (segment.content as TypelessCard).type === 'deep-research-timeline')
+  )
 }
 
 const SEGMENT_RENDER_CACHE_KEY = '__zima_chat_segment_render_cache_v1__'
@@ -1636,7 +1737,8 @@ const segmentRenderState = computed(() => {
     rendered.push({ ...segment, html })
   }
 
-  const isCardOnly = hasCards && !hasNonEmptyText && !shouldKeepAssistantBubbleForCardOnly(cardCandidates)
+  const isCardOnly =
+    hasCards && !hasNonEmptyText && !shouldKeepAssistantBubbleForCardOnly(cardCandidates)
   const nextState: SegmentRenderState = {
     rendered,
     cardOnly: isCardOnly ? cardCandidates : null,
@@ -1672,6 +1774,107 @@ const effectiveHasCards = computed(() => segmentRenderState.value.hasCards)
 // Card-only: no text segments, only cards — skip assistant bubble wrapper
 const isCardOnly = computed(() => segmentRenderState.value.isCardOnly)
 
+type AssistantBlockItem =
+  | { type: 'text'; key: string; html: string }
+  | { type: 'card'; key: string; card: TypelessCard }
+
+type AssistantRenderBlock = {
+  key: string
+  items: AssistantBlockItem[]
+  showCaret: boolean
+}
+
+function buildTextOnlyAssistantBlocks(html: string): AssistantRenderBlock[] {
+  if (!html) return []
+
+  return [
+    {
+      key: `${props.message.id}-text-block-0`,
+      items: [
+        {
+          type: 'text',
+          key: `${props.message.id}-text-item-0`,
+          html,
+        },
+      ],
+      showCaret: false,
+    },
+  ]
+}
+
+function getRenderedTextSegmentHtml(segment: RenderedContentSegment): string {
+  if (segment.type !== 'text') return ''
+  return (segment as RenderedContentSegment & { type: 'text'; html: string }).html
+}
+
+function buildSegmentedAssistantBlocks(segments: RenderedContentSegment[]): AssistantRenderBlock[] {
+  const blocks: AssistantRenderBlock[] = []
+
+  for (const segment of segments) {
+    if (segment.type === 'text') {
+      const html = getRenderedTextSegmentHtml(segment)
+      if (!html) continue
+      blocks.push({
+        key: `${segment.key}-block`,
+        items: [
+          {
+            type: 'text',
+            key: `${segment.key}-text`,
+            html,
+          },
+        ],
+        showCaret: false,
+      })
+      continue
+    }
+
+    blocks.push({
+      key: `${segment.key}-card-block`,
+      items: [
+        {
+          type: 'card',
+          key: segment.key,
+          card: segment.content as TypelessCard,
+        },
+      ],
+      showCaret: false,
+    })
+  }
+
+  return blocks
+}
+
+const assistantRenderBlocks = computed<AssistantRenderBlock[]>(() => {
+  if (!isAssistant.value || isContentEmpty.value || hasMediaTask.value) return []
+
+  const blocks =
+    effectiveHasCards.value && renderedContentSegments.value
+      ? buildSegmentedAssistantBlocks(renderedContentSegments.value)
+      : buildTextOnlyAssistantBlocks(assistantTextState.value.html)
+
+  if (blocks.length === 0) return blocks
+
+  const next: AssistantRenderBlock[] = blocks.map((block) => ({
+    ...block,
+    showCaret: false,
+  }))
+  if (showStreamingCaret.value) {
+    const lastIndex = next.length - 1
+    if (lastIndex >= 0) next[lastIndex]!.showCaret = true
+  }
+  return next
+})
+
+const showProcessOnlyAssistantBubble = computed(
+  () =>
+    isAssistant.value &&
+    !hasMediaTask.value &&
+    assistantRenderBlocks.value.length === 0 &&
+    (showProcessDetailsToggle.value ||
+      showPersistedProcessPanel.value ||
+      showAssistantStatusBar.value)
+)
+
 function getCardUiStateKey(card: TypelessCard, fallbackKey: string): string {
   return buildChatCardUiStateKey({
     conversationId: props.message.conversation_id,
@@ -1680,6 +1883,10 @@ function getCardUiStateKey(card: TypelessCard, fallbackKey: string): string {
     cardId: card.id,
     fallbackKey,
   })
+}
+
+function isTextAssistantBlock(block: AssistantRenderBlock): boolean {
+  return block.items.length === 1 && block.items[0]?.type === 'text'
 }
 
 const formattedTime = computed(() => {
@@ -1862,11 +2069,7 @@ function handleExportMessage() {
 
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
-  clearStreamingRenderFallbackTimer()
-  if (streamingRenderRafId !== null) {
-    window.cancelAnimationFrame(streamingRenderRafId)
-    streamingRenderRafId = null
-  }
+  clearStreamingRevealTimer()
   stopAssistantStatusTimer()
   clearIncrementalState(props.message.render_key || props.message.id, props.message.conversation_id)
   clearSplitSegmentsIncrementalState(
@@ -2256,16 +2459,28 @@ function openAttachmentPreview(attachment: {
       type: 'image',
       src: `data:${attachment.mime_type};base64,${attachment.data}`,
       name: attachment.name,
+      mimeType: attachment.mime_type,
     }
   } else if (attachment.type === 'file') {
+    if (isPdfMimeType(attachment.mime_type)) {
+      previewAttachment.value = {
+        type: 'pdf',
+        src: `data:${attachment.mime_type};base64,${attachment.data}`,
+        name: attachment.name,
+        mimeType: attachment.mime_type,
+      }
+      return
+    }
+
     // For text files, decode and show content
     if (isTextMimeType(attachment.mime_type)) {
       try {
         const content = decodeTextContent(attachment.data)
         previewAttachment.value = {
-          type: 'text',
+          type: isMarkdownAttachment(attachment.name, attachment.mime_type) ? 'markdown' : 'text',
           src: '',
           name: attachment.name,
+          mimeType: attachment.mime_type,
           content: content,
         }
       } catch {
@@ -2273,6 +2488,7 @@ function openAttachmentPreview(attachment: {
           type: 'file',
           src: '',
           name: attachment.name,
+          mimeType: attachment.mime_type,
         }
       }
     } else {
@@ -2280,6 +2496,7 @@ function openAttachmentPreview(attachment: {
         type: 'file',
         src: '',
         name: attachment.name,
+        mimeType: attachment.mime_type,
       }
     }
   }
@@ -2307,6 +2524,24 @@ function isTextMimeType(mimeType: string): boolean {
   if (mimeType.startsWith('text/')) return true
   if (mimeType.includes('+xml') || mimeType.includes('+json')) return true
   return false
+}
+
+function isMarkdownAttachment(filename: string, mimeType: string): boolean {
+  const normalizedMimeType = mimeType.toLowerCase()
+  if (normalizedMimeType.includes('markdown')) return true
+
+  const normalizedFilename = filename.toLowerCase()
+  return (
+    normalizedFilename.endsWith('.md') ||
+    normalizedFilename.endsWith('.markdown') ||
+    normalizedFilename.endsWith('.mdown') ||
+    normalizedFilename.endsWith('.mkd') ||
+    normalizedFilename.endsWith('.mdx')
+  )
+}
+
+function isPdfMimeType(mimeType: string): boolean {
+  return mimeType.toLowerCase() === 'application/pdf'
 }
 
 // Decode text content with encoding detection
@@ -2442,6 +2677,15 @@ function closeMobileActions() {
   showMobileActions.value = false
 }
 
+function handleAttachmentPreviewClick(attachment: MessageAttachment, index: number) {
+  if (attachment.type === 'audio') {
+    playVoiceMessage(attachment, index)
+    return
+  }
+
+  openAttachmentPreview(attachment)
+}
+
 async function handleMobileCopy() {
   await handleCopyMessage()
   closeMobileActions()
@@ -2464,6 +2708,16 @@ function handleMobileExport() {
 
 function handleMobileSelect() {
   chatStore.enterMultiSelectMode(props.message.id)
+  closeMobileActions()
+}
+
+function handleMobileContinue() {
+  emit('continue')
+  closeMobileActions()
+}
+
+function handleMobileRegenerate() {
+  emit('regenerate')
   closeMobileActions()
 }
 
@@ -2643,11 +2897,7 @@ async function handleMobileDelete() {
                 v-for="(attachment, index) in message.attachments"
                 :key="index"
                 class="attachment-preview rounded-lg overflow-hidden border border-gray-300 dark:border-white/20 cursor-pointer hover:opacity-90 transition-opacity bg-white/90 dark:bg-white/10"
-                @click="
-                  attachment.type === 'audio'
-                    ? playVoiceMessage(attachment, index)
-                    : openAttachmentPreview(attachment)
-                "
+                @click="handleAttachmentPreviewClick(attachment, index)"
               >
                 <!-- Image attachment -->
                 <img
@@ -2937,111 +3187,130 @@ async function handleMobileDelete() {
           </div>
 
           <!-- Media task card (replaces normal assistant content) -->
-          <div
-            v-if="hasMediaTask"
-            class="assistant-message chat-assistant-bubble px-4 py-3 max-w-none"
-          >
+          <div v-if="hasMediaTask" class="assistant-message assistant-message--media max-w-none">
             <MediaPlaceholder :task-id="mediaTaskId" />
           </div>
 
-          <!-- Render with typeless cards embedded in single bubble -->
-          <div
-            v-else
-            :class="[
-              'assistant-message chat-copy-bubble chat-assistant-bubble px-4 prose prose-slate dark:prose-invert max-w-none',
-              {
-                'assistant-message-indicator-only': showAssistantStatusOnly,
-                'py-3': !showAssistantStatusOnly,
-              },
-            ]"
-            @click="handleCopyClick"
-          >
-            <template v-if="effectiveHasCards && renderedContentSegments">
-              <template v-for="segment in renderedContentSegments" :key="segment.key">
-                <div
-                  v-if="segment.type === 'text'"
-                  class="prose-content"
-                  v-html="'html' in segment ? segment.html : ''"
-                />
-                <TypelessCardComponent
-                  v-else
-                  :key="segment.key"
-                  :card="segment.content as TypelessCard"
-                  :action-loading="isCardActionLoading((segment.content as TypelessCard).id)"
-                  :active-action-id="activeCardActionId((segment.content as TypelessCard).id)"
-                  :action-error="cardActionErrorMessage((segment.content as TypelessCard).id)"
-                  :ui-state-key="getCardUiStateKey(segment.content as TypelessCard, segment.key)"
-                  class="my-3 -mx-1"
-                  @action="handleCardAction"
-                  @select="handleCardSelect"
-                />
-              </template>
-            </template>
-            <!-- Render without typeless cards -->
-            <div v-else-if="!isContentEmpty" class="prose-content" v-html="renderedContent" />
-            <div v-if="showProcessDetailsToggle" class="assistant-process-toggle-row">
-              <button class="assistant-process-toggle" @click.stop="toggleProcessDetails">
-                {{ processDetailsExpanded ? t('chat.hideToolDetails') : t('chat.showToolDetails') }}
-              </button>
-            </div>
-            <div v-if="showPersistedProcessPanel" class="tool-detail-cards my-2 -mx-1">
-              <ToolDetailCard
-                v-for="item in effectiveProcessToolResults"
-                :key="item.id"
-                :item="item"
-              />
-            </div>
+          <div v-else class="assistant-message-stack" @click="handleCopyClick">
             <div
-              v-if="showStreamingProcessPanel && streamingProcessTraceCards.length > 0"
-              class="tool-detail-cards my-2 -mx-1"
+              v-if="assistantRenderBlocks.length > 0 || showProcessOnlyAssistantBubble"
+              class="assistant-message assistant-message-shell chat-copy-bubble chat-assistant-bubble max-w-none px-4 py-3"
             >
-              <ToolDetailCard
-                v-for="item in streamingProcessTraceCards"
-                :key="item.id"
-                :item="item"
-              />
-            </div>
-            <div
-              v-if="showStreamingProcessPanel && chatStore.toolResults.length > 0"
-              class="tool-detail-cards my-2 -mx-1"
-            >
-              <ToolDetailCard v-for="item in chatStore.toolResults" :key="item.id" :item="item" />
-            </div>
-            <div
-              v-if="showAssistantStatusBar"
-              :class="['assistant-status-bar', { 'mt-0': showAssistantStatusOnly }]"
-            >
-              <div class="tool-pill assistant-status-pill" :class="assistantStatusVariantClass">
-                <span class="tool-dots"> <span /><span /><span /> </span>
-                <span class="tool-label assistant-status-label">{{ assistantStatusLabel }}</span>
-                <span
-                  v-if="assistantStatusElapsedSeconds"
-                  class="tool-timer assistant-status-timer tabular-nums"
-                  >{{ assistantStatusElapsedSeconds }}s</span
-                >
-                <span
-                  v-if="chatStore.toolSandboxAvailable"
-                  class="sandbox-badge"
-                  :title="t('tools.sandboxProtected')"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-3.5 w-3.5"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fill-rule="evenodd"
-                      d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                      clip-rule="evenodd"
-                    />
-                  </svg>
-                </span>
+              <div
+                v-for="block in assistantRenderBlocks"
+                :key="block.key"
+                :class="[
+                  'assistant-message-block',
+                  isTextAssistantBlock(block)
+                    ? 'assistant-message-block--text prose prose-slate dark:prose-invert max-w-none'
+                    : 'assistant-message-block--card',
+                ]"
+              >
+                <template v-for="item in block.items" :key="item.key">
+                  <div v-if="item.type === 'text'" class="prose-content" v-html="item.html" />
+                  <TypelessCardComponent
+                    v-else
+                    :card="item.card"
+                    :action-loading="isCardActionLoading(item.card.id)"
+                    :active-action-id="activeCardActionId(item.card.id)"
+                    :action-error="cardActionErrorMessage(item.card.id)"
+                    :ui-state-key="getCardUiStateKey(item.card, item.key)"
+                    class="my-1.5 -mx-1"
+                    @action="handleCardAction"
+                    @select="handleCardSelect"
+                  />
+                </template>
+                <span v-if="block.showCaret" class="streaming-caret" aria-hidden="true" />
               </div>
-              <div v-if="chatStore.toolExecuting && toolDisplayNames.length > 0" class="tool-names">
-                <span v-for="name in toolDisplayNames" :key="name" class="tool-name-tag">{{
-                  name
-                }}</span>
+              <div v-if="showProcessDetailsToggle" class="assistant-process-toggle-row">
+                <button class="assistant-process-toggle" @click.stop="toggleProcessDetails">
+                  {{
+                    processDetailsExpanded ? t('chat.hideToolDetails') : t('chat.showToolDetails')
+                  }}
+                </button>
+              </div>
+              <div v-if="showPersistedProcessPanel" class="tool-detail-cards my-2 -mx-1">
+                <ToolDetailCard
+                  v-for="item in effectiveProcessToolResults"
+                  :key="item.id"
+                  :item="item"
+                />
+              </div>
+              <div
+                v-if="showStreamingProcessPanel && orderedStreamingProcessTrace.length > 0"
+                class="assistant-process-trace-panel my-2"
+              >
+                <div
+                  v-for="item in orderedStreamingProcessTrace"
+                  :key="item.id"
+                  class="assistant-process-trace-item"
+                >
+                  <span
+                    class="assistant-process-trace-dot"
+                    :class="getProcessTraceToneClass(item)"
+                    aria-hidden="true"
+                  />
+                  <div class="assistant-process-trace-main">
+                    <div class="assistant-process-trace-label">{{ item.label }}</div>
+                    <div v-if="item.command" class="assistant-process-trace-command">
+                      <span class="assistant-process-trace-command-prefix">$</span>
+                      <span class="assistant-process-trace-command-text">{{ item.command }}</span>
+                    </div>
+                    <div v-if="item.detail" class="assistant-process-trace-detail">
+                      {{ item.detail }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-if="showStreamingProcessPanel && chatStore.toolResults.length > 0"
+                class="tool-detail-cards my-2 -mx-1"
+              >
+                <ToolDetailCard
+                  v-for="item in chatStore.toolResults"
+                  :key="item.id"
+                  :item="item"
+                />
+              </div>
+              <div
+                v-if="showAssistantStatusBar"
+                :class="['assistant-status-bar', { 'mt-0': showAssistantStatusOnly }]"
+              >
+                <div class="tool-pill assistant-status-pill" :class="assistantStatusVariantClass">
+                  <span class="tool-dots"> <span /><span /><span /> </span>
+                  <span class="tool-label assistant-status-label">{{ assistantStatusLabel }}</span>
+                  <span
+                    v-if="assistantStatusElapsedSeconds"
+                    class="tool-timer assistant-status-timer tabular-nums"
+                    >{{ assistantStatusElapsedSeconds }}s</span
+                  >
+                  <span
+                    v-if="chatStore.toolSandboxAvailable"
+                    class="sandbox-badge"
+                    :title="t('tools.sandboxProtected')"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-3.5 w-3.5"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                  </span>
+                </div>
+                <div
+                  v-if="chatStore.toolExecuting && toolDisplayNames.length > 0"
+                  class="tool-names"
+                >
+                  <span v-for="name in toolDisplayNames" :key="name" class="tool-name-tag">{{
+                    name
+                  }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -3117,39 +3386,118 @@ async function handleMobileDelete() {
             </svg>
           </button>
           <!-- Image preview -->
-          <img
+          <div
             v-if="previewAttachment.type === 'image'"
-            :src="previewAttachment.src"
-            :alt="previewAttachment.name"
-            class="max-w-full max-h-[85vh] object-contain rounded-lg"
-          />
+            class="attachment-preview-shell attachment-preview-shell--image"
+          >
+            <div class="attachment-preview-header">
+              <div class="attachment-preview-meta">
+                <span class="attachment-preview-badge">{{ previewAttachmentBadge }}</span>
+                <div class="attachment-preview-copy">
+                  <span class="attachment-preview-title">{{ previewAttachment.name }}</span>
+                  <span class="attachment-preview-kind">{{ previewAttachmentKindLabel }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="attachment-preview-body attachment-preview-body--visual">
+              <img
+                :src="previewAttachment.src"
+                :alt="previewAttachment.name"
+                class="attachment-image-preview"
+              />
+            </div>
+          </div>
+          <!-- Text file preview -->
+          <div
+            v-else-if="previewAttachment.type === 'markdown'"
+            class="attachment-preview-shell attachment-preview-shell--markdown"
+          >
+            <div class="attachment-preview-header">
+              <div class="attachment-preview-meta">
+                <span class="attachment-preview-badge">{{ previewAttachmentBadge }}</span>
+                <div class="attachment-preview-copy">
+                  <span class="attachment-preview-title">{{ previewAttachment.name }}</span>
+                  <span class="attachment-preview-kind">{{ previewAttachmentKindLabel }}</span>
+                </div>
+              </div>
+            </div>
+            <div
+              class="attachment-preview-body attachment-markdown-preview prose prose-slate dark:prose-invert prose-content max-w-none"
+              v-html="previewAttachmentHtml"
+            />
+          </div>
+          <!-- PDF preview -->
+          <div
+            v-else-if="previewAttachment.type === 'pdf'"
+            class="attachment-preview-shell attachment-preview-shell--pdf"
+          >
+            <div class="attachment-preview-header">
+              <div class="attachment-preview-meta">
+                <span class="attachment-preview-badge">{{ previewAttachmentBadge }}</span>
+                <div class="attachment-preview-copy">
+                  <span class="attachment-preview-title">{{ previewAttachment.name }}</span>
+                  <span class="attachment-preview-kind">{{ previewAttachmentKindLabel }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="attachment-preview-body attachment-preview-body--pdf">
+              <iframe
+                :src="previewAttachment.src"
+                :title="previewAttachment.name"
+                class="attachment-pdf-frame"
+              />
+            </div>
+          </div>
           <!-- Text file preview -->
           <div
             v-else-if="previewAttachment.type === 'text'"
-            class="bg-gray-200 rounded-lg p-4 max-w-[80vw] max-h-[80vh] overflow-auto"
+            class="attachment-preview-shell attachment-preview-shell--text"
           >
-            <pre class="text-sm text-gray-100 whitespace-pre-wrap font-mono">{{
-              previewAttachment.content
-            }}</pre>
+            <div class="attachment-preview-header">
+              <div class="attachment-preview-meta">
+                <span class="attachment-preview-badge">{{ previewAttachmentBadge }}</span>
+                <div class="attachment-preview-copy">
+                  <span class="attachment-preview-title">{{ previewAttachment.name }}</span>
+                  <span class="attachment-preview-kind">{{ previewAttachmentKindLabel }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="attachment-preview-body">
+              <pre class="attachment-text-preview">{{ previewAttachment.content }}</pre>
+            </div>
           </div>
           <!-- Generic file preview -->
-          <div v-else class="bg-gray-700 rounded-lg p-8 flex flex-col items-center gap-4">
-            <svg
-              class="w-16 h-16 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
-            <span class="text-gray-300">{{ t('chat.filePreviewNotSupported') }}</span>
+          <div v-else class="attachment-preview-shell attachment-preview-shell--file">
+            <div class="attachment-preview-header">
+              <div class="attachment-preview-meta">
+                <span class="attachment-preview-badge">{{ previewAttachmentBadge }}</span>
+                <div class="attachment-preview-copy">
+                  <span class="attachment-preview-title">{{ previewAttachment.name }}</span>
+                  <span class="attachment-preview-kind">{{ previewAttachmentKindLabel }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="attachment-preview-body attachment-preview-body--empty">
+              <div class="attachment-file-placeholder">
+                <svg
+                  class="w-16 h-16 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <span class="attachment-file-placeholder-text">{{
+                  t('chat.filePreviewNotSupported')
+                }}</span>
+              </div>
+            </div>
           </div>
-          <p class="text-center text-white text-sm mt-2">{{ previewAttachment.name }}</p>
         </div>
       </div>
     </Teleport>
@@ -3256,10 +3604,7 @@ async function handleMobileDelete() {
               <template v-if="isLastAssistantMessage && !isStreaming">
                 <button
                   class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  @click="
-                    emit('continue');
-                    closeMobileActions();
-                  "
+                  @click="handleMobileContinue"
                 >
                   <svg
                     class="w-5 h-5 text-gray-600 dark:text-gray-400"
@@ -3286,10 +3631,7 @@ async function handleMobileDelete() {
                 </button>
                 <button
                   class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  @click="
-                    emit('regenerate');
-                    closeMobileActions();
-                  "
+                  @click="handleMobileRegenerate"
                 >
                   <svg
                     class="w-5 h-5 text-gray-600 dark:text-gray-400"
@@ -3412,6 +3754,31 @@ async function handleMobileDelete() {
   box-shadow: none;
 }
 
+.assistant-message--media {
+  padding: 0;
+}
+
+.assistant-message-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.assistant-message-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.82rem;
+}
+
+.assistant-message-block {
+  position: relative;
+  padding: 0;
+}
+
+.assistant-message-block--card {
+  min-width: 0;
+}
+
 .assistant-message.assistant-message-indicator-only {
   padding-top: 0;
   padding-bottom: 0;
@@ -3437,6 +3804,17 @@ async function handleMobileDelete() {
   padding: 0.8rem 1rem;
 }
 
+.streaming-caret {
+  display: inline-flex;
+  width: 0.58rem;
+  height: 1.15rem;
+  margin-left: 0.14rem;
+  vertical-align: text-bottom;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.85);
+  animation: streaming-caret-blink 1s steps(1, end) infinite;
+}
+
 .avatar {
   border: 1px solid rgba(148, 163, 184, 0.24);
   box-shadow: none;
@@ -3460,6 +3838,11 @@ async function handleMobileDelete() {
 :root.dark .chat-assistant-bubble,
 [data-theme='dark'] .chat-assistant-bubble {
   box-shadow: 0 10px 24px -26px rgba(2, 6, 23, 0.78);
+}
+
+:root.dark .streaming-caret,
+[data-theme='dark'] .streaming-caret {
+  background: rgba(125, 211, 252, 0.96);
 }
 
 :root.dark .chat-user-bubble,
@@ -3502,6 +3885,17 @@ async function handleMobileDelete() {
 
 .fade-leave-to > div {
   transform: translateY(100%);
+}
+
+@keyframes streaming-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.18;
+  }
 }
 
 .message {
@@ -3606,6 +4000,366 @@ async function handleMobileDelete() {
 
 .prose-content :deep(p:last-child) {
   margin-bottom: 0;
+}
+
+.attachment-preview-shell {
+  display: flex;
+  flex-direction: column;
+  width: min(80vw, 56rem);
+  max-width: 80vw;
+  max-height: 80vh;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(246, 250, 253, 0.985)),
+    rgba(255, 255, 255, 0.98);
+  color: rgb(15, 23, 42);
+  box-shadow: 0 24px 48px -32px rgba(15, 23, 42, 0.6);
+  overflow: hidden;
+}
+
+.attachment-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem 0.82rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.96);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(241, 245, 249, 0.88)),
+    rgba(248, 250, 252, 0.92);
+  backdrop-filter: blur(10px);
+}
+
+.attachment-preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.72rem;
+  min-width: 0;
+}
+
+.attachment-preview-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.attachment-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.1rem;
+  padding: 0.28rem 0.52rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: rgba(226, 232, 240, 0.7);
+  color: rgb(51, 65, 85);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.attachment-preview-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.attachment-preview-kind {
+  color: rgba(71, 85, 105, 0.9);
+  font-size: 0.76rem;
+  line-height: 1.25;
+}
+
+.attachment-preview-body {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem 1.05rem 1.15rem;
+}
+
+.attachment-preview-body--visual,
+.attachment-preview-body--pdf,
+.attachment-preview-body--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachment-preview-body--visual {
+  padding: 1rem;
+  background:
+    radial-gradient(circle at top, rgba(226, 232, 240, 0.72), rgba(241, 245, 249, 0.22) 48%),
+    rgba(248, 250, 252, 0.6);
+}
+
+.attachment-preview-body--pdf {
+  padding: 0.8rem;
+  background: rgba(241, 245, 249, 0.72);
+}
+
+.attachment-preview-body--empty {
+  padding: 1.25rem;
+}
+
+.attachment-image-preview {
+  max-width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+  border-radius: 0.88rem;
+  box-shadow: 0 18px 36px -26px rgba(15, 23, 42, 0.45);
+}
+
+.attachment-pdf-frame {
+  width: min(78vw, 54rem);
+  min-height: 70vh;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 0.85rem;
+  background: white;
+}
+
+.attachment-file-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  padding: 2.3rem 1.4rem;
+  border: 1px dashed rgba(148, 163, 184, 0.56);
+  border-radius: 1rem;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.attachment-file-placeholder-text {
+  color: rgb(71, 85, 105);
+  font-size: 0.9rem;
+}
+
+.attachment-preview-shell--text {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(248, 250, 252, 0.985)),
+    rgba(255, 255, 255, 0.98);
+}
+
+.attachment-markdown-preview {
+  color: inherit;
+  font-size: 0.95rem;
+  line-height: 1.74;
+}
+
+.attachment-markdown-preview :deep(h1),
+.attachment-markdown-preview :deep(h2),
+.attachment-markdown-preview :deep(h3),
+.attachment-markdown-preview :deep(h4),
+.attachment-markdown-preview :deep(h5),
+.attachment-markdown-preview :deep(h6) {
+  color: inherit;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+.attachment-markdown-preview :deep(h1) {
+  margin-top: 0;
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.92);
+  font-size: 1.48rem;
+}
+
+.attachment-markdown-preview :deep(h2) {
+  margin-top: 1.35rem;
+  margin-bottom: 0.72rem;
+  font-size: 1.22rem;
+}
+
+.attachment-markdown-preview :deep(h3) {
+  margin-top: 1.15rem;
+  margin-bottom: 0.56rem;
+  font-size: 1.04rem;
+}
+
+.attachment-markdown-preview :deep(hr) {
+  margin: 1rem 0;
+  border-color: rgba(203, 213, 225, 0.92);
+}
+
+.attachment-markdown-preview :deep(a) {
+  color: #0369a1;
+  font-weight: 500;
+}
+
+.attachment-markdown-preview :deep(table) {
+  border-radius: 0.9rem;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.attachment-markdown-preview :deep(th) {
+  color: rgb(15, 23, 42);
+  background: rgba(241, 245, 249, 0.92);
+}
+
+.attachment-markdown-preview :deep(td) {
+  color: rgba(30, 41, 59, 0.96);
+}
+
+.attachment-markdown-preview :deep(blockquote) {
+  margin: 0.92rem 0;
+  border-left-width: 4px;
+  border-left-color: rgba(14, 116, 144, 0.34);
+  background: rgba(240, 249, 255, 0.75);
+  border-radius: 0 0.8rem 0.8rem 0;
+  padding: 0.72rem 0.9rem;
+  color: rgb(71, 85, 105);
+}
+
+.attachment-markdown-preview :deep(.inline-code) {
+  background: rgba(226, 232, 240, 0.72);
+  color: rgb(15, 23, 42);
+}
+
+.attachment-markdown-preview :deep(.code-block),
+.attachment-markdown-preview :deep(.tree-structure) {
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  box-shadow: 0 12px 24px -28px rgba(15, 23, 42, 0.35);
+}
+
+.attachment-markdown-preview :deep(.code-block) {
+  margin: 0.9rem 0;
+}
+
+.attachment-markdown-preview :deep(.code-header) {
+  background: rgba(30, 41, 59, 0.96);
+}
+
+.attachment-markdown-preview :deep(.copy-btn) {
+  opacity: 0.86;
+}
+
+.attachment-markdown-preview :deep(.copy-btn:hover) {
+  opacity: 1;
+}
+
+.attachment-text-preview {
+  margin: 0;
+  color: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+  font-size: 0.875rem;
+  line-height: 1.68;
+}
+
+:root.dark .attachment-preview-shell,
+[data-theme='dark'] .attachment-preview-shell {
+  border-color: rgba(71, 85, 105, 0.92);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.985), rgba(11, 18, 32, 0.975)),
+    rgba(15, 23, 42, 0.96);
+  color: rgb(226, 232, 240);
+  box-shadow: 0 24px 52px -28px rgba(2, 6, 23, 0.9);
+}
+
+:root.dark .attachment-preview-header,
+[data-theme='dark'] .attachment-preview-header {
+  border-bottom-color: rgba(51, 65, 85, 0.92);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(19, 33, 54, 0.9)), rgba(15, 23, 42, 0.92);
+}
+
+:root.dark .attachment-preview-badge,
+[data-theme='dark'] .attachment-preview-badge {
+  border-color: rgba(71, 85, 105, 0.94);
+  background: rgba(30, 41, 59, 0.9);
+  color: rgb(191, 219, 254);
+}
+
+:root.dark .attachment-preview-kind,
+[data-theme='dark'] .attachment-preview-kind {
+  color: rgba(148, 163, 184, 0.9);
+}
+
+:root.dark .attachment-preview-body--visual,
+[data-theme='dark'] .attachment-preview-body--visual {
+  background:
+    radial-gradient(circle at top, rgba(30, 41, 59, 0.76), rgba(15, 23, 42, 0.28) 48%),
+    rgba(2, 6, 23, 0.22);
+}
+
+:root.dark .attachment-preview-body--pdf,
+[data-theme='dark'] .attachment-preview-body--pdf {
+  background: rgba(2, 6, 23, 0.38);
+}
+
+:root.dark .attachment-pdf-frame,
+[data-theme='dark'] .attachment-pdf-frame {
+  border-color: rgba(71, 85, 105, 0.84);
+}
+
+:root.dark .attachment-file-placeholder,
+[data-theme='dark'] .attachment-file-placeholder {
+  border-color: rgba(71, 85, 105, 0.72);
+  background: rgba(15, 23, 42, 0.54);
+}
+
+:root.dark .attachment-file-placeholder-text,
+[data-theme='dark'] .attachment-file-placeholder-text {
+  color: rgb(148, 163, 184);
+}
+
+:root.dark .attachment-markdown-preview :deep(h1),
+[data-theme='dark'] .attachment-markdown-preview :deep(h1) {
+  border-bottom-color: rgba(51, 65, 85, 0.92);
+}
+
+:root.dark .attachment-markdown-preview :deep(hr),
+[data-theme='dark'] .attachment-markdown-preview :deep(hr) {
+  border-color: rgba(71, 85, 105, 0.84);
+}
+
+:root.dark .attachment-markdown-preview :deep(a),
+[data-theme='dark'] .attachment-markdown-preview :deep(a) {
+  color: #7dd3fc;
+}
+
+:root.dark .attachment-markdown-preview :deep(table),
+[data-theme='dark'] .attachment-markdown-preview :deep(table) {
+  background: rgba(15, 23, 42, 0.56);
+}
+
+:root.dark .attachment-markdown-preview :deep(th),
+[data-theme='dark'] .attachment-markdown-preview :deep(th) {
+  color: rgb(226, 232, 240);
+  background: rgba(30, 41, 59, 0.88);
+}
+
+:root.dark .attachment-markdown-preview :deep(td),
+[data-theme='dark'] .attachment-markdown-preview :deep(td) {
+  color: rgba(226, 232, 240, 0.96);
+}
+
+:root.dark .attachment-markdown-preview :deep(blockquote),
+[data-theme='dark'] .attachment-markdown-preview :deep(blockquote) {
+  border-left-color: rgba(56, 189, 248, 0.38);
+  background: rgba(12, 74, 110, 0.18);
+  color: rgb(148, 163, 184);
+}
+
+:root.dark .attachment-markdown-preview :deep(.inline-code),
+[data-theme='dark'] .attachment-markdown-preview :deep(.inline-code) {
+  background: rgba(51, 65, 85, 0.78);
+  color: rgb(226, 232, 240);
+}
+
+:root.dark .attachment-markdown-preview :deep(.code-block),
+:root.dark .attachment-markdown-preview :deep(.tree-structure),
+[data-theme='dark'] .attachment-markdown-preview :deep(.code-block),
+[data-theme='dark'] .attachment-markdown-preview :deep(.tree-structure) {
+  border-color: rgba(71, 85, 105, 0.84);
 }
 
 /* Copy button styles */
@@ -3843,6 +4597,101 @@ async function handleMobileDelete() {
   color: #334155;
 }
 
+.assistant-process-trace-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 0.84rem;
+  background: rgba(255, 255, 255, 0.78);
+  overflow: hidden;
+}
+
+.assistant-process-trace-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.72rem;
+  padding: 0.82rem 0.95rem;
+}
+
+.assistant-process-trace-item + .assistant-process-trace-item {
+  border-top: 1px solid rgba(226, 232, 240, 0.92);
+}
+
+.assistant-process-trace-dot {
+  width: 0.58rem;
+  height: 0.58rem;
+  margin-top: 0.38rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: rgba(148, 163, 184, 0.82);
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.12);
+}
+
+.assistant-process-trace-dot--info {
+  background: rgba(59, 130, 246, 0.92);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.assistant-process-trace-dot--active {
+  background: rgba(245, 158, 11, 0.96);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14);
+}
+
+.assistant-process-trace-dot--success {
+  background: rgba(34, 197, 94, 0.96);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+}
+
+.assistant-process-trace-dot--error {
+  background: rgba(239, 68, 68, 0.96);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
+.assistant-process-trace-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.assistant-process-trace-label {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  font-weight: 600;
+  color: #334155;
+}
+
+.assistant-process-trace-command {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-top: 0.42rem;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.assistant-process-trace-command-prefix {
+  flex-shrink: 0;
+  color: #64748b;
+  user-select: none;
+}
+
+.assistant-process-trace-command-text {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.assistant-process-trace-detail {
+  margin-top: 0.42rem;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #64748b;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .tool-pill {
   display: inline-flex;
   align-items: center;
@@ -3882,6 +4731,37 @@ async function handleMobileDelete() {
 :root.dark .sandbox-badge,
 [data-theme='dark'] .sandbox-badge {
   color: #4ade80;
+}
+
+:root.dark .assistant-process-trace-panel,
+[data-theme='dark'] .assistant-process-trace-panel {
+  border-color: rgba(71, 85, 105, 0.72);
+  background: rgba(15, 23, 42, 0.56);
+}
+
+:root.dark .assistant-process-trace-item + .assistant-process-trace-item,
+[data-theme='dark'] .assistant-process-trace-item + .assistant-process-trace-item {
+  border-top-color: rgba(51, 65, 85, 0.88);
+}
+
+:root.dark .assistant-process-trace-label,
+[data-theme='dark'] .assistant-process-trace-label {
+  color: rgba(226, 232, 240, 0.96);
+}
+
+:root.dark .assistant-process-trace-command,
+[data-theme='dark'] .assistant-process-trace-command {
+  color: rgba(203, 213, 225, 0.84);
+}
+
+:root.dark .assistant-process-trace-command-prefix,
+[data-theme='dark'] .assistant-process-trace-command-prefix {
+  color: rgba(148, 163, 184, 0.82);
+}
+
+:root.dark .assistant-process-trace-detail,
+[data-theme='dark'] .assistant-process-trace-detail {
+  color: rgba(148, 163, 184, 0.94);
 }
 
 :root.dark .tool-pill,

@@ -16,7 +16,7 @@ const remotePricingURL = "https://raw.githubusercontent.com/IceWhaleTech/ZimaOS-
 // remotePricingJSON is the JSON schema for the remote pricing file.
 type remotePricingJSON struct {
 	Models      map[string]remotePricingItem      `json:"models"`
-	MediaModels map[string]remoteMediaPricingItem  `json:"media_models"`
+	MediaModels map[string]remoteMediaPricingItem `json:"media_models"`
 }
 
 type remotePricingItem struct {
@@ -41,8 +41,10 @@ type PricingUpdater struct {
 	logger              *zap.Logger
 	interval            time.Duration
 	stopCh              chan struct{}
-	mu                  sync.Mutex
+	fetchMu             sync.Mutex
+	mu                  sync.RWMutex
 	lastETag            string // tracks whether content actually changed
+	cachedContent       string
 	mediaPricingApplier MediaPricingApplier
 }
 
@@ -85,16 +87,21 @@ func (u *PricingUpdater) Stop() {
 
 // SetMediaPricingApplier sets the callback for applying media model pricing.
 func (u *PricingUpdater) SetMediaPricingApplier(applier MediaPricingApplier) {
+	var cachedContent string
 	u.mu.Lock()
-	defer u.mu.Unlock()
 	u.mediaPricingApplier = applier
+	cachedContent = u.cachedContent
+	u.mu.Unlock()
+	if applier != nil && cachedContent != "" {
+		u.applyMediaPricing(cachedContent, applier)
+	}
 }
 
 func (u *PricingUpdater) fetchAndApply() {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-
+	u.fetchMu.Lock()
 	content, etag, err := u.dl.FetchIfChanged()
+	u.fetchMu.Unlock()
+
 	if err != nil {
 		if u.logger != nil {
 			u.logger.Debug("pricing update fetch failed (will retry)", zap.Error(err))
@@ -105,7 +112,11 @@ func (u *PricingUpdater) fetchAndApply() {
 		return
 	}
 	// ETag unchanged means FetchIfChanged returned cached content — skip re-apply
-	if etag != "" && etag == u.lastETag {
+	u.mu.RLock()
+	lastETag := u.lastETag
+	applier := u.mediaPricingApplier
+	u.mu.RUnlock()
+	if etag != "" && etag == lastETag {
 		return
 	}
 
@@ -129,22 +140,45 @@ func (u *PricingUpdater) fetchAndApply() {
 	}
 
 	// Apply media model pricing via callback
-	mediaApplied := 0
-	if u.mediaPricingApplier != nil {
-		for modelID, item := range data.MediaModels {
-			if item.Unit == "" || modelID == "_comment" {
-				continue
-			}
-			u.mediaPricingApplier(modelID, item.Output, item.Unit)
-			mediaApplied++
-		}
-	}
+	mediaApplied := u.applyMediaPricingItems(data.MediaModels, applier)
 
+	u.mu.Lock()
+	u.cachedContent = content
 	u.lastETag = etag
+	u.mu.Unlock()
 	if u.logger != nil {
 		u.logger.Info("remote pricing applied",
 			zap.String("etag", etag),
 			zap.Int("models", applied),
 			zap.Int("media_models", mediaApplied))
 	}
+}
+
+func (u *PricingUpdater) applyMediaPricing(content string, applier MediaPricingApplier) int {
+	if applier == nil || content == "" {
+		return 0
+	}
+	var data remotePricingJSON
+	if err := json.Unmarshal([]byte(content), &data); err != nil {
+		if u.logger != nil {
+			u.logger.Warn("pricing update: invalid cached JSON", zap.Error(err))
+		}
+		return 0
+	}
+	return u.applyMediaPricingItems(data.MediaModels, applier)
+}
+
+func (u *PricingUpdater) applyMediaPricingItems(items map[string]remoteMediaPricingItem, applier MediaPricingApplier) int {
+	if applier == nil || len(items) == 0 {
+		return 0
+	}
+	applied := 0
+	for modelID, item := range items {
+		if item.Unit == "" || modelID == "_comment" {
+			continue
+		}
+		applier(modelID, item.Output, item.Unit)
+		applied++
+	}
+	return applied
 }

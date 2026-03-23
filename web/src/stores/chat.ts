@@ -427,15 +427,11 @@ function formatProcessTraceSeconds(delayMs?: number): string {
 function resolveProcessTraceStatusLabel(item: ProcessTraceItem): string {
   switch (item.event) {
     case 'pre_content_retry_scheduled':
-      return resolveProcessTraceText(
-        'events.retryScheduled',
-        'Retrying request in {seconds}s',
-        {
-          seconds: formatProcessTraceSeconds(
-            typeof item.metadata?.delay_ms === 'number' ? item.metadata.delay_ms : undefined
-          ),
-        }
-      )
+      return resolveProcessTraceText('events.retryScheduled', 'Retrying request in {seconds}s', {
+        seconds: formatProcessTraceSeconds(
+          typeof item.metadata?.delay_ms === 'number' ? item.metadata.delay_ms : undefined
+        ),
+      })
     case 'pre_content_retry_started':
       return resolveProcessTraceText('events.retryingRequest', 'Retrying request')
     case 'pre_content_retry_succeeded':
@@ -488,6 +484,32 @@ const messageMetadata = ref<
   Map<string, { provider?: string; model?: string; stats?: MessageStats }>
 >(new Map())
 
+export type StreamUIPhase =
+  | 'idle'
+  | 'connecting'
+  | 'streaming'
+  | 'executing'
+  | 'recovering'
+  | 'awaiting_confirmation'
+  | 'interrupted'
+  | 'completed'
+
+interface StreamUIState {
+  phase: StreamUIPhase
+  label: string | null
+  detail: string | null
+  updatedAt: number
+  recoveryAttempt: number
+  canRetry: boolean
+}
+
+interface StreamRecoveryBaseline {
+  assistantId: string | null
+  assistantContent: string
+  assistantCount: number
+  assistantMetaKey: string
+}
+
 interface ActiveConversationStreamState {
   conversationId: string
   streamId: string | null
@@ -507,6 +529,8 @@ interface ActiveConversationStreamState {
   processTrace: ProcessTraceItem[]
   statusStartedAt: number
   statusSummary: string | null
+  uiState: StreamUIState
+  recoveryBaseline: StreamRecoveryBaseline
 }
 
 type SendMessageFileAttachment = {
@@ -526,6 +550,20 @@ interface SendMessageOptions {
 
 type RuntimeProcessMessage = Message & {
   local_process_tool_results?: ToolResultItem[]
+}
+
+function createStreamUIState(
+  phase: StreamUIPhase,
+  overrides: Partial<StreamUIState> = {}
+): StreamUIState {
+  return {
+    phase,
+    label: overrides.label ?? null,
+    detail: overrides.detail ?? null,
+    updatedAt: overrides.updatedAt ?? Date.now(),
+    recoveryAttempt: overrides.recoveryAttempt ?? 0,
+    canRetry: overrides.canRetry ?? false,
+  }
 }
 
 export const useChatStore = defineStore('chat', () => {
@@ -621,6 +659,7 @@ export const useChatStore = defineStore('chat', () => {
   // Use shallowRef for messages to reduce reactivity overhead
   // Manual triggerRef() calls are needed when mutating the array
   const messages = shallowRef<Message[]>([])
+  const recentTodoCompletion = ref<{ messageId: string; todoCardId?: string } | null>(null)
   const loading = ref(false)
   const sending = ref(false)
   const streaming = ref(false)
@@ -628,6 +667,7 @@ export const useChatStore = defineStore('chat', () => {
   const processContentLength = ref(0) // Length of tool-result process content at the start of streamingContent
   const error = ref<string | null>(null)
   const streamError = ref<string | null>(null) // Error from stream (displayed in chat area)
+  const streamUIState = ref<StreamUIState>(createStreamUIState('idle'))
   const streamProgress = ref<string | null>(null) // Upstream metadata progress before first visible delta
   const statusStartedAt = ref(0)
   const statusSummary = ref<string | null>(null)
@@ -747,6 +787,12 @@ export const useChatStore = defineStore('chat', () => {
   const pendingRecoveryRetryLimit = 8
   let pendingRecoveryRetryCount = 0
   let pendingRecoveryRetryTimer: ReturnType<typeof setTimeout> | null = null
+  const streamRecoveryRetryDelayMs = 900
+  const streamRecoveryRetryLimit = 4
+  let streamRecoveryTimer: ReturnType<typeof setTimeout> | null = null
+
+  const isRecovering = computed(() => streamUIState.value.phase === 'recovering')
+  const isStreamInterrupted = computed(() => streamUIState.value.phase === 'interrupted')
 
   function cloneToolResultItems(items?: ToolResultItem[]): ToolResultItem[] {
     if (!items || items.length === 0) return []
@@ -839,14 +885,13 @@ export const useChatStore = defineStore('chat', () => {
         : undefined
     const provider = chunk.process_provider?.trim()
     const model = chunk.process_model?.trim()
-    const category =
-      event.startsWith('pre_content_retry')
-        ? 'retry'
-        : event.startsWith('continuation_recovery')
+    const category = event.startsWith('pre_content_retry')
+      ? 'retry'
+      : event.startsWith('continuation_recovery')
+        ? 'recovery'
+        : event === 'provider_failover'
           ? 'recovery'
-          : event === 'provider_failover'
-            ? 'recovery'
-            : 'lifecycle'
+          : 'lifecycle'
     const status = (chunk.process_status || 'info') as ProcessTraceStatus
     const details: string[] = []
     const attemptLabel = resolveProcessTraceField('attempt', 'Attempt')
@@ -948,6 +993,95 @@ export const useChatStore = defineStore('chat', () => {
     return resolve('chat.assistantStatus.usingTools', 'Using tools')
   }
 
+  function resolveStreamUIStateLabel(
+    phase: StreamUIPhase,
+    fallback?: string | null
+  ): string | null {
+    if (fallback?.trim()) return fallback
+
+    switch (phase) {
+      case 'connecting':
+        return formatStreamProgress('response.created')
+      case 'streaming':
+        return formatStreamProgress('response.output_text.delta')
+      case 'executing':
+        return resolveProcessTraceText('events.processing', 'Processing')
+      case 'recovering':
+        return resolveProcessTraceText(
+          'events.waitingForConnectionRecovery',
+          'Waiting for connection recovery'
+        )
+      case 'awaiting_confirmation':
+        return resolveI18nText(
+          'chat.awaitingConfirmation',
+          'Waiting for your confirmation to continue'
+        )
+      case 'interrupted':
+        return resolveI18nText('chat.responseInterrupted', 'Response interrupted')
+      case 'completed':
+        return formatStreamProgress('response.completed')
+      default:
+        return null
+    }
+  }
+
+  function formatRecoveryAttemptDetail(attempt: number): string {
+    return resolveProcessTraceText('details.recoveryAttempt', 'Attempt {current} of {total}', {
+      current: attempt,
+      total: streamRecoveryRetryLimit,
+    })
+  }
+
+  function createConversationRecoveryBaseline(conversationId: string): StreamRecoveryBaseline {
+    let assistantId: string | null = null
+    let assistantContent = ''
+    let assistantMetaKey = ''
+    let assistantCount = 0
+
+    for (const message of messages.value) {
+      if (
+        !message ||
+        message.conversation_id !== conversationId ||
+        message.role !== 'assistant' ||
+        message.id.startsWith('streaming-')
+      ) {
+        continue
+      }
+      assistantCount++
+      assistantId = message.id
+      assistantContent = message.content || ''
+      assistantMetaKey = [
+        message.provider || '',
+        message.model || '',
+        message.stats?.latency_ms || 0,
+        message.stats?.output_tokens || 0,
+      ].join(':')
+    }
+
+    return {
+      assistantId,
+      assistantContent,
+      assistantCount,
+      assistantMetaKey,
+    }
+  }
+
+  function recoveryBaselineAdvanced(
+    baseline: StreamRecoveryBaseline,
+    next: StreamRecoveryBaseline
+  ): boolean {
+    if (next.assistantCount > baseline.assistantCount) return true
+    if (next.assistantId !== baseline.assistantId) return true
+    if (next.assistantContent !== baseline.assistantContent) return true
+    return next.assistantMetaKey !== baseline.assistantMetaKey
+  }
+
+  function clearStreamRecoveryTimer() {
+    if (!streamRecoveryTimer) return
+    clearTimeout(streamRecoveryTimer)
+    streamRecoveryTimer = null
+  }
+
   function getActiveStreamState(
     conversationId?: string | null
   ): ActiveConversationStreamState | null {
@@ -1041,6 +1175,7 @@ export const useChatStore = defineStore('chat', () => {
     sending.value = !!state?.sending
     streaming.value = !!state?.streaming
     activeStreamId.value = state?.streamId ?? null
+    streamUIState.value = state?.uiState ?? createStreamUIState('idle')
     streamProgress.value = state?.receivedFirstChunk ? null : (state?.streamProgress ?? null)
     statusStartedAt.value = state?.statusStartedAt ?? 0
     statusSummary.value = state?.statusSummary ?? null
@@ -1067,6 +1202,23 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function updateActiveStreamUIState(
+    conversationId: string,
+    phase: StreamUIPhase,
+    overrides: Partial<StreamUIState> = {}
+  ) {
+    const current = getActiveStreamState(conversationId)
+    if (!current) return
+    const nextLabel = resolveStreamUIStateLabel(phase, overrides.label ?? current.uiState.label)
+    updateActiveStreamState(conversationId, {
+      uiState: createStreamUIState(phase, {
+        ...current.uiState,
+        ...overrides,
+        label: nextLabel,
+      }),
+    })
+  }
+
   function beginActiveStream(conversationId: string) {
     const next: ActiveConversationStreamState = {
       conversationId,
@@ -1087,6 +1239,10 @@ export const useChatStore = defineStore('chat', () => {
       processTrace: [],
       statusStartedAt: Date.now(),
       statusSummary: null,
+      uiState: createStreamUIState('connecting', {
+        label: resolveStreamUIStateLabel('connecting'),
+      }),
+      recoveryBaseline: createConversationRecoveryBaseline(conversationId),
     }
     activeStreamState.value = next
     if (currentConversationId.value === conversationId) {
@@ -1109,8 +1265,12 @@ export const useChatStore = defineStore('chat', () => {
       toolExecutingCommands: patch.toolExecutingCommands
         ? [...patch.toolExecutingCommands]
         : current.toolExecutingCommands,
-      toolResults: patch.toolResults ? cloneToolResultItems(patch.toolResults) : current.toolResults,
-      processTrace: patch.processTrace ? cloneProcessTrace(patch.processTrace) : current.processTrace,
+      toolResults: patch.toolResults
+        ? cloneToolResultItems(patch.toolResults)
+        : current.toolResults,
+      processTrace: patch.processTrace
+        ? cloneProcessTrace(patch.processTrace)
+        : current.processTrace,
     }
     activeStreamState.value = next
     if (currentConversationId.value === conversationId) {
@@ -1131,6 +1291,11 @@ export const useChatStore = defineStore('chat', () => {
       statusSummary: nextSummary,
       statusStartedAt: current.statusSummary === nextSummary ? current.statusStartedAt : Date.now(),
     })
+    updateActiveStreamUIState(conversationId, 'streaming', {
+      label: nextSummary,
+      detail: null,
+      canRetry: false,
+    })
   }
 
   function resetActiveStreamRound(conversationId: string) {
@@ -1150,18 +1315,26 @@ export const useChatStore = defineStore('chat', () => {
       statusStartedAt: Date.now(),
       statusSummary: null,
     })
+    updateActiveStreamUIState(conversationId, 'connecting', {
+      label: resolveStreamUIStateLabel('connecting'),
+      detail: null,
+      recoveryAttempt: 0,
+      canRetry: false,
+    })
   }
 
   function clearActiveStreamState(conversationId?: string | null) {
     const current = activeStreamState.value
     if (!current) return
     if (conversationId && current.conversationId !== conversationId) return
+    clearStreamRecoveryTimer()
     activeStreamState.value = null
   }
 
   function clearVisibleStreamState() {
     sending.value = false
     streaming.value = false
+    streamUIState.value = createStreamUIState('idle')
     streamProgress.value = null
     statusStartedAt.value = 0
     statusSummary.value = null
@@ -1191,7 +1364,7 @@ export const useChatStore = defineStore('chat', () => {
 
   function restoreDetachedActiveStream(conversationId: string) {
     const state = getActiveStreamState(conversationId)
-    if (!state?.streaming || currentConversationId.value !== conversationId) return
+    if (!state || currentConversationId.value !== conversationId) return
 
     resetPendingStreamDelta()
     const previewContent = state.previewContent || ''
@@ -1253,7 +1426,13 @@ export const useChatStore = defineStore('chat', () => {
           updateActiveStreamState(conversationId, {
             streamProgress: nextSummary,
             statusSummary: nextSummary,
-            statusStartedAt: current.statusSummary === nextSummary ? current.statusStartedAt : Date.now(),
+            statusStartedAt:
+              current.statusSummary === nextSummary ? current.statusStartedAt : Date.now(),
+          })
+          updateActiveStreamUIState(conversationId, 'connecting', {
+            label: nextSummary,
+            detail: null,
+            canRetry: false,
           })
         }
         options.onStreamProgress?.(progress)
@@ -1278,6 +1457,18 @@ export const useChatStore = defineStore('chat', () => {
               statusStartedAt:
                 current.statusSummary === nextSummary ? current.statusStartedAt : item.timestamp,
             })
+            if (
+              item.category === 'retry' ||
+              item.category === 'recovery' ||
+              item.event === 'provider_failover'
+            ) {
+              updateActiveStreamUIState(conversationId, 'recovering', {
+                label: nextSummary,
+                detail: item.detail || null,
+                canRetry: false,
+                updatedAt: item.timestamp,
+              })
+            }
           }
         }
         options.onProcessEvent?.(chunk)
@@ -1306,6 +1497,11 @@ export const useChatStore = defineStore('chat', () => {
             awaitingConfirmation: true,
             statusStartedAt: Date.now(),
           })
+          updateActiveStreamUIState(conversationId, 'awaiting_confirmation', {
+            label: resolveStreamUIStateLabel('awaiting_confirmation'),
+            detail: null,
+            canRetry: false,
+          })
         }
         if (chunk.delta) {
           appendActiveStreamPreview(conversationId, chunk.delta)
@@ -1313,7 +1509,10 @@ export const useChatStore = defineStore('chat', () => {
         options.onMessage(chunk)
       },
       onToolExecuting: (toolCount, toolNames, sandboxAvailable, toolCommands) => {
-        const nextSummary = formatAssistantStatusSummaryFromTools(toolNames || [], toolCommands || [])
+        const nextSummary = formatAssistantStatusSummaryFromTools(
+          toolNames || [],
+          toolCommands || []
+        )
         updateActiveStreamState(conversationId, {
           toolExecuting: true,
           toolExecutingStartTime: Date.now(),
@@ -1322,6 +1521,11 @@ export const useChatStore = defineStore('chat', () => {
           toolSandboxAvailable: !!sandboxAvailable,
           statusSummary: nextSummary,
           statusStartedAt: Date.now(),
+        })
+        updateActiveStreamUIState(conversationId, 'executing', {
+          label: nextSummary,
+          detail: null,
+          canRetry: false,
         })
         options.onToolExecuting?.(toolCount, toolNames, sandboxAvailable, toolCommands)
       },
@@ -1340,8 +1544,8 @@ export const useChatStore = defineStore('chat', () => {
         resetActiveStreamRound(conversationId)
         options.onNewMessage?.(toolRound)
       },
-      onTodoUpdated: (messageId, content, todoCardId) => {
-        options.onTodoUpdated?.(messageId, content, todoCardId)
+      onTodoUpdated: (messageId, content, todoCardId, todoCompleted) => {
+        options.onTodoUpdated?.(messageId, content, todoCardId, todoCompleted)
       },
       onInjection: (userMessage) => {
         resetActiveStreamRound(conversationId)
@@ -1360,6 +1564,14 @@ export const useChatStore = defineStore('chat', () => {
               'details.injectionRestart',
               'The assistant is restarting the response with your latest interruption.'
             ),
+        })
+        updateActiveStreamUIState(conversationId, 'connecting', {
+          label: resolveProcessTraceText(
+            'events.restartingWithLatestMessage',
+            'Restarting with your latest message'
+          ),
+          detail: summarizeRequestText(userMessage) || null,
+          canRetry: false,
         })
         options.onInjection?.(userMessage)
       },
@@ -1393,6 +1605,25 @@ export const useChatStore = defineStore('chat', () => {
           },
           { replaceLatestByEvent: true, updateStatusTimer: true }
         )
+        updateActiveStreamState(conversationId, {
+          sending: false,
+          streaming: false,
+          toolExecuting: false,
+          streamProgress: null,
+          statusSummary: resolveProcessTraceText(
+            'events.waitingForConnectionRecovery',
+            'Waiting for connection recovery'
+          ),
+        })
+        updateActiveStreamUIState(conversationId, 'recovering', {
+          label: resolveProcessTraceText(
+            'events.waitingForConnectionRecovery',
+            'Waiting for connection recovery'
+          ),
+          detail: formatRecoveryAttemptDetail(1),
+          recoveryAttempt: 0,
+          canRetry: false,
+        })
         options.onNetworkInterrupt?.()
       },
       onError: (err) => {
@@ -1492,6 +1723,9 @@ export const useChatStore = defineStore('chat', () => {
   let pendingStreamConversationId: string | null = null
   let streamCommitRaf: number | null = null
   let streamCommitTimer: ReturnType<typeof setTimeout> | null = null
+  let lastStreamCommitAt = Date.now()
+  const STREAM_COMMIT_MAX_DEFER_MS = 24
+  const STREAM_COMMIT_IDLE_FLUSH_MS = 48
 
   function cancelPendingStreamCommit() {
     if (streamCommitRaf !== null && typeof window !== 'undefined') {
@@ -1548,6 +1782,7 @@ export const useChatStore = defineStore('chat', () => {
     if (pendingStreamDelta) {
       streamingContent.value += pendingStreamDelta
       pendingStreamDelta = ''
+      lastStreamCommitAt = Date.now()
     }
     patchLastAssistantMessageContent(targetConversationId)
     pendingStreamConversationId = null
@@ -1555,16 +1790,28 @@ export const useChatStore = defineStore('chat', () => {
 
   function schedulePendingStreamCommit() {
     if (streamCommitRaf !== null || streamCommitTimer) return
-    const commit = () => {
+    const commit = (source: 'raf' | 'timer') => {
+      if (
+        source === 'timer' &&
+        streamCommitRaf !== null &&
+        typeof window !== 'undefined' &&
+        typeof window.cancelAnimationFrame === 'function'
+      ) {
+        window.cancelAnimationFrame(streamCommitRaf)
+      }
       streamCommitRaf = null
+      if (streamCommitTimer) {
+        clearTimeout(streamCommitTimer)
+      }
       streamCommitTimer = null
       flushPendingStreamDelta()
     }
     if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-      streamCommitRaf = window.requestAnimationFrame(commit)
+      streamCommitRaf = window.requestAnimationFrame(() => commit('raf'))
+      streamCommitTimer = setTimeout(() => commit('timer'), STREAM_COMMIT_MAX_DEFER_MS)
       return
     }
-    streamCommitTimer = setTimeout(commit, 16)
+    streamCommitTimer = setTimeout(() => commit('timer'), Math.min(16, STREAM_COMMIT_MAX_DEFER_MS))
   }
 
   function enqueueStreamDelta(conversationId: string, delta: string) {
@@ -1572,8 +1819,16 @@ export const useChatStore = defineStore('chat', () => {
     if (pendingStreamConversationId && pendingStreamConversationId !== conversationId) {
       flushPendingStreamDelta(pendingStreamConversationId)
     }
+    const shouldFlushImmediately =
+      pendingStreamDelta === '' &&
+      (streamingContent.value === '' ||
+        Date.now() - lastStreamCommitAt >= STREAM_COMMIT_IDLE_FLUSH_MS)
     pendingStreamConversationId = conversationId
     pendingStreamDelta += delta
+    if (shouldFlushImmediately) {
+      flushPendingStreamDelta(conversationId)
+      return
+    }
     schedulePendingStreamCommit()
   }
 
@@ -1600,6 +1855,15 @@ export const useChatStore = defineStore('chat', () => {
     return /(^|\n)[ \t]*[-*]\s+\[(?: |x|X)\]\s+/.test(content)
   }
 
+  function findLastUserMessageIndex(): number {
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      if (messages.value[i]?.role === 'user') {
+        return i
+      }
+    }
+    return -1
+  }
+
   function findTodoChecklistMessageIndex(messageId?: string): number {
     const normalizedMessageId = messageId?.trim()
     if (normalizedMessageId) {
@@ -1614,6 +1878,20 @@ export const useChatStore = defineStore('chat', () => {
       if (isTodoChecklistContent(msg.content)) return i
     }
     return -1
+  }
+
+  function clearRecentTodoCompletion() {
+    recentTodoCompletion.value = null
+  }
+
+  function markRecentTodoCompletion(messageId: string, todoCardId?: string) {
+    const normalizedMessageId = messageId.trim()
+    if (!normalizedMessageId) return
+    const normalizedTodoCardId = todoCardId?.trim() || undefined
+    recentTodoCompletion.value = {
+      messageId: normalizedMessageId,
+      ...(normalizedTodoCardId ? { todoCardId: normalizedTodoCardId } : {}),
+    }
   }
 
   function applyTodoChecklistUpdate(messageId: string, content: string, todoCardId?: string) {
@@ -1899,10 +2177,151 @@ export const useChatStore = defineStore('chat', () => {
   function markAwaitingConfirmation() {
     const wasAwaiting = awaitingConfirmation.value
     awaitingConfirmation.value = true
+    const conversationId = currentConversationId.value
+    if (conversationId) {
+      updateActiveStreamState(conversationId, {
+        awaitingConfirmation: true,
+        toolExecuting: false,
+        streamProgress: null,
+        statusStartedAt: Date.now(),
+      })
+      updateActiveStreamUIState(conversationId, 'awaiting_confirmation', {
+        label: resolveStreamUIStateLabel('awaiting_confirmation'),
+        detail: null,
+        canRetry: false,
+      })
+    }
     // If the out-of-band approval event was missed, recover pending payloads.
     if (!wasAwaiting) {
       void recoverPendingConfirmationsWithRetry()
     }
+  }
+
+  function markStreamInterrupted(conversationId: string, detail?: string) {
+    updateActiveStreamState(conversationId, {
+      sending: false,
+      streaming: false,
+      toolExecuting: false,
+      streamProgress: null,
+      statusSummary: resolveStreamUIStateLabel('interrupted'),
+      statusStartedAt: Date.now(),
+    })
+    updateActiveStreamUIState(conversationId, 'interrupted', {
+      label: resolveStreamUIStateLabel('interrupted'),
+      detail: detail || null,
+      canRetry: true,
+    })
+  }
+
+  async function recoverInterruptedStreamAttempt(
+    conversationId: string,
+    attempt: number,
+    baseline: StreamRecoveryBaseline
+  ): Promise<void> {
+    const state = getActiveStreamState(conversationId)
+    if (!state) return
+
+    const nextAttempt = attempt + 1
+    updateActiveStreamState(conversationId, {
+      sending: false,
+      streaming: false,
+      toolExecuting: false,
+      streamProgress: null,
+      statusSummary: resolveStreamUIStateLabel('recovering'),
+      statusStartedAt: state.statusStartedAt || Date.now(),
+    })
+    updateActiveStreamUIState(conversationId, 'recovering', {
+      label: resolveStreamUIStateLabel('recovering'),
+      detail: formatRecoveryAttemptDetail(nextAttempt),
+      recoveryAttempt: nextAttempt,
+      canRetry: false,
+    })
+
+    try {
+      await fetchMessages(conversationId)
+    } catch {
+      // Best-effort recovery fetch.
+    }
+
+    try {
+      await recoverPendingConfirmations(true)
+    } catch {
+      // Best-effort confirmation recovery.
+    }
+
+    const pendingRecovered =
+      hasPendingConfirmations() ||
+      awaitingConfirmation.value ||
+      getActiveStreamState(conversationId)?.awaitingConfirmation
+    if (pendingRecovered) {
+      updateActiveStreamState(conversationId, {
+        sending: false,
+        streaming: false,
+        toolExecuting: false,
+        streamProgress: null,
+        awaitingConfirmation: true,
+        statusSummary: resolveStreamUIStateLabel('awaiting_confirmation'),
+        statusStartedAt: Date.now(),
+      })
+      updateActiveStreamUIState(conversationId, 'awaiting_confirmation', {
+        label: resolveStreamUIStateLabel('awaiting_confirmation'),
+        detail: null,
+        canRetry: false,
+      })
+      clearStreamRecoveryTimer()
+      return
+    }
+
+    const latest = createConversationRecoveryBaseline(conversationId)
+    if (recoveryBaselineAdvanced(baseline, latest)) {
+      updateActiveStreamState(conversationId, {
+        sending: false,
+        streaming: false,
+        toolExecuting: false,
+        streamProgress: null,
+        statusSummary: resolveStreamUIStateLabel('completed'),
+        statusStartedAt: Date.now(),
+        recoveryBaseline: latest,
+      })
+      updateActiveStreamUIState(conversationId, 'completed', {
+        label: resolveStreamUIStateLabel('completed'),
+        detail: null,
+        canRetry: false,
+      })
+      clearStreamRecoveryTimer()
+      window.setTimeout(() => {
+        const current = getActiveStreamState(conversationId)
+        if (!current || current.uiState.phase !== 'completed') return
+        clearActiveStreamState(conversationId)
+        if (currentConversationId.value === conversationId) {
+          clearVisibleStreamState()
+        }
+      }, 600)
+      return
+    }
+
+    if (nextAttempt >= streamRecoveryRetryLimit) {
+      markStreamInterrupted(
+        conversationId,
+        resolveProcessTraceText(
+          'details.networkInterruptWaiting',
+          'The stream was interrupted after content started. Waiting for the backend to recover.'
+        )
+      )
+      clearStreamRecoveryTimer()
+      return
+    }
+
+    streamRecoveryTimer = setTimeout(() => {
+      void recoverInterruptedStreamAttempt(conversationId, nextAttempt, baseline)
+    }, streamRecoveryRetryDelayMs)
+  }
+
+  function startInterruptedStreamRecovery(conversationId: string) {
+    clearStreamRecoveryTimer()
+    const state = getActiveStreamState(conversationId)
+    if (!state) return
+    void recoverInterruptedStreamAttempt(conversationId, 0, state.recoveryBaseline)
   }
 
   // Computed
@@ -1929,7 +2348,13 @@ export const useChatStore = defineStore('chat', () => {
   const executingConversationIds = computed(() => {
     const state = activeStreamState.value
     if (!state?.conversationId) return []
-    if (state.streaming || state.sending || state.toolExecuting || state.awaitingConfirmation) {
+    if (
+      state.streaming ||
+      state.sending ||
+      state.toolExecuting ||
+      state.awaitingConfirmation ||
+      state.uiState.phase === 'recovering'
+    ) {
       return [state.conversationId]
     }
     return []
@@ -1955,7 +2380,15 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function stopActiveStreamForConversationSwitch() {
-    if (!streaming.value && !sending.value) return
+    if (
+      !streaming.value &&
+      !sending.value &&
+      streamUIState.value.phase !== 'recovering' &&
+      streamUIState.value.phase !== 'awaiting_confirmation' &&
+      streamUIState.value.phase !== 'interrupted'
+    ) {
+      return
+    }
     flushPendingStreamDelta(currentConversationId.value)
     if (currentConversationId.value) {
       updateActiveStreamState(currentConversationId.value, {
@@ -1980,6 +2413,7 @@ export const useChatStore = defineStore('chat', () => {
         processTrace: cloneProcessTrace(processTrace.value),
         statusStartedAt: statusStartedAt.value,
         statusSummary: statusSummary.value,
+        uiState: { ...streamUIState.value },
       })
     }
     pendingQuestion.value = null
@@ -1987,6 +2421,7 @@ export const useChatStore = defineStore('chat', () => {
     pendingExecApproval.value = null
     awaitingConfirmation.value = false
     clearPendingRecoveryRetryTimer()
+    clearStreamRecoveryTimer()
     clearVisibleStreamState()
   }
 
@@ -2067,6 +2502,7 @@ export const useChatStore = defineStore('chat', () => {
     // Prevent old conversation stream callbacks from writing into the newly
     // selected conversation.
     stopActiveStreamForConversationSwitch()
+    clearRecentTodoCompletion()
 
     currentConversationId.value = id
     reportStartupMark('chat_select_conversation_start')
@@ -2086,6 +2522,7 @@ export const useChatStore = defineStore('chat', () => {
 
       // Only update if we're still on the same conversation
       if (currentConversationId.value === id) {
+        clearRecentTodoCompletion()
         messages.value = fetchedMessages
         hasMoreMessages.value = fetchedMessages.length === PAGE_SIZE
         currentPage.value = 0
@@ -2101,8 +2538,20 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
-    if (getActiveStreamState(id)?.streaming) {
-      restoreDetachedActiveStream(id)
+    const detachedState = getActiveStreamState(id)
+    if (detachedState) {
+      if (
+        detachedState.streaming ||
+        detachedState.previewContent ||
+        detachedState.toolResults.length > 0
+      ) {
+        restoreDetachedActiveStream(id)
+      } else if (currentConversationId.value === id) {
+        applyVisibleStreamState(detachedState)
+      }
+      if (detachedState.uiState.phase === 'recovering') {
+        startInterruptedStreamRecovery(id)
+      }
       void recoverPendingConfirmations(true)
       return
     }
@@ -2138,6 +2587,7 @@ export const useChatStore = defineStore('chat', () => {
       if (currentConversationId.value !== conversationId) return
 
       if (page === 0) {
+        clearRecentTodoCompletion()
         // Only restore metadata if server didn't return it (for backwards compatibility)
         savedMetadata.forEach((meta, index) => {
           if (fetchedMessages[index] && fetchedMessages[index].role === 'assistant') {
@@ -2228,8 +2678,7 @@ export const useChatStore = defineStore('chat', () => {
     const existingAttachments = cloneMessageAttachments(options?.existingAttachments)
     const hasAnyAttachments =
       (existingAttachments?.length ?? 0) > 0 || (fileAttachments?.length ?? 0) > 0
-    const shouldRefreshCommandStateAfterComplete =
-      !hasAnyAttachments && isSlashCommandText(content)
+    const shouldRefreshCommandStateAfterComplete = !hasAnyAttachments && isSlashCommandText(content)
 
     // Convert file attachments to MessageAttachment format (base64)
     const attachments: MessageAttachment[] = existingAttachments ? [...existingAttachments] : []
@@ -2299,6 +2748,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      clearRecentTodoCompletion()
       streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
@@ -2376,9 +2826,12 @@ export const useChatStore = defineStore('chat', () => {
           const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (messageId, content, todoCardId) => {
+        onTodoUpdated: (messageId, content, todoCardId, todoCompleted) => {
           if (currentConversationId.value !== sendConvId) return
           applyTodoChecklistUpdate(messageId, content, todoCardId)
+          if (todoCompleted) {
+            markRecentTodoCompletion(messageId, todoCardId)
+          }
         },
         onInjection: () => {
           if (currentConversationId.value !== sendConvId) return
@@ -2409,6 +2862,7 @@ export const useChatStore = defineStore('chat', () => {
             PROVIDER_NO_RESPONSE: 'providerNoResponse',
             PROVIDER_RETURNED_EMPTY: 'providerReturnedEmpty',
             'No response body': 'noResponseBody',
+            context_window_exceeded: 'contextWindowExceeded',
             provider_tool_unsupported: 'provider_tool_unsupported',
             provider_unavailable: 'provider_unavailable',
             provider_auth_error: 'provider_auth_error',
@@ -2427,6 +2881,14 @@ export const useChatStore = defineStore('chat', () => {
               lower.includes('free model publication')
             )
               return 'provider_openrouter_privacy_policy'
+            if (
+              lower.includes('context_window_exceeded') ||
+              lower.includes('context window is full') ||
+              lower.includes('maximum context length') ||
+              lower.includes('context_length_exceeded') ||
+              lower.includes('reduce conversation history')
+            )
+              return 'contextWindowExceeded'
             if (lower.includes('provider_tool_unsupported')) return 'provider_tool_unsupported'
             if (lower.includes('provider_unavailable') || lower.includes('no available provider'))
               return 'provider_unavailable'
@@ -2497,6 +2959,11 @@ export const useChatStore = defineStore('chat', () => {
           } else {
             streamError.value = err.message
           }
+          streamUIState.value = createStreamUIState('interrupted', {
+            label: resolveStreamUIStateLabel('interrupted'),
+            detail: errorKey || err.message,
+            canRetry: true,
+          })
           // Log error to server
           systemApi.writeLog('error', `Chat stream error: ${err.message}`, 'chat').catch(() => {})
           // If streaming message has content, keep it and mark as interrupted
@@ -2537,16 +3004,19 @@ export const useChatStore = defineStore('chat', () => {
           contextTrimInfo.value = info
         },
         onNetworkInterrupt: () => {
-          // Mid-stream network interrupt — the backend handles retries with
-          // exponential backoff. Nothing to show in UI; the stream will resume
-          // transparently when the backend reconnects.
+          if (currentConversationId.value !== sendConvId) return
+          flushPendingStreamDelta(sendConvId)
           streamError.value = null
+          startInterruptedStreamRecovery(sendConvId)
         },
         onComplete: (finalChunk) => {
           flushPendingStreamDelta(sendConvId)
           streaming.value = false
           streamProgress.value = null
           toolExecuting.value = false
+          streamUIState.value = createStreamUIState('completed', {
+            label: resolveStreamUIStateLabel('completed'),
+          })
           // Guard: if user switched away, don't touch messages
           if (currentConversationId.value !== sendConvId) return
           const finalizedLocally = applyFinalStreamChunk(sendConvId, finalChunk)
@@ -2586,6 +3056,11 @@ export const useChatStore = defineStore('chat', () => {
     } catch (e) {
       flushPendingStreamDelta(conversationId)
       error.value = e instanceof Error ? e.message : 'Failed to send message'
+      streamUIState.value = createStreamUIState('interrupted', {
+        label: resolveStreamUIStateLabel('interrupted'),
+        detail: error.value,
+        canRetry: true,
+      })
       // Keep streaming message with content, mark as interrupted; remove empty placeholders
       const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
       if (streamingMsg && streamingMsg.content.trim()) {
@@ -2646,14 +3121,39 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function cancelStreaming() {
+    const hasInterruptibleState =
+      streaming.value ||
+      sending.value ||
+      streamUIState.value.phase === 'recovering' ||
+      streamUIState.value.phase === 'awaiting_confirmation' ||
+      streamUIState.value.phase === 'interrupted'
+    if (!currentConversationId.value || !hasInterruptibleState) return
     flushPendingStreamDelta(currentConversationId.value)
     void cancelActiveStreamOnServer(currentConversationId.value)
     sseClient.disconnect()
+    clearStreamRecoveryTimer()
     clearActiveStreamState(currentConversationId.value)
     clearVisibleStreamState()
     if (!hasPendingConfirmations()) {
       awaitingConfirmation.value = false
     }
+  }
+
+  function retryInterruptedStreamRecovery() {
+    const conversationId = currentConversationId.value
+    if (!conversationId) return
+    clearStreamError()
+    if (
+      streamUIState.value.phase === 'interrupted' ||
+      getActiveStreamState(conversationId)?.uiState.phase === 'interrupted'
+    ) {
+      const current = getActiveStreamState(conversationId)
+      if (current) {
+        startInterruptedStreamRecovery(conversationId)
+        return
+      }
+    }
+    void regenerateMessage()
   }
 
   /** Inject a user message into an active stream. The backend cancels the current
@@ -2729,6 +3229,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      clearRecentTodoCompletion()
       streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
@@ -2799,9 +3300,12 @@ export const useChatStore = defineStore('chat', () => {
           const newAssistant = createStreamingAssistantMessage(convId)
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (messageId, content, todoCardId) => {
+        onTodoUpdated: (messageId, content, todoCardId, todoCompleted) => {
           if (currentConversationId.value !== convId) return
           applyTodoChecklistUpdate(messageId, content, todoCardId)
+          if (todoCompleted) {
+            markRecentTodoCompletion(messageId, todoCardId)
+          }
         },
         onError: (err) => {
           if (currentConversationId.value !== convId) return
@@ -2809,14 +3313,28 @@ export const useChatStore = defineStore('chat', () => {
           streamProgress.value = null
           toolExecuting.value = false
           streamError.value = err.message
+          streamUIState.value = createStreamUIState('interrupted', {
+            label: resolveStreamUIStateLabel('interrupted'),
+            detail: err.message,
+            canRetry: true,
+          })
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
           streaming.value = false
+        },
+        onNetworkInterrupt: () => {
+          if (currentConversationId.value !== convId) return
+          flushPendingStreamDelta(convId)
+          streamError.value = null
+          startInterruptedStreamRecovery(convId)
         },
         onComplete: (finalChunk) => {
           flushPendingStreamDelta(convId)
           streaming.value = false
           streamProgress.value = null
           toolExecuting.value = false
+          streamUIState.value = createStreamUIState('completed', {
+            label: resolveStreamUIStateLabel('completed'),
+          })
           if (currentConversationId.value !== convId) return
           const finalizedLocally = applyFinalStreamChunk(convId, finalChunk)
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
@@ -2841,6 +3359,11 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch {
       flushPendingStreamDelta(convId)
+      streamUIState.value = createStreamUIState('interrupted', {
+        label: resolveStreamUIStateLabel('interrupted'),
+        detail: resolveI18nText('chat.streamError', 'Stream error'),
+        canRetry: true,
+      })
       messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
     } finally {
       finalizeVisibleStreamSession(convId)
@@ -2871,6 +3394,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      clearRecentTodoCompletion()
       streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
@@ -2934,9 +3458,12 @@ export const useChatStore = defineStore('chat', () => {
           const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (messageId, content, todoCardId) => {
+        onTodoUpdated: (messageId, content, todoCardId, todoCompleted) => {
           if (currentConversationId.value !== conversationId) return
           applyTodoChecklistUpdate(messageId, content, todoCardId)
+          if (todoCompleted) {
+            markRecentTodoCompletion(messageId, todoCardId)
+          }
         },
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
@@ -2945,6 +3472,11 @@ export const useChatStore = defineStore('chat', () => {
           error.value = err.message
           streaming.value = false
           toolExecuting.value = false
+          streamUIState.value = createStreamUIState('interrupted', {
+            label: resolveStreamUIStateLabel('interrupted'),
+            detail: err.message,
+            canRetry: true,
+          })
         },
         onBlocked: (message, threatLevel) => {
           securityBlocked.value = { message, threatLevel }
@@ -2957,11 +3489,20 @@ export const useChatStore = defineStore('chat', () => {
           toolExecuting.value = false
           sending.value = false
         },
+        onNetworkInterrupt: () => {
+          if (currentConversationId.value !== conversationId) return
+          flushPendingStreamDelta(conversationId)
+          streamError.value = null
+          startInterruptedStreamRecovery(conversationId)
+        },
         onComplete: (finalChunk) => {
           flushPendingStreamDelta(conversationId)
           streaming.value = false
           streamProgress.value = null
           toolExecuting.value = false
+          streamUIState.value = createStreamUIState('completed', {
+            label: resolveStreamUIStateLabel('completed'),
+          })
           if (currentConversationId.value !== conversationId) return
           const finalizedLocally = applyFinalStreamChunk(conversationId, finalChunk)
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
@@ -2988,6 +3529,11 @@ export const useChatStore = defineStore('chat', () => {
     } catch (e) {
       flushPendingStreamDelta(conversationId)
       error.value = e instanceof Error ? e.message : 'Failed to continue message'
+      streamUIState.value = createStreamUIState('interrupted', {
+        label: resolveStreamUIStateLabel('interrupted'),
+        detail: error.value,
+        canRetry: true,
+      })
     } finally {
       finalizeVisibleStreamSession(conversationId)
     }
@@ -3009,28 +3555,22 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // Find the last user message to regenerate from
-    let lastUserMessageIndex = -1
-    for (let i = messages.value.length - 1; i >= 0; i--) {
-      if (messages.value[i]?.role === 'user') {
-        lastUserMessageIndex = i
-        break
-      }
-    }
+    const lastUserMessageIndex = findLastUserMessageIndex()
 
     if (lastUserMessageIndex === -1) return
 
     const lastUserMessage = messages.value[lastUserMessageIndex]
     if (!lastUserMessage) return
 
-    // Remove the last assistant message if it exists
-    const lastMessage = messages.value[messages.value.length - 1]
-    if (lastMessage?.role === 'assistant') {
-      messages.value = messages.value.slice(0, -1)
+    // Clear the entire assistant tail for the last turn so regenerate starts from a clean slate.
+    if (lastUserMessageIndex < messages.value.length - 1) {
+      messages.value = messages.value.slice(0, lastUserMessageIndex + 1)
     }
 
     try {
       sending.value = true
       streaming.value = true
+      clearRecentTodoCompletion()
       streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
@@ -3102,9 +3642,12 @@ export const useChatStore = defineStore('chat', () => {
           const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (messageId, content, todoCardId) => {
+        onTodoUpdated: (messageId, content, todoCardId, todoCompleted) => {
           if (currentConversationId.value !== conversationId) return
           applyTodoChecklistUpdate(messageId, content, todoCardId)
+          if (todoCompleted) {
+            markRecentTodoCompletion(messageId, todoCardId)
+          }
         },
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
@@ -3113,6 +3656,11 @@ export const useChatStore = defineStore('chat', () => {
           error.value = err.message
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
+          streamUIState.value = createStreamUIState('interrupted', {
+            label: resolveStreamUIStateLabel('interrupted'),
+            detail: err.message,
+            canRetry: true,
+          })
           // If error happened during tool execution, fetch server-persisted content
           if (wasToolExecuting) {
             fetchMessages(conversationId).then(() => {
@@ -3148,11 +3696,20 @@ export const useChatStore = defineStore('chat', () => {
           sending.value = false
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
         },
+        onNetworkInterrupt: () => {
+          if (currentConversationId.value !== conversationId) return
+          flushPendingStreamDelta(conversationId)
+          streamError.value = null
+          startInterruptedStreamRecovery(conversationId)
+        },
         onComplete: (finalChunk) => {
           flushPendingStreamDelta(conversationId)
           streaming.value = false
           streamProgress.value = null
           toolExecuting.value = false
+          streamUIState.value = createStreamUIState('completed', {
+            label: resolveStreamUIStateLabel('completed'),
+          })
           if (currentConversationId.value !== conversationId) return
           const finalizedLocally = applyFinalStreamChunk(conversationId, finalChunk)
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
@@ -3178,6 +3735,11 @@ export const useChatStore = defineStore('chat', () => {
     } catch (e) {
       flushPendingStreamDelta(conversationId)
       error.value = e instanceof Error ? e.message : 'Failed to regenerate message'
+      streamUIState.value = createStreamUIState('interrupted', {
+        label: resolveStreamUIStateLabel('interrupted'),
+        detail: error.value,
+        canRetry: true,
+      })
       const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
       if (streamingMsg && streamingMsg.content.trim()) {
         const newMessages = [...messages.value]
@@ -3238,6 +3800,9 @@ export const useChatStore = defineStore('chat', () => {
   function clearStreamError() {
     streamError.value = null
     streamProgress.value = null
+    if (streamUIState.value.phase === 'interrupted' && !activeStreamState.value) {
+      streamUIState.value = createStreamUIState('idle')
+    }
   }
 
   function clearSecurityBlocked() {
@@ -3530,6 +4095,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       conversations.value = []
       currentConversationId.value = null
+      clearRecentTodoCompletion()
       messages.value = []
       hasMoreMessages.value = false
       currentPage.value = 0
@@ -3608,6 +4174,7 @@ export const useChatStore = defineStore('chat', () => {
     conversations,
     currentConversationId,
     messages,
+    recentTodoCompletion,
     loading,
     sending,
     streaming,
@@ -3615,6 +4182,7 @@ export const useChatStore = defineStore('chat', () => {
     processContentLength,
     error,
     streamError,
+    streamUIState,
     streamProgress,
     statusStartedAt,
     statusSummary,
@@ -3644,6 +4212,8 @@ export const useChatStore = defineStore('chat', () => {
     offlineMode,
     webSearchEnabled,
     deepResearchEnabled,
+    isRecovering,
+    isStreamInterrupted,
 
     // Computed
     currentConversation,
@@ -3663,6 +4233,7 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     injectMessage,
     cancelStreaming,
+    retryInterruptedStreamRecovery,
     cancelPreTTFT,
     continueMessage,
     regenerateMessage,

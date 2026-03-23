@@ -127,6 +127,8 @@ type mockBrowserService struct {
 	interactiveCount  int // configurable for auto-snapshot tests
 	screenshotData    string
 	screenshotTabData string
+	lastScreenshotURL string
+	lastScreenshotTab string
 	lastActMode       string
 	lastActTargetID   string
 	lastActRef        int
@@ -198,14 +200,16 @@ func (m *mockBrowserService) ActByInteractiveRef(_ context.Context, targetID str
 	return nil
 }
 
-func (m *mockBrowserService) Screenshot(_ context.Context, _ string) (string, error) {
+func (m *mockBrowserService) Screenshot(_ context.Context, url string) (string, error) {
+	m.lastScreenshotURL = url
 	if m.screenshotData != "" {
 		return m.screenshotData, nil
 	}
 	return "base64data", nil
 }
 
-func (m *mockBrowserService) ScreenshotTab(_ context.Context, _ string) (string, error) {
+func (m *mockBrowserService) ScreenshotTab(_ context.Context, targetID string) (string, error) {
+	m.lastScreenshotTab = targetID
 	if m.screenshotTabData != "" {
 		return m.screenshotTabData, nil
 	}
@@ -432,6 +436,9 @@ func TestBrowserSkill(t *testing.T) {
 		if err := br.Validate(map[string]any{"action": "snapshot_interactive"}); err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
+		if err := br.Validate(map[string]any{"action": "screenshot"}); err != nil {
+			t.Errorf("unexpected error for screenshot without url/target_id: %v", err)
+		}
 		if err := br.Validate(map[string]any{"action": "scroll", "ref": 1}); err != nil {
 			t.Errorf("unexpected error for legacy action alias: %v", err)
 		}
@@ -471,6 +478,22 @@ func TestBrowserSkill(t *testing.T) {
 
 		result, err = br.Execute(context.Background(), map[string]any{
 			"action": "act", "ref": float64(1), "act_type": "click",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("act failed: err=%v success=%v", err, result.Success)
+		}
+	})
+
+	t.Run("act_a11y_ref_with_at_prefix", func(t *testing.T) {
+		result, err := br.Execute(context.Background(), map[string]any{
+			"action": "navigate", "url": "https://example.com",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("navigate failed: err=%v", err)
+		}
+
+		result, err = br.Execute(context.Background(), map[string]any{
+			"action": "act", "ref": "@1", "act_type": "click",
 		})
 		if err != nil || !result.Success {
 			t.Fatalf("act failed: err=%v success=%v", err, result.Success)
@@ -545,6 +568,7 @@ func TestBrowserSkill(t *testing.T) {
 
 	t.Run("screenshot", func(t *testing.T) {
 		mock.screenshotData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+		mock.lastScreenshotURL = ""
 		result, err := br.Execute(context.Background(), map[string]any{
 			"action": "screenshot", "url": "https://example.com",
 		})
@@ -561,7 +585,55 @@ func TestBrowserSkill(t *testing.T) {
 		if _, err := os.Stat(got); err != nil {
 			t.Fatalf("expected saved screenshot at %s: %v", got, err)
 		}
+		if mock.lastScreenshotURL != "https://example.com" {
+			t.Fatalf("lastScreenshotURL = %q, want https://example.com", mock.lastScreenshotURL)
+		}
 		mock.screenshotData = "base64data"
+	})
+
+	t.Run("screenshot_target_id", func(t *testing.T) {
+		mock.screenshotTabData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+		mock.lastScreenshotURL = ""
+		mock.lastScreenshotTab = ""
+		result, err := br.Execute(context.Background(), map[string]any{
+			"action":    "screenshot",
+			"target_id": "tab-7",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("screenshot target_id failed: err=%v", err)
+		}
+		if mock.lastScreenshotURL != "" {
+			t.Fatalf("lastScreenshotURL = %q, want empty", mock.lastScreenshotURL)
+		}
+		if mock.lastScreenshotTab != "tab-7" {
+			t.Fatalf("lastScreenshotTab = %q, want tab-7", mock.lastScreenshotTab)
+		}
+		if got := result.Data.(map[string]any)["target_id"]; got != "tab-7" {
+			t.Fatalf("target_id = %v, want tab-7", got)
+		}
+		mock.screenshotTabData = ""
+	})
+
+	t.Run("screenshot_active_tab", func(t *testing.T) {
+		mock.screenshotTabData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+		mock.lastScreenshotURL = ""
+		mock.lastScreenshotTab = "non-empty"
+		result, err := br.Execute(context.Background(), map[string]any{
+			"action": "screenshot",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("screenshot active tab failed: err=%v", err)
+		}
+		if mock.lastScreenshotURL != "" {
+			t.Fatalf("lastScreenshotURL = %q, want empty", mock.lastScreenshotURL)
+		}
+		if mock.lastScreenshotTab != "" {
+			t.Fatalf("lastScreenshotTab = %q, want empty for active-tab fallback", mock.lastScreenshotTab)
+		}
+		if got := result.Data.(map[string]any)["message"]; got != "Screenshot captured for active tab" {
+			t.Fatalf("message = %v, want active-tab message", got)
+		}
+		mock.screenshotTabData = ""
 	})
 
 	t.Run("screenshot_persists_file_when_media_dir_configured", func(t *testing.T) {

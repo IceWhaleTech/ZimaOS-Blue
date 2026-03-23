@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +34,33 @@ type BrowserTask struct {
 	CompletedAt string      `json:"completed_at,omitempty"`
 	Error       string      `json:"error,omitempty"`
 	Result      interface{} `json:"result,omitempty"`
+}
+
+type browserSessionResponse struct {
+	ID           string `json:"id"`
+	Status       string `json:"status"`
+	CurrentURL   string `json:"current_url,omitempty"`
+	PageTitle    string `json:"page_title,omitempty"`
+	CreatedAt    string `json:"created_at"`
+	LastActivity string `json:"last_activity"`
+}
+
+type browserViewportScreenshoter interface {
+	ScreenshotViewport(ctx context.Context, targetID string) (string, error)
+}
+
+type browserTabScreenshoter interface {
+	ScreenshotTab(ctx context.Context, targetID string) (string, error)
+}
+
+type browserSessionScreenshotHistoryProvider interface {
+	SessionScreenshotHistory(targetID string) []SessionScreenshot
+}
+
+type browserSessionScreenshotResponse struct {
+	Screenshot string              `json:"screenshot,omitempty"`
+	History    []SessionScreenshot `json:"history,omitempty"`
+	Error      string              `json:"error,omitempty"`
 }
 
 // NewHandler creates a new browser handler.
@@ -81,6 +109,21 @@ func (h *Handler) getService() Service {
 // GetService returns the current service, creating it if needed.
 func (h *Handler) GetService() Service {
 	return h.getService()
+}
+
+// PeekService returns the current browser service without creating it.
+func (h *Handler) PeekService() Service {
+	if h == nil {
+		return nil
+	}
+	if h.service != nil || h.lazy == nil {
+		return h.service
+	}
+	svc, ok := h.lazy.Peek()
+	if !ok {
+		return nil
+	}
+	return svc
 }
 
 // SetIdleReclaim configures idle reclaim for lazily created browser services.
@@ -260,6 +303,46 @@ func randomString(n int) string {
 	return string(b)
 }
 
+func newBrowserSessionResponse(tab *Tab, now time.Time) browserSessionResponse {
+	session := browserSessionResponse{
+		CreatedAt:    now.Format(time.RFC3339),
+		LastActivity: now.Format(time.RFC3339),
+	}
+	if tab == nil {
+		session.Status = "idle"
+		return session
+	}
+	session.ID = tab.TargetID
+	session.CurrentURL = tab.URL
+	session.PageTitle = tab.Title
+	if tab.Active {
+		session.Status = "active"
+	} else {
+		session.Status = "idle"
+	}
+	return session
+}
+
+func browserSessionResponsesFromTabs(tabs []*Tab, now time.Time) []browserSessionResponse {
+	sessions := make([]browserSessionResponse, 0, len(tabs))
+	for _, tab := range tabs {
+		if tab == nil {
+			continue
+		}
+		sessions = append(sessions, newBrowserSessionResponse(tab, now))
+	}
+	return sessions
+}
+
+func findTabByTargetID(tabs []*Tab, id string) *Tab {
+	for _, tab := range tabs {
+		if tab != nil && tab.TargetID == id {
+			return tab
+		}
+	}
+	return nil
+}
+
 // GetTask returns a specific task.
 func (h *Handler) GetTask(c echo.Context) error {
 	id := c.Param("id")
@@ -355,9 +438,9 @@ func (h *Handler) ListSessions(c echo.Context) error {
 	// Return tabs as sessions for compatibility
 	tabs, err := service.Tabs(ctx)
 	if err != nil {
-		return c.JSON(http.StatusOK, []interface{}{})
+		return c.JSON(http.StatusOK, []browserSessionResponse{})
 	}
-	return c.JSON(http.StatusOK, tabs)
+	return c.JSON(http.StatusOK, browserSessionResponsesFromTabs(tabs, timeutil.NowTime()))
 }
 
 // CreateSession creates a new browser session.
@@ -410,14 +493,32 @@ func (h *Handler) CreateSession(c echo.Context) error {
 // GetSession returns a specific session.
 func (h *Handler) GetSession(c echo.Context) error {
 	id := c.Param("id")
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"id":            id,
-		"status":        "active",
-		"current_url":   "",
-		"page_title":    "",
-		"created_at":    timeutil.NowTime().Format(time.RFC3339),
-		"last_activity": timeutil.NowTime().Format(time.RFC3339),
-	})
+
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
+	if service == nil {
+		return echo.NewHTTPError(http.StatusNotFound, "session not found")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
+	defer cancel()
+
+	tabs, err := service.Tabs(ctx)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	tab := findTabByTargetID(tabs, id)
+	if tab == nil {
+		return echo.NewHTTPError(http.StatusNotFound, "session not found")
+	}
+
+	return c.JSON(http.StatusOK, newBrowserSessionResponse(tab, timeutil.NowTime()))
 }
 
 // CloseSession closes a browser session.
@@ -442,14 +543,78 @@ func (h *Handler) CloseSession(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// SessionScreenshot takes a screenshot of a session (stub).
 func (h *Handler) SessionScreenshot(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]string{
-		"screenshot": "",
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
+	if service == nil {
+		return c.JSON(http.StatusOK, browserSessionScreenshotResponse{
+			Error: "browser service unavailable",
+		})
+	}
+
+	id := c.Param("id")
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
+	var captureErrors []string
+
+	if screenshoter, ok := service.(browserViewportScreenshoter); ok {
+		screenshot, err := screenshoter.ScreenshotViewport(ctx, id)
+		if err == nil && strings.TrimSpace(screenshot) != "" {
+			return c.JSON(http.StatusOK, browserSessionScreenshotResponse{
+				Screenshot: screenshot,
+				History:    sessionScreenshotHistory(service, id),
+			})
+		}
+		if err != nil {
+			captureErrors = append(captureErrors, err.Error())
+		}
+	}
+
+	if screenshoter, ok := service.(browserTabScreenshoter); ok {
+		screenshot, err := screenshoter.ScreenshotTab(ctx, id)
+		if err == nil && strings.TrimSpace(screenshot) != "" {
+			return c.JSON(http.StatusOK, browserSessionScreenshotResponse{
+				Screenshot: screenshot,
+				History:    sessionScreenshotHistory(service, id),
+			})
+		}
+		if err != nil {
+			captureErrors = append(captureErrors, err.Error())
+		}
+	}
+
+	history := sessionScreenshotHistory(service, id)
+	latest := ""
+	if len(history) > 0 {
+		latest = history[0].Data
+	}
+
+	errorMessage := "preview unavailable"
+	if len(captureErrors) > 0 {
+		errorMessage = strings.Join(captureErrors, "; ")
+	}
+
+	return c.JSON(http.StatusOK, browserSessionScreenshotResponse{
+		Screenshot: latest,
+		History:    history,
+		Error:      errorMessage,
 	})
 }
 
-// SessionNavigate navigates a session to a URL (stub).
+func sessionScreenshotHistory(service Service, targetID string) []SessionScreenshot {
+	provider, ok := service.(browserSessionScreenshotHistoryProvider)
+	if !ok || provider == nil {
+		return nil
+	}
+	return provider.SessionScreenshotHistory(targetID)
+}
+
 func (h *Handler) SessionNavigate(c echo.Context) error {
 	var req struct {
 		URL string `json:"url"`
@@ -457,7 +622,36 @@ func (h *Handler) SessionNavigate(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
-	return c.JSON(http.StatusOK, map[string]string{"status": "navigated"})
+	req.URL = strings.TrimSpace(req.URL)
+	if req.URL == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
+	}
+
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if release != nil {
+		defer release()
+	}
+	if service == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser service unavailable")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
+	defer cancel()
+
+	resp, err := service.Navigate(ctx, &NavigateRequest{
+		URL:      req.URL,
+		TargetID: c.Param("id"),
+	})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if resp == nil {
+		return c.JSON(http.StatusOK, map[string]string{"status": "navigated"})
+	}
+	return c.JSON(http.StatusOK, resp)
 }
 
 // SessionExecute executes a step in a session (stub).

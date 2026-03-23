@@ -547,6 +547,145 @@ func TestConvertRequest_ToolResultJSONObjectPreserved(t *testing.T) {
 	}
 }
 
+func TestConvertRequest_NullMessageContentNormalizedToEmptyString(t *testing.T) {
+	fc := NewFormatConverter()
+
+	openaiReq := `{
+		"model": "claude-3-5-sonnet",
+		"messages": [
+			{"role": "user", "content": "hello"},
+			{"role": "assistant", "content": null},
+			{"role": "user", "content": [{"type":"text","text":null}]}
+		]
+	}`
+
+	converted, _, err := fc.ConvertRequest([]byte(openaiReq), ProviderTypeAnthropic)
+	if err != nil {
+		t.Fatalf("ConvertRequest failed: %v", err)
+	}
+	if strings.Contains(string(converted), `"content":null`) {
+		t.Fatalf("converted request still contains null content: %s", converted)
+	}
+
+	var anthropicReq AnthropicRequest
+	if err := json.Unmarshal(converted, &anthropicReq); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n  body: %s", err, converted)
+	}
+	if len(anthropicReq.Messages) != 3 {
+		t.Fatalf("Messages count = %d, want 3", len(anthropicReq.Messages))
+	}
+
+	assistantContent, ok := anthropicReq.Messages[1].Content.(string)
+	if !ok {
+		t.Fatalf("assistant content type = %T, want string", anthropicReq.Messages[1].Content)
+	}
+	if assistantContent != "" {
+		t.Fatalf("assistant content = %q, want empty string", assistantContent)
+	}
+
+	userContent, ok := anthropicReq.Messages[2].Content.(string)
+	if !ok {
+		t.Fatalf("user content type = %T, want string", anthropicReq.Messages[2].Content)
+	}
+	if userContent != "" {
+		t.Fatalf("user content = %q, want empty string", userContent)
+	}
+}
+
+func TestConvertRequest_NullAssistantContentWithToolCallsStillProducesToolUseBlocks(t *testing.T) {
+	fc := NewFormatConverter()
+
+	openaiReq := `{
+		"model": "claude-3-5-sonnet",
+		"messages": [
+			{"role": "user", "content": "run tool"},
+			{"role": "assistant", "content": null, "tool_calls": [
+				{
+					"id": "call_null_1",
+					"type": "function",
+					"function": {"name": "pwd", "arguments": "{\"path\":\"/tmp\"}"}
+				}
+			]}
+		]
+	}`
+
+	converted, _, err := fc.ConvertRequest([]byte(openaiReq), ProviderTypeAnthropic)
+	if err != nil {
+		t.Fatalf("ConvertRequest failed: %v", err)
+	}
+	if strings.Contains(string(converted), `"content":null`) {
+		t.Fatalf("converted request still contains null content: %s", converted)
+	}
+
+	var anthropicReq AnthropicRequest
+	if err := json.Unmarshal(converted, &anthropicReq); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n  body: %s", err, converted)
+	}
+	if len(anthropicReq.Messages) != 2 {
+		t.Fatalf("Messages count = %d, want 2", len(anthropicReq.Messages))
+	}
+
+	assistantBlocks, ok := anthropicReq.Messages[1].Content.([]interface{})
+	if !ok {
+		t.Fatalf("assistant content type = %T, want array", anthropicReq.Messages[1].Content)
+	}
+	if len(assistantBlocks) != 1 {
+		t.Fatalf("assistant block count = %d, want 1", len(assistantBlocks))
+	}
+	firstBlock, _ := assistantBlocks[0].(map[string]interface{})
+	if firstBlock["type"] != "tool_use" {
+		t.Fatalf("assistant block type = %v, want tool_use", firstBlock["type"])
+	}
+	if firstBlock["id"] != "call_null_1" {
+		t.Fatalf("assistant block id = %v, want call_null_1", firstBlock["id"])
+	}
+}
+
+func TestConvertRequest_NullTextPartSkipped(t *testing.T) {
+	fc := NewFormatConverter()
+
+	openaiReq := `{
+		"model": "claude-3-5-sonnet",
+		"messages": [
+			{
+				"role": "user",
+				"content": [
+					{"type":"text","text":null},
+					{"type":"text","text":"kept text"}
+				]
+			}
+		]
+	}`
+
+	converted, _, err := fc.ConvertRequest([]byte(openaiReq), ProviderTypeAnthropic)
+	if err != nil {
+		t.Fatalf("ConvertRequest failed: %v", err)
+	}
+
+	var anthropicReq AnthropicRequest
+	if err := json.Unmarshal(converted, &anthropicReq); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n  body: %s", err, converted)
+	}
+	if len(anthropicReq.Messages) != 1 {
+		t.Fatalf("Messages count = %d, want 1", len(anthropicReq.Messages))
+	}
+
+	blocks, ok := anthropicReq.Messages[0].Content.([]interface{})
+	if !ok {
+		t.Fatalf("content type = %T, want array", anthropicReq.Messages[0].Content)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("block count = %d, want 1", len(blocks))
+	}
+	firstBlock, _ := blocks[0].(map[string]interface{})
+	if firstBlock["type"] != "text" {
+		t.Fatalf("block type = %v, want text", firstBlock["type"])
+	}
+	if firstBlock["text"] != "kept text" {
+		t.Fatalf("block text = %v, want kept text", firstBlock["text"])
+	}
+}
+
 func TestConvertRequest_MultipleToolResultsMergedIntoSingleUserMessage(t *testing.T) {
 	fc := NewFormatConverter()
 

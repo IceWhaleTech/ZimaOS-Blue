@@ -29,6 +29,7 @@ function createTestI18n() {
           deepResearchStopReason: 'Stop reason',
           deepResearchLatestAction: 'Latest action',
           deepResearchLatestGap: 'Latest gap',
+          deepResearchDetails: 'Research details',
           deepResearchTrace: 'Research trace',
           deepResearchTraceEntries: 'Iterations',
           deepResearchIteration: 'Iteration',
@@ -49,6 +50,8 @@ function createTestI18n() {
           deepResearchActionLoopStopped: 'Research loop stopped',
           deepResearchActionSynthesizing: 'Synthesizing report',
           deepResearchActionCompleted: 'Completed',
+          deepResearchExpandDetails: 'Expand research details',
+          deepResearchCollapseDetails: 'Collapse research details',
           deepResearchProgress: 'Deep Research Running',
           deepResearchStageIntake: 'Intake',
           deepResearchStagePlanning: 'Planning',
@@ -84,7 +87,7 @@ function createTestI18n() {
 }
 
 describe('Deep research cards', () => {
-  it('renders citations, verification summary, and research trace details', () => {
+  it('keeps heavy research details collapsed until expanded', async () => {
     const wrapper = mount(CardDeepResearch, {
       props: {
         card: {
@@ -125,6 +128,18 @@ describe('Deep research cards', () => {
               verification_outcome: 'conflicted',
             },
           ],
+          source_inventory: [
+            {
+              source_id: 'src-1',
+              title: 'Official filing',
+              url: 'https://example.com/filing',
+              domain: 'example.com',
+              source_type: 'filing',
+              fetched_at: '2026-03-10T10:00:00Z',
+              relevance_score: 0.97,
+              credibility_score: 0.95,
+            },
+          ],
         },
       },
       global: {
@@ -133,14 +148,23 @@ describe('Deep research cards', () => {
     })
 
     expect(wrapper.text()).toContain('Deep Research')
+    expect(wrapper.get('[data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).toContain('Answer')
+    expect(wrapper.text()).not.toContain('Official filing')
+    expect(wrapper.text()).not.toContain('Research details')
+
+    await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
+
     expect(wrapper.text()).toContain('Official filing')
     expect(wrapper.text()).toContain('Need official confirmation on one metric')
     expect(wrapper.text()).toContain('Resolve conflicting claims')
     expect(wrapper.text()).toContain('topic official statement primary source')
     expect(wrapper.text()).toContain('Citation Coverage 88%')
+    expect(wrapper.text()).toContain('Source Inventory')
+    expect(wrapper.text()).toContain('Research details')
   })
 
-  it('renders knowledge-base artifacts when present', () => {
+  it('renders knowledge-base artifacts when present after expansion', async () => {
     const wrapper = mount(CardDeepResearch, {
       props: {
         card: {
@@ -174,7 +198,8 @@ describe('Deep research cards', () => {
             recommended_action: 'caution',
             takeaway_candidates: [
               {
-                lesson: 'Keep the final conclusion explicitly cautious when coverage stays below 80%.',
+                lesson:
+                  'Keep the final conclusion explicitly cautious when coverage stays below 80%.',
                 evidence: 'Citation coverage stayed near the caution threshold.',
               },
             ],
@@ -206,6 +231,11 @@ describe('Deep research cards', () => {
         plugins: [createTestI18n()],
       },
     })
+
+    expect(wrapper.get('[data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).not.toContain('Workflow phases')
+
+    await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
 
     expect(wrapper.text()).toContain('Workflow phases')
     expect(wrapper.text()).toContain('Coverage Summary')

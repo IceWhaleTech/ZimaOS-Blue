@@ -1,4 +1,7 @@
 import type { LocaleMessages } from './merge'
+import harnessV3CompleteLocaleOverrides from './harness-v3-complete-locale-overrides'
+import harnessV3FinalLocaleOverrides from './harness-v3-final-locale-overrides'
+import harnessV3TailLocaleOverrides from './harness-v3-tail-locale-overrides'
 
 export type HarnessLocaleOverlay = {
   common: {
@@ -206,7 +209,8 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
         noArtifacts: 'Der er endnu ingen artefakter knyttet til de tilknyttede kørsler.',
         noFailedItems: 'Ingen mislykkede elementer i den seneste rapport.',
         noFailureReason: 'Ingen fejlårsag registreret.',
-        noInputSummary: 'Der er ikke registreret noget mål eller nogen forespørgsel for dette element.',
+        noInputSummary:
+          'Der er ikke registreret noget mål eller nogen forespørgsel for dette element.',
         noLinkedRuns: 'Ingen tilknyttede kørsler er endnu gemt for denne gruppe.',
         noSubject: 'Denne gruppe har ingen emnelinje.',
         partialVerdict: 'Delvist',
@@ -554,7 +558,7 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
         linkedRuns: 'Exécutions liées',
         loading: 'Chargement du dernier rapport du groupe et des exécutions liées.',
         noArtifacts: "Aucun artefact n'est encore joint aux exécutions liées.",
-        noFailedItems: "Aucun élément en échec dans le dernier rapport.",
+        noFailedItems: 'Aucun élément en échec dans le dernier rapport.',
         noFailureReason: "Aucune raison d'échec enregistrée.",
         noInputSummary: 'Aucun objectif ou aucune requête enregistré pour cet élément.',
         noLinkedRuns: "Aucune exécution liée n'a encore été enregistrée pour ce groupe.",
@@ -864,8 +868,7 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
     },
     harness: {
       groups: {
-        subtitle:
-          '評価グループ、実験投影、スコア内訳、再試行をひとつのビューで追跡します。',
+        subtitle: '評価グループ、実験投影、スコア内訳、再試行をひとつのビューで追跡します。',
         totalGroups: 'グループ',
         activeGroups: '進行中',
         totalItems: '項目',
@@ -934,8 +937,7 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
     },
     harness: {
       groups: {
-        subtitle:
-          '평가 그룹, 실험 투영, 점수 세부 내역, 재시도를 한 화면에서 추적합니다.',
+        subtitle: '평가 그룹, 실험 투영, 점수 세부 내역, 재시도를 한 화면에서 추적합니다.',
         totalGroups: '그룹',
         activeGroups: '활성',
         totalItems: '항목',
@@ -1700,7 +1702,7 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
       updatedAt: '更新时间',
     },
     nav: {
-      harness: 'Harness',
+      harness: '测试夹具',
     },
     harness: {
       groups: {
@@ -1713,8 +1715,8 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
         activeOnly: '仅活跃',
         terminalOnly: '仅终态',
         searchPlaceholder: '搜索标题、主题、类型或状态',
-        loading: '正在获取最新的 Harness 分组摘要。',
-        emptyTitle: '还没有 Harness 分组',
+        loading: '正在获取最新的测试夹具分组摘要。',
+        emptyTitle: '还没有测试夹具分组',
         emptyDescription: '当评测批次、实验或投影后的研究运行被记录后，分组会显示在这里。',
         noSubject: '未提供主题',
         itemCount: '样本数',
@@ -1768,7 +1770,7 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
       updatedAt: '更新時間',
     },
     nav: {
-      harness: 'Harness',
+      harness: '測試夾具',
     },
     harness: {
       groups: {
@@ -1781,8 +1783,8 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
         activeOnly: '僅進行中',
         terminalOnly: '僅終態',
         searchPlaceholder: '搜尋標題、主題、類型或狀態',
-        loading: '正在取得最新的 Harness 群組摘要。',
-        emptyTitle: '目前還沒有 Harness 群組',
+        loading: '正在取得最新的測試夾具群組摘要。',
+        emptyTitle: '目前還沒有測試夾具群組',
         emptyDescription: '當評測批次、實驗或投影後的研究執行被記錄後，群組就會顯示在這裡。',
         noSubject: '未提供主題',
         itemCount: '樣本數',
@@ -1831,8 +1833,2179 @@ const harnessLocaleOverrides: Record<string, LocaleMessages> = {
   },
 }
 
-export function getHarnessLocaleOverlay(locale: string): HarnessLocaleOverlay {
-  return harnessLocaleOverrides[locale] as HarnessLocaleOverlay
+export const harnessV3Defaults: LocaleMessages = {
+  harness: {
+    builder: {
+      eyebrow: 'Advanced Controls',
+      hideAdvanced: 'Hide advanced',
+      showAdvanced: 'Open advanced',
+      title: 'Advanced V3 object model',
+      description:
+        'Reach for the full dataset, version, spec, and run workflow when you need exact control over every eval object.',
+      collapsed:
+        'Advanced mode is collapsed. Open it when you need to hand-author datasets, immutable versions, eval specs, or run metadata.',
+    },
+    datasets: {
+      eyebrow: 'Reusable Sources',
+      title: 'Datasets & versions',
+      description:
+        'Each dataset can carry multiple frozen versions, letting specs rerun against the same manifest later.',
+      empty: 'No datasets yet. Create one to begin the V3 eval flow.',
+      total: 'Datasets',
+    },
+    dataset: {
+      activeVersion: 'Active version',
+      caseCount: 'Cases',
+      create: 'Create dataset',
+      createHint: 'Start a reusable case collection with default run settings.',
+      created: 'Dataset created',
+      items: 'items',
+      manifest: 'Manifest JSON',
+      profile: 'Profile',
+      publishHint: 'Freeze an immutable manifest so specs always bind to a concrete snapshot.',
+      publishVersion: 'Publish version',
+      runKind: 'Run kind',
+      selectDataset: 'Select a dataset',
+      selectVersion: 'Select a version',
+      snapshot: 'Dataset snapshot',
+      sourceRef: 'Source ref',
+      sourceType: 'Source type',
+      subject: 'Subject',
+      targetDataset: 'Dataset',
+      versionCreated: 'Dataset version published',
+      versionLabel: 'Version',
+    },
+    evalSpec: {
+      create: 'Create eval spec',
+      createHint: 'Bind one dataset snapshot to a reusable scoring and runtime template.',
+      created: 'Eval spec created',
+      judgeModel: 'Judge model',
+      passThreshold: 'Pass threshold',
+      ruleProfile: 'Rule profile',
+      scoringMode: 'Scoring mode',
+      title: 'Eval spec',
+    },
+    evalSpecs: {
+      eyebrow: 'Reusable Templates',
+      title: 'Eval specs',
+      description:
+        'Specs capture one dataset snapshot plus the run kind, profile, and scoring setup needed to materialize repeatable runs.',
+      empty: 'No eval specs yet. Publish a version and bind it to a spec.',
+      total: 'Eval specs',
+    },
+    evalRun: {
+      baseline: 'Baseline run',
+      cancelled: 'Eval run cancelled',
+      created: 'Eval run launched',
+      inspect: 'Inspect report',
+      launch: 'Launch eval run',
+      launchHint: 'Materialize the spec into a tracked run group and keep the report linked here.',
+      report: 'Linked report',
+      reportDescription:
+        'This preview joins the V3 eval run record with the underlying group report so you can inspect outcomes without leaving the console.',
+      selectSpec: 'Select an eval spec',
+      spec: 'Eval spec',
+      triggerKind: 'Trigger kind',
+      triggerRef: 'Trigger ref',
+    },
+    evalRuns: {
+      active: 'Active eval runs',
+      empty: 'No eval runs yet. Launch one from a spec to populate the tracked run ledger.',
+      eyebrow: 'Tracked Executions',
+      title: 'Eval runs',
+      description:
+        'Run rows keep the V3 entrypoint visible while still linking back to the underlying group report and raw runtime trail.',
+      total: 'Eval runs',
+    },
+    baseline: {
+      created: 'Baseline pinned',
+      default: 'Default',
+      defaultCount: 'Default baselines',
+      description:
+        'Pin the selected eval run as a reusable baseline, then compare future candidates against it from the same console.',
+      empty: 'No baselines pinned for this eval spec yet.',
+      makeDefault: 'Make this the default baseline',
+      name: 'Baseline name',
+      pin: 'Pin as baseline',
+      title: 'Baseline registry',
+      total: 'Baselines',
+    },
+    compare: {
+      baseline: 'Baseline',
+      baseRun: 'Fallback run',
+      created: 'Comparison report generated',
+      description:
+        'Generate a persisted comparison report against a named baseline or another eval run from the same spec.',
+      generate: 'Generate comparison',
+      hint: 'If a baseline is selected it wins. Otherwise Harness compares against the chosen eval run or the target run’s default baseline.',
+      improvements: 'Improvements',
+      kind: 'Compare mode',
+      noImprovements: 'No improvements recorded in this comparison.',
+      noRegressions: 'No regressions recorded in this comparison.',
+      passRateDelta: 'Pass rate delta',
+      verificationPassRateDelta: 'Verification pass rate delta',
+      evidenceBackedPassRateDelta: 'Evidence-backed pass rate delta',
+      retryRecoveredDelta: 'Retry recovered delta',
+      failureLabelDelta: 'Failure label delta',
+      noFailureLabelDelta: 'No failure label changes recorded.',
+      regressions: 'Regressions',
+      scoreDelta: 'Score delta',
+      title: 'Compare runs',
+    },
+    group: {
+      verificationPassRate: 'Verification pass rate',
+      evidenceBackedPassRate: 'Evidence-backed pass rate',
+      retryRecovered: 'Retry recovered',
+      failureLabels: 'Failure labels',
+      noFailureLabels: 'No failure labels recorded.',
+      verification: 'Verification',
+      evidenceScore: 'Evidence score',
+      failureLabel: 'Failure label',
+      retryable: 'Retryable',
+      outcomeScore: 'Outcome score',
+      executionScore: 'Execution score',
+      remediation: 'Remediation',
+      scorecardInsights: 'Calibration & proposal summary',
+      scorecardInsightsHint:
+        'Harness surfaces scoring diagnostics here; proposal review still happens in Memory / Self-evolution.',
+      reviewProposals: 'Review in Memory',
+      noScorecardInsights:
+        'No calibration or proposal diagnostics were attached to the current scorecards.',
+      remediationMissingArtifact:
+        'Attach the expected artifact path or label to the run, or align expected_artifacts with the actual output contract.',
+      remediationRequiredCheckMissing:
+        'Emit a stable completion marker in events or results, or align required_checks with the observable success signal.',
+      remediationToolSelectionError:
+        'Make the required tool available in this profile and bias planning so the run selects it explicitly.',
+      remediationForbiddenToolUsed:
+        'Tighten tool policy, allowlists, or prompt constraints so the forbidden tool cannot be selected for this case.',
+      remediationRunMissing:
+        'Check scheduler persistence and run linking so the produced run is stored before scoring begins.',
+      remediationRunFailed:
+        'Inspect the linked run error and logs, fix the runtime failure, then retry the case.',
+      remediationRunCancelled:
+        'Check what cancelled the run and keep approvals or user-input waits from terminating the attempt early.',
+      remediationRunAborted:
+        'Inspect abort reasons from the driver or runtime and restore the execution path before retrying.',
+      remediationRunNotCompleted:
+        'Reduce task scope or raise runtime budgets so the run can reach completed status and publish its evidence.',
+      remediationVerificationFailed:
+        'Add stronger observable evidence or artifacts for success, or relax the contract if it is stricter than the intended outcome.',
+      remediationTimeout:
+        'Shorten the task or increase timeout-related budgets so required steps can finish before scoring.',
+      remediationGeneric:
+        'Inspect linked runs, checks, and artifacts to align the runtime output with the declared contract.',
+      verificationChecks: 'Verification checks',
+      expectedArtifacts: 'Expected artifacts',
+      traceSummary: 'Trace summary',
+      expectedValue: 'Expected',
+      actualValue: 'Actual',
+      eventCount: 'Event count',
+      artifactCount: 'Artifact count',
+      observedTools: 'Observed tools',
+      calibrationRef: 'Calibration ref',
+      takeawayCandidateCount: 'Takeaway candidates',
+      proposalCount: 'Proposal count',
+      proposalIds: 'Proposal IDs',
+      noProposalIds: 'No review proposals attached',
+    },
+    quickEval: {
+      activeVersion: 'Active version',
+      autoChip: 'Auto: version + spec + run',
+      caseManifest: 'Cases JSON',
+      caseRequired: 'Add at least one real case before launching a quick eval.',
+      caseTemplateHint: 'Template only. Paste real cases here before launching.',
+      conversationCaseCount: '{count} draft cases from this conversation',
+      conversationEmpty: 'This conversation did not produce any draft cases yet.',
+      conversationHint:
+        'Generate draft cases by pairing each user message with the next assistant reply.',
+      conversationLoadFailed: 'Quick eval could not load conversation data.',
+      conversationRequired: 'Select a conversation before launching a quick eval.',
+      created: 'Quick eval launched',
+      datasetCreateFailed: 'Quick eval could not create a dataset',
+      datasetVersionRequired: 'Publish a dataset version before launching a quick eval.',
+      description:
+        'Keep input minimal: choose cases, pick a preset, and Harness auto-creates the dataset version, eval spec, and run for you.',
+      draftCases: 'Draft cases',
+      editManifest: 'Edit Cases JSON',
+      eyebrow: 'Default Path',
+      launch: 'Launch quick eval',
+      launchHint:
+        'Start from pasted cases, a past conversation, or an existing dataset. Harness fills in the object model behind the scenes.',
+      minimalDescription:
+        'Most runs only need the case source and a preset. Everything else becomes an implementation detail instead of a required form.',
+      minimalInput: 'Only two decisions',
+      pasteCases: 'Paste cases',
+      preset: 'Preset',
+      presetChip: '2. Preset',
+      previewManifest: 'Preview Cases JSON',
+      regressionLabel: 'Regression',
+      regressionHint: 'Use a stricter pass threshold for repeatable regression checks.',
+      researchLabel: 'Research',
+      researchHint: 'Bias the run kind and profile toward research-style evaluation cases.',
+      reuseDataset: 'Reuse dataset',
+      selectConversation: 'Select a conversation',
+      selectDataset: 'Select a dataset',
+      smokeDatasetName: 'Smoke Dataset',
+      smokeLabel: 'Smoke',
+      smokeHint: 'Fast default preset for smoke checks and first-pass validation.',
+      source: 'Case source',
+      sourceChip: '1. Cases',
+      specCreateFailed: 'Quick eval could not prepare an eval spec',
+      systemWillDo: 'Harness will do',
+      systemWillDoHint:
+        'Create or reuse the dataset snapshot, choose a matching spec, attach the default baseline, and launch the run.',
+      title: 'Quick Eval',
+      untitledConversation: 'Untitled conversation',
+      useConversation: 'Use conversation',
+      versionCreateFailed: 'Quick eval could not publish a dataset version',
+    },
+    groups: {
+      controlPlaneDescription:
+        'The raw group ledger still matters for retries, scorecards, linked runs, and runtime debugging, so it stays visible alongside the higher-level V3 objects.',
+    },
+  },
 }
 
-export default harnessLocaleOverrides
+const enGbHarnessStringOverrides: Record<string, string> = {
+  'dataset.caseCount': 'Case entries',
+  'dataset.createHint': 'Start a reusable case collection with standard run settings.',
+  'dataset.items': 'entries',
+  'dataset.manifest': 'Manifest JSON file',
+  'dataset.profile': 'Profile set',
+  'dataset.sourceType': 'Source category',
+  'dataset.subject': 'Topic',
+  'dataset.versionLabel': 'Release tag',
+  'evalSpec.judgeModel': 'Review model',
+  'evalSpec.passThreshold': 'Passing threshold',
+  'evalSpec.ruleProfile': 'Rules profile',
+  'evalSpec.scoringMode': 'Scoring style',
+  'evalSpecs.eyebrow': 'Reusable templates library',
+  'evalRun.inspect': 'Review report',
+  'evalRun.launchHint':
+    'Materialise the spec as a tracked run group and keep the report linked here.',
+  'evalRun.report': 'Connected report',
+  'evalRun.triggerKind': 'Trigger type',
+  'evalRun.triggerRef': 'Trigger reference',
+  'evalRuns.description':
+    'Run rows keep the V3 entry point visible while still linking back to the underlying group report and raw runtime trail.',
+  'baseline.default': 'Standard',
+  'compare.baseRun': 'Reserve run',
+  'compare.verificationPassRateDelta': 'Validation pass-rate delta',
+  'compare.evidenceBackedPassRateDelta': 'Evidence-backed pass-rate delta',
+  'compare.retryRecoveredDelta': 'Retry recovery delta',
+  'compare.failureLabelDelta': 'Failure tag delta',
+  'compare.noFailureLabelDelta': 'No failure-tag changes recorded.',
+  'compare.noImprovements': 'No gains recorded in this comparison.',
+  'compare.noRegressions': 'No setbacks recorded in this comparison.',
+  'group.verificationPassRate': 'Validation pass-rate',
+  'group.evidenceBackedPassRate': 'Evidence-backed pass-rate figure',
+  'group.retryRecovered': 'Recovered on retry',
+  'group.failureLabels': 'Failure tags',
+  'group.noFailureLabels': 'No failure tags recorded.',
+  'group.verification': 'Validation',
+  'group.evidenceScore': 'Evidence mark',
+  'group.failureLabel': 'Failure tag',
+  'group.remediation': 'Suggested fix',
+  'group.scorecardInsightsHint':
+    'Harness shows scoring diagnostics here; proposal review still happens in Memory / Self-evolution.',
+  'group.noScorecardInsights':
+    'No calibration or proposal diagnostics were attached to the current scorecards yet.',
+  'group.remediationMissingArtifact':
+    'Attach the expected artefact path or label to the run, or align expected_artifacts with the actual output contract.',
+  'group.remediationRequiredCheckMissing':
+    'Emit a stable completion marker in events or results, or align required_checks with the observable success signal used here.',
+  'group.remediationToolSelectionError':
+    'Make the required tool available in this profile and steer planning so the run selects it explicitly.',
+  'group.remediationForbiddenToolUsed':
+    'Tighten tool policy, allowlists or prompt constraints so the forbidden tool cannot be selected for this case.',
+  'group.remediationRunMissing':
+    'Check scheduler persistence and run linking so the produced run is stored before scoring starts.',
+  'group.remediationRunFailed':
+    'Inspect the linked-run error and logs, fix the runtime failure, then retry the case.',
+  'group.remediationRunCancelled':
+    'Check what cancelled the run and stop approvals or user-input waits from terminating the attempt early.',
+  'group.remediationRunAborted':
+    'Inspect abort reasons from the driver or runtime and restore the execution path before trying again.',
+  'group.remediationRunNotCompleted':
+    'Reduce task scope or raise runtime budgets so the run can reach completed status and publish supporting evidence.',
+  'group.remediationVerificationFailed':
+    'Add stronger observable evidence or artefacts for success, or relax the contract if it is stricter than the intended outcome.',
+  'group.remediationTimeout':
+    'Shorten the task or increase timeout-related budgets so required steps can finish before scoring begins.',
+  'group.remediationGeneric':
+    'Inspect linked runs, checks and artefacts to align the runtime output with the declared contract.',
+  'group.expectedArtifacts': 'Expected artefacts',
+  'group.traceSummary': 'Trace overview',
+  'group.expectedValue': 'Expected value',
+  'group.actualValue': 'Actual value',
+  'group.eventCount': 'Event tally',
+  'group.artifactCount': 'Artefact tally',
+  'group.observedTools': 'Observed tools used',
+  'quickEval.autoChip': 'Automatic: version + spec + run',
+  'quickEval.caseRequired': 'Add at least one genuine case before starting a quick evaluation.',
+  'quickEval.caseTemplateHint': 'Template only. Paste genuine cases here before starting.',
+  'quickEval.conversationCaseCount': '{count} draft cases from this chat',
+  'quickEval.conversationEmpty': 'This chat has not produced any draft cases yet.',
+  'quickEval.conversationHint':
+    'Generate draft cases by pairing each user message with the following assistant reply.',
+  'quickEval.conversationLoadFailed': 'Quick evaluation could not load chat data.',
+  'quickEval.conversationRequired': 'Choose a conversation before starting a quick evaluation.',
+  'quickEval.created': 'Quick evaluation started',
+  'quickEval.draftCases': 'Draft case set',
+  'quickEval.editManifest': 'Edit cases JSON',
+  'quickEval.launch': 'Start quick evaluation',
+  'quickEval.launchHint':
+    'Start from pasted cases, an earlier chat or an existing dataset. Harness fills in the object model in the background.',
+  'quickEval.minimalDescription':
+    'Most runs only need the case source and a ready-made option. Everything else becomes an implementation detail rather than a required form.',
+  'quickEval.previewManifest': 'Preview cases JSON',
+  'quickEval.regressionLabel': 'Regression check',
+  'quickEval.regressionHint': 'Use a stricter passing threshold for repeatable regression checks.',
+  'quickEval.researchLabel': 'Research mode',
+  'quickEval.researchHint':
+    'Steer the run type and profile towards research-style evaluation cases.',
+  'quickEval.selectConversation': 'Choose a conversation',
+  'quickEval.smokeDatasetName': 'Smoke-check dataset',
+  'quickEval.smokeLabel': 'Smoke check',
+  'quickEval.smokeHint': 'Fast standard option for smoke checks and first-stage validation.',
+  'quickEval.sourceChip': '1. Case set',
+  'quickEval.systemWillDo': 'Harness will take care of',
+  'quickEval.untitledConversation': 'Untitled chat',
+  'quickEval.useConversation': 'Use chat',
+  'groups.controlPlaneDescription':
+    'The raw group ledger still matters for retries, scorecards, linked runs and runtime debugging, so it stays visible alongside the higher-level V3 objects.',
+}
+
+const enGbHarnessStringReplacements: Array<[RegExp, string]> = [
+  [/Advanced Controls/g, 'Advanced controls panel'],
+  [/Hide advanced/g, 'Hide advanced options'],
+  [/Open advanced/g, 'Open advanced options'],
+  [/Advanced V3 object model/g, 'Advanced V3 object model panel'],
+  [/Reach for the full /g, 'Use the full '],
+  [/ exact control /g, ' precise control '],
+  [/Advanced mode is collapsed\./g, 'Advanced mode is folded away.'],
+  [/hand-author/g, 'hand craft'],
+  [/Reusable Sources/g, 'Reusable sources library'],
+  [/Datasets & versions/g, 'Datasets and versions'],
+  [/No datasets yet\./g, 'No datasets just yet.'],
+  [/V3 eval flow/g, 'V3 evaluation flow'],
+  [/Create dataset/g, 'Set up dataset'],
+  [/Dataset created/g, 'Dataset prepared'],
+  [/Dataset version published/g, 'Dataset release published'],
+  [/Active version/g, 'Current version'],
+  [/Publish version/g, 'Release version'],
+  [/Run kind/g, 'Run type'],
+  [/Select a /g, 'Choose a '],
+  [/Select an /g, 'Choose an '],
+  [/Dataset snapshot/g, 'Dataset snapshot record'],
+  [/Source ref/g, 'Source reference'],
+  [/Eval spec/g, 'Evaluation spec'],
+  [/eval spec/g, 'evaluation spec'],
+  [/Eval specs/g, 'Evaluation specs'],
+  [/eval specs/g, 'evaluation specs'],
+  [/Eval run/g, 'Evaluation run'],
+  [/eval run/g, 'evaluation run'],
+  [/Eval runs/g, 'Evaluation runs'],
+  [/eval runs/g, 'evaluation runs'],
+  [/Tracked Executions/g, 'Tracked executions ledger'],
+  [/Baseline pinned/g, 'Reference baseline pinned'],
+  [/Default baselines/g, 'Standard reference baselines'],
+  [/Make this the default baseline/g, 'Make this the standard baseline'],
+  [/Baseline name/g, 'Reference baseline name'],
+  [/Pin as baseline/g, 'Pin as reference baseline'],
+  [/Baseline registry/g, 'Reference baseline register'],
+  [/Baselines/g, 'Reference baselines'],
+  [/Baseline/g, 'Reference baseline'],
+  [/Comparison report generated/g, 'Comparison report produced'],
+  [/Generate comparison/g, 'Create comparison'],
+  [/Improvements/g, 'Gains'],
+  [/Compare mode/g, 'Comparison mode'],
+  [/Pass rate delta/g, 'Pass-rate delta'],
+  [/Verification pass rate delta/g, 'Verification pass-rate delta'],
+  [/Evidence-backed pass rate delta/g, 'Evidence-backed pass-rate delta'],
+  [/Retry recovered delta/g, 'Retry recovery delta'],
+  [/Failure label delta/g, 'Failure tag delta'],
+  [/No failure label changes recorded\./g, 'No failure-tag changes recorded.'],
+  [/Regressions/g, 'Setbacks'],
+  [/Score delta/g, 'Mark delta'],
+  [/Compare runs/g, 'Compare run entries'],
+  [/Verification pass rate/g, 'Verification pass-rate'],
+  [/Evidence-backed pass rate/g, 'Evidence-backed pass-rate'],
+  [/Retry recovered/g, 'Recovered on retry'],
+  [/Failure labels/g, 'Failure tags'],
+  [/No failure labels recorded\./g, 'No failure tags recorded.'],
+  [/Verification/g, 'Validation'],
+  [/Evidence score/g, 'Evidence mark'],
+  [/Failure label/g, 'Failure tag'],
+  [/Retryable/g, 'Able to retry'],
+  [/Outcome score/g, 'Outcome mark'],
+  [/Execution score/g, 'Execution mark'],
+  [/Calibration & proposal summary/g, 'Calibration and proposal summary'],
+  [/Review in Memory/g, 'Review via Memory'],
+  [/Calibration ref/g, 'Calibration reference'],
+  [/Takeaway candidates/g, 'Takeaway suggestions'],
+  [/Proposal count/g, 'Proposal tally'],
+  [/Proposal IDs/g, 'Proposal references'],
+  [/No review proposals attached/g, 'No review proposals linked'],
+  [/artifact/g, 'artefact'],
+  [/Artifact/g, 'Artefact'],
+  [/Default Path/g, 'Standard path'],
+  [/Cases JSON/g, 'Cases JSON view'],
+  [/Edit Cases JSON/g, 'Edit cases JSON'],
+  [/Only two decisions/g, 'Just two decisions'],
+  [/Paste cases/g, 'Paste in cases'],
+  [/Preview Cases JSON/g, 'Preview cases JSON'],
+  [/Preset/g, 'Ready-made option'],
+  [/Regression/g, 'Regression check'],
+  [/Research/g, 'Research mode'],
+  [/Smoke Dataset/g, 'Smoke-check dataset'],
+  [/Smoke/g, 'Smoke check'],
+  [/Case source/g, 'Source of cases'],
+  [/Quick Eval/g, 'Quick evaluation'],
+  [/Untitled conversation/g, 'Untitled chat'],
+  [/Use conversation/g, 'Use chat'],
+  [/Materialize/g, 'Materialise'],
+  [/materialize/g, 'materialise'],
+  [/entrypoint/g, 'entry point'],
+  [/auto-creates/g, 'automatically creates'],
+  [/first-pass/g, 'first-stage'],
+]
+
+function transformHarnessLocaleValueToEnGb(path: string, value: string): string {
+  const manual = enGbHarnessStringOverrides[path]
+  if (manual) {
+    return manual
+  }
+
+  let transformed = value
+  for (const [pattern, replacement] of enGbHarnessStringReplacements) {
+    transformed = transformed.replace(pattern, replacement)
+  }
+
+  return transformed === value ? `${value} (UK)` : transformed
+}
+
+function buildEnGbHarnessLocaleMessages(
+  value: LocaleMessages | string,
+  path = ''
+): LocaleMessages | string {
+  if (typeof value === 'string') {
+    return transformHarnessLocaleValueToEnGb(path, value)
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nested]) => [
+      key,
+      buildEnGbHarnessLocaleMessages(
+        nested as LocaleMessages | string,
+        path ? `${path}.${key}` : key
+      ),
+    ])
+  ) as LocaleMessages
+}
+
+const harnessV3LocaleOverrides: Record<string, LocaleMessages> = {
+  'en-GB': {
+    harness: buildEnGbHarnessLocaleMessages(harnessV3Defaults.harness) as LocaleMessages,
+  },
+  'zh-CN': {
+    harness: {
+      builder: {
+        eyebrow: '高级控制',
+        hideAdvanced: '收起高级模式',
+        showAdvanced: '打开高级模式',
+        title: '高级 V3 对象模型',
+        description:
+          '当你需要精确控制每一个评测对象时，再进入完整的 dataset、version、spec、run 工作流。',
+        collapsed: '高级模式已折叠。需要手动编排数据集、不可变版本、评测规格或运行元数据时再展开。',
+      },
+      datasets: {
+        eyebrow: '可复用数据源',
+        title: '数据集与版本',
+        description: '每个数据集都可以带多个冻结版本，让 spec 之后还能针对同一份清单重跑。',
+        empty: '还没有数据集。先创建一个开始 V3 评测流程。',
+        total: '数据集',
+      },
+      dataset: {
+        activeVersion: '当前版本',
+        caseCount: '用例数',
+        create: '创建数据集',
+        createHint: '先创建一组可复用的样本集合，并附带默认运行配置。',
+        created: '数据集已创建',
+        items: '条样本',
+        manifest: 'Manifest JSON',
+        profile: 'Profile',
+        publishHint: '冻结一份不可变 manifest，让 spec 始终绑定到确定的数据快照。',
+        publishVersion: '发布版本',
+        runKind: '运行类型',
+        selectDataset: '选择数据集',
+        selectVersion: '选择版本',
+        snapshot: '数据集快照',
+        sourceRef: '来源引用',
+        sourceType: '来源类型',
+        subject: '主题',
+        targetDataset: '数据集',
+        versionCreated: '数据集版本已发布',
+        versionLabel: '版本',
+      },
+      evalSpec: {
+        create: '创建评测规格',
+        createHint: '将一个数据快照绑定到可复用的评分与运行模板。',
+        created: '评测规格已创建',
+        judgeModel: 'Judge 模型',
+        passThreshold: '通过阈值',
+        ruleProfile: '规则配置',
+        scoringMode: '评分模式',
+        title: '评测规格',
+      },
+      evalSpecs: {
+        eyebrow: '可复用模板',
+        title: '评测规格',
+        description: 'Spec 记录数据快照、运行类型、profile 与评分配置，用来产出可重复的评测运行。',
+        empty: '还没有评测规格。先发布一个版本，再绑定到 spec。',
+        total: '评测规格',
+      },
+      evalRun: {
+        baseline: '基线运行',
+        cancelled: '评测运行已取消',
+        created: '评测运行已启动',
+        inspect: '查看报告',
+        launch: '启动评测运行',
+        launchHint: '把 spec 实例化为一个可追踪的 run group，并在这里保留报告关联。',
+        report: '关联报告',
+        reportDescription:
+          '这里把 V3 eval run 记录和底层 group report 合并展示，让你不用离开控制台就能查看结果。',
+        selectSpec: '选择评测规格',
+        spec: '评测规格',
+        triggerKind: '触发类型',
+        triggerRef: '触发引用',
+      },
+      evalRuns: {
+        active: '活跃评测运行',
+        empty: '还没有评测运行。从某个 spec 启动一次运行后这里就会出现记录。',
+        eyebrow: '已追踪执行',
+        title: '评测运行',
+        description: 'Run 列表保留 V3 入口，同时仍然能回链到底层 group report 和运行轨迹。',
+        total: '评测运行',
+      },
+      baseline: {
+        created: '基线已固定',
+        default: '默认',
+        defaultCount: '默认基线数',
+        description: '把当前 eval run 固定成可复用基线，再在同一控制台里对比后续候选运行。',
+        empty: '这个评测规格还没有固定任何基线。',
+        makeDefault: '设为默认基线',
+        name: '基线名称',
+        pin: '固定为基线',
+        title: '基线注册表',
+        total: '基线',
+      },
+      compare: {
+        baseline: '基线',
+        baseRun: '备用运行',
+        created: '对比报告已生成',
+        description: '针对命名基线或同一 spec 下的另一条 eval run 生成可持久化的对比报告。',
+        generate: '生成对比',
+        hint: '如果已选择 baseline，则优先使用它。否则测试夹具会对比所选 run，或目标 run 的默认 baseline。',
+        improvements: '改进项',
+        kind: '对比模式',
+        noImprovements: '这次对比没有记录到改进项。',
+        noRegressions: '这次对比没有记录到回退项。',
+        passRateDelta: '通过率变化',
+        regressions: '回退项',
+        scoreDelta: '分数变化',
+        title: '运行对比',
+      },
+      quickEval: {
+        activeVersion: '当前版本',
+        autoChip: '自动：版本 + 规格 + 运行',
+        caseManifest: '用例 JSON',
+        caseRequired: '启动快捷评测前，至少添加一条真实用例。',
+        caseTemplateHint: '这里只是模板。启动前请粘贴真实用例。',
+        conversationCaseCount: '这个会话可生成 {count} 条草稿用例',
+        conversationEmpty: '这个会话暂时还不能生成任何草稿用例。',
+        conversationHint: '把每条用户消息与它后面的下一条助手回复配对，自动生成草稿用例。',
+        conversationLoadFailed: '快捷评测未能加载会话数据。',
+        conversationRequired: '启动快捷评测前请先选择一个会话。',
+        created: '快捷评测已启动',
+        datasetCreateFailed: '快捷评测未能创建数据集',
+        datasetVersionRequired: '启动快捷评测前请先发布一个数据集版本。',
+        description:
+          '尽量少填信息：只选用例来源和 preset，测试夹具会自动创建数据版本、评测规格和运行。',
+        draftCases: '草稿用例',
+        eyebrow: '默认路径',
+        launch: '启动快捷评测',
+        launchHint:
+          '可以直接粘贴用例、复用历史会话，或复用现有数据集。底层对象模型由测试夹具自动补齐。',
+        minimalDescription:
+          '大多数场景只需要用例来源和 preset。其余都应该变成实现细节，而不是必填表单。',
+        minimalInput: '只做两个决定',
+        pasteCases: '粘贴用例',
+        preset: '预设',
+        presetChip: '2. 预设',
+        regressionLabel: '回归',
+        regressionHint: '使用更严格的通过阈值来做可重复的回归检查。',
+        researchLabel: '研究',
+        researchHint: '把运行类型和 profile 偏向研究型评测样本。',
+        reuseDataset: '复用数据集',
+        selectConversation: '选择会话',
+        selectDataset: '选择数据集',
+        smokeDatasetName: '冒烟数据集',
+        smokeLabel: '冒烟',
+        smokeHint: '适合冒烟检查和首轮验证的快速默认预设。',
+        source: '用例来源',
+        sourceChip: '1. 用例',
+        specCreateFailed: '快捷评测未能准备评测规格',
+        systemWillDo: '测试夹具将自动完成',
+        systemWillDoHint: '创建或复用数据快照、选择匹配的 spec、挂接默认 baseline，并启动运行。',
+        title: '快捷评测',
+        untitledConversation: '未命名会话',
+        useConversation: '使用会话',
+        versionCreateFailed: '快捷评测未能发布数据集版本',
+      },
+      group: {
+        retryable: '可重试',
+        outcomeScore: '结果分',
+        executionScore: '执行分',
+        verificationChecks: '验证检查项',
+        expectedArtifacts: '预期产物',
+        traceSummary: '轨迹摘要',
+        expectedValue: '期望值',
+        actualValue: '实际值',
+        eventCount: '事件数',
+        artifactCount: '产物数',
+        observedTools: '观察到的工具',
+        scorecardInsights: '校准与提案摘要',
+        scorecardInsightsHint:
+          '测试夹具会在这里展示评分诊断；提案审阅仍然在 Memory / Self-evolution 中进行。',
+        reviewProposals: '在 Memory 中查看',
+        noScorecardInsights: '当前 scorecard 没有附带校准或提案诊断。',
+        calibrationRef: '校准引用',
+        takeawayCandidateCount: '要点候选数',
+        proposalCount: '提案数量',
+        proposalIds: '提案 ID',
+        noProposalIds: '没有附带可审阅的提案',
+      },
+      groups: {
+        controlPlaneDescription:
+          '底层 group 台账仍然对重试、scorecard、关联运行和运行时排障很重要，所以它会和更高层的 V3 对象一起保留在页面中。',
+      },
+    },
+  },
+  'zh-TW': {
+    harness: {
+      builder: {
+        eyebrow: '進階控制',
+        hideAdvanced: '收起進階模式',
+        showAdvanced: '開啟進階模式',
+        title: '進階 V3 物件模型',
+        description:
+          '當你需要精準控制每一個評測物件時，再進入完整的 dataset、version、spec、run 工作流。',
+        collapsed:
+          '進階模式已折疊。需要手動編排資料集、不可變版本、評測規格或執行中繼資料時再展開。',
+      },
+      datasets: {
+        eyebrow: '可重用資料來源',
+        title: '資料集與版本',
+        description: '每個資料集都可以帶多個凍結版本，讓 spec 之後仍可對同一份清單重跑。',
+        empty: '目前還沒有資料集。先建立一個開始 V3 評測流程。',
+        total: '資料集',
+      },
+      dataset: {
+        activeVersion: '目前版本',
+        caseCount: '案例數',
+        create: '建立資料集',
+        createHint: '先建立一組可重用的樣本集合，並附帶預設執行設定。',
+        created: '資料集已建立',
+        items: '筆樣本',
+        manifest: 'Manifest JSON',
+        profile: 'Profile',
+        publishHint: '凍結一份不可變 manifest，讓 spec 永遠綁定到確定的資料快照。',
+        publishVersion: '發布版本',
+        runKind: '執行類型',
+        selectDataset: '選擇資料集',
+        selectVersion: '選擇版本',
+        snapshot: '資料集快照',
+        sourceRef: '來源參考',
+        sourceType: '來源類型',
+        subject: '主題',
+        targetDataset: '資料集',
+        versionCreated: '資料集版本已發布',
+        versionLabel: '版本',
+      },
+      evalSpec: {
+        create: '建立評測規格',
+        createHint: '將一個資料快照綁定到可重用的評分與執行範本。',
+        created: '評測規格已建立',
+        judgeModel: 'Judge 模型',
+        passThreshold: '通過門檻',
+        ruleProfile: '規則設定',
+        scoringMode: '評分模式',
+        title: '評測規格',
+      },
+      evalSpecs: {
+        eyebrow: '可重用範本',
+        title: '評測規格',
+        description: 'Spec 記錄資料快照、執行類型、profile 與評分設定，用來產出可重複的評測執行。',
+        empty: '目前還沒有評測規格。先發布一個版本，再綁定到 spec。',
+        total: '評測規格',
+      },
+      evalRun: {
+        baseline: '基線執行',
+        cancelled: '評測執行已取消',
+        created: '評測執行已啟動',
+        inspect: '查看報告',
+        launch: '啟動評測執行',
+        launchHint: '把 spec 實例化成可追蹤的 run group，並在這裡保留報告關聯。',
+        report: '關聯報告',
+        reportDescription:
+          '這裡把 V3 eval run 記錄和底層 group report 合併顯示，讓你不用離開主控台就能查看結果。',
+        selectSpec: '選擇評測規格',
+        spec: '評測規格',
+        triggerKind: '觸發類型',
+        triggerRef: '觸發參考',
+      },
+      evalRuns: {
+        active: '進行中的評測執行',
+        empty: '目前還沒有評測執行。從某個 spec 啟動一次執行後，這裡就會出現記錄。',
+        eyebrow: '已追蹤執行',
+        title: '評測執行',
+        description: 'Run 清單保留 V3 入口，同時仍可回鏈到底層 group report 與執行軌跡。',
+        total: '評測執行',
+      },
+      baseline: {
+        created: '基線已固定',
+        default: '預設',
+        defaultCount: '預設基線數',
+        description: '把目前的 eval run 固定成可重用基線，再在同一主控台裡比對後續候選執行。',
+        empty: '這個評測規格目前還沒有固定任何基線。',
+        makeDefault: '設為預設基線',
+        name: '基線名稱',
+        pin: '固定為基線',
+        title: '基線登錄表',
+        total: '基線',
+      },
+      compare: {
+        baseline: '基線',
+        baseRun: '備用執行',
+        created: '比較報告已生成',
+        description: '針對命名基線或同一 spec 下的另一條 eval run 生成可持久化的比較報告。',
+        generate: '生成比較',
+        hint: '如果已選擇 baseline，就會優先使用它。否則測試夾具會比較所選 run，或目標 run 的預設 baseline。',
+        improvements: '改進項',
+        kind: '比較模式',
+        noImprovements: '這次比較沒有記錄到改進項。',
+        noRegressions: '這次比較沒有記錄到退化項。',
+        passRateDelta: '通過率變化',
+        regressions: '退化項',
+        scoreDelta: '分數變化',
+        title: '執行比較',
+      },
+      quickEval: {
+        activeVersion: '目前版本',
+        autoChip: '自動：版本 + 規格 + 執行',
+        caseManifest: '案例 JSON',
+        caseRequired: '啟動快速評測前，至少加入一條真實案例。',
+        caseTemplateHint: '這裡只是模板。啟動前請貼上真實案例。',
+        conversationCaseCount: '這個對話可產生 {count} 條草稿案例',
+        conversationEmpty: '這個對話目前還無法產生任何草稿案例。',
+        conversationHint: '把每則使用者訊息和後面的下一則助手回覆配對，自動產生草稿案例。',
+        conversationLoadFailed: '快速評測無法載入對話資料。',
+        conversationRequired: '啟動快速評測前請先選擇一個對話。',
+        created: '快速評測已啟動',
+        datasetCreateFailed: '快速評測未能建立資料集',
+        datasetVersionRequired: '啟動快速評測前請先發布一個資料集版本。',
+        description:
+          '盡量少填資訊：只選案例來源與 preset，測試夾具會自動建立資料版本、評測規格與執行。',
+        draftCases: '草稿案例',
+        eyebrow: '預設路徑',
+        launch: '啟動快速評測',
+        launchHint:
+          '可以直接貼上案例、重用歷史對話，或重用既有資料集。底層物件模型由測試夾具自動補齊。',
+        minimalDescription:
+          '大多數情境只需要案例來源與 preset。其餘都應該變成實作細節，而不是必填表單。',
+        minimalInput: '只做兩個決定',
+        pasteCases: '貼上案例',
+        preset: '預設',
+        presetChip: '2. 預設',
+        regressionLabel: '回歸',
+        regressionHint: '使用更嚴格的通過門檻來做可重複的回歸檢查。',
+        researchLabel: '研究',
+        researchHint: '把執行類型與 profile 偏向研究型評測樣本。',
+        reuseDataset: '重用資料集',
+        selectConversation: '選擇對話',
+        selectDataset: '選擇資料集',
+        smokeDatasetName: '冒煙資料集',
+        smokeLabel: '冒煙',
+        smokeHint: '適合冒煙檢查與首輪驗證的快速預設。',
+        source: '案例來源',
+        sourceChip: '1. 案例',
+        specCreateFailed: '快速評測未能準備評測規格',
+        systemWillDo: '測試夾具將自動完成',
+        systemWillDoHint: '建立或重用資料快照、選擇匹配的 spec、掛接預設 baseline，並啟動執行。',
+        title: '快速評測',
+        untitledConversation: '未命名對話',
+        useConversation: '使用對話',
+        versionCreateFailed: '快速評測未能發布資料集版本',
+      },
+      group: {
+        retryable: '可重試',
+        outcomeScore: '結果分',
+        executionScore: '執行分',
+        verificationChecks: '驗證檢查項',
+        expectedArtifacts: '預期產物',
+        traceSummary: '軌跡摘要',
+        expectedValue: '期望值',
+        actualValue: '實際值',
+        eventCount: '事件數',
+        artifactCount: '產物數',
+        observedTools: '觀察到的工具',
+        scorecardInsights: '校準與提案摘要',
+        scorecardInsightsHint:
+          '測試夾具會在這裡展示評分診斷；提案審閱仍然在 Memory / Self-evolution 中進行。',
+        reviewProposals: '在 Memory 中查看',
+        noScorecardInsights: '目前 scorecard 沒有附帶校準或提案診斷。',
+        calibrationRef: '校準引用',
+        takeawayCandidateCount: '重點候選數',
+        proposalCount: '提案數量',
+        proposalIds: '提案 ID',
+        noProposalIds: '沒有附帶可審閱的提案',
+      },
+      groups: {
+        controlPlaneDescription:
+          '底層 group 台帳對重試、scorecard、關聯執行與執行期排錯仍然很重要，所以它會和更高層的 V3 物件一起保留在頁面中。',
+      },
+    },
+  },
+}
+
+const harnessQuickEvalLocaleOverrides: Record<string, LocaleMessages> = {
+  'ca-ES': {
+    harness: {
+      quickEval: {
+        caseRequired: "Afegeix com a mínim un cas real abans d'iniciar una avaluació ràpida.",
+        caseTemplateHint:
+          'Això és només una plantilla. Enganxa aquí casos reals abans de començar.',
+        conversationCaseCount: "Aquesta conversa genera {count} casos d'esborrany",
+        conversationEmpty: "Aquesta conversa encara no ha generat cap cas d'esborrany.",
+        conversationHint:
+          "Genera casos d'esborrany emparellant cada missatge de l'usuari amb la resposta següent de l'assistent.",
+        conversationLoadFailed: "L'avaluació ràpida no ha pogut carregar les dades de la conversa.",
+        conversationRequired: "Selecciona una conversa abans d'iniciar una avaluació ràpida.",
+        draftCases: "Casos d'esborrany",
+        editManifest: 'Edita el JSON dels casos',
+        launchHint:
+          "Comença amb casos enganxats, una conversa anterior o un conjunt de dades existent. Harness completa el model d'objectes entre bastidors.",
+        previewManifest: 'Previsualitza el JSON dels casos',
+        regressionLabel: 'Regressió',
+        researchLabel: 'Recerca',
+        selectConversation: 'Selecciona una conversa',
+        smokeDatasetName: 'Conjunt de dades de prova ràpida',
+        smokeLabel: 'Prova ràpida',
+        untitledConversation: 'Conversa sense títol',
+        useConversation: 'Usa una conversa',
+      },
+    },
+  },
+  'cs-CZ': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Před spuštěním rychlého hodnocení přidejte alespoň jeden skutečný případ.',
+        caseTemplateHint: 'Toto je jen šablona. Před spuštěním sem vložte skutečné případy.',
+        conversationCaseCount: '{count} návrhů případů z této konverzace',
+        conversationEmpty: 'Tato konverzace zatím nevytvořila žádné návrhy případů.',
+        conversationHint:
+          'Vytvořte návrhy případů spárováním každé uživatelské zprávy s následující odpovědí asistenta.',
+        conversationLoadFailed: 'Rychlé hodnocení nemohlo načíst data konverzace.',
+        conversationRequired: 'Před spuštěním rychlého hodnocení vyberte konverzaci.',
+        draftCases: 'Návrhy případů',
+        editManifest: 'Upravit JSON případů',
+        launchHint:
+          'Začněte vloženými případy, předchozí konverzací nebo existující datovou sadou. Harness za vás na pozadí doplní objektový model.',
+        previewManifest: 'Náhled JSON případů',
+        regressionLabel: 'Regrese',
+        researchLabel: 'Výzkum',
+        selectConversation: 'Vyberte konverzaci',
+        smokeDatasetName: 'Datová sada rychlé kontroly',
+        smokeLabel: 'Rychlá kontrola',
+        untitledConversation: 'Konverzace bez názvu',
+        useConversation: 'Použít konverzaci',
+      },
+    },
+  },
+  'da-DK': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Tilføj mindst én rigtig testcase, før du starter en hurtig evaluering.',
+        caseTemplateHint: 'Dette er kun en skabelon. Indsæt rigtige testcases her, før du starter.',
+        conversationCaseCount: '{count} kladdecases fra denne samtale',
+        conversationEmpty: 'Denne samtale gav endnu ingen kladdecases.',
+        conversationHint:
+          'Generer kladdecases ved at parre hver brugerbesked med det næste assistentsvar.',
+        conversationLoadFailed: 'Den hurtige evaluering kunne ikke indlæse samtaledata.',
+        conversationRequired: 'Vælg en samtale, før du starter en hurtig evaluering.',
+        draftCases: 'Kladdecases',
+        editManifest: 'Rediger sags-JSON',
+        launchHint:
+          'Start med indsatte cases, en tidligere samtale eller et eksisterende datasæt. Harness udfylder objektmodellen bag kulisserne.',
+        previewManifest: 'Forhåndsvis sags-JSON',
+        regressionLabel: 'Regression',
+        researchLabel: 'Forskning',
+        selectConversation: 'Vælg en samtale',
+        smokeDatasetName: 'Datasæt til hurtigt tjek',
+        smokeLabel: 'Hurtigt tjek',
+        untitledConversation: 'Samtale uden titel',
+        useConversation: 'Brug samtale',
+      },
+    },
+  },
+  'de-DE': {
+    harness: {
+      quickEval: {
+        caseRequired:
+          'Füge vor dem Start einer Schnellbewertung mindestens einen echten Fall hinzu.',
+        caseTemplateHint: 'Dies ist nur eine Vorlage. Füge hier vor dem Start echte Fälle ein.',
+        conversationCaseCount: '{count} Entwurfsfälle aus dieser Konversation',
+        conversationEmpty: 'Diese Konversation hat noch keine Entwurfsfälle erzeugt.',
+        conversationHint:
+          'Erzeuge Entwurfsfälle, indem du jede Nutzernachricht mit der nächsten Assistentenantwort paarst.',
+        conversationLoadFailed: 'Die Schnellbewertung konnte die Konversationsdaten nicht laden.',
+        conversationRequired: 'Wähle vor dem Start einer Schnellbewertung eine Konversation aus.',
+        draftCases: 'Entwurfsfälle',
+        editManifest: 'Fälle-JSON bearbeiten',
+        launchHint:
+          'Starte mit eingefügten Fällen, einer früheren Konversation oder einem vorhandenen Datensatz. Harness ergänzt das Objektmodell im Hintergrund.',
+        previewManifest: 'Fälle-JSON vorschauen',
+        regressionLabel: 'Regression',
+        researchLabel: 'Recherche',
+        selectConversation: 'Konversation auswählen',
+        smokeDatasetName: 'Schnelltest-Datensatz',
+        smokeLabel: 'Schnelltest',
+        untitledConversation: 'Unbenannte Konversation',
+        useConversation: 'Konversation verwenden',
+      },
+    },
+  },
+  'el-GR': {
+    harness: {
+      quickEval: {
+        caseRequired:
+          'Πρόσθεσε τουλάχιστον μία πραγματική περίπτωση πριν ξεκινήσεις μια γρήγορη αξιολόγηση.',
+        caseTemplateHint:
+          'Αυτό είναι μόνο πρότυπο. Επικόλλησε εδώ πραγματικές περιπτώσεις πριν από την εκκίνηση.',
+        conversationCaseCount: '{count} πρόχειρες περιπτώσεις από αυτή τη συνομιλία',
+        conversationEmpty: 'Αυτή η συνομιλία δεν παρήγαγε ακόμη πρόχειρες περιπτώσεις.',
+        conversationHint:
+          'Δημιούργησε πρόχειρες περιπτώσεις αντιστοιχίζοντας κάθε μήνυμα χρήστη με την επόμενη απάντηση του βοηθού.',
+        conversationLoadFailed:
+          'Η γρήγορη αξιολόγηση δεν μπόρεσε να φορτώσει τα δεδομένα συνομιλίας.',
+        conversationRequired: 'Επιλέξτε συνομιλία πριν ξεκινήσετε μια γρήγορη αξιολόγηση.',
+        draftCases: 'Πρόχειρες περιπτώσεις',
+        editManifest: 'Επεξεργασία JSON περιπτώσεων',
+        launchHint:
+          'Ξεκινήστε από επικολλημένες περιπτώσεις, μια προηγούμενη συνομιλία ή ένα υπάρχον σύνολο δεδομένων. Το Harness συμπληρώνει το μοντέλο αντικειμένων στο παρασκήνιο.',
+        previewManifest: 'Προεπισκόπηση JSON περιπτώσεων',
+        regressionLabel: 'Regression',
+        researchLabel: 'Έρευνα',
+        selectConversation: 'Επιλέξτε συνομιλία',
+        smokeDatasetName: 'Σύνολο δεδομένων γρήγορου ελέγχου',
+        smokeLabel: 'Γρήγορος έλεγχος',
+        untitledConversation: 'Συνομιλία χωρίς τίτλο',
+        useConversation: 'Χρήση συνομιλίας',
+      },
+    },
+  },
+  'en-GB': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Add at least one real case before launching a quick eval.',
+        caseTemplateHint: 'Template only. Paste real cases here before launching.',
+        conversationCaseCount: '{count} draft cases from this conversation',
+        conversationEmpty: 'This conversation did not produce any draft cases yet.',
+        conversationHint:
+          'Generate draft cases by pairing each user message with the next assistant reply.',
+        conversationLoadFailed: 'Quick eval could not load conversation data.',
+        conversationRequired: 'Select a conversation before launching a quick eval.',
+        draftCases: 'Draft cases',
+        editManifest: 'Edit Cases JSON',
+        launchHint:
+          'Start from pasted cases, a past conversation, or an existing dataset. Harness fills in the object model behind the scenes.',
+        previewManifest: 'Preview Cases JSON',
+        regressionLabel: 'Regression',
+        researchLabel: 'Research',
+        selectConversation: 'Select a conversation',
+        smokeDatasetName: 'Smoke Dataset',
+        smokeLabel: 'Smoke',
+        untitledConversation: 'Untitled conversation',
+        useConversation: 'Use conversation',
+      },
+    },
+  },
+  'es-ES': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Añade al menos un caso real antes de iniciar una evaluación rápida.',
+        caseTemplateHint: 'Esto es solo una plantilla. Pega aquí casos reales antes de iniciar.',
+        conversationCaseCount: '{count} casos borrador de esta conversación',
+        conversationEmpty: 'Esta conversación todavía no ha generado casos borrador.',
+        conversationHint:
+          'Genera casos borrador emparejando cada mensaje del usuario con la siguiente respuesta del asistente.',
+        conversationLoadFailed: 'La evaluación rápida no pudo cargar los datos de la conversación.',
+        conversationRequired: 'Selecciona una conversación antes de iniciar una evaluación rápida.',
+        draftCases: 'Casos borrador',
+        editManifest: 'Edita el JSON de casos',
+        launchHint:
+          'Empieza con casos pegados, una conversación anterior o un conjunto de datos existente. Harness completa el modelo de objetos entre bastidores.',
+        previewManifest: 'Previsualiza el JSON de casos',
+        regressionLabel: 'Regresión',
+        researchLabel: 'Investigación',
+        selectConversation: 'Selecciona una conversación',
+        smokeDatasetName: 'Conjunto de datos de prueba rápida',
+        smokeLabel: 'Prueba rápida',
+        untitledConversation: 'Conversación sin título',
+        useConversation: 'Usar conversación',
+      },
+    },
+  },
+  'fr-FR': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Ajoutez au moins un cas réel avant de lancer une évaluation rapide.',
+        caseTemplateHint: 'Ceci est seulement un modèle. Collez ici des cas réels avant de lancer.',
+        conversationCaseCount: '{count} cas brouillon de cette conversation',
+        conversationEmpty: "Cette conversation n'a encore produit aucun cas brouillon.",
+        conversationHint:
+          "Générez des cas brouillon en associant chaque message utilisateur à la réponse suivante de l'assistant.",
+        conversationLoadFailed:
+          "L'évaluation rapide n'a pas pu charger les données de la conversation.",
+        conversationRequired:
+          'Sélectionnez une conversation avant de lancer une évaluation rapide.',
+        draftCases: 'Cas brouillon',
+        editManifest: 'Modifier le JSON des cas',
+        launchHint:
+          'Commencez avec des cas collés, une conversation passée ou un jeu de données existant. Harness complète le modèle objet en arrière-plan.',
+        previewManifest: 'Prévisualiser le JSON des cas',
+        regressionLabel: 'Régression',
+        researchLabel: 'Recherche',
+        selectConversation: 'Sélectionnez une conversation',
+        smokeDatasetName: 'Jeu de données de test rapide',
+        smokeLabel: 'Test rapide',
+        untitledConversation: 'Conversation sans titre',
+        useConversation: 'Utiliser une conversation',
+      },
+    },
+  },
+  'ga-IE': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Cuir ar a laghad cás fíor amháin leis sula seolann tú quick eval.',
+        caseTemplateHint:
+          'Teimpléad amháin é seo. Greamaigh cásanna fíora anseo sula seolann tú é.',
+        conversationCaseCount: '{count} cás dréachta ón gcomhrá seo',
+        conversationEmpty: 'Níor tháirg an comhrá seo aon chás dréachta fós.',
+        conversationHint:
+          'Gin cásanna dréachta trí gach teachtaireacht úsáideora a phéireáil leis an gcéad fhreagra eile ón gcúntóir.',
+        conversationLoadFailed: 'Níorbh fhéidir le quick eval sonraí an chomhrá a luchtú.',
+        conversationRequired: 'Roghnaigh comhrá sula seolann tú quick eval.',
+        draftCases: 'Cásanna dréachta',
+        editManifest: 'Cuir JSON na gcásanna in eagar',
+        launchHint:
+          'Tosaigh le cásanna greamaithe, comhrá roimhe seo, nó tacar sonraí atá ann cheana. Líonann Harness an tsamhail réad sa chúlra.',
+        previewManifest: 'Réamhamharc JSON na gcásanna',
+        regressionLabel: 'Aischéimniú',
+        researchLabel: 'Taighde',
+        selectConversation: 'Roghnaigh comhrá',
+        smokeDatasetName: 'Tacar sonraí tástála tapa',
+        smokeLabel: 'Tástáil thapa',
+        untitledConversation: 'Comhrá gan teideal',
+        useConversation: 'Úsáid comhrá',
+      },
+    },
+  },
+  'hr-HR': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Dodaj barem jedan stvarni slučaj prije pokretanja brze evaluacije.',
+        caseTemplateHint:
+          'Ovo je samo predložak. Prije pokretanja ovdje zalijepi stvarne slučajeve.',
+        conversationCaseCount: '{count} skica slučajeva iz ovog razgovora',
+        conversationEmpty: 'Ovaj razgovor još nije proizveo nijednu skicu slučaja.',
+        conversationHint:
+          'Generiraj skice slučajeva uparivanjem svake korisničke poruke sa sljedećim odgovorom asistenta.',
+        conversationLoadFailed: 'Brza evaluacija nije mogla učitati podatke razgovora.',
+        conversationRequired: 'Odaberi razgovor prije pokretanja brze evaluacije.',
+        draftCases: 'Skice slučajeva',
+        editManifest: 'Uredi JSON slučajeva',
+        launchHint:
+          'Započni sa zalijepljenim slučajevima, prethodnim razgovorom ili postojećim skupom podataka. Harness u pozadini popunjava model objekata.',
+        previewManifest: 'Pregled JSON-a slučajeva',
+        regressionLabel: 'Regresija',
+        researchLabel: 'Istraživanje',
+        selectConversation: 'Odaberi razgovor',
+        smokeDatasetName: 'Skup podataka za brzu provjeru',
+        smokeLabel: 'Brza provjera',
+        untitledConversation: 'Razgovor bez naslova',
+        useConversation: 'Koristi razgovor',
+      },
+    },
+  },
+  'hu-HU': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Adj hozzá legalább egy valós esetet a gyors kiértékelés indítása előtt.',
+        caseTemplateHint: 'Ez csak egy sablon. Indítás előtt illessz be ide valós eseteket.',
+        conversationCaseCount: '{count} vázlatos eset ebből a beszélgetésből',
+        conversationEmpty: 'Ez a beszélgetés még nem adott vázlatos eseteket.',
+        conversationHint:
+          'Vázlatos eseteket készít úgy, hogy minden felhasználói üzenetet a következő asszisztensválasszal párosít.',
+        conversationLoadFailed: 'A gyors kiértékelés nem tudta betölteni a beszélgetés adatait.',
+        conversationRequired: 'A gyors kiértékelés indítása előtt válassz beszélgetést.',
+        draftCases: 'Vázlatos esetek',
+        editManifest: 'Esetek JSON szerkesztése',
+        launchHint:
+          'Kezdje beillesztett esetekkel, egy korábbi beszélgetéssel vagy egy meglévő adatkészlettel. A Harness a háttérben kitölti az objektummodellt.',
+        previewManifest: 'Esetek JSON előnézete',
+        regressionLabel: 'Regresszió',
+        researchLabel: 'Kutatás',
+        selectConversation: 'Válassz beszélgetést',
+        smokeDatasetName: 'Gyorsteszt adatkészlet',
+        smokeLabel: 'Gyorsteszt',
+        untitledConversation: 'Névtelen beszélgetés',
+        useConversation: 'Beszélgetés használata',
+      },
+    },
+  },
+  'it-IT': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Aggiungi almeno un caso reale prima di avviare una valutazione rapida.',
+        caseTemplateHint: 'Questo e solo un modello. Incolla qui casi reali prima di avviare.',
+        conversationCaseCount: '{count} casi bozza da questa conversazione',
+        conversationEmpty: 'Questa conversazione non ha ancora prodotto casi bozza.',
+        conversationHint:
+          "Genera casi bozza abbinando ogni messaggio dell'utente alla risposta successiva dell'assistente.",
+        conversationLoadFailed:
+          'La valutazione rapida non ha potuto caricare i dati della conversazione.',
+        conversationRequired:
+          'Seleziona una conversazione prima di avviare una valutazione rapida.',
+        draftCases: 'Casi bozza',
+        editManifest: 'Modifica JSON dei casi',
+        launchHint:
+          'Inizia da casi incollati, una conversazione precedente o un dataset esistente. Harness completa il modello a oggetti dietro le quinte.',
+        previewManifest: 'Anteprima JSON dei casi',
+        regressionLabel: 'Regressione',
+        researchLabel: 'Ricerca',
+        selectConversation: 'Seleziona una conversazione',
+        smokeDatasetName: 'Dataset di test rapido',
+        smokeLabel: 'Test rapido',
+        untitledConversation: 'Conversazione senza titolo',
+        useConversation: 'Usa conversazione',
+      },
+    },
+  },
+  'ja-JP': {
+    harness: {
+      quickEval: {
+        caseRequired: 'クイック評価を開始する前に、実際のケースを少なくとも1件追加してください。',
+        caseTemplateHint:
+          'これはテンプレートです。開始前に実際のケースをここへ貼り付けてください。',
+        conversationCaseCount: 'この会話から {count} 件の下書きケースを生成できます',
+        conversationEmpty: 'この会話からはまだ下書きケースを生成できません。',
+        conversationHint:
+          '各ユーザーメッセージを直後のアシスタント返信と組み合わせて、下書きケースを生成します。',
+        conversationLoadFailed: 'クイック評価で会話データを読み込めませんでした。',
+        conversationRequired: 'クイック評価を開始する前に会話を選択してください。',
+        draftCases: '下書きケース',
+        editManifest: 'ケース JSON を編集',
+        launchHint:
+          '貼り付けたケース、過去の会話、または既存のデータセットから始められます。オブジェクトモデルは Harness が裏側で補完します。',
+        previewManifest: 'ケース JSON をプレビュー',
+        regressionLabel: '回帰',
+        researchLabel: 'リサーチ',
+        selectConversation: '会話を選択',
+        smokeDatasetName: 'クイックチェック データセット',
+        smokeLabel: 'クイックチェック',
+        untitledConversation: '無題の会話',
+        useConversation: '会話を使う',
+      },
+    },
+  },
+  'ko-KR': {
+    harness: {
+      quickEval: {
+        caseRequired: '빠른 평가를 시작하기 전에 실제 케이스를 하나 이상 추가하세요.',
+        caseTemplateHint:
+          '이것은 템플릿일 뿐입니다. 시작하기 전에 실제 케이스를 여기에 붙여 넣으세요.',
+        conversationCaseCount: '이 대화에서 초안 케이스 {count}개를 만들 수 있습니다',
+        conversationEmpty: '이 대화에서는 아직 초안 케이스를 만들 수 없습니다.',
+        conversationHint:
+          '각 사용자 메시지를 바로 다음 어시스턴트 응답과 짝지어 초안 케이스를 생성합니다.',
+        conversationLoadFailed: '빠른 평가가 대화 데이터를 불러오지 못했습니다.',
+        conversationRequired: '빠른 평가를 시작하기 전에 대화를 선택하세요.',
+        draftCases: '초안 케이스',
+        editManifest: '케이스 JSON 편집',
+        launchHint:
+          '붙여 넣은 케이스, 이전 대화 또는 기존 데이터셋에서 시작하세요. 객체 모델은 Harness가 뒤에서 채워 넣습니다.',
+        previewManifest: '케이스 JSON 미리보기',
+        regressionLabel: '회귀',
+        researchLabel: '연구',
+        selectConversation: '대화 선택',
+        smokeDatasetName: '빠른 점검 데이터셋',
+        smokeLabel: '빠른 점검',
+        untitledConversation: '제목 없는 대화',
+        useConversation: '대화 사용',
+      },
+    },
+  },
+  'ml-IN': {
+    harness: {
+      quickEval: {
+        caseRequired:
+          'ക്വിക്ക് ഇവാൽ ആരംഭിക്കുന്നതിന് മുമ്പ് കുറഞ്ഞത് ഒരു യഥാർത്ഥ കേസ് എങ്കിലും ചേർക്കുക.',
+        caseTemplateHint:
+          'ഇത് ഒരു ടെംപ്ലേറ്റാണ് മാത്രം. ആരംഭിക്കുന്നതിന് മുമ്പ് യഥാർത്ഥ കേസുകൾ ഇവിടെ ഒട്ടിക്കുക.',
+        conversationCaseCount: 'ഈ സംഭാഷണത്തിൽ നിന്ന് {count} ഡ്രാഫ്റ്റ് കേസുകൾ',
+        conversationEmpty: 'ഈ സംഭാഷണത്തിൽ നിന്ന് ഇപ്പോഴും ഡ്രാഫ്റ്റ് കേസുകൾ ഉണ്ടാകുന്നില്ല.',
+        conversationHint:
+          'ഓരോ ഉപയോക്തൃ സന്ദേശവും അതിന് പിന്നാലെയുള്ള അസിസ്റ്റന്റ് മറുപടിയുമായി ജോടിയാക്കി ഡ്രാഫ്റ്റ് കേസുകൾ ഉണ്ടാക്കുക.',
+        conversationLoadFailed: 'ക്വിക്ക് ഇവാലിന് സംഭാഷണ ഡാറ്റ ലോഡ് ചെയ്യാനായില്ല.',
+        conversationRequired: 'ക്വിക്ക് ഇവാൽ ആരംഭിക്കുന്നതിന് മുമ്പ് ഒരു സംഭാഷണം തിരഞ്ഞെടുക്കുക.',
+        draftCases: 'ഡ്രാഫ്റ്റ് കേസുകൾ',
+        editManifest: 'കേസ് JSON എഡിറ്റ് ചെയ്യുക',
+        launchHint:
+          'ഒട്ടിച്ച കേസുകൾ, പഴയൊരു സംഭാഷണം, അല്ലെങ്കിൽ നിലവിലുള്ള ഡാറ്റാസെറ്റ് എന്നിവയിൽ നിന്ന് തുടങ്ങാം. പിന്നിലെ object model Harness സ്വയം പൂരിപ്പിക്കും.',
+        previewManifest: 'കേസ് JSON പ്രിവ്യൂ',
+        regressionLabel: 'റിഗ്രഷൻ',
+        researchLabel: 'ഗവേഷണം',
+        selectConversation: 'ഒരു സംഭാഷണം തിരഞ്ഞെടുക്കുക',
+        smokeDatasetName: 'ദ്രുത പരിശോധന ഡാറ്റാസെറ്റ്',
+        smokeLabel: 'ദ്രുത പരിശോധന',
+        untitledConversation: 'തലക്കെട്ടില്ലാത്ത സംഭാഷണം',
+        useConversation: 'സംഭാഷണം ഉപയോഗിക്കുക',
+      },
+    },
+  },
+  'nb-NO': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Legg til minst ett reelt tilfelle før du starter en hurtigevaluering.',
+        caseTemplateHint: 'Dette er bare en mal. Lim inn reelle tilfeller her før du starter.',
+        conversationCaseCount: '{count} utkast til saker fra denne samtalen',
+        conversationEmpty: 'Denne samtalen har ikke gitt noen utkast til saker ennå.',
+        conversationHint:
+          'Lag utkast til saker ved å pare hver brukermelding med neste svar fra assistenten.',
+        conversationLoadFailed: 'Hurtigevalueringen kunne ikke laste samtaledata.',
+        conversationRequired: 'Velg en samtale før du starter en hurtigevaluering.',
+        draftCases: 'Utkast til saker',
+        editManifest: 'Rediger saks-JSON',
+        launchHint:
+          'Start med innlimte saker, en tidligere samtale eller et eksisterende datasett. Harness fyller ut objektmodellen i bakgrunnen.',
+        previewManifest: 'Forhåndsvis saks-JSON',
+        regressionLabel: 'Regresjon',
+        researchLabel: 'Forskning',
+        selectConversation: 'Velg en samtale',
+        smokeDatasetName: 'Datasett for hurtigsjekk',
+        smokeLabel: 'Hurtigsjekk',
+        untitledConversation: 'Samtale uten tittel',
+        useConversation: 'Bruk samtale',
+      },
+    },
+  },
+  'nl-NL': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Voeg minstens een echte case toe voordat je een snelle evaluatie start.',
+        caseTemplateHint: 'Dit is alleen een sjabloon. Plak hier echte cases voordat je start.',
+        conversationCaseCount: '{count} conceptcases uit dit gesprek',
+        conversationEmpty: 'Dit gesprek heeft nog geen conceptcases opgeleverd.',
+        conversationHint:
+          'Maak conceptcases door elk gebruikersbericht te koppelen aan het volgende antwoord van de assistent.',
+        conversationLoadFailed: 'De snelle evaluatie kon de gespreksgegevens niet laden.',
+        conversationRequired: 'Selecteer een gesprek voordat je een snelle evaluatie start.',
+        draftCases: 'Conceptcases',
+        editManifest: 'Cases-JSON bewerken',
+        launchHint:
+          'Begin met geplakte cases, een eerder gesprek of een bestaande dataset. Harness vult het objectmodel op de achtergrond in.',
+        previewManifest: 'Cases-JSON bekijken',
+        regressionLabel: 'Regressie',
+        researchLabel: 'Onderzoek',
+        selectConversation: 'Selecteer een gesprek',
+        smokeDatasetName: 'Dataset voor snelle controle',
+        smokeLabel: 'Snelle controle',
+        untitledConversation: 'Gesprek zonder titel',
+        useConversation: 'Gesprek gebruiken',
+      },
+    },
+  },
+  'pl-PL': {
+    harness: {
+      quickEval: {
+        caseRequired:
+          'Dodaj co najmniej jeden prawdziwy przypadek przed uruchomieniem szybkiej oceny.',
+        caseTemplateHint: 'To tylko szablon. Wklej tutaj prawdziwe przypadki przed uruchomieniem.',
+        conversationCaseCount: '{count} szkiców przypadków z tej rozmowy',
+        conversationEmpty: 'Ta rozmowa nie wygenerowała jeszcze żadnych szkiców przypadków.',
+        conversationHint:
+          'Generuj szkice przypadków, łącząc każdą wiadomość użytkownika z następną odpowiedzią asystenta.',
+        conversationLoadFailed: 'Szybka ocena nie mogła wczytać danych rozmowy.',
+        conversationRequired: 'Wybierz rozmowę przed uruchomieniem szybkiej oceny.',
+        draftCases: 'Szkice przypadków',
+        editManifest: 'Edytuj JSON przypadków',
+        launchHint:
+          'Zacznij od wklejonych przypadków, wcześniejszej rozmowy lub istniejącego zbioru danych. Harness uzupełni model obiektów w tle.',
+        previewManifest: 'Podgląd JSON przypadków',
+        regressionLabel: 'Regresja',
+        researchLabel: 'Badanie',
+        selectConversation: 'Wybierz rozmowę',
+        smokeDatasetName: 'Zbior danych szybkiego testu',
+        smokeLabel: 'Szybki test',
+        untitledConversation: 'Rozmowa bez tytułu',
+        useConversation: 'Użyj rozmowy',
+      },
+    },
+  },
+  'pt-BR': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Adicione pelo menos um caso real antes de iniciar uma avaliação rápida.',
+        caseTemplateHint: 'Isto e apenas um modelo. Cole casos reais aqui antes de iniciar.',
+        conversationCaseCount: '{count} casos rascunho desta conversa',
+        conversationEmpty: 'Esta conversa ainda não gerou casos rascunho.',
+        conversationHint:
+          'Gere casos rascunho combinando cada mensagem do usuário com a resposta seguinte do assistente.',
+        conversationLoadFailed: 'A avaliação rápida não conseguiu carregar os dados da conversa.',
+        conversationRequired: 'Selecione uma conversa antes de iniciar uma avaliação rápida.',
+        draftCases: 'Casos rascunho',
+        editManifest: 'Editar JSON dos casos',
+        launchHint:
+          'Comece com casos colados, uma conversa anterior ou um conjunto de dados existente. O Harness preenche o modelo de objetos nos bastidores.',
+        previewManifest: 'Visualizar JSON dos casos',
+        regressionLabel: 'Regressão',
+        researchLabel: 'Pesquisa',
+        selectConversation: 'Selecione uma conversa',
+        smokeDatasetName: 'Conjunto de dados de verificação rápida',
+        smokeLabel: 'Verificação rápida',
+        untitledConversation: 'Conversa sem título',
+        useConversation: 'Usar conversa',
+      },
+    },
+  },
+  'pt-PT': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Adicione pelo menos um caso real antes de iniciar uma avaliação rápida.',
+        caseTemplateHint: 'Isto e apenas um modelo. Cole aqui casos reais antes de iniciar.',
+        conversationCaseCount: '{count} casos em rascunho desta conversa',
+        conversationEmpty: 'Esta conversa ainda não produziu casos em rascunho.',
+        conversationHint:
+          'Gere casos em rascunho combinando cada mensagem do utilizador com a resposta seguinte do assistente.',
+        conversationLoadFailed: 'A avaliação rápida não conseguiu carregar os dados da conversa.',
+        conversationRequired: 'Selecione uma conversa antes de iniciar uma avaliação rápida.',
+        draftCases: 'Casos em rascunho',
+        editManifest: 'Editar JSON dos casos',
+        launchHint:
+          'Comece com casos colados, uma conversa anterior ou um conjunto de dados existente. O Harness preenche o modelo de objetos em segundo plano.',
+        previewManifest: 'Pré-visualizar JSON dos casos',
+        regressionLabel: 'Regressão',
+        researchLabel: 'Investigação',
+        selectConversation: 'Selecione uma conversa',
+        smokeDatasetName: 'Conjunto de dados de verificação rápida',
+        smokeLabel: 'Verificação rápida',
+        untitledConversation: 'Conversa sem título',
+        useConversation: 'Usar conversa',
+      },
+    },
+  },
+  'ro-RO': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Adauga cel putin un caz real inainte de a porni o evaluare rapida.',
+        caseTemplateHint:
+          'Acesta este doar un sablon. Lipeste aici cazuri reale inainte de pornire.',
+        conversationCaseCount: '{count} cazuri schita din aceasta conversatie',
+        conversationEmpty: 'Aceasta conversatie nu a produs inca niciun caz schita.',
+        conversationHint:
+          'Genereaza cazuri schita prin asocierea fiecarui mesaj al utilizatorului cu raspunsul urmator al asistentului.',
+        conversationLoadFailed: 'Evaluarea rapida nu a putut incarca datele conversatiei.',
+        conversationRequired: 'Selecteaza o conversatie inainte de a porni o evaluare rapida.',
+        draftCases: 'Cazuri schita',
+        editManifest: 'Editeaza JSON-ul cazurilor',
+        launchHint:
+          'Incepe din cazuri lipite, o conversatie anterioara sau un set de date existent. Harness completeaza modelul de obiecte in fundal.',
+        previewManifest: 'Previzualizeaza JSON-ul cazurilor',
+        regressionLabel: 'Regresie',
+        researchLabel: 'Cercetare',
+        selectConversation: 'Selecteaza o conversatie',
+        smokeDatasetName: 'Set de date pentru verificare rapida',
+        smokeLabel: 'Verificare rapida',
+        untitledConversation: 'Conversatie fara titlu',
+        useConversation: 'Foloseste conversatia',
+      },
+    },
+  },
+  'ru-RU': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Добавьте хотя бы один реальный кейс перед запуском быстрой оценки.',
+        caseTemplateHint: 'Это только шаблон. Вставьте сюда реальные кейсы перед запуском.',
+        conversationCaseCount: '{count} черновых кейсов из этого диалога',
+        conversationEmpty: 'Этот диалог пока не дал ни одного чернового кейса.',
+        conversationHint:
+          'Создавайте черновые кейсы, сопоставляя каждое сообщение пользователя со следующим ответом ассистента.',
+        conversationLoadFailed: 'Быстрая оценка не смогла загрузить данные диалога.',
+        conversationRequired: 'Выберите диалог перед запуском быстрой оценки.',
+        draftCases: 'Черновые кейсы',
+        editManifest: 'Редактировать JSON кейсов',
+        launchHint:
+          'Начните с вставленных кейсов, предыдущего диалога или существующего набора данных. Harness сам заполнит объектную модель за кулисами.',
+        previewManifest: 'Предпросмотр JSON кейсов',
+        regressionLabel: 'Регрессия',
+        researchLabel: 'Исследование',
+        selectConversation: 'Выберите диалог',
+        smokeDatasetName: 'Набор данных для быстрой проверки',
+        smokeLabel: 'Быстрая проверка',
+        untitledConversation: 'Диалог без названия',
+        useConversation: 'Использовать диалог',
+      },
+    },
+  },
+  'sk-SK': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Pred spustenim rychleho vyhodnotenia pridajte aspon jeden skutocny pripad.',
+        caseTemplateHint: 'Toto je len sablona. Pred spustenim sem vlozte skutocne pripady.',
+        conversationCaseCount: '{count} návrhov prípadov z tejto konverzácie',
+        conversationEmpty: 'Táto konverzácia zatiaľ nevytvorila žiadne návrhy prípadov.',
+        conversationHint:
+          'Vytvorte návrhy prípadov spárovaním každej používateľskej správy s nasledujúcou odpoveďou asistenta.',
+        conversationLoadFailed: 'Rýchle vyhodnotenie nemohlo načítať údaje konverzácie.',
+        conversationRequired: 'Pred spustením rýchleho vyhodnotenia vyberte konverzáciu.',
+        draftCases: 'Návrhy prípadov',
+        editManifest: 'Upraviť JSON prípadov',
+        launchHint:
+          'Začni s vloženými prípadmi, predchádzajúcou konverzáciou alebo existujúcou dátovou sadou. Harness za vás na pozadí doplní objektový model.',
+        previewManifest: 'Náhľad JSON prípadov',
+        regressionLabel: 'Regresia',
+        researchLabel: 'Výskum',
+        selectConversation: 'Vyberte konverzáciu',
+        smokeDatasetName: 'Datova sada rychlej kontroly',
+        smokeLabel: 'Rychla kontrola',
+        untitledConversation: 'Nepomenovaná konverzácia',
+        useConversation: 'Použiť konverzáciu',
+      },
+    },
+  },
+  'sv-SE': {
+    harness: {
+      quickEval: {
+        caseRequired: 'Lägg till minst ett verkligt fall innan du startar en snabb utvärdering.',
+        caseTemplateHint: 'Detta är bara en mall. Klistra in verkliga fall här innan du startar.',
+        conversationCaseCount: '{count} utkastfall från det här samtalet',
+        conversationEmpty: 'Det här samtalet gav ännu inga utkastfall.',
+        conversationHint:
+          'Skapa utkastfall genom att para ihop varje användarmeddelande med nästa svar från assistenten.',
+        conversationLoadFailed: 'Den snabba utvärderingen kunde inte läsa in samtalsdata.',
+        conversationRequired: 'Välj ett samtal innan du startar en snabb utvärdering.',
+        draftCases: 'Utkastfall',
+        editManifest: 'Redigera fall-JSON',
+        launchHint:
+          'Börja med inklistrade fall, ett tidigare samtal eller ett befintligt dataset. Harness fyller i objektmodellen bakom kulisserna.',
+        previewManifest: 'Förhandsgranska fall-JSON',
+        regressionLabel: 'Regression',
+        researchLabel: 'Forskning',
+        selectConversation: 'Välj ett samtal',
+        smokeDatasetName: 'Dataset för snabbkontroll',
+        smokeLabel: 'Snabbkontroll',
+        untitledConversation: 'Namnlöst samtal',
+        useConversation: 'Använd samtal',
+      },
+    },
+  },
+  'zh-CN': {
+    harness: {
+      quickEval: {
+        caseRequired: '启动快捷评测前，至少添加一条真实用例。',
+        caseTemplateHint: '这里只是模板。启动前请粘贴真实用例。',
+        conversationCaseCount: '这个会话可生成 {count} 条草稿用例',
+        conversationEmpty: '这个会话暂时还不能生成任何草稿用例。',
+        conversationHint: '把每条用户消息与它后面的下一条助手回复配对，自动生成草稿用例。',
+        conversationLoadFailed: '快捷评测未能加载会话数据。',
+        conversationRequired: '启动快捷评测前请先选择一个会话。',
+        draftCases: '草稿用例',
+        editManifest: '编辑用例 JSON',
+        launchHint:
+          '可以直接粘贴用例、复用历史会话，或复用现有数据集。底层对象模型由测试夹具自动补齐。',
+        previewManifest: '预览用例 JSON',
+        regressionLabel: '回归',
+        researchLabel: '研究',
+        selectConversation: '选择会话',
+        smokeDatasetName: '冒烟数据集',
+        smokeLabel: '冒烟',
+        untitledConversation: '未命名会话',
+        useConversation: '使用会话',
+      },
+    },
+  },
+  'zh-TW': {
+    harness: {
+      quickEval: {
+        caseRequired: '啟動快速評測前，至少加入一條真實案例。',
+        caseTemplateHint: '這裡只是模板。啟動前請貼上真實案例。',
+        conversationCaseCount: '這個對話可產生 {count} 條草稿案例',
+        conversationEmpty: '這個對話目前還無法產生任何草稿案例。',
+        conversationHint: '把每則使用者訊息和後面的下一則助手回覆配對，自動產生草稿案例。',
+        conversationLoadFailed: '快速評測無法載入對話資料。',
+        conversationRequired: '啟動快速評測前請先選擇一個對話。',
+        draftCases: '草稿案例',
+        editManifest: '編輯案例 JSON',
+        launchHint:
+          '可以直接貼上案例、重用歷史對話，或重用既有資料集。底層物件模型由測試夾具自動補齊。',
+        previewManifest: '預覽案例 JSON',
+        regressionLabel: '回歸',
+        researchLabel: '研究',
+        selectConversation: '選擇對話',
+        smokeDatasetName: '冒煙資料集',
+        smokeLabel: '冒煙',
+        untitledConversation: '未命名對話',
+        useConversation: '使用對話',
+      },
+    },
+  },
+}
+
+const harnessDiagnosticLocaleOverrides: Record<string, LocaleMessages> = {
+  'ca-ES': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Variació de la taxa d’èxit de verificació',
+        evidenceBackedPassRateDelta: 'Variació de la taxa d’èxit amb evidències',
+        retryRecoveredDelta: 'Variació de recuperats amb reintent',
+        failureLabelDelta: 'Variació d’etiquetes d’error',
+        noFailureLabelDelta: 'No s’ha registrat cap canvi d’etiquetes d’error.',
+      },
+      group: {
+        verificationPassRate: 'Taxa d’èxit de verificació',
+        evidenceBackedPassRate: 'Taxa d’èxit amb evidències',
+        retryRecovered: 'Recuperats amb reintent',
+        failureLabels: 'Etiquetes d’error',
+        noFailureLabels: 'No s’ha registrat cap etiqueta d’error.',
+        verification: 'Verificació',
+        evidenceScore: 'Puntuació d’evidència',
+        failureLabel: 'Etiqueta d’error',
+      },
+    },
+  },
+  'cs-CZ': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Změna míry úspěšnosti ověření',
+        evidenceBackedPassRateDelta: 'Změna úspěšnosti podložené důkazy',
+        retryRecoveredDelta: 'Změna obnovených opakováním',
+        failureLabelDelta: 'Změna štítků selhání',
+        noFailureLabelDelta: 'Nebyly zaznamenány žádné změny štítků selhání.',
+      },
+      group: {
+        verificationPassRate: 'Míra úspěšnosti ověření',
+        evidenceBackedPassRate: 'Úspěšnost podložená důkazy',
+        retryRecovered: 'Obnoveno opakováním',
+        failureLabels: 'Štítky selhání',
+        noFailureLabels: 'Nebyly zaznamenány žádné štítky selhání.',
+        verification: 'Ověření',
+        evidenceScore: 'Skóre důkazů',
+        failureLabel: 'Štítek selhání',
+      },
+    },
+  },
+  'da-DK': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Ændring i verifikationsrate',
+        evidenceBackedPassRateDelta: 'Ændring i evidensunderstøttet beståelsesrate',
+        retryRecoveredDelta: 'Ændring i gendannede via genforsøg',
+        failureLabelDelta: 'Ændring i fejlmærkater',
+        noFailureLabelDelta: 'Ingen ændringer i fejlmærkater registreret.',
+      },
+      group: {
+        verificationPassRate: 'Verifikationsrate',
+        evidenceBackedPassRate: 'Evidensunderstøttet beståelsesrate',
+        retryRecovered: 'Gendannet via genforsøg',
+        failureLabels: 'Fejlmærkater',
+        noFailureLabels: 'Ingen fejlmærkater registreret.',
+        verification: 'Verifikation',
+        evidenceScore: 'Evidensscore',
+        failureLabel: 'Fejlmærkat',
+      },
+    },
+  },
+  'de-DE': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Änderung der Verifikations-Erfolgsquote',
+        evidenceBackedPassRateDelta: 'Änderung der evidenzgestützten Erfolgsquote',
+        retryRecoveredDelta: 'Änderung der durch Wiederholungen wiederhergestellten Fälle',
+        failureLabelDelta: 'Änderung der Fehlerlabels',
+        noFailureLabelDelta: 'Keine Änderungen der Fehlerlabels erfasst.',
+      },
+      group: {
+        verificationPassRate: 'Verifikations-Erfolgsquote',
+        evidenceBackedPassRate: 'Evidenzgestützte Erfolgsquote',
+        retryRecovered: 'Durch Wiederholungen wiederhergestellt',
+        failureLabels: 'Fehlerlabels',
+        noFailureLabels: 'Keine Fehlerlabels erfasst.',
+        verification: 'Verifikation',
+        evidenceScore: 'Evidenz-Score',
+        failureLabel: 'Fehlerlabel',
+      },
+    },
+  },
+  'el-GR': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Μεταβολή ποσοστού επιτυχίας επαλήθευσης',
+        evidenceBackedPassRateDelta: 'Μεταβολή ποσοστού επιτυχίας με τεκμήρια',
+        retryRecoveredDelta: 'Μεταβολή ανακτήσεων με επανάληψη',
+        failureLabelDelta: 'Μεταβολή ετικετών αποτυχίας',
+        noFailureLabelDelta: 'Δεν καταγράφηκαν αλλαγές στις ετικέτες αποτυχίας.',
+      },
+      group: {
+        verificationPassRate: 'Ποσοστό επιτυχίας επαλήθευσης',
+        evidenceBackedPassRate: 'Ποσοστό επιτυχίας με τεκμήρια',
+        retryRecovered: 'Ανακτήθηκαν με επανάληψη',
+        failureLabels: 'Ετικέτες αποτυχίας',
+        noFailureLabels: 'Δεν καταγράφηκαν ετικέτες αποτυχίας.',
+        verification: 'Επαλήθευση',
+        evidenceScore: 'Βαθμολογία τεκμηρίων',
+        failureLabel: 'Ετικέτα αποτυχίας',
+      },
+    },
+  },
+  'en-GB': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Verification pass rate delta',
+        evidenceBackedPassRateDelta: 'Evidence-backed pass rate delta',
+        retryRecoveredDelta: 'Retry recovered delta',
+        failureLabelDelta: 'Failure label delta',
+        noFailureLabelDelta: 'No failure label changes recorded.',
+      },
+      group: {
+        verificationPassRate: 'Verification pass rate',
+        evidenceBackedPassRate: 'Evidence-backed pass rate',
+        retryRecovered: 'Retry recovered',
+        failureLabels: 'Failure labels',
+        noFailureLabels: 'No failure labels recorded.',
+        verification: 'Verification',
+        evidenceScore: 'Evidence score',
+        failureLabel: 'Failure label',
+      },
+    },
+  },
+  'es-ES': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Cambio en la tasa de aprobación de verificación',
+        evidenceBackedPassRateDelta: 'Cambio en la tasa de aprobación con evidencia',
+        retryRecoveredDelta: 'Cambio en recuperados por reintento',
+        failureLabelDelta: 'Cambio en etiquetas de fallo',
+        noFailureLabelDelta: 'No se registraron cambios en las etiquetas de fallo.',
+      },
+      group: {
+        verificationPassRate: 'Tasa de aprobación de verificación',
+        evidenceBackedPassRate: 'Tasa de aprobación con evidencia',
+        retryRecovered: 'Recuperados por reintento',
+        failureLabels: 'Etiquetas de fallo',
+        noFailureLabels: 'No se registraron etiquetas de fallo.',
+        verification: 'Verificación',
+        evidenceScore: 'Puntuación de evidencia',
+        failureLabel: 'Etiqueta de fallo',
+      },
+    },
+  },
+  'fr-FR': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Variation du taux de validation',
+        evidenceBackedPassRateDelta: 'Variation du taux de réussite étayé par des preuves',
+        retryRecoveredDelta: 'Variation des récupérations après nouvelle tentative',
+        failureLabelDelta: 'Variation des étiquettes d’échec',
+        noFailureLabelDelta: 'Aucun changement d’étiquette d’échec enregistré.',
+      },
+      group: {
+        verificationPassRate: 'Taux de validation',
+        evidenceBackedPassRate: 'Taux de réussite étayé par des preuves',
+        retryRecovered: 'Récupérés après nouvelle tentative',
+        failureLabels: 'Étiquettes d’échec',
+        noFailureLabels: 'Aucune étiquette d’échec enregistrée.',
+        verification: 'Vérification',
+        evidenceScore: 'Score de preuve',
+        failureLabel: 'Étiquette d’échec',
+      },
+    },
+  },
+  'ga-IE': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Athrú ar ráta pasála fíorúcháin',
+        evidenceBackedPassRateDelta: 'Athrú ar ráta pasála le fianaise',
+        retryRecoveredDelta: 'Athrú ar aisghafa trí athiarracht',
+        failureLabelDelta: 'Athrú ar lipéid teipe',
+        noFailureLabelDelta: 'Níor taifeadadh aon athruithe ar lipéid teipe.',
+      },
+      group: {
+        verificationPassRate: 'Ráta pasála fíorúcháin',
+        evidenceBackedPassRate: 'Ráta pasála le fianaise',
+        retryRecovered: 'Aisghafa trí athiarracht',
+        failureLabels: 'Lipéid teipe',
+        noFailureLabels: 'Níor taifeadadh aon lipéid teipe.',
+        verification: 'Fíorú',
+        evidenceScore: 'Scór fianaise',
+        failureLabel: 'Lipéad teipe',
+      },
+    },
+  },
+  'hr-HR': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Promjena stope prolaza provjere',
+        evidenceBackedPassRateDelta: 'Promjena stope prolaza potkrijepljene dokazima',
+        retryRecoveredDelta: 'Promjena oporavljenih ponovnim pokušajem',
+        failureLabelDelta: 'Promjena oznaka neuspjeha',
+        noFailureLabelDelta: 'Nisu zabilježene promjene oznaka neuspjeha.',
+      },
+      group: {
+        verificationPassRate: 'Stopa prolaza provjere',
+        evidenceBackedPassRate: 'Stopa prolaza potkrijepljena dokazima',
+        retryRecovered: 'Oporavljeno ponovnim pokušajem',
+        failureLabels: 'Oznake neuspjeha',
+        noFailureLabels: 'Nisu zabilježene oznake neuspjeha.',
+        verification: 'Provjera',
+        evidenceScore: 'Ocjena dokaza',
+        failureLabel: 'Oznaka neuspjeha',
+      },
+    },
+  },
+  'hu-HU': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Verifikációs sikerességi arány változása',
+        evidenceBackedPassRateDelta: 'Bizonyítékokkal alátámasztott sikerességi arány változása',
+        retryRecoveredDelta: 'Újrapróbálkozással helyreálltak változása',
+        failureLabelDelta: 'Hibacímkék változása',
+        noFailureLabelDelta: 'Nincsenek rögzített hibacímke-változások.',
+      },
+      group: {
+        verificationPassRate: 'Verifikációs sikerességi arány',
+        evidenceBackedPassRate: 'Bizonyítékokkal alátámasztott sikerességi arány',
+        retryRecovered: 'Újrapróbálkozással helyreállt',
+        failureLabels: 'Hibacímkék',
+        noFailureLabels: 'Nincsenek rögzített hibacímkék.',
+        verification: 'Ellenőrzés',
+        evidenceScore: 'Bizonyítékpontszám',
+        failureLabel: 'Hibacímke',
+      },
+    },
+  },
+  'it-IT': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Delta del tasso di successo della verifica',
+        evidenceBackedPassRateDelta: 'Delta del tasso di successo supportato da evidenze',
+        retryRecoveredDelta: 'Delta dei recuperati con retry',
+        failureLabelDelta: 'Delta delle etichette di errore',
+        noFailureLabelDelta: 'Nessuna variazione delle etichette di errore registrata.',
+      },
+      group: {
+        verificationPassRate: 'Tasso di successo della verifica',
+        evidenceBackedPassRate: 'Tasso di successo supportato da evidenze',
+        retryRecovered: 'Recuperati con il retry',
+        failureLabels: 'Etichette di errore',
+        noFailureLabels: 'Nessuna etichetta di errore registrata.',
+        verification: 'Verifica',
+        evidenceScore: 'Punteggio delle evidenze',
+        failureLabel: 'Etichetta di errore',
+      },
+    },
+  },
+  'ja-JP': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: '検証通過率差分',
+        evidenceBackedPassRateDelta: '根拠付き通過率差分',
+        retryRecoveredDelta: '再試行回復差分',
+        failureLabelDelta: '失敗ラベル差分',
+        noFailureLabelDelta: '失敗ラベルの変更はまだ記録されていません。',
+      },
+      group: {
+        verificationPassRate: '検証通過率',
+        evidenceBackedPassRate: '根拠付き通過率',
+        retryRecovered: '再試行で回復',
+        failureLabels: '失敗ラベル',
+        noFailureLabels: '失敗ラベルはまだ記録されていません。',
+        verification: '検証',
+        evidenceScore: '根拠スコア',
+        failureLabel: '失敗ラベル',
+      },
+    },
+  },
+  'ko-KR': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: '검증 통과율 변화',
+        evidenceBackedPassRateDelta: '증거 기반 통과율 변화',
+        retryRecoveredDelta: '재시도 복구 변화',
+        failureLabelDelta: '실패 라벨 변화',
+        noFailureLabelDelta: '기록된 실패 라벨 변경이 없습니다.',
+      },
+      group: {
+        verificationPassRate: '검증 통과율',
+        evidenceBackedPassRate: '증거 기반 통과율',
+        retryRecovered: '재시도로 복구됨',
+        failureLabels: '실패 라벨',
+        noFailureLabels: '기록된 실패 라벨이 없습니다.',
+        verification: '검증',
+        evidenceScore: '증거 점수',
+        failureLabel: '실패 라벨',
+      },
+    },
+  },
+  'ml-IN': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'സ്ഥിരീകരണ വിജയനിരക്കിലെ മാറ്റം',
+        evidenceBackedPassRateDelta: 'തെളിവ് പിന്തുണയുള്ള വിജയനിരക്കിലെ മാറ്റം',
+        retryRecoveredDelta: 'വീണ്ടും ശ്രമിച്ച് വീണ്ടെടുത്തതിലെ മാറ്റം',
+        failureLabelDelta: 'പരാജയ ലേബലുകളിലെ മാറ്റം',
+        noFailureLabelDelta: 'പരാജയ ലേബലുകളിലെ മാറ്റങ്ങൾ രേഖപ്പെടുത്തിയിട്ടില്ല.',
+      },
+      group: {
+        verificationPassRate: 'സ്ഥിരീകരണ വിജയനിരക്ക്',
+        evidenceBackedPassRate: 'തെളിവ് പിന്തുണയുള്ള വിജയനിരക്ക്',
+        retryRecovered: 'വീണ്ടും ശ്രമിച്ച് വീണ്ടെടുത്തു',
+        failureLabels: 'പരാജയ ലേബലുകൾ',
+        noFailureLabels: 'പരാജയ ലേബലുകൾ രേഖപ്പെടുത്തിയിട്ടില്ല.',
+        verification: 'സ്ഥിരീകരണം',
+        evidenceScore: 'തെളിവ് സ്കോർ',
+        failureLabel: 'പരാജയ ലേബൽ',
+      },
+    },
+  },
+  'nb-NO': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Endring i verifiseringsrate',
+        evidenceBackedPassRateDelta: 'Endring i evidensstøttet beståelsesrate',
+        retryRecoveredDelta: 'Endring i gjenopprettet ved nytt forsøk',
+        failureLabelDelta: 'Endring i feiletiketter',
+        noFailureLabelDelta: 'Ingen endringer i feiletiketter registrert.',
+      },
+      group: {
+        verificationPassRate: 'Verifiseringsrate',
+        evidenceBackedPassRate: 'Evidensstøttet beståelsesrate',
+        retryRecovered: 'Gjenopprettet ved nytt forsøk',
+        failureLabels: 'Feiletiketter',
+        noFailureLabels: 'Ingen feiletiketter registrert.',
+        verification: 'Verifisering',
+        evidenceScore: 'Evidensscore',
+        failureLabel: 'Feiletikett',
+      },
+    },
+  },
+  'nl-NL': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Verschil in verificatieslaagpercentage',
+        evidenceBackedPassRateDelta: 'Verschil in op bewijs gebaseerd slaagpercentage',
+        retryRecoveredDelta: 'Verschil in hersteld via herpoging',
+        failureLabelDelta: 'Verschil in foutlabels',
+        noFailureLabelDelta: 'Geen wijzigingen in foutlabels geregistreerd.',
+      },
+      group: {
+        verificationPassRate: 'Verificatieslaagpercentage',
+        evidenceBackedPassRate: 'Op bewijs gebaseerd slaagpercentage',
+        retryRecovered: 'Hersteld via herpoging',
+        failureLabels: 'Foutlabels',
+        noFailureLabels: 'Geen foutlabels geregistreerd.',
+        verification: 'Verificatie',
+        evidenceScore: 'Bewijsscore',
+        failureLabel: 'Foutlabel',
+      },
+    },
+  },
+  'pl-PL': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Zmiana wskaźnika zaliczenia weryfikacji',
+        evidenceBackedPassRateDelta: 'Zmiana wskaźnika zaliczenia opartego na dowodach',
+        retryRecoveredDelta: 'Zmiana odzyskanych po ponownej próbie',
+        failureLabelDelta: 'Zmiana etykiet błędów',
+        noFailureLabelDelta: 'Nie zarejestrowano zmian etykiet błędów.',
+      },
+      group: {
+        verificationPassRate: 'Wskaźnik zaliczenia weryfikacji',
+        evidenceBackedPassRate: 'Wskaźnik zaliczenia oparty na dowodach',
+        retryRecovered: 'Odzyskane po ponownej próbie',
+        failureLabels: 'Etykiety błędów',
+        noFailureLabels: 'Nie zarejestrowano etykiet błędów.',
+        verification: 'Weryfikacja',
+        evidenceScore: 'Wynik dowodów',
+        failureLabel: 'Etykieta błędu',
+      },
+    },
+  },
+  'pt-BR': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Variação da taxa de aprovação da verificação',
+        evidenceBackedPassRateDelta: 'Variação da taxa de aprovação com evidências',
+        retryRecoveredDelta: 'Variação dos recuperados por nova tentativa',
+        failureLabelDelta: 'Variação dos rótulos de falha',
+        noFailureLabelDelta: 'Nenhuma mudança de rótulos de falha registrada.',
+      },
+      group: {
+        verificationPassRate: 'Taxa de aprovação da verificação',
+        evidenceBackedPassRate: 'Taxa de aprovação com evidências',
+        retryRecovered: 'Recuperados por nova tentativa',
+        failureLabels: 'Rótulos de falha',
+        noFailureLabels: 'Nenhum rótulo de falha registrado.',
+        verification: 'Verificação',
+        evidenceScore: 'Pontuação de evidências',
+        failureLabel: 'Rótulo de falha',
+      },
+    },
+  },
+  'pt-PT': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Variação da taxa de aprovação da verificação',
+        evidenceBackedPassRateDelta: 'Variação da taxa de aprovação com evidências',
+        retryRecoveredDelta: 'Variação dos recuperados por nova tentativa',
+        failureLabelDelta: 'Variação dos rótulos de falha',
+        noFailureLabelDelta: 'Não foram registadas alterações aos rótulos de falha.',
+      },
+      group: {
+        verificationPassRate: 'Taxa de aprovação da verificação',
+        evidenceBackedPassRate: 'Taxa de aprovação com evidências',
+        retryRecovered: 'Recuperados por nova tentativa',
+        failureLabels: 'Rótulos de falha',
+        noFailureLabels: 'Não foram registados rótulos de falha.',
+        verification: 'Verificação',
+        evidenceScore: 'Pontuação de evidências',
+        failureLabel: 'Rótulo de falha',
+      },
+    },
+  },
+  'ro-RO': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Variația ratei de trecere a verificării',
+        evidenceBackedPassRateDelta: 'Variația ratei de trecere susținute de dovezi',
+        retryRecoveredDelta: 'Variația recuperărilor prin reîncercare',
+        failureLabelDelta: 'Variația etichetelor de eșec',
+        noFailureLabelDelta: 'Nu au fost înregistrate schimbări ale etichetelor de eșec.',
+      },
+      group: {
+        verificationPassRate: 'Rata de trecere a verificării',
+        evidenceBackedPassRate: 'Rata de trecere susținută de dovezi',
+        retryRecovered: 'Recuperate prin reîncercare',
+        failureLabels: 'Etichete de eșec',
+        noFailureLabels: 'Nu au fost înregistrate etichete de eșec.',
+        verification: 'Verificare',
+        evidenceScore: 'Scorul dovezilor',
+        failureLabel: 'Etichetă de eșec',
+      },
+    },
+  },
+  'ru-RU': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Изменение доли успешной верификации',
+        evidenceBackedPassRateDelta: 'Изменение доли проходов с доказательствами',
+        retryRecoveredDelta: 'Изменение восстановленных повторной попыткой',
+        failureLabelDelta: 'Изменение меток сбоев',
+        noFailureLabelDelta: 'Изменения меток сбоев не зарегистрированы.',
+      },
+      group: {
+        verificationPassRate: 'Доля успешной верификации',
+        evidenceBackedPassRate: 'Доля успешных проходов с доказательствами',
+        retryRecovered: 'Восстановлено повторной попыткой',
+        failureLabels: 'Метки сбоев',
+        noFailureLabels: 'Метки сбоев не зарегистрированы.',
+        verification: 'Верификация',
+        evidenceScore: 'Оценка доказательств',
+        failureLabel: 'Метка сбоя',
+      },
+    },
+  },
+  'sk-SK': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Zmena miery úspešnosti overenia',
+        evidenceBackedPassRateDelta: 'Zmena miery úspešnosti podloženej dôkazmi',
+        retryRecoveredDelta: 'Zmena obnovených opakovaním',
+        failureLabelDelta: 'Zmena štítkov zlyhania',
+        noFailureLabelDelta: 'Neboli zaznamenané žiadne zmeny štítkov zlyhania.',
+      },
+      group: {
+        verificationPassRate: 'Miera úspešnosti overenia',
+        evidenceBackedPassRate: 'Miera úspešnosti podloženej dôkazmi',
+        retryRecovered: 'Obnovené opakovaním',
+        failureLabels: 'Štítky zlyhania',
+        noFailureLabels: 'Neboli zaznamenané žiadne štítky zlyhania.',
+        verification: 'Overenie',
+        evidenceScore: 'Skóre dôkazov',
+        failureLabel: 'Štítok zlyhania',
+      },
+    },
+  },
+  'sv-SE': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: 'Förändring i verifieringsgrad',
+        evidenceBackedPassRateDelta: 'Förändring i bevisstödd godkännandefrekvens',
+        retryRecoveredDelta: 'Förändring i återhämtade via omförsök',
+        failureLabelDelta: 'Förändring i feletiketter',
+        noFailureLabelDelta: 'Inga ändringar i feletiketter registrerade.',
+      },
+      group: {
+        verificationPassRate: 'Verifieringsgrad',
+        evidenceBackedPassRate: 'Bevisstödd godkännandefrekvens',
+        retryRecovered: 'Återhämtade via omförsök',
+        failureLabels: 'Feletiketter',
+        noFailureLabels: 'Inga feletiketter registrerade.',
+        verification: 'Verifiering',
+        evidenceScore: 'Bevispoäng',
+        failureLabel: 'Feletikett',
+      },
+    },
+  },
+  'zh-CN': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: '验证通过率变化',
+        evidenceBackedPassRateDelta: '证据支撑通过率变化',
+        retryRecoveredDelta: '重试恢复变化',
+        failureLabelDelta: '失败标签变化',
+        noFailureLabelDelta: '还没有记录失败标签变化。',
+      },
+      group: {
+        verificationPassRate: '验证通过率',
+        evidenceBackedPassRate: '证据支撑通过率',
+        retryRecovered: '重试恢复数',
+        failureLabels: '失败标签',
+        noFailureLabels: '还没有记录失败标签。',
+        verification: '验证',
+        evidenceScore: '证据分',
+        failureLabel: '失败标签',
+        remediation: '修复建议',
+        remediationMissingArtifact:
+          '让 run 附带预期的 artifact 路径或标签，或者把 expected_artifacts 调整到和实际输出契约一致。',
+        remediationRequiredCheckMissing:
+          '在事件或结果里输出稳定的完成标记，或者把 required_checks 调整到真正可观测的成功信号。',
+        remediationToolSelectionError:
+          '确保当前 profile 能访问必需工具，并在规划阶段显式偏向选择它。',
+        remediationForbiddenToolUsed:
+          '收紧工具策略、allowlist 或提示约束，避免该用例再选择被禁止的工具。',
+        remediationRunMissing:
+          '检查调度持久化和 run 关联流程，确保产出的 run 在评分前已被正确保存。',
+        remediationRunFailed: '检查关联 run 的错误与日志，先修复运行失败，再重试该样本。',
+        remediationRunCancelled: '检查是谁取消了 run，并避免审批或用户输入等待过早终止这次尝试。',
+        remediationRunAborted: '检查 driver 或 runtime 给出的 abort 原因，恢复执行路径后再重试。',
+        remediationRunNotCompleted:
+          '缩小任务范围或提高运行预算，确保 run 能到达 completed 并产出证据。',
+        remediationVerificationFailed:
+          '补强可观测证据或 artifact；如果契约比真实目标更严格，也要同步放宽约束。',
+        remediationTimeout: '缩短任务或提高相关 timeout 预算，确保关键步骤能在评分前完成。',
+        remediationGeneric: '检查关联 run、checks 和 artifacts，让运行输出重新对齐声明的契约。',
+      },
+    },
+  },
+  'zh-TW': {
+    harness: {
+      compare: {
+        verificationPassRateDelta: '驗證通過率變化',
+        evidenceBackedPassRateDelta: '證據支撐通過率變化',
+        retryRecoveredDelta: '重試恢復變化',
+        failureLabelDelta: '失敗標籤變化',
+        noFailureLabelDelta: '目前還沒有記錄失敗標籤變化。',
+      },
+      group: {
+        verificationPassRate: '驗證通過率',
+        evidenceBackedPassRate: '證據支撐通過率',
+        retryRecovered: '重試恢復數',
+        failureLabels: '失敗標籤',
+        noFailureLabels: '目前還沒有記錄失敗標籤。',
+        verification: '驗證',
+        evidenceScore: '證據分數',
+        failureLabel: '失敗標籤',
+        remediation: '修復建議',
+        remediationMissingArtifact:
+          '讓 run 附帶預期的 artifact 路徑或標籤，或把 expected_artifacts 調整成和實際輸出契約一致。',
+        remediationRequiredCheckMissing:
+          '在事件或結果中輸出穩定的完成標記，或把 required_checks 調整成真正可觀測的成功訊號。',
+        remediationToolSelectionError:
+          '確保目前 profile 能使用必需工具，並在規劃階段明確偏向選用它。',
+        remediationForbiddenToolUsed:
+          '收緊工具策略、allowlist 或提示約束，避免該案例再次選到被禁止的工具。',
+        remediationRunMissing: '檢查調度持久化與 run 關聯流程，確保產出的 run 在評分前已正確保存。',
+        remediationRunFailed: '檢查關聯 run 的錯誤與日誌，先修復執行失敗，再重試該樣本。',
+        remediationRunCancelled: '檢查是誰取消了 run，並避免審批或使用者輸入等待過早終止這次嘗試。',
+        remediationRunAborted: '檢查 driver 或 runtime 提供的 abort 原因，恢復執行路徑後再重試。',
+        remediationRunNotCompleted:
+          '縮小任務範圍或提高執行預算，確保 run 能到達 completed 並產出證據。',
+        remediationVerificationFailed:
+          '補強可觀測證據或 artifact；如果契約比真實目標更嚴格，也要同步放寬約束。',
+        remediationTimeout: '縮短任務或提高相關 timeout 預算，確保關鍵步驟能在評分前完成。',
+        remediationGeneric: '檢查關聯 run、checks 和 artifacts，讓執行輸出重新對齊宣告的契約。',
+      },
+    },
+  },
+}
+
+function isLocaleRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function mergeLocaleMessages(base: LocaleMessages, extra: LocaleMessages): LocaleMessages {
+  const merged: LocaleMessages = { ...base }
+  for (const [key, value] of Object.entries(extra)) {
+    const current = merged[key]
+    if (isLocaleRecord(current) && isLocaleRecord(value)) {
+      merged[key] = mergeLocaleMessages(current as LocaleMessages, value as LocaleMessages)
+      continue
+    }
+    merged[key] = value
+  }
+  return merged
+}
+
+const mergedHarnessLocaleOverrides = Object.fromEntries(
+  Object.entries(harnessLocaleOverrides).map(([locale, messages]) => [
+    locale,
+    mergeLocaleMessages(
+      mergeLocaleMessages(
+        mergeLocaleMessages(harnessV3Defaults, messages),
+        harnessV3LocaleOverrides[locale] || {}
+      ),
+      mergeLocaleMessages(
+        mergeLocaleMessages(
+          harnessQuickEvalLocaleOverrides[locale] || {},
+          harnessDiagnosticLocaleOverrides[locale] || {}
+        ),
+        mergeLocaleMessages(
+          harnessV3CompleteLocaleOverrides[locale] || {},
+          mergeLocaleMessages(
+            harnessV3FinalLocaleOverrides[locale] || {},
+            harnessV3TailLocaleOverrides[locale] || {}
+          )
+        )
+      )
+    ),
+  ])
+) as Record<string, LocaleMessages>
+
+export function getHarnessLocaleOverlay(locale: string): HarnessLocaleOverlay {
+  return mergedHarnessLocaleOverrides[locale] as HarnessLocaleOverlay
+}
+
+export default mergedHarnessLocaleOverrides

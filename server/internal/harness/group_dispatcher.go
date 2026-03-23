@@ -152,7 +152,7 @@ func (d *GroupDispatcher) processClaimedItem(itemID string, groupID string) {
 		return
 	}
 
-	runSpec, err := buildGroupItemRunSpec(group, item)
+	runSpec, err := d.buildGroupItemRunSpec(ctx, group, item)
 	if err != nil {
 		d.failAttempt(ctx, group, item, nil, err, true)
 		return
@@ -203,7 +203,8 @@ func (d *GroupDispatcher) processClaimedItem(itemID string, groupID string) {
 		return
 	}
 
-	scorecard := d.manager.scoreGroupRun(ctx, group, item, terminalRun)
+	verification := d.manager.verifyGroupRun(ctx, group, item, terminalRun)
+	scorecard := d.manager.scoreGroupRun(ctx, group, item, terminalRun, &verification)
 	scorecard = d.manager.annotateResearchProposalSummary(ctx, group, terminalRun, scorecard)
 	if err := d.manager.store.AttachScorecard(ctx, scorecard); err != nil {
 		d.failAttempt(ctx, group, item, terminalRun, err, false)
@@ -342,13 +343,57 @@ func (d *GroupDispatcher) finalizeAttempt(ctx context.Context, group *RunGroup, 
 	}
 
 	item.Status = verdictToItemStatus(scorecard)
-	if (item.Status == RunGroupItemStatusFailed || item.Status == RunGroupItemStatusError) && shouldRetryAttempt(item) {
+	if (item.Status == RunGroupItemStatusFailed || item.Status == RunGroupItemStatusError) && shouldRetryScoredAttempt(item, scorecard) {
 		item.Status = RunGroupItemStatusQueued
 		backoffUntil := timeutil.NowTime().Add(groupRetryBackoff(group))
 		item.LeaseExpiresAt = &backoffUntil
 	}
 	_ = d.manager.store.UpdateGroupItem(ctx, item)
 	_, _ = d.manager.refreshGroupSummary(ctx, group.ID)
+}
+
+func (d *GroupDispatcher) buildGroupItemRunSpec(ctx context.Context, group *RunGroup, item *RunGroupItem) (RunSpec, error) {
+	spec, err := buildGroupItemRunSpec(group, item)
+	if err != nil {
+		return RunSpec{}, err
+	}
+	retryContext, retryFeedback := d.retryFeedbackForItem(ctx, item)
+	if retryContext == "" && len(retryFeedback) == 0 {
+		return spec, nil
+	}
+	if spec.Metadata == nil {
+		spec.Metadata = map[string]interface{}{}
+	}
+	if retryContext != "" {
+		spec.Metadata["retry_context"] = retryContext
+	}
+	if len(retryFeedback) > 0 {
+		spec.Metadata["retry_feedback"] = retryFeedback
+	}
+	return spec, nil
+}
+
+func (d *GroupDispatcher) retryFeedbackForItem(ctx context.Context, item *RunGroupItem) (string, map[string]interface{}) {
+	if d == nil || d.manager == nil || d.manager.store == nil || item == nil || item.AttemptCount <= 0 {
+		return "", nil
+	}
+	card, err := d.manager.store.LatestScorecardForItem(ctx, item.ID)
+	if err != nil || card == nil {
+		return "", nil
+	}
+	previousRunID := strings.TrimSpace(card.RunID)
+	if previousRunID == "" {
+		previousRunID = strings.TrimSpace(item.LatestRunID)
+	}
+	var previousRun *Run
+	if previousRunID != "" {
+		previousRun, _ = d.manager.store.GetRun(ctx, previousRunID)
+	}
+	retryContext, retryFeedback := buildRetryFeedback(card, previousRun)
+	if retryContext == "" && len(retryFeedback) == 0 {
+		return "", nil
+	}
+	return retryContext, retryFeedback
 }
 
 func buildGroupItemRunSpec(group *RunGroup, item *RunGroupItem) (RunSpec, error) {
@@ -452,6 +497,233 @@ func mergeMetadataMaps(base map[string]interface{}, override map[string]interfac
 	return out
 }
 
+func buildRetryFeedback(card *Scorecard, previousRun *Run) (string, map[string]interface{}) {
+	if card == nil {
+		return "", nil
+	}
+	breakdown := decodeJSONMap(card.BreakdownJSON)
+	evidence := decodeJSONMap(card.EvidenceJSON)
+	trace := decodeJSONMap(card.JudgeTraceJSON)
+	verification := nestedMetadataMap(evidence, "verification")
+	if verification == nil {
+		verification = nestedMetadataMap(trace, "verification")
+	}
+
+	failureLabel := firstNonEmpty(metadataString(verification, "failure_label"), metadataString(breakdown, "failure_label"))
+	summary := firstNonEmpty(metadataString(verification, "summary"), metadataString(breakdown, "reason"), metadataString(trace, "reason"))
+	failedChecks := failedVerificationChecks(verification)
+	failedArtifacts := failedVerificationArtifacts(verification)
+	retryContext := renderRetryContext(previousRun, card, failureLabel, summary, failedChecks, failedArtifacts)
+	if retryContext == "" {
+		return "", nil
+	}
+
+	feedback := map[string]interface{}{
+		"previous_run_id":  strings.TrimSpace(card.RunID),
+		"previous_verdict": string(card.Verdict),
+		"previous_score":   card.Score,
+	}
+	if previousRun != nil {
+		feedback["previous_attempt_index"] = previousRun.AttemptIndex
+		if result := truncateRetryText(previousRun.Result, 240); result != "" {
+			feedback["previous_result"] = result
+		}
+		if errText := truncateRetryText(previousRun.Error, 240); errText != "" {
+			feedback["previous_error"] = errText
+		}
+	}
+	if failureLabel != "" {
+		feedback["failure_label"] = failureLabel
+	}
+	if summary != "" {
+		feedback["summary"] = summary
+	}
+	if retryable, ok := mapBool(breakdown, "retryable"); ok {
+		feedback["retryable"] = retryable
+	}
+	if len(failedChecks) > 0 {
+		feedback["failed_checks"] = append([]string(nil), failedChecks...)
+	}
+	if len(failedArtifacts) > 0 {
+		feedback["failed_artifacts"] = append([]string(nil), failedArtifacts...)
+	}
+	return retryContext, feedback
+}
+
+func nestedMetadataMap(meta map[string]interface{}, key string) map[string]interface{} {
+	if len(meta) == 0 {
+		return nil
+	}
+	raw, ok := meta[key]
+	if !ok {
+		return nil
+	}
+	nested, _ := raw.(map[string]interface{})
+	return nested
+}
+
+func failedVerificationChecks(verification map[string]interface{}) []string {
+	if len(verification) == 0 {
+		return nil
+	}
+	raw, ok := verification["checks"].([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		record, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if passed, ok := record["passed"].(bool); ok && passed {
+			continue
+		}
+		name := firstNonEmpty(retryText(record["name"]), "verification check")
+		expected := retryText(record["expected"])
+		actual := retryText(record["actual"])
+		switch {
+		case expected != "" && actual != "":
+			out = append(out, fmt.Sprintf("%s (expected: %s; actual: %s)", name, expected, actual))
+		case expected != "":
+			out = append(out, fmt.Sprintf("%s (expected: %s)", name, expected))
+		case actual != "":
+			out = append(out, fmt.Sprintf("%s (actual: %s)", name, actual))
+		default:
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func failedVerificationArtifacts(verification map[string]interface{}) []string {
+	if len(verification) == 0 {
+		return nil
+	}
+	raw, ok := verification["artifacts"].([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		record, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if passed, ok := record["passed"].(bool); ok && passed {
+			continue
+		}
+		target := firstNonEmpty(retryText(record["path"]), retryText(record["label"]), retryText(record["target"]), "artifact")
+		actual := retryText(record["actual"])
+		if actual != "" {
+			out = append(out, fmt.Sprintf("%s (actual: %s)", target, actual))
+			continue
+		}
+		out = append(out, target)
+	}
+	return out
+}
+
+func renderRetryContext(previousRun *Run, card *Scorecard, failureLabel string, summary string, failedChecks []string, failedArtifacts []string) string {
+	lines := []string{"Harness retry guidance from the previous attempt:"}
+	if previousRun != nil && previousRun.AttemptIndex > 0 {
+		lines = append(lines, fmt.Sprintf("- Previous attempt: %d", previousRun.AttemptIndex))
+	}
+	if card != nil {
+		lines = append(lines, fmt.Sprintf("- Previous verdict: %s (score %.2f)", card.Verdict, card.Score))
+	}
+	if failureLabel != "" {
+		lines = append(lines, fmt.Sprintf("- Failure label: %s", failureLabel))
+	}
+	if summary != "" {
+		lines = append(lines, fmt.Sprintf("- Failure summary: %s", summary))
+	}
+	if correction := retryCorrectionHint(failureLabel, failedChecks, failedArtifacts); correction != "" {
+		lines = append(lines, fmt.Sprintf("- Correction target: %s", correction))
+	}
+	for _, detail := range limitRetryItems(failedArtifacts, 2) {
+		lines = append(lines, fmt.Sprintf("- Artifact issue: %s", detail))
+	}
+	for _, detail := range limitRetryItems(failedChecks, 3) {
+		lines = append(lines, fmt.Sprintf("- Failed check: %s", detail))
+	}
+	if previousRun != nil {
+		if result := truncateRetryText(previousRun.Result, 220); result != "" {
+			lines = append(lines, fmt.Sprintf("- Previous result excerpt: %s", result))
+		}
+		if errText := truncateRetryText(previousRun.Error, 220); errText != "" {
+			lines = append(lines, fmt.Sprintf("- Previous error: %s", errText))
+		}
+	}
+	lines = append(lines, "- Please correct the issue above before declaring this retry complete.")
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func retryCorrectionHint(failureLabel string, failedChecks []string, failedArtifacts []string) string {
+	switch strings.TrimSpace(failureLabel) {
+	case "missing_artifact":
+		if len(failedArtifacts) > 0 {
+			return "produce the missing artifact before finishing"
+		}
+		return "emit the expected artifact before finishing"
+	case "required_check_missing":
+		if len(failedChecks) > 0 {
+			return "make the missing verification evidence visible in the result or emitted events"
+		}
+		return "satisfy the required verification check before finishing"
+	case "tool_selection_error":
+		return "use the required tool call before finishing"
+	case "forbidden_tool_used":
+		return "avoid the forbidden tool on this retry and choose a safer alternative"
+	case "run_failed", "run_not_completed", "timeout", "verification_failed":
+		return "keep this retry smaller and more deterministic so it completes successfully"
+	default:
+		if len(failedArtifacts) > 0 {
+			return "fix the missing artifact output before finishing"
+		}
+		if len(failedChecks) > 0 {
+			return "fix the failing verification checks before finishing"
+		}
+		return ""
+	}
+}
+
+func limitRetryItems(items []string, maxItems int) []string {
+	if len(items) == 0 || maxItems <= 0 {
+		return nil
+	}
+	if len(items) <= maxItems {
+		return append([]string(nil), items...)
+	}
+	return append([]string(nil), items[:maxItems]...)
+}
+
+func truncateRetryText(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	value = strings.Join(strings.Fields(value), " ")
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	if limit <= 3 {
+		return value[:limit]
+	}
+	return value[:limit-3] + "..."
+}
+
+func retryText(raw interface{}) string {
+	if raw == nil {
+		return ""
+	}
+	text := strings.TrimSpace(fmt.Sprint(raw))
+	if text == "" || text == "<nil>" {
+		return ""
+	}
+	return text
+}
+
 func firstPositiveInt(primary map[string]interface{}, secondary map[string]interface{}, keys ...string) int {
 	for _, source := range []map[string]interface{}{primary, secondary} {
 		for _, key := range keys {
@@ -530,6 +802,23 @@ func shouldRetryAttempt(item *RunGroupItem) bool {
 		return false
 	}
 	return item.MaxAttempts <= 0 || item.AttemptCount < item.MaxAttempts
+}
+
+func shouldRetryScoredAttempt(item *RunGroupItem, scorecard *Scorecard) bool {
+	if !shouldRetryAttempt(item) {
+		return false
+	}
+	if scorecard == nil {
+		return true
+	}
+	breakdown := decodeJSONMap(scorecard.BreakdownJSON)
+	if len(breakdown) == 0 {
+		return true
+	}
+	if retryable, ok := mapBool(breakdown, "retryable"); ok {
+		return retryable
+	}
+	return true
 }
 
 func groupLeaseTTL(group *RunGroup) time.Duration {

@@ -100,3 +100,64 @@ func TestExecuteToolCalls_PersistsRawPayloadAudit(t *testing.T) {
 		t.Fatalf("tool result role = %q, want %q", resultEntry.Role, llm.RoleTool)
 	}
 }
+
+func TestExecuteToolCalls_NormalizesArgumentsBeforeAudit(t *testing.T) {
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&auditEchoTool{})
+
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), toolRegistry)
+	defer handler.Shutdown()
+
+	auditStore, err := sessionaudit.NewSQLiteStore(filepath.Join(t.TempDir(), "session_audit_normalized.db"), sessionaudit.StoreConfig{
+		RetentionDays:    30,
+		CleanupInterval:  0,
+		CleanupBatchSize: 100,
+	})
+	if err != nil {
+		t.Fatalf("NewSQLiteStore() error = %v", err)
+	}
+	defer auditStore.Close()
+
+	handler.SetSessionAuditStore(auditStore)
+
+	ctx := tools.WithSessionID(context.Background(), "conv-audit-normalized")
+	ctx = tools.WithUserID(ctx, "user-audit")
+	ctx = tools.WithChannel(ctx, "web")
+
+	tc := llm.ToolCall{
+		ID:        "tc-concat",
+		Name:      "audit_echo",
+		Arguments: `{}{"q":"ping"}`,
+	}
+	results := handler.executeToolCalls(ctx, []llm.ToolCall{tc})
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+
+	entries, err := auditStore.Recent(context.Background(), "conv-audit-normalized", 10)
+	if err != nil {
+		t.Fatalf("Recent() error = %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("len(entries) = %d, want 2", len(entries))
+	}
+
+	var callEntry sessionaudit.Entry
+	found := false
+	for i := range entries {
+		if entries[i].EventType == "assistant_tool_call" {
+			callEntry = entries[i]
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("assistant_tool_call audit entry missing")
+	}
+	if callEntry.Payload != `{"q":"ping"}` {
+		t.Fatalf("tool call payload = %q, want %q", callEntry.Payload, `{"q":"ping"}`)
+	}
+	if results[0].Content != `{"ok":true,"q":"ping"}` {
+		t.Fatalf("tool result content = %q, want normalized echoed payload", results[0].Content)
+	}
+}

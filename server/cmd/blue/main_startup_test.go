@@ -14,6 +14,11 @@ func TestShouldSkipStartupSTTAuthorization(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "gateway run with no-intercept skips stt",
+			args: []string{"--no-intercept", "gateway", "run"},
+			want: true,
+		},
+		{
 			name: "gateway run without config skips stt",
 			args: []string{"gateway", "run"},
 			want: true,

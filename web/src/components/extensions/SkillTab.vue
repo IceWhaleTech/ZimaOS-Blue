@@ -23,16 +23,20 @@ const contentBySkillId = ref<Record<string, string>>({})
 const contentLoadingIds = ref<Set<string>>(new Set())
 const uninstallingSkillId = ref<string | null>(null)
 
-const isChineseLocale = computed(() => locale.value.toLowerCase().startsWith('zh'))
+function browseText(key: string, fallback: string): string {
+  return te(key) ? t(key) : fallback
+}
+
 const galleryHint = computed(() =>
-  isChineseLocale.value
-    ? '以卡片方式浏览技能，点击任意技能查看说明文档并管理启用状态。'
-    : 'Browse skills as cards. Open any skill to review docs and manage its status.'
+  browseText(
+    'extensions.browse.skillGalleryHint',
+    'Browse skills as cards. Open any skill to review docs and manage its status.'
+  )
 )
 const closeDetailLabel = computed(() =>
-  isChineseLocale.value ? '关闭技能详情' : 'Close skill details'
+  browseText('extensions.browse.closeSkillDetails', 'Close skill details')
 )
-const sourceMetaLabel = computed(() => (isChineseLocale.value ? '来源' : 'Source'))
+const sourceMetaLabel = computed(() => browseText('extensions.browse.sourceLabel', 'Source'))
 
 type SkillCardPalette = {
   tint: string
@@ -113,16 +117,28 @@ function getSkillCardPalette(skill: Skill): SkillCardPalette {
 }
 
 function getSkillName(skill: Skill): string {
-  if (skill.builtin && te(`skills.builtin.${skill.id}.name`)) {
-    return t(`skills.builtin.${skill.id}.name`)
+  const candidates = skill.builtin
+    ? [`skills.builtin.${skill.id}.name`, `skills.catalog.${skill.id}.name`]
+    : [`skills.catalog.${skill.id}.name`]
+
+  for (const key of candidates) {
+    if (te(key)) return t(key)
   }
+
+  const namedKey = `skills.names.${skill.name}`
+  if (te(namedKey)) return t(namedKey)
   return skill.name
 }
 
 function getSkillDescription(skill: Skill): string {
-  if (skill.builtin && te(`skills.builtin.${skill.id}.description`)) {
-    return t(`skills.builtin.${skill.id}.description`)
+  const candidates = skill.builtin
+    ? [`skills.builtin.${skill.id}.description`, `skills.catalog.${skill.id}.description`]
+    : [`skills.catalog.${skill.id}.description`]
+
+  for (const key of candidates) {
+    if (te(key)) return t(key)
   }
+
   return skill.description || ''
 }
 
@@ -172,7 +188,7 @@ function formatSkillVersion(value?: string): string {
 
 function skillMetaText(value?: string): string {
   if (value?.trim()) return value
-  return isChineseLocale.value ? '未知' : 'Unknown'
+  return t('common.unknown')
 }
 
 function getSkillAccentStyle(skill: Skill): Record<string, string> {
@@ -240,7 +256,9 @@ const selectedSkillContentLoading = computed(() => {
   if (!selectedSkill.value) return false
   return contentLoadingIds.value.has(selectedSkill.value.id)
 })
-const canUninstallSelectedSkill = computed(() => !!selectedSkill.value && !selectedSkill.value.builtin)
+const canUninstallSelectedSkill = computed(
+  () => !!selectedSkill.value && !selectedSkill.value.builtin
+)
 
 const skillStats = computed(() => ({
   total: skillStore.skills.length,
@@ -484,12 +502,7 @@ async function handleUninstall(skill: Skill) {
           </span>
         </div>
 
-        <div
-          :class="[
-            'skill-showcase-card__hero',
-            'dashboard-card-subsurface',
-          ]"
-        >
+        <div :class="['skill-showcase-card__hero', 'dashboard-card-subsurface']">
           <div class="skill-showcase-card__orb">
             <img
               v-if="getSkillIconUrl(skill.icon)"
@@ -519,7 +532,10 @@ async function handleUninstall(skill: Skill) {
               <span class="skill-showcase-card__chip skill-showcase-card__chip--primary">{{
                 getCategoryLabel(skill.category)
               }}</span>
-              <span v-if="skill.author" class="skill-showcase-card__chip skill-showcase-card__chip--soft">
+              <span
+                v-if="skill.author"
+                class="skill-showcase-card__chip skill-showcase-card__chip--soft"
+              >
                 {{ skill.author }}
               </span>
             </div>
@@ -537,7 +553,9 @@ async function handleUninstall(skill: Skill) {
                   stroke="currentColor"
                   stroke-width="1.8"
                 >
-                  <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                  <path
+                    d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"
+                  />
                   <path d="m3.3 7 8.7 5 8.7-5" />
                   <path d="M12 22V12" />
                 </svg>
@@ -570,7 +588,9 @@ async function handleUninstall(skill: Skill) {
                 <strong>{{ skill.outputs?.length || 0 }}</strong>
               </span>
             </div>
-            <span class="skill-showcase-card__link-hint">{{ t('skillStore.actions.details') }}</span>
+            <span class="skill-showcase-card__link-hint">{{
+              t('skillStore.actions.details')
+            }}</span>
           </div>
         </div>
       </article>
@@ -722,9 +742,15 @@ async function handleUninstall(skill: Skill) {
                   <div class="detail-section__head">
                     <h4>{{ t('skills.detail.sections.parameters') }}</h4>
                     <p class="detail-section__caption">
-                      <span>{{ t('skills.detail.sections.inputs') }} {{ selectedSkill.inputs?.length || 0 }}</span>
+                      <span
+                        >{{ t('skills.detail.sections.inputs') }}
+                        {{ selectedSkill.inputs?.length || 0 }}</span
+                      >
                       <span aria-hidden="true">·</span>
-                      <span>{{ t('skills.detail.sections.outputs') }} {{ selectedSkill.outputs?.length || 0 }}</span>
+                      <span
+                        >{{ t('skills.detail.sections.outputs') }}
+                        {{ selectedSkill.outputs?.length || 0 }}</span
+                      >
                     </p>
                   </div>
 
@@ -803,8 +829,7 @@ async function handleUninstall(skill: Skill) {
   --skills-shell-bg-top: rgba(24, 33, 53, 0.98);
   --skills-shell-bg-bottom: rgba(9, 15, 28, 0.99);
   --skills-shell-shadow:
-    0 20px 36px -30px rgba(2, 6, 23, 0.56),
-    0 14px 28px -24px rgba(14, 165, 233, 0.12);
+    0 20px 36px -30px rgba(2, 6, 23, 0.56), 0 14px 28px -24px rgba(14, 165, 233, 0.12);
   --skills-shell-hint-bg: rgba(34, 197, 94, 0.14);
   --skills-shell-hint-text: #86efac;
   --skills-stat-border: rgba(71, 85, 105, 0.48);
@@ -815,11 +840,9 @@ async function handleUninstall(skill: Skill) {
   --skills-card-bg-top: rgba(18, 27, 45, 0.98);
   --skills-card-bg-bottom: rgba(8, 14, 27, 0.99);
   --skills-card-shadow:
-    0 24px 42px -36px rgba(2, 6, 23, 0.7),
-    0 14px 26px -22px rgba(8, 47, 73, 0.26);
+    0 24px 42px -36px rgba(2, 6, 23, 0.7), 0 14px 26px -22px rgba(8, 47, 73, 0.26);
   --skills-card-shadow-active:
-    0 28px 48px -34px rgba(2, 6, 23, 0.78),
-    0 18px 30px -24px rgba(8, 47, 73, 0.3);
+    0 28px 48px -34px rgba(2, 6, 23, 0.78), 0 18px 30px -24px rgba(8, 47, 73, 0.3);
   --skills-card-title: #f8fafc;
   --skills-card-text: rgba(226, 232, 240, 0.76);
   --skills-card-outline: rgba(255, 255, 255, 0.05);
@@ -865,8 +888,7 @@ async function handleUninstall(skill: Skill) {
   --skills-detail-modal-top: rgba(18, 27, 45, 0.99);
   --skills-detail-modal-bottom: rgba(8, 13, 26, 1);
   --skills-detail-shadow:
-    0 56px 140px -52px rgba(2, 6, 23, 0.92),
-    0 24px 44px -30px rgba(2, 132, 199, 0.18);
+    0 56px 140px -52px rgba(2, 6, 23, 0.92), 0 24px 44px -30px rgba(2, 132, 199, 0.18);
   --skills-detail-close-bg: rgba(148, 163, 184, 0.14);
   --skills-detail-close-bg-hover: rgba(148, 163, 184, 0.22);
   --skills-detail-section-border: rgba(148, 163, 184, 0.16);
@@ -892,8 +914,7 @@ async function handleUninstall(skill: Skill) {
   --skills-shell-bg-top: rgba(255, 255, 255, 0.98);
   --skills-shell-bg-bottom: rgba(239, 244, 249, 0.96);
   --skills-shell-shadow:
-    0 20px 32px -24px rgba(15, 23, 42, 0.14),
-    0 12px 22px -18px rgba(59, 130, 246, 0.08);
+    0 20px 32px -24px rgba(15, 23, 42, 0.14), 0 12px 22px -18px rgba(59, 130, 246, 0.08);
   --skills-shell-hint-bg: rgba(22, 163, 74, 0.12);
   --skills-shell-hint-text: #15803d;
   --skills-stat-border: rgba(203, 213, 225, 0.88);
@@ -904,11 +925,9 @@ async function handleUninstall(skill: Skill) {
   --skills-card-bg-top: rgba(255, 255, 255, 0.98);
   --skills-card-bg-bottom: rgba(244, 248, 251, 0.98);
   --skills-card-shadow:
-    0 18px 30px -22px rgba(15, 23, 42, 0.12),
-    0 10px 18px -16px rgba(59, 130, 246, 0.08);
+    0 18px 30px -22px rgba(15, 23, 42, 0.12), 0 10px 18px -16px rgba(59, 130, 246, 0.08);
   --skills-card-shadow-active:
-    0 22px 34px -22px rgba(15, 23, 42, 0.14),
-    0 14px 22px -16px rgba(59, 130, 246, 0.1);
+    0 22px 34px -22px rgba(15, 23, 42, 0.14), 0 14px 22px -16px rgba(59, 130, 246, 0.1);
   --skills-card-title: #0f172a;
   --skills-card-text: #475569;
   --skills-card-outline: rgba(255, 255, 255, 0.8);
@@ -954,8 +973,7 @@ async function handleUninstall(skill: Skill) {
   --skills-detail-modal-top: rgba(255, 255, 255, 0.99);
   --skills-detail-modal-bottom: rgba(243, 247, 250, 0.98);
   --skills-detail-shadow:
-    0 48px 120px -52px rgba(15, 23, 42, 0.3),
-    0 20px 36px -24px rgba(59, 130, 246, 0.12);
+    0 48px 120px -52px rgba(15, 23, 42, 0.3), 0 20px 36px -24px rgba(59, 130, 246, 0.12);
   --skills-detail-close-bg: rgba(226, 232, 240, 0.88);
   --skills-detail-close-bg-hover: rgba(203, 213, 225, 0.96);
   --skills-detail-section-border: rgba(203, 213, 225, 0.86);
@@ -1038,8 +1056,11 @@ async function handleUninstall(skill: Skill) {
   flex-direction: column;
   justify-content: space-between;
   gap: 6px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--skills-stat-bg) 88%, white 4%) 0%, var(--skills-stat-bg) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--skills-stat-bg) 88%, white 4%) 0%,
+    var(--skills-stat-bg) 100%
+  );
   color: var(--skills-stat-text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
@@ -1086,7 +1107,11 @@ async function handleUninstall(skill: Skill) {
   border: 1px solid var(--skills-card-border);
   border-radius: 20px;
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--skill-accent-a) 10%, transparent), transparent 32%),
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--skill-accent-a) 10%, transparent),
+      transparent 32%
+    ),
     linear-gradient(180deg, var(--skills-card-bg-top) 0%, var(--skills-card-bg-bottom) 100%);
   box-shadow:
     inset 0 1px 0 var(--skills-card-outline),
@@ -1428,8 +1453,16 @@ async function handleUninstall(skill: Skill) {
   border-radius: 22px;
   border: 1px solid var(--skills-detail-modal-border);
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--skill-accent-soft) 70%, transparent), transparent 30%),
-    linear-gradient(180deg, var(--skills-detail-modal-top) 0%, var(--skills-detail-modal-bottom) 100%);
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--skill-accent-soft) 70%, transparent),
+      transparent 30%
+    ),
+    linear-gradient(
+      180deg,
+      var(--skills-detail-modal-top) 0%,
+      var(--skills-detail-modal-bottom) 100%
+    );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     var(--skills-detail-shadow);
@@ -1461,7 +1494,10 @@ async function handleUninstall(skill: Skill) {
   font-size: 20px;
   cursor: pointer;
   z-index: 1;
-  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .skill-detail-modal__close:hover {
@@ -1500,8 +1536,11 @@ async function handleUninstall(skill: Skill) {
   padding: 16px;
   border: 1px solid var(--skills-detail-section-border);
   border-radius: 22px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--skills-detail-section-bg) 88%, white 4%) 0%, var(--skills-detail-section-bg) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--skills-detail-section-bg) 88%, white 4%) 0%,
+    var(--skills-detail-section-bg) 100%
+  );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 18px 28px -26px rgba(2, 6, 23, 0.38);
@@ -1656,8 +1695,11 @@ async function handleUninstall(skill: Skill) {
   padding: 12px 13px;
   border: 1px solid var(--skills-detail-section-border);
   border-radius: 16px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--skills-detail-section-bg) 90%, white 4%) 0%, var(--skills-detail-section-bg) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--skills-detail-section-bg) 90%, white 4%) 0%,
+    var(--skills-detail-section-bg) 100%
+  );
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
@@ -1679,8 +1721,11 @@ async function handleUninstall(skill: Skill) {
   border: 1px solid var(--skills-detail-section-border);
   border-radius: 20px;
   padding: 12px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--skills-detail-section-bg) 90%, white 4%) 0%, var(--skills-detail-section-bg) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--skills-detail-section-bg) 90%, white 4%) 0%,
+    var(--skills-detail-section-bg) 100%
+  );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 18px 26px -28px rgba(2, 6, 23, 0.34);
@@ -1798,8 +1843,11 @@ async function handleUninstall(skill: Skill) {
 .detail-docs__surface {
   border-radius: 18px;
   border: 1px solid color-mix(in srgb, var(--skills-detail-section-border) 92%, transparent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--skills-detail-section-bg-strong) 80%, white 2%) 0%, color-mix(in srgb, var(--skills-detail-section-bg) 94%, transparent) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--skills-detail-section-bg-strong) 80%, white 2%) 0%,
+    color-mix(in srgb, var(--skills-detail-section-bg) 94%, transparent) 100%
+  );
   padding: 18px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
@@ -1914,7 +1962,7 @@ async function handleUninstall(skill: Skill) {
   border-left: 1px solid var(--skills-detail-section-border);
 }
 
-.skill-content :deep(thead tr:first-child > * ) {
+.skill-content :deep(thead tr:first-child > *) {
   border-top: 1px solid var(--skills-detail-section-border);
 }
 
@@ -1981,8 +2029,9 @@ async function handleUninstall(skill: Skill) {
   border: 1px solid var(--skills-detail-code-border);
   padding: 2px 6px;
   border-radius: 6px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
   font-size: 11px;
 }
 

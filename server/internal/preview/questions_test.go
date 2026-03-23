@@ -35,6 +35,68 @@ func TestGetPresetQuestions_HasRequiredFields(t *testing.T) {
 	}
 }
 
+func TestCuratedEnglishQuestionsExposeCardMetadata(t *testing.T) {
+	service := NewQuestionsService()
+
+	questions := service.GetAllQuestions("en")
+
+	if len(questions) != 12 {
+		t.Fatalf("GetAllQuestions(en) returned %d questions, want 12", len(questions))
+	}
+
+	for i, q := range questions {
+		if q.Title == "" {
+			t.Errorf("Question %d has empty Title", i)
+		}
+		if q.Description == "" {
+			t.Errorf("Question %d has empty Description", i)
+		}
+		if q.Prompt == "" {
+			t.Errorf("Question %d has empty Prompt", i)
+		}
+		if q.Text != q.Prompt {
+			t.Errorf("Question %d has Text != Prompt", i)
+		}
+		if len(q.Tags) == 0 {
+			t.Errorf("Question %d has no Tags", i)
+		}
+		if q.EditorialScore <= 0 {
+			t.Errorf("Question %d has invalid EditorialScore=%d", i, q.EditorialScore)
+		}
+	}
+}
+
+func TestCuratedChineseQuestionsExposeCardMetadata(t *testing.T) {
+	service := NewQuestionsService()
+
+	questions := service.GetAllQuestions("zh")
+
+	if len(questions) != 12 {
+		t.Fatalf("GetAllQuestions(zh) returned %d questions, want 12", len(questions))
+	}
+
+	for i, q := range questions {
+		if q.Title == "" {
+			t.Errorf("Question %d has empty Title", i)
+		}
+		if q.Description == "" {
+			t.Errorf("Question %d has empty Description", i)
+		}
+		if q.Prompt == "" {
+			t.Errorf("Question %d has empty Prompt", i)
+		}
+		if q.Text != q.Prompt {
+			t.Errorf("Question %d has Text != Prompt", i)
+		}
+		if len(q.Tags) == 0 {
+			t.Errorf("Question %d has no Tags", i)
+		}
+		if q.EditorialScore <= 0 {
+			t.Errorf("Question %d has invalid EditorialScore=%d", i, q.EditorialScore)
+		}
+	}
+}
+
 func TestGetPresetQuestions_RandomSelection(t *testing.T) {
 	service := NewQuestionsService()
 

@@ -10,6 +10,7 @@ import { systemApi } from '@/api/index'
 import { companionApi } from '@/api/companion'
 import { getActiveConnections, getConnectionStats } from '@/api/connections'
 import { useAuthStore } from '@/stores/auth'
+import { PagePermissions } from '@/constants/pagePermissions'
 
 vi.mock('@/api/approval', () => ({
   approvalApi: {
@@ -51,14 +52,15 @@ vi.mock('@/api/connections', () => ({
 }))
 
 const replaceMock = vi.fn()
+const routeMock = {
+  query: {} as Record<string, unknown>,
+}
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
   return {
     ...actual,
-    useRoute: () => ({
-      query: {},
-    }),
+    useRoute: () => routeMock,
     useRouter: () => ({
       replace: replaceMock,
     }),
@@ -142,11 +144,21 @@ function createTestI18n() {
   })
 }
 
-function mountSecurityView() {
+function mountSecurityView(
+  options: {
+    role?: 'admin' | 'user' | 'guest'
+    permissions?: string[]
+    permissionsLoaded?: boolean
+    token?: string | null
+  } = {}
+) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const authStore = useAuthStore()
-  ;(authStore as any).user = { role: 'admin' }
+  ;(authStore as any).user = { role: options.role ?? 'admin' }
+  ;(authStore as any).permissions = options.permissions ?? []
+  ;(authStore as any).permissionsLoaded = options.permissionsLoaded ?? false
+  ;(authStore as any).token = options.token ?? 'test-token'
 
   return shallowMount(SecurityView, {
     global: {
@@ -157,6 +169,7 @@ function mountSecurityView() {
 
 describe('SecurityView approved browser sites', () => {
   beforeEach(() => {
+    routeMock.query = {}
     localStorageMock.clear()
     localStorageMock.setItem('security_last_scan_timestamp', new Date().toISOString())
     vi.clearAllMocks()
@@ -243,7 +256,7 @@ describe('SecurityView approved browser sites', () => {
     wrapper.unmount()
   })
 
-  it('shows harness as a security tab and removes the standalone network tab', async () => {
+  it('keeps network settings under controls while exposing a harness tab', async () => {
     const wrapper = mountSecurityView()
 
     await flushPromises()
@@ -253,14 +266,64 @@ describe('SecurityView approved browser sites', () => {
     expect(tabLabels.some((label) => label.includes('Harness'))).toBe(true)
     expect(tabLabels.some((label) => label.trim() === 'Network')).toBe(false)
 
+    const controlsTab = wrapper.findAll('button[role="tab"]').find((node) => {
+      return node.text().includes('Security Controls')
+    })
+    expect(controlsTab).toBeTruthy()
+
+    await controlsTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'NetworkSettings' }).exists()).toBe(true)
+
     const harnessTab = wrapper.findAll('button[role="tab"]').find((node) => {
       return node.text().includes('Harness')
     })
     expect(harnessTab).toBeTruthy()
+    expect(harnessTab!.text()).toContain('Beta')
 
     await harnessTab!.trigger('click')
     await flushPromises()
 
+    expect(wrapper.findComponent({ name: 'HarnessGroupsView' }).exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('honors the harness tab query and renders the harness panel inside security', async () => {
+    routeMock.query = { tab: 'harness' }
+
+    const wrapper = mountSecurityView()
+
+    await flushPromises()
+
+    const harnessTab = wrapper.findAll('button[role="tab"]').find((node) => {
+      return node.text().includes('Harness')
+    })
+    expect(harnessTab).toBeTruthy()
+    expect(harnessTab!.attributes('aria-selected')).toBe('true')
+    expect(wrapper.findComponent({ name: 'HarnessGroupsView' }).exists()).toBe(true)
+    expect(replaceMock).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
+  it('shows the harness tab for security users without requiring tools permission', async () => {
+    routeMock.query = { tab: 'harness' }
+
+    const wrapper = mountSecurityView({
+      role: 'user',
+      permissions: [PagePermissions.SECURITY],
+      permissionsLoaded: true,
+    })
+
+    await flushPromises()
+
+    const harnessTab = wrapper.findAll('button[role="tab"]').find((node) => {
+      return node.text().includes('Harness')
+    })
+    expect(harnessTab).toBeTruthy()
+    expect(harnessTab!.attributes('aria-selected')).toBe('true')
     expect(wrapper.findComponent({ name: 'HarnessGroupsView' }).exists()).toBe(true)
 
     wrapper.unmount()

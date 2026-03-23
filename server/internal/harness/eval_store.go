@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -317,6 +318,104 @@ func (s *SQLiteStore) ListEvalRuns(ctx context.Context, filter EvalRunFilter) ([
 	return out, rows.Err()
 }
 
+func (s *SQLiteStore) ClearDefaultBaseline(ctx context.Context, evalSpecID string) error {
+	if strings.TrimSpace(evalSpecID) == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE harness_baselines SET is_default = 0, updated_at = ? WHERE eval_spec_id = ? AND is_default = 1`,
+		timeutil.NowTime(), strings.TrimSpace(evalSpecID))
+	return err
+}
+
+func (s *SQLiteStore) CreateBaseline(ctx context.Context, baseline *Baseline) error {
+	if baseline == nil {
+		return fmt.Errorf("baseline is required")
+	}
+	now := timeutil.NowTime()
+	if baseline.CreatedAt.IsZero() {
+		baseline.CreatedAt = now
+	}
+	if baseline.UpdatedAt.IsZero() {
+		baseline.UpdatedAt = baseline.CreatedAt
+	}
+	isDefault := 0
+	if baseline.IsDefault {
+		isDefault = 1
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO harness_baselines (
+		id, name, subject, owner_user_id, eval_spec_id, eval_run_id, is_default, metadata_json, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		baseline.ID, baseline.Name, baseline.Subject, baseline.OwnerUserID, baseline.EvalSpecID, baseline.EvalRunID, isDefault,
+		marshalMetadata(baseline.Metadata), baseline.CreatedAt, baseline.UpdatedAt,
+	)
+	return err
+}
+
+func (s *SQLiteStore) GetBaseline(ctx context.Context, id string) (*Baseline, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT
+		id, name, subject, owner_user_id, eval_spec_id, eval_run_id, is_default, metadata_json, created_at, updated_at
+		FROM harness_baselines WHERE id = ?`, id)
+	return scanBaseline(row)
+}
+
+func (s *SQLiteStore) ListBaselines(ctx context.Context, filter BaselineFilter) ([]Baseline, error) {
+	query := `SELECT
+		id, name, subject, owner_user_id, eval_spec_id, eval_run_id, is_default, metadata_json, created_at, updated_at
+		FROM harness_baselines`
+	var (
+		clauses []string
+		args    []interface{}
+	)
+	if v := strings.TrimSpace(filter.OwnerUserID); v != "" {
+		clauses = append(clauses, "owner_user_id = ?")
+		args = append(args, v)
+	}
+	if v := strings.TrimSpace(filter.EvalSpecID); v != "" {
+		clauses = append(clauses, "eval_spec_id = ?")
+		args = append(args, v)
+	}
+	if len(clauses) > 0 {
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	query += " ORDER BY is_default DESC, updated_at DESC"
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	query += " LIMIT ?"
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Baseline
+	for rows.Next() {
+		baseline, scanErr := scanBaseline(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		out = append(out, *baseline)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLiteStore) CreateComparisonReport(ctx context.Context, report *ComparisonReport) error {
+	if report == nil {
+		return fmt.Errorf("comparison report is required")
+	}
+	if report.CreatedAt.IsZero() {
+		report.CreatedAt = timeutil.NowTime()
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO harness_comparison_reports (
+		id, owner_user_id, baseline_id, eval_spec_id, base_eval_run_id, target_eval_run_id, summary_json, regressions_json, improvements_json, scorer_delta_json, created_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		report.ID, report.OwnerUserID, report.BaselineID, report.EvalSpecID, report.BaseEvalRunID, report.TargetEvalRunID,
+		marshalMetadata(report.Summary), marshalInterface(report.Regressions), marshalInterface(report.Improvements), marshalMetadata(report.ScorerDelta), report.CreatedAt,
+	)
+	return err
+}
+
 func scanDataset(scanner rowScanner) (*Dataset, error) {
 	var (
 		dataset     Dataset
@@ -395,4 +494,39 @@ func scanEvalRun(scanner rowScanner) (*EvalRun, error) {
 		evalRun.FinishedAt = &ts
 	}
 	return &evalRun, nil
+}
+
+func scanBaseline(scanner rowScanner) (*Baseline, error) {
+	var (
+		baseline     Baseline
+		isDefault    int
+		metadataJSON string
+	)
+	if err := scanner.Scan(
+		&baseline.ID, &baseline.Name, &baseline.Subject, &baseline.OwnerUserID, &baseline.EvalSpecID, &baseline.EvalRunID, &isDefault, &metadataJSON,
+		&baseline.CreatedAt, &baseline.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	baseline.IsDefault = isDefault > 0
+	baseline.Metadata = unmarshalMetadata(metadataJSON)
+	return &baseline, nil
+}
+
+func scanComparisonReport(scanner rowScanner) (*ComparisonReport, error) {
+	var (
+		report                                                          ComparisonReport
+		summaryJSON, regressionsJSON, improvementsJSON, scorerDeltaJSON string
+	)
+	if err := scanner.Scan(
+		&report.ID, &report.OwnerUserID, &report.BaselineID, &report.EvalSpecID, &report.BaseEvalRunID, &report.TargetEvalRunID,
+		&summaryJSON, &regressionsJSON, &improvementsJSON, &scorerDeltaJSON, &report.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+	report.Summary = unmarshalMetadata(summaryJSON)
+	_ = json.Unmarshal([]byte(strings.TrimSpace(regressionsJSON)), &report.Regressions)
+	_ = json.Unmarshal([]byte(strings.TrimSpace(improvementsJSON)), &report.Improvements)
+	report.ScorerDelta = unmarshalMetadata(scorerDeltaJSON)
+	return &report, nil
 }

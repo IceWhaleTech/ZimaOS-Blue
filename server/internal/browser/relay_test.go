@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -170,6 +171,38 @@ func TestRelayServerBridgesExtensionAndCDP(t *testing.T) {
 	if got := result["ok"]; got != true {
 		t.Fatalf("forwarded result ok = %v, want true", got)
 	}
+}
+
+func TestRodServiceStartSucceedsAgainstBuiltInRelay(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.RelayEnabled = true
+	cfg.RelayPort = freeRelayPort(t)
+	cfg.RelayToken = "test-token"
+
+	relay, err := StartRelayServer(cfg, "")
+	if err != nil {
+		t.Fatalf("StartRelayServer() error = %v", err)
+	}
+	defer func() { _ = relay.Close() }()
+
+	serviceCfg := DefaultConfig()
+	serviceCfg.RelayEnabled = true
+	serviceCfg.RelayHost = cfg.RelayHost
+	serviceCfg.RelayPort = cfg.RelayPort
+	serviceCfg.RelayToken = cfg.RelayToken
+
+	service, err := NewService(serviceCfg)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := service.Start(ctx); err != nil {
+		t.Fatalf("service.Start() error = %v", err)
+	}
+	defer func() { _ = service.Stop(context.Background()) }()
 }
 
 func TestEnsureRelayExtensionDirWritesAssets(t *testing.T) {

@@ -390,6 +390,9 @@ func imageFallbackFromMediaTask(task *mediagen.MediaTask) *tools.MediaFallbackIn
 		SourceURLs:  append([]string(nil), task.FallbackInfo.SourceURLs...),
 		SpaceURL:    task.FallbackInfo.SpaceURL,
 		Disclosure:  task.FallbackInfo.Disclosure,
+		RenderMode:  task.FallbackInfo.RenderMode,
+		TemplateID:  task.FallbackInfo.TemplateID,
+		StylePreset: task.FallbackInfo.StylePreset,
 	}
 }
 

@@ -21,6 +21,6 @@ func BuildKnowledgeBaseResearchGuidance() string {
 		"<artifact name=\"audit_log\">conflicts, gaps, freshness_risks, excluded_claims</artifact>" +
 		"</artifacts>" +
 		"<report_sections>Include: executive summary; scope and method; object map; source inventory; per-object analysis; cross-object comparison; recommendations after evidence synthesis when useful; conflicts, freshness, and gaps; references.</report_sections>" +
-		"<rules>Time-sensitive claims must include dates or an explicit as-of boundary. If sources conflict, create a conflict record and state the current best-supported view. Use the deep_research skill for broad research tasks when available; otherwise emulate the same staged workflow with web_search plus web_fetch or browser. Do not stop at generic next steps unless the user explicitly asks for that format.</rules>" +
+		"<rules>Time-sensitive claims must include dates or an explicit as-of boundary. If sources conflict, create a conflict record and state the current best-supported view. Use the deep_research skill for broad research tasks when available; otherwise emulate the same staged workflow with web_query plus browser when needed. Do not stop at generic next steps unless the user explicitly asks for that format.</rules>" +
 		"</knowledge_base_research>"
 }

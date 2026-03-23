@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,25 +21,56 @@ import (
 
 // RodService implements the Service interface using Rod.
 type RodService struct {
-	config   *Config
-	pool     *Pool
-	security *SecurityChecker
-	recipes  *RecipeRegistry
-	tabs     map[string]*tabInfo
-	tabsMu   sync.RWMutex
-	started  bool
-	mu       sync.RWMutex
+	config            *Config
+	pool              *Pool
+	security          *SecurityChecker
+	recipes           *RecipeRegistry
+	tabs              map[string]*tabInfo
+	tabsMu            sync.RWMutex
+	screenshotHistory map[string][]SessionScreenshot
+	historyMu         sync.RWMutex
+	started           bool
+	mu                sync.RWMutex
 }
+
+const (
+	maxSessionScreenshotHistory   = 24
+	browserNetworkBodySampleLimit = 512
+	detachedMonitorTargetID       = "monitor-detached-latest"
+)
 
 // tabInfo stores information about an open tab.
 type tabInfo struct {
-	page     *rod.Page
-	browser  *rod.Browser
-	targetID string
-	url      string
-	title    string
-	active   bool
-	console  []ConsoleMessage
+	page      *rod.Page
+	browser   *rod.Browser
+	targetID  string
+	url       string
+	title     string
+	active    bool
+	detached  bool
+	console   []ConsoleMessage
+	network   *networkCaptureState
+	networkMu sync.Mutex
+}
+
+type networkCaptureState struct {
+	mu           sync.Mutex
+	cancel       func()
+	page         *rod.Page
+	lastActivity time.Time
+	events       []ObservedNetworkEvent
+	pending      map[proto.NetworkRequestID]*observedNetworkBuilder
+}
+
+type observedNetworkBuilder struct {
+	Method       string
+	URL          string
+	Status       int
+	ContentType  string
+	ResourceType string
+	Initiator    string
+	Headers      map[string]string
+	StartedAt    time.Time
 }
 
 // NewService creates a new browser service.
@@ -53,11 +85,12 @@ func NewService(config *Config) (*RodService, error) {
 	}
 
 	return &RodService{
-		config:   config,
-		pool:     pool,
-		security: NewSecurityChecker(config),
-		recipes:  NewRecipeRegistry(),
-		tabs:     make(map[string]*tabInfo),
+		config:            config,
+		pool:              pool,
+		security:          NewSecurityChecker(config),
+		recipes:           NewRecipeRegistry(),
+		tabs:              make(map[string]*tabInfo),
+		screenshotHistory: make(map[string][]SessionScreenshot),
 	}, nil
 }
 
@@ -81,9 +114,18 @@ func isConnectionClosed(err error) bool {
 
 // removeTab cleans up a stale tab entry.
 func (s *RodService) removeTab(tab *tabInfo) {
+	if tab != nil {
+		tab.networkMu.Lock()
+		if tab.network != nil && tab.network.cancel != nil {
+			tab.network.cancel()
+		}
+		tab.network = nil
+		tab.networkMu.Unlock()
+	}
 	s.tabsMu.Lock()
 	delete(s.tabs, tab.targetID)
 	s.tabsMu.Unlock()
+	s.clearSessionScreenshotHistory(tab.targetID)
 	if tab.page != nil && !s.config.UsesRelayDriver() {
 		_ = tab.page.Close()
 	}
@@ -119,12 +161,21 @@ func (s *RodService) Stop(ctx context.Context) error {
 	// Close all tabs
 	s.tabsMu.Lock()
 	for _, tab := range s.tabs {
+		tab.networkMu.Lock()
+		if tab.network != nil && tab.network.cancel != nil {
+			tab.network.cancel()
+		}
+		tab.network = nil
+		tab.networkMu.Unlock()
 		if tab.page != nil && !s.config.UsesRelayDriver() {
 			_ = tab.page.Close()
 		}
 	}
 	s.tabs = make(map[string]*tabInfo)
 	s.tabsMu.Unlock()
+	s.historyMu.Lock()
+	s.screenshotHistory = make(map[string][]SessionScreenshot)
+	s.historyMu.Unlock()
 
 	// Close the pool (kills Chromium processes)
 	_ = s.pool.Close()
@@ -163,6 +214,7 @@ func (s *RodService) Status(ctx context.Context) (*StatusResponse, error) {
 
 // Tabs returns all open tabs.
 func (s *RodService) Tabs(ctx context.Context) ([]*Tab, error) {
+	s.pruneExpiredSessionScreenshots()
 	if err := s.syncRelayTabs(ctx); err != nil {
 		return nil, err
 	}
@@ -204,7 +256,19 @@ func (s *RodService) syncRelayTabs(ctx context.Context) error {
 
 	activeID := ""
 	firstTargetID := ""
+	detachedTabs := make([]*tabInfo, 0, 1)
 	for id, tab := range s.tabs {
+		if tab != nil && tab.detached {
+			detachedTabs = append(detachedTabs, &tabInfo{
+				targetID: id,
+				url:      tab.url,
+				title:    tab.title,
+				active:   false,
+				detached: true,
+				console:  append([]ConsoleMessage(nil), tab.console...),
+			})
+			continue
+		}
 		if tab != nil && tab.active {
 			activeID = id
 			break
@@ -259,8 +323,333 @@ func (s *RodService) syncRelayTabs(ctx context.Context) error {
 		}
 	}
 
+	for id, prev := range s.tabs {
+		if nextTab, ok := next[id]; ok && prev != nil {
+			if prev.network != nil && prev.page == nextTab.page {
+				nextTab.network = prev.network
+			} else if prev.network != nil && prev.network.cancel != nil {
+				prev.network.cancel()
+			}
+			continue
+		}
+		if prev != nil && prev.network != nil && prev.network.cancel != nil {
+			prev.network.cancel()
+		}
+	}
+
+	for _, tab := range detachedTabs {
+		if tab == nil || strings.TrimSpace(tab.targetID) == "" {
+			continue
+		}
+		next[tab.targetID] = tab
+	}
+
 	s.tabs = next
 	return nil
+}
+
+func (s *RodService) ensureTabNetworkCapture(tab *tabInfo, reset bool) {
+	if s == nil || tab == nil || tab.page == nil || s.config == nil || !s.config.NetworkObserveEnabled {
+		return
+	}
+
+	tab.networkMu.Lock()
+	defer tab.networkMu.Unlock()
+
+	if tab.network != nil && tab.network.page == tab.page {
+		if reset {
+			tab.network.reset()
+		}
+		return
+	}
+	if tab.network != nil && tab.network.cancel != nil {
+		tab.network.cancel()
+	}
+
+	listenerPage, cancel := tab.page.WithCancel()
+	if err := (proto.NetworkEnable{}).Call(listenerPage); err != nil {
+		cancel()
+		return
+	}
+
+	state := &networkCaptureState{
+		cancel:       cancel,
+		page:         tab.page,
+		lastActivity: time.Now(),
+		pending:      make(map[proto.NetworkRequestID]*observedNetworkBuilder),
+	}
+	tab.network = state
+
+	go listenerPage.EachEvent(
+		func(e *proto.NetworkRequestWillBeSent) {
+			state.recordRequest(e)
+		},
+		func(e *proto.NetworkResponseReceived) {
+			state.recordResponse(e)
+		},
+		func(e *proto.NetworkLoadingFinished) {
+			state.recordFinished(listenerPage, e)
+		},
+		func(e *proto.NetworkLoadingFailed) {
+			state.recordFailed(e)
+		},
+	)()
+}
+
+func (s *networkCaptureState) reset() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = nil
+	s.pending = make(map[proto.NetworkRequestID]*observedNetworkBuilder)
+	s.lastActivity = time.Now()
+}
+
+func (s *networkCaptureState) recordRequest(e *proto.NetworkRequestWillBeSent) {
+	if s == nil || e == nil || e.Request == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pending == nil {
+		s.pending = make(map[proto.NetworkRequestID]*observedNetworkBuilder)
+	}
+	s.pending[e.RequestID] = &observedNetworkBuilder{
+		Method:       strings.TrimSpace(e.Request.Method),
+		URL:          strings.TrimSpace(e.Request.URL),
+		ResourceType: strings.TrimSpace(string(e.Type)),
+		Initiator:    networkInitiatorLabel(e.Initiator),
+		Headers:      sanitizeObservedHeaders(e.Request.Headers),
+		StartedAt:    time.Now(),
+	}
+	s.lastActivity = time.Now()
+}
+
+func (s *networkCaptureState) recordResponse(e *proto.NetworkResponseReceived) {
+	if s == nil || e == nil || e.Response == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pending == nil {
+		s.pending = make(map[proto.NetworkRequestID]*observedNetworkBuilder)
+	}
+	headers := sanitizeObservedHeaders(e.Response.Headers)
+	builder := s.pending[e.RequestID]
+	if builder == nil {
+		builder = &observedNetworkBuilder{
+			URL:          strings.TrimSpace(e.Response.URL),
+			ResourceType: strings.TrimSpace(string(e.Type)),
+			StartedAt:    time.Now(),
+		}
+		s.pending[e.RequestID] = builder
+	}
+	builder.Status = e.Response.Status
+	builder.ContentType = firstObservedNonEmpty(strings.TrimSpace(e.Response.MIMEType), headers["content-type"])
+	if builder.URL == "" {
+		builder.URL = strings.TrimSpace(e.Response.URL)
+	}
+	if builder.ResourceType == "" {
+		builder.ResourceType = strings.TrimSpace(string(e.Type))
+	}
+	builder.Headers = mergeObservedHeaderSets(builder.Headers, headers)
+	s.lastActivity = time.Now()
+}
+
+func (s *networkCaptureState) recordFinished(page *rod.Page, e *proto.NetworkLoadingFinished) {
+	if s == nil || e == nil {
+		return
+	}
+
+	s.mu.Lock()
+	builder := s.pending[e.RequestID]
+	delete(s.pending, e.RequestID)
+	s.lastActivity = time.Now()
+	s.mu.Unlock()
+	if builder == nil {
+		return
+	}
+
+	event := ObservedNetworkEvent{
+		Method:       builder.Method,
+		URL:          builder.URL,
+		Status:       builder.Status,
+		ContentType:  builder.ContentType,
+		ResourceType: builder.ResourceType,
+		Initiator:    builder.Initiator,
+		DurationMS:   time.Since(builder.StartedAt).Milliseconds(),
+		Headers:      cloneObservedHeaderMap(builder.Headers),
+	}
+	if shouldCaptureObservedBody(event.ContentType, event.ResourceType) && page != nil {
+		if body, err := (proto.NetworkGetResponseBody{RequestID: e.RequestID}).Call(page); err == nil && body != nil {
+			event.BodySample = sanitizeObservedBodySample(body.Body, body.Base64Encoded, event.ContentType)
+		}
+	}
+
+	s.mu.Lock()
+	s.events = append(s.events, event)
+	if len(s.events) > 64 {
+		s.events = append([]ObservedNetworkEvent(nil), s.events[len(s.events)-64:]...)
+	}
+	s.lastActivity = time.Now()
+	s.mu.Unlock()
+}
+
+func (s *networkCaptureState) recordFailed(e *proto.NetworkLoadingFailed) {
+	if s == nil || e == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.pending, e.RequestID)
+	s.lastActivity = time.Now()
+}
+
+func (s *networkCaptureState) snapshot(maxEntries int, clear bool) []ObservedNetworkEvent {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	events := append([]ObservedNetworkEvent(nil), s.events...)
+	if maxEntries > 0 && len(events) > maxEntries {
+		events = append([]ObservedNetworkEvent(nil), events[len(events)-maxEntries:]...)
+	}
+	if clear {
+		s.events = nil
+	}
+	return events
+}
+
+func (s *networkCaptureState) idleState() (time.Time, int) {
+	if s == nil {
+		return time.Time{}, 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastActivity, len(s.pending)
+}
+
+func networkInitiatorLabel(initiator *proto.NetworkInitiator) string {
+	if initiator == nil {
+		return ""
+	}
+	return strings.TrimSpace(string(initiator.Type))
+}
+
+func sanitizeObservedHeaders(headers proto.NetworkHeaders) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+	out := make(map[string]string)
+	for key, value := range headers {
+		lower := strings.ToLower(strings.TrimSpace(key))
+		switch lower {
+		case "accept", "content-type", "location", "x-requested-with", "cf-ray", "cf-cache-status", "server", "via":
+			if text := sanitizeObservedHeaderValue(value); text != "" {
+				out[lower] = text
+			}
+		case "authorization", "cookie", "set-cookie":
+			out[lower] = "<redacted>"
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func sanitizeObservedHeaderValue(value interface{}) string {
+	text := strings.TrimSpace(fmt.Sprint(value))
+	text = strings.Trim(text, "\"")
+	if text == "" || text == "<nil>" {
+		return ""
+	}
+	return truncateObservedString(text, 160)
+}
+
+func mergeObservedHeaderSets(base, extra map[string]string) map[string]string {
+	if len(base) == 0 && len(extra) == 0 {
+		return nil
+	}
+	out := cloneObservedHeaderMap(base)
+	if out == nil {
+		out = make(map[string]string, len(extra))
+	}
+	for key, value := range extra {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneObservedHeaderMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]string, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
+}
+
+func shouldCaptureObservedBody(contentType, resourceType string) bool {
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	resourceType = strings.ToLower(strings.TrimSpace(resourceType))
+	if strings.Contains(contentType, "json") || strings.Contains(contentType, "javascript") || strings.Contains(contentType, "text/") {
+		return true
+	}
+	switch resourceType {
+	case "xhr", "fetch", "document":
+		return true
+	default:
+		return false
+	}
+}
+
+func sanitizeObservedBodySample(raw string, base64Encoded bool, contentType string) string {
+	data := []byte(raw)
+	if base64Encoded {
+		decoded, err := base64.StdEncoding.DecodeString(raw)
+		if err == nil {
+			data = decoded
+		}
+	}
+	if len(data) == 0 {
+		return ""
+	}
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	if strings.Contains(contentType, "json") && !json.Valid(data) {
+		return ""
+	}
+	text := strings.TrimSpace(string(data))
+	if text == "" {
+		return ""
+	}
+	text = strings.NewReplacer("\r", " ", "\n", " ", "\t", " ").Replace(text)
+	return truncateObservedString(strings.Join(strings.Fields(text), " "), browserNetworkBodySampleLimit)
+}
+
+func truncateObservedString(text string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) <= limit {
+		return string(runes)
+	}
+	return string(runes[:limit]) + "..."
+}
+
+func firstObservedNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // OpenTab opens a new tab with the given URL.
@@ -274,6 +663,12 @@ func (s *RodService) OpenTab(ctx context.Context, url string) (*Tab, error) {
 	if err != nil {
 		return nil, err
 	}
+	tab := &tabInfo{
+		page:    page,
+		browser: browser,
+		console: make([]ConsoleMessage, 0),
+	}
+	s.ensureTabNetworkCapture(tab, true)
 
 	// Navigate to URL
 	timeout := GetTimeout(0, s.config)
@@ -304,15 +699,11 @@ func (s *RodService) OpenTab(ctx context.Context, url string) (*Tab, error) {
 	for _, t := range s.tabs {
 		t.active = false
 	}
-	s.tabs[targetID] = &tabInfo{
-		page:     page,
-		browser:  browser,
-		targetID: targetID,
-		url:      info.URL,
-		title:    info.Title,
-		active:   true,
-		console:  make([]ConsoleMessage, 0),
-	}
+	tab.targetID = targetID
+	tab.url = info.URL
+	tab.title = info.Title
+	tab.active = true
+	s.tabs[targetID] = tab
 	s.tabsMu.Unlock()
 
 	return &Tab{
@@ -356,12 +747,229 @@ func (s *RodService) CloseTab(ctx context.Context, targetID string) error {
 		// Ignore close errors — the connection may already be dead.
 		_ = tab.page.Close()
 	}
+	tab.networkMu.Lock()
+	if tab.network != nil && tab.network.cancel != nil {
+		tab.network.cancel()
+	}
+	tab.network = nil
+	tab.networkMu.Unlock()
 	if tab.browser != nil {
 		s.pool.Release(tab.browser)
 	}
 	delete(s.tabs, targetID)
+	s.clearSessionScreenshotHistory(targetID)
 
 	return nil
+}
+
+func (s *RodService) rememberSessionScreenshot(tab *tabInfo, data string, scope string) {
+	if s == nil || tab == nil || strings.TrimSpace(tab.targetID) == "" || strings.TrimSpace(data) == "" {
+		return
+	}
+
+	s.pruneExpiredSessionScreenshots()
+
+	entry := SessionScreenshot{
+		Data:       data,
+		URL:        strings.TrimSpace(tab.url),
+		Title:      strings.TrimSpace(tab.title),
+		CapturedAt: timeutil.NowTime().Format(time.RFC3339),
+		Scope:      strings.TrimSpace(scope),
+	}
+
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+
+	frames := s.screenshotHistory[tab.targetID]
+	if count := len(frames); count > 0 && frames[count-1].Data == entry.Data {
+		frames[count-1].CapturedAt = entry.CapturedAt
+		if entry.URL != "" {
+			frames[count-1].URL = entry.URL
+		}
+		if entry.Title != "" {
+			frames[count-1].Title = entry.Title
+		}
+		if entry.Scope != "" {
+			frames[count-1].Scope = entry.Scope
+		}
+		s.screenshotHistory[tab.targetID] = frames
+		return
+	}
+
+	frames = append(frames, entry)
+	if len(frames) > maxSessionScreenshotHistory {
+		frames = append([]SessionScreenshot(nil), frames[len(frames)-maxSessionScreenshotHistory:]...)
+	}
+	s.screenshotHistory[tab.targetID] = frames
+}
+
+func (s *RodService) ensureDetachedMonitorTab(url string, title string) *tabInfo {
+	if s == nil {
+		return nil
+	}
+
+	s.tabsMu.Lock()
+	defer s.tabsMu.Unlock()
+
+	tab := s.tabs[detachedMonitorTargetID]
+	if tab == nil {
+		tab = &tabInfo{
+			targetID: detachedMonitorTargetID,
+			active:   false,
+			detached: true,
+			console:  make([]ConsoleMessage, 0),
+		}
+		s.tabs[detachedMonitorTargetID] = tab
+	}
+	tab.url = strings.TrimSpace(url)
+	tab.title = strings.TrimSpace(title)
+	tab.active = false
+	tab.detached = true
+	return tab
+}
+
+func (s *RodService) rememberDetachedMonitorScreenshot(url string, title string, data string, scope string) {
+	if s == nil || strings.TrimSpace(data) == "" {
+		return
+	}
+	tab := s.ensureDetachedMonitorTab(url, title)
+	s.rememberSessionScreenshot(tab, data, scope)
+}
+
+func (s *RodService) captureDetachedMonitorPageScreenshot(page *rod.Page, scope string) {
+	if s == nil || page == nil {
+		return
+	}
+
+	data, err := page.Screenshot(false, nil)
+	if err != nil || len(data) == 0 {
+		return
+	}
+
+	info, _ := page.Info()
+	s.rememberDetachedMonitorScreenshot(
+		info.URL,
+		info.Title,
+		base64.StdEncoding.EncodeToString(data),
+		scope,
+	)
+}
+
+func (s *RodService) sessionScreenshotRetention() time.Duration {
+	if s == nil || s.config == nil {
+		return 0
+	}
+	return s.config.SessionScreenshotRetention
+}
+
+func (s *RodService) pruneExpiredSessionScreenshots() {
+	if s == nil {
+		return
+	}
+	retention := s.sessionScreenshotRetention()
+	if retention <= 0 {
+		return
+	}
+
+	cutoff := timeutil.NowTime().Add(-retention)
+	staleDetachedIDs := make([]string, 0)
+
+	s.historyMu.Lock()
+	for targetID, frames := range s.screenshotHistory {
+		if len(frames) == 0 {
+			delete(s.screenshotHistory, targetID)
+			staleDetachedIDs = append(staleDetachedIDs, targetID)
+			continue
+		}
+
+		kept := make([]SessionScreenshot, 0, len(frames))
+		for _, frame := range frames {
+			capturedAt := strings.TrimSpace(frame.CapturedAt)
+			if capturedAt == "" {
+				kept = append(kept, frame)
+				continue
+			}
+
+			ts, err := time.Parse(time.RFC3339, capturedAt)
+			if err != nil || !ts.Before(cutoff) {
+				kept = append(kept, frame)
+			}
+		}
+
+		if len(kept) == 0 {
+			delete(s.screenshotHistory, targetID)
+			staleDetachedIDs = append(staleDetachedIDs, targetID)
+			continue
+		}
+
+		s.screenshotHistory[targetID] = kept
+	}
+	s.historyMu.Unlock()
+
+	if len(staleDetachedIDs) == 0 {
+		return
+	}
+
+	s.tabsMu.Lock()
+	for _, targetID := range staleDetachedIDs {
+		tab := s.tabs[targetID]
+		if tab != nil && tab.detached {
+			delete(s.tabs, targetID)
+		}
+	}
+	s.tabsMu.Unlock()
+}
+
+// CleanupExpiredMonitorFrames removes expired monitor frame history using the
+// configured retention window.
+func (s *RodService) CleanupExpiredMonitorFrames() {
+	s.pruneExpiredSessionScreenshots()
+}
+
+// SetSessionScreenshotRetention updates the monitor frame retention window and
+// immediately prunes any expired history.
+func (s *RodService) SetSessionScreenshotRetention(retention time.Duration) {
+	if s == nil {
+		return
+	}
+	if retention < 0 {
+		retention = 0
+	}
+	if s.config != nil {
+		s.config.SessionScreenshotRetention = retention
+	}
+	s.pruneExpiredSessionScreenshots()
+}
+
+func (s *RodService) clearSessionScreenshotHistory(targetID string) {
+	if s == nil || strings.TrimSpace(targetID) == "" {
+		return
+	}
+	s.historyMu.Lock()
+	delete(s.screenshotHistory, targetID)
+	s.historyMu.Unlock()
+}
+
+// SessionScreenshotHistory returns newest-first screenshots captured for a tab.
+func (s *RodService) SessionScreenshotHistory(targetID string) []SessionScreenshot {
+	if s == nil || strings.TrimSpace(targetID) == "" {
+		return nil
+	}
+
+	s.pruneExpiredSessionScreenshots()
+
+	s.historyMu.RLock()
+	frames := s.screenshotHistory[targetID]
+	s.historyMu.RUnlock()
+	if len(frames) == 0 {
+		return nil
+	}
+
+	reversed := make([]SessionScreenshot, 0, len(frames))
+	for idx := len(frames) - 1; idx >= 0; idx-- {
+		reversed = append(reversed, frames[idx])
+	}
+	return reversed
 }
 
 // Navigate navigates to a URL in the current or specified tab.
@@ -391,6 +999,8 @@ func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*Navig
 			TargetID: newTab.TargetID,
 		}, nil
 	}
+
+	s.ensureTabNetworkCapture(tab, true)
 
 	timeout := GetTimeout(req.Timeout, s.config)
 	err = tab.page.Timeout(timeout).Navigate(normalizedURL)
@@ -532,9 +1142,17 @@ func (s *RodService) Screenshot(ctx context.Context, req *ScreenshotRequest) (*S
 	}
 
 	info, _ := page.Info()
+	encoded := base64.StdEncoding.EncodeToString(data)
+	scope := "viewport"
+	if req.FullPage {
+		scope = "full_page"
+	} else if req.Selector != nil && strings.TrimSpace(*req.Selector) != "" {
+		scope = "element"
+	}
+	s.rememberDetachedMonitorScreenshot(info.URL, info.Title, encoded, scope)
 
 	return &ScreenshotResponse{
-		Data:   base64.StdEncoding.EncodeToString(data),
+		Data:   encoded,
 		Format: format,
 		URL:    info.URL,
 		Title:  info.Title,
@@ -907,6 +1525,8 @@ func (s *RodService) Automate(ctx context.Context, req *AutomateRequest) (*Autom
 		return nil, err
 	}
 
+	s.captureDetachedMonitorPageScreenshot(page, "automate")
+
 	results := make([]StepResult, 0, len(req.Steps))
 	success := true
 
@@ -918,11 +1538,15 @@ func (s *RodService) Automate(ctx context.Context, req *AutomateRequest) (*Autom
 		}
 
 		stepErr := s.executeStep(ctx, page, &step)
+		if stepErr == nil && step.WaitFor > 0 {
+			time.Sleep(time.Duration(step.WaitFor) * time.Millisecond)
+		}
 		result.Duration = time.Since(start).Milliseconds()
 
 		if stepErr != nil {
 			result.Success = false
 			result.Error = stepErr.Error()
+			s.captureDetachedMonitorPageScreenshot(page, "automate")
 			if !step.Optional {
 				success = false
 				results = append(results, result)
@@ -930,17 +1554,14 @@ func (s *RodService) Automate(ctx context.Context, req *AutomateRequest) (*Autom
 			}
 		} else {
 			result.Success = true
+			s.captureDetachedMonitorPageScreenshot(page, "automate")
 		}
 
 		results = append(results, result)
-
-		// Wait after step if specified
-		if step.WaitFor > 0 {
-			time.Sleep(time.Duration(step.WaitFor) * time.Millisecond)
-		}
 	}
 
 	info, _ := page.Info()
+	s.captureDetachedMonitorPageScreenshot(page, "automate")
 
 	return &AutomateResponse{
 		Success:        success,
@@ -976,9 +1597,6 @@ func (s *RodService) executeStep(ctx context.Context, page *rod.Page, step *Auto
 		return el.Select([]string{step.Value}, true, rod.SelectorTypeText)
 
 	case ActionWait:
-		if step.WaitFor > 0 {
-			time.Sleep(time.Duration(step.WaitFor) * time.Millisecond)
-		}
 		return nil
 
 	case ActionWaitFor:
@@ -1158,6 +1776,69 @@ func (s *RodService) CookieHeader(ctx context.Context, targetID string, targetUR
 		parts = append(parts, cookie.Name+"="+cookie.Value)
 	}
 	return strings.Join(parts, "; "), nil
+}
+
+// ObserveNetwork returns recent network activity recorded for a tab.
+func (s *RodService) ObserveNetwork(ctx context.Context, targetID string, maxEntries int, clear bool) (*ObservedNetworkResult, error) {
+	tab, err := s.getTab(ctx, targetID)
+	if err != nil {
+		return nil, err
+	}
+	s.ensureTabNetworkCapture(tab, false)
+
+	tab.networkMu.Lock()
+	state := tab.network
+	tab.networkMu.Unlock()
+	if state == nil {
+		return &ObservedNetworkResult{TargetID: tab.targetID}, nil
+	}
+	return &ObservedNetworkResult{
+		TargetID: tab.targetID,
+		Events:   state.snapshot(maxEntries, clear),
+	}, nil
+}
+
+// WaitNetworkIdle waits until the tab has no pending requests and has been idle
+// for the requested duration.
+func (s *RodService) WaitNetworkIdle(ctx context.Context, targetID string, idleMS int, timeoutMS int) error {
+	tab, err := s.getTab(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	s.ensureTabNetworkCapture(tab, false)
+
+	tab.networkMu.Lock()
+	state := tab.network
+	tab.networkMu.Unlock()
+	if state == nil {
+		return nil
+	}
+
+	idle := time.Duration(idleMS) * time.Millisecond
+	if idle <= 0 {
+		idle = 400 * time.Millisecond
+	}
+	waitCtx := ctx
+	cancel := func() {}
+	if timeoutMS > 0 {
+		waitCtx, cancel = context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
+	}
+	defer cancel()
+
+	ticker := time.NewTicker(75 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		lastActivity, pending := state.idleState()
+		if pending == 0 && !lastActivity.IsZero() && time.Since(lastActivity) >= idle {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return waitCtx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 // AccessibilityTree returns a compact DSL representation of the page's accessibility tree.
@@ -1519,7 +2200,9 @@ func (s *RodService) ScreenshotTab(ctx context.Context, targetID string) (string
 		return "", fmt.Errorf("screenshot failed: %w", err)
 	}
 
-	return base64.StdEncoding.EncodeToString(data), nil
+	encoded := base64.StdEncoding.EncodeToString(data)
+	s.rememberSessionScreenshot(tab, encoded, "full_page")
+	return encoded, nil
 }
 
 // ScreenshotViewport takes a viewport-only screenshot (no full-page scroll capture).
@@ -1528,7 +2211,13 @@ func (s *RodService) ScreenshotViewport(ctx context.Context, targetID string) (s
 	if err != nil {
 		return "", err
 	}
-	return base64.StdEncoding.EncodeToString(data), nil
+	tab, tabErr := s.getTab(ctx, targetID)
+	if tabErr != nil {
+		return "", tabErr
+	}
+	encoded := base64.StdEncoding.EncodeToString(data)
+	s.rememberSessionScreenshot(tab, encoded, "viewport")
+	return encoded, nil
 }
 
 // ScreenshotViewportRaw takes a viewport-only screenshot and returns raw PNG bytes.

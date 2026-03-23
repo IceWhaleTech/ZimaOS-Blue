@@ -93,11 +93,12 @@ func RegisterBrowserHandlers(srv *Server, browser BrowserBackend, log *zap.Logge
 			data, err = browser.ScreenshotTab(ctx, targetID)
 		} else {
 			url := req.Params["url"]
-			if url == "" {
-				return ErrResponse("missing url or target_id")
+			if url != "" {
+				_ = browser.Start(ctx)
+				data, err = browser.Screenshot(ctx, url)
+			} else {
+				data, err = browser.ScreenshotTab(ctx, "")
 			}
-			_ = browser.Start(ctx)
-			data, err = browser.Screenshot(ctx, url)
 		}
 		if err != nil {
 			return ErrResponse("screenshot failed: " + err.Error())

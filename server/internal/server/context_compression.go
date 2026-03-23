@@ -518,6 +518,20 @@ func latestIntentVsCarryover(messages []llm.Message, latestUser string, toolCall
 	return decision
 }
 
+func shouldApplyLatestIntentCarryoverGuard(messages []llm.Message, routingMessage string) bool {
+	routingMessage = strings.TrimSpace(routingMessage)
+	if routingMessage == "" {
+		return true
+	}
+
+	latestUser := strings.TrimSpace(latestUserMessageFromLLM(messages))
+	if latestUser == "" {
+		return true
+	}
+
+	return latestUser == routingMessage
+}
+
 func toolCallsMatchLatestIntentExplicitPath(latestUser string, toolCalls []llm.ToolCall) bool {
 	if strings.TrimSpace(latestUser) == "" || len(toolCalls) == 0 {
 		return false

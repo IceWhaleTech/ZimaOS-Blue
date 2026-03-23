@@ -24,11 +24,11 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/crawler"
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
@@ -36,29 +36,33 @@ import (
 const maxArchiveDownloadBytes = 128 << 20
 
 type Options struct {
-	Config            Config
-	Logger            *zap.Logger
-	Registry          *skill.Registry
-	LocalScanner      *skillstore.LocalSkillScanner
-	EmbeddingProvider embedding.Provider
-	HTTPClient        *http.Client
-	Scanner           *Scanner
+	Config                   Config
+	Logger                   *zap.Logger
+	Registry                 *skill.Registry
+	LocalScanner             *skillstore.LocalSkillScanner
+	EmbeddingProvider        embedding.Provider
+	HTTPClient               *http.Client
+	RemoteReader             RemoteReader
+	Scanner                  *Scanner
+	DiscoverEventBroadcaster func(eventType string, data any)
 }
 
 type Service struct {
-	store             *Store
-	cfg               Config
-	logger            *zap.Logger
-	registry          *skill.Registry
-	localScanner      *skillstore.LocalSkillScanner
-	embeddingProvider embedding.Provider
-	httpClient        *http.Client
-	scanner           *Scanner
-	stopOnce          sync.Once
-	stopCh            chan struct{}
-	discoverMu        sync.Mutex
-	discoverStatus    DiscoverStatus
-	ownsDB            bool
+	store               *Store
+	cfg                 Config
+	logger              *zap.Logger
+	registry            *skill.Registry
+	localScanner        *skillstore.LocalSkillScanner
+	embeddingProvider   embedding.Provider
+	httpClient          *http.Client
+	remoteReader        RemoteReader
+	scanner             *Scanner
+	discoverBroadcaster func(eventType string, data any)
+	stopOnce            sync.Once
+	stopCh              chan struct{}
+	discoverMu          sync.Mutex
+	discoverStatus      DiscoverStatus
+	ownsDB              bool
 }
 
 func NewService(db *sql.DB, opts Options) (*Service, error) {
@@ -91,19 +95,24 @@ func newService(db *sql.DB, opts Options, ownsDB bool) (*Service, error) {
 		cfg.SemanticRatio = 0.35
 	}
 	svc := &Service{
-		store:             store,
-		cfg:               cfg,
-		logger:            opts.Logger,
-		registry:          opts.Registry,
-		localScanner:      opts.LocalScanner,
-		embeddingProvider: opts.EmbeddingProvider,
-		httpClient:        opts.HTTPClient,
-		scanner:           opts.Scanner,
-		stopCh:            make(chan struct{}),
-		ownsDB:            ownsDB,
+		store:               store,
+		cfg:                 cfg,
+		logger:              opts.Logger,
+		registry:            opts.Registry,
+		localScanner:        opts.LocalScanner,
+		embeddingProvider:   opts.EmbeddingProvider,
+		httpClient:          opts.HTTPClient,
+		remoteReader:        opts.RemoteReader,
+		scanner:             opts.Scanner,
+		discoverBroadcaster: opts.DiscoverEventBroadcaster,
+		stopCh:              make(chan struct{}),
+		ownsDB:              ownsDB,
 	}
 	if svc.httpClient == nil {
 		svc.httpClient = network.NewPooledHTTPClient(5 * time.Minute)
+	}
+	if svc.remoteReader == nil {
+		svc.remoteReader = newHTTPRemoteReader(svc.httpClient)
 	}
 	if svc.scanner == nil {
 		svc.scanner = NewScanner(nil)
@@ -206,6 +215,31 @@ func (s *Service) GetDiscoverStatus() DiscoverStatus {
 	return cloneDiscoverStatus(s.discoverStatus)
 }
 
+func (s *Service) emitDiscoverEvent(phase string, batchInserted, batchUpdated, batchFailed int) {
+	if s.discoverBroadcaster == nil {
+		return
+	}
+	s.discoverMu.Lock()
+	status := cloneDiscoverStatus(s.discoverStatus)
+	s.discoverMu.Unlock()
+	s.discoverBroadcaster("skill.market.discover.progress", DiscoverProgressEvent{
+		Running:           status.Running,
+		StartedAt:         status.StartedAt,
+		FinishedAt:        status.FinishedAt,
+		LastError:         status.LastError,
+		TotalSources:      status.TotalSources,
+		ProcessedSources:  status.ProcessedSources,
+		CurrentSourceID:   status.CurrentSourceID,
+		CurrentSourceName: status.CurrentSourceName,
+		SourceResults:     cloneSourceResults(status.SourceResults),
+		Result:            status.Result,
+		BatchInserted:     batchInserted,
+		BatchUpdated:      batchUpdated,
+		BatchFailed:       batchFailed,
+		Phase:             phase,
+	})
+}
+
 func (s *Service) StartDiscoverAsync() (DiscoverStatus, bool) {
 	s.discoverMu.Lock()
 	if s.discoverStatus.Running {
@@ -220,6 +254,7 @@ func (s *Service) StartDiscoverAsync() (DiscoverStatus, bool) {
 	}
 	status := cloneDiscoverStatus(s.discoverStatus)
 	s.discoverMu.Unlock()
+	s.emitDiscoverEvent("started", 0, 0, 0)
 
 	go func() {
 		result, err := s.discoverOnce(context.Background())
@@ -495,6 +530,7 @@ func (s *Service) Discover(ctx context.Context) (*DiscoverResult, error) {
 		status := s.GetDiscoverStatus()
 		return status.Result, fmt.Errorf("discover already running")
 	}
+	s.emitDiscoverEvent("started", 0, 0, 0)
 	defer func() {
 		if r := recover(); r != nil {
 			s.finishDiscover(nil, fmt.Errorf("discover panic: %v", r))
@@ -522,21 +558,23 @@ func (s *Service) beginDiscover() bool {
 
 func (s *Service) setDiscoverTotals(totalSources int) {
 	s.discoverMu.Lock()
-	defer s.discoverMu.Unlock()
 	if !s.discoverStatus.Running {
+		s.discoverMu.Unlock()
 		return
 	}
 	s.discoverStatus.TotalSources = totalSources
 	if s.discoverStatus.Result == nil {
 		s.discoverStatus.Result = &DiscoverResult{}
 	}
-	s.discoverStatus.Result.SourcesProcessed = totalSources
+	s.discoverStatus.Result.SourcesProcessed = 0
+	s.discoverMu.Unlock()
+	s.emitDiscoverEvent("started", 0, 0, 0)
 }
 
 func (s *Service) setDiscoverProgress(source Source, processedSources int, result *DiscoverResult) {
 	s.discoverMu.Lock()
-	defer s.discoverMu.Unlock()
 	if !s.discoverStatus.Running {
+		s.discoverMu.Unlock()
 		return
 	}
 	s.discoverStatus.ProcessedSources = processedSources
@@ -546,14 +584,12 @@ func (s *Service) setDiscoverProgress(source Source, processedSources int, resul
 	if s.discoverStatus.Result == nil {
 		s.discoverStatus.Result = &DiscoverResult{}
 	}
-	if s.discoverStatus.TotalSources > 0 {
-		s.discoverStatus.Result.SourcesProcessed = s.discoverStatus.TotalSources
-	}
+	s.discoverStatus.SourceResults = cloneSourceResults(s.discoverStatus.Result.SourceResults)
+	s.discoverMu.Unlock()
 }
 
 func (s *Service) finishDiscover(result *DiscoverResult, err error) {
 	s.discoverMu.Lock()
-	defer s.discoverMu.Unlock()
 	s.discoverStatus.Running = false
 	s.discoverStatus.FinishedAt = timeutil.NowTime()
 	if result != nil && s.discoverStatus.TotalSources == 0 {
@@ -565,15 +601,27 @@ func (s *Service) finishDiscover(result *DiscoverResult, err error) {
 	s.discoverStatus.CurrentSourceID = ""
 	s.discoverStatus.CurrentSourceName = ""
 	s.discoverStatus.Result = cloneDiscoverResult(result)
+	if s.discoverStatus.Result != nil {
+		s.discoverStatus.SourceResults = cloneSourceResults(s.discoverStatus.Result.SourceResults)
+	} else {
+		s.discoverStatus.SourceResults = nil
+	}
 	if err != nil {
 		s.discoverStatus.LastError = err.Error()
 	} else {
 		s.discoverStatus.LastError = ""
 	}
+	s.discoverMu.Unlock()
+	if err != nil {
+		s.emitDiscoverEvent("error", 0, 0, 0)
+		return
+	}
+	s.emitDiscoverEvent("completed", 0, 0, 0)
 }
 
 func cloneDiscoverStatus(status DiscoverStatus) DiscoverStatus {
 	status.Result = cloneDiscoverResult(status.Result)
+	status.SourceResults = cloneSourceResults(status.SourceResults)
 	return status
 }
 
@@ -582,6 +630,7 @@ func cloneDiscoverResult(result *DiscoverResult) *DiscoverResult {
 		return nil
 	}
 	cloned := *result
+	cloned.SourceResults = cloneSourceResults(result.SourceResults)
 	return &cloned
 }
 
@@ -591,45 +640,56 @@ func (s *Service) discoverOnce(ctx context.Context) (*DiscoverResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := &DiscoverResult{SourcesProcessed: len(sources)}
 	s.setDiscoverTotals(len(sources))
-	processedSources := 0
+	jobs := make([]discoverJob, 0, len(sources))
 	for _, source := range sources {
-		s.setDiscoverProgress(source, processedSources, result)
 		run, err := s.store.BeginCrawlRun(ctx, source.ID)
 		if err != nil {
 			return nil, err
 		}
-		switch source.Type {
-		case "lightmake_api":
-			err = s.discoverFromLightmake(ctx, source, run)
-		case "github_code_search":
-			err = s.discoverFromGitHub(ctx, source, run)
-		case "clawhub":
-			err = s.discoverFromClawHub(ctx, source, run)
-		case "html_catalog":
-			err = s.discoverFromHTMLCatalog(ctx, source, run)
-		case "seed_page":
-			err = s.discoverFromSeedPage(ctx, source, run)
-		default:
-			err = fmt.Errorf("unsupported source type: %s", source.Type)
-		}
+		job, err := buildDiscoverJob(s, source, run)
 		if err != nil {
 			run.Status = "failed"
 			run.ErrorText = err.Error()
-		} else {
-			run.Status = "success"
+			if err2 := s.store.CompleteCrawlRun(ctx, run); err2 != nil && s.logger != nil {
+				s.logger.Warn("complete crawl run failed", zap.Error(err2))
+			}
+			return nil, err
 		}
-		if err2 := s.store.CompleteCrawlRun(ctx, run); err2 != nil && s.logger != nil {
-			s.logger.Warn("complete crawl run failed", zap.Error(err2))
-		}
-		result.Discovered += run.Discovered
-		result.Updated += run.Updated
-		result.Failed += run.Failed
-		processedSources++
-		s.setDiscoverProgress(source, processedSources, result)
+		jobs = append(jobs, job)
 	}
-	return result, nil
+	if len(jobs) == 0 {
+		return &DiscoverResult{}, nil
+	}
+
+	completed := 0
+	var firstErr error
+	for completed < len(jobs) {
+		progressed := false
+		for _, job := range jobs {
+			if job.Done() {
+				continue
+			}
+			progressed = true
+			s.setDiscoverProgress(job.Source(), countCompletedJobs(jobs), aggregateDiscoverResult(jobs))
+			stats, err := job.Step(ctx)
+			s.setDiscoverProgress(job.Source(), countCompletedJobs(jobs), aggregateDiscoverResult(jobs))
+			s.emitDiscoverEvent("batch", stats.Inserted, stats.Updated, stats.Failed)
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
+			if job.Done() {
+				s.completeDiscoverJob(ctx, job, err)
+				completed++
+				s.setDiscoverProgress(job.Source(), countCompletedJobs(jobs), aggregateDiscoverResult(jobs))
+				s.emitDiscoverEvent("source_complete", 0, 0, 0)
+			}
+		}
+		if !progressed {
+			break
+		}
+	}
+	return aggregateDiscoverResult(jobs), firstErr
 }
 
 func (s *Service) ensureDefaultSources(ctx context.Context) error {
@@ -746,99 +806,125 @@ type gitHubContentResponse struct {
 	Path     string `json:"path"`
 }
 
-func (s *Service) discoverFromGitHub(ctx context.Context, source Source, run *CrawlRun) error {
-	apiURL := strings.TrimRight(s.cfg.GitHubAPIBaseURL, "/") + "/search/code?q=" + urlQueryEscape(source.BaseURL) + "&per_page=25"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+const nonPagedIngestBatchSize = 50
+
+func (s *Service) flushPreparedBatch(
+	ctx context.Context,
+	run *CrawlRun,
+	batch []*SkillUpsertRecord,
+) (int, int, int, error) {
+	if len(batch) == 0 {
+		return 0, 0, 0, nil
+	}
+	chunkSize := s.cfg.IngestBatchSize
+	if chunkSize <= 0 {
+		chunkSize = nonPagedIngestBatchSize
+	}
+	inserted, updated := 0, 0
+	for start := 0; start < len(batch); start += chunkSize {
+		end := start + chunkSize
+		if end > len(batch) {
+			end = len(batch)
+		}
+		result, err := s.store.UpsertSkillBatch(ctx, batch[start:end])
+		if err != nil {
+			if run != nil {
+				run.Failed += end - start
+			}
+			return inserted, updated, len(batch[start:end]), err
+		}
+		if result == nil {
+			continue
+		}
+		inserted += result.Inserted
+		updated += result.Updated
+		if run != nil {
+			run.Discovered += result.Inserted
+			run.Updated += result.Updated
+		}
+	}
+	return inserted, updated, 0, nil
+}
+
+func (s *Service) discoverFromGitHub(ctx context.Context, source Source, processedSources int, total *DiscoverResult, run *CrawlRun) error {
+	job, err := buildDiscoverJob(s, source, run)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	if token := strings.TrimSpace(s.cfg.GitHubToken); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return fmt.Errorf("github code search: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var payload gitHubCodeSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return err
-	}
-	for _, item := range payload.Items {
-		raw, err := s.fetchGitHubBlob(ctx, item.URL)
-		if err != nil {
-			run.Failed++
-			continue
-		}
-		updated, err := s.ingestSkillContent(ctx, ingestRequest{
-			SourceID:       source.ID,
-			SourceName:     defaultString(source.DisplayName, source.ID),
-			SourceGroup:    defaultString(source.SourceGroup, source.ID),
-			SourceType:     source.Type,
-			RepoURL:        item.Repository.HTMLURL,
-			Homepage:       item.Repository.HTMLURL,
-			DownloadURL:    item.HTMLURL,
-			SourceURL:      item.HTMLURL,
-			SkillPath:      item.Path,
-			SkillContent:   raw,
-			Stars:          item.Repository.StargazersCount,
-			LastUpdated:    item.Repository.UpdatedAt,
-			CommitHash:     item.SHA,
-			Downloads:      0,
-			DefaultSkillID: pathSkillID(item.Repository.HTMLURL, item.Path, item.Name),
-			Installable:    true,
-			InstallType:    InstallTypeGitRepo,
-			ArtifactKind:   ArtifactKindOpenSource,
-		})
-		if err != nil {
-			run.Failed++
-			continue
-		}
-		if updated {
-			run.Updated++
-		} else {
-			run.Discovered++
-		}
-	}
-	return nil
+	return s.runDiscoverJobToCompletion(ctx, job)
 }
 
 func (s *Service) fetchGitHubBlob(ctx context.Context, apiURL string) (string, error) {
+	raw, _, err := s.fetchGitHubBlobWithFallback(ctx, apiURL, "")
+	return raw, err
+}
+
+func (s *Service) fetchGitHubBlobWithFallback(ctx context.Context, apiURL, htmlURL string) (string, int, error) {
+	requests := 0
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return "", err
+		return "", requests, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if token := strings.TrimSpace(s.cfg.GitHubToken); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	requests++
 	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("github blob status: %d", resp.StatusCode)
-	}
-	var payload gitHubContentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return "", err
-	}
-	if strings.EqualFold(payload.Encoding, "base64") {
-		data, err := decodeBase64(strings.ReplaceAll(payload.Content, "\n", ""))
-		if err != nil {
-			return "", err
+	if err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			var payload gitHubContentResponse
+			if err := json.NewDecoder(resp.Body).Decode(&payload); err == nil {
+				if strings.EqualFold(payload.Encoding, "base64") {
+					data, decodeErr := decodeBase64(strings.ReplaceAll(payload.Content, "\n", ""))
+					if decodeErr == nil {
+						return string(data), requests, nil
+					}
+					err = decodeErr
+				} else {
+					return payload.Content, requests, nil
+				}
+			}
+		} else {
+			err = fmt.Errorf("github blob status: %d", resp.StatusCode)
 		}
-		return string(data), nil
 	}
-	return payload.Content, nil
+	if owner, repo, ref, path, ok := skillbundle.ParseGitHubBlobURL(htmlURL); ok {
+		raw, fallbackRequests, fallbackErr := s.fetchGitHubRawContent(ctx, owner, repo, ref, path)
+		requests += fallbackRequests
+		if fallbackErr == nil {
+			return raw, requests, nil
+		}
+		if err != nil {
+			return "", requests, fmt.Errorf("%w (github raw fallback failed: %v)", err, fallbackErr)
+		}
+		return "", requests, fallbackErr
+	}
+	return "", requests, err
+}
+
+func (s *Service) fetchGitHubRawContent(ctx context.Context, owner, repo, ref, path string) (string, int, error) {
+	requests := 0
+	var lastErr error
+	for _, rawURL := range skillbundle.GitHubRawURLCandidates(owner, repo, ref, path) {
+		requests++
+		read, err := s.remoteReader.ReadURL(ctx, RemoteReadRequest{
+			URL:      rawURL,
+			Format:   "text",
+			MaxChars: 256_000,
+		})
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return read.Content, requests, nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("github raw content unavailable")
+	}
+	return "", requests, lastErr
 }
 
 type clawHubListResponse struct {
@@ -919,216 +1005,20 @@ type clawHubSkillEnrichment struct {
 	SecuritySignals *SourceSecuritySignals
 }
 
-func (s *Service) discoverFromClawHub(ctx context.Context, source Source, run *CrawlRun) error {
-	const maxPages = 100
-	seenSlugs := make(map[string]struct{})
-	baseURL := strings.TrimRight(source.BaseURL, "/") + "/api/v1/skills"
-
-	for page := 1; page <= maxPages; page++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s?page=%d", baseURL, page), nil)
-		if err != nil {
-			return err
-		}
-		resp, err := s.httpClient.Do(req)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return fmt.Errorf("clawhub list status: %d", resp.StatusCode)
-		}
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
-		if err != nil {
-			return err
-		}
-		var payload clawHubListResponse
-		if err := json.Unmarshal(body, &payload); err != nil {
-			return err
-		}
-		if page == 1 && len(payload.Items) == 0 {
-			var wrapped struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-				Data    string `json:"data"`
-			}
-			if err := json.Unmarshal(body, &wrapped); err == nil && strings.Contains(strings.ToLower(wrapped.Data), "<!doctype html>") {
-				return fmt.Errorf("clawhub list returned wrapped html instead of skill data")
-			}
-		}
-		if len(payload.Items) == 0 {
-			break
-		}
-
-		newItems := 0
-		for _, item := range payload.Items {
-			if _, ok := seenSlugs[item.Slug]; ok {
-				continue
-			}
-			seenSlugs[item.Slug] = struct{}{}
-			newItems++
-
-			enrichment, err := s.fetchClawHubSkillEnrichment(ctx, source, item.Slug)
-			if err != nil && s.logger != nil {
-				s.logger.Debug("skillmarket clawhub detail fetch failed", zap.String("skill", item.Slug), zap.String("source", source.ID), zap.Error(err))
-			}
-			explicitAuthor := ""
-			descriptionHint := ""
-			categoryHint := ""
-			var additionalTags []string
-			var securitySignals *SourceSecuritySignals
-			if enrichment != nil {
-				explicitAuthor = enrichment.Author
-				descriptionHint = enrichment.Description
-				categoryHint = enrichment.CategoryHint
-				additionalTags = enrichment.AdditionalTags
-				securitySignals = enrichment.SecuritySignals
-			}
-			skillURL := fmt.Sprintf("%s/api/v1/skills/%s/skill-md", strings.TrimRight(source.BaseURL, "/"), item.Slug)
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, skillURL, nil)
-			if err != nil {
-				run.Failed++
-				continue
-			}
-			resp, err := s.httpClient.Do(req)
-			if err != nil {
-				run.Failed++
-				continue
-			}
-			if resp.StatusCode != http.StatusOK {
-				resp.Body.Close()
-				run.Failed++
-				continue
-			}
-			raw, err := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if err != nil {
-				run.Failed++
-				continue
-			}
-			updated, err := s.ingestSkillContent(ctx, ingestRequest{
-				SourceID:        source.ID,
-				SourceName:      defaultString(source.DisplayName, source.ID),
-				SourceGroup:     defaultString(source.SourceGroup, source.ID),
-				SourceType:      source.Type,
-				RepoURL:         strings.TrimRight(source.BaseURL, "/") + "/skills/" + item.Slug,
-				Homepage:        strings.TrimRight(source.BaseURL, "/") + "/skills/" + item.Slug,
-				DownloadURL:     skillURL,
-				SourceURL:       skillURL,
-				SkillPath:       "SKILL.md",
-				SkillContent:    string(raw),
-				Stars:           item.Stats.Stars,
-				Downloads:       item.Stats.Downloads,
-				LastUpdated:     time.UnixMilli(item.UpdatedAt),
-				ExplicitName:    item.DisplayName,
-				ExplicitID:      normalizeSkillID(item.Slug),
-				ExplicitVersion: defaultString(item.LatestVersion.Version, "0.1.0"),
-				ExplicitAuthor:  explicitAuthor,
-				DescriptionHint: descriptionHint,
-				CategoryHint:    categoryHint,
-				AdditionalTags:  additionalTags,
-				SecuritySignals: securitySignals,
-				Installable:     true,
-				InstallType:     InstallTypeRawSkill,
-				ArtifactKind:    ArtifactKindOpenSource,
-			})
-			if err != nil {
-				run.Failed++
-				continue
-			}
-			if updated {
-				run.Updated++
-			} else {
-				run.Discovered++
-			}
-		}
-
-		if newItems == 0 {
-			break
-		}
+func (s *Service) discoverFromClawHub(ctx context.Context, source Source, processedSources int, total *DiscoverResult, run *CrawlRun) error {
+	job, err := buildDiscoverJob(s, source, run)
+	if err != nil {
+		return err
 	}
-	return nil
+	return s.runDiscoverJobToCompletion(ctx, job)
 }
 
-func (s *Service) discoverFromLightmake(ctx context.Context, source Source, run *CrawlRun) error {
-	const pageSize = 100
-	const maxPages = 500
-
-	baseURL := strings.TrimRight(source.BaseURL, "/") + "/api/skills"
-	totalPages := maxPages
-	for page := 1; page <= totalPages && page <= maxPages; page++ {
-		queryURL := fmt.Sprintf("%s?page=%d&pageSize=%d&sortBy=score&order=desc", baseURL, page, pageSize)
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, queryURL, nil)
-		if err != nil {
-			return err
-		}
-		req.Header.Set("Accept", "application/json")
-		resp, err := s.httpClient.Do(req)
-		if err != nil {
-			return err
-		}
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-		resp.Body.Close()
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("lightmake list status: %d", resp.StatusCode)
-		}
-
-		var payload lightmakeListResponse
-		if err := json.Unmarshal(body, &payload); err != nil {
-			return err
-		}
-		if payload.Code != 0 {
-			return fmt.Errorf("lightmake list error: %s", strings.TrimSpace(defaultString(payload.Message, string(body))))
-		}
-		if payload.Data.Total > 0 {
-			totalPages = (payload.Data.Total + pageSize - 1) / pageSize
-		}
-		if len(payload.Data.Skills) == 0 {
-			break
-		}
-
-		for _, item := range payload.Data.Skills {
-			raw := lightmakeSkillMarkdown(item)
-			updated, err := s.ingestSkillContent(ctx, ingestRequest{
-				SourceID:        source.ID,
-				SourceName:      defaultString(source.DisplayName, source.ID),
-				SourceGroup:     defaultString(source.SourceGroup, source.ID),
-				SourceType:      source.Type,
-				RepoURL:         item.Homepage,
-				Homepage:        item.Homepage,
-				DownloadURL:     strings.TrimRight(source.BaseURL, "/") + "/api/v1/download?slug=" + url.QueryEscape(strings.TrimSpace(item.Slug)),
-				SourceURL:       item.Homepage,
-				SkillPath:       "SKILL.md",
-				SkillContent:    raw,
-				Stars:           item.Stars,
-				Downloads:       item.Downloads,
-				LastUpdated:     time.UnixMilli(item.UpdatedAt),
-				ExplicitID:      normalizeSkillID(item.Slug),
-				ExplicitName:    strings.TrimSpace(defaultString(item.Name, item.Slug)),
-				ExplicitVersion: defaultString(strings.TrimSpace(item.Version), "catalog"),
-				ExplicitAuthor:  strings.TrimSpace(item.OwnerName),
-				DescriptionHint: lightmakeDescription(item),
-				CategoryHint:    strings.TrimSpace(item.Category),
-				AdditionalTags:  item.Tags,
-				Installable:     true,
-				InstallType:     InstallTypeSourceArchive,
-				ArtifactKind:    ArtifactKindUnknown,
-			})
-			if err != nil {
-				run.Failed++
-				continue
-			}
-			if updated {
-				run.Updated++
-			} else {
-				run.Discovered++
-			}
-		}
+func (s *Service) discoverFromLightmake(ctx context.Context, source Source, processedSources int, total *DiscoverResult, run *CrawlRun) error {
+	job, err := buildDiscoverJob(s, source, run)
+	if err != nil {
+		return err
 	}
-	return nil
+	return s.runDiscoverJobToCompletion(ctx, job)
 }
 
 func lightmakeDescription(item lightmakeSkill) string {
@@ -1647,53 +1537,12 @@ func firstNonBlank(values ...string) string {
 	return ""
 }
 
-func (s *Service) discoverFromSeedPage(ctx context.Context, source Source, run *CrawlRun) error {
-	pageCrawler := crawler.New(crawler.Config{
-		MaxDepth:       0,
-		MaxConcurrency: 2,
-		RequestTimeout: 20 * time.Second,
-		UserAgent:      "ZimaOS-SkillMarket/1.0",
-	})
-	results := pageCrawler.CrawlSync(ctx, []string{source.BaseURL})
-	for _, page := range results {
-		for _, link := range page.Links {
-			if !looksLikeSkillURL(link) {
-				continue
-			}
-			raw, skillPath, repoURL, err := s.fetchGenericSkillURL(ctx, link)
-			if err != nil {
-				run.Failed++
-				continue
-			}
-			updated, err := s.ingestSkillContent(ctx, ingestRequest{
-				SourceID:       source.ID,
-				SourceName:     defaultString(source.DisplayName, source.ID),
-				SourceGroup:    defaultString(source.SourceGroup, source.ID),
-				SourceType:     source.Type,
-				RepoURL:        repoURL,
-				Homepage:       link,
-				DownloadURL:    link,
-				SourceURL:      link,
-				SkillPath:      skillPath,
-				SkillContent:   raw,
-				DefaultSkillID: pathSkillID(repoURL, skillPath, filepath.Base(skillPath)),
-				LastUpdated:    timeutil.NowTime(),
-				Installable:    true,
-				InstallType:    InstallTypeRawSkill,
-				ArtifactKind:   ArtifactKindOpenSource,
-			})
-			if err != nil {
-				run.Failed++
-				continue
-			}
-			if updated {
-				run.Updated++
-			} else {
-				run.Discovered++
-			}
-		}
+func (s *Service) discoverFromSeedPage(ctx context.Context, source Source, processedSources int, total *DiscoverResult, run *CrawlRun) error {
+	job, err := buildDiscoverJob(s, source, run)
+	if err != nil {
+		return err
 	}
-	return nil
+	return s.runDiscoverJobToCompletion(ctx, job)
 }
 
 type ingestRequest struct {
@@ -1727,14 +1576,14 @@ type ingestRequest struct {
 	HasScripts      bool
 }
 
-func (s *Service) ingestSkillContent(ctx context.Context, req ingestRequest) (bool, error) {
+func (s *Service) prepareIngestRecord(ctx context.Context, req ingestRequest) (*SkillUpsertRecord, error) {
 	fallbackID := req.ExplicitID
 	if fallbackID == "" {
 		fallbackID = req.DefaultSkillID
 	}
 	parsed, err := parseSkillMarkdown(req.SkillContent, fallbackID)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if req.ExplicitName != "" {
 		parsed.Manifest.Name = req.ExplicitName
@@ -1833,9 +1682,23 @@ func (s *Service) ingestSkillContent(ctx context.Context, req ingestRequest) (bo
 		ReleasedAt:   req.LastUpdated,
 		ScannedAt:    timeutil.NowTime(),
 	}
-	existing, _ := s.store.GetSkill(ctx, doc.ID)
-	updated := existing != nil
-	return updated, s.store.UpsertSkill(ctx, doc, version, report)
+	return &SkillUpsertRecord{
+		Doc:     doc,
+		Version: version,
+		Report:  report,
+	}, nil
+}
+
+func (s *Service) ingestSkillContent(ctx context.Context, req ingestRequest) (bool, error) {
+	record, err := s.prepareIngestRecord(ctx, req)
+	if err != nil {
+		return false, err
+	}
+	result, err := s.store.UpsertSkillBatch(ctx, []*SkillUpsertRecord{record})
+	if err != nil {
+		return false, err
+	}
+	return result != nil && result.Updated > 0, nil
 }
 
 func (s *Service) materializeVersion(tempDir string, doc SkillDocument, version *SkillVersion) error {
@@ -1843,7 +1706,18 @@ func (s *Service) materializeVersion(tempDir string, doc SkillDocument, version 
 		return err
 	}
 	if version.RawSkillMD != "" {
-		if err := os.WriteFile(filepath.Join(tempDir, "SKILL.md"), []byte(version.RawSkillMD), 0o644); err != nil {
+		entryPath := filepath.Join(tempDir, "SKILL.md")
+		if trimmedPath := strings.TrimSpace(version.SkillPath); trimmedPath != "" && skillbundle.IsEntryDocumentName(filepath.Base(trimmedPath)) {
+			relativePath := filepath.Clean(strings.TrimPrefix(trimmedPath, "/"))
+			entryPath = filepath.Join(tempDir, relativePath)
+			if err := os.MkdirAll(filepath.Dir(entryPath), 0o755); err != nil {
+				return err
+			}
+		}
+		if err := os.WriteFile(entryPath, []byte(version.RawSkillMD), 0o644); err != nil {
+			return err
+		}
+		if _, err := skillbundle.EnsureCompatibilitySkillDoc(tempDir, entryPath); err != nil {
 			return err
 		}
 	}
@@ -2003,11 +1877,20 @@ func (s *Service) verifyInstallPayload(expectedChecksum, skillFile string) error
 
 func (s *Service) scanInstalledPayload(ctx context.Context, skillID, version, dir string, declaredPermissions []string) (*SecurityReport, error) {
 	parts := []string{}
+	seenFiles := make(map[string]struct{})
 	for _, fileName := range []string{"SKILL.md", "manifest.json"} {
 		path := filepath.Join(dir, fileName)
 		data, err := os.ReadFile(path)
 		if err == nil {
 			parts = append(parts, string(data))
+			seenFiles[path] = struct{}{}
+		}
+	}
+	if entryDoc, err := skillbundle.FindEntryDocumentInDir(dir); err == nil {
+		if _, exists := seenFiles[entryDoc.Path]; !exists {
+			if data, readErr := os.ReadFile(entryDoc.Path); readErr == nil {
+				parts = append(parts, string(data))
+			}
 		}
 	}
 	scriptsDir := filepath.Join(dir, "scripts")
@@ -2483,6 +2366,10 @@ type gitHubRepoSkill struct {
 }
 
 func (s *Service) fetchGitHubRepoSkill(ctx context.Context, owner, repo, branch string) (*gitHubRepoSkill, error) {
+	return s.fetchGitHubRepoSkillAtPath(ctx, owner, repo, branch, "")
+}
+
+func (s *Service) fetchGitHubRepoSkillAtPath(ctx context.Context, owner, repo, branch, rootPath string) (*gitHubRepoSkill, error) {
 	type contentItem struct {
 		Name string `json:"name"`
 		Path string `json:"path"`
@@ -2515,11 +2402,17 @@ func (s *Service) fetchGitHubRepoSkill(ctx context.Context, owner, repo, branch 
 			return nil, err
 		}
 		sort.Slice(items, func(i, j int) bool {
+			leftRank := skillbundle.EntryDocumentPriority(items[i].Name)
+			rightRank := skillbundle.EntryDocumentPriority(items[j].Name)
+			if leftRank != rightRank {
+				return leftRank < rightRank
+			}
 			return items[i].Path < items[j].Path
 		})
 		for _, item := range items {
-			if item.Type == "file" && (item.Name == "SKILL.md" || item.Name == "CLAUDE.md" || item.Name == "AGENT.md") {
-				raw, err := s.fetchGitHubBlob(ctx, item.URL)
+			if item.Type == "file" && skillbundle.IsEntryDocumentName(item.Name) {
+				htmlURL := fmt.Sprintf("https://github.com/%s/%s/blob/%s/%s", owner, repo, branch, strings.TrimPrefix(item.Path, "/"))
+				raw, _, err := s.fetchGitHubBlobWithFallback(ctx, item.URL, htmlURL)
 				if err != nil {
 					return nil, err
 				}
@@ -2536,7 +2429,7 @@ func (s *Service) fetchGitHubRepoSkill(ctx context.Context, owner, repo, branch 
 		}
 		return nil, fmt.Errorf("no skill file found in github repo")
 	}
-	return walk("")
+	return walk(strings.Trim(strings.TrimSpace(rootPath), "/"))
 }
 
 func (s *Service) fetchGenericSkillURL(ctx context.Context, rawURL string) (content, skillPath, repoURL string, err error) {

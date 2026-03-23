@@ -15,7 +15,21 @@ type MediaFallbackConfig struct {
 	ScreenshotWidth     int                              `yaml:"screenshot_width" json:"screenshot_width"`
 	ScreenshotHeight    int                              `yaml:"screenshot_height" json:"screenshot_height"`
 	ComplexPromptChars  int                              `yaml:"complex_prompt_chars" json:"complex_prompt_chars"`
+	NativeVideo         MediaFallbackNativeVideoConfig   `yaml:"native_video" json:"native_video"`
 	PublicSpaces        []MediaFallbackPublicSpaceConfig `yaml:"public_spaces" json:"public_spaces"`
+}
+
+// MediaFallbackNativeVideoConfig controls the macOS native video fallback path.
+type MediaFallbackNativeVideoConfig struct {
+	Enabled            bool          `yaml:"enabled" json:"enabled"`
+	FPS                int           `yaml:"fps" json:"fps"`
+	DefaultDurationSec int           `yaml:"default_duration_sec" json:"default_duration_sec"`
+	MaxDurationSec     int           `yaml:"max_duration_sec" json:"max_duration_sec"`
+	PollInterval       time.Duration `yaml:"poll_interval" json:"poll_interval"`
+	StallTimeout       time.Duration `yaml:"stall_timeout" json:"stall_timeout"`
+	MaxRuntime         time.Duration `yaml:"max_runtime" json:"max_runtime"`
+	HelperPath         string        `yaml:"helper_path" json:"helper_path"`
+	AudioMode          string        `yaml:"audio_mode" json:"audio_mode"`
 }
 
 // MediaFallbackPublicSpaceConfig describes a browser-driven public creative space preset.
@@ -33,7 +47,9 @@ type MediaFallbackPublicSpaceConfig struct {
 	ProcessingSelectors     []string                            `yaml:"processing_selectors,omitempty" json:"processing_selectors,omitempty"`
 	ErrorSelectors          []string                            `yaml:"error_selectors,omitempty" json:"error_selectors,omitempty"`
 	PollInterval            time.Duration                       `yaml:"poll_interval" json:"poll_interval"`
-	Timeout                 time.Duration                       `yaml:"timeout" json:"timeout"`
+	StallTimeout            time.Duration                       `yaml:"stall_timeout" json:"stall_timeout"`
+	MaxRuntime              time.Duration                       `yaml:"max_runtime" json:"max_runtime"`
+	Timeout                 time.Duration                       `yaml:"timeout" json:"timeout"` // legacy alias for older configs
 }
 
 // MediaFallbackResultSelectorConfig extracts a finished asset from a public space page.
@@ -48,11 +64,22 @@ func DefaultMediaConfig() *MediaConfig {
 	return &MediaConfig{
 		Fallback: MediaFallbackConfig{
 			Enabled:             true,
-			SearchProviderChain: []string{"duckduckgo", "bing"},
+			SearchProviderChain: []string{"bing"},
 			SearchMaxResults:    6,
 			ScreenshotWidth:     1280,
 			ScreenshotHeight:    896,
 			ComplexPromptChars:  500,
+			NativeVideo: MediaFallbackNativeVideoConfig{
+				Enabled:            true,
+				FPS:                30,
+				DefaultDurationSec: 5,
+				MaxDurationSec:     12,
+				PollInterval:       2 * time.Second,
+				StallTimeout:       15 * time.Minute,
+				MaxRuntime:         6 * time.Hour,
+				HelperPath:         "",
+				AudioMode:          "auto",
+			},
 			PublicSpaces: []MediaFallbackPublicSpaceConfig{
 				{
 					ID:              "hf-wan21",
@@ -70,6 +97,8 @@ func DefaultMediaConfig() *MediaConfig {
 					ProcessingSelectors: []string{".loading", ".generating", "[data-testid='loading']"},
 					ErrorSelectors:      []string{".error", ".toast-error", "[role='alert']"},
 					PollInterval:        4 * time.Second,
+					StallTimeout:        15 * time.Minute,
+					MaxRuntime:          6 * time.Hour,
 					Timeout:             4 * time.Minute,
 				},
 				{
@@ -88,6 +117,8 @@ func DefaultMediaConfig() *MediaConfig {
 					ProcessingSelectors: []string{".loading", ".generating", ".ant-spin", "[data-loading='true']"},
 					ErrorSelectors:      []string{".error", ".ant-alert", "[role='alert']"},
 					PollInterval:        4 * time.Second,
+					StallTimeout:        15 * time.Minute,
+					MaxRuntime:          6 * time.Hour,
 					Timeout:             4 * time.Minute,
 				},
 				{
@@ -105,6 +136,8 @@ func DefaultMediaConfig() *MediaConfig {
 					ProcessingSelectors: []string{".loading", ".generating", ".ant-spin", "[data-loading='true']"},
 					ErrorSelectors:      []string{".error", ".ant-alert", "[role='alert']"},
 					PollInterval:        4 * time.Second,
+					StallTimeout:        15 * time.Minute,
+					MaxRuntime:          6 * time.Hour,
 					Timeout:             4 * time.Minute,
 				},
 			},

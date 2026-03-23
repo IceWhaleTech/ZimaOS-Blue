@@ -269,6 +269,43 @@ func TestParseChatResponseWithMetricsRepairsStringifiedToolArguments(t *testing.
 	}
 }
 
+func TestNormalizeInboundBridgeToolCall_RepairsMissingStringClosureAfterEscapedQuotes(t *testing.T) {
+	metrics := &bridgeMetricsStub{}
+
+	_, _, arguments := normalizeInboundBridgeToolCall(
+		"call_exec_1",
+		"exec",
+		json.RawMessage(`"{\"command\": \"echo \\\"Hello from exec\\\"}"`),
+		false,
+		metrics,
+	)
+
+	if arguments != `{"command":"echo \"Hello from exec\""}` {
+		t.Fatalf("arguments = %q, want repaired canonical JSON", arguments)
+	}
+	if got := metrics.counts["provider_tool_normalization_repair_total"]; got != 1 {
+		t.Fatalf("repair metric = %d, want 1", got)
+	}
+}
+
+func TestParseSSEChunk_ResponsesFunctionCallDoneRepairsMissingStringClosureAfterEscapedQuotes(t *testing.T) {
+	payload := `{"type":"response.output_item.done","response_id":"resp_quote_fix","item":{"type":"function_call","call_id":"call_exec_1","name":"exec","arguments":"{\"command\": \"echo \\\"Hello from exec\\\"}"}}`
+
+	chunk, done, err := ParseSSEChunk(payload)
+	if err != nil {
+		t.Fatalf("ParseSSEChunk failed: %v", err)
+	}
+	if done {
+		t.Fatal("done = true, want false")
+	}
+	if len(chunk.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %d, want 1", len(chunk.ToolCalls))
+	}
+	if got := chunk.ToolCalls[0].Arguments; got != `{"command":"echo \"Hello from exec\""}` {
+		t.Fatalf("tool call arguments = %q, want repaired canonical JSON", got)
+	}
+}
+
 func TestParseResponsesChatResponseWithMetricsRecordsNormalizationFailure(t *testing.T) {
 	payload := []byte(`{
 		"id":"resp_fail",

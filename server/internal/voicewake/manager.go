@@ -49,8 +49,18 @@ func NewManager(cfg ManagerConfig) *Manager {
 	}
 	m.status.Platform = m.platform
 	m.status.Supported = m.supported
-	if !m.supported {
+	initialCfg := m.snapshotLocked()
+	m.status.Enabled = initialCfg.Enabled
+	m.status.TargetConversationID = initialCfg.TargetConversationID
+	m.status.Triggers = append([]string(nil), initialCfg.Triggers...)
+	m.status.Locale = initialCfg.Locale
+	switch {
+	case !m.supported:
 		m.status.Reason = "unsupported"
+	case !initialCfg.Enabled:
+		m.status.Reason = "disabled"
+	case strings.TrimSpace(initialCfg.TargetConversationID) == "":
+		m.status.Reason = "target_missing"
 	}
 	return m
 }

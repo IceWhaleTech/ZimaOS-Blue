@@ -282,28 +282,40 @@ func convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body []byte, au
 	return converted, nil
 }
 
-// clampResponsesMaxOutputTokens caps max_output_tokens only when a positive
-// model-level limit is provided. Unknown model limits remain passthrough.
-func clampResponsesMaxOutputTokens(body []byte, maxAllowed int) []byte {
+func clampPositiveIntJSONField(body []byte, field string, maxAllowed int) []byte {
 	if maxAllowed <= 0 {
 		return body
 	}
 	if len(body) == 0 {
 		return body
 	}
-	maxOutputTokens := gjson.GetBytes(body, "max_output_tokens")
-	if !maxOutputTokens.Exists() {
+	valueResult := gjson.GetBytes(body, field)
+	if !valueResult.Exists() {
 		return body
 	}
-	value := int(maxOutputTokens.Int())
+	value := int(valueResult.Int())
 	if value <= 0 || value <= maxAllowed {
 		return body
 	}
-	out, err := sjson.SetBytes(body, "max_output_tokens", maxAllowed)
+	out, err := sjson.SetBytes(body, field, maxAllowed)
 	if err != nil {
 		return body
 	}
 	return out
+}
+
+// clampResponsesMaxOutputTokens caps max_output_tokens only when a positive
+// model-level limit is provided. Unknown model limits remain passthrough.
+func clampResponsesMaxOutputTokens(body []byte, maxAllowed int) []byte {
+	return clampPositiveIntJSONField(body, "max_output_tokens", maxAllowed)
+}
+
+// clampChatCompletionsMaxTokens caps chat-completions output token fields when
+// a model-level limit is known. Unknown model limits remain passthrough.
+func clampChatCompletionsMaxTokens(body []byte, maxAllowed int) []byte {
+	body = clampPositiveIntJSONField(body, "max_tokens", maxAllowed)
+	body = clampPositiveIntJSONField(body, "max_completion_tokens", maxAllowed)
+	return body
 }
 
 const fixedCodexResponsesEndpointPath = "/backend-api/codex/responses"

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,14 +14,27 @@ import (
 
 const configKeyPrefix = "config:app:"
 
-// configSections maps section names to their Config field names.
-var configSections = []string{
-	"server", "log", "worker", "resources", "cgroup", "channels",
-	"performance", "security", "llm", "session", "embedding", "memory",
-	"grayscale", "companion", "claudecode", "claude_code_cli",
-	"first_run", "cc_switch", "statistics", "tool_calling", "media", "browser",
-	"proxy", "pruner", "update", "heartbeat",
-}
+// configSections is derived from Config yaml tags so new top-level sections
+// automatically participate in DB persistence and section APIs.
+var configSections = func() []string {
+	t := reflect.TypeOf(Config{})
+	sections := make([]string, 0, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		tag := t.Field(i).Tag.Get("yaml")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		if idx := strings.IndexByte(tag, ','); idx >= 0 {
+			tag = tag[:idx]
+		}
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		sections = append(sections, tag)
+	}
+	return sections
+}()
 
 // ConfigStore persists Config sections in kvstore (SQLite-backed).
 type ConfigStore struct {
@@ -151,7 +165,16 @@ func (s *ConfigStore) Reload() (*Config, error) {
 func (s *ConfigStore) Import(cfg *Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.importLocked(context.Background(), cfg)
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
+	s.preserveRuntimeSecretsLocked(cfg)
+	if err := s.importLocked(context.Background(), cfg); err != nil {
+		return err
+	}
+	s.config = cfg
+	s.loaded = true
+	return nil
 }
 
 // loadLocked reads all config sections from DB, falling back to fallback for missing sections.
@@ -184,8 +207,20 @@ func (s *ConfigStore) importLocked(ctx context.Context, cfg *Config) error {
 	return s.kv.SetJSON(ctx, configKeyPrefix+"_imported_at", time.Now().Format(time.RFC3339), 0)
 }
 
+func (s *ConfigStore) preserveRuntimeSecretsLocked(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	if s.config != nil && usesDefaultJWTSecret(cfg.Security.JWT.Secret) && !usesDefaultJWTSecret(s.config.Security.JWT.Secret) {
+		cfg.Security.JWT.Secret = s.config.Security.JWT.Secret
+	}
+}
+
 // extractSections serializes each Config field into a map of section name → JSON.
 func extractSections(cfg *Config) map[string]json.RawMessage {
+	if cfg == nil {
+		return nil
+	}
 	result := make(map[string]json.RawMessage, len(configSections))
 	v := reflect.ValueOf(cfg).Elem()
 	t := v.Type()

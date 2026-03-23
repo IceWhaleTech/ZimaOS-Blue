@@ -102,7 +102,10 @@ const runtimeInfoItems = computed(() => {
     { label: t('system.goVersion'), value: info.runtime.go_version || '-' },
     { label: t('system.numGoroutines'), value: `${info.runtime.num_goroutine ?? '-'}` },
     { label: t('system.goMaxProcs'), value: `${info.runtime.gomaxprocs ?? '-'}` },
-    { label: t('system.heapAlloc'), value: formatBytes((info.runtime.alloc_mb ?? 0) * 1024 * 1024) },
+    {
+      label: t('system.heapAlloc'),
+      value: formatBytes((info.runtime.alloc_mb ?? 0) * 1024 * 1024),
+    },
     {
       label: t('system.totalAlloc'),
       value: formatBytes((info.runtime.total_alloc_mb ?? 0) * 1024 * 1024),
@@ -116,7 +119,8 @@ const visibleDisks = computed(() => detailedInfo.value?.hardware.disk?.slice(0, 
 const visibleGpus = computed(() => detailedInfo.value?.hardware.gpu ?? [])
 const visibleNetworkInterfaces = computed(
   () =>
-    detailedInfo.value?.network.interfaces?.filter((iface) => !iface.is_loopback && iface.is_up) ?? []
+    detailedInfo.value?.network.interfaces?.filter((iface) => !iface.is_loopback && iface.is_up) ??
+    []
 )
 
 function formatBytes(bytes: number | undefined | null): string {
@@ -517,7 +521,10 @@ onUnmounted(() => {
                   >
                     <div class="mb-3 flex items-center justify-between gap-3">
                       <div class="min-w-0">
-                        <p class="dashboard-card-subtitle truncate text-sm" :title="disk.mount_point">
+                        <p
+                          class="dashboard-card-subtitle truncate text-sm"
+                          :title="disk.mount_point"
+                        >
                           {{ disk.mount_point || disk.device }}
                         </p>
                         <p class="dashboard-card-footnote mt-1">
@@ -626,12 +633,9 @@ onUnmounted(() => {
   --dashboard-card-surface-bottom: var(--color-bg-base);
   --dashboard-card-subsurface-top: var(--color-bg-surface);
   --dashboard-card-subsurface-bottom: var(--color-bg-elevated);
-  --dashboard-card-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    var(--shadow-lg);
+  --dashboard-card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), var(--shadow-lg);
   --dashboard-card-shadow-hover:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 18px 30px -28px rgba(15, 23, 42, 0.28);
+    inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 30px -28px rgba(15, 23, 42, 0.28);
   --dashboard-card-label-color: var(--color-text-secondary);
   --dashboard-card-subtitle-color: var(--color-text);
   --dashboard-card-footnote-color: var(--color-text-secondary);
@@ -804,8 +808,7 @@ onUnmounted(() => {
   border: 0;
   background: transparent;
   color: inherit;
-  transition:
-    transform 0.18s ease;
+  transition: transform 0.18s ease;
 }
 
 .dashboard-details-button:hover {

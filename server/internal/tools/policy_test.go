@@ -18,7 +18,7 @@ func TestToolPolicyResolver_GlobalProfile(t *testing.T) {
 		{Name: "exec"},
 		{Name: "message"},
 		{Name: "sessions"},
-		{Name: "research_run"},
+		{Name: "deep_research"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{}, defs)
 	if len(filtered) != 4 {
@@ -29,12 +29,12 @@ func TestToolPolicyResolver_GlobalProfile(t *testing.T) {
 		if def.Name == "message" {
 			t.Fatalf("message should be filtered from coding profile")
 		}
-		if def.Name == "research_run" {
+		if def.Name == "deep_research" {
 			hasResearch = true
 		}
 	}
 	if !hasResearch {
-		t.Fatalf("research_run should be allowed by coding profile: %#v", filtered)
+		t.Fatalf("deep_research should be allowed by coding profile: %#v", filtered)
 	}
 }
 
@@ -45,32 +45,59 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 	}
 	resolver := NewToolPolicyResolver(cfg)
 	defs := []ToolDefinition{
+		{Name: "ask"},
 		{Name: "calendar"},
 		{Name: "email"},
 		{Name: "file_read"},
 		{Name: "file_write"},
-		{Name: "image_generation"},
+		{Name: "image"},
 		{Name: "memory"},
 		{Name: "pdf"},
 		{Name: "browser"},
-		{Name: "research_run"},
+		{Name: "deep_research"},
 		{Name: "sessions"},
 		{Name: "web"},
 		{Name: "apply_patch"},
 		{Name: "write_begin"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{RouteKind: ToolRouteKindChat}, defs)
-	if len(filtered) != 11 {
-		t.Fatalf("expected 11 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
+	if len(filtered) != 12 {
+		t.Fatalf("expected 12 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
 	}
 	allowed := map[string]bool{
+		"ask":     true,
 		"browser": true, "calendar": true, "email": true, "file_read": true, "file_write": true,
-		"image_generation": true, "memory": true, "pdf": true, "research_run": true, "sessions": true, "web": true,
+		"image": true, "memory": true, "pdf": true, "deep_research": true, "sessions": true, "web": true,
 	}
 	for _, def := range filtered {
 		if !allowed[def.Name] {
 			t.Fatalf("unexpected tool %q after default chat allowlist", def.Name)
 		}
+	}
+}
+
+func TestToolPolicyResolver_DefaultChatDirectAllowlist_NormalizesCompatAliases(t *testing.T) {
+	cfg := &config.Config{
+		ToolCalling: *config.DefaultToolCallingConfig(),
+		Agents:      *config.DefaultAgentsConfig(),
+	}
+	resolver := NewToolPolicyResolver(cfg)
+	defs := []ToolDefinition{
+		{Name: "read"},
+		{Name: "write"},
+		{Name: "delete"},
+		{Name: "image_generation"},
+		{Name: "generate_image"},
+		{Name: "generateImage"},
+		{Name: "web_search"},
+		{Name: "web_fetch"},
+		{Name: "web_read"},
+		{Name: "web_crawl"},
+		{Name: "grep"},
+	}
+	filtered := resolver.Filter(ToolPolicyRequest{RouteKind: ToolRouteKindChat}, defs)
+	if len(filtered) != len(defs) {
+		t.Fatalf("expected compat aliases to survive default chat allowlist, got %#v", filtered)
 	}
 }
 

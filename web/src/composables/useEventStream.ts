@@ -209,6 +209,7 @@ export function useEventStream() {
           if (
             data.streaming &&
             chatStore.streaming &&
+            !chatStore.isRecovering &&
             chatStore.currentConversationId === data.id
           ) {
             break

@@ -320,6 +320,10 @@ func (e *Executor) Execute(ctx context.Context, name string, args map[string]int
 	normalizedName := normalizeCompatToolName(name)
 	resolvedName := name
 	tool := e.registry.Get(name)
+	if shouldPreferCompatNormalizedTool(name, normalizedName, e.registry) {
+		resolvedName = normalizedName
+		tool = e.registry.Get(normalizedName)
+	}
 	if tool == nil {
 		resolvedName = normalizedName
 		tool = e.registry.Get(normalizedName)
@@ -372,8 +376,10 @@ func normalizeCompatToolName(name string) string {
 		"memory_write", "memory_remember", "memory_store",
 		"memory_forget", "memory_delete":
 		return "memory"
-	case "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
-		return "web"
+	case "deep-research", "research_run", "research_status":
+		return "deep_research"
+	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+		return "web_query"
 	default:
 		return name
 	}
@@ -401,13 +407,37 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 		return normalizeSessionsCompatArgs(rawName, args)
 	case "memory":
 		return normalizeMemoryCompatArgs(rawName, args)
-	case "web":
+	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return normalizeWebCompatArgs(rawName, args)
 	case "browser":
 		return normalizeBrowserCompatArgs(rawName, args)
+	case "deep_research", "research_run", "research_status", "deep-research":
+		return normalizeDeepResearchCompatArgs(rawName, args)
 	default:
 		return args
 	}
+}
+
+func normalizeDeepResearchCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(args)+1)
+	for k, v := range args {
+		normalized[k] = v
+	}
+	if action := strings.TrimSpace(asString(normalized["action"])); action != "" {
+		return normalized
+	}
+	switch strings.ToLower(strings.TrimSpace(rawName)) {
+	case "research_status":
+		normalized["action"] = DeepResearchActionStatus
+	case "research_run":
+		normalized["action"] = DeepResearchActionRun
+	default:
+		if strings.TrimSpace(firstCompatStringDeep(normalized, "job_id", "jobId", "id")) != "" &&
+			strings.TrimSpace(firstCompatStringDeep(normalized, "query", "objective", "prompt", "message")) == "" {
+			normalized["action"] = DeepResearchActionStatus
+		}
+	}
+	return normalized
 }
 
 func normalizeSessionsCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
@@ -434,19 +464,38 @@ func normalizeSessionsCompatArgs(rawName string, args map[string]interface{}) ma
 }
 
 func normalizeWebCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
-	normalized := make(map[string]interface{}, len(args)+1)
+	normalized := make(map[string]interface{}, len(args)+3)
 	for k, v := range args {
 		normalized[k] = v
 	}
+	if _, ok := normalized["input"]; !ok {
+		if input := resolveWebQueryInput(normalized); input != "" {
+			normalized["input"] = input
+		}
+	} else if current, ok := normalized["input"].(string); ok && strings.TrimSpace(current) == "" {
+		if input := resolveWebQueryInput(normalized); input != "" {
+			normalized["input"] = input
+		}
+	}
 	switch strings.ToLower(strings.TrimSpace(rawName)) {
+	case "web_query":
+		return normalized
+	case "web":
+		if action := strings.ToLower(strings.TrimSpace(firstCompatStringDeep(normalized, "action", "op", "operation"))); action != "" {
+			normalized["action"] = action
+		}
+		return normalized
 	case "web_search":
 		normalized["action"] = "search"
+		applyLegacyWebInputAlias(normalized, firstCompatStringDeep(normalized, "query", "q"))
 		return normalizeWebSearchCompatArgs(rawName, normalized)
 	case "web_fetch":
 		normalized["action"] = "fetch"
+		applyLegacyWebInputAlias(normalized, firstCompatStringDeep(normalized, "url", "href", "target"))
 		return normalizeWebFetchCompatArgs(rawName, normalized)
 	case "web_read":
 		normalized["action"] = "read"
+		applyLegacyWebInputAlias(normalized, firstCompatStringDeep(normalized, "url", "href", "target"))
 		return normalizeWebReadCompatArgs(normalized)
 	case "web_extract":
 		normalized["action"] = "extract"
@@ -455,42 +504,50 @@ func normalizeWebCompatArgs(rawName string, args map[string]interface{}) map[str
 		normalized["action"] = "crawl"
 		return normalizeWebCrawlCompatArgs(normalized)
 	default:
-		action := resolveWebAction(normalized)
-		if action == "" {
-			return normalized
-		}
-		normalized["action"] = action
-		switch action {
-		case "search":
-			return normalizeWebSearchCompatArgs(rawName, normalized)
-		case "fetch":
-			return normalizeWebFetchCompatArgs(rawName, normalized)
-		case "read":
-			return normalizeWebReadCompatArgs(normalized)
-		case "extract":
-			return normalizeWebExtractCompatArgs(normalized)
-		case "crawl":
-			return normalizeWebCrawlCompatArgs(normalized)
-		default:
-			return normalized
-		}
+		return normalized
+	}
+}
+
+func applyLegacyWebInputAlias(args map[string]interface{}, value string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return
+	}
+	if current, ok := args["input"]; !ok {
+		args["input"] = value
+	} else if currentString, ok := current.(string); ok && strings.TrimSpace(currentString) == "" {
+		args["input"] = value
 	}
 }
 
 func normalizeCompatFallbackTarget(rawName, normalizedName string, args map[string]interface{}) (string, map[string]interface{}) {
 	rawKey := strings.ToLower(strings.TrimSpace(rawName))
 	switch rawKey {
-	case "web_fetch":
-		return "web_fetch", normalizeWebFetchCompatArgs(rawName, args)
+	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+		return "web_query", normalizeWebCompatArgs(rawName, args)
 	case "browser":
 		return "browser", normalizeBrowserCompatArgs(rawName, args)
-	case "web_search":
-		return "web_search", normalizeWebSearchCompatArgs(rawName, args)
 	default:
 		if isFactoryToolName(rawName) {
 			return rawName, args
 		}
 		return normalizedName, args
+	}
+}
+
+func shouldPreferCompatNormalizedTool(rawName, normalizedName string, registry *Registry) bool {
+	if registry == nil {
+		return false
+	}
+	rawName = strings.ToLower(strings.TrimSpace(rawName))
+	switch rawName {
+	case "web", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+		if normalizedName == "" || normalizedName == rawName {
+			return false
+		}
+		return registry.Get(normalizedName) != nil
+	default:
+		return false
 	}
 }
 
@@ -1381,9 +1438,19 @@ func parseJSONObjectArgs(raw string) (map[string]interface{}, bool) {
 	if json.Unmarshal([]byte(raw), &args) == nil {
 		return args, true
 	}
+	if repaired, ok := extractLastJSONObjectFromConcatenatedPayload(raw); ok {
+		if json.Unmarshal([]byte(repaired), &args) == nil {
+			return args, true
+		}
+	}
 	if normalized := normalizeLooseJSON(raw); normalized != raw {
 		if json.Unmarshal([]byte(normalized), &args) == nil {
 			return args, true
+		}
+		if repaired, ok := extractLastJSONObjectFromConcatenatedPayload(normalized); ok {
+			if json.Unmarshal([]byte(repaired), &args) == nil {
+				return args, true
+			}
 		}
 		if closed := closeIncompleteJSON(normalized); closed != normalized {
 			if json.Unmarshal([]byte(closed), &args) == nil {
@@ -1656,6 +1723,90 @@ func extractFirstJSONObject(raw string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func extractLastJSONObjectFromConcatenatedPayload(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", false
+	}
+
+	segments := make([]string, 0, 2)
+	for i := 0; i < len(trimmed); {
+		for i < len(trimmed) && isJSONWhitespace(trimmed[i]) {
+			i++
+		}
+		if i >= len(trimmed) {
+			break
+		}
+		if trimmed[i] != '{' {
+			return "", false
+		}
+
+		start := i
+		depth := 0
+		inString := false
+		escapeNext := false
+		for i < len(trimmed) {
+			c := trimmed[i]
+
+			if escapeNext {
+				escapeNext = false
+				i++
+				continue
+			}
+			if c == '\\' {
+				escapeNext = true
+				i++
+				continue
+			}
+			if c == '"' {
+				inString = !inString
+				i++
+				continue
+			}
+			if inString {
+				i++
+				continue
+			}
+
+			switch c {
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					i++
+					segments = append(segments, trimmed[start:i])
+					goto nextSegment
+				}
+			}
+			i++
+		}
+		return "", false
+
+	nextSegment:
+	}
+
+	if len(segments) < 2 {
+		return "", false
+	}
+	for i := len(segments) - 1; i >= 0; i-- {
+		var obj map[string]interface{}
+		if json.Unmarshal([]byte(segments[i]), &obj) == nil && len(obj) > 0 {
+			return segments[i], true
+		}
+	}
+	return segments[len(segments)-1], true
+}
+
+func isJSONWhitespace(c byte) bool {
+	switch c {
+	case ' ', '\t', '\n', '\r':
+		return true
+	default:
+		return false
+	}
 }
 
 func parseColonValuePairs(raw string, out map[string]interface{}) bool {

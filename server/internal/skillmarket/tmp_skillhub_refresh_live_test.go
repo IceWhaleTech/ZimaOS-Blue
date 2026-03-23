@@ -81,7 +81,7 @@ func TestRefreshLiveSkillHubClubSource(t *testing.T) {
 		t.Fatalf("begin crawl run: %v", err)
 	}
 
-	err = svc.discoverFromHTMLCatalog(ctx, source, run)
+	err = svc.discoverFromHTMLCatalog(ctx, source, 0, &DiscoverResult{}, run)
 	if err != nil {
 		run.Status = "failed"
 		run.ErrorText = err.Error()

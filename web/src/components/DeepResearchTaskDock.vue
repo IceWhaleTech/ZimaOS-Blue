@@ -3,6 +3,10 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { DeepResearchJobSummary } from '@/api/deepResearch'
 import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
+import {
+  localizeDeepResearchAction,
+  localizeDeepResearchStage,
+} from '@/utils/deepResearchText'
 
 const DEEP_RESEARCH_DOCK_COLLAPSED_KEY = 'zima.chat.deep_research_dock_collapsed.v1'
 
@@ -39,14 +43,15 @@ function persistCollapsedState(value: boolean) {
 }
 
 function stageLabel(stage?: string): string {
-  const stageMap: Record<string, string> = {
-    intake: t('chat.deepResearchStageIntake', 'Intake'),
-    planning: t('chat.deepResearchStagePlanning', 'Planning'),
-    retrieve: t('chat.deepResearchStageRetrieve', 'Retrieving'),
-    verify: t('chat.deepResearchStageVerify', 'Verifying'),
-    synthesize: t('chat.deepResearchStageSynthesize', 'Synthesizing'),
-  }
-  return stageMap[String(stage || '').trim()] || stage || t('chat.deepResearchProgress', 'Running')
+  return (
+    localizeDeepResearchStage(stage, t) ||
+    stage ||
+    t('chat.deepResearchProgress', 'Running')
+  )
+}
+
+function latestActionLabel(action?: string): string {
+  return localizeDeepResearchAction(action, t) || action || ''
 }
 
 async function handleCancel(job: DeepResearchJobSummary) {
@@ -107,7 +112,9 @@ watch(
             </span>
           </span>
 
-          <span class="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span
+            class="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+          >
             <span
               v-if="leadJob"
               class="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
@@ -126,10 +133,7 @@ watch(
             </span>
           </span>
 
-          <span
-            v-if="!collapsed"
-            class="mt-1.5 block text-xs text-slate-500 dark:text-slate-400"
-          >
+          <span v-if="!collapsed" class="mt-1.5 block text-xs text-slate-500 dark:text-slate-400">
             {{
               t(
                 'chat.deepResearchRunningElsewhere',
@@ -188,27 +192,26 @@ watch(
                   >{{ t('chat.deepResearchIteration', 'Iteration') }} {{ job.iteration }}</span
                 >
               </div>
-              <div
-                class="mt-2 break-words text-sm font-medium text-slate-800 dark:text-slate-100"
-              >
+              <div class="mt-2 break-words text-sm font-medium text-slate-800 dark:text-slate-100">
                 {{ job.query }}
               </div>
               <div
                 v-if="job.latest_action || job.latest_gap"
                 class="mt-2 space-y-1 text-xs text-slate-500 dark:text-slate-400"
               >
-                <div v-if="job.latest_action" class="break-words">{{ job.latest_action }}</div>
-                <div
-                  v-if="job.latest_gap"
-                  class="break-words text-amber-700 dark:text-amber-200"
-                >
+                <div v-if="job.latest_action" class="break-words">
+                  {{ latestActionLabel(job.latest_action) }}
+                </div>
+                <div v-if="job.latest_gap" class="break-words text-amber-700 dark:text-amber-200">
                   {{ job.latest_gap }}
                 </div>
               </div>
               <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                 <div
                   class="h-full bg-blue-500 transition-all duration-500"
-                  :style="{ width: `${Math.max(0, Math.min(100, Math.round(job.progress || 0)))}%` }"
+                  :style="{
+                    width: `${Math.max(0, Math.min(100, Math.round(job.progress || 0)))}%`,
+                  }"
                 />
               </div>
             </div>

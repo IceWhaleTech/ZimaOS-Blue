@@ -61,4 +61,42 @@ describe('ChannelCard', () => {
     expect(passwordInput.exists()).toBe(true)
     expect(passwordInput.attributes('type')).toBe('password')
   })
+
+  it('renders toggle fields and emits string booleans when switched', async () => {
+    const wrapper = mount(ChannelCard, {
+      props: {
+        channel: {
+          id: 'feishu',
+          name: 'Feishu',
+          icon: '/icons/channels/feishu.svg',
+          enabled: false,
+          status: 'disconnected',
+          descriptionKey: 'channels.feishuDesc',
+          hintKey: 'channels.feishuHint',
+          fields: [
+            {
+              key: 'session_mode',
+              labelKey: 'channels.feishuSessionMode',
+              type: 'toggle',
+              value: 'false',
+            },
+          ],
+        },
+        expanded: true,
+        toggling: false,
+        saving: false,
+        testingConnection: false,
+        testResult: null,
+      },
+    })
+
+    const checkbox = wrapper.find('.channel-card__toggle-field input[type="checkbox"].sr-only')
+    expect(checkbox.exists()).toBe(true)
+    expect(wrapper.text()).toContain('channels.feishuSessionMode')
+    expect(wrapper.text()).toContain('common.disabled')
+
+    await checkbox.setValue(true)
+
+    expect(wrapper.emitted('updateField')).toEqual([[0, 'true']])
+  })
 })

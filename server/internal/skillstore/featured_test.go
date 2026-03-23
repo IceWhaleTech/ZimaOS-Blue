@@ -143,6 +143,25 @@ func TestFeaturedSkillsLoader_LoadError(t *testing.T) {
 	}
 }
 
+func TestFeaturedSkillsLoader_LazyLoadOnRead(t *testing.T) {
+	tempDir := t.TempDir()
+	dataPath := filepath.Join(tempDir, "featured_skills.json")
+	if err := os.WriteFile(dataPath, []byte(`{"skills":[{"id":"lazy-skill","name":"Lazy Skill"}]}`), 0o644); err != nil {
+		t.Fatalf("write featured skills: %v", err)
+	}
+
+	loader := NewFeaturedSkillsLoader(dataPath)
+	if !loader.IsLoaded() {
+		t.Fatal("loader should lazy-load on first read")
+	}
+	if loader.Count() != 1 {
+		t.Fatalf("Count() = %d, want 1", loader.Count())
+	}
+	if loader.Get("lazy-skill") == nil {
+		t.Fatal("expected lazy-loaded skill to be available")
+	}
+}
+
 func TestLocalSkillScanner_Scan(t *testing.T) {
 	// Create temp directory with test skills
 	tempDir, err := os.MkdirTemp("", "local-skills-test-*")
@@ -248,6 +267,43 @@ version: 2.0.0
 			t.Error("skill file path should not be empty")
 		}
 	})
+
+	t.Run("scan CLAUDE.md and AGENT.md entries", func(t *testing.T) {
+		claudeDir := filepath.Join(tempDir, "claude-skill")
+		if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+			t.Fatalf("failed to create claude skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(claudeDir, "CLAUDE.md"), []byte(`---
+id: claude_skill
+name: Claude Skill
+version: 1.0.0
+---
+`), 0o644); err != nil {
+			t.Fatalf("failed to write CLAUDE.md: %v", err)
+		}
+		agentDir := filepath.Join(tempDir, "agent-skill")
+		if err := os.MkdirAll(agentDir, 0o755); err != nil {
+			t.Fatalf("failed to create agent skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(agentDir, "AGENT.md"), []byte(`---
+id: agent_skill
+name: Agent Skill
+version: 1.0.0
+---
+`), 0o644); err != nil {
+			t.Fatalf("failed to write AGENT.md: %v", err)
+		}
+
+		if err := scanner.Scan(); err != nil {
+			t.Fatalf("Scan() error = %v", err)
+		}
+		if scanner.Get("claude_skill") == nil {
+			t.Fatal("expected CLAUDE.md skill to be discovered")
+		}
+		if scanner.Get("agent_skill") == nil {
+			t.Fatal("expected AGENT.md skill to be discovered")
+		}
+	})
 }
 
 func TestLocalSkillScanner_EmptyDirectory(t *testing.T) {
@@ -291,6 +347,30 @@ func TestLocalSkillScanner_NonExistentDirectory(t *testing.T) {
 
 	// Cleanup
 	os.RemoveAll(tempDir)
+}
+
+func TestLocalSkillScanner_LazyScanOnRead(t *testing.T) {
+	tempDir := t.TempDir()
+	skillDir := filepath.Join(tempDir, "lazy-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nid: lazy_skill\nname: Lazy Skill\n---\n"), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	scanner := NewLocalSkillScanner(tempDir)
+	if scanner.Count() != 1 {
+		t.Fatalf("Count() = %d, want 1 after lazy scan", scanner.Count())
+	}
+	if scanner.Get("lazy_skill") == nil {
+		t.Fatal("expected lazy-scanned skill to be available")
+	}
+
+	scanner.Invalidate()
+	if scanner.Get("lazy_skill") == nil {
+		t.Fatal("expected invalidated scanner to rescan on next read")
+	}
 }
 
 func TestMatchesFeaturedSkill(t *testing.T) {

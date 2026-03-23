@@ -92,6 +92,49 @@ describe('todo checklist rendering helpers', () => {
     })
   })
 
+  it('returns null after a new non-continuation user scope starts', () => {
+    const messages = [
+      userMessage('msg-u1', '先查一下'),
+      assistantMessage('msg-a1', '- [x] 收集信息\n- [ ] 写总结'),
+      userMessage('msg-u2', '换个问题，直接帮我解释这个报错'),
+      assistantMessage('msg-a2', '这是新的回答，不再沿用旧 checklist。'),
+    ]
+
+    expect(findLatestTodoChecklistSummary(messages)).toBeNull()
+  })
+
+  it('returns null when a completion-style summary follows the checklist', () => {
+    const messages = [
+      userMessage('msg-u1', '继续把任务做完'),
+      assistantMessage('msg-a1', '- [x] 收集信息\n- [ ] 最终总结\n\n我先整理最后的交付内容。'),
+      assistantMessage(
+        'msg-a2',
+        '任务已完成。\n完成内容：已整理最终结果并补充说明。\n使用方法：直接查看上面的输出。'
+      ),
+    ]
+
+    expect(findLatestTodoChecklistSummary(messages)).toBeNull()
+  })
+
+  it('returns null when an artifact-delivery style message follows the checklist', () => {
+    const messages = [
+      userMessage('msg-u1', '继续把任务做完'),
+      assistantMessage('msg-a1', '- [x] 收集信息\n- [ ] 将完整报告写入 reports/final.md'),
+      assistantMessage('msg-a2', '已将完整报告写入 `reports/final.md`，可以直接查看。'),
+    ]
+
+    expect(findLatestTodoChecklistSummary(messages)).toBeNull()
+  })
+
+  it('returns null when the latest checklist is already fully completed', () => {
+    const messages = [
+      userMessage('msg-u1', '继续'),
+      assistantMessage('msg-a1', '- [x] 收集信息\n- [x] 写总结'),
+    ]
+
+    expect(findLatestTodoChecklistSummary(messages)).toBeNull()
+  })
+
   it('keeps active summary pinned to the canonical checklist for duplicate echoes', () => {
     const canonical = assistantMessage('msg-a1', '- [ ] 收集信息\n- [ ] 写总结', {
       todo_card_id: 'todo-checklist-msg-a1',
@@ -120,6 +163,19 @@ describe('todo checklist rendering helpers', () => {
       pendingCount: 2,
       allCompleted: false,
     })
+  })
+
+  it('returns null when the latest checklist has an explicit completion signal', () => {
+    const canonical = assistantMessage('msg-a1', '- [ ] 收集信息\n- [ ] 写总结', {
+      todo_card_id: 'todo-checklist-msg-a1',
+    })
+
+    expect(
+      findLatestTodoChecklistSummary([canonical], {
+        messageId: 'msg-a1',
+        todoCardId: 'todo-checklist-msg-a1',
+      })
+    ).toBeNull()
   })
 
   it('suppresses duplicate checklist echoes after affirmative continuation turns', () => {

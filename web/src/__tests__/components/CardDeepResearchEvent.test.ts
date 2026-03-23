@@ -16,6 +16,8 @@ function createTestI18n() {
           deepResearchLiveSources: 'Live sources',
           deepResearchResearchBrief: 'Research brief',
           deepResearchMustVerify: 'Must verify',
+          deepResearchRetryGuidance: 'Retry guidance',
+          deepResearchRetryQueries: 'Recovery queries',
           deepResearchPlannedTasks: 'Planned tasks',
           deepResearchFollowUpQuery: 'Follow-up query',
           deepResearchVerificationSummary: 'Verification',
@@ -47,6 +49,9 @@ describe('CardDeepResearchEvent', () => {
           brief: {
             goal: 'Check the latest vendor disclosures.',
             must_verify_claims: ['Revenue growth', 'Customer count'],
+            retry_context:
+              'Harness retry guidance: recover the missing official confirmation before finishing.',
+            retry_queries: ['vendor revenue growth primary source verification'],
           },
           tasks: [
             {
@@ -79,6 +84,10 @@ describe('CardDeepResearchEvent', () => {
 
     expect(wrapper.text()).toContain('Verification pass completed')
     expect(wrapper.text()).toContain('Research brief')
+    expect(wrapper.text()).toContain('Retry guidance')
+    expect(wrapper.text()).toContain('Recovery queries')
+    expect(wrapper.text()).toContain('recover the missing official confirmation')
+    expect(wrapper.text()).toContain('vendor revenue growth primary source verification')
     expect(wrapper.text()).toContain('Compare earnings release against filings')
     expect(wrapper.text()).toContain('Investor relations')
     expect(wrapper.text()).toContain('Need one more primary source.')

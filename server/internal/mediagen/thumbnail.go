@@ -1,6 +1,7 @@
 package mediagen
 
 import (
+	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -49,6 +50,27 @@ func (s *MediaStorage) generateThumbnail(localPath string) string {
 	}
 
 	return s.baseURL + "/thumbnails/" + thumbName
+}
+
+// StoreThumbnailBytes persists a pre-rendered thumbnail under the shared thumbnails path.
+func (s *MediaStorage) StoreThumbnailBytes(data []byte, contentType string) (string, error) {
+	if s == nil {
+		return "", fmt.Errorf("media storage is nil")
+	}
+	thumbDir := filepath.Join(s.baseDir, "thumbnails")
+	if err := os.MkdirAll(thumbDir, 0755); err != nil {
+		return "", err
+	}
+	ext := extensionFromContentType(contentType, MediaTypeImage)
+	if ext == "" {
+		ext = ".png"
+	}
+	thumbName := uuid.New().String() + ext
+	thumbPath := filepath.Join(thumbDir, thumbName)
+	if err := os.WriteFile(thumbPath, data, 0644); err != nil {
+		return "", err
+	}
+	return s.baseURL + "/thumbnails/" + thumbName, nil
 }
 
 // resizeImage scales an image so its longest side is maxDim pixels.

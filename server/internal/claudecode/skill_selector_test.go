@@ -362,3 +362,75 @@ func TestSkillSelector_UIReviewerNeedsUIEvidence(t *testing.T) {
 		t.Fatalf("expected ui_reviewer with screenshot/UI evidence, got=%+v", decision)
 	}
 }
+
+func TestSkillSelector_URLUIReviewBypassesBrowserRule(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	for _, tc := range []struct {
+		id   string
+		desc string
+	}{
+		{id: "browser", desc: "browse urls"},
+		{id: "ui_reviewer", desc: "review screenshots and layouts"},
+	} {
+		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir skill: %v", err)
+		}
+		content := "---\nname: " + tc.id + "\ndescription: " + tc.desc + "\nos: [\"" + runtime.GOOS + "\"]\n---\n# " + tc.id + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatalf("write skill: %v", err)
+		}
+	}
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "Please audit the accessibility and UI of https://example.com/pricing", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "ui_reviewer" {
+		t.Fatalf("expected ui_reviewer for URL UI audit, got=%+v", decision)
+	}
+}
+
+func TestSkillSelector_URLAnalyzeBypassesBrowserRule(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	for _, tc := range []struct {
+		id   string
+		desc string
+	}{
+		{id: "browser", desc: "browse urls"},
+		{id: "analyze", desc: "analyze reports and urls"},
+	} {
+		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir skill: %v", err)
+		}
+		content := "---\nname: " + tc.id + "\ndescription: " + tc.desc + "\nos: [\"" + runtime.GOOS + "\"]\n---\n# " + tc.id + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatalf("write skill: %v", err)
+		}
+	}
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "Analyze https://example.com/blog and summarize the key findings into a short report.", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "analyze" {
+		t.Fatalf("expected analyze for URL analysis request, got=%+v", decision)
+	}
+}

@@ -409,10 +409,10 @@ function closeDataModal() {
 <template>
   <div class="w-full">
     <div
-      class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden"
+      class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden"
     >
-      <div class="px-6 py-5 border-b border-gray-200 dark:border-gray-700">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="px-5 py-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">
               {{ t('userdata.chatDataTitle', 'Chat Data') }}
@@ -429,21 +429,21 @@ function closeDataModal() {
           <div class="flex flex-wrap items-center gap-2">
             <button
               data-testid="userdata-open-export"
-              class="px-4 py-2 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
+              class="px-3.5 py-1.5 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
               @click="openDataModal('export')"
             >
               {{ t('userdata.tabs.export') }}
             </button>
             <button
               data-testid="userdata-open-import"
-              class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors"
+              class="px-3.5 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors"
               @click="openDataModal('import')"
             >
               {{ t('userdata.tabs.import') }}
             </button>
             <button
               data-testid="userdata-open-cleanup"
-              class="px-4 py-2 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 text-sm font-medium rounded-lg transition-colors"
+              class="px-3.5 py-1.5 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 text-sm font-medium rounded-lg transition-colors"
               @click="openDataModal('cleanup')"
             >
               {{ t('userdata.tabs.cleanup') }}
@@ -490,256 +490,99 @@ function closeDataModal() {
           </div>
 
           <div class="p-6">
-          <!-- Export Tab Content -->
-          <div v-show="activeTab === 'export'" class="glass-card p-4">
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              {{ t('userdata.exportDescription') }}
-            </p>
-
-            <!-- Format Selection -->
-            <div class="mb-4">
-              <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{
-                t('userdata.format')
-              }}</label>
-              <div class="flex gap-2">
-                <button
-                  :class="[
-                    'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-                    exportFormat === 'json'
-                      ? 'bg-gray-700 dark:bg-gray-500 text-white'
-                      : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600',
-                  ]"
-                  @click="exportFormat = 'json'"
-                >
-                  {{ t('userdata.formatJson') }}
-                </button>
-                <button
-                  :class="[
-                    'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-                    exportFormat === 'encrypted'
-                      ? 'bg-gray-700 dark:bg-gray-500 text-white'
-                      : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600',
-                  ]"
-                  @click="exportFormat = 'encrypted'"
-                >
-                  {{ t('userdata.formatEncrypted') }}
-                </button>
-              </div>
-              <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">
-                {{
-                  exportFormat === 'json'
-                    ? t('userdata.formatJsonDesc')
-                    : t('userdata.formatEncryptedDesc')
-                }}
+            <!-- Export Tab Content -->
+            <div v-show="activeTab === 'export'" class="glass-card p-4">
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                {{ t('userdata.exportDescription') }}
               </p>
-            </div>
 
-            <!-- Password -->
-            <div class="space-y-3 mb-4">
-              <div>
-                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
-                  t('userdata.password')
+              <!-- Format Selection -->
+              <div class="mb-4">
+                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{
+                  t('userdata.format')
                 }}</label>
-                <input
-                  v-model="exportPassword"
-                  type="password"
-                  :placeholder="t('userdata.passwordPlaceholder')"
-                  class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
-                />
-              </div>
-              <div>
-                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
-                  t('userdata.confirmPassword')
-                }}</label>
-                <input
-                  v-model="exportConfirmPassword"
-                  type="password"
-                  :placeholder="t('userdata.confirmPasswordPlaceholder')"
-                  class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
-                  :class="{ 'border-red-500': exportConfirmPassword && !exportPasswordsMatch }"
-                />
-                <p
-                  v-if="exportConfirmPassword && !exportPasswordsMatch"
-                  class="text-xs text-red-500 mt-1"
-                >
-                  {{ t('userdata.passwordMismatch') }}
+                <div class="flex gap-2">
+                  <button
+                    :class="[
+                      'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                      exportFormat === 'json'
+                        ? 'bg-gray-700 dark:bg-gray-500 text-white'
+                        : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600',
+                    ]"
+                    @click="exportFormat = 'json'"
+                  >
+                    {{ t('userdata.formatJson') }}
+                  </button>
+                  <button
+                    :class="[
+                      'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                      exportFormat === 'encrypted'
+                        ? 'bg-gray-700 dark:bg-gray-500 text-white'
+                        : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600',
+                    ]"
+                    @click="exportFormat = 'encrypted'"
+                  >
+                    {{ t('userdata.formatEncrypted') }}
+                  </button>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">
+                  {{
+                    exportFormat === 'json'
+                      ? t('userdata.formatJsonDesc')
+                      : t('userdata.formatEncryptedDesc')
+                  }}
                 </p>
               </div>
-            </div>
 
-            <!-- Error -->
-            <div
-              v-if="exportError"
-              class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm mb-4"
-            >
-              {{ exportError }}
-            </div>
-
-            <!-- Export Button -->
-            <button
-              :disabled="!canExport || exporting"
-              class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              @click="handleExport"
-            >
-              <svg
-                v-if="exporting"
-                class="animate-spin h-4 w-4"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              {{ exporting ? t('userdata.exporting') : t('userdata.exportButton') }}
-            </button>
-          </div>
-
-          <!-- Import Tab Content -->
-          <div v-show="activeTab === 'import'" class="glass-card p-4">
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              {{ t('userdata.importDescription') }}
-            </p>
-
-            <!-- File Selection -->
-            <div class="mb-4">
-              <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{
-                t('userdata.selectFile')
-              }}</label>
-              <div class="flex items-center gap-2">
-                <input
-                  ref="fileInputRef"
-                  type="file"
-                  accept=".json"
-                  class="hidden"
-                  @change="handleFileSelect"
-                />
-                <button
-                  class="px-4 py-2 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-white rounded-lg text-sm transition-colors"
-                  @click="fileInputRef?.click()"
-                >
-                  {{ t('userdata.chooseFile') }}
-                </button>
-                <span
-                  v-if="importFile"
-                  class="text-sm text-gray-600 dark:text-gray-300 truncate flex-1"
-                >
-                  {{ importFile.name }}
-                </span>
-                <button
-                  v-if="importFile"
-                  class="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                  @click="clearImport"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+              <!-- Password -->
+              <div class="space-y-3 mb-4">
+                <div>
+                  <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
+                    t('userdata.password')
+                  }}</label>
+                  <input
+                    v-model="exportPassword"
+                    type="password"
+                    :placeholder="t('userdata.passwordPlaceholder')"
+                    class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
+                    t('userdata.confirmPassword')
+                  }}</label>
+                  <input
+                    v-model="exportConfirmPassword"
+                    type="password"
+                    :placeholder="t('userdata.confirmPasswordPlaceholder')"
+                    class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
+                    :class="{ 'border-red-500': exportConfirmPassword && !exportPasswordsMatch }"
+                  />
+                  <p
+                    v-if="exportConfirmPassword && !exportPasswordsMatch"
+                    class="text-xs text-red-500 mt-1"
                   >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <!-- Password -->
-            <div class="mb-4">
-              <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
-                t('userdata.password')
-              }}</label>
-              <input
-                v-model="importPassword"
-                type="password"
-                :placeholder="t('userdata.importPasswordPlaceholder')"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
-              />
-            </div>
-
-            <!-- Preview -->
-            <div v-if="importPreview" class="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 mb-4">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">
-                {{ t('userdata.previewTitle') }}
-              </h4>
-              <div class="space-y-2 text-sm">
-                <div class="flex justify-between">
-                  <span class="text-gray-500 dark:text-slate-400">{{ t('userdata.version') }}</span>
-                  <span class="text-gray-900 dark:text-white">{{ importPreview.version }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-500 dark:text-slate-400">{{
-                    t('userdata.exportedAt')
-                  }}</span>
-                  <span class="text-gray-900 dark:text-white">{{
-                    new Date(importPreview.exported_at).toLocaleString()
-                  }}</span>
-                </div>
-                <div v-if="importPreview.has_settings" class="flex justify-between">
-                  <span class="text-gray-500 dark:text-slate-400">{{
-                    t('userdata.hasSettings')
-                  }}</span>
-                  <span class="text-green-600 dark:text-green-400">{{ t('common.yes') }}</span>
-                </div>
-                <div v-if="importPreview.chat_preview" class="flex justify-between">
-                  <span class="text-gray-500 dark:text-slate-400">{{
-                    t('userdata.conversations')
-                  }}</span>
-                  <span class="text-gray-900 dark:text-white">{{
-                    importPreview.chat_preview.conversations
-                  }}</span>
-                </div>
-                <div v-if="importPreview.chat_preview" class="flex justify-between">
-                  <span class="text-gray-500 dark:text-slate-400">{{
-                    t('userdata.messages')
-                  }}</span>
-                  <span class="text-gray-900 dark:text-white">{{
-                    importPreview.chat_preview.messages
-                  }}</span>
+                    {{ t('userdata.passwordMismatch') }}
+                  </p>
                 </div>
               </div>
-            </div>
 
-            <!-- Error -->
-            <div
-              v-if="importError"
-              class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm mb-4"
-            >
-              {{ importError }}
-            </div>
-
-            <!-- Buttons -->
-            <div class="flex gap-2">
-              <button
-                :disabled="!canImport || importing"
-                class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                @click="handlePreview"
+              <!-- Error -->
+              <div
+                v-if="exportError"
+                class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm mb-4"
               >
-                {{ t('userdata.preview') }}
-              </button>
+                {{ exportError }}
+              </div>
+
+              <!-- Export Button -->
               <button
-                :disabled="!canImport || importing || !importPreview"
-                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                @click="handleImport"
+                :disabled="!canExport || exporting"
+                class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                @click="handleExport"
               >
                 <svg
-                  v-if="importing"
+                  v-if="exporting"
                   class="animate-spin h-4 w-4"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
@@ -759,286 +602,146 @@ function closeDataModal() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   ></path>
                 </svg>
-                {{ importing ? t('userdata.importing') : t('userdata.importButton') }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Cleanup Tab Content -->
-          <div v-show="activeTab === 'cleanup'" class="glass-card p-4 space-y-4">
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-              {{ t('userdata.cleanup.description') }}
-            </p>
-
-            <!-- Step 1: Select Data to Clean -->
-            <div v-if="cleanupStep === 'select'" class="space-y-4">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white">
-                {{ t('userdata.cleanup.selectData') }}
-              </h4>
-              <div class="space-y-2">
-                <label
-                  class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
-                >
-                  <input
-                    v-model="cleanupTargets.chatHistory"
-                    type="checkbox"
-                    class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                  />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">
-                      {{ t('userdata.cleanup.chatHistory') }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">
-                      {{ t('userdata.cleanup.chatHistoryDesc') }}
-                    </div>
-                  </div>
-                  <span class="text-sm text-gray-500 dark:text-slate-400"
-                    >{{ chatStore.conversations.length }} {{ t('userdata.conversations') }}</span
-                  >
-                </label>
-                <label
-                  class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
-                >
-                  <input
-                    v-model="cleanupTargets.sessions"
-                    type="checkbox"
-                    class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                  />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">
-                      {{ t('userdata.cleanup.sessions') }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">
-                      {{ t('userdata.cleanup.sessionsDesc') }}
-                    </div>
-                  </div>
-                  <span class="text-sm text-gray-500 dark:text-slate-400">{{
-                    storageInfo.session_count
-                  }}</span>
-                </label>
-                <label
-                  class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
-                >
-                  <input
-                    v-model="cleanupTargets.events"
-                    type="checkbox"
-                    class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                  />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">
-                      {{ t('userdata.cleanup.events') }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">
-                      {{ t('userdata.cleanup.eventsDesc') }}
-                    </div>
-                  </div>
-                  <span class="text-sm text-gray-500 dark:text-slate-400">{{
-                    storageInfo.event_count
-                  }}</span>
-                </label>
-                <label
-                  class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
-                >
-                  <input
-                    v-model="cleanupTargets.alerts"
-                    type="checkbox"
-                    class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                  />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">
-                      {{ t('userdata.cleanup.alerts') }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">
-                      {{ t('userdata.cleanup.alertsDesc') }}
-                    </div>
-                  </div>
-                  <span class="text-sm text-gray-500 dark:text-slate-400">{{
-                    storageInfo.alert_count
-                  }}</span>
-                </label>
-                <label
-                  class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
-                >
-                  <input
-                    v-model="cleanupTargets.settings"
-                    type="checkbox"
-                    class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                  />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">
-                      {{ t('userdata.cleanup.settings') }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">
-                      {{ t('userdata.cleanup.settingsDesc') }}
-                    </div>
-                  </div>
-                </label>
-                <label
-                  class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
-                >
-                  <input
-                    v-model="cleanupTargets.cache"
-                    type="checkbox"
-                    class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                  />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">
-                      {{ t('userdata.cleanup.cache') }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">
-                      {{ t('userdata.cleanup.cacheDesc') }}
-                    </div>
-                  </div>
-                </label>
-              </div>
-              <button
-                :disabled="!hasCleanupTargets || cleanupLoading"
-                class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                @click="previewCleanup"
-              >
-                {{ t('userdata.cleanup.previewButton') }}
+                {{ exporting ? t('userdata.exporting') : t('userdata.exportButton') }}
               </button>
             </div>
 
-            <!-- Step 2: Preview -->
-            <div v-else-if="cleanupStep === 'preview'" class="space-y-4">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white">
-                {{ t('userdata.cleanup.previewTitle') }}
-              </h4>
-              <div
-                v-if="cleanupPreviewData"
-                class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-2"
-              >
-                <div v-if="cleanupPreviewData.chatHistory > 0" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{
-                    t('userdata.cleanup.chatHistory')
-                  }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200"
-                    >{{ cleanupPreviewData.chatHistory }} {{ t('userdata.conversations') }}</span
-                  >
-                </div>
-                <div v-if="cleanupPreviewData.sessions > 0" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{
-                    t('userdata.cleanup.sessions')
-                  }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{
-                    cleanupPreviewData.sessions
-                  }}</span>
-                </div>
-                <div v-if="cleanupPreviewData.events > 0" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{
-                    t('userdata.cleanup.events')
-                  }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{
-                    cleanupPreviewData.events
-                  }}</span>
-                </div>
-                <div v-if="cleanupPreviewData.alerts > 0" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{
-                    t('userdata.cleanup.alerts')
-                  }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{
-                    cleanupPreviewData.alerts
-                  }}</span>
-                </div>
-                <div v-if="cleanupPreviewData.settings" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{
-                    t('userdata.cleanup.settings')
-                  }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{
-                    t('userdata.cleanup.willReset')
-                  }}</span>
-                </div>
-                <div v-if="cleanupPreviewData.cache" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{
-                    t('userdata.cleanup.cache')
-                  }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{
-                    t('userdata.cleanup.willClear')
-                  }}</span>
-                </div>
-              </div>
-              <div class="flex gap-2">
-                <button
-                  class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors"
-                  @click="cancelCleanup"
-                >
-                  {{ t('common.cancel') }}
-                </button>
-                <button
-                  class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
-                  @click="proceedToConfirm"
-                >
-                  {{ t('userdata.cleanup.proceedToConfirm') }}
-                </button>
-              </div>
-            </div>
+            <!-- Import Tab Content -->
+            <div v-show="activeTab === 'import'" class="glass-card p-4">
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                {{ t('userdata.importDescription') }}
+              </p>
 
-            <!-- Step 3: Confirm -->
-            <div v-else-if="cleanupStep === 'confirm'" class="space-y-4">
-              <div
-                class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3"
-              >
-                <div class="text-sm text-red-700 dark:text-red-300">
-                  <p class="font-medium">{{ t('userdata.cleanup.confirmStep') }}</p>
-                  <p v-if="previewStore.isPreviewMode" class="mt-1 text-red-600 dark:text-red-400">
-                    {{
-                      t('userdata.cleanup.confirmHintPreview', {
-                        confirmText: t('userdata.cleanup.confirmText'),
-                      })
-                    }}
-                  </p>
-                  <p v-else class="mt-1 text-red-600 dark:text-red-400">
-                    {{ t('userdata.cleanup.confirmHint') }}
-                  </p>
+              <!-- File Selection -->
+              <div class="mb-4">
+                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{
+                  t('userdata.selectFile')
+                }}</label>
+                <div class="flex items-center gap-2">
+                  <input
+                    ref="fileInputRef"
+                    type="file"
+                    accept=".json"
+                    class="hidden"
+                    @change="handleFileSelect"
+                  />
+                  <button
+                    class="px-4 py-2 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-white rounded-lg text-sm transition-colors"
+                    @click="fileInputRef?.click()"
+                  >
+                    {{ t('userdata.chooseFile') }}
+                  </button>
+                  <span
+                    v-if="importFile"
+                    class="text-sm text-gray-600 dark:text-gray-300 truncate flex-1"
+                  >
+                    {{ importFile.name }}
+                  </span>
+                  <button
+                    v-if="importFile"
+                    class="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                    @click="clearImport"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
                 </div>
               </div>
-              <div v-if="previewStore.isPreviewMode">
+
+              <!-- Password -->
+              <div class="mb-4">
                 <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
-                  t('userdata.cleanup.typeToConfirm')
+                  t('userdata.password')
                 }}</label>
                 <input
-                  v-model="cleanupConfirmText"
-                  type="text"
-                  :placeholder="
-                    t('userdata.cleanup.typeToConfirmPlaceholder', {
-                      confirmText: t('userdata.cleanup.confirmText'),
-                    })
-                  "
-                  class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 border border-gray-200 dark:border-slate-600"
-                />
-              </div>
-              <div v-else>
-                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
-                  t('userdata.cleanup.enterPassword')
-                }}</label>
-                <input
-                  v-model="cleanupPassword"
+                  v-model="importPassword"
                   type="password"
-                  :placeholder="t('userdata.cleanup.passwordPlaceholder')"
-                  class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 border border-gray-200 dark:border-slate-600"
+                  :placeholder="t('userdata.importPasswordPlaceholder')"
+                  class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 />
               </div>
-              <div
-                v-if="cleanupError"
-                class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm"
-              >
-                {{ cleanupError }}
+
+              <!-- Preview -->
+              <div v-if="importPreview" class="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 mb-4">
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                  {{ t('userdata.previewTitle') }}
+                </h4>
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-slate-400">{{
+                      t('userdata.version')
+                    }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ importPreview.version }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-slate-400">{{
+                      t('userdata.exportedAt')
+                    }}</span>
+                    <span class="text-gray-900 dark:text-white">{{
+                      new Date(importPreview.exported_at).toLocaleString()
+                    }}</span>
+                  </div>
+                  <div v-if="importPreview.has_settings" class="flex justify-between">
+                    <span class="text-gray-500 dark:text-slate-400">{{
+                      t('userdata.hasSettings')
+                    }}</span>
+                    <span class="text-green-600 dark:text-green-400">{{ t('common.yes') }}</span>
+                  </div>
+                  <div v-if="importPreview.chat_preview" class="flex justify-between">
+                    <span class="text-gray-500 dark:text-slate-400">{{
+                      t('userdata.conversations')
+                    }}</span>
+                    <span class="text-gray-900 dark:text-white">{{
+                      importPreview.chat_preview.conversations
+                    }}</span>
+                  </div>
+                  <div v-if="importPreview.chat_preview" class="flex justify-between">
+                    <span class="text-gray-500 dark:text-slate-400">{{
+                      t('userdata.messages')
+                    }}</span>
+                    <span class="text-gray-900 dark:text-white">{{
+                      importPreview.chat_preview.messages
+                    }}</span>
+                  </div>
+                </div>
               </div>
+
+              <!-- Error -->
+              <div
+                v-if="importError"
+                class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm mb-4"
+              >
+                {{ importError }}
+              </div>
+
+              <!-- Buttons -->
               <div class="flex gap-2">
                 <button
-                  class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors"
-                  @click="cancelCleanup"
+                  :disabled="!canImport || importing"
+                  class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  @click="handlePreview"
                 >
-                  {{ t('common.cancel') }}
+                  {{ t('userdata.preview') }}
                 </button>
                 <button
-                  :disabled="!canConfirmCleanup || cleanupLoading"
-                  class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  @click="executeCleanup"
+                  :disabled="!canImport || importing || !importPreview"
+                  class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  @click="handleImport"
                 >
                   <svg
-                    v-if="cleanupLoading"
+                    v-if="importing"
                     class="animate-spin h-4 w-4"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -1058,15 +761,320 @@ function closeDataModal() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  {{
-                    cleanupLoading
-                      ? t('userdata.cleanup.deleting')
-                      : t('userdata.cleanup.confirmDelete')
-                  }}
+                  {{ importing ? t('userdata.importing') : t('userdata.importButton') }}
                 </button>
               </div>
             </div>
-          </div>
+
+            <!-- Cleanup Tab Content -->
+            <div v-show="activeTab === 'cleanup'" class="glass-card p-4 space-y-4">
+              <p class="text-sm text-gray-500 dark:text-gray-400">
+                {{ t('userdata.cleanup.description') }}
+              </p>
+
+              <!-- Step 1: Select Data to Clean -->
+              <div v-if="cleanupStep === 'select'" class="space-y-4">
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('userdata.cleanup.selectData') }}
+                </h4>
+                <div class="space-y-2">
+                  <label
+                    class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
+                  >
+                    <input
+                      v-model="cleanupTargets.chatHistory"
+                      type="checkbox"
+                      class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                    />
+                    <div class="flex-1">
+                      <div class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ t('userdata.cleanup.chatHistory') }}
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-slate-400">
+                        {{ t('userdata.cleanup.chatHistoryDesc') }}
+                      </div>
+                    </div>
+                    <span class="text-sm text-gray-500 dark:text-slate-400"
+                      >{{ chatStore.conversations.length }} {{ t('userdata.conversations') }}</span
+                    >
+                  </label>
+                  <label
+                    class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
+                  >
+                    <input
+                      v-model="cleanupTargets.sessions"
+                      type="checkbox"
+                      class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                    />
+                    <div class="flex-1">
+                      <div class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ t('userdata.cleanup.sessions') }}
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-slate-400">
+                        {{ t('userdata.cleanup.sessionsDesc') }}
+                      </div>
+                    </div>
+                    <span class="text-sm text-gray-500 dark:text-slate-400">{{
+                      storageInfo.session_count
+                    }}</span>
+                  </label>
+                  <label
+                    class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
+                  >
+                    <input
+                      v-model="cleanupTargets.events"
+                      type="checkbox"
+                      class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                    />
+                    <div class="flex-1">
+                      <div class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ t('userdata.cleanup.events') }}
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-slate-400">
+                        {{ t('userdata.cleanup.eventsDesc') }}
+                      </div>
+                    </div>
+                    <span class="text-sm text-gray-500 dark:text-slate-400">{{
+                      storageInfo.event_count
+                    }}</span>
+                  </label>
+                  <label
+                    class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
+                  >
+                    <input
+                      v-model="cleanupTargets.alerts"
+                      type="checkbox"
+                      class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                    />
+                    <div class="flex-1">
+                      <div class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ t('userdata.cleanup.alerts') }}
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-slate-400">
+                        {{ t('userdata.cleanup.alertsDesc') }}
+                      </div>
+                    </div>
+                    <span class="text-sm text-gray-500 dark:text-slate-400">{{
+                      storageInfo.alert_count
+                    }}</span>
+                  </label>
+                  <label
+                    class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
+                  >
+                    <input
+                      v-model="cleanupTargets.settings"
+                      type="checkbox"
+                      class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                    />
+                    <div class="flex-1">
+                      <div class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ t('userdata.cleanup.settings') }}
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-slate-400">
+                        {{ t('userdata.cleanup.settingsDesc') }}
+                      </div>
+                    </div>
+                  </label>
+                  <label
+                    class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
+                  >
+                    <input
+                      v-model="cleanupTargets.cache"
+                      type="checkbox"
+                      class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                    />
+                    <div class="flex-1">
+                      <div class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ t('userdata.cleanup.cache') }}
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-slate-400">
+                        {{ t('userdata.cleanup.cacheDesc') }}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                <button
+                  :disabled="!hasCleanupTargets || cleanupLoading"
+                  class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  @click="previewCleanup"
+                >
+                  {{ t('userdata.cleanup.previewButton') }}
+                </button>
+              </div>
+
+              <!-- Step 2: Preview -->
+              <div v-else-if="cleanupStep === 'preview'" class="space-y-4">
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('userdata.cleanup.previewTitle') }}
+                </h4>
+                <div
+                  v-if="cleanupPreviewData"
+                  class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-2"
+                >
+                  <div
+                    v-if="cleanupPreviewData.chatHistory > 0"
+                    class="flex justify-between text-sm"
+                  >
+                    <span class="text-red-700 dark:text-red-300">{{
+                      t('userdata.cleanup.chatHistory')
+                    }}</span>
+                    <span class="font-medium text-red-800 dark:text-red-200"
+                      >{{ cleanupPreviewData.chatHistory }} {{ t('userdata.conversations') }}</span
+                    >
+                  </div>
+                  <div v-if="cleanupPreviewData.sessions > 0" class="flex justify-between text-sm">
+                    <span class="text-red-700 dark:text-red-300">{{
+                      t('userdata.cleanup.sessions')
+                    }}</span>
+                    <span class="font-medium text-red-800 dark:text-red-200">{{
+                      cleanupPreviewData.sessions
+                    }}</span>
+                  </div>
+                  <div v-if="cleanupPreviewData.events > 0" class="flex justify-between text-sm">
+                    <span class="text-red-700 dark:text-red-300">{{
+                      t('userdata.cleanup.events')
+                    }}</span>
+                    <span class="font-medium text-red-800 dark:text-red-200">{{
+                      cleanupPreviewData.events
+                    }}</span>
+                  </div>
+                  <div v-if="cleanupPreviewData.alerts > 0" class="flex justify-between text-sm">
+                    <span class="text-red-700 dark:text-red-300">{{
+                      t('userdata.cleanup.alerts')
+                    }}</span>
+                    <span class="font-medium text-red-800 dark:text-red-200">{{
+                      cleanupPreviewData.alerts
+                    }}</span>
+                  </div>
+                  <div v-if="cleanupPreviewData.settings" class="flex justify-between text-sm">
+                    <span class="text-red-700 dark:text-red-300">{{
+                      t('userdata.cleanup.settings')
+                    }}</span>
+                    <span class="font-medium text-red-800 dark:text-red-200">{{
+                      t('userdata.cleanup.willReset')
+                    }}</span>
+                  </div>
+                  <div v-if="cleanupPreviewData.cache" class="flex justify-between text-sm">
+                    <span class="text-red-700 dark:text-red-300">{{
+                      t('userdata.cleanup.cache')
+                    }}</span>
+                    <span class="font-medium text-red-800 dark:text-red-200">{{
+                      t('userdata.cleanup.willClear')
+                    }}</span>
+                  </div>
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors"
+                    @click="cancelCleanup"
+                  >
+                    {{ t('common.cancel') }}
+                  </button>
+                  <button
+                    class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                    @click="proceedToConfirm"
+                  >
+                    {{ t('userdata.cleanup.proceedToConfirm') }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Step 3: Confirm -->
+              <div v-else-if="cleanupStep === 'confirm'" class="space-y-4">
+                <div
+                  class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3"
+                >
+                  <div class="text-sm text-red-700 dark:text-red-300">
+                    <p class="font-medium">{{ t('userdata.cleanup.confirmStep') }}</p>
+                    <p
+                      v-if="previewStore.isPreviewMode"
+                      class="mt-1 text-red-600 dark:text-red-400"
+                    >
+                      {{
+                        t('userdata.cleanup.confirmHintPreview', {
+                          confirmText: t('userdata.cleanup.confirmText'),
+                        })
+                      }}
+                    </p>
+                    <p v-else class="mt-1 text-red-600 dark:text-red-400">
+                      {{ t('userdata.cleanup.confirmHint') }}
+                    </p>
+                  </div>
+                </div>
+                <div v-if="previewStore.isPreviewMode">
+                  <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
+                    t('userdata.cleanup.typeToConfirm')
+                  }}</label>
+                  <input
+                    v-model="cleanupConfirmText"
+                    type="text"
+                    :placeholder="
+                      t('userdata.cleanup.typeToConfirmPlaceholder', {
+                        confirmText: t('userdata.cleanup.confirmText'),
+                      })
+                    "
+                    class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 border border-gray-200 dark:border-slate-600"
+                  />
+                </div>
+                <div v-else>
+                  <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
+                    t('userdata.cleanup.enterPassword')
+                  }}</label>
+                  <input
+                    v-model="cleanupPassword"
+                    type="password"
+                    :placeholder="t('userdata.cleanup.passwordPlaceholder')"
+                    class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 border border-gray-200 dark:border-slate-600"
+                  />
+                </div>
+                <div
+                  v-if="cleanupError"
+                  class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm"
+                >
+                  {{ cleanupError }}
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors"
+                    @click="cancelCleanup"
+                  >
+                    {{ t('common.cancel') }}
+                  </button>
+                  <button
+                    :disabled="!canConfirmCleanup || cleanupLoading"
+                    class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    @click="executeCleanup"
+                  >
+                    <svg
+                      v-if="cleanupLoading"
+                      class="animate-spin h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      cleanupLoading
+                        ? t('userdata.cleanup.deleting')
+                        : t('userdata.cleanup.confirmDelete')
+                    }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

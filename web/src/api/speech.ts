@@ -177,7 +177,10 @@ export const speechApi = {
           options?.onUploadProgress?.(progress, event)
         },
       })
-      options?.onUploadProgress?.(1, { loaded: audio.size, total: audio.size } as AxiosProgressEvent)
+      options?.onUploadProgress?.(1, {
+        loaded: audio.size,
+        total: audio.size,
+      } as AxiosProgressEvent)
       return response.data
     } catch (e: any) {
       if (e.name === 'AbortError') {

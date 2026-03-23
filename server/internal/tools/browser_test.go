@@ -10,17 +10,20 @@ import (
 )
 
 type browserCompatBackend struct {
-	navigateURL      string
-	navigateTargetID string
-	recipeName       string
-	recipeParams     map[string]string
-	screenshotData   string
-	lastActMode      string
-	lastActTargetID  string
-	lastActRef       int
-	lastActAction    string
-	lastActValue     string
-	usesRelay        bool
+	navigateURL               string
+	navigateTargetID          string
+	recipeName                string
+	recipeParams              map[string]string
+	screenshotData            string
+	screenshotTabData         string
+	lastScreenshotURL         string
+	lastScreenshotTabTargetID string
+	lastActMode               string
+	lastActTargetID           string
+	lastActRef                int
+	lastActAction             string
+	lastActValue              string
+	usesRelay                 bool
 }
 
 func (b *browserCompatBackend) Start(context.Context) error { return nil }
@@ -37,6 +40,12 @@ func (b *browserCompatBackend) Navigate(_ context.Context, url string, targetID 
 }
 func (b *browserCompatBackend) CookieHeader(context.Context, string, string) (string, error) {
 	return "", nil
+}
+func (b *browserCompatBackend) ObserveNetwork(context.Context, string, int, bool) (BrowserObservedNetworkResult, error) {
+	return BrowserObservedNetworkResult{}, nil
+}
+func (b *browserCompatBackend) WaitNetworkIdle(context.Context, string, int, int) error {
+	return nil
 }
 func (b *browserCompatBackend) AccessibilityTree(context.Context, string, int) (BrowserA11yTreeResult, error) {
 	return BrowserA11yTreeResult{}, nil
@@ -63,15 +72,22 @@ func (b *browserCompatBackend) ActByInteractiveRef(_ context.Context, targetID s
 	b.lastActValue = value
 	return nil
 }
-func (b *browserCompatBackend) Screenshot(context.Context, string) (string, error) {
+func (b *browserCompatBackend) Screenshot(_ context.Context, url string) (string, error) {
+	b.lastScreenshotURL = url
 	if b.screenshotData != "" {
 		return b.screenshotData, nil
 	}
 	return "", nil
 }
-func (b *browserCompatBackend) ScreenshotTab(context.Context, string) (string, error) { return "", nil }
-func (b *browserCompatBackend) CloseTab(context.Context, string) error                { return nil }
-func (b *browserCompatBackend) Tabs(context.Context) ([]BrowserTabResult, error)      { return nil, nil }
+func (b *browserCompatBackend) ScreenshotTab(_ context.Context, targetID string) (string, error) {
+	b.lastScreenshotTabTargetID = targetID
+	if b.screenshotTabData != "" {
+		return b.screenshotTabData, nil
+	}
+	return "", nil
+}
+func (b *browserCompatBackend) CloseTab(context.Context, string) error           { return nil }
+func (b *browserCompatBackend) Tabs(context.Context) ([]BrowserTabResult, error) { return nil, nil }
 func (b *browserCompatBackend) ExecuteRecipe(_ context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error) {
 	b.recipeName = recipe
 	b.recipeParams = params
@@ -180,6 +196,29 @@ func TestBrowserToolExecuteCanonicalizesLegacyTopLevelActAction(t *testing.T) {
 	}
 }
 
+func TestBrowserToolExecuteAcceptsAtPrefixedRef(t *testing.T) {
+	backend := &browserCompatBackend{}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "snapshot_interactive",
+	}); err != nil {
+		t.Fatalf("snapshot_interactive error = %v", err)
+	}
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "act",
+		"ref":      "@1",
+		"act_type": "click",
+	}); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.lastActRef != 1 {
+		t.Fatalf("lastActRef = %d, want 1", backend.lastActRef)
+	}
+}
+
 func TestBrowserToolExecuteLegacyTopLevelActActionRequiresRef(t *testing.T) {
 	backend := &browserCompatBackend{}
 	tool := NewBrowserTool()
@@ -258,6 +297,66 @@ func TestBrowserToolScreenshotSavesTempFileWhenMediaDirMissing(t *testing.T) {
 	}
 	if _, err := os.Stat(got); err != nil {
 		t.Fatalf("expected saved screenshot at %s: %v", got, err)
+	}
+}
+
+func TestBrowserToolScreenshotUsesTargetIDWithoutURL(t *testing.T) {
+	const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+
+	backend := &browserCompatBackend{screenshotTabData: pngBase64}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":    "screenshot",
+		"target_id": "tab-42",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.lastScreenshotURL != "" {
+		t.Fatalf("lastScreenshotURL = %q, want empty", backend.lastScreenshotURL)
+	}
+	if backend.lastScreenshotTabTargetID != "tab-42" {
+		t.Fatalf("lastScreenshotTabTargetID = %q, want tab-42", backend.lastScreenshotTabTargetID)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["target_id"]; got != "tab-42" {
+		t.Fatalf("target_id = %v, want tab-42", got)
+	}
+	if got := out["message"]; got != "Screenshot captured for tab tab-42" {
+		t.Fatalf("message = %v, want tab message", got)
+	}
+}
+
+func TestBrowserToolScreenshotUsesActiveTabWhenURLAndTargetMissing(t *testing.T) {
+	const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+
+	backend := &browserCompatBackend{screenshotTabData: pngBase64}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "screenshot",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.lastScreenshotURL != "" {
+		t.Fatalf("lastScreenshotURL = %q, want empty", backend.lastScreenshotURL)
+	}
+	if backend.lastScreenshotTabTargetID != "" {
+		t.Fatalf("lastScreenshotTabTargetID = %q, want empty for active-tab fallback", backend.lastScreenshotTabTargetID)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["message"]; got != "Screenshot captured for active tab" {
+		t.Fatalf("message = %v, want active-tab message", got)
 	}
 }
 

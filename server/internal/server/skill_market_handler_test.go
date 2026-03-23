@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,14 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 )
 
+func testSkillMarketConfig(dataDir, activeDir string) skillmarket.Config {
+	cfg := skillmarket.DefaultConfig(dataDir, activeDir)
+	cfg.CuratedConfigPath = filepath.Join(dataDir, "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.SeedURLs = nil
+	return cfg
+}
+
 func TestMarketSearchSkills(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "market.db"))
 	if err != nil {
@@ -30,8 +39,9 @@ func TestMarketSearchSkills(t *testing.T) {
 	defer db.Close()
 
 	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := testSkillMarketConfig(t.TempDir(), activeDir)
 	market, err := skillmarket.NewService(db, skillmarket.Options{
-		Config:       skillmarket.DefaultConfig(t.TempDir(), activeDir),
+		Config:       cfg,
 		Registry:     skill.NewRegistry(),
 		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
 		Scanner:      skillmarket.NewScanner(nil),
@@ -108,8 +118,7 @@ func TestMarketSearchSkillsLazyFactoryInitializesOnce(t *testing.T) {
 	}
 
 	activeDir := filepath.Join(tempDir, "active")
-	cfg := skillmarket.DefaultConfig(tempDir, activeDir)
-	cfg.SeedURLs = nil
+	cfg := testSkillMarketConfig(tempDir, activeDir)
 
 	seedMarket, err := skillmarket.NewService(db, skillmarket.Options{
 		Config:       cfg,
@@ -327,8 +336,9 @@ func TestMarketFeaturedAndFilters(t *testing.T) {
 	defer db.Close()
 
 	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := testSkillMarketConfig(t.TempDir(), activeDir)
 	market, err := skillmarket.NewService(db, skillmarket.Options{
-		Config:       skillmarket.DefaultConfig(t.TempDir(), activeDir),
+		Config:       cfg,
 		Registry:     skill.NewRegistry(),
 		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
 		Scanner:      skillmarket.NewScanner(nil),
@@ -437,6 +447,12 @@ Featured fixture.`
 func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 	requestStarted := make(chan struct{}, 1)
 	release := make(chan struct{})
+	var releaseOnce sync.Once
+	closeRelease := func() {
+		releaseOnce.Do(func() {
+			close(release)
+		})
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/skills":
@@ -458,6 +474,7 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	defer closeRelease()
 
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "market.db"))
 	if err != nil {
@@ -466,7 +483,7 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 	defer db.Close()
 
 	activeDir := filepath.Join(t.TempDir(), "active")
-	cfg := skillmarket.DefaultConfig(t.TempDir(), activeDir)
+	cfg := testSkillMarketConfig(t.TempDir(), activeDir)
 	cfg.TencentSkillHubAPIBaseURL = server.URL
 	cfg.GitHubAPIBaseURL = server.URL
 	cfg.ClawHubBaseURL = server.URL
@@ -484,6 +501,21 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("new market: %v", err)
+	}
+	defer market.Close()
+	if _, err := db.Exec(`UPDATE skill_sources SET enabled = 0`); err != nil {
+		t.Fatalf("disable default sources: %v", err)
+	}
+	if err := market.Store().UpsertSource(context.Background(), skillmarket.Source{
+		ID:          "tencent-skillhub",
+		Type:        "lightmake_api",
+		BaseURL:     server.URL,
+		DisplayName: "Tencent SkillHub",
+		SourceGroup: "skillhub",
+		Enabled:     true,
+		Priority:    5,
+	}); err != nil {
+		t.Fatalf("UpsertSource(tencent-skillhub) error = %v", err)
 	}
 
 	handler := NewSkillHandler(skill.NewRegistry())
@@ -510,28 +542,43 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 		t.Fatalf("unexpected start payload: %s", rec.Body.String())
 	}
 
-	<-requestStarted
+	select {
+	case <-requestStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for discover request to reach upstream source")
+	}
 
 	statusReq := httptest.NewRequest(http.MethodGet, "/skills/discover/status", nil)
-	statusRec := httptest.NewRecorder()
-	statusCtx := e.NewContext(statusReq, statusRec)
-	if err := handler.MarketDiscoverStatus(statusCtx); err != nil {
-		t.Fatalf("MarketDiscoverStatus() error = %v", err)
-	}
-	if statusRec.Code != http.StatusOK {
-		t.Fatalf("status code = %d, want %d", statusRec.Code, http.StatusOK)
-	}
 	var statusPayload struct {
 		Running          bool   `json:"running"`
 		TotalSources     int    `json:"total_sources"`
 		ProcessedSources int    `json:"processed_sources"`
 		CurrentSourceID  string `json:"current_source_id"`
+		SourceResults    []struct {
+			SourceID string `json:"source_id"`
+			Status   string `json:"status"`
+		} `json:"source_results"`
 	}
-	if err := json.Unmarshal(statusRec.Body.Bytes(), &statusPayload); err != nil {
-		t.Fatalf("decode status payload: %v", err)
+	waitDeadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(waitDeadline) {
+		statusRec := httptest.NewRecorder()
+		statusCtx := e.NewContext(statusReq, statusRec)
+		if err := handler.MarketDiscoverStatus(statusCtx); err != nil {
+			t.Fatalf("MarketDiscoverStatus() error = %v", err)
+		}
+		if statusRec.Code != http.StatusOK {
+			t.Fatalf("status code = %d, want %d", statusRec.Code, http.StatusOK)
+		}
+		if err := json.Unmarshal(statusRec.Body.Bytes(), &statusPayload); err != nil {
+			t.Fatalf("decode status payload: %v", err)
+		}
+		if statusPayload.Running && statusPayload.TotalSources == 1 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	if !statusPayload.Running {
-		t.Fatalf("expected running status, payload=%s", statusRec.Body.String())
+		t.Fatalf("expected running status, payload=%+v", statusPayload)
 	}
 	if statusPayload.TotalSources != 1 {
 		t.Fatalf("total_sources = %d, want 1", statusPayload.TotalSources)
@@ -542,13 +589,16 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 	if statusPayload.CurrentSourceID != "tencent-skillhub" {
 		t.Fatalf("current_source_id = %q, want %q", statusPayload.CurrentSourceID, "tencent-skillhub")
 	}
+	if len(statusPayload.SourceResults) != 1 || statusPayload.SourceResults[0].SourceID != "tencent-skillhub" {
+		t.Fatalf("source_results = %+v, want tencent-skillhub entry", statusPayload.SourceResults)
+	}
 
-	close(release)
+	closeRelease()
 
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		statusRec = httptest.NewRecorder()
-		statusCtx = e.NewContext(statusReq, statusRec)
+		statusRec := httptest.NewRecorder()
+		statusCtx := e.NewContext(statusReq, statusRec)
 		if err := handler.MarketDiscoverStatus(statusCtx); err != nil {
 			t.Fatalf("MarketDiscoverStatus() error = %v", err)
 		}
@@ -558,6 +608,9 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 		if !statusPayload.Running {
 			if statusPayload.ProcessedSources != 1 {
 				t.Fatalf("processed_sources = %d, want 1", statusPayload.ProcessedSources)
+			}
+			if len(statusPayload.SourceResults) != 1 || statusPayload.SourceResults[0].Status != "success" {
+				t.Fatalf("final source_results = %+v, want successful tencent-skillhub entry", statusPayload.SourceResults)
 			}
 			return
 		}
@@ -648,8 +701,9 @@ func TestMarketInstallRequiresAckForYellowSkill(t *testing.T) {
 	defer db.Close()
 
 	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := testSkillMarketConfig(t.TempDir(), activeDir)
 	market, err := skillmarket.NewService(db, skillmarket.Options{
-		Config:       skillmarket.DefaultConfig(t.TempDir(), activeDir),
+		Config:       cfg,
 		Registry:     skill.NewRegistry(),
 		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
 		Scanner:      skillmarket.NewScanner(nil),

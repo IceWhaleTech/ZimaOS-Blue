@@ -12,6 +12,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 )
@@ -294,6 +295,7 @@ func (h *SkillHandler) MarketDiscoverSkills(c echo.Context) error {
 		"processed_sources":   status.ProcessedSources,
 		"current_source_id":   status.CurrentSourceID,
 		"current_source_name": status.CurrentSourceName,
+		"source_results":      status.SourceResults,
 		"result":              status.Result,
 		"message":             message,
 	})
@@ -319,6 +321,7 @@ func (h *SkillHandler) MarketDiscoverStatus(c echo.Context) error {
 		"processed_sources":   status.ProcessedSources,
 		"current_source_id":   status.CurrentSourceID,
 		"current_source_name": status.CurrentSourceName,
+		"source_results":      status.SourceResults,
 		"result":              status.Result,
 	})
 }
@@ -642,7 +645,7 @@ func (h *SkillHandler) legacyMarketInstall(ctx context.Context, id, userID strin
 	}
 
 	skillDir := filepath.Join(h.skillsDir, id)
-	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err == nil || h.registry.Get(id) != nil {
+	if skillDirHasInstalledEntry(skillDir) || h.registry.Get(id) != nil {
 		return nil, echo.NewHTTPError(http.StatusConflict, "skill already installed")
 	}
 
@@ -671,8 +674,13 @@ func (h *SkillHandler) legacyMarketInstall(ctx context.Context, id, userID strin
 			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
 			return nil, err
 		}
-		skillContent, err := readInstalledSkillMarkdown(skillDir)
+		entryDoc, skillContent, err := readInstalledSkillEntry(skillDir)
 		if err != nil {
+			_ = os.RemoveAll(skillDir)
+			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+			return nil, err
+		}
+		if _, err := skillbundle.EnsureCompatibilitySkillDoc(skillDir, entryDoc.Path); err != nil {
 			_ = os.RemoveAll(skillDir)
 			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
 			return nil, err
@@ -692,7 +700,8 @@ func (h *SkillHandler) legacyMarketInstall(ctx context.Context, id, userID strin
 			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
 			return nil, err
 		}
-		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), data, 0o644); err != nil {
+		entryName := entryDocumentNameFromURL(firstString(rs.DownloadURL, rs.Homepage))
+		if _, err := writeInstalledSkillDocument(skillDir, entryName, data); err != nil {
 			_ = os.RemoveAll(skillDir)
 			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
 			return nil, err

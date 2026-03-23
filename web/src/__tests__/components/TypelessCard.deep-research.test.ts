@@ -28,6 +28,8 @@ function createTestI18n() {
           deepResearchVerificationResolved: 'Resolved',
           deepResearchVerificationConflicted: 'Conflicted',
           deepResearchVerificationInsufficient: 'Insufficient',
+          deepResearchExpandDetails: 'Expand research details',
+          deepResearchCollapseDetails: 'Collapse research details',
           deepResearchOpenQuestions: 'Open questions',
           deepResearchCitations: 'Citations',
           deepResearchTimeline: 'Timeline',
@@ -35,6 +37,7 @@ function createTestI18n() {
           deepResearchWorkflowCompleted: 'Completed',
           deepResearchWorkflowCurrent: 'Current',
           deepResearchWorkflowPending: 'Pending',
+          deepResearchStageCompleted: 'Completed',
           deepResearchSourceInventory: 'Source Inventory',
           deepResearchPublishedAt: 'Published',
           deepResearchFetchedAt: 'Fetched',
@@ -129,6 +132,12 @@ describe('TypelessCard deep research integration', () => {
 
     expect(wrapper.find('#deep-research-kb-wrapper').exists()).toBe(true)
     expect(wrapper.text()).toContain('European AI Act compliance map')
+    expect(wrapper.get('[data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).not.toContain('Workflow phases')
+
+    await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
+    await settleCard()
+
     expect(wrapper.text()).toContain('Workflow phases')
     expect(wrapper.text()).toContain('Scope')
     expect(wrapper.text()).toContain('Source Inventory')

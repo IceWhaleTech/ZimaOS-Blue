@@ -499,9 +499,69 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.ToolCalling.WebFetch.Timeout = timeout
 		}
 	}
+	if v := os.Getenv("BLUE_WEB_FETCH_LAYERED_FETCH_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.ToolCalling.WebFetch.LayeredFetchEnabled = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_SESSION_MEMORY_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.ToolCalling.WebFetch.SessionMemoryEnabled = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_DOMAIN_STRATEGY_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.ToolCalling.WebFetch.DomainStrategyEnabled = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_ADAPTER_MEMORY_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.ToolCalling.WebFetch.AdapterMemoryEnabled = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_MAX_EXPLORE_ATTEMPTS"); v != "" {
+		if value, err := strconv.Atoi(v); err == nil {
+			cfg.ToolCalling.WebFetch.MaxExploreAttempts = value
+		}
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_AUTO_FALLBACK_HOSTS"); v != "" {
+		cfg.ToolCalling.WebFetch.AutoFallbackHosts = parseStringListEnv(v)
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_CHALLENGE_POLICY"); v != "" {
+		cfg.ToolCalling.WebFetch.ChallengePolicy = strings.TrimSpace(v)
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_HTTP_NATIVE_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.ToolCalling.WebFetch.HTTPNativeEnabled = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_HTTP_NATIVE_LIBRARY"); v != "" {
+		cfg.ToolCalling.WebFetch.HTTPNativeLibrary = strings.TrimSpace(v)
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_HTTP_NATIVE_PREFER_HOSTS"); v != "" {
+		cfg.ToolCalling.WebFetch.HTTPNativePreferHosts = parseStringListEnv(v)
+	}
 	if v := os.Getenv("BLUE_WEB_FETCH_FIRECRAWL_TIMEOUT"); v != "" {
 		if timeout, err := time.ParseDuration(v); err == nil {
 			cfg.ToolCalling.WebFetch.FirecrawlTimeout = timeout
+		}
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_JINA_READER_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.ToolCalling.WebFetch.JinaReaderEnabled = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_JINA_READER_TIMEOUT"); v != "" {
+		if timeout, err := time.ParseDuration(v); err == nil {
+			cfg.ToolCalling.WebFetch.JinaReaderTimeout = timeout
+		}
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_PROXY_FETCHER_PROVIDERS"); v != "" {
+		cfg.ToolCalling.WebFetch.ProxyFetcherProviders = parseStringListEnv(v)
+	}
+	if v := os.Getenv("BLUE_BROWSER_NETWORK_OBSERVE_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.Browser.NetworkObserveEnabled = enabled
 		}
 	}
 }
@@ -653,11 +713,17 @@ func defaults() Config {
 			Metrics:     LLMMetricsConfig{Enabled: true, IncludeLatencyHistogram: true, IncludeTokenCounts: true, IncludeErrorBreakdown: true},
 		},
 		Session: SessionConfig{
-			MaxTokens: 0, MaxMessages: 100, IdleTimeout: 30 * time.Minute,
-			Compaction:  SessionCompactionConfig{Enabled: true, Threshold: 0.8, Strategy: "summarize", SummaryMaxTokens: 500, PreserveRecent: 5, AutoCompact: true, AutoCompactInterval: 5 * time.Minute},
-			Persistence: SessionPersistenceConfig{Enabled: true, Path: "./data/blue.db", Interval: time.Minute, OnMessage: true, OnCompact: true},
-			Isolation:   SessionIsolationConfig{ByAgent: true, ByChannel: true, ByPeer: true},
-			Cleanup:     SessionCleanupConfig{Enabled: true, ArchiveAfter: 168 * time.Hour, DeleteAfter: 720 * time.Hour, CleanupInterval: time.Hour},
+			MaxTokens:                   0,
+			MaxMessages:                 100,
+			IdleTimeout:                 30 * time.Minute,
+			ChatDBDurability:            "normal",
+			ChatPersistAsync:            true,
+			ChatReadLite:                true,
+			ChatAttachmentExternalStore: true,
+			Compaction:                  SessionCompactionConfig{Enabled: true, Threshold: 0.8, Strategy: "summarize", SummaryMaxTokens: 500, PreserveRecent: 5, AutoCompact: true, AutoCompactInterval: 5 * time.Minute},
+			Persistence:                 SessionPersistenceConfig{Enabled: true, Path: "./data/blue.db", Interval: time.Minute, OnMessage: true, OnCompact: true},
+			Isolation:                   SessionIsolationConfig{ByAgent: true, ByChannel: true, ByPeer: true},
+			Cleanup:                     SessionCleanupConfig{Enabled: true, ArchiveAfter: 168 * time.Hour, DeleteAfter: 720 * time.Hour, CleanupInterval: time.Hour},
 			Audit: SessionAuditConfig{
 				Enabled:          true,
 				Path:             "",

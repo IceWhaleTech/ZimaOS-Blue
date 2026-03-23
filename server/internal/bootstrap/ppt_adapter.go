@@ -8,14 +8,19 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ppt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/scenecompose"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-func newPPTService(manager *mediagen.Manager, storage *mediagen.MediaStorage, reviewer *tools.UIReviewerTool) tools.PPTGenerateService {
+func newPPTService(manager *mediagen.Manager, storage *mediagen.MediaStorage, reviewer *tools.UIReviewerTool, llmCaller scenecompose.LLMCaller) tools.PPTGenerateService {
 	if manager == nil || storage == nil {
 		return nil
 	}
-	return pptServiceAdapter{service: ppt.NewService(pptGeneratorAdapter{manager: manager}, storage, pptReviewerAdapter{tool: reviewer})}
+	service := ppt.NewService(pptGeneratorAdapter{manager: manager}, storage, pptReviewerAdapter{tool: reviewer})
+	if llmCaller != nil {
+		service.SetLayoutPlanner(ppt.NewLayoutPlanner(llmCaller))
+	}
+	return pptServiceAdapter{service: service}
 }
 
 type pptGeneratorAdapter struct {
@@ -23,7 +28,15 @@ type pptGeneratorAdapter struct {
 }
 
 func (a pptGeneratorAdapter) HasImageProviders() bool {
-	return a.manager != nil && a.manager.HasImageProviders()
+	if a.manager == nil {
+		return false
+	}
+	for _, model := range a.manager.Models() {
+		if model.Type == mediagen.MediaTypeImage {
+			return true
+		}
+	}
+	return false
 }
 
 func (a pptGeneratorAdapter) Models() []mediagen.MediaModelInfo {
@@ -59,6 +72,7 @@ func (a pptServiceAdapter) Generate(ctx context.Context, req tools.PPTRequest) (
 		Description:       req.Description,
 		AspectRatio:       req.AspectRatio,
 		ReferenceImages:   append([]string(nil), req.ReferenceImages...),
+		LayoutSpec:        req.LayoutSpec,
 		StylePreset:       req.StylePreset,
 		Theme:             req.Theme,
 		Source:            req.Source,

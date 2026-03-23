@@ -36,7 +36,9 @@ const targetConversationLabel = computed(() => {
   const targetID = String(status.value?.target_conversation_id || '').trim()
   return targetID || t('speech.voiceWake.notSelected')
 })
-const targetConversationID = computed(() => String(status.value?.target_conversation_id || '').trim())
+const targetConversationID = computed(() =>
+  String(status.value?.target_conversation_id || '').trim()
+)
 const isViewingTargetConversation = computed(() => {
   if (route.name !== 'Chat') return false
   const rawConversationID = route.query.conversationId
@@ -90,7 +92,10 @@ const containerClass = computed(() => {
   }
 })
 const showOpenTargetAction = computed(
-  () => recentActivityType.value !== null && !!targetConversationID.value && !isViewingTargetConversation.value
+  () =>
+    recentActivityType.value !== null &&
+    !!targetConversationID.value &&
+    !isViewingTargetConversation.value
 )
 const dotClass = computed(() => {
   switch (activityState.value) {

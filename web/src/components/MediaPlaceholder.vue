@@ -2,12 +2,15 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import type { MediaTask } from '@/api/media'
+import type { MediaFallbackSource, MediaTask } from '@/api/media'
 import { getTask, retryTask } from '@/api/media'
 import { useNotificationStore } from '@/stores/notification'
 import { onSSEEvent, offSSEEvent } from '@/composables/useEventStream'
 import {
+  getLocalizedMediaFallbackDisclosure,
   getLocalizedMediaFallbackLabel,
+  getLocalizedMediaFallbackTemplateLabel,
+  getMediaFallbackStyleLabel,
   getLocalizedMediaModelName,
 } from '@/utils/mediaModelLocalization'
 
@@ -93,6 +96,80 @@ const fallbackDisplayName = computed(() => {
     getLocalizedMediaFallbackLabel(fallbackInfo.value, t, te) ?? fallbackInfo.value.display_name
   )
 })
+
+const fallbackDisclosure = computed(() => {
+  if (!fallbackInfo.value?.used) return ''
+  return getLocalizedMediaFallbackDisclosure(fallbackInfo.value, t, te)
+})
+
+const showFallbackTitle = computed(() => {
+  if (!fallbackInfo.value?.used) return false
+  if ((fallbackInfo.value.strategy ?? '').trim() === 'web_canvas') return false
+  return fallbackDisplayName.value.trim().length > 0
+})
+
+const fallbackStyleLabel = computed(() => {
+  if (!fallbackInfo.value?.used) return ''
+  return getMediaFallbackStyleLabel(fallbackInfo.value) ?? ''
+})
+
+const fallbackTemplateLabel = computed(() => {
+  if (!fallbackInfo.value?.used) return ''
+  return getLocalizedMediaFallbackTemplateLabel(fallbackInfo.value, t, te) ?? ''
+})
+
+const fallbackMetaLabels = computed(() =>
+  [fallbackStyleLabel.value, fallbackTemplateLabel.value].filter((item) => item.length > 0)
+)
+
+const fallbackSources = computed<MediaFallbackSource[]>(() => fallbackInfo.value?.sources ?? [])
+const fallbackToneClass = computed(() => {
+  switch (fallbackStyleLabel.value) {
+    case 'nanoslides':
+      return 'mp-fallback--nanoslides'
+    case 'bananaslides':
+      return 'mp-fallback--bananaslides'
+    default:
+      return ''
+  }
+})
+
+function fallbackSourceLicenseStatusLabel(source: MediaFallbackSource): string {
+  if (source.verified_license) {
+    return t('media.fallbackSourceLicenseVerified')
+  }
+  return t('media.fallbackSourceLicenseUnverified')
+}
+
+function fallbackSourceLicenseStatusClass(source: MediaFallbackSource): string {
+  return source.verified_license ? 'mp-fallback-chip--verified' : 'mp-fallback-chip--unverified'
+}
+
+function fallbackSourceNoteLabel(source: MediaFallbackSource): string {
+  const note = String(source.note || '').trim()
+  if (!note) return ''
+  const normalized = note.toLowerCase()
+  if (!source.verified_license && normalized.includes('license not verified')) {
+    return ''
+  }
+  return note
+}
+
+function fallbackSpaceLinkLabel(): string {
+  const key = 'media.fallbackLinkSpace'
+  if (te(key)) {
+    return t(key)
+  }
+  return 'Space'
+}
+
+function fallbackSourceLinkLabel(index: number): string {
+  const key = 'media.fallbackLinkSource'
+  if (te(key)) {
+    return t(key, { index })
+  }
+  return `Source ${index}`
+}
 
 // Detect provider/config errors to show setup guidance
 const isProviderError = computed(() => {
@@ -324,9 +401,14 @@ watch(
           >
         </div>
         <div v-if="taskModelLabel" class="mp-card-model">{{ taskModelLabel }}</div>
-        <div v-if="fallbackInfo?.used" class="mp-fallback">
-          <div class="mp-fallback-title">{{ fallbackDisplayName }}</div>
-          <div class="mp-fallback-text">{{ fallbackInfo.disclosure }}</div>
+        <div v-if="fallbackInfo?.used" class="mp-fallback" :class="fallbackToneClass">
+          <div v-if="showFallbackTitle" class="mp-fallback-title">{{ fallbackDisplayName }}</div>
+          <div class="mp-fallback-text">{{ fallbackDisclosure }}</div>
+          <div v-if="fallbackMetaLabels.length" class="mp-fallback-meta">
+            <span v-for="label in fallbackMetaLabels" :key="label" class="mp-fallback-chip">
+              {{ label }}
+            </span>
+          </div>
         </div>
         <div v-if="elapsedSeconds > 10" class="mp-card-hint">{{ t('media.processingHint') }}</div>
         <div class="mp-card-bar">
@@ -346,11 +428,45 @@ watch(
 
     <!-- Succeeded -->
     <div v-else-if="task.status === 'succeeded' && resultUrls.length > 0">
-      <div v-if="fallbackInfo?.used" class="mp-fallback mp-fallback--result">
-        <div class="mp-fallback-title">{{ fallbackDisplayName }}</div>
-        <div class="mp-fallback-text">{{ fallbackInfo.disclosure }}</div>
+      <div
+        v-if="fallbackInfo?.used"
+        class="mp-fallback mp-fallback--result"
+        :class="fallbackToneClass"
+      >
+        <div v-if="showFallbackTitle" class="mp-fallback-title">{{ fallbackDisplayName }}</div>
+        <div class="mp-fallback-text">{{ fallbackDisclosure }}</div>
+        <div v-if="fallbackMetaLabels.length" class="mp-fallback-meta">
+          <span v-for="label in fallbackMetaLabels" :key="label" class="mp-fallback-chip">
+            {{ label }}
+          </span>
+        </div>
+        <div v-if="fallbackSources.length" class="mp-fallback-sources">
+          <a
+            v-for="(source, index) in fallbackSources"
+            :key="source.page_url || source.asset_url || `${source.provider}-${index}`"
+            class="mp-fallback-source"
+            :href="source.page_url || source.asset_url"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <div class="mp-fallback-source-title">{{ source.title || source.provider }}</div>
+            <div class="mp-fallback-source-meta">
+              <span :class="['mp-fallback-chip', fallbackSourceLicenseStatusClass(source)]">
+                {{ fallbackSourceLicenseStatusLabel(source) }}
+              </span>
+              <span class="mp-fallback-chip">{{ source.provider }}</span>
+              <span v-if="source.license" class="mp-fallback-chip">{{ source.license }}</span>
+              <span v-if="source.creator" class="mp-fallback-chip">{{ source.creator }}</span>
+              <span v-if="fallbackSourceNoteLabel(source)" class="mp-fallback-chip">
+                {{ fallbackSourceNoteLabel(source) }}
+              </span>
+            </div>
+          </a>
+        </div>
         <div
-          v-if="fallbackInfo.space_url || fallbackInfo.source_urls?.length"
+          v-if="
+            fallbackInfo.space_url || (!fallbackSources.length && fallbackInfo.source_urls?.length)
+          "
           class="mp-fallback-links"
         >
           <a
@@ -359,7 +475,7 @@ watch(
             :href="fallbackInfo.space_url"
             target="_blank"
             rel="noreferrer"
-            >Space</a
+            >{{ fallbackSpaceLinkLabel() }}</a
           >
           <a
             v-for="(url, index) in fallbackInfo.source_urls || []"
@@ -368,7 +484,7 @@ watch(
             :href="url"
             target="_blank"
             rel="noreferrer"
-            >Source {{ index + 1 }}</a
+            >{{ fallbackSourceLinkLabel(index + 1) }}</a
           >
         </div>
       </div>
@@ -658,11 +774,22 @@ watch(
   padding: 0.5rem 0.625rem;
   border-radius: 0.75rem;
   background: rgba(15, 23, 42, 0.08);
+  border: 1px solid transparent;
 }
 
 .mp-fallback--result {
   margin-left: 0;
   margin-bottom: 0.5rem;
+}
+
+.mp-fallback--nanoslides {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.08), rgba(244, 196, 92, 0.18));
+  border-color: rgba(244, 196, 92, 0.34);
+}
+
+.mp-fallback--bananaslides {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(125, 211, 252, 0.18));
+  border-color: rgba(96, 165, 250, 0.28);
 }
 
 .mp-fallback-title {
@@ -676,6 +803,38 @@ watch(
   font-size: 0.75rem;
   line-height: 1.35;
   color: #475569;
+}
+
+.mp-fallback-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+.mp-fallback-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(255, 255, 255, 0.72);
+  color: #334155;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.mp-fallback-chip--verified {
+  border-color: rgba(22, 163, 74, 0.22);
+  background: rgba(220, 252, 231, 0.9);
+  color: #166534;
+}
+
+.mp-fallback-chip--unverified {
+  border-color: rgba(217, 119, 6, 0.22);
+  background: rgba(255, 247, 237, 0.92);
+  color: #9a3412;
 }
 
 .mp-fallback-links {
@@ -693,6 +852,35 @@ watch(
 
 .mp-fallback-link:hover {
   text-decoration: underline;
+}
+
+.mp-fallback-sources {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+}
+
+.mp-fallback-source {
+  display: block;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.64);
+  text-decoration: none;
+}
+
+.mp-fallback-source-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #0f172a;
+}
+
+.mp-fallback-source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
 }
 
 .mp-media {
@@ -716,6 +904,18 @@ watch(
   background: rgba(15, 23, 42, 0.5);
 }
 
+:root.dark .mp-fallback--nanoslides,
+[data-theme='dark'] .mp-fallback--nanoslides {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.64), rgba(244, 196, 92, 0.14));
+  border-color: rgba(244, 196, 92, 0.28);
+}
+
+:root.dark .mp-fallback--bananaslides,
+[data-theme='dark'] .mp-fallback--bananaslides {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.62), rgba(96, 165, 250, 0.18));
+  border-color: rgba(96, 165, 250, 0.26);
+}
+
 :root.dark .mp-fallback-title,
 [data-theme='dark'] .mp-fallback-title {
   color: #e2e8f0;
@@ -724,6 +924,38 @@ watch(
 :root.dark .mp-fallback-text,
 [data-theme='dark'] .mp-fallback-text {
   color: #cbd5e1;
+}
+
+:root.dark .mp-fallback-chip,
+[data-theme='dark'] .mp-fallback-chip {
+  background: rgba(15, 23, 42, 0.68);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #e2e8f0;
+}
+
+:root.dark .mp-fallback-chip--verified,
+[data-theme='dark'] .mp-fallback-chip--verified {
+  background: rgba(20, 83, 45, 0.42);
+  border-color: rgba(74, 222, 128, 0.24);
+  color: #bbf7d0;
+}
+
+:root.dark .mp-fallback-chip--unverified,
+[data-theme='dark'] .mp-fallback-chip--unverified {
+  background: rgba(120, 53, 15, 0.44);
+  border-color: rgba(251, 191, 36, 0.2);
+  color: #fed7aa;
+}
+
+:root.dark .mp-fallback-source,
+[data-theme='dark'] .mp-fallback-source {
+  background: rgba(15, 23, 42, 0.54);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+:root.dark .mp-fallback-source-title,
+[data-theme='dark'] .mp-fallback-source-title {
+  color: #f8fafc;
 }
 
 :root.dark .mp-fallback-link,

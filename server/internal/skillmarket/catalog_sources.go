@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/net/html"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -36,105 +37,36 @@ type catalogEmbeddedSkill struct {
 	RawSkill  string
 }
 
-var githubBlobPattern = regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)$`)
-var githubRepoPattern = regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$`)
-var githubRawPattern = regexp.MustCompile(`^https?://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.+)$`)
+var githubBlobPattern = skillbundle.GitHubBlobURLPattern
+var githubRepoPattern = skillbundle.GitHubRepoURLPattern
+var githubRawPattern = skillbundle.GitHubRawURLPattern
 var skillHubStringRefPattern = regexp.MustCompile(`skillMdRaw":"\$([0-9A-Za-z]+)"`)
 
-func (s *Service) discoverFromHTMLCatalog(ctx context.Context, source Source, run *CrawlRun) error {
-	root, err := s.fetchCatalogPage(ctx, source, source.BaseURL)
+func (s *Service) discoverFromHTMLCatalog(ctx context.Context, source Source, processedSources int, total *DiscoverResult, run *CrawlRun) error {
+	job, err := buildDiscoverJob(s, source, run)
 	if err != nil {
 		return err
 	}
-	pages := []*catalogPage{root}
-	seenPages := map[string]struct{}{root.URL: {}}
-	for _, link := range root.Links {
-		resolved, ok := resolveCatalogLink(root.URL, link)
-		if !ok || !looksLikeCatalogPage(resolved, source.BaseURL) {
-			continue
-		}
-		if _, ok := seenPages[resolved]; ok {
-			continue
-		}
-		seenPages[resolved] = struct{}{}
-		page, err := s.fetchCatalogPage(ctx, source, resolved)
-		if err != nil {
-			run.Failed++
-			continue
-		}
-		pages = append(pages, page)
-		if len(pages) >= 30 {
-			break
-		}
-	}
-
-	seenSeeds := make(map[string]struct{})
-	for _, page := range pages {
-		hadInstallable := false
-		if page.Embedded != nil && strings.TrimSpace(page.Embedded.RawSkill) != "" {
-			updated, err := s.ingestEmbeddedCatalogSkill(ctx, source, page)
-			if err != nil {
-				run.Failed++
-				continue
-			}
-			hadInstallable = true
-			if updated {
-				run.Updated++
-			} else {
-				run.Discovered++
-			}
-		}
-		if hadInstallable {
-			continue
-		}
-		for _, link := range page.Links {
-			resolved, ok := resolveCatalogLink(page.URL, link)
-			if !ok {
-				continue
-			}
-			seedKey := resolved
-			if _, ok := seenSeeds[seedKey]; ok {
-				continue
-			}
-			switch {
-			case looksLikeGitHubRepoURL(resolved):
-				seenSeeds[seedKey] = struct{}{}
-				if err := s.discoverGitHubRepoSeed(ctx, repoOwner(resolved), repoName(resolved)); err != nil {
-					run.Failed++
-					continue
-				}
-				hadInstallable = true
-				run.Discovered++
-			case looksLikeSkillURL(resolved):
-				seenSeeds[seedKey] = struct{}{}
-				if err := s.discoverSkillURLSeed(ctx, resolved); err != nil {
-					run.Failed++
-					continue
-				}
-				hadInstallable = true
-				run.Discovered++
-			}
-		}
-		if hadInstallable {
-			continue
-		}
-		if err := s.upsertCatalogOnlySkill(ctx, source, page); err != nil {
-			run.Failed++
-			continue
-		}
-		run.Discovered++
-	}
-	return nil
+	return s.runDiscoverJobToCompletion(ctx, job)
 }
 
 func (s *Service) discoverGitHubRepoSeed(ctx context.Context, owner, repo string) error {
+	record, err := s.prepareGitHubRepoSeedRecord(ctx, owner, repo)
+	if err != nil {
+		return err
+	}
+	_, err = s.store.UpsertSkillBatch(ctx, []*SkillUpsertRecord{record})
+	return err
+}
+
+func (s *Service) prepareGitHubRepoSeedRecord(ctx context.Context, owner, repo string) (*SkillUpsertRecord, error) {
 	if strings.TrimSpace(owner) == "" || strings.TrimSpace(repo) == "" {
-		return fmt.Errorf("invalid github seed")
+		return nil, fmt.Errorf("invalid github seed")
 	}
 	metaURL := fmt.Sprintf("%s/repos/%s/%s", strings.TrimRight(s.cfg.GitHubAPIBaseURL, "/"), owner, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metaURL, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
@@ -143,11 +75,11 @@ func (s *Service) discoverGitHubRepoSeed(ctx context.Context, owner, repo string
 	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("github repo status: %d", resp.StatusCode)
+		return nil, fmt.Errorf("github repo status: %d", resp.StatusCode)
 	}
 	var repoMeta struct {
 		HTMLURL       string    `json:"html_url"`
@@ -156,13 +88,13 @@ func (s *Service) discoverGitHubRepoSeed(ctx context.Context, owner, repo string
 		Stargazers    int       `json:"stargazers_count"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&repoMeta); err != nil {
-		return err
+		return nil, err
 	}
 	contents, err := s.fetchGitHubRepoSkill(ctx, owner, repo, repoMeta.DefaultBranch)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = s.ingestSkillContent(ctx, ingestRequest{
+	return s.prepareIngestRecord(ctx, ingestRequest{
 		SourceID:       "curated-github-seed",
 		SourceName:     "GitHub",
 		SourceGroup:    "github",
@@ -181,15 +113,23 @@ func (s *Service) discoverGitHubRepoSeed(ctx context.Context, owner, repo string
 		InstallType:    InstallTypeGitRepo,
 		ArtifactKind:   ArtifactKindOpenSource,
 	})
-	return err
 }
 
 func (s *Service) discoverSkillURLSeed(ctx context.Context, rawURL string) error {
-	content, skillPath, repoURL, downloadURL, installType, err := s.fetchSkillReference(ctx, rawURL)
+	record, err := s.prepareSkillURLSeedRecord(ctx, rawURL)
 	if err != nil {
 		return err
 	}
-	_, err = s.ingestSkillContent(ctx, ingestRequest{
+	_, err = s.store.UpsertSkillBatch(ctx, []*SkillUpsertRecord{record})
+	return err
+}
+
+func (s *Service) prepareSkillURLSeedRecord(ctx context.Context, rawURL string) (*SkillUpsertRecord, error) {
+	content, skillPath, repoURL, downloadURL, installType, err := s.fetchSkillReference(ctx, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	return s.prepareIngestRecord(ctx, ingestRequest{
 		SourceID:       "curated-skill-url",
 		SourceName:     "External Skill",
 		SourceGroup:    "external",
@@ -206,10 +146,18 @@ func (s *Service) discoverSkillURLSeed(ctx context.Context, rawURL string) error
 		InstallType:    installType,
 		ArtifactKind:   ArtifactKindOpenSource,
 	})
-	return err
 }
 
 func (s *Service) upsertCatalogOnlySkill(ctx context.Context, source Source, page *catalogPage) error {
+	record, err := s.prepareCatalogOnlySkillRecord(ctx, source, page)
+	if err != nil {
+		return err
+	}
+	_, err = s.store.UpsertSkillBatch(ctx, []*SkillUpsertRecord{record})
+	return err
+}
+
+func (s *Service) prepareCatalogOnlySkillRecord(ctx context.Context, source Source, page *catalogPage) (*SkillUpsertRecord, error) {
 	name := strings.TrimSpace(page.Title)
 	if name == "" {
 		name = normalizeSkillID(page.URL)
@@ -220,7 +168,7 @@ func (s *Service) upsertCatalogOnlySkill(ctx context.Context, source Source, pag
 	}
 	raw := fmt.Sprintf("---\nid: %s\nname: %s\nversion: catalog\ndescription: %s\ncategory: general\n---\n\n# %s\n\n%s\n",
 		normalizeSkillID(source.SourceGroup+"-"+name), escapeYAMLText(name), escapeYAMLText(description), name, description)
-	_, err := s.ingestSkillContent(ctx, ingestRequest{
+	return s.prepareIngestRecord(ctx, ingestRequest{
 		SourceID:        source.ID,
 		SourceName:      defaultString(source.DisplayName, source.ID),
 		SourceGroup:     defaultString(source.SourceGroup, source.ID),
@@ -240,12 +188,23 @@ func (s *Service) upsertCatalogOnlySkill(ctx context.Context, source Source, pag
 		InstallType:     InstallTypeManualExternal,
 		ArtifactKind:    ArtifactKindUnknown,
 	})
-	return err
 }
 
 func (s *Service) ingestEmbeddedCatalogSkill(ctx context.Context, source Source, page *catalogPage) (bool, error) {
+	record, err := s.prepareEmbeddedCatalogSkillRecord(ctx, source, page)
+	if err != nil {
+		return false, err
+	}
+	result, err := s.store.UpsertSkillBatch(ctx, []*SkillUpsertRecord{record})
+	if err != nil {
+		return false, err
+	}
+	return result != nil && result.Updated > 0, nil
+}
+
+func (s *Service) prepareEmbeddedCatalogSkillRecord(ctx context.Context, source Source, page *catalogPage) (*SkillUpsertRecord, error) {
 	if page == nil || page.Embedded == nil || strings.TrimSpace(page.Embedded.RawSkill) == "" {
-		return false, fmt.Errorf("embedded catalog skill unavailable")
+		return nil, fmt.Errorf("embedded catalog skill unavailable")
 	}
 
 	name := strings.TrimSpace(firstNonBlank(page.Embedded.Name, trimCatalogSkillTitle(page.Title), page.Title))
@@ -257,7 +216,7 @@ func (s *Service) ingestEmbeddedCatalogSkill(ctx context.Context, source Source,
 		explicitID = normalizeSkillID(name)
 	}
 
-	return s.ingestSkillContent(ctx, ingestRequest{
+	return s.prepareIngestRecord(ctx, ingestRequest{
 		SourceID:        source.ID,
 		SourceName:      defaultString(source.DisplayName, source.ID),
 		SourceGroup:     defaultString(source.SourceGroup, source.ID),
@@ -281,9 +240,58 @@ func (s *Service) ingestEmbeddedCatalogSkill(ctx context.Context, source Source,
 }
 
 func (s *Service) fetchCatalogPage(ctx context.Context, source Source, rawURL string) (*catalogPage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	read, err := s.remoteReader.ReadURL(ctx, RemoteReadRequest{
+		URL:         rawURL,
+		Headers:     source.Headers,
+		Format:      "text",
+		MaxChars:    32_000,
+		WantRawHTML: true,
+	})
 	if err != nil {
 		return nil, err
+	}
+	htmlBody := read.RawHTML
+	var doc *html.Node
+	if strings.TrimSpace(htmlBody) == "" {
+		if fallbackHTML, fallbackErr := s.fetchCatalogRawHTML(ctx, source, rawURL); fallbackErr == nil {
+			htmlBody = fallbackHTML
+		}
+	}
+	if strings.TrimSpace(htmlBody) != "" {
+		doc, err = html.Parse(strings.NewReader(htmlBody))
+		if err != nil {
+			return nil, err
+		}
+	}
+	title := strings.TrimSpace(read.Title)
+	description := ""
+	author := ""
+	links := append([]string(nil), read.Links...)
+	if doc != nil {
+		if title == "" {
+			title = strings.TrimSpace(extractHTMLTitle(doc))
+		}
+		description = strings.TrimSpace(extractHTMLMeta(doc, "description", "og:description", "twitter:description"))
+		author = strings.TrimSpace(extractHTMLMeta(doc, "author", "article:author"))
+		if len(links) == 0 {
+			links = extractHTMLLinks(doc)
+		}
+	}
+	return &catalogPage{
+		URL:         rawURL,
+		Title:       title,
+		Description: description,
+		Author:      author,
+		Text:        strings.TrimSpace(read.Content),
+		Links:       links,
+		Embedded:    extractCatalogEmbeddedSkill(rawURL, htmlBody),
+	}, nil
+}
+
+func (s *Service) fetchCatalogRawHTML(ctx context.Context, source Source, rawURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
 	}
 	req.Header.Set("User-Agent", "ZimaOS-SkillMarket/1.0")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
@@ -294,30 +302,17 @@ func (s *Service) fetchCatalogPage(ctx context.Context, source Source, rawURL st
 	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("catalog page status: %d", resp.StatusCode)
+		return "", fmt.Errorf("catalog page status: %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	htmlBody := string(body)
-	doc, err := html.Parse(strings.NewReader(htmlBody))
-	if err != nil {
-		return nil, err
-	}
-	return &catalogPage{
-		URL:         rawURL,
-		Title:       strings.TrimSpace(extractHTMLTitle(doc)),
-		Description: strings.TrimSpace(extractHTMLMeta(doc, "description", "og:description", "twitter:description")),
-		Author:      strings.TrimSpace(extractHTMLMeta(doc, "author", "article:author")),
-		Text:        strings.TrimSpace(extractHTMLText(doc)),
-		Links:       extractHTMLLinks(doc),
-		Embedded:    extractCatalogEmbeddedSkill(rawURL, htmlBody),
-	}, nil
+	return string(body), nil
 }
 
 func trimCatalogSkillTitle(title string) string {
@@ -383,61 +378,37 @@ func decodeEmbeddedCatalogString(value string) string {
 
 func (s *Service) fetchSkillReference(ctx context.Context, rawURL string) (content, skillPath, repoURL, downloadURL, installType string, err error) {
 	if matches := githubBlobPattern.FindStringSubmatch(rawURL); len(matches) == 5 {
-		downloadURL = rawGitHubBlobURL(matches[1], matches[2], matches[3], matches[4])
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+		body, _, err := s.fetchGitHubRawContent(ctx, matches[1], matches[2], matches[3], matches[4])
+		downloadURL = skillbundle.RawGitHubBlobURL(matches[1], matches[2], matches[3], matches[4])
 		if err != nil {
 			return "", "", "", "", "", err
 		}
-		resp, err := s.httpClient.Do(req)
-		if err != nil {
-			return "", "", "", "", "", err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return "", "", "", "", "", fmt.Errorf("github raw status: %d", resp.StatusCode)
-		}
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return "", "", "", "", "", err
-		}
-		return string(body), matches[4], fmt.Sprintf("https://github.com/%s/%s", matches[1], matches[2]), downloadURL, InstallTypeRawSkill, nil
+		return body, matches[4], fmt.Sprintf("https://github.com/%s/%s", matches[1], matches[2]), downloadURL, InstallTypeRawSkill, nil
 	}
 	if matches := githubRawPattern.FindStringSubmatch(rawURL); len(matches) == 5 {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+		body, _, err := s.fetchGitHubRawContent(ctx, matches[1], matches[2], matches[3], matches[4])
 		if err != nil {
 			return "", "", "", "", "", err
 		}
-		resp, err := s.httpClient.Do(req)
+		return body, matches[4], fmt.Sprintf("https://github.com/%s/%s", matches[1], matches[2]), rawURL, InstallTypeRawSkill, nil
+	}
+	if owner, repo, branch, skillRoot, ok := skillbundle.ParseGitHubTreeURL(rawURL); ok {
+		found, err := s.fetchGitHubRepoSkillAtPath(ctx, owner, repo, branch, skillRoot)
 		if err != nil {
 			return "", "", "", "", "", err
 		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return "", "", "", "", "", fmt.Errorf("github raw status: %d", resp.StatusCode)
-		}
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return "", "", "", "", "", err
-		}
-		return string(body), matches[4], fmt.Sprintf("https://github.com/%s/%s", matches[1], matches[2]), rawURL, InstallTypeRawSkill, nil
+		downloadURL = rawGitHubBlobURL(owner, repo, branch, found.Path)
+		return found.Raw, found.Path, fmt.Sprintf("https://github.com/%s/%s", owner, repo), downloadURL, InstallTypeGitRepo, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	read, err := s.remoteReader.ReadURL(ctx, RemoteReadRequest{
+		URL:      rawURL,
+		Format:   "text",
+		MaxChars: 256_000,
+	})
 	if err != nil {
 		return "", "", "", "", "", err
 	}
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return "", "", "", "", "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", "", "", "", "", fmt.Errorf("skill URL status: %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", "", "", "", err
-	}
-	return string(body), filepath.Base(rawURL), rawURL, rawURL, InstallTypeRawSkill, nil
+	return read.Content, filepath.Base(rawURL), rawURL, rawURL, InstallTypeRawSkill, nil
 }
 
 func resolveCatalogLink(baseURL, href string) (string, bool) {
@@ -491,7 +462,7 @@ func repoName(link string) string {
 }
 
 func rawGitHubBlobURL(owner, repo, branch, path string) string {
-	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", owner, repo, branch, path)
+	return skillbundle.RawGitHubBlobURL(owner, repo, branch, path)
 }
 
 func extractHTMLTitle(doc *html.Node) string {

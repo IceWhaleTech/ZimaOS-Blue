@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { deepMergeMessages, type LocaleMessages } from '../i18n/merge'
+import extensionsBrowseOverrides from '../i18n/extensions-browse-overrides'
 import prioritySettingsOverrides from '../i18n/priority-settings-overrides'
 import researchToolOverrides from '../i18n/research-tool-overrides'
 import skillToolOverrides from '../i18n/skill-tool-overrides'
@@ -52,9 +53,13 @@ function buildMergedLocaleMessages(locale: string): LocaleMessages {
     withSettingsOverrides,
     (skillToolOverrides as Record<string, LocaleMessages>)[locale] || {}
   )
+  const withBrowseOverrides = deepMergeMessages(
+    withSkillToolOverrides,
+    (extensionsBrowseOverrides as Record<string, LocaleMessages>)[locale] || {}
+  )
 
   return deepMergeMessages(
-    withSkillToolOverrides,
+    withBrowseOverrides,
     (researchToolOverrides as Record<string, LocaleMessages>)[locale] || {}
   )
 }
@@ -68,6 +73,7 @@ const nameCoverage = [
   'read',
   'write',
   'web_search',
+  'ui_reviewer',
   'analyze',
   'ask',
   'mediagen',
@@ -222,10 +228,17 @@ describe('tool page localization coverage', () => {
       return typeof value === 'string' && value.trim().length > 0
     }
 
+    expect(getLocalizedToolName('web_query', t, te)).toBe('Web')
     expect(getLocalizedToolName('web_search', t, te)).toBe('Web')
     expect(getLocalizedToolName('file_read', t, te)).toBe('File Read')
     expect(getLocalizedToolName('read', t, te)).toBe('File Read')
+    expect(getLocalizedToolName('image_generation', t, te)).toBe('Image')
+    expect(getLocalizedToolName('generate_image', t, te)).toBe('Image')
+    expect(getLocalizedToolName('generateImage', t, te)).toBe('Image')
     expect(getLocalizedToolName('sessions_list', t, te)).toBe('Sessions')
+    expect(getLocalizedToolDescription('web_query', 'fallback', t, te)).toBe(
+      'Unified web tool for searching, reading, extracting, or crawling web content'
+    )
     expect(getLocalizedToolDescription('web_fetch', 'fallback', t, te)).toBe(
       'Unified web tool for searching, reading, extracting, or crawling web content'
     )

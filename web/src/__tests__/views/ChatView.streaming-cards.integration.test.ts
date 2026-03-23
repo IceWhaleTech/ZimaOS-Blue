@@ -777,8 +777,18 @@ describe('ChatView streaming card chain integration', () => {
       type: 'browser-progress',
       id: 'browser-progress-chain',
       steps: [
-        { step: 'navigate', name: 'Navigating', status: 'completed', url: 'https://openai.com/blog' },
-        { step: 'snapshot', name: 'Reading page', status: 'running', url: 'https://openai.com/blog' },
+        {
+          step: 'navigate',
+          name: 'Navigating',
+          status: 'completed',
+          url: 'https://openai.com/blog',
+        },
+        {
+          step: 'snapshot',
+          name: 'Reading page',
+          status: 'running',
+          url: 'https://openai.com/blog',
+        },
       ],
     })
     const webFetchBlock = makeTypelessBlock({
@@ -1196,6 +1206,12 @@ describe('ChatView streaming card chain integration', () => {
     expect(store.currentConversationId).toBe('conv-1')
     expect(wrapper.find('#deep-research-kb-1').exists()).toBe(true)
     expect(wrapper.text()).toContain('EU AI Act provider obligations knowledge base')
+    expect(wrapper.get('#deep-research-kb-1 [data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).not.toContain('Workflow phases')
+
+    await wrapper.get('#deep-research-kb-1 [data-testid="deep-research-summary-toggle"]').trigger('click')
+    await settleView()
+
     expect(wrapper.text()).toContain('Workflow phases')
     expect(wrapper.text()).toContain('Scope')
     expect(wrapper.text()).toContain('Source Inventory')
@@ -1263,6 +1279,18 @@ describe('ChatView streaming card chain integration', () => {
       answer: 'Provider obligations are organized by role and timeline.',
       iterations: 2,
       evidence_count: 3,
+      source_inventory: [
+        {
+          source_id: 'src-1',
+          title: 'EU AI Act text',
+          url: 'https://eur-lex.europa.eu/eli/reg/2024/1689/oj',
+          domain: 'eur-lex.europa.eu',
+          source_type: 'law',
+          fetched_at: '2026-03-08T00:00:00.000Z',
+          relevance_score: 0.97,
+          credibility_score: 0.99,
+        },
+      ],
     })
 
     const persistedMessages = [
@@ -1322,6 +1350,13 @@ describe('ChatView streaming card chain integration', () => {
     expect(wrapper.text()).toContain('Planned 5 research task(s)')
     expect(wrapper.text()).toContain('Collected 3 source(s)')
     expect(wrapper.text()).toContain('Provider obligations are organized by role and timeline.')
+    expect(wrapper.get('#dr-result-1 [data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')).toBe('false')
+
+    await wrapper.get('#dr-result-1 [data-testid="deep-research-summary-toggle"]').trigger('click')
+    await settleView()
+
+    expect(wrapper.text()).toContain('Source Inventory')
+    expect(wrapper.text()).toContain('EU AI Act text')
 
     const timelineRoot = wrapper.get('#dr-progress-1').element as HTMLElement
     expect(timelineRoot.closest('.chat-assistant-bubble')).not.toBeNull()

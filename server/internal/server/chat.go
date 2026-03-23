@@ -63,6 +63,12 @@ var messageSlicePool = sync.Pool{
 	},
 }
 
+const (
+	// titleGenerationLLMTimeout gives background title generation a bit more
+	// headroom without letting it linger like full chat requests.
+	titleGenerationLLMTimeout = 60 * time.Second
+)
+
 // getMessageSlice gets a message slice from the pool.
 func getMessageSlice() *[]llm.Message {
 	return messageSlicePool.Get().(*[]llm.Message)
@@ -222,7 +228,7 @@ func (h *ChatHandler) buildConversationAnchorPrompt(ctx context.Context, convID 
 	title = truncateRunes(title, 120)
 
 	initialGoal := ""
-	msgs, err := h.store.GetMessages(ctx, convID, 12, 0)
+	msgs, err := h.store.GetMessagesLite(ctx, convID, 12, 0)
 	if err == nil {
 		for _, m := range msgs {
 			if m.Role == "user" {
@@ -610,6 +616,10 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 	if target == "" && !isImageGenerationIntentMessage(userMessage) {
 		return ""
 	}
+	officeHint := ""
+	if isOfficeArtifactPath(target) {
+		officeHint = " When the requested output path ends in .xlsx or .docx, prefer the native office tool instead of raw file_write so workbook styling, report layout, and typography are preserved."
+	}
 	if shouldPreferExplicitMemoryFileWorkflow(userMessage) {
 		if isExplicitMemoryFileRecallRequest(userMessage) {
 			return fmt.Sprintf("The user explicitly named %q as the local source of truth. Use file_read to read that exact path before answering, answer only from verified file contents, and do not substitute another memory path or rely on the memory tool or prior conversation memory when this file can be read.", target)
@@ -621,7 +631,7 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 		if isImageArtifactPath(target) {
 			pathHint = fmt.Sprintf(" When the user specified a filename, pass that exact workspace path as the image tool's `path` so the generated asset is saved to %q.", target)
 		}
-		return "This is an image generation request. Use the image_generation tool name when available, keep the local file workflow available together when a filename is requested, craft a descriptive prompt that preserves the requested subject, atmosphere, and scene details, and confirm the saved result in plain language." + pathHint
+		return "This is an image generation request. Use the image tool name when available, keep the local file workflow available together when a filename is requested, craft a descriptive prompt that preserves the requested subject, atmosphere, and scene details, and confirm the saved result in plain language." + pathHint
 	}
 	if shouldPreferWorkspaceFileWorkflow(userMessage) {
 		hint := fmt.Sprintf("This is a local workspace synthesis task. Keep the local file workflow available together: file_read/file_write/file_delete for CRUD, plus ls/find/grep/rg/edit/convert/pdf as needed. Discover and read the relevant files, then write the completed deliverable to %q. Prefer local file tools over browser, email, calendar, or research detours.", target)
@@ -643,17 +653,18 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 		if strings.Contains(lower, ".pdf") {
 			hint += " When a PDF is referenced, use the pdf/read path instead of web tools."
 		}
+		hint += officeHint
 		hint += " Follow any explicit structure, paragraph, section, table, or line-by-line constraints from the user. After the file is saved, give a brief confirmation."
 		return hint
 	}
 	if shouldPreferDirectArtifactWriting(userMessage) {
-		return fmt.Sprintf("This is a direct writing task with an explicit output file. Keep the local file workflow tools available together (file_read/file_write/file_delete plus ls/find/grep/rg/edit/convert/pdf when useful), but do not detour through browser, email, calendar, or research tools unless the user explicitly asked for outside information. Write the complete deliverable directly to %q, follow any requested format, tone, length, paragraph, and section constraints, and then give a brief confirmation.", target)
+		return fmt.Sprintf("This is a direct writing task with an explicit output file. Keep the local file workflow tools available together (file_read/file_write/file_delete plus ls/find/grep/rg/edit/convert/pdf when useful), but do not detour through browser, email, calendar, or research tools unless the user explicitly asked for outside information. Write the complete deliverable directly to %q, follow any requested format, tone, length, paragraph, and section constraints, and then give a brief confirmation.%s", target, officeHint)
 	}
 	if shouldUseHeavyResearchWorkflow(userMessage) {
-		return fmt.Sprintf("This is a research task with an explicit saved deliverable. Once you have enough evidence, write the full synthesized report to %q instead of stopping at raw notes or search results. Preserve any requested sections, tables, citations, or formatting, then give a brief confirmation.", target)
+		return fmt.Sprintf("This is a research task with an explicit saved deliverable. Once you have enough evidence, write the full synthesized report to %q instead of stopping at raw notes or search results. Preserve any requested sections, tables, citations, or formatting, then give a brief confirmation.%s", target, officeHint)
 	}
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
-		return fmt.Sprintf("This is a public-information research task with an explicit output file. Prefer a fast artifact workflow: use the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then write the complete result to %q. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.", target)
+		return fmt.Sprintf("This is a public-information research task with an explicit output file. Prefer a fast artifact workflow: use the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then write the complete result to %q. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.%s", target, officeHint)
 	}
 	return ""
 }
@@ -777,7 +788,7 @@ func newDeepSearchLoopState(userMessage string, selectedTools []tools.ToolDefini
 func hasSearchCapabilityInToolDefs(defs []tools.ToolDefinition) bool {
 	for _, def := range defs {
 		switch normalizeFileToolCompatName(def.Name) {
-		case "web", "research_run", "browser", "exec":
+		case "web", "deep_research", "browser", "exec":
 			return true
 		}
 	}
@@ -1533,7 +1544,7 @@ func (h *ChatHandler) loadRecentMessagesForIMHistoryLimit(ctx context.Context, c
 	if h == nil || h.store == nil || strings.TrimSpace(convID) == "" {
 		return nil
 	}
-	recent, err := h.store.GetRecentMessages(ctx, convID, 24)
+	recent, err := h.getRecentMessagesForContext(ctx, convID, 24)
 	if err != nil {
 		return nil
 	}
@@ -1549,7 +1560,7 @@ func (h *ChatHandler) deriveContinuationContextWithFallback(ctx context.Context,
 		return cc
 	}
 
-	recent, err := h.store.GetRecentMessages(ctx, convID, shortAffirmativeContinuationRecentLimit)
+	recent, err := h.getRecentMessagesForContext(ctx, convID, shortAffirmativeContinuationRecentLimit)
 	if err != nil || len(recent) == 0 {
 		return cc
 	}
@@ -1686,7 +1697,7 @@ func shouldAutoContinueForTodo(currentContent, trackedTodoContent string, knownP
 		if hasPendingTodo(currentContent) {
 			// Checklist text can linger in final answers; explicit completion signals
 			// should win over stale unchecked items.
-			if isLikelyTaskCompletionResponse(currentContent) {
+			if isLikelyTodoFinalizationResponse(currentContent) {
 				return false
 			}
 			return true
@@ -1694,13 +1705,70 @@ func shouldAutoContinueForTodo(currentContent, trackedTodoContent string, knownP
 		// Plan-tool mode: the model may not echo checklist text every round.
 		// If tracked checklist still has pending items and current text is not a
 		// completion response, keep the loop running.
-		if hasPendingTodo(trackedTodoContent) && !isLikelyTaskCompletionResponse(currentContent) {
+		if hasPendingTodo(trackedTodoContent) && !isLikelyTodoFinalizationResponse(currentContent) {
 			return true
 		}
 		return false
 	}
 	// Fallback to tracked TODO only when current content is empty.
 	return hasPendingTodo(trackedTodoContent)
+}
+
+func shouldAutoContinueForTodoReconcile(currentContent, trackedTodoContent string, agentMode bool) bool {
+	if !agentMode || !hasPendingTodo(trackedTodoContent) {
+		return false
+	}
+	s := strings.TrimSpace(currentContent)
+	if s == "" || isAwaitingUserInput(s) {
+		return false
+	}
+	if shouldAutoContinueForSummaryIntro(s) {
+		return false
+	}
+	if isLikelyTodoFinalizationResponse(s) {
+		return false
+	}
+	if hasSuggestedNextSteps(s) {
+		return true
+	}
+
+	lower := strings.ToLower(s)
+	enCues := []string{
+		"final result",
+		"deliverable",
+		"what was accomplished",
+		"how to use",
+		"how to test",
+		"wrap-up",
+		"wrap up",
+	}
+	enMatches := 0
+	for _, cue := range enCues {
+		if strings.Contains(lower, cue) {
+			enMatches++
+		}
+	}
+	if enMatches >= 2 {
+		return true
+	}
+
+	zhCues := []string{
+		"完成内容",
+		"使用方法",
+		"测试方法",
+		"最终结果",
+		"最终答复",
+		"最终回复",
+		"交付",
+		"收尾",
+	}
+	zhMatches := 0
+	for _, cue := range zhCues {
+		if strings.Contains(s, cue) {
+			zhMatches++
+		}
+	}
+	return zhMatches >= 2
 }
 
 func extractPlanPayloadMaps(resultContent string) []map[string]any {
@@ -2642,6 +2710,9 @@ func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent str
 	if shouldAutoContinueForSummaryIntro(currentContent) {
 		return true, "summary_intro"
 	}
+	if agentMode && shouldAutoContinueForTodoReconcile(currentContent, trackedTodoContent, agentMode) {
+		return true, "todo_reconcile"
+	}
 	if agentMode && shouldAutoContinueForTodo(currentContent, trackedTodoContent, planCompletedByTool) {
 		return true, "pending_todo"
 	}
@@ -2765,7 +2836,7 @@ func shouldAutoContinueForMissingTodo(currentContent, trackedTodoContent string,
 	if isAwaitingUserInput(currentContent) {
 		return false
 	}
-	if isLikelyTaskCompletionResponse(currentContent) {
+	if isLikelyTodoFinalizationResponse(currentContent) {
 		return false
 	}
 	return true
@@ -2808,13 +2879,117 @@ func isImplicitSummaryTodoItem(title string) bool {
 	return false
 }
 
-func syncTrackedTodoAfterToollessReply(trackedTodoContent, currentContent string) (string, bool) {
-	if strings.TrimSpace(trackedTodoContent) == "" || !isLikelyTaskCompletionResponse(currentContent) {
-		return trackedTodoContent, false
+func containsAnySubstring(text string, cues []string) bool {
+	for _, cue := range cues {
+		if strings.Contains(text, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+func todoFinalizationEvidenceContent(content string) string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return ""
+	}
+	if !hasPendingTodo(trimmed) {
+		return trimmed
+	}
+	stripped := strings.TrimSpace(stripFirstTodoChecklist(trimmed))
+	if stripped == trimmed {
+		return trimmed
+	}
+	return stripped
+}
+
+func isImplicitArtifactDeliveryTodoItem(title string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(title)), " "))
+	if normalized == "" {
+		return false
 	}
 
-	lines := strings.Split(trackedTodoContent, "\n")
-	pendingSummaryLineIdx := -1
+	zhActionCues := []string{"写入", "保存", "输出", "写出", "导出", "生成", "交付"}
+	zhObjectCues := []string{"文件", "报告", "文档", "完整报告", "最终报告", "示例代码", "markdown", "md", "总结", "答复", "回复"}
+	if containsAnySubstring(title, zhActionCues) && containsAnySubstring(title, zhObjectCues) {
+		return true
+	}
+
+	enActionCues := []string{"write", "save", "output", "export", "generate", "deliver"}
+	enObjectCues := []string{"file", "report", "document", "artifact", "markdown", "summary", "response", "reply"}
+	return containsAnySubstring(normalized, enActionCues) && containsAnySubstring(normalized, enObjectCues)
+}
+
+func isLikelyArtifactDeliveryResponse(content string) bool {
+	s := todoFinalizationEvidenceContent(content)
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+
+	zhStrongCues := []string{
+		"已写入文件",
+		"写入文件：",
+		"写入到文件",
+		"保存到文件",
+		"已保存到",
+		"完整报告已写入",
+		"完整报告已保存",
+		"报告已写入",
+		"报告已保存",
+		"输出文件：",
+	}
+	if containsAnySubstring(s, zhStrongCues) {
+		return true
+	}
+
+	zhActionCues := []string{"写入", "保存", "输出", "写出", "导出", "生成"}
+	zhObjectCues := []string{"文件", "报告", "文档", "完整报告", "最终报告", ".md", ".txt", ".html", ".css", ".json", ".csv", ".pdf"}
+	if containsAnySubstring(s, zhActionCues) && containsAnySubstring(s, zhObjectCues) {
+		return true
+	}
+
+	if containsAnySubstring(lower, []string{`"title":"write_commit"`, `"title":"file_write"`}) {
+		return true
+	}
+
+	enStrongCues := []string{"wrote file", "written to", "saved to", "report saved", "saved the report", "output file"}
+	if containsAnySubstring(lower, enStrongCues) {
+		return true
+	}
+
+	enActionCues := []string{"write", "wrote", "written", "save", "saved", "output", "export", "generate", "deliver"}
+	enObjectCues := []string{"file", "report", "document", "artifact", ".md", ".txt", ".html", ".css", ".json", ".csv", ".pdf"}
+	return containsAnySubstring(lower, enActionCues) && containsAnySubstring(lower, enObjectCues)
+}
+
+func isLikelyTodoFinalizationResponse(content string) bool {
+	return isLikelyTaskCompletionResponse(content) || isLikelyArtifactDeliveryResponse(content)
+}
+
+type pendingTodoLine struct {
+	index int
+	title string
+}
+
+type toollessReplyTodoRule struct {
+	titleMatches    func(string) bool
+	responseMatches func(string) bool
+}
+
+var toollessReplyTodoRules = []toollessReplyTodoRule{
+	{
+		titleMatches:    isImplicitSummaryTodoItem,
+		responseMatches: isLikelyTaskCompletionResponse,
+	},
+	{
+		titleMatches:    isImplicitArtifactDeliveryTodoItem,
+		responseMatches: isLikelyArtifactDeliveryResponse,
+	},
+}
+
+func findSinglePendingTodoLine(lines []string) (pendingTodoLine, bool) {
+	pending := pendingTodoLine{index: -1}
 	pendingCount := 0
 	for i, line := range lines {
 		match := reTodoAnyItem.FindStringSubmatch(line)
@@ -2822,22 +2997,80 @@ func syncTrackedTodoAfterToollessReply(trackedTodoContent, currentContent string
 			continue
 		}
 		pendingCount++
-		if !isImplicitSummaryTodoItem(strings.TrimSpace(match[2])) {
-			return trackedTodoContent, false
-		}
-		pendingSummaryLineIdx = i
+		pending.index = i
+		pending.title = strings.TrimSpace(match[2])
 	}
-	if pendingCount != 1 || pendingSummaryLineIdx < 0 {
+	return pending, pendingCount == 1 && pending.index >= 0
+}
+
+func matchesToollessReplyTodoCompletion(title, currentContent string) bool {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return false
+	}
+	for _, rule := range toollessReplyTodoRules {
+		if rule.titleMatches(title) {
+			return rule.responseMatches(currentContent)
+		}
+	}
+	return false
+}
+
+func syncTrackedTodoAfterToollessReply(trackedTodoContent, currentContent string) (string, bool) {
+	if strings.TrimSpace(trackedTodoContent) == "" {
 		return trackedTodoContent, false
 	}
 
-	updatedLine := strings.Replace(lines[pendingSummaryLineIdx], "[ ]", "[x]", 1)
-	if updatedLine == lines[pendingSummaryLineIdx] {
+	lines := strings.Split(trackedTodoContent, "\n")
+	pending, ok := findSinglePendingTodoLine(lines)
+	if !ok {
 		return trackedTodoContent, false
 	}
-	lines[pendingSummaryLineIdx] = updatedLine
+	if !matchesToollessReplyTodoCompletion(pending.title, currentContent) {
+		return trackedTodoContent, false
+	}
+
+	updatedLine := strings.Replace(lines[pending.index], "[ ]", "[x]", 1)
+	if updatedLine == lines[pending.index] {
+		return trackedTodoContent, false
+	}
+	lines[pending.index] = updatedLine
 	updated := strings.Join(lines, "\n")
 	return updated, updated != trackedTodoContent
+}
+
+func syncTrackedTodoAfterCompletionSignal(trackedTodoContent, currentContent string) (string, bool) {
+	if strings.TrimSpace(trackedTodoContent) == "" {
+		return trackedTodoContent, false
+	}
+	if strings.TrimSpace(currentContent) == "" {
+		return trackedTodoContent, false
+	}
+
+	if isLikelyTodoFinalizationResponse(currentContent) {
+		return completeAllTodoItems(trackedTodoContent)
+	}
+
+	return syncTrackedTodoAfterToollessReply(trackedTodoContent, currentContent)
+}
+
+func buildToolRoundTodoCompletionSignal(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	if completion := strings.TrimSpace(buildSuccessfulArtifactCompletion(userMessage, toolCalls, toolResults)); completion != "" {
+		return completion
+	}
+
+	targets := collectSuccessfulWriteTargets(toolCalls, toolResults)
+	if len(targets) == 0 {
+		return ""
+	}
+	target := strings.TrimSpace(targets[0])
+	if target == "" {
+		return ""
+	}
+	if isImageArtifactPath(target) {
+		return fmt.Sprintf("Generated the requested image and saved it to %q.", target)
+	}
+	return fmt.Sprintf("Saved the requested file to %q.", target)
 }
 
 // syncTrackedTodoAfterToollessChecklist keeps the first checklist stable across
@@ -2874,7 +3107,7 @@ func syncTrackedTodoAfterToollessChecklist(trackedTodoContent, currentContent st
 }
 
 func isLikelyTaskCompletionResponse(content string) bool {
-	s := strings.TrimSpace(content)
+	s := todoFinalizationEvidenceContent(content)
 	if s == "" {
 		return false
 	}
@@ -3091,7 +3324,7 @@ func shouldPersistToollessRoundContent(reason string) bool {
 
 func shouldCollapseToollessAutoContinueRound(reason, content string) bool {
 	switch reason {
-	case "pending_todo", "missing_todo", "deep_search_min_rounds":
+	case "pending_todo", "missing_todo", "todo_reconcile", "deep_search_min_rounds":
 		return true
 	case "action_pledge":
 		trimmed := strings.TrimSpace(content)
@@ -3140,7 +3373,7 @@ func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, 
 			if reason == "missing_todo" {
 				state.MissingTodoAutoContinueCount++
 				state.PendingTodoAutoContinueCount = 0
-			} else if reason == "pending_todo" || reason == "missing_next_steps" {
+			} else if reason == "pending_todo" || reason == "missing_next_steps" || reason == "todo_reconcile" {
 				state.PendingTodoAutoContinueCount++
 				state.MissingTodoAutoContinueCount = 0
 			} else {
@@ -3176,7 +3409,10 @@ func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, 
 			Msg("[im] empty post-tool auto-continue budget exhausted; finishing current round")
 	}
 
-	if updatedChecklist, changed := syncTrackedTodoAfterToollessChecklist(state.TodoContent, resp.Message.Content); changed {
+	if updatedChecklist, changed := syncTrackedTodoAfterCompletionSignal(state.TodoContent, resp.Message.Content); changed {
+		state.TodoContent = updatedChecklist
+		state.PlanCompletedByTool = !hasPendingTodo(state.TodoContent)
+	} else if updatedChecklist, changed := syncTrackedTodoAfterToollessChecklist(state.TodoContent, resp.Message.Content); changed {
 		state.TodoContent = updatedChecklist
 		state.PlanCompletedByTool = !hasPendingTodo(state.TodoContent)
 	}
@@ -3281,7 +3517,7 @@ func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, 
 		state.PseudoToolCallAutoContinueCount = 0
 		state.MissingTodoAutoContinueCount = 0
 		state.PendingTodoAutoContinueCount = 0
-	} else if reason == "pending_todo" || reason == "missing_next_steps" {
+	} else if reason == "pending_todo" || reason == "missing_next_steps" || reason == "todo_reconcile" {
 		state.PendingTodoAutoContinueCount++
 		state.PseudoToolCallAutoContinueCount = 0
 		state.ActionPledgeAutoContinueCount = 0
@@ -3903,6 +4139,17 @@ func syncTrackedTodoAfterToolRound(trackedTodoContent, planChecklist string, pla
 	return updated, changed
 }
 
+func reconcileTrackedTodoAfterToolRound(trackedTodoContent, userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message, planChecklist string, planChecklistUpdated, planCompletedByTool bool) (string, bool) {
+	updated, changed := syncTrackedTodoAfterToolRound(trackedTodoContent, planChecklist, planChecklistUpdated, planCompletedByTool)
+	if completionSignal := buildToolRoundTodoCompletionSignal(userMessage, toolCalls, toolResults); completionSignal != "" {
+		if finalized, finalizedChanged := syncTrackedTodoAfterCompletionSignal(updated, completionSignal); finalizedChanged {
+			updated = finalized
+			changed = true
+		}
+	}
+	return updated, changed
+}
+
 // allToolResultsOK returns true if none of the tool results contain errors.
 func allToolResultsOK(results []llm.Message) bool {
 	for _, r := range results {
@@ -4032,6 +4279,46 @@ func payloadStringField(payload map[string]interface{}, key string) string {
 	}
 }
 
+func payloadBoolField(payload map[string]interface{}, key string) (bool, bool) {
+	if payload == nil {
+		return false, false
+	}
+	raw, ok := payload[key]
+	if !ok || raw == nil {
+		return false, false
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v, true
+	case string:
+		s := strings.TrimSpace(strings.ToLower(v))
+		switch s {
+		case "true", "1", "yes", "y":
+			return true, true
+		case "false", "0", "no", "n":
+			return false, true
+		default:
+			return false, false
+		}
+	case int:
+		return v != 0, true
+	case int32:
+		return v != 0, true
+	case int64:
+		return v != 0, true
+	case float64:
+		return v != 0, true
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i != 0, true
+		}
+		if f, err := v.Float64(); err == nil {
+			return f != 0, true
+		}
+	}
+	return false, false
+}
+
 func payloadExitCode(payload map[string]interface{}) (int, bool) {
 	if payload == nil {
 		return 0, false
@@ -4098,6 +4385,29 @@ func classifyToolFallbackOutcome(payload map[string]interface{}) string {
 		}
 	}
 	return "unknown"
+}
+
+func isPendingResearchToolPayload(payload map[string]interface{}) bool {
+	if len(payload) == 0 || classifyToolFallbackOutcome(payload) == "failed" {
+		return false
+	}
+	if waitTimeout, ok := payloadBoolField(payload, "wait_timeout"); ok && waitTimeout {
+		return true
+	}
+	if terminal, ok := payloadBoolField(payload, "terminal"); ok {
+		return !terminal
+	}
+	status := strings.ToLower(payloadStringField(payload, "status"))
+	switch status {
+	case "accepted", "created", "pending", "queued", "running", "in_progress", "in-progress", "processing":
+		return true
+	case "completed", "success", "succeeded", "ok", "done", "failed", "error", "timeout", "cancelled", "canceled", "aborted", "denied", "panic":
+		return false
+	}
+	if accepted, ok := payloadBoolField(payload, "accepted"); ok && accepted {
+		return true
+	}
+	return false
 }
 
 func buildToolCallNameIndex(messages []llm.Message) map[string]string {
@@ -4534,6 +4844,25 @@ func estimateInputTokens(messages []llm.Message) int {
 	return total
 }
 
+func estimateToolTokens(toolDefs []llm.Tool) int {
+	total := 0
+	for _, tool := range toolDefs {
+		total += 8
+		total += estimateTokens(tool.Name)
+		total += estimateTokens(tool.Description)
+		if len(tool.Parameters) > 0 {
+			if b, err := json.Marshal(tool.Parameters); err == nil {
+				total += estimateTokens(string(b))
+			}
+		}
+	}
+	return total
+}
+
+func estimatePreparedRequestInputTokens(messages []llm.Message, toolDefs []llm.Tool) int {
+	return estimateInputTokens(messages) + estimateToolTokens(toolDefs)
+}
+
 func estimateMessageTokens(msg llm.Message) int {
 	total := 4
 	total += estimateTokens(msg.Content)
@@ -4658,7 +4987,7 @@ func estimateOutputReserveTokens(contextWindow, requestedMaxTokens int) int {
 	return reserve
 }
 
-func (h *ChatHandler) measurePreparedInputBudget(model string, requestedMaxOutputTokens int, messages []llm.Message) chatInputBudgetEstimate {
+func (h *ChatHandler) measurePreparedInputBudgetWithTools(model string, requestedMaxOutputTokens int, messages []llm.Message, toolDefs []llm.Tool) chatInputBudgetEstimate {
 	contextWindow := h.resolveContextWindowForModel(model)
 	if contextWindow <= 0 {
 		return chatInputBudgetEstimate{Model: strings.TrimSpace(model)}
@@ -4672,17 +5001,25 @@ func (h *ChatHandler) measurePreparedInputBudget(model string, requestedMaxOutpu
 		Model:                strings.TrimSpace(model),
 		ContextWindow:        contextWindow,
 		ReservedOutputTokens: reservedOutput,
-		EstimatedInputTokens: estimateInputTokens(messages),
+		EstimatedInputTokens: estimatePreparedRequestInputTokens(messages, toolDefs),
 		MaxInputTokens:       maxInputTokens,
 	}
 }
 
-func (h *ChatHandler) estimatePreparedInputBudget(model string, requestedMaxOutputTokens int, messages []llm.Message) *chatInputBudgetEstimate {
-	estimate := h.measurePreparedInputBudget(model, requestedMaxOutputTokens, messages)
+func (h *ChatHandler) measurePreparedInputBudget(model string, requestedMaxOutputTokens int, messages []llm.Message) chatInputBudgetEstimate {
+	return h.measurePreparedInputBudgetWithTools(model, requestedMaxOutputTokens, messages, nil)
+}
+
+func (h *ChatHandler) estimatePreparedInputBudgetWithTools(model string, requestedMaxOutputTokens int, messages []llm.Message, toolDefs []llm.Tool) *chatInputBudgetEstimate {
+	estimate := h.measurePreparedInputBudgetWithTools(model, requestedMaxOutputTokens, messages, toolDefs)
 	if !estimate.Exceeds() {
 		return nil
 	}
 	return &estimate
+}
+
+func (h *ChatHandler) estimatePreparedInputBudget(model string, requestedMaxOutputTokens int, messages []llm.Message) *chatInputBudgetEstimate {
+	return h.estimatePreparedInputBudgetWithTools(model, requestedMaxOutputTokens, messages, nil)
 }
 
 type preparedBudgetFitParams struct {
@@ -4690,6 +5027,7 @@ type preparedBudgetFitParams struct {
 	Model              string
 	MaxTokens          int
 	Messages           []llm.Message
+	Tools              []llm.Tool
 	ExplicitProviderID string
 	ProviderExplicit   bool
 }
@@ -5126,7 +5464,7 @@ func appendPreparedBudgetAttempt(
 	return attempts, len(attempts) - 1
 }
 
-func (h *ChatHandler) selectPreparedBudgetFallbackCandidates(messages []llm.Message, requestedMaxOutputTokens int, originalModel, explicitProviderID string) ([]preparedBudgetFallbackCandidate, bool) {
+func (h *ChatHandler) selectPreparedBudgetFallbackCandidates(messages []llm.Message, toolDefs []llm.Tool, requestedMaxOutputTokens int, originalModel, explicitProviderID string) ([]preparedBudgetFallbackCandidate, bool) {
 	if h == nil || h.providerPool == nil || h.providerPool.Registry == nil || h.providerPool.Discovery == nil {
 		return nil, false
 	}
@@ -5152,7 +5490,7 @@ func (h *ChatHandler) selectPreparedBudgetFallbackCandidates(messages []llm.Mess
 				strings.EqualFold(strings.TrimSpace(candidateModel.ProviderID), strings.TrimSpace(explicitProviderID)) {
 				continue
 			}
-			if h.measurePreparedInputBudget(candidateModel.ID, requestedMaxOutputTokens, messages).Exceeds() {
+			if h.measurePreparedInputBudgetWithTools(candidateModel.ID, requestedMaxOutputTokens, messages, toolDefs).Exceeds() {
 				continue
 			}
 			candidate := preparedBudgetFallbackCandidate{Provider: provider, Model: candidateModel}
@@ -5216,7 +5554,7 @@ func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params pr
 		model = "auto"
 	}
 	originalMessages := cloneLLMMessages(params.Messages)
-	originalBudget := h.measurePreparedInputBudget(model, params.MaxTokens, originalMessages)
+	originalBudget := h.measurePreparedInputBudgetWithTools(model, params.MaxTokens, originalMessages, params.Tools)
 	preferPressureCompaction := originalBudget.NeedsPressureCompaction()
 	attempts := make([]preparedBudgetAttempt, 0, 8)
 	originalIdx := -1
@@ -5225,7 +5563,7 @@ func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params pr
 	}
 
 	stage1Messages := h.buildPreparedBudgetStage1(model, originalMessages)
-	stage1Budget := h.measurePreparedInputBudget(model, params.MaxTokens, stage1Messages)
+	stage1Budget := h.measurePreparedInputBudgetWithTools(model, params.MaxTokens, stage1Messages, params.Tools)
 	stage1Idx := -1
 	if !llmMessagesEqual(originalMessages, stage1Messages) {
 		attempts, stage1Idx = appendPreparedBudgetAttempt(
@@ -5240,7 +5578,7 @@ func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params pr
 	}
 
 	stage2Messages, summaryText := h.buildPreparedBudgetStage2(ctx, params.ConvID, model, originalMessages)
-	stage2Budget := h.measurePreparedInputBudget(model, params.MaxTokens, stage2Messages)
+	stage2Budget := h.measurePreparedInputBudgetWithTools(model, params.MaxTokens, stage2Messages, params.Tools)
 	stage2HasSummary := strings.TrimSpace(summaryText) != ""
 	stage2Idx := -1
 	if !llmMessagesEqual(originalMessages, stage2Messages) {
@@ -5256,7 +5594,7 @@ func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params pr
 	}
 
 	stage3Messages, summaryText := h.buildPreparedBudgetStage3(ctx, params.ConvID, model, originalMessages, summaryText)
-	stage3Budget := h.measurePreparedInputBudget(model, params.MaxTokens, stage3Messages)
+	stage3Budget := h.measurePreparedInputBudgetWithTools(model, params.MaxTokens, stage3Messages, params.Tools)
 	stage3HasSummary := strings.TrimSpace(summaryText) != ""
 	stage3Idx := -1
 	if !llmMessagesEqual(originalMessages, stage3Messages) {
@@ -5282,14 +5620,14 @@ func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params pr
 		stage3Budget,
 	)
 
-	fallbackCandidates, fallbackAttempted := h.selectPreparedBudgetFallbackCandidates(fallbackBaseMessages, params.MaxTokens, model, strings.TrimSpace(params.ExplicitProviderID))
+	fallbackCandidates, fallbackAttempted := h.selectPreparedBudgetFallbackCandidates(fallbackBaseMessages, params.Tools, params.MaxTokens, model, strings.TrimSpace(params.ExplicitProviderID))
 	fallbackIdxs := make([]int, 0, len(fallbackCandidates))
 	fallbackStage := fallbackBaseStage
 	if fallbackStage < 3 {
 		fallbackStage = 3
 	}
 	for _, candidate := range fallbackCandidates {
-		budget := h.measurePreparedInputBudget(candidate.Model.ID, params.MaxTokens, fallbackBaseMessages)
+		budget := h.measurePreparedInputBudgetWithTools(candidate.Model.ID, params.MaxTokens, fallbackBaseMessages, params.Tools)
 		if budget.Exceeds() {
 			continue
 		}
@@ -5310,7 +5648,7 @@ func (h *ChatHandler) fitPreparedMessagesToBudget(ctx context.Context, params pr
 
 	trimBaseStage, trimBaseMessages, trimBaseBudget := fallbackBaseStage, fallbackBaseMessages, fallbackBaseBudget
 	trimMessages := h.applyPreparedTrimPolicy(model, trimBaseMessages)
-	trimBudget := h.measurePreparedInputBudget(model, params.MaxTokens, trimMessages)
+	trimBudget := h.measurePreparedInputBudgetWithTools(model, params.MaxTokens, trimMessages, params.Tools)
 	trimIdx := -1
 	if !llmMessagesEqual(trimBaseMessages, trimMessages) {
 		trimStage := trimBaseStage
@@ -5467,6 +5805,24 @@ func (h *ChatHandler) rejectIfPreparedInputExceedsBudget(c echo.Context, model s
 	})
 }
 
+func (h *ChatHandler) selectChatToolsForRequest(userMessage, model, sessionID string, webSearchEnabled, deepResearchEnabled *bool) []tools.ToolDefinition {
+	selectedTools := h.selectTools(userMessage, tools.ToolPolicyRequest{
+		Model:               model,
+		SessionID:           sessionID,
+		RouteKind:           tools.ToolRouteKindChat,
+		DeepResearchEnabled: deepResearchEnabled,
+	})
+	selectedTools = applyWebSearchPreference(selectedTools, webSearchEnabled)
+	selectedTools = applyDeepResearchPreference(selectedTools, deepResearchEnabled)
+	selectedTools = applyWritingToolPreference(selectedTools, userMessage)
+	selectedTools = applyResearchToolPreference(selectedTools, userMessage)
+	selectedTools = applyReminderToolPreference(selectedTools, userMessage)
+	selectedTools = applyCalendarToolPreference(selectedTools, userMessage)
+	selectedTools = applyEmailToolPreference(selectedTools, userMessage)
+	selectedTools = applyImageToolPreference(selectedTools, userMessage)
+	return selectedTools
+}
+
 func estimateCurrentRequestMessages(req SendMessageRequest) []llm.Message {
 	if len(req.Attachments) == 0 {
 		return []llm.Message{{Role: llm.RoleUser, Content: req.Message}}
@@ -5477,22 +5833,36 @@ func estimateCurrentRequestMessages(req SendMessageRequest) []llm.Message {
 		parts = append(parts, llm.ContentPart{Type: "text", Text: req.Message})
 	}
 	for _, att := range req.Attachments {
-		switch att.Type {
+		switch normalizeMediaAttachmentType(att.Type, att.MimeType, att.Name) {
 		case "image":
 			parts = append(parts, llm.ContentPart{Type: "image", MediaType: att.MimeType, Data: att.Data})
 		case "audio":
 			parts = append(parts, llm.ContentPart{Type: "audio", MediaType: att.MimeType, Data: att.Data})
+		case "video":
+			parts = append(parts, llm.ContentPart{Type: "text", Text: formatMediaAttachmentSummary("Video attachment", strings.TrimSpace(att.Name), "Video preview will be extracted during media understanding.")})
 		default:
-			parts = append(parts, llm.ContentPart{Type: "text", Text: fmt.Sprintf("\n\n[File: %s]\n%s", att.Name, decodeBase64Content(att.Data))})
+			if isTextFile(att.Name, att.MimeType) {
+				parts = append(parts, llm.ContentPart{Type: "text", Text: fmt.Sprintf("\n\n[File: %s]\n%s", att.Name, decodeBase64Content(att.Data))})
+				continue
+			}
+			label := "File attachment"
+			if isPDFAttachment(mediaAttachment{Name: att.Name, MimeType: att.MimeType}) {
+				label = "PDF attachment"
+			}
+			parts = append(parts, llm.ContentPart{Type: "text", Text: formatMediaAttachmentSummary(label, strings.TrimSpace(att.Name), "Rich extraction will be applied during media understanding.")})
 		}
 	}
 	return []llm.Message{{Role: llm.RoleUser, ContentParts: parts}}
 }
 
-func (h *ChatHandler) rejectIfCurrentRequestExceedsBudget(c echo.Context, model string, req SendMessageRequest, explicitProviderID string) error {
+func (h *ChatHandler) rejectIfCurrentRequestExceedsBudget(c echo.Context, convID, model string, req SendMessageRequest, explicitProviderID string) error {
 	messages := estimateCurrentRequestMessages(req)
+	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(req.Message, model, convID, req.WebSearchEnabled, req.DeepResearchEnabled))
+	if _, structuredEvaluatorNoTools := h.isStructuredEvaluatorConversation(c.Request().Context(), convID, req.Message); structuredEvaluatorNoTools {
+		budgetTools = nil
+	}
 	if estimate := h.estimatePreparedInputBudget(model, req.MaxTokens, messages); estimate != nil {
-		if candidates, attempted := h.selectPreparedBudgetFallbackCandidates(messages, req.MaxTokens, model, explicitProviderID); len(candidates) > 0 {
+		if candidates, attempted := h.selectPreparedBudgetFallbackCandidates(messages, budgetTools, req.MaxTokens, model, explicitProviderID); len(candidates) > 0 {
 			return nil
 		} else if attempted {
 			return h.writePreparedInputBudgetFailure(c, &preparedBudgetFailure{
@@ -5529,6 +5899,30 @@ func mapProviderID(providerID string) string {
 	}
 	// For unknown providers, return as-is (might be a direct LLM provider name)
 	return providerID
+}
+
+func withToolProviderContext(ctx context.Context, provider, providerID, model string) context.Context {
+	if strings.TrimSpace(provider) != "" {
+		ctx = tools.WithProvider(ctx, provider)
+	}
+	if strings.TrimSpace(providerID) != "" {
+		ctx = tools.WithProviderID(ctx, providerID)
+	}
+	if strings.TrimSpace(model) != "" {
+		ctx = tools.WithModel(ctx, model)
+	}
+	return ctx
+}
+
+func withAttachmentProviderContext(ctx context.Context, selectedProviderID, requestProviderID, model string) context.Context {
+	providerID := strings.TrimSpace(selectedProviderID)
+	if providerID == "" {
+		providerID = strings.TrimSpace(requestProviderID)
+	}
+	if providerID == "" {
+		return ctx
+	}
+	return withToolProviderContext(ctx, mapProviderID(providerID), providerID, model)
 }
 
 // getProviderFromPool retrieves a provider from the Provider Pool and creates an LLM provider instance.
@@ -5718,21 +6112,22 @@ type MediaInterceptor interface {
 
 // ChatHandler handles chat-related API endpoints.
 type ChatHandler struct {
-	store             *memory.Store
-	providers         *llm.ProviderRegistry
-	providerPool      *providerpool.Pool
-	toolRegistry      *tools.Registry
-	toolExecutor      *tools.Executor
-	toolGateway       *tools.ToolGateway
-	sessionAuditStore *sessionaudit.Store
-	streamController  *claudecode.StreamController
-	compactionConfig  claudecode.CompactionConfig
-	claudeCodeHandler *claudecode.Handler
-	metricsRecorder   MetricsRecorder
-	companionManager  *companion.Manager
-	promptGuard       *promptguard.Detector
-	convToSession     map[string]string
-	convMu            sync.RWMutex
+	store              *memory.Store
+	providers          *llm.ProviderRegistry
+	providerPool       *providerpool.Pool
+	toolRegistry       *tools.Registry
+	toolExecutor       *tools.Executor
+	toolGateway        *tools.ToolGateway
+	sessionAuditStore  *sessionaudit.Store
+	persistCoordinator *PersistenceCoordinator
+	streamController   *claudecode.StreamController
+	compactionConfig   claudecode.CompactionConfig
+	claudeCodeHandler  *claudecode.Handler
+	metricsRecorder    MetricsRecorder
+	companionManager   *companion.Manager
+	promptGuard        *promptguard.Detector
+	convToSession      map[string]string
+	convMu             sync.RWMutex
 
 	// System prompt builder for channel messages
 	systemPromptBuilder *claudecode.SystemPromptBuilder
@@ -5774,9 +6169,11 @@ type ChatHandler struct {
 	channelMessageUpdater func(ctx context.Context, channelName string, chatID string, messageID string, out channel.OutgoingMessage) error
 
 	// Performance optimization: async event queue
-	eventQueue chan func()
-	eventStop  chan struct{}
-	closeOnce  sync.Once
+	eventQueue       chan func()
+	eventStop        chan struct{}
+	closeOnce        sync.Once
+	chatPersistAsync bool
+	chatReadLite     bool
 
 	// Performance optimization: Conversation message cache
 	conversationCache *ConversationCache
@@ -6029,17 +6426,7 @@ func (h *ChatHandler) resolvePromptPolicy() PromptPolicy {
 // selectToolsDetailed returns tool definitions after selector + router stages
 // plus optional selector debug details.
 func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.ToolPolicyRequest) ([]tools.ToolDefinition, *tools.ToolSelectionDebug) {
-	locale := ""
-	if h.settingsHandler != nil {
-		locale = h.settingsHandler.GetLocale()
-	}
-	if policyReq.RouteKind == tools.ToolRouteKindUnknown {
-		policyReq.RouteKind = tools.ToolRouteKindChat
-	}
-	allDefs := h.toolRegistry.DefinitionsForRouteAndLocale(policyReq.RouteKind, locale)
-	if h.toolPolicyResolver != nil {
-		allDefs = h.toolPolicyResolver.Filter(policyReq, allDefs)
-	}
+	allDefs := h.toolDefinitionsForPolicy(policyReq)
 	selected := allDefs
 	var debug *tools.ToolSelectionDebug
 
@@ -6063,6 +6450,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	routed = preferWorkspaceFileWorkflowTools(userMessage, allDefs, routed)
 	routed = preferDirectArtifactWritingTools(userMessage, allDefs, routed)
 	routed = preferImageGenerationWorkflowTools(userMessage, allDefs, routed)
+	routed = preferForcedDeepResearchTools(userMessage, allDefs, routed, policyReq.DeepResearchEnabled)
 
 	names := make([]string, len(routed))
 	for i, d := range routed {
@@ -6082,6 +6470,21 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	return routed, debug
 }
 
+func (h *ChatHandler) toolDefinitionsForPolicy(policyReq tools.ToolPolicyRequest) []tools.ToolDefinition {
+	locale := ""
+	if h.settingsHandler != nil {
+		locale = h.settingsHandler.GetLocale()
+	}
+	if policyReq.RouteKind == tools.ToolRouteKindUnknown {
+		policyReq.RouteKind = tools.ToolRouteKindChat
+	}
+	allDefs := h.toolRegistry.DefinitionsForRouteAndLocale(policyReq.RouteKind, locale)
+	if h.toolPolicyResolver != nil {
+		allDefs = h.toolPolicyResolver.Filter(policyReq, allDefs)
+	}
+	return allDefs
+}
+
 func preferResearchReportWorkflowTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
 	if len(allDefs) == 0 || !shouldPreferDeepSearchReport(userMessage) {
 		return current
@@ -6097,7 +6500,7 @@ func preferResearchReportWorkflowTools(userMessage string, allDefs, current []to
 		"exec",
 	}
 	if shouldUseHeavyResearchWorkflow(userMessage) {
-		researchToolNames = append([]string{"research_run", "research_status"}, researchToolNames...)
+		researchToolNames = append([]string{"deep_research"}, researchToolNames...)
 	}
 	researchTools := filterToolDefsToNames(allDefs, researchToolNames...)
 	if target := extractRequestedArtifactPath(userMessage); target != "" {
@@ -6121,6 +6524,7 @@ func preferPublicArtifactResearchWorkflowTools(userMessage string, allDefs, curr
 		"web_extract",
 		"web_crawl",
 		"browser",
+		"office",
 		"file_read",
 		"file_write",
 		"file_delete",
@@ -6141,6 +6545,11 @@ func preferWorkspaceFileWorkflowTools(userMessage string, allDefs, current []too
 	if len(allDefs) == 0 || !shouldPreferWorkspaceFileWorkflow(userMessage) {
 		return current
 	}
+	// Research/report prompts often also mention a target output file. Keep the
+	// already-routed research tools instead of collapsing to a pure local-file set.
+	if shouldPreferDeepSearchReport(userMessage) || shouldUseHeavyResearchWorkflow(userMessage) || shouldPreferPublicArtifactResearchWorkflow(userMessage) {
+		return current
+	}
 	filtered := filterToolDefsToNames(allDefs, artifactFileWorkflowToolNamesForMessage(userMessage)...)
 	if len(filtered) == 0 {
 		return current
@@ -6150,6 +6559,11 @@ func preferWorkspaceFileWorkflowTools(userMessage string, allDefs, current []too
 
 func preferDirectArtifactWritingTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
 	if len(allDefs) == 0 || !shouldPreferDirectArtifactWriting(userMessage) {
+		return current
+	}
+	// Keep research/search tools visible for report-generation prompts that also
+	// request saving the result to a workspace artifact.
+	if shouldPreferDeepSearchReport(userMessage) || shouldUseHeavyResearchWorkflow(userMessage) || shouldPreferPublicArtifactResearchWorkflow(userMessage) {
 		return current
 	}
 	filtered := filterToolDefsToNames(allDefs, artifactFileWorkflowToolNamesForMessage(userMessage)...)
@@ -6269,6 +6683,82 @@ func applyDeepResearchPreference(defs []tools.ToolDefinition, deepResearchEnable
 	return filtered
 }
 
+func shouldForceResearchToolExposure(userMessage string, deepResearchEnabled *bool) bool {
+	if deepResearchEnabled == nil || !*deepResearchEnabled {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" {
+		return false
+	}
+	if shouldPreferWorkspaceFileWorkflow(lower) || hasExplicitWorkspaceSourceCue(lower) {
+		return false
+	}
+	if shellCommandCueMatcher.ContainsAnyFold(lower) || codeTaskCueMatcher.ContainsAnyFold(lower) {
+		return false
+	}
+	if isReminderIntentMessage(lower) || isEmailIntentMessage(lower) || isCalendarIntentMessage(lower) || isImageGenerationIntentMessage(lower) {
+		return false
+	}
+	if shouldPreferDeepSearchReport(lower) || shouldUseHeavyResearchWorkflow(lower) {
+		return true
+	}
+	if deepResearchForceStrongCueMatcher.ContainsAnyFold(lower) {
+		return true
+	}
+	return deepResearchForceComparativeCueMatcher.ContainsAnyFold(lower) && hasDeepResearchComparativeStructure(lower)
+}
+
+func hasDeepResearchComparativeStructure(lower string) bool {
+	if strings.TrimSpace(lower) == "" {
+		return false
+	}
+	questionMarks := strings.Count(lower, "?") + strings.Count(lower, "？")
+	if questionMarks >= 2 {
+		return true
+	}
+	if questionMarks >= 1 && (strings.Count(lower, "\n") >= 1 || strings.Count(lower, "；")+strings.Count(lower, ";") >= 1) {
+		return true
+	}
+	interrogatives := 0
+	for _, cue := range []string{
+		"why", "how", "what", "which", "who", "when",
+		"为什么", "为何", "如何", "怎么", "哪些", "哪个", "哪种", "什么", "是什么",
+	} {
+		if strings.Contains(lower, cue) {
+			interrogatives++
+		}
+	}
+	if interrogatives >= 2 && (strings.Count(lower, "，") >= 1 || strings.Count(lower, ",") >= 1 || strings.Count(lower, "\n") >= 1) {
+		return true
+	}
+	return false
+}
+
+func preferForcedDeepResearchTools(userMessage string, allDefs, current []tools.ToolDefinition, deepResearchEnabled *bool) []tools.ToolDefinition {
+	if len(allDefs) == 0 || !shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
+		return current
+	}
+	researchTools := filterToolDefsToNames(
+		allDefs,
+		"ask",
+		"deep_research",
+		"browser",
+		"web",
+		"web_search",
+		"web_fetch",
+		"web_read",
+		"web_extract",
+		"web_crawl",
+		"exec",
+	)
+	researchTools = mergeToolDefsByName(researchTools, filterToolDefsToNames(allDefs, artifactFileWorkflowToolNames()...))
+	if len(researchTools) == 0 {
+		return current
+	}
+	return mergeToolDefsByName(current, researchTools)
+}
+
 func applyWritingToolPreference(defs []tools.ToolDefinition, userMessage string) []tools.ToolDefinition {
 	if len(defs) == 0 {
 		return defs
@@ -6303,12 +6793,13 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 			"web_crawl",
 			"exec",
 		}
-		if hasToolDefName(defs, "research_run") {
-			keepNames = append([]string{"research_run", "research_status"}, keepNames...)
+		if hasToolDefName(defs, "deep_research") {
+			keepNames = append([]string{"deep_research"}, keepNames...)
 		}
 		if target := extractRequestedArtifactPath(userMessage); target != "" {
 			_ = target
 			keepNames = append(keepNames,
+				"office",
 				"file_read",
 				"file_write",
 				"file_delete",
@@ -6330,6 +6821,7 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 			"web_extract",
 			"web_crawl",
 			"browser",
+			"office",
 			"file_write",
 			"file_read",
 			"file_delete",
@@ -6354,6 +6846,7 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 		if target := extractRequestedArtifactPath(userMessage); target != "" {
 			_ = target
 			keepNames = append(keepNames,
+				"office",
 				"file_read",
 				"file_write",
 				"file_delete",
@@ -6451,14 +6944,22 @@ func preferredImageWorkflowToolDefs(defs []tools.ToolDefinition, userMessage str
 	}
 	primary := ""
 	switch {
-	case hasToolDefName(defs, "image_generation"):
-		primary = "image_generation"
 	case hasToolDefName(defs, "image"):
 		primary = "image"
+	case hasToolDefName(defs, "image_generation"):
+		primary = "image_generation"
 	default:
 		return defs
 	}
-	filtered := filterToolDefsToNames(defs, primary)
+	filtered := make([]tools.ToolDefinition, 0, 1)
+	for _, def := range defs {
+		if strings.EqualFold(strings.TrimSpace(def.Name), primary) {
+			filtered = append(filtered, def)
+		}
+	}
+	if len(filtered) == 0 {
+		filtered = filterToolDefsToNames(defs, primary)
+	}
 	if target := extractRequestedArtifactPath(userMessage); isImageArtifactPath(target) {
 		filtered = mergeToolDefsByName(filtered, filterToolDefsToNames(defs,
 			"file_read",
@@ -6664,9 +7165,17 @@ func normalizeFileToolCompatName(name string) string {
 		return "grep"
 	case "web", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return "web"
+	case "image", "image_generation", "generate_image", "generateimage":
+		return "image"
+	case "deep_research", "deep-research", "research_run", "research_status":
+		return "deep_research"
 	default:
 		return strings.ToLower(strings.TrimSpace(name))
 	}
+}
+
+func isDeepResearchCompatToolName(name string) bool {
+	return normalizeFileToolCompatName(name) == "deep_research"
 }
 
 func normalizeAssistantToolCallNameForAllowedSet(raw string, allowedTools []llm.Tool) string {
@@ -6777,6 +7286,7 @@ func sanitizeAssistantToolCallsForAllowedSet(toolCalls []llm.ToolCall, allowedTo
 
 func artifactFileWorkflowToolNames() []string {
 	return []string{
+		"office",
 		"file_read",
 		"file_write",
 		"file_delete",
@@ -6813,15 +7323,24 @@ func memoryFileWorkflowToolNames() []string {
 	}
 }
 
-func structuredWorkspaceArtifactWriteCompletionToolNames() []string {
-	return []string{
-		"file_write",
-		"edit",
-		"write_begin",
-		"write_chunk",
-		"write_commit",
-		"file_read",
+func structuredWorkspaceArtifactWriteCompletionToolNames(target string) []string {
+	return artifactWriteCompletionToolNames(target)
+}
+
+func artifactWriteCompletionToolNames(target string) []string {
+	names := make([]string, 0, 6)
+	if isOfficeArtifactPath(target) {
+		names = append(names, "office")
 	}
+	names = append(names, "file_write", "edit", "write_begin", "write_chunk", "write_commit")
+	return names
+}
+
+func hasArtifactWriteTool(tools []llm.Tool, target string) bool {
+	if isOfficeArtifactPath(target) && containsLLMToolName(tools, "office") {
+		return true
+	}
+	return containsLLMToolName(tools, "file_write")
 }
 
 func artifactFileWorkflowToolNamesForMessage(userMessage string) []string {
@@ -6966,6 +7485,31 @@ func (h *ChatHandler) resolveSkillSelection(ctx context.Context, userMessage str
 		return "", ""
 	}
 	return decision.PromptHint(3), decision.SelectedSkill
+}
+
+func forcedSkillSelectionHint(userMessage, skill string) string {
+	userMessage = strings.TrimSpace(userMessage)
+	skill = strings.TrimSpace(skill)
+	if userMessage == "" || skill == "" {
+		return ""
+	}
+	return fmt.Sprintf(
+		`<selected_skill_candidates query=%q confidence="1.00" need_clarify="false"><skill name=%q /><decision selected=%q stage="forced" /></selected_skill_candidates>`,
+		truncateRunes(userMessage, 160),
+		skill,
+		skill,
+	)
+}
+
+func (h *ChatHandler) resolveSkillSelectionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (string, string) {
+	if shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
+		return forcedSkillSelectionHint(userMessage, "deep_research"), "deep_research"
+	}
+	return h.resolveSkillSelection(ctx, userMessage)
+}
+
+func shouldForceRequestAgentMode(userMessage string, deepResearchEnabled *bool) bool {
+	return shouldForceResearchToolExposure(userMessage, deepResearchEnabled)
 }
 
 func (h *ChatHandler) buildSkillSelectionPrompt(ctx context.Context, userMessage string) string {
@@ -7149,6 +7693,8 @@ func mapStreamErrorCode(err error, actualProviderID string) string {
 	if pe, ok := err.(*proxybridge.ProxyError); ok {
 		bodyLower := strings.ToLower(pe.Body)
 		switch {
+		case proxy.IsContextWindowExceededMessage(bodyLower):
+			return "context_window_exceeded"
 		case isOpenRouterFreeModelPublicationError(pe):
 			return "provider_openrouter_privacy_policy"
 		case strings.Contains(bodyLower, "does not support tool calls"):
@@ -7171,6 +7717,8 @@ func mapStreamErrorCode(err error, actualProviderID string) string {
 	errLower := strings.ToLower(err.Error())
 	hasRequestBuildFailure := upstreamerrors.HasRequestBuildFailureText(errLower)
 	switch {
+	case proxy.IsContextWindowExceededMessage(errLower):
+		return "context_window_exceeded"
 	case strings.Contains(errLower, "no endpoints found matching your data policy") &&
 		strings.Contains(errLower, "free model publication"):
 		return "provider_openrouter_privacy_policy"
@@ -8091,7 +8639,7 @@ func (h *ChatHandler) runLocalIRFallback(ctx context.Context, convID, query stri
 		}
 		return "", errNoIRLocalSignal
 	}
-	msgs, err := h.store.GetRecentMessages(ctx, convID, 24)
+	msgs, err := h.getRecentMessagesForContext(ctx, convID, 24)
 	if err != nil {
 		if allowGeneric {
 			return "IR-only fallback is active. Local retrieval is temporarily unavailable.", nil
@@ -8375,7 +8923,7 @@ func summarizeToolPayloadForFallback(toolName string, payload map[string]interfa
 		if text := summarizeBrowserPayloadForFallback(payload, useChinese); text != "" {
 			return text
 		}
-	case "image", "image_generation":
+	case "image", "image_generation", "generate_image", "generateimage":
 		if text := summarizeImagePayloadForFallback(payload, useChinese); text != "" {
 			return text
 		}
@@ -9302,6 +9850,7 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		pendingBrowserLaunch:           make(map[string]pendingBrowserLaunchIntent),
 		memoryRatioByConv:              make(map[string]float64),
 		turnHooks:                      NewTurnHookManager(),
+		chatReadLite:                   true,
 	}
 	h.turnHooks.Register(NewMemoryTurnHook(h))
 	// Start async event processor
@@ -9372,6 +9921,9 @@ func (h *ChatHandler) Shutdown() {
 		return
 	}
 	h.streamController.CancelAll()
+	if h.persistCoordinator != nil {
+		h.persistCoordinator.ShutdownFlush()
+	}
 	if h.sessionAuditStore != nil {
 		_ = h.sessionAuditStore.Close()
 	}
@@ -9414,11 +9966,23 @@ func (h *ChatHandler) SetMetricsRecorder(recorder MetricsRecorder) {
 	if counterRecorder, ok := recorder.(runtimeCounterRecorder); ok && h.toolGateway != nil {
 		h.toolGateway.SetMetricsRecorder(counterRecorder)
 	}
+	h.ensurePersistenceCoordinator()
 }
 
 // SetSessionAuditStore sets an isolated audit store for raw tool payload logs.
 func (h *ChatHandler) SetSessionAuditStore(store *sessionaudit.Store) {
 	h.sessionAuditStore = store
+	h.ensurePersistenceCoordinator()
+}
+
+// SetPersistenceOptions toggles chat persistence optimizations.
+func (h *ChatHandler) SetPersistenceOptions(async, readLite bool) {
+	if h == nil {
+		return
+	}
+	h.chatPersistAsync = async
+	h.chatReadLite = readLite
+	h.ensurePersistenceCoordinator()
 }
 
 // SetClaudeCodeHandler sets the Claude Code handler for checking enabled status.
@@ -11299,7 +11863,8 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 					Msg("[im] limiting tool round to first tool call")
 			}
 			resp.Message.ToolCalls = limitedToolCalls
-			completedCalls, completed, pendingCall, stillRemaining, checkpointID, pendingMsg := h.executeIMToolCallsUntilCheckpoint(checkpointToolCtx, resp.Message.ToolCalls)
+			roundToolCtx := withToolProviderContext(checkpointToolCtx, resp.Provider, resp.ProviderID, resp.Model)
+			completedCalls, completed, pendingCall, stillRemaining, checkpointID, pendingMsg := h.executeIMToolCallsUntilCheckpoint(roundToolCtx, resp.Message.ToolCalls)
 			h.sendIMToolResultCards(ctx, msg.ChannelName, msg.ChatID, msg.ID, lang, completedCalls, completed)
 			h.syncIMTodoChecklistAfterToolRound(ctx, &autoContinueState, &todoMessageState, msg.ChannelName, msg.ChatID, msg.ID, convID, completedCalls, completed)
 			if pendingCall != nil {
@@ -11340,7 +11905,15 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			} else if planChecklistUpdated {
 				autoContinueState.PlanCompletedByTool = !hasPendingTodo(planChecklist)
 			}
-			autoContinueState.TodoContent, _ = syncTrackedTodoAfterToolRound(autoContinueState.TodoContent, planChecklist, planChecklistUpdated, autoContinueState.PlanCompletedByTool)
+			autoContinueState.TodoContent, _ = reconcileTrackedTodoAfterToolRound(
+				autoContinueState.TodoContent,
+				pendingState.RoutingMessage,
+				resp.Message.ToolCalls,
+				completed,
+				planChecklist,
+				planChecklistUpdated,
+				autoContinueState.PlanCompletedByTool,
+			)
 			autoContinueState.AwaitingPostToolSummary = len(completed) > 0
 		}
 
@@ -11498,7 +12071,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	if memoryMessages := h.beforeModelCallHooks(ctx, turnHookCtx); len(memoryMessages) > 0 {
 		messages = append(memoryMessages, messages...)
 	}
-	skillPrompt, selectedSkill := h.resolveSkillSelection(ctx, routingMessage)
+	skillPrompt, selectedSkill := h.resolveSkillSelectionForRequest(ctx, routingMessage, channelDeepResearchEnabled)
 	promptCtx := h.buildContextPackRequestContext(ctx, convID, msg.UserID, string(lang), msg.ChannelName, routingMessage, selectedSkill)
 	extraPrompt := mergeExtraPrompt(
 		skillPrompt,
@@ -11529,7 +12102,6 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			Content: msg.Content,
 		}
 		var contentParts []llm.ContentPart
-		var transcribedTexts []string
 
 		// Add text content if present
 		if msg.Content != "" {
@@ -11539,83 +12111,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			})
 		}
 
-		// Process attachments
-		for _, att := range msg.Attachments {
-			switch att.Type {
-			case channel.MessageTypeImage:
-				if len(att.Data) > 0 {
-					mediaType := att.MimeType
-					if mediaType == "" {
-						mediaType = "image/png"
-					}
-					encoded := base64.StdEncoding.EncodeToString(att.Data)
-					contentParts = append(contentParts, llm.ContentPart{
-						Type:      "image",
-						MediaType: mediaType,
-						Data:      encoded,
-					})
-					logger.Info().
-						Str("channel", msg.ChannelName).
-						Str("attachment_id", att.ID).
-						Int64("size", att.Size).
-						Msg("Added image attachment to LLM message")
-				}
-
-			case channel.MessageTypeAudio:
-				// Try to transcribe audio using STT service
-				if h.sttService != nil && len(att.Data) > 0 {
-					format := stt.FormatOGG // Default for opus
-					if strings.Contains(att.MimeType, "wav") {
-						format = stt.FormatWAV
-					} else if strings.Contains(att.MimeType, "mp3") {
-						format = stt.FormatMP3
-					}
-
-					resp, err := h.sttService.Transcribe(ctx, &stt.TranscribeRequest{
-						Audio:  bytes.NewReader(att.Data),
-						Format: format,
-					})
-					if err != nil {
-						logger.Warn().Err(err).Str("attachment_id", att.ID).Msg("Failed to transcribe audio")
-						transcribedTexts = append(transcribedTexts, "[语音消息，转写失败]")
-					} else if resp.Text != "" {
-						transcribedTexts = append(transcribedTexts, fmt.Sprintf("[语音消息]: %s", resp.Text))
-						logger.Info().
-							Str("channel", msg.ChannelName).
-							Str("transcribed", resp.Text).
-							Msg("Transcribed audio attachment")
-					}
-				} else {
-					transcribedTexts = append(transcribedTexts, "[语音消息，暂不支持转写]")
-				}
-
-			case channel.MessageTypeFile:
-				// Try to extract text from text-based files
-				if len(att.Data) > 0 && isTextFile(att.Name, att.MimeType) {
-					textContent := string(att.Data)
-					// Limit text content to avoid token overflow
-					if len(textContent) > 10000 {
-						textContent = textContent[:10000] + "\n...[内容过长，已截断]"
-					}
-					transcribedTexts = append(transcribedTexts, fmt.Sprintf("[文件: %s]\n%s", att.Name, textContent))
-					logger.Info().
-						Str("channel", msg.ChannelName).
-						Str("filename", att.Name).
-						Int("size", len(att.Data)).
-						Msg("Extracted text from file attachment")
-				} else {
-					transcribedTexts = append(transcribedTexts, fmt.Sprintf("[文件: %s，暂不支持处理]", att.Name))
-				}
-			}
-		}
-
-		// Add transcribed texts as text content
-		if len(transcribedTexts) > 0 {
-			contentParts = append(contentParts, llm.ContentPart{
-				Type: "text",
-				Text: strings.Join(transcribedTexts, "\n"),
-			})
-		}
+		contentParts = append(contentParts, h.buildChannelAttachmentContentParts(ctx, msg.Attachments)...)
 
 		if len(contentParts) > 0 {
 			userMsgBase.ContentParts = contentParts
@@ -11654,9 +12150,10 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 
 	// Add tool definitions (smart selection filters by user query when enabled)
 	selectedTools := h.selectTools(routingMessage, tools.ToolPolicyRequest{
-		Model:     req.Model,
-		SessionID: convID,
-		RouteKind: tools.ToolRouteKindChat,
+		Model:               req.Model,
+		SessionID:           convID,
+		RouteKind:           tools.ToolRouteKindChat,
+		DeepResearchEnabled: channelDeepResearchEnabled,
 	})
 	selectedTools = applyDeepResearchPreference(selectedTools, channelDeepResearchEnabled)
 	selectedTools = applyWritingToolPreference(selectedTools, routingMessage)
@@ -11892,7 +12389,8 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		if resp.Message.Content != "" {
 			h.persistChannelResponse(ctx, convID, sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, req.Model))
 		}
-		completedCalls, completed, pendingCall, remainingCalls, checkpointID, pendingMessage := h.executeIMToolCallsUntilCheckpoint(toolCtx, resp.Message.ToolCalls)
+		roundToolCtx := withToolProviderContext(toolCtx, resp.Provider, resp.ProviderID, resp.Model)
+		completedCalls, completed, pendingCall, remainingCalls, checkpointID, pendingMessage := h.executeIMToolCallsUntilCheckpoint(roundToolCtx, resp.Message.ToolCalls)
 		h.sendIMToolResultCards(ctx, msg.ChannelName, msg.ChatID, msg.ID, lang, completedCalls, completed)
 		h.syncIMTodoChecklistAfterToolRound(ctx, &autoContinueState, &todoMessageState, msg.ChannelName, msg.ChatID, msg.ID, convID, completedCalls, completed)
 		if pendingCall != nil {
@@ -12020,13 +12518,8 @@ func (h *ChatHandler) upsertIMTodoChecklist(baseCtx context.Context, state *imTo
 			state.PersistedMessageID = assistantMsg.ID
 		}
 	} else if h.store != nil {
-		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(baseCtx), 5*time.Second)
-		if err := h.store.UpdateMessageContent(persistCtx, state.PersistedMessageID, content, nil); err != nil {
-			logger.Warn().Err(err).Str("message_id", state.PersistedMessageID).Msg("failed to update persisted IM todo checklist")
-		} else {
-			h.conversationCache.Invalidate(convID)
-		}
-		cancel()
+		h.updateMessageBestEffort(state.PersistedMessageID, convID, "assistant", content, "", "", nil)
+		h.conversationCache.Invalidate(convID)
 	}
 
 	out := channel.OutgoingMessage{
@@ -12087,7 +12580,15 @@ func (h *ChatHandler) syncIMTodoChecklistAfterToolRound(baseCtx context.Context,
 	} else if planChecklistUpdated {
 		autoState.PlanCompletedByTool = !hasPendingTodo(planChecklist)
 	}
-	autoState.TodoContent, _ = syncTrackedTodoAfterToolRound(autoState.TodoContent, planChecklist, planChecklistUpdated, autoState.PlanCompletedByTool)
+	autoState.TodoContent, _ = reconcileTrackedTodoAfterToolRound(
+		autoState.TodoContent,
+		"",
+		toolCalls,
+		toolResults,
+		planChecklist,
+		planChecklistUpdated,
+		autoState.PlanCompletedByTool,
+	)
 	autoState.AwaitingPostToolSummary = len(toolResults) > 0
 	if nextContent := strings.TrimSpace(autoState.TodoContent); nextContent != "" && nextContent != prevContent {
 		h.upsertIMTodoChecklist(baseCtx, todoState, channelName, chatID, replyToID, convID, autoState.TodoContent)
@@ -12460,8 +12961,7 @@ func isSearchLikeToolLoopSignature(signature string) bool {
 	}
 	for _, needle := range []string{
 		"web:",
-		"research_run",
-		"research_status",
+		"deep_research",
 		"web_search",
 		"web_fetch",
 		"web_read",
@@ -12522,17 +13022,11 @@ func buildToolLoopArtifactRecoveryNudge(userMessage, reason, signature string) s
 }
 
 func buildToolLoopArtifactRecoveryTools(tools []llm.Tool, userMessage, signature string) []llm.Tool {
-	if len(tools) == 0 || !isArtifactCollectionLoopSignature(signature) || extractRequestedArtifactWriteTarget(userMessage) == "" {
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if len(tools) == 0 || !isArtifactCollectionLoopSignature(signature) || target == "" {
 		return tools
 	}
-	priority := []string{
-		"file_write",
-		"edit",
-		"write_begin",
-		"write_chunk",
-		"write_commit",
-		"file_read",
-	}
+	priority := artifactWriteCompletionToolNames(target)
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
 		name := normalizeFileToolCompatName(tool.Name)
@@ -12553,7 +13047,7 @@ func buildToolLoopArtifactRecoveryTools(tools []llm.Tool, userMessage, signature
 		}
 		reduced = append(reduced, tool)
 	}
-	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+	if len(reduced) == 0 || !hasArtifactWriteTool(reduced, target) {
 		return tools
 	}
 	return reduced
@@ -12968,6 +13462,8 @@ func (h *ChatHandler) shouldAutoContinueForReasonWithinBudget(reason string, age
 		return missingTodoAutoContinueCount < h.getMaxMissingTodoAutoContinueForMode(agentMode)
 	case "pending_todo":
 		return pendingTodoAutoContinueCount < h.getMaxPendingTodoAutoContinueForMode(agentMode)
+	case "todo_reconcile":
+		return pendingTodoAutoContinueCount < 1
 	case "missing_next_steps":
 		return pendingTodoAutoContinueCount < h.getMaxPendingTodoAutoContinueForMode(agentMode)
 	default:
@@ -13647,16 +14143,7 @@ func (h *ChatHandler) recordToolPayloadAudit(ctx context.Context, eventType, rol
 		entry.Metadata = map[string]interface{}{"lang": lang}
 	}
 
-	auditCtx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
-	defer cancel()
-	if err := h.sessionAuditStore.Record(auditCtx, entry); err != nil {
-		logger.Warn().
-			Err(err).
-			Str("conv_id", conversationID).
-			Str("event", entry.EventType).
-			Str("tool", entry.ToolName).
-			Msg("failed to persist tool payload audit log")
-	}
+	h.persistAuditEntry(entry)
 }
 
 func (h *ChatHandler) recordContextPackAudit(ctx context.Context, conversationID string, selection *contextpack.SelectionSet) {
@@ -13689,11 +14176,7 @@ func (h *ChatHandler) recordContextPackAudit(ctx context.Context, conversationID
 		Payload:        contextpack.SelectionSummaryJSON(selection),
 		Metadata:       metadata,
 	}
-	auditCtx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
-	defer cancel()
-	if err := h.sessionAuditStore.Record(auditCtx, entry); err != nil {
-		logger.Warn().Err(err).Str("conv_id", conversationID).Msg("failed to persist context pack audit log")
-	}
+	h.persistAuditEntry(entry)
 }
 
 func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.ToolCall) []llm.Message {
@@ -13711,6 +14194,7 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 	toolLang := i18n.ParseLanguage(tools.GetLang(ctx))
 	var results []llm.Message
 	for _, tc := range toolCalls {
+		tc.Arguments = normalizeToolCallArgumentsForExecution(tc.Arguments)
 		h.recordToolPayloadAudit(ctx, "assistant_tool_call", string(llm.RoleAssistant), tc, tc.Arguments, false)
 		logger.Info().Str("tool", tc.Name).Str("id", tc.ID).Msg("[chat] executing tool call")
 		var (
@@ -13984,9 +14468,6 @@ func buildPostWorkspaceArtifactContinuationNudge(userMessage string, toolCalls [
 	if isStructuredWorkspaceArtifactTask(userMessage) && hasWorkspaceArtifactContentEvidence(toolCalls, toolResults) {
 		nudge += " You already have sufficient successful local source evidence for this local structured-output task. Do not reopen the same source in narrower slices or chase alternate tables when the needed answers are already present; write the requested artifact from the gathered evidence now."
 	}
-	if !hasPendingWorkspaceArtifactSourceReads(userMessage, toolCalls, toolResults) && hasWorkspaceArtifactContentEvidence(toolCalls, toolResults) {
-		nudge += " All discovered relevant local sources are already covered. Do not continue with more ls/find/pdf/convert/file_read passes unless you can name one specific missing fact that is not yet in the gathered evidence."
-	}
 	if extra := buildWorkspaceNumberedAnswerPrecisionHint(userMessage); extra != "" {
 		nudge += " " + extra
 	}
@@ -14034,28 +14515,21 @@ func buildPostWorkspaceArtifactContinuationTools(tools []llm.Tool, userMessage s
 	if len(tools) == 0 || !shouldPreferWorkspaceFileWorkflow(userMessage) {
 		return tools
 	}
-	if extractRequestedArtifactWriteTarget(userMessage) == "" || hasRequestedArtifactWriteSuccess(userMessage, toolCalls, toolResults) || !hasWorkspaceArtifactProgress(toolCalls, toolResults) {
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if target == "" || hasRequestedArtifactWriteSuccess(userMessage, toolCalls, toolResults) || !hasWorkspaceArtifactProgress(toolCalls, toolResults) {
 		return tools
 	}
 
 	hasContentEvidence := hasWorkspaceArtifactContentEvidence(toolCalls, toolResults)
-	pendingReads := hasPendingWorkspaceArtifactSourceReads(userMessage, toolCalls, toolResults)
-	priority := []string{
-		"file_write",
-		"edit",
-		"write_begin",
-		"write_chunk",
-		"write_commit",
+	priority := append(artifactWriteCompletionToolNames(target),
 		"file_read",
 		"grep",
 		"convert",
 		"pdf",
-	}
-	if hasContentEvidence && !pendingReads {
-		priority = structuredWorkspaceArtifactWriteCompletionToolNames()
+	)
+	if isStructuredWorkspaceArtifactTask(userMessage) && hasContentEvidence {
+		priority = structuredWorkspaceArtifactWriteCompletionToolNames(target)
 	} else if !hasContentEvidence {
-		priority = append(priority, "ls", "find")
-	} else if pendingReads {
 		priority = append(priority, "ls", "find")
 	}
 	indexByName := make(map[string]llm.Tool, len(tools))
@@ -14078,7 +14552,7 @@ func buildPostWorkspaceArtifactContinuationTools(tools []llm.Tool, userMessage s
 		}
 		reduced = append(reduced, tool)
 	}
-	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+	if len(reduced) == 0 || !hasArtifactWriteTool(reduced, target) {
 		return tools
 	}
 	return reduced
@@ -14126,12 +14600,8 @@ func buildPostWorkspaceArtifactCoverageContinuationTools(tools []llm.Tool, userM
 		"grep",
 		"ls",
 		"find",
-		"file_write",
-		"edit",
-		"write_begin",
-		"write_chunk",
-		"write_commit",
 	}
+	priority = append(priority, artifactWriteCompletionToolNames(extractRequestedArtifactWriteTarget(userMessage))...)
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
 		name := normalizeFileToolCompatName(tool.Name)
@@ -14446,6 +14916,24 @@ func buildPostSuccessfulResearchWriteNudge(userMessage string, toolCalls []llm.T
 	return fmt.Sprintf("Deep research already returned usable evidence. Do not start another broad search pass or another full research run. Use the completed research plus your general knowledge to write the requested report to %q now. Only if one or two specific facts still need verification, use at most a couple of focused web_fetch/web_read calls against the most relevant public source URLs already surfaced by the completed research. Include an executive summary, competitor sections, pricing notes, market trends, and a comparison table. After writing the file, give a brief final confirmation.", target)
 }
 
+func buildPostPendingResearchStatusNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	if !shouldPreferDeepSearchReport(userMessage) {
+		return ""
+	}
+	if len(collectSuccessfulWriteTargets(toolCalls, toolResults)) > 0 {
+		return ""
+	}
+	jobID := findPendingResearchToolJobID(toolCalls, toolResults)
+	if jobID == "" {
+		return ""
+	}
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if target == "" {
+		return fmt.Sprintf("Deep research already started and is still running under job_id %q. Do not start another broad search pass or treat this as an empty result. Use deep_research with action=\"status\" and this job_id until it reaches a terminal state, then continue the task.", jobID)
+	}
+	return fmt.Sprintf("Deep research already started and is still running under job_id %q. Do not start another broad search pass or treat this as an empty result. Use deep_research with action=\"status\" and this job_id until it reaches a terminal state, then continue and write the requested report to %q.", jobID, target)
+}
+
 func buildPostEmptyResearchResultNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
 	if !shouldPreferDeepSearchReport(userMessage) {
 		return ""
@@ -14648,7 +15136,8 @@ func buildWorkspaceArtifactWriteRetryMessages(userMessage string) []llm.Message 
 }
 
 func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string) []llm.Tool {
-	if len(tools) == 0 || extractRequestedArtifactWriteTarget(userMessage) == "" {
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if len(tools) == 0 || target == "" {
 		return tools
 	}
 	priority := []string{
@@ -14658,16 +15147,15 @@ func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string)
 		"web_read",
 		"web_extract",
 		"web_crawl",
-		"file_write",
-		"write_begin",
-		"write_chunk",
-		"write_commit",
+	}
+	priority = append(priority, artifactWriteCompletionToolNames(target)...)
+	priority = append(priority,
 		"file_read",
 		"ls",
 		"find",
 		"grep",
 		"convert",
-	}
+	)
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
 		name := normalizeFileToolCompatName(tool.Name)
@@ -14694,20 +15182,30 @@ func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string)
 	return reduced
 }
 
-func buildResearchFailureRecoveryTools(tools []llm.Tool, userMessage string) []llm.Tool {
-	if len(tools) == 0 || extractRequestedArtifactWriteTarget(userMessage) == "" {
+func buildPendingResearchStatusTools(tools []llm.Tool, userMessage string) []llm.Tool {
+	if len(tools) == 0 {
 		return tools
 	}
-	priority := []string{
-		"file_write",
-		"write_begin",
-		"write_chunk",
-		"write_commit",
-		"file_read",
-		"ls",
-		"find",
-		"grep",
-		"convert",
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	priority := []string{"deep_research"}
+	if target != "" {
+		priority = append(priority, artifactWriteCompletionToolNames(target)...)
+		priority = append(priority,
+			"file_read",
+			"ls",
+			"find",
+			"grep",
+			"convert",
+			"web_fetch",
+			"web_read",
+		)
+	}
+	if target == "" {
+		priority = []string{
+			"deep_research",
+			"web_fetch",
+			"web_read",
+		}
 	}
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
@@ -14729,24 +15227,56 @@ func buildResearchFailureRecoveryTools(tools []llm.Tool, userMessage string) []l
 		}
 		reduced = append(reduced, tool)
 	}
-	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "deep_research") {
+		return tools
+	}
+	return reduced
+}
+
+func buildResearchFailureRecoveryTools(tools []llm.Tool, userMessage string) []llm.Tool {
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if len(tools) == 0 || target == "" {
+		return tools
+	}
+	priority := append(artifactWriteCompletionToolNames(target),
+		"file_read",
+		"ls",
+		"find",
+		"grep",
+		"convert",
+	)
+	indexByName := make(map[string]llm.Tool, len(tools))
+	for _, tool := range tools {
+		name := normalizeFileToolCompatName(tool.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := indexByName[name]; ok {
+			continue
+		}
+		indexByName[name] = tool
+	}
+
+	reduced := make([]llm.Tool, 0, len(priority))
+	for _, name := range priority {
+		tool, ok := indexByName[name]
+		if !ok {
+			continue
+		}
+		reduced = append(reduced, tool)
+	}
+	if len(reduced) == 0 || !hasArtifactWriteTool(reduced, target) {
 		return tools
 	}
 	return reduced
 }
 
 func buildWorkspaceArtifactWriteRecoveryTools(tools []llm.Tool, userMessage string) []llm.Tool {
-	if len(tools) == 0 || extractRequestedArtifactWriteTarget(userMessage) == "" {
+	target := extractRequestedArtifactWriteTarget(userMessage)
+	if len(tools) == 0 || target == "" {
 		return tools
 	}
-	priority := []string{
-		"file_write",
-		"edit",
-		"write_begin",
-		"write_chunk",
-		"write_commit",
-		"file_read",
-	}
+	priority := artifactWriteCompletionToolNames(target)
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
 		name := normalizeFileToolCompatName(tool.Name)
@@ -14767,21 +15297,18 @@ func buildWorkspaceArtifactWriteRecoveryTools(tools []llm.Tool, userMessage stri
 		}
 		reduced = append(reduced, tool)
 	}
-	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+	if len(reduced) == 0 || !hasArtifactWriteTool(reduced, target) {
 		return tools
 	}
 	return reduced
 }
 
 func buildSuccessfulResearchWriteTools(tools []llm.Tool, userMessage string) []llm.Tool {
-	if len(tools) == 0 || extractRequestedArtifactPath(userMessage) == "" {
+	target := extractRequestedArtifactPath(userMessage)
+	if len(tools) == 0 || target == "" {
 		return tools
 	}
-	priority := []string{
-		"file_write",
-		"write_begin",
-		"write_chunk",
-		"write_commit",
+	priority := append(artifactWriteCompletionToolNames(target),
 		"file_read",
 		"web_fetch",
 		"web_read",
@@ -14789,7 +15316,7 @@ func buildSuccessfulResearchWriteTools(tools []llm.Tool, userMessage string) []l
 		"find",
 		"grep",
 		"convert",
-	}
+	)
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
 		name := normalizeFileToolCompatName(tool.Name)
@@ -14810,7 +15337,7 @@ func buildSuccessfulResearchWriteTools(tools []llm.Tool, userMessage string) []l
 		}
 		reduced = append(reduced, tool)
 	}
-	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+	if len(reduced) == 0 || !hasArtifactWriteTool(reduced, target) {
 		return tools
 	}
 	return reduced
@@ -14903,7 +15430,7 @@ func hasCompletedResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.
 		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
 			toolName = matched.Name
 		}
-		if !strings.EqualFold(strings.TrimSpace(toolName), "research_run") {
+		if !isDeepResearchCompatToolName(toolName) {
 			continue
 		}
 		var payload map[string]interface{}
@@ -14911,6 +15438,9 @@ func hasCompletedResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.
 			continue
 		}
 		if classifyToolFallbackOutcome(payload) == "failed" {
+			continue
+		}
+		if isPendingResearchToolPayload(payload) {
 			continue
 		}
 		if evidenceCount, ok := payload["evidence_count"].(float64); ok && evidenceCount > 0 {
@@ -14926,6 +15456,45 @@ func hasCompletedResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.
 		}
 	}
 	return false
+}
+
+func findPendingResearchToolJobID(toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	if len(toolResults) == 0 {
+		return ""
+	}
+
+	callByID := make(map[string]llm.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			callByID[id] = tc
+		}
+	}
+
+	for i, tr := range toolResults {
+		toolName := ""
+		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
+			toolName = toolCalls[i].Name
+		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			toolName = matched.Name
+		}
+		if !isDeepResearchCompatToolName(toolName) {
+			continue
+		}
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(strings.TrimSpace(tr.Content)), &payload) != nil || len(payload) == 0 {
+			continue
+		}
+		if !isPendingResearchToolPayload(payload) {
+			continue
+		}
+		if jobID := payloadStringField(payload, "job_id"); jobID != "" {
+			return jobID
+		}
+		if jobID := payloadStringField(payload, "id"); jobID != "" {
+			return jobID
+		}
+	}
+	return ""
 }
 
 func hasEmptyResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
@@ -14947,7 +15516,7 @@ func hasEmptyResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Mess
 		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
 			toolName = matched.Name
 		}
-		if !strings.EqualFold(strings.TrimSpace(toolName), "research_run") {
+		if !isDeepResearchCompatToolName(toolName) {
 			continue
 		}
 		var payload map[string]interface{}
@@ -14955,6 +15524,9 @@ func hasEmptyResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Mess
 			continue
 		}
 		if classifyToolFallbackOutcome(payload) == "failed" {
+			continue
+		}
+		if isPendingResearchToolPayload(payload) {
 			continue
 		}
 		if evidenceCount, ok := payload["evidence_count"].(float64); ok && evidenceCount <= 0 {
@@ -14974,7 +15546,7 @@ func hasEmptyResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Mess
 
 func isResearchRecoveryToolName(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "web", "web_search", "research_run", "research_status", "browser", "web_fetch", "web_read", "web_extract", "web_crawl":
+	case "web", "web_search", "deep_research", "deep-research", "research_run", "research_status", "browser", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return true
 	default:
 		return false
@@ -15020,6 +15592,15 @@ func extractRequestedArtifactWriteTarget(userMessage string) string {
 func isImageArtifactPath(path string) bool {
 	switch strings.ToLower(strings.TrimSpace(filepath.Ext(path))) {
 	case ".png", ".jpg", ".jpeg", ".webp", ".gif":
+		return true
+	default:
+		return false
+	}
+}
+
+func isOfficeArtifactPath(path string) bool {
+	switch strings.ToLower(strings.TrimSpace(filepath.Ext(path))) {
+	case ".docx", ".xlsx":
 		return true
 	default:
 		return false
@@ -15115,7 +15696,7 @@ func scoreArtifactWriteTargetCandidate(userMessage string, candidate artifactPat
 
 func extractSuccessfulWriteTarget(toolName, content string) string {
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "write", "file_write", "write_commit":
+	case "write", "file_write", "write_commit", "office":
 		var payload map[string]interface{}
 		if json.Unmarshal([]byte(strings.TrimSpace(content)), &payload) != nil || len(payload) == 0 {
 			return ""
@@ -15129,7 +15710,7 @@ func extractSuccessfulWriteTarget(toolName, content string) string {
 		}
 		path, _ := payload["path"].(string)
 		return strings.TrimSpace(path)
-	case "image", "image_generation":
+	case "image", "image_generation", "generate_image", "generateimage":
 		return extractSuccessfulImageArtifactTarget(content)
 	default:
 		return ""
@@ -16477,7 +17058,7 @@ func (h *ChatHandler) extractMemoryWithMode(convID, source, model string, mode m
 	defer cancel()
 
 	// Load recent messages for both threshold estimation and fallback extraction.
-	messages, err := h.store.GetRecentMessages(ctx, convID, 80)
+	messages, err := h.getRecentMessagesForContext(ctx, convID, 80)
 	if err != nil || len(messages) < 2 {
 		return false
 	}
@@ -16835,9 +17416,9 @@ func (h *ChatHandler) GetMessages(c echo.Context) error {
 	return c.JSON(http.StatusOK, messages)
 }
 
-// MessageAttachment represents a file, image, or audio attachment.
+// MessageAttachment represents a file, image, audio, or video attachment.
 type MessageAttachment struct {
-	Type     string  `json:"type"`               // "image", "file", or "audio"
+	Type     string  `json:"type"`               // "image", "file", "audio", or "video"
 	Name     string  `json:"name"`               // filename
 	MimeType string  `json:"mime_type"`          // MIME type
 	Data     string  `json:"data"`               // base64 encoded content
@@ -16880,6 +17461,110 @@ type ContextTrimInfo struct {
 	OriginalModel    string `json:"original_model,omitempty"`
 	FallbackModel    string `json:"fallback_model,omitempty"`
 	FallbackProvider string `json:"fallback_provider,omitempty"`
+}
+
+func toMemoryMessageAttachments(attachments []MessageAttachment) []memory.MessageAttachment {
+	if len(attachments) == 0 {
+		return nil
+	}
+	out := make([]memory.MessageAttachment, 0, len(attachments))
+	for _, att := range attachments {
+		out = append(out, memory.MessageAttachment{
+			Type:     att.Type,
+			Name:     att.Name,
+			MimeType: att.MimeType,
+			Data:     att.Data,
+			Duration: att.Duration,
+		})
+	}
+	return out
+}
+
+func memoryMessageAttachmentsEqual(a, b []memory.MessageAttachment) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Type != b[i].Type ||
+			a[i].Name != b[i].Name ||
+			a[i].MimeType != b[i].MimeType ||
+			a[i].Data != b[i].Data ||
+			a[i].Duration != b[i].Duration {
+			return false
+		}
+	}
+	return true
+}
+
+func messageMatchesRegenerateRequest(msg memory.Message, content string, attachments []memory.MessageAttachment) bool {
+	if msg.Role != "user" {
+		return false
+	}
+	if msg.Content != content {
+		return false
+	}
+	return memoryMessageAttachmentsEqual(msg.Attachments, attachments)
+}
+
+func (h *ChatHandler) normalizeConversationForRegenerate(ctx context.Context, convID string, req SendMessageRequest) error {
+	if h == nil || h.store == nil || !req.Regenerate {
+		return nil
+	}
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return nil
+	}
+
+	if h.chatPersistAsync && h.persistCoordinator != nil {
+		h.persistCoordinator.FlushConversation(convID)
+	}
+
+	requestAttachments := toMemoryMessageAttachments(req.Attachments)
+	recent, err := h.store.GetRecentMessages(ctx, convID, 64)
+	if err != nil {
+		return fmt.Errorf("failed to load recent messages for regenerate: %w", err)
+	}
+
+	working := append([]memory.Message(nil), recent...)
+	idsToDelete := make([]string, 0, 8)
+
+	lastUserIndex := len(working) - 1
+	for lastUserIndex >= 0 && working[lastUserIndex].Role == "assistant" {
+		lastUserIndex--
+	}
+	if lastUserIndex >= 0 &&
+		lastUserIndex < len(working)-1 &&
+		messageMatchesRegenerateRequest(working[lastUserIndex], req.Message, requestAttachments) {
+		for _, msg := range working[lastUserIndex+1:] {
+			idsToDelete = append(idsToDelete, msg.ID)
+		}
+		working = working[:lastUserIndex+1]
+	}
+
+	for len(working) >= 3 {
+		last := working[len(working)-1]
+		prev := working[len(working)-2]
+		prevPrev := working[len(working)-3]
+		if prev.Role != "assistant" ||
+			!messageMatchesRegenerateRequest(last, req.Message, requestAttachments) ||
+			!messageMatchesRegenerateRequest(prevPrev, req.Message, requestAttachments) {
+			break
+		}
+		idsToDelete = append(idsToDelete, prev.ID, last.ID)
+		working = working[:len(working)-2]
+	}
+
+	if len(idsToDelete) > 0 {
+		if err := h.store.DeleteMessages(ctx, convID, idsToDelete); err != nil {
+			return fmt.Errorf("failed to clean regenerate history: %w", err)
+		}
+	}
+
+	h.clearPreviousResponseID(convID)
+	h.invalidateWarmup(convID)
+	h.conversationCache.Invalidate(convID)
+	h.summaryCache.Del(convID)
+	return nil
 }
 
 func normalizePromptGuardConversationTitle(title string) string {
@@ -17071,41 +17756,39 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if currentExplicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
 		currentExplicitProviderID = strings.TrimSpace(convState.SelectedProviderID)
 	}
-	if err := h.rejectIfCurrentRequestExceedsBudget(c, model, req, currentExplicitProviderID); err != nil {
+	if err := h.rejectIfCurrentRequestExceedsBudget(c, convID, model, req, currentExplicitProviderID); err != nil {
 		return err
 	}
 	if c.Response().Committed {
 		return nil
 	}
 	structuredEvaluatorNoToolsTitle, structuredEvaluatorNoTools := h.isStructuredEvaluatorConversation(c.Request().Context(), convID, req.Message)
+	if err := h.normalizeConversationForRegenerate(c.Request().Context(), convID, req); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
 
-	// Store user message
-	var memoryAttachments []memory.MessageAttachment
-	for _, att := range req.Attachments {
-		memoryAttachments = append(memoryAttachments, memory.MessageAttachment{
-			Type:     att.Type,
-			Name:     att.Name,
-			MimeType: att.MimeType,
-			Data:     att.Data,
-			Duration: att.Duration,
+	if !req.Regenerate {
+		// Store user message
+		memoryAttachments := toMemoryMessageAttachments(req.Attachments)
+		_, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
+			Role:        "user",
+			Content:     req.Message,
+			Attachments: memoryAttachments,
 		})
-	}
-	_, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
-		Role:        "user",
-		Content:     req.Message,
-		Attachments: memoryAttachments,
-	})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message")
-	}
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message")
+		}
 
-	// Invalidate cache after storing user message so history fetch below is fresh
-	h.conversationCache.Invalidate(convID)
+		// Invalidate cache after storing user message so history fetch below is fresh
+		h.conversationCache.Invalidate(convID)
+	}
 
 	// Emit message event to companion (async)
 	sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
 	h.emitMessageEventAsync(sessionID, req.Message, "inbound", req.Regenerate)
-	h.persistConvertAttachments(c.Request().Context(), convID, h.getUserID(c), req.Attachments)
+	if !req.Regenerate {
+		h.persistConvertAttachments(c.Request().Context(), convID, h.getUserID(c), req.Attachments)
+	}
 
 	// Smart context strategy: classify and build minimal context
 	ctxResult := h.buildSmartContext(c.Request().Context(), smartContextParams{
@@ -17122,7 +17805,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if compactedMessages == nil {
 		compactedMessages = []llm.Message{}
 	}
-	compactedMessages = h.applyRequestAttachmentsToMessages(c.Request().Context(), req, compactedMessages)
+	attachmentCtx := withAttachmentProviderContext(c.Request().Context(), convState.SelectedProviderID, req.Provider, model)
+	compactedMessages = h.applyRequestAttachmentsToMessages(attachmentCtx, req, compactedMessages)
 	routingMessage := req.Message
 	if cc := h.deriveContinuationContextWithFallback(c.Request().Context(), convID, req.Message, compactedMessages); cc.Hint != "" {
 		compactedMessages = prependContinuationMessages(compactedMessages, cc)
@@ -17159,7 +17843,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if h.settingsHandler != nil {
 		promptLocale = h.settingsHandler.GetLocale()
 	}
-	skillPrompt, selectedSkill := h.resolveSkillSelection(c.Request().Context(), routingMessage)
+	skillPrompt, selectedSkill := h.resolveSkillSelectionForRequest(c.Request().Context(), routingMessage, req.DeepResearchEnabled)
 	promptCtx := h.buildContextPackRequestContext(c.Request().Context(), convID, h.getUserID(c), promptLocale, "web", routingMessage, selectedSkill)
 	extraPrompt := mergeExtraPrompt(
 		anchorPrompt,
@@ -17175,6 +17859,14 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	} else {
 		logger.Warn().Msg("[chat] SendMessage: systemPromptBuilder is nil, no system prompt injected")
 	}
+	globalAgentModeEnabled := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
+	requestAgentModeEnabled := globalAgentModeEnabled || shouldForceRequestAgentMode(routingMessage, req.DeepResearchEnabled)
+	if requestAgentModeEnabled && !globalAgentModeEnabled {
+		compactedMessages = append([]llm.Message{{
+			Role:    llm.RoleSystem,
+			Content: "Agent Mode is auto-enabled for this deep-research request. Plan, search, verify, use tools proactively, and continue until the task is complete.",
+		}}, compactedMessages...)
+	}
 	explicitProviderID := strings.TrimSpace(req.Provider)
 	providerExplicit := explicitProviderID != ""
 	if explicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
@@ -17187,11 +17879,16 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
 		}
 	}
+	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(routingMessage, model, convID, req.WebSearchEnabled, req.DeepResearchEnabled))
+	if structuredEvaluatorNoTools {
+		budgetTools = nil
+	}
 	budgetPlan := h.fitPreparedMessagesToBudget(c.Request().Context(), preparedBudgetFitParams{
 		ConvID:             convID,
 		Model:              model,
 		MaxTokens:          req.MaxTokens,
 		Messages:           compactedMessages,
+		Tools:              budgetTools,
 		ExplicitProviderID: explicitProviderID,
 		ProviderExplicit:   providerExplicit,
 	})
@@ -17226,19 +17923,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
-	selectedTools := h.selectTools(routingMessage, tools.ToolPolicyRequest{
-		Model:     chatReq.Model,
-		SessionID: convID,
-		RouteKind: tools.ToolRouteKindChat,
-	})
-	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
-	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
-	selectedTools = applyWritingToolPreference(selectedTools, routingMessage)
-	selectedTools = applyResearchToolPreference(selectedTools, routingMessage)
-	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
-	selectedTools = applyCalendarToolPreference(selectedTools, routingMessage)
-	selectedTools = applyEmailToolPreference(selectedTools, routingMessage)
-	selectedTools = applyImageToolPreference(selectedTools, routingMessage)
+	selectedTools := h.selectChatToolsForRequest(routingMessage, chatReq.Model, convID, req.WebSearchEnabled, req.DeepResearchEnabled)
 	if structuredEvaluatorNoTools {
 		selectedTools = nil
 		logger.Info().
@@ -17297,7 +17982,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 	applyBudgetAttemptToChatReq(currentBudgetAttempt)
 	deepSearchState := newDeepSearchLoopState(routingMessage, selectedTools)
-	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
+	isAgentMode := requestAgentModeEnabled
 	maxToolRoundsForRequest := h.resolveToolRoundLimitForRequest(
 		isAgentMode,
 		routingMessage,
@@ -17308,6 +17993,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		Str("model", chatReq.Model).
 		Int("messages", len(chatReq.Messages)).
 		Int("tools", len(chatReq.Tools)).
+		Bool("request_agent_mode", requestAgentModeEnabled).
+		Bool("deep_research_enabled", req.DeepResearchEnabled != nil && *req.DeepResearchEnabled).
 		Str("prompt_policy_hash", h.resolvePromptPolicy().Hash).
 		Bool("has_system_prompt", h.systemPromptBuilder != nil).
 		Msg("[chat] SendMessage request")
@@ -17315,6 +18002,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	// Call LLM with tool execution loop
 	startTime := timeutil.NowTime()
 	var resp *llm.ChatResponse
+	var err error
 	var accumulatedToolRoundInputTokens, accumulatedToolRoundOutputTokens int64
 	todoContent := ""
 	workspaceArtifactHistoryTarget := extractRequestedArtifactPath(routingMessage)
@@ -17549,7 +18237,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						if reason == "missing_todo" {
 							missingTodoAutoContinueCount++
 							pendingTodoAutoContinueCount = 0
-						} else if reason == "pending_todo" || reason == "missing_next_steps" {
+						} else if reason == "pending_todo" || reason == "missing_next_steps" || reason == "todo_reconcile" {
 							pendingTodoAutoContinueCount++
 							missingTodoAutoContinueCount = 0
 						} else {
@@ -17689,7 +18377,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						if reason == "missing_todo" {
 							missingTodoAutoContinueCount++
 							pendingTodoAutoContinueCount = 0
-						} else if reason == "pending_todo" || reason == "missing_next_steps" {
+						} else if reason == "pending_todo" || reason == "missing_next_steps" || reason == "todo_reconcile" {
 							pendingTodoAutoContinueCount++
 							missingTodoAutoContinueCount = 0
 						} else {
@@ -17725,7 +18413,10 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						Msg("[chat] empty post-tool auto-continue budget exhausted; finishing current round")
 				}
 
-				if updatedChecklist, changed := syncTrackedTodoAfterToollessChecklist(todoContent, resp.Message.Content); changed {
+				if updatedChecklist, changed := syncTrackedTodoAfterCompletionSignal(todoContent, resp.Message.Content); changed {
+					todoContent = updatedChecklist
+					planCompletedByTool = !hasPendingTodo(todoContent)
+				} else if updatedChecklist, changed := syncTrackedTodoAfterToollessChecklist(todoContent, resp.Message.Content); changed {
 					todoContent = updatedChecklist
 					planCompletedByTool = !hasPendingTodo(todoContent)
 				}
@@ -17882,7 +18573,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 								pseudoToolCallAutoContinueCount = 0
 								missingTodoAutoContinueCount = 0
 								pendingTodoAutoContinueCount = 0
-							} else if reason == "pending_todo" || reason == "missing_next_steps" {
+							} else if reason == "pending_todo" || reason == "missing_next_steps" || reason == "todo_reconcile" {
 								pendingTodoAutoContinueCount++
 								pseudoToolCallAutoContinueCount = 0
 								actionPledgeAutoContinueCount = 0
@@ -17955,43 +18646,46 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 					Msg("[chat] limiting tool round to first tool call")
 			}
 			resp.Message.ToolCalls = limitedToolCalls
-			if guard := latestIntentVsCarryover(chatReq.Messages, routingMessage, resp.Message.ToolCalls); guard.ShouldPause {
-				staleIntentGuardTrips++
-				logger.Warn().
-					Int("round", round).
-					Str("reason", guard.Reason).
-					Bool("question_like", guard.QuestionLike).
-					Bool("explicit_override", guard.ExplicitOverride).
-					Bool("explicit_resume", guard.ExplicitResume).
-					Bool("low_overlap", guard.LowOverlap).
-					Msg("[chat] paused stale carry-over tool execution in favor of latest user intent")
-				if staleIntentGuardTrips > 1 {
-					resp = &llm.ChatResponse{
-						Model:      chatReq.Model,
-						Provider:   strings.TrimSpace(resp.Provider),
-						ProviderID: strings.TrimSpace(resp.ProviderID),
-						Message: llm.Message{
-							Role:    llm.RoleAssistant,
-							Content: buildLatestIntentPauseFallbackReply(routingMessage),
-						},
+			if shouldApplyLatestIntentCarryoverGuard(chatReq.Messages, routingMessage) {
+				if guard := latestIntentVsCarryover(chatReq.Messages, routingMessage, resp.Message.ToolCalls); guard.ShouldPause {
+					staleIntentGuardTrips++
+					logger.Warn().
+						Int("round", round).
+						Str("reason", guard.Reason).
+						Bool("question_like", guard.QuestionLike).
+						Bool("explicit_override", guard.ExplicitOverride).
+						Bool("explicit_resume", guard.ExplicitResume).
+						Bool("low_overlap", guard.LowOverlap).
+						Msg("[chat] paused stale carry-over tool execution in favor of latest user intent")
+					if staleIntentGuardTrips > 1 {
+						resp = &llm.ChatResponse{
+							Model:      chatReq.Model,
+							Provider:   strings.TrimSpace(resp.Provider),
+							ProviderID: strings.TrimSpace(resp.ProviderID),
+							Message: llm.Message{
+								Role:    llm.RoleAssistant,
+								Content: buildLatestIntentPauseFallbackReply(routingMessage),
+							},
+						}
+						break
 					}
-					break
+					chatReq.PreviousResponseID = ""
+					llmCtx = proxy.WithDisableResponsesContinuation(llmCtx)
+					chatReq.Messages = append(chatReq.Messages,
+						llm.Message{Role: llm.RoleAssistant, Content: pausedCarryOverAssistantContent},
+						llm.Message{Role: llm.RoleUser, Content: buildLatestIntentPauseNudge(routingMessage)},
+					)
+					resp = nil
+					err = nil
+					awaitingPostToolSummary = false
+					continue
 				}
-				chatReq.PreviousResponseID = ""
-				llmCtx = proxy.WithDisableResponsesContinuation(llmCtx)
-				chatReq.Messages = append(chatReq.Messages,
-					llm.Message{Role: llm.RoleAssistant, Content: pausedCarryOverAssistantContent},
-					llm.Message{Role: llm.RoleUser, Content: buildLatestIntentPauseNudge(routingMessage)},
-				)
-				resp = nil
-				err = nil
-				awaitingPostToolSummary = false
-				continue
 			}
 			staleIntentGuardTrips = 0
 			// Execute tool calls and feed results back
 			logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
-			toolResults := h.executeToolCalls(toolCtx, resp.Message.ToolCalls)
+			roundToolCtx := withToolProviderContext(toolCtx, resp.Provider, resp.ProviderID, resp.Model)
+			toolResults := h.executeToolCalls(roundToolCtx, resp.Message.ToolCalls)
 			if workspaceArtifactHistoryTarget != "" {
 				workspaceArtifactHistoryCalls = append(workspaceArtifactHistoryCalls, resp.Message.ToolCalls...)
 				workspaceArtifactHistoryResults = append(workspaceArtifactHistoryResults, toolResults...)
@@ -18026,7 +18720,16 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			} else if planChecklistUpdated {
 				planCompletedByTool = !hasPendingTodo(planChecklist)
 			}
-			todoContent, _ = syncTrackedTodoAfterToolRound(todoContent, planChecklist, planChecklistUpdated, planCompletedByTool)
+			todoContent, _ = reconcileTrackedTodoAfterToolRound(
+				todoContent,
+				routingMessage,
+				resp.Message.ToolCalls,
+				toolResults,
+				planChecklist,
+				planChecklistUpdated,
+				planCompletedByTool,
+			)
+			planCompletedByTool = !hasPendingTodo(todoContent)
 			toolResultsForLLM := compactToolResultsForLLM(resp.Message.ToolCalls, toolResults)
 			// Append assistant message (with compacted tool_calls) + tool results to conversation
 			chatReq.Messages = append(chatReq.Messages, compactAssistantToolContextForLLM(resp.Message))
@@ -18111,6 +18814,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						Str("target", extractRequestedArtifactPath(routingMessage)).
 						Msg("[chat] repeated local evidence collection without write progress; forcing workspace artifact write recovery")
 				}
+			}
+			if nudge := buildPostPendingResearchStatusNudge(routingMessage, resp.Message.ToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+				chatReq.Tools = buildPendingResearchStatusTools(chatReq.Tools, routingMessage)
 			}
 			if nudge := buildPostEmptyResearchResultNudge(routingMessage, resp.Message.ToolCalls, toolResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
@@ -18461,20 +19171,24 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Store assistant message with stats
-	assistantMsg, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
-		Role:     "assistant",
-		Content:  resp.Message.Content,
-		Provider: providerName,
-		Model:    model,
+	assistantMsg := &memory.Message{
+		ID:             generateMessageID(),
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        resp.Message.Content,
+		Provider:       providerName,
+		Model:          model,
 		Stats: &memory.MessageStats{
 			InputTokens:  resp.Usage.PromptTokens,
 			OutputTokens: resp.Usage.CompletionTokens,
 			TotalTokens:  resp.Usage.TotalTokens,
 			LatencyMs:    int64(latencyMs),
 		},
-	})
-	if err != nil {
+	}
+	if persistedID := h.persistAsyncMessage(*assistantMsg, true); persistedID == "" {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store response")
+	} else {
+		assistantMsg.ID = persistedID
 	}
 
 	// Invalidate cache after storing new message
@@ -18504,6 +19218,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			TokensBefore:   pruneStats.TokensBefore,
 			TokensAfter:    pruneStats.TokensAfter,
 		}
+	}
+	if h.chatPersistAsync && h.persistCoordinator != nil {
+		h.persistCoordinator.FlushConversation(convID)
 	}
 	return c.JSON(http.StatusOK, SendMessageResponse{
 		ID:          assistantMsg.ID,
@@ -18889,7 +19606,7 @@ func (h *ChatHandler) refreshConversationSummaryAfterPersist(convID, model strin
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	messages, err := h.store.GetRecentMessages(ctx, convID, h.contextHistoryFetchLimit(model))
+	messages, err := h.getRecentMessagesForContext(ctx, convID, h.contextHistoryFetchLimit(model))
 	if err != nil || len(messages) == 0 {
 		return
 	}
@@ -19046,7 +19763,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if currentExplicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
 		currentExplicitProviderID = strings.TrimSpace(convState.SelectedProviderID)
 	}
-	if err := h.rejectIfCurrentRequestExceedsBudget(c, model, req, currentExplicitProviderID); err != nil {
+	if err := h.rejectIfCurrentRequestExceedsBudget(c, convID, model, req, currentExplicitProviderID); err != nil {
 		return err
 	}
 	if c.Response().Committed {
@@ -19054,6 +19771,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 	providerName := "auto"
 	structuredEvaluatorNoToolsTitle, structuredEvaluatorNoTools := h.isStructuredEvaluatorConversation(c.Request().Context(), convID, req.Message)
+	if err := h.normalizeConversationForRegenerate(c.Request().Context(), convID, req); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
 
 	// [CONTINUE_AFTER_CANCEL] is a special marker sent when the frontend auto-resumes
 	// a cancelled pre-TTFT stream. The original user message is already persisted in DB,
@@ -19062,18 +19782,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	var err error
 
-	// Store user message with attachments (skip for resume-after-cancel)
-	if !isResumeAfterCancel {
-		var memoryAttachments []memory.MessageAttachment
-		for _, att := range req.Attachments {
-			memoryAttachments = append(memoryAttachments, memory.MessageAttachment{
-				Type:     att.Type,
-				Name:     att.Name,
-				MimeType: att.MimeType,
-				Data:     att.Data,
-				Duration: att.Duration,
-			})
-		}
+	// Store user message with attachments (skip for resume-after-cancel and regenerate)
+	if !isResumeAfterCancel && !req.Regenerate {
+		memoryAttachments := toMemoryMessageAttachments(req.Attachments)
 		_, err = h.store.AddMessage(c.Request().Context(), convID, memory.Message{
 			Role:        "user",
 			Content:     req.Message,
@@ -19091,17 +19802,23 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		h.emitMessageEventAsync(sessionID, req.Message, "inbound", req.Regenerate)
 		h.persistConvertAttachments(c.Request().Context(), convID, h.getUserID(c), req.Attachments)
 	} else {
+		if req.Regenerate {
+			sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
+			h.emitMessageEventAsync(sessionID, req.Message, "inbound", true)
+		}
 		// For resume-after-cancel, invalidate cache so we get fresh history (includes original message A)
 		h.conversationCache.Invalidate(convID)
 
-		// Resolve the actual last user message from DB so downstream code
-		// (memory recall, tool selection, system prompt) uses real content.
-		histMsgs, err := h.store.GetRecentMessages(c.Request().Context(), convID, h.contextHistoryFetchLimit(model))
-		if err == nil {
-			for i := len(histMsgs) - 1; i >= 0; i-- {
-				if histMsgs[i].Role == "user" {
-					req.Message = histMsgs[i].Content
-					break
+		if isResumeAfterCancel {
+			// Resolve the actual last user message from DB so downstream code
+			// (memory recall, tool selection, system prompt) uses real content.
+			histMsgs, err := h.getRecentMessagesForContext(c.Request().Context(), convID, h.contextHistoryFetchLimit(model))
+			if err == nil {
+				for i := len(histMsgs) - 1; i >= 0; i-- {
+					if histMsgs[i].Role == "user" {
+						req.Message = histMsgs[i].Content
+						break
+					}
 				}
 			}
 		}
@@ -19118,7 +19835,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if h.settingsHandler != nil {
 		promptLocale = h.settingsHandler.GetLocale()
 	}
-	warmupSkillPrompt, warmupSelectedSkill := h.resolveSkillSelection(c.Request().Context(), req.Message)
+	warmupSkillPrompt, warmupSelectedSkill := h.resolveSkillSelectionForRequest(c.Request().Context(), req.Message, req.DeepResearchEnabled)
 	warmupPromptCtx := h.buildContextPackRequestContext(c.Request().Context(), convID, h.getUserID(c), promptLocale, "web", req.Message, warmupSelectedSkill)
 	extraPrompt := mergeExtraPrompt(
 		anchorPrompt,
@@ -19166,7 +19883,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	compactedBeforeCount = ctxResult.MessageCountBefore
 	compactedAfterCount = ctxResult.MessageCountAfter
 
-	compactedMessages = h.applyRequestAttachmentsToMessages(c.Request().Context(), req, compactedMessages)
+	attachmentCtx := withAttachmentProviderContext(c.Request().Context(), convState.SelectedProviderID, req.Provider, model)
+	compactedMessages = h.applyRequestAttachmentsToMessages(attachmentCtx, req, compactedMessages)
 	routingMessage := req.Message
 	if cc := h.deriveContinuationContextWithFallback(c.Request().Context(), convID, req.Message, compactedMessages); cc.Hint != "" {
 		compactedMessages = prependContinuationMessages(compactedMessages, cc)
@@ -19204,7 +19922,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if h.settingsHandler != nil {
 		promptLocale = h.settingsHandler.GetLocale()
 	}
-	skillPrompt, selectedSkill := h.resolveSkillSelection(c.Request().Context(), routingMessage)
+	skillPrompt, selectedSkill := h.resolveSkillSelectionForRequest(c.Request().Context(), routingMessage, req.DeepResearchEnabled)
 	promptCtx := h.buildContextPackRequestContext(c.Request().Context(), convID, h.getUserID(c), promptLocale, "web", routingMessage, selectedSkill)
 	extraPrompt = mergeExtraPrompt(
 		anchorPrompt,
@@ -19221,6 +19939,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	} else {
 		logger.Warn().Msg("[chat] StreamMessage: systemPromptBuilder is nil, no system prompt injected")
 	}
+	globalAgentModeEnabled := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
+	requestAgentModeEnabled := globalAgentModeEnabled || shouldForceRequestAgentMode(routingMessage, req.DeepResearchEnabled)
+	if requestAgentModeEnabled && !globalAgentModeEnabled {
+		compactedMessages = append([]llm.Message{{
+			Role:    llm.RoleSystem,
+			Content: "Agent Mode is auto-enabled for this deep-research request. Plan, search, verify, use tools proactively, and continue until the task is complete.",
+		}}, compactedMessages...)
+	}
 	explicitProviderID := strings.TrimSpace(req.Provider)
 	providerExplicit := explicitProviderID != ""
 	if explicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
@@ -19233,11 +19959,16 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
 		}
 	}
+	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(routingMessage, model, convID, req.WebSearchEnabled, req.DeepResearchEnabled))
+	if structuredEvaluatorNoTools {
+		budgetTools = nil
+	}
 	budgetPlan := h.fitPreparedMessagesToBudget(c.Request().Context(), preparedBudgetFitParams{
 		ConvID:             convID,
 		Model:              model,
 		MaxTokens:          req.MaxTokens,
 		Messages:           compactedMessages,
+		Tools:              budgetTools,
 		ExplicitProviderID: explicitProviderID,
 		ProviderExplicit:   providerExplicit,
 	})
@@ -19274,19 +20005,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
-	selectedTools := h.selectTools(routingMessage, tools.ToolPolicyRequest{
-		Model:     chatReq.Model,
-		SessionID: convID,
-		RouteKind: tools.ToolRouteKindChat,
-	})
-	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
-	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
-	selectedTools = applyWritingToolPreference(selectedTools, routingMessage)
-	selectedTools = applyResearchToolPreference(selectedTools, routingMessage)
-	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
-	selectedTools = applyCalendarToolPreference(selectedTools, routingMessage)
-	selectedTools = applyEmailToolPreference(selectedTools, routingMessage)
-	selectedTools = applyImageToolPreference(selectedTools, routingMessage)
+	selectedTools := h.selectChatToolsForRequest(routingMessage, chatReq.Model, convID, req.WebSearchEnabled, req.DeepResearchEnabled)
 	if structuredEvaluatorNoTools {
 		selectedTools = nil
 		logger.Info().
@@ -19347,7 +20066,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 	applyBudgetAttemptToChatReq(currentBudgetAttempt)
 	deepSearchState := newDeepSearchLoopState(routingMessage, selectedTools)
-	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
+	isAgentMode := requestAgentModeEnabled
 	maxToolRoundsForRequest := h.resolveToolRoundLimitForRequest(
 		isAgentMode,
 		routingMessage,
@@ -19357,6 +20076,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		Str("model", chatReq.Model).
 		Int("messages", len(chatReq.Messages)).
 		Int("tools", len(chatReq.Tools)).
+		Bool("request_agent_mode", requestAgentModeEnabled).
+		Bool("deep_research_enabled", req.DeepResearchEnabled != nil && *req.DeepResearchEnabled).
 		Str("prompt_policy_hash", h.resolvePromptPolicy().Hash).
 		Bool("has_system_prompt", h.systemPromptBuilder != nil).
 		Msg("[chat] StreamMessage request")
@@ -19564,35 +20285,21 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var deltaChunksReceived int
 	var deltaFlushCount int
 	var deltaFlushedBytes int
-	const forceFlushAfterIdle = 180 * time.Millisecond
+	// Keep the idle window short so web chat feels actively streaming instead
+	// of waiting for a large buffered burst to arrive.
+	const forceFlushAfterIdle = 96 * time.Millisecond
 	const paceEMAAlpha = 0.2
 
 	adaptiveFlushTargets := func() (time.Duration, int) {
 		switch {
 		case avgChunkGapMs <= 8:
-			return 32 * time.Millisecond, 1024
+			return 20 * time.Millisecond, 384
 		case avgChunkGapMs <= 14:
-			return 24 * time.Millisecond, 768
+			return 14 * time.Millisecond, 256
 		case avgChunkGapMs <= 24:
-			return 16 * time.Millisecond, 512
+			return 10 * time.Millisecond, 160
 		default:
-			return 10 * time.Millisecond, 256
-		}
-	}
-
-	adaptivePersistenceTargets := func() (time.Duration, int) {
-		// Persist drafts far less aggressively than SSE chunks. This keeps
-		// mid-stream refreshes useful without hammering SQLite for every
-		// handful of streamed characters.
-		switch {
-		case avgChunkGapMs <= 8:
-			return 1200 * time.Millisecond, 4096
-		case avgChunkGapMs <= 14:
-			return 900 * time.Millisecond, 3072
-		case avgChunkGapMs <= 24:
-			return 700 * time.Millisecond, 2048
-		default:
-			return 500 * time.Millisecond, 1024
+			return 6 * time.Millisecond, 96
 		}
 	}
 
@@ -19691,28 +20398,18 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var streamingMsgID string
 	var finalPersistedMsgID string
 	var lastFlushLen int
+	var draftDBUpdateCount int
 	pendingInjectionRestartOnChunk := h.hasPendingInjection(convID)
 
 	persistStreamingDraft := func() bool {
 		now := timeutil.NowTime()
+		streamingMsgID = h.persistBestEffortMessageContent(streamingMsgID, convID, "assistant", fullContent, "", "", nil, false)
 		if streamingMsgID == "" {
-			// First flush creates a placeholder draft row.
-			m, err := h.store.AddMessage(context.Background(), convID, memory.Message{
-				Role:    "assistant",
-				Content: fullContent,
-			})
-			if err != nil {
-				logger.Warn().Err(err).Str("conv_id", convID).Msg("[chat] failed to insert streaming draft")
-				return false
-			}
-			streamingMsgID = m.ID
-			h.conversationCache.Invalidate(convID)
-		} else {
-			if err := h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, nil); err != nil {
-				logger.Warn().Err(err).Str("conv_id", convID).Str("message_id", streamingMsgID).Msg("[chat] failed to update streaming draft")
-				return false
-			}
+			logger.Warn().Str("conv_id", convID).Msg("[chat] failed to persist streaming draft")
+			return false
 		}
+		draftDBUpdateCount++
+		h.conversationCache.Invalidate(convID)
 		lastFlushLen = len(fullContent)
 		lastPersistFlushAt = now
 		// Notify other tabs/devices that this conversation has new content
@@ -19751,14 +20448,32 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var staleIntentGuardTrips int   // count guard-triggered redirections away from stale carry-over
 	var typelessCardsPersisted bool // true once tool result cards are appended to persisted content
 	var streamLoopDetector tools.ToolLoopDetector
-	isAgentMode = h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
+	isAgentMode = requestAgentModeEnabled
 	agentModeAutoContinue := isAgentMode
 	maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
+	emitTodoUpdated := func(messageID, content string) {
+		trimmedMessageID := strings.TrimSpace(messageID)
+		trimmedContent := strings.TrimSpace(content)
+		if trimmedMessageID == "" || trimmedContent == "" {
+			return
+		}
+		payload := map[string]interface{}{
+			"todo_updated": true,
+			"message_id":   trimmedMessageID,
+			"todo_card_id": todoChecklistCardID(trimmedMessageID),
+			"content":      trimmedContent,
+			"stream_id":    streamID,
+		}
+		if !hasPendingTodo(trimmedContent) {
+			payload["todo_completed"] = true
+		}
+		emitSSE(payload)
+	}
 	maybeCompleteImplicitSummaryTodo := func(currentContent string) {
 		candidateMsgID := todoMsgID
-		candidateTodoContent, changed := syncTrackedTodoAfterToollessReply(todoContent, currentContent)
+		candidateTodoContent, changed := syncTrackedTodoAfterCompletionSignal(todoContent, currentContent)
 		if !changed {
-			if !isLikelyTaskCompletionResponse(currentContent) {
+			if !isLikelyTodoFinalizationResponse(currentContent) {
 				return
 			}
 			messages, err := h.store.GetMessages(context.Background(), convID, 64, 0)
@@ -19773,7 +20488,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				if !ok {
 					continue
 				}
-				updated, ok := syncTrackedTodoAfterToollessReply(checklist, currentContent)
+				updated, ok := syncTrackedTodoAfterCompletionSignal(checklist, currentContent)
 				if !ok {
 					continue
 				}
@@ -19789,19 +20504,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		todoMsgID = candidateMsgID
 		todoContent = candidateTodoContent
 		planCompletedByTool = !hasPendingTodo(todoContent)
-		if err := h.store.UpdateMessageContent(context.Background(), todoMsgID, todoContent, nil); err != nil {
-			logger.Warn().Err(err).Str("conv_id", convID).Str("todo_msg_id", todoMsgID).
-				Msg("[chat] stream: failed to sync implicit summary todo completion")
-			return
-		}
+		h.updateMessageBestEffort(todoMsgID, convID, "assistant", todoContent, "", "", nil)
 		h.conversationCache.Invalidate(convID)
-		emitSSE(map[string]interface{}{
-			"todo_updated": true,
-			"message_id":   todoMsgID,
-			"todo_card_id": todoChecklistCardID(todoMsgID),
-			"content":      todoContent,
-			"stream_id":    streamID,
-		})
+		emitTodoUpdated(todoMsgID, todoContent)
 	}
 	dropPendingVisibleDelta := func() int {
 		dropped := pendingDeltaBuffer.Len()
@@ -19991,30 +20696,22 @@ STREAM_LOOP:
 						}
 						if found >= 0 {
 							if tc.Arguments != "" {
-								current := strings.TrimSpace(streamToolCalls[found].Arguments)
-								next := strings.TrimSpace(tc.Arguments)
-								if current == "" ||
-									((strings.HasPrefix(next, "{") && strings.HasSuffix(next, "}")) ||
-										(strings.HasPrefix(next, "[") && strings.HasSuffix(next, "]"))) {
-									streamToolCalls[found].Arguments = tc.Arguments
-								} else if !strings.HasSuffix(streamToolCalls[found].Arguments, tc.Arguments) {
-									streamToolCalls[found].Arguments += tc.Arguments
-								}
+								streamToolCalls[found].Arguments = mergeStreamingToolCallArguments(
+									streamToolCalls[found].Arguments,
+									tc.Arguments,
+								)
 							}
 						} else {
 							streamToolCalls = append(streamToolCalls, tc)
 						}
 					} else if len(streamToolCalls) > 0 && tc.Arguments != "" {
-						// Partial argument delta — append to last tool call.
-						// If it already looks like a complete JSON payload, replace it.
+						// Partial argument delta — append to last tool call unless the
+						// new payload is a richer complete JSON object/array.
 						last := len(streamToolCalls) - 1
-						next := strings.TrimSpace(tc.Arguments)
-						if (strings.HasPrefix(next, "{") && strings.HasSuffix(next, "}")) ||
-							(strings.HasPrefix(next, "[") && strings.HasSuffix(next, "]")) {
-							streamToolCalls[last].Arguments = tc.Arguments
-						} else {
-							streamToolCalls[last].Arguments += tc.Arguments
-						}
+						streamToolCalls[last].Arguments = mergeStreamingToolCallArguments(
+							streamToolCalls[last].Arguments,
+							tc.Arguments,
+						)
 					}
 				}
 				if !suppressUserDeltaAfterToolCall && len(streamToolCalls) > 0 {
@@ -20054,7 +20751,8 @@ STREAM_LOOP:
 				// Persist partial content if any was streamed before the error
 				if fullContent != "" {
 					if streamingMsgID != "" {
-						h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, nil)
+						h.updateMessageBestEffort(streamingMsgID, convID, "assistant", fullContent, "", "", nil)
+						h.flushPersistedMessage(streamingMsgID)
 					} else {
 						h.store.AddMessage(context.Background(), convID, memory.Message{
 							Role:     "assistant",
@@ -20103,7 +20801,12 @@ STREAM_LOOP:
 			// Incremental persistence: throttle draft writes by both content growth
 			// and elapsed time to avoid excessive SQLite churn during streaming.
 			if chunk.Delta != "" {
-				persistInterval, persistBytes := adaptivePersistenceTargets()
+				persistInterval := time.Second
+				persistBytes := 4096
+				if streamingMsgID == "" {
+					persistInterval = 1500 * time.Millisecond
+					persistBytes = 2048
+				}
 				if len(fullContent)-lastFlushLen >= persistBytes ||
 					timeutil.SinceTime(lastPersistFlushAt) >= persistInterval {
 					persistStreamingDraft()
@@ -20867,38 +21570,40 @@ STREAM_LOOP:
 				break STREAM_LOOP
 			}
 
-			if guard := latestIntentVsCarryover(chatReq.Messages, routingMessage, streamToolCalls); guard.ShouldPause {
-				staleIntentGuardTrips++
-				logger.Warn().
-					Int("tool_round", toolRound).
-					Str("reason", guard.Reason).
-					Bool("question_like", guard.QuestionLike).
-					Bool("explicit_override", guard.ExplicitOverride).
-					Bool("explicit_resume", guard.ExplicitResume).
-					Bool("low_overlap", guard.LowOverlap).
-					Msg("[chat] stream: paused stale carry-over tool execution in favor of latest user intent")
-				if staleIntentGuardTrips > 1 {
-					fallbackMsg := buildLatestIntentPauseFallbackReply(routingMessage)
-					emitSSE(map[string]interface{}{
-						"delta":     fallbackMsg,
-						"done":      false,
-						"stream_id": streamID,
-					})
-					fullContent += fallbackMsg
-					totalDeltaChars += len(fallbackMsg)
-					break STREAM_LOOP
+			if shouldApplyLatestIntentCarryoverGuard(chatReq.Messages, routingMessage) {
+				if guard := latestIntentVsCarryover(chatReq.Messages, routingMessage, streamToolCalls); guard.ShouldPause {
+					staleIntentGuardTrips++
+					logger.Warn().
+						Int("tool_round", toolRound).
+						Str("reason", guard.Reason).
+						Bool("question_like", guard.QuestionLike).
+						Bool("explicit_override", guard.ExplicitOverride).
+						Bool("explicit_resume", guard.ExplicitResume).
+						Bool("low_overlap", guard.LowOverlap).
+						Msg("[chat] stream: paused stale carry-over tool execution in favor of latest user intent")
+					if staleIntentGuardTrips > 1 {
+						fallbackMsg := buildLatestIntentPauseFallbackReply(routingMessage)
+						emitSSE(map[string]interface{}{
+							"delta":     fallbackMsg,
+							"done":      false,
+							"stream_id": streamID,
+						})
+						fullContent += fallbackMsg
+						totalDeltaChars += len(fallbackMsg)
+						break STREAM_LOOP
+					}
+					dropPendingVisibleDelta()
+					chatReq.PreviousResponseID = ""
+					ctx = proxy.WithDisableResponsesContinuation(ctx)
+					chatReq.Messages = append(chatReq.Messages,
+						llm.Message{Role: llm.RoleAssistant, Content: pausedCarryOverAssistantContent},
+						llm.Message{Role: llm.RoleUser, Content: buildLatestIntentPauseNudge(routingMessage)},
+					)
+					streamToolCalls = nil
+					awaitingPostToolSummary = false
+					fullContent = ""
+					continue
 				}
-				dropPendingVisibleDelta()
-				chatReq.PreviousResponseID = ""
-				ctx = proxy.WithDisableResponsesContinuation(ctx)
-				chatReq.Messages = append(chatReq.Messages,
-					llm.Message{Role: llm.RoleAssistant, Content: pausedCarryOverAssistantContent},
-					llm.Message{Role: llm.RoleUser, Content: buildLatestIntentPauseNudge(routingMessage)},
-				)
-				streamToolCalls = nil
-				awaitingPostToolSummary = false
-				fullContent = ""
-				continue
 			}
 
 			staleIntentGuardTrips = 0
@@ -20938,7 +21643,8 @@ STREAM_LOOP:
 			emitSSE(toolStatus)
 
 			// Execute tools (detached context — survives SSE disconnect)
-			toolResults := h.executeToolCalls(toolCtx, streamToolCalls)
+			roundToolCtx := withToolProviderContext(toolCtx, actualProvider, actualProviderID, actualModel)
+			toolResults := h.executeToolCalls(roundToolCtx, streamToolCalls)
 			deepSearchState.observeToolRound(streamToolCalls, toolResults)
 			planChecklist, planChecklistUpdated := extractPlanChecklistFromToolRound(streamToolCalls, toolResults)
 			if planChecklistUpdated {
@@ -21005,23 +21711,26 @@ STREAM_LOOP:
 				})
 			}
 
-			// Refresh the tracked checklist only when a tool round explicitly returned
-			// new checklist state (or explicit completion). Avoid implicit checkbox
-			// advancement based solely on successful tool execution.
-			updatedTodoContent, todoContentChanged := syncTrackedTodoAfterToolRound(todoContent, planChecklist, planChecklistUpdated, planCompletedByTool)
+			// Reconcile the tracked checklist after each tool round. Prefer explicit
+			// plan tool state, but also close the loop when the tool round clearly
+			// produced the final requested deliverable.
+			updatedTodoContent, todoContentChanged := reconcileTrackedTodoAfterToolRound(
+				todoContent,
+				routingMessage,
+				streamToolCalls,
+				toolResults,
+				planChecklist,
+				planChecklistUpdated,
+				planCompletedByTool,
+			)
 			if todoContentChanged {
 				todoContent = updatedTodoContent
+				planCompletedByTool = !hasPendingTodo(todoContent)
 			}
 			if todoMsgID != "" && todoContentChanged {
-				h.store.UpdateMessageContent(context.Background(), todoMsgID, todoContent, nil)
+				h.updateMessageBestEffort(todoMsgID, convID, "assistant", todoContent, "", "", nil)
 				h.conversationCache.Invalidate(convID)
-				emitSSE(map[string]interface{}{
-					"todo_updated": true,
-					"message_id":   todoMsgID,
-					"todo_card_id": todoChecklistCardID(todoMsgID),
-					"content":      todoContent,
-					"stream_id":    streamID,
-				})
+				emitTodoUpdated(todoMsgID, todoContent)
 			}
 
 			toolSummaries := make([]string, 0, len(toolResults))
@@ -21113,6 +21822,13 @@ STREAM_LOOP:
 				})
 				chatReq.Tools = buildPostWorkspaceArtifactContinuationTools(chatReq.Tools, routingMessage, streamToolCalls, toolResults)
 			}
+			if nudge := buildPostPendingResearchStatusNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
+				chatReq.Messages = append(chatReq.Messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: nudge,
+				})
+				chatReq.Tools = buildPendingResearchStatusTools(chatReq.Tools, routingMessage)
+			}
 			if nudge := buildPostEmptyResearchResultNudge(routingMessage, streamToolCalls, toolResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
 					Role:    llm.RoleUser,
@@ -21144,7 +21860,7 @@ STREAM_LOOP:
 				roundContent := sanitizeResponseContentWithProvider(fullContent, actualProvider, actualProviderID, sanitizeModelHint(actualModel, chatReq.Model))
 				persistedRoundContent := todoAwarePersistedContent(roundContent, todoContent, false)
 				if streamingMsgID != "" {
-					h.store.UpdateMessageContent(context.Background(), streamingMsgID, persistedRoundContent, nil)
+					h.updateMessageBestEffort(streamingMsgID, convID, "assistant", persistedRoundContent, "", "", nil)
 				} else {
 					if m, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
 						Role:    "assistant",
@@ -21374,7 +22090,7 @@ STREAM_LOOP:
 					if reason == "missing_todo" {
 						missingTodoAutoContinueCount++
 						pendingTodoAutoContinueCount = 0
-					} else if reason == "pending_todo" || reason == "missing_next_steps" {
+					} else if reason == "pending_todo" || reason == "missing_next_steps" || reason == "todo_reconcile" {
 						pendingTodoAutoContinueCount++
 						missingTodoAutoContinueCount = 0
 					} else {
@@ -21502,11 +22218,11 @@ STREAM_LOOP:
 			persistedRoundContent := roundContent
 			if streamingMsgID != "" {
 				persistedRoundContent = todoAwarePersistedContent(roundContent, todoContent, streamingMsgID == todoMsgID)
-				h.store.UpdateMessageContent(context.Background(), streamingMsgID, persistedRoundContent, nil)
+				h.updateMessageBestEffort(streamingMsgID, convID, "assistant", persistedRoundContent, "", "", nil)
 				persistedMsgID = streamingMsgID
 			} else if collapseRound && todoMsgID != "" {
 				persistedRoundContent = todoAwarePersistedContent(roundContent, todoContent, true)
-				h.store.UpdateMessageContent(context.Background(), todoMsgID, persistedRoundContent, nil)
+				h.updateMessageBestEffort(todoMsgID, convID, "assistant", persistedRoundContent, "", "", nil)
 				persistedMsgID = todoMsgID
 			} else {
 				persistedRoundContent = todoAwarePersistedContent(roundContent, todoContent, false)
@@ -21533,13 +22249,7 @@ STREAM_LOOP:
 				} else if strings.TrimSpace(todoContent) == "" {
 					todoContent = strings.TrimSpace(persistedRoundContent)
 				}
-				emitSSE(map[string]interface{}{
-					"todo_updated": true,
-					"message_id":   todoMsgID,
-					"todo_card_id": todoChecklistCardID(todoMsgID),
-					"content":      todoContent,
-					"stream_id":    streamID,
-				})
+				emitTodoUpdated(todoMsgID, todoContent)
 			}
 			if !collapseRound {
 				emitSSE(map[string]interface{}{
@@ -21723,7 +22433,7 @@ STREAM_LOOP:
 					pseudoToolCallAutoContinueCount = 0
 					missingTodoAutoContinueCount = 0
 					pendingTodoAutoContinueCount = 0
-				} else if reason == "pending_todo" || reason == "missing_next_steps" {
+				} else if reason == "pending_todo" || reason == "missing_next_steps" || reason == "todo_reconcile" {
 					pendingTodoAutoContinueCount++
 					pseudoToolCallAutoContinueCount = 0
 					actionPledgeAutoContinueCount = 0
@@ -21753,11 +22463,11 @@ STREAM_LOOP:
 					prevTodoContent := strings.TrimSpace(todoContent)
 					if streamingMsgID != "" {
 						persistedRoundContent = todoAwarePersistedContent(roundContent, todoContent, streamingMsgID == todoMsgID)
-						h.store.UpdateMessageContent(context.Background(), streamingMsgID, persistedRoundContent, nil)
+						h.updateMessageBestEffort(streamingMsgID, convID, "assistant", persistedRoundContent, "", "", nil)
 						persistedMsgID = streamingMsgID
 					} else if collapseRound && todoMsgID != "" {
 						persistedRoundContent = todoAwarePersistedContent(roundContent, todoContent, true)
-						h.store.UpdateMessageContent(context.Background(), todoMsgID, persistedRoundContent, nil)
+						h.updateMessageBestEffort(todoMsgID, convID, "assistant", persistedRoundContent, "", "", nil)
 						persistedMsgID = todoMsgID
 					} else {
 						persistedRoundContent = todoAwarePersistedContent(roundContent, todoContent, false)
@@ -21795,13 +22505,7 @@ STREAM_LOOP:
 							}
 						}
 						if nextTodo := strings.TrimSpace(todoContent); nextTodo != "" && (capturedTodoThisRound || nextTodo != prevTodoContent) {
-							emitSSE(map[string]interface{}{
-								"todo_updated": true,
-								"message_id":   todoMsgID,
-								"todo_card_id": todoChecklistCardID(todoMsgID),
-								"content":      todoContent,
-								"stream_id":    streamID,
-							})
+							emitTodoUpdated(todoMsgID, todoContent)
 						}
 					}
 
@@ -21819,7 +22523,7 @@ STREAM_LOOP:
 					// A pseudo_tool_call round may have already created an incremental
 					// placeholder. Scrub it immediately so malformed content cannot leak
 					// when subsequent continuation rounds return empty.
-					h.store.UpdateMessageContent(context.Background(), streamingMsgID, "", nil)
+					h.updateMessageBestEffort(streamingMsgID, convID, "assistant", "", "", "", nil)
 					h.conversationCache.Invalidate(convID)
 					lastFlushLen = 0
 					lastPersistFlushAt = timeutil.NowTime()
@@ -21873,7 +22577,7 @@ STREAM_LOOP:
 			if reason == "missing_todo" {
 				missingTodoAutoContinueCount++
 				pendingTodoAutoContinueCount = 0
-			} else if reason == "pending_todo" || reason == "missing_next_steps" {
+			} else if reason == "pending_todo" || reason == "missing_next_steps" || reason == "todo_reconcile" {
 				pendingTodoAutoContinueCount++
 				missingTodoAutoContinueCount = 0
 			} else {
@@ -22034,7 +22738,7 @@ STREAM_LOOP:
 				// Persist partial assistant content (without "[Response interrupted]")
 				if fullContent != "" {
 					if streamingMsgID != "" {
-						h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, nil)
+						h.updateMessageBestEffort(streamingMsgID, convID, "assistant", fullContent, "", "", nil)
 					} else {
 						h.store.AddMessage(context.Background(), convID, memory.Message{
 							Role:     "assistant",
@@ -22150,40 +22854,50 @@ STREAM_LOOP:
 				if memoryMessages := h.beforeModelCallHooks(context.Background(), turnHookCtx); len(memoryMessages) > 0 {
 					compactedMessages = append(memoryMessages, compactedMessages...)
 				}
-				skillPrompt, selectedSkill := h.resolveSkillSelection(ctx, injectedMsg)
+				skillPrompt, selectedSkill := h.resolveSkillSelectionForRequest(ctx, injectedMsg, req.DeepResearchEnabled)
 				promptCtx := h.buildContextPackRequestContext(ctx, convID, userID, string(streamLang), "web", injectedMsg, selectedSkill)
 				if systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, mergeExtraPrompt(skillPrompt, buildDeepSearchExecutionHint(injectedMsg), buildArtifactWorkflowExecutionHint(injectedMsg))); len(systemPromptMessages) > 0 {
 					compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
 					h.recordContextPackAudit(promptCtx, convID, selection)
 				}
 
-				injectedTools := h.selectTools(injectedMsg, tools.ToolPolicyRequest{
-					Model:     model,
-					SessionID: convID,
-					RouteKind: tools.ToolRouteKindChat,
+				injectedBudgetTools := defsToLLMTools(h.selectChatToolsForRequest(injectedMsg, model, convID, req.WebSearchEnabled, req.DeepResearchEnabled))
+				if structuredEvaluatorNoTools {
+					injectedBudgetTools = nil
+				}
+				budgetPlan = h.fitPreparedMessagesToBudget(context.Background(), preparedBudgetFitParams{
+					ConvID:             convID,
+					Model:              model,
+					MaxTokens:          req.MaxTokens,
+					Messages:           compactedMessages,
+					Tools:              injectedBudgetTools,
+					ExplicitProviderID: explicitProviderID,
+					ProviderExplicit:   providerExplicit,
 				})
-				injectedTools = applyWebSearchPreference(injectedTools, req.WebSearchEnabled)
-				injectedTools = applyDeepResearchPreference(injectedTools, req.DeepResearchEnabled)
-				injectedTools = applyWritingToolPreference(injectedTools, injectedMsg)
-				injectedTools = applyResearchToolPreference(injectedTools, injectedMsg)
-				injectedTools = applyReminderToolPreference(injectedTools, injectedMsg)
-				injectedTools = applyCalendarToolPreference(injectedTools, injectedMsg)
-				injectedTools = applyEmailToolPreference(injectedTools, injectedMsg)
-				injectedTools = applyImageToolPreference(injectedTools, injectedMsg)
+				currentBudgetAttempt = budgetPlan.Current()
+				if currentBudgetAttempt == nil {
+					emitSSE(map[string]interface{}{
+						"error":     "context_window_exceeded",
+						"done":      true,
+						"stream_id": streamID,
+					})
+					return nil
+				}
+				previousResponseID = injectedPreviousResponseID
+				applyBudgetAttemptToChatReq(currentBudgetAttempt)
+				pendingContextCompacting = progressiveContextTrim != nil || compacted
+
+				injectedTools := h.selectChatToolsForRequest(injectedMsg, chatReq.Model, convID, req.WebSearchEnabled, req.DeepResearchEnabled)
+				if structuredEvaluatorNoTools {
+					injectedTools = nil
+				}
 
 				// Rebuild chat request
-				chatReq = llm.ChatRequest{
-					Model:       model,
-					Messages:    compactedMessages,
-					Temperature: req.Temperature,
-					MaxTokens:   req.MaxTokens,
-					Stream:      true,
-					Tools:       defsToLLMTools(injectedTools),
-				}
+				chatReq.Temperature = req.Temperature
+				chatReq.MaxTokens = req.MaxTokens
+				chatReq.Stream = true
+				chatReq.Tools = defsToLLMTools(injectedTools)
 				deepSearchState = newDeepSearchLoopState(injectedMsg, injectedTools)
-				if supportsResponsesContinuation(chatReq.Model) && injectedPreviousResponseID != "" {
-					chatReq.PreviousResponseID = injectedPreviousResponseID
-				}
 
 				// Reset stream state for the new round
 				fullContent = ""
@@ -22217,7 +22931,8 @@ STREAM_LOOP:
 			}
 			if fullContent != "" {
 				if streamingMsgID != "" {
-					h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent+"\n\n[Response interrupted]", nil)
+					h.updateMessageBestEffort(streamingMsgID, convID, "assistant", fullContent+"\n\n[Response interrupted]", "", "", nil)
+					h.flushPersistedMessage(streamingMsgID)
 				} else {
 					h.store.AddMessage(context.Background(), convID, memory.Message{
 						Role:    "assistant",
@@ -22228,6 +22943,9 @@ STREAM_LOOP:
 			data := map[string]interface{}{
 				"cancelled": true,
 				"done":      true,
+			}
+			if h.chatPersistAsync && h.persistCoordinator != nil {
+				h.persistCoordinator.FlushConversation(convID)
 			}
 			emitSSE(data)
 			return nil
@@ -22464,7 +23182,8 @@ STREAM_LOOP:
 		if fullContent != "" {
 			safeContent := sanitizeResponseContentWithProvider(fullContent, actualProvider, actualProviderID, sanitizeModelHint(actualModel, chatReq.Model))
 			if streamingMsgID != "" {
-				h.store.UpdateMessageContent(context.Background(), streamingMsgID, safeContent, nil)
+				h.updateMessageBestEffort(streamingMsgID, convID, "assistant", safeContent, "", "", nil)
+				h.flushPersistedMessage(streamingMsgID)
 			} else {
 				h.store.AddMessage(context.Background(), convID, memory.Message{
 					Role:     "assistant",
@@ -22483,6 +23202,9 @@ STREAM_LOOP:
 			"model":     actualModel,
 			"stream_id": streamID,
 		})
+		if h.chatPersistAsync && h.persistCoordinator != nil {
+			h.persistCoordinator.FlushConversation(convID)
+		}
 		return nil
 	}
 
@@ -22582,20 +23304,17 @@ STREAM_LOOP:
 		if streamingMsgID != "" && streamingMsgID == todoMsgID && strings.TrimSpace(todoContent) != "" {
 			if _, hasChecklist := extractFirstTodoChecklist(persistedFinalContent); !hasChecklist &&
 				strings.TrimSpace(persistedFinalContent) != strings.TrimSpace(todoContent) {
-				if updErr := h.store.UpdateMessageContent(context.Background(), todoMsgID, todoContent, nil); updErr != nil {
-					logger.Error().Err(updErr).Str("conv_id", convID).Msg("[chat] failed to restore todo checklist message before final summary persist")
-				} else {
-					h.conversationCache.Invalidate(convID)
-				}
+				h.updateMessageBestEffort(todoMsgID, convID, "assistant", todoContent, "", "", nil)
+				h.flushPersistedMessage(todoMsgID)
+				h.conversationCache.Invalidate(convID)
 				streamingMsgID = ""
 			}
 		}
 		var assistantMsgForHook *memory.Message
 		if streamingMsgID != "" {
 			// Update the incrementally-persisted message with final content + stats + actual provider/model
-			if updErr := h.store.UpdateMessageContentFull(context.Background(), streamingMsgID, persistedFinalContent, actualProvider, actualModel, finalStats); updErr != nil {
-				logger.Error().Err(updErr).Str("conv_id", convID).Msg("[chat] failed to update streaming message")
-			}
+			h.updateMessageBestEffort(streamingMsgID, convID, "assistant", persistedFinalContent, actualProvider, actualModel, finalStats)
+			h.flushPersistedMessage(streamingMsgID)
 			finalPersistedMsgID = streamingMsgID
 			assistantMsgForHook = &memory.Message{
 				ID:             streamingMsgID,
@@ -22608,16 +23327,20 @@ STREAM_LOOP:
 			}
 		} else {
 			// No incremental message was created (short response) — insert now
-			if assistantMsg, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
-				Role:     "assistant",
-				Content:  persistedFinalContent,
-				Provider: actualProvider,
-				Model:    actualModel,
-				Stats:    finalStats,
-			}); addErr != nil {
-				logger.Error().Err(addErr).Str("conv_id", convID).Msg("[chat] failed to persist assistant message")
+			assistantMsg := &memory.Message{
+				ID:             generateMessageID(),
+				ConversationID: convID,
+				Role:           "assistant",
+				Content:        persistedFinalContent,
+				Provider:       actualProvider,
+				Model:          actualModel,
+				Stats:          finalStats,
+			}
+			if persistedID := h.persistAsyncMessage(*assistantMsg, true); persistedID == "" {
+				logger.Error().Str("conv_id", convID).Msg("[chat] failed to persist assistant message")
 			} else {
-				finalPersistedMsgID = assistantMsg.ID
+				assistantMsg.ID = persistedID
+				finalPersistedMsgID = persistedID
 				assistantMsgForHook = assistantMsg
 			}
 		}
@@ -22626,7 +23349,7 @@ STREAM_LOOP:
 		h.refreshConversationSummaryAfterPersist(convID, actualModel)
 		implicitSummaryTodoMsgID := ""
 		implicitSummaryTodoContent := ""
-		if isLikelyTaskCompletionResponse(fullContent) {
+		if isLikelyTodoFinalizationResponse(fullContent) {
 			if messages, lookupErr := h.store.GetMessages(context.Background(), convID, 64, 0); lookupErr == nil {
 				for i := len(messages) - 1; i >= 0; i-- {
 					if finalPersistedMsgID != "" && messages[i].ID == finalPersistedMsgID {
@@ -22639,15 +23362,12 @@ STREAM_LOOP:
 					if !ok {
 						continue
 					}
-					updatedChecklist, ok := syncTrackedTodoAfterToollessReply(checklist, fullContent)
+					updatedChecklist, ok := syncTrackedTodoAfterCompletionSignal(checklist, fullContent)
 					if !ok {
 						continue
 					}
-					if updErr := h.store.UpdateMessageContent(context.Background(), messages[i].ID, updatedChecklist, nil); updErr != nil {
-						logger.Warn().Err(updErr).Str("conv_id", convID).Str("todo_msg_id", messages[i].ID).
-							Msg("[chat] stream: failed final implicit summary todo sync")
-						break
-					}
+					h.updateMessageBestEffort(messages[i].ID, convID, "assistant", updatedChecklist, "", "", nil)
+					h.flushPersistedMessage(messages[i].ID)
 					implicitSummaryTodoMsgID = messages[i].ID
 					implicitSummaryTodoContent = updatedChecklist
 					todoMsgID = messages[i].ID
@@ -22658,13 +23378,7 @@ STREAM_LOOP:
 			}
 		}
 		if implicitSummaryTodoMsgID != "" {
-			emitSSE(map[string]interface{}{
-				"todo_updated": true,
-				"message_id":   implicitSummaryTodoMsgID,
-				"todo_card_id": todoChecklistCardID(implicitSummaryTodoMsgID),
-				"content":      implicitSummaryTodoContent,
-				"stream_id":    streamID,
-			})
+			emitTodoUpdated(implicitSummaryTodoMsgID, implicitSummaryTodoContent)
 		}
 		emitFinalStats := map[string]interface{}{
 			"input_tokens":      finalStats.InputTokens,
@@ -22685,6 +23399,10 @@ STREAM_LOOP:
 		}
 		if finalPersistedMsgID != "" {
 			finalDonePayload["message_id"] = finalPersistedMsgID
+		}
+		finalDonePayload["draft_db_updates"] = draftDBUpdateCount
+		if h.chatPersistAsync && h.persistCoordinator != nil {
+			h.persistCoordinator.FlushConversation(convID)
 		}
 		emitSSE(finalDonePayload)
 		streamDoneSent = true
@@ -23039,7 +23757,7 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 	langInstruction := getLanguageInstruction(targetLang)
 
 	// Create a simple prompt for title generation
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), titleGenerationLLMTimeout)
 	defer cancel()
 	ctx = withProxyBackground(ctx)
 
@@ -23201,36 +23919,7 @@ func (h *ChatHandler) transcribeAudioAttachmentForLLM(ctx context.Context, att M
 		logger.Warn().Err(err).Msg("Failed to decode audio attachment")
 		return "[Voice message, decode failed]", false
 	}
-
-	if h.sttService == nil {
-		durationHint := ""
-		if att.Duration > 0 {
-			durationHint = fmt.Sprintf(" (%ds)", int(att.Duration))
-		}
-		return fmt.Sprintf("[Voice message%s, transcription unavailable]", durationHint), false
-	}
-
-	format := stt.FormatOGG
-	if strings.Contains(att.MimeType, "wav") {
-		format = stt.FormatWAV
-	} else if strings.Contains(att.MimeType, "mp3") {
-		format = stt.FormatMP3
-	} else if strings.Contains(att.MimeType, "webm") {
-		format = stt.FormatOGG // webm/opus is handled as ogg
-	}
-
-	resp, err := h.sttService.Transcribe(ctx, &stt.TranscribeRequest{
-		Audio:  bytes.NewReader(audioBytes),
-		Format: format,
-	})
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to transcribe audio attachment")
-		return "[Voice message, transcription failed]", false
-	}
-	if resp.Text == "" {
-		return "[Voice message, no speech detected]", true
-	}
-	return fmt.Sprintf("[Voice message]: %s", resp.Text), true
+	return h.transcribeAudioBytesForLLM(ctx, strings.TrimSpace(att.MimeType), audioBytes, att.Duration)
 }
 
 // transcribeAudioAttachment keeps backward compatibility for call sites that
@@ -23241,7 +23930,8 @@ func (h *ChatHandler) transcribeAudioAttachment(ctx context.Context, att Message
 }
 
 // applyRequestAttachmentsToMessages converts request attachments into LLM content parts.
-// Audio attachments are transcribed to text before being sent to the LLM.
+// Media attachments are preprocessed into text-friendly context while preserving
+// native multimodal parts when available.
 func (h *ChatHandler) applyRequestAttachmentsToMessages(ctx context.Context, req SendMessageRequest, messages []llm.Message) []llm.Message {
 	if len(req.Attachments) == 0 {
 		return messages
@@ -23267,46 +23957,7 @@ func (h *ChatHandler) applyRequestAttachmentsToMessages(ctx context.Context, req
 		})
 	}
 
-	for _, att := range req.Attachments {
-		switch att.Type {
-		case "image":
-			contentParts = append(contentParts, llm.ContentPart{
-				Type:      "image",
-				MediaType: att.MimeType,
-				Data:      att.Data,
-			})
-		case "audio":
-			transcription, transcribed := h.transcribeAudioAttachmentForLLM(ctx, att)
-			if transcribed {
-				contentParts = append(contentParts, llm.ContentPart{
-					Type: "text",
-					Text: transcription,
-				})
-			} else {
-				if strings.TrimSpace(att.Data) != "" {
-					mediaType := strings.TrimSpace(att.MimeType)
-					if mediaType == "" {
-						mediaType = "audio/webm"
-					}
-					contentParts = append(contentParts, llm.ContentPart{
-						Type:      "audio",
-						MediaType: mediaType,
-						Data:      att.Data,
-					})
-				}
-				// Keep a brief textual fallback for providers that ignore audio parts.
-				contentParts = append(contentParts, llm.ContentPart{
-					Type: "text",
-					Text: transcription,
-				})
-			}
-		default:
-			contentParts = append(contentParts, llm.ContentPart{
-				Type: "text",
-				Text: fmt.Sprintf("\n\n[File: %s]\n%s", att.Name, decodeBase64Content(att.Data)),
-			})
-		}
-	}
+	contentParts = append(contentParts, h.buildRequestAttachmentContentParts(ctx, req.Attachments)...)
 
 	userMsg := llm.Message{
 		Role:         llm.RoleUser,
@@ -23531,7 +24182,7 @@ func (h *ChatHandler) doWarmupWithToken(convID, token string) {
 		messages = cachedMessages
 	} else {
 		var err error
-		messages, err = h.store.GetRecentMessages(ctx, convID, h.contextHistoryFetchLimit(model))
+		messages, err = h.getRecentMessagesForContext(ctx, convID, h.contextHistoryFetchLimit(model))
 		if err != nil {
 			logger.Warn().Err(err).Str("conv_id", convID).Msg("[warmup] failed to fetch messages")
 			return
@@ -23919,12 +24570,7 @@ func (h *ChatHandler) setPreviousResponseID(convID, responseID string) {
 	h.responsesPrevMu.Lock()
 	h.responsesPreviousID[convID] = responseID
 	h.responsesPrevMu.Unlock()
-
-	if h.store != nil {
-		if err := h.store.SetConversationPreviousResponseID(context.Background(), convID, responseID); err != nil {
-			logger.Warn().Err(err).Str("conv_id", convID).Msg("[chat] failed to persist previous_response_id")
-		}
-	}
+	h.queuePreviousResponseID(convID, responseID)
 }
 
 func (h *ChatHandler) clearPreviousResponseID(convID string) {
@@ -23937,6 +24583,9 @@ func (h *ChatHandler) clearPreviousResponseID(convID string) {
 	h.responsesPrevMu.Unlock()
 
 	if h.store != nil {
+		if h.chatPersistAsync && h.persistCoordinator != nil {
+			h.persistCoordinator.FlushConversation(convID)
+		}
 		if err := h.store.ClearConversationPreviousResponseID(context.Background(), convID); err != nil {
 			logger.Warn().Err(err).Str("conv_id", convID).Msg("[chat] failed to clear persisted previous_response_id")
 		}

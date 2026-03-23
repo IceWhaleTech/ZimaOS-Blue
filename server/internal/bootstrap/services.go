@@ -340,8 +340,16 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	}
 	trace.Mark("api_key_service_ready")
 
-	// Memory store (shares main DB)
-	s.MemoryStore, err = memory.NewStoreWithDB(s.DB)
+	// Memory store uses a dedicated chat handle to keep chat pragmas isolated
+	// from the shared primary DB users.
+	chatDBPath := filepath.Join(cfg.DataDir, "blue.db")
+	chatStoreOpts := memory.DefaultChatStoreOptions(chatDBPath)
+	chatStoreOpts.Durability = appCfg.Session.ChatDBDurability
+	chatStoreOpts.AttachmentExternalStore = appCfg.Session.ChatAttachmentExternalStore
+	if chatStoreOpts.AttachmentExternalStore {
+		chatStoreOpts.AttachmentDir = filepath.Join(cfg.DataDir, "message_attachments")
+	}
+	s.MemoryStore, err = memory.NewStoreWithOptions(chatDBPath, chatStoreOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize memory store: %w", err)
 	}
@@ -429,6 +437,9 @@ func (s *Services) Close() {
 	}
 	if s.OCRService != nil {
 		_ = s.OCRService.Close()
+	}
+	if s.MemoryStore != nil {
+		_ = s.MemoryStore.Close()
 	}
 	if s.DB != nil {
 		s.DB.Close()

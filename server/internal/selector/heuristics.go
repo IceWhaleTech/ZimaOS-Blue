@@ -519,7 +519,7 @@ var (
 	}
 	uiArtifactTerms = []string{
 		"ui", "ux", "interface", "screen", "screenshot", "design", "figma", "mockup", "wireframe", "layout", "component", "page",
-		"界面", "截图", "设计稿", "设计", "页面", "布局", "组件", "原型",
+		"accessibility", "a11y", "界面", "截图", "设计稿", "设计", "页面", "布局", "组件", "原型", "无障碍", "可访问性",
 	}
 	highRiskTerms = []string{
 		"delete", "remove", "drop", "overwrite", "reset", "destroy", "truncate", "wipe", "生产", "线上", "删", "覆盖", "重置", "清空", "销毁",

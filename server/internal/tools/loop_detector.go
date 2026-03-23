@@ -299,6 +299,10 @@ func isKnownPollingToolLoopSignature(signature string) bool {
 	if strings.HasPrefix(normalized, "command_status:") || strings.HasPrefix(normalized, "research_status:") {
 		return true
 	}
+	if strings.HasPrefix(normalized, "deep_research:") &&
+		(strings.Contains(normalized, `"action":"status"`) || strings.Contains(normalized, "action=status")) {
+		return true
+	}
 	if !strings.HasPrefix(normalized, "process:") {
 		return false
 	}

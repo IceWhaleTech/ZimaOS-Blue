@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/fsnotify/fsnotify"
 )
 
 // HotReloadConfig holds hot reload configuration
@@ -43,11 +43,11 @@ type HotReloader struct {
 	watcher   *fsnotify.Watcher
 	callbacks []ReloadCallback
 
-	mu            sync.RWMutex
-	lastReload    time.Time
-	reloadCount   int64
-	lastError     error
-	isReloading   atomic.Bool
+	mu          sync.RWMutex
+	lastReload  time.Time
+	reloadCount int64
+	lastError   error
+	isReloading atomic.Bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -61,6 +61,10 @@ func NewHotReloader(configPath string, initialConfig *Config, hrConfig *HotReloa
 			WatchInterval:       time.Second,
 			ValidateBeforeApply: true,
 		}
+	}
+
+	if configPath == "" {
+		configPath = findConfigFile()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -143,11 +147,11 @@ func (hr *HotReloader) Stats() map[string]interface{} {
 	defer hr.mu.RUnlock()
 
 	stats := map[string]interface{}{
-		"enabled":       hr.hrConfig.Enabled,
-		"config_path":   hr.configPath,
-		"last_reload":   hr.lastReload,
-		"reload_count":  atomic.LoadInt64(&hr.reloadCount),
-		"is_reloading":  hr.isReloading.Load(),
+		"enabled":      hr.hrConfig.Enabled,
+		"config_path":  hr.configPath,
+		"last_reload":  hr.lastReload,
+		"reload_count": atomic.LoadInt64(&hr.reloadCount),
+		"is_reloading": hr.isReloading.Load(),
 	}
 
 	if hr.lastError != nil {
@@ -229,6 +233,21 @@ func (hr *HotReloader) reload() error {
 		return fmt.Errorf("reload already in progress")
 	}
 	defer hr.isReloading.Store(false)
+
+	if hr.configPath == "" {
+		err := fmt.Errorf("no config file configured for hot reload")
+		hr.mu.Lock()
+		hr.lastError = err
+		hr.mu.Unlock()
+
+		hr.notifyCallbacks(ReloadEvent{
+			Time:      timeutil.NowTime(),
+			Success:   false,
+			Error:     err,
+			OldConfig: hr.config.Load(),
+		})
+		return err
+	}
 
 	oldConfig := hr.config.Load()
 

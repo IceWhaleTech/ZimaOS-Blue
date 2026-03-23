@@ -323,7 +323,9 @@ describe('HomeView Performance Optimizations', () => {
 
   it('should load detailed system info on demand', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(systemApi.getInfo).mockResolvedValue({ data: { system: detailedSystemInfoFixture } } as any)
+    vi.mocked(systemApi.getInfo).mockResolvedValue({
+      data: { system: detailedSystemInfoFixture },
+    } as any)
 
     const wrapper = mountHomeView()
     await flushPromises()

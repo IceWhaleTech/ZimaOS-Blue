@@ -20,17 +20,23 @@ import (
 
 // StoreConfig controls tool payload audit storage and retention.
 type StoreConfig struct {
-	RetentionDays    int
-	CleanupInterval  time.Duration
-	CleanupBatchSize int
+	RetentionDays      int
+	CleanupInterval    time.Duration
+	CleanupBatchSize   int
+	Durability         string
+	WALAutoCheckpoint  int
+	CheckpointInterval time.Duration
 }
 
 // DefaultStoreConfig returns the default tool payload audit config.
 func DefaultStoreConfig() StoreConfig {
 	return StoreConfig{
-		RetentionDays:    30,
-		CleanupInterval:  6 * time.Hour,
-		CleanupBatchSize: 500,
+		RetentionDays:      30,
+		CleanupInterval:    6 * time.Hour,
+		CleanupBatchSize:   500,
+		Durability:         "normal",
+		WALAutoCheckpoint:  4000,
+		CheckpointInterval: 60 * time.Second,
 	}
 }
 
@@ -55,12 +61,14 @@ type Entry struct {
 
 // Store persists tool payload audit events in a dedicated SQLite database.
 type Store struct {
-	db       *sql.DB
-	cfg      StoreConfig
-	done     chan struct{}
-	ownsDB   bool
-	closeMu  sync.Mutex
-	isClosed bool
+	db         *sql.DB
+	cfg        StoreConfig
+	done       chan struct{}
+	ownsDB     bool
+	dbPath     string
+	closeMu    sync.Mutex
+	isClosed   bool
+	recoveryMu sync.Mutex
 }
 
 const storeSchema = `
@@ -114,10 +122,25 @@ func normalizeStoreConfig(cfg StoreConfig) StoreConfig {
 	if cfg.CleanupInterval <= 0 {
 		cfg.CleanupInterval = DefaultStoreConfig().CleanupInterval
 	}
+	if strings.TrimSpace(cfg.Durability) == "" {
+		cfg.Durability = DefaultStoreConfig().Durability
+	}
+	cfg.Durability = strings.ToLower(strings.TrimSpace(cfg.Durability))
+	switch cfg.Durability {
+	case "normal", "full":
+	default:
+		cfg.Durability = DefaultStoreConfig().Durability
+	}
+	if cfg.WALAutoCheckpoint <= 0 {
+		cfg.WALAutoCheckpoint = DefaultStoreConfig().WALAutoCheckpoint
+	}
+	if cfg.CheckpointInterval < 0 {
+		cfg.CheckpointInterval = 0
+	}
 	return cfg
 }
 
-func newStoreWithDB(db *sql.DB, cfg StoreConfig, ownsDB bool) (*Store, error) {
+func newStoreWithDB(db *sql.DB, cfg StoreConfig, ownsDB bool, dbPath string) (*Store, error) {
 	if db == nil {
 		return nil, fmt.Errorf("session audit db is nil")
 	}
@@ -131,9 +154,10 @@ func newStoreWithDB(db *sql.DB, cfg StoreConfig, ownsDB bool) (*Store, error) {
 		cfg:    cfg,
 		done:   make(chan struct{}),
 		ownsDB: ownsDB,
+		dbPath: dbPath,
 	}
 
-	if s.cfg.RetentionDays > 0 {
+	if s.cfg.RetentionDays > 0 || s.cfg.CheckpointInterval > 0 {
 		_ = s.PruneExpired(context.Background())
 		go s.cleanupLoop()
 	}
@@ -145,6 +169,7 @@ func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
 	if strings.TrimSpace(dbPath) == "" {
 		return nil, fmt.Errorf("session audit db path is empty")
 	}
+	cfg = normalizeStoreConfig(cfg)
 
 	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
 		db.SetMaxOpenConns(1)
@@ -156,10 +181,10 @@ func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
 		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
 			return fmt.Errorf("set busy timeout: %w", err)
 		}
-		if _, err := db.Exec("PRAGMA synchronous=FULL"); err != nil {
+		if _, err := db.Exec("PRAGMA synchronous=" + strings.ToUpper(cfg.Durability)); err != nil {
 			return fmt.Errorf("set synchronous mode: %w", err)
 		}
-		if _, err := db.Exec("PRAGMA wal_autocheckpoint=1000"); err != nil {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA wal_autocheckpoint=%d", cfg.WALAutoCheckpoint)); err != nil {
 			return fmt.Errorf("set wal autocheckpoint: %w", err)
 		}
 		return nil
@@ -168,7 +193,7 @@ func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
 		return nil, fmt.Errorf("open session audit db: %w", err)
 	}
 
-	s, err := newStoreWithDB(db, cfg, true)
+	s, err := newStoreWithDB(db, cfg, true, dbPath)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
@@ -178,75 +203,103 @@ func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
 
 // NewSQLiteStoreWithDB reuses an existing SQLite connection for audit storage.
 func NewSQLiteStoreWithDB(db *sql.DB, cfg StoreConfig) (*Store, error) {
-	return newStoreWithDB(db, cfg, false)
+	return newStoreWithDB(db, cfg, false, "")
 }
 
 // Record appends one audit entry.
 func (s *Store) Record(ctx context.Context, entry Entry) error {
+	return s.RecordBatch(ctx, []Entry{entry})
+}
+
+// RecordBatch appends audit entries in a single transaction.
+func (s *Store) RecordBatch(ctx context.Context, entries []Entry) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("session audit store is not initialized")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-
-	if strings.TrimSpace(entry.ID) == "" {
-		entry.ID = uuid.NewString()
-	}
-	entry.ConversationID = strings.TrimSpace(entry.ConversationID)
-	if entry.ConversationID == "" {
-		return fmt.Errorf("conversation_id is required")
-	}
-	entry.SessionID = strings.TrimSpace(entry.SessionID)
-	entry.UserID = strings.TrimSpace(entry.UserID)
-	entry.Source = strings.TrimSpace(entry.Source)
-	entry.EventType = strings.TrimSpace(entry.EventType)
-	entry.Role = strings.TrimSpace(entry.Role)
-	entry.ToolCallID = strings.TrimSpace(entry.ToolCallID)
-	entry.ToolName = strings.TrimSpace(entry.ToolName)
-	if entry.CreatedAt.IsZero() {
-		entry.CreatedAt = timeutil.NowTime()
-	}
-	entry.PayloadBytes = len(entry.Payload)
-	if entry.PayloadSHA256 == "" {
-		sum := sha256.Sum256([]byte(entry.Payload))
-		entry.PayloadSHA256 = hex.EncodeToString(sum[:])
+	if len(entries) == 0 {
+		return nil
 	}
 
-	metadataJSON := "{}"
-	if len(entry.Metadata) > 0 {
-		if b, err := json.Marshal(entry.Metadata); err == nil {
-			metadataJSON = string(b)
+	return s.retryOnCorruption(func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin audit batch tx: %w", err)
 		}
-	}
+		defer tx.Rollback()
 
-	_, err := s.db.ExecContext(
-		ctx,
-		`INSERT INTO session_tool_audit_logs (
-			id, conversation_id, session_id, user_id, source, event_type, role,
-			tool_call_id, tool_name, payload, payload_sha256, payload_bytes,
-			is_error, metadata, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		entry.ID,
-		entry.ConversationID,
-		entry.SessionID,
-		entry.UserID,
-		entry.Source,
-		entry.EventType,
-		entry.Role,
-		entry.ToolCallID,
-		entry.ToolName,
-		entry.Payload,
-		entry.PayloadSHA256,
-		entry.PayloadBytes,
-		boolToInt(entry.IsError),
-		metadataJSON,
-		entry.CreatedAt.UTC().Format(time.RFC3339Nano),
-	)
-	if err != nil {
-		return fmt.Errorf("insert session audit entry: %w", err)
-	}
-	return nil
+		stmt, err := tx.PrepareContext(ctx,
+			`INSERT INTO session_tool_audit_logs (
+				id, conversation_id, session_id, user_id, source, event_type, role,
+				tool_call_id, tool_name, payload, payload_sha256, payload_bytes,
+				is_error, metadata, created_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		)
+		if err != nil {
+			return fmt.Errorf("prepare audit batch insert: %w", err)
+		}
+		defer stmt.Close()
+
+		for _, entry := range entries {
+			if strings.TrimSpace(entry.ID) == "" {
+				entry.ID = uuid.NewString()
+			}
+			entry.ConversationID = strings.TrimSpace(entry.ConversationID)
+			if entry.ConversationID == "" {
+				return fmt.Errorf("conversation_id is required")
+			}
+			entry.SessionID = strings.TrimSpace(entry.SessionID)
+			entry.UserID = strings.TrimSpace(entry.UserID)
+			entry.Source = strings.TrimSpace(entry.Source)
+			entry.EventType = strings.TrimSpace(entry.EventType)
+			entry.Role = strings.TrimSpace(entry.Role)
+			entry.ToolCallID = strings.TrimSpace(entry.ToolCallID)
+			entry.ToolName = strings.TrimSpace(entry.ToolName)
+			if entry.CreatedAt.IsZero() {
+				entry.CreatedAt = timeutil.NowTime()
+			}
+			entry.PayloadBytes = len(entry.Payload)
+			if entry.PayloadSHA256 == "" {
+				sum := sha256.Sum256([]byte(entry.Payload))
+				entry.PayloadSHA256 = hex.EncodeToString(sum[:])
+			}
+
+			metadataJSON := "{}"
+			if len(entry.Metadata) > 0 {
+				if b, err := json.Marshal(entry.Metadata); err == nil {
+					metadataJSON = string(b)
+				}
+			}
+
+			if _, err := stmt.ExecContext(
+				ctx,
+				entry.ID,
+				entry.ConversationID,
+				entry.SessionID,
+				entry.UserID,
+				entry.Source,
+				entry.EventType,
+				entry.Role,
+				entry.ToolCallID,
+				entry.ToolName,
+				entry.Payload,
+				entry.PayloadSHA256,
+				entry.PayloadBytes,
+				boolToInt(entry.IsError),
+				metadataJSON,
+				entry.CreatedAt.UTC().Format(time.RFC3339Nano),
+			); err != nil {
+				return fmt.Errorf("insert session audit entry: %w", err)
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit audit batch tx: %w", err)
+		}
+		return nil
+	})
 }
 
 // Recent returns recent entries, optionally scoped to one conversation.
@@ -370,17 +423,36 @@ func (s *Store) PruneExpired(ctx context.Context) error {
 }
 
 func (s *Store) cleanupLoop() {
-	ticker := time.NewTicker(s.cfg.CleanupInterval)
-	defer ticker.Stop()
+	var cleanupTicker *time.Ticker
+	var checkpointTicker *time.Ticker
+	if s.cfg.CleanupInterval > 0 {
+		cleanupTicker = time.NewTicker(s.cfg.CleanupInterval)
+		defer cleanupTicker.Stop()
+	}
+	if s.cfg.CheckpointInterval > 0 {
+		checkpointTicker = time.NewTicker(s.cfg.CheckpointInterval)
+		defer checkpointTicker.Stop()
+	}
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-tickerChan(cleanupTicker):
 			_ = s.PruneExpired(context.Background())
+		case <-tickerChan(checkpointTicker):
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_ = dbutil.CheckpointWAL(ctx, s.db, dbutil.CheckpointPassive)
+			cancel()
 		case <-s.done:
 			return
 		}
 	}
+}
+
+func tickerChan(t *time.Ticker) <-chan time.Time {
+	if t == nil {
+		return nil
+	}
+	return t.C
 }
 
 // Close stops background cleanup and closes the DB.
@@ -400,7 +472,67 @@ func (s *Store) Close() error {
 	s.closeMu.Unlock()
 
 	if db != nil && s.ownsDB {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = dbutil.CheckpointWAL(ctx, db, dbutil.CheckpointTruncate)
+		cancel()
 		return db.Close()
+	}
+	return nil
+}
+
+func (s *Store) retryOnCorruption(op func() error) error {
+	if op == nil {
+		return nil
+	}
+	err := op()
+	if err == nil || !dbutil.IsSQLiteCorruptionError(err) {
+		return err
+	}
+	if recoverErr := s.Recover(); recoverErr != nil {
+		return fmt.Errorf("%w (recover failed: %v)", err, recoverErr)
+	}
+	return op()
+}
+
+// Recover attempts to reopen the dedicated audit DB with the shared recovery flow.
+func (s *Store) Recover() error {
+	if s == nil || !s.ownsDB || strings.TrimSpace(s.dbPath) == "" || strings.TrimSpace(s.dbPath) == ":memory:" {
+		return fmt.Errorf("session audit recovery is unavailable")
+	}
+
+	s.recoveryMu.Lock()
+	defer s.recoveryMu.Unlock()
+
+	if s.db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = dbutil.CheckpointWAL(ctx, s.db, dbutil.CheckpointTruncate)
+		cancel()
+		_ = s.db.Close()
+	}
+
+	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(s.dbPath, s.dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return fmt.Errorf("enable WAL mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("set busy timeout: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA synchronous=" + strings.ToUpper(s.cfg.Durability)); err != nil {
+			return fmt.Errorf("set synchronous mode: %w", err)
+		}
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA wal_autocheckpoint=%d", s.cfg.WALAutoCheckpoint)); err != nil {
+			return fmt.Errorf("set wal autocheckpoint: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	s.db = db
+	if _, err := s.db.Exec(storeSchema); err != nil {
+		return fmt.Errorf("create session audit schema: %w", err)
 	}
 	return nil
 }

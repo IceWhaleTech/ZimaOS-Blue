@@ -22,6 +22,7 @@ declare module 'vue' {
     AutoReplyRuleForm: typeof import('./components/AutoReplyRuleForm.vue')['default']
     AutoReplyTestPanel: typeof import('./components/AutoReplyTestPanel.vue')['default']
     BackupManager: typeof import('./components/BackupManager.vue')['default']
+    BrowserMonitorWidget: typeof import('./components/BrowserMonitorWidget.vue')['default']
     CacheStats: typeof import('./components/metrics/CacheStats.vue')['default']
     CacheStatsCard: typeof import('./components/dashboard/cards/CacheStatsCard.vue')['default']
     CardAccordion: typeof import('./components/typeless/CardAccordion.vue')['default']

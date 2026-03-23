@@ -199,8 +199,7 @@ onMounted(() => {
   justify-content: center;
   background:
     radial-gradient(circle at 0% 0%, rgba(14, 165, 233, 0.1), transparent 42%),
-    radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.08), transparent 36%),
-    #f3f4f6;
+    radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.08), transparent 36%), #f3f4f6;
 }
 
 .app-startup-shell__logo {

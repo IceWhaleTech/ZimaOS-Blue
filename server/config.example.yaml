@@ -204,17 +204,45 @@ tool_calling:
   auto_detect: true
   detection_timeout: "5m"
   web_search:
-    provider: "duckduckgo"  # single provider (legacy)
-    providers: ["duckduckgo", "bing"]  # high availability chain, priority order
+    provider: "bing"  # single provider (legacy)
+    providers: ["bing", "duckduckgo"]  # high availability chain, priority order
     api_key: ""             # required for brave
     base_url: ""            # required for searxng
     max_results: 5
     timeout: "5m"
     safe_search: false
     region: "wt-wt"
+    cache_ttl: "3m"         # set to "-1s" to disable in-memory public search result cache
+    cache_max_entries: 256
+    browser_fallback:
+      enabled: true
+      engine: "bing"
+      trigger_mode: "quality_or_failure"
+      quality_threshold: 52
+      max_browser_retries: 1
+    provider_settings:
+      brave:
+        enabled: false
+        api_key: ""
+      searxng:
+        enabled: false
+        base_url: ""
+      perplexity:
+        enabled: false
+        api_key: ""
   web_fetch:
     allow_private_hosts: false
     timeout: "5m"
+    layered_fetch_enabled: true
+    session_memory_enabled: true
+    domain_strategy_enabled: true
+    adapter_memory_enabled: true
+    max_explore_attempts: 1
+    auto_fallback_hosts: []       # empty = all hosts eligible for automatic layered fallback
+    challenge_policy: "typed_handoff"
+    http_native_enabled: true       # internal libcurl+FFI lane; auto-falls back to net/http if unavailable
+    http_native_library: ""         # optional explicit libcurl path, e.g. /usr/lib/libcurl.4.dylib on macOS
+    http_native_prefer_hosts: []    # optional host suffixes that should try http_native before net/http
     firecrawl_timeout: "5m"
   ripgrep:
     enabled: true
@@ -226,6 +254,48 @@ tool_calling:
       - "https://mirror.ghproxy.com"
       - "https://gh-proxy.com"
       - "https://downloads.sourceforge.net/project/ripgrep.mirror"
+
+# Built-in no-key media fallback
+media:
+  fallback:
+    enabled: true
+    search_provider_chain: ["bing"]
+    search_max_results: 6
+    screenshot_width: 1280
+    screenshot_height: 896
+    complex_prompt_chars: 500
+    native_video:
+      enabled: true
+      fps: 30
+      default_duration_sec: 5
+      max_duration_sec: 12
+      poll_interval: "2s"
+      stall_timeout: "15m"
+      max_runtime: "6h"
+      helper_path: ""      # optional explicit path to blue-video-helper
+      audio_mode: "auto"   # auto, tts, silent
+    public_spaces:
+      - id: "hf-wan21"
+        display_name: "Hugging Face Wan 2.1"
+        url: "https://huggingface.co/spaces/Wan-AI/Wan2.1"
+        categories: ["t2i", "t2v", "i2v", "kf2v"]
+        ready_selectors: [".gradio-container", "textarea", "input[type='text']"]
+        prompt_selectors: ["textarea", "input[placeholder*='prompt']", "input[type='text']"]
+        upload_selectors: ["input[type='file']"]
+        submit_selectors: ["button.primary", "button[type='submit']", "button"]
+        success_selectors:
+          - selectors: ["video source", "video", "a[href$='.mp4']", "a[download]"]
+            attribute: "src"
+            kind: "video"
+          - selectors: ["img", "a[href$='.png']", "a[href$='.jpg']", "a[download]"]
+            attribute: "src"
+            kind: "image"
+        processing_selectors: [".loading", ".generating", "[data-testid='loading']"]
+        error_selectors: [".error", ".toast-error", "[role='alert']"]
+        poll_interval: "4s"
+        stall_timeout: "15m"
+        max_runtime: "6h"
+        timeout: "4m" # legacy alias for older configs
 
 # Runtime performance and lazy-resource reclaim
 performance:
@@ -269,7 +339,13 @@ browser:
   proxy_url: ""
   browser_path: ""      # optional explicit Chrome/Chromium path
   cdp_url: ""           # external relay/CDP endpoint; leave empty to use Blue's built-in relay when relay_enabled=true
+  trusted_sites: []     # exact origins/hosts to seed browser checkpoint auto-approval
+  trusted_site_presets: []  # built-in bundles, e.g. ["browser_common"] or ["relay_focused"]
+  relay_preferred_sites: [] # hosts/origins that should prefer relay/local Chrome
+  relay_preferred_site_presets: [] # built-in bundles, e.g. ["browser_common"] or ["relay_focused"]
+  relay_preferred_fallback_driver: "managed" # retry driver when relay/local Chrome is unavailable
   evaluate_enabled: true
+  network_observe_enabled: true
 
 # Harness control plane (runtime-first, benchmark-ready)
 harness:
@@ -286,9 +362,13 @@ harness:
 # Session settings (conversation context + audit trail)
 session:
   max_tokens: 0                  # 0 = auto-resolve from model context window; use a positive value to force a fixed history budget
+  chat_db_durability: "normal"   # normal, full
+  chat_persist_async: true
+  chat_read_lite: true
+  chat_attachment_external_store: true
   audit:
     enabled: true
-    path: ""                      # empty = reuse blue.db; set a file path to isolate audit logs
+    path: ""                      # empty = data/session_audit.db; set a file path to override
     retention_days: 30
     cleanup_interval: "6h"
     cleanup_batch_size: 500

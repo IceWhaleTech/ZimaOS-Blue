@@ -8,7 +8,7 @@ import { getChannelIconStyleVars } from '@/utils/channelIcons'
 interface ChannelFieldDef {
   key: string
   labelKey: string
-  type: 'text' | 'password' | 'tel' | 'url' | 'textarea'
+  type: 'text' | 'password' | 'tel' | 'url' | 'textarea' | 'toggle'
   placeholder?: string
   placeholderKey?: string
   value: string
@@ -168,6 +168,19 @@ const showTestResult = computed(
 function handleFieldInput(fieldIndex: number, event: Event) {
   const target = event.target as HTMLInputElement | HTMLTextAreaElement
   emit('updateField', fieldIndex, target.value)
+}
+
+function toggleFieldChecked(value: string | undefined): boolean {
+  switch ((value || '').trim().toLowerCase()) {
+    case '1':
+    case 'true':
+    case 'yes':
+    case 'y':
+    case 'on':
+      return true
+    default:
+      return false
+  }
 }
 
 function formatTime(dateStr: string | undefined): string {
@@ -470,14 +483,41 @@ function formatRelativeTime(dateStr: string | undefined): string {
           <div
             v-for="(field, fieldIndex) in translatedChannel.fields"
             :key="field.key"
-            :class="field.type === 'textarea' ? 'md:col-span-2' : ''"
+            :class="field.type === 'textarea' || field.type === 'toggle' ? 'md:col-span-2' : ''"
           >
             <label class="channel-card__field-label">
               {{ field.label }}
               <span v-if="field.required" class="text-red-500">*</span>
             </label>
+            <label
+              v-if="field.type === 'toggle'"
+              class="channel-card__toggle-field dashboard-card-subsurface"
+            >
+              <span class="channel-card__toggle-field-copy">
+                {{
+                  toggleFieldChecked(channel.fields[fieldIndex]?.value)
+                    ? t('common.enabled')
+                    : t('common.disabled')
+                }}
+              </span>
+              <input
+                :checked="toggleFieldChecked(channel.fields[fieldIndex]?.value)"
+                type="checkbox"
+                class="sr-only peer"
+                @change="
+                  emit(
+                    'updateField',
+                    fieldIndex,
+                    ($event.target as HTMLInputElement).checked ? 'true' : 'false'
+                  )
+                "
+              />
+              <span
+                class="channel-card__toggle relative inline-block bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
+              ></span>
+            </label>
             <textarea
-              v-if="field.type === 'textarea'"
+              v-else-if="field.type === 'textarea'"
               :value="channel.fields[fieldIndex]?.value"
               :name="field.key"
               :placeholder="field.placeholder"
@@ -1082,6 +1122,22 @@ textarea.channel-card__input {
   height: 0.82rem;
 }
 
+.channel-card__toggle-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  border-radius: 0.95rem;
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+}
+
+.channel-card__toggle-field-copy {
+  font-size: 0.94rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
 .channel-card__chevron {
   width: 0.84rem;
   height: 0.84rem;
@@ -1294,6 +1350,12 @@ html.dark input.channel-card__password-field {
   background: rgba(15, 23, 42, 0.78);
   color: #f8fafc;
   border-color: rgba(100, 116, 139, 0.58);
+}
+
+:root.dark .channel-card__toggle-field-copy,
+[data-theme='dark'] .channel-card__toggle-field-copy,
+html.dark .channel-card__toggle-field-copy {
+  color: #e2e8f0;
 }
 
 :root.dark .channel-card--connected .channel-card__icon-shell,

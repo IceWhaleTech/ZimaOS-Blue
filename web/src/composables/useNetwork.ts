@@ -25,7 +25,36 @@ export interface NetworkStatus {
   error?: string
 }
 
-export function useNetwork() {
+interface UseNetworkOptions {
+  autoFetch?: boolean
+}
+
+export function getPreferredNetworkAddress(
+  addresses: NetworkAddresses | null | undefined,
+  options: { isTauri?: boolean } = {}
+): string | null {
+  if (!addresses) return null
+
+  if (options.isTauri && addresses.preferred) {
+    try {
+      const url = new URL(addresses.preferred)
+      if (typeof window !== 'undefined' && window.location.port) {
+        url.port = window.location.port
+      }
+      return url.toString()
+    } catch {
+      if (typeof window !== 'undefined') {
+        return `${window.location.protocol}//${window.location.host}`
+      }
+    }
+  }
+
+  const preferred = String(addresses.preferred || '').trim()
+  return preferred || null
+}
+
+export function useNetwork(options: UseNetworkOptions = {}) {
+  const { autoFetch = true } = options
   const addresses = ref<NetworkAddresses | null>(null)
   const status = ref<NetworkStatus | null>(null)
   const loading = ref(false)
@@ -98,8 +127,9 @@ export function useNetwork() {
   }
 
   onMounted(() => {
-    fetchAddresses()
-    fetchStatus()
+    if (!autoFetch) return
+    void fetchAddresses()
+    void fetchStatus()
   })
 
   onUnmounted(() => {

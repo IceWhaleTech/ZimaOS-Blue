@@ -112,27 +112,27 @@ func validateSchemaNode(path string, schema map[string]interface{}, topLevel boo
 }
 
 func validateSchemaItems(path string, raw interface{}) error {
-	switch typed := raw.(type) {
-	case map[string]interface{}:
+	if typed, ok := raw.(map[string]interface{}); ok {
 		return validateSchemaNode(path, typed, false)
-	case []interface{}:
-		for i, item := range typed {
-			child, ok := item.(map[string]interface{})
-			if !ok {
-				return fmt.Errorf("%s[%d]: must be an object", path, i)
-			}
-			if err := validateSchemaNode(fmt.Sprintf("%s[%d]", path, i), child, false); err != nil {
-				return err
-			}
-		}
-		return nil
-	default:
+	}
+	items, ok := normalizeSchemaArray(raw)
+	if !ok {
 		return fmt.Errorf("%s: must be an object or array of objects", path)
 	}
+	for i, item := range items {
+		child, ok := item.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("%s[%d]: must be an object", path, i)
+		}
+		if err := validateSchemaNode(fmt.Sprintf("%s[%d]", path, i), child, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateSchemaAlternatives(path string, raw interface{}) error {
-	items, ok := raw.([]interface{})
+	items, ok := normalizeSchemaArray(raw)
 	if !ok {
 		return fmt.Errorf("%s: must be an array", path)
 	}
@@ -170,15 +170,19 @@ func normalizeSchemaValue(raw interface{}, topLevel bool) interface{} {
 			switch typed := value.(type) {
 			case map[string]interface{}:
 				out[key] = normalizeSchemaValue(typed, false)
-			case []interface{}:
-				items := make([]interface{}, 0, len(typed))
-				for _, child := range typed {
-					items = append(items, normalizeSchemaValue(child, false))
+			default:
+				items, ok := normalizeSchemaArray(typed)
+				if !ok {
+					continue
 				}
-				out[key] = items
+				normalizedItems := make([]interface{}, 0, len(items))
+				for _, child := range items {
+					normalizedItems = append(normalizedItems, normalizeSchemaValue(child, false))
+				}
+				out[key] = normalizedItems
 			}
 		case "oneOf", "anyOf", "allOf":
-			items, ok := value.([]interface{})
+			items, ok := normalizeSchemaArray(value)
 			if !ok {
 				continue
 			}
@@ -280,7 +284,7 @@ func validateValueAgainstSchema(path string, schema map[string]interface{}, valu
 	}
 
 	if rawEnum, ok := schema["enum"]; ok {
-		items, ok := rawEnum.([]interface{})
+		items, ok := normalizeSchemaArray(rawEnum)
 		if ok {
 			matched := false
 			for _, item := range items {
@@ -332,7 +336,7 @@ func validateValueAgainstSchema(path string, schema map[string]interface{}, valu
 }
 
 func validateCompositeSchema(path, kind string, raw interface{}, value interface{}, requireExactlyOne bool) error {
-	items, _ := raw.([]interface{})
+	items, _ := normalizeSchemaArray(raw)
 	matchCount := 0
 	var lastErr error
 	for i, item := range items {
@@ -410,12 +414,16 @@ func validateArrayValue(path string, schema map[string]interface{}, items []inte
 				return err
 			}
 		}
-	case []interface{}:
+	default:
+		schemaItems, ok := normalizeSchemaArray(typed)
+		if !ok {
+			return nil
+		}
 		for i, item := range items {
-			if i >= len(typed) {
+			if i >= len(schemaItems) {
 				return nil
 			}
-			child, ok := typed[i].(map[string]interface{})
+			child, ok := schemaItems[i].(map[string]interface{})
 			if !ok {
 				continue
 			}
@@ -440,9 +448,13 @@ func parseSchemaTypes(raw interface{}) ([]string, error) {
 			return nil, fmt.Errorf("unsupported type %q", typeName)
 		}
 		return []string{typeName}, nil
-	case []interface{}:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
+	default:
+		items, ok := normalizeSchemaArray(raw)
+		if !ok {
+			return nil, fmt.Errorf("must be a string or array of strings")
+		}
+		out := make([]string, 0, len(items))
+		for _, item := range items {
 			typeName, ok := item.(string)
 			if !ok {
 				return nil, fmt.Errorf("type array items must be strings")
@@ -453,8 +465,6 @@ func parseSchemaTypes(raw interface{}) ([]string, error) {
 			out = append(out, typeName)
 		}
 		return out, nil
-	default:
-		return nil, fmt.Errorf("must be a string or array of strings")
 	}
 }
 
@@ -484,45 +494,53 @@ func typeAllowed(typeName string, allowed []string) bool {
 }
 
 func normalizeStringSlice(raw interface{}) ([]string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	items, ok := normalizeSchemaArray(raw)
+	if !ok {
+		return nil, fmt.Errorf("must be an array")
+	}
+	out := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		str, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("must contain only strings")
+		}
+		trimmed := strings.TrimSpace(str)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out, nil
+}
+
+func normalizeSchemaArray(raw interface{}) ([]interface{}, bool) {
 	switch typed := raw.(type) {
 	case nil:
-		return nil, nil
-	case []string:
-		out := make([]string, 0, len(typed))
-		seen := make(map[string]struct{}, len(typed))
-		for _, item := range typed {
-			trimmed := strings.TrimSpace(item)
-			if trimmed == "" {
-				continue
-			}
-			if _, ok := seen[trimmed]; ok {
-				continue
-			}
-			seen[trimmed] = struct{}{}
-			out = append(out, trimmed)
-		}
-		return out, nil
+		return nil, false
 	case []interface{}:
-		out := make([]string, 0, len(typed))
-		seen := make(map[string]struct{}, len(typed))
-		for _, item := range typed {
-			str, ok := item.(string)
-			if !ok {
-				return nil, fmt.Errorf("must contain only strings")
-			}
-			trimmed := strings.TrimSpace(str)
-			if trimmed == "" {
-				continue
-			}
-			if _, ok := seen[trimmed]; ok {
-				continue
-			}
-			seen[trimmed] = struct{}{}
-			out = append(out, trimmed)
+		return typed, true
+	}
+	value := reflect.ValueOf(raw)
+	if !value.IsValid() {
+		return nil, false
+	}
+	switch value.Kind() {
+	case reflect.Slice, reflect.Array:
+		out := make([]interface{}, 0, value.Len())
+		for i := 0; i < value.Len(); i++ {
+			out = append(out, value.Index(i).Interface())
 		}
-		return out, nil
+		return out, true
 	default:
-		return nil, fmt.Errorf("must be an array")
+		return nil, false
 	}
 }
 

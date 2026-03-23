@@ -1,10 +1,15 @@
 package server
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +24,48 @@ func newTestSkillHandler(t *testing.T, registry *skill.Registry) *SkillHandler {
 	handler := NewSkillHandler(registry)
 	handler.SetSkillsDir(t.TempDir())
 	return handler
+}
+
+func newMultipartUploadRequest(t *testing.T, targetURL, filename string, body []byte) (*http.Request, string) {
+	t.Helper()
+
+	var payload bytes.Buffer
+	writer := multipart.NewWriter(&payload)
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("CreateFormFile() error = %v", err)
+	}
+	if _, err := part.Write(body); err != nil {
+		t.Fatalf("Write(upload body) error = %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("multipart writer close error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, targetURL, &payload)
+	return req, writer.FormDataContentType()
+}
+
+type rewriteHostTransport struct {
+	t      *testing.T
+	target *url.URL
+}
+
+func (r rewriteHostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	cloned := req.Clone(req.Context())
+	cloned.URL.Scheme = r.target.Scheme
+	cloned.URL.Host = r.target.Host
+	cloned.Host = req.URL.Host
+	return http.DefaultTransport.RoundTrip(cloned)
+}
+
+func newRewriteHostTransport(t *testing.T, server *httptest.Server) http.RoundTripper {
+	t.Helper()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("url.Parse(server.URL) error = %v", err)
+	}
+	return rewriteHostTransport{t: t, target: target}
 }
 
 func TestNewSkillHandler(t *testing.T) {
@@ -493,6 +540,221 @@ description: Installed from direct URL
 		}
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+	})
+
+	t.Run("installs direct CLAUDE.md and materializes compatibility SKILL.md", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = io.WriteString(w, `---
+id: url_installed_claude
+name: URL Installed Claude
+version: 1.0.0
+description: Installed from CLAUDE URL
+---
+
+# URL Installed Claude
+`)
+		}))
+		defer server.Close()
+
+		body := fmt.Sprintf(`{"url":"%s/CLAUDE.md"}`, server.URL)
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/install-url", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.InstallFromURL(c); err != nil {
+			t.Fatalf("InstallFromURL failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var payload struct {
+			EntryFile string `json:"entry_file"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if payload.EntryFile != "CLAUDE.md" {
+			t.Fatalf("entry_file = %q, want CLAUDE.md", payload.EntryFile)
+		}
+		if registry.Get("url_installed_claude") == nil {
+			t.Fatalf("expected CLAUDE.md-installed skill to be registered")
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "url_installed_claude", "CLAUDE.md")); err != nil {
+			t.Fatalf("expected CLAUDE.md to be written: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "url_installed_claude", "SKILL.md")); err != nil {
+			t.Fatalf("expected compatibility SKILL.md to be written: %v", err)
+		}
+	})
+
+	t.Run("installs GitHub directory skill from CLAUDE.md with raw mirror fallback", func(t *testing.T) {
+		var hosts []string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hosts = append(hosts, r.Host)
+			switch {
+			case r.Host == "api.github.com" && r.URL.Path == "/repos/demo/claude-skill/contents/skills/claude-skill":
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `[
+					{
+						"name":"CLAUDE.md",
+						"path":"skills/claude-skill/CLAUDE.md",
+						"type":"file",
+						"download_url":"https://raw.githubusercontent.com/demo/claude-skill/main/skills/claude-skill/CLAUDE.md"
+					}
+				]`)
+			case r.Host == "raw.githubusercontent.com":
+				http.Error(w, "blocked", http.StatusBadGateway)
+			case r.Host == "raw.gitmirror.com":
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				_, _ = io.WriteString(w, `---
+id: github_directory_claude
+name: GitHub Directory Claude
+version: 2.0.0
+description: Installed from GitHub directory
+---
+
+# GitHub Directory Claude
+`)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+
+		handler.httpClient = &http.Client{Transport: newRewriteHostTransport(t, server)}
+
+		body := `{"url":"https://github.com/demo/claude-skill/tree/main/skills/claude-skill"}`
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/install-url", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.InstallFromURL(c); err != nil {
+			t.Fatalf("InstallFromURL failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var payload struct {
+			EntryFile string `json:"entry_file"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if payload.EntryFile != "CLAUDE.md" {
+			t.Fatalf("entry_file = %q, want CLAUDE.md", payload.EntryFile)
+		}
+		if registry.Get("github_directory_claude") == nil {
+			t.Fatalf("expected GitHub directory skill to be registered")
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "github_directory_claude", "CLAUDE.md")); err != nil {
+			t.Fatalf("expected CLAUDE.md to be written: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "github_directory_claude", "SKILL.md")); err != nil {
+			t.Fatalf("expected compatibility SKILL.md to be written: %v", err)
+		}
+		if len(hosts) < 3 || hosts[0] != "api.github.com" || hosts[1] != "raw.githubusercontent.com" || hosts[2] != "raw.gitmirror.com" {
+			t.Fatalf("unexpected GitHub host fallback order: %v", hosts)
+		}
+	})
+}
+
+func TestSkillHandler_UploadSkill(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+	e := echo.New()
+
+	t.Run("uploads direct CLAUDE.md and preserves entry file", func(t *testing.T) {
+		req, contentType := newMultipartUploadRequest(t, "/skills/upload", "CLAUDE.md", []byte(`---
+id: uploaded_claude_skill
+name: Uploaded Claude Skill
+version: 1.0.0
+description: Uploaded as CLAUDE.md
+---
+
+# Uploaded Claude Skill
+`))
+		req.Header.Set(echo.HeaderContentType, contentType)
+		rec := httptest.NewRecorder()
+
+		if err := handler.UploadSkill(e.NewContext(req, rec)); err != nil {
+			t.Fatalf("UploadSkill failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var payload struct {
+			Success   bool   `json:"success"`
+			EntryFile string `json:"entry_file"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if !payload.Success || payload.EntryFile != "CLAUDE.md" {
+			t.Fatalf("unexpected upload payload: %+v", payload)
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "uploaded_claude_skill", "CLAUDE.md")); err != nil {
+			t.Fatalf("expected CLAUDE.md to exist: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "uploaded_claude_skill", "SKILL.md")); err != nil {
+			t.Fatalf("expected compatibility SKILL.md to exist: %v", err)
+		}
+	})
+
+	t.Run("uploads archive with AGENT.md entry", func(t *testing.T) {
+		var archive bytes.Buffer
+		zipWriter := zip.NewWriter(&archive)
+		agentFile, err := zipWriter.Create("bundle/agent-skill/AGENT.md")
+		if err != nil {
+			t.Fatalf("zipWriter.Create(AGENT.md) error = %v", err)
+		}
+		if _, err := agentFile.Write([]byte(`---
+id: uploaded_agent_skill
+name: Uploaded Agent Skill
+version: 1.0.0
+description: Uploaded as archive
+---
+
+# Uploaded Agent Skill
+`)); err != nil {
+			t.Fatalf("agentFile.Write() error = %v", err)
+		}
+		if err := zipWriter.Close(); err != nil {
+			t.Fatalf("zipWriter.Close() error = %v", err)
+		}
+
+		req, contentType := newMultipartUploadRequest(t, "/skills/upload", "agent-skill.zip", archive.Bytes())
+		req.Header.Set(echo.HeaderContentType, contentType)
+		rec := httptest.NewRecorder()
+
+		if err := handler.UploadSkill(e.NewContext(req, rec)); err != nil {
+			t.Fatalf("UploadSkill failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var payload struct {
+			Success   bool   `json:"success"`
+			EntryFile string `json:"entry_file"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if !payload.Success || payload.EntryFile != "AGENT.md" {
+			t.Fatalf("unexpected upload payload: %+v", payload)
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "uploaded_agent_skill", "AGENT.md")); err != nil {
+			t.Fatalf("expected AGENT.md to exist: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "uploaded_agent_skill", "SKILL.md")); err != nil {
+			t.Fatalf("expected compatibility SKILL.md to exist: %v", err)
 		}
 	})
 }

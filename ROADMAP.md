@@ -358,54 +358,39 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 - [x] Security page optimization with monitoring integration
 - [x] Skill store redesign (new DB schema, search, categories)
 
-**v0.10.15 - Chat Enhancements**
-- [x] Chat UX improvements
-- [x] Message processing pipeline enhancements
+**v0.10.15–v0.10.17 - Experience Layer**
+- [x] Chat UX and message pipeline upgrades
+- [x] Local speech stack foundation, language pack management, and provider switching
+- [x] Remote access via Ngrok / Cloudflare tunnels with ACME certificates
 
-**v0.10.16 - Speech Module**
-- [x] Sherpa TTS/ASR integration
-- [x] eSpeak-NG language pack management
-- [x] TTS provider switching
+**v0.10.18–v0.10.22 - Runtime Optimization**
+- [x] Startup and chat pipeline performance optimization
+- [x] Conversation context cache and prompt/context compaction
+- [x] DingTalk delivery and prompt/pipeline iteration
 
-**v0.10.17 - Remote Access Enhancement**
-- [x] Ngrok tunnel integration
-- [x] Cloudflare tunnel integration
-- [x] ACME / Let's Encrypt certificate support
+**v0.10.23–v0.10.25 - Delivery & Cache**
+- [x] OTA update pipeline and release delivery
+- [x] Native channel rollout and upgrade sweep
+- [x] Two-level CC Cache for API Proxy with streaming-aware bypass
 
-**v0.10.18–v0.10.20 - Performance Sprint**
-- [x] Startup performance optimization
-- [x] Chat pipeline performance optimization
-- [x] Conversation context cache
+**v0.10.26–v0.10.29 - Intelligence & Governance**
+- [x] Response humanization / channel formatting pipeline
+- [x] Context pruning with BM25 segmentation, hybrid backend, and ONNX model management
+- [x] Progressive memory service with dual-write storage and hybrid search
+- [x] Startup port fallback, exec audit/policy enforcement, and data masking
 
-**v0.10.21–v0.10.22 - System Prompt & DingTalk**
-- [x] System prompt enhancement with context compaction
-- [x] DingTalk channel implementation
-- [x] Chat pipeline optimization (iteration 1)
+**v0.10.29+ - Platform Expansion & Auditability**
+- [x] FFI build mode, desktop loader, and cross-platform build checks
+- [x] Windows-native speech plus desktop service/runtime improvements
+- [x] Workspace management, built-in productivity skill adapters, and small model management
+- [x] Mobile UX refresh, security approvals/browser allowlists, transcript auditing, and Harness management
 
-**v0.10.23 - OTA Update**
-- [x] OTA update system planning and implementation
-
-**v0.10.24 - Channel Upgrade**
-- [x] 10 channel native implementations upgraded from stubs
-
-**v0.10.25 - CC Cache** ★ Major Enhancement
-- [x] Two-level caching (L1 memory + L2 disk) for API Proxy
-- [x] Cache key normalization (FNV-1a)
-- [x] Streaming-aware cache bypass
-
-**v0.10.26 - Humanizer**
-- [x] Response humanization pipeline
-
-**v0.10.27 - Context Pruner** (In Progress)
-- [x] Unified pruner with BM25 scoring
-- [x] Chinese/English segmentation
-- [x] Benchmark suite (90%+ test coverage)
-- [ ] ONNX neural backend integration
-
-**v0.10.28 - Memory Service**
-- [x] Progressive search (3-layer: Index/Context/Detail)
-- [x] Dual-write backend (SQLite + Markdown)
-- [x] Remove Supermemory dependency
+**v0.10.30+ - Retrieval Quality & Chat Reliability** (In Progress)
+- [x] Chat interaction and rendering polish, including compact mode guidance and smoother streaming feedback
+- [x] Interrupted stream recovery, retry flow, and persisted-message synchronization hardening
+- [x] Harness compare flow, scorecard diagnostics, and session/transcript audit storage improvements
+- [x] Deep Research routing and evidence presentation upgrades, including stronger intent matching and richer source details
+- [ ] Built-in web search / web fetch capability uplift and broader information acquisition quality improvements
 
 ---
 
@@ -422,17 +407,19 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 | Jan 30, 2026 | v0.10.5–v0.10.6 | API Proxy Sidecar core; Provider Pool with streaming refactor |
 | Jan 31, 2026 | v0.10.7–v0.10.9 | Preview mode; Typeless card rendering optimization; UI restructure (dashboard + settings consolidation) |
 | Feb 1, 2026 | v0.10.1–v0.10.2 | Metrics monitoring (API stats, token tracking); CLI reliability (process lifecycle, error recovery) |
-| Feb 2, 2026 | v0.10.15–v0.10.17 | Chat enhancements; Speech module (Sherpa TTS/ASR); Remote access (Ngrok/Cloudflare tunnels, ACME certs) |
-| Feb 3, 2026 | v0.10.18 | Startup perf optimization; Chat perf optimization; eSpeak language packs; TTS provider switching; Memory system enhancement; Feishu channel |
-| Feb 3, 2026 | v0.10.21–v0.10.22 | System prompt enhancement; Chat pipeline optimization with conversation context cache |
-| Feb 5, 2026 | — | Internationalization (i18n) support; message processing enhancements |
-| Feb 6, 2026 | v0.10.22 | DingTalk channel; Whisper/GGML build enhancement; OTA update system planning |
-| Feb 7, 2026 | — | Route registration refactor; macOS platform startup; TLS cert handling; third-party submodules (espeak-ng, opus, whisper.cpp) |
-| Feb 8, 2026 | — | Personality management module (MVC + file storage + UI) |
-| Feb 11–12, 2026 | — | Personality refactor; channel enhancement; CLI management commands (config, cron, health, logs, models, plugins) |
-| Feb 13, 2026 | — | Project rebrand: Echo → Blue; ACME cert management; service management i18n |
+| Feb 2–3, 2026 | v0.10.15–v0.10.22 | Chat experience upgrades; local speech stack and provider switching; remote access (Ngrok/Cloudflare tunnels, ACME certs); startup/chat performance work; context cache and prompt compaction; DingTalk delivery |
+| Feb 5–13, 2026 | — | i18n foundation and message processing improvements; route/startup hardening; personality management refactor; CLI management commands; Echo → Blue rebrand |
 | Feb 14, 2026 | v0.10.25 | CC Cache two-level caching (L1 memory + L2 disk) for API Proxy |
-| Feb 15, 2026 | v0.10.27–v0.10.28 | Memory service refactor (progressive search + dual-write backend); Encryption settings; Architecture docs; Context pruner |
+| Feb 15, 2026 | v0.10.27–v0.10.28 | Memory service refactor groundwork; Encryption settings; lazy initialization for browser/TTS; Architecture docs; Context pruner |
+| Feb 16–17, 2026 | v0.10.28–v0.10.29 | Release pipeline and packaging refresh; Windows static-lib/c-archive and NSIS installer work; hybrid pruner backend; LFU/LRU multi-level cache and routing statistics; cache/routing defaults hardened |
+| Feb 18, 2026 | — | API Proxy routing hardening: provider restrictions, model blacklist filtering, and Provider → Format → Model retry loop; dev/build scripts and uninstall flow cleanup |
+| Feb 20–22, 2026 | — | FFI build mode and desktop loader; macOS build checks/launcher integration; Windows native TTS/ASR and service management; mobile chat two-page UX with pinned conversations; workspace management and built-in skill adapters |
+| Feb 23–25, 2026 | v0.10.28–v0.10.29 | Ground-up redesign of the memory dual-write architecture with hybrid search; embedded skill/build cleanup; exec command safety auditing and OS-specific implementations; data masking; startup port fallback |
+| Feb 28–Mar 2, 2026 | — | Deep Research rename; skill reranker settings and ONNX model management; security scan prioritization; small model management and SOUL proposal review; SSE stream ID and Typeless/markdown rendering upgrades |
+| Mar 9–15, 2026 | — | Settings and VoiceChat refactor; Web Fetch cards; Home dashboard overhaul with detailed system info and dynamic cards |
+| Mar 16–18, 2026 | — | Approved browser sites management; database auto-recovery coverage; Security/Settings/Plugins layout refresh; embedding disabled by default |
+| Mar 19–20, 2026 | — | Harness rollout (tab, groups, locale overlays); SQLite transcript auditing; media model localization and chat settings polish |
+| Mar 21–22, 2026 | — | Chat streaming interruption recovery and compact interaction polish; Harness compare flow and scorecard diagnostics; session/transcript audit storage hardening; Deep Research routing and source-detail improvements; built-in web search and information acquisition uplift in progress |
 
 ---
 
@@ -441,7 +428,6 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 > The following are **intentionally NOT included in v0.5**:
 
 - Node plugin compatibility layer
-- ~~JS runtime embedding~~ (Completed in v0.4 via goja)
 - Complex UI
 - Hot code updates
 - Full Skill Hub ecosystem
@@ -474,17 +460,12 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 | v0.10.8 | Skill Store | Skill store infra, channel validation | Done |
 | v0.10.9–10 | User Management | Sub-users, page-level permissions | Done |
 | v0.10.13–14 | Security & Skills | Security page, skill store redesign | Done |
-| v0.10.15 | Chat Enhancements | Chat UX, message pipeline | Done |
-| v0.10.16 | Speech Module | Sherpa TTS/ASR, eSpeak, provider switching | Done |
-| v0.10.17 | Remote Access | Ngrok, Cloudflare tunnels, ACME certs | Done |
-| v0.10.18–20 | Performance Sprint | Startup/chat perf, context cache | Done |
-| v0.10.21–22 | Prompt & DingTalk | System prompt, DingTalk channel | Done |
-| v0.10.23 | OTA Update | OTA update system | Done |
-| v0.10.24 | Channel Upgrade | 10 channels upgraded from stubs | Done |
-| v0.10.25 | CC Cache | Two-level cache (L1 mem + L2 disk) | Done |
-| v0.10.26 | Humanizer | Response humanization pipeline | Done |
-| v0.10.27 | Context Pruner | BM25 scoring, segmentation, benchmarks | Done |
-| v0.10.28 | Memory Service | Progressive search, dual-write backend | Done |
+| v0.10.15–17 | Experience Layer | Chat UX, speech stack, remote access | Done |
+| v0.10.18–22 | Runtime Optimization | Performance, context cache, prompt compaction | Done |
+| v0.10.23–25 | Delivery & Cache | OTA, channel rollout, CC Cache | Done |
+| v0.10.26–29 | Intelligence & Governance | Humanizer, pruner, memory, safe tooling | Done |
+| v0.10.29+ | Platform Expansion | FFI/runtime loader, Windows speech, workspace, harness/audit | Ongoing |
+| v0.10.30+ | Retrieval Quality & Chat Reliability | Stream recovery, harness diagnostics, and web search/info acquisition uplift | Ongoing |
 
 ---
 

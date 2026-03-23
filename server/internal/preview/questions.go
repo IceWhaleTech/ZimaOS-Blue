@@ -3,6 +3,7 @@ package preview
 import (
 	"math/rand"
 	"sync"
+
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -16,12 +17,17 @@ type PresetQuestionAttachment struct {
 
 // PresetQuestion represents a preset demo question.
 type PresetQuestion struct {
-	ID          string                     `json:"id"`
-	Text        string                     `json:"text"`
-	TextKey     string                     `json:"text_key,omitempty"` // i18n key for frontend translation
-	Category    string                     `json:"category"`
-	Icon        string                     `json:"icon,omitempty"`
-	Attachments []PresetQuestionAttachment `json:"attachments,omitempty"`
+	ID             string                     `json:"id"`
+	Title          string                     `json:"title,omitempty"`
+	Description    string                     `json:"description,omitempty"`
+	Prompt         string                     `json:"prompt,omitempty"`
+	Text           string                     `json:"text"`
+	TextKey        string                     `json:"text_key,omitempty"` // i18n key for frontend translation
+	Category       string                     `json:"category"`
+	Tags           []string                   `json:"tags,omitempty"`
+	Icon           string                     `json:"icon,omitempty"`
+	EditorialScore int                        `json:"editorial_score,omitempty"`
+	Attachments    []PresetQuestionAttachment `json:"attachments,omitempty"`
 }
 
 // QuestionsService provides preset questions for the preview mode.
@@ -168,169 +174,278 @@ func defaultPresetQuestions() map[string][]PresetQuestion {
 	}
 }
 
+func curatedPresetQuestion(
+	id string,
+	title string,
+	description string,
+	prompt string,
+	category string,
+	tags []string,
+	icon string,
+	editorialScore int,
+) PresetQuestion {
+	return PresetQuestion{
+		ID:             id,
+		Title:          title,
+		Description:    description,
+		Prompt:         prompt,
+		Text:           prompt,
+		Category:       category,
+		Tags:           tags,
+		Icon:           icon,
+		EditorialScore: editorialScore,
+	}
+}
+
 // chinesePresetQuestions returns Chinese preset questions.
 func chinesePresetQuestions() []PresetQuestion {
 	return []PresetQuestion{
-		// General AI Assistant
-		{ID: "q1", Text: "帮我写一封请假邮件", Category: "writing", Icon: "✉️"},
-		{ID: "q2", Text: "解释一下什么是机器学习", Category: "learning", Icon: "🎓"},
-		{ID: "q3", Text: "给我推荐几部科幻电影", Category: "entertainment", Icon: "🎬"},
-		{ID: "q4", Text: "帮我制定一个健身计划", Category: "lifestyle", Icon: "💪"},
-
-		// Coding & Tech
-		{ID: "q6", Text: "用 Python 写一个快速排序", Category: "coding", Icon: "💻"},
-		{ID: "q7", Text: "解释 REST API 的设计原则", Category: "coding", Icon: "🔧"},
-		{ID: "q8", Text: "Docker 和虚拟机有什么区别？", Category: "tech", Icon: "🐳"},
-
-		// Creative
-		{ID: "q9", Text: "帮我写一首关于春天的诗", Category: "creative", Icon: "🌸"},
-		{ID: "q10", Text: "给我的新产品起个名字", Category: "creative", Icon: "💡"},
-
-		// NAS & Home Server
-		{ID: "q11", Text: "如何设置 NAS 的自动备份？", Category: "nas", Icon: "💾"},
-		{ID: "q12", Text: "推荐一些适合家庭使用的 NAS 应用", Category: "nas", Icon: "🏠"},
-
-		// Daily Life
-		{ID: "q13", Text: "今天晚餐吃什么好？", Category: "lifestyle", Icon: "🍽️"},
-		{ID: "q14", Text: "帮我规划一次周末旅行", Category: "travel", Icon: "✈️"},
-		{ID: "q15", Text: "如何养成早起的习惯？", Category: "lifestyle", Icon: "🌅"},
-
-		// Learning
-		{ID: "q16", Text: "学习英语有什么好方法？", Category: "learning", Icon: "📚"},
-		{ID: "q17", Text: "解释一下区块链的工作原理", Category: "learning", Icon: "🔗"},
-		{ID: "q18", Text: "什么是量子计算？", Category: "learning", Icon: "⚛️"},
-
-		// Work
-		{ID: "q19", Text: "如何准备一场技术面试？", Category: "career", Icon: "👔"},
-		{ID: "q20", Text: "如何提高工作效率？", Category: "productivity", Icon: "⚡"},
-
-		// Multimodal - Image Analysis
-		{ID: "q22", Text: "分析这张照片的构图和色彩", Category: "vision", Icon: "🎨", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "cityscape.jpg", MimeType: "image/jpeg", Placeholder: "sample-scene"},
-		}},
-		{ID: "q23", Text: "帮我识别图片中的文字内容", Category: "vision", Icon: "📷", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "invoice.jpg", MimeType: "image/jpeg", Placeholder: "sample-text-image"},
-		}},
-
-		// Agent 2 UI Demo - Chart Analysis
-		{ID: "q42", Text: "帮我解读这个图表的数据", Category: "agent2-ui", Icon: "📈", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "chart.png", MimeType: "image/png", Placeholder: "sample-chart"},
-		}},
-
-		// Agent 2 UI Demo - Code Analysis
-		{ID: "q43", Text: "分析这段代码的结构和逻辑", Category: "agent2-ui", Icon: "💻", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "hello.py", MimeType: "text/x-python", Placeholder: "sample-code"},
-		}},
-		{ID: "q44", Text: "帮我优化这段代码", Category: "agent2-ui", Icon: "🔧", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "hello.py", MimeType: "text/x-python", Placeholder: "sample-code"},
-		}},
-
-		// Agent 2 UI Demo - Document Analysis
-		{ID: "q45", Text: "分析这份销售报告并给出建议", Category: "agent2-ui", Icon: "📋", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "report.txt", MimeType: "text/plain", Placeholder: "sample-document"},
-		}},
-
-		// Agent 2 UI Demo - Image Analysis
-		{ID: "q47", Text: "描述这张风景图片的内容", Category: "agent2-ui", Icon: "🖼️", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "landscape.jpg", MimeType: "image/jpeg", Placeholder: "sample-image"},
-		}},
-
-		// Agent 2 UI Demo - Data Analysis
-		{ID: "q49", Text: "分析这个CSV销售数据并找出趋势", Category: "agent2-ui", Icon: "📊", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "sales_data.csv", MimeType: "text/csv", Placeholder: "sample-csv"},
-		}},
-		{ID: "q50", Text: "帮我检查这个配置文件是否有问题", Category: "agent2-ui", Icon: "⚙️", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "config.json", MimeType: "application/json", Placeholder: "sample-json"},
-		}},
-		{ID: "q51", Text: "找出这段JavaScript代码中的bug", Category: "agent2-ui", Icon: "🐛", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "buggy_calculator.js", MimeType: "text/javascript", Placeholder: "sample-js"},
-		}},
-
-		// Flowchart
-		{ID: "q52", Text: "画一个用户注册登录的流程图", Category: "creative", Icon: "📐"},
+		curatedPresetQuestion(
+			"memory-bank",
+			"数字记忆永生银行",
+			"把聊天、邮件、照片和文档串成可追溯的人生时间线，随时找回某个人、某件事、某个阶段。",
+			"请把我的聊天记录、邮件、照片元数据和文档整理成一套个人记忆库。自动抽取时间、地点、人物、事件与关键词，必要时用 OCR 识别图片文字，生成可追踪的时间线与主题索引，并在我提问时按“发生了什么、相关证据、时间脉络”的结构回答。",
+			"personal-knowledge",
+			[]string{"personal-knowledge", "learning-growth"},
+			"🧠",
+			120,
+		),
+		curatedPresetQuestion(
+			"reading-companion",
+			"每日阅读伴读",
+			"每天替我挑出最值得读的内容，不只总结，还要帮我建立理解和复盘闭环。",
+			"围绕我关注的主题持续追踪文章来源，筛选出每天最值得读的 3 篇。对每篇生成摘要、关键观点、可争议点和 2 个讨论问题，按主题归档，并记录我的阅读进度、反馈和长期兴趣变化。",
+			"learning-growth",
+			[]string{"learning-growth"},
+			"📚",
+			118,
+		),
+		curatedPresetQuestion(
+			"growth-map",
+			"个人学习成长地图",
+			"把课程、项目、笔记和复习节奏拼成一张动态技能地图，知道下一步最该学什么。",
+			"请把我的课程学习、项目提交、笔记和知识卡片整合成一张成长地图。识别我已经掌握的技能、薄弱环节和停滞点，安排间隔复习，并为每个阶段推荐下一步最值得投入的学习资源和练习任务。",
+			"learning-growth",
+			[]string{"learning-growth", "personal-knowledge"},
+			"🗺️",
+			116,
+		),
+		curatedPresetQuestion(
+			"content-planner",
+			"多平台内容策划",
+			"盯住 X、Reddit、YouTube 的热点，把趋势变成一整套可发布的内容选题。",
+			"持续跟踪 X、Reddit 和 YouTube 上与 AI 软件相关的高热度话题，提炼正在爆发的观点、争议和叙事。基于这些趋势，为我生成一周的内容选题、每条内容的标题角度、脚本提纲、发布时间建议和互动复盘指标。",
+			"content-creation",
+			[]string{"content-creation", "user-research"},
+			"📣",
+			114,
+		),
+		curatedPresetQuestion(
+			"chip-market-briefing",
+			"芯片行情开盘必读",
+			"开盘前 30 分钟，用一页简报看完 NVDA、AMD 和芯片链的关键变化。",
+			"围绕 NVDA、AMD 以及芯片产业链，生成一份开盘前必读简报。总结隔夜价格变动、相关新闻、分析师观点、市场情绪和潜在催化因素，并用“发生了什么、为什么重要、今天该关注什么”三段式输出。",
+			"market-investing",
+			[]string{"market-investing"},
+			"📈",
+			112,
+		),
+		curatedPresetQuestion(
+			"morning-briefing",
+			"个人数据晨间简报",
+			"把日程、邮件、待办和新闻合成一份真正有优先级的晨报。",
+			"每天早上为我生成一份晨间简报，整合我的日历安排、邮件动态、待办事项和关注领域新闻。按优先级给出今天最重要的 3 件事、需要预判的风险和建议的行动顺序，让我在 3 分钟内进入状态。",
+			"personal-knowledge",
+			[]string{"personal-knowledge"},
+			"🌅",
+			110,
+		),
+		curatedPresetQuestion(
+			"macro-tracker",
+			"经济数据追踪解读",
+			"盯住关键宏观指标变化，帮我把“知道数据更新了”变成“理解它意味着什么”。",
+			"持续追踪美联储、统计局等公开经济数据，建立历史对比和异常提醒。每次数据更新后，解释这组数据意味着什么、对不同资产可能有哪些影响、市场常见误读是什么，并给出几种可能的情景推演。",
+			"market-investing",
+			[]string{"market-investing", "learning-growth"},
+			"🏛️",
+			108,
+		),
+		curatedPresetQuestion(
+			"design-adaptation",
+			"设计稿一键多端适配",
+			"从一份设计稿快速推演出桌面端、平板端和移动端的适配方案与交付清单。",
+			"基于我的设计稿或页面规范，帮我产出多端适配方案。识别核心布局结构、组件复用关系和关键断点，输出不同设备的适配建议、设计规范变化点，以及给开发的交付清单和风险提示。",
+			"product-design",
+			[]string{"product-design"},
+			"📐",
+			106,
+		),
+		curatedPresetQuestion(
+			"inspiration-feed",
+			"设计灵感无限供应",
+			"按我的审美偏好持续投喂灵感，不只找相似图，还要给出可复用的风格方向。",
+			"围绕我偏好的视觉风格，持续收集和整理来自设计社区的优秀案例。把灵感按版式、色彩、材质、氛围和交互语言分类，推荐相似参考，并为每次创作生成一份可直接开工的情绪板和风格方向说明。",
+			"product-design",
+			[]string{"product-design"},
+			"🎨",
+			104,
+		),
+		curatedPresetQuestion(
+			"sentiment-radar",
+			"用户评论情感雷达",
+			"实时听见评论区和社媒里的情绪变化，发现用户真正关心却没被满足的点。",
+			"持续监控社区帖子、社媒讨论和视频评论，识别用户情绪、重复抱怨、高频期待和观点分化。不要只做情感分类，还要总结用户在意的核心问题、潜在画像、尚未被满足的需求，以及值得验证的产品机会。",
+			"user-research",
+			[]string{"user-research", "content-creation"},
+			"🛰️",
+			102,
+		),
+		curatedPresetQuestion(
+			"dream-dialogue",
+			"梦境符号深度对话",
+			"不替我下结论，而是通过追问帮我从梦里看见现实里的线索。",
+			"当我描述梦境时，请不要直接给出标准化解释。先通过连续追问，引导我把梦里的场景、人物和情绪与现实经历联系起来，逐步沉淀出属于我的梦境符号词典，并记录反复出现的主题与变化。",
+			"psychological-exploration",
+			[]string{"psychological-exploration"},
+			"🌙",
+			100,
+		),
+		curatedPresetQuestion(
+			"aristotle-dialogue",
+			"灵魂对话：亚里士多德",
+			"把思想家的公开著作和方法论整理成一个可长期对话的“思想容器”。",
+			"请围绕亚里士多德的公开著作、可信史料和核心思想，整理一套可对话的知识容器。提炼他的概念体系、价值判断、论证方式和常用追问框架，在回答我问题时尽量保持他的思考风格，同时明确区分原典观点、合理推断和现代延伸。",
+			"philosophical-dialogue",
+			[]string{"philosophical-dialogue", "learning-growth"},
+			"🏛️",
+			98,
+		),
 	}
 }
 
 // englishPresetQuestions returns English preset questions.
 func englishPresetQuestions() []PresetQuestion {
 	return []PresetQuestion{
-		// General AI Assistant
-		{ID: "q1", Text: "Help me write a leave request email", Category: "writing", Icon: "✉️"},
-		{ID: "q2", Text: "Explain what machine learning is", Category: "learning", Icon: "🎓"},
-		{ID: "q3", Text: "Recommend some sci-fi movies", Category: "entertainment", Icon: "🎬"},
-		{ID: "q4", Text: "Help me create a fitness plan", Category: "lifestyle", Icon: "💪"},
-
-		// Coding & Tech
-		{ID: "q6", Text: "Write a quicksort in Python", Category: "coding", Icon: "💻"},
-		{ID: "q7", Text: "Explain REST API design principles", Category: "coding", Icon: "🔧"},
-		{ID: "q8", Text: "What's the difference between Docker and VMs?", Category: "tech", Icon: "🐳"},
-
-		// Creative
-		{ID: "q9", Text: "Write a poem about spring", Category: "creative", Icon: "🌸"},
-		{ID: "q10", Text: "Help me name my new product", Category: "creative", Icon: "💡"},
-
-		// NAS & Home Server
-		{ID: "q11", Text: "How to set up automatic NAS backup?", Category: "nas", Icon: "💾"},
-		{ID: "q12", Text: "Recommend NAS apps for home use", Category: "nas", Icon: "🏠"},
-
-		// Daily Life
-		{ID: "q13", Text: "What should I have for dinner?", Category: "lifestyle", Icon: "🍽️"},
-		{ID: "q14", Text: "Help me plan a weekend trip", Category: "travel", Icon: "✈️"},
-		{ID: "q15", Text: "How to develop an early rising habit?", Category: "lifestyle", Icon: "🌅"},
-
-		// Learning
-		{ID: "q16", Text: "What are good methods to learn English?", Category: "learning", Icon: "📚"},
-		{ID: "q17", Text: "Explain how blockchain works", Category: "learning", Icon: "🔗"},
-		{ID: "q18", Text: "What is quantum computing?", Category: "learning", Icon: "⚛️"},
-
-		// Work
-		{ID: "q19", Text: "How to prepare for a tech interview?", Category: "career", Icon: "👔"},
-		{ID: "q20", Text: "How can I improve work efficiency?", Category: "productivity", Icon: "⚡"},
-
-		// Multimodal - Image Analysis
-		{ID: "q22", Text: "Analyze the composition and colors of this photo", Category: "vision", Icon: "🎨", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "cityscape.jpg", MimeType: "image/jpeg", Placeholder: "sample-scene"},
-		}},
-		{ID: "q23", Text: "Help me recognize text in this image", Category: "vision", Icon: "📷", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "invoice.jpg", MimeType: "image/jpeg", Placeholder: "sample-text-image"},
-		}},
-
-		// Agent 2 UI Demo - Chart Analysis
-		{ID: "q42", Text: "Help me interpret the data in this chart", Category: "agent2-ui", Icon: "📈", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "chart.png", MimeType: "image/png", Placeholder: "sample-chart"},
-		}},
-
-		// Agent 2 UI Demo - Code Analysis
-		{ID: "q43", Text: "Analyze the structure and logic of this code", Category: "agent2-ui", Icon: "💻", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "hello.py", MimeType: "text/x-python", Placeholder: "sample-code"},
-		}},
-		{ID: "q44", Text: "Help me optimize this code", Category: "agent2-ui", Icon: "🔧", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "hello.py", MimeType: "text/x-python", Placeholder: "sample-code"},
-		}},
-
-		// Agent 2 UI Demo - Document Analysis
-		{ID: "q45", Text: "Analyze this sales report and provide recommendations", Category: "agent2-ui", Icon: "📋", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "report.txt", MimeType: "text/plain", Placeholder: "sample-document"},
-		}},
-
-		// Agent 2 UI Demo - Image Analysis
-		{ID: "q47", Text: "Describe the content of this landscape image", Category: "agent2-ui", Icon: "🖼️", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "landscape.jpg", MimeType: "image/jpeg", Placeholder: "sample-image"},
-		}},
-
-		// Agent 2 UI Demo - Data Analysis
-		{ID: "q49", Text: "Analyze this CSV sales data and find trends", Category: "agent2-ui", Icon: "📊", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "sales_data.csv", MimeType: "text/csv", Placeholder: "sample-csv"},
-		}},
-		{ID: "q50", Text: "Check this config file for any issues", Category: "agent2-ui", Icon: "⚙️", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "config.json", MimeType: "application/json", Placeholder: "sample-json"},
-		}},
-		{ID: "q51", Text: "Find the bugs in this JavaScript code", Category: "agent2-ui", Icon: "🐛", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "buggy_calculator.js", MimeType: "text/javascript", Placeholder: "sample-js"},
-		}},
-
-		// Flowchart
-		{ID: "q52", Text: "Draw a user registration and login flowchart", Category: "creative", Icon: "📐"},
+		curatedPresetQuestion(
+			"memory-bank",
+			"Digital Memory Bank",
+			"Turn chats, emails, photos, and documents into a searchable life timeline you can revisit anytime.",
+			"Please organize my chat history, emails, photo metadata, and documents into a personal memory system. Extract the time, place, people, events, and keywords, use OCR when images contain text, build a traceable timeline and topic index, and answer future questions in a clear structure of what happened, supporting evidence, and chronology.",
+			"personal-knowledge",
+			[]string{"personal-knowledge", "learning-growth"},
+			"🧠",
+			120,
+		),
+		curatedPresetQuestion(
+			"reading-companion",
+			"Daily Reading Companion",
+			"Pick the most worthwhile things for me to read each day, then help me digest and reflect on them.",
+			"Track sources around the topics I care about and surface the three most worthwhile pieces for me each day. For every piece, generate a concise summary, the key ideas, the debatable points, and two discussion prompts, then archive everything by theme and keep track of my reading progress, feedback, and changing interests over time.",
+			"learning-growth",
+			[]string{"learning-growth"},
+			"📚",
+			118,
+		),
+		curatedPresetQuestion(
+			"growth-map",
+			"Personal Growth Map",
+			"Turn courses, projects, notes, and review habits into a living skill map that tells me what to learn next.",
+			"Please combine my course progress, project commits, notes, and knowledge cards into a personal growth map. Identify the skills I have already built, my weak spots, and where I am stalled, schedule spaced review, and recommend the next learning resources and practice tasks that are most worth my time.",
+			"learning-growth",
+			[]string{"learning-growth", "personal-knowledge"},
+			"🗺️",
+			116,
+		),
+		curatedPresetQuestion(
+			"content-planner",
+			"Cross-Platform Content Planner",
+			"Watch X, Reddit, and YouTube trends, then turn them into a publishable content pipeline.",
+			"Continuously track high-velocity AI software topics across X, Reddit, and YouTube. Distill the narratives, conflicts, and talking points that are gaining traction, then turn them into a week of content ideas with title angles, script outlines, posting-time suggestions, and follow-up metrics for reviewing performance.",
+			"content-creation",
+			[]string{"content-creation", "user-research"},
+			"📣",
+			114,
+		),
+		curatedPresetQuestion(
+			"chip-market-briefing",
+			"Chip Market Open Brief",
+			"Read one page before the opening bell and know what changed across NVDA, AMD, and the chip chain.",
+			"Generate a pre-market briefing focused on NVDA, AMD, and the broader semiconductor chain. Summarize overnight price moves, important news, analyst views, market sentiment, and possible catalysts, then present the result as what happened, why it matters, and what to watch today.",
+			"market-investing",
+			[]string{"market-investing"},
+			"📈",
+			112,
+		),
+		curatedPresetQuestion(
+			"morning-briefing",
+			"Personal Morning Brief",
+			"Blend my schedule, email, tasks, and news into a morning brief with real priorities.",
+			"Create a morning brief for me every day that pulls together my calendar, email activity, tasks, and news from the domains I follow. Rank the most important three priorities for today, call out likely risks, and suggest the best order of action so I can get oriented in three minutes.",
+			"personal-knowledge",
+			[]string{"personal-knowledge"},
+			"🌅",
+			110,
+		),
+		curatedPresetQuestion(
+			"macro-tracker",
+			"Economic Data Decoder",
+			"Track macro releases and turn raw updates into a practical explanation of what they could mean.",
+			"Continuously monitor public macro data from the Federal Reserve, statistics agencies, and similar sources, keeping historical comparisons and anomaly alerts. Whenever new data arrives, explain what changed, what it may imply for different asset classes, where the market might misread it, and which scenarios deserve attention next.",
+			"market-investing",
+			[]string{"market-investing", "learning-growth"},
+			"🏛️",
+			108,
+		),
+		curatedPresetQuestion(
+			"design-adaptation",
+			"One-Click Multi-Device Adaptation",
+			"Take one design and quickly derive desktop, tablet, and mobile adaptation guidance plus a handoff checklist.",
+			"Based on my design file or UI spec, produce a multi-device adaptation plan. Identify the core layout structure, reusable components, and key breakpoints, then output device-specific adaptation suggestions, spec changes, and a practical handoff checklist with the main risks for engineering.",
+			"product-design",
+			[]string{"product-design"},
+			"📐",
+			106,
+		),
+		curatedPresetQuestion(
+			"inspiration-feed",
+			"Infinite Design Inspiration",
+			"Learn my taste and keep feeding me references that are not just similar, but actually reusable.",
+			"Continuously collect and organize high-quality references around the visual styles I prefer. Classify inspiration by layout, color, texture, mood, and interaction language, recommend adjacent references, and package each round into a moodboard and style-direction brief that I can use immediately.",
+			"product-design",
+			[]string{"product-design"},
+			"🎨",
+			104,
+		),
+		curatedPresetQuestion(
+			"sentiment-radar",
+			"User Sentiment Radar",
+			"Hear the emotional shifts across comments and communities, then spot what users care about that still is not being solved.",
+			"Continuously monitor community posts, social discussions, and video comments to identify sentiment, repeated complaints, frequent expectations, and polarized viewpoints. Go beyond sentiment labels and summarize the real problems users care about, the likely user segments, the unmet needs, and the product opportunities worth validating.",
+			"user-research",
+			[]string{"user-research", "content-creation"},
+			"🛰️",
+			102,
+		),
+		curatedPresetQuestion(
+			"dream-dialogue",
+			"Dream Symbol Dialogue",
+			"Do not explain my dream for me. Ask the questions that help me connect it back to real life.",
+			"When I describe a dream, do not jump to a standardized interpretation. Ask a sequence of thoughtful questions that helps me connect the dream's scenes, people, and emotions back to real-life experiences, gradually build a personal dream-symbol lexicon, and keep track of recurring themes as they evolve.",
+			"psychological-exploration",
+			[]string{"psychological-exploration"},
+			"🌙",
+			100,
+		),
+		curatedPresetQuestion(
+			"aristotle-dialogue",
+			"Soul Dialogue: Aristotle",
+			"Turn a philosopher's public writings into a long-lived container I can keep thinking with.",
+			"Build a dialogue-ready knowledge container around Aristotle's public works, reliable historical sources, and core ideas. Distill his conceptual system, value judgments, argument style, and recurring question patterns, and when answering me, preserve his style of thought while clearly separating original doctrine, reasonable inference, and modern extension.",
+			"philosophical-dialogue",
+			[]string{"philosophical-dialogue", "learning-growth"},
+			"🏛️",
+			98,
+		),
 	}
 }
 

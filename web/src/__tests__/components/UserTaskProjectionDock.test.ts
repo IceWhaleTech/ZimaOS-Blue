@@ -42,6 +42,7 @@ function createTestI18n() {
           taskKindAgent: 'Agent',
           taskBackToConversation: 'Back to task',
           taskCancel: 'Cancel',
+          taskRuntimeExecute: 'Executing',
         },
       },
     },
@@ -71,7 +72,7 @@ function makeTasks() {
       status: 'waiting_user',
       stage: 'waiting_user',
       progress: 72,
-      subtitle: 'Need your approval',
+      subtitle: 'execute',
       actions: { can_cancel: true, can_open_chat: true, can_send_update: false },
       updated_at: '2026-03-20T11:58:00.000Z',
     },
@@ -121,6 +122,7 @@ describe('UserTaskProjectionDock', () => {
 
     expect(wrapper.get('[aria-expanded]').attributes('aria-expanded')).toBe('true')
 
+    expect(wrapper.text()).toContain('Executing')
     await wrapper.get('button[class*="border-slate-200"]').trigger('click')
     await wrapper.get('button[class*="border-amber-200"]').trigger('click')
 

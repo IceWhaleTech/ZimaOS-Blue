@@ -8,12 +8,17 @@ const chatStore = reactive({
   messages: [] as Array<Record<string, unknown>>,
   selectedMessageIds: new Set<string>(),
   isMultiSelectMode: false,
+  processTrace: [] as unknown[],
   toolExecuting: false,
   toolExecutingCommands: [] as string[],
   toolExecutingNames: [] as string[],
   toolExecutingStartTime: 0,
   toolResults: [] as unknown[],
   toolSandboxAvailable: false,
+  awaitingConfirmation: false,
+  statusSummary: '',
+  statusStartedAt: 0,
+  streamProgress: '',
   sendMessage: vi.fn(),
   getMessageMetadata: vi.fn(() => null),
   toggleMessageSelection: vi.fn(),
@@ -105,17 +110,52 @@ describe('ChatMessage streaming flush', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     chatStore.messages = []
+    chatStore.processTrace = []
     chatStore.toolExecuting = false
     chatStore.toolExecutingCommands = []
     chatStore.toolExecutingNames = []
     chatStore.toolExecutingStartTime = 0
     chatStore.toolResults = []
     chatStore.toolSandboxAvailable = false
+    chatStore.awaitingConfirmation = false
+    chatStore.statusSummary = ''
+    chatStore.statusStartedAt = 0
+    chatStore.streamProgress = ''
     chatStore.getMessageMetadata.mockReset().mockReturnValue(null)
   })
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('renders the first streamed token immediately', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage(''),
+        isStreaming: true,
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: true,
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('你')
+
+    await wrapper.setProps({
+      message: makeMessage('你'),
+    })
+    await nextTick()
+
+    expect(wrapper.text()).toContain('你')
   })
 
   it('flushes deferred streaming text before tool execution UI appears', async () => {
@@ -153,5 +193,46 @@ describe('ChatMessage streaming flush', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('正在创建 PPT 结构大纲和内容')
+  })
+
+  it('reveals bursty streaming updates in short phrase chunks instead of pure per-character typing', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage(''),
+        isStreaming: true,
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: true,
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    await wrapper.setProps({
+      message: makeMessage('hello world from blue'),
+    })
+    await nextTick()
+
+    expect(wrapper.text()).toContain('h')
+    expect(wrapper.text()).not.toContain('hello world from blue')
+
+    vi.advanceTimersByTime(18)
+    await nextTick()
+
+    expect(wrapper.text()).toContain('hello world')
+    expect(wrapper.text()).not.toContain('hello world from blue')
+
+    vi.runAllTimers()
+    await nextTick()
+
+    expect(wrapper.text()).toContain('hello world from blue')
   })
 })

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/slidespec"
 )
 
 const (
@@ -33,6 +34,7 @@ type Request struct {
 	Description       string
 	AspectRatio       string
 	ReferenceImages   []string
+	LayoutSpec        any
 	StylePreset       string
 	Theme             string
 	Source            string
@@ -110,6 +112,7 @@ type Service struct {
 	generator   Generator
 	storage     StorageReader
 	reviewer    Reviewer
+	layoutPlan  LayoutPlanner
 	waitTimeout time.Duration
 }
 
@@ -120,6 +123,13 @@ func NewService(generator Generator, storage StorageReader, reviewer Reviewer) *
 		reviewer:    reviewer,
 		waitTimeout: defaultWaitTimeout,
 	}
+}
+
+func (s *Service) SetLayoutPlanner(planner LayoutPlanner) {
+	if s == nil {
+		return
+	}
+	s.layoutPlan = planner
 }
 
 func (s *Service) Generate(ctx context.Context, req Request) (*Result, error) {
@@ -234,7 +244,7 @@ func normalizeRequest(req Request) Request {
 	if req.AspectRatio == "" {
 		req.AspectRatio = DefaultAspectRatio
 	}
-	req.StylePreset = strings.TrimSpace(req.StylePreset)
+	req.StylePreset = slidespec.NormalizeStylePreset(req.StylePreset)
 	if req.StylePreset == "" {
 		req.StylePreset = DefaultStylePreset
 	}
@@ -332,7 +342,11 @@ func firstPreferredModel(models []mediagen.MediaModelInfo, preferred []string, a
 }
 
 func (s *Service) generateOnce(ctx context.Context, req Request, selection modelSelection, repairDelta string, attempt int) (*mediagen.MediaTask, string, *mediagen.MediaRequest, error) {
-	prompt := buildPrompt(req, selection.Mode, repairDelta)
+	brief := buildSlideBrief(req)
+	allowVisual := slideAllowsVisualSlot(brief, req, selection)
+	layoutSpec := s.resolveLayoutSpec(ctx, req, brief, allowVisual)
+	promptBrief := briefWithLayoutSpec(brief, layoutSpec)
+	prompt := buildPromptWithBrief(req, selection.Mode, repairDelta, promptBrief)
 	mediaReq := &mediagen.MediaRequest{
 		Type:           mediagen.MediaTypeImage,
 		Prompt:         prompt,
@@ -342,9 +356,17 @@ func (s *Service) generateOnce(ctx context.Context, req Request, selection model
 		Extra: map[string]any{
 			"aspect_ratio":        req.AspectRatio,
 			"resolution":          defaultResolution,
-			"style_preset":        req.StylePreset,
+			"style_preset":        promptBrief.StylePreset,
 			"quality_profile":     req.QualityProfile,
 			"ppt_attempt":         attempt,
+			"ppt_description":     req.Description,
+			"ppt_title":           brief.Title,
+			"ppt_subtitle":        brief.Subtitle,
+			"ppt_bullets":         append([]string(nil), brief.Bullets...),
+			"ppt_visual_query":    brief.VisualQuery,
+			"render_mode":         promptBrief.RenderMode,
+			"template_id":         promptBrief.TemplateID,
+			"layout_spec":         layoutSpec,
 			"review_threshold":    req.ReviewThreshold,
 			"review_retry_budget": req.ReviewRetryBudget,
 			"source":              req.Source,
@@ -359,8 +381,8 @@ func (s *Service) generateOnce(ctx context.Context, req Request, selection model
 	if attempt > 0 {
 		mediaReq.Extra["repair_prompt_delta"] = repairDelta
 	}
-	if req.Theme != "" {
-		mediaReq.Extra["theme"] = req.Theme
+	if promptBrief.Theme != "" {
+		mediaReq.Extra["theme"] = promptBrief.Theme
 	}
 	if req.Lang != "" {
 		mediaReq.Extra["lang"] = req.Lang
@@ -387,6 +409,60 @@ func (s *Service) generateOnce(ctx context.Context, req Request, selection model
 		return nil, prompt, mediaReq, errors.New("ppt slide-asset generation returned no task")
 	}
 	return task, prompt, mediaReq, nil
+}
+
+func (s *Service) resolveLayoutSpec(ctx context.Context, req Request, brief slidespec.Brief, hasVisual bool) slidespec.LayoutSpec {
+	canvasWidth, canvasHeight := slideCanvasDimensions(brief.AspectRatio)
+	if explicit, ok := slidespec.DecodeLayoutSpec(req.LayoutSpec); ok {
+		return slidespec.NormalizeLayoutSpec(explicit, brief, canvasWidth, canvasHeight, hasVisual)
+	}
+	if s != nil && s.layoutPlan != nil {
+		planned, err := s.layoutPlan.Plan(ctx, LayoutPlanRequest{
+			Description:    req.Description,
+			Theme:          req.Theme,
+			StylePreset:    req.StylePreset,
+			AspectRatio:    brief.AspectRatio,
+			Lang:           req.Lang,
+			Width:          canvasWidth,
+			Height:         canvasHeight,
+			HasVisual:      hasVisual,
+			ReferenceCount: len(req.ReferenceImages),
+			Brief:          brief,
+		})
+		if err == nil && planned != nil {
+			return slidespec.NormalizeLayoutSpec(*planned, brief, canvasWidth, canvasHeight, hasVisual)
+		}
+	}
+	return slidespec.BuildLayoutSpec(brief, canvasWidth, canvasHeight, hasVisual)
+}
+
+func slideAllowsVisualSlot(brief slidespec.Brief, req Request, selection modelSelection) bool {
+	if selection.Mode == ModeReference && len(req.ReferenceImages) > 0 {
+		return true
+	}
+	if strings.TrimSpace(brief.VisualQuery) != "" {
+		return true
+	}
+	return strings.TrimSpace(req.Description) != ""
+}
+
+func briefWithLayoutSpec(brief slidespec.Brief, layout slidespec.LayoutSpec) slidespec.Brief {
+	if layout.RenderMode != "" {
+		brief.RenderMode = layout.RenderMode
+	}
+	if layout.StylePreset != "" {
+		brief.StylePreset = layout.StylePreset
+	}
+	if layout.TemplateID != "" {
+		brief.TemplateID = layout.TemplateID
+	}
+	if layout.Theme != "" {
+		brief.Theme = layout.Theme
+	}
+	if layout.Canvas.AspectRatio != "" {
+		brief.AspectRatio = layout.Canvas.AspectRatio
+	}
+	return brief
 }
 
 func (s *Service) reviewTask(ctx context.Context, task *mediagen.MediaTask, req Request) (*ReviewResult, string, error) {
@@ -445,6 +521,23 @@ func applyTaskOutputs(result *Result, task *mediagen.MediaTask) {
 }
 
 func buildPrompt(req Request, mode Mode, repairDelta string) string {
+	return buildPromptWithBrief(req, mode, repairDelta, buildSlideBrief(req))
+}
+
+func buildSlideBrief(req Request) slidespec.Brief {
+	return slidespec.Build(slidespec.Input{
+		Prompt:         req.Description,
+		Description:    req.Description,
+		StylePreset:    req.StylePreset,
+		QualityProfile: req.QualityProfile,
+		Theme:          req.Theme,
+		AspectRatio:    req.AspectRatio,
+		Source:         req.Source,
+		Lang:           req.Lang,
+	})
+}
+
+func buildPromptWithBrief(req Request, mode Mode, repairDelta string, brief slidespec.Brief) string {
 	sections := []string{
 		"Create a presentation-ready PPT slide visual for this intent:",
 		req.Description,
@@ -453,7 +546,21 @@ func buildPrompt(req Request, mode Mode, repairDelta string) string {
 		sections = append(sections, "Theme or brand context:", req.Theme)
 	}
 	sections = append(sections,
-		"Banana Slides style constraints:",
+		"Structured slide brief:",
+		fmt.Sprintf("- template_id: %s", brief.TemplateID),
+		fmt.Sprintf("- title: %s", brief.Title),
+	)
+	if brief.Subtitle != "" {
+		sections = append(sections, fmt.Sprintf("- subtitle: %s", brief.Subtitle))
+	}
+	if len(brief.Bullets) > 0 {
+		sections = append(sections, fmt.Sprintf("- bullets: %s", strings.Join(brief.Bullets, " | ")))
+	}
+	if brief.VisualQuery != "" {
+		sections = append(sections, fmt.Sprintf("- visual_query: %s", brief.VisualQuery))
+	}
+	sections = append(sections,
+		slideStyleConstraintTitle(brief.StylePreset),
 		fmt.Sprintf("- Design for a %s presentation canvas with strong composition and polished, presentation-ready aesthetics.", req.AspectRatio),
 		"- Keep the image suitable for slide overlays: no body paragraphs, no captions, no UI chrome, no watermarks.",
 		"- Reserve clean negative space for future title and content placement with safe contrast.",
@@ -466,6 +573,8 @@ func buildPrompt(req Request, mode Mode, repairDelta string) string {
 		"- typography_or_text_safety: leave clean zones that can safely receive titles or bullets later.",
 		"- professionalism: polished, production-ready, presentation-grade finish.",
 	)
+	sections = append(sections, slideStyleConstraintLines(brief.StylePreset)...)
+	sections = append(sections, slideTemplateConstraintLines(brief.TemplateID)...)
 	if mode == ModeReference {
 		sections = append(sections,
 			"Reference image guidance:",
@@ -482,6 +591,62 @@ func buildPrompt(req Request, mode Mode, repairDelta string) string {
 		sections = append(sections, "Repair directives:", repairDelta)
 	}
 	return strings.Join(sections, "\n")
+}
+
+func slideStyleConstraintTitle(stylePreset string) string {
+	switch slidespec.StylePresetDisplayName(stylePreset) {
+	case "nanoslides":
+		return "nanoslides style constraints:"
+	case "bananaslides":
+		return "bananaslides style constraints:"
+	default:
+		return "Presentation style constraints:"
+	}
+}
+
+func slideStyleConstraintLines(stylePreset string) []string {
+	switch slidespec.NormalizeStylePreset(stylePreset) {
+	case slidespec.StylePresetNanoSlides:
+		return []string{
+			"- nanoslides_signature: editorial headline scale, restrained luxury palette, crisp asymmetric composition, glass-like info cards.",
+			"- mood: premium, boardroom-ready, intentional, minimal-noise, presentation-native.",
+			"- avoid: playful marketing poster tropes, meme aesthetics, overly illustrative scenes, crowded decorative gradients.",
+		}
+	case slidespec.StylePresetBananaSlides:
+		return []string{
+			"- bananaslides_signature: bold contrast, polished gradients, confident focal point, clean presentation-safe framing.",
+			"- mood: energetic but controlled, polished, modern, high-clarity.",
+		}
+	default:
+		return nil
+	}
+}
+
+func slideTemplateConstraintLines(templateID string) []string {
+	switch strings.TrimSpace(templateID) {
+	case slidespec.TemplateCover:
+		return []string{
+			"- template_motif: headline-led cover slide with a single hero visual and large clean title zone.",
+		}
+	case slidespec.TemplateSplit:
+		return []string{
+			"- template_motif: left text narrative plus right framed visual panel with stable card edges.",
+		}
+	case slidespec.TemplateTextOnly:
+		return []string{
+			"- template_motif: executive summary layout with concise insight cards instead of paragraph bullets.",
+		}
+	case slidespec.TemplateAgenda:
+		return []string{
+			"- template_motif: agenda page with a stable title band and sequential numbered cards for steps or sections.",
+		}
+	case slidespec.TemplateMetrics:
+		return []string{
+			"- template_motif: KPI page with oversized metric values and short labels in polished stat cards.",
+		}
+	default:
+		return nil
+	}
 }
 
 func buildNegativePrompt() string {

@@ -54,6 +54,7 @@ function normalizeTaskSnapshot(
     result_preview: normalizeString(snapshot.result_preview) || undefined,
     error_preview: normalizeString(snapshot.error_preview) || undefined,
     artifacts: Array.isArray(snapshot.artifacts) ? snapshot.artifacts : [],
+    research_sources: Array.isArray(snapshot.research_sources) ? snapshot.research_sources : [],
     actions: snapshot.actions || {
       can_cancel: false,
       can_open_chat: false,
@@ -82,7 +83,8 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
   )
   const hasActiveTasks = computed(
     () =>
-      currentActiveTasks.value.length > 0 || backgroundTasks.value.some((task) => isTaskActive(task))
+      currentActiveTasks.value.length > 0 ||
+      backgroundTasks.value.some((task) => isTaskActive(task))
   )
 
   function stopPolling() {

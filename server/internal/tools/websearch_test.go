@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -22,6 +26,24 @@ func newTCP4Server(t *testing.T, handler http.Handler) *httptest.Server {
 	srv.Listener = ln
 	srv.Start()
 	return srv
+}
+
+type rewriteHostTransport struct {
+	base   http.RoundTripper
+	host   string
+	scheme string
+}
+
+func (t rewriteHostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	cloned := req.Clone(req.Context())
+	cloned.URL.Scheme = t.scheme
+	cloned.URL.Host = t.host
+	cloned.Host = t.host
+	return base.RoundTrip(cloned)
 }
 
 func TestWebSearchTool_Definition(t *testing.T) {
@@ -184,6 +206,66 @@ func TestWebSearchTool_SearXNG(t *testing.T) {
 	}
 }
 
+func TestWebSearchTool_ProviderSettingsOverrideLegacyFields(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		response := map[string]interface{}{
+			"results": []map[string]interface{}{
+				{
+					"title":   "Override Result",
+					"url":     "https://example.com/override",
+					"content": "Description",
+					"engine":  "bing",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider: "searxng",
+		BaseURL:  "http://127.0.0.1:1",
+		ProviderSettings: map[string]WebSearchProviderSetting{
+			"searxng": {BaseURL: server.URL},
+		},
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query":  "override test",
+		"format": "json",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var response WebSearchResponse
+	if err := json.Unmarshal([]byte(result.(string)), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response.Results) != 1 || response.Results[0].URL != "https://example.com/override" {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
+func TestWebSearchTool_ProviderChainSkipsDisabledProviders(t *testing.T) {
+	enabled := false
+	tool := NewWebSearchTool(WebSearchConfig{
+		Providers: []string{"bing", "duckduckgo"},
+		ProviderSettings: map[string]WebSearchProviderSetting{
+			"bing": {Enabled: &enabled},
+		},
+	})
+
+	chain := tool.providerChain(nil)
+	if len(chain) != 1 || chain[0] != "duckduckgo" {
+		t.Fatalf("providerChain = %#v, want [duckduckgo]", chain)
+	}
+}
+
 func TestWebSearchTool_Brave(t *testing.T) {
 	// Create mock Brave Search server
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -339,6 +421,111 @@ func TestWebSearchTool_ProviderFallback(t *testing.T) {
 	}
 	if len(response.Results) != 1 || response.Results[0].Title != "Fallback OK" {
 		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
+func TestWebSearchTool_ProviderFanoutAggregatesResults(t *testing.T) {
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/search":
+			started <- "searxng"
+			<-release
+			response := map[string]interface{}{
+				"results": []map[string]interface{}{
+					{"title": "Shared Result", "url": "https://example.com/shared", "content": "Shared result from searxng", "engine": "searxng"},
+					{"title": "SearXNG Result", "url": "https://example.com/searxng", "content": "Searxng unique", "engine": "searxng"},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(response)
+		case "/res/v1/web/search":
+			if got := r.Header.Get("X-Subscription-Token"); got != "test-api-key" {
+				t.Fatalf("unexpected brave token: %q", got)
+			}
+			started <- "brave"
+			<-release
+			response := map[string]interface{}{
+				"web": map[string]interface{}{
+					"results": []map[string]interface{}{
+						{"title": "Shared Result", "url": "https://example.com/shared", "description": "Shared result from brave"},
+						{"title": "Brave Result", "url": "https://example.com/brave", "description": "Brave unique"},
+					},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(response)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse server URL: %v", err)
+	}
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Providers: []string{"searxng", "brave"},
+		BaseURL:   server.URL,
+		APIKey:    "test-api-key",
+		Timeout:   2 * time.Second,
+	})
+	client := server.Client()
+	client.Transport = rewriteHostTransport{
+		base:   client.Transport,
+		host:   serverURL.Host,
+		scheme: serverURL.Scheme,
+	}
+	tool.httpClient = client
+
+	done := make(chan struct{})
+	var raw interface{}
+	go func() {
+		defer close(done)
+		raw, err = tool.Execute(context.Background(), map[string]interface{}{
+			"query":       "fanout query",
+			"format":      "json",
+			"max_results": 3,
+		})
+	}()
+
+	seen := map[string]struct{}{}
+	for idx := 0; idx < 2; idx++ {
+		select {
+		case provider := <-started:
+			seen[provider] = struct{}{}
+		case <-time.After(2 * time.Second):
+			t.Fatal("search providers did not fan out in parallel")
+		}
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("search execute did not finish after releasing provider fanout")
+	}
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("providers started = %v, want both providers", seen)
+	}
+
+	var response WebSearchResponse
+	if err := json.Unmarshal([]byte(raw.(string)), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response.Provider != "searxng,brave" {
+		t.Fatalf("provider = %q, want %q", response.Provider, "searxng,brave")
+	}
+	if len(response.Results) != 3 {
+		t.Fatalf("len(results) = %d, want 3 merged unique results", len(response.Results))
+	}
+	if response.Results[0].URL != "https://example.com/shared" {
+		t.Fatalf("top url = %q, want shared merged result", response.Results[0].URL)
 	}
 }
 
@@ -636,6 +823,173 @@ func TestStripHTML(t *testing.T) {
 	}
 }
 
+func TestWebSearchTool_CacheHitAcrossFormats(t *testing.T) {
+	var hits atomic.Int32
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		response := map[string]interface{}{
+			"results": []map[string]interface{}{{
+				"title":   "Cached Result",
+				"url":     "https://example.com/cache",
+				"content": "Description",
+				"engine":  "searxng",
+			}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider:        "searxng",
+		BaseURL:         server.URL,
+		CacheTTL:        2 * time.Minute,
+		CacheMaxEntries: 8,
+	})
+
+	first, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query":  "cached query",
+		"format": "json",
+	})
+	if err != nil {
+		t.Fatalf("first execute failed: %v", err)
+	}
+	second, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query":  "cached query",
+		"format": "xml",
+	})
+	if err != nil {
+		t.Fatalf("second execute failed: %v", err)
+	}
+
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("search backend calls = %d, want 1", got)
+	}
+
+	var response WebSearchResponse
+	if err := json.Unmarshal([]byte(first.(string)), &response); err != nil {
+		t.Fatalf("failed to unmarshal json response: %v", err)
+	}
+	if response.Query != "cached query" || len(response.Results) != 1 || response.Results[0].Title != "Cached Result" {
+		t.Fatalf("unexpected cached json response: %+v", response)
+	}
+	if !strings.Contains(second.(string), "<web_search>") || !strings.Contains(second.(string), "Cached Result") {
+		t.Fatalf("unexpected xml response: %s", second.(string))
+	}
+}
+
+func TestWebSearchTool_CacheTTLExpiry(t *testing.T) {
+	var hits atomic.Int32
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		response := map[string]interface{}{
+			"results": []map[string]interface{}{{
+				"title":   fmt.Sprintf("Result %d", n),
+				"url":     fmt.Sprintf("https://example.com/cache/%d", n),
+				"content": "Description",
+				"engine":  "searxng",
+			}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider:        "searxng",
+		BaseURL:         server.URL,
+		CacheTTL:        200 * time.Millisecond,
+		CacheMaxEntries: 8,
+	})
+
+	runSearch := func() WebSearchResponse {
+		result, err := tool.Execute(context.Background(), map[string]interface{}{
+			"query":  "ttl query",
+			"format": "json",
+		})
+		if err != nil {
+			t.Fatalf("execute failed: %v", err)
+		}
+		var response WebSearchResponse
+		if err := json.Unmarshal([]byte(result.(string)), &response); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		return response
+	}
+
+	first := runSearch()
+	second := runSearch()
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("search backend calls before ttl expiry = %d, want 1", got)
+	}
+	if first.Results[0].Title != "Result 1" || second.Results[0].Title != "Result 1" {
+		t.Fatalf("unexpected cached responses before ttl expiry: first=%+v second=%+v", first, second)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+	third := runSearch()
+	if got := hits.Load(); got != 2 {
+		t.Fatalf("search backend calls after ttl expiry = %d, want 2", got)
+	}
+	if third.Results[0].Title != "Result 2" {
+		t.Fatalf("unexpected response after ttl expiry: %+v", third)
+	}
+}
+
+func TestWebSearchTool_CacheDeduplicatesConcurrentIdenticalQueries(t *testing.T) {
+	var hits atomic.Int32
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		time.Sleep(120 * time.Millisecond)
+		response := map[string]interface{}{
+			"results": []map[string]interface{}{{
+				"title":   "Concurrent Result",
+				"url":     "https://example.com/concurrent",
+				"content": "Description",
+				"engine":  "searxng",
+			}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider:        "searxng",
+		BaseURL:         server.URL,
+		CacheTTL:        2 * time.Minute,
+		CacheMaxEntries: 8,
+	})
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := tool.Execute(context.Background(), map[string]interface{}{
+				"query":  "same concurrent query",
+				"format": "json",
+			})
+			errCh <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent execute failed: %v", err)
+		}
+	}
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("search backend calls = %d, want 1", got)
+	}
+}
+
 func TestWebSearchConfig_Defaults(t *testing.T) {
 	tool := NewWebSearchTool(WebSearchConfig{})
 
@@ -647,14 +1001,29 @@ func TestWebSearchConfig_Defaults(t *testing.T) {
 		t.Errorf("expected default Timeout 5m, got %v", tool.config.Timeout)
 	}
 
-	if tool.config.Provider != "duckduckgo" {
-		t.Errorf("expected default Provider 'duckduckgo', got '%s'", tool.config.Provider)
+	if tool.config.Provider != "bing" {
+		t.Errorf("expected default Provider 'bing', got '%s'", tool.config.Provider)
 	}
-	if len(tool.config.Providers) != 2 || tool.config.Providers[0] != "duckduckgo" || tool.config.Providers[1] != "bing" {
-		t.Errorf("expected default Providers ['duckduckgo', 'bing'], got %#v", tool.config.Providers)
+	if len(tool.config.Providers) != 2 || tool.config.Providers[0] != "bing" || tool.config.Providers[1] != "duckduckgo" {
+		t.Errorf("expected default Providers ['bing', 'duckduckgo'], got %#v", tool.config.Providers)
 	}
 
 	if tool.config.Region != "wt-wt" {
 		t.Errorf("expected default Region 'wt-wt', got '%s'", tool.config.Region)
+	}
+	if tool.config.CacheTTL != 3*time.Minute {
+		t.Errorf("expected default CacheTTL 3m, got %v", tool.config.CacheTTL)
+	}
+	if tool.config.CacheMaxEntries != 256 {
+		t.Errorf("expected default CacheMaxEntries 256, got %d", tool.config.CacheMaxEntries)
+	}
+	if tool.config.BrowserFallback.Engine != "bing" {
+		t.Errorf("expected default browser fallback engine 'bing', got %q", tool.config.BrowserFallback.Engine)
+	}
+	if tool.config.BrowserFallback.TriggerMode != "quality_or_failure" {
+		t.Errorf("expected default browser fallback trigger_mode 'quality_or_failure', got %q", tool.config.BrowserFallback.TriggerMode)
+	}
+	if tool.config.BrowserFallback.MaxBrowserRetries != 1 {
+		t.Errorf("expected default browser fallback retries 1, got %d", tool.config.BrowserFallback.MaxBrowserRetries)
 	}
 }

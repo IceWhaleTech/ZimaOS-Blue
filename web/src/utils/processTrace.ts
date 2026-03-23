@@ -23,19 +23,18 @@ export interface ProcessTraceItem {
   metadata?: Record<string, string | number | boolean | undefined>
 }
 
-interface CreateProcessTraceItemInput
-  extends Omit<ProcessTraceItem, 'id' | 'timestamp'> {
+interface CreateProcessTraceItemInput extends Omit<ProcessTraceItem, 'id' | 'timestamp'> {
   id?: string
   timestamp?: number
 }
 
-export function createProcessTraceItem(
-  input: CreateProcessTraceItemInput
-): ProcessTraceItem {
+export function createProcessTraceItem(input: CreateProcessTraceItemInput): ProcessTraceItem {
   const timestamp = input.timestamp ?? Date.now()
   return {
     ...input,
-    id: input.id || `${input.source}:${input.event}:${timestamp}:${Math.random().toString(36).slice(2, 8)}`,
+    id:
+      input.id ||
+      `${input.source}:${input.event}:${timestamp}:${Math.random().toString(36).slice(2, 8)}`,
     timestamp,
   }
 }

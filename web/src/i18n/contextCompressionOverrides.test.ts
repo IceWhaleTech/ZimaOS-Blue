@@ -98,6 +98,21 @@ describe('context compression locale coverage', () => {
     }
   })
 
+  it('keeps direct strings in all locale files', () => {
+    for (const locale of localeCodes) {
+      const messages = localeMessagesByCode.get(locale)
+      expect(messages, `${locale} should be loadable`).toBeTruthy()
+      for (const key of contextCompressionKeys) {
+        const value = getByPath(messages as LocaleMessages, key)
+        expect(typeof value, `${locale} locale file should declare ${key}`).toBe('string')
+        expect(
+          String(value).trim().length,
+          `${locale} locale file should not leave ${key} empty`
+        ).toBeGreaterThan(0)
+      }
+    }
+  })
+
   it('exposes context compression strings in all 27 merged locales', () => {
     expect(localeCodes.length).toBe(27)
     for (const locale of localeCodes) {

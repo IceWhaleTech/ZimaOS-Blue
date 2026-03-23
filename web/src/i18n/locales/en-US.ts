@@ -1,4 +1,10 @@
 // English (US) - Base locale
+import { harnessV3Defaults } from '../harness-locale-overrides'
+import { browserMonitorLocales } from '../browser-monitor-locales'
+
+const harnessV3 = harnessV3Defaults.harness as Record<string, unknown>
+const harnessV3Groups = (harnessV3.groups ?? {}) as Record<string, unknown>
+
 export default {
   common: {
     loading: 'Loading...',
@@ -6,6 +12,7 @@ export default {
     saving: 'Saving...',
     cancel: 'Cancel',
     delete: 'Delete',
+    deleting: 'Deleting...',
     edit: 'Edit',
     create: 'Create',
     creating: 'Creating...',
@@ -130,6 +137,7 @@ export default {
     notAvailable: 'Not available',
     updatedAt: 'Updated',
   },
+  browserMonitor: browserMonitorLocales['en-US'],
   theme: {
     styles: {
       title: 'Theme Style',
@@ -319,7 +327,9 @@ export default {
     workspaceTreeRevealFailed: 'Unable to open file location',
   },
   harness: {
+    ...harnessV3,
     groups: {
+      ...harnessV3Groups,
       subtitle:
         'Track eval groups, calibration traces, score breakdowns, and retries from one control-plane view.',
       totalGroups: 'Groups',
@@ -332,8 +342,7 @@ export default {
       searchPlaceholder: 'Search title, subject, kind, or status',
       loading: 'Fetching the latest harness group summaries.',
       emptyTitle: 'No harness groups yet',
-      emptyDescription:
-        'Groups will appear here once eval batches or research runs are recorded.',
+      emptyDescription: 'Groups will appear here once eval batches or research runs are recorded.',
       noSubject: 'No subject provided',
       itemCount: 'Items',
       passRate: 'Pass rate',
@@ -346,6 +355,7 @@ export default {
       finishedAt: 'Finished',
     },
     group: {
+      ...(harnessV3.group as Record<string, unknown>),
       artifacts: 'Artifacts',
       attemptIndex: 'Attempt',
       attempts: 'Attempts',
@@ -526,6 +536,7 @@ export default {
     deepResearchStopReason: 'Stop reason',
     deepResearchLatestAction: 'Latest action',
     deepResearchLatestGap: 'Latest gap',
+    deepResearchDetails: 'Research details',
     deepResearchTrace: 'Research trace',
     deepResearchTraceEntries: 'Iterations',
     deepResearchIteration: 'Iteration',
@@ -556,12 +567,25 @@ export default {
     deepResearchActionLoopStopped: 'Research loop stopped',
     deepResearchActionSynthesizing: 'Synthesizing report',
     deepResearchActionCompleted: 'Completed',
+    deepResearchModeFast: 'Fast',
+    deepResearchModeStandard: 'Standard',
+    deepResearchModeDeep: 'Deep',
     deepResearchProcess: 'Research process',
     deepResearchLiveSources: 'Live sources',
     deepResearchResearchBrief: 'Research brief',
     deepResearchMustVerify: 'Must verify',
+    deepResearchRetryGuidance: 'Retry guidance',
+    deepResearchRetryQueries: 'Recovery queries',
     deepResearchPlannedTasks: 'Planned tasks',
     deepResearchFollowUpQuery: 'Follow-up query',
+    deepResearchSearchQuery: 'Search query',
+    deepResearchFocus: 'Focus',
+    deepResearchExpandDetails: 'Expand research details',
+    deepResearchCollapseDetails: 'Collapse research details',
+    deepResearchCalibrationPublish: 'Publish-ready',
+    deepResearchCalibrationCaution: 'Use caution',
+    deepResearchCalibrationConflictBlocking: 'Blocking conflict',
+    deepResearchCalibrationConflictLow: 'Low conflict risk',
     deepResearchRunningTasks: 'Running research tasks',
     deepResearchRunningElsewhere: 'Track active deep research jobs across conversations.',
     deepResearchViewTask: 'View task',
@@ -586,11 +610,29 @@ export default {
     taskLoop: 'Ralph Loop',
     deepResearchHoverDescription:
       'Launch a structured research workflow with retrieval, verification, and source-backed answers.',
+    analyzeReportShortcutTitle: 'Analysis Report',
+    analyzeReportHoverState: 'Prompt template',
+    analyzeReportHoverDescription:
+      'Turn URLs, search results, or pasted text into a structured report with findings, comparisons, and recommendations.',
+    analyzeReportHoverTagReport: 'Report',
+    analyzeReportHoverTagInsights: 'Insights',
+    analyzeReportHoverTagRecommendations: 'Recommendations',
+    analyzeReportPrompt:
+      'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
       'Let the agent plan, use tools, apply changes, and keep iterating until the task lands cleanly.',
     ralphLoopHoverPlan: 'Plan',
     ralphLoopHoverAct: 'Act',
     ralphLoopHoverCheck: 'Check',
+    uiReviewShortcutTitle: 'UI Review',
+    uiReviewHoverState: 'Prompt template',
+    uiReviewHoverDescription:
+      'Audit a page or screenshot for visual quality, interaction clarity, and accessibility, then list concrete issues and fixes.',
+    uiReviewHoverUsability: 'Usability',
+    uiReviewPrompt:
+      'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
+    showShortcutDetails: 'Show details',
+    hideShortcutDetails: 'Hide details',
     taskCancelled: 'Task cancelled',
     waitingThinking: 'Thinking...',
     awaitingConfirmation: 'Waiting for your confirmation to continue',
@@ -615,6 +657,20 @@ export default {
     taskFailed: 'Task failed',
     taskWaitingForApproval: 'Waiting for your approval',
     taskWaitingForAnswer: 'Waiting for your answer',
+    taskDefaultResearchTitle: 'Research task',
+    taskDefaultAgentTitle: 'Agent task',
+    taskRuntimePending: 'Pending',
+    taskRuntimeIntake: 'Intake',
+    taskRuntimeClarify: 'Clarifying',
+    taskRuntimePlan: 'Planning',
+    taskRuntimeConfirmGate: 'Waiting for confirmation',
+    taskRuntimeExecute: 'Executing',
+    taskRuntimeVerify: 'Verifying',
+    taskRuntimeReflect: 'Reflecting',
+    taskRuntimeReport: 'Preparing report',
+    taskRuntimeRecover: 'Recovering',
+    taskRuntimeDone: 'Completed',
+    taskRuntimeAborted: 'Aborted',
     assistantStatus: {
       searchingWeb: 'Searching the web',
       browsingWeb: 'Browsing the web',
@@ -761,8 +817,18 @@ export default {
     // Security
     // Preset questions
     presetQuestions: {
-      title: 'Try asking',
-      refresh: 'More',
+      title: 'Try It Out',
+      focus: 'Focus on',
+      interests: {
+        personalKnowledge: 'Personal Knowledge',
+        learningGrowth: 'Learning Growth',
+        contentCreation: 'Content Creation',
+        marketInvesting: 'Market Investing',
+        productDesign: 'Product Design',
+        userResearch: 'User Research',
+        psychologicalExploration: 'Psychological Exploration',
+        philosophicalDialogue: 'Philosophical Dialogue',
+      },
     },
     threatLevel: 'Threat Level',
     dismissWarning: 'Dismiss',
@@ -844,6 +910,8 @@ export default {
     noStreamData: 'No response received. Please try again.',
     streamEmpty: 'Connection closed before a response arrived. Please try again.',
     streamError: 'An error occurred while streaming the response. Please try again.',
+    contextWindowExceeded:
+      'This request exceeded the model context window. Please shorten the conversation, system prompt, or tools, then try again.',
     genericStreamError: 'Something went wrong. Please try again.',
     providerNoResponse:
       'The provider did not return a response. This is usually temporary — please try again.',
@@ -1189,6 +1257,7 @@ export default {
     closeBehavior: 'Close Behavior',
     closeBehaviorQuit: 'Quit',
     closeBehaviorMinimize: 'Minimize to Tray',
+    closeBehaviorMinimizeMenuBar: 'Minimize to Menu Bar',
     closeBehaviorSaved: 'Close behavior saved',
     memorySurface: 'Memory',
     memoryManagement: 'Memory Usage & Management',
@@ -1268,10 +1337,10 @@ export default {
       summary: 'Summary Acceleration',
       contextCompression: 'Context Compression',
       contextCompressionHint:
-        'Lets the lightweight model compress long history, while the latest user message still decides what happens now.',
+        'Compression still triggers automatically under context pressure; this toggle only controls whether the lightweight model gets first pass on that compression.',
       contextCompressionMode: 'Compression Mode',
       contextCompressionModeHint:
-        'This chooses the compression path only. Current-turn intent still comes from the latest user message.',
+        'Compression triggers automatically under context pressure. This only chooses which compression path to prefer, while current-turn intent still comes from the latest user message.',
       contextCompressionModeAuto: 'Auto: prefer small-model compression, fallback to offline',
       contextCompressionModeSmallModel: 'Small Model First',
       contextCompressionModeOffline: 'Offline Deterministic',
@@ -1685,6 +1754,45 @@ export default {
     clearAllWarning: 'This will permanently delete all memories. This action cannot be undone.',
     confirmDelete: 'Are you sure you want to delete this memory?',
     settingsTitle: 'Memory Settings',
+    proposalsTitle: 'Self-evolution review queue',
+    proposalsDescription:
+      'Review AGENTS.md patch proposals generated from high-confidence research takeaways.',
+    proposalsDisabled:
+      'Agent auto-reflect is disabled. Existing proposals can still be reviewed, but new ones will not be created.',
+    proposalStatusPending: 'Pending review',
+    proposalFilterPending: 'Pending',
+    proposalStatusApproved: 'Approved',
+    proposalStatusRejected: 'Rejected',
+    proposalsEmpty: 'No proposal matches the current filter yet.',
+    proposalTarget: 'Target file',
+    proposalLesson: 'Lesson',
+    proposalWhen: 'When to apply',
+    proposalEvidence: 'Evidence',
+    proposalEvaluation: 'Evaluation summary',
+    proposalVerdict: 'Verdict',
+    proposalScore: 'Score',
+    proposalJudgeBackend: 'Judge backend',
+    proposalJudgeModel: 'Judge model',
+    proposalCalibrationRef: 'Calibration ref',
+    proposalCandidateCount: 'Takeaway candidates',
+    proposalCalibration: 'Calibration summary',
+    proposalCoverage: 'Coverage',
+    proposalGroundedness: 'Groundedness',
+    proposalFreshness: 'Freshness',
+    proposalConflictRisk: 'Conflict risk',
+    proposalConfidence: 'Confidence',
+    proposalRecommendedAction: 'Recommended action',
+    proposalPatchPreview: 'Patch preview',
+    proposalNoPatch: 'Patch preview unavailable.',
+    proposalReviewNote: 'Review note',
+    proposalReviewPlaceholder: 'Optional rationale for approval or rejection',
+    proposalReviewedAt: 'Reviewed',
+    proposalNoSelection: 'Select a proposal to inspect its evidence and patch preview.',
+    proposalApproved: 'Proposal approved',
+    proposalRejected: 'Proposal rejected',
+    proposalSourceKindResearch: 'Research',
+    proposalSourceKindSearch: 'Search',
+    proposalSourceKindUrl: 'URL',
     matchTypes: {
       keyword: 'Keyword',
       vector: 'Vector',
@@ -2536,12 +2644,11 @@ export default {
     },
     tabDescriptions: {
       overview: 'Scan posture, active issues, and real-time security status.',
-      controls:
-        'Manage trusted directories, network exposure, prompt guardrails, and masking policies.',
+      controls: 'Manage trusted directories, prompt guardrails, and masking policies.',
       harness: 'Track eval groups, experiment batches, and score outcomes.',
       approvals: 'Review folders trusted for exec and convert operations.',
       firewall: 'Maintain keyword guardrails before prompts are processed.',
-      network: 'Inspect exposure, connectivity, and listener configuration.',
+      network: 'Manage TLS/HTTPS certificates, CORS origins, and network exposure.',
       masking: 'Control sensitive data redaction before content leaves the system.',
       monitoring: 'Adjust retention, visibility, and operational monitoring.',
       logs: 'Inspect runtime events, requests, and audit trails.',
@@ -3142,6 +3249,7 @@ export default {
     telegramOpenChat: 'Open Bot Chat',
     whatsappOpenChat: 'Open WhatsApp Chat',
     feishuOpenChat: 'Open Bot Chat',
+    feishuSessionMode: 'Session mode (send without reply)',
     dingtalkOpenChat: 'Open Bot Chat',
     // New channels
     // Field labels
@@ -3309,7 +3417,7 @@ export default {
     nextcloudTalkHint: 'Use a Nextcloud account plus Talk room token',
     googleChatHint: 'Create a service account in Google Cloud',
     feishuHint:
-      'Create a bot in Feishu Open Platform. Required: 1) Enable "Long Connection" for events; 2) Subscribe to "im.message.receive_v1" event; 3) Add "im:message:send_as_bot" permission; 4) Publish the app',
+      'Create a bot in Feishu Open Platform. Required: 1) Enable "Long Connection" for events; 2) Subscribe to "im.message.receive_v1" event; 3) Add "im:message:send_as_bot" permission; 4) Publish the app. Enable Session mode below to send new messages instead of replying to the original message.',
     dingtalkHint: 'Create a bot in DingTalk Open Platform',
     qqHint: 'Create a bot in QQ Open Platform',
     wechatHint: 'Create a bot in WeChat Work',
@@ -4564,6 +4672,17 @@ export default {
     addFailed: 'Failed to add provider',
     retry: 'Retry',
     errorCleared: 'Error cleared — you can try again',
+    apiFormatLabel: 'Format Type',
+    apiFormatHint:
+      'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',
+    apiFormatAutoDetected: 'Current auto-detected format: {format}',
+    apiFormatOptions: {
+      auto: 'Auto Detect',
+      openai: 'OpenAI Compatible',
+      responses: 'Responses',
+      anthropic: 'Anthropic',
+      google: 'Google Gemini',
+    },
     verifySection: 'Verify & Recommend',
     verifyHint:
       'Probe this provider and generate a best-practice API format/base URL recommendation.',
@@ -5974,7 +6093,7 @@ export default {
       search: 'Search',
       exec: 'Command Execution',
       reminder: 'Reminders',
-      analyze: 'Analysis',
+      analyze: 'Analysis Report',
       mediagen: 'Media Generation',
       ask: 'Ask',
     },
@@ -6225,6 +6344,8 @@ export default {
     allowAlways: 'Always Allow',
   },
   media: {
+    fallbackSourceLicenseVerified: 'License verified',
+    fallbackSourceLicenseUnverified: 'License unverified',
     generate: 'Generate',
     generating: 'Generating...',
     selectModel: 'Select Model',

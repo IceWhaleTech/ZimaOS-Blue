@@ -1157,7 +1157,7 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 			messages = cached
 		} else {
 			var err error
-			messages, err = h.store.GetRecentMessages(ctx, params.ConvID, h.contextHistoryFetchLimit(params.Model))
+			messages, err = h.getRecentMessagesForContext(ctx, params.ConvID, h.contextHistoryFetchLimit(params.Model))
 			if err != nil {
 				logger.Warn().Err(err).Str("conv_id", params.ConvID).Msg("[context] failed to fetch messages")
 				return ContextStrategyResult{Tier: TierNoHistory}
@@ -1300,9 +1300,6 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 	}
 
 	mode := h.contextCompressionMode()
-	if mode == "off" {
-		return ""
-	}
 
 	cacheSummary := func(summary string) string {
 		if strings.TrimSpace(summary) == "" {
@@ -1367,9 +1364,6 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 // Called after each response in long conversations.
 func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Message) {
 	if h.summaryCache == nil || len(messages) <= 6 {
-		return
-	}
-	if h.contextCompressionMode() == "off" {
 		return
 	}
 

@@ -178,6 +178,9 @@ const loadContextCompressionOverrides = createLocaleMessageMapLoader(
 const loadPriorityTranslationOverrides = createLocaleMessageMapLoader(
   () => import('./priority-translation-overrides')
 )
+const loadPresetQuestionContentOverrides = createLocaleMessageMapLoader(
+  () => import('./preset-question-content-overrides')
+)
 const loadPrioritySmallModelOverrides = createLocaleMessageMapLoader(
   () => import('./priority-small-model-overrides')
 )
@@ -196,6 +199,21 @@ const loadSecurityScanDetailOverrides = createLocaleMessageMapLoader(
 const loadSkillToolOverrides = createLocaleMessageMapLoader(() => import('./skill-tool-overrides'))
 const loadSkillStoreMarketplaceOverrides = createLocaleMessageMapLoader(
   () => import('./skill-store-marketplace-overrides')
+)
+const loadSelfReflectProposalOverrides = createLocaleMessageMapLoader(
+  () => import('./self-reflect-proposal-overrides')
+)
+const loadApiProxyPrunerOverrides = createLocaleMessageMapLoader(
+  () => import('./api-proxy-pruner-overrides')
+)
+const loadMemorySurfaceOverrides = createLocaleMessageMapLoader(
+  () => import('./memory-surface-overrides')
+)
+const loadRalphLoopHoverOverrides = createLocaleMessageMapLoader(
+  () => import('./ralph-loop-hover-overrides')
+)
+const loadExtensionsBrowseOverrides = createLocaleMessageMapLoader(
+  () => import('./extensions-browse-overrides')
 )
 
 const loadedBaseLocales = new Set<LocaleKey>()
@@ -232,12 +250,35 @@ async function loadLocaleBaseMessages(locale: LocaleKey): Promise<void> {
       const messages = await import(`./locales/${locale}.ts`)
       const localeMessages = messages.default as LocaleMessages
       const i18nGlobal = i18n.global as unknown as LocaleComposerBridge
+      const apiProxyPrunerOverrides = (await loadApiProxyPrunerOverrides())[locale] || {}
+      const memorySurfaceOverrides = (await loadMemorySurfaceOverrides())[locale] || {}
+      const ralphLoopHoverOverrides = (await loadRalphLoopHoverOverrides())[locale] || {}
+      const mergedSelfReflectProposalOverrides =
+        locale === 'en-US' || locale === 'zh-CN'
+          ? {}
+          : (await loadSelfReflectProposalOverrides())[locale] || {}
       const mergedBaseMessages =
         locale === 'en-US'
           ? localeMessages
           : deepMergeMessages<LocaleMessages>(i18nGlobal.getLocaleMessage('en-US'), localeMessages)
+      const localizedBaseMessages = deepMergeMessages<LocaleMessages>(
+        mergedBaseMessages,
+        mergedSelfReflectProposalOverrides
+      )
+      const fullyLocalizedBaseMessages = deepMergeMessages<LocaleMessages>(
+        localizedBaseMessages,
+        apiProxyPrunerOverrides
+      )
+      const fullyLocalizedBaseMessagesWithMemorySurface = deepMergeMessages<LocaleMessages>(
+        fullyLocalizedBaseMessages,
+        memorySurfaceOverrides
+      )
+      const fullyLocalizedBaseMessagesWithRalphLoop = deepMergeMessages<LocaleMessages>(
+        fullyLocalizedBaseMessagesWithMemorySurface,
+        ralphLoopHoverOverrides
+      )
 
-      i18nGlobal.setLocaleMessage(locale, mergedBaseMessages)
+      i18nGlobal.setLocaleMessage(locale, fullyLocalizedBaseMessagesWithRalphLoop)
       loadedBaseLocales.add(locale)
     } catch (error) {
       console.warn(`Failed to load locale base ${locale}, falling back to en-US`, error)
@@ -272,11 +313,13 @@ async function loadLocaleEnhancements(locale: LocaleKey): Promise<void> {
         prioritySettingsOverrides,
         contextCompressionOverrides,
         priorityTranslationOverrides,
+        presetQuestionContentOverrides,
         mediaFallbackOverrides,
         skillToolOverrides,
         researchToolOverrides,
         skillStoreMarketplaceOverrides,
         prioritySmallModelOverrides,
+        extensionsBrowseOverrides,
       ] = await Promise.all([
         loadPriorityLocaleOverrides(),
         loadResultCardMessageOverrides(),
@@ -285,11 +328,13 @@ async function loadLocaleEnhancements(locale: LocaleKey): Promise<void> {
         loadPrioritySettingsOverrides(),
         loadContextCompressionOverrides(),
         loadPriorityTranslationOverrides(),
+        loadPresetQuestionContentOverrides(),
         loadMediaFallbackOverrides(),
         loadSkillToolOverrides(),
         loadResearchToolOverrides(),
         loadSkillStoreMarketplaceOverrides(),
         loadPrioritySmallModelOverrides(),
+        loadExtensionsBrowseOverrides(),
       ])
 
       const localeOverrides = priorityLocaleOverrides[locale] || {}
@@ -299,11 +344,13 @@ async function loadLocaleEnhancements(locale: LocaleKey): Promise<void> {
       const settingsOverrides = prioritySettingsOverrides[locale] || {}
       const localizedContextCompressionOverrides = contextCompressionOverrides[locale] || {}
       const translationOverrides = priorityTranslationOverrides[locale] || {}
+      const localizedPresetQuestionContentOverrides = presetQuestionContentOverrides[locale] || {}
       const localizedMediaFallbackOverrides = mediaFallbackOverrides[locale] || {}
       const localizedSkillToolOverrides = skillToolOverrides[locale] || {}
       const localizedResearchToolOverrides = researchToolOverrides[locale] || {}
       const localizedSkillStoreMarketplaceOverrides = skillStoreMarketplaceOverrides[locale] || {}
       const smallModelOverrides = prioritySmallModelOverrides[locale] || {}
+      const localizedExtensionsBrowseOverrides = extensionsBrowseOverrides[locale] || {}
       const i18nGlobal = i18n.global as unknown as LocaleComposerBridge
       const currentMessages = i18nGlobal.getLocaleMessage(locale)
       const withPriorityOverrides = deepMergeMessages<LocaleMessages>(
@@ -334,8 +381,12 @@ async function loadLocaleEnhancements(locale: LocaleKey): Promise<void> {
         withContextCompressionOverrides,
         translationOverrides
       )
-      const withMediaFallbackOverrides = deepMergeMessages<LocaleMessages>(
+      const withPresetQuestionContentOverrides = deepMergeMessages<LocaleMessages>(
         withTranslationOverrides,
+        localizedPresetQuestionContentOverrides
+      )
+      const withMediaFallbackOverrides = deepMergeMessages<LocaleMessages>(
+        withPresetQuestionContentOverrides,
         localizedMediaFallbackOverrides
       )
       const withSkillToolOverrides = deepMergeMessages<LocaleMessages>(
@@ -354,8 +405,12 @@ async function loadLocaleEnhancements(locale: LocaleKey): Promise<void> {
         withSkillStoreMarketplaceOverrides,
         smallModelOverrides
       )
+      const fullyMergedMessages = deepMergeMessages<LocaleMessages>(
+        mergedMessages,
+        localizedExtensionsBrowseOverrides
+      )
 
-      i18nGlobal.setLocaleMessage(locale, mergedMessages)
+      i18nGlobal.setLocaleMessage(locale, fullyMergedMessages)
       loadedLocaleEnhancements.add(locale)
     } catch (error) {
       console.warn(`Failed to load locale enhancements for ${locale}`, error)

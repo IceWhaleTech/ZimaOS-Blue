@@ -58,7 +58,7 @@ func (d *AgentDriver) Start(ctx context.Context, run *harness.Run, _ harness.Run
 		Status:         agentpkg.TaskStatusPending,
 		WorkspaceRoot:  run.WorkspaceRoot,
 	}
-	conversationCtx := metadataString(run.Metadata, "context")
+	conversationCtx := composeConversationContext(run.Metadata)
 	_, err := d.runner.SubmitTask(ctx, task, conversationCtx)
 	return err
 }
@@ -232,11 +232,27 @@ func metadataString(meta map[string]interface{}, key string) string {
 	if len(meta) == 0 {
 		return ""
 	}
-	raw, _ := meta[key]
+	raw, ok := meta[key]
+	if !ok {
+		return ""
+	}
 	if value, ok := raw.(string); ok {
 		return strings.TrimSpace(value)
 	}
 	return strings.TrimSpace(fmt.Sprint(raw))
+}
+
+func composeConversationContext(meta map[string]interface{}) string {
+	base := metadataString(meta, "context")
+	retry := metadataString(meta, "retry_context")
+	switch {
+	case base == "":
+		return retry
+	case retry == "":
+		return base
+	default:
+		return strings.TrimSpace(base + "\n\n" + retry)
+	}
 }
 
 func cloneMap(in map[string]interface{}) map[string]interface{} {

@@ -249,3 +249,109 @@ func TestChannelConfigHandler_UpdateSettings_RejectsInvalidMentionPolicy(t *test
 		t.Fatalf("status = %d, want %d", httpErr.Code, http.StatusBadRequest)
 	}
 }
+
+func TestChannelConfigHandler_UpdateChannelConfig_PersistsFeishuSessionModeFalse(t *testing.T) {
+	t.Parallel()
+
+	store := NewChannelConfigStore(kvstore.NewMemoryStore())
+	handler := NewChannelConfigHandler(store)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPut, "/channels/feishu", strings.NewReader(`{
+		"enabled": false,
+		"config": {
+			"app_id": "cli_test",
+			"app_secret": "secret",
+			"session_mode": "false"
+		}
+	}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("feishu")
+
+	if err := handler.UpdateChannelConfig(c); err != nil {
+		t.Fatalf("update channel config: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	stored, ok := store.Get("feishu")
+	if !ok {
+		t.Fatal("expected feishu config to be stored")
+	}
+	if stored.Config["session_mode"] != "false" {
+		t.Fatalf("stored session_mode = %q, want %q", stored.Config["session_mode"], "false")
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/channels/feishu", nil)
+	getRec := httptest.NewRecorder()
+	getCtx := e.NewContext(getReq, getRec)
+	getCtx.SetParamNames("id")
+	getCtx.SetParamValues("feishu")
+
+	if err := handler.GetChannelConfig(getCtx); err != nil {
+		t.Fatalf("get channel config: %v", err)
+	}
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want %d", getRec.Code, http.StatusOK)
+	}
+
+	var got ChannelConfig
+	if err := json.NewDecoder(getRec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
+	if got.Config["session_mode"] != "false" {
+		t.Fatalf("response session_mode = %q, want %q", got.Config["session_mode"], "false")
+	}
+}
+
+func TestChannelConfigHandler_UpdateChannelConfig_FeishuSessionModeCreatesSessionReplyChannel(t *testing.T) {
+	t.Parallel()
+
+	store := NewChannelConfigStore(kvstore.NewMemoryStore())
+	handler := NewChannelConfigHandler(store)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPut, "/channels/feishu", strings.NewReader(`{
+		"enabled": false,
+		"config": {
+			"app_id": "cli_test",
+			"app_secret": "secret",
+			"session_mode": "true"
+		}
+	}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("feishu")
+
+	if err := handler.UpdateChannelConfig(c); err != nil {
+		t.Fatalf("update channel config: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	stored, ok := store.Get("feishu")
+	if !ok {
+		t.Fatal("expected feishu config to be stored")
+	}
+
+	factory := NewChannelFactory(zap.NewNop())
+	ch, err := factory.CreateChannel(stored)
+	if err != nil {
+		t.Fatalf("create channel from stored config: %v", err)
+	}
+	if ch == nil {
+		t.Fatal("expected channel instance")
+	}
+
+	replyMode, _ := ch.Info().Metadata["reply_mode"].(string)
+	if replyMode != "session" {
+		t.Fatalf("reply_mode = %q, want %q", replyMode, "session")
+	}
+}

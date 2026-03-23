@@ -14,7 +14,7 @@ func NewPPTTool(service PPTGenerateService) *PPTTool {
 func (t *PPTTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "ppt",
-		Description: "Generate PPT-ready slide visuals and background assets using the banana_slides preset with optional reference images and one-pass automatic review/retry.",
+		Description: "Generate PPT-ready slide visuals and background assets using first-class bananaslides or nanoslides presets with optional reference images and one-pass automatic review/retry.",
 		Icon:        "image",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -22,7 +22,8 @@ func (t *PPTTool) Definition() ToolDefinition {
 				"description":         map[string]interface{}{"type": "string", "description": "What this PPT slide visual should communicate."},
 				"aspect_ratio":        map[string]interface{}{"type": "string", "description": "Target aspect ratio such as 16:9."},
 				"reference_images":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional reference images for style matching."},
-				"style_preset":        map[string]interface{}{"type": "string", "description": "Optional preset name. Default banana_slides."},
+				"layout_spec":         map[string]interface{}{"type": "object", "description": "Optional structured layout spec with canvas, background, and positioned text/image blocks for direct fallback rendering."},
+				"style_preset":        map[string]interface{}{"type": "string", "description": "Optional preset name. Supports bananaslides and nanoslides. Default bananaslides."},
 				"quality_profile":     map[string]interface{}{"type": "string", "description": "Optional review profile. Default ppt."},
 				"review_threshold":    map[string]interface{}{"type": "number", "description": "Automatic review threshold. Default 80."},
 				"review_retry_budget": map[string]interface{}{"type": "integer", "description": "Automatic repair retry budget. Default 1."},

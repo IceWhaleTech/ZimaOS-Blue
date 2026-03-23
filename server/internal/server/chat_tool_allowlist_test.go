@@ -13,6 +13,15 @@ func TestNormalizeAssistantToolCallNameForAllowedSet_RewritesCompatAlias(t *test
 	}
 }
 
+func TestNormalizeAssistantToolCallNameForAllowedSet_RewritesDeepResearchAliases(t *testing.T) {
+	allowed := []llm.Tool{{Name: "deep_research"}}
+	for _, raw := range []string{"research_run", "research_status", "deep-research"} {
+		if got := normalizeAssistantToolCallNameForAllowedSet(raw, allowed); got != "deep_research" {
+			t.Fatalf("normalizeAssistantToolCallNameForAllowedSet(%q) = %q, want %q", raw, got, "deep_research")
+		}
+	}
+}
+
 func TestSanitizeAssistantToolCallsForAllowedSet_DropsCallsOutsideAllowedSet(t *testing.T) {
 	allowed := []llm.Tool{{Name: "file_write"}}
 	calls := []llm.ToolCall{

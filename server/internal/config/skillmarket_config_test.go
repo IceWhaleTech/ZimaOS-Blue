@@ -22,4 +22,12 @@ func TestDefaultSkillMarketConfigUsesDailyRefreshCadence(t *testing.T) {
 	if len(cfg.ClawHubMirrorBaseURLs) != 0 {
 		t.Fatalf("ClawHubMirrorBaseURLs = %v, want empty by default", cfg.ClawHubMirrorBaseURLs)
 	}
+	if len(cfg.SeedURLs) != len(defaultSkillMarketSeedURLs) {
+		t.Fatalf("SeedURLs count = %d, want %d", len(cfg.SeedURLs), len(defaultSkillMarketSeedURLs))
+	}
+	for i, expected := range defaultSkillMarketSeedURLs {
+		if cfg.SeedURLs[i] != expected {
+			t.Fatalf("SeedURLs[%d] = %q, want %q", i, cfg.SeedURLs[i], expected)
+		}
+	}
 }

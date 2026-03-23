@@ -44,18 +44,18 @@ type ReviewResult struct {
 
 // ReviewStep records one phase of the review pipeline.
 type ReviewStep struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Status   string `json:"status"` // success, failed, skipped
-	Score    float64 `json:"score,omitempty"`
-	Message  string `json:"message,omitempty"`
-	Issues   int    `json:"issues,omitempty"`
+	ID      string  `json:"id"`
+	Name    string  `json:"name"`
+	Status  string  `json:"status"` // success, failed, skipped
+	Score   float64 `json:"score,omitempty"`
+	Message string  `json:"message,omitempty"`
+	Issues  int     `json:"issues,omitempty"`
 }
 
 // ScoreDetail holds a category score and its sub-scores.
 type ScoreDetail struct {
-	Score    float64            `json:"score"`
-	Details  map[string]float64 `json:"details,omitempty"`
+	Score   float64            `json:"score"`
+	Details map[string]float64 `json:"details,omitempty"`
 }
 
 // UIIssue represents a single issue found during review.
@@ -94,18 +94,18 @@ func NewUIReviewer() *UIReviewer {
 			ID:          "ui_reviewer",
 			Name:        "UI Reviewer",
 			Version:     "1.0.0",
-			Description: "Score and audit UI/UX quality of a URL or screenshot. Use only when asked to evaluate/rate/review visual design or accessibility. Not for browsing or searching.",
+			Description: "Review and score UI/UX quality of a URL or screenshot. Use only when asked to evaluate, critique, or check accessibility for visual design. Not for browsing or searching.",
 			Category:    "system",
 			Icon:        "eye",
 			Tags:        []string{"ui", "review", "accessibility", "visual", "quality"},
 			Inputs: []skill.Parameter{
-				{Name: "action", Type: "string", Description: "Action: review_url (evaluate a website by URL — navigates, screenshots, and scores automatically), review_image (evaluate a base64 screenshot), check_accessibility (a11y audit only)", Required: true},
+				{Name: "action", Type: "string", Description: "Optional canonical action: review_url (evaluate a website by URL — navigates, screenshots, and scores automatically), review_image (evaluate a base64 screenshot), check_accessibility (accessibility-only check). Defaults to review_url when url is present, or review_image when image is present. Do not use audit as an action name."},
 				{Name: "url", Type: "string", Description: "Website URL to evaluate (required for review_url, check_accessibility). The tool navigates to the URL automatically — no need to fetch or screenshot it first"},
 				{Name: "image", Type: "string", Description: "Base64-encoded screenshot (required for review_image)"},
 				{Name: "viewports", Type: "array", Description: "Viewport list: desktop (1280x800), mobile (375x812). Default: [desktop]", Default: []string{"desktop"}},
 				{Name: "threshold", Type: "number", Description: "Pass threshold (0-100). Default: 75", Default: 75.0},
 				{Name: "format", Type: "string", Description: "Output format: json or human. Default: json", Default: "json"},
-			{Name: "locale", Type: "string", Description: "Language/locale code for localized responses (e.g., en-US, zh-CN)"},
+				{Name: "locale", Type: "string", Description: "Language/locale code for localized responses (e.g., en-US, zh-CN)"},
 			},
 			Outputs: []skill.Parameter{
 				{Name: "result", Type: "object", Description: "ReviewResult with scores, issues, and pass/fail"},
@@ -131,32 +131,32 @@ func (u *UIReviewer) SetBridge(bridge *proxybridge.Bridge) {
 func (u *UIReviewer) Manifest() *skill.Manifest { return u.manifest }
 
 func (u *UIReviewer) Validate(input map[string]any) error {
-	// Default action based on input: if url is provided without action, default to review_url
-	if _, hasAction := input["action"]; !hasAction {
-		if _, hasURL := input["url"]; hasURL {
-			input["action"] = "review_url"
+	actionStr := ""
+	if action, ok := input["action"]; ok {
+		var isString bool
+		actionStr, isString = action.(string)
+		if !isString {
+			return fmt.Errorf("action must be a string")
 		}
 	}
-
-	action, ok := input["action"]
-	if !ok {
-		return fmt.Errorf("action is required")
+	url, _ := input["url"].(string)
+	image, _ := input["image"].(string)
+	actionStr, err := tools.CanonicalizeUIReviewAction(actionStr, url, image)
+	if err != nil {
+		return err
 	}
-	actionStr, ok := action.(string)
-	if !ok {
-		return fmt.Errorf("action must be a string")
-	}
+	input["action"] = actionStr
 	switch actionStr {
 	case "review_url":
-		if _, ok := input["url"]; !ok {
+		if strings.TrimSpace(url) == "" {
 			return fmt.Errorf("url is required for review_url")
 		}
 	case "review_image":
-		if _, ok := input["image"]; !ok {
+		if strings.TrimSpace(image) == "" {
 			return fmt.Errorf("image is required for review_image")
 		}
 	case "check_accessibility":
-		if _, ok := input["url"]; !ok {
+		if strings.TrimSpace(url) == "" {
 			return fmt.Errorf("url is required for check_accessibility")
 		}
 	default:
@@ -166,7 +166,14 @@ func (u *UIReviewer) Validate(input map[string]any) error {
 }
 
 func (u *UIReviewer) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
-	action := input["action"].(string)
+	actionRaw, _ := input["action"].(string)
+	url, _ := input["url"].(string)
+	image, _ := input["image"].(string)
+	action, err := tools.CanonicalizeUIReviewAction(actionRaw, url, image)
+	if err != nil {
+		return skill.NewErrorResult(err), nil
+	}
+	input["action"] = action
 
 	threshold := 75.0
 	if t, ok := input["threshold"].(float64); ok && t > 0 {

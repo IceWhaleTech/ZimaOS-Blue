@@ -63,7 +63,7 @@ type Settings struct {
 	SmallModelID                        string   `json:"small_model_id,omitempty"`                            // fixed: qwen3.5-0.8b-gguf-q4km
 	SmallModelAutoDownload              *bool    `json:"small_model_auto_download,omitempty"`                 // default true
 	SmallModelSummaryEnabled            *bool    `json:"small_model_summary_enabled,omitempty"`               // default false
-	ContextCompressionMode              string   `json:"context_compression_mode,omitempty"`                  // off|offline|small_model|auto
+	ContextCompressionMode              string   `json:"context_compression_mode,omitempty"`                  // offline|small_model|auto (legacy "off" coerces to auto)
 	SmallModelContextCompressEnabled    *bool    `json:"small_model_context_compress_enabled,omitempty"`      // default false
 	SmallModelDocExtractEnabled         *bool    `json:"small_model_doc_extract_enabled,omitempty"`           // default false
 	SmallModelRerankEnabled             *bool    `json:"small_model_rerank_enabled,omitempty"`                // default false
@@ -627,7 +627,9 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	}
 	if mode, ok := updates["context_compression_mode"].(string); ok {
 		switch mode {
-		case "off", "offline", "small_model", "auto":
+		case "off":
+			h.settings.ContextCompressionMode = "auto"
+		case "offline", "small_model", "auto":
 			h.settings.ContextCompressionMode = mode
 		}
 	}
@@ -1180,7 +1182,7 @@ func (h *SettingsHandler) GetContextCompressionMode() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	switch h.settings.ContextCompressionMode {
-	case "off", "offline", "small_model":
+	case "offline", "small_model":
 		return h.settings.ContextCompressionMode
 	default:
 		return "auto"
@@ -1401,7 +1403,9 @@ func (h *SettingsHandler) SetContextCompressionMode(mode string) (bool, error) {
 	defer h.mu.Unlock()
 
 	switch mode {
-	case "off", "offline", "small_model", "auto":
+	case "off":
+		mode = "auto"
+	case "offline", "small_model", "auto":
 	default:
 		mode = "auto"
 	}

@@ -2,8 +2,11 @@ package browser
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 	"time"
 
@@ -11,6 +14,7 @@ import (
 	"github.com/go-rod/rod/lib/cdp"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/go-rod/stealth"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
@@ -91,6 +95,16 @@ func (p *Pool) newLauncher() *launcher.Launcher {
 	return l
 }
 
+func relayCDPWebSocketHeader() http.Header {
+	keyBytes := make([]byte, 16)
+	if _, err := rand.Read(keyBytes); err != nil {
+		keyBytes = []byte("blue-relay-key!!")
+	}
+	return http.Header{
+		"Sec-WebSocket-Key": []string{base64.StdEncoding.EncodeToString(keyBytes)},
+	}
+}
+
 // createInstance creates a new browser instance with its own launcher.
 func (p *Pool) createInstance(ctx context.Context) (*browserInstance, error) {
 	if p.config.UsesRelayDriver() {
@@ -105,7 +119,7 @@ func (p *Pool) createInstance(ctx context.Context) (*browserInstance, error) {
 		}
 
 		ws := &cdp.WebSocket{}
-		if err := ws.Connect(ctx, wsURL, nil); err != nil {
+		if err := ws.Connect(ctx, wsURL, relayCDPWebSocketHeader()); err != nil {
 			return nil, err
 		}
 
@@ -148,6 +162,18 @@ func (p *Pool) createInstance(ctx context.Context) (*browserInstance, error) {
 	}, nil
 }
 
+func createStealthPage(browser *rod.Browser) (*rod.Page, error) {
+	page, err := browser.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := page.EvalOnNewDocument(stealth.JS); err != nil {
+		_ = page.Close()
+		return nil, err
+	}
+	return page, nil
+}
+
 // Acquire gets a browser instance from the pool.
 func (p *Pool) Acquire(ctx context.Context) (*rod.Browser, error) {
 	p.mu.RLock()
@@ -167,11 +193,14 @@ func (p *Pool) Acquire(ctx context.Context) (*rod.Browser, error) {
 	p.mu.RUnlock()
 
 	select {
-	case instance := <-p.available:
+	case instance, ok := <-p.available:
 		p.mu.Lock()
+		defer p.mu.Unlock()
+		if !ok || p.closed || instance == nil || instance.browser == nil {
+			return nil, ErrBrowserNotRunning
+		}
 		instance.inUse = true
 		instance.lastUsed = timeutil.NowTime()
-		p.mu.Unlock()
 		return instance.browser, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -264,7 +293,7 @@ func (p *Pool) NewPage(ctx context.Context) (*rod.Page, *rod.Browser, error) {
 		return nil, nil, err
 	}
 
-	page, err := browser.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	page, err := createStealthPage(browser)
 	if err != nil {
 		if isConnectionClosed(err) {
 			// Browser is dead — replace the instance and retry
@@ -272,7 +301,7 @@ func (p *Pool) NewPage(ctx context.Context) (*rod.Page, *rod.Browser, error) {
 			if replaceErr != nil {
 				return nil, nil, fmt.Errorf("browser died and replacement failed: %w", replaceErr)
 			}
-			page, err = newBrowser.Page(proto.TargetCreateTarget{URL: "about:blank"})
+			page, err = createStealthPage(newBrowser)
 			if err != nil {
 				p.Release(newBrowser)
 				return nil, nil, err

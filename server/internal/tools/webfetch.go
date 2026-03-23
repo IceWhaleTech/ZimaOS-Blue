@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 	"golang.org/x/net/html"
 	"golang.org/x/net/publicsuffix"
@@ -31,45 +32,72 @@ const (
 	webFetchWarningCodeChallenge       = "challenge"
 	webFetchWarningCodeBrowserRequired = "browser_required"
 
-	webFetchDefaultMaxChars         = 50_000
-	webFetchDefaultMaxCharsCap      = 200_000
-	webFetchDefaultMaxResponseBytes = 2_000_000
-	webFetchDefaultTimeout          = 5 * time.Minute
-	webFetchDefaultMaxRedirects     = 3
-	webFetchDefaultCacheTTL         = 5 * time.Minute
-	webFetchDefaultFirecrawlBaseURL = "https://api.firecrawl.dev"
-	webFetchDefaultFirecrawlTimeout = webFetchDefaultTimeout
-	webFetchMinReadableChars        = 240
-	webFetchDefaultUserAgent        = "Mozilla/5.0 (compatible; ZimaOS-Blue/1.0; +https://github.com/IceWhaleTech/ZimaOS-Blue)"
+	webFetchDefaultMaxChars          = 50_000
+	webFetchDefaultMaxCharsCap       = 200_000
+	webFetchDefaultMaxResponseBytes  = 2_000_000
+	webFetchDefaultTimeout           = 5 * time.Minute
+	webFetchDefaultMaxRedirects      = 3
+	webFetchDefaultCacheTTL          = 5 * time.Minute
+	webFetchDefaultFirecrawlBaseURL  = "https://api.firecrawl.dev"
+	webFetchDefaultFirecrawlTimeout  = webFetchDefaultTimeout
+	webFetchDefaultJinaReaderBaseURL = "https://r.jina.ai"
+	webFetchDefaultJinaReaderTimeout = webFetchDefaultTimeout
+	webFetchMinReadableChars         = 240
+	webFetchDefaultUserAgent         = "Mozilla/5.0 (compatible; ZimaOS-Blue/1.0; +https://github.com/IceWhaleTech/ZimaOS-Blue)"
+
+	webFetchProxyProviderFirecrawl  = "firecrawl"
+	webFetchProxyProviderJinaReader = "jina_reader"
 )
 
 // WebFetchConfig configures the web_fetch tool runtime behavior.
 type WebFetchConfig struct {
-	Timeout           time.Duration
-	MaxChars          int
-	MaxCharsCap       int
-	MaxResponseBytes  int64
-	MaxRedirects      int
-	CacheTTL          time.Duration
-	UserAgent         string
-	AllowPrivateHosts bool
+	Timeout               time.Duration
+	MaxChars              int
+	MaxCharsCap           int
+	MaxResponseBytes      int64
+	MaxRedirects          int
+	CacheTTL              time.Duration
+	UserAgent             string
+	AllowPrivateHosts     bool
+	LayeredFetchEnabled   bool
+	SessionMemoryEnabled  bool
+	DomainStrategyEnabled bool
+	AdapterMemoryEnabled  bool
+	NetworkObserveEnabled bool
+	MaxExploreAttempts    int
+	AutoFallbackHosts     []string
+	ChallengePolicy       string
+
+	HTTPNativeEnabled     bool
+	HTTPNativeLibrary     string
+	HTTPNativePreferHosts []string
 
 	FirecrawlEnabled         bool
 	FirecrawlAPIKey          string
 	FirecrawlBaseURL         string
 	FirecrawlTimeout         time.Duration
 	FirecrawlOnlyMainContent bool
+
+	JinaReaderEnabled bool
+	JinaReaderAPIKey  string
+	JinaReaderBaseURL string
+	JinaReaderTimeout time.Duration
+
+	ProxyFetcherProviders []string
 }
 
 // WebFetchTool fetches and extracts readable content from a URL.
 type WebFetchTool struct {
-	config     WebFetchConfig
-	httpClient *http.Client
-	browser    BrowserBackend
-	pdfService PDFService
-	cacheMu    sync.RWMutex
-	cache      map[string]webFetchCacheEntry
-	fetchGroup singleflight.Group
+	config         WebFetchConfig
+	httpClient     *http.Client
+	nativeClient   webFetchHTTPNativeClient
+	browser        BrowserBackend
+	pdfService     PDFService
+	documentReader DocumentReadService
+	cacheMu        sync.RWMutex
+	cache          map[string]webFetchCacheEntry
+	fetchGroup     singleflight.Group
+	orchestrator   *FetchOrchestrator
 }
 
 type webFetchCacheEntry struct {
@@ -78,21 +106,43 @@ type webFetchCacheEntry struct {
 }
 
 type webFetchPayload struct {
-	URL           string
-	Title         string
-	Content       string
-	ContentType   string
-	ExtractMode   string
-	Extractor     string
-	BodyTruncated bool
-	Warning       string
-	WarningCode   string
+	URL             string
+	Title           string
+	Content         string
+	ContentType     string
+	ExtractMode     string
+	Extractor       string
+	Source          string
+	BodyTruncated   bool
+	Warning         string
+	WarningCode     string
+	StrategyUsed    string
+	SessionReused   bool
+	AdapterID       string
+	NetworkObserved bool
+	ChallengeState  *ChallengeState
+}
+
+type webFetchProxyFetcher interface {
+	Name() string
+	Enabled(WebFetchConfig) bool
+	Fetch(context.Context, *WebFetchTool, string, string) (webFetchPayload, error)
 }
 
 type webFetchRequestOptions struct {
 	extraHeaders    map[string]string
 	browserTargetID string
 	cacheable       bool
+}
+
+type webFetchHTTPResult struct {
+	FinalURL      string
+	StatusCode    int
+	ContentType   string
+	Body          []byte
+	BodyTruncated bool
+	Headers       http.Header
+	Source        string
 }
 
 var webFetchFakeIPPrefixes = []netip.Prefix{
@@ -135,6 +185,15 @@ func NewWebFetchTool(config WebFetchConfig) *WebFetchTool {
 	if strings.TrimSpace(config.UserAgent) == "" {
 		config.UserAgent = webFetchDefaultUserAgent
 	}
+	if config.MaxExploreAttempts <= 0 {
+		config.MaxExploreAttempts = 1
+	}
+	if strings.TrimSpace(config.ChallengePolicy) == "" {
+		config.ChallengePolicy = webFetchChallengePolicyTypedHandoff
+	}
+	config.AutoFallbackHosts = normalizeWebFetchHostList(config.AutoFallbackHosts)
+	config.HTTPNativeLibrary = strings.TrimSpace(config.HTTPNativeLibrary)
+	config.HTTPNativePreferHosts = normalizeWebFetchHostList(config.HTTPNativePreferHosts)
 	if strings.TrimSpace(config.FirecrawlAPIKey) == "" {
 		config.FirecrawlAPIKey = strings.TrimSpace(os.Getenv("FIRECRAWL_API_KEY"))
 	}
@@ -153,6 +212,31 @@ func NewWebFetchTool(config WebFetchConfig) *WebFetchTool {
 	}
 	if !config.FirecrawlOnlyMainContent {
 		config.FirecrawlOnlyMainContent = true
+	}
+	if strings.TrimSpace(config.JinaReaderAPIKey) == "" {
+		config.JinaReaderAPIKey = strings.TrimSpace(os.Getenv("JINA_API_KEY"))
+	}
+	if strings.TrimSpace(config.JinaReaderBaseURL) == "" {
+		if envBase := strings.TrimSpace(os.Getenv("JINA_READER_BASE_URL")); envBase != "" {
+			config.JinaReaderBaseURL = envBase
+		} else {
+			config.JinaReaderBaseURL = webFetchDefaultJinaReaderBaseURL
+		}
+	}
+	if config.JinaReaderTimeout <= 0 {
+		config.JinaReaderTimeout = webFetchDefaultJinaReaderTimeout
+	}
+	if !config.JinaReaderEnabled && config.JinaReaderAPIKey != "" {
+		config.JinaReaderEnabled = true
+	}
+	config.ProxyFetcherProviders = normalizeWebFetchProxyProviderList(config.ProxyFetcherProviders)
+	if len(config.ProxyFetcherProviders) == 0 {
+		if config.FirecrawlEnabled {
+			config.ProxyFetcherProviders = append(config.ProxyFetcherProviders, webFetchProxyProviderFirecrawl)
+		}
+		if config.JinaReaderEnabled {
+			config.ProxyFetcherProviders = append(config.ProxyFetcherProviders, webFetchProxyProviderJinaReader)
+		}
 	}
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -190,11 +274,15 @@ func NewWebFetchTool(config WebFetchConfig) *WebFetchTool {
 		return nil
 	}
 
-	return &WebFetchTool{
-		config:     config,
-		httpClient: client,
-		cache:      make(map[string]webFetchCacheEntry),
+	tool := &WebFetchTool{
+		config:         config,
+		httpClient:     client,
+		nativeClient:   newWebFetchHTTPNativeClient(config),
+		documentReader: convertpkg.NewDocumentReader(),
+		cache:          make(map[string]webFetchCacheEntry),
 	}
+	tool.orchestrator = newFetchOrchestrator(tool)
+	return tool
 }
 
 // SetBrowser injects the browser backend used for session-cookie handoff.
@@ -210,11 +298,20 @@ func (w *WebFetchTool) SetPDFService(service PDFService) {
 	w.pdfService = service
 }
 
+// SetDocumentReadService injects the office-style document reader used for
+// remote document extraction.
+func (w *WebFetchTool) SetDocumentReadService(service DocumentReadService) {
+	if w == nil {
+		return
+	}
+	w.documentReader = service
+}
+
 // Definition returns the tool definition.
 func (w *WebFetchTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "web_fetch",
-		Description: "Fast lightweight HTTP read for a known public URL. Best for static docs, articles, text, or PDFs when a quick readable extract is enough. Does not run JS or interact with pages; if the response indicates login_wall, challenge, or browser_required, switch to browser.",
+		Description: "Fast lightweight HTTP read for a known public URL. Best for static docs, articles, text, PDFs, or downloadable office-style documents when a quick readable extract is enough. Does not run JS or interact with pages; if the response indicates login_wall, challenge, or browser_required, switch to browser.",
 		Icon:        "web-search",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -291,7 +388,7 @@ func (w *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 
 	cacheable := reqOpts.cacheable && w.config.CacheTTL > 0
 	if !cacheable {
-		payload, fetchErr := w.fetchAndExtract(ctx, normalizedURL, mode, reqOpts)
+		payload, fetchErr := w.fetchAndExtractWithOrchestrator(ctx, normalizedURL, mode, maxChars, reqOpts)
 		if fetchErr != nil {
 			return nil, fetchErr
 		}
@@ -308,7 +405,7 @@ func (w *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 			return cached, nil
 		}
 
-		payload, fetchErr := w.fetchAndExtract(ctx, normalizedURL, mode, reqOpts)
+		payload, fetchErr := w.fetchAndExtractWithOrchestrator(ctx, normalizedURL, mode, maxChars, reqOpts)
 		if fetchErr != nil {
 			return nil, fetchErr
 		}
@@ -326,28 +423,213 @@ func (w *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 	return marshalWebFetchPayload(fresh, maxChars), nil
 }
 
+func (w *WebFetchTool) fetchAndExtractWithOrchestrator(ctx context.Context, normalizedURL string, mode string, maxChars int, opts webFetchRequestOptions) (webFetchPayload, error) {
+	if w == nil || w.orchestrator == nil || !w.orchestrator.enabled() {
+		return w.fetchAndExtract(ctx, normalizedURL, mode, opts)
+	}
+	result, err := w.orchestrator.Fetch(ctx, FetchRequest{
+		URL:               normalizedURL,
+		Mode:              mode,
+		MaxChars:          maxChars,
+		PreferredLane:     "",
+		Options:           opts,
+		AllowBrowser:      w.browser != nil,
+		AllowProxy:        len(w.config.ProxyFetcherProviders) > 0,
+		AllowSession:      true,
+		AllowAutoFallback: true,
+	})
+	if err != nil {
+		return webFetchPayload{}, err
+	}
+	return result.Payload, nil
+}
+
 func (w *WebFetchTool) fetchAndExtract(ctx context.Context, normalizedURL string, mode string, opts webFetchRequestOptions) (webFetchPayload, error) {
+	acceptHeader := defaultWebFetchAcceptHeader()
+
+	httpResult, err := w.fetchHTTPResult(ctx, normalizedURL, opts, acceptHeader)
+	if err != nil {
+		if fallback, ok, fbErr := w.tryProxyFetchFallback(ctx, normalizedURL, mode); ok {
+			return fallback, nil
+		} else if fbErr != nil {
+			return webFetchPayload{}, fmt.Errorf("failed to fetch URL: %w (proxy fetch fallback error: %v)", err, fbErr)
+		}
+		return webFetchPayload{}, fmt.Errorf("failed to fetch URL: %w", err)
+	}
+
+	payload, err := w.buildPayloadFromHTTPResult(ctx, mode, httpResult)
+	if err != nil {
+		if payload.Source != webAccessSourceHTTPNative && w.shouldRetryHTTPNativeOnResponse(httpResult, payload) {
+			if nativeResult, nativeErr := w.fetchHTTPResultViaBackend(ctx, normalizedURL, opts, acceptHeader, webAccessLaneHTTPNative); nativeErr == nil {
+				if nativePayload, nativeBuildErr := w.buildPayloadFromHTTPResult(ctx, mode, nativeResult); nativeBuildErr == nil {
+					payload = nativePayload
+					httpResult = nativeResult
+					err = nil
+				}
+			}
+		}
+		if err != nil {
+			if fallback, ok, fbErr := w.tryProxyFetchFallback(ctx, normalizedURL, mode); ok {
+				return fallback, nil
+			} else if fbErr != nil {
+				return webFetchPayload{}, fmt.Errorf("%w (proxy fetch fallback error: %v)", err, fbErr)
+			}
+			return webFetchPayload{}, err
+		}
+	}
+
+	if payload.Source != webAccessSourceHTTPNative && w.shouldRetryHTTPNativeOnResponse(httpResult, payload) {
+		if nativeResult, nativeErr := w.fetchHTTPResultViaBackend(ctx, normalizedURL, opts, acceptHeader, webAccessLaneHTTPNative); nativeErr == nil {
+			if nativePayload, nativeBuildErr := w.buildPayloadFromHTTPResult(ctx, mode, nativeResult); nativeBuildErr == nil && preferHTTPNativePayload(payload, nativePayload) {
+				payload = nativePayload
+				httpResult = nativeResult
+			}
+		}
+	}
+
+	authWall := strings.TrimSpace(payload.WarningCode) != ""
+	if httpResult.StatusCode < http.StatusOK || httpResult.StatusCode >= http.StatusMultipleChoices {
+		if authWall {
+			if fallback, ok, fbErr := w.tryBrowserSessionFallback(ctx, payload.URL, mode, opts.browserTargetID, payload.WarningCode, payload.Warning); ok {
+				return fallback, nil
+			} else if fbErr != nil {
+				return webFetchPayload{}, fmt.Errorf("web fetch hit login/challenge wall for %s: %w", normalizedURL, fbErr)
+			}
+		}
+		if fallback, ok, fbErr := w.tryProxyFetchFallback(ctx, payload.URL, mode); ok {
+			return fallback, nil
+		} else if fbErr != nil {
+			return webFetchPayload{}, fmt.Errorf("web fetch failed: HTTP %d for %s (proxy fetch fallback error: %v)", httpResult.StatusCode, normalizedURL, fbErr)
+		}
+		detail := strings.TrimSpace(payload.Content)
+		if detail == "" {
+			detail = http.StatusText(httpResult.StatusCode)
+		}
+		if len(detail) > 300 {
+			detail = detail[:300]
+		}
+		if payload.Warning != "" {
+			return webFetchPayload{}, fmt.Errorf("%s", payload.Warning)
+		}
+		return webFetchPayload{}, fmt.Errorf("web fetch failed: HTTP %d for %s (%s)", httpResult.StatusCode, normalizedURL, detail)
+	}
+
+	if authWall {
+		if fallback, ok, _ := w.tryBrowserSessionFallback(ctx, payload.URL, mode, opts.browserTargetID, payload.WarningCode, payload.Warning); ok {
+			return fallback, nil
+		}
+	}
+
+	if payload.Extractor == "html" && len([]rune(strings.TrimSpace(payload.Content))) < webFetchMinReadableChars {
+		if fallback, ok, _ := w.tryProxyFetchFallback(ctx, payload.URL, mode); ok && strings.TrimSpace(fallback.Content) != "" {
+			return fallback, nil
+		}
+	}
+
+	return payload, nil
+}
+
+func (w *WebFetchTool) buildPayloadFromHTTPResult(ctx context.Context, mode string, result webFetchHTTPResult) (webFetchPayload, error) {
+	if err := guardWebFetchURL(ctx, result.FinalURL, w.config.AllowPrivateHosts); err != nil {
+		return webFetchPayload{}, err
+	}
+	content, title, extractor, extractedTruncated, err := w.extractContent(ctx, result.FinalURL, result.ContentType, result.Body, mode, result.BodyTruncated)
+	if err != nil {
+		return webFetchPayload{
+			URL:           result.FinalURL,
+			ContentType:   normalizeContentType(result.ContentType),
+			ExtractMode:   mode,
+			Source:        firstNonEmpty(strings.TrimSpace(result.Source), webAccessSourceHTTP),
+			StrategyUsed:  firstNonEmpty(strings.TrimSpace(result.Source), webAccessSourceHTTP),
+			BodyTruncated: result.BodyTruncated,
+		}, err
+	}
+	authWall, authWallCode, authWallWarning := detectWebFetchAuthWall(result.StatusCode, result.FinalURL, title, content)
+	return webFetchPayload{
+		URL:           result.FinalURL,
+		Title:         title,
+		Content:       content,
+		ContentType:   normalizeContentType(result.ContentType),
+		ExtractMode:   mode,
+		Extractor:     extractor,
+		Source:        firstNonEmpty(strings.TrimSpace(result.Source), webAccessSourceHTTP),
+		StrategyUsed:  firstNonEmpty(strings.TrimSpace(result.Source), webAccessSourceHTTP),
+		BodyTruncated: result.BodyTruncated || extractedTruncated,
+		Warning:       ternary(authWall, authWallWarning, ""),
+		WarningCode:   ternary(authWall, authWallCode, ""),
+	}, nil
+}
+
+func (w *WebFetchTool) fetchHTTPResult(ctx context.Context, normalizedURL string, opts webFetchRequestOptions, acceptHeader string) (webFetchHTTPResult, error) {
+	primary := webAccessLaneHTTP
+	secondary := ""
+	if w.shouldPreferHTTPNative(normalizedURL) && w.canUseHTTPNative() {
+		primary = webAccessLaneHTTPNative
+		secondary = webAccessLaneHTTP
+	} else if w.canUseHTTPNative() {
+		secondary = webAccessLaneHTTPNative
+	}
+
+	result, err := w.fetchHTTPResultViaBackend(ctx, normalizedURL, opts, acceptHeader, primary)
+	if err == nil {
+		return result, nil
+	}
+	if secondary == "" {
+		return webFetchHTTPResult{}, err
+	}
+	if primary == webAccessLaneHTTPNative || w.shouldRetryHTTPNativeOnError(err) {
+		fallback, fallbackErr := w.fetchHTTPResultViaBackend(ctx, normalizedURL, opts, acceptHeader, secondary)
+		if fallbackErr == nil {
+			return fallback, nil
+		}
+		return webFetchHTTPResult{}, fmt.Errorf("%w (secondary %s failed: %v)", err, secondary, fallbackErr)
+	}
+	return webFetchHTTPResult{}, err
+}
+
+func (w *WebFetchTool) fetchHTTPResultViaExplicitBackend(ctx context.Context, normalizedURL string, opts webFetchRequestOptions, backend string) (webFetchHTTPResult, error) {
+	switch strings.TrimSpace(backend) {
+	case "":
+		return w.fetchHTTPResult(ctx, normalizedURL, opts, defaultWebFetchAcceptHeader())
+	case webAccessLaneHTTP, webAccessLaneHTTPNative:
+		return w.fetchHTTPResultViaBackend(ctx, normalizedURL, opts, defaultWebFetchAcceptHeader(), backend)
+	default:
+		return webFetchHTTPResult{}, fmt.Errorf("unsupported http backend: %s", backend)
+	}
+}
+
+func (w *WebFetchTool) fetchHTTPResultViaBackend(ctx context.Context, normalizedURL string, opts webFetchRequestOptions, acceptHeader string, backend string) (webFetchHTTPResult, error) {
+	switch backend {
+	case webAccessLaneHTTPNative:
+		return w.fetchHTTPResultViaNative(ctx, normalizedURL, opts, acceptHeader)
+	case "", webAccessLaneHTTP:
+		return w.fetchHTTPResultViaNetHTTP(ctx, normalizedURL, opts, acceptHeader)
+	default:
+		return webFetchHTTPResult{}, fmt.Errorf("unsupported http backend: %s", backend)
+	}
+}
+
+func defaultWebFetchAcceptHeader() string {
+	return "text/markdown, text/html;q=0.9, application/pdf;q=0.8, application/vnd.openxmlformats-officedocument.wordprocessingml.document;q=0.7, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;q=0.7, application/vnd.openxmlformats-officedocument.presentationml.presentation;q=0.7, application/msword;q=0.6, application/vnd.ms-excel;q=0.6, application/vnd.ms-powerpoint;q=0.6, application/vnd.oasis.opendocument.text;q=0.6, application/vnd.oasis.opendocument.spreadsheet;q=0.6, application/vnd.oasis.opendocument.presentation;q=0.6, application/rtf;q=0.6, text/rtf;q=0.6, */*;q=0.1"
+}
+
+func (w *WebFetchTool) fetchHTTPResultViaNetHTTP(ctx context.Context, normalizedURL string, opts webFetchRequestOptions, acceptHeader string) (webFetchHTTPResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, normalizedURL, nil)
 	if err != nil {
-		return webFetchPayload{}, fmt.Errorf("failed to create request: %w", err)
+		return webFetchHTTPResult{}, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Accept", "text/markdown, text/html;q=0.9, application/pdf;q=0.8, */*;q=0.1")
+	req.Header.Set("Accept", acceptHeader)
 	req.Header.Set("User-Agent", w.config.UserAgent)
-	for k, v := range opts.extraHeaders {
-		if strings.TrimSpace(k) == "" || strings.TrimSpace(v) == "" {
+	for key, value := range opts.extraHeaders {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
 			continue
 		}
-		req.Header.Set(k, v)
+		req.Header.Set(key, value)
 	}
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
-		if fallback, ok, fbErr := w.tryFirecrawlFallback(ctx, normalizedURL, mode); ok {
-			return fallback, nil
-		} else if fbErr != nil {
-			return webFetchPayload{}, fmt.Errorf("failed to fetch URL: %w (firecrawl fallback error: %v)", err, fbErr)
-		}
-		return webFetchPayload{}, fmt.Errorf("failed to fetch URL: %w", err)
+		return webFetchHTTPResult{}, err
 	}
 	defer resp.Body.Close()
 
@@ -358,75 +640,160 @@ func (w *WebFetchTool) fetchAndExtract(ctx context.Context, normalizedURL string
 	bodyLimit := w.responseBodyLimit(resp.Header.Get("Content-Type"), finalURL)
 	body, bodyTruncated, err := readLimitedBody(resp.Body, bodyLimit)
 	if err != nil {
-		return webFetchPayload{}, fmt.Errorf("failed to read response body: %w", err)
+		return webFetchHTTPResult{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
-	content, title, extractor, extractedTruncated, err := w.extractContent(ctx, finalURL, contentType, body, mode, bodyTruncated)
-	if err != nil {
-		if fallback, ok, fbErr := w.tryFirecrawlFallback(ctx, normalizedURL, mode); ok {
-			return fallback, nil
-		} else if fbErr != nil {
-			return webFetchPayload{}, fmt.Errorf("%w (firecrawl fallback error: %v)", err, fbErr)
-		}
-		return webFetchPayload{}, err
-	}
-
-	if err := guardWebFetchURL(ctx, finalURL, w.config.AllowPrivateHosts); err != nil {
-		return webFetchPayload{}, err
-	}
-
-	authWall, authWallCode, authWallWarning := detectWebFetchAuthWall(resp.StatusCode, finalURL, title, content)
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		if authWall {
-			if fallback, ok, fbErr := w.tryBrowserSessionFallback(ctx, finalURL, mode, opts.browserTargetID, authWallCode, authWallWarning); ok {
-				return fallback, nil
-			} else if fbErr != nil {
-				return webFetchPayload{}, fmt.Errorf("web fetch hit login/challenge wall for %s: %w", normalizedURL, fbErr)
-			}
-		}
-		if fallback, ok, fbErr := w.tryFirecrawlFallback(ctx, finalURL, mode); ok {
-			return fallback, nil
-		} else if fbErr != nil {
-			return webFetchPayload{}, fmt.Errorf("web fetch failed: HTTP %d for %s (firecrawl fallback error: %v)", resp.StatusCode, normalizedURL, fbErr)
-		}
-		detail := strings.TrimSpace(content)
-		if detail == "" {
-			detail = http.StatusText(resp.StatusCode)
-		}
-		if len(detail) > 300 {
-			detail = detail[:300]
-		}
-		if authWallWarning != "" {
-			return webFetchPayload{}, fmt.Errorf("%s", authWallWarning)
-		}
-		return webFetchPayload{}, fmt.Errorf("web fetch failed: HTTP %d for %s (%s)", resp.StatusCode, normalizedURL, detail)
-	}
-
-	if authWall {
-		if fallback, ok, _ := w.tryBrowserSessionFallback(ctx, finalURL, mode, opts.browserTargetID, authWallCode, authWallWarning); ok {
-			return fallback, nil
-		}
-	}
-
-	// HTML extraction quality gate: if extraction is too short, try Firecrawl for better main-content parsing.
-	if extractor == "html" && len([]rune(strings.TrimSpace(content))) < webFetchMinReadableChars {
-		if fallback, ok, _ := w.tryFirecrawlFallback(ctx, finalURL, mode); ok && strings.TrimSpace(fallback.Content) != "" {
-			return fallback, nil
-		}
-	}
-
-	return webFetchPayload{
-		URL:           finalURL,
-		Title:         title,
-		Content:       content,
-		ContentType:   normalizeContentType(contentType),
-		ExtractMode:   mode,
-		Extractor:     extractor,
-		BodyTruncated: bodyTruncated || extractedTruncated,
-		Warning:       authWallWarning,
-		WarningCode:   authWallCode,
+	return webFetchHTTPResult{
+		FinalURL:      finalURL,
+		StatusCode:    resp.StatusCode,
+		ContentType:   strings.TrimSpace(resp.Header.Get("Content-Type")),
+		Body:          body,
+		BodyTruncated: bodyTruncated,
+		Headers:       cloneWebFetchHTTPHeader(resp.Header),
+		Source:        webAccessSourceHTTP,
 	}, nil
+}
+
+func (w *WebFetchTool) fetchHTTPResultViaNative(ctx context.Context, normalizedURL string, opts webFetchRequestOptions, acceptHeader string) (webFetchHTTPResult, error) {
+	if !w.canUseHTTPNative() {
+		return webFetchHTTPResult{}, errWebFetchHTTPNativeUnavailable
+	}
+	headers := prepareWebFetchNativeHeaders(acceptHeader, w.config.UserAgent, opts.extraHeaders)
+	bodyLimit := w.config.MaxResponseBytes
+	documentLimit := int64(defaultPDFMaxBytesMB) << 20
+	if documentLimit > bodyLimit {
+		bodyLimit = documentLimit
+	}
+	resp, err := w.nativeClient.Do(ctx, webFetchHTTPNativeRequest{
+		URL:               normalizedURL,
+		Headers:           headers,
+		Timeout:           w.config.Timeout,
+		MaxRedirects:      w.config.MaxRedirects,
+		MaxResponseBytes:  bodyLimit,
+		AllowPrivateHosts: w.config.AllowPrivateHosts,
+	})
+	if err != nil {
+		return webFetchHTTPResult{}, err
+	}
+	return webFetchHTTPResult{
+		FinalURL:      firstNonEmpty(strings.TrimSpace(resp.FinalURL), normalizedURL),
+		StatusCode:    resp.StatusCode,
+		ContentType:   strings.TrimSpace(resp.ContentType),
+		Body:          append([]byte(nil), resp.Body...),
+		BodyTruncated: resp.BodyTruncated,
+		Headers:       cloneWebFetchHTTPHeader(resp.Headers),
+		Source:        webAccessSourceHTTPNative,
+	}, nil
+}
+
+func (w *WebFetchTool) canUseHTTPNative() bool {
+	return w != nil && w.nativeClient != nil && w.nativeClient.Available()
+}
+
+func (w *WebFetchTool) shouldPreferHTTPNative(targetURL string) bool {
+	if !w.canUseHTTPNative() {
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(targetURL))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(parsed.Hostname()), "."))
+	if host == "" {
+		return false
+	}
+	return webFetchHostListContains(w.config.HTTPNativePreferHosts, host)
+}
+
+func (w *WebFetchTool) shouldRetryHTTPNativeOnError(err error) bool {
+	if !w.canUseHTTPNative() || err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"http2",
+		"tls",
+		"handshake",
+		"unexpected eof",
+		"server closed idle connection",
+		"connection reset",
+		"protocol error",
+		"stream error",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *WebFetchTool) shouldRetryHTTPNativeOnResponse(result webFetchHTTPResult, payload webFetchPayload) bool {
+	if !w.canUseHTTPNative() || payload.Source == webAccessSourceHTTPNative {
+		return false
+	}
+	if w.shouldPreferHTTPNative(firstNonEmpty(result.FinalURL, payload.URL)) {
+		return true
+	}
+	switch payload.WarningCode {
+	case webFetchWarningCodeChallenge, webFetchWarningCodeBrowserRequired:
+		return true
+	}
+	if result.StatusCode == http.StatusForbidden || result.StatusCode == http.StatusTooManyRequests || result.StatusCode == http.StatusServiceUnavailable {
+		return true
+	}
+	if payload.Extractor != "html" {
+		return false
+	}
+	if len([]rune(strings.TrimSpace(payload.Content))) >= webFetchMinReadableChars {
+		return false
+	}
+	lowerURL := strings.ToLower(firstNonEmpty(result.FinalURL, payload.URL))
+	lowerTitle := strings.ToLower(payload.Title)
+	lowerBody := strings.ToLower(string(result.Body))
+	return containsWebFetchChallengeSignal(lowerURL, lowerTitle, lowerBody)
+}
+
+func prepareWebFetchNativeHeaders(acceptHeader, userAgent string, extra map[string]string) map[string]string {
+	headers := map[string]string{
+		http.CanonicalHeaderKey("Accept"):     strings.TrimSpace(acceptHeader),
+		http.CanonicalHeaderKey("User-Agent"): strings.TrimSpace(userAgent),
+	}
+	for key, value := range extra {
+		key = http.CanonicalHeaderKey(strings.TrimSpace(key))
+		value = strings.TrimSpace(value)
+		if key == "" {
+			continue
+		}
+		if value == "" {
+			delete(headers, key)
+			continue
+		}
+		headers[key] = value
+	}
+	for key, value := range headers {
+		if strings.TrimSpace(value) == "" {
+			delete(headers, key)
+		}
+	}
+	return headers
+}
+
+func preferHTTPNativePayload(current, native webFetchPayload) bool {
+	if native.Source != webAccessSourceHTTPNative {
+		return false
+	}
+	if current.Source != webAccessSourceHTTPNative && current.WarningCode != "" && native.WarningCode == "" {
+		return true
+	}
+	currentLen := len([]rune(strings.TrimSpace(current.Content)))
+	nativeLen := len([]rune(strings.TrimSpace(native.Content)))
+	if current.WarningCode == webFetchWarningCodeChallenge || current.WarningCode == webFetchWarningCodeBrowserRequired {
+		return nativeLen > 0
+	}
+	if current.Extractor == "html" && currentLen < webFetchMinReadableChars && nativeLen > currentLen {
+		return true
+	}
+	return nativeLen > currentLen+32
 }
 
 func (w *WebFetchTool) responseBodyLimit(contentType, targetURL string) int64 {
@@ -434,7 +801,7 @@ func (w *WebFetchTool) responseBodyLimit(contentType, targetURL string) int64 {
 	if limit <= 0 {
 		limit = webFetchDefaultMaxResponseBytes
 	}
-	if isLikelyWebFetchPDF(contentType, targetURL) {
+	if isLikelyWebFetchPDF(contentType, targetURL) || isLikelyWebFetchDocument(contentType, targetURL) {
 		pdfLimit := int64(defaultPDFMaxBytesMB) << 20
 		if pdfLimit > limit {
 			limit = pdfLimit
@@ -460,6 +827,13 @@ func (w *WebFetchTool) extractContent(ctx context.Context, sourceURL, contentTyp
 			return "", "", "", false, fmt.Errorf("pdf response exceeded %d bytes limit", w.responseBodyLimit(contentType, sourceURL))
 		}
 		content, title, extractor, extractedTruncated, err = w.extractPDFContent(ctx, sourceURL, body)
+		return content, title, extractor, extractedTruncated, err
+	}
+	if format := detectWebFetchDocumentFormat(contentType, sourceURL, body); format != "" {
+		if bodyTruncated {
+			return "", "", "", false, fmt.Errorf("document response exceeded %d bytes limit", w.responseBodyLimit(contentType, sourceURL))
+		}
+		content, title, extractor, extractedTruncated, err = w.extractDocumentContent(ctx, sourceURL, contentType, format, body)
 		return content, title, extractor, extractedTruncated, err
 	}
 	content, title, extractor, err = extractWebFetchContent(contentType, body, mode)
@@ -515,11 +889,29 @@ func marshalWebFetchPayload(payload webFetchPayload, maxChars int) string {
 		"extractor":    payload.Extractor,
 		"truncated":    payload.BodyTruncated || charsTruncated,
 	}
+	if strings.TrimSpace(payload.Source) != "" {
+		result["source"] = payload.Source
+	}
 	if strings.TrimSpace(payload.Warning) != "" {
 		result["warning"] = payload.Warning
 	}
 	if strings.TrimSpace(payload.WarningCode) != "" {
 		result["warning_code"] = payload.WarningCode
+	}
+	if strings.TrimSpace(payload.StrategyUsed) != "" {
+		result["strategy_used"] = payload.StrategyUsed
+	}
+	if payload.SessionReused {
+		result["session_reused"] = true
+	}
+	if strings.TrimSpace(payload.AdapterID) != "" {
+		result["adapter_id"] = payload.AdapterID
+	}
+	if payload.NetworkObserved {
+		result["network_observed"] = true
+	}
+	if payload.ChallengeState != nil {
+		result["challenge_state"] = payload.ChallengeState
 	}
 	b, _ := json.Marshal(result)
 	return string(b)
@@ -564,18 +956,32 @@ func (w *WebFetchTool) storeCache(key string, payload webFetchPayload) {
 	w.cacheMu.Unlock()
 }
 
-func (w *WebFetchTool) tryFirecrawlFallback(ctx context.Context, targetURL, mode string) (webFetchPayload, bool, error) {
-	if !w.config.FirecrawlEnabled {
+func (w *WebFetchTool) tryProxyFetchFallback(ctx context.Context, targetURL, mode string) (webFetchPayload, bool, error) {
+	providers := append([]string(nil), w.config.ProxyFetcherProviders...)
+	if len(providers) == 0 {
 		return webFetchPayload{}, false, nil
 	}
-	if strings.TrimSpace(w.config.FirecrawlAPIKey) == "" {
-		return webFetchPayload{}, false, nil
+
+	var errs []error
+	for _, provider := range providers {
+		payload, err := w.fetchViaProxyProvider(ctx, provider, targetURL, mode)
+		if err == nil {
+			return payload, true, nil
+		}
+		errs = append(errs, fmt.Errorf("%s: %w", provider, err))
 	}
-	payload, err := w.fetchViaFirecrawl(ctx, targetURL, mode)
+	return webFetchPayload{}, false, errors.Join(errs...)
+}
+
+func (w *WebFetchTool) tryProxyFetchFamily(ctx context.Context, targetURL, mode string) (webFetchPayload, error) {
+	payload, ok, err := w.tryProxyFetchFallback(ctx, targetURL, mode)
+	if ok {
+		return payload, nil
+	}
 	if err != nil {
-		return webFetchPayload{}, false, err
+		return webFetchPayload{}, err
 	}
-	return payload, true, nil
+	return webFetchPayload{}, errors.New("proxy fetcher family is not configured")
 }
 
 func (w *WebFetchTool) tryBrowserSessionFallback(ctx context.Context, targetURL, mode, browserTargetID, reasonCode, reason string) (webFetchPayload, bool, error) {
@@ -589,14 +995,27 @@ func (w *WebFetchTool) tryBrowserSessionFallback(ctx context.Context, targetURL,
 	return payload, true, nil
 }
 
+type webFetchBrowserSessionResult struct {
+	Payload  webFetchPayload
+	TargetID string
+}
+
 func (w *WebFetchTool) fetchViaBrowserSession(ctx context.Context, targetURL, mode, browserTargetID, reasonCode, reason string) (webFetchPayload, error) {
+	result, err := w.fetchViaBrowserSessionDetailed(ctx, targetURL, mode, browserTargetID, reasonCode, reason)
+	if err != nil {
+		return webFetchPayload{}, err
+	}
+	return result.Payload, nil
+}
+
+func (w *WebFetchTool) fetchViaBrowserSessionDetailed(ctx context.Context, targetURL, mode, browserTargetID, reasonCode, reason string) (webFetchBrowserSessionResult, error) {
 	nav, err := w.browser.Navigate(ctx, targetURL, browserTargetID)
 	if err != nil {
-		return webFetchPayload{}, fmt.Errorf("browser session navigate failed: %w", err)
+		return webFetchBrowserSessionResult{}, fmt.Errorf("browser session navigate failed: %w", err)
 	}
 	a11y, err := w.browser.AccessibilityTree(ctx, nav.TargetID, 12)
 	if err != nil {
-		return webFetchPayload{}, fmt.Errorf("browser session snapshot failed: %w", err)
+		return webFetchBrowserSessionResult{}, fmt.Errorf("browser session snapshot failed: %w", err)
 	}
 	finalURL := strings.TrimSpace(a11y.URL)
 	if finalURL == "" {
@@ -613,20 +1032,47 @@ func (w *WebFetchTool) fetchViaBrowserSession(ctx context.Context, targetURL, mo
 	if mode == webFetchExtractMarkdown && title != "" {
 		content = "# " + title + "\n\n" + content
 	}
+	hitWall, wallCode, wallWarning := detectWebFetchAuthWall(http.StatusOK, finalURL, title, content)
+	warningCode := strings.TrimSpace(reasonCode)
 	warning := strings.TrimSpace(reason)
-	if warning == "" {
+	if hitWall && warningCode == "" {
+		warningCode = wallCode
+	}
+	if hitWall && warning == "" {
+		warning = wallWarning
+	}
+	if warning == "" && warningCode != "" {
 		warning = "web_fetch used browser session fallback because the page appears to require login or an interactive browser"
 	}
-	return webFetchPayload{
-		URL:         finalURL,
-		Title:       title,
-		Content:     content,
-		ContentType: "text/plain",
-		ExtractMode: mode,
-		Extractor:   "browser-a11y",
-		Warning:     warning,
-		WarningCode: strings.TrimSpace(reasonCode),
+	return webFetchBrowserSessionResult{
+		TargetID: nav.TargetID,
+		Payload: webFetchPayload{
+			URL:           finalURL,
+			Title:         title,
+			Content:       content,
+			ContentType:   "text/plain",
+			ExtractMode:   mode,
+			Extractor:     "browser-a11y",
+			Source:        webAccessSourceBrowser,
+			Warning:       warning,
+			WarningCode:   warningCode,
+			StrategyUsed:  webFetchStrategyBrowser,
+			SessionReused: strings.TrimSpace(nav.TargetID) == strings.TrimSpace(browserTargetID) && strings.TrimSpace(browserTargetID) != "",
+		},
 	}, nil
+}
+
+func (w *WebFetchTool) fetchViaProxyProvider(ctx context.Context, provider, targetURL, mode string) (webFetchPayload, error) {
+	for _, fetcher := range webFetchProxyFetchers() {
+		if fetcher.Name() != strings.TrimSpace(provider) {
+			continue
+		}
+		if !fetcher.Enabled(w.config) {
+			return webFetchPayload{}, fmt.Errorf("%s is not enabled", provider)
+		}
+		return fetcher.Fetch(ctx, w, targetURL, mode)
+	}
+	return webFetchPayload{}, fmt.Errorf("unsupported proxy fetch provider: %s", provider)
 }
 
 func (w *WebFetchTool) fetchViaFirecrawl(ctx context.Context, targetURL, mode string) (webFetchPayload, error) {
@@ -743,8 +1189,109 @@ func (w *WebFetchTool) fetchViaFirecrawl(ctx context.Context, targetURL, mode st
 		ContentType:   contentType,
 		ExtractMode:   mode,
 		Extractor:     "firecrawl",
+		Source:        webAccessSourceProxyFetcher,
 		BodyTruncated: false,
 	}, nil
+}
+
+func (w *WebFetchTool) fetchViaJinaReader(ctx context.Context, targetURL, mode string) (webFetchPayload, error) {
+	normalizedTarget, err := normalizeWebFetchURL(targetURL)
+	if err != nil {
+		return webFetchPayload{}, err
+	}
+	if err := guardWebFetchURL(ctx, normalizedTarget, w.config.AllowPrivateHosts); err != nil {
+		return webFetchPayload{}, err
+	}
+
+	fetchCtx := ctx
+	cancel := func() {}
+	if w.config.JinaReaderTimeout > 0 {
+		fetchCtx, cancel = context.WithTimeout(ctx, w.config.JinaReaderTimeout)
+	}
+	defer cancel()
+
+	endpoint := resolveWebFetchJinaReaderEndpoint(w.config.JinaReaderBaseURL, normalizedTarget)
+	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return webFetchPayload{}, fmt.Errorf("failed to build jina reader request: %w", err)
+	}
+	req.Header.Set("Accept", "text/plain, text/markdown;q=0.9, */*;q=0.1")
+	req.Header.Set("User-Agent", w.config.UserAgent)
+	if token := normalizeWebFetchBearerToken(w.config.JinaReaderAPIKey); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := w.httpClient.Do(req)
+	if err != nil {
+		return webFetchPayload{}, fmt.Errorf("jina reader request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, _, err := readLimitedBody(resp.Body, w.config.MaxResponseBytes)
+	if err != nil {
+		return webFetchPayload{}, fmt.Errorf("failed to read jina reader response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		detail := strings.TrimSpace(string(raw))
+		if len(detail) > 240 {
+			detail = detail[:240]
+		}
+		if detail == "" {
+			detail = http.StatusText(resp.StatusCode)
+		}
+		return webFetchPayload{}, fmt.Errorf("jina reader fetch failed: HTTP %d (%s)", resp.StatusCode, detail)
+	}
+
+	content := strings.TrimSpace(string(raw))
+	if content == "" {
+		return webFetchPayload{}, errors.New("jina reader returned empty content")
+	}
+	title := extractMarkdownLeadingHeading(content)
+	if mode == webFetchExtractText {
+		content = markdownToPlainText(content)
+	}
+
+	return webFetchPayload{
+		URL:           normalizedTarget,
+		Title:         firstNonEmpty(title, pdfDisplayName(normalizedTarget)),
+		Content:       strings.TrimSpace(content),
+		ContentType:   ternary(mode == webFetchExtractText, "text/plain", "text/markdown"),
+		ExtractMode:   mode,
+		Extractor:     "jina-reader",
+		Source:        webAccessSourceProxyFetcher,
+		BodyTruncated: false,
+	}, nil
+}
+
+type webFetchFirecrawlProxyFetcher struct{}
+
+func (webFetchFirecrawlProxyFetcher) Name() string { return webFetchProxyProviderFirecrawl }
+
+func (webFetchFirecrawlProxyFetcher) Enabled(cfg WebFetchConfig) bool {
+	return cfg.FirecrawlEnabled && strings.TrimSpace(cfg.FirecrawlAPIKey) != ""
+}
+
+func (webFetchFirecrawlProxyFetcher) Fetch(ctx context.Context, tool *WebFetchTool, targetURL, mode string) (webFetchPayload, error) {
+	return tool.fetchViaFirecrawl(ctx, targetURL, mode)
+}
+
+type webFetchJinaReaderProxyFetcher struct{}
+
+func (webFetchJinaReaderProxyFetcher) Name() string { return webFetchProxyProviderJinaReader }
+
+func (webFetchJinaReaderProxyFetcher) Enabled(cfg WebFetchConfig) bool {
+	return cfg.JinaReaderEnabled
+}
+
+func (webFetchJinaReaderProxyFetcher) Fetch(ctx context.Context, tool *WebFetchTool, targetURL, mode string) (webFetchPayload, error) {
+	return tool.fetchViaJinaReader(ctx, targetURL, mode)
+}
+
+func webFetchProxyFetchers() []webFetchProxyFetcher {
+	return []webFetchProxyFetcher{
+		webFetchFirecrawlProxyFetcher{},
+		webFetchJinaReaderProxyFetcher{},
+	}
 }
 
 func resolveWebFetchFirecrawlEndpoint(baseURL string) string {
@@ -764,6 +1311,77 @@ func resolveWebFetchFirecrawlEndpoint(baseURL string) string {
 		parsed.Path = "/v2/scrape"
 	}
 	return parsed.String()
+}
+
+func resolveWebFetchJinaReaderEndpoint(baseURL, normalizedTarget string) string {
+	trimmed := strings.TrimSpace(baseURL)
+	if trimmed == "" {
+		trimmed = webFetchDefaultJinaReaderBaseURL
+	}
+	trimmed = strings.TrimRight(trimmed, "/")
+	if trimmed == "" {
+		trimmed = webFetchDefaultJinaReaderBaseURL
+	}
+	return trimmed + "/" + normalizedTarget
+}
+
+func normalizeWebFetchProxyProviderList(raw []string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, provider := range raw {
+		provider = strings.ToLower(strings.TrimSpace(provider))
+		switch provider {
+		case webFetchProxyProviderFirecrawl, webFetchProxyProviderJinaReader:
+		default:
+			continue
+		}
+		if _, ok := seen[provider]; ok {
+			continue
+		}
+		seen[provider] = struct{}{}
+		out = append(out, provider)
+	}
+	return out
+}
+
+func normalizeWebFetchHostList(raw []string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, host := range raw {
+		host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+		if host == "" {
+			continue
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		out = append(out, host)
+	}
+	return out
+}
+
+func webFetchHostListContains(list []string, host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	if host == "" || len(list) == 0 {
+		return false
+	}
+	for _, item := range list {
+		item = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(item), "."))
+		if item == "" {
+			continue
+		}
+		if host == item || strings.HasSuffix(host, "."+item) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeWebFetchBearerToken(raw string) string {
@@ -1299,6 +1917,22 @@ func markdownToPlainText(markdown string) string {
 		out = append(out, line)
 	}
 	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
+func extractMarkdownLeadingHeading(markdown string) string {
+	for _, rawLine := range strings.Split(markdown, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if !strings.HasPrefix(line, "#") {
+			continue
+		}
+		for len(line) > 0 && line[0] == '#' {
+			line = strings.TrimSpace(line[1:])
+		}
+		if line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 func extractReadableHTML(raw string) (title, text string) {

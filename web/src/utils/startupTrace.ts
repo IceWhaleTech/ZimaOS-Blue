@@ -1,5 +1,4 @@
-const startupTraceStart =
-  typeof performance !== 'undefined' ? performance.now() : 0
+const startupTraceStart = typeof performance !== 'undefined' ? performance.now() : 0
 
 const reportedMarks = new Set<string>()
 
@@ -25,7 +24,7 @@ export function isStartupTraceEnabled(): boolean {
 
 export function reportStartupMark(
   label: string,
-  extra: Record<string, string | number | boolean | null | undefined> = {},
+  extra: Record<string, string | number | boolean | null | undefined> = {}
 ) {
   if (typeof window === 'undefined' || !isStartupTraceEnabled()) return
   if (reportedMarks.has(label)) return

@@ -64,9 +64,10 @@ describe('agent locale coverage', () => {
       for (const key of requiredKeys) {
         const value = section?.[key]
         expect(typeof value, `${file} should expose a string for agent.${key}`).toBe('string')
-        expect(String(value).trim().length, `${file} should expose a non-empty agent.${key}`).toBeGreaterThan(
-          0
-        )
+        expect(
+          String(value).trim().length,
+          `${file} should expose a non-empty agent.${key}`
+        ).toBeGreaterThan(0)
       }
     }
   })

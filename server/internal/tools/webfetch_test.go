@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -12,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 )
 
@@ -139,6 +142,50 @@ func TestWebFetchToolExecute_PDFExtraction(t *testing.T) {
 	}
 	if data["content_type"] != "application/pdf" {
 		t.Fatalf("content_type = %v, want %q", data["content_type"], "application/pdf")
+	}
+}
+
+func TestWebFetchToolExecute_DocumentExtraction(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+		_, _ = w.Write([]byte("stub docx bytes"))
+	}))
+	defer srv.Close()
+
+	reader := &stubDocumentReadService{
+		result: &convertpkg.DocumentReadResult{
+			Format:       "docx",
+			Text:         "Executive summary",
+			ExtractedVia: "stub:txt",
+		},
+	}
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:           5 * time.Second,
+		AllowPrivateHosts: true,
+	})
+	tool.SetDocumentReadService(reader)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":          srv.URL + "/report.docx",
+		"extract_mode": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	if reader.lastPath == "" || !strings.HasSuffix(reader.lastPath, ".docx") {
+		t.Fatalf("reader path = %q, want temp .docx path", reader.lastPath)
+	}
+	data := parseWebFetchResult(t, result)
+	if data["extractor"] != "document" {
+		t.Fatalf("extractor = %v, want %q", data["extractor"], "document")
+	}
+	if data["title"] != "report.docx" {
+		t.Fatalf("title = %v, want %q", data["title"], "report.docx")
+	}
+	content, _ := data["content"].(string)
+	if !strings.Contains(content, "Executive summary") {
+		t.Fatalf("content = %q, want extracted document text", content)
 	}
 }
 
@@ -529,6 +576,272 @@ func TestWebFetchToolExecute_FallsBackToBrowserOnLoginWall(t *testing.T) {
 	}
 }
 
+func TestWebFetchToolExecute_ReusesSessionMemoryOnFollowUpCall(t *testing.T) {
+	ctx := WithSessionID(context.Background(), "conv-webfetch-session")
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Cookie"); got != "sid=ok" {
+			http.Error(w, "login required", http.StatusUnauthorized)
+			return
+		}
+		n := hits.Add(1)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("session-memory-hit-" + strconv.Itoa(int(n)) + " with enough readable text to keep the layered session lane as the winning result and avoid any unnecessary browser fallback on a successful cookie-backed fetch. The response intentionally includes extra explanatory detail about persisted browser affinity, remembered host strategy, and session reuse so the content comfortably exceeds the readable threshold used by the retrieval scorer."))
+	}))
+	defer srv.Close()
+
+	browser := &mockBrowserBackend{cookieValue: "sid=ok"}
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:               5 * time.Second,
+		CacheTTL:              -1,
+		AllowPrivateHosts:     true,
+		LayeredFetchEnabled:   true,
+		SessionMemoryEnabled:  true,
+		DomainStrategyEnabled: true,
+	})
+	tool.SetBrowser(browser)
+
+	first, err := tool.Execute(ctx, map[string]interface{}{
+		"url":               srv.URL,
+		"extract_mode":      "text",
+		"browser_target_id": "tab-session",
+	})
+	if err != nil {
+		t.Fatalf("first execute failed: %v", err)
+	}
+	second, err := tool.Execute(ctx, map[string]interface{}{
+		"url":          srv.URL,
+		"extract_mode": "text",
+	})
+	if err != nil {
+		t.Fatalf("second execute failed: %v", err)
+	}
+
+	firstData := parseWebFetchResult(t, first)
+	secondData := parseWebFetchResult(t, second)
+	if firstData["strategy_used"] != webFetchStrategySession {
+		t.Fatalf("first strategy_used = %v, want %q", firstData["strategy_used"], webFetchStrategySession)
+	}
+	if secondData["strategy_used"] != webFetchStrategySession {
+		t.Fatalf("second strategy_used = %v, want %q", secondData["strategy_used"], webFetchStrategySession)
+	}
+	if secondData["session_reused"] != true {
+		t.Fatalf("second session_reused = %v, want true", secondData["session_reused"])
+	}
+	if browser.cookieTabID != "tab-session" {
+		t.Fatalf("cookie tab id = %q, want %q", browser.cookieTabID, "tab-session")
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("server hit count = %d, want 2", hits.Load())
+	}
+}
+
+func TestWebFetchToolExecute_ClassifiesHardChallengeWithoutAutoSolve(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "challenge", http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	browser := &mockBrowserBackend{
+		navResult: BrowserNavResult{URL: srv.URL, Title: "Security Check", TargetID: "tab-hard"},
+		a11yResult: BrowserA11yTreeResult{
+			URL:      srv.URL,
+			Title:    "Security Check",
+			TargetID: "tab-hard",
+			Tree:     "Please complete the Turnstile CAPTCHA before continuing",
+		},
+	}
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:               5 * time.Second,
+		AllowPrivateHosts:     true,
+		LayeredFetchEnabled:   true,
+		SessionMemoryEnabled:  true,
+		DomainStrategyEnabled: true,
+		ChallengePolicy:       webFetchChallengePolicyTypedHandoff,
+	})
+	tool.SetBrowser(browser)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":               srv.URL,
+		"extract_mode":      "text",
+		"browser_target_id": "tab-hard",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	data := parseWebFetchResult(t, result)
+	if data["strategy_used"] != webFetchStrategyBrowser {
+		t.Fatalf("strategy_used = %v, want %q", data["strategy_used"], webFetchStrategyBrowser)
+	}
+	state, ok := data["challenge_state"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("challenge_state = %T, want object", data["challenge_state"])
+	}
+	if state["kind"] != webFetchChallengeKindHard {
+		t.Fatalf("challenge_state.kind = %v, want %q", state["kind"], webFetchChallengeKindHard)
+	}
+	if state["requires_human"] != true {
+		t.Fatalf("challenge_state.requires_human = %v, want true", state["requires_human"])
+	}
+	if state["resume_action"] != "browser" {
+		t.Fatalf("challenge_state.resume_action = %v, want browser", state["resume_action"])
+	}
+}
+
+func TestWebFetchToolExecute_PrefersHTTPNativeForConfiguredHosts(t *testing.T) {
+	native := &stubHTTPNativeClient{
+		available: true,
+		do: func(_ context.Context, req webFetchHTTPNativeRequest) (webFetchHTTPNativeResponse, error) {
+			if req.URL != "https://news.thepaper.cn/story" {
+				t.Fatalf("native request URL = %q, want %q", req.URL, "https://news.thepaper.cn/story")
+			}
+			return webFetchHTTPNativeResponse{
+				FinalURL:    req.URL,
+				StatusCode:  http.StatusOK,
+				ContentType: "text/html; charset=utf-8",
+				Body:        []byte(`<!doctype html><html><head><title>Native Preferred</title></head><body><main><h1>Native Preferred</h1><p>This response is intentionally long enough to count as a fully readable body for the internal native lane selection logic. It includes concrete detail about a preferred-host article, several clauses of descriptive text, and enough readable characters to avoid any short-content fallback behavior.</p></main></body></html>`),
+			}, nil
+		},
+	}
+
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:               5 * time.Second,
+		AllowPrivateHosts:     true,
+		HTTPNativeEnabled:     true,
+		HTTPNativePreferHosts: []string{"thepaper.cn"},
+	})
+	tool.nativeClient = native
+	tool.httpClient.Transport = testRoundTripper(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("unexpected net/http request for preferred native host: %s", req.URL.String())
+		return nil, errors.New("unexpected net/http request")
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":          "https://news.thepaper.cn/story",
+		"extract_mode": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	data := parseWebFetchResult(t, result)
+	if data["source"] != webAccessSourceHTTPNative {
+		t.Fatalf("source = %v, want %q", data["source"], webAccessSourceHTTPNative)
+	}
+	if native.callCount() != 1 {
+		t.Fatalf("native call count = %d, want 1", native.callCount())
+	}
+	content, _ := data["content"].(string)
+	if !strings.Contains(content, "preferred-host article") {
+		t.Fatalf("content = %q, want native response body", content)
+	}
+}
+
+func TestWebFetchToolExecute_FallsBackToHTTPNativeOnTransportError(t *testing.T) {
+	native := &stubHTTPNativeClient{
+		available: true,
+		do: func(_ context.Context, req webFetchHTTPNativeRequest) (webFetchHTTPNativeResponse, error) {
+			return webFetchHTTPNativeResponse{
+				FinalURL:    req.URL,
+				StatusCode:  http.StatusOK,
+				ContentType: "text/html; charset=utf-8",
+				Body:        []byte(`<!doctype html><html><head><title>Native Recovery</title></head><body><main><h1>Native Recovery</h1><p>The native lane recovered after a transport-level failure from net/http. This body is long enough to be treated as a healthy readable document and proves the internal fallback stayed behind the existing public entry point.</p></main></body></html>`),
+			}, nil
+		},
+	}
+
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:           5 * time.Second,
+		AllowPrivateHosts: true,
+		HTTPNativeEnabled: true,
+	})
+	tool.nativeClient = native
+	httpCalls := 0
+	tool.httpClient.Transport = testRoundTripper(func(req *http.Request) (*http.Response, error) {
+		httpCalls++
+		return nil, errors.New("http2: server sent GOAWAY and closed the connection")
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":          "https://example.com/transport-flake",
+		"extract_mode": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	if httpCalls != 1 {
+		t.Fatalf("net/http call count = %d, want 1", httpCalls)
+	}
+	if native.callCount() != 1 {
+		t.Fatalf("native call count = %d, want 1", native.callCount())
+	}
+	data := parseWebFetchResult(t, result)
+	if data["source"] != webAccessSourceHTTPNative {
+		t.Fatalf("source = %v, want %q", data["source"], webAccessSourceHTTPNative)
+	}
+}
+
+func TestWebFetchToolExecute_RetriesHTTPNativeOnBlockedResponse(t *testing.T) {
+	native := &stubHTTPNativeClient{
+		available: true,
+		do: func(_ context.Context, req webFetchHTTPNativeRequest) (webFetchHTTPNativeResponse, error) {
+			return webFetchHTTPNativeResponse{
+				FinalURL:    req.URL,
+				StatusCode:  http.StatusOK,
+				ContentType: "text/html; charset=utf-8",
+				Body:        []byte(`<!doctype html><html><head><title>Native Unlock</title></head><body><main><h1>Native Unlock</h1><p>The native lane produced a readable document after the ordinary HTTP backend only saw a blocked response. This gives the selector enough useful text to prefer the internal native result and clear the browser-required warning state.</p></main></body></html>`),
+			}, nil
+		},
+	}
+
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:           5 * time.Second,
+		AllowPrivateHosts: true,
+		HTTPNativeEnabled: true,
+	})
+	tool.nativeClient = native
+	httpCalls := 0
+	tool.httpClient.Transport = testRoundTripper(func(req *http.Request) (*http.Response, error) {
+		httpCalls++
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Header: http.Header{
+				"Content-Type": []string{"text/html; charset=utf-8"},
+			},
+			Body:    io.NopCloser(strings.NewReader(`<!doctype html><html><head><title>Blocked</title></head><body><main><h1>Blocked</h1><p>Forbidden.</p></main></body></html>`)),
+			Request: req,
+		}, nil
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":          "https://example.com/blocked",
+		"extract_mode": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	if httpCalls != 1 {
+		t.Fatalf("net/http call count = %d, want 1", httpCalls)
+	}
+	if native.callCount() != 1 {
+		t.Fatalf("native call count = %d, want 1", native.callCount())
+	}
+	data := parseWebFetchResult(t, result)
+	if data["source"] != webAccessSourceHTTPNative {
+		t.Fatalf("source = %v, want %q", data["source"], webAccessSourceHTTPNative)
+	}
+	if got := data["warning_code"]; got != nil {
+		t.Fatalf("warning_code = %v, want nil after native recovery", got)
+	}
+	content, _ := data["content"].(string)
+	if !strings.Contains(content, "clear the browser-required warning state") {
+		t.Fatalf("content = %q, want native recovery body", content)
+	}
+}
+
 func TestDetectWebFetchAuthWall_ReturnsStructuredCodes(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -623,6 +936,115 @@ func TestWebFetchToolExecute_FirecrawlFallbackOnHTTPFailure(t *testing.T) {
 	}
 	if !strings.Contains(content, "Recovered via fallback.") {
 		t.Fatalf("content missing fallback text: %q", content)
+	}
+}
+
+func TestWebFetchToolExecute_JinaReaderFallbackAfterFirecrawlFailure(t *testing.T) {
+	var firecrawlHits atomic.Int32
+	firecrawlSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		firecrawlHits.Add(1)
+		http.Error(w, "firecrawl unavailable", http.StatusBadGateway)
+	}))
+	defer firecrawlSrv.Close()
+
+	var jinaHits atomic.Int32
+	jinaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jinaHits.Add(1)
+		if got := r.Header.Get("Authorization"); got != "Bearer jina-test" {
+			t.Fatalf("jina Authorization = %q, want %q", got, "Bearer jina-test")
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("# Jina Reader Title\n\nRecovered from the secondary proxy fetcher backend."))
+	}))
+	defer jinaSrv.Close()
+
+	originSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "origin unavailable", http.StatusServiceUnavailable)
+	}))
+	defer originSrv.Close()
+
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:               5 * time.Second,
+		AllowPrivateHosts:     true,
+		FirecrawlEnabled:      true,
+		FirecrawlAPIKey:       "firecrawl-test",
+		FirecrawlBaseURL:      firecrawlSrv.URL,
+		FirecrawlTimeout:      5 * time.Second,
+		JinaReaderEnabled:     true,
+		JinaReaderAPIKey:      "jina-test",
+		JinaReaderBaseURL:     jinaSrv.URL,
+		JinaReaderTimeout:     5 * time.Second,
+		ProxyFetcherProviders: []string{webFetchProxyProviderFirecrawl, webFetchProxyProviderJinaReader},
+	})
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":          originSrv.URL,
+		"extract_mode": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if firecrawlHits.Load() != 1 {
+		t.Fatalf("firecrawl hit count = %d, want 1", firecrawlHits.Load())
+	}
+	if jinaHits.Load() != 1 {
+		t.Fatalf("jina hit count = %d, want 1", jinaHits.Load())
+	}
+
+	data := parseWebFetchResult(t, result)
+	if data["extractor"] != "jina-reader" {
+		t.Fatalf("extractor = %v, want %q", data["extractor"], "jina-reader")
+	}
+	if data["title"] != "Jina Reader Title" {
+		t.Fatalf("title = %v, want %q", data["title"], "Jina Reader Title")
+	}
+	content, _ := data["content"].(string)
+	if !strings.Contains(content, "Recovered from the secondary proxy fetcher backend.") {
+		t.Fatalf("content missing jina fallback text: %q", content)
+	}
+}
+
+func TestWebFetchToolExecute_JinaReaderWorksWithoutAPIKeyWhenEnabled(t *testing.T) {
+	var jinaHits atomic.Int32
+	jinaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jinaHits.Add(1)
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("jina Authorization = %q, want empty", got)
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("# Keyless Jina Reader\n\nWorks without an API key when explicitly enabled."))
+	}))
+	defer jinaSrv.Close()
+
+	originSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "origin unavailable", http.StatusServiceUnavailable)
+	}))
+	defer originSrv.Close()
+
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:               5 * time.Second,
+		AllowPrivateHosts:     true,
+		JinaReaderEnabled:     true,
+		JinaReaderBaseURL:     jinaSrv.URL,
+		JinaReaderTimeout:     5 * time.Second,
+		ProxyFetcherProviders: []string{webFetchProxyProviderJinaReader},
+	})
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":          originSrv.URL,
+		"extract_mode": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if jinaHits.Load() != 1 {
+		t.Fatalf("jina hit count = %d, want 1", jinaHits.Load())
+	}
+
+	data := parseWebFetchResult(t, result)
+	if data["extractor"] != "jina-reader" {
+		t.Fatalf("extractor = %v, want %q", data["extractor"], "jina-reader")
+	}
+	if data["title"] != "Keyless Jina Reader" {
+		t.Fatalf("title = %v, want %q", data["title"], "Keyless Jina Reader")
 	}
 }
 

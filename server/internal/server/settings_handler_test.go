@@ -371,6 +371,14 @@ func TestGetSmallModelDefaults(t *testing.T) {
 	}
 }
 
+func TestGetContextCompressionMode_LegacyOffNormalizesToAuto(t *testing.T) {
+	h := NewSettingsHandler(kvstore.NewMemoryStore())
+	h.settings.ContextCompressionMode = "off"
+	if got := h.GetContextCompressionMode(); got != "auto" {
+		t.Fatalf("GetContextCompressionMode() = %q, want %q for legacy off", got, "auto")
+	}
+}
+
 func TestGetSmallModelRouteImageQAEnabled_InheritsShortQAWhenUnset(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
 	enabled := true

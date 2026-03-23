@@ -2609,7 +2609,7 @@ const processTraceTranslations = {
     },
     summaryValues: {
       continuePreviousReply: 'Continua la resposta anterior',
-      resumePreviousRequest: "Reprèn la sol·licitud anterior",
+      resumePreviousRequest: 'Reprèn la sol·licitud anterior',
     },
   },
   'cs-CZ': {
@@ -2723,13 +2723,11 @@ const processTraceTranslations = {
       processing: 'Verarbeitung läuft',
     },
     details: {
-      requestDispatched: 'Warte darauf, dass der Server die Anfrage annimmt und die Antwort startet.',
-      waitingForResponse:
-        'Die Anfrage wurde angenommen. Warte auf die erste sichtbare Ausgabe.',
-      awaitingConfirmation:
-        'Der Assistent benötigt Ihre Bestätigung, bevor er fortfahren kann.',
-      injectionRestart:
-        'Der Assistent startet die Antwort mit Ihrer neuesten Unterbrechung neu.',
+      requestDispatched:
+        'Warte darauf, dass der Server die Anfrage annimmt und die Antwort startet.',
+      waitingForResponse: 'Die Anfrage wurde angenommen. Warte auf die erste sichtbare Ausgabe.',
+      awaitingConfirmation: 'Der Assistent benötigt Ihre Bestätigung, bevor er fortfahren kann.',
+      injectionRestart: 'Der Assistent startet die Antwort mit Ihrer neuesten Unterbrechung neu.',
       networkInterruptWaiting:
         'Der Stream wurde unterbrochen, nachdem bereits Inhalt begonnen hatte. Warte auf die Wiederherstellung des Backends.',
     },
@@ -2773,12 +2771,9 @@ const processTraceTranslations = {
     details: {
       requestDispatched:
         'Αναμονή μέχρι ο διακομιστής να αποδεχτεί το αίτημα και να ξεκινήσει την απάντηση.',
-      waitingForResponse:
-        'Το αίτημα έγινε αποδεκτό. Αναμονή για την πρώτη ορατή έξοδο.',
-      awaitingConfirmation:
-        'Ο βοηθός χρειάζεται την επιβεβαίωσή σας πριν συνεχίσει.',
-      injectionRestart:
-        'Ο βοηθός επανεκκινεί την απάντηση με τη νεότερη διακοπή σας.',
+      waitingForResponse: 'Το αίτημα έγινε αποδεκτό. Αναμονή για την πρώτη ορατή έξοδο.',
+      awaitingConfirmation: 'Ο βοηθός χρειάζεται την επιβεβαίωσή σας πριν συνεχίσει.',
+      injectionRestart: 'Ο βοηθός επανεκκινεί την απάντηση με τη νεότερη διακοπή σας.',
       networkInterruptWaiting:
         'Η ροή διακόπηκε αφού είχε ήδη ξεκινήσει το περιεχόμενο. Αναμονή για ανάκαμψη του backend.',
     },
@@ -2823,8 +2818,7 @@ const processTraceTranslations = {
       requestDispatched: 'Waiting for the server to accept the request and start the response.',
       waitingForResponse: 'The request was accepted. Waiting for the first visible output.',
       awaitingConfirmation: 'The assistant needs your confirmation before continuing.',
-      injectionRestart:
-        'The assistant is restarting the response with your latest interruption.',
+      injectionRestart: 'The assistant is restarting the response with your latest interruption.',
       networkInterruptWaiting:
         'The stream was interrupted after content had started. Waiting for the backend to recover.',
     },
@@ -2869,8 +2863,7 @@ const processTraceTranslations = {
       requestDispatched: 'Waiting for the server to accept and start the response.',
       waitingForResponse: 'The request was accepted. Waiting for the first visible output.',
       awaitingConfirmation: 'The assistant needs your confirmation before continuing.',
-      injectionRestart:
-        'The assistant is restarting the response with your latest interruption.',
+      injectionRestart: 'The assistant is restarting the response with your latest interruption.',
       networkInterruptWaiting:
         'The stream was interrupted after content started. Waiting for the backend to recover.',
     },
@@ -2912,12 +2905,9 @@ const processTraceTranslations = {
       processing: 'Procesando',
     },
     details: {
-      requestDispatched:
-        'Esperando a que el servidor acepte la solicitud e inicie la respuesta.',
-      waitingForResponse:
-        'La solicitud fue aceptada. Esperando la primera salida visible.',
-      awaitingConfirmation:
-        'El asistente necesita tu confirmación antes de continuar.',
+      requestDispatched: 'Esperando a que el servidor acepte la solicitud e inicie la respuesta.',
+      waitingForResponse: 'La solicitud fue aceptada. Esperando la primera salida visible.',
+      awaitingConfirmation: 'El asistente necesita tu confirmación antes de continuar.',
       injectionRestart:
         'El asistente está reiniciando la respuesta con tu interrupción más reciente.',
       networkInterruptWaiting:
@@ -2961,14 +2951,10 @@ const processTraceTranslations = {
       processing: 'Traitement en cours',
     },
     details: {
-      requestDispatched:
-        'En attente que le serveur accepte la requête et démarre la réponse.',
-      waitingForResponse:
-        'La requête a été acceptée. En attente du premier résultat visible.',
-      awaitingConfirmation:
-        "L'assistant a besoin de votre confirmation avant de continuer.",
-      injectionRestart:
-        "L'assistant redémarre la réponse avec votre interruption la plus récente.",
+      requestDispatched: 'En attente que le serveur accepte la requête et démarre la réponse.',
+      waitingForResponse: 'La requête a été acceptée. En attente du premier résultat visible.',
+      awaitingConfirmation: "L'assistant a besoin de votre confirmation avant de continuer.",
+      injectionRestart: "L'assistant redémarre la réponse avec votre interruption la plus récente.",
       networkInterruptWaiting:
         'Le flux a été interrompu après le début du contenu. En attente de la récupération du backend.',
     },
@@ -3012,12 +2998,9 @@ const processTraceTranslations = {
     details: {
       requestDispatched:
         'Ag fanacht go nglacfaidh an freastalaí leis an iarratas agus go dtosóidh sé an freagra.',
-      waitingForResponse:
-        'Glacadh leis an iarratas. Ag fanacht leis an gcéad aschur infheicthe.',
-      awaitingConfirmation:
-        'Tá do dheimhniú ag teastáil ón gcúntóir sula leanfaidh sé ar aghaidh.',
-      injectionRestart:
-        'Tá an cúntóir ag atosú an fhreagra leis an gcur isteach is déanaí uait.',
+      waitingForResponse: 'Glacadh leis an iarratas. Ag fanacht leis an gcéad aschur infheicthe.',
+      awaitingConfirmation: 'Tá do dheimhniú ag teastáil ón gcúntóir sula leanfaidh sé ar aghaidh.',
+      injectionRestart: 'Tá an cúntóir ag atosú an fhreagra leis an gcur isteach is déanaí uait.',
       networkInterruptWaiting:
         'Cuireadh isteach ar an sruth tar éis don ábhar tosú. Ag fanacht go n-aisghabhfaidh an backend.',
     },
@@ -3059,14 +3042,10 @@ const processTraceTranslations = {
       processing: 'Obrađujem',
     },
     details: {
-      requestDispatched:
-        'Čekam da poslužitelj prihvati zahtjev i započne odgovor.',
-      waitingForResponse:
-        'Zahtjev je prihvaćen. Čekam prvi vidljivi izlaz.',
-      awaitingConfirmation:
-        'Pomoćnik treba vašu potvrdu prije nego nastavi.',
-      injectionRestart:
-        'Pomoćnik ponovno pokreće odgovor s vašim najnovijim prekidom.',
+      requestDispatched: 'Čekam da poslužitelj prihvati zahtjev i započne odgovor.',
+      waitingForResponse: 'Zahtjev je prihvaćen. Čekam prvi vidljivi izlaz.',
+      awaitingConfirmation: 'Pomoćnik treba vašu potvrdu prije nego nastavi.',
+      injectionRestart: 'Pomoćnik ponovno pokreće odgovor s vašim najnovijim prekidom.',
       networkInterruptWaiting:
         'Tok je prekinut nakon što je sadržaj već počeo. Čekam da se backend oporavi.',
     },
@@ -3110,12 +3089,9 @@ const processTraceTranslations = {
     details: {
       requestDispatched:
         'Várakozás arra, hogy a kiszolgáló elfogadja a kérést és elindítsa a választ.',
-      waitingForResponse:
-        'A kérés elfogadva. Várakozás az első látható kimenetre.',
-      awaitingConfirmation:
-        'Az asszisztensnek szüksége van a megerősítésére a folytatáshoz.',
-      injectionRestart:
-        'Az asszisztens újraindítja a választ az Ön legutóbbi megszakításával.',
+      waitingForResponse: 'A kérés elfogadva. Várakozás az első látható kimenetre.',
+      awaitingConfirmation: 'Az asszisztensnek szüksége van a megerősítésére a folytatáshoz.',
+      injectionRestart: 'Az asszisztens újraindítja a választ az Ön legutóbbi megszakításával.',
       networkInterruptWaiting:
         'A stream megszakadt, miután a tartalom már elkezdődött. Várakozás a backend helyreállására.',
     },
@@ -3157,12 +3133,9 @@ const processTraceTranslations = {
       processing: 'Elaborazione in corso',
     },
     details: {
-      requestDispatched:
-        'In attesa che il server accetti la richiesta e avvii la risposta.',
-      waitingForResponse:
-        'La richiesta è stata accettata. In attesa del primo output visibile.',
-      awaitingConfirmation:
-        "L'assistente ha bisogno della tua conferma prima di continuare.",
+      requestDispatched: 'In attesa che il server accetti la richiesta e avvii la risposta.',
+      waitingForResponse: 'La richiesta è stata accettata. In attesa del primo output visibile.',
+      awaitingConfirmation: "L'assistente ha bisogno della tua conferma prima di continuare.",
       injectionRestart:
         "L'assistente sta riavviando la risposta con la tua interruzione più recente.",
       networkInterruptWaiting:
@@ -3206,12 +3179,10 @@ const processTraceTranslations = {
       processing: '処理中',
     },
     details: {
-      requestDispatched:
-        'サーバーがリクエストを受け付け、応答を開始するのを待っています。',
+      requestDispatched: 'サーバーがリクエストを受け付け、応答を開始するのを待っています。',
       waitingForResponse: 'リクエストは受け付けられました。最初の可視出力を待っています。',
       awaitingConfirmation: '続行する前にアシスタントが確認を必要としています。',
-      injectionRestart:
-        'アシスタントは最新の割り込み内容で応答を再開しています。',
+      injectionRestart: 'アシスタントは最新の割り込み内容で応答を再開しています。',
       networkInterruptWaiting:
         'コンテンツの開始後にストリームが中断されました。バックエンドの回復を待っています。',
     },
@@ -3303,8 +3274,7 @@ const processTraceTranslations = {
         'സെർവർ അഭ്യർത്ഥന സ്വീകരിച്ച് പ്രതികരണം ആരംഭിക്കുന്നതുവരെ കാത്തിരിക്കുന്നു.',
       waitingForResponse:
         'അഭ്യർത്ഥനം സ്വീകരിച്ചു. ആദ്യമായി കാണാനാകുന്ന ഔട്ട്പുട്ടിനായി കാത്തിരിക്കുന്നു.',
-      awaitingConfirmation:
-        'തുടരുന്നതിന് മുമ്പ് സഹായി നിങ്ങളുടെ സ്ഥിരീകരണം ആവശ്യപ്പെടുന്നു.',
+      awaitingConfirmation: 'തുടരുന്നതിന് മുമ്പ് സഹായി നിങ്ങളുടെ സ്ഥിരീകരണം ആവശ്യപ്പെടുന്നു.',
       injectionRestart:
         'താങ്കളുടെ ഏറ്റവും പുതിയ ഇടപെടൽ ഉപയോഗിച്ച് സഹായി പ്രതികരണം വീണ്ടും ആരംഭിക്കുന്നു.',
       networkInterruptWaiting:
@@ -3348,14 +3318,10 @@ const processTraceTranslations = {
       processing: 'Behandler',
     },
     details: {
-      requestDispatched:
-        'Venter på at serveren skal godta forespørselen og starte svaret.',
-      waitingForResponse:
-        'Forespørselen ble godtatt. Venter på første synlige utdata.',
-      awaitingConfirmation:
-        'Assistenten trenger bekreftelsen din før den kan fortsette.',
-      injectionRestart:
-        'Assistenten starter svaret på nytt med den siste avbrytelsen din.',
+      requestDispatched: 'Venter på at serveren skal godta forespørselen og starte svaret.',
+      waitingForResponse: 'Forespørselen ble godtatt. Venter på første synlige utdata.',
+      awaitingConfirmation: 'Assistenten trenger bekreftelsen din før den kan fortsette.',
+      injectionRestart: 'Assistenten starter svaret på nytt med den siste avbrytelsen din.',
       networkInterruptWaiting:
         'Strømmen ble avbrutt etter at innholdet hadde startet. Venter på at backend skal gjenopprettes.',
     },
@@ -3397,12 +3363,9 @@ const processTraceTranslations = {
       processing: 'Bezig met verwerken',
     },
     details: {
-      requestDispatched:
-        'Wachten tot de server het verzoek accepteert en het antwoord start.',
-      waitingForResponse:
-        'Het verzoek is geaccepteerd. Wachten op de eerste zichtbare uitvoer.',
-      awaitingConfirmation:
-        'De assistent heeft je bevestiging nodig voordat hij verdergaat.',
+      requestDispatched: 'Wachten tot de server het verzoek accepteert en het antwoord start.',
+      waitingForResponse: 'Het verzoek is geaccepteerd. Wachten op de eerste zichtbare uitvoer.',
+      awaitingConfirmation: 'De assistent heeft je bevestiging nodig voordat hij verdergaat.',
       injectionRestart:
         'De assistent start het antwoord opnieuw met je meest recente onderbreking.',
       networkInterruptWaiting:
@@ -3446,8 +3409,7 @@ const processTraceTranslations = {
       processing: 'Przetwarzanie',
     },
     details: {
-      requestDispatched:
-        'Oczekiwanie, aż serwer zaakceptuje żądanie i rozpocznie odpowiedź.',
+      requestDispatched: 'Oczekiwanie, aż serwer zaakceptuje żądanie i rozpocznie odpowiedź.',
       waitingForResponse:
         'Żądanie zostało zaakceptowane. Oczekiwanie na pierwsze widoczne dane wyjściowe.',
       awaitingConfirmation:
@@ -3495,12 +3457,9 @@ const processTraceTranslations = {
       processing: 'Processando',
     },
     details: {
-      requestDispatched:
-        'Aguardando o servidor aceitar a solicitação e iniciar a resposta.',
-      waitingForResponse:
-        'A solicitação foi aceita. Aguardando a primeira saída visível.',
-      awaitingConfirmation:
-        'O assistente precisa da sua confirmação antes de continuar.',
+      requestDispatched: 'Aguardando o servidor aceitar a solicitação e iniciar a resposta.',
+      waitingForResponse: 'A solicitação foi aceita. Aguardando a primeira saída visível.',
+      awaitingConfirmation: 'O assistente precisa da sua confirmação antes de continuar.',
       injectionRestart:
         'O assistente está reiniciando a resposta com sua interrupção mais recente.',
       networkInterruptWaiting:
@@ -3544,12 +3503,9 @@ const processTraceTranslations = {
       processing: 'A processar',
     },
     details: {
-      requestDispatched:
-        'A aguardar que o servidor aceite o pedido e inicie a resposta.',
-      waitingForResponse:
-        'O pedido foi aceite. A aguardar a primeira saída visível.',
-      awaitingConfirmation:
-        'O assistente precisa da sua confirmação antes de continuar.',
+      requestDispatched: 'A aguardar que o servidor aceite o pedido e inicie a resposta.',
+      waitingForResponse: 'O pedido foi aceite. A aguardar a primeira saída visível.',
+      awaitingConfirmation: 'O assistente precisa da sua confirmação antes de continuar.',
       injectionRestart:
         'O assistente está a reiniciar a resposta com a sua interrupção mais recente.',
       networkInterruptWaiting:
@@ -3595,10 +3551,8 @@ const processTraceTranslations = {
     details: {
       requestDispatched:
         'În așteptarea acceptării cererii de către server și a începerii răspunsului.',
-      waitingForResponse:
-        'Cererea a fost acceptată. În așteptarea primei ieșiri vizibile.',
-      awaitingConfirmation:
-        'Asistentul are nevoie de confirmarea ta înainte de a continua.',
+      waitingForResponse: 'Cererea a fost acceptată. În așteptarea primei ieșiri vizibile.',
+      awaitingConfirmation: 'Asistentul are nevoie de confirmarea ta înainte de a continua.',
       injectionRestart:
         'Asistentul repornește răspunsul folosind cea mai recentă întrerupere a ta.',
       networkInterruptWaiting:
@@ -3642,14 +3596,10 @@ const processTraceTranslations = {
       processing: 'Обработка',
     },
     details: {
-      requestDispatched:
-        'Ожидание, пока сервер примет запрос и начнет формировать ответ.',
-      waitingForResponse:
-        'Запрос принят. Ожидание первого видимого результата.',
-      awaitingConfirmation:
-        'Ассистенту нужно ваше подтверждение, прежде чем продолжить.',
-      injectionRestart:
-        'Ассистент перезапускает ответ с учетом вашего последнего прерывания.',
+      requestDispatched: 'Ожидание, пока сервер примет запрос и начнет формировать ответ.',
+      waitingForResponse: 'Запрос принят. Ожидание первого видимого результата.',
+      awaitingConfirmation: 'Ассистенту нужно ваше подтверждение, прежде чем продолжить.',
+      injectionRestart: 'Ассистент перезапускает ответ с учетом вашего последнего прерывания.',
       networkInterruptWaiting:
         'Поток был прерван после начала вывода. Ожидание восстановления backend.',
     },
@@ -3691,14 +3641,10 @@ const processTraceTranslations = {
       processing: 'Spracúvam',
     },
     details: {
-      requestDispatched:
-        'Čakám, kým server prijme požiadavku a spustí odpoveď.',
-      waitingForResponse:
-        'Požiadavka bola prijatá. Čakám na prvý viditeľný výstup.',
-      awaitingConfirmation:
-        'Asistent potrebuje vaše potvrdenie pred pokračovaním.',
-      injectionRestart:
-        'Asistent reštartuje odpoveď s vaším najnovším prerušením.',
+      requestDispatched: 'Čakám, kým server prijme požiadavku a spustí odpoveď.',
+      waitingForResponse: 'Požiadavka bola prijatá. Čakám na prvý viditeľný výstup.',
+      awaitingConfirmation: 'Asistent potrebuje vaše potvrdenie pred pokračovaním.',
+      injectionRestart: 'Asistent reštartuje odpoveď s vaším najnovším prerušením.',
       networkInterruptWaiting:
         'Stream sa prerušil po začiatku obsahu. Čakám na obnovenie backendu.',
     },
@@ -3740,14 +3686,10 @@ const processTraceTranslations = {
       processing: 'Bearbetar',
     },
     details: {
-      requestDispatched:
-        'Väntar på att servern ska acceptera begäran och starta svaret.',
-      waitingForResponse:
-        'Begäran accepterades. Väntar på den första synliga utmatningen.',
-      awaitingConfirmation:
-        'Assistenten behöver din bekräftelse innan den kan fortsätta.',
-      injectionRestart:
-        'Assistenten startar om svaret med ditt senaste avbrott.',
+      requestDispatched: 'Väntar på att servern ska acceptera begäran och starta svaret.',
+      waitingForResponse: 'Begäran accepterades. Väntar på den första synliga utmatningen.',
+      awaitingConfirmation: 'Assistenten behöver din bekräftelse innan den kan fortsätta.',
+      injectionRestart: 'Assistenten startar om svaret med ditt senaste avbrott.',
       networkInterruptWaiting:
         'Strömmen avbröts efter att innehållet hade börjat. Väntar på att backend ska återhämta sig.',
     },
@@ -3936,8 +3878,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'La reproducció s’ha aturat perquè puguis continuar parlant.',
       voiceRequestDispatched: 'Blue està enviant la teva sol·licitud de veu.',
-      voiceInterruptDispatched:
-        'Blue està reiniciant amb la teva interrupció de veu més recent.',
+      voiceInterruptDispatched: 'Blue està reiniciant amb la teva interrupció de veu més recent.',
       voiceWaitingForResponse: 'Esperant la primera resposta de Blue.',
       transcriptionFailed: 'La transcripció ha fallat.',
       ttsPlaybackFailed: 'La reproducció TTS ha fallat.',
@@ -3966,8 +3907,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'Přehrávání bylo zastaveno, abyste mohli pokračovat v mluvení.',
       voiceRequestDispatched: 'Blue odesílá váš hlasový požadavek.',
-      voiceInterruptDispatched:
-        'Blue restartuje odpověď s vaším nejnovějším hlasovým přerušením.',
+      voiceInterruptDispatched: 'Blue restartuje odpověď s vaším nejnovějším hlasovým přerušením.',
       voiceWaitingForResponse: 'Čekám na první odpověď od Blue.',
       transcriptionFailed: 'Přepis se nezdařil.',
       ttsPlaybackFailed: 'Přehrávání TTS se nezdařilo.',
@@ -3996,8 +3936,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'Afspilningen blev stoppet, så du kan fortsætte med at tale.',
       voiceRequestDispatched: 'Blue sender din taleanmodning.',
-      voiceInterruptDispatched:
-        'Blue genstarter med din seneste taleafbrydelse.',
+      voiceInterruptDispatched: 'Blue genstarter med din seneste taleafbrydelse.',
       voiceWaitingForResponse: 'Venter på det første svar fra Blue.',
       transcriptionFailed: 'Transskription mislykkedes.',
       ttsPlaybackFailed: 'TTS-afspilning mislykkedes.',
@@ -4026,8 +3965,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'Die Wiedergabe wurde gestoppt, damit Sie weiter sprechen können.',
       voiceRequestDispatched: 'Blue sendet Ihre Sprachanfrage.',
-      voiceInterruptDispatched:
-        'Blue startet mit Ihrer neuesten Sprachunterbrechung neu.',
+      voiceInterruptDispatched: 'Blue startet mit Ihrer neuesten Sprachunterbrechung neu.',
       voiceWaitingForResponse: 'Warte auf die erste Antwort von Blue.',
       transcriptionFailed: 'Die Transkription ist fehlgeschlagen.',
       ttsPlaybackFailed: 'Die TTS-Wiedergabe ist fehlgeschlagen.',
@@ -4056,8 +3994,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'Η αναπαραγωγή σταμάτησε ώστε να μπορείτε να συνεχίσετε να μιλάτε.',
       voiceRequestDispatched: 'Το Blue στέλνει το φωνητικό σας αίτημα.',
-      voiceInterruptDispatched:
-        'Το Blue επανεκκινεί με την πιο πρόσφατη φωνητική σας διακοπή.',
+      voiceInterruptDispatched: 'Το Blue επανεκκινεί με την πιο πρόσφατη φωνητική σας διακοπή.',
       voiceWaitingForResponse: 'Αναμονή για την πρώτη απάντηση από το Blue.',
       transcriptionFailed: 'Η απομαγνητοφώνηση απέτυχε.',
       ttsPlaybackFailed: 'Η αναπαραγωγή TTS απέτυχε.',
@@ -4144,8 +4081,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'La reproducción se detuvo para que puedas seguir hablando.',
       voiceRequestDispatched: 'Blue está enviando tu solicitud de voz.',
-      voiceInterruptDispatched:
-        'Blue está reiniciando con tu interrupción de voz más reciente.',
+      voiceInterruptDispatched: 'Blue está reiniciando con tu interrupción de voz más reciente.',
       voiceWaitingForResponse: 'Esperando la primera respuesta de Blue.',
       transcriptionFailed: 'La transcripción falló.',
       ttsPlaybackFailed: 'La reproducción TTS falló.',
@@ -4174,8 +4110,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'La lecture a été arrêtée pour que vous puissiez continuer à parler.',
       voiceRequestDispatched: 'Blue envoie votre requête vocale.',
-      voiceInterruptDispatched:
-        'Blue redémarre avec votre interruption vocale la plus récente.',
+      voiceInterruptDispatched: 'Blue redémarre avec votre interruption vocale la plus récente.',
       voiceWaitingForResponse: 'En attente de la première réponse de Blue.',
       transcriptionFailed: 'La transcription a échoué.',
       ttsPlaybackFailed: 'La lecture TTS a échoué.',
@@ -4202,10 +4137,10 @@ const processTraceExtendedTranslations = {
       mode: 'Mód',
     },
     details: {
-      bargeIn: 'Cuireadh stop leis an athsheinm ionas gur féidir leat leanúint ar aghaidh ag caint.',
+      bargeIn:
+        'Cuireadh stop leis an athsheinm ionas gur féidir leat leanúint ar aghaidh ag caint.',
       voiceRequestDispatched: 'Tá Blue ag seoladh d’iarratais ghutha.',
-      voiceInterruptDispatched:
-        'Tá Blue ag atosú leis an mbriseadh gutha is déanaí uait.',
+      voiceInterruptDispatched: 'Tá Blue ag atosú leis an mbriseadh gutha is déanaí uait.',
       voiceWaitingForResponse: 'Ag fanacht leis an gcéad fhreagra ó Blue.',
       transcriptionFailed: 'Theip ar an tras-scríobh.',
       ttsPlaybackFailed: 'Theip ar athsheinm TTS.',
@@ -4264,8 +4199,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'A lejátszás leállt, hogy folytathassa a beszédet.',
       voiceRequestDispatched: 'A Blue elküldi a hangalapú kérését.',
-      voiceInterruptDispatched:
-        'A Blue az Ön legutóbbi hangos megszakításával indul újra.',
+      voiceInterruptDispatched: 'A Blue az Ön legutóbbi hangos megszakításával indul újra.',
       voiceWaitingForResponse: 'Várakozás a Blue első válaszára.',
       transcriptionFailed: 'Az átírás sikertelen.',
       ttsPlaybackFailed: 'A TTS lejátszás sikertelen.',
@@ -4294,8 +4228,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'La riproduzione è stata interrotta così puoi continuare a parlare.',
       voiceRequestDispatched: 'Blue sta inviando la tua richiesta vocale.',
-      voiceInterruptDispatched:
-        'Blue sta riavviando con la tua interruzione vocale più recente.',
+      voiceInterruptDispatched: 'Blue sta riavviando con la tua interruzione vocale più recente.',
       voiceWaitingForResponse: 'In attesa della prima risposta da Blue.',
       transcriptionFailed: 'Trascrizione non riuscita.',
       ttsPlaybackFailed: 'Riproduzione TTS non riuscita.',
@@ -4324,8 +4257,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: '再生を停止したので、そのまま話し続けられます。',
       voiceRequestDispatched: 'Blue が音声リクエストを送信しています。',
-      voiceInterruptDispatched:
-        'Blue が最新の音声割り込みで再開しています。',
+      voiceInterruptDispatched: 'Blue が最新の音声割り込みで再開しています。',
       voiceWaitingForResponse: 'Blue からの最初の応答を待っています。',
       transcriptionFailed: '音声文字起こしに失敗しました。',
       ttsPlaybackFailed: 'TTS 再生に失敗しました。',
@@ -4354,8 +4286,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: '계속 말씀하실 수 있도록 재생을 중지했습니다.',
       voiceRequestDispatched: 'Blue가 음성 요청을 전송하고 있습니다.',
-      voiceInterruptDispatched:
-        'Blue가 가장 최근의 음성 끼어들기를 반영해 다시 시작하고 있습니다.',
+      voiceInterruptDispatched: 'Blue가 가장 최근의 음성 끼어들기를 반영해 다시 시작하고 있습니다.',
       voiceWaitingForResponse: 'Blue의 첫 응답을 기다리는 중입니다.',
       transcriptionFailed: '음성 전사에 실패했습니다.',
       ttsPlaybackFailed: 'TTS 재생에 실패했습니다.',
@@ -4414,8 +4345,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'Avspillingen ble stoppet slik at du kan fortsette å snakke.',
       voiceRequestDispatched: 'Blue sender taleforespørselen din.',
-      voiceInterruptDispatched:
-        'Blue starter på nytt med den siste taleavbrytelsen din.',
+      voiceInterruptDispatched: 'Blue starter på nytt med den siste taleavbrytelsen din.',
       voiceWaitingForResponse: 'Venter på det første svaret fra Blue.',
       transcriptionFailed: 'Transkriberingen mislyktes.',
       ttsPlaybackFailed: 'TTS-avspilling mislyktes.',
@@ -4444,8 +4374,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'De weergave is gestopt zodat je verder kunt praten.',
       voiceRequestDispatched: 'Blue verstuurt je spraakverzoek.',
-      voiceInterruptDispatched:
-        'Blue start opnieuw met je meest recente gesproken onderbreking.',
+      voiceInterruptDispatched: 'Blue start opnieuw met je meest recente gesproken onderbreking.',
       voiceWaitingForResponse: 'Wachten op de eerste reactie van Blue.',
       transcriptionFailed: 'Transcriptie mislukt.',
       ttsPlaybackFailed: 'TTS-weergave mislukt.',
@@ -4504,8 +4433,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'A reprodução foi interrompida para que você possa continuar falando.',
       voiceRequestDispatched: 'Blue está enviando sua solicitação por voz.',
-      voiceInterruptDispatched:
-        'Blue está reiniciando com sua interrupção de voz mais recente.',
+      voiceInterruptDispatched: 'Blue está reiniciando com sua interrupção de voz mais recente.',
       voiceWaitingForResponse: 'Aguardando a primeira resposta do Blue.',
       transcriptionFailed: 'A transcrição falhou.',
       ttsPlaybackFailed: 'A reprodução TTS falhou.',
@@ -4534,8 +4462,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'A reprodução foi interrompida para que possas continuar a falar.',
       voiceRequestDispatched: 'Blue está a enviar o teu pedido por voz.',
-      voiceInterruptDispatched:
-        'Blue está a reiniciar com a tua interrupção de voz mais recente.',
+      voiceInterruptDispatched: 'Blue está a reiniciar com a tua interrupção de voz mais recente.',
       voiceWaitingForResponse: 'A aguardar a primeira resposta do Blue.',
       transcriptionFailed: 'A transcrição falhou.',
       ttsPlaybackFailed: 'A reprodução TTS falhou.',
@@ -4564,8 +4491,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'Redarea a fost oprită ca să poți continua să vorbești.',
       voiceRequestDispatched: 'Blue trimite cererea ta vocală.',
-      voiceInterruptDispatched:
-        'Blue repornește folosind cea mai recentă întrerupere vocală a ta.',
+      voiceInterruptDispatched: 'Blue repornește folosind cea mai recentă întrerupere vocală a ta.',
       voiceWaitingForResponse: 'În așteptarea primului răspuns de la Blue.',
       transcriptionFailed: 'Transcrierea a eșuat.',
       ttsPlaybackFailed: 'Redarea TTS a eșuat.',
@@ -4624,8 +4550,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'Prehrávanie bolo zastavené, aby ste mohli pokračovať v hovorení.',
       voiceRequestDispatched: 'Blue odosiela vašu hlasovú požiadavku.',
-      voiceInterruptDispatched:
-        'Blue reštartuje odpoveď s vaším najnovším hlasovým prerušením.',
+      voiceInterruptDispatched: 'Blue reštartuje odpoveď s vaším najnovším hlasovým prerušením.',
       voiceWaitingForResponse: 'Čakám na prvú odpoveď od Blue.',
       transcriptionFailed: 'Prepis zlyhal.',
       ttsPlaybackFailed: 'Prehrávanie TTS zlyhalo.',
@@ -4654,8 +4579,7 @@ const processTraceExtendedTranslations = {
     details: {
       bargeIn: 'Uppspelningen stoppades så att du kan fortsätta prata.',
       voiceRequestDispatched: 'Blue skickar din röstförfrågan.',
-      voiceInterruptDispatched:
-        'Blue startar om med ditt senaste röstavbrott.',
+      voiceInterruptDispatched: 'Blue startar om med ditt senaste röstavbrott.',
       voiceWaitingForResponse: 'Väntar på det första svaret från Blue.',
       transcriptionFailed: 'Transkriberingen misslyckades.',
       ttsPlaybackFailed: 'TTS-uppspelningen misslyckades.',
@@ -4716,8 +4640,7 @@ const processTraceExtendedTranslations = {
       transcriptionFailed: '語音轉寫失敗。',
       ttsPlaybackFailed: 'TTS 播放失敗。',
       providerFailoverToolFollowUp: '正在不使用先前固定的供應商重試這輪工具後續請求。',
-      providerFailoverContinuationFollowUp:
-        '正在不使用先前固定的供應商重試這輪續寫後續請求。',
+      providerFailoverContinuationFollowUp: '正在不使用先前固定的供應商重試這輪續寫後續請求。',
       recoveryStage1: '靜默恢復',
       recoveryStage2: '精簡恢復載荷',
     },
@@ -4801,6 +4724,642 @@ for (const [locale, preRestoreLabel] of Object.entries(backupReasonTranslations)
       reason: {
         ...currentBackupReason,
         pre_restore: preRestoreLabel,
+      },
+    },
+  }
+}
+
+const deepResearchLabelTranslations = {
+  'ca-ES': {
+    deepResearchCalibrationPublish: 'A punt per publicar',
+    deepResearchCalibrationCaution: 'Feu servir amb cautela',
+    deepResearchCalibrationConflictBlocking: 'Conflicte bloquejant',
+    deepResearchCalibrationConflictLow: 'Risc baix de conflicte',
+    deepResearchSearchQuery: 'Consulta de cerca',
+    deepResearchFocus: 'Enfocament',
+    deepResearchExpandDetails: 'Amplia els detalls de la recerca',
+    deepResearchCollapseDetails: 'Replega els detalls de la recerca',
+  },
+  'cs-CZ': {
+    deepResearchCalibrationPublish: 'Připraveno k publikaci',
+    deepResearchCalibrationCaution: 'Použijte opatrně',
+    deepResearchCalibrationConflictBlocking: 'Blokující konflikt',
+    deepResearchCalibrationConflictLow: 'Nízké riziko konfliktu',
+    deepResearchSearchQuery: 'Vyhledávací dotaz',
+    deepResearchFocus: 'Zaměření',
+    deepResearchExpandDetails: 'Rozbalit podrobnosti výzkumu',
+    deepResearchCollapseDetails: 'Sbalit podrobnosti výzkumu',
+  },
+  'da-DK': {
+    deepResearchCalibrationPublish: 'Klar til publicering',
+    deepResearchCalibrationCaution: 'Brug med forsigtighed',
+    deepResearchCalibrationConflictBlocking: 'Blokerende konflikt',
+    deepResearchCalibrationConflictLow: 'Lav konfliktrisiko',
+    deepResearchSearchQuery: 'Søgeforespørgsel',
+    deepResearchFocus: 'Fokus',
+    deepResearchExpandDetails: 'Udvid forskningsdetaljer',
+    deepResearchCollapseDetails: 'Skjul forskningsdetaljer',
+  },
+  'de-DE': {
+    deepResearchCalibrationPublish: 'Veröffentlichungsbereit',
+    deepResearchCalibrationCaution: 'Vorsichtig verwenden',
+    deepResearchCalibrationConflictBlocking: 'Blockierender Konflikt',
+    deepResearchCalibrationConflictLow: 'Geringes Konfliktrisiko',
+    deepResearchSearchQuery: 'Suchanfrage',
+    deepResearchFocus: 'Fokus',
+    deepResearchExpandDetails: 'Forschungsdetails erweitern',
+    deepResearchCollapseDetails: 'Forschungsdetails ausblenden',
+  },
+  'el-GR': {
+    deepResearchCalibrationPublish: 'Έτοιμο για δημοσίευση',
+    deepResearchCalibrationCaution: 'Χρησιμοποιήστε με προσοχή',
+    deepResearchCalibrationConflictBlocking: 'Σύγκρουση που μπλοκάρει',
+    deepResearchCalibrationConflictLow: 'Χαμηλός κίνδυνος σύγκρουσης',
+    deepResearchSearchQuery: 'Ερώτημα αναζήτησης',
+    deepResearchFocus: 'Εστίαση',
+    deepResearchExpandDetails: 'Εμφάνιση λεπτομερειών έρευνας',
+    deepResearchCollapseDetails: 'Απόκρυψη λεπτομερειών έρευνας',
+  },
+  'en-GB': {
+    deepResearchCalibrationPublish: 'Publish-ready',
+    deepResearchCalibrationCaution: 'Use caution',
+    deepResearchCalibrationConflictBlocking: 'Blocking conflict',
+    deepResearchCalibrationConflictLow: 'Low conflict risk',
+    deepResearchSearchQuery: 'Search query',
+    deepResearchFocus: 'Focus',
+    deepResearchExpandDetails: 'Expand research details',
+    deepResearchCollapseDetails: 'Collapse research details',
+  },
+  'es-ES': {
+    deepResearchCalibrationPublish: 'Listo para publicar',
+    deepResearchCalibrationCaution: 'Usar con precaución',
+    deepResearchCalibrationConflictBlocking: 'Conflicto bloqueante',
+    deepResearchCalibrationConflictLow: 'Bajo riesgo de conflicto',
+    deepResearchSearchQuery: 'Consulta de búsqueda',
+    deepResearchFocus: 'Enfoque',
+    deepResearchExpandDetails: 'Expandir detalles de la investigación',
+    deepResearchCollapseDetails: 'Contraer detalles de la investigación',
+  },
+  'fr-FR': {
+    deepResearchCalibrationPublish: 'Prêt à publier',
+    deepResearchCalibrationCaution: 'À utiliser avec prudence',
+    deepResearchCalibrationConflictBlocking: 'Conflit bloquant',
+    deepResearchCalibrationConflictLow: 'Faible risque de conflit',
+    deepResearchSearchQuery: 'Requête de recherche',
+    deepResearchFocus: 'Angle',
+    deepResearchExpandDetails: 'Développer les détails de la recherche',
+    deepResearchCollapseDetails: 'Réduire les détails de la recherche',
+  },
+  'ga-IE': {
+    deepResearchCalibrationPublish: 'Réidh le foilsiú',
+    deepResearchCalibrationCaution: 'Úsáid go cúramach',
+    deepResearchCalibrationConflictBlocking: 'Coimhlint bhacach',
+    deepResearchCalibrationConflictLow: 'Riosca íseal coinbhleachta',
+    deepResearchSearchQuery: 'Ceist chuardaigh',
+    deepResearchFocus: 'Fócas',
+    deepResearchExpandDetails: 'Leathnaigh sonraí an taighde',
+    deepResearchCollapseDetails: 'Laghdaigh sonraí an taighde',
+  },
+  'hr-HR': {
+    deepResearchCalibrationPublish: 'Spremno za objavu',
+    deepResearchCalibrationCaution: 'Koristite oprezno',
+    deepResearchCalibrationConflictBlocking: 'Blokirajući sukob',
+    deepResearchCalibrationConflictLow: 'Nizak rizik sukoba',
+    deepResearchSearchQuery: 'Upit pretraživanja',
+    deepResearchFocus: 'Fokus',
+    deepResearchExpandDetails: 'Proširi detalje istraživanja',
+    deepResearchCollapseDetails: 'Sažmi detalje istraživanja',
+  },
+  'hu-HU': {
+    deepResearchCalibrationPublish: 'Közzétételre kész',
+    deepResearchCalibrationCaution: 'Óvatosan használja',
+    deepResearchCalibrationConflictBlocking: 'Blokkoló konfliktus',
+    deepResearchCalibrationConflictLow: 'Alacsony konfliktuskockázat',
+    deepResearchSearchQuery: 'Keresési lekérdezés',
+    deepResearchFocus: 'Fókusz',
+    deepResearchExpandDetails: 'Kutatási részletek kibontása',
+    deepResearchCollapseDetails: 'Kutatási részletek összecsukása',
+  },
+  'it-IT': {
+    deepResearchCalibrationPublish: 'Pronto per la pubblicazione',
+    deepResearchCalibrationCaution: 'Usare con cautela',
+    deepResearchCalibrationConflictBlocking: 'Conflitto bloccante',
+    deepResearchCalibrationConflictLow: 'Basso rischio di conflitto',
+    deepResearchSearchQuery: 'Query di ricerca',
+    deepResearchFocus: 'Punto focale',
+    deepResearchExpandDetails: 'Espandi i dettagli della ricerca',
+    deepResearchCollapseDetails: 'Comprimi i dettagli della ricerca',
+  },
+  'ja-JP': {
+    deepResearchCalibrationPublish: '公開可能',
+    deepResearchCalibrationCaution: '注意して使用',
+    deepResearchCalibrationConflictBlocking: '重大な競合',
+    deepResearchCalibrationConflictLow: '競合リスク低',
+    deepResearchSearchQuery: '検索クエリ',
+    deepResearchFocus: '焦点',
+    deepResearchExpandDetails: '研究の詳細を展開',
+    deepResearchCollapseDetails: '研究の詳細を折りたたむ',
+  },
+  'ko-KR': {
+    deepResearchCalibrationPublish: '게시 가능',
+    deepResearchCalibrationCaution: '주의해서 사용',
+    deepResearchCalibrationConflictBlocking: '차단 충돌',
+    deepResearchCalibrationConflictLow: '낮은 충돌 위험',
+    deepResearchSearchQuery: '검색 쿼리',
+    deepResearchFocus: '초점',
+    deepResearchExpandDetails: '연구 세부 정보 펼치기',
+    deepResearchCollapseDetails: '연구 세부 정보 접기',
+  },
+  'ml-IN': {
+    deepResearchCalibrationPublish: 'പ്രസിദ്ധീകരിക്കാൻ തയ്യാറാണ്',
+    deepResearchCalibrationCaution: 'ജാഗ്രതയോടെ ഉപയോഗിക്കുക',
+    deepResearchCalibrationConflictBlocking: 'തടസപ്പെടുത്തുന്ന സംഘർഷം',
+    deepResearchCalibrationConflictLow: 'കുറഞ്ഞ സംഘർഷ സാധ്യത',
+    deepResearchSearchQuery: 'തിരയൽ ചോദ്യം',
+    deepResearchFocus: 'ഫോക്കസ്',
+    deepResearchExpandDetails: 'ഗവേഷണ വിശദാംശങ്ങൾ വികസിപ്പിക്കുക',
+    deepResearchCollapseDetails: 'ഗവേഷണ വിശദാംശങ്ങൾ ചുരുക്കുക',
+  },
+  'nb-NO': {
+    deepResearchCalibrationPublish: 'Klar for publisering',
+    deepResearchCalibrationCaution: 'Bruk med forsiktighet',
+    deepResearchCalibrationConflictBlocking: 'Blokkerende konflikt',
+    deepResearchCalibrationConflictLow: 'Lav konfliktrisiko',
+    deepResearchSearchQuery: 'Søkespørring',
+    deepResearchFocus: 'Fokus',
+    deepResearchExpandDetails: 'Utvid forskningsdetaljer',
+    deepResearchCollapseDetails: 'Skjul forskningsdetaljer',
+  },
+  'nl-NL': {
+    deepResearchCalibrationPublish: 'Klaar voor publicatie',
+    deepResearchCalibrationCaution: 'Voorzichtig gebruiken',
+    deepResearchCalibrationConflictBlocking: 'Blokkerend conflict',
+    deepResearchCalibrationConflictLow: 'Laag conflictrisico',
+    deepResearchSearchQuery: 'Zoekopdracht',
+    deepResearchFocus: 'Aandachtspunt',
+    deepResearchExpandDetails: 'Onderzoeksdetails uitklappen',
+    deepResearchCollapseDetails: 'Onderzoeksdetails inklappen',
+  },
+  'pl-PL': {
+    deepResearchCalibrationPublish: 'Gotowe do publikacji',
+    deepResearchCalibrationCaution: 'Używać ostrożnie',
+    deepResearchCalibrationConflictBlocking: 'Blokujący konflikt',
+    deepResearchCalibrationConflictLow: 'Niskie ryzyko konfliktu',
+    deepResearchSearchQuery: 'Zapytanie wyszukiwania',
+    deepResearchFocus: 'Fokus',
+    deepResearchExpandDetails: 'Rozwiń szczegóły badania',
+    deepResearchCollapseDetails: 'Zwiń szczegóły badania',
+  },
+  'pt-BR': {
+    deepResearchCalibrationPublish: 'Pronto para publicar',
+    deepResearchCalibrationCaution: 'Use com cautela',
+    deepResearchCalibrationConflictBlocking: 'Conflito bloqueador',
+    deepResearchCalibrationConflictLow: 'Baixo risco de conflito',
+    deepResearchSearchQuery: 'Consulta de pesquisa',
+    deepResearchFocus: 'Foco',
+    deepResearchExpandDetails: 'Expandir detalhes da pesquisa',
+    deepResearchCollapseDetails: 'Recolher detalhes da pesquisa',
+  },
+  'pt-PT': {
+    deepResearchCalibrationPublish: 'Pronto para publicar',
+    deepResearchCalibrationCaution: 'Use com cautela',
+    deepResearchCalibrationConflictBlocking: 'Conflito bloqueador',
+    deepResearchCalibrationConflictLow: 'Baixo risco de conflito',
+    deepResearchSearchQuery: 'Consulta de pesquisa',
+    deepResearchFocus: 'Foco',
+    deepResearchExpandDetails: 'Expandir detalhes da pesquisa',
+    deepResearchCollapseDetails: 'Recolher detalhes da pesquisa',
+  },
+  'ro-RO': {
+    deepResearchCalibrationPublish: 'Gata de publicare',
+    deepResearchCalibrationCaution: 'Folosiți cu prudență',
+    deepResearchCalibrationConflictBlocking: 'Conflict blocant',
+    deepResearchCalibrationConflictLow: 'Risc scăzut de conflict',
+    deepResearchSearchQuery: 'Interogare de căutare',
+    deepResearchFocus: 'Punct de interes',
+    deepResearchExpandDetails: 'Extinde detaliile cercetării',
+    deepResearchCollapseDetails: 'Restrânge detaliile cercetării',
+  },
+  'ru-RU': {
+    deepResearchCalibrationPublish: 'Готово к публикации',
+    deepResearchCalibrationCaution: 'Использовать с осторожностью',
+    deepResearchCalibrationConflictBlocking: 'Блокирующий конфликт',
+    deepResearchCalibrationConflictLow: 'Низкий риск конфликта',
+    deepResearchSearchQuery: 'Поисковый запрос',
+    deepResearchFocus: 'Фокус',
+    deepResearchExpandDetails: 'Развернуть детали исследования',
+    deepResearchCollapseDetails: 'Свернуть детали исследования',
+  },
+  'sk-SK': {
+    deepResearchCalibrationPublish: 'Pripravené na publikovanie',
+    deepResearchCalibrationCaution: 'Použite opatrne',
+    deepResearchCalibrationConflictBlocking: 'Blokujúci konflikt',
+    deepResearchCalibrationConflictLow: 'Nízke riziko konfliktu',
+    deepResearchSearchQuery: 'Vyhľadávací dopyt',
+    deepResearchFocus: 'Zameranie',
+    deepResearchExpandDetails: 'Rozbaliť podrobnosti výskumu',
+    deepResearchCollapseDetails: 'Zbaliť podrobnosti výskumu',
+  },
+  'sv-SE': {
+    deepResearchCalibrationPublish: 'Redo för publicering',
+    deepResearchCalibrationCaution: 'Använd med försiktighet',
+    deepResearchCalibrationConflictBlocking: 'Blockerande konflikt',
+    deepResearchCalibrationConflictLow: 'Låg konfliktrisk',
+    deepResearchSearchQuery: 'Sökfråga',
+    deepResearchFocus: 'Fokus',
+    deepResearchExpandDetails: 'Visa forskningsdetaljer',
+    deepResearchCollapseDetails: 'Dölj forskningsdetaljer',
+  },
+  'zh-TW': {
+    deepResearchCalibrationPublish: '可發布',
+    deepResearchCalibrationCaution: '謹慎使用',
+    deepResearchCalibrationConflictBlocking: '阻斷性衝突',
+    deepResearchCalibrationConflictLow: '低衝突風險',
+    deepResearchSearchQuery: '搜尋查詢',
+    deepResearchFocus: '重點',
+    deepResearchExpandDetails: '展開研究詳情',
+    deepResearchCollapseDetails: '收起研究詳情',
+  },
+} as const
+
+for (const [locale, chatAdditions] of Object.entries(deepResearchLabelTranslations)) {
+  const currentLocale = (priorityTranslationOverrides as Record<string, any>)[locale] || {}
+  const currentChat = currentLocale.chat || {}
+
+  ;(priorityTranslationOverrides as Record<string, any>)[locale] = {
+    ...currentLocale,
+    chat: {
+      ...currentChat,
+      ...chatAdditions,
+    },
+  }
+}
+
+const presetQuestionTranslations = {
+  'ca-ES': {
+    title: 'Prova-ho',
+    focus: "Centra't en",
+    interests: {
+      personalKnowledge: 'Coneixement personal',
+      learningGrowth: 'Aprenentatge i creixement',
+      contentCreation: 'Creació de contingut',
+      marketInvesting: 'Mercats i inversió',
+      productDesign: 'Disseny de producte',
+      userResearch: "Recerca d'usuaris",
+      psychologicalExploration: 'Exploració psicològica',
+      philosophicalDialogue: 'Diàleg filosòfic',
+    },
+  },
+  'cs-CZ': {
+    title: 'Vyzkoušejte',
+    focus: 'Zaměřit se na',
+    interests: {
+      personalKnowledge: 'Osobní znalosti',
+      learningGrowth: 'Učení a rozvoj',
+      contentCreation: 'Tvorba obsahu',
+      marketInvesting: 'Tržní investování',
+      productDesign: 'Produktový design',
+      userResearch: 'Uživatelský výzkum',
+      psychologicalExploration: 'Psychologické zkoumání',
+      philosophicalDialogue: 'Filosofický dialog',
+    },
+  },
+  'da-DK': {
+    title: 'Prøv det',
+    focus: 'Fokus på',
+    interests: {
+      personalKnowledge: 'Personlig viden',
+      learningGrowth: 'Læring og udvikling',
+      contentCreation: 'Indholdsproduktion',
+      marketInvesting: 'Markeder og investering',
+      productDesign: 'Produktdesign',
+      userResearch: 'Brugerundersøgelse',
+      psychologicalExploration: 'Psykologisk udforskning',
+      philosophicalDialogue: 'Filosofisk dialog',
+    },
+  },
+  'de-DE': {
+    title: 'Probier es aus',
+    focus: 'Fokus auf',
+    interests: {
+      personalKnowledge: 'Persönliches Wissen',
+      learningGrowth: 'Lernen und Wachstum',
+      contentCreation: 'Content-Erstellung',
+      marketInvesting: 'Märkte und Investitionen',
+      productDesign: 'Produktdesign',
+      userResearch: 'Nutzerforschung',
+      psychologicalExploration: 'Psychologische Erkundung',
+      philosophicalDialogue: 'Philosophischer Dialog',
+    },
+  },
+  'el-GR': {
+    title: 'Δοκιμάστε το',
+    focus: 'Εστιάστε σε',
+    interests: {
+      personalKnowledge: 'Προσωπική γνώση',
+      learningGrowth: 'Μάθηση και εξέλιξη',
+      contentCreation: 'Δημιουργία περιεχομένου',
+      marketInvesting: 'Αγορές και επενδύσεις',
+      productDesign: 'Σχεδιασμός προϊόντος',
+      userResearch: 'Έρευνα χρηστών',
+      psychologicalExploration: 'Ψυχολογική διερεύνηση',
+      philosophicalDialogue: 'Φιλοσοφικός διάλογος',
+    },
+  },
+  'en-GB': {
+    title: 'Try It Out',
+    focus: 'Focus on',
+    interests: {
+      personalKnowledge: 'Personal Knowledge',
+      learningGrowth: 'Learning Growth',
+      contentCreation: 'Content Creation',
+      marketInvesting: 'Market Investing',
+      productDesign: 'Product Design',
+      userResearch: 'User Research',
+      psychologicalExploration: 'Psychological Exploration',
+      philosophicalDialogue: 'Philosophical Dialogue',
+    },
+  },
+  'es-ES': {
+    title: 'Pruébalo',
+    focus: 'Enfócate en',
+    interests: {
+      personalKnowledge: 'Conocimiento personal',
+      learningGrowth: 'Aprendizaje y crecimiento',
+      contentCreation: 'Creación de contenido',
+      marketInvesting: 'Mercados e inversión',
+      productDesign: 'Diseño de producto',
+      userResearch: 'Investigación de usuarios',
+      psychologicalExploration: 'Exploración psicológica',
+      philosophicalDialogue: 'Diálogo filosófico',
+    },
+  },
+  'fr-FR': {
+    title: 'Essayez',
+    focus: 'Centrez-vous sur',
+    interests: {
+      personalKnowledge: 'Connaissance personnelle',
+      learningGrowth: 'Apprentissage et progression',
+      contentCreation: 'Création de contenu',
+      marketInvesting: 'Marchés et investissement',
+      productDesign: 'Design produit',
+      userResearch: 'Recherche utilisateur',
+      psychologicalExploration: 'Exploration psychologique',
+      philosophicalDialogue: 'Dialogue philosophique',
+    },
+  },
+  'ga-IE': {
+    title: 'Bain triail as',
+    focus: 'Dírigh ar',
+    interests: {
+      personalKnowledge: 'Eolas pearsanta',
+      learningGrowth: 'Foghlaim agus forbairt',
+      contentCreation: 'Cruthú ábhair',
+      marketInvesting: 'Margaí agus infheistíocht',
+      productDesign: 'Dearadh táirge',
+      userResearch: 'Taighde úsáideoirí',
+      psychologicalExploration: 'Taiscéalaíocht shíceolaíoch',
+      philosophicalDialogue: 'Dialóg fhealsúnach',
+    },
+  },
+  'hr-HR': {
+    title: 'Isprobajte',
+    focus: 'Fokus na',
+    interests: {
+      personalKnowledge: 'Osobno znanje',
+      learningGrowth: 'Učenje i razvoj',
+      contentCreation: 'Stvaranje sadržaja',
+      marketInvesting: 'Tržišta i ulaganja',
+      productDesign: 'Dizajn proizvoda',
+      userResearch: 'Istraživanje korisnika',
+      psychologicalExploration: 'Psihološko istraživanje',
+      philosophicalDialogue: 'Filozofski dijalog',
+    },
+  },
+  'hu-HU': {
+    title: 'Próbáld ki',
+    focus: 'Fókuszban',
+    interests: {
+      personalKnowledge: 'Személyes tudás',
+      learningGrowth: 'Tanulás és fejlődés',
+      contentCreation: 'Tartalomkészítés',
+      marketInvesting: 'Piacok és befektetés',
+      productDesign: 'Terméktervezés',
+      userResearch: 'Felhasználói kutatás',
+      psychologicalExploration: 'Pszichológiai feltárás',
+      philosophicalDialogue: 'Filozófiai párbeszéd',
+    },
+  },
+  'it-IT': {
+    title: 'Provalo',
+    focus: 'Concentrati su',
+    interests: {
+      personalKnowledge: 'Conoscenza personale',
+      learningGrowth: 'Apprendimento e crescita',
+      contentCreation: 'Creazione di contenuti',
+      marketInvesting: 'Mercati e investimenti',
+      productDesign: 'Design di prodotto',
+      userResearch: 'Ricerca utenti',
+      psychologicalExploration: 'Esplorazione psicologica',
+      philosophicalDialogue: 'Dialogo filosofico',
+    },
+  },
+  'ja-JP': {
+    title: '試してみる',
+    focus: '注目分野',
+    interests: {
+      personalKnowledge: '個人知識',
+      learningGrowth: '学習と成長',
+      contentCreation: 'コンテンツ制作',
+      marketInvesting: '市場投資',
+      productDesign: 'プロダクトデザイン',
+      userResearch: 'ユーザーリサーチ',
+      psychologicalExploration: '心理探求',
+      philosophicalDialogue: '哲学対話',
+    },
+  },
+  'ko-KR': {
+    title: '사용해 보기',
+    focus: '관심 분야',
+    interests: {
+      personalKnowledge: '개인 지식',
+      learningGrowth: '학습 성장',
+      contentCreation: '콘텐츠 제작',
+      marketInvesting: '시장 투자',
+      productDesign: '프로덕트 디자인',
+      userResearch: '사용자 조사',
+      psychologicalExploration: '심리 탐색',
+      philosophicalDialogue: '철학적 대화',
+    },
+  },
+  'ml-IN': {
+    title: 'പരീക്ഷിച്ച് നോക്കൂ',
+    focus: 'ശ്രദ്ധ കേന്ദ്രീകരിക്കുക',
+    interests: {
+      personalKnowledge: 'വ്യക്തിഗത അറിവ്',
+      learningGrowth: 'പഠനവും വളർച്ചയും',
+      contentCreation: 'ഉള്ളടക്ക നിർമ്മാണം',
+      marketInvesting: 'മാർക്കറ്റ് നിക്ഷേപം',
+      productDesign: 'ഉൽപ്പന്ന രൂപകൽപ്പന',
+      userResearch: 'ഉപയോക്തൃ ഗവേഷണം',
+      psychologicalExploration: 'മാനസിക അന്വേഷണം',
+      philosophicalDialogue: 'തത്ത്വചിന്താ സംവാദം',
+    },
+  },
+  'nb-NO': {
+    title: 'Prøv det',
+    focus: 'Fokuser på',
+    interests: {
+      personalKnowledge: 'Personlig kunnskap',
+      learningGrowth: 'Læring og vekst',
+      contentCreation: 'Innholdsproduksjon',
+      marketInvesting: 'Marked og investering',
+      productDesign: 'Produktdesign',
+      userResearch: 'Brukerforskning',
+      psychologicalExploration: 'Psykologisk utforskning',
+      philosophicalDialogue: 'Filosofisk dialog',
+    },
+  },
+  'nl-NL': {
+    title: 'Probeer het',
+    focus: 'Focus op',
+    interests: {
+      personalKnowledge: 'Persoonlijke kennis',
+      learningGrowth: 'Leren en groei',
+      contentCreation: 'Contentcreatie',
+      marketInvesting: 'Markt en investeren',
+      productDesign: 'Productontwerp',
+      userResearch: 'Gebruikersonderzoek',
+      psychologicalExploration: 'Psychologische verkenning',
+      philosophicalDialogue: 'Filosofische dialoog',
+    },
+  },
+  'pl-PL': {
+    title: 'Wypróbuj',
+    focus: 'Skup się na',
+    interests: {
+      personalKnowledge: 'Wiedza osobista',
+      learningGrowth: 'Nauka i rozwój',
+      contentCreation: 'Tworzenie treści',
+      marketInvesting: 'Rynki i inwestowanie',
+      productDesign: 'Projektowanie produktu',
+      userResearch: 'Badania użytkowników',
+      psychologicalExploration: 'Eksploracja psychologiczna',
+      philosophicalDialogue: 'Dialog filozoficzny',
+    },
+  },
+  'pt-BR': {
+    title: 'Experimente',
+    focus: 'Focar em',
+    interests: {
+      personalKnowledge: 'Conhecimento pessoal',
+      learningGrowth: 'Aprendizado e crescimento',
+      contentCreation: 'Criação de conteúdo',
+      marketInvesting: 'Mercado e investimentos',
+      productDesign: 'Design de produto',
+      userResearch: 'Pesquisa com usuários',
+      psychologicalExploration: 'Exploração psicológica',
+      philosophicalDialogue: 'Diálogo filosófico',
+    },
+  },
+  'pt-PT': {
+    title: 'Experimente',
+    focus: 'Focar em',
+    interests: {
+      personalKnowledge: 'Conhecimento pessoal',
+      learningGrowth: 'Aprendizagem e crescimento',
+      contentCreation: 'Criação de conteúdo',
+      marketInvesting: 'Mercados e investimento',
+      productDesign: 'Design de produto',
+      userResearch: 'Pesquisa de utilizadores',
+      psychologicalExploration: 'Exploração psicológica',
+      philosophicalDialogue: 'Diálogo filosófico',
+    },
+  },
+  'ro-RO': {
+    title: 'Încearcă',
+    focus: 'Concentrează-te pe',
+    interests: {
+      personalKnowledge: 'Cunoaștere personală',
+      learningGrowth: 'Învățare și dezvoltare',
+      contentCreation: 'Creare de conținut',
+      marketInvesting: 'Piețe și investiții',
+      productDesign: 'Design de produs',
+      userResearch: 'Cercetare cu utilizatori',
+      psychologicalExploration: 'Explorare psihologică',
+      philosophicalDialogue: 'Dialog filosofic',
+    },
+  },
+  'ru-RU': {
+    title: 'Попробуйте',
+    focus: 'Фокус на',
+    interests: {
+      personalKnowledge: 'Личные знания',
+      learningGrowth: 'Обучение и развитие',
+      contentCreation: 'Создание контента',
+      marketInvesting: 'Рынки и инвестиции',
+      productDesign: 'Дизайн продукта',
+      userResearch: 'Исследование пользователей',
+      psychologicalExploration: 'Психологическое исследование',
+      philosophicalDialogue: 'Философский диалог',
+    },
+  },
+  'sk-SK': {
+    title: 'Vyskúšajte',
+    focus: 'Zamerať sa na',
+    interests: {
+      personalKnowledge: 'Osobné poznanie',
+      learningGrowth: 'Učenie a rast',
+      contentCreation: 'Tvorba obsahu',
+      marketInvesting: 'Trhy a investovanie',
+      productDesign: 'Produktový dizajn',
+      userResearch: 'Používateľský výskum',
+      psychologicalExploration: 'Psychologické skúmanie',
+      philosophicalDialogue: 'Filozofický dialóg',
+    },
+  },
+  'sv-SE': {
+    title: 'Prova det',
+    focus: 'Fokusera på',
+    interests: {
+      personalKnowledge: 'Personlig kunskap',
+      learningGrowth: 'Lärande och tillväxt',
+      contentCreation: 'Innehållsskapande',
+      marketInvesting: 'Marknad och investeringar',
+      productDesign: 'Produktdesign',
+      userResearch: 'Användarundersökning',
+      psychologicalExploration: 'Psykologisk utforskning',
+      philosophicalDialogue: 'Filosofisk dialog',
+    },
+  },
+  'zh-TW': {
+    title: '試試看',
+    focus: '關注領域',
+    interests: {
+      personalKnowledge: '個人知識',
+      learningGrowth: '學習成長',
+      contentCreation: '內容創作',
+      marketInvesting: '市場投資',
+      productDesign: '產品設計',
+      userResearch: '使用者研究',
+      psychologicalExploration: '心理探索',
+      philosophicalDialogue: '思想對話',
+    },
+  },
+} as const
+
+for (const [locale, presetQuestionsAdditions] of Object.entries(presetQuestionTranslations)) {
+  const currentLocale = (priorityTranslationOverrides as Record<string, any>)[locale] || {}
+  const currentChat = currentLocale.chat || {}
+  const currentPresetQuestions = currentChat.presetQuestions || {}
+
+  ;(priorityTranslationOverrides as Record<string, any>)[locale] = {
+    ...currentLocale,
+    chat: {
+      ...currentChat,
+      presetQuestions: {
+        ...currentPresetQuestions,
+        ...presetQuestionsAdditions,
       },
     },
   }

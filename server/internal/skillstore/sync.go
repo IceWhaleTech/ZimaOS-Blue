@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SyncService handles on-demand synchronization of skills from remote sources.
@@ -26,6 +26,8 @@ type SyncService struct {
 	readmeFetcher *ReadmeFetcher
 	progressMu    sync.RWMutex
 	progress      map[string]*SyncProgress // in-memory progress per source
+	startOnce     sync.Once
+	backgroundCtx context.Context
 }
 
 // Source represents a skill source configuration.
@@ -115,13 +117,12 @@ func (s *SyncService) GetSources() []*Source {
 	return sources
 }
 
-// Start initializes the sync service (README fetcher, etc.) without auto-syncing.
-// Sync is triggered on-demand via the /skill-store/refresh API when the user enters the page.
+// Start binds the lifecycle context used by lazy background workers.
+// Sync is still triggered on-demand via the /skill-store/refresh API.
 func (s *SyncService) Start(ctx context.Context) {
-	// Start README fetcher
-	if s.readmeFetcher != nil {
-		s.readmeFetcher.Start(ctx)
-	}
+	s.mu.Lock()
+	s.backgroundCtx = ctx
+	s.mu.Unlock()
 }
 
 // Stop stops the sync service.
@@ -132,6 +133,24 @@ func (s *SyncService) Stop() {
 	if s.readmeFetcher != nil {
 		s.readmeFetcher.Stop()
 	}
+}
+
+func (s *SyncService) ensureWorkersStarted(ctx context.Context) {
+	s.startOnce.Do(func() {
+		if s.readmeFetcher == nil {
+			return
+		}
+		startCtx := ctx
+		s.mu.RLock()
+		if s.backgroundCtx != nil {
+			startCtx = s.backgroundCtx
+		}
+		s.mu.RUnlock()
+		if startCtx == nil {
+			startCtx = context.Background()
+		}
+		s.readmeFetcher.Start(startCtx)
+	})
 }
 
 // SyncAll synchronizes all enabled sources.
@@ -215,6 +234,7 @@ func (s *SyncService) ForceSyncAll(ctx context.Context) {
 
 // doSync performs the actual sync operation for a source.
 func (s *SyncService) doSync(ctx context.Context, source *Source) error {
+	s.ensureWorkersStarted(ctx)
 	startTime := timeutil.NowTime()
 
 	// Set in-memory progress
@@ -363,12 +383,12 @@ type ClawHubSkill struct {
 func (s *SyncService) fetchClawHubSkillsWithInsert(ctx context.Context, source *Source) (int, error) {
 	totalCount := 0
 	baseURL := source.URL + "/api/v1/skills"
-	maxPages := 100                       // Safety limit
-	pageSize := 24                        // ClawHub returns 24 items per page
-	maxRetries := 3                       // Max retries per page
-	maxConsecutiveEmpty := 2              // Stop after 2 consecutive empty pages
+	maxPages := 100          // Safety limit
+	pageSize := 24           // ClawHub returns 24 items per page
+	maxRetries := 3          // Max retries per page
+	maxConsecutiveEmpty := 2 // Stop after 2 consecutive empty pages
 	baseBackoff := time.Second
-	pageDelay := 200 * time.Millisecond   // Rate limiting between pages
+	pageDelay := 200 * time.Millisecond // Rate limiting between pages
 
 	if s.logger != nil {
 		s.logger.Info("starting skill sync from ClawHub", "source", source.ID, "url", baseURL)

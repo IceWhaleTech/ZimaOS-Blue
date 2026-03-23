@@ -5,6 +5,8 @@ import { useI18n } from 'vue-i18n'
 import {
   harnessApi,
   type HarnessArtifactRef,
+  type HarnessGroupPromotionResult,
+  type HarnessPromoteGroupSpec,
   type HarnessRunGroup,
   type HarnessRunGroupItem,
   type HarnessRunGroupReport,
@@ -13,6 +15,7 @@ import {
   type HarnessScorecard,
 } from '@/api/harness'
 import { useNotificationStore } from '@/stores/notification'
+import { harnessFailureLabelHint } from '@/utils/harnessFailureHints'
 import { getErrorMessage } from '@/utils/error'
 
 type FailedItemRow = {
@@ -21,8 +24,49 @@ type FailedItemRow = {
   run?: HarnessRunSummary | null
 }
 
+type NumberEntry = {
+  key: string
+  value: number
+}
+
+type ScorecardVerificationDiagnostics = {
+  passed: boolean | null
+  retryable: boolean | null
+  summary: string
+  failureLabel: string
+  outcomeScore: number | null
+  evidenceScore: number | null
+  executionScore: number | null
+  observations: string[]
+  checks: VerificationCheckRow[]
+  artifacts: VerificationArtifactRow[]
+  traceSummary: VerificationTraceSummary
+}
+
+type VerificationCheckRow = {
+  name: string
+  expected: string
+  actual: string
+  passed: boolean
+}
+
+type VerificationArtifactRow = {
+  target: string
+  actual: string
+  passed: boolean
+}
+
+type VerificationTraceSummary = {
+  eventCount: number | null
+  artifactCount: number | null
+  toolNames: string[]
+  eventsError: string
+  artifactsError: string
+}
+
 type ScorecardDiagnosticRow = {
   id: string
+  itemID: string
   itemIndex: number | null
   verdict: string
   score: number
@@ -33,6 +77,18 @@ type ScorecardDiagnosticRow = {
   proposalCount: number | null
   proposalIDs: string[]
   proposalSkippedReason: string
+  verification: ScorecardVerificationDiagnostics
+}
+
+type FailedItemDiagnosticRow = FailedItemRow & {
+  verification: ScorecardVerificationDiagnostics
+}
+
+type GroupPromotionFormState = {
+  datasetName: string
+  description: string
+  subject: string
+  evalName: string
 }
 
 const route = useRoute()
@@ -42,8 +98,16 @@ const notification = useNotificationStore()
 const loading = ref(false)
 const refreshing = ref(false)
 const actionLoading = ref<'cancel' | 'retry' | ''>('')
+const promotionLoading = ref(false)
 const error = ref('')
 const report = ref<HarnessRunGroupReport | null>(null)
+const promotionResult = ref<HarnessGroupPromotionResult | null>(null)
+const promotionForm = ref<GroupPromotionFormState>({
+  datasetName: '',
+  description: '',
+  subject: '',
+  evalName: '',
+})
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
@@ -55,9 +119,7 @@ function tr(key: string, fallback: string): string {
 }
 
 function humanizeEnum(value: string): string {
-  return value
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase())
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -75,6 +137,14 @@ function safeJSON(raw?: string): Record<string, unknown> | null {
   }
 }
 
+function firstNonEmpty(...values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    const normalized = String(value || '').trim()
+    if (normalized) return normalized
+  }
+  return ''
+}
+
 function formatDate(value?: string | null): string {
   if (!value) return tr('common.notAvailable', 'Not available')
   const parsed = Date.parse(value)
@@ -90,10 +160,29 @@ function readText(records: Array<Record<string, unknown> | null>, key: string): 
   return ''
 }
 
+function readRecord(
+  records: Array<Record<string, unknown> | null>,
+  key: string
+): Record<string, unknown> | null {
+  for (const record of records) {
+    const value = asRecord(record?.[key])
+    if (value) return value
+  }
+  return null
+}
+
 function readNumber(records: Array<Record<string, unknown> | null>, key: string): number | null {
   for (const record of records) {
     const value = Number(record?.[key])
     if (Number.isFinite(value)) return value
+  }
+  return null
+}
+
+function readBoolean(records: Array<Record<string, unknown> | null>, key: string): boolean | null {
+  for (const record of records) {
+    const value = record?.[key]
+    if (typeof value === 'boolean') return value
   }
   return null
 }
@@ -110,12 +199,87 @@ function readStringList(records: Array<Record<string, unknown> | null>, key: str
   return []
 }
 
+function readRecordList(
+  records: Array<Record<string, unknown> | null>,
+  key: string
+): Record<string, unknown>[] {
+  for (const record of records) {
+    const value = record?.[key]
+    if (!Array.isArray(value)) continue
+    const items = value.map((entry) => asRecord(entry)).filter(Boolean) as Record<string, unknown>[]
+    if (items.length) return items
+  }
+  return []
+}
+
 function percentLabel(value?: number): string {
   return `${Math.round(Number(value || 0) * 100)}%`
 }
 
+function optionalPercentLabel(value?: number | null): string {
+  return value == null ? tr('common.notAvailable', 'Not available') : percentLabel(value)
+}
+
 function scoreLabel(value?: number): string {
   return Number(value || 0).toFixed(2)
+}
+
+function compactValueLabel(value: unknown): string {
+  if (value == null) return tr('common.notAvailable', 'Not available')
+  if (Array.isArray(value)) {
+    const text = value
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean)
+      .join(', ')
+    return compactValueLabel(text)
+  }
+  if (typeof value === 'object') {
+    try {
+      return compactValueLabel(JSON.stringify(value))
+    } catch {
+      return tr('common.notAvailable', 'Not available')
+    }
+  }
+  const text = String(value).trim()
+  if (!text) return tr('common.notAvailable', 'Not available')
+  return text.length > 140 ? `${text.slice(0, 137)}...` : text
+}
+
+function summaryValue(key: string): number | null {
+  const summary = asRecord(report.value?.group?.summary)
+  if (!summary || !(key in summary)) return null
+  const value = Number(summary[key])
+  return Number.isFinite(value) ? value : null
+}
+
+function summaryNumber(key: string): number {
+  return summaryValue(key) ?? 0
+}
+
+function summaryNumberMap(key: string): Record<string, number> {
+  const summary = asRecord(report.value?.group?.summary)
+  const source = asRecord(summary?.[key])
+  if (!source) return {}
+  const out: Record<string, number> = {}
+  for (const [entryKey, raw] of Object.entries(source)) {
+    const value = Number(raw)
+    if (Number.isFinite(value)) out[entryKey] = value
+  }
+  return out
+}
+
+function sortedNumberEntries(values: Record<string, number>): NumberEntry[] {
+  return Object.entries(values)
+    .filter(([, value]) => Number.isFinite(value) && value !== 0)
+    .map(([key, value]) => ({ key, value }))
+    .sort((left, right) => {
+      if (right.value !== left.value) return right.value - left.value
+      return left.key.localeCompare(right.key)
+    })
+}
+
+function boolLabel(value: boolean): string {
+  return value ? tr('common.yes', 'Yes') : tr('common.no', 'No')
 }
 
 function summaryCount(key: string): number {
@@ -127,18 +291,21 @@ function summaryCount(key: string): number {
 }
 
 const group = computed<HarnessRunGroup | null>(() => report.value?.group || null)
+const isEphemeralQuickEval = computed(() => asRecord(group.value?.metadata)?.ephemeral === true)
 const items = computed(() => report.value?.items || [])
 const scorecards = computed(() => report.value?.scorecards || [])
 const linkedRuns = computed(() => report.value?.linked_runs || [])
 const artifacts = computed(() => report.value?.artifacts || [])
 const verdictCounts = computed(() => report.value?.verdict_counts || {})
-const failedItems = computed<FailedItemRow[]>(() =>
+const failedItems = computed<FailedItemDiagnosticRow[]>(() =>
   (report.value?.failed_items || []).map((entry) => {
     const record = asRecord(entry)
+    const scorecard = (record?.scorecard as HarnessScorecard | undefined) || null
     return {
       item: (record?.item as HarnessRunGroupItem | undefined) || null,
-      scorecard: (record?.scorecard as HarnessScorecard | undefined) || null,
+      scorecard,
       run: (record?.run as HarnessRunSummary | undefined) || null,
+      verification: buildScorecardVerificationDiagnostics(scorecard),
     }
   })
 )
@@ -156,13 +323,62 @@ const itemByID = computed<Record<string, HarnessRunGroupItem>>(() => {
   for (const item of items.value) out[item.id] = item
   return out
 })
+
+function buildScorecardVerificationDiagnostics(
+  scorecard?: HarnessScorecard | null
+): ScorecardVerificationDiagnostics {
+  const breakdown = safeJSON(scorecard?.breakdown_json)
+  const evidence = safeJSON(scorecard?.evidence_json)
+  const trace = safeJSON(scorecard?.judge_trace_json)
+  const verification = readRecord([evidence, trace], 'verification')
+  const checks = readRecordList([verification], 'checks')
+    .map((entry) => ({
+      name: String(entry.name || '').trim(),
+      expected: compactValueLabel(entry.expected),
+      actual: compactValueLabel(entry.actual),
+      passed: entry.passed === true,
+    }))
+    .sort((left, right) => Number(left.passed) - Number(right.passed))
+  const artifacts = readRecordList([verification], 'artifacts')
+    .map((entry) => ({
+      target: compactValueLabel(entry.path || entry.label),
+      actual: compactValueLabel(entry.actual),
+      passed: entry.passed === true,
+    }))
+    .sort((left, right) => Number(left.passed) - Number(right.passed))
+  const traceSummary = readRecord([verification], 'trace_summary')
+
+  return {
+    passed:
+      readBoolean([verification], 'passed') ?? readBoolean([breakdown], 'verification_passed'),
+    retryable: readBoolean([verification, breakdown, trace], 'retryable'),
+    summary: readText([verification, breakdown, trace], 'summary'),
+    failureLabel: readText([verification, breakdown, trace], 'failure_label'),
+    outcomeScore: readNumber([verification, breakdown], 'outcome_score'),
+    evidenceScore: readNumber([verification, breakdown], 'evidence_score'),
+    executionScore: readNumber([verification, breakdown], 'execution_score'),
+    observations: readStringList([verification, breakdown, trace], 'observations'),
+    checks,
+    artifacts,
+    traceSummary: {
+      eventCount: readNumber([traceSummary], 'event_count'),
+      artifactCount: readNumber([traceSummary], 'artifact_count'),
+      toolNames: readStringList([traceSummary], 'tool_names'),
+      eventsError: readText([traceSummary], 'events_error'),
+      artifactsError: readText([traceSummary], 'artifacts_error'),
+    },
+  }
+}
+
 const scorecardDiagnostics = computed<ScorecardDiagnosticRow[]>(() =>
   scorecards.value.map((card) => {
     const breakdown = safeJSON(card.breakdown_json)
+    const evidence = safeJSON(card.evidence_json)
     const trace = safeJSON(card.judge_trace_json)
     const records = [breakdown, trace]
     return {
       id: card.id,
+      itemID: card.group_item_id,
       itemIndex: itemByID.value[card.group_item_id]?.index ?? null,
       verdict: card.verdict,
       score: Number(card.score || 0),
@@ -173,9 +389,21 @@ const scorecardDiagnostics = computed<ScorecardDiagnosticRow[]>(() =>
       proposalCount: readNumber(records, 'proposal_count'),
       proposalIDs: readStringList(records, 'proposal_ids'),
       proposalSkippedReason: readText(records, 'proposal_skipped_reason'),
+      verification: buildScorecardVerificationDiagnostics({
+        ...card,
+        evidence_json: card.evidence_json || JSON.stringify(evidence || {}),
+      }),
     }
   })
 )
+const scorecardDiagnosticsByItemID = computed<Record<string, ScorecardDiagnosticRow>>(() => {
+  const out: Record<string, ScorecardDiagnosticRow> = {}
+  for (const row of scorecardDiagnostics.value) {
+    if (!row.itemID || out[row.itemID]) continue
+    out[row.itemID] = row
+  }
+  return out
+})
 const hasScorecardDiagnostics = computed(() =>
   scorecardDiagnostics.value.some(
     (row) =>
@@ -185,8 +413,33 @@ const hasScorecardDiagnostics = computed(() =>
       row.takeawayCandidateCount != null ||
       row.proposalCount != null ||
       row.proposalIDs.length > 0 ||
-      row.proposalSkippedReason
+      row.proposalSkippedReason ||
+      row.verification.passed != null ||
+      row.verification.retryable != null ||
+      row.verification.failureLabel ||
+      row.verification.summary ||
+      row.verification.outcomeScore != null ||
+      row.verification.evidenceScore != null ||
+      row.verification.executionScore != null ||
+      row.verification.observations.length > 0 ||
+      row.verification.checks.length > 0 ||
+      row.verification.artifacts.length > 0 ||
+      row.verification.traceSummary.eventCount != null ||
+      row.verification.traceSummary.artifactCount != null ||
+      row.verification.traceSummary.toolNames.length > 0 ||
+      row.verification.traceSummary.eventsError ||
+      row.verification.traceSummary.artifactsError
   )
+)
+
+const failureLabelEntries = computed(() =>
+  sortedNumberEntries(summaryNumberMap('failure_label_counts'))
+)
+const failureLabelHintEntries = computed(() =>
+  failureLabelEntries.value.map((entry) => ({
+    ...entry,
+    hint: remediationHint(entry.key),
+  }))
 )
 
 const hasTerminalGroup = computed(() => {
@@ -268,6 +521,31 @@ function profileLabel(profile?: string | null): string {
   return value ? humanizeEnum(value) : tr('harness.group.unprofiled', 'Unprofiled item')
 }
 
+function verificationStatusLabel(diagnostics?: ScorecardVerificationDiagnostics | null): string {
+  if (diagnostics?.passed === true) return statusLabel('passed')
+  if (diagnostics?.passed === false) return statusLabel('failed')
+  return tr('common.notAvailable', 'Not available')
+}
+
+function remediationHint(label?: string | null): string {
+  const normalized = String(label || '').trim()
+  if (!normalized) return ''
+  return harnessFailureLabelHint(normalized, tr)
+}
+
+function verificationTraceHasContent(summary?: VerificationTraceSummary | null): boolean {
+  return Boolean(
+    summary &&
+      (summary.eventCount != null ||
+        summary.artifactCount != null ||
+        summary.toolNames.length > 0 ||
+        summary.eventsError ||
+        summary.artifactsError)
+  )
+}
+
+void verificationTraceHasContent
+
 function runPreview(run?: HarnessRunSummary | null): string {
   if (!run) return ''
   const text = String(run.result || run.error || '').trim()
@@ -315,7 +593,10 @@ async function cancelGroup() {
   actionLoading.value = 'cancel'
   try {
     await harnessApi.cancelGroup(groupID.value)
-    notification.info(tr('nav.harness', 'Harness'), tr('harness.group.cancelled', 'Group cancelled'))
+    notification.info(
+      tr('nav.harness', 'Harness'),
+      tr('harness.group.cancelled', 'Group cancelled')
+    )
     await loadReport()
   } catch (err) {
     notification.error(tr('common.error', 'Error'), getErrorMessage(err))
@@ -338,6 +619,66 @@ async function retryFailed() {
     notification.error(tr('common.error', 'Error'), getErrorMessage(err))
   } finally {
     actionLoading.value = ''
+  }
+}
+
+function syncPromotionDefaults() {
+  if (!group.value || !isEphemeralQuickEval.value) return
+  const metadata = asRecord(group.value.metadata)
+  const baseName = firstNonEmpty(
+    String(metadata?.quick_eval_dataset_name || ''),
+    group.value.title,
+    group.value.subject,
+    group.value.id
+  )
+  if (!promotionForm.value.datasetName.trim()) {
+    promotionForm.value.datasetName = baseName
+  }
+  if (!promotionForm.value.subject.trim()) {
+    promotionForm.value.subject = firstNonEmpty(
+      String(metadata?.quick_eval_subject || ''),
+      group.value.subject
+    )
+  }
+  if (!promotionForm.value.evalName.trim()) {
+    promotionForm.value.evalName = firstNonEmpty(
+      String(metadata?.quick_eval_eval_name || ''),
+      `${baseName} Eval`
+    )
+  }
+}
+
+async function promoteGroup() {
+  if (!groupID.value || !isEphemeralQuickEval.value) return
+  if (!promotionForm.value.datasetName.trim() || !promotionForm.value.evalName.trim()) {
+    notification.error(
+      tr('common.error', 'Error'),
+      tr(
+        'harness.group.promotionRequiredFields',
+        'Dataset name and eval name are required before promotion.'
+      )
+    )
+    return
+  }
+  promotionLoading.value = true
+  try {
+    promotionResult.value = null
+    const payload: HarnessPromoteGroupSpec = {
+      dataset_name: promotionForm.value.datasetName.trim(),
+      description: promotionForm.value.description.trim(),
+      subject: promotionForm.value.subject.trim(),
+      eval_name: promotionForm.value.evalName.trim(),
+    }
+    const response = await harnessApi.promoteGroup(groupID.value, payload)
+    promotionResult.value = response.data || null
+    notification.success(
+      tr('nav.harness', 'Harness'),
+      tr('harness.group.promoted', 'Group promoted into reusable eval assets')
+    )
+  } catch (err) {
+    notification.error(tr('common.error', 'Error'), getErrorMessage(err))
+  } finally {
+    promotionLoading.value = false
   }
 }
 
@@ -366,6 +707,13 @@ watch(
   () => group.value?.status,
   () => {
     syncAutoRefresh()
+  }
+)
+
+watch(
+  () => group.value?.id,
+  () => {
+    syncPromotionDefaults()
   }
 )
 
@@ -423,7 +771,12 @@ onUnmounted(() => {
         </dl>
       </div>
       <div class="hero-actions">
-        <button type="button" class="ghost-button" :disabled="loading || refreshing" @click="loadReport()">
+        <button
+          type="button"
+          class="ghost-button"
+          :disabled="loading || refreshing"
+          @click="loadReport()"
+        >
           {{ refreshing ? tr('common.loading', 'Loading') : tr('common.refresh', 'Refresh') }}
         </button>
         <button
@@ -481,6 +834,87 @@ onUnmounted(() => {
           <span>{{ tr('harness.group.totalAttempts', 'Attempts') }}</span>
           <strong>{{ totalAttempts }}</strong>
         </article>
+        <article class="stat-card">
+          <span>{{ tr('harness.group.verificationPassRate', 'Verification pass rate') }}</span>
+          <strong>{{ optionalPercentLabel(summaryValue('verification_pass_rate')) }}</strong>
+        </article>
+        <article class="stat-card">
+          <span>{{ tr('harness.group.evidenceBackedPassRate', 'Evidence-backed pass rate') }}</span>
+          <strong>{{ optionalPercentLabel(summaryValue('evidence_backed_pass_rate')) }}</strong>
+        </article>
+        <article class="stat-card">
+          <span>{{ tr('harness.group.retryRecovered', 'Retry recovered') }}</span>
+          <strong>{{ summaryNumber('retry_recovered_count') }}</strong>
+        </article>
+      </section>
+
+      <section v-if="isEphemeralQuickEval" class="panel promotion-panel">
+        <div class="panel-header">
+          <div>
+            <h2>{{ tr('harness.group.promoteTitle', 'Promote to regression assets') }}</h2>
+            <p class="panel-caption">
+              {{
+                tr(
+                  'harness.group.promoteHint',
+                  'Turn this ephemeral quick eval into a reusable dataset, snapshot, and eval spec for later reruns.'
+                )
+              }}
+            </p>
+          </div>
+          <span class="status-chip is-warning">
+            {{ tr('harness.group.ephemeralQuickEval', 'Ephemeral quick eval') }}
+          </span>
+        </div>
+
+        <form class="promotion-form" @submit.prevent="promoteGroup">
+          <label>
+            <span>{{ tr('harness.dataset.name', 'Dataset name') }}</span>
+            <input v-model="promotionForm.datasetName" name="promotion-dataset-name" required />
+          </label>
+          <label>
+            <span>{{ tr('harness.dataset.subject', 'Subject') }}</span>
+            <input v-model="promotionForm.subject" name="promotion-subject" />
+          </label>
+          <label class="promotion-form-span-2">
+            <span>{{ tr('common.description', 'Description') }}</span>
+            <textarea
+              v-model="promotionForm.description"
+              name="promotion-description"
+              rows="3"
+            />
+          </label>
+          <label class="promotion-form-span-2">
+            <span>{{ tr('harness.evalSpec.name', 'Eval name') }}</span>
+            <input v-model="promotionForm.evalName" name="promotion-eval-name" required />
+          </label>
+          <div class="promotion-actions promotion-form-span-2">
+            <button type="submit" class="primary-button" :disabled="promotionLoading">
+              {{
+                promotionLoading
+                  ? tr('common.loading', 'Loading')
+                  : tr('harness.group.promoteAction', 'Promote this quick eval')
+              }}
+            </button>
+          </div>
+        </form>
+
+        <article v-if="promotionResult" class="promotion-result-card">
+          <strong>{{ tr('harness.group.promoted', 'Group promoted into reusable eval assets') }}</strong>
+          <div class="detail-pills">
+            <span v-if="promotionResult.dataset">
+              {{ tr('harness.dataset.create', 'Dataset') }}:
+              {{ promotionResult.dataset.name || promotionResult.dataset.id }}
+            </span>
+            <span v-if="promotionResult.dataset_version">
+              {{ tr('harness.dataset.publishVersion', 'Version') }}:
+              {{ promotionResult.dataset_version.version || promotionResult.dataset_version.id }}
+            </span>
+            <span v-if="promotionResult.eval_spec">
+              {{ tr('harness.evalSpec.create', 'Eval spec') }}:
+              {{ promotionResult.eval_spec.name || promotionResult.eval_spec.id }}
+            </span>
+          </div>
+        </article>
       </section>
 
       <section class="panel">
@@ -510,10 +944,40 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="summary-row">
-          <span>{{ tr('harness.group.queuedCount', 'Queued') }}: {{ summaryCount('queued') + summaryCount('pending') }}</span>
-          <span>{{ tr('harness.group.runningCount', 'Running') }}: {{ summaryCount('running') }}</span>
-          <span>{{ tr('harness.group.failedCount', 'Failed') }}: {{ summaryCount('failed') + summaryCount('error') }}</span>
+          <span
+            >{{ tr('harness.group.queuedCount', 'Queued') }}:
+            {{ summaryCount('queued') + summaryCount('pending') }}</span
+          >
+          <span
+            >{{ tr('harness.group.runningCount', 'Running') }}: {{ summaryCount('running') }}</span
+          >
+          <span
+            >{{ tr('harness.group.failedCount', 'Failed') }}:
+            {{ summaryCount('failed') + summaryCount('error') }}</span
+          >
         </div>
+        <div v-if="failureLabelEntries.length" class="detail-pills summary-pills">
+          <span v-for="entry in failureLabelEntries" :key="`failure-label-${entry.key}`">
+            {{ tr('harness.group.failureLabel', 'Failure label') }}: {{ entry.key }} ·
+            {{ entry.value }}
+          </span>
+        </div>
+        <div v-if="failureLabelHintEntries.length" class="remediation-list">
+          <article
+            v-for="entry in failureLabelHintEntries"
+            :key="`failure-hint-${entry.key}`"
+            class="remediation-card"
+          >
+            <strong>{{ entry.key }}</strong>
+            <p>
+              {{ tr('harness.group.remediation', 'Remediation') }}:
+              {{ entry.hint }}
+            </p>
+          </article>
+        </div>
+        <p v-else class="panel-caption summary-caption">
+          {{ tr('harness.group.noFailureLabels', 'No failure labels recorded.') }}
+        </p>
       </section>
 
       <section v-if="scorecards.length" class="panel">
@@ -548,15 +1012,52 @@ onUnmounted(() => {
             <div class="row-primary">
               <div class="row-title-line">
                 <strong>#{{ row.itemIndex ?? '?' }}</strong>
-                <span class="status-chip" :class="statusTone(row.verdict)">{{ statusLabel(row.verdict) }}</span>
+                <span class="status-chip" :class="statusTone(row.verdict)">{{
+                  statusLabel(row.verdict)
+                }}</span>
                 <span v-if="row.judgeBackend" class="profile-chip">{{ row.judgeBackend }}</span>
               </div>
               <p class="row-subtitle">
                 {{ tr('harness.groups.score', 'Score') }} {{ scoreLabel(row.score) }}
               </p>
+              <p v-if="row.verification.summary" class="row-subtitle">
+                {{ row.verification.summary }}
+              </p>
+              <p v-if="row.verification.failureLabel" class="failed-reason">
+                {{ tr('harness.group.remediation', 'Remediation') }}:
+                {{ remediationHint(row.verification.failureLabel) }}
+              </p>
               <div class="detail-pills">
+                <span v-if="row.verification.passed != null">
+                  {{ tr('harness.group.verification', 'Verification') }}:
+                  {{ verificationStatusLabel(row.verification) }}
+                </span>
+                <span v-if="row.verification.failureLabel">
+                  {{ tr('harness.group.failureLabel', 'Failure label') }}:
+                  {{ row.verification.failureLabel }}
+                </span>
+                <span v-if="row.verification.retryable != null">
+                  {{ tr('harness.group.retryable', 'Retryable') }}:
+                  {{ boolLabel(row.verification.retryable) }}
+                </span>
+                <span v-if="row.verification.outcomeScore != null">
+                  {{ tr('harness.group.outcomeScore', 'Outcome score') }}:
+                  {{ scoreLabel(row.verification.outcomeScore) }}
+                </span>
+                <span v-if="row.verification.evidenceScore != null">
+                  {{ tr('harness.group.evidenceScore', 'Evidence score') }}:
+                  {{ scoreLabel(row.verification.evidenceScore) }}
+                </span>
+                <span v-if="row.verification.executionScore != null">
+                  {{ tr('harness.group.executionScore', 'Execution score') }}:
+                  {{ scoreLabel(row.verification.executionScore) }}
+                </span>
+                <span v-if="row.verification.observations.length">
+                  {{ tr('harness.group.observations', 'Observations') }}:
+                  {{ row.verification.observations.join(', ') }}
+                </span>
                 <span v-if="row.judgeModel">
-                  {{ tr('harness.group.judgeModel', 'Judge model') }}: {{ row.judgeModel }}
+                  {{ tr('harness.evalSpec.judgeModel', 'Judge model') }}: {{ row.judgeModel }}
                 </span>
                 <span v-if="row.calibrationRef">
                   {{ tr('harness.group.calibrationRef', 'Calibration ref') }}:
@@ -570,6 +1071,135 @@ onUnmounted(() => {
                   {{ tr('harness.group.proposalCount', 'Proposal count') }}:
                   {{ row.proposalCount }}
                 </span>
+              </div>
+              <div
+                v-if="
+                  row.verification.observations.length ||
+                  row.verification.checks.length ||
+                  row.verification.artifacts.length ||
+                  verificationTraceHasContent(row.verification.traceSummary)
+                "
+                class="contract-stack"
+              >
+                <section v-if="row.verification.observations.length" class="contract-section">
+                  <div class="contract-header">
+                    <strong>{{ tr('harness.group.observations', 'Observations') }}</strong>
+                    <span class="panel-caption">{{ row.verification.observations.length }}</span>
+                  </div>
+                  <div class="detail-pills contract-pills">
+                    <span
+                      v-for="observation in row.verification.observations"
+                      :key="`observation-${row.id}-${observation}`"
+                    >
+                      {{ observation }}
+                    </span>
+                  </div>
+                </section>
+
+                <section v-if="row.verification.checks.length" class="contract-section">
+                  <div class="contract-header">
+                    <strong>{{
+                      tr('harness.group.verificationChecks', 'Verification checks')
+                    }}</strong>
+                    <span class="panel-caption">{{ row.verification.checks.length }}</span>
+                  </div>
+                  <div class="contract-grid">
+                    <article
+                      v-for="check in row.verification.checks"
+                      :key="`${check.name}-${check.expected}-${check.actual}`"
+                      class="contract-card"
+                      :class="{ 'is-failed': !check.passed }"
+                    >
+                      <div class="contract-title-line">
+                        <strong>{{ check.name }}</strong>
+                        <span
+                          class="status-chip"
+                          :class="statusTone(check.passed ? 'passed' : 'failed')"
+                        >
+                          {{ statusLabel(check.passed ? 'passed' : 'failed') }}
+                        </span>
+                      </div>
+                      <dl class="contract-values">
+                        <div>
+                          <dt>{{ tr('harness.group.expectedValue', 'Expected') }}</dt>
+                          <dd>{{ check.expected }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.group.actualValue', 'Actual') }}</dt>
+                          <dd>{{ check.actual }}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  </div>
+                </section>
+
+                <section v-if="row.verification.artifacts.length" class="contract-section">
+                  <div class="contract-header">
+                    <strong>{{
+                      tr('harness.group.expectedArtifacts', 'Expected artifacts')
+                    }}</strong>
+                    <span class="panel-caption">{{ row.verification.artifacts.length }}</span>
+                  </div>
+                  <div class="contract-grid">
+                    <article
+                      v-for="artifact in row.verification.artifacts"
+                      :key="`${artifact.target}-${artifact.actual}`"
+                      class="contract-card"
+                      :class="{ 'is-failed': !artifact.passed }"
+                    >
+                      <div class="contract-title-line">
+                        <strong>{{ artifact.target }}</strong>
+                        <span
+                          class="status-chip"
+                          :class="statusTone(artifact.passed ? 'passed' : 'failed')"
+                        >
+                          {{ statusLabel(artifact.passed ? 'passed' : 'failed') }}
+                        </span>
+                      </div>
+                      <dl class="contract-values">
+                        <div>
+                          <dt>{{ tr('harness.group.expectedValue', 'Expected') }}</dt>
+                          <dd>{{ artifact.target }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.group.actualValue', 'Actual') }}</dt>
+                          <dd>{{ artifact.actual }}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  </div>
+                </section>
+
+                <section
+                  v-if="verificationTraceHasContent(row.verification.traceSummary)"
+                  class="contract-section"
+                >
+                  <div class="contract-header">
+                    <strong>{{ tr('harness.group.traceSummary', 'Trace summary') }}</strong>
+                  </div>
+                  <div class="detail-pills contract-pills">
+                    <span v-if="row.verification.traceSummary.eventCount != null">
+                      {{ tr('harness.group.eventCount', 'Event count') }}:
+                      {{ row.verification.traceSummary.eventCount }}
+                    </span>
+                    <span v-if="row.verification.traceSummary.artifactCount != null">
+                      {{ tr('harness.group.artifactCount', 'Artifact count') }}:
+                      {{ row.verification.traceSummary.artifactCount }}
+                    </span>
+                    <span v-if="row.verification.traceSummary.toolNames.length">
+                      {{ tr('harness.group.observedTools', 'Observed tools') }}:
+                      {{ row.verification.traceSummary.toolNames.join(', ') }}
+                    </span>
+                  </div>
+                  <p v-if="row.verification.traceSummary.eventsError" class="failed-reason">
+                    {{ tr('common.error', 'Error') }}:
+                    {{ row.verification.traceSummary.eventsError }}
+                  </p>
+                  <p v-if="row.verification.traceSummary.artifactsError" class="failed-reason">
+                    {{ tr('common.error', 'Error') }}:
+                    {{ row.verification.traceSummary.artifactsError }}
+                  </p>
+                </section>
               </div>
               <p v-if="row.proposalSkippedReason" class="failed-reason">
                 {{ row.proposalSkippedReason }}
@@ -605,18 +1235,28 @@ onUnmounted(() => {
             <div class="row-primary">
               <div class="row-title-line">
                 <strong>#{{ item.index }}</strong>
-                <span class="status-chip" :class="statusTone(item.status)">{{ statusLabel(item.status) }}</span>
-                <span v-if="item.profile" class="profile-chip">{{ profileLabel(item.profile) }}</span>
+                <span class="status-chip" :class="statusTone(item.status)">{{
+                  statusLabel(item.status)
+                }}</span>
+                <span v-if="item.profile" class="profile-chip">{{
+                  profileLabel(item.profile)
+                }}</span>
               </div>
               <p class="row-subtitle">
                 {{
-                  String(item.input?.goal || item.input?.query || item.input?.prompt || '').trim() ||
+                  String(
+                    item.input?.goal || item.input?.query || item.input?.prompt || ''
+                  ).trim() ||
                   tr('harness.group.noInputSummary', 'No goal/query recorded for this item.')
                 }}
               </p>
             </div>
             <div class="row-metrics">
-              <span>{{ tr('harness.group.attempts', 'Attempts') }}: {{ item.attempt_count }}/{{ item.max_attempts || 1 }}</span>
+              <span
+                >{{ tr('harness.group.attempts', 'Attempts') }}: {{ item.attempt_count }}/{{
+                  item.max_attempts || 1
+                }}</span
+              >
               <span>
                 {{ tr('harness.group.scorecard', 'Verdict') }}:
                 {{
@@ -624,6 +1264,24 @@ onUnmounted(() => {
                     ? statusLabel(scorecardByItemID[item.id]?.verdict)
                     : tr('common.notAvailable', 'Not available')
                 }}
+              </span>
+              <span v-if="scorecardDiagnosticsByItemID[item.id]?.verification.passed != null">
+                {{ tr('harness.group.verification', 'Verification') }}:
+                {{ verificationStatusLabel(scorecardDiagnosticsByItemID[item.id]?.verification) }}
+              </span>
+              <span v-if="scorecardDiagnosticsByItemID[item.id]?.verification.failureLabel">
+                {{ tr('harness.group.failureLabel', 'Failure label') }}:
+                {{ scorecardDiagnosticsByItemID[item.id]?.verification.failureLabel }}
+              </span>
+              <span v-if="scorecardDiagnosticsByItemID[item.id]?.verification.failureLabel">
+                {{ tr('harness.group.remediation', 'Remediation') }}:
+                {{
+                  remediationHint(scorecardDiagnosticsByItemID[item.id]?.verification.failureLabel)
+                }}
+              </span>
+              <span v-if="scorecardDiagnosticsByItemID[item.id]?.verification.observations.length">
+                {{ tr('harness.group.observations', 'Observations') }}:
+                {{ scorecardDiagnosticsByItemID[item.id]?.verification.observations.join(', ') }}
               </span>
               <button
                 v-if="item.latest_run_id"
@@ -647,16 +1305,56 @@ onUnmounted(() => {
           {{ tr('harness.group.noFailedItems', 'No failed items in the latest report.') }}
         </div>
         <div v-else class="failed-grid">
-          <article v-for="entry in failedItems" :key="entry.item?.id || entry.run?.id" class="failed-card">
+          <article
+            v-for="entry in failedItems"
+            :key="entry.item?.id || entry.run?.id"
+            class="failed-card"
+          >
             <div class="failed-header">
               <strong>#{{ entry.item?.index ?? '?' }}</strong>
-              <span class="status-chip" :class="statusTone(entry.scorecard?.verdict || entry.item?.status || '')">
+              <span
+                class="status-chip"
+                :class="statusTone(entry.scorecard?.verdict || entry.item?.status || '')"
+              >
                 {{ statusLabel(entry.scorecard?.verdict || entry.item?.status || 'unknown') }}
               </span>
             </div>
             <p class="failed-title">{{ profileLabel(entry.item?.profile) }}</p>
+            <div
+              v-if="
+                entry.verification.passed != null ||
+                entry.verification.failureLabel ||
+                entry.verification.evidenceScore != null
+              "
+              class="detail-pills"
+            >
+              <span v-if="entry.verification.passed != null">
+                {{ tr('harness.group.verification', 'Verification') }}:
+                {{ verificationStatusLabel(entry.verification) }}
+              </span>
+              <span v-if="entry.verification.failureLabel">
+                {{ tr('harness.group.failureLabel', 'Failure label') }}:
+                {{ entry.verification.failureLabel }}
+              </span>
+              <span v-if="entry.verification.evidenceScore != null">
+                {{ tr('harness.group.evidenceScore', 'Evidence score') }}:
+                {{ scoreLabel(entry.verification.evidenceScore) }}
+              </span>
+              <span v-if="entry.verification.observations.length">
+                {{ tr('harness.group.observations', 'Observations') }}:
+                {{ entry.verification.observations.join(', ') }}
+              </span>
+            </div>
+            <p v-if="entry.verification.failureLabel" class="failed-reason">
+              {{ tr('harness.group.remediation', 'Remediation') }}:
+              {{ remediationHint(entry.verification.failureLabel) }}
+            </p>
             <p class="failed-reason">
-              {{ scorecardReason(entry.scorecard) || runPreview(entry.run) || tr('harness.group.noFailureReason', 'No failure reason recorded.') }}
+              {{
+                scorecardReason(entry.scorecard) ||
+                runPreview(entry.run) ||
+                tr('harness.group.noFailureReason', 'No failure reason recorded.')
+              }}
             </p>
             <button
               v-if="entry.run?.id"
@@ -676,7 +1374,9 @@ onUnmounted(() => {
           <span class="panel-caption">{{ linkedRuns.length }}</span>
         </div>
         <div v-if="linkedRuns.length === 0" class="empty-state">
-          {{ tr('harness.group.noLinkedRuns', 'No linked runs were persisted for this group yet.') }}
+          {{
+            tr('harness.group.noLinkedRuns', 'No linked runs were persisted for this group yet.')
+          }}
         </div>
         <div v-else class="run-list">
           <article
@@ -689,11 +1389,13 @@ onUnmounted(() => {
               <div>
                 <div class="run-title-line">
                   <strong>{{ run.goal || run.id }}</strong>
-                  <span class="status-chip" :class="statusTone(run.status)">{{ statusLabel(run.status) }}</span>
+                  <span class="status-chip" :class="statusTone(run.status)">{{
+                    statusLabel(run.status)
+                  }}</span>
                 </div>
                 <p class="run-meta">
-                  {{ kindLabel(run.kind) }} ·
-                  {{ tr('harness.group.attemptIndex', 'Attempt') }} {{ run.attempt_index || 0 }} ·
+                  {{ kindLabel(run.kind) }} · {{ tr('harness.group.attemptIndex', 'Attempt') }}
+                  {{ run.attempt_index || 0 }} ·
                   {{ formatDate(run.updated_at) }}
                 </p>
               </div>
@@ -730,7 +1432,9 @@ onUnmounted(() => {
             >
               {{ artifact.path_or_url }}
             </a>
-            <code v-else class="artifact-path">{{ artifact.path_or_url || tr('common.notAvailable', 'Not available') }}</code>
+            <code v-else class="artifact-path">{{
+              artifact.path_or_url || tr('common.notAvailable', 'Not available')
+            }}</code>
           </article>
         </div>
       </section>
@@ -925,6 +1629,95 @@ onUnmounted(() => {
   font-size: 0.92rem;
 }
 
+.summary-pills {
+  margin-top: 1rem;
+}
+
+.summary-caption {
+  display: block;
+  margin-top: 1rem;
+}
+
+.promotion-panel {
+  background:
+    linear-gradient(135deg, rgba(255, 251, 235, 0.92), rgba(255, 255, 255, 0.96)),
+    #fff;
+}
+
+.promotion-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.promotion-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  color: #334155;
+  font-weight: 600;
+}
+
+.promotion-form input,
+.promotion-form textarea {
+  width: 100%;
+  padding: 0.82rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.promotion-form-span-2 {
+  grid-column: span 2;
+}
+
+.promotion-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.promotion-result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 1rem;
+  padding: 1rem 1.05rem;
+  border-radius: 1rem;
+  background: rgba(240, 253, 244, 0.86);
+  border: 1px solid rgba(34, 197, 94, 0.16);
+}
+
+.promotion-result-card strong {
+  color: #166534;
+}
+
+.remediation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.remediation-card {
+  padding: 0.9rem 1rem;
+  border-radius: 0.95rem;
+  background: rgba(236, 253, 245, 0.92);
+  border: 1px solid rgba(16, 185, 129, 0.18);
+}
+
+.remediation-card strong {
+  color: #065f46;
+}
+
+.remediation-card p {
+  margin: 0.35rem 0 0;
+  color: #166534;
+  line-height: 1.55;
+}
+
 .kind-chip,
 .status-chip,
 .profile-chip {
@@ -1051,6 +1844,87 @@ onUnmounted(() => {
   background: rgba(148, 163, 184, 0.14);
 }
 
+.contract-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.contract-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.contract-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.contract-header strong,
+.contract-title-line strong {
+  color: #0f172a;
+}
+
+.contract-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.contract-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(34, 197, 94, 0.14);
+  background: rgba(240, 253, 244, 0.72);
+}
+
+.contract-card.is-failed {
+  border-color: rgba(239, 68, 68, 0.18);
+  background: rgba(254, 242, 242, 0.86);
+}
+
+.contract-title-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.contract-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.contract-values dt {
+  margin-bottom: 0.3rem;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.contract-values dd {
+  margin: 0;
+  color: #0f172a;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.contract-pills {
+  margin-top: -0.1rem;
+}
+
 .id-stack {
   display: flex;
   flex-direction: column;
@@ -1121,7 +1995,10 @@ onUnmounted(() => {
 
   .hero-meta,
   .stats-grid,
-  .verdict-grid {
+  .verdict-grid,
+  .promotion-form,
+  .contract-grid,
+  .contract-values {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1137,8 +2014,15 @@ onUnmounted(() => {
 @media (max-width: 720px) {
   .hero-meta,
   .stats-grid,
-  .verdict-grid {
+  .verdict-grid,
+  .promotion-form,
+  .contract-grid,
+  .contract-values {
     grid-template-columns: 1fr;
+  }
+
+  .promotion-form-span-2 {
+    grid-column: span 1;
   }
 
   .hero-actions {

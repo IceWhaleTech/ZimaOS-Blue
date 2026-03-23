@@ -22,10 +22,12 @@ const (
 
 	webAccessLaneAuto         = "auto"
 	webAccessLaneHTTP         = "http"
+	webAccessLaneHTTPNative   = "http_native"
 	webAccessLaneBrowser      = "browser"
 	webAccessLaneProxyFetcher = "proxy_fetcher"
 
 	webAccessSourceHTTP         = "http"
+	webAccessSourceHTTPNative   = "http_native"
 	webAccessSourceBrowser      = "browser"
 	webAccessSourceProxyFetcher = "proxy_fetcher"
 
@@ -68,6 +70,11 @@ type webAccessDocument struct {
 	Links               []string
 	BodyTruncated       bool
 	Extractor           string
+	StrategyUsed        string
+	SessionReused       bool
+	AdapterID           string
+	NetworkObserved     bool
+	ChallengeState      *ChallengeState
 }
 
 type webAccessFetchOptions struct {
@@ -95,17 +102,22 @@ type WebCrawlTool struct {
 }
 
 type webReadResponse struct {
-	URL                 string   `json:"url"`
-	Title               string   `json:"title,omitempty"`
-	FinalURL            string   `json:"final_url,omitempty"`
-	Format              string   `json:"format"`
-	Content             string   `json:"content,omitempty"`
-	Source              string   `json:"source"`
-	Warnings            []string `json:"warnings,omitempty"`
-	WarningCodes        []string `json:"warning_codes,omitempty"`
-	InteractiveRequired bool     `json:"interactive_required,omitempty"`
-	StatusCode          int      `json:"status_code,omitempty"`
-	Truncated           bool     `json:"truncated,omitempty"`
+	URL                 string          `json:"url"`
+	Title               string          `json:"title,omitempty"`
+	FinalURL            string          `json:"final_url,omitempty"`
+	Format              string          `json:"format"`
+	Content             string          `json:"content,omitempty"`
+	Source              string          `json:"source"`
+	Warnings            []string        `json:"warnings,omitempty"`
+	WarningCodes        []string        `json:"warning_codes,omitempty"`
+	InteractiveRequired bool            `json:"interactive_required,omitempty"`
+	StatusCode          int             `json:"status_code,omitempty"`
+	Truncated           bool            `json:"truncated,omitempty"`
+	StrategyUsed        string          `json:"strategy_used,omitempty"`
+	SessionReused       bool            `json:"session_reused,omitempty"`
+	AdapterID           string          `json:"adapter_id,omitempty"`
+	NetworkObserved     bool            `json:"network_observed,omitempty"`
+	ChallengeState      *ChallengeState `json:"challenge_state,omitempty"`
 }
 
 type webExtractFieldSpec struct {
@@ -283,6 +295,13 @@ func (t *WebReadTool) SetPDFService(service PDFService) {
 	t.runtime.SetPDFService(service)
 }
 
+func (t *WebReadTool) SetDocumentReadService(service DocumentReadService) {
+	if t == nil || t.runtime == nil || t.runtime.base == nil {
+		return
+	}
+	t.runtime.base.SetDocumentReadService(service)
+}
+
 func (t *WebExtractTool) SetBrowser(browser BrowserBackend) {
 	if t == nil || t.runtime == nil {
 		return
@@ -307,7 +326,7 @@ func (t *WebCrawlTool) SetPDFService(service PDFService) {
 func (t *WebReadTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "web_read",
-		Description: "Default page-reading tool for a known URL when you want normalized main content. Supports headers/cookies, browser_target_id reuse, lane-aware reading, and warning_codes for login walls or interactive pages. Prefer it over browser when you only need content; if warning_codes include login_wall, challenge, or browser_required, switch to browser.",
+		Description: "Default page-reading tool for a known URL when you want normalized main content. Supports headers/cookies, browser_target_id reuse, lane-aware reading, and downloadable PDFs or office-style documents. Prefer it over browser when you only need content; if warning_codes include login_wall, challenge, or browser_required, switch to browser.",
 		Icon:        "web-search",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -348,13 +367,14 @@ func (t *WebReadTool) Execute(ctx context.Context, args map[string]interface{}) 
 	if err != nil {
 		return nil, err
 	}
+	disableInternalFallbacks := parseBooleanFlag(args, "disable_internal_fallbacks", "disableInternalFallbacks")
 	doc, err := t.runtime.fetch(ctx, rawURL, webAccessFetchOptions{
 		format:               format,
 		maxChars:             maxChars,
 		lane:                 lane,
 		request:              reqOpts,
-		allowBrowserFallback: true,
-		allowProxyFallback:   true,
+		allowBrowserFallback: !disableInternalFallbacks,
+		allowProxyFallback:   !disableInternalFallbacks,
 	})
 	if err != nil {
 		return nil, err
@@ -371,6 +391,11 @@ func (t *WebReadTool) Execute(ctx context.Context, args map[string]interface{}) 
 		InteractiveRequired: doc.InteractiveRequired,
 		StatusCode:          doc.StatusCode,
 		Truncated:           doc.Truncated,
+		StrategyUsed:        doc.StrategyUsed,
+		SessionReused:       doc.SessionReused,
+		AdapterID:           doc.AdapterID,
+		NetworkObserved:     doc.NetworkObserved,
+		ChallengeState:      cloneChallengeState(doc.ChallengeState),
 	})
 }
 
@@ -761,6 +786,65 @@ func (r *webAccessRuntime) fetch(ctx context.Context, rawURL string, opts webAcc
 	if lane == "" {
 		lane = webAccessLaneAuto
 	}
+	if !opts.wantRawHTML && r.base.orchestrator != nil && r.base.orchestrator.enabled() {
+		preferredLane := lane
+		if preferredLane == webAccessLaneAuto {
+			preferredLane = r.base.preferredReadLane(ctx, normalizedURL, opts.request.browserTargetID)
+		}
+		result, err := r.base.orchestrator.Fetch(ctx, FetchRequest{
+			URL:               normalizedURL,
+			Mode:              format,
+			MaxChars:          opts.maxChars,
+			PreferredLane:     preferredLane,
+			Options:           opts.request,
+			AllowBrowser:      r.base.browser != nil,
+			AllowProxy:        len(r.base.config.ProxyFetcherProviders) > 0,
+			AllowSession:      true,
+			AllowAutoFallback: lane == webAccessLaneAuto && (opts.allowBrowserFallback || opts.allowProxyFallback),
+			BrowserReasonCode: opts.browserReasonCode,
+			BrowserReason:     opts.browserReason,
+		})
+		if err == nil {
+			content, truncated := truncateWebFetchContent(result.Payload.Content, opts.maxChars)
+			doc := webAccessDocument{
+				URL:             normalizedURL,
+				FinalURL:        firstNonEmpty(result.Payload.URL, normalizedURL),
+				Title:           result.Payload.Title,
+				Format:          format,
+				Content:         content,
+				Source:          firstNonEmpty(result.Payload.Source, strategySourceForFetchResult(result)),
+				StatusCode:      statusCodeForChallenge(result.ChallengeState),
+				Truncated:       truncated || result.Payload.BodyTruncated,
+				ContentType:     result.Payload.ContentType,
+				BodyTruncated:   result.Payload.BodyTruncated,
+				Extractor:       result.Payload.Extractor,
+				StrategyUsed:    result.StrategyUsed,
+				SessionReused:   result.SessionReused,
+				AdapterID:       result.AdapterID,
+				NetworkObserved: result.NetworkObserved,
+				ChallengeState:  cloneChallengeState(result.ChallengeState),
+			}
+			if doc.ChallengeState != nil {
+				doc.InteractiveRequired = doc.ChallengeState.RequiresBrowser
+				if strings.TrimSpace(doc.ChallengeState.Message) != "" {
+					doc.Warnings = append(doc.Warnings, webAccessWarning{
+						Code:    firstNonEmpty(doc.ChallengeState.Code, doc.ChallengeState.Kind),
+						Message: doc.ChallengeState.Message,
+					})
+				}
+			}
+			if strings.TrimSpace(result.Payload.Warning) != "" {
+				doc.Warnings = append(doc.Warnings, webAccessWarning{
+					Code:    result.Payload.WarningCode,
+					Message: result.Payload.Warning,
+				})
+			}
+			return doc, nil
+		}
+		if lane != webAccessLaneAuto {
+			return webAccessDocument{}, err
+		}
+	}
 	if lane == webAccessLaneBrowser {
 		if opts.wantRawHTML {
 			return webAccessDocument{}, errors.New("browser lane is not supported when raw HTML is required")
@@ -772,6 +856,9 @@ func (r *webAccessRuntime) fetch(ctx context.Context, rawURL string, opts webAcc
 			return webAccessDocument{}, errors.New("proxy_fetcher lane is not supported when raw HTML is required")
 		}
 		return r.fetchViaProxy(ctx, normalizedURL, format, opts.maxChars)
+	}
+	if lane == webAccessLaneHTTPNative {
+		return r.fetchViaHTTPBackend(ctx, normalizedURL, opts, webAccessLaneHTTPNative)
 	}
 	doc, err := r.fetchViaHTTP(ctx, normalizedURL, opts)
 	if err != nil {
@@ -799,71 +886,99 @@ func (r *webAccessRuntime) fetch(ctx context.Context, rawURL string, opts webAcc
 }
 
 func (r *webAccessRuntime) fetchViaHTTP(ctx context.Context, normalizedURL string, opts webAccessFetchOptions) (webAccessDocument, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, normalizedURL, nil)
-	if err != nil {
-		return webAccessDocument{}, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/markdown;q=0.9,text/plain;q=0.8,application/pdf;q=0.7,*/*;q=0.2")
-	req.Header.Set("User-Agent", r.base.config.UserAgent)
-	for key, value := range opts.request.extraHeaders {
-		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
-			continue
+	primary := webAccessLaneHTTP
+	secondary := ""
+	if r != nil && r.base != nil {
+		if r.base.shouldPreferHTTPNative(normalizedURL) && r.base.canUseHTTPNative() {
+			primary = webAccessLaneHTTPNative
+			secondary = webAccessLaneHTTP
+		} else if r.base.canUseHTTPNative() {
+			secondary = webAccessLaneHTTPNative
 		}
-		req.Header.Set(key, value)
 	}
-	resp, err := r.base.httpClient.Do(req)
+
+	doc, err := r.fetchViaHTTPBackend(ctx, normalizedURL, opts, primary)
+	if err != nil {
+		if secondary == "" || (primary != webAccessLaneHTTPNative && !r.base.shouldRetryHTTPNativeOnError(err)) {
+			return webAccessDocument{}, err
+		}
+		fallbackDoc, fallbackErr := r.fetchViaHTTPBackend(ctx, normalizedURL, opts, secondary)
+		if fallbackErr != nil {
+			return webAccessDocument{}, fmt.Errorf("%w (secondary %s failed: %v)", err, secondary, fallbackErr)
+		}
+		doc = fallbackDoc
+	}
+	if doc.Source != webAccessSourceHTTPNative && r.base.shouldRetryHTTPNativeOnResponse(webFetchHTTPResult{
+		FinalURL:      doc.FinalURL,
+		StatusCode:    doc.StatusCode,
+		ContentType:   doc.ContentType,
+		Body:          []byte(doc.RawHTML),
+		BodyTruncated: doc.BodyTruncated,
+		Source:        doc.Source,
+	}, webFetchPayload{
+		URL:         doc.FinalURL,
+		Title:       doc.Title,
+		Content:     doc.Content,
+		Extractor:   doc.Extractor,
+		Source:      doc.Source,
+		WarningCode: firstWarningCode(doc.Warnings),
+	}) {
+		nativeDoc, nativeErr := r.fetchViaHTTPBackend(ctx, normalizedURL, opts, webAccessLaneHTTPNative)
+		if nativeErr == nil && preferHTTPNativeDocument(doc, nativeDoc) {
+			doc = nativeDoc
+		}
+	}
+	return doc, nil
+}
+
+func (r *webAccessRuntime) fetchViaHTTPBackend(ctx context.Context, normalizedURL string, opts webAccessFetchOptions, backend string) (webAccessDocument, error) {
+	if r == nil || r.base == nil {
+		return webAccessDocument{}, errors.New("web runtime not available")
+	}
+	acceptHeader := "text/html,application/xhtml+xml,text/markdown;q=0.9,text/plain;q=0.8,application/pdf;q=0.7,application/vnd.openxmlformats-officedocument.wordprocessingml.document;q=0.7,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;q=0.7,application/vnd.openxmlformats-officedocument.presentationml.presentation;q=0.7,application/msword;q=0.6,application/vnd.ms-excel;q=0.6,application/vnd.ms-powerpoint;q=0.6,application/vnd.oasis.opendocument.text;q=0.6,application/vnd.oasis.opendocument.spreadsheet;q=0.6,application/vnd.oasis.opendocument.presentation;q=0.6,application/rtf;q=0.6,text/rtf;q=0.6,*/*;q=0.2"
+	result, err := r.base.fetchHTTPResultViaBackend(ctx, normalizedURL, opts.request, acceptHeader, backend)
 	if err != nil {
 		return webAccessDocument{}, fmt.Errorf("failed to fetch URL: %w", err)
 	}
-	defer resp.Body.Close()
-	finalURL := normalizedURL
-	if resp.Request != nil && resp.Request.URL != nil {
-		finalURL = resp.Request.URL.String()
-	}
-	bodyLimit := r.base.responseBodyLimit(resp.Header.Get("Content-Type"), finalURL)
-	body, bodyTruncated, err := readLimitedBody(resp.Body, bodyLimit)
-	if err != nil {
-		return webAccessDocument{}, fmt.Errorf("failed to read response body: %w", err)
-	}
-	if err := guardWebFetchURL(ctx, finalURL, r.base.config.AllowPrivateHosts); err != nil {
+	if err := guardWebFetchURL(ctx, result.FinalURL, r.base.config.AllowPrivateHosts); err != nil {
 		return webAccessDocument{}, err
 	}
-	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
-	content, title, extractor, extractedTruncated, err := r.base.extractContent(ctx, finalURL, contentType, body, opts.format, bodyTruncated)
+	content, title, extractor, extractedTruncated, err := r.base.extractContent(ctx, result.FinalURL, result.ContentType, result.Body, opts.format, result.BodyTruncated)
 	if err != nil {
 		return webAccessDocument{}, err
 	}
 	doc := webAccessDocument{
 		URL:           normalizedURL,
-		FinalURL:      finalURL,
+		FinalURL:      result.FinalURL,
 		Title:         title,
 		Format:        opts.format,
 		Content:       content,
-		Source:        webAccessSourceHTTP,
-		StatusCode:    resp.StatusCode,
-		ContentType:   contentType,
-		BodyTruncated: bodyTruncated || extractedTruncated,
+		Source:        firstNonEmpty(strings.TrimSpace(result.Source), webAccessSourceHTTP),
+		StatusCode:    result.StatusCode,
+		ContentType:   result.ContentType,
+		BodyTruncated: result.BodyTruncated || extractedTruncated,
 		Extractor:     extractor,
+		StrategyUsed:  firstNonEmpty(strings.TrimSpace(result.Source), webAccessSourceHTTP),
 	}
-	if strings.Contains(strings.ToLower(contentType), "html") || looksLikeHTMLBody(body) {
-		bodyText := string(body)
+	if strings.Contains(strings.ToLower(result.ContentType), "html") || looksLikeHTMLBody(result.Body) {
+		bodyText := string(result.Body)
 		doc.RawHTML = bodyText
 		if doc.Title == "" {
 			doc.Title = strings.TrimSpace(findTitleInHTML(bodyText))
 		}
-		doc.Links = extractLinksFromHTML(bodyText, finalURL)
+		doc.Links = extractLinksFromHTML(bodyText, result.FinalURL)
 	}
-	hit, code, warning := detectWebFetchAuthWall(resp.StatusCode, finalURL, doc.Title, doc.Content)
+	hit, code, warning := detectWebFetchAuthWall(result.StatusCode, result.FinalURL, doc.Title, doc.Content)
 	if hit {
 		doc.InteractiveRequired = true
 		doc.Warnings = append(doc.Warnings, webAccessWarning{Code: code, Message: warning})
 	}
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+	if result.StatusCode < http.StatusOK || result.StatusCode >= http.StatusMultipleChoices {
 		if !hit {
-			doc.Warnings = append(doc.Warnings, webAccessWarning{Code: "http_status", Message: fmt.Sprintf("HTTP %d returned from target", resp.StatusCode)})
+			doc.Warnings = append(doc.Warnings, webAccessWarning{Code: "http_status", Message: fmt.Sprintf("HTTP %d returned from target", result.StatusCode)})
 		}
 	}
-	if bodyTruncated {
+	if result.BodyTruncated {
 		doc.Warnings = append(doc.Warnings, webAccessWarning{Code: "body_truncated", Message: "response body reached the configured byte limit"})
 	}
 	return doc, nil
@@ -876,15 +991,20 @@ func (r *webAccessRuntime) fetchViaBrowser(ctx context.Context, normalizedURL, f
 	}
 	content, truncated := truncateWebFetchContent(payload.Content, maxChars)
 	doc := webAccessDocument{
-		URL:         normalizedURL,
-		FinalURL:    payload.URL,
-		Title:       payload.Title,
-		Format:      format,
-		Content:     content,
-		Source:      webAccessSourceBrowser,
-		Truncated:   truncated,
-		ContentType: payload.ContentType,
-		Extractor:   payload.Extractor,
+		URL:             normalizedURL,
+		FinalURL:        payload.URL,
+		Title:           payload.Title,
+		Format:          format,
+		Content:         content,
+		Source:          webAccessSourceBrowser,
+		Truncated:       truncated,
+		ContentType:     payload.ContentType,
+		Extractor:       payload.Extractor,
+		StrategyUsed:    webFetchStrategyBrowser,
+		SessionReused:   payload.SessionReused,
+		AdapterID:       payload.AdapterID,
+		NetworkObserved: payload.NetworkObserved,
+		ChallengeState:  cloneChallengeState(payload.ChallengeState),
 	}
 	if strings.TrimSpace(payload.Warning) != "" {
 		doc.Warnings = append(doc.Warnings, webAccessWarning{Code: payload.WarningCode, Message: payload.Warning})
@@ -893,22 +1013,58 @@ func (r *webAccessRuntime) fetchViaBrowser(ctx context.Context, normalizedURL, f
 }
 
 func (r *webAccessRuntime) fetchViaProxy(ctx context.Context, normalizedURL, format string, maxChars int) (webAccessDocument, error) {
-	payload, err := r.base.fetchViaFirecrawl(ctx, normalizedURL, format)
+	payload, err := r.base.tryProxyFetchFamily(ctx, normalizedURL, format)
 	if err != nil {
 		return webAccessDocument{}, err
 	}
 	content, truncated := truncateWebFetchContent(payload.Content, maxChars)
 	return webAccessDocument{
-		URL:         normalizedURL,
-		FinalURL:    payload.URL,
-		Title:       payload.Title,
-		Format:      format,
-		Content:     content,
-		Source:      webAccessSourceProxyFetcher,
-		Truncated:   truncated,
-		ContentType: payload.ContentType,
-		Extractor:   payload.Extractor,
+		URL:             normalizedURL,
+		FinalURL:        payload.URL,
+		Title:           payload.Title,
+		Format:          format,
+		Content:         content,
+		Source:          webAccessSourceProxyFetcher,
+		Truncated:       truncated,
+		ContentType:     payload.ContentType,
+		Extractor:       payload.Extractor,
+		StrategyUsed:    webFetchStrategyProxy,
+		AdapterID:       payload.AdapterID,
+		NetworkObserved: payload.NetworkObserved,
+		ChallengeState:  cloneChallengeState(payload.ChallengeState),
 	}, nil
+}
+
+func strategySourceForFetchResult(result FetchResult) string {
+	switch strings.TrimSpace(result.StrategyUsed) {
+	case webFetchStrategyBrowser:
+		return webAccessSourceBrowser
+	case webFetchStrategyProxy:
+		return webAccessSourceProxyFetcher
+	case webAccessLaneHTTPNative:
+		return webAccessSourceHTTPNative
+	default:
+		if strings.TrimSpace(result.Payload.Source) != "" {
+			return result.Payload.Source
+		}
+		return webAccessSourceHTTP
+	}
+}
+
+func statusCodeForChallenge(state *ChallengeState) int {
+	if state == nil {
+		return http.StatusOK
+	}
+	switch state.Kind {
+	case webFetchChallengeKindLogin:
+		return http.StatusUnauthorized
+	case webFetchChallengeKindBrowserRequired:
+		return http.StatusForbidden
+	case webFetchChallengeKindHard, webFetchChallengeKindSoft:
+		return http.StatusTooManyRequests
+	default:
+		return http.StatusOK
+	}
 }
 
 func parseWebReadFormat(args map[string]interface{}) (string, error) {
@@ -930,7 +1086,7 @@ func parseWebAccessLane(args map[string]interface{}) (string, error) {
 		return webAccessLaneAuto, nil
 	}
 	switch lane {
-	case webAccessLaneAuto, webAccessLaneHTTP, webAccessLaneBrowser, webAccessLaneProxyFetcher:
+	case webAccessLaneAuto, webAccessLaneHTTP, webAccessLaneHTTPNative, webAccessLaneBrowser, webAccessLaneProxyFetcher, webFetchStrategySession:
 		return lane, nil
 	default:
 		return "", fmt.Errorf("lane must be one of: %s, %s, %s, %s", webAccessLaneAuto, webAccessLaneHTTP, webAccessLaneBrowser, webAccessLaneProxyFetcher)
@@ -998,6 +1154,31 @@ func warningCodes(warnings []webAccessWarning) []string {
 		return nil
 	}
 	return out
+}
+
+func firstWarningCode(warnings []webAccessWarning) string {
+	for _, warning := range warnings {
+		code := strings.TrimSpace(warning.Code)
+		if code != "" {
+			return code
+		}
+	}
+	return ""
+}
+
+func preferHTTPNativeDocument(current, native webAccessDocument) bool {
+	if native.Source != webAccessSourceHTTPNative {
+		return false
+	}
+	if current.Source != webAccessSourceHTTPNative && current.InteractiveRequired && !native.InteractiveRequired {
+		return true
+	}
+	currentLen := len([]rune(strings.TrimSpace(current.Content)))
+	nativeLen := len([]rune(strings.TrimSpace(native.Content)))
+	if current.Extractor == "html" && currentLen < webFetchMinReadableChars && nativeLen > currentLen {
+		return true
+	}
+	return nativeLen > currentLen+32
 }
 
 func looksLikeDynamicShell(rawHTML, content string) bool {
@@ -1181,6 +1362,14 @@ func compatBool(raw interface{}) bool {
 	default:
 		return false
 	}
+}
+
+func parseBooleanFlag(args map[string]interface{}, keys ...string) bool {
+	raw, ok := compatArgValue(args, keys...)
+	if !ok {
+		return false
+	}
+	return compatBool(raw)
 }
 
 func selectNodesForField(root *html.Node, spec webExtractFieldSpec) ([]*html.Node, []webExtractEvidence) {

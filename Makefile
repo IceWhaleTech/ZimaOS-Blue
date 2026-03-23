@@ -4,7 +4,7 @@
 .PHONY: all build build-frontend build-backend dev clean help
 .PHONY: build-linux build-darwin build-windows build-all
 .PHONY: download-claude-code prepare-claude-code-dir
-.PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar
+.PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar tauri-verify-macos-package
 .PHONY: build-blue-lib-macos build-blue-lib-arm64 build-blue-lib-x64 build-blue-lib-universal
 
 # Version info
@@ -218,6 +218,10 @@ tauri-dev: tauri-sidecar
 # Build Tauri app for production
 tauri-build: tauri-sidecar
 	@echo "Building Tauri app..."
+ifeq ($(shell uname -s),Darwin)
+	@echo "Note: make tauri-build runs plain Tauri bundling and does not notarize the macOS package."
+	@echo "Use make tauri-package for a signed/notarized DMG."
+endif
 	@rm -rf $(TAURI_DIR)/src-tauri/data
 	@mkdir -p $(TAURI_DIR)/src-tauri/data
 	@cd $(TAURI_DIR) && npm install && npm run build
@@ -245,9 +249,23 @@ tauri-clean:
 	@rm -rf $(TAURI_DIR)/src-tauri/data
 	@echo "Tauri clean complete!"
 
+# Verify macOS Tauri package signatures and notarization
+tauri-verify-macos-package:
+ifeq ($(shell uname -s),Darwin)
+	@echo "Verifying macOS Tauri package..."
+	@bash $(TAURI_DIR)/verify-macos-package.sh
+else
+	@echo "tauri-verify-macos-package is only supported on macOS"
+	@exit 1
+endif
+
 # Build Tauri app using the full build script (recommended)
 tauri-package: build-frontend copy-frontend copy-skills
 	@echo "Building Tauri package..."
+ifeq ($(shell uname -s),Darwin)
+	@echo "macOS package builds require Apple signing/notarization credentials by default."
+	@echo "Set MACOS_REQUIRE_NOTARIZATION=0 only if you intentionally want a local non-notarized package."
+endif
 	@chmod +x $(TAURI_DIR)/build.sh
 	@$(TAURI_DIR)/build.sh
 
@@ -276,9 +294,10 @@ help:
 	@echo "Tauri Desktop App Targets:"
 	@echo "  tauri-sidecar      Build Go sidecar for Tauri"
 	@echo "  tauri-dev          Run Tauri in development mode"
-	@echo "  tauri-build        Build Tauri app for production"
-	@echo "  tauri-package      Build Tauri package with full script (recommended)"
+	@echo "  tauri-build        Build Tauri app for production (non-notarized on macOS)"
+	@echo "  tauri-package      Build Tauri package with full signing/notarization flow"
 	@echo "  tauri-build-debug  Build Tauri app in debug mode"
+	@echo "  tauri-verify-macos-package Verify macOS package signatures/notarization"
 	@echo "  tauri-clean        Clean Tauri build artifacts"
 	@echo ""
 	@echo "macOS CGO Library Targets:"
@@ -298,13 +317,15 @@ help:
 	@echo "  EMBED_CLAUDE_CODE    Embed Claude Code CLI (default: false)"
 	@echo "  EMBED_PLATFORM       Platform to embed (default: current platform)"
 	@echo "  EMBED_ALL_PLATFORMS  Embed all platforms (default: false)"
+	@echo "  MACOS_REQUIRE_NOTARIZATION  Require Apple signing/notarization creds in tauri-package (default: 1)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build                           # Build without embedded CLI"
 	@echo "  make build-embedded                  # Build with embedded CLI for current platform"
 	@echo "  make tauri-dev                       # Run Tauri desktop app in dev mode"
 	@echo "  make tauri-build                     # Build Tauri desktop app"
-	@echo "  make tauri-package                   # Build Tauri package with full script"
+	@echo "  make tauri-package                   # Build signed/notarized macOS package when creds are present"
+	@echo "  make tauri-verify-macos-package      # Verify built macOS package signatures and notarization"
 	@echo "  make build-blue-lib-macos            # Build Go library for macOS CGO integration"
 
 # =============================================================================

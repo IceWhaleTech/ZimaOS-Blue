@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -200,6 +201,7 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 	for i, m := range req.Messages {
 		bm := bridgeMessage{
 			Role:       string(m.Role),
+			Content:    m.Content,
 			ToolCallID: m.ToolCallID,
 		}
 		if len(m.ContentParts) > 0 {
@@ -436,19 +438,23 @@ func normalizeBridgeToolSchema(schema map[string]interface{}) map[string]interfa
 			switch typed := value.(type) {
 			case map[string]interface{}:
 				out[key] = normalizeBridgeToolSchema(typed)
-			case []interface{}:
-				items := make([]interface{}, 0, len(typed))
-				for _, child := range typed {
+			default:
+				items, ok := bridgeNormalizeArrayValue(typed)
+				if !ok {
+					continue
+				}
+				normalizedItems := make([]interface{}, 0, len(items))
+				for _, child := range items {
 					if childMap, ok := child.(map[string]interface{}); ok {
-						items = append(items, normalizeBridgeToolSchema(childMap))
+						normalizedItems = append(normalizedItems, normalizeBridgeToolSchema(childMap))
 						continue
 					}
-					items = append(items, cloneBridgeJSONValue(child))
+					normalizedItems = append(normalizedItems, cloneBridgeJSONValue(child))
 				}
-				out[key] = items
+				out[key] = normalizedItems
 			}
 		case "oneOf", "anyOf", "allOf":
-			items, ok := value.([]interface{})
+			items, ok := bridgeNormalizeArrayValue(value)
 			if !ok {
 				continue
 			}
@@ -516,43 +522,50 @@ func cloneBridgeJSONValue(raw interface{}) interface{} {
 }
 
 func bridgeNormalizeStringList(raw interface{}) []string {
-	switch typed := raw.(type) {
-	case []string:
-		out := make([]string, 0, len(typed))
-		seen := make(map[string]struct{}, len(typed))
-		for _, item := range typed {
-			trimmed := strings.TrimSpace(item)
-			if trimmed == "" {
-				continue
-			}
-			if _, ok := seen[trimmed]; ok {
-				continue
-			}
-			seen[trimmed] = struct{}{}
-			out = append(out, trimmed)
-		}
-		return out
-	case []interface{}:
-		out := make([]string, 0, len(typed))
-		seen := make(map[string]struct{}, len(typed))
-		for _, item := range typed {
-			value, ok := item.(string)
-			if !ok {
-				continue
-			}
-			trimmed := strings.TrimSpace(value)
-			if trimmed == "" {
-				continue
-			}
-			if _, ok := seen[trimmed]; ok {
-				continue
-			}
-			seen[trimmed] = struct{}{}
-			out = append(out, trimmed)
-		}
-		return out
-	default:
+	items, ok := bridgeNormalizeArrayValue(raw)
+	if !ok {
 		return nil
+	}
+	out := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		value, ok := item.(string)
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+func bridgeNormalizeArrayValue(raw interface{}) ([]interface{}, bool) {
+	switch typed := raw.(type) {
+	case nil:
+		return nil, false
+	case []interface{}:
+		return typed, true
+	}
+	value := reflect.ValueOf(raw)
+	if !value.IsValid() {
+		return nil, false
+	}
+	switch value.Kind() {
+	case reflect.Slice, reflect.Array:
+		out := make([]interface{}, 0, value.Len())
+		for i := 0; i < value.Len(); i++ {
+			out = append(out, value.Index(i).Interface())
+		}
+		return out, true
+	default:
+		return nil, false
 	}
 }
 
@@ -1217,10 +1230,7 @@ func normalizeInboundToolCall(source, callID, name string, arguments json.RawMes
 func normalizeInboundArguments(raw json.RawMessage, allowPartial bool) (string, bool, bool) {
 	rawArgs := rawToString(raw)
 	if rawArgs == "" {
-		if allowPartial {
-			return "", false, true
-		}
-		return "{}", false, true
+		return "", false, true
 	}
 
 	if obj, ok := parseJSONObject(rawArgs); ok {
@@ -1232,10 +1242,7 @@ func normalizeInboundArguments(raw json.RawMessage, allowPartial bool) (string, 
 		if json.Unmarshal(raw, &decoded) == nil {
 			// decoded = strings.TrimSpace(decoded)
 			if decoded == "" {
-				if allowPartial {
-					return "", true, true
-				}
-				return "{}", true, true
+				return "", true, true
 			}
 			if obj, ok := parseJSONObject(decoded); ok {
 				return marshalCanonicalJSONObject(obj), true, true
@@ -1281,16 +1288,132 @@ func parseJSONObject(raw string) (map[string]interface{}, bool) {
 }
 
 func repairJSONObject(raw string) (map[string]interface{}, bool) {
-	candidates := []string{
-		raw,
-		strings.ReplaceAll(raw, `'`, `"`),
+	seen := make(map[string]struct{}, 8)
+	candidates := make([]string, 0, 8)
+	addCandidate := func(candidate string) {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			return
+		}
+		if _, ok := seen[candidate]; ok {
+			return
+		}
+		seen[candidate] = struct{}{}
+		candidates = append(candidates, candidate)
 	}
-	for _, candidate := range candidates {
+
+	addCandidate(raw)
+	addCandidate(strings.ReplaceAll(raw, `'`, `"`))
+
+	for i := 0; i < len(candidates); i++ {
+		candidate := candidates[i]
 		if obj, ok := parseJSONObject(candidate); ok {
 			return obj, true
 		}
+		addCandidate(insertMissingStringCloserBeforeTrailingClosers(candidate))
+		addCandidate(appendMissingStringCloserAndClosers(candidate))
 	}
 	return nil, false
+}
+
+func insertMissingStringCloserBeforeTrailingClosers(raw string) string {
+	if raw == "" || !jsonTextEndsInsideString(raw) {
+		return ""
+	}
+	end := len(raw)
+	for end > 0 {
+		switch raw[end-1] {
+		case ' ', '\t', '\n', '\r':
+			end--
+		default:
+			goto trimmed
+		}
+	}
+
+trimmed:
+	start := end
+	for start > 0 {
+		switch raw[start-1] {
+		case '}', ']':
+			start--
+		default:
+			goto suffix
+		}
+	}
+
+suffix:
+	if start == end {
+		return ""
+	}
+	return raw[:start] + `"` + raw[start:]
+}
+
+func appendMissingStringCloserAndClosers(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	braceCount, bracketCount, inString := scanJSONRepairState(raw)
+	if !inString && braceCount <= 0 && bracketCount <= 0 {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(raw) + braceCount + bracketCount + 1)
+	builder.WriteString(raw)
+	if inString {
+		builder.WriteByte('"')
+	}
+	for bracketCount > 0 {
+		builder.WriteByte(']')
+		bracketCount--
+	}
+	for braceCount > 0 {
+		builder.WriteByte('}')
+		braceCount--
+	}
+	repaired := builder.String()
+	if repaired == raw {
+		return ""
+	}
+	return repaired
+}
+
+func jsonTextEndsInsideString(raw string) bool {
+	_, _, inString := scanJSONRepairState(raw)
+	return inString
+}
+
+func scanJSONRepairState(raw string) (braceCount, bracketCount int, inString bool) {
+	escapeNext := false
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if escapeNext {
+			escapeNext = false
+			continue
+		}
+		if c == '\\' {
+			escapeNext = true
+			continue
+		}
+		if c == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		switch c {
+		case '{':
+			braceCount++
+		case '}':
+			braceCount--
+		case '[':
+			bracketCount++
+		case ']':
+			bracketCount--
+		}
+	}
+	return braceCount, bracketCount, inString
 }
 
 func marshalCanonicalJSONObject(obj map[string]interface{}) string {

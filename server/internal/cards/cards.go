@@ -27,6 +27,15 @@ func escapeBackticks(s string) string {
 	return strings.ReplaceAll(s, "```", "`​``")
 }
 
+func firstCardNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // CardFunc converts tool result content into a card map. Return nil to skip.
 type CardFunc func(content string) map[string]interface{}
 
@@ -372,6 +381,8 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return execCard(content)
 	case "browser":
 		return browserCard(content)
+	case "web_query":
+		return webQueryCard(content)
 	case "web_fetch":
 		return webFetchCard(content)
 	case "web_search":
@@ -391,6 +402,8 @@ func ToCard(toolName, content string) map[string]interface{} {
 	case "read", "file_read":
 		return fileReadCard(content)
 	case "write", "file_write":
+		return fileWriteCard(content)
+	case "office":
 		return fileWriteCard(content)
 	case "ls":
 		return lsCard(content)
@@ -609,6 +622,217 @@ func webSearchCard(content string) map[string]interface{} {
 		"total_count": resp.TotalCount,
 		"results":     results,
 	}
+}
+
+func webQueryCard(content string) map[string]interface{} {
+	var data struct {
+		Status     string `json:"status"`
+		Mode       string `json:"mode"`
+		TargetURL  string `json:"target_url"`
+		FinalURL   string `json:"final_url"`
+		Title      string `json:"title"`
+		Content    string `json:"content"`
+		NextAction string `json:"next_action"`
+		Media      struct {
+			Platform string `json:"platform"`
+			Kind     string `json:"kind"`
+			Language string `json:"language"`
+			Summary  string `json:"summary"`
+			Items    []struct {
+				URL      string `json:"url"`
+				Alt      string `json:"alt"`
+				Source   string `json:"source"`
+				Analysis string `json:"analysis"`
+			} `json:"items"`
+		} `json:"media"`
+		Page struct {
+			Title         string `json:"title"`
+			Content       string `json:"content"`
+			Source        string `json:"source"`
+			TargetURL     string `json:"target_url"`
+			FinalURL      string `json:"final_url"`
+			ContentFormat string `json:"content_format"`
+		} `json:"page"`
+		Transcript struct {
+			Status   string `json:"status"`
+			Source   string `json:"source"`
+			Language string `json:"language"`
+			Text     string `json:"text"`
+		} `json:"transcript"`
+		Sources []struct {
+			Title    string `json:"title"`
+			URL      string `json:"url"`
+			FinalURL string `json:"final_url"`
+			Selected bool   `json:"selected"`
+		} `json:"sources"`
+		Warnings []struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"warnings"`
+	}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return GenericCard("web_query", content)
+	}
+
+	title := strings.TrimSpace(data.Title)
+	if title == "" {
+		title = "web_query"
+	}
+	status := "info"
+	switch strings.ToLower(strings.TrimSpace(data.Status)) {
+	case "ok":
+		status = "success"
+	case "partial":
+		status = "warning"
+	case "needs_browser", "error":
+		status = "warning"
+	}
+
+	card := map[string]interface{}{
+		"type":    "result",
+		"title":   escapeBackticks(RedactSensitiveText(title)),
+		"status":  status,
+		"message": escapeBackticks(RedactSensitiveText(firstCardNonEmpty(strings.TrimSpace(data.Content), strings.TrimSpace(data.Transcript.Text), strings.TrimSpace(data.Page.Content)))),
+	}
+	cardURL := strings.TrimSpace(data.FinalURL)
+	if cardURL == "" {
+		cardURL = strings.TrimSpace(data.TargetURL)
+	}
+	if cardURL != "" {
+		card["id"] = "web-query-" + url.QueryEscape(cardURL)
+	}
+
+	if len(data.Warnings) > 0 {
+		first := data.Warnings[0]
+		if warning := strings.TrimSpace(first.Message); warning != "" {
+			card["warning"] = escapeBackticks(RedactSensitiveText(warning))
+		}
+		if code := strings.TrimSpace(first.Code); code != "" {
+			card["warning_code"] = code
+		}
+	}
+
+	details := make([]map[string]interface{}, 0, 5)
+	if cardURL != "" {
+		details = append(details, map[string]interface{}{
+			"label":    "url",
+			"value":    escapeBackticks(RedactSensitiveText(cardURL)),
+			"copyable": true,
+		})
+	}
+	if source := strings.TrimSpace(data.Transcript.Source); source != "" {
+		details = append(details, map[string]interface{}{
+			"label": "transcript_source",
+			"value": escapeBackticks(RedactSensitiveText(source)),
+		})
+	}
+	if lang := firstCardNonEmpty(strings.TrimSpace(data.Transcript.Language), strings.TrimSpace(data.Media.Language)); lang != "" {
+		details = append(details, map[string]interface{}{
+			"label": "language",
+			"value": escapeBackticks(RedactSensitiveText(lang)),
+		})
+	}
+	if platform := strings.TrimSpace(data.Media.Platform); platform != "" {
+		details = append(details, map[string]interface{}{
+			"label": "platform",
+			"value": escapeBackticks(RedactSensitiveText(platform)),
+		})
+	}
+	if mediaSummary := strings.TrimSpace(data.Media.Summary); mediaSummary != "" {
+		details = append(details, map[string]interface{}{
+			"label":     "media_summary",
+			"value":     escapeBackticks(RedactSensitiveText(mediaSummary)),
+			"multiline": true,
+		})
+	}
+	if pageSummary := strings.TrimSpace(data.Page.Content); pageSummary != "" {
+		details = append(details, map[string]interface{}{
+			"label":     "page_summary",
+			"value":     escapeBackticks(RedactSensitiveText(pageSummary)),
+			"multiline": true,
+		})
+	}
+	if len(data.Sources) > 0 {
+		lines := make([]string, 0, len(data.Sources))
+		for idx, source := range data.Sources {
+			if idx >= 4 {
+				break
+			}
+			label := strings.TrimSpace(source.Title)
+			if label == "" {
+				label = strings.TrimSpace(source.FinalURL)
+			}
+			if label == "" {
+				label = strings.TrimSpace(source.URL)
+			}
+			if label == "" {
+				continue
+			}
+			prefix := ""
+			if source.Selected {
+				prefix = "* "
+			}
+			target := strings.TrimSpace(source.FinalURL)
+			if target == "" {
+				target = strings.TrimSpace(source.URL)
+			}
+			if target != "" {
+				lines = append(lines, prefix+label+" - "+target)
+			} else {
+				lines = append(lines, prefix+label)
+			}
+		}
+		if len(lines) > 0 {
+			details = append(details, map[string]interface{}{
+				"label":     "sources",
+				"value":     escapeBackticks(RedactSensitiveText(strings.Join(lines, "\n"))),
+				"multiline": true,
+			})
+		}
+	}
+	if len(details) > 0 {
+		card["details"] = details
+	}
+	if len(data.Media.Items) == 1 {
+		image := map[string]interface{}{
+			"src": strings.TrimSpace(data.Media.Items[0].URL),
+		}
+		if caption := firstCardNonEmpty(strings.TrimSpace(data.Media.Items[0].Analysis), strings.TrimSpace(data.Media.Items[0].Alt)); caption != "" {
+			image["caption"] = escapeBackticks(RedactSensitiveText(caption))
+		}
+		if src, ok := image["src"].(string); ok && src != "" {
+			card["image"] = src
+			card["images"] = []map[string]interface{}{image}
+		}
+	} else if len(data.Media.Items) > 1 {
+		images := make([]map[string]interface{}, 0, len(data.Media.Items))
+		for _, item := range data.Media.Items {
+			src := strings.TrimSpace(item.URL)
+			if src == "" {
+				continue
+			}
+			image := map[string]interface{}{"src": src}
+			if caption := firstCardNonEmpty(strings.TrimSpace(item.Analysis), strings.TrimSpace(item.Alt)); caption != "" {
+				image["caption"] = escapeBackticks(RedactSensitiveText(caption))
+			}
+			images = append(images, image)
+		}
+		if len(images) > 0 {
+			card["images"] = images
+		}
+	}
+	if data.NextAction == "retry_browser" && cardURL != "" {
+		card["actions"] = []map[string]interface{}{{
+			"id":      "use_browser",
+			"label":   "Use browser",
+			"variant": "primary",
+			"form_data": map[string]interface{}{
+				"url": cardURL,
+			},
+		}}
+	}
+
+	return card
 }
 
 func unwrapUntrustedToolCardContent(content, toolName string) string {

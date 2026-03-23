@@ -36,6 +36,7 @@ describe('ConversationList mobile header', () => {
 
     expect(sidebarButton?.exists()).toBe(true)
     expect(moreActionsButton?.exists()).toBe(true)
+    expect(wrapper.get('.search-input-wrap').classes()).toContain('min-w-0')
 
     await sidebarButton!.trigger('click')
     expect(toggleAppSidebar).toHaveBeenCalledTimes(1)

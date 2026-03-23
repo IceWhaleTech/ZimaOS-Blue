@@ -333,21 +333,54 @@ type ProviderOverrideConfig struct {
 
 // ToolCallingWebSearchConfig holds runtime web_search provider configuration.
 type ToolCallingWebSearchConfig struct {
-	Provider   string        `yaml:"provider" json:"provider"`
-	Providers  []string      `yaml:"providers" json:"providers,omitempty"`
-	APIKey     string        `yaml:"api_key" json:"api_key,omitempty"`
-	BaseURL    string        `yaml:"base_url" json:"base_url,omitempty"`
-	MaxResults int           `yaml:"max_results" json:"max_results"`
-	Timeout    time.Duration `yaml:"timeout" json:"timeout"`
-	SafeSearch bool          `yaml:"safe_search" json:"safe_search"`
-	Region     string        `yaml:"region" json:"region"`
+	Provider         string                                         `yaml:"provider" json:"provider"`
+	Providers        []string                                       `yaml:"providers" json:"providers,omitempty"`
+	APIKey           string                                         `yaml:"api_key" json:"api_key,omitempty"`
+	BaseURL          string                                         `yaml:"base_url" json:"base_url,omitempty"`
+	MaxResults       int                                            `yaml:"max_results" json:"max_results"`
+	Timeout          time.Duration                                  `yaml:"timeout" json:"timeout"`
+	SafeSearch       bool                                           `yaml:"safe_search" json:"safe_search"`
+	Region           string                                         `yaml:"region" json:"region"`
+	CacheTTL         time.Duration                                  `yaml:"cache_ttl" json:"cache_ttl"`
+	CacheMaxEntries  int                                            `yaml:"cache_max_entries" json:"cache_max_entries"`
+	BrowserFallback  ToolCallingWebSearchBrowserFallbackConfig      `yaml:"browser_fallback" json:"browser_fallback"`
+	ProviderSettings map[string]ToolCallingWebSearchProviderSetting `yaml:"provider_settings" json:"provider_settings,omitempty"`
+}
+
+// ToolCallingWebSearchBrowserFallbackConfig controls browser-backed search rescue.
+type ToolCallingWebSearchBrowserFallbackConfig struct {
+	Enabled           *bool   `yaml:"enabled" json:"enabled,omitempty"`
+	Engine            string  `yaml:"engine" json:"engine"`
+	TriggerMode       string  `yaml:"trigger_mode" json:"trigger_mode"`
+	QualityThreshold  float64 `yaml:"quality_threshold" json:"quality_threshold"`
+	MaxBrowserRetries int     `yaml:"max_browser_retries" json:"max_browser_retries"`
+}
+
+// ToolCallingWebSearchProviderSetting holds provider-specific advanced settings.
+type ToolCallingWebSearchProviderSetting struct {
+	APIKey  string `yaml:"api_key" json:"api_key,omitempty"`
+	BaseURL string `yaml:"base_url" json:"base_url,omitempty"`
+	Enabled *bool  `yaml:"enabled" json:"enabled,omitempty"`
 }
 
 // ToolCallingWebFetchConfig holds runtime web_fetch configuration.
 type ToolCallingWebFetchConfig struct {
-	AllowPrivateHosts bool          `yaml:"allow_private_hosts" json:"allow_private_hosts"`
-	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
-	FirecrawlTimeout  time.Duration `yaml:"firecrawl_timeout" json:"firecrawl_timeout"`
+	AllowPrivateHosts     bool          `yaml:"allow_private_hosts" json:"allow_private_hosts"`
+	Timeout               time.Duration `yaml:"timeout" json:"timeout"`
+	LayeredFetchEnabled   bool          `yaml:"layered_fetch_enabled" json:"layered_fetch_enabled"`
+	SessionMemoryEnabled  bool          `yaml:"session_memory_enabled" json:"session_memory_enabled"`
+	DomainStrategyEnabled bool          `yaml:"domain_strategy_enabled" json:"domain_strategy_enabled"`
+	AdapterMemoryEnabled  bool          `yaml:"adapter_memory_enabled" json:"adapter_memory_enabled"`
+	MaxExploreAttempts    int           `yaml:"max_explore_attempts" json:"max_explore_attempts"`
+	AutoFallbackHosts     []string      `yaml:"auto_fallback_hosts" json:"auto_fallback_hosts,omitempty"`
+	ChallengePolicy       string        `yaml:"challenge_policy" json:"challenge_policy,omitempty"`
+	HTTPNativeEnabled     bool          `yaml:"http_native_enabled" json:"http_native_enabled"`
+	HTTPNativeLibrary     string        `yaml:"http_native_library" json:"http_native_library,omitempty"`
+	HTTPNativePreferHosts []string      `yaml:"http_native_prefer_hosts" json:"http_native_prefer_hosts,omitempty"`
+	FirecrawlTimeout      time.Duration `yaml:"firecrawl_timeout" json:"firecrawl_timeout"`
+	JinaReaderEnabled     bool          `yaml:"jina_reader_enabled" json:"jina_reader_enabled"`
+	JinaReaderTimeout     time.Duration `yaml:"jina_reader_timeout" json:"jina_reader_timeout"`
+	ProxyFetcherProviders []string      `yaml:"proxy_fetcher_providers" json:"proxy_fetcher_providers,omitempty"`
 }
 
 // ToolCallingRipgrepConfig holds runtime ripgrep configuration.
@@ -497,24 +530,46 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 			"group:fs":         {"file_read", "file_write", "edit", "grep", "rg", "find", "ls"},
 			"group:sessions":   {"sessions"},
 			"group:memory":     {"memory"},
-			"group:research":   {"research_run", "research_status"},
+			"group:research":   {"deep_research"},
 			"group:web":        {"web"},
 			"group:ui":         {"browser", "canvas"},
 			"group:automation": {"cron", "gateway", "nodes"},
 			"group:messaging":  {"message"},
 		},
 		WebSearch: ToolCallingWebSearchConfig{
-			Provider:   "duckduckgo",
-			Providers:  []string{"duckduckgo", "bing"},
-			MaxResults: 5,
-			Timeout:    5 * time.Minute,
-			SafeSearch: false,
-			Region:     "wt-wt",
+			Provider:        "bing",
+			Providers:       []string{"bing", "duckduckgo"},
+			MaxResults:      5,
+			Timeout:         5 * time.Minute,
+			SafeSearch:      false,
+			Region:          "wt-wt",
+			CacheTTL:        3 * time.Minute,
+			CacheMaxEntries: 256,
+			BrowserFallback: ToolCallingWebSearchBrowserFallbackConfig{
+				Enabled:           boolPtr(true),
+				Engine:            "bing",
+				TriggerMode:       "quality_or_failure",
+				QualityThreshold:  52,
+				MaxBrowserRetries: 1,
+			},
 		},
 		WebFetch: ToolCallingWebFetchConfig{
-			AllowPrivateHosts: false,
-			Timeout:           5 * time.Minute,
-			FirecrawlTimeout:  5 * time.Minute,
+			AllowPrivateHosts:     false,
+			Timeout:               5 * time.Minute,
+			LayeredFetchEnabled:   true,
+			SessionMemoryEnabled:  true,
+			DomainStrategyEnabled: true,
+			AdapterMemoryEnabled:  true,
+			MaxExploreAttempts:    1,
+			AutoFallbackHosts:     nil,
+			ChallengePolicy:       "typed_handoff",
+			HTTPNativeEnabled:     true,
+			HTTPNativeLibrary:     "",
+			HTTPNativePreferHosts: nil,
+			FirecrawlTimeout:      5 * time.Minute,
+			JinaReaderEnabled:     false,
+			JinaReaderTimeout:     5 * time.Minute,
+			ProxyFetcherProviders: []string{"firecrawl", "jina_reader"},
 		},
 		Ripgrep: ToolCallingRipgrepConfig{
 			Enabled:           true,
@@ -543,4 +598,8 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 			"custom": {ToolCalling: "auto"},
 		},
 	}
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }

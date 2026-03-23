@@ -278,6 +278,13 @@ tool_calling:
     custom:
       tool_calling: "auto"
 
+browser:
+  driver: "managed"
+  relay_enabled: true
+  trusted_site_presets: ["relay_focused"]
+  relay_preferred_site_presets: ["relay_focused"]
+  relay_preferred_fallback_driver: "managed"
+
 # OTA update
 update:
   enabled: true

@@ -107,11 +107,7 @@ function getGridClass(minWidth?: number): string {
   }
 }
 
-const metricsHistoryCardIds = new Set([
-  'memory-usage',
-  'goroutines',
-  'cpu-chart',
-])
+const metricsHistoryCardIds = new Set(['memory-usage', 'goroutines', 'cpu-chart'])
 
 const compactCapableCardIds = new Set(['cpu-chart'])
 

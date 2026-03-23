@@ -251,11 +251,57 @@ describe('ChatMessage status bar', () => {
     const wrapper = await mountStreamingMessage('')
 
     expect(wrapper.find('.assistant-process-toggle').exists()).toBe(true)
-    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(0)
+    expect(wrapper.find('.assistant-process-trace-panel').exists()).toBe(false)
 
     await wrapper.get('.assistant-process-toggle').trigger('click')
 
-    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(1)
+    expect(wrapper.find('.assistant-process-trace-panel').exists()).toBe(true)
+    expect(wrapper.findAll('.assistant-process-trace-item')).toHaveLength(1)
     expect(wrapper.text()).toContain('Request ready')
+  })
+
+  it('renders streaming process traces as one continuous panel instead of separate cards', async () => {
+    chatStore.processTrace = [
+      {
+        id: 'summary-1',
+        source: 'client',
+        event: 'request_summary',
+        category: 'summary',
+        status: 'info',
+        label: 'Request ready',
+        timestamp: Date.now() - 1500,
+        command: 'Please review this UI',
+        detail: 'message: Please review this UI',
+      },
+      {
+        id: 'dispatch-1',
+        source: 'client',
+        event: 'request_dispatched',
+        category: 'lifecycle',
+        status: 'active',
+        label: 'Request sent',
+        timestamp: Date.now() - 1200,
+        detail: 'Waiting for the server to accept and start the response.',
+      },
+      {
+        id: 'waiting-1',
+        source: 'client',
+        event: 'waiting_for_response',
+        category: 'lifecycle',
+        status: 'active',
+        label: 'Waiting for response',
+        timestamp: Date.now() - 900,
+        detail: 'The request was accepted. Waiting for the first visible output.',
+      },
+    ]
+
+    const wrapper = await mountStreamingMessage('')
+
+    expect(wrapper.find('.assistant-process-trace-panel').exists()).toBe(true)
+    expect(wrapper.findAll('.assistant-process-trace-item')).toHaveLength(3)
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(0)
+    expect(wrapper.text()).toContain('Request ready')
+    expect(wrapper.text()).toContain('Request sent')
+    expect(wrapper.text()).toContain('Waiting for response')
   })
 })

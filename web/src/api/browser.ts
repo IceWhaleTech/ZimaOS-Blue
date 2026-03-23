@@ -66,6 +66,20 @@ export interface BrowserSession {
   last_activity: string
 }
 
+export interface BrowserSessionScreenshot {
+  data: string
+  url?: string
+  title?: string
+  captured_at: string
+  scope?: string
+}
+
+export interface BrowserSessionScreenshotResponse {
+  screenshot: string
+  history: BrowserSessionScreenshot[]
+  error?: string
+}
+
 export interface CreateTaskRequest {
   name: string
   description?: string
@@ -138,11 +152,18 @@ export async function closeSession(sessionId: string): Promise<void> {
   await api.delete(`/browser/sessions/${sessionId}`, { baseURL: '/api' })
 }
 
-export async function takeScreenshot(sessionId: string): Promise<string> {
+export async function takeScreenshot(sessionId: string): Promise<BrowserSessionScreenshotResponse> {
   const response = await api.post(`/browser/sessions/${sessionId}/screenshot`, null, {
     baseURL: '/api',
   })
-  return response.data.screenshot
+  const payload = response.data || {}
+  return {
+    screenshot: typeof payload.screenshot === 'string' ? payload.screenshot : '',
+    history: Array.isArray(payload.history)
+      ? payload.history.filter((item: unknown): item is BrowserSessionScreenshot => !!item)
+      : [],
+    error: typeof payload.error === 'string' ? payload.error : '',
+  }
 }
 
 export async function navigateTo(sessionId: string, url: string): Promise<void> {

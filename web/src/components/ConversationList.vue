@@ -138,7 +138,10 @@ watch(searchQuery, (query) => {
 </script>
 
 <template>
-  <div class="conversation-list h-full flex flex-col" :class="{ 'conversation-list-mobile': mobile }">
+  <div
+    class="conversation-list h-full flex flex-col"
+    :class="{ 'conversation-list-mobile': mobile }"
+  >
     <div class="list-header sticky top-0 z-10">
       <div v-if="mobile" class="list-headline">
         <h2 class="list-title truncate">{{ t('nav.chat') }}</h2>
@@ -192,7 +195,7 @@ watch(searchQuery, (query) => {
       </div>
 
       <div class="search-row">
-        <div class="search-input-wrap relative flex-1">
+        <div class="search-input-wrap relative min-w-0 flex-1">
           <input
             v-model="searchQuery"
             type="text"

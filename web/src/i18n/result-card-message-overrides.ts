@@ -71,8 +71,7 @@ export default {
         entries_in_path: '{count} elementer i {path}',
         single_entry_in_path: '1 element i {path}',
         no_entries_in_path: 'Ingen elementer i {path}',
-        showing_first_entries_in_path:
-          'Viser de første {count} elementer i {path} (flere udeladt)',
+        showing_first_entries_in_path: 'Viser de første {count} elementer i {path} (flere udeladt)',
         screenshot_captured_for: 'Skærmbillede taget for {target}',
       },
       warnings: {
@@ -129,8 +128,7 @@ export default {
         screenshot_captured_for: 'Λήφθηκε στιγμιότυπο οθόνης για το {target}',
       },
       warnings: {
-        listing_truncated:
-          'Η λίστα περικόπηκε· περιορίστε τη διαδρομή ή αυξήστε το max_entries.',
+        listing_truncated: 'Η λίστα περικόπηκε· περιορίστε τη διαδρομή ή αυξήστε το max_entries.',
       },
     },
   },
@@ -151,13 +149,11 @@ export default {
         entries_in_path: '{count} entries in {path}',
         single_entry_in_path: '1 entry in {path}',
         no_entries_in_path: 'No entries in {path}',
-        showing_first_entries_in_path:
-          'Showing first {count} entries in {path} (more omitted)',
+        showing_first_entries_in_path: 'Showing first {count} entries in {path} (more omitted)',
         screenshot_captured_for: 'Screenshot captured for {target}',
       },
       warnings: {
-        listing_truncated:
-          'Listing was truncated; narrow the path or increase max_entries.',
+        listing_truncated: 'Listing was truncated; narrow the path or increase max_entries.',
       },
     },
   },
@@ -178,13 +174,11 @@ export default {
         entries_in_path: '{count} entries in {path}',
         single_entry_in_path: '1 entry in {path}',
         no_entries_in_path: 'No entries in {path}',
-        showing_first_entries_in_path:
-          'Showing first {count} entries in {path} (more omitted)',
+        showing_first_entries_in_path: 'Showing first {count} entries in {path} (more omitted)',
         screenshot_captured_for: 'Screenshot captured for {target}',
       },
       warnings: {
-        listing_truncated:
-          'Listing was truncated; narrow the path or increase max_entries.',
+        listing_truncated: 'Listing was truncated; narrow the path or increase max_entries.',
       },
     },
   },
@@ -236,8 +230,7 @@ export default {
         screenshot_captured_for: 'Capture d’écran effectuée pour {target}',
       },
       warnings: {
-        listing_truncated:
-          'La liste a été tronquée ; réduisez le chemin ou augmentez max_entries.',
+        listing_truncated: 'La liste a été tronquée ; réduisez le chemin ou augmentez max_entries.',
       },
     },
   },
@@ -337,8 +330,7 @@ export default {
         entries_in_path: '{count} elementi in {path}',
         single_entry_in_path: '1 elemento in {path}',
         no_entries_in_path: 'Nessun elemento in {path}',
-        showing_first_entries_in_path:
-          'Mostra i primi {count} elementi in {path} (altri omessi)',
+        showing_first_entries_in_path: 'Mostra i primi {count} elementi in {path} (altri omessi)',
         screenshot_captured_for: 'Screenshot acquisito per {target}',
       },
       warnings: {
@@ -422,7 +414,8 @@ export default {
         screenshot_captured_for: '{target} ന് വേണ്ടി സ്ക്രീൻഷോട്ട് എടുത്തു',
       },
       warnings: {
-        listing_truncated: 'പട്ടിക മുറിച്ചിരിക്കുന്നു; പാത ചുരുക്കുക അല്ലെങ്കിൽ max_entries വർധിപ്പിക്കുക.',
+        listing_truncated:
+          'പട്ടിക മുറിച്ചിരിക്കുന്നു; പാത ചുരുക്കുക അല്ലെങ്കിൽ max_entries വർധിപ്പിക്കുക.',
       },
     },
   },
@@ -500,8 +493,7 @@ export default {
         screenshot_captured_for: 'Zrzut ekranu został wykonany dla {target}',
       },
       warnings: {
-        listing_truncated:
-          'Lista została skrócona; zawęź ścieżkę lub zwiększ max_entries.',
+        listing_truncated: 'Lista została skrócona; zawęź ścieżkę lub zwiększ max_entries.',
       },
     },
   },
@@ -527,8 +519,7 @@ export default {
         screenshot_captured_for: 'Captura de tela realizada para {target}',
       },
       warnings: {
-        listing_truncated:
-          'A listagem foi truncada; restrinja o caminho ou aumente max_entries.',
+        listing_truncated: 'A listagem foi truncada; restrinja o caminho ou aumente max_entries.',
       },
     },
   },
@@ -554,8 +545,7 @@ export default {
         screenshot_captured_for: 'Captura de ecrã efetuada para {target}',
       },
       warnings: {
-        listing_truncated:
-          'A listagem foi truncada; restrinja o caminho ou aumente max_entries.',
+        listing_truncated: 'A listagem foi truncada; restrinja o caminho ou aumente max_entries.',
       },
     },
   },
@@ -581,8 +571,7 @@ export default {
         screenshot_captured_for: 'Captura de ecran a fost realizată pentru {target}',
       },
       warnings: {
-        listing_truncated:
-          'Lista a fost trunchiată; restrânge calea sau mărește max_entries.',
+        listing_truncated: 'Lista a fost trunchiată; restrânge calea sau mărește max_entries.',
       },
     },
   },
@@ -608,8 +597,7 @@ export default {
         screenshot_captured_for: 'Сделан снимок экрана для {target}',
       },
       warnings: {
-        listing_truncated:
-          'Список был усечён; сузьте путь или увеличьте max_entries.',
+        listing_truncated: 'Список был усечён; сузьте путь или увеличьте max_entries.',
       },
     },
   },
@@ -635,8 +623,7 @@ export default {
         screenshot_captured_for: 'Snímka obrazovky bola vytvorená pre {target}',
       },
       warnings: {
-        listing_truncated:
-          'Zoznam bol skrátený; zúžte cestu alebo zvýšte max_entries.',
+        listing_truncated: 'Zoznam bol skrátený; zúžte cestu alebo zvýšte max_entries.',
       },
     },
   },
@@ -662,8 +649,7 @@ export default {
         screenshot_captured_for: 'Skärmbild tagen för {target}',
       },
       warnings: {
-        listing_truncated:
-          'Listan trunkerades; begränsa sökvägen eller öka max_entries.',
+        listing_truncated: 'Listan trunkerades; begränsa sökvägen eller öka max_entries.',
       },
     },
   },

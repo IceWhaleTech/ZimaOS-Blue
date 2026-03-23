@@ -53,11 +53,11 @@ unsafe extern "C" {
     fn getppid() -> i32;
 }
 
-/// Flag to track if we're actually quitting (vs just hiding to tray)
+/// Flag to track if we're actually quitting (vs just hiding to tray/menu bar)
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
-/// Close behavior: false = quit, true = minimize to tray
-static MINIMIZE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+/// Close behavior: false = quit, true = minimize to tray/menu bar
+static MINIMIZE_TO_TRAY: AtomicBool = AtomicBool::new(true);
 
 struct DesktopStartupTrace {
     enabled: bool,
@@ -2051,7 +2051,7 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
     app.run(|app_handle, event| {
         match event {
             RunEvent::ExitRequested { api, .. } => {
-                // Only prevent exit if we're not actually quitting AND minimize-to-tray is enabled
+                // Only prevent exit if we're not actually quitting AND minimize-to-tray/menu-bar is enabled
                 if !QUITTING.load(Ordering::SeqCst) && MINIMIZE_TO_TRAY.load(Ordering::SeqCst) {
                     api.prevent_exit();
                     for label in [MAIN_WINDOW_LABEL, PANEL_WINDOW_LABEL] {

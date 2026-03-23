@@ -640,6 +640,8 @@ export interface DeepResearchBrief {
   entity?: string
   time_windows?: string[]
   must_verify_claims?: string[]
+  retry_context?: string
+  retry_queries?: string[]
 }
 
 export interface DeepResearchPlannedTask {

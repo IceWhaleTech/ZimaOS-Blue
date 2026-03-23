@@ -34,6 +34,34 @@ func NewDocumentReader() *DocumentReader {
 	return &DocumentReader{locator: defaultCommandLocator()}
 }
 
+// NormalizeDocumentReadFormat normalizes office-style document extensions into
+// the extraction families understood by the reader.
+func NormalizeDocumentReadFormat(raw string) string {
+	value := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(raw)), ".")
+	value = normalizeFormat(value, "")
+	switch value {
+	case "docm", "dotx", "dotm":
+		return "docx"
+	case "xlsm", "xltx", "xltm":
+		return "xlsx"
+	case "pptm", "potx", "potm", "ppsx", "ppsm":
+		return "pptx"
+	default:
+		return value
+	}
+}
+
+// SupportsDocumentReadFormat reports whether the reader can attempt a readable
+// extraction for the provided extension.
+func SupportsDocumentReadFormat(raw string) bool {
+	switch NormalizeDocumentReadFormat(raw) {
+	case "doc", "docx", "odt", "rtf", "xls", "xlsx", "ods", "ppt", "pptx", "odp":
+		return true
+	default:
+		return false
+	}
+}
+
 // ReadDocument extracts readable text from a local office-style document.
 func (r *DocumentReader) ReadDocument(ctx context.Context, path string) (*DocumentReadResult, error) {
 	if r == nil {
@@ -51,25 +79,40 @@ func (r *DocumentReader) ReadDocument(ctx context.Context, path string) (*Docume
 		return nil, fmt.Errorf("document path is a directory")
 	}
 
-	switch ext := normalizeFormat(docExt(cleanPath), ""); ext {
+	inputExt := normalizeFormat(docExt(cleanPath), "")
+	ext := NormalizeDocumentReadFormat(inputExt)
+	switch ext {
 	case "xlsx":
 		workbook, err := loadSpreadsheetWorkbook(cleanPath)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			return &DocumentReadResult{
+				Format:         firstNonEmptyDocumentValue(inputExt, ext),
+				Text:           strings.TrimSpace(spreadsheetTextContent(workbook)),
+				TabularSummary: workbook.Summary,
+				ExtractedVia:   "local_spreadsheet",
+			}, nil
 		}
-		return &DocumentReadResult{
-			Format:         ext,
-			Text:           strings.TrimSpace(spreadsheetTextContent(workbook)),
-			TabularSummary: workbook.Summary,
-			ExtractedVia:   "local_spreadsheet",
-		}, nil
 	case "docx":
-		return r.readConvertedDocument(ctx, cleanPath, ext, []string{"txt", "md", "html"})
+		if text, err := readDOCXLocal(cleanPath); err == nil && strings.TrimSpace(text) != "" {
+			return &DocumentReadResult{
+				Format:       firstNonEmptyDocumentValue(inputExt, ext),
+				Text:         text,
+				ExtractedVia: "local_docx",
+			}, nil
+		}
 	case "pptx":
-		return r.readConvertedDocument(ctx, cleanPath, ext, []string{"txt", "html"})
-	default:
-		return nil, fmt.Errorf("document read does not support .%s files", ext)
+		if text, err := readPPTXLocal(cleanPath); err == nil && strings.TrimSpace(text) != "" {
+			return &DocumentReadResult{
+				Format:       firstNonEmptyDocumentValue(inputExt, ext),
+				Text:         text,
+				ExtractedVia: "local_pptx",
+			}, nil
+		}
 	}
+	if !SupportsDocumentReadFormat(inputExt) {
+		return nil, fmt.Errorf("document read does not support .%s files", inputExt)
+	}
+	return r.readConvertedDocument(ctx, cleanPath, inputExt, documentReadConversionTargets(ext))
 }
 
 func (r *DocumentReader) readConvertedDocument(ctx context.Context, sourcePath, sourceExt string, targets []string) (*DocumentReadResult, error) {
@@ -95,10 +138,11 @@ func (r *DocumentReader) readConvertedDocument(ctx context.Context, sourcePath, 
 	}
 
 	attempts := make([]string, 0, len(engines)*len(targets))
+	normalizedSourceExt := NormalizeDocumentReadFormat(sourceExt)
 	for _, target := range targets {
 		outputPath := filepath.Join(tempDir, base+"."+target)
 		for _, engine := range engines {
-			if !engineSupportsConversion(engine.ID, sourceExt, target) {
+			if !engineSupportsConversion(engine.ID, normalizedSourceExt, target) {
 				continue
 			}
 			_ = os.Remove(outputPath)
@@ -117,16 +161,37 @@ func (r *DocumentReader) readConvertedDocument(ctx context.Context, sourcePath, 
 				continue
 			}
 			return &DocumentReadResult{
-				Format:       sourceExt,
+				Format:       firstNonEmptyDocumentValue(normalizeFormat(sourceExt, ""), normalizedSourceExt),
 				Text:         text,
 				ExtractedVia: fmt.Sprintf("%s:%s", engine.ID, target),
 			}, nil
 		}
 	}
 	if len(attempts) == 0 {
-		return nil, fmt.Errorf("no document conversion engine supports readable extraction for .%s", sourceExt)
+		return nil, fmt.Errorf("no document conversion engine supports readable extraction for .%s", normalizedSourceExt)
 	}
-	return nil, fmt.Errorf("document read is unsupported for .%s on this host (%s)", sourceExt, strings.Join(attempts, "; "))
+	return nil, fmt.Errorf("document read is unsupported for .%s on this host (%s)", normalizedSourceExt, strings.Join(attempts, "; "))
+}
+
+func documentReadConversionTargets(ext string) []string {
+	switch NormalizeDocumentReadFormat(ext) {
+	case "xls", "xlsx", "ods":
+		return []string{"csv", "txt", "html"}
+	case "ppt", "pptx", "odp":
+		return []string{"txt", "html"}
+	default:
+		return []string{"txt", "md", "html"}
+	}
+}
+
+func firstNonEmptyDocumentValue(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func documentTextFromFormat(format string, data []byte) string {

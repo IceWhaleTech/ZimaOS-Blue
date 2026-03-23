@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,17 +109,47 @@ type ToolResponse struct {
 	Parameters  map[string]interface{} `json:"parameters,omitempty"`
 }
 
-// toolsHiddenFromUI lists tools that should not appear on the plugins page.
+// hiddenToolNamesFromUI lists tools that should not appear on the plugins page.
 // These are internal-only tools (e.g. memory is accessed via compat/internal routing).
-var toolsHiddenFromUI = map[string]bool{
-	"memory": true,
+var hiddenToolNamesFromUI = map[string]bool{
+	"memory":           true,
+	"generate_image":   true,
+	"generateImage":    true,
+	"image_generation": true,
+}
+
+// hiddenToolPrefixesFromUI lists compatibility/internal tool families that should
+// stay collapsed behind their unified user-facing tool entry in the Tools tab.
+var hiddenToolPrefixesFromUI = []string{
+	"session_",
+	"sessions_",
+	"memory_",
+	"web_",
+	"write_",
+	"image_",
+}
+
+func toolHiddenFromUI(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return true
+	}
+	if hiddenToolNamesFromUI[name] {
+		return true
+	}
+	for _, prefix := range hiddenToolPrefixesFromUI {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // skillsShownAsTools lists skills that should appear in the Tools tab instead
 // of the Skills tab. Display-only — no logic changes.
 var skillsShownAsTools = []ToolResponse{
 	{ID: "browser", Name: "browser", Version: "1.0.0", Description: "Open a URL, read page content, interact with elements, take screenshots", Icon: "browser", Enabled: true, Builtin: true},
-	{ID: "ui_reviewer", Name: "ui_reviewer", Version: "1.0.0", Description: "Score and audit UI/UX quality of a URL or screenshot", Icon: "eye", Enabled: true, Builtin: true},
+	{ID: "ui_reviewer", Name: "ui_reviewer", Version: "1.0.0", Description: "Review and score UI/UX quality of a URL or screenshot", Icon: "eye", Enabled: true, Builtin: true},
 	{ID: "analyze", Name: "analyze", Version: "1.0.0", Description: "Deep-dive analysis: return an inline structured answer by default, or generate an HTML report when explicitly requested", Icon: "analyze", Enabled: true, Builtin: true},
 	{ID: "mediagen", Name: "mediagen", Version: "1.0.0", Description: "Generate images and videos using AI models", Icon: "mediagen", Enabled: true, Builtin: true},
 	{ID: "reminder", Name: "reminder", Version: "2.0.0", Description: "Manage reminders and scheduled alerts", Icon: "notifications", Enabled: true, Builtin: true},
@@ -141,7 +172,7 @@ func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 	}
 
 	for _, name := range toolNames {
-		if toolsHiddenFromUI[name] {
+		if toolHiddenFromUI(name) {
 			continue
 		}
 		tool := h.registry.Get(name)
@@ -163,7 +194,7 @@ func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 
 	// Also include disabled tools (skip hidden ones)
 	for _, name := range h.registry.ListDisabled() {
-		if toolsHiddenFromUI[name] {
+		if toolHiddenFromUI(name) {
 			continue
 		}
 		tool := h.registry.Get(name)

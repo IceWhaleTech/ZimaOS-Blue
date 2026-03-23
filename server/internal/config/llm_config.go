@@ -58,14 +58,18 @@ type SessionConfig struct {
 	// MaxTokens limits retained session history for compaction/truncation.
 	// Values <= 0 enable auto budgeting from model context when available, with
 	// a modern large-context fallback for model-agnostic session paths.
-	MaxTokens   int                      `yaml:"max_tokens"`
-	MaxMessages int                      `yaml:"max_messages"`
-	IdleTimeout time.Duration            `yaml:"idle_timeout"`
-	Compaction  SessionCompactionConfig  `yaml:"compaction"`
-	Persistence SessionPersistenceConfig `yaml:"persistence"`
-	Isolation   SessionIsolationConfig   `yaml:"isolation"`
-	Cleanup     SessionCleanupConfig     `yaml:"cleanup"`
-	Audit       SessionAuditConfig       `yaml:"audit"`
+	MaxTokens                   int                      `yaml:"max_tokens"`
+	MaxMessages                 int                      `yaml:"max_messages"`
+	IdleTimeout                 time.Duration            `yaml:"idle_timeout"`
+	ChatDBDurability            string                   `yaml:"chat_db_durability"`
+	ChatPersistAsync            bool                     `yaml:"chat_persist_async"`
+	ChatReadLite                bool                     `yaml:"chat_read_lite"`
+	ChatAttachmentExternalStore bool                     `yaml:"chat_attachment_external_store"`
+	Compaction                  SessionCompactionConfig  `yaml:"compaction"`
+	Persistence                 SessionPersistenceConfig `yaml:"persistence"`
+	Isolation                   SessionIsolationConfig   `yaml:"isolation"`
+	Cleanup                     SessionCleanupConfig     `yaml:"cleanup"`
+	Audit                       SessionAuditConfig       `yaml:"audit"`
 }
 
 // SessionCompactionConfig holds compaction settings.

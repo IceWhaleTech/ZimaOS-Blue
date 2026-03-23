@@ -191,14 +191,14 @@ func (t *UIReviewerTool) SetMediaDir(dir string) {
 func (t *UIReviewerTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "ui_reviewer",
-		Description: "Score and audit UI/UX quality of a URL or screenshot. Use only when asked to evaluate/rate/review visual design or accessibility. Not for browsing or searching.",
+		Description: "Review and score UI/UX quality of a URL or screenshot. Use only when asked to evaluate, critique, or check accessibility for visual design. Not for browsing or searching.",
 		Icon:        "eye",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"description": "Action: review_url (full review), review_image (VLM review of base64 image), check_accessibility (a11y check only)",
+					"description": "Optional canonical action: review_url (full URL review), review_image (VLM review of base64 image), check_accessibility (accessibility-only check). Defaults to review_url when url is provided, or review_image when image is provided. Do not use audit as an action name.",
 				},
 				"url": map[string]interface{}{
 					"type":        "string",
@@ -239,7 +239,6 @@ func (t *UIReviewerTool) Definition() ToolDefinition {
 					"description": "Review rubric profile: ui_screenshot (default) or ppt.",
 				},
 			},
-			"required": []string{"action"},
 		},
 	}
 }
@@ -305,10 +304,17 @@ func resolveWaitMS(args map[string]interface{}) int {
 
 // Execute runs the UI review tool.
 func (t *UIReviewerTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	action := firstCompatString(args, "action", "op", "operation", "command")
-	if action == "" {
-		return nil, errors.New("action is required")
+	url := firstCompatString(args, "url", "href")
+	img := firstCompatString(args, "image", "image_base64", "imageBase64")
+	action, err := CanonicalizeUIReviewAction(
+		firstCompatString(args, "action", "op", "operation", "command"),
+		url,
+		img,
+	)
+	if err != nil {
+		return nil, err
 	}
+	args["action"] = action
 
 	threshold := 75.0
 	if v := compatFloat64(args, "threshold"); v > 0 {
@@ -322,17 +328,14 @@ func (t *UIReviewerTool) Execute(ctx context.Context, args map[string]interface{
 	profile := resolveProfile(args)
 
 	var result *UIReviewResult
-	var err error
 
 	switch action {
 	case "review_url":
-		url := firstCompatString(args, "url")
 		if url == "" {
 			return nil, errors.New("url is required for review_url")
 		}
 		result, err = t.reviewURL(ctx, url, args, threshold, format, lang)
 	case "review_image":
-		img := firstCompatString(args, "image", "image_base64", "imageBase64")
 		if img == "" {
 			return nil, errors.New("image is required for review_image")
 		}

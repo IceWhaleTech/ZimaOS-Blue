@@ -419,6 +419,10 @@ export interface DiscoverStatusResponse {
   current_source_name?: string
   message?: string
   result?: DiscoverResponse
+  batch_inserted?: number
+  batch_updated?: number
+  batch_failed?: number
+  phase?: 'started' | 'batch' | 'source_complete' | 'completed' | 'error'
 }
 
 export const skillApi = {

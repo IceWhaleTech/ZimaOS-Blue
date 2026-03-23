@@ -19,11 +19,12 @@ type JudgeEvaluator interface {
 }
 
 type JudgeEvaluationRequest struct {
-	Model       string
-	Group       *RunGroup
-	Item        *RunGroupItem
-	Run         *Run
-	Calibration map[string]interface{}
+	Model        string
+	Group        *RunGroup
+	Item         *RunGroupItem
+	Run          *Run
+	Calibration  map[string]interface{}
+	Verification *HarnessVerificationResult
 }
 
 type JudgeEvaluationResult struct {
@@ -152,6 +153,9 @@ func buildJudgeUserPrompt(req JudgeEvaluationRequest) string {
 	}
 	if len(req.Calibration) > 0 {
 		payload["calibration"] = req.Calibration
+	}
+	if req.Verification != nil {
+		payload["verification"] = verificationPayload(req.Verification)
 	}
 	raw, _ := json.Marshal(payload)
 	return string(raw)

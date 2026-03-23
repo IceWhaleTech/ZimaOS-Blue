@@ -4,6 +4,9 @@ type HasTranslation = (key: string) => boolean
 const PREFERRED_TOOL_NAME_MAP: Record<string, string> = {
   read: 'file_read',
   write: 'file_write',
+  image_generation: 'image',
+  generate_image: 'image',
+  generateImage: 'image',
   memory_search: 'memory',
   memory_get: 'memory',
   memory_read: 'memory',
@@ -17,6 +20,7 @@ const PREFERRED_TOOL_NAME_MAP: Record<string, string> = {
   session_status: 'sessions',
   sessions_spawn: 'sessions',
   sessions_send: 'sessions',
+  web_query: 'web',
   web_search: 'web',
   web_fetch: 'web',
   web_read: 'web',
@@ -26,7 +30,7 @@ const PREFERRED_TOOL_NAME_MAP: Record<string, string> = {
 
 const TOOL_NAME_ALIASES: Record<string, string[]> = {
   cron: ['scheduler'],
-  image: ['mediagen'],
+  image: ['image_generation'],
   message: ['reminder'],
   ppt: ['mediagen'],
   web: ['web_search'],
@@ -50,7 +54,6 @@ const TOOL_DESCRIPTION_KEY_MAP: Record<string, string[]> = {
   exec: ['tools.descriptions.exec'],
   files: ['skills.builtin.files.description'],
   github: ['skills.builtin.github.description'],
-  image: ['tools.descriptions.mediagen'],
   mediagen: ['tools.descriptions.mediagen'],
   message: ['skills.builtin.reminder.description'],
   news: ['skills.builtin.news.description'],
@@ -94,6 +97,8 @@ function toLegacyToolLabel(toolName: string): string {
       return 'Auto Reply'
     case 'web_search':
       return 'Web Search'
+    case 'web_query':
+      return 'Web Query'
     case 'web_fetch':
       return 'Web Fetch'
     case 'web_read':

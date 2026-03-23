@@ -7,6 +7,8 @@
 export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
+  const MEDIA_INTENT_SUPPORTED_LOCALES: typeof import('./composables/useMediaIntent').MEDIA_INTENT_SUPPORTED_LOCALES
+  const __resetBrowserMonitorStateForTests: typeof import('./composables/useBrowserMonitor').__resetBrowserMonitorStateForTests
   const acceptHMRUpdate: typeof import('pinia').acceptHMRUpdate
   const classifyFeatureIntent: typeof import('./composables/useFeatureIntent').classifyFeatureIntent
   const classifyMediaIntent: typeof import('./composables/useMediaIntent').classifyMediaIntent
@@ -25,6 +27,7 @@ declare global {
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
   const getLastModel: typeof import('./composables/useMediaGenerate').getLastModel
+  const getPreferredNetworkAddress: typeof import('./composables/useNetwork').getPreferredNetworkAddress
   const h: typeof import('vue').h
   const inject: typeof import('vue').inject
   const isFullscreen: typeof import('./composables/useFullscreen').isFullscreen
@@ -81,6 +84,7 @@ declare global {
   const useAttrs: typeof import('vue').useAttrs
   const useAuthStore: typeof import('./stores/auth').useAuthStore
   const useAutoReplyStore: typeof import('./stores/autoreply').useAutoReplyStore
+  const useBrowserMonitor: typeof import('./composables/useBrowserMonitor').useBrowserMonitor
   const useChatShortcuts: typeof import('./composables/useKeyboardShortcuts').useChatShortcuts
   const useChatStore: typeof import('./stores/chat').useChatStore
   const useClipboard: typeof import('@vueuse/core').useClipboard
@@ -163,7 +167,7 @@ declare global {
   export type { Platform } from './composables/useTauri'
   import('./composables/useTauri')
   // @ts-ignore
-  export type { ToolResultItem } from './stores/chat'
+  export type { ToolResultItem, StreamUIPhase } from './stores/chat'
   import('./stores/chat')
   // @ts-ignore
   export type { EventState, EventStateTransition, TrackedEvent } from './stores/companion'
@@ -185,6 +189,8 @@ declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly MEDIA_INTENT_SUPPORTED_LOCALES: UnwrapRef<typeof import('./composables/useMediaIntent')['MEDIA_INTENT_SUPPORTED_LOCALES']>
+    readonly __resetBrowserMonitorStateForTests: UnwrapRef<typeof import('./composables/useBrowserMonitor')['__resetBrowserMonitorStateForTests']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly classifyFeatureIntent: UnwrapRef<typeof import('./composables/useFeatureIntent')['classifyFeatureIntent']>
     readonly classifyMediaIntent: UnwrapRef<typeof import('./composables/useMediaIntent')['classifyMediaIntent']>
@@ -203,6 +209,7 @@ declare module 'vue' {
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getCurrentWatcher: UnwrapRef<typeof import('vue')['getCurrentWatcher']>
     readonly getLastModel: UnwrapRef<typeof import('./composables/useMediaGenerate')['getLastModel']>
+    readonly getPreferredNetworkAddress: UnwrapRef<typeof import('./composables/useNetwork')['getPreferredNetworkAddress']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly isFullscreen: UnwrapRef<typeof import('./composables/useFullscreen')['isFullscreen']>
@@ -259,6 +266,7 @@ declare module 'vue' {
     readonly useAttrs: UnwrapRef<typeof import('vue')['useAttrs']>
     readonly useAuthStore: UnwrapRef<typeof import('./stores/auth')['useAuthStore']>
     readonly useAutoReplyStore: UnwrapRef<typeof import('./stores/autoreply')['useAutoReplyStore']>
+    readonly useBrowserMonitor: UnwrapRef<typeof import('./composables/useBrowserMonitor')['useBrowserMonitor']>
     readonly useChatShortcuts: UnwrapRef<typeof import('./composables/useKeyboardShortcuts')['useChatShortcuts']>
     readonly useChatStore: UnwrapRef<typeof import('./stores/chat')['useChatStore']>
     readonly useClipboard: UnwrapRef<typeof import('@vueuse/core')['useClipboard']>

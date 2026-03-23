@@ -270,7 +270,7 @@ func shouldSkipStartupSTTAuthorization(args []string) bool {
 			if i+1 < len(args) {
 				i++
 			}
-		case "--", "-h", "--help", "--dev", "--no-color", "--json", "-v", "--verbose":
+		case "--", "-h", "--help", "--dev", "--no-color", "--no-intercept", "--json", "-v", "--verbose":
 			continue
 		default:
 			positional = append(positional, args[i])
@@ -294,19 +294,7 @@ func runServer() {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
-
-	// Initialize HotReloader for config changes
 	var hotReloader *config.HotReloader
-	var err2 error
-	hotReloader, err2 = config.NewHotReloader(cfgFile, cfg, &config.HotReloadConfig{
-		Enabled:             true,
-		WatchInterval:       5 * time.Second,
-		ValidateBeforeApply: true,
-	})
-	if err2 != nil {
-		// Continue without hot reloader
-		hotReloader = nil
-	}
 
 	// Initialize logger
 	if err := logger.Init(&cfg.Log); err != nil {
@@ -372,6 +360,24 @@ func runServer() {
 		logger.Warn().Err(err).Msg("Failed to load config from DB, using YAML defaults")
 	}
 	applyServerRuntimeOverrides(&cfg.Server)
+	hotReloader, err = config.NewHotReloader(cfgFile, cfg, &config.HotReloadConfig{
+		Enabled:             true,
+		WatchInterval:       5 * time.Second,
+		ValidateBeforeApply: true,
+	})
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize hot reloader")
+		hotReloader = nil
+	} else {
+		config.SyncHotReloadToStore(hotReloader, configStore)
+		if err := hotReloader.Start(); err != nil {
+			logger.Warn().Err(err).Msg("Failed to start hot reloader")
+		}
+		lm.RegisterShutdownHook(func(ctx context.Context) error {
+			_ = ctx
+			return hotReloader.Stop()
+		})
+	}
 	if result, migrateErr := server.MigrateLegacyProviderSettings(context.Background(), configKV, dataDir); migrateErr != nil {
 		logger.Warn().Err(migrateErr).Msg("Failed to migrate legacy provider settings into config store")
 	} else if result != nil {
@@ -445,8 +451,16 @@ func runServer() {
 	// Set permission service on user handler
 	userHandler.SetPermissionService(permissionService)
 
-	// Initialize memory store for conversations (shares main blue.db)
-	memoryStore, err := memory.NewStoreWithDB(db)
+	// Initialize memory store for conversations using a dedicated handle so chat
+	// pragmas do not leak into the shared primary DB users.
+	chatDBPath := filepath.Join(dataDir, "blue.db")
+	chatStoreOpts := memory.DefaultChatStoreOptions(chatDBPath)
+	chatStoreOpts.Durability = cfg.Session.ChatDBDurability
+	chatStoreOpts.AttachmentExternalStore = cfg.Session.ChatAttachmentExternalStore
+	if chatStoreOpts.AttachmentExternalStore {
+		chatStoreOpts.AttachmentDir = filepath.Join(dataDir, "message_attachments")
+	}
+	memoryStore, err := memory.NewStoreWithOptions(chatDBPath, chatStoreOpts)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize memory store")
 	}
@@ -533,11 +547,15 @@ func runServer() {
 
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(memoryStore, llmRegistry, toolRegistry)
+	chatHandler.SetPersistenceOptions(cfg.Session.ChatPersistAsync, cfg.Session.ChatReadLite)
 	if cfg.Session.Audit.Enabled {
 		auditCfg := sessionaudit.StoreConfig{
-			RetentionDays:    cfg.Session.Audit.RetentionDays,
-			CleanupInterval:  cfg.Session.Audit.CleanupInterval,
-			CleanupBatchSize: cfg.Session.Audit.CleanupBatchSize,
+			RetentionDays:      cfg.Session.Audit.RetentionDays,
+			CleanupInterval:    cfg.Session.Audit.CleanupInterval,
+			CleanupBatchSize:   cfg.Session.Audit.CleanupBatchSize,
+			Durability:         cfg.Session.ChatDBDurability,
+			WALAutoCheckpoint:  4000,
+			CheckpointInterval: 60 * time.Second,
 		}
 		auditDBPath := sessionaudit.ResolveDBPath(dataDir, cfg.Session.Audit.Path)
 		var (
@@ -559,6 +577,7 @@ func runServer() {
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
 		_ = ctx
 		chatHandler.Shutdown()
+		_ = memoryStore.Close()
 		return nil
 	})
 
@@ -857,9 +876,110 @@ func runServer() {
 	var browserBackend tools.BrowserBackend
 	var lazyBrowserSvc func() *browser.RodService
 	var acquireBrowserSvc func() (*browser.RodService, func(), error)
-	var acquireVisibleBrowserSvc func() (*browser.RodService, func(), error)
+	var acquireFallbackBrowserSvc func() (*browser.RodService, func(), error)
 	var relayInfoProvider func() browser.RelayInfo
+	var syncBrowserMonitorRetention func(time.Duration)
+	var cleanupBrowserMonitorFrames func()
 	{
+		type browserRuntime struct {
+			lazy           func() *browser.RodService
+			acquire        func() (*browser.RodService, func(), error)
+			acquireVisible func() (*browser.RodService, func(), error)
+			close          func(context.Context) error
+			backend        tools.BrowserBackend
+		}
+
+		var browserRuntimeClosers []func(context.Context) error
+		var browserRuntimePeekers []func() *browser.RodService
+		var browserRuntimeRetentionUpdaters []func(time.Duration)
+		initialBrowserMonitorRetention := time.Duration(cfg.Companion.Retention.SessionsDays) * 24 * time.Hour
+		cfg.Browser.SessionScreenshotRetention = initialBrowserMonitorRetention
+		makeBrowserRuntime := func(baseCfg *browser.Config) browserRuntime {
+			headlessCfg := baseCfg.Clone()
+			headlessCfg.Headless = true
+			headlessRuntime := reclaim.NewManaged[*browser.RodService](
+				cfg.Performance.ResourceReclaim.BrowserIdleAfter,
+				func() (*browser.RodService, error) {
+					return browser.NewService(headlessCfg)
+				},
+				func(_ context.Context, svc *browser.RodService) error {
+					if svc == nil {
+						return nil
+					}
+					return svc.Close()
+				},
+			)
+
+			visibleCfg := baseCfg.Clone()
+			visibleCfg.Headless = false
+			visibleRuntime := reclaim.NewManaged[*browser.RodService](
+				cfg.Performance.ResourceReclaim.BrowserIdleAfter,
+				func() (*browser.RodService, error) {
+					return browser.NewService(visibleCfg)
+				},
+				func(_ context.Context, svc *browser.RodService) error {
+					if svc == nil {
+						return nil
+					}
+					return svc.Close()
+				},
+			)
+
+			updateRetention := func(retention time.Duration) {
+				if retention < 0 {
+					retention = 0
+				}
+				headlessCfg.SessionScreenshotRetention = retention
+				visibleCfg.SessionScreenshotRetention = retention
+				if svc, ok := headlessRuntime.Peek(); ok && svc != nil {
+					svc.SetSessionScreenshotRetention(retention)
+				}
+				if svc, ok := visibleRuntime.Peek(); ok && svc != nil {
+					svc.SetSessionScreenshotRetention(retention)
+				}
+			}
+
+			runtime := browserRuntime{
+				lazy: func() *browser.RodService {
+					svc, err := headlessRuntime.Get()
+					if err != nil {
+						logger.Warn().Err(err).Msg("Failed to create browser service")
+						return nil
+					}
+					return svc
+				},
+				acquire:        headlessRuntime.Acquire,
+				acquireVisible: visibleRuntime.Acquire,
+				close: func(ctx context.Context) error {
+					if err := visibleRuntime.Close(ctx); err != nil {
+						_ = headlessRuntime.Close(ctx)
+						return err
+					}
+					return headlessRuntime.Close(ctx)
+				},
+				backend: tools.NewLeaseAwareRodBrowserBackend(headlessRuntime.Acquire, visibleRuntime.Acquire),
+			}
+			browserRuntimeClosers = append(browserRuntimeClosers, runtime.close)
+			browserRuntimePeekers = append(browserRuntimePeekers,
+				func() *browser.RodService {
+					svc, ok := headlessRuntime.Peek()
+					if !ok {
+						return nil
+					}
+					return svc
+				},
+				func() *browser.RodService {
+					svc, ok := visibleRuntime.Peek()
+					if !ok {
+						return nil
+					}
+					return svc
+				},
+			)
+			browserRuntimeRetentionUpdaters = append(browserRuntimeRetentionUpdaters, updateRetention)
+			return runtime
+		}
+
 		var relayServer *browser.RelayServer
 		relayInfoProvider = func() browser.RelayInfo {
 			if relayServer == nil {
@@ -901,47 +1021,78 @@ func runServer() {
 		browserHandler.SetIdleReclaim(cfg.Performance.ResourceReclaim.BrowserIdleAfter)
 		browserHandler.SetRelayInfoProvider(relayInfoProvider)
 
-		headlessBrowserCfg := cfg.Browser
-		headlessBrowserCfg.Headless = true
-		headlessBrowserRuntime := reclaim.NewManaged[*browser.RodService](
-			cfg.Performance.ResourceReclaim.BrowserIdleAfter,
-			func() (*browser.RodService, error) {
-				return browser.NewService(&headlessBrowserCfg)
-			},
-			func(_ context.Context, svc *browser.RodService) error {
-				if svc == nil {
-					return nil
-				}
-				return svc.Close()
-			},
-		)
-		acquireBrowserSvc = headlessBrowserRuntime.Acquire
-		lazyBrowserSvc = func() *browser.RodService {
-			svc, err := headlessBrowserRuntime.Get()
-			if err != nil {
-				logger.Warn().Err(err).Msg("Failed to create browser service")
-				return nil
+		defaultRuntime := makeBrowserRuntime(&cfg.Browser)
+		managedRuntime := defaultRuntime
+		if cfg.Browser.ResolvedDriver() != "managed" {
+			managedRuntime = makeBrowserRuntime(cfg.Browser.CloneForDriver("managed"))
+		}
+		lazyBrowserSvc = defaultRuntime.lazy
+		acquireBrowserSvc = defaultRuntime.acquire
+		acquireFallbackBrowserSvc = managedRuntime.acquire
+		browserBackend = defaultRuntime.backend
+
+		syncBrowserMonitorRetention = func(retention time.Duration) {
+			if retention < 0 {
+				retention = 0
 			}
-			return svc
+			cfg.Browser.SessionScreenshotRetention = retention
+			if browserHandler != nil {
+				if svc, ok := browserHandler.PeekService().(*browser.RodService); ok && svc != nil {
+					svc.SetSessionScreenshotRetention(retention)
+				}
+			}
+			for _, updateRetention := range browserRuntimeRetentionUpdaters {
+				updateRetention(retention)
+			}
+		}
+		cleanupBrowserMonitorFrames = func() {
+			seen := make(map[*browser.RodService]struct{})
+			if browserHandler != nil {
+				if svc, ok := browserHandler.PeekService().(*browser.RodService); ok && svc != nil {
+					seen[svc] = struct{}{}
+					svc.CleanupExpiredMonitorFrames()
+				}
+			}
+			for _, peek := range browserRuntimePeekers {
+				svc := peek()
+				if svc == nil {
+					continue
+				}
+				if _, ok := seen[svc]; ok {
+					continue
+				}
+				seen[svc] = struct{}{}
+				svc.CleanupExpiredMonitorFrames()
+			}
+		}
+		syncBrowserMonitorRetention(initialBrowserMonitorRetention)
+
+		relayPreferredSites := cfg.Browser.ExpandedRelayPreferredSites()
+		if len(relayPreferredSites) > 0 {
+			managedBackend := managedRuntime.backend
+			relayBackend := defaultRuntime.backend
+			if cfg.Browser.ResolvedDriver() != "relay" {
+				relayRuntime := makeBrowserRuntime(cfg.Browser.CloneForDriver("relay"))
+				relayBackend = relayRuntime.backend
+			}
+
+			browserBackend = tools.NewSitePolicyBrowserBackend(
+				defaultRuntime.backend,
+				managedBackend,
+				relayBackend,
+				func(rawURL string) bool {
+					return browser.MatchSitePatternList(rawURL, relayPreferredSites)
+				},
+				cfg.Browser.RelayPreferredFallback(),
+			)
 		}
 
-		visibleBrowserCfg := cfg.Browser
-		visibleBrowserCfg.Headless = false
-		visibleBrowserRuntime := reclaim.NewManaged[*browser.RodService](
-			cfg.Performance.ResourceReclaim.BrowserIdleAfter,
-			func() (*browser.RodService, error) {
-				return browser.NewService(&visibleBrowserCfg)
-			},
-			func(_ context.Context, svc *browser.RodService) error {
-				if svc == nil {
-					return nil
-				}
-				return svc.Close()
-			},
-		)
-		acquireVisibleBrowserSvc = visibleBrowserRuntime.Acquire
-
-		browserBackend = tools.NewLeaseAwareRodBrowserBackend(acquireBrowserSvc, acquireVisibleBrowserSvc)
+		for _, closeRuntime := range browserRuntimeClosers {
+			closeFn := closeRuntime
+			lm.RegisterShutdownHook(func(ctx context.Context) error {
+				return closeFn(ctx)
+			})
+		}
 	}
 
 	// TTS/STT services are initialized lazily when chat page is opened
@@ -967,6 +1118,9 @@ func runServer() {
 		// Companion service — eager init so chat handler can emit events immediately
 		companionConfig := companion.DefaultConfig()
 		companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
+		companionConfig.Retention.EventsDays = cfg.Companion.Retention.EventsDays
+		companionConfig.Retention.SessionsDays = cfg.Companion.Retention.SessionsDays
+		companionConfig.Retention.AlertsDays = cfg.Companion.Retention.AlertsDays
 		companionStorage, err := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
 		if err != nil {
 			logger.Warn().Err(err).Msg("Failed to initialize companion storage")
@@ -978,6 +1132,23 @@ func runServer() {
 			}
 			companionManager := companion.NewManager(companionStorage, companionStreamer, companionConfig)
 			companionHandler = companion.NewHandler(companionManager, companionStorage)
+			if syncBrowserMonitorRetention != nil {
+				companionHandler.SetRetentionChangeHook(func(_ context.Context, retention companion.RetentionConfig) error {
+					syncBrowserMonitorRetention(time.Duration(retention.SessionsDays) * 24 * time.Hour)
+					return nil
+				})
+			}
+			if syncBrowserMonitorRetention != nil || cleanupBrowserMonitorFrames != nil {
+				companionHandler.SetCleanupHook(func(_ context.Context, retention companion.RetentionConfig) error {
+					if syncBrowserMonitorRetention != nil {
+						syncBrowserMonitorRetention(time.Duration(retention.SessionsDays) * 24 * time.Hour)
+					}
+					if cleanupBrowserMonitorFrames != nil {
+						cleanupBrowserMonitorFrames()
+					}
+					return nil
+				})
+			}
 			companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
 			chatHandler.SetCompanionManager(companionManager)
 			lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -1046,7 +1217,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, configKV, configStore)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, acquireBrowserSvc, acquireFallbackBrowserSvc, configKV, configStore)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -1060,6 +1231,15 @@ func runServer() {
 	security.OnCertReady(func() {
 		srv.EnsureTLSStarted()
 	})
+	if cfg.Performance.ResourceReclaim.Enabled {
+		server.OnServerStart(func(port int) {
+			_ = port
+			lm.Go(func(ctx context.Context) {
+				bootstrap.RunStartupMemoryTrimLoop(ctx, zapLogger, bootstrap.StartupMemoryTrimSchedule()...)
+			})
+		})
+		logger.Info().Interface("schedule", bootstrap.StartupMemoryTrimSchedule()).Msg("Startup memory trim scheduled")
+	}
 
 	// Start server in background
 	lm.Go(func(ctx context.Context) {
@@ -1155,7 +1335,7 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, configKV kvstore.Store, configStore *config.ConfigStore) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, acquireBrowserSvc func() (*browser.RodService, func(), error), acquireFallbackBrowserSvc func() (*browser.RodService, func(), error), configKV kvstore.Store, configStore *config.ConfigStore) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -1339,8 +1519,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 		return nil
 	})
-	// Trigger init asynchronously — recall/extract gracefully skip when layeredMemory is nil
-	go memoryHandler.Init()
 
 	// Initialize channel config store
 	channelConfigStore := server.NewChannelConfigStore(configKV)
@@ -1411,8 +1589,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	uiReviewerIPC := sockipc.NewUIReviewIPCAdapter(&tools.UIReviewerTool{}) // placeholder, routes.go creates the real one
 
 	deps := &bootstrap.RoutesDeps{
-		DB:     db,
-		Config: cfg,
+		DB:                 db,
+		Config:             cfg,
+		DisablePromptGuard: disableIntercepts,
 		ServerConfig: &bootstrap.ServerConfig{
 			Version:   version,
 			BuildTime: buildTime,
@@ -1479,11 +1658,13 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		Gateway:            gatewayRuntime,
 		GatewayHandler:     gatewayHandler,
 		// Consolidated init deps
-		SkillEmbedFS:        skillEmbed.SkillsFS,
-		SandboxManager:      sandboxManager,
-		SystemPromptBuilder: systemPromptBuilder,
-		LazyBrowserSvc:      lazyBrowserSvc,
-		BrowserBackend:      browserBackend,
+		SkillEmbedFS:              skillEmbed.SkillsFS,
+		SandboxManager:            sandboxManager,
+		SystemPromptBuilder:       systemPromptBuilder,
+		LazyBrowserSvc:            lazyBrowserSvc,
+		AcquireBrowserSvc:         acquireBrowserSvc,
+		AcquireFallbackBrowserSvc: acquireFallbackBrowserSvc,
+		BrowserBackend:            browserBackend,
 	}
 
 	_ = bootstrap.RegisterAllRoutes(e, deps)

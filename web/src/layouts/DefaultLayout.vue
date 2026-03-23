@@ -21,6 +21,9 @@ const AppSidebar = defineAsyncComponent(() => import('@/components/AppSidebar.vu
 const PreviewOnboardingModal = defineAsyncComponent(
   () => import('@/components/onboarding/PreviewOnboardingModal.vue')
 )
+const BrowserMonitorWidget = defineAsyncComponent(
+  () => import('@/components/BrowserMonitorWidget.vue')
+)
 const FullscreenModal = defineAsyncComponent(
   () => import('@/components/typeless/FullscreenModal.vue')
 )
@@ -218,6 +221,7 @@ onUnmounted(() => {
     </div>
     <!-- Form filler widget - lazy loaded, hidden on chat page -->
     <FormFillerWidget v-if="!hideLayout && route.path !== '/chat'" />
+    <BrowserMonitorWidget v-if="!hideLayout" />
     <GlobalVoiceWakeBanner v-if="!hideLayout" />
     <!-- Preview mode onboarding tooltip -->
     <PreviewOnboardingModal v-if="!hideLayout && showPreviewOnboarding" />
@@ -230,18 +234,11 @@ onUnmounted(() => {
 .app-shell {
   --layout-shell-spacing: 0.8rem;
   --layout-shell-offset: calc(var(--layout-shell-spacing) * 2);
-  --layout-chat-top-spacing: calc(var(--layout-shell-spacing) + 0.82rem);
-  --layout-chat-bottom-spacing: var(--layout-shell-spacing);
-  --layout-chat-vertical-offset: calc(
-    var(--layout-chat-top-spacing) + var(--layout-chat-bottom-spacing)
-  );
   --workspace-dock-width: 28rem;
   --layout-viewport-height: 100vh;
   --layout-window-chrome-height: 0px;
   --layout-window-drag-height: 0px;
-  --layout-content-height: calc(
-    var(--layout-viewport-height) - var(--layout-window-chrome-height)
-  );
+  --layout-content-height: calc(var(--layout-viewport-height) - var(--layout-window-chrome-height));
   position: relative;
   min-height: 0;
   height: var(--layout-viewport-height);
@@ -534,10 +531,8 @@ html.dark .layout-route-loading__line::after {
   }
 
   .layout-body.layout-body-chat {
-    --layout-sidebar-height: calc(
-      var(--layout-content-height) - var(--layout-chat-vertical-offset)
-    );
-    padding-top: var(--layout-chat-top-spacing);
+    --layout-sidebar-height: calc(var(--layout-content-height) - var(--layout-shell-offset));
+    padding-top: var(--layout-shell-spacing);
     padding-bottom: var(--layout-shell-spacing);
     gap: 0;
   }
@@ -552,14 +547,14 @@ html.dark .layout-route-loading__line::after {
   }
 
   .layout-body.layout-body-chat .layout-right {
-    min-height: calc(var(--layout-content-height) - var(--layout-chat-vertical-offset));
-    height: calc(var(--layout-content-height) - var(--layout-chat-vertical-offset));
+    min-height: calc(var(--layout-content-height) - var(--layout-shell-offset));
+    height: calc(var(--layout-content-height) - var(--layout-shell-offset));
   }
 
   .layout-body.layout-body-chat :deep(.app-sidebar) {
-    min-height: calc(var(--layout-content-height) - var(--layout-chat-vertical-offset));
-    height: calc(var(--layout-content-height) - var(--layout-chat-vertical-offset));
-    max-height: calc(var(--layout-content-height) - var(--layout-chat-vertical-offset));
+    min-height: calc(var(--layout-content-height) - var(--layout-shell-offset));
+    height: calc(var(--layout-content-height) - var(--layout-shell-offset));
+    max-height: calc(var(--layout-content-height) - var(--layout-shell-offset));
   }
 
   .layout-right-with-workspace {

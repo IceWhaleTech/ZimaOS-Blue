@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -37,6 +38,8 @@ type Pool struct {
 	// readyCh is closed once the initial model refresh completes in Start().
 	// WaitReady blocks on this channel so early requests can wait for providers.
 	readyCh chan struct{}
+
+	startOnce sync.Once
 }
 
 // poolInitOpts collects options before Pool construction.
@@ -163,9 +166,8 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 	// Initialize built-in providers synchronously (required for chat to work immediately)
 	pool.initBuiltinProviders()
 
-	// Start background pricing updater (fetches remote model_pricing.json via GitHub/jsdelivr)
+	// Defer remote pricing polling until Start() so constructor stays light.
 	pool.pricingUpdater = NewPricingUpdater(nil)
-	pool.pricingUpdater.Start()
 
 	// Remove trial provider if quota is already exhausted (e.g. zero quota, expired, tampered)
 	if pool.TrialQuotaManager != nil && pool.TrialQuotaManager.IsExhausted() {
@@ -186,60 +188,66 @@ func (p *Pool) SetMediaPricingApplier(applier MediaPricingApplier) {
 
 // Start starts background services
 func (p *Pool) Start(ctx context.Context) {
-	// Start usage tracker
-	if p.Config.UsageTrackingEnabled {
-		p.UsageTracker.Start()
-	}
-
-	// Start health checking
-	if p.Config.HealthCheckEnabled {
-		checker := NewHTTPHealthChecker(p.Config.HealthCheckTimeout)
-		p.Registry.StartHealthCheck(ctx, checker)
-	}
-
-	// Fix provider types for non-builtin providers that were incorrectly marked as builtin
-	p.fixProviderTypes()
-
-	// Deduplicate providers (merge duplicates from historical data)
-	p.deduplicateProviders()
-
-	// Refresh models for all enabled providers (especially important for trial provider)
-	// This runs in background to not block startup
-	go func() {
-		refreshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-
-		providers := p.Registry.ListEnabled()
-		successCount := 0
-		failedProviders := []string{}
-
-		for _, provider := range providers {
-			if _, err := p.Discovery.FetchModels(refreshCtx, provider.ID); err != nil {
-				failedProviders = append(failedProviders, provider.Name)
-			} else {
-				successCount++
-			}
+	p.startOnce.Do(func() {
+		if p.pricingUpdater != nil {
+			p.pricingUpdater.Start()
 		}
 
-		if len(failedProviders) > 0 {
-			if successCount == 0 {
-				// All providers failed - likely need configuration
-				fmt.Printf("[Provider Pool] Note: Providers need configuration (API keys) to fetch models. Models will be fetched on demand when providers are properly configured.\n")
-			} else {
-				// Some providers succeeded, some failed
-				fmt.Printf("[Provider Pool] Successfully refreshed %d provider(s). %d provider(s) need configuration: %v\n",
-					successCount, len(failedProviders), failedProviders)
-			}
-		} else {
-			fmt.Printf("[Provider Pool] Successfully refreshed models for all %d configured provider(s)\n", successCount)
+		// Start usage tracker
+		if p.Config.UsageTrackingEnabled {
+			p.UsageTracker.Start()
 		}
 
-		// Rebuild candidate list after models are refreshed
-		p.Router.RebuildCandidates()
+		// Start health checking
+		if p.Config.HealthCheckEnabled {
+			checker := NewHTTPHealthChecker(p.Config.HealthCheckTimeout)
+			p.Registry.StartHealthCheck(ctx, checker)
+		}
 
-		// Signal that the pool is ready for routing
-		close(p.readyCh)
-	}()
+		// Fix provider types for non-builtin providers that were incorrectly marked as builtin
+		p.fixProviderTypes()
+
+		// Deduplicate providers (merge duplicates from historical data)
+		p.deduplicateProviders()
+
+		// Refresh models for all enabled providers (especially important for trial provider)
+		// This runs in background to not block startup
+		go func() {
+			refreshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+
+			providers := p.Registry.ListEnabled()
+			successCount := 0
+			failedProviders := []string{}
+
+			for _, provider := range providers {
+				if _, err := p.Discovery.FetchModels(refreshCtx, provider.ID); err != nil {
+					failedProviders = append(failedProviders, provider.Name)
+				} else {
+					successCount++
+				}
+			}
+
+			if len(failedProviders) > 0 {
+				if successCount == 0 {
+					// All providers failed - likely need configuration
+					fmt.Printf("[Provider Pool] Note: Providers need configuration (API keys) to fetch models. Models will be fetched on demand when providers are properly configured.\n")
+				} else {
+					// Some providers succeeded, some failed
+					fmt.Printf("[Provider Pool] Successfully refreshed %d provider(s). %d provider(s) need configuration: %v\n",
+						successCount, len(failedProviders), failedProviders)
+				}
+			} else {
+				fmt.Printf("[Provider Pool] Successfully refreshed models for all %d configured provider(s)\n", successCount)
+			}
+
+			// Rebuild candidate list after models are refreshed
+			p.Router.RebuildCandidates()
+
+			// Signal that the pool is ready for routing
+			close(p.readyCh)
+		}()
+	})
 }
 
 // WaitReady blocks until the initial model refresh completes or the timeout expires.
@@ -629,7 +637,7 @@ type Handler struct {
 	quotaCache  *cache.GenericCache[string] // OAuth quota, 5-min TTL
 
 	// OAuth manager (optional)
-	oauthManager *oauth.Manager
+	oauthManager oauth.RuntimeManager
 
 	// Media pricing lookup (set at bootstrap to avoid import cycle)
 	mediaPricingLookup MediaPricingLookup
@@ -968,7 +976,11 @@ func (h *Handler) ListProviders(c echo.Context) error {
 	result := make([]*providerResponse, len(sanitizedProviders))
 	for i, p := range sanitizedProviders {
 		// Enrich OAuth config with runtime connection state from token store
-		if p.OAuth != nil && h.oauthManager != nil {
+		oauthReady := true
+		if readyChecker, ok := h.oauthManager.(interface{ IsReady() bool }); ok {
+			oauthReady = readyChecker.IsReady()
+		}
+		if p.OAuth != nil && h.oauthManager != nil && oauthReady {
 			tokens, err := h.oauthManager.GetTokens(p.ID)
 			connected := p.OAuth.Connected
 			if err == nil {
@@ -1178,7 +1190,9 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 	if updates.Name != "" {
 		candidate.Name = updates.Name
 	}
+	baseURLChanged := false
 	if updates.BaseURL != "" {
+		baseURLChanged = strings.TrimSpace(updates.BaseURL) != strings.TrimSpace(candidate.BaseURL)
 		candidate.BaseURL = updates.BaseURL
 	}
 	if updates.APIFormat != "" {
@@ -1189,6 +1203,9 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "api_format_mode must be 'auto' or 'pinned'"})
 		}
 		candidate.APIFormatMode = updates.APIFormatMode
+	}
+	if updates.APIFormat != "" && updates.APIFormatMode == "" {
+		candidate.APIFormatMode = APIFormatModePinned
 	}
 	if updates.Priority != 0 {
 		candidate.Priority = updates.Priority
@@ -1202,35 +1219,49 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 		}
 		candidate.Location = updates.Location
 	}
+	if baseURLChanged {
+		candidate.ResetParsedURL()
+	}
+	if (baseURLChanged || updates.APIFormat != "" || updates.APIFormatMode != "") && candidate.DetectedEndpoint != "" {
+		candidate.DetectedEndpoint = ""
+		candidate.ResetParsedURL()
+	}
 
 	// Non-third-party providers use a single canonical format.
-	// Third-party providers auto-detect when format is not explicitly set.
+	// Third-party providers in auto mode re-detect immediately when the format mode
+	// or base URL changes so edits take effect on the next request.
 	if !isThirdPartyProvider(&candidate) {
 		candidate.APIFormat = canonicalAPIFormatForProvider(&candidate)
 		candidate.DetectedFormat = candidate.APIFormat
 		candidate.DetectedAt = timeutil.NowTime()
 		candidate.APIFormatMode = APIFormatModePinned
-	} else if updates.APIFormat == "" && (updates.BaseURL != "" || candidate.APIFormat == "") {
-		detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), &candidate)
-		candidate.APIFormat = detectedFormat
-		candidate.DetectedFormat = detectedFormat
-		candidate.DetectedAt = timeutil.NowTime()
-		if detectedBaseURL != "" {
-			candidate.BaseURL = detectedBaseURL
-		}
-		if candidate.APIFormatMode == "" {
-			candidate.APIFormatMode = defaultAPIFormatModeForProvider(&candidate)
-		}
 	} else {
-		if updates.APIFormat != "" {
-			candidate.DetectedFormat = candidate.APIFormat
-			candidate.DetectedAt = timeutil.NowTime()
-			if updates.APIFormatMode == "" && candidate.APIFormatMode == "" {
-				candidate.APIFormatMode = APIFormatModePinned
+		effectiveMode := ProviderAPIFormatMode(&candidate)
+		if effectiveMode == APIFormatModeAuto {
+			shouldAutoDetect := baseURLChanged || updates.APIFormatMode == APIFormatModeAuto
+			if candidate.APIFormat == "" || candidate.DetectedFormat == "" {
+				shouldAutoDetect = true
 			}
-		}
-		if candidate.APIFormatMode == "" {
-			candidate.APIFormatMode = defaultAPIFormatModeForProvider(&candidate)
+			if shouldAutoDetect {
+				detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), &candidate)
+				candidate.APIFormat = detectedFormat
+				candidate.DetectedFormat = detectedFormat
+				candidate.DetectedAt = timeutil.NowTime()
+				if detectedBaseURL != "" && detectedBaseURL != candidate.BaseURL {
+					candidate.BaseURL = detectedBaseURL
+					candidate.ResetParsedURL()
+				}
+			}
+			candidate.APIFormatMode = APIFormatModeAuto
+		} else {
+			if candidate.APIFormat == "" {
+				candidate.APIFormat = APIFormatOpenAI
+			}
+			if updates.APIFormat != "" || candidate.DetectedFormat == "" {
+				candidate.DetectedFormat = candidate.APIFormat
+				candidate.DetectedAt = timeutil.NowTime()
+			}
+			candidate.APIFormatMode = APIFormatModePinned
 		}
 	}
 	if err := validateResponsesIntegrationAllowed(&candidate); err != nil {
@@ -2722,14 +2753,20 @@ func (h *Handler) GetTrialQuota(c echo.Context) error {
 }
 
 // SetOAuthManager sets the OAuth manager for the handler.
-func (h *Handler) SetOAuthManager(m *oauth.Manager) {
+func (h *Handler) SetOAuthManager(m oauth.RuntimeManager) {
 	h.oauthManager = m
 	// Also set OAuth manager on discovery for model fetching
 	if h.pool != nil && h.pool.Discovery != nil {
 		h.pool.Discovery.SetOAuthManager(m)
 	}
-	// Refresh OAuth status for all providers that have OAuth configured
-	h.refreshOAuthStatusForProviders()
+	// Refresh OAuth status after the backing manager becomes ready.
+	if notifier, ok := m.(interface{ OnReady(func(*oauth.Manager)) }); ok {
+		notifier.OnReady(func(*oauth.Manager) {
+			go h.refreshOAuthStatusForProviders()
+		})
+	} else {
+		go h.refreshOAuthStatusForProviders()
+	}
 }
 
 // refreshOAuthStatusForProviders updates the OAuth.Connected field for all providers

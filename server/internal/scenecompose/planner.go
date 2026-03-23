@@ -70,11 +70,19 @@ Return only one JSON object with this exact schema:
   "time_of_day": "string",
   "weather": "string",
   "camera_view": "string",
+  "scene_query": "string",
+  "scene_query_en": "string",
+  "background_query": "string",
+  "background_query_en": "string",
   "foreground": [
     {
       "id": "string",
       "type": "string",
       "attributes": ["string"],
+      "search_query": "string",
+      "search_query_en": "string",
+      "fallback_query": "string",
+      "fallback_query_en": "string",
       "priority": 1,
       "layout": {
         "horizontal": "left|center|right",
@@ -92,13 +100,25 @@ Rules:
 - Use discrete layout labels only.
 - Default to realistic / soft natural light / day / clear / eye-level when unspecified.
 - Prefer midground for the main object.
+- "scene_query" should be a concise search phrase for a full-scene reference image.
+- "background_query" should search only for the background/environment.
+- Each foreground "search_query" should target a compositable subject asset and preserve the user's concrete subject wording when possible.
+- Each foreground "fallback_query" should be a simpler alternate subject search without relying on transparent PNG results.
+- When the user prompt is not already pure English, also provide concise pure-English variants in "scene_query_en", "background_query_en", "search_query_en", and "fallback_query_en" for Bing/Google image search.
+- Keep the English variants natural and search-friendly rather than literal word-by-word translations.
+- Remove assistant phrasing such as "please generate" or "帮我生成" from search queries.
+- For Chinese prompts, keep the search queries in Chinese when possible.
 - Output valid JSON only, no markdown.`)
 }
 
 func scenePlannerUserPrompt(req ComposeRequest) string {
+	prompt := strings.TrimSpace(trimSearchPromptPrefix(req.Prompt))
+	if prompt == "" {
+		prompt = strings.TrimSpace(req.Prompt)
+	}
 	var sb strings.Builder
 	sb.WriteString("Prompt:\n")
-	sb.WriteString(strings.TrimSpace(req.Prompt))
+	sb.WriteString(prompt)
 	if strings.TrimSpace(req.Locale) != "" {
 		sb.WriteString("\n\nLocale:\n")
 		sb.WriteString(strings.TrimSpace(req.Locale))
@@ -135,6 +155,7 @@ func heuristicPlan(prompt string) *ScenePlan {
 		normalized = "a realistic subject in a natural setting"
 	}
 	lower := strings.ToLower(normalized)
+	style := detectStyle(lower)
 	segments := detectForegroundSegments(normalized)
 	background := detectBackground(normalized)
 	if background == "" {
@@ -153,26 +174,33 @@ func heuristicPlan(prompt string) *ScenePlan {
 		if objType == "" {
 			objType = defaultObjectType(idx)
 		}
+		subjectQuery := detectSubjectSearchPhrase(segment, background, objType)
 		foreground = append(foreground, ForegroundPlan{
-			ID:         fmt.Sprintf("%s_%d", sanitizeIDToken(objType), idx+1),
-			Type:       objType,
-			Attributes: detectAttributes(segment),
-			Priority:   idx + 1,
-			Layout:     detectLayout(segment, idx),
+			ID:            fmt.Sprintf("%s_%d", sanitizeIDToken(objType), idx+1),
+			Type:          objType,
+			Attributes:    detectAttributes(segment),
+			SearchQuery:   buildHeuristicForegroundSearchQuery(subjectQuery, style),
+			FallbackQuery: buildHeuristicForegroundFallbackQuery(subjectQuery, style),
+			Priority:      idx + 1,
+			Layout:        detectLayout(segment, idx),
 		})
 	}
 	if len(foreground) == 0 {
+		objType := detectObjectType(normalized)
+		subjectQuery := detectSubjectSearchPhrase(normalized, background, objType)
 		foreground = []ForegroundPlan{{
-			ID:       "subject_1",
-			Type:     detectObjectType(normalized),
-			Priority: 1,
-			Layout:   detectLayout(normalized, 0),
+			ID:            "subject_1",
+			Type:          objType,
+			SearchQuery:   buildHeuristicForegroundSearchQuery(subjectQuery, style),
+			FallbackQuery: buildHeuristicForegroundFallbackQuery(subjectQuery, style),
+			Priority:      1,
+			Layout:        detectLayout(normalized, 0),
 		}}
 	}
 
 	return &ScenePlan{
 		Background: background,
-		Style:      detectStyle(lower),
+		Style:      style,
 		Lighting:   detectLighting(lower),
 		TimeOfDay:  detectTimeOfDay(lower),
 		Weather:    detectWeather(lower),
@@ -273,6 +301,158 @@ func detectAttributes(segment string) []string {
 	return collectCueChoices(segment, attributeChoices)
 }
 
+func detectSubjectSearchPhrase(segment, background, fallbackType string) string {
+	value := strings.TrimSpace(segment)
+	if value == "" {
+		return strings.TrimSpace(fallbackType)
+	}
+	value = trimSearchPromptPrefix(value)
+	value = trimLeadingSubjectPositionCue(value)
+	value = trimSubjectBackgroundClause(value)
+	if background != "" {
+		value = strings.TrimSpace(strings.TrimSuffix(value, background))
+	}
+	value = trimSubjectActionTail(value)
+	value = trimLeadingSubjectQuantifier(value)
+	value = strings.TrimSpace(strings.Trim(value, "，,.;:。!?！？-—_"))
+	value = normalizeSearchText(value)
+	if value != "" {
+		return value
+	}
+	return strings.TrimSpace(fallbackType)
+}
+
+func trimSearchPromptPrefix(raw string) string {
+	value := strings.TrimSpace(raw)
+	for _, prefix := range []string{
+		"请帮我生成一张", "请帮我生成一个", "帮我生成一张", "帮我生成一个",
+		"给我生成一张", "请生成一张", "生成一张", "帮我", "请你", "请", "给我",
+		"please generate an image of", "please create an image of", "generate an image of", "create an image of",
+		"please generate a photo of", "please create a photo of", "generate a photo of", "create a photo of",
+	} {
+		if strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix)) {
+			value = strings.TrimSpace(value[len(prefix):])
+			value = strings.TrimLeft(value, "，,.;:。!?！？-—_ ")
+			if value != "" {
+				return value
+			}
+		}
+	}
+	return value
+}
+
+func trimLeadingSubjectPositionCue(raw string) string {
+	value := strings.TrimSpace(raw)
+	for _, prefix := range []string{
+		"左边", "右边", "左侧", "右侧", "中间", "中央", "居中",
+		"on the left", "on the right", "at the center",
+		"left side", "right side", "center",
+		"left", "right",
+	} {
+		if strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix)) {
+			value = strings.TrimSpace(value[len(prefix):])
+			value = strings.TrimLeft(value, "，,.;:。!?！？-—_ ")
+		}
+	}
+	return value
+}
+
+func trimSubjectBackgroundClause(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	patterns := []string{" in ", " inside ", " within ", " at ", " on ", "在"}
+	best := value
+	for _, marker := range patterns {
+		var idx int
+		if strings.Contains(marker, " ") {
+			idx = strings.LastIndex(strings.ToLower(value), marker)
+		} else {
+			idx = strings.LastIndex(value, marker)
+		}
+		if idx <= 0 {
+			continue
+		}
+		candidate := strings.TrimSpace(value[:idx])
+		candidate = strings.TrimRight(candidate, "的在于和与及、")
+		if candidate != "" {
+			best = candidate
+			break
+		}
+	}
+	return best
+}
+
+func trimLeadingSubjectQuantifier(raw string) string {
+	value := strings.TrimSpace(raw)
+	for _, prefix := range []string{
+		"一只", "一条", "一个", "一名", "一位", "一头",
+		"a ", "an ", "the ",
+	} {
+		if strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix)) {
+			value = strings.TrimSpace(value[len(prefix):])
+			break
+		}
+	}
+	return value
+}
+
+func trimSubjectActionTail(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	for _, marker := range []string{
+		"玩耍", "玩着", "奔跑", "跑着", "跳跃", "跳着", "漫步", "散步", "行走",
+		"站着", "坐着", "躺着", "飞着", "漂浮", "看着", "读着", "睡着",
+		"playing", "running", "jumping", "walking", "standing", "sitting", "floating", "reading", "sleeping",
+	} {
+		idx := strings.Index(strings.ToLower(value), strings.ToLower(marker))
+		if idx <= 0 {
+			continue
+		}
+		candidate := strings.TrimSpace(value[:idx])
+		candidate = strings.TrimRight(candidate, "的在于和与及、")
+		if candidate != "" {
+			return candidate
+		}
+	}
+	return value
+}
+
+func buildHeuristicForegroundSearchQuery(subject, style string) string {
+	base := normalizeSearchText(subject)
+	if base == "" {
+		return ""
+	}
+	style = heuristicSearchStyle(style)
+	if containsCJK(base) {
+		return compactQuery(base, style, "透明背景 png")
+	}
+	return compactQuery(base, style, "isolated png transparent")
+}
+
+func buildHeuristicForegroundFallbackQuery(subject, style string) string {
+	base := normalizeSearchText(subject)
+	if base == "" {
+		return ""
+	}
+	style = heuristicSearchStyle(style)
+	if containsCJK(base) {
+		return compactQuery(base, style, "写实照片")
+	}
+	return compactQuery(base, style, "photo")
+}
+
+func heuristicSearchStyle(style string) string {
+	value := strings.TrimSpace(style)
+	if value == "" || value == "realistic" {
+		return ""
+	}
+	return value
+}
+
 func detectLayout(segment string, idx int) LayoutHint {
 	horizontal := "center"
 	if matched := matchCueChoice(segment, layoutHorizontalChoices); matched != "" {
@@ -368,6 +548,10 @@ func normalizeScenePlan(plan *ScenePlan) *ScenePlan {
 	if strings.TrimSpace(plan.CameraView) == "" {
 		plan.CameraView = "eye-level"
 	}
+	plan.SceneQuery = normalizeSearchText(plan.SceneQuery)
+	plan.SceneQueryEN = normalizeSearchText(plan.SceneQueryEN)
+	plan.BackgroundQuery = normalizeSearchText(plan.BackgroundQuery)
+	plan.BackgroundQueryEN = normalizeSearchText(plan.BackgroundQueryEN)
 
 	normalized := make([]ForegroundPlan, 0, len(plan.Foreground))
 	for idx, item := range plan.Foreground {
@@ -382,6 +566,10 @@ func normalizeScenePlan(plan *ScenePlan) *ScenePlan {
 		if item.Priority <= 0 {
 			item.Priority = idx + 1
 		}
+		item.SearchQuery = normalizeSearchText(item.SearchQuery)
+		item.SearchQueryEN = normalizeSearchText(item.SearchQueryEN)
+		item.FallbackQuery = normalizeSearchText(item.FallbackQuery)
+		item.FallbackQueryEN = normalizeSearchText(item.FallbackQueryEN)
 		item.Layout.Horizontal = normalizeEnum(item.Layout.Horizontal, []string{"left", "center", "right"}, "center")
 		item.Layout.Vertical = normalizeEnum(item.Layout.Vertical, []string{"low", "middle", "high"}, "low")
 		item.Layout.Depth = normalizeEnum(item.Layout.Depth, []string{"foreground", "midground"}, "midground")
@@ -417,6 +605,14 @@ func normalizeScenePlan(plan *ScenePlan) *ScenePlan {
 	}
 	plan.Foreground = normalized
 	return plan
+}
+
+func normalizeSearchText(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields(trimmed), " ")
 }
 
 func normalizeEnum(raw string, allowed []string, fallback string) string {
@@ -455,8 +651,37 @@ func sanitizeIDToken(raw string) string {
 func compactBackgroundPhrase(raw string) string {
 	value := strings.TrimSpace(raw)
 	value = strings.Trim(value, "，,.;:。!?！？")
+	value = trimBackgroundActionTail(value)
 	if len([]rune(value)) > 48 {
 		value = string([]rune(value)[:48])
+	}
+	return value
+}
+
+func trimBackgroundActionTail(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	actionMarkers := []string{
+		"玩耍", "玩着", "奔跑", "跑着", "跳跃", "跳着", "漫步", "散步", "行走",
+		"站着", "坐着", "躺着", "飞着", "漂浮", "看着", "读着", "睡着",
+		"playing", "running", "jumping", "walking", "standing", "sitting", "floating", "reading", "sleeping",
+	}
+	for _, marker := range actionMarkers {
+		idx := strings.Index(strings.ToLower(value), strings.ToLower(marker))
+		if idx <= 0 {
+			continue
+		}
+		trimmed := strings.TrimSpace(value[:idx])
+		trimmed = strings.TrimRight(trimmed, "的在于和与及、")
+		for _, suffix := range []string{"里面", "里", "中", "上", "旁边", "旁", "边", "前", "后", "内", "外"} {
+			trimmed = strings.TrimSuffix(trimmed, suffix)
+		}
+		trimmed = strings.TrimSpace(trimmed)
+		if trimmed != "" {
+			return trimmed
+		}
 	}
 	return value
 }

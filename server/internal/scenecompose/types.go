@@ -27,28 +27,45 @@ type ComposeDebugInfo struct {
 	ForegroundQueries []string   `json:"foreground_queries,omitempty"`
 }
 
+type RenderLayer struct {
+	ID     string
+	Kind   string
+	Image  image.Image
+	Layout LayoutHint
+	Asset  AssetRef
+}
+
 type ComposeResult struct {
 	Image      image.Image
+	Layers     []RenderLayer
 	UsedAssets []AssetRef
 	Debug      ComposeDebugInfo
 }
 
 type ScenePlan struct {
-	Background string           `json:"background"`
-	Style      string           `json:"style"`
-	Lighting   string           `json:"lighting"`
-	TimeOfDay  string           `json:"time_of_day"`
-	Weather    string           `json:"weather"`
-	CameraView string           `json:"camera_view"`
-	Foreground []ForegroundPlan `json:"foreground"`
+	Background        string           `json:"background"`
+	Style             string           `json:"style"`
+	Lighting          string           `json:"lighting"`
+	TimeOfDay         string           `json:"time_of_day"`
+	Weather           string           `json:"weather"`
+	CameraView        string           `json:"camera_view"`
+	SceneQuery        string           `json:"scene_query,omitempty"`
+	SceneQueryEN      string           `json:"scene_query_en,omitempty"`
+	BackgroundQuery   string           `json:"background_query,omitempty"`
+	BackgroundQueryEN string           `json:"background_query_en,omitempty"`
+	Foreground        []ForegroundPlan `json:"foreground"`
 }
 
 type ForegroundPlan struct {
-	ID         string     `json:"id"`
-	Type       string     `json:"type"`
-	Attributes []string   `json:"attributes,omitempty"`
-	Priority   int        `json:"priority"`
-	Layout     LayoutHint `json:"layout"`
+	ID              string     `json:"id"`
+	Type            string     `json:"type"`
+	Attributes      []string   `json:"attributes,omitempty"`
+	SearchQuery     string     `json:"search_query,omitempty"`
+	SearchQueryEN   string     `json:"search_query_en,omitempty"`
+	FallbackQuery   string     `json:"fallback_query,omitempty"`
+	FallbackQueryEN string     `json:"fallback_query_en,omitempty"`
+	Priority        int        `json:"priority"`
+	Layout          LayoutHint `json:"layout"`
 }
 
 type LayoutHint struct {
@@ -60,9 +77,11 @@ type LayoutHint struct {
 }
 
 type SearchResult struct {
-	Title       string
-	URL         string
-	Description string
+	Title        string
+	URL          string
+	Description  string
+	ImageURL     string
+	ThumbnailURL string
 }
 
 type ResolvedImage struct {

@@ -25,6 +25,13 @@ const (
 	ExecSecurityFull      ExecSecurity = "full"
 )
 
+type dangerousPatternAction string
+
+const (
+	dangerousPatternActionBlock           dangerousPatternAction = "block"
+	dangerousPatternActionRequireApproval dangerousPatternAction = "require_approval"
+)
+
 // AllowlistEntry represents a single allowlist pattern entry.
 type AllowlistEntry struct {
 	ID               string    `json:"id"`
@@ -67,6 +74,15 @@ type CommandAnalysis struct {
 	OK       bool
 	Reason   string
 	Segments []CommandSegment
+}
+
+// CommandSafetyMatch describes a dangerous command pattern match and whether it
+// should be hard-blocked or routed through approval.
+type CommandSafetyMatch struct {
+	Reason              string
+	RequiresApproval    bool
+	RiskLevel           RiskLevel
+	SuppressRiskReasons []string
 }
 
 // LoadAllowlist reads the allowlist config from a JSON file.
@@ -517,8 +533,11 @@ func matchGlob(pattern, target string) bool {
 
 // dangerousPattern pairs a compiled regex with a human-readable reason.
 type dangerousPattern struct {
-	re     *regexp.Regexp
-	reason string
+	re                  *regexp.Regexp
+	reason              string
+	action              dangerousPatternAction
+	riskLevel           RiskLevel
+	suppressRiskReasons []string
 }
 
 // dangerousCommandPatterns is the list of patterns that are always blocked,
@@ -526,76 +545,98 @@ type dangerousPattern struct {
 // string (case-insensitive).
 var dangerousCommandPatterns = func() []dangerousPattern {
 	raw := []struct {
-		pattern string
-		reason  string
+		pattern             string
+		reason              string
+		action              dangerousPatternAction
+		riskLevel           RiskLevel
+		suppressRiskReasons []string
 	}{
 		// Destructive filesystem operations on root / system paths
-		{`(?:^|\s|;|&&|\|\|)rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?(-[a-zA-Z]*r[a-zA-Z]*\s+)?/(?:\s|$)`, "destructive: rm on root directory"},
-		{`(?:^|\s|;|&&|\|\|)rm\s+.*--no-preserve-root`, "destructive: rm --no-preserve-root"},
-		{`(?:^|\s)mkfs[\s.]`, "destructive: mkfs (format filesystem)"},
-		{`(?:^|\s)dd\s+.*\bof=/dev/`, "destructive: dd writing to device"},
-		{`(?:^|\s)wipefs\s`, "destructive: wipefs (wipe filesystem signatures)"},
-		{`(?:^|\s)fdisk\s`, "destructive: fdisk (partition table modification)"},
-		{`(?:^|\s)parted\s`, "destructive: parted (partition modification)"},
+		{`(?:^|\s|;|&&|\|\|)rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?(-[a-zA-Z]*r[a-zA-Z]*\s+)?/(?:\s|$)`, "destructive: rm on root directory", dangerousPatternActionBlock, RiskLevelCritical, nil},
+		{`(?:^|\s|;|&&|\|\|)rm\s+.*--no-preserve-root`, "destructive: rm --no-preserve-root", dangerousPatternActionBlock, RiskLevelCritical, nil},
+		{`(?:^|\s)mkfs[\s.]`, "destructive: mkfs (format filesystem)", dangerousPatternActionBlock, RiskLevelCritical, nil},
+		{`(?:^|\s)dd\s+.*\bof=/dev/`, "destructive: dd writing to device", dangerousPatternActionBlock, RiskLevelCritical, nil},
+		{`(?:^|\s)wipefs\s`, "destructive: wipefs (wipe filesystem signatures)", dangerousPatternActionBlock, RiskLevelCritical, nil},
+		{`(?:^|\s)fdisk\s`, "destructive: fdisk (partition table modification)", dangerousPatternActionBlock, RiskLevelCritical, nil},
+		{`(?:^|\s)parted\s`, "destructive: parted (partition modification)", dangerousPatternActionBlock, RiskLevelCritical, nil},
 
 		// macOS disk operations
-		{`(?:^|\s)diskutil\s+(eraseDisk|partitionDisk|secureErase)`, "destructive: diskutil erase/partition"},
+		{`(?:^|\s)diskutil\s+(eraseDisk|partitionDisk|secureErase)`, "destructive: diskutil erase/partition", dangerousPatternActionBlock, RiskLevelCritical, nil},
 
 		// Windows format
-		{`(?:^|\s)format\s+[a-zA-Z]:`, "destructive: format drive"},
+		{`(?:^|\s)format\s+[a-zA-Z]:`, "destructive: format drive", dangerousPatternActionBlock, RiskLevelCritical, nil},
 
 		// System state modification
-		{`(?:^|\s)shutdown\s`, "system modification: shutdown"},
-		{`(?:^|\s)reboot\b`, "system modification: reboot"},
-		{`(?:^|\s)halt\b`, "system modification: halt"},
-		{`(?:^|\s)init\s+[06]\b`, "system modification: init runlevel change"},
-		{`(?:^|\s)systemctl\s+(poweroff|reboot|halt)`, "system modification: systemctl power control"},
+		{`(?:^|\s)shutdown\s`, "system modification: shutdown", dangerousPatternActionBlock, RiskLevelHigh, nil},
+		{`(?:^|\s)reboot\b`, "system modification: reboot", dangerousPatternActionBlock, RiskLevelHigh, nil},
+		{`(?:^|\s)halt\b`, "system modification: halt", dangerousPatternActionBlock, RiskLevelHigh, nil},
+		{`(?:^|\s)init\s+[06]\b`, "system modification: init runlevel change", dangerousPatternActionBlock, RiskLevelHigh, nil},
+		{`(?:^|\s)systemctl\s+(poweroff|reboot|halt)`, "system modification: systemctl power control", dangerousPatternActionBlock, RiskLevelHigh, nil},
 
 		// User/permission modification
-		{`(?:^|\s)useradd\s`, "user modification: useradd"},
-		{`(?:^|\s)userdel\s`, "user modification: userdel"},
-		{`(?:^|\s)usermod\s`, "user modification: usermod"},
-		{`(?:^|\s)visudo\b`, "user modification: visudo"},
-		{`(?:^|\s)passwd\s`, "user modification: passwd"},
+		{`(?:^|\s)useradd\s`, "user modification: useradd", dangerousPatternActionBlock, RiskLevelHigh, nil},
+		{`(?:^|\s)userdel\s`, "user modification: userdel", dangerousPatternActionBlock, RiskLevelHigh, nil},
+		{`(?:^|\s)usermod\s`, "user modification: usermod", dangerousPatternActionBlock, RiskLevelHigh, nil},
+		{`(?:^|\s)visudo\b`, "user modification: visudo", dangerousPatternActionBlock, RiskLevelHigh, nil},
+		{`(?:^|\s)passwd\s`, "user modification: passwd", dangerousPatternActionBlock, RiskLevelHigh, nil},
 
 		// Recursive permission on system dirs
-		{`(?:^|\s)chmod\s+(-[a-zA-Z]*R[a-zA-Z]*\s+)?\d+\s+/(?:$|\s)`, "destructive: chmod on root"},
-		{`(?:^|\s)chown\s+(-[a-zA-Z]*R[a-zA-Z]*\s+)?\S+\s+/(?:$|\s)`, "destructive: chown on root"},
+		{`(?:^|\s)chmod\s+(-[a-zA-Z]*R[a-zA-Z]*\s+)?\d+\s+/(?:$|\s)`, "destructive: chmod on root", dangerousPatternActionBlock, RiskLevelCritical, nil},
+		{`(?:^|\s)chown\s+(-[a-zA-Z]*R[a-zA-Z]*\s+)?\S+\s+/(?:$|\s)`, "destructive: chown on root", dangerousPatternActionBlock, RiskLevelCritical, nil},
 
 		// Pipe-to-shell (network exfiltration / RCE)
-		{`\|\s*(ba)?sh\b`, "security: pipe-to-shell pattern"},
-		{`\|\s*zsh\b`, "security: pipe-to-shell pattern"},
-		{`\|\s*python[23]?\b`, "security: pipe-to-interpreter pattern"},
-		{`\|\s*perl\b`, "security: pipe-to-interpreter pattern"},
-		{`\|\s*ruby\b`, "security: pipe-to-interpreter pattern"},
-		{`\|\s*node\b`, "security: pipe-to-interpreter pattern"},
+		{`\|\s*(ba)?sh\b`, "security: pipe-to-shell pattern", dangerousPatternActionBlock, RiskLevelCritical, nil},
+		{`\|\s*zsh\b`, "security: pipe-to-shell pattern", dangerousPatternActionBlock, RiskLevelCritical, nil},
+		{`\|\s*python[23]?\b`, "security: pipe-to-interpreter pattern", dangerousPatternActionRequireApproval, RiskLevelHigh, []string{"pipe-to-interpreter"}},
+		{`\|\s*perl\b`, "security: pipe-to-interpreter pattern", dangerousPatternActionRequireApproval, RiskLevelHigh, []string{"pipe-to-interpreter"}},
+		{`\|\s*ruby\b`, "security: pipe-to-interpreter pattern", dangerousPatternActionRequireApproval, RiskLevelHigh, []string{"pipe-to-interpreter"}},
+		{`\|\s*node\b`, "security: pipe-to-interpreter pattern", dangerousPatternActionRequireApproval, RiskLevelHigh, []string{"pipe-to-interpreter"}},
 
 		// Windows registry modification on system hives
-		{`(?i)(?:^|\s)reg\s+(delete|add)\s+.*\\\\HKLM\\\\`, "registry modification: HKLM"},
-		{`(?i)(?:^|\s)reg\s+(delete|add)\s+.*\\\\HKEY_LOCAL_MACHINE\\\\`, "registry modification: HKEY_LOCAL_MACHINE"},
+		{`(?i)(?:^|\s)reg\s+(delete|add)\s+.*\\\\HKLM\\\\`, "registry modification: HKLM", dangerousPatternActionBlock, RiskLevelCritical, nil},
+		{`(?i)(?:^|\s)reg\s+(delete|add)\s+.*\\\\HKEY_LOCAL_MACHINE\\\\`, "registry modification: HKEY_LOCAL_MACHINE", dangerousPatternActionBlock, RiskLevelCritical, nil},
 
 		// Fork bomb patterns
-		{`:\(\)\s*\{\s*:\|:&\s*\}`, "destructive: fork bomb"},
+		{`:\(\)\s*\{\s*:\|:&\s*\}`, "destructive: fork bomb", dangerousPatternActionBlock, RiskLevelCritical, nil},
 	}
 
 	patterns := make([]dangerousPattern, 0, len(raw))
 	for _, r := range raw {
 		patterns = append(patterns, dangerousPattern{
-			re:     regexp.MustCompile("(?i)" + r.pattern),
-			reason: r.reason,
+			re:                  regexp.MustCompile("(?i)" + r.pattern),
+			reason:              r.reason,
+			action:              r.action,
+			riskLevel:           r.riskLevel,
+			suppressRiskReasons: append([]string(nil), r.suppressRiskReasons...),
 		})
 	}
 	return patterns
 }()
 
+// MatchCommandSafety checks the raw command string against the dangerous
+// command patterns and returns how the caller should handle the first match.
+func MatchCommandSafety(command string) *CommandSafetyMatch {
+	for _, dp := range dangerousCommandPatterns {
+		if !dp.re.MatchString(command) {
+			continue
+		}
+		return &CommandSafetyMatch{
+			Reason:              dp.reason,
+			RequiresApproval:    dp.action == dangerousPatternActionRequireApproval,
+			RiskLevel:           dp.riskLevel,
+			SuppressRiskReasons: append([]string(nil), dp.suppressRiskReasons...),
+		}
+	}
+	return nil
+}
+
 // ValidateCommandSafety checks the raw command string against the dangerous
 // command blocklist. Returns an error if the command matches any pattern.
 // This check runs for ALL security modes (including "full").
 func ValidateCommandSafety(command string) error {
-	for _, dp := range dangerousCommandPatterns {
-		if dp.re.MatchString(command) {
-			return fmt.Errorf("exec blocked: %s", dp.reason)
-		}
+	match := MatchCommandSafety(command)
+	if match != nil && !match.RequiresApproval {
+		return fmt.Errorf("exec blocked: %s", match.Reason)
 	}
 	return nil
 }

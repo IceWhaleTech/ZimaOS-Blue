@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -9,22 +10,23 @@ import (
 )
 
 type UserTaskProjection struct {
-	ID             string             `json:"id"`
-	Kind           RunKind            `json:"kind"`
-	ConversationID string             `json:"conversation_id,omitempty"`
-	Scope          string             `json:"scope"`
-	Title          string             `json:"title"`
-	Subtitle       string             `json:"subtitle,omitempty"`
-	Status         string             `json:"status"`
-	Stage          string             `json:"stage"`
-	Progress       int                `json:"progress"`
-	Blocker        *UserTaskBlocker   `json:"blocker,omitempty"`
-	ResultPreview  string             `json:"result_preview,omitempty"`
-	ErrorPreview   string             `json:"error_preview,omitempty"`
-	Artifacts      []UserTaskArtifact `json:"artifacts,omitempty"`
-	Actions        UserTaskActions    `json:"actions"`
-	UpdatedAt      time.Time          `json:"updated_at"`
-	FinishedAt     *time.Time         `json:"finished_at,omitempty"`
+	ID              string                   `json:"id"`
+	Kind            RunKind                  `json:"kind"`
+	ConversationID  string                   `json:"conversation_id,omitempty"`
+	Scope           string                   `json:"scope"`
+	Title           string                   `json:"title"`
+	Subtitle        string                   `json:"subtitle,omitempty"`
+	Status          string                   `json:"status"`
+	Stage           string                   `json:"stage"`
+	Progress        int                      `json:"progress"`
+	Blocker         *UserTaskBlocker         `json:"blocker,omitempty"`
+	ResultPreview   string                   `json:"result_preview,omitempty"`
+	ErrorPreview    string                   `json:"error_preview,omitempty"`
+	Artifacts       []UserTaskArtifact       `json:"artifacts,omitempty"`
+	ResearchSources []UserTaskResearchSource `json:"research_sources,omitempty"`
+	Actions         UserTaskActions          `json:"actions"`
+	UpdatedAt       time.Time                `json:"updated_at"`
+	FinishedAt      *time.Time               `json:"finished_at,omitempty"`
 }
 
 type UserTaskBlocker struct {
@@ -38,6 +40,17 @@ type UserTaskArtifact struct {
 	Kind  string `json:"kind"`
 	Label string `json:"label"`
 	URL   string `json:"url,omitempty"`
+}
+
+type UserTaskResearchSource struct {
+	Title            string  `json:"title"`
+	URL              string  `json:"url,omitempty"`
+	Domain           string  `json:"domain,omitempty"`
+	SourceType       string  `json:"source_type,omitempty"`
+	PublishedAt      string  `json:"published_at,omitempty"`
+	FetchedAt        string  `json:"fetched_at,omitempty"`
+	RelevanceScore   float64 `json:"relevance_score,omitempty"`
+	CredibilityScore float64 `json:"credibility_score,omitempty"`
 }
 
 type UserTaskActions struct {
@@ -244,19 +257,20 @@ func (s *UserTaskProjectionService) projectionForRun(ctx context.Context, run *R
 	stage, status, blocker := userTaskStatusParts(run, approvals, questions)
 	title, subtitle := userTaskTitleAndSubtitle(run)
 	projection := &UserTaskProjection{
-		ID:             run.ID,
-		Kind:           run.Kind,
-		ConversationID: strings.TrimSpace(run.ConversationID),
-		Scope:          scope,
-		Title:          title,
-		Subtitle:       subtitle,
-		Status:         status,
-		Stage:          stage,
-		Progress:       normalizedProjectionProgress(run),
-		Blocker:        blocker,
-		ResultPreview:  trimmedPreview(run.Result, 280),
-		ErrorPreview:   trimmedPreview(run.Error, 240),
-		Artifacts:      projectUserArtifacts(artifacts),
+		ID:              run.ID,
+		Kind:            run.Kind,
+		ConversationID:  strings.TrimSpace(run.ConversationID),
+		Scope:           scope,
+		Title:           title,
+		Subtitle:        subtitle,
+		Status:          status,
+		Stage:           stage,
+		Progress:        normalizedProjectionProgress(run),
+		Blocker:         blocker,
+		ResultPreview:   trimmedPreview(run.Result, 280),
+		ErrorPreview:    trimmedPreview(run.Error, 240),
+		Artifacts:       projectUserArtifacts(artifacts),
+		ResearchSources: projectResearchSources(run),
 		Actions: UserTaskActions{
 			CanCancel:     canCancelUserTask(run),
 			CanOpenChat:   scope == "background" && strings.TrimSpace(run.ConversationID) != "",
@@ -455,6 +469,100 @@ func projectUserArtifacts(artifacts []ArtifactRef) []UserTaskArtifact {
 		})
 	}
 	return out
+}
+
+func projectResearchSources(run *Run) []UserTaskResearchSource {
+	if run == nil || run.Kind != RunKindResearch || run.Metadata == nil {
+		return nil
+	}
+
+	if inventory := metadataObjectSlice(run.Metadata["source_inventory"]); len(inventory) > 0 {
+		out := make([]UserTaskResearchSource, 0, len(inventory))
+		for _, record := range inventory {
+			source := UserTaskResearchSource{
+				Title:            metadataStringValue(record, "title"),
+				URL:              metadataStringValue(record, "url"),
+				Domain:           metadataStringValue(record, "domain"),
+				SourceType:       metadataStringValue(record, "source_type"),
+				PublishedAt:      metadataStringValue(record, "published_at"),
+				FetchedAt:        metadataStringValue(record, "fetched_at"),
+				RelevanceScore:   floatMetadata(record["relevance_score"]),
+				CredibilityScore: floatMetadata(record["credibility_score"]),
+			}
+			if source.Title == "" {
+				source.Title = source.URL
+			}
+			if source.Title == "" {
+				continue
+			}
+			out = append(out, source)
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+
+	citations := metadataObjectSlice(run.Metadata["citations"])
+	if len(citations) == 0 {
+		return nil
+	}
+	out := make([]UserTaskResearchSource, 0, len(citations))
+	for _, record := range citations {
+		source := UserTaskResearchSource{
+			Title: metadataStringValue(record, "title"),
+			URL:   metadataStringValue(record, "url"),
+		}
+		if source.Title == "" {
+			source.Title = source.URL
+		}
+		if source.Title == "" {
+			continue
+		}
+		out = append(out, source)
+	}
+	return out
+}
+
+func metadataStringValue(record map[string]interface{}, key string) string {
+	value, ok := record[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
+}
+
+func metadataObjectSlice(raw interface{}) []map[string]interface{} {
+	switch value := raw.(type) {
+	case []map[string]interface{}:
+		return value
+	case []interface{}:
+		out := make([]map[string]interface{}, 0, len(value))
+		for _, item := range value {
+			record, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			out = append(out, record)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func floatMetadata(raw interface{}) float64 {
+	switch value := raw.(type) {
+	case float64:
+		return value
+	case float32:
+		return float64(value)
+	case int:
+		return float64(value)
+	case int64:
+		return float64(value)
+	default:
+		return 0
+	}
 }
 
 func basenameForArtifact(pathOrURL string, kind string) string {

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -35,10 +37,12 @@ type FeaturedSkillsData struct {
 
 // FeaturedSkillsLoader loads and caches featured skills
 type FeaturedSkillsLoader struct {
-	dataPath string
-	skills   []*FeaturedSkill
-	mu       sync.RWMutex
-	loaded   bool
+	dataPath  string
+	skills    []*FeaturedSkill
+	mu        sync.RWMutex
+	loaded    bool
+	attempted bool
+	loadErr   error
 }
 
 // NewFeaturedSkillsLoader creates a new featured skills loader
@@ -56,22 +60,48 @@ func (l *FeaturedSkillsLoader) Load() error {
 
 	data, err := os.ReadFile(l.dataPath)
 	if err != nil {
-		return fmt.Errorf("failed to read featured skills file: %w", err)
+		l.loaded = false
+		l.attempted = true
+		l.loadErr = fmt.Errorf("failed to read featured skills file: %w", err)
+		l.skills = make([]*FeaturedSkill, 0)
+		return l.loadErr
 	}
 
 	var featuredData FeaturedSkillsData
 	if err := json.Unmarshal(data, &featuredData); err != nil {
-		return fmt.Errorf("failed to parse featured skills: %w", err)
+		l.loaded = false
+		l.attempted = true
+		l.loadErr = fmt.Errorf("failed to parse featured skills: %w", err)
+		l.skills = make([]*FeaturedSkill, 0)
+		return l.loadErr
 	}
 
 	l.skills = featuredData.Skills
 	l.loaded = true
+	l.attempted = true
+	l.loadErr = nil
 
 	return nil
 }
 
+func (l *FeaturedSkillsLoader) ensureLoaded() error {
+	l.mu.RLock()
+	if l.loaded {
+		l.mu.RUnlock()
+		return nil
+	}
+	if l.attempted {
+		err := l.loadErr
+		l.mu.RUnlock()
+		return err
+	}
+	l.mu.RUnlock()
+	return l.Load()
+}
+
 // GetAll returns all featured skills
 func (l *FeaturedSkillsLoader) GetAll() []*FeaturedSkill {
+	_ = l.ensureLoaded()
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -82,6 +112,7 @@ func (l *FeaturedSkillsLoader) GetAll() []*FeaturedSkill {
 
 // Get returns a featured skill by ID
 func (l *FeaturedSkillsLoader) Get(id string) *FeaturedSkill {
+	_ = l.ensureLoaded()
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -95,6 +126,7 @@ func (l *FeaturedSkillsLoader) Get(id string) *FeaturedSkill {
 
 // Search searches featured skills by query
 func (l *FeaturedSkillsLoader) Search(query string) []*FeaturedSkill {
+	_ = l.ensureLoaded()
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -116,6 +148,7 @@ func (l *FeaturedSkillsLoader) Search(query string) []*FeaturedSkill {
 
 // GetByCategory returns featured skills filtered by category
 func (l *FeaturedSkillsLoader) GetByCategory(category string) []*FeaturedSkill {
+	_ = l.ensureLoaded()
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -130,6 +163,7 @@ func (l *FeaturedSkillsLoader) GetByCategory(category string) []*FeaturedSkill {
 
 // GetCategories returns all unique categories
 func (l *FeaturedSkillsLoader) GetCategories() []string {
+	_ = l.ensureLoaded()
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -149,6 +183,7 @@ func (l *FeaturedSkillsLoader) GetCategories() []string {
 
 // Count returns the number of featured skills
 func (l *FeaturedSkillsLoader) Count() int {
+	_ = l.ensureLoaded()
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return len(l.skills)
@@ -156,6 +191,7 @@ func (l *FeaturedSkillsLoader) Count() int {
 
 // IsLoaded returns whether the featured skills have been loaded
 func (l *FeaturedSkillsLoader) IsLoaded() bool {
+	_ = l.ensureLoaded()
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return l.loaded
@@ -226,6 +262,7 @@ type LocalSkillScanner struct {
 	basePath string
 	skills   map[string]*LocalSkill
 	mu       sync.RWMutex
+	scanned  bool
 }
 
 // NewLocalSkillScanner creates a new local skill scanner
@@ -236,7 +273,7 @@ func NewLocalSkillScanner(basePath string) *LocalSkillScanner {
 	}
 }
 
-// Scan scans the base directory for SKILL.md files
+// Scan scans the base directory for skill entry documents.
 func (s *LocalSkillScanner) Scan() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -250,6 +287,7 @@ func (s *LocalSkillScanner) Scan() error {
 		if err := os.MkdirAll(s.basePath, 0755); err != nil {
 			return fmt.Errorf("failed to create skills directory: %w", err)
 		}
+		s.scanned = true
 		return nil
 	}
 
@@ -273,8 +311,7 @@ func (s *LocalSkillScanner) Scan() error {
 				continue
 			}
 
-			// Look for SKILL.md files
-			if entry.Name() != "SKILL.md" {
+			if !skillbundle.IsEntryDocumentName(entry.Name()) {
 				continue
 			}
 
@@ -284,14 +321,35 @@ func (s *LocalSkillScanner) Scan() error {
 				continue
 			}
 
-			s.skills[skill.ID] = skill
+			if existing := s.skills[skill.ID]; existing == nil || skillbundle.EntryDocumentPriority(filepath.Base(skill.FilePath)) < skillbundle.EntryDocumentPriority(filepath.Base(existing.FilePath)) {
+				s.skills[skill.ID] = skill
+			}
 		}
 	}
 
+	s.scanned = true
 	return nil
 }
 
-// parseSkillFile parses a SKILL.md file
+func (s *LocalSkillScanner) ensureScanned() error {
+	s.mu.RLock()
+	scanned := s.scanned
+	s.mu.RUnlock()
+	if scanned {
+		return nil
+	}
+	return s.Scan()
+}
+
+// Invalidate marks the cached scan result stale so the next read rescans the directory.
+func (s *LocalSkillScanner) Invalidate() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scanned = false
+	s.skills = make(map[string]*LocalSkill)
+}
+
+// parseSkillFile parses a local skill entry document.
 func (s *LocalSkillScanner) parseSkillFile(path string) (*LocalSkill, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -337,7 +395,9 @@ func (s *LocalSkillScanner) parseSkillFile(path string) (*LocalSkill, error) {
 				switch key {
 				case "name":
 					skill.Name = value
-					skill.ID = value // Use name as ID if not specified
+					if skill.ID == "" {
+						skill.ID = value
+					}
 				case "id":
 					skill.ID = value
 				case "description":
@@ -377,6 +437,7 @@ func (s *LocalSkillScanner) parseSkillFile(path string) (*LocalSkill, error) {
 
 // GetAll returns all discovered local skills
 func (s *LocalSkillScanner) GetAll() []*LocalSkill {
+	_ = s.ensureScanned()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -389,6 +450,7 @@ func (s *LocalSkillScanner) GetAll() []*LocalSkill {
 
 // Get returns a local skill by ID
 func (s *LocalSkillScanner) Get(id string) *LocalSkill {
+	_ = s.ensureScanned()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.skills[id]
@@ -396,6 +458,7 @@ func (s *LocalSkillScanner) Get(id string) *LocalSkill {
 
 // Count returns the number of discovered local skills
 func (s *LocalSkillScanner) Count() int {
+	_ = s.ensureScanned()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.skills)

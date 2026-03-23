@@ -342,7 +342,7 @@ build_all() {
     # Build third_party native libraries (FFI mode - shared libs)
     if [ ! -d "$PROJECT_ROOT/libs" ] || [ -z "$(ls -A $PROJECT_ROOT/libs 2>/dev/null)" ]; then
         info "Building shared libraries for FFI..."
-        "$PROJECT_ROOT/scripts/build-libs.sh"
+        bash "$PROJECT_ROOT/scripts/build-libs.sh"
     fi
 
     # Build server

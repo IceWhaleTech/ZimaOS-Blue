@@ -730,6 +730,8 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 			if len(blocks) > 0 {
 				anthropicMsg.Content = blocks
 			}
+		default:
+			anthropicMsg.Content = anthropicToolResultString(content)
 		}
 
 		// Handle tool calls in assistant messages
@@ -748,6 +750,7 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 			}
 			anthropicMsg.Content = blocks
 		}
+		anthropicMsg.Content = normalizeAnthropicMessageContent(anthropicMsg.Content)
 
 		anthropicReq.Messages = append(anthropicReq.Messages, anthropicMsg)
 	}
@@ -840,6 +843,25 @@ func anthropicToolResultString(content interface{}) string {
 	}
 }
 
+func normalizeAnthropicMessageContent(content interface{}) interface{} {
+	switch c := content.(type) {
+	case nil:
+		return ""
+	case []AnthropicContentBlock:
+		if len(c) == 0 {
+			return ""
+		}
+		return c
+	case []interface{}:
+		if len(c) == 0 {
+			return ""
+		}
+		return c
+	default:
+		return content
+	}
+}
+
 // ApplyPromptCaching adds cache_control breakpoints to an Anthropic request.
 // Breakpoints are placed on:
 //
@@ -921,7 +943,17 @@ func (fc *FormatConverter) convertContentPart(part map[string]interface{}) *Anth
 
 	switch partType {
 	case "text":
-		text, _ := part["text"].(string)
+		rawText, ok := part["text"]
+		if !ok || rawText == nil {
+			return nil
+		}
+		text, ok := rawText.(string)
+		if !ok {
+			text = fmt.Sprintf("%v", rawText)
+		}
+		if strings.TrimSpace(text) == "" {
+			return nil
+		}
 		return &AnthropicContentBlock{
 			Type: "text",
 			Text: text,

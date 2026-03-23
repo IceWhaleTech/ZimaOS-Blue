@@ -1,6 +1,8 @@
 package harness
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -63,6 +65,9 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/eval-runs/:id", h.GetEvalRun)
 	g.GET("/eval-runs/:id/report", h.GetEvalRunReport)
 	g.POST("/eval-runs/:id/cancel", h.CancelEvalRun)
+	g.POST("/eval-runs/:id/compare", h.CompareEvalRun)
+	g.POST("/baselines", h.CreateBaseline)
+	g.GET("/baselines", h.ListBaselines)
 	g.POST("/groups", h.CreateGroup)
 	g.GET("/groups", h.ListGroups)
 	g.GET("/groups/:id", h.GetGroup)
@@ -70,6 +75,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/groups/:id/report", h.GetGroupReport)
 	g.POST("/groups/:id/cancel", h.CancelGroup)
 	g.POST("/groups/:id/retry_failed", h.RetryFailedGroup)
+	g.POST("/groups/:id/promote", h.PromoteGroup)
 }
 
 func (h *Handler) CreateRun(c echo.Context) error {
@@ -284,6 +290,72 @@ func (h *Handler) CancelEvalRun(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
 }
 
+func (h *Handler) CompareEvalRun(c echo.Context) error {
+	evalRun, err := h.scopedEvalRun(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "eval run not found"})
+	}
+	var req CompareEvalRunRequest
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if req.BaselineID != "" {
+		if _, err := h.scopedBaselineByID(c, req.BaselineID); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "baseline not found"})
+		}
+	}
+	if req.BaseEvalRunID != "" {
+		if _, err := h.scopedEvalRunByID(c, req.BaseEvalRunID); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "comparison base eval run not found"})
+		}
+	}
+	report, err := h.manager.CompareEvalRun(c.Request().Context(), evalRun.ID, req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, report)
+}
+
+func (h *Handler) CreateBaseline(c echo.Context) error {
+	var spec BaselineSpec
+	if err := c.Bind(&spec); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if userID := harnessUserID(c); userID != "" {
+		spec.OwnerUserID = userID
+	}
+	if spec.EvalRunID != "" {
+		if _, err := h.scopedEvalRunByID(c, spec.EvalRunID); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "eval run not found"})
+		}
+	}
+	baseline, err := h.manager.CreateBaseline(c.Request().Context(), spec)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusCreated, baseline)
+}
+
+func (h *Handler) ListBaselines(c echo.Context) error {
+	filter := BaselineFilter{
+		OwnerUserID: harnessUserID(c),
+		Limit:       50,
+	}
+	if rawLimit := strings.TrimSpace(c.QueryParam("limit")); rawLimit != "" {
+		if limit, err := strconv.Atoi(rawLimit); err == nil && limit > 0 {
+			filter.Limit = limit
+		}
+	}
+	if evalSpecID := strings.TrimSpace(c.QueryParam("eval_spec_id")); evalSpecID != "" {
+		filter.EvalSpecID = evalSpecID
+	}
+	baselines, err := h.manager.ListBaselines(c.Request().Context(), filter)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, baselines)
+}
+
 func (h *Handler) ListRuns(c echo.Context) error {
 	filter := RunFilter{
 		UserID: harnessUserID(c),
@@ -412,6 +484,25 @@ func (h *Handler) RetryFailedGroup(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"retried": retried})
+}
+
+func (h *Handler) PromoteGroup(c echo.Context) error {
+	group, err := h.scopedGroup(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "group not found"})
+	}
+	var spec GroupPromotionSpec
+	if err := c.Bind(&spec); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if strings.TrimSpace(spec.Subject) == "" {
+		spec.Subject = group.Subject
+	}
+	result, err := h.manager.PromoteGroup(c.Request().Context(), group.ID, spec)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) GetRun(c echo.Context) error {
@@ -552,7 +643,11 @@ func (h *Handler) scopedEvalSpec(c echo.Context) (*EvalSpec, error) {
 }
 
 func (h *Handler) scopedEvalRun(c echo.Context) (*EvalRun, error) {
-	evalRun, err := h.manager.GetEvalRun(c.Request().Context(), c.Param("id"))
+	return h.scopedEvalRunByID(c, c.Param("id"))
+}
+
+func (h *Handler) scopedEvalRunByID(c echo.Context, id string) (*EvalRun, error) {
+	evalRun, err := h.manager.GetEvalRun(c.Request().Context(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -560,6 +655,20 @@ func (h *Handler) scopedEvalRun(c echo.Context) (*EvalRun, error) {
 		return nil, echo.ErrNotFound
 	}
 	return evalRun, nil
+}
+
+func (h *Handler) scopedBaselineByID(c echo.Context, id string) (*Baseline, error) {
+	if h == nil || h.manager == nil || h.manager.store == nil {
+		return nil, echo.ErrNotFound
+	}
+	baseline, err := h.manager.store.GetBaseline(c.Request().Context(), strings.TrimSpace(id))
+	if err != nil {
+		return nil, err
+	}
+	if userID := harnessUserID(c); userID != "" && baseline.OwnerUserID != "" && baseline.OwnerUserID != userID {
+		return nil, echo.ErrNotFound
+	}
+	return baseline, nil
 }
 
 func parseRunKinds(values ...[]string) []RunKind {

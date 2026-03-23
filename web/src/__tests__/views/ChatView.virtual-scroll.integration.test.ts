@@ -464,20 +464,22 @@ describe('ChatView virtual scroll integration', () => {
 
     vi.clearAllMocks()
 
-    rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
-      const el = this as HTMLElement
-      if (el.classList.contains('chat-messages-area')) {
-        return mockRect(0, 400)
-      }
-      if (el.classList.contains('virtual-scroll-container')) {
-        const scrollContainer = el.closest('.chat-messages-area') as HTMLElement | null
-        return mockRect(-(scrollContainer?.scrollTop ?? 0), 0)
-      }
-      if (el.dataset.messageId) {
-        return mockRect(0, 100)
-      }
-      return mockRect(0, 40)
-    })
+    rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function () {
+        const el = this as HTMLElement
+        if (el.classList.contains('chat-messages-area')) {
+          return mockRect(0, 400)
+        }
+        if (el.classList.contains('virtual-scroll-container')) {
+          const scrollContainer = el.closest('.chat-messages-area') as HTMLElement | null
+          return mockRect(-(scrollContainer?.scrollTop ?? 0), 0)
+        }
+        if (el.dataset.messageId) {
+          return mockRect(0, 100)
+        }
+        return mockRect(0, 40)
+      })
 
     scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo').mockImplementation(function (arg) {
       if (typeof arg === 'object' && arg && 'top' in arg) {
@@ -554,7 +556,9 @@ describe('ChatView virtual scroll integration', () => {
     mocks.approvalApi.updateConfig.mockReset().mockResolvedValue({})
     mocks.systemWriteLog.mockReset().mockResolvedValue(undefined)
 
-    vi.mocked(conversationApi.list).mockReset().mockResolvedValue({ data: [CONVERSATION] } as never)
+    vi.mocked(conversationApi.list)
+      .mockReset()
+      .mockResolvedValue({ data: [CONVERSATION] } as never)
     vi.mocked(conversationApi.create).mockReset()
     vi.mocked(conversationApi.get).mockReset()
     vi.mocked(conversationApi.delete).mockReset()
@@ -584,7 +588,9 @@ describe('ChatView virtual scroll integration', () => {
         },
       } as never)
 
-    vi.mocked(messageApi.list).mockReset().mockResolvedValue({ data: [] } as never)
+    vi.mocked(messageApi.list)
+      .mockReset()
+      .mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.send).mockReset()
     vi.mocked(messageApi.cancelStream).mockReset()
   })

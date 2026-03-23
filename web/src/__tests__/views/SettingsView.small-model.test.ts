@@ -11,8 +11,15 @@ import { backupApi } from '@/api/index'
 import { proxyCacheApi } from '@/api/proxyCache'
 import { serviceApi } from '@/api/service'
 
-let routeTab: 'proxy' | 'memory' | 'llm' = 'proxy'
+let routeTab: 'general' | 'proxy' | 'memory' | 'llm' = 'proxy'
 const routerReplace = vi.fn()
+const { tauriState } = vi.hoisted(() => ({
+  tauriState: {
+    isTauri: false,
+    platform: 'unknown',
+    setCloseBehavior: vi.fn(),
+  },
+}))
 
 vi.mock('vue-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-router')>()
@@ -126,12 +133,16 @@ vi.mock('@/api/service', () => ({
   },
 }))
 
-vi.mock('@/composables/useTauri', () => ({
-  useTauri: () => ({
-    isTauri: false,
-    setCloseBehavior: vi.fn(),
-  }),
-}))
+vi.mock('@/composables/useTauri', async () => {
+  const { ref } = await import('vue')
+  return {
+    useTauri: () => ({
+      isTauri: ref(tauriState.isTauri),
+      platform: ref(tauriState.platform),
+      setCloseBehavior: tauriState.setCloseBehavior,
+    }),
+  }
+})
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -268,6 +279,8 @@ describe('SettingsView small-model controls', () => {
     localStorageMock.clear()
     routerReplace.mockReset()
     vi.clearAllMocks()
+    tauriState.isTauri = false
+    tauriState.platform = 'unknown'
     primeApiMocks()
   })
 
@@ -502,6 +515,28 @@ describe('SettingsView small-model controls', () => {
 
     expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(true)
     expect(routerReplace).toHaveBeenCalledWith({ query: { tab: 'llm' } })
+
+    wrapper.unmount()
+  })
+
+  it('shows menu bar wording for close behavior on macOS desktop', async () => {
+    routeTab = 'general'
+    tauriState.isTauri = true
+    tauriState.platform = 'macos'
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Minimize to Menu Bar')
+    expect(wrapper.text()).not.toContain('Minimize to Tray')
+    expect(wrapper.findAll('.settings-pill-button__icon').length).toBe(2)
 
     wrapper.unmount()
   })

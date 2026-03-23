@@ -55,6 +55,7 @@ blue browser.act ref=12 act_type=select value="option_a"
 ```bash
 blue browser.screenshot url=https://example.com
 blue browser.screenshot target_id=ABCDEF123456
+blue browser.screenshot
 ```
 
 ### browser.tabs
@@ -78,6 +79,7 @@ blue browser.tabs
 ## Notes
 
 - Use `browser` for real page interaction, not keyword discovery.
+- `blue browser.screenshot` without args captures the active tab.
 - For simple keyword lookup, prefer `web_search` first.
 - For known public URLs that only need content, prefer `web_fetch` or `web_read`.
 - Treat `browser` as the final fallback when lighter web tools are insufficient.

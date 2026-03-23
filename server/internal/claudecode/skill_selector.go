@@ -425,7 +425,7 @@ func stage0RuleRoute(query string) Decision {
 	if strings.HasPrefix(lower, "ask ") || strings.HasPrefix(lower, "blue ask ") {
 		return selectSkill("ask", "rule_ask")
 	}
-	if strings.Contains(lower, "http://") || strings.Contains(lower, "https://") {
+	if (strings.Contains(lower, "http://") || strings.Contains(lower, "https://")) && !shouldBypassURLBrowserRule(lower) {
 		return selectSkill("browser", "rule_url")
 	}
 	if strings.Contains(lower, "plan_create") || strings.Contains(lower, "plan_update") || strings.Contains(lower, "plan_append") {
@@ -435,6 +435,31 @@ func stage0RuleRoute(query string) Decision {
 		return selectSkill("mgmt", "rule_mgmt")
 	}
 	return Decision{}
+}
+
+func shouldBypassURLBrowserRule(lower string) bool {
+	if lower == "" {
+		return false
+	}
+	if hasSelectorTerm(lower, []string{
+		"ui", "ux", "interface", "layout", "design", "mockup", "wireframe", "component", "visual",
+		"accessibility", "a11y", "界面", "布局", "设计", "设计稿", "组件", "视觉", "无障碍", "可访问性",
+	}) {
+		return true
+	}
+	return hasSelectorTerm(lower, []string{
+		"analyze", "analysis", "summarize", "summary", "synthesize", "compare", "report", "insight", "insights", "findings", "extract",
+		"research", "investigate", "study", "analyze this", "summarize this", "分析", "总结", "提炼", "比较", "报告", "洞察", "研究", "梳理", "评估",
+	})
+}
+
+func hasSelectorTerm(text string, terms []string) bool {
+	for _, term := range terms {
+		if sel.ContainsTerm(text, term) {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldTriggerRerank(query string, d Decision) bool {

@@ -107,12 +107,30 @@ type MediaModelInfo struct {
 	FallbackStrategy string        `json:"fallback_strategy,omitempty"`
 }
 
+// MediaFallbackSource describes a disclosed source asset used by fallback media generation.
+type MediaFallbackSource struct {
+	Provider        string `json:"provider"`
+	Title           string `json:"title,omitempty"`
+	PageURL         string `json:"page_url,omitempty"`
+	AssetURL        string `json:"asset_url,omitempty"`
+	ThumbnailURL    string `json:"thumbnail_url,omitempty"`
+	Creator         string `json:"creator,omitempty"`
+	License         string `json:"license,omitempty"`
+	LicenseURL      string `json:"license_url,omitempty"`
+	Note            string `json:"note,omitempty"`
+	VerifiedLicense bool   `json:"verified_license,omitempty"`
+}
+
 // MediaFallbackInfo describes how a task was fulfilled without a configured upstream API key.
 type MediaFallbackInfo struct {
-	Used        bool     `json:"used"`
-	Strategy    string   `json:"strategy"`
-	DisplayName string   `json:"display_name"`
-	SourceURLs  []string `json:"source_urls,omitempty"`
-	SpaceURL    string   `json:"space_url,omitempty"`
-	Disclosure  string   `json:"disclosure"`
+	Used        bool                  `json:"used"`
+	Strategy    string                `json:"strategy"`
+	DisplayName string                `json:"display_name"`
+	SourceURLs  []string              `json:"source_urls,omitempty"`
+	Sources     []MediaFallbackSource `json:"sources,omitempty"`
+	SpaceURL    string                `json:"space_url,omitempty"`
+	Disclosure  string                `json:"disclosure"`
+	RenderMode  string                `json:"render_mode,omitempty"`
+	TemplateID  string                `json:"template_id,omitempty"`
+	StylePreset string                `json:"style_preset,omitempty"`
 }

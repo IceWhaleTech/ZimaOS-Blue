@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
@@ -10,24 +10,36 @@ const {
   settingsStoreState,
   tauriState,
 } = vi.hoisted(() => ({
-    setupFormFillerWidget: vi.fn(),
-    cleanupFormFillerWidget: vi.fn(),
-    previewStoreState: {
-      isPreviewMode: false,
-    },
-    settingsStoreState: {
-      closeBehavior: 'quit',
-      claudeCodeEnabled: false,
-      claudeCodeEnabledLoaded: true,
-    },
-    tauriState: {
-      isTauri: false,
-      platform: 'unknown',
-      setCloseBehavior: vi.fn(),
-      startWindowDragging: vi.fn(),
-      refreshTauriDetection: vi.fn(),
-    },
-  }))
+  setupFormFillerWidget: vi.fn(),
+  cleanupFormFillerWidget: vi.fn(),
+  previewStoreState: {
+    isPreviewMode: false,
+  },
+  settingsStoreState: {
+    closeBehavior: 'minimize',
+    claudeCodeEnabled: false,
+    claudeCodeEnabledLoaded: true,
+  },
+  tauriState: {
+    isTauri: false,
+    platform: 'unknown',
+    setCloseBehavior: vi.fn(),
+    startWindowDragging: vi.fn(),
+    refreshTauriDetection: vi.fn(),
+  },
+}))
+
+const helpers = vi.hoisted(() => ({
+  asAsyncSFCModule(component: Record<string, unknown>) {
+    return {
+      __esModule: true,
+      __isTeleport: false,
+      __isKeepAlive: false,
+      default: component,
+      ...component,
+    }
+  },
+}))
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -62,42 +74,45 @@ vi.mock('@/stores/settings', () => ({
 }))
 
 vi.mock('@/components/AppSidebar.vue', () => ({
-  default: {
+  ...helpers.asAsyncSFCModule({
     name: 'AppSidebar',
     template: '<aside class="app-sidebar-stub" />',
-  },
+  }),
 }))
 
 vi.mock('@/components/formfiller/FormFillerWidget.vue', () => ({
-  default: {
+  ...helpers.asAsyncSFCModule({
     name: 'FormFillerWidget',
     template: '<div class="form-filler-widget-stub" />',
-  },
+  }),
 }))
 
 vi.mock('@/components/onboarding/PreviewOnboardingModal.vue', () => ({
-  __isTeleport: false,
-  __isKeepAlive: false,
-  default: {
+  ...helpers.asAsyncSFCModule({
     name: 'PreviewOnboardingModal',
     template: '<div class="preview-onboarding-modal-stub" />',
-  },
+  }),
+}))
+
+vi.mock('@/components/BrowserMonitorWidget.vue', () => ({
+  ...helpers.asAsyncSFCModule({
+    name: 'BrowserMonitorWidget',
+    template: '<div class="browser-monitor-widget-stub" />',
+  }),
 }))
 
 vi.mock('@/components/typeless/FullscreenModal.vue', () => ({
-  __isTeleport: false,
-  __isKeepAlive: false,
-  default: {
+  ...helpers.asAsyncSFCModule({
     name: 'FullscreenModal',
     template: '<div class="fullscreen-modal-stub" />',
-  },
+  }),
 }))
 
 vi.mock('@/components/voicewake/GlobalVoiceWakeBanner.vue', () => ({
-  default: {
+  ...helpers.asAsyncSFCModule({
     name: 'GlobalVoiceWakeBanner',
     template: '<div class="global-voicewake-banner-stub" />',
-  },
+  }),
 }))
 
 function createTestRouter() {
@@ -135,17 +150,24 @@ async function mountLayout(path: string) {
   router.push(path)
   await router.isReady()
 
-  return mount(DefaultLayout, {
+  const wrapper = mount(DefaultLayout, {
     global: {
       plugins: [router],
     },
   })
+
+  await flushPromises()
+  await vi.dynamicImportSettled()
+  await flushPromises()
+
+  return wrapper
 }
 
 describe('DefaultLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     previewStoreState.isPreviewMode = false
+    settingsStoreState.closeBehavior = 'minimize'
     settingsStoreState.claudeCodeEnabled = false
     settingsStoreState.claudeCodeEnabledLoaded = true
     tauriState.isTauri = false
@@ -229,6 +251,7 @@ describe('DefaultLayout', () => {
     settingsStoreState.claudeCodeEnabledLoaded = true
 
     const wrapper = await mountLayout('/chat')
+    await flushPromises()
 
     expect(wrapper.find('.preview-onboarding-modal-stub').exists()).toBe(true)
 
@@ -265,6 +288,17 @@ describe('DefaultLayout', () => {
     expect(wrapper.find('.layout-window-chrome').exists()).toBe(true)
     expect(wrapper.find('.layout-window-chrome-pill').exists()).toBe(false)
     expect(wrapper.find('.layout-window-chrome-bar').attributes('data-tauri-drag-region')).toBe('')
+
+    wrapper.unmount()
+  })
+
+  it('syncs the saved desktop close behavior to Tauri on mount', async () => {
+    tauriState.isTauri = true
+    settingsStoreState.closeBehavior = 'minimize'
+
+    const wrapper = await mountLayout('/home')
+
+    expect(tauriState.setCloseBehavior).toHaveBeenCalledWith('minimize')
 
     wrapper.unmount()
   })

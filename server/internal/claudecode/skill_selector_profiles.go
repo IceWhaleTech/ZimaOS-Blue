@@ -53,14 +53,15 @@ func buildSkillSelectorProfile(doc SkillDoc) sel.SelectorProfile {
 		profile.PreferredDomains = []string{sel.DomainLiveWeb}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace}
 	case "ui_reviewer":
-		profile.Actions = compactSelectorTerms("review", "audit", "inspect", "evaluate", "评审", "审查", "检查")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "ui", "ux", "screen", "screenshot", "design", "mockup", "layout", "component", "界面", "截图", "设计稿", "布局", "组件")...)
+		profile.Actions = compactSelectorTerms("review", "audit", "inspect", "evaluate", "critique", "score", "rate", "assess", "accessibility check", "评审", "审查", "检查", "点评", "打分", "评分", "无障碍检查")
+		profile.Objects = compactSelectorTerms(append(profile.Objects, "ui", "ux", "screen", "screenshot", "design", "mockup", "layout", "component", "website", "site", "webpage", "landing page", "app", "accessibility", "a11y", "visual", "界面", "截图", "设计稿", "布局", "组件", "网站", "网页", "落地页", "应用", "无障碍", "可访问性", "视觉")...)
 		profile.RequireAnyDomains = []string{sel.DomainUIArtifact}
 		profile.PreferredDomains = []string{sel.DomainUIArtifact}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace, sel.DomainProductivity}
 	case "analyze":
-		profile.Actions = compactSelectorTerms("analyze", "summarize", "compare", "review", "inspect", "分析", "总结", "比较", "查看")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "file", "report", "text", "data", "content", "文件", "报告", "文本", "数据", "内容")...)
+		profile.Actions = compactSelectorTerms("analyze", "summarize", "compare", "synthesize", "inspect", "research", "分析", "总结", "比较", "提炼", "查看", "研究", "梳理")
+		profile.Objects = compactSelectorTerms(append(profile.Objects, "file", "report", "text", "data", "content", "url", "urls", "link", "links", "page", "pages", "website", "site", "webpage", "topic", "article", "articles", "source", "sources", "文件", "报告", "文本", "数据", "内容", "网址", "链接", "页面", "网站", "主题", "文章", "来源")...)
+		profile.PreferredDomains = []string{sel.DomainLiveWeb, sel.DomainLocalWorkspace}
 	case "himalaya":
 		profile.Actions = compactSelectorTerms("email", "mail", "imap", "smtp", "reply", "forward", "compose", "send", "archive", "search", "triage", "download attachment", "邮件", "邮箱", "回复", "转发", "发送", "归档", "检索", "整理")
 		profile.Objects = compactSelectorTerms(append(profile.Objects, "email", "mail", "inbox", "folder", "message", "attachment", "account", "imap", "smtp", "notmuch", "maildir", "收件箱", "邮件", "附件", "账户")...)

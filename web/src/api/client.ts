@@ -29,9 +29,7 @@ export function isAccessTokenExpiredOrExpiring(token: string, skewMs = 30_000): 
 function shouldSkipProactiveRefresh(url?: string): boolean {
   if (!url) return false
   return (
-    url.includes('/auth/login') ||
-    url.includes('/auth/refresh') ||
-    url.includes('/preview/token')
+    url.includes('/auth/login') || url.includes('/auth/refresh') || url.includes('/preview/token')
   )
 }
 

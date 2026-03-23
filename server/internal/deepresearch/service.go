@@ -181,6 +181,8 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 	if query == "" {
 		return nil, fmt.Errorf("query is required")
 	}
+	retryContext := strings.TrimSpace(req.RetryContext)
+	retryFeedback := cloneInterfaceMap(req.RetryFeedback)
 	userID := normalizeActorID(req.UserID)
 	tenantID := strings.TrimSpace(req.TenantID)
 
@@ -235,6 +237,8 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 		UserID:             userID,
 		TenantID:           tenantID,
 		Query:              query,
+		RetryContext:       retryContext,
+		RetryFeedback:      retryFeedback,
 		Lang:               lang,
 		Mode:               mode,
 		RequestedRouteMode: requestedRouteMode,
@@ -425,15 +429,18 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 		return
 	}
 	useV2 := s.IsV2Enabled()
-	brief := buildResearchBrief(job.Query, job.Lang, job.TimeWindows, job.ReportStyle)
+	brief := buildResearchBrief(job.Query, job.Lang, job.TimeWindows, job.ReportStyle, job.RetryContext, job.RetryFeedback)
 	s.broadcast(jobID, "brief_augmented", map[string]interface{}{
 		"goal":               brief.Goal,
 		"entity":             brief.Entity,
 		"time_windows":       brief.TimeWindows,
 		"must_verify_claims": brief.MustVerifyClaims,
+		"retry_context":      brief.RetryContext,
+		"retry_queries":      brief.RetryQueries,
 	})
 
 	tasks := annotateTasksWithBrief(s.planner.Plan(job.Query, job.Mode, job.Lang), brief)
+	tasks = prependRetryPlanningTasks(tasks, brief)
 	tasks = dedupeTaskQueries(tasks)
 	retrieveStepBudget := maxInt(1, job.Budget.MaxSteps-2) // reserve steps for plan + synthesize
 	if len(tasks) > retrieveStepBudget {
@@ -1656,21 +1663,18 @@ func computeCitationCoverage(answer string, citationCount int) float64 {
 }
 
 func localizedVerificationHeading(lang, query string) string {
-	if normalizeResearchLang(lang, query) == researchLangZH {
-		return "核验摘要"
+	locale := deepResearchLocaleKey(lang, query)
+	if text := deepResearchLocalizedText(locale, deepResearchVerificationHeadingTranslations); text != "" {
+		return text
 	}
 	return "Verification summary"
 }
 
 func localizedVerificationStatusLabel(lang, status string) string {
-	if normalizeResearchLang(lang, status) == researchLangZH {
-		switch status {
-		case verificationStatusResolved:
-			return "已核实"
-		case verificationStatusConflicted:
-			return "有冲突"
-		default:
-			return "待补证"
+	locale := deepResearchLocaleKey(lang, status)
+	if labels, ok := deepResearchVerificationStatusTranslations[status]; ok {
+		if text := deepResearchLocalizedText(locale, labels); text != "" {
+			return text
 		}
 	}
 	switch status {
@@ -2003,6 +2007,9 @@ func cloneJob(j *Job) *Job {
 	if j.TimeWindows != nil {
 		cp.TimeWindows = append([]string(nil), j.TimeWindows...)
 	}
+	if j.RetryFeedback != nil {
+		cp.RetryFeedback = cloneInterfaceMap(j.RetryFeedback)
+	}
 	if j.Tasks != nil {
 		cp.Tasks = append([]Task(nil), j.Tasks...)
 	}
@@ -2072,9 +2079,32 @@ func cloneInterfaceMap(values map[string]interface{}) map[string]interface{} {
 	}
 	cp := make(map[string]interface{}, len(values))
 	for k, v := range values {
-		cp[k] = v
+		cp[k] = cloneInterfaceValue(v)
 	}
 	return cp
+}
+
+func cloneInterfaceValue(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		return cloneInterfaceMap(typed)
+	case []interface{}:
+		out := make([]interface{}, len(typed))
+		for i := range typed {
+			out[i] = cloneInterfaceValue(typed[i])
+		}
+		return out
+	case []string:
+		return append([]string(nil), typed...)
+	case []map[string]interface{}:
+		out := make([]map[string]interface{}, len(typed))
+		for i := range typed {
+			out[i] = cloneInterfaceMap(typed[i])
+		}
+		return out
+	default:
+		return value
+	}
 }
 
 func cloneResearchTrace(items []ResearchTraceEntry) []ResearchTraceEntry {

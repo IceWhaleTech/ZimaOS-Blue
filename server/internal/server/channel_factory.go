@@ -133,6 +133,28 @@ func (f *ChannelFactory) createFeishu(cfg *ChannelConfig) (channel.Channel, erro
 		disableTypingReaction = v
 	}
 
+	sessionMode := false
+	if v, ok := parseConfigBool(cfg.Config["session_mode"]); ok {
+		sessionMode = v
+	}
+	if v, ok := parseConfigBool(cfg.Config["sessionMode"]); ok {
+		sessionMode = v
+	}
+	if v, ok := parseConfigBool(cfg.Config["reply_in_thread"]); ok {
+		sessionMode = !v
+	}
+	if v, ok := parseConfigBool(cfg.Config["replyInThread"]); ok {
+		sessionMode = !v
+	}
+	if raw := strings.TrimSpace(strings.ToLower(cfg.Config["reply_mode"])); raw != "" {
+		switch raw {
+		case "session", "chat", "flat", "new_topic", "topic":
+			sessionMode = true
+		case "reply", "thread":
+			sessionMode = false
+		}
+	}
+
 	feishuCfg := channel.FeishuConfig{
 		Enabled:               cfg.Enabled,
 		AppID:                 cfg.Config["app_id"],
@@ -140,6 +162,7 @@ func (f *ChannelFactory) createFeishu(cfg *ChannelConfig) (channel.Channel, erro
 		VerificationToken:     cfg.Config["verification_token"],
 		EncryptKey:            cfg.Config["encrypt_key"],
 		DisableTypingReaction: disableTypingReaction,
+		SessionMode:           sessionMode,
 	}
 	return feishu.New(feishuCfg, f.logger), nil
 }

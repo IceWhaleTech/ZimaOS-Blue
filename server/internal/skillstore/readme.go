@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -52,6 +53,7 @@ type ReadmeFetcher struct {
 	batchMu      sync.Mutex
 	batchUpdates []readmeUpdate
 	batchCh      chan struct{} // Signal to flush batch
+	started      atomic.Bool
 }
 
 // NewReadmeFetcher creates a new README fetcher
@@ -71,6 +73,7 @@ func NewReadmeFetcher(store *Store, logger *slog.Logger) *ReadmeFetcher {
 
 // Start starts the background README fetcher workers
 func (f *ReadmeFetcher) Start(ctx context.Context) {
+	f.started.Store(true)
 	// Start batch flusher
 	f.wg.Add(1)
 	go f.batchFlusher(ctx)
@@ -86,6 +89,14 @@ func (f *ReadmeFetcher) Start(ctx context.Context) {
 func (f *ReadmeFetcher) Stop() {
 	close(f.stopCh)
 	f.wg.Wait()
+}
+
+// Started reports whether background workers have been launched.
+func (f *ReadmeFetcher) Started() bool {
+	if f == nil {
+		return false
+	}
+	return f.started.Load()
 }
 
 // Enqueue adds a skill to the README fetch queue

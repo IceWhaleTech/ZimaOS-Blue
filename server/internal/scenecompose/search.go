@@ -41,7 +41,7 @@ func (s *AssetSearcher) FindBackground(ctx context.Context, plan *ScenePlan) (*R
 			bestRef = AssetRef{
 				Kind:      "background",
 				Query:     query,
-				SourceURL: firstNonEmpty(resolved.SourceURL, item.URL),
+				SourceURL: firstNonEmpty(resolved.PageURL, resolved.SourceURL, item.URL),
 				Title:     firstNonEmpty(resolved.Title, item.Title),
 			}
 		}
@@ -82,7 +82,7 @@ func (s *AssetSearcher) FindForeground(ctx context.Context, plan *ScenePlan, fg 
 				bestRef = AssetRef{
 					Kind:      "foreground",
 					Query:     query,
-					SourceURL: firstNonEmpty(resolved.SourceURL, item.URL),
+					SourceURL: firstNonEmpty(resolved.PageURL, resolved.SourceURL, item.URL),
 					Title:     firstNonEmpty(resolved.Title, item.Title),
 				}
 			}
@@ -98,16 +98,44 @@ func (s *AssetSearcher) FindForeground(ctx context.Context, plan *ScenePlan, fg 
 }
 
 func buildBackgroundQuery(plan *ScenePlan) string {
+	if plan == nil {
+		return ""
+	}
+	if query := normalizeSearchText(plan.BackgroundQuery); query != "" {
+		return query
+	}
+	return defaultBackgroundQuery(plan)
+}
+
+func defaultBackgroundQuery(plan *ScenePlan) string {
+	background := strings.TrimSpace(plan.Background)
+	if containsCJK(background) {
+		return compactQuery(
+			background,
+			backgroundSearchWeather(plan.Weather),
+			backgroundSearchTimeOfDay(plan.TimeOfDay),
+			backgroundSearchStyle(plan.Style),
+			"背景 照片 风景",
+		)
+	}
 	parts := []string{
-		strings.TrimSpace(plan.Background),
-		strings.TrimSpace(plan.Style),
-		strings.TrimSpace(plan.TimeOfDay),
+		background,
+		backgroundSearchWeather(plan.Weather),
+		backgroundSearchTimeOfDay(plan.TimeOfDay),
+		backgroundSearchStyle(plan.Style),
 		"landscape background photo",
 	}
 	return compactQuery(parts...)
 }
 
 func buildForegroundQuery(plan *ScenePlan, fg ForegroundPlan, preferTransparent bool) string {
+	if query := normalizeSearchText(fg.SearchQuery); query != "" {
+		return query
+	}
+	return defaultForegroundQuery(plan, fg, preferTransparent)
+}
+
+func defaultForegroundQuery(plan *ScenePlan, fg ForegroundPlan, preferTransparent bool) string {
 	parts := []string{
 		fg.Type,
 		strings.Join(fg.Attributes, " "),
@@ -120,6 +148,13 @@ func buildForegroundQuery(plan *ScenePlan, fg ForegroundPlan, preferTransparent 
 }
 
 func buildForegroundFallbackQuery(plan *ScenePlan, fg ForegroundPlan) string {
+	if query := normalizeSearchText(fg.FallbackQuery); query != "" {
+		return query
+	}
+	return defaultForegroundFallbackQuery(plan, fg)
+}
+
+func defaultForegroundFallbackQuery(plan *ScenePlan, fg ForegroundPlan) string {
 	return compactQuery(fg.Type, strings.Join(fg.Attributes, " "), plan.Style, "white background photo")
 }
 
@@ -181,4 +216,37 @@ func hostOf(raw string) string {
 		return ""
 	}
 	return parsed.Host
+}
+
+func backgroundSearchWeather(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" || value == "clear" {
+		return ""
+	}
+	return value
+}
+
+func backgroundSearchTimeOfDay(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" || value == "day" {
+		return ""
+	}
+	return value
+}
+
+func backgroundSearchStyle(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" || value == "realistic" {
+		return ""
+	}
+	return value
+}
+
+func containsCJK(text string) bool {
+	for _, r := range text {
+		if r >= 0x4e00 && r <= 0x9fff {
+			return true
+		}
+	}
+	return false
 }

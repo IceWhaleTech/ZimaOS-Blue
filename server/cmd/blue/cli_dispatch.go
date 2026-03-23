@@ -16,6 +16,8 @@ func cliDispatch(args []string) bool {
 			devMode = true
 		case "--no-color":
 			noColor = true
+		case "--no-intercept":
+			disableIntercepts = true
 		case "--json":
 			jsonOutput = true
 		case "-v", "--verbose":

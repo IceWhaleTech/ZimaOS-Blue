@@ -519,6 +519,48 @@ func TestSyncTrackedTodoAfterToollessReply_DoesNotCompleteNonSummaryTodo(t *test
 	}
 }
 
+func TestSyncTrackedTodoAfterToollessReply_CompletesSinglePendingArtifactDeliveryItem(t *testing.T) {
+	tracked := "- [x] 提取页面实际色值\n- [ ] 将完整报告（问题标注 + 对比度建议 + Hero HTML/CSS 示例）写入文件并输出"
+	current := "已将完整报告写入 `ui-review/完整报告.md`，可以直接查看。"
+
+	got, changed := syncTrackedTodoAfterToollessReply(tracked, current)
+	if !changed {
+		t.Fatal("expected artifact-delivery todo completion")
+	}
+	if strings.Contains(got, "- [ ] 将完整报告") {
+		t.Fatalf("expected report delivery item to be checked, got %q", got)
+	}
+	if !strings.Contains(got, "- [x] 将完整报告") {
+		t.Fatalf("expected checked report delivery item, got %q", got)
+	}
+}
+
+func TestSyncTrackedTodoAfterToollessReply_DoesNotCompleteUnrelatedTodoOnArtifactDeliveryCue(t *testing.T) {
+	tracked := "- [x] 生成报告草稿\n- [ ] 校验移动端 Hero 间距"
+	current := "已将完整报告写入 `ui-review/完整报告.md`，可以直接查看。"
+
+	got, changed := syncTrackedTodoAfterToollessReply(tracked, current)
+	if changed {
+		t.Fatalf("expected unrelated todo to remain pending, got %q", got)
+	}
+	if got != tracked {
+		t.Fatalf("expected tracked todo unchanged, got %q", got)
+	}
+}
+
+func TestSyncTrackedTodoAfterToollessReply_DoesNotCompleteWhenMultiplePendingItemsRemain(t *testing.T) {
+	tracked := "- [ ] 收集信息\n- [ ] 提供最终总结"
+	current := "任务已完成。最终总结：资料已经整理完成。"
+
+	got, changed := syncTrackedTodoAfterToollessReply(tracked, current)
+	if changed {
+		t.Fatalf("expected checklist to stay unchanged with multiple pending items, got %q", got)
+	}
+	if got != tracked {
+		t.Fatalf("expected tracked todo unchanged, got %q", got)
+	}
+}
+
 func TestDeriveContinuationContext_AffirmativeWithDefaultPlan(t *testing.T) {
 	msgs := []llm.Message{
 		{Role: llm.RoleUser, Content: "你可以帮我查一下 ZimaOS 的信息吗"},
@@ -2871,6 +2913,60 @@ func TestFitPreparedMessagesToBudgetFailureIncludesMetadata(t *testing.T) {
 	}
 	if !failure.Budget.Exceeds() {
 		t.Fatalf("final budget = %+v, want exceeded", failure.Budget)
+	}
+}
+
+func TestFitPreparedMessagesToBudgetFallsBackWhenToolSchemaConsumesBudget(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+		{ProviderID: "p-context", ModelID: "small-model", ContextWindow: 1024, InputPrice: 5, Priority: 20},
+		{ProviderID: "p-context", ModelID: "large-model", ContextWindow: 8192, InputPrice: 8, Priority: 20},
+	}))
+
+	messages := []llm.Message{
+		{Role: llm.RoleSystem, Content: "system prompt"},
+		{Role: llm.RoleUser, Content: "Use the available tools and keep the answer short."},
+	}
+	toolDefs := []llm.Tool{{
+		Name:        "web_search",
+		Description: strings.Repeat("Search across provider-visible sources and preserve citations. ", 40),
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"query": map[string]interface{}{
+					"type":        "string",
+					"description": strings.Repeat("Detailed query guidance. ", 220),
+				},
+			},
+			"required": []string{"query"},
+		},
+	}}
+
+	messageOnlyBudget := handler.measurePreparedInputBudget("small-model", 64, messages)
+	if messageOnlyBudget.Exceeds() {
+		t.Fatalf("message-only budget should fit, got %+v", messageOnlyBudget)
+	}
+	toolAwareBudget := handler.measurePreparedInputBudgetWithTools("small-model", 64, messages, toolDefs)
+	if !toolAwareBudget.Exceeds() {
+		t.Fatalf("tool-aware budget should exceed after schema accounting, got %+v", toolAwareBudget)
+	}
+
+	plan := handler.fitPreparedMessagesToBudget(context.Background(), preparedBudgetFitParams{
+		ConvID:    "conv-tool-budget",
+		Model:     "small-model",
+		MaxTokens: 64,
+		Messages:  messages,
+		Tools:     toolDefs,
+	})
+	current := plan.Current()
+	if current == nil {
+		t.Fatalf("expected fallback attempt, got failure: %#v", plan.Failure())
+	}
+	if current.Model != "large-model" {
+		t.Fatalf("fallback model = %q, want large-model", current.Model)
+	}
+	if current.ContextTrim == nil || current.ContextTrim.FallbackModel != "large-model" {
+		t.Fatalf("context trim = %#v, want fallback metadata for large-model", current.ContextTrim)
 	}
 }
 
@@ -5572,7 +5668,8 @@ func TestChatHandlerStreamMessage_ToolDispatchBypassesImageWorkflow(t *testing.T
 	registry.Register(capture)
 
 	toolRegistry := tools.NewRegistry()
-	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "image_generation", Description: "image generation"}})
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "image", Description: "image generation"}})
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "image_generation", Description: "legacy image generation alias"}})
 	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "write", Description: "write"}})
 
 	handler := NewChatHandler(store, registry, toolRegistry)
@@ -5610,8 +5707,8 @@ func TestChatHandlerStreamMessage_ToolDispatchBypassesImageWorkflow(t *testing.T
 	if got := len(lastReq.Tools); got != 2 {
 		t.Fatalf("tool count = %d, want 2", got)
 	}
-	if got := lastReq.Tools[0].Name; got != "image_generation" {
-		t.Fatalf("selected tool = %q, want image_generation", got)
+	if got := lastReq.Tools[0].Name; got != "image" {
+		t.Fatalf("selected tool = %q, want image", got)
 	}
 	if got := lastReq.Tools[1].Name; got != "write" {
 		t.Fatalf("selected tool = %q, want write", got)
@@ -5638,7 +5735,7 @@ func TestChatHandlerSendMessage_ImageArtifactSuccessSkipsChecklistBootstrap(t *t
 					Role: llm.RoleAssistant,
 					ToolCalls: []llm.ToolCall{{
 						ID:        "call_image_1",
-						Name:      "image_generation",
+						Name:      "generateImage",
 						Arguments: `{"prompt":"A friendly robot sitting in a cozy coffee shop, reading a book.","path":"robot_cafe.png"}`,
 					}},
 				},
@@ -5651,7 +5748,7 @@ func TestChatHandlerSendMessage_ImageArtifactSuccessSkipsChecklistBootstrap(t *t
 	toolRegistry := tools.NewRegistry()
 	toolRegistry.Register(&staticToolMock{
 		def: tools.ToolDefinition{
-			Name:        "image_generation",
+			Name:        "image",
 			Description: "mock image generation",
 			Parameters: map[string]interface{}{
 				"type":                 "object",

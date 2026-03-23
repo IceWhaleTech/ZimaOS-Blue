@@ -7,6 +7,7 @@ import type {
   DeepResearchTimelineStep,
   TypelessCardDeepResearchTimeline,
 } from '@/types/typeless'
+import { localizeDeepResearchMode, localizeDeepResearchStatus } from '@/utils/deepResearchText'
 
 const { t, te } = useI18n()
 
@@ -47,13 +48,22 @@ const iteration = computed(() => {
 })
 
 const stage = computed(() => {
-  return String(props.card.stage || latestStep.value?.stage || '').trim().toLowerCase()
+  return String(props.card.stage || latestStep.value?.stage || '')
+    .trim()
+    .toLowerCase()
 })
 
 const query = computed(() => String(props.card.query || latestStep.value?.query || '').trim())
-const mode = computed(() => String(props.card.mode || latestStep.value?.mode || 'standard').trim())
+const modeLabel = computed(() =>
+  localizeDeepResearchMode(
+    String(props.card.mode || latestStep.value?.mode || 'standard').trim(),
+    resolveLabel
+  )
+)
 const latestGap = computed(() => {
-  return String(props.card.latest_gap || latestStep.value?.gap || latestStep.value?.latest_gap || '').trim()
+  return String(
+    props.card.latest_gap || latestStep.value?.gap || latestStep.value?.latest_gap || ''
+  ).trim()
 })
 const latestAction = computed(() => {
   return String(props.card.latest_action || latestStep.value?.latest_action || '').trim()
@@ -88,7 +98,9 @@ const progressClass = computed(() => {
 })
 
 function stageLabel(rawStage?: string): string {
-  const stageKey = String(rawStage || '').trim().toLowerCase()
+  const stageKey = String(rawStage || '')
+    .trim()
+    .toLowerCase()
   const labels: Record<string, string> = {
     intake: resolveLabel('chat.deepResearchStageIntake', 'Intake'),
     planning: resolveLabel('chat.deepResearchStagePlanning', 'Planning'),
@@ -99,7 +111,9 @@ function stageLabel(rawStage?: string): string {
     failed: resolveLabel('chat.deepResearchStageFailed', 'Failed'),
     cancelled: resolveLabel('chat.deepResearchStageCancelled', 'Cancelled'),
   }
-  return labels[stageKey] || rawStage || resolveLabel('chat.deepResearchProcess', 'Research process')
+  return (
+    labels[stageKey] || rawStage || resolveLabel('chat.deepResearchProcess', 'Research process')
+  )
 }
 
 function latestActionLabel(action?: string): string {
@@ -158,7 +172,9 @@ function stepSummary(step: DeepResearchTimelineStep): string {
 }
 
 function stepStatusClass(step: DeepResearchTimelineStep): string {
-  const stepStatus = String(step.status || '').trim().toLowerCase()
+  const stepStatus = String(step.status || '')
+    .trim()
+    .toLowerCase()
   switch (stepStatus) {
     case 'warning':
       return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
@@ -173,8 +189,14 @@ function stepStatusClass(step: DeepResearchTimelineStep): string {
   }
 }
 
+function stepStatusLabel(step: DeepResearchTimelineStep): string {
+  return localizeDeepResearchStatus(step.status, resolveLabel) || String(step.status || 'info')
+}
+
 function stepDotClass(step: DeepResearchTimelineStep): string {
-  const stepStatus = String(step.status || '').trim().toLowerCase()
+  const stepStatus = String(step.status || '')
+    .trim()
+    .toLowerCase()
   switch (stepStatus) {
     case 'warning':
       return 'bg-amber-500'
@@ -218,33 +240,35 @@ const emptyStateLabel = computed(() => {
 
 <template>
   <div
-    class="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/80 shadow-sm overflow-hidden"
+    class="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/80 shadow-sm overflow-hidden"
   >
     <div
-      class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60"
+      class="px-3.5 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60"
     >
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
             <span
-              class="rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              class="rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
             >
               {{ resolveLabel('chat.deepResearchTitle', 'Deep Research') }}
             </span>
-            <span class="rounded-full px-2.5 py-1" :class="statusClass">
+            <span class="rounded-full px-2 py-0.5" :class="statusClass">
               {{ stageLabel(stage || status) }}
             </span>
             <span
-              class="rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 capitalize dark:bg-slate-800 dark:text-slate-300"
+              class="rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
             >
-              {{ mode }}
+              {{ modeLabel }}
             </span>
           </div>
-          <div class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100 break-words">
+          <div
+            class="mt-1.5 text-[13px] font-semibold text-slate-800 dark:text-slate-100 break-words"
+          >
             {{ headerTitle }}
           </div>
           <div
-            class="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400"
+            class="mt-1.5 flex flex-wrap items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400"
           >
             <span>{{ progress }}%</span>
             <span v-if="iteration">
@@ -255,7 +279,7 @@ const emptyStateLabel = computed(() => {
         </div>
         <div class="text-xs font-medium text-slate-600 dark:text-slate-300">{{ progress }}%</div>
       </div>
-      <div class="mt-3 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+      <div class="mt-2.5 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
         <div
           class="h-full transition-all duration-500 ease-out"
           :class="progressClass"
@@ -264,10 +288,10 @@ const emptyStateLabel = computed(() => {
       </div>
     </div>
 
-    <div class="px-4 py-3 space-y-3">
+    <div class="px-3.5 py-2.5 space-y-2.5">
       <div
         v-if="latestGap"
-        class="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
+        class="rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
       >
         <div class="font-medium">
           {{ resolveLabel('chat.deepResearchLatestGap', 'Latest gap') }}
@@ -275,7 +299,10 @@ const emptyStateLabel = computed(() => {
         <div class="mt-1 break-words">{{ latestGap }}</div>
       </div>
 
-      <div v-if="steps.length === 0" class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+      <div
+        v-if="steps.length === 0"
+        class="rounded-lg bg-slate-50 px-2.5 py-2.5 dark:bg-slate-900/60"
+      >
         <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
           {{ resolveLabel('chat.deepResearchProcess', 'Research process') }}
         </div>
@@ -284,7 +311,7 @@ const emptyStateLabel = computed(() => {
         </div>
       </div>
 
-      <div v-else class="space-y-3">
+      <div v-else class="space-y-2.5">
         <div
           v-for="(step, index) in steps"
           :key="step.id || `deep-research-step-${index}`"
@@ -292,7 +319,7 @@ const emptyStateLabel = computed(() => {
         >
           <div
             class="absolute left-2 top-3 bottom-0 w-px bg-slate-200 dark:bg-slate-700"
-            :class="{ 'hidden': index === steps.length - 1 }"
+            :class="{ hidden: index === steps.length - 1 }"
           />
           <div
             class="absolute left-0 top-2.5 h-4 w-4 rounded-full ring-4 ring-white dark:ring-slate-900"
@@ -300,7 +327,7 @@ const emptyStateLabel = computed(() => {
           />
 
           <details
-            class="rounded-2xl border px-3 py-3 transition-colors"
+            class="rounded-xl border px-2.5 py-2.5 transition-colors"
             :class="[
               index === latestStepIndex
                 ? 'border-sky-200 bg-sky-50/70 dark:border-sky-900/60 dark:bg-sky-950/20'
@@ -315,46 +342,48 @@ const emptyStateLabel = computed(() => {
                     class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400"
                   >
                     <span
-                      class="inline-flex items-center rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                      class="inline-flex items-center rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
                     >
                       {{ stepKindLabel(step) }}
                     </span>
                     <span
                       v-if="step.iteration"
-                      class="inline-flex items-center rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                      class="inline-flex items-center rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
                     >
                       {{ resolveLabel('chat.deepResearchIteration', 'Iteration') }}
                       {{ step.iteration }}
                     </span>
                     <span
                       v-if="step.parallelism && step.parallelism > 1"
-                      class="inline-flex items-center rounded-full px-2.5 py-1 bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200"
+                      class="inline-flex items-center rounded-full px-2 py-0.5 bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200"
                     >
                       {{ resolveLabel('chat.deepResearchParallelism', 'Parallel') }} ×{{
                         step.parallelism
                       }}
                     </span>
                   </div>
-                  <div class="mt-2 text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
+                  <div
+                    class="mt-1.5 text-[13px] font-medium text-slate-800 dark:text-slate-100 break-words"
+                  >
                     {{ stepSummary(step) }}
                   </div>
                 </div>
                 <div class="flex items-center gap-2">
                   <span
-                    class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium capitalize"
+                    class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize"
                     :class="stepStatusClass(step)"
                   >
-                    {{ step.status || 'info' }}
+                    {{ stepStatusLabel(step) }}
                   </span>
                   <span class="text-slate-400 transition-transform details-chevron">⌄</span>
                 </div>
               </div>
             </summary>
 
-            <div class="mt-3 space-y-3 text-sm text-slate-700 dark:text-slate-200">
+            <div class="mt-2.5 space-y-2.5 text-sm text-slate-700 dark:text-slate-200">
               <div
                 v-if="step.brief"
-                class="rounded-xl bg-slate-50 px-3 py-3 text-xs dark:bg-slate-900/60"
+                class="rounded-lg bg-slate-50 px-2.5 py-2.5 text-xs dark:bg-slate-900/60"
               >
                 <div class="font-medium text-slate-500 dark:text-slate-400">
                   {{ resolveLabel('chat.deepResearchResearchBrief', 'Research brief') }}
@@ -372,11 +401,41 @@ const emptyStateLabel = computed(() => {
                     {{ window }}
                   </span>
                 </div>
+                <div v-if="step.brief.must_verify_claims?.length" class="mt-3">
+                  <div class="font-medium text-slate-500 dark:text-slate-400">
+                    {{ resolveLabel('chat.deepResearchMustVerify', 'Must verify') }}
+                  </div>
+                  <ul class="mt-2 list-disc space-y-1 pl-4 text-slate-600 dark:text-slate-300">
+                    <li v-for="claim in step.brief.must_verify_claims" :key="claim">{{ claim }}</li>
+                  </ul>
+                </div>
+                <div
+                  v-if="step.brief.retry_context || step.brief.retry_queries?.length"
+                  class="mt-2.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2.5 dark:border-amber-900/60 dark:bg-amber-950/30"
+                >
+                  <div class="font-medium text-amber-700 dark:text-amber-200">
+                    {{ resolveLabel('chat.deepResearchRetryGuidance', 'Retry guidance') }}
+                  </div>
+                  <div
+                    v-if="step.brief.retry_context"
+                    class="mt-2 break-words text-amber-700/90 dark:text-amber-100"
+                  >
+                    {{ step.brief.retry_context }}
+                  </div>
+                  <div v-if="step.brief.retry_queries?.length" class="mt-3">
+                    <div class="font-medium text-amber-700 dark:text-amber-200">
+                      {{ resolveLabel('chat.deepResearchRetryQueries', 'Recovery queries') }}
+                    </div>
+                    <ul class="mt-2 list-disc space-y-1 pl-4 text-amber-700/90 dark:text-amber-100">
+                      <li v-for="query in step.brief.retry_queries" :key="query">{{ query }}</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
 
               <div
                 v-if="step.tasks?.length"
-                class="rounded-xl bg-slate-50 px-3 py-3 text-xs dark:bg-slate-900/60"
+                class="rounded-lg bg-slate-50 px-2.5 py-2.5 text-xs dark:bg-slate-900/60"
               >
                 <div class="font-medium text-slate-500 dark:text-slate-400">
                   {{ resolveLabel('chat.deepResearchPlannedTasks', 'Planned tasks') }}
@@ -385,12 +444,15 @@ const emptyStateLabel = computed(() => {
                   <div
                     v-for="(task, taskIndex) in step.tasks"
                     :key="`${task.question}-${taskIndex}`"
-                    class="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60"
+                    class="rounded-lg border border-slate-200 bg-white px-2.5 py-2 dark:border-slate-800 dark:bg-slate-950/60"
                   >
                     <div class="break-words text-slate-800 dark:text-slate-100">
                       {{ task.question }}
                     </div>
-                    <div v-if="taskMeta(task).length" class="mt-1 flex flex-wrap gap-2 text-slate-500 dark:text-slate-400">
+                    <div
+                      v-if="taskMeta(task).length"
+                      class="mt-1 flex flex-wrap gap-2 text-slate-500 dark:text-slate-400"
+                    >
                       <span
                         v-for="meta in taskMeta(task)"
                         :key="meta"
@@ -405,7 +467,7 @@ const emptyStateLabel = computed(() => {
 
               <div
                 v-if="step.sources?.length"
-                class="rounded-xl bg-slate-50 px-3 py-3 text-xs dark:bg-slate-900/60"
+                class="rounded-lg bg-slate-50 px-2.5 py-2.5 text-xs dark:bg-slate-900/60"
               >
                 <div class="font-medium text-slate-500 dark:text-slate-400">
                   {{ resolveLabel('chat.deepResearchLiveSources', 'Live sources') }}
@@ -417,7 +479,7 @@ const emptyStateLabel = computed(() => {
                     :href="source.url || undefined"
                     :target="source.url ? '_blank' : undefined"
                     :rel="source.url ? 'noopener noreferrer' : undefined"
-                    class="rounded-lg border border-slate-200 bg-white px-3 py-2 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:bg-slate-900/70"
+                    class="rounded-lg border border-slate-200 bg-white px-2.5 py-2 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:bg-slate-900/70"
                   >
                     <div class="truncate font-medium text-slate-800 dark:text-slate-100">
                       {{ source.title || domainOf(source) }}
@@ -440,21 +502,21 @@ const emptyStateLabel = computed(() => {
 
               <div
                 v-if="step.verification"
-                class="rounded-xl bg-slate-50 px-3 py-3 text-xs dark:bg-slate-900/60"
+                class="rounded-lg bg-slate-50 px-2.5 py-2.5 text-xs dark:bg-slate-900/60"
               >
                 <div class="font-medium text-slate-500 dark:text-slate-400">
                   {{ resolveLabel('chat.deepResearchVerificationSummary', 'Verification') }}
                 </div>
                 <div class="mt-2 flex flex-wrap gap-2">
-                  <span class="rounded-full bg-white px-2.5 py-1 dark:bg-slate-800">
+                  <span class="rounded-full bg-white px-2.5 py-0.5 dark:bg-slate-800">
                     {{ resolveLabel('chat.deepResearchVerificationResolved', 'Resolved') }}
                     {{ step.verification.resolved_count || 0 }}
                   </span>
-                  <span class="rounded-full bg-white px-2.5 py-1 dark:bg-slate-800">
+                  <span class="rounded-full bg-white px-2.5 py-0.5 dark:bg-slate-800">
                     {{ resolveLabel('chat.deepResearchVerificationConflicted', 'Conflicted') }}
                     {{ step.verification.conflicted_count || 0 }}
                   </span>
-                  <span class="rounded-full bg-white px-2.5 py-1 dark:bg-slate-800">
+                  <span class="rounded-full bg-white px-2.5 py-0.5 dark:bg-slate-800">
                     {{ resolveLabel('chat.deepResearchVerificationInsufficient', 'Insufficient') }}
                     {{ step.verification.insufficient_count || 0 }}
                   </span>
@@ -474,7 +536,7 @@ const emptyStateLabel = computed(() => {
               >
                 <div
                   v-if="step.follow_up_query"
-                  class="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900/60"
+                  class="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-900/60"
                 >
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchFollowUpQuery', 'Follow-up query') }}
@@ -483,7 +545,7 @@ const emptyStateLabel = computed(() => {
                 </div>
                 <div
                   v-if="step.search_query"
-                  class="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900/60"
+                  class="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-900/60"
                 >
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchSearchQuery', 'Search query') }}
@@ -492,7 +554,7 @@ const emptyStateLabel = computed(() => {
                 </div>
                 <div
                   v-if="step.gap"
-                  class="rounded-xl bg-amber-50 px-3 py-2 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
+                  class="rounded-lg bg-amber-50 px-2.5 py-2 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
                 >
                   <div class="font-medium">
                     {{ resolveLabel('chat.deepResearchLatestGap', 'Research gap') }}
@@ -501,7 +563,7 @@ const emptyStateLabel = computed(() => {
                 </div>
                 <div
                   v-if="step.focus"
-                  class="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900/60"
+                  class="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-900/60"
                 >
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchFocus', 'Focus') }}
@@ -510,7 +572,7 @@ const emptyStateLabel = computed(() => {
                 </div>
                 <div
                   v-if="step.source_title"
-                  class="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900/60"
+                  class="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-900/60"
                 >
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchEvidence', 'Evidence') }}
@@ -519,7 +581,7 @@ const emptyStateLabel = computed(() => {
                 </div>
                 <div
                   v-if="step.stop_reason"
-                  class="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900/60"
+                  class="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-900/60"
                 >
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchStopReason', 'Stop reason') }}

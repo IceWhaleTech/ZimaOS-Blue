@@ -29,10 +29,25 @@ const localeCodes = Object.keys(localeModules)
   .map(localeCodeFromFile)
   .sort()
 
-const requiredKeys = ['media.fallbackWebCanvas', 'media.fallbackPublicSpace'] as const
+const requiredKeys = [
+  'media.fallbackWebCanvas',
+  'media.fallbackPublicSpace',
+  'media.fallbackNativeTimeline',
+  'media.fallbackDisclosureWebCanvas',
+  'media.fallbackDisclosurePublicSpace',
+  'media.fallbackDisclosureNativeTimeline',
+  'media.fallbackDisclosureGeneric',
+  'media.fallbackTemplateCover',
+  'media.fallbackTemplateSplit',
+  'media.fallbackTemplateTextOnly',
+  'media.fallbackTemplatePoster',
+  'media.fallbackTemplateSlide',
+  'media.fallbackLinkSpace',
+  'media.fallbackLinkSource',
+] as const
 
 describe('media fallback override coverage', () => {
-  it('defines localized fallback labels for all 27 locales', () => {
+  it('defines fallback UI copy for all 27 locales', () => {
     const overrides = mediaFallbackOverrides as Record<string, LocaleMessages>
     const overrideLocales = Object.keys(overrides).sort()
 

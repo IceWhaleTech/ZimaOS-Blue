@@ -20,18 +20,24 @@ func TestUIReviewerValidate(t *testing.T) {
 	ur := NewUIReviewer()
 
 	tests := []struct {
-		name    string
-		input   map[string]any
-		wantErr bool
+		name       string
+		input      map[string]any
+		wantErr    bool
+		wantAction string
 	}{
-		{"missing action", map[string]any{}, true},
-		{"invalid action", map[string]any{"action": "bad"}, true},
-		{"review_url without url", map[string]any{"action": "review_url"}, true},
-		{"review_url ok", map[string]any{"action": "review_url", "url": "http://example.com"}, false},
-		{"review_image without image", map[string]any{"action": "review_image"}, true},
-		{"review_image ok", map[string]any{"action": "review_image", "image": "base64data"}, false},
-		{"check_accessibility without url", map[string]any{"action": "check_accessibility"}, true},
-		{"check_accessibility ok", map[string]any{"action": "check_accessibility", "url": "http://example.com"}, false},
+		{"missing action", map[string]any{}, true, ""},
+		{"infer review_url from url", map[string]any{"url": "http://example.com"}, false, "review_url"},
+		{"infer review_image from image", map[string]any{"image": "base64data"}, false, "review_image"},
+		{"canonicalize audit url alias", map[string]any{"action": "audit", "url": "http://example.com"}, false, "review_url"},
+		{"canonicalize audit image alias", map[string]any{"action": "audit", "image": "base64data"}, false, "review_image"},
+		{"canonicalize accessibility alias", map[string]any{"action": "a11y", "url": "http://example.com"}, false, "check_accessibility"},
+		{"invalid action", map[string]any{"action": "bad"}, true, "bad"},
+		{"review_url without url", map[string]any{"action": "review_url"}, true, "review_url"},
+		{"review_url ok", map[string]any{"action": "review_url", "url": "http://example.com"}, false, "review_url"},
+		{"review_image without image", map[string]any{"action": "review_image"}, true, "review_image"},
+		{"review_image ok", map[string]any{"action": "review_image", "image": "base64data"}, false, "review_image"},
+		{"check_accessibility without url", map[string]any{"action": "check_accessibility"}, true, "check_accessibility"},
+		{"check_accessibility ok", map[string]any{"action": "check_accessibility", "url": "http://example.com"}, false, "check_accessibility"},
 	}
 
 	for _, tt := range tests {
@@ -39,6 +45,9 @@ func TestUIReviewerValidate(t *testing.T) {
 			err := ur.Validate(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got, _ := tt.input["action"].(string); got != tt.wantAction {
+				t.Errorf("input[action] = %q, want %q", got, tt.wantAction)
 			}
 		})
 	}
@@ -49,6 +58,20 @@ func TestUIReviewerNoBrowser(t *testing.T) {
 	// No browser service set — review_url should fail gracefully
 	result, err := ur.Execute(context.Background(), map[string]any{
 		"action": "review_url",
+		"url":    "http://example.com",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Success {
+		t.Fatal("expected failure when browser not available")
+	}
+}
+
+func TestUIReviewerExecuteCanonicalizesAuditAlias(t *testing.T) {
+	ur := NewUIReviewer()
+	result, err := ur.Execute(context.Background(), map[string]any{
+		"action": "audit",
 		"url":    "http://example.com",
 	})
 	if err != nil {
@@ -120,7 +143,7 @@ func TestComputeScoresWithVLM(t *testing.T) {
 func TestComputeScoresCriticalFail(t *testing.T) {
 	ur := NewUIReviewer()
 	funcResult := &FunctionalCheckResult{
-		Score: 90,
+		Score:  90,
 		Issues: []UIIssue{{Severity: "critical", Category: "functional", Description: "page crash"}},
 	}
 	a11yResult := &A11yCheckResult{Score: 80}

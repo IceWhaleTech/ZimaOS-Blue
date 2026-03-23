@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
@@ -63,10 +65,16 @@ type Manager struct {
 	costRecorder CostRecorder
 	onTaskDone   TaskDoneCallback
 	eventPub     EventPublisher
+
+	runCtx    context.Context
+	cancel    context.CancelFunc
+	closeOnce sync.Once
+	closed    atomic.Bool
 }
 
 // NewManager creates a new media generation manager.
 func NewManager(storage *MediaStorage, configStore MediaConfigStore, locale string) *Manager {
+	runCtx, cancel := context.WithCancel(context.Background())
 	return &Manager{
 		providers:   make(map[string]MediaProvider),
 		modelMap:    make(map[string]string),
@@ -74,7 +82,35 @@ func NewManager(storage *MediaStorage, configStore MediaConfigStore, locale stri
 		configs:     make(map[string]*MediaProviderConfig),
 		configStore: configStore,
 		locale:      locale,
+		runCtx:      runCtx,
+		cancel:      cancel,
 	}
+}
+
+func (m *Manager) managerContext() context.Context {
+	if m == nil || m.runCtx == nil {
+		return context.Background()
+	}
+	return m.runCtx
+}
+
+func (m *Manager) isClosed() bool {
+	return m == nil || m.closed.Load()
+}
+
+// Close stops background media task execution so shutdown can proceed cleanly.
+// In-flight non-terminal tasks remain recoverable via the persistent task store.
+func (m *Manager) Close() error {
+	if m == nil {
+		return nil
+	}
+	m.closeOnce.Do(func() {
+		m.closed.Store(true)
+		if m.cancel != nil {
+			m.cancel()
+		}
+	})
+	return nil
 }
 
 func extractMediaTaskUserID(ctx context.Context) string {
@@ -373,6 +409,16 @@ func (m *Manager) SetFallbackEngine(engine *FallbackEngine) {
 	m.fallback = engine
 }
 
+// SetFallbackVisionBridge wires an optional VLM into the fallback engine for result reranking.
+func (m *Manager) SetFallbackVisionBridge(bridge tools.VLMBridge) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.fallback == nil {
+		return
+	}
+	m.fallback.SetVisionBridge(bridge)
+}
+
 // RenderFallbackPage returns a temporary internal HTML page used by the screenshot fallback.
 func (m *Manager) RenderFallbackPage(token string) (string, bool) {
 	m.mu.RLock()
@@ -445,6 +491,9 @@ func (m *Manager) realModelsLocked() []MediaModelInfo {
 
 // Generate starts a media generation task.
 func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, error) {
+	if m.isClosed() {
+		return nil, ErrManagerClosed
+	}
 	category := inferCategoryFromRequest(req)
 	provider, resolvedModel, err := m.resolveExecutor(req, string(category))
 	if err != nil {
@@ -487,7 +536,9 @@ func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, 
 	// If async (pending/processing), start background polling
 	if task.Status == TaskStatusPending || task.Status == TaskStatusProcessing {
 		m.tasks.Store(task.ID, task)
-		go m.pollTask(task.ID, provider)
+		if !m.isClosed() {
+			go m.pollTask(task.ID, provider)
+		}
 	} else if task.Status == TaskStatusSucceeded {
 		// Sync provider returned immediately — cache media in background.
 		// Store as "processing" first so the ChannelTaskWatcher doesn't see
@@ -495,10 +546,12 @@ func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, 
 		// the file and re-stores with local URLs.
 		task.Status = TaskStatusProcessing
 		m.tasks.Store(task.ID, task)
-		go func() {
-			task.Status = TaskStatusSucceeded
-			m.cacheResults(task)
-		}()
+		if !m.isClosed() {
+			go func() {
+				task.Status = TaskStatusSucceeded
+				m.cacheResults(task)
+			}()
+		}
 	} else {
 		m.tasks.Store(task.ID, task)
 	}
@@ -598,12 +651,18 @@ func (m *Manager) findProvider(modelID string) (MediaProvider, error) {
 // Uses exponential backoff: 2s → 4s → 8s → ... capped at 15s.
 // No timeout — polls indefinitely until the provider returns a terminal status or a fatal error.
 func (m *Manager) pollTask(taskID string, provider MediaProvider) {
+	ctx := m.managerContext()
 	interval := 2 * time.Second
 	const maxInterval = 15 * time.Second
 
 	for {
 		timer := time.NewTimer(interval)
-		<-timer.C
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		}
 
 		v, ok := m.tasks.Load(taskID)
 		if !ok {
@@ -614,8 +673,11 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 			return
 		}
 
-		updated, err := provider.Poll(context.Background(), task.UpstreamID)
+		updated, err := provider.Poll(ctx, task.UpstreamID)
 		if err != nil {
+			if m.isClosed() || m.isTaskCancelled(taskID) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return
+			}
 			log.Printf("[mediagen] poll error for task %s: %v", taskID, err)
 			// Fatal errors (missing metadata, unknown task) — fail immediately, retrying won't help
 			errMsg := err.Error()
@@ -638,13 +700,14 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 		updated.Type = task.Type
 		updated.CreatedAt = task.CreatedAt
 		updated.Request = task.Request
+		updated.UpstreamID = task.UpstreamID
 		updated.MessageID = task.MessageID
 		updated.Category = task.Category
 		updated.Source = task.Source
 		if updated.FallbackInfo == nil {
 			updated.FallbackInfo = cloneFallbackInfo(task.FallbackInfo)
 		}
-		if m.isTaskCancelled(taskID) {
+		if m.isTaskCancelled(taskID) || m.isClosed() {
 			return
 		}
 
@@ -688,20 +751,24 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 
 // cacheResults downloads remote media to local storage and generates thumbnails.
 func (m *Manager) cacheResults(task *MediaTask) {
-	if task == nil || m.isTaskCancelled(task.ID) {
+	if task == nil || m.isTaskCancelled(task.ID) || m.isClosed() {
 		return
 	}
 	if task.Response == nil || m.storage == nil {
 		return
 	}
+	ctx := m.managerContext()
 
 	for i := range task.Response.Data {
 		result := &task.Response.Data[i]
 
 		// Download from remote URL
 		if result.OriginalURL != "" && result.URL == "" {
-			localURL, err := m.storage.Download(context.Background(), result.OriginalURL, task.Type)
+			localURL, err := m.storage.Download(ctx, result.OriginalURL, task.Type)
 			if err != nil {
+				if m.isClosed() || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return
+				}
 				log.Printf("[mediagen] cache download failed for task %s: %v", task.ID, err)
 				continue
 			}
@@ -741,7 +808,7 @@ func (m *Manager) cacheResults(task *MediaTask) {
 
 	now := timeutil.NowTime()
 	task.CompletedAt = &now
-	if m.isTaskCancelled(task.ID) {
+	if m.isTaskCancelled(task.ID) || m.isClosed() {
 		return
 	}
 	m.tasks.Store(task.ID, task)
@@ -949,6 +1016,9 @@ func (m *Manager) DefaultModelForCategory(category string) string {
 // CreateTask creates a persistent media generation task and starts async execution.
 // Returns immediately with the task ID — the caller polls for status.
 func (m *Manager) CreateTask(ctx context.Context, req *MediaRequest, messageID, category, source string) (*MediaTask, error) {
+	if m.isClosed() {
+		return nil, ErrManagerClosed
+	}
 	provider, resolvedModel, err := m.resolveExecutor(req, category)
 	if err != nil {
 		return nil, err
@@ -978,7 +1048,7 @@ func (m *Manager) CreateTask(ctx context.Context, req *MediaRequest, messageID, 
 		Source:    source,
 	}
 	if m.fallback != nil {
-		task.FallbackInfo = m.fallback.PendingInfoForModel(resolvedModel)
+		task.FallbackInfo = m.fallback.PendingInfoForRequest(effectiveReq, resolvedModel)
 	}
 
 	// Persist to DB first (survives power failure)
@@ -993,24 +1063,44 @@ func (m *Manager) CreateTask(ctx context.Context, req *MediaRequest, messageID, 
 	m.tasks.Store(taskID, task)
 
 	// Start async generation
-	go m.executeTask(task, provider)
+	if !m.isClosed() {
+		go m.executeTask(task, provider)
+	}
 
 	return task, nil
 }
 
 // executeTask runs the actual generation and updates task state.
 func (m *Manager) executeTask(task *MediaTask, provider MediaProvider) {
-	ctx := context.Background()
+	ctx := m.managerContext()
+	if m.isClosed() {
+		return
+	}
+
+	if task.Status != TaskStatusCancelled {
+		task.Status = TaskStatusProcessing
+		if task.Progress < 0.05 {
+			task.Progress = 0.05
+		}
+		m.tasks.Store(task.ID, task)
+		if m.taskStore != nil {
+			_ = m.taskStore.UpdateStatus(task.ID, TaskStatusProcessing, task.Progress, "", "")
+			if task.FallbackInfo != nil {
+				_ = m.taskStore.UpdateFallbackInfo(task.ID, task.FallbackInfo)
+			}
+		}
+		m.publishTaskEvent(task)
+	}
 
 	upstream, err := provider.Generate(ctx, task.Request)
 	if err != nil {
-		if task.Status == TaskStatusCancelled {
+		if task.Status == TaskStatusCancelled || m.isClosed() || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
 		m.updateTaskError(task.ID, err.Error())
 		return
 	}
-	if task.Status == TaskStatusCancelled {
+	if task.Status == TaskStatusCancelled || m.isClosed() {
 		return
 	}
 
@@ -1031,7 +1121,7 @@ func (m *Manager) executeTask(task *MediaTask, provider MediaProvider) {
 
 	// If sync provider returned immediately
 	if upstream.Status == TaskStatusSucceeded {
-		if task.Status == TaskStatusCancelled {
+		if task.Status == TaskStatusCancelled || m.isClosed() {
 			return
 		}
 		task.Status = TaskStatusSucceeded
@@ -1043,7 +1133,7 @@ func (m *Manager) executeTask(task *MediaTask, provider MediaProvider) {
 	}
 
 	// Async: update status to processing and start polling
-	if task.Status == TaskStatusCancelled {
+	if task.Status == TaskStatusCancelled || m.isClosed() {
 		return
 	}
 	task.Status = TaskStatusProcessing
@@ -1073,6 +1163,9 @@ func (m *Manager) GetTasksByMessage(messageID string, userID ...string) ([]*Medi
 
 // RecoverTasks resumes non-terminal tasks after a restart.
 func (m *Manager) RecoverTasks() {
+	if m.isClosed() {
+		return
+	}
 	if m.taskStore == nil {
 		return
 	}
@@ -1087,6 +1180,9 @@ func (m *Manager) RecoverTasks() {
 	log.Printf("[mediagen] recovering %d pending media tasks", len(pending))
 
 	for _, pt := range pending {
+		if m.isClosed() {
+			return
+		}
 		task := pt.ToMediaTask()
 		m.tasks.Store(task.ID, task)
 

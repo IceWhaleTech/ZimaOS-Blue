@@ -10,9 +10,10 @@ func TestChannelFactory_CreateFeishu_TypingIndicatorConfig(t *testing.T) {
 	f := NewChannelFactory(zap.NewNop())
 
 	tests := []struct {
-		name    string
-		config  map[string]string
-		enabled bool
+		name              string
+		config            map[string]string
+		typingEnabled     bool
+		expectedReplyMode string
 	}{
 		{
 			name: "default enabled when unset",
@@ -20,7 +21,8 @@ func TestChannelFactory_CreateFeishu_TypingIndicatorConfig(t *testing.T) {
 				"app_id":     "app-id",
 				"app_secret": "app-secret",
 			},
-			enabled: true,
+			typingEnabled:     true,
+			expectedReplyMode: "reply",
 		},
 		{
 			name: "typing_indicator false disables typing reaction",
@@ -31,7 +33,8 @@ func TestChannelFactory_CreateFeishu_TypingIndicatorConfig(t *testing.T) {
 				"typingIndicator":       "true",
 				"disableTypingReaction": "true",
 			},
-			enabled: false,
+			typingEnabled:     false,
+			expectedReplyMode: "reply",
 		},
 		{
 			name: "typingIndicator false disables typing reaction",
@@ -40,7 +43,8 @@ func TestChannelFactory_CreateFeishu_TypingIndicatorConfig(t *testing.T) {
 				"app_secret":      "app-secret",
 				"typingIndicator": "false",
 			},
-			enabled: false,
+			typingEnabled:     false,
+			expectedReplyMode: "reply",
 		},
 		{
 			name: "disable_typing_reaction true disables typing reaction",
@@ -49,7 +53,18 @@ func TestChannelFactory_CreateFeishu_TypingIndicatorConfig(t *testing.T) {
 				"app_secret":              "app-secret",
 				"disable_typing_reaction": "true",
 			},
-			enabled: false,
+			typingEnabled:     false,
+			expectedReplyMode: "reply",
+		},
+		{
+			name: "session_mode true switches to session reply mode",
+			config: map[string]string{
+				"app_id":       "app-id",
+				"app_secret":   "app-secret",
+				"session_mode": "true",
+			},
+			typingEnabled:     true,
+			expectedReplyMode: "session",
 		},
 	}
 
@@ -75,8 +90,16 @@ func TestChannelFactory_CreateFeishu_TypingIndicatorConfig(t *testing.T) {
 			if !ok {
 				t.Fatalf("typing_reaction_enabled should be bool, got %T", raw)
 			}
-			if got != tt.enabled {
-				t.Fatalf("typing_reaction_enabled = %v, want %v", got, tt.enabled)
+			if got != tt.typingEnabled {
+				t.Fatalf("typing_reaction_enabled = %v, want %v", got, tt.typingEnabled)
+			}
+
+			replyMode, ok := info.Metadata["reply_mode"].(string)
+			if !ok {
+				t.Fatalf("reply_mode should be string, got %T", info.Metadata["reply_mode"])
+			}
+			if replyMode != tt.expectedReplyMode {
+				t.Fatalf("reply_mode = %q, want %q", replyMode, tt.expectedReplyMode)
 			}
 		})
 	}

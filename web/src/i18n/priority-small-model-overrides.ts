@@ -1758,8 +1758,7 @@ export default {
         irFeatureHintDesc:
           'För kanalmeddelanden upptäcks ledtrådar och {deepResearch} / {agentMode} aktiveras automatiskt.',
         irContextPruneTitle: 'Komprimering av chattkontext',
-        irContextPruneDesc:
-          'Styr hur Blue komprimerar chatthistoriken när kontexttrycket ökar.',
+        irContextPruneDesc: 'Styr hur Blue komprimerar chatthistoriken när kontexttrycket ökar.',
         irMediaIntentDesc:
           'Upptäcker avsikt om mediegenerering för att routa förfrågningar mer exakt.',
         irOfflineFallbackTitle: 'Lokal offline-reserv',

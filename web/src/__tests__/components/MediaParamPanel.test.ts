@@ -88,4 +88,44 @@ describe('MediaParamPanel', () => {
     expect(options).not.toContain('Fallback Web Canvas')
     expect(options).not.toContain('Fallback Public Space (Image)')
   })
+
+  it('shows nanoslides PPT badges when the intent carries slide params', () => {
+    const wrapper = mount(MediaParamPanel, {
+      props: {
+        intent: {
+          category: 't2i',
+          confidence: 0.95,
+          prompt: 'Create a nanoslides strategy summary for Q4 growth',
+          has_image: false,
+          image_count: 0,
+          params: {
+            quality_profile: 'ppt',
+            source: 'ppt',
+            style_preset: 'nano_slides',
+          },
+        },
+        models: [
+          {
+            id: 'fallback-web-canvas-t2i',
+            name: 'Fallback Web Canvas',
+            type: 'image',
+            provider: 'fallback',
+            is_fallback: true,
+            fallback_strategy: 'web_canvas',
+          },
+        ],
+        selectedModel: 'fallback-web-canvas-t2i',
+        generating: false,
+      },
+      global: {
+        plugins: [createTestI18n()],
+      },
+    })
+
+    const badges = wrapper.findAll('.mpp-meta-pill').map((node) => node.text())
+
+    expect(badges).toContain('nanoslides')
+    expect(badges).toContain('ppt')
+    expect(wrapper.find('.mpp-meta--nanoslides').exists()).toBe(true)
+  })
 })

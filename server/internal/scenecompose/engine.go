@@ -46,6 +46,15 @@ func (e *Engine) Compose(ctx context.Context, req ComposeRequest) (*ComposeResul
 		Plan:            plan,
 		BackgroundQuery: bgQuery,
 	}
+	layers := make([]RenderLayer, 0, len(plan.Foreground)+1)
+	if background != nil && background.Image != nil {
+		layers = append(layers, RenderLayer{
+			ID:    "background",
+			Kind:  "background",
+			Image: cloneImage(background.Image),
+			Asset: bgRef,
+		})
+	}
 
 	renderInputs := make([]renderForeground, 0, len(plan.Foreground))
 	for _, fg := range plan.Foreground {
@@ -68,10 +77,20 @@ func (e *Engine) Compose(ctx context.Context, req ComposeRequest) (*ComposeResul
 			Asset: asset,
 			Cut:   cutResult,
 		})
+		if cutResult != nil && cutResult.Image != nil {
+			layers = append(layers, RenderLayer{
+				ID:     fg.ID,
+				Kind:   "foreground",
+				Image:  cloneImage(cutResult.Image),
+				Layout: fg.Layout,
+				Asset:  assetRef,
+			})
+		}
 	}
 
 	return &ComposeResult{
 		Image:      e.renderer.Render(req.Width, req.Height, background, renderInputs),
+		Layers:     layers,
 		UsedAssets: usedAssets,
 		Debug:      debug,
 	}, nil

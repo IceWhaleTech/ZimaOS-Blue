@@ -118,6 +118,11 @@ function closeRecoveryCodes() {
   showRecoveryCodes.value = false
   recoveryCodes.value = []
 }
+
+function closeDisableModal() {
+  showDisableModal.value = false
+  disablePassword.value = ''
+}
 </script>
 
 <template>
@@ -387,7 +392,7 @@ function closeRecoveryCodes() {
             <button
               :disabled="loading"
               class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white rounded-lg text-sm transition-colors"
-              @click="showDisableModal = false; disablePassword = ''"
+              @click="closeDisableModal"
             >
               {{ t('common.cancel') }}
             </button>

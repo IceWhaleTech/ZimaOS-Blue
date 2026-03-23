@@ -76,6 +76,32 @@ var (
 		"多轮检索",
 	})
 
+	deepResearchForceStrongCueMatcher = newUnicodeAhoMatcher([]string{
+		"sota",
+		"state of the art",
+		"best practice",
+		"best practices",
+		"benchmark",
+		"competitive landscape",
+		"industry standard",
+		"最佳实践",
+	})
+
+	deepResearchForceComparativeCueMatcher = newUnicodeAhoMatcher([]string{
+		"compare",
+		"comparison",
+		"versus",
+		"tradeoff",
+		"trade-off",
+		"pros and cons",
+		"strengths and weaknesses",
+		"对比",
+		"比较",
+		"区别",
+		"差异",
+		"优缺点",
+	})
+
 	shellCommandCueMatcher = newUnicodeAhoMatcher([]string{
 		"bash",
 		"shell",

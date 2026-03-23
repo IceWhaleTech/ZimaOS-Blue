@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { usePersistentDisclosureState } from '@/utils/chatCardUiState'
 import type {
   TypelessCardDeepResearch,
   DeepResearchCitationItem,
@@ -11,15 +12,29 @@ import type {
   DeepResearchCalibration,
   DeepResearchTakeawayCandidate,
 } from '@/types/typeless'
+import {
+  localizeDeepResearchMode,
+  localizeDeepResearchSegment,
+  localizeDeepResearchStatus,
+} from '@/utils/deepResearchText'
 
 const { t, te } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardDeepResearch
+  uiStateKey?: string
 }>()
 
 const query = computed(() => props.card.query || '')
 const answer = computed(() => props.card.answer || '')
+const summaryKey = computed(() => {
+  return (
+    props.uiStateKey ||
+    props.card.id ||
+    `deep-research:${props.card.job_id || query.value || answer.value.slice(0, 80) || 'summary'}`
+  )
+})
+const summaryPreview = computed(() => answer.value.replace(/\s+/g, ' ').trim())
 const citations = computed(() => (props.card.citations || []).filter(validCitation))
 const openQuestions = computed(() => props.card.open_questions || [])
 const verificationSummary = computed(() => props.card.verification_summary || null)
@@ -27,7 +42,7 @@ const verificationItems = computed(() => verificationSummary.value?.items || [])
 const researchTrace = computed(() => props.card.research_trace || [])
 const timelineSections = computed(() => props.card.timeline_sections || [])
 const stageErrors = computed(() => props.card.stage_errors || [])
-const mode = computed(() => props.card.mode || 'standard')
+const modeLabel = computed(() => localizeDeepResearchMode(props.card.mode || 'standard', t))
 const reportStyle = computed(() => props.card.report_style || '')
 const isKnowledgeBase = computed(() => reportStyle.value === 'knowledge_base')
 const supportCount = computed(() => props.card.support_count || 0)
@@ -37,6 +52,12 @@ const iterations = computed(() => props.card.iterations || props.card.iteration 
 const evidenceCount = computed(() => props.card.evidence_count || 0)
 const confidenceLabel = computed(() => formatPercent(props.card.confidence))
 const citationCoverageLabel = computed(() => formatPercent(props.card.citation_coverage))
+const statusLabel = computed(
+  () =>
+    localizeDeepResearchStatus(props.card.status || 'completed', t) ||
+    props.card.status ||
+    'completed'
+)
 const timeWindows = computed(() => props.card.time_windows || [])
 const workflowPhases = computed(() => (props.card.workflow_phases || []).filter(validWorkflowPhase))
 const objectMap = computed(() => (props.card.object_map || []).filter(validObjectMapItem))
@@ -44,10 +65,26 @@ const sourceInventory = computed(() =>
   (props.card.source_inventory || []).filter(validSourceInventoryItem)
 )
 const sourceInventoryPreview = computed(() => sourceInventory.value.slice(0, 6))
+const hasResearchDetails = computed(() => {
+  return (
+    sourceInventory.value.length > sourceInventoryPreview.value.length ||
+    researchTrace.value.length > 0 ||
+    stageErrors.value.length > 0
+  )
+})
 const coverageSummary = computed(() => props.card.coverage_summary || null)
 const calibration = computed(() => props.card.calibration || null)
-const takeawayCandidates = computed(
-  () => (calibration.value?.takeaway_candidates || []).filter(validTakeawayCandidate)
+const takeawayCandidates = computed(() =>
+  (calibration.value?.takeaway_candidates || []).filter(validTakeawayCandidate)
+)
+const { expanded, toggleExpanded } = usePersistentDisclosureState(
+  summaryKey,
+  Boolean(props.card._streaming === true || !summaryPreview.value)
+)
+const disclosureLabel = computed(() =>
+  expanded.value
+    ? t('chat.deepResearchCollapseDetails', 'Collapse research details')
+    : t('chat.deepResearchExpandDetails', 'Expand research details')
 )
 
 function tr(key: string, fallback: string): string {
@@ -161,7 +198,7 @@ function objectStatusBadges(item: DeepResearchObjectMapItem): string[] {
   const counts = item.status_counts || {}
   return Object.entries(counts)
     .filter(([, count]) => typeof count === 'number' && count > 0)
-    .map(([status, count]) => `${status}: ${count}`)
+    .map(([status, count]) => `${localizeDeepResearchSegment(status, t) || status}: ${count}`)
 }
 
 function calibrationToneClass(calibrationItem: DeepResearchCalibration | null): string {
@@ -195,7 +232,7 @@ function recommendedActionLabel(action?: string): string {
     case 'caution':
       return tr('chat.deepResearchCalibrationCaution', 'Use caution')
     case 'insufficient':
-      return tr('chat.deepResearchCalibrationInsufficient', 'Insufficient')
+      return t('chat.deepResearchVerificationInsufficient', 'Insufficient')
     default:
       return action || '--'
   }
@@ -206,7 +243,7 @@ function conflictRiskLabel(risk?: string): string {
     case 'blocking':
       return tr('chat.deepResearchCalibrationConflictBlocking', 'Blocking conflict')
     case 'medium':
-      return tr('chat.deepResearchCalibrationConflictMedium', 'Conflict risk')
+      return tr('memory.proposalConflictRisk', 'Conflict risk')
     case 'low':
       return tr('chat.deepResearchCalibrationConflictLow', 'Low conflict risk')
     default:
@@ -217,65 +254,88 @@ function conflictRiskLabel(risk?: string): string {
 
 <template>
   <div
-    class="rounded-[1.25rem] border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/85 shadow-sm overflow-hidden"
+    class="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/85 shadow-sm overflow-hidden"
   >
-    <div
-      class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/60"
+    <button
+      type="button"
+      data-testid="deep-research-summary-toggle"
+      class="w-full text-left"
+      :aria-expanded="expanded ? 'true' : 'false'"
+      :aria-label="disclosureLabel"
+      :title="disclosureLabel"
+      @click="toggleExpanded"
     >
-      <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div class="min-w-0 flex-1">
-          <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            {{ t('chat.deepResearchTitle', 'Deep Research') }}
+      <div
+        class="px-4 py-3.5 bg-slate-50/90 dark:bg-slate-950/60"
+        :class="{ 'border-b border-slate-100 dark:border-slate-800': expanded }"
+      >
+        <div class="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between">
+          <div class="min-w-0 flex-1">
+            <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {{ t('chat.deepResearchTitle', 'Deep Research') }}
+            </div>
+            <div
+              v-if="query"
+              class="mt-1.5 text-base font-semibold text-slate-900 dark:text-white break-words"
+            >
+              {{ query }}
+            </div>
+            <div
+              v-if="summaryPreview && !expanded"
+              class="mt-2 line-clamp-2 text-sm leading-5 text-slate-600 dark:text-slate-300"
+            >
+              {{ summaryPreview }}
+            </div>
           </div>
-          <div
-            v-if="query"
-            class="mt-2 text-lg font-semibold text-slate-900 dark:text-white break-words"
-          >
-            {{ query }}
+          <div class="flex items-start gap-2.5">
+            <div class="flex flex-wrap justify-end gap-1.5 text-xs">
+              <span
+                class="rounded-full bg-blue-100 px-2.5 py-0.5 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
+                >{{ modeLabel }}</span
+              >
+              <span
+                v-if="reportStyle"
+                class="rounded-full bg-purple-100 px-2.5 py-0.5 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200"
+                >{{ reportStyle }}</span
+              >
+              <span
+                class="rounded-full bg-slate-100 px-2.5 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                >{{ t('chat.deepResearchCitationCoverage', 'Citation coverage') }}
+                {{ citationCoverageLabel }}</span
+              >
+              <span
+                class="rounded-full bg-slate-100 px-2.5 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                >{{ t('chat.deepResearchStatus', 'Status') }} {{ statusLabel }}</span
+              >
+              <span
+                class="rounded-full px-2.5 py-0.5"
+                :class="
+                  hasConflict
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+                "
+              >
+                {{
+                  hasConflict
+                    ? t('chat.deepResearchHasConflict', 'Conflicting signals')
+                    : t('chat.deepResearchVerificationResolved', 'Resolved')
+                }}
+              </span>
+            </div>
+            <span
+              class="pt-1 text-slate-400 transition-transform duration-200"
+              :class="{ 'rotate-180': expanded }"
+              >⌄</span
+            >
           </div>
-        </div>
-        <div class="flex flex-wrap gap-2 text-xs">
-          <span
-            class="rounded-full bg-blue-100 px-3 py-1 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
-            >{{ mode }}</span
-          >
-          <span
-            v-if="reportStyle"
-            class="rounded-full bg-purple-100 px-3 py-1 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200"
-            >{{ reportStyle }}</span
-          >
-          <span
-            class="rounded-full bg-slate-100 px-3 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-            >{{ t('chat.deepResearchCitationCoverage', 'Citation coverage') }}
-            {{ citationCoverageLabel }}</span
-          >
-          <span
-            class="rounded-full bg-slate-100 px-3 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-            >{{ t('chat.deepResearchStatus', 'Status') }}
-            {{ props.card.status || 'completed' }}</span
-          >
-          <span
-            class="rounded-full px-3 py-1"
-            :class="
-              hasConflict
-                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
-                : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
-            "
-          >
-            {{
-              hasConflict
-                ? t('chat.deepResearchHasConflict', 'Conflicting signals')
-                : t('chat.deepResearchVerificationResolved', 'Resolved')
-            }}
-          </span>
         </div>
       </div>
-    </div>
+    </button>
 
-    <div class="px-5 py-5 space-y-5">
-      <div class="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <div class="space-y-5">
-          <section class="rounded-2xl bg-slate-50 px-4 py-4 dark:bg-slate-950/50">
+    <div v-if="expanded" class="px-4 py-4 space-y-4">
+      <div class="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div class="space-y-4">
+          <section class="rounded-xl bg-slate-50 px-3.5 py-3.5 dark:bg-slate-950/50">
             <div class="flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
               <span>{{ t('chat.deepResearchEvidence', 'Evidence') }} {{ evidenceCount }}</span>
               <span>{{ t('chat.deepResearchIterations', 'Iterations') }} {{ iterations }}</span>
@@ -284,11 +344,11 @@ function conflictRiskLabel(risk?: string): string {
               <span>{{ confidenceLabel }}</span>
             </div>
             <div
-              class="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-800 dark:text-slate-100"
+              class="mt-2.5 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800 dark:text-slate-100"
             >
               {{ answer || t('chat.waitingThinking', 'Thinking...') }}
             </div>
-            <div v-if="timeWindows.length" class="mt-3 flex flex-wrap gap-2">
+            <div v-if="timeWindows.length" class="mt-2.5 flex flex-wrap gap-2">
               <span
                 v-for="window in timeWindows"
                 :key="window"
@@ -307,7 +367,7 @@ function conflictRiskLabel(risk?: string): string {
                 <span
                   v-for="phase in workflowPhases"
                   :key="`${phase.id || phase.label}-${phase.status}`"
-                  class="rounded-full px-2.5 py-1 text-xs"
+                  class="rounded-full px-2.5 py-0.5 text-xs"
                   :class="verificationStatusClass(phase.status)"
                 >
                   {{ phase.label || phase.id || '--' }} ·
@@ -317,18 +377,18 @@ function conflictRiskLabel(risk?: string): string {
             </div>
           </section>
 
-          <section v-if="citations.length > 0" class="space-y-3">
+          <section v-if="citations.length > 0" class="space-y-2.5">
             <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {{ t('chat.deepResearchCitations', 'Citations') }}
             </div>
-            <div class="grid gap-3 md:grid-cols-2">
+            <div class="grid gap-2.5 md:grid-cols-2">
               <a
                 v-for="(citation, index) in citations"
                 :key="`${citation.url}-${index}`"
                 :href="citation.url"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="rounded-2xl border border-slate-200 bg-white px-4 py-3 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:hover:bg-slate-900/70"
+                class="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:hover:bg-slate-900/70"
               >
                 <div class="text-sm font-medium text-blue-600 dark:text-blue-300 break-words">
                   {{ citation.title || citation.url }}
@@ -341,8 +401,8 @@ function conflictRiskLabel(risk?: string): string {
           </section>
 
           <section
-            v-if="isKnowledgeBase && sourceInventoryPreview.length"
-            class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50"
+            v-if="sourceInventoryPreview.length"
+            class="rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 dark:border-slate-800 dark:bg-slate-950/50"
           >
             <div class="flex items-center justify-between gap-2">
               <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -352,14 +412,14 @@ function conflictRiskLabel(risk?: string): string {
                 {{ sourceInventory.length }}
               </div>
             </div>
-            <div class="mt-3 space-y-3">
+            <div class="mt-2.5 space-y-2.5">
               <a
                 v-for="(source, index) in sourceInventoryPreview"
                 :key="`${source.source_id || source.url || index}`"
-                :href="source.url || '#'"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="block rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60"
+                :href="source.url || undefined"
+                :target="source.url ? '_blank' : undefined"
+                :rel="source.url ? 'noopener noreferrer' : undefined"
+                class="block rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60"
               >
                 <div class="text-sm font-medium text-blue-600 dark:text-blue-300 break-words">
                   {{ source.title || source.url || '--' }}
@@ -393,14 +453,14 @@ function conflictRiskLabel(risk?: string): string {
           </section>
         </div>
 
-        <div class="space-y-4">
+        <div class="space-y-3.5">
           <section
             v-if="calibration"
-            class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50"
+            class="rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 dark:border-slate-800 dark:bg-slate-950/50"
           >
             <div class="flex items-start justify-between gap-3">
               <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {{ tr('chat.deepResearchCalibration', 'Calibration') }}
+                {{ tr('memory.proposalCalibration', 'Calibration summary') }}
               </div>
               <span
                 class="rounded-full px-2.5 py-1 text-xs font-medium"
@@ -409,34 +469,34 @@ function conflictRiskLabel(risk?: string): string {
                 {{ recommendedActionLabel(calibration.recommended_action) }}
               </span>
             </div>
-            <div class="mt-3 grid grid-cols-2 gap-3 text-xs">
-              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+            <div class="mt-2.5 grid grid-cols-2 gap-2.5 text-xs">
+              <div class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60">
                 <div class="text-slate-500 dark:text-slate-400">
-                  {{ tr('chat.deepResearchCalibrationCoverage', 'Coverage') }}
+                  {{ tr('memory.proposalCoverage', 'Coverage') }}
                 </div>
                 <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
                   {{ formatPercent(calibration.coverage) }}
                 </div>
               </div>
-              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+              <div class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60">
                 <div class="text-slate-500 dark:text-slate-400">
-                  {{ tr('chat.deepResearchCalibrationGroundedness', 'Groundedness') }}
+                  {{ tr('memory.proposalGroundedness', 'Groundedness') }}
                 </div>
                 <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
                   {{ formatPercent(calibration.groundedness) }}
                 </div>
               </div>
-              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+              <div class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60">
                 <div class="text-slate-500 dark:text-slate-400">
-                  {{ tr('chat.deepResearchCalibrationFreshness', 'Freshness') }}
+                  {{ tr('memory.proposalFreshness', 'Freshness') }}
                 </div>
                 <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
                   {{ formatPercent(calibration.freshness) }}
                 </div>
               </div>
-              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+              <div class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60">
                 <div class="text-slate-500 dark:text-slate-400">
-                  {{ tr('chat.deepResearchCalibrationConfidence', 'Calibration confidence') }}
+                  {{ tr('memory.proposalConfidence', 'Confidence') }}
                 </div>
                 <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
                   {{ formatPercent(calibration.confidence) }}
@@ -444,13 +504,16 @@ function conflictRiskLabel(risk?: string): string {
               </div>
             </div>
             <div class="mt-3 flex flex-wrap gap-2 text-xs">
-              <span class="rounded-full px-2.5 py-1" :class="conflictRiskClass(calibration.conflict_risk)">
+              <span
+                class="rounded-full px-2.5 py-1"
+                :class="conflictRiskClass(calibration.conflict_risk)"
+              >
                 {{ conflictRiskLabel(calibration.conflict_risk) }}
               </span>
               <span
                 class="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
               >
-                {{ tr('chat.deepResearchTakeawayCandidates', 'Takeaway candidates') }}
+                {{ tr('memory.proposalCandidateCount', 'Takeaway candidates') }}
                 {{ takeawayCandidates.length }}
               </span>
             </div>
@@ -458,7 +521,7 @@ function conflictRiskLabel(risk?: string): string {
               <div
                 v-for="(candidate, index) in takeawayCandidates"
                 :key="`${candidate.lesson}-${index}`"
-                class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60"
+                class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60"
               >
                 <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
                   {{ candidate.lesson }}
@@ -478,13 +541,13 @@ function conflictRiskLabel(risk?: string): string {
 
           <section
             v-if="isKnowledgeBase && coverageSummary"
-            class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50"
+            class="rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 dark:border-slate-800 dark:bg-slate-950/50"
           >
             <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {{ t('chat.deepResearchCoverageSummary', 'Coverage Summary') }}
             </div>
-            <div class="mt-3 grid grid-cols-2 gap-3 text-xs">
-              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+            <div class="mt-2.5 grid grid-cols-2 gap-2.5 text-xs">
+              <div class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60">
                 <div class="text-slate-500 dark:text-slate-400">
                   {{ t('chat.deepResearchTasks', 'Tasks') }}
                 </div>
@@ -492,7 +555,7 @@ function conflictRiskLabel(risk?: string): string {
                   {{ coverageSummary.task_count || 0 }}
                 </div>
               </div>
-              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+              <div class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60">
                 <div class="text-slate-500 dark:text-slate-400">
                   {{ t('chat.deepResearchEvidence', 'Evidence') }}
                 </div>
@@ -500,7 +563,7 @@ function conflictRiskLabel(risk?: string): string {
                   {{ coverageSummary.evidence_count || evidenceCount }}
                 </div>
               </div>
-              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+              <div class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60">
                 <div class="text-slate-500 dark:text-slate-400">
                   {{ t('chat.deepResearchDomains', 'Domains') }}
                 </div>
@@ -508,7 +571,7 @@ function conflictRiskLabel(risk?: string): string {
                   {{ coverageSummary.distinct_domain_count || 0 }}
                 </div>
               </div>
-              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+              <div class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60">
                 <div class="text-slate-500 dark:text-slate-400">
                   {{ t('chat.deepResearchOpenQuestions', 'Open questions') }}
                 </div>
@@ -521,23 +584,23 @@ function conflictRiskLabel(risk?: string): string {
 
           <section
             v-if="isKnowledgeBase && objectMap.length"
-            class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50"
+            class="rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 dark:border-slate-800 dark:bg-slate-950/50"
           >
             <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {{ t('chat.deepResearchObjectMap', 'Object Map') }}
             </div>
-            <div class="mt-3 space-y-3">
+            <div class="mt-2.5 space-y-2.5">
               <div
                 v-for="item in objectMap"
                 :key="item.id || item.label"
-                class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60"
+                class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60"
               >
                 <div class="flex items-start justify-between gap-2">
                   <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
                     {{ item.label || item.id || '--' }}
                   </div>
                   <span
-                    class="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200"
                   >
                     {{ t('chat.deepResearchTasks', 'Tasks') }} {{ item.task_count || 0 }}
                   </span>
@@ -571,7 +634,7 @@ function conflictRiskLabel(risk?: string): string {
           </section>
 
           <section
-            class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50"
+            class="rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 dark:border-slate-800 dark:bg-slate-950/50"
           >
             <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {{ t('chat.deepResearchVerificationSummary', 'Verification') }}
@@ -596,18 +659,18 @@ function conflictRiskLabel(risk?: string): string {
                 {{ verificationSummary?.insufficient_count || 0 }}
               </span>
             </div>
-            <div v-if="verificationItems.length" class="mt-3 space-y-3">
+            <div v-if="verificationItems.length" class="mt-2.5 space-y-2.5">
               <div
                 v-for="(item, index) in verificationItems"
                 :key="index"
-                class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60"
+                class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60"
               >
                 <div class="flex items-start justify-between gap-2">
                   <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
                     {{ verificationTitle(item) }}
                   </div>
                   <span
-                    class="rounded-full px-2.5 py-1 text-xs"
+                    class="rounded-full px-2.5 py-0.5 text-xs"
                     :class="verificationStatusClass(item.status)"
                     >{{ verificationStatusLabel(item.status) }}</span
                   >
@@ -630,16 +693,16 @@ function conflictRiskLabel(risk?: string): string {
 
           <section
             v-if="timelineSections.length"
-            class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50"
+            class="rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 dark:border-slate-800 dark:bg-slate-950/50"
           >
             <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {{ t('chat.deepResearchTimeline', 'Timeline') }}
             </div>
-            <div class="mt-3 space-y-3">
+            <div class="mt-2.5 space-y-2.5">
               <div
                 v-for="(section, index) in timelineSections"
                 :key="index"
-                class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60"
+                class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60"
               >
                 <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
                   {{ section.label }}
@@ -657,7 +720,7 @@ function conflictRiskLabel(risk?: string): string {
           </section>
 
           <section
-            class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50"
+            class="rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 dark:border-slate-800 dark:bg-slate-950/50"
           >
             <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {{ t('chat.deepResearchOpenQuestions', 'Open questions') }}
@@ -675,29 +738,96 @@ function conflictRiskLabel(risk?: string): string {
         </div>
       </div>
 
-      <section
-        v-if="stageErrors.length"
-        class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 dark:border-amber-900/60 dark:bg-amber-950/30"
-      >
-        <div class="text-sm font-semibold text-amber-700 dark:text-amber-200">
-          {{ t('chat.deepResearchStageErrors', 'Stage warnings') }}
-        </div>
-        <ul class="mt-2 list-disc space-y-1 pl-4 text-sm text-amber-700 dark:text-amber-200">
-          <li v-for="warning in stageErrors" :key="warning">{{ warning }}</li>
-        </ul>
-      </section>
-
       <details
-        v-if="researchTrace.length || verificationItems.length"
-        class="group rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50"
+        v-if="hasResearchDetails"
+        data-testid="deep-research-details"
+        class="group rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 dark:border-slate-800 dark:bg-slate-950/50"
       >
         <summary
           class="list-none cursor-pointer flex items-center justify-between gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100"
         >
-          <span>{{ t('chat.deepResearchTrace', 'Research trace') }}</span>
+          <div class="min-w-0">
+            <div>{{ tr('chat.deepResearchDetails', 'Research details') }}</div>
+            <div
+              class="mt-1 flex flex-wrap gap-2 text-xs font-normal text-slate-500 dark:text-slate-400"
+            >
+              <span v-if="sourceInventory.length">
+                {{ t('chat.deepResearchSourceInventory', 'Source Inventory') }}
+                {{ sourceInventory.length }}
+              </span>
+              <span v-if="researchTrace.length">
+                {{ t('chat.deepResearchTraceEntries', 'Iterations') }}
+                {{ researchTrace.length }}
+              </span>
+              <span v-if="stageErrors.length">
+                {{ t('chat.deepResearchStageErrors', 'Stage warnings') }}
+                {{ stageErrors.length }}
+              </span>
+            </div>
+          </div>
           <span class="text-slate-400 transition-transform group-open:rotate-180">⌄</span>
         </summary>
         <div class="mt-4 space-y-3">
+          <div
+            v-if="sourceInventory.length"
+            data-testid="deep-research-source-inventory-full"
+            class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60"
+          >
+            <div class="text-sm font-medium text-slate-800 dark:text-slate-100">
+              {{ t('chat.deepResearchSourceInventory', 'Source Inventory') }}
+            </div>
+            <div class="mt-3 space-y-3">
+              <a
+                v-for="(source, index) in sourceInventory"
+                :key="`${source.source_id || source.url || index}-full`"
+                :href="source.url || undefined"
+                :target="source.url ? '_blank' : undefined"
+                :rel="source.url ? 'noopener noreferrer' : undefined"
+                class="block rounded-xl border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-950/60"
+              >
+                <div class="text-sm font-medium text-blue-600 dark:text-blue-300 break-words">
+                  {{ source.title || source.url || '--' }}
+                </div>
+                <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {{ source.domain || domainOf(source.url || '') }} ·
+                  {{ source.source_type || 'web' }}
+                </div>
+                <div
+                  class="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400 dark:text-slate-500"
+                >
+                  <span v-if="source.published_at"
+                    >{{ t('chat.deepResearchPublishedAt', 'Published') }}
+                    {{ formatDate(source.published_at) }}</span
+                  >
+                  <span v-if="source.fetched_at"
+                    >{{ t('chat.deepResearchFetchedAt', 'Fetched') }}
+                    {{ formatDate(source.fetched_at) }}</span
+                  >
+                  <span
+                    >{{ t('chat.deepResearchRelevance', 'Rel') }}
+                    {{ formatScore(source.relevance_score) }}</span
+                  >
+                  <span
+                    >{{ t('chat.deepResearchCredibility', 'Cred') }}
+                    {{ formatScore(source.credibility_score) }}</span
+                  >
+                </div>
+              </a>
+            </div>
+          </div>
+
+          <div
+            v-if="stageErrors.length"
+            class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 dark:border-amber-900/60 dark:bg-amber-950/30"
+          >
+            <div class="text-sm font-medium text-amber-700 dark:text-amber-200">
+              {{ t('chat.deepResearchStageErrors', 'Stage warnings') }}
+            </div>
+            <ul class="mt-2 list-disc space-y-1 pl-4 text-sm text-amber-700 dark:text-amber-200">
+              <li v-for="warning in stageErrors" :key="warning">{{ warning }}</li>
+            </ul>
+          </div>
+
           <div
             v-for="(entry, index) in researchTrace"
             :key="index"

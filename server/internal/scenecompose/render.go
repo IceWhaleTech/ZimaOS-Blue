@@ -30,6 +30,15 @@ type placement struct {
 	grounded bool
 }
 
+type Placement struct {
+	X        int
+	Y        int
+	W        int
+	H        int
+	GroundY  int
+	Grounded bool
+}
+
 func (r *Renderer) Render(width, height int, background *ResolvedImage, foregrounds []renderForeground) image.Image {
 	if width <= 0 {
 		width = 1280
@@ -62,6 +71,18 @@ func (r *Renderer) Render(width, height int, background *ResolvedImage, foregrou
 	applyVignette(canvas)
 	applyFilmGrain(canvas, 4)
 	return canvas
+}
+
+func LayoutPlacement(width, height int, layout LayoutHint, idx int) Placement {
+	pos := layoutPlacement(width, height, layout, idx)
+	return Placement{
+		X:        pos.x,
+		Y:        pos.y,
+		W:        pos.w,
+		H:        pos.h,
+		GroundY:  pos.groundY,
+		Grounded: pos.grounded,
+	}
 }
 
 func drawForeground(canvas *image.RGBA, background *ResolvedImage, fg renderForeground, pos placement) {

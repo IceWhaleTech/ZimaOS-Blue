@@ -172,6 +172,74 @@ func TestMarshalChatRequestNormalizesToolSchema(t *testing.T) {
 	}
 }
 
+func TestMarshalChatRequestNormalizesTypedCompositeToolSchema(t *testing.T) {
+	data, err := MarshalChatRequest(llm.ChatRequest{
+		Model: "gpt-5",
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "hi"},
+		},
+		Tools: []llm.Tool{{
+			Name: "deep_research",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"anyOf": []map[string]interface{}{
+					{"required": []string{"query"}},
+					{"required": []string{"job_id"}},
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("MarshalChatRequest() error = %v", err)
+	}
+
+	var req bridgeRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if len(req.Tools) != 1 {
+		t.Fatalf("len(req.Tools) = %d, want 1", len(req.Tools))
+	}
+	anyOf, ok := req.Tools[0].Function.Parameters["anyOf"].([]interface{})
+	if !ok {
+		t.Fatalf("parameters.anyOf type = %T, want []interface{}", req.Tools[0].Function.Parameters["anyOf"])
+	}
+	if len(anyOf) != 2 {
+		t.Fatalf("len(parameters.anyOf) = %d, want 2", len(anyOf))
+	}
+}
+
+func TestMarshalChatRequest_EmptyAssistantContentStaysString(t *testing.T) {
+	data, err := MarshalChatRequest(llm.ChatRequest{
+		Model: "gpt-5",
+		Messages: []llm.Message{
+			{Role: llm.RoleAssistant, Content: ""},
+			{Role: llm.RoleUser, Content: "继续"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("MarshalChatRequest() error = %v", err)
+	}
+	if strings.Contains(string(data), `"content":null`) {
+		t.Fatalf("request contains null content: %s", data)
+	}
+
+	var req bridgeRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if len(req.Messages) != 2 {
+		t.Fatalf("len(req.Messages) = %d, want 2", len(req.Messages))
+	}
+	content, ok := req.Messages[0].Content.(string)
+	if !ok {
+		t.Fatalf("assistant content type = %T, want string", req.Messages[0].Content)
+	}
+	if content != "" {
+		t.Fatalf("assistant content = %q, want empty string", content)
+	}
+}
+
 func TestBridgeChatStream_PropagatesDisableResponsesContinuationHeader(t *testing.T) {
 	handler := &fakeProxyHandler{
 		providerName: "OpenAI",

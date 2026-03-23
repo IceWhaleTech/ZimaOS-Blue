@@ -102,8 +102,7 @@ class ComponentPool {
       mermaid: () => import('@/components/typeless/CardMermaid.vue'),
       search: () => import('@/components/typeless/CardSearch.vue'),
       'deep-research': () => import('@/components/typeless/CardDeepResearch.vue'),
-      'deep-research-timeline': () =>
-        import('@/components/typeless/CardDeepResearchTimeline.vue'),
+      'deep-research-timeline': () => import('@/components/typeless/CardDeepResearchTimeline.vue'),
       'deep-research-progress': () => import('@/components/typeless/CardDeepResearchProgress.vue'),
       'deep-research-event': () => import('@/components/typeless/CardDeepResearchEvent.vue'),
       'ui-review': () => import('@/components/typeless/CardUIReview.vue'),
@@ -114,7 +113,8 @@ class ComponentPool {
       'web-fetch': () => import('@/components/typeless/CardWebFetch.vue'),
       'convert-task': () => import('@/components/typeless/CardConvertTask.vue'),
       exec: () => import('@/components/typeless/CardExec.vue'),
-      'model-download-progress': () => import('@/components/typeless/CardModelDownloadProgress.vue'),
+      'model-download-progress': () =>
+        import('@/components/typeless/CardModelDownloadProgress.vue'),
     }
 
     const loader = componentMap[cardType]

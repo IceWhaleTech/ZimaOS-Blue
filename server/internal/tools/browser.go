@@ -15,6 +15,8 @@ type BrowserBackend interface {
 	Start(ctx context.Context) error
 	Navigate(ctx context.Context, url string, targetID string) (BrowserNavResult, error)
 	CookieHeader(ctx context.Context, targetID string, url string) (string, error)
+	ObserveNetwork(ctx context.Context, targetID string, maxEntries int, clear bool) (BrowserObservedNetworkResult, error)
+	WaitNetworkIdle(ctx context.Context, targetID string, idleMS int, timeoutMS int) error
 	AccessibilityTree(ctx context.Context, targetID string, maxDepth int) (BrowserA11yTreeResult, error)
 	InteractiveElements(ctx context.Context, targetID string) (BrowserInteractiveResult, error)
 	CountInteractiveElements(ctx context.Context, targetID string) (int, error)
@@ -33,6 +35,25 @@ type BrowserNavResult struct {
 	URL      string `json:"url"`
 	Title    string `json:"title"`
 	TargetID string `json:"target_id"`
+}
+
+// BrowserNetworkEvent represents an observed request/response pair from a real browser session.
+type BrowserNetworkEvent struct {
+	Method       string            `json:"method,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	Status       int               `json:"status,omitempty"`
+	ContentType  string            `json:"content_type,omitempty"`
+	ResourceType string            `json:"resource_type,omitempty"`
+	Initiator    string            `json:"initiator,omitempty"`
+	DurationMS   int64             `json:"duration_ms,omitempty"`
+	Headers      map[string]string `json:"headers,omitempty"`
+	BodySample   string            `json:"body_sample,omitempty"`
+}
+
+// BrowserObservedNetworkResult summarizes recent network activity for a tab.
+type BrowserObservedNetworkResult struct {
+	TargetID string                `json:"target_id,omitempty"`
+	Events   []BrowserNetworkEvent `json:"events,omitempty"`
 }
 
 // BrowserA11yTreeResult represents an accessibility tree result.
@@ -171,9 +192,15 @@ func (t *BrowserTool) markRelayApprovedForSession(key string) {
 }
 
 func (t *BrowserTool) maybeRequireRelayApproval(ctx context.Context, b BrowserBackend, targetID, checkpointURL, action string) (interface{}, bool, error) {
-	relayBackend, ok := b.(relayAwareBrowserBackend)
-	if !ok || !relayBackend.UsesRelay(ctx, targetID) {
-		return nil, false, nil
+	if relayBackend, ok := b.(relayURLAwareBrowserBackend); ok {
+		if !relayBackend.UsesRelayFor(ctx, targetID, checkpointURL) {
+			return nil, false, nil
+		}
+	} else {
+		relayBackend, ok := b.(relayAwareBrowserBackend)
+		if !ok || !relayBackend.UsesRelay(ctx, targetID) {
+			return nil, false, nil
+		}
 	}
 
 	sessionKey := t.relayApprovalKey(ctx)
@@ -217,7 +244,7 @@ func (t *BrowserTool) maybeRequireRelayApproval(ctx context.Context, b BrowserBa
 func (t *BrowserTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "browser",
-		Description: "Final web fallback and live page tool. Use for login flows, CAPTCHA/challenges, JS-heavy rendering, clicking/typing/forms, scrolling, screenshots, or tab/session reuse. Not for keyword discovery; use web_search first. For quick public page reads, prefer web_fetch or web_read.",
+		Description: "Final web fallback and live page tool. Use for login flows, CAPTCHA/challenges, JS-heavy rendering, clicking/typing/forms, scrolling, screenshots, or tab/session reuse. Prefer web_query for normal discovery and page reading; switch to browser for live interaction or when web_query reports browser-required warnings.",
 		Icon:        "browser",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -228,7 +255,7 @@ func (t *BrowserTool) Definition() ToolDefinition {
 				},
 				"url": map[string]interface{}{
 					"type":        "string",
-					"description": "URL to navigate to (required for navigate, screenshot)",
+					"description": "URL to navigate to (required for navigate; optional for screenshot when capturing the current tab or a target_id tab)",
 				},
 				"ref": map[string]interface{}{
 					"type":        "number",
@@ -483,11 +510,11 @@ func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b Browser
 func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[string]interface{}, targetID string) (interface{}, error) {
 	rawRef, ok := compatArgValue(args, "ref")
 	if !ok {
-		return nil, errors.New("ref is required for act (use @N from the accessibility tree)")
+		return nil, errors.New("ref is required for act (pass 12 or \"@12\" from the accessibility tree)")
 	}
-	ref, ok := coerceCompatInt(rawRef)
+	ref, ok := CoerceBrowserRef(rawRef)
 	if !ok {
-		return nil, errors.New("ref must be an integer for act")
+		return nil, errors.New("ref must be an integer or @N string for act")
 	}
 	actType := firstCompatString(args, "act_type", "actType")
 	_, actType = CanonicalizeBrowserAction("act", actType)
@@ -567,27 +594,72 @@ func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[stri
 	}), nil
 }
 
+// CoerceBrowserRef accepts either a raw integer ref or an accessibility-tree ref like "@12".
+func CoerceBrowserRef(v interface{}) (int, bool) {
+	if raw, ok := v.(string); ok {
+		raw = strings.TrimSpace(raw)
+		raw = strings.TrimPrefix(raw, "@")
+		if raw == "" {
+			return 0, false
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	}
+	return coerceCompatInt(v)
+}
+
 func (t *BrowserTool) doScreenshot(ctx context.Context, b BrowserBackend, args map[string]interface{}) (interface{}, error) {
 	url := firstCompatString(args, "url", "href")
-	if url == "" {
-		return nil, errors.New("url is required for screenshot")
+	targetID := firstCompatString(args, "target_id", "targetId")
+	checkpointURL := strings.TrimSpace(url)
+	if checkpointURL == "" {
+		checkpointURL = t.resolveCheckpointURL(ctx, b, targetID)
 	}
-	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, "", url, "use_connected_session"); handled || err != nil {
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, checkpointURL, "use_connected_session"); handled || err != nil {
 		return gated, err
 	}
-	emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "running", url)
+	progressURL := checkpointURL
+	if progressURL == "" {
+		progressURL = url
+	}
+	emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "running", progressURL)
 	_ = b.Start(ctx)
-	data, err := b.Screenshot(ctx, url)
+	var (
+		data    string
+		err     error
+		message string
+	)
+	switch {
+	case url != "":
+		data, err = b.Screenshot(ctx, url)
+		message = fmt.Sprintf("Screenshot captured for %s", url)
+	case targetID != "":
+		data, err = b.ScreenshotTab(ctx, targetID)
+		message = fmt.Sprintf("Screenshot captured for tab %s", targetID)
+	default:
+		data, err = b.ScreenshotTab(ctx, "")
+		message = "Screenshot captured for active tab"
+	}
 	if err != nil {
-		emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "failed", url)
+		emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "failed", progressURL)
 		return jsonErr(err.Error()), nil
 	}
-	emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "success", url)
+	emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "success", progressURL)
 	data = t.normalizeScreenshotPayload(data)
-	return jsonResult(map[string]interface{}{
+	out := map[string]interface{}{
 		"screenshot": data,
-		"message":    fmt.Sprintf("Screenshot captured for %s", url),
-	}), nil
+		"message":    message,
+	}
+	if targetID != "" {
+		out["target_id"] = targetID
+	}
+	if url != "" {
+		out["url"] = url
+	}
+	return jsonResult(out), nil
 }
 
 func (t *BrowserTool) doTabs(ctx context.Context, b BrowserBackend) (interface{}, error) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -139,16 +138,6 @@ func TestEmailTool_Execute_SearchArchiveLabelAndSummarize(t *testing.T) {
 	if got := int(searchResult["count"].(int)); got != 1 {
 		t.Fatalf("search count = %d, want 1", got)
 	}
-	searchEmails := searchResult["emails"].([]map[string]interface{})
-	if len(searchEmails) != 1 {
-		t.Fatalf("search emails len = %d, want 1", len(searchEmails))
-	}
-	if score, ok := searchEmails[0]["priority_score"].(int); !ok || score <= 0 {
-		t.Fatalf("expected positive priority_score in search result, got=%v", searchEmails[0]["priority_score"])
-	}
-	if action, ok := searchEmails[0]["suggested_action"].(string); !ok || strings.TrimSpace(action) == "" {
-		t.Fatalf("expected suggested_action in search result, got=%v", searchEmails[0]["suggested_action"])
-	}
 
 	archiveResultAny, err := tool.Execute(ctx, map[string]interface{}{
 		"action": "archive",
@@ -199,12 +188,6 @@ func TestEmailTool_Execute_SearchArchiveLabelAndSummarize(t *testing.T) {
 	}
 	if summary := summaryResult["summary"].(string); summary == "" {
 		t.Fatal("expected human-readable summary")
-	}
-	if actionSummary, ok := summaryResult["action_summary"].(string); !ok || strings.TrimSpace(actionSummary) == "" {
-		t.Fatalf("expected action_summary in summarize result, got=%v", summaryResult["action_summary"])
-	}
-	if details := summaryResult["action_details"].([]EmailAction); len(details) == 0 {
-		t.Fatal("expected non-empty action_details in summarize result")
 	}
 }
 

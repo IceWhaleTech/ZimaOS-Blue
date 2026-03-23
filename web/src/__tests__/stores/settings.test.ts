@@ -40,7 +40,8 @@ vi.mock('@/api/settings', () => ({
 }))
 
 const SETTINGS_KEY = 'zimaos-blue-settings'
-const MAX_TOKENS_MIGRATION_KEY = 'zimaos-blue-max-tokens-migrated-v1'
+const MAX_TOKENS_MIGRATION_KEY_V1 = 'zimaos-blue-max-tokens-migrated-v1'
+const MAX_TOKENS_MIGRATION_KEY_V2 = 'zimaos-blue-max-tokens-migrated-v2'
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -90,29 +91,58 @@ describe('settings store - small model integration', () => {
     expect(store.smartSkillSelection).toBe(false)
   })
 
-  it('migrates legacy maxTokens 2048 to 8192 once', () => {
+  it('migrates legacy maxTokens 2048 to 16384 once', () => {
     localStorageMock.setItem(SETTINGS_KEY, JSON.stringify({ maxTokens: 2048, temperature: 0.7 }))
 
     const store = useSettingsStore()
 
-    expect(store.maxTokens).toBe(8192)
-    expect(localStorageMock.getItem(MAX_TOKENS_MIGRATION_KEY)).toBe('1')
-    expect(JSON.parse(localStorageMock.getItem(SETTINGS_KEY) || '{}').maxTokens).toBe(8192)
+    expect(store.maxTokens).toBe(16384)
+    expect(localStorageMock.getItem(MAX_TOKENS_MIGRATION_KEY_V1)).toBe('1')
+    expect(localStorageMock.getItem(MAX_TOKENS_MIGRATION_KEY_V2)).toBe('1')
+    expect(JSON.parse(localStorageMock.getItem(SETTINGS_KEY) || '{}').maxTokens).toBe(16384)
   })
 
   it('does not re-migrate when migration marker already exists', () => {
     localStorageMock.setItem(SETTINGS_KEY, JSON.stringify({ maxTokens: 2048, temperature: 0.7 }))
-    localStorageMock.setItem(MAX_TOKENS_MIGRATION_KEY, '1')
+    localStorageMock.setItem(MAX_TOKENS_MIGRATION_KEY_V1, '1')
 
     const store = useSettingsStore()
 
     expect(store.maxTokens).toBe(2048)
   })
 
+  it('migrates the previous default maxTokens 8192 to 16384 once', () => {
+    localStorageMock.setItem(SETTINGS_KEY, JSON.stringify({ maxTokens: 8192, temperature: 0.7 }))
+    localStorageMock.setItem(MAX_TOKENS_MIGRATION_KEY_V1, '1')
+
+    const store = useSettingsStore()
+
+    expect(store.maxTokens).toBe(16384)
+    expect(localStorageMock.getItem(MAX_TOKENS_MIGRATION_KEY_V2)).toBe('1')
+    expect(JSON.parse(localStorageMock.getItem(SETTINGS_KEY) || '{}').maxTokens).toBe(16384)
+  })
+
+  it('does not re-migrate 8192 when v2 migration marker already exists', () => {
+    localStorageMock.setItem(SETTINGS_KEY, JSON.stringify({ maxTokens: 8192, temperature: 0.7 }))
+    localStorageMock.setItem(MAX_TOKENS_MIGRATION_KEY_V1, '1')
+    localStorageMock.setItem(MAX_TOKENS_MIGRATION_KEY_V2, '1')
+
+    const store = useSettingsStore()
+
+    expect(store.maxTokens).toBe(8192)
+  })
+
   it('marks migration as done for fresh profiles', () => {
     useSettingsStore()
 
-    expect(localStorageMock.getItem(MAX_TOKENS_MIGRATION_KEY)).toBe('1')
+    expect(localStorageMock.getItem(MAX_TOKENS_MIGRATION_KEY_V1)).toBe('1')
+    expect(localStorageMock.getItem(MAX_TOKENS_MIGRATION_KEY_V2)).toBe('1')
+  })
+
+  it('defaults close behavior to minimize for fresh profiles', () => {
+    const store = useSettingsStore()
+
+    expect(store.closeBehavior).toBe('minimize')
   })
 
   it('updates small-model route toggles in backend settings', async () => {
@@ -143,6 +173,19 @@ describe('settings store - small model integration', () => {
     expect(settingsApi.patch).toHaveBeenLastCalledWith({
       small_model_route_tool_dispatch_enabled: false,
     })
+  })
+
+  it('normalizes legacy off compression mode to auto when loading backend settings', async () => {
+    const store = useSettingsStore()
+    vi.mocked(settingsApi.get).mockResolvedValue({
+      data: {
+        context_compression_mode: 'off',
+      },
+    } as never)
+
+    await store.fetchBackendSettings()
+
+    expect(store.contextCompressionMode).toBe('auto')
   })
 
   it('fetches and stores small-model status', async () => {

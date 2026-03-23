@@ -1336,6 +1336,76 @@ done:
 	}
 }
 
+func TestServiceSubscribe_EmitsRetryGuidanceInBriefEvent(t *testing.T) {
+	svc := NewService(&mockPlanner{
+		plan: func(query string, mode Mode, lang string) []Task {
+			return []Task{{
+				ID:       "task_overview",
+				Question: "feature rollout overview",
+				Priority: 2,
+				Depth:    1,
+				Status:   "pending",
+			}}
+		},
+	}, &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			return []SearchHit{{
+				Title:       "Official rollout note",
+				URL:         "https://docs.example.com/rollout",
+				Description: "Official confirmation of the rollout date",
+			}}, nil
+		},
+	})
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:        "feature rollout",
+		Mode:         ModeStandard,
+		RetryContext: "Harness retry guidance from the previous attempt.",
+		RetryFeedback: map[string]interface{}{
+			"failure_label": "required_check_missing",
+			"summary":       "Need official confirmation for the rollout date",
+			"failed_checks": []string{"rollout date confirmation"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+
+	events, unsubscribe, err := svc.Subscribe(job.ID)
+	if err != nil {
+		t.Fatalf("subscribe failed: %v", err)
+	}
+	defer unsubscribe()
+
+	timeout := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-events:
+			if ev.Type != "brief_augmented" {
+				continue
+			}
+			payload, ok := ev.Payload.(map[string]interface{})
+			if !ok {
+				t.Fatalf("brief payload type = %T, want map", ev.Payload)
+			}
+			if got := strings.TrimSpace(deepResearchString(payload["retry_context"])); got != "Harness retry guidance from the previous attempt." {
+				t.Fatalf("retry_context = %q, want propagated retry context", got)
+			}
+			retryQueries := normalizeDeepResearchEventStringList(payload["retry_queries"])
+			if len(retryQueries) == 0 {
+				t.Fatalf("expected retry_queries in brief payload: %#v", payload)
+			}
+			joined := strings.ToLower(strings.Join(retryQueries, "\n"))
+			if !strings.Contains(joined, "rollout date") {
+				t.Fatalf("retry_queries = %#v, want retry-specific query", retryQueries)
+			}
+			return
+		case <-timeout:
+			t.Fatal("timeout waiting for brief_augmented event")
+		}
+	}
+}
+
 type recordedJobEvent struct {
 	userID    string
 	eventType string

@@ -202,3 +202,63 @@ func TestConfigStore_RejectsInvalidSectionNames(t *testing.T) {
 		t.Fatalf("SetSection() error = %v, want ErrInvalidSection", err)
 	}
 }
+
+func TestConfigStore_RecognizesNewTopLevelSections(t *testing.T) {
+	kv := kvstore.NewMemoryStore()
+	store := NewConfigStore(kv)
+	cfg := defaults()
+	cfg.SkillMarket.Enabled = false
+	cfg.Agents.Defaults.Model = "gpt-5"
+	cfg.Harness.Enabled = false
+
+	if _, err := store.LoadOrImport(&cfg); err != nil {
+		t.Fatalf("LoadOrImport() error = %v", err)
+	}
+
+	for _, section := range []string{"skill_market", "agents", "research", "harness"} {
+		if _, err := store.GetSection(section); err != nil {
+			t.Fatalf("GetSection(%q) error = %v", section, err)
+		}
+	}
+
+	if err := store.SetSection("research", []byte(`{}`)); err != nil {
+		t.Fatalf("SetSection(research) error = %v", err)
+	}
+}
+
+func TestConfigStore_ImportUpdatesInMemoryConfigAndPreservesJWTSecret(t *testing.T) {
+	kv := kvstore.NewMemoryStore()
+	store := NewConfigStore(kv)
+	initial := defaults()
+	initial.Security.JWT.Secret = "real-jwt-secret-abcdefghijklmnopqrstuvwxyz1234567890"
+
+	if _, err := store.LoadOrImport(&initial); err != nil {
+		t.Fatalf("LoadOrImport() error = %v", err)
+	}
+
+	next := defaults()
+	next.Server.Port = 9090
+	next.Security.JWT.Secret = defaultJWTSecretPlaceholder
+	if err := store.Import(&next); err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	got := store.Config()
+	if got == nil {
+		t.Fatal("Config() returned nil")
+	}
+	if got.Server.Port != 9090 {
+		t.Fatalf("Config().Server.Port = %d, want 9090", got.Server.Port)
+	}
+	if got.Security.JWT.Secret != initial.Security.JWT.Secret {
+		t.Fatalf("Config().Security.JWT.Secret = %q, want preserved %q", got.Security.JWT.Secret, initial.Security.JWT.Secret)
+	}
+
+	var sec SecurityConfig
+	if err := kv.GetJSON(context.Background(), configKeyPrefix+"security", &sec); err != nil {
+		t.Fatalf("GetJSON(security) error = %v", err)
+	}
+	if sec.JWT.Secret != initial.Security.JWT.Secret {
+		t.Fatalf("persisted JWT secret = %q, want preserved %q", sec.JWT.Secret, initial.Security.JWT.Secret)
+	}
+}

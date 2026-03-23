@@ -55,12 +55,10 @@ async function loadMediaProviderApi() {
   return (await mediaProvidersApiModulePromise).mediaProviderApi
 }
 
-const providerPoolApi = createLazyApiProxy<ProviderPoolApiModule['providerPoolApi']>(
-  loadProviderPoolApi
-)
-const mediaProviderApi = createLazyApiProxy<MediaProvidersApiModule['mediaProviderApi']>(
-  loadMediaProviderApi
-)
+const providerPoolApi =
+  createLazyApiProxy<ProviderPoolApiModule['providerPoolApi']>(loadProviderPoolApi)
+const mediaProviderApi =
+  createLazyApiProxy<MediaProvidersApiModule['mediaProviderApi']>(loadMediaProviderApi)
 
 export const useProviderPoolStore = defineStore('providerPool', () => {
   // State

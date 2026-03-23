@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -73,11 +74,35 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Browser.MaxTimeout != 300000 {
 		t.Errorf("Browser.MaxTimeout = %v, want %v", cfg.Browser.MaxTimeout, 300000)
 	}
+	if cfg.Browser.RelayPreferredFallback() != "managed" {
+		t.Errorf("Browser.RelayPreferredFallback() = %q, want managed", cfg.Browser.RelayPreferredFallback())
+	}
+	if len(cfg.Browser.TrustedSitePresets) != 0 {
+		t.Errorf("Browser.TrustedSitePresets = %v, want empty", cfg.Browser.TrustedSitePresets)
+	}
 	if cfg.ToolCalling.WebFetch.Timeout != 5*time.Minute {
 		t.Errorf("ToolCalling.WebFetch.Timeout = %v, want %v", cfg.ToolCalling.WebFetch.Timeout, 5*time.Minute)
 	}
+	if !cfg.ToolCalling.WebFetch.HTTPNativeEnabled {
+		t.Errorf("ToolCalling.WebFetch.HTTPNativeEnabled = %v, want true", cfg.ToolCalling.WebFetch.HTTPNativeEnabled)
+	}
+	if cfg.ToolCalling.WebFetch.HTTPNativeLibrary != "" {
+		t.Errorf("ToolCalling.WebFetch.HTTPNativeLibrary = %q, want empty", cfg.ToolCalling.WebFetch.HTTPNativeLibrary)
+	}
+	if len(cfg.ToolCalling.WebFetch.HTTPNativePreferHosts) != 0 {
+		t.Errorf("ToolCalling.WebFetch.HTTPNativePreferHosts = %v, want empty", cfg.ToolCalling.WebFetch.HTTPNativePreferHosts)
+	}
 	if cfg.ToolCalling.WebFetch.FirecrawlTimeout != 5*time.Minute {
 		t.Errorf("ToolCalling.WebFetch.FirecrawlTimeout = %v, want %v", cfg.ToolCalling.WebFetch.FirecrawlTimeout, 5*time.Minute)
+	}
+	if cfg.ToolCalling.WebFetch.JinaReaderEnabled {
+		t.Errorf("ToolCalling.WebFetch.JinaReaderEnabled = %v, want false", cfg.ToolCalling.WebFetch.JinaReaderEnabled)
+	}
+	if cfg.ToolCalling.WebFetch.JinaReaderTimeout != 5*time.Minute {
+		t.Errorf("ToolCalling.WebFetch.JinaReaderTimeout = %v, want %v", cfg.ToolCalling.WebFetch.JinaReaderTimeout, 5*time.Minute)
+	}
+	if len(cfg.ToolCalling.WebFetch.ProxyFetcherProviders) != 2 {
+		t.Errorf("ToolCalling.WebFetch.ProxyFetcherProviders = %v, want default pair", cfg.ToolCalling.WebFetch.ProxyFetcherProviders)
 	}
 	if cfg.Performance.Database.ConnMaxIdleTime != 10*time.Minute {
 		t.Errorf("Performance.Database.ConnMaxIdleTime = %v, want %v", cfg.Performance.Database.ConnMaxIdleTime, 10*time.Minute)
@@ -131,7 +156,7 @@ func TestLoad_FromFile(t *testing.T) {
 	// Create temp config file
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	configContent := `
+	configContent := strings.TrimSpace(`
 server:
   host: "127.0.0.1"
   port: 9090
@@ -149,12 +174,17 @@ browser:
   headless: false
   pool_size: 1
   cdp_url: "http://127.0.0.1:18792?token=test-token"
+  trusted_sites: ["https://www.zhihu.com"]
+  trusted_site_presets: ["browser_common"]
+  relay_preferred_sites: ["zhihu.com"]
+  relay_preferred_site_presets: ["browser_common"]
+  relay_preferred_fallback_driver: "managed"
 performance:
   database:
     conn_max_idle_time: "2m"
   resource_reclaim:
     stt_idle_after: "3m"
-`
+`)
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		t.Fatalf("Failed to write config file: %v", err)
 	}
@@ -197,6 +227,21 @@ performance:
 	if cfg.Browser.CDPURL != "http://127.0.0.1:18792?token=test-token" {
 		t.Errorf("Browser.CDPURL = %v, want %v", cfg.Browser.CDPURL, "http://127.0.0.1:18792?token=test-token")
 	}
+	if len(cfg.Browser.TrustedSites) != 1 || cfg.Browser.TrustedSites[0] != "https://www.zhihu.com" {
+		t.Errorf("Browser.TrustedSites = %v, want zhihu seed", cfg.Browser.TrustedSites)
+	}
+	if len(cfg.Browser.TrustedSitePresets) != 1 || cfg.Browser.TrustedSitePresets[0] != "browser_common" {
+		t.Errorf("Browser.TrustedSitePresets = %v, want browser_common", cfg.Browser.TrustedSitePresets)
+	}
+	if len(cfg.Browser.RelayPreferredSites) != 1 || cfg.Browser.RelayPreferredSites[0] != "zhihu.com" {
+		t.Errorf("Browser.RelayPreferredSites = %v, want zhihu.com", cfg.Browser.RelayPreferredSites)
+	}
+	if len(cfg.Browser.RelayPreferredSitePresets) != 1 || cfg.Browser.RelayPreferredSitePresets[0] != "browser_common" {
+		t.Errorf("Browser.RelayPreferredSitePresets = %v, want browser_common", cfg.Browser.RelayPreferredSitePresets)
+	}
+	if got := cfg.Browser.RelayPreferredFallback(); got != "managed" {
+		t.Errorf("Browser.RelayPreferredFallback() = %q, want managed", got)
+	}
 	if cfg.Performance.Database.ConnMaxIdleTime != 2*time.Minute {
 		t.Errorf("Performance.Database.ConnMaxIdleTime = %v, want %v", cfg.Performance.Database.ConnMaxIdleTime, 2*time.Minute)
 	}
@@ -214,14 +259,26 @@ func TestLoad_FromEnv(t *testing.T) {
 	os.Setenv("BLUE_LOG_LEVEL", "warn")
 	os.Setenv("BLUE_WEB_FETCH_ALLOW_PRIVATE_HOSTS", "true")
 	os.Setenv("BLUE_WEB_FETCH_TIMEOUT", "12s")
+	os.Setenv("BLUE_WEB_FETCH_HTTP_NATIVE_ENABLED", "true")
+	os.Setenv("BLUE_WEB_FETCH_HTTP_NATIVE_LIBRARY", "/usr/lib/libcurl.4.dylib")
+	os.Setenv("BLUE_WEB_FETCH_HTTP_NATIVE_PREFER_HOSTS", "thepaper.cn,36kr.com")
 	os.Setenv("BLUE_WEB_FETCH_FIRECRAWL_TIMEOUT", "18s")
+	os.Setenv("BLUE_WEB_FETCH_JINA_READER_ENABLED", "true")
+	os.Setenv("BLUE_WEB_FETCH_JINA_READER_TIMEOUT", "21s")
+	os.Setenv("BLUE_WEB_FETCH_PROXY_FETCHER_PROVIDERS", "jina_reader,firecrawl")
 	defer func() {
 		os.Unsetenv("BLUE_SERVER_HOST")
 		os.Unsetenv("BLUE_SERVER_PORT")
 		os.Unsetenv("BLUE_LOG_LEVEL")
 		os.Unsetenv("BLUE_WEB_FETCH_ALLOW_PRIVATE_HOSTS")
 		os.Unsetenv("BLUE_WEB_FETCH_TIMEOUT")
+		os.Unsetenv("BLUE_WEB_FETCH_HTTP_NATIVE_ENABLED")
+		os.Unsetenv("BLUE_WEB_FETCH_HTTP_NATIVE_LIBRARY")
+		os.Unsetenv("BLUE_WEB_FETCH_HTTP_NATIVE_PREFER_HOSTS")
 		os.Unsetenv("BLUE_WEB_FETCH_FIRECRAWL_TIMEOUT")
+		os.Unsetenv("BLUE_WEB_FETCH_JINA_READER_ENABLED")
+		os.Unsetenv("BLUE_WEB_FETCH_JINA_READER_TIMEOUT")
+		os.Unsetenv("BLUE_WEB_FETCH_PROXY_FETCHER_PROVIDERS")
 	}()
 
 	cfg, err := Load("")
@@ -244,7 +301,25 @@ func TestLoad_FromEnv(t *testing.T) {
 	if cfg.ToolCalling.WebFetch.Timeout != 12*time.Second {
 		t.Fatalf("ToolCalling.WebFetch.Timeout = %v, want %v", cfg.ToolCalling.WebFetch.Timeout, 12*time.Second)
 	}
+	if !cfg.ToolCalling.WebFetch.HTTPNativeEnabled {
+		t.Fatalf("ToolCalling.WebFetch.HTTPNativeEnabled = %v, want true", cfg.ToolCalling.WebFetch.HTTPNativeEnabled)
+	}
+	if cfg.ToolCalling.WebFetch.HTTPNativeLibrary != "/usr/lib/libcurl.4.dylib" {
+		t.Fatalf("ToolCalling.WebFetch.HTTPNativeLibrary = %q, want %q", cfg.ToolCalling.WebFetch.HTTPNativeLibrary, "/usr/lib/libcurl.4.dylib")
+	}
+	if got := strings.Join(cfg.ToolCalling.WebFetch.HTTPNativePreferHosts, ","); got != "thepaper.cn,36kr.com" {
+		t.Fatalf("ToolCalling.WebFetch.HTTPNativePreferHosts = %q, want %q", got, "thepaper.cn,36kr.com")
+	}
 	if cfg.ToolCalling.WebFetch.FirecrawlTimeout != 18*time.Second {
 		t.Fatalf("ToolCalling.WebFetch.FirecrawlTimeout = %v, want %v", cfg.ToolCalling.WebFetch.FirecrawlTimeout, 18*time.Second)
+	}
+	if !cfg.ToolCalling.WebFetch.JinaReaderEnabled {
+		t.Fatalf("ToolCalling.WebFetch.JinaReaderEnabled = %v, want true", cfg.ToolCalling.WebFetch.JinaReaderEnabled)
+	}
+	if cfg.ToolCalling.WebFetch.JinaReaderTimeout != 21*time.Second {
+		t.Fatalf("ToolCalling.WebFetch.JinaReaderTimeout = %v, want %v", cfg.ToolCalling.WebFetch.JinaReaderTimeout, 21*time.Second)
+	}
+	if got := strings.Join(cfg.ToolCalling.WebFetch.ProxyFetcherProviders, ","); got != "jina_reader,firecrawl" {
+		t.Fatalf("ToolCalling.WebFetch.ProxyFetcherProviders = %q, want %q", got, "jina_reader,firecrawl")
 	}
 }

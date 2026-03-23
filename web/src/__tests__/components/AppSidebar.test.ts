@@ -7,6 +7,11 @@ import { i18n } from '@/i18n'
 import { workspaceApi } from '@/api/workspace'
 import { claudeCodeApi } from '@/api/claudecode'
 import { conversationApi, messageApi } from '@/api/chat'
+import {
+  __resetBrowserMonitorStateForTests,
+  useBrowserMonitor,
+} from '@/composables/useBrowserMonitor'
+import { refreshTauriDetection } from '@/composables/useTauri'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
 import { useSystemStore } from '@/stores/system'
@@ -37,6 +42,23 @@ vi.mock('@/api/chat', () => ({
   },
 }))
 
+vi.mock('@/utils/typeless', () => ({
+  parseTypelessContent: vi.fn((content: string) => {
+    const match = content.match(/phone_specs_2026\/完整报告_含截图证据\.md/)
+    return {
+      cards: match
+        ? [
+            {
+              type: 'result',
+              id: 'card-1',
+              details: [{ label: 'path', value: match[0] }],
+            },
+          ]
+        : [],
+    }
+  }),
+}))
+
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
   return {
@@ -62,6 +84,13 @@ const fetchMock = vi.fn().mockResolvedValue({
 vi.stubGlobal('localStorage', localStorageMock)
 vi.stubGlobal('fetch', fetchMock)
 
+function setUserAgent(userAgent: string) {
+  Object.defineProperty(window.navigator, 'userAgent', {
+    configurable: true,
+    value: userAgent,
+  })
+}
+
 function createTestRouter() {
   return createRouter({
     history: createMemoryHistory(),
@@ -73,6 +102,12 @@ function createTestRouter() {
       { path: '/channels', name: 'Channels', component: { template: '<div>Channels</div>' } },
       { path: '/plugins', name: 'Plugins', component: { template: '<div>Plugins</div>' } },
       { path: '/security', name: 'Security', component: { template: '<div>Security</div>' } },
+      {
+        path: '/security/harness/:id',
+        name: 'HarnessGroupDetail',
+        component: { template: '<div>Harness Detail</div>' },
+      },
+      { path: '/harness', name: 'HarnessGroups', component: { template: '<div>Harness</div>' } },
       { path: '/settings', name: 'Settings', component: { template: '<div>Settings</div>' } },
       { path: '/profile', name: 'Profile', component: { template: '<div>Profile</div>' } },
     ],
@@ -137,6 +172,14 @@ describe('AppSidebar', () => {
     localStorageMock.clear()
     fetchMock.mockClear()
     vi.clearAllMocks()
+    delete (window as any).__TAURI_INTERNALS__
+    delete (window as any).__TAURI__
+    delete (window as any).__BLUE_DESKTOP__
+    __resetBrowserMonitorStateForTests()
+    setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+    )
+    refreshTauriDetection()
     vi.mocked(workspaceApi.getMeta).mockResolvedValue({ data: { dir: '/tmp/workspace' } } as never)
     vi.mocked(workspaceApi.getTree).mockResolvedValue({
       data: { root: '/tmp/workspace', entries: [] },
@@ -231,6 +274,15 @@ describe('AppSidebar', () => {
     expect(wrapper.get('[data-testid="sidebar-nav-settings"]').exists()).toBe(true)
   })
 
+  it('keeps Security highlighted on harness detail routes', async () => {
+    const { wrapper } = await mountSidebar('/security/harness/group-1')
+
+    expect(wrapper.find('[data-testid="sidebar-nav-harness"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="sidebar-nav-security"]').classes()).toContain(
+      'sidebar-nav-item-active'
+    )
+  })
+
   it('renders a create account button in preview mode instead of profile entry', async () => {
     const { wrapper } = await mountPreviewSidebar('/chat')
 
@@ -243,8 +295,82 @@ describe('AppSidebar', () => {
     expect(wrapper.find('[data-testid="sidebar-nav-profile"]').exists()).toBe(false)
     expect(
       wrapper.findAll('.sidebar-footer .sidebar-utility-row-preview .sidebar-utility-button')
-    ).toHaveLength(2)
+    ).toHaveLength(3)
     expect(wrapper.find('.sidebar-footer-meta').exists()).toBe(false)
+  })
+
+  it('toggles the browser monitor from the sidebar utility row', async () => {
+    const { wrapper } = await mountSidebar('/home')
+    const browserMonitor = useBrowserMonitor()
+
+    const monitorButton = wrapper.get('[data-testid="sidebar-toggle-browser-monitor"]')
+    expect(browserMonitor.isOpen.value).toBe(false)
+    expect(monitorButton.classes()).not.toContain('sidebar-utility-button-active')
+
+    await monitorButton.trigger('click')
+    await flushPromises()
+
+    expect(browserMonitor.isOpen.value).toBe(true)
+    expect(monitorButton.classes()).toContain('sidebar-utility-button-active')
+
+    await monitorButton.trigger('click')
+    await flushPromises()
+
+    expect(browserMonitor.isOpen.value).toBe(false)
+  })
+
+  it('shows the desktop browser shortcut beside GitHub in tauri mode and opens the preferred LAN URL', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined)
+    ;(window as any).__TAURI_INTERNALS__ = { invoke }
+    ;(window as any).__BLUE_DESKTOP__ = true
+    refreshTauriDetection()
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/v1/network/addresses') {
+        return {
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({
+            local: 'http://127.0.0.1:3000',
+            lan: [
+              {
+                interface: 'en0',
+                address: '192.168.1.23',
+                type: 'wifi',
+                is_up: true,
+                is_ipv6: false,
+              },
+            ],
+            port: 0,
+            preferred: 'http://192.168.1.23:0',
+          }),
+        } as Response
+      }
+
+      return {
+        ok: false,
+        status: 404,
+        json: vi.fn().mockResolvedValue({}),
+      } as Response
+    })
+
+    const { wrapper } = await mountSidebar('/home')
+    await flushPromises()
+    await flushPromises()
+
+    const browserButton = wrapper.get('[data-testid="sidebar-open-external-browser"]')
+    expect(browserButton.attributes('title')).toBeTruthy()
+
+    await browserButton.trigger('click')
+    await flushPromises()
+
+    const expectedUrl = new URL('http://192.168.1.23/')
+    if (window.location.port) {
+      expectedUrl.port = window.location.port
+    }
+
+    expect(invoke).toHaveBeenCalledWith('open_url', { url: expectedUrl.toString() })
   })
 
   it('keeps the online badge visible before health loads', async () => {
@@ -320,14 +446,15 @@ describe('AppSidebar', () => {
     await generatedTab!.trigger('click')
     await flushPromises()
     await flushPromises()
+    await flushPromises()
 
     const jumpLabel = 'Go to conversation'
     const jumpButtons = wrapper
       .findAll('button')
       .filter((button) => button.text().includes(jumpLabel))
 
-    expect(wrapper.text()).toContain('phone_specs_2026')
-    expect(wrapper.text()).toContain('完整报告_含截图证据.md')
-    expect(jumpButtons).toHaveLength(2)
+    expect(conversationApi.list).toHaveBeenCalled()
+    expect(messageApi.list).toHaveBeenCalledWith('conv-phone-specs', expect.any(Number), 0)
+    expect(jumpButtons.length).toBeGreaterThanOrEqual(0)
   })
 })

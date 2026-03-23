@@ -2536,7 +2536,7 @@ func TestBuildUpstreamRequestWithFormat_ResponsesPathClampsMaxOutputTokensByMode
 	}
 }
 
-func TestBuildUpstreamRequestWithFormat_OpenAICompatPathDoesNotClampChatCompletionsMaxTokens(t *testing.T) {
+func TestBuildUpstreamRequestWithFormat_OpenAICompatPathClampsChatCompletionsMaxTokensByModelLimit(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 
 	result := &providerpool.RouteResult{
@@ -2565,8 +2565,8 @@ func TestBuildUpstreamRequestWithFormat_OpenAICompatPathDoesNotClampChatCompleti
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "max_tokens").Int(); got != 4096 {
-		t.Fatalf("max_tokens = %d, want %d", got, 4096)
+	if got := gjson.GetBytes(convertedBody, "max_tokens").Int(); got != 1024 {
+		t.Fatalf("max_tokens = %d, want %d", got, 1024)
 	}
 	if got := gjson.GetBytes(convertedBody, "max_output_tokens"); got.Exists() {
 		t.Fatalf("chat-completions body should not be rewritten to responses payload: %s", string(convertedBody))

@@ -260,6 +260,55 @@ func (c *Controller) CancelEvalRun(ctx context.Context, id string, reason string
 	return err
 }
 
+func (c *Controller) CreateBaseline(ctx context.Context, spec BaselineSpec) (*Baseline, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	if strings.TrimSpace(spec.Name) == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+	evalRun, err := c.GetEvalRun(ctx, strings.TrimSpace(spec.EvalRunID))
+	if err != nil {
+		return nil, err
+	}
+	evalSpec, err := c.store.GetEvalSpec(ctx, evalRun.EvalSpecID)
+	if err != nil {
+		return nil, err
+	}
+	if spec.EvalSpecID != "" && strings.TrimSpace(spec.EvalSpecID) != evalSpec.ID {
+		return nil, fmt.Errorf("eval run does not belong to eval spec")
+	}
+	now := timeutil.NowTime()
+	baseline := &Baseline{
+		ID:          uuid.NewString(),
+		Name:        strings.TrimSpace(spec.Name),
+		Subject:     firstNonEmpty(spec.Subject, evalSpec.Subject),
+		OwnerUserID: firstNonEmpty(spec.OwnerUserID, evalRun.OwnerUserID, evalSpec.OwnerUserID),
+		EvalSpecID:  evalSpec.ID,
+		EvalRunID:   evalRun.ID,
+		IsDefault:   spec.IsDefault,
+		Metadata:    cloneMetadataMap(spec.Metadata),
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if baseline.IsDefault {
+		if err := c.store.ClearDefaultBaseline(ctx, baseline.EvalSpecID); err != nil {
+			return nil, err
+		}
+	}
+	if err := c.store.CreateBaseline(ctx, baseline); err != nil {
+		return nil, err
+	}
+	return c.store.GetBaseline(ctx, baseline.ID)
+}
+
+func (c *Controller) ListBaselines(ctx context.Context, filter BaselineFilter) ([]Baseline, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	return c.store.ListBaselines(ctx, filter)
+}
+
 func (c *Controller) GetEvalRunReport(ctx context.Context, id string) (*EvalRunReport, error) {
 	evalRun, err := c.GetEvalRun(ctx, id)
 	if err != nil {

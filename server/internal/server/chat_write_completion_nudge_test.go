@@ -150,69 +150,6 @@ func TestWorkspaceArtifactWriteRecoveryThreshold_NumberedQuestionsRecoverEarlier
 	}
 }
 
-func TestBuildPostWorkspaceArtifactContinuationTools_WhenAllSourcesCovered_PrefersWriteFirst(t *testing.T) {
-	toolsIn := []llm.Tool{
-		{Name: "file_write"},
-		{Name: "edit"},
-		{Name: "write_begin"},
-		{Name: "write_chunk"},
-		{Name: "write_commit"},
-		{Name: "file_read"},
-		{Name: "ls"},
-		{Name: "find"},
-		{Name: "grep"},
-		{Name: "convert"},
-		{Name: "pdf"},
-	}
-	toolCalls := []llm.ToolCall{
-		{ID: "call-1", Name: "ls"},
-		{ID: "call-2", Name: "file_read"},
-		{ID: "call-3", Name: "file_read"},
-	}
-	toolResults := []llm.Message{
-		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"base_path":"emails","entries":[{"path":"alpha_01.txt","type":"file"},{"path":"alpha_02.txt","type":"file"}],"status":"success"}`},
-		{Role: llm.RoleTool, ToolCallID: "call-2", Content: `{"path":"emails/alpha_01.txt","content":"Kickoff budget $340K"}`},
-		{Role: llm.RoleTool, ToolCallID: "call-3", Content: `{"path":"emails/alpha_02.txt","content":"Updated timeline and security findings"}`},
-	}
-
-	reduced := buildPostWorkspaceArtifactContinuationTools(
-		toolsIn,
-		"Review all files in the emails/ folder and write a summary to alpha_summary.md.",
-		toolCalls,
-		toolResults,
-	)
-	if !containsLLMToolName(reduced, "file_write") || !containsLLMToolName(reduced, "file_read") {
-		t.Fatalf("expected write-first recovery tools to keep file_write and file_read, got=%v", reduced)
-	}
-	for _, blocked := range []string{"ls", "find", "convert", "pdf"} {
-		if containsLLMToolName(reduced, blocked) {
-			t.Fatalf("expected %s to be dropped after source coverage completed, got=%v", blocked, reduced)
-		}
-	}
-}
-
-func TestBuildWorkspaceArtifactWriteRecoveryTools_KeepsFileReadForVerification(t *testing.T) {
-	toolsIn := []llm.Tool{
-		{Name: "file_write"},
-		{Name: "edit"},
-		{Name: "write_begin"},
-		{Name: "write_chunk"},
-		{Name: "write_commit"},
-		{Name: "file_read"},
-		{Name: "ls"},
-	}
-	reduced := buildWorkspaceArtifactWriteRecoveryTools(
-		toolsIn,
-		"Review all files in the emails/ folder and write a summary to alpha_summary.md.",
-	)
-	if !containsLLMToolName(reduced, "file_read") {
-		t.Fatalf("expected file_read to remain available for verification, got=%v", reduced)
-	}
-	if containsLLMToolName(reduced, "ls") {
-		t.Fatalf("expected ls to be removed from write recovery tools, got=%v", reduced)
-	}
-}
-
 func TestBuildPostWriteCompletionNudge_SkipsCodingFlow(t *testing.T) {
 	toolCalls := []llm.ToolCall{
 		{ID: "call-1", Name: "write"},
@@ -361,6 +298,51 @@ func TestBuildPostEmptyResearchResultNudge_ForZeroEvidenceResearch(t *testing.T)
 	}
 }
 
+func TestBuildPostEmptyResearchResultNudge_IgnoresPendingResearchJob(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "research_run"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"job_id":"job-2","status":"pending","accepted":true,"terminal":false,"evidence_count":0}`},
+	}
+
+	nudge := buildPostEmptyResearchResultNudge(
+		"Create a competitive market report and save it to market_research.md with sources.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge != "" {
+		t.Fatalf("expected pending research job to avoid empty-result recovery, got=%q", nudge)
+	}
+}
+
+func TestBuildPostPendingResearchStatusNudge_ForAcceptedResearchJob(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "research_run"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"job_id":"job-2","status":"pending","accepted":true,"terminal":false,"evidence_count":0}`},
+	}
+
+	nudge := buildPostPendingResearchStatusNudge(
+		"Create a competitive market report and save it to market_research.md with sources.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected pending research status nudge")
+	}
+	if want := `job_id "job-2"`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to mention job id, got=%q", nudge)
+	}
+	if want := `market_research.md`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to mention target path %q, got=%q", want, nudge)
+	}
+	if want := `deep_research with action="status"`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected nudge to steer toward deep_research status action, got=%q", nudge)
+	}
+}
+
 func TestBuildEmptyResearchResultRecoveryTools_PrefersSearchAndWriteWithoutBrowser(t *testing.T) {
 	tools := []llm.Tool{
 		{Name: "browser"},
@@ -384,6 +366,31 @@ func TestBuildEmptyResearchResultRecoveryTools_PrefersSearchAndWriteWithoutBrows
 		}
 		if tool.Name == "file_delete" {
 			t.Fatalf("expected file_delete to be removed from empty-research recovery toolset, got=%v", reduced)
+		}
+	}
+}
+
+func TestBuildPendingResearchStatusTools_PrefersResearchStatusAndWrite(t *testing.T) {
+	tools := []llm.Tool{
+		{Name: "deep_research"},
+		{Name: "browser"},
+		{Name: "web_search"},
+		{Name: "web_fetch"},
+		{Name: "write"},
+		{Name: "file_delete"},
+		{Name: "read"},
+	}
+
+	reduced := buildPendingResearchStatusTools(tools, "Write the report to market_research.md after research.")
+	if len(reduced) == 0 {
+		t.Fatal("expected reduced toolset")
+	}
+	if got := reduced[0].Name; got != "deep_research" {
+		t.Fatalf("expected deep_research to lead reduced toolset, got=%q", got)
+	}
+	for _, tool := range reduced {
+		if tool.Name == "browser" || tool.Name == "web_search" || tool.Name == "file_delete" {
+			t.Fatalf("expected pending-research toolset to drop duplicate broad-search/delete tools, got=%v", reduced)
 		}
 	}
 }
@@ -504,6 +511,39 @@ func TestBuildWorkspaceArtifactWriteRecoveryTools_DropsFileDelete(t *testing.T) 
 	}
 	if containsLLMToolName(reduced, "file_delete") {
 		t.Fatalf("expected recovery tools to drop file_delete, got=%v", reduced)
+	}
+}
+
+func TestBuildWorkspaceArtifactWriteRecoveryTools_PrefersOfficeForOfficeArtifacts(t *testing.T) {
+	reduced := buildWorkspaceArtifactWriteRecoveryTools([]llm.Tool{
+		{Name: "office"},
+		{Name: "file_write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+	}, "Write the styled report to ui_review.docx.")
+
+	if !containsLLMToolName(reduced, "office") {
+		t.Fatalf("expected recovery tools to preserve office, got=%v", reduced)
+	}
+	if got := reduced[0].Name; got != "office" {
+		t.Fatalf("expected office to lead office artifact recovery, got=%q", got)
+	}
+	if containsLLMToolName(reduced, "file_delete") {
+		t.Fatalf("expected recovery tools to drop file_delete, got=%v", reduced)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_PrefersOfficeForOfficeArtifacts(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("Read findings.md and save the polished report to ui_review.docx.")
+	if !containsSubstring(hint, "prefer the native office tool") {
+		t.Fatalf("expected office hint, got=%q", hint)
+	}
+}
+
+func TestExtractSuccessfulWriteTarget_Office(t *testing.T) {
+	got := extractSuccessfulWriteTarget("office", `{"success":true,"path":"reports/ui_review.docx"}`)
+	if got != "reports/ui_review.docx" {
+		t.Fatalf("extractSuccessfulWriteTarget() = %q, want reports/ui_review.docx", got)
 	}
 }
 

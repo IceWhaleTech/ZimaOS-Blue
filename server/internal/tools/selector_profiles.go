@@ -40,19 +40,16 @@ func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 		base.Objects = compactTerms("url", "web", "website", "site", "web page", "webpage", "网页", "网站", "网址")
 		base.ContextCues = compactTerms(append(base.ContextCues, "http://", "https://", "www.")...)
 		base.PreferredDomains = []string{selector.DomainLiveWeb, selector.DomainURLPresent}
-	case "web", "web_search", "search":
+	case "web", "web_query", "web_search", "search":
 		base.Actions = compactTerms("search", "look up", "lookup", "find", "check", "latest", "news", "搜索", "检索", "查找", "最新", "新闻")
 		base.Objects = compactTerms("web", "url", "page", "site", "news", "source", "sources", "citation", "citations", "reference", "references", "网页", "网站", "网址", "新闻", "来源", "引用", "参考")
 		base.PreferredDomains = []string{selector.DomainLiveWeb}
 		base.ConflictDomains = []string{selector.DomainLocalWorkspace}
-	case "research_run":
+	case "deep_research", "research_run", "research_status":
 		base.Actions = compactTerms("research", "investigate", "compare", "analyze", "study", "调研", "研究", "查阅", "梳理", "比较", "分析")
-		base.Objects = compactTerms("sources", "citations", "evidence", "references", "views", "timeline", "来源", "引用", "证据", "观点", "时期")
+		base.Objects = compactTerms("sources", "citations", "evidence", "references", "views", "timeline", "status", "progress", "job", "来源", "引用", "证据", "观点", "时期", "状态", "进度", "任务")
 		base.PreferredDomains = []string{selector.DomainLiveWeb}
 		base.ConflictDomains = []string{selector.DomainLocalWorkspace}
-	case "research_status":
-		base.Actions = compactTerms("research status", "status", "job status", "状态", "进度")
-		base.Objects = compactTerms("research", "job", "task", "调研", "任务")
 	case "sessions":
 		base.Actions = compactTerms("session", "sessions", "conversation", "history", "send", "spawn", "会话", "对话", "历史", "发送", "创建")
 		base.Objects = compactTerms("session", "conversation", "message", "messages", "history", "thread", "会话", "对话", "消息", "历史", "线程")
@@ -92,6 +89,11 @@ func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 		base.Objects = compactTerms("csv", "xlsx", "xls", "spreadsheet", "table", "sheet", "表格", "工作表", "电子表格")
 		base.PreferredDomains = []string{selector.DomainLocalWorkspace}
 		base.ConflictDomains = []string{selector.DomainLiveWeb}
+	case "office":
+		base.Actions = compactTerms("create", "generate", "export", "format", "layout", "style", "render", "写", "生成", "导出", "排版", "美化", "格式化")
+		base.Objects = compactTerms("xlsx", "xls", "docx", "doc", "excel", "word", "spreadsheet", "workbook", "worksheet", "report", "document", "table", "sheet", "表格", "工作簿", "工作表", "报告", "文档", "Excel", "Word")
+		base.PreferredDomains = []string{selector.DomainLocalWorkspace}
+		base.ConflictDomains = []string{selector.DomainLiveWeb}
 	case "pdf":
 		base.Actions = compactTerms("read", "extract", "parse", "summarize", "answer", "review", "读取", "提取", "解析", "总结", "回答", "查看")
 		base.Objects = compactTerms("pdf", "document", "paper", "report", "scan", "pages", "table", "pdf文档", "文档", "报告", "扫描件", "页面")
@@ -101,11 +103,12 @@ func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 		base.Actions = compactTerms("generate", "create", "draw", "edit", "render", "review", "analyze", "compare", "生成", "创建", "绘制", "编辑", "渲染", "看图", "分析图片", "对比图片")
 		base.Objects = compactTerms("image", "images", "picture", "photo", "art", "scene", "illustration", "logo", "screenshot", "png", "jpg", "jpeg", "webp", "图片", "图像", "照片", "插画", "场景", "logo", "截图")
 	case "analyze":
-		base.Actions = compactTerms("analyze", "summarize", "compare", "review", "inspect", "分析", "总结", "比较", "评估", "查看")
-		base.Objects = compactTerms("file", "report", "text", "data", "content", "document", "文件", "报告", "文本", "数据", "内容", "文档")
+		base.Actions = compactTerms("analyze", "summarize", "compare", "synthesize", "inspect", "research", "分析", "总结", "比较", "提炼", "评估", "研究", "梳理")
+		base.Objects = compactTerms("file", "report", "text", "data", "content", "document", "url", "urls", "link", "links", "page", "pages", "website", "site", "webpage", "topic", "article", "articles", "source", "sources", "文件", "报告", "文本", "数据", "内容", "文档", "网址", "链接", "页面", "网站", "主题", "文章", "来源")
+		base.PreferredDomains = []string{selector.DomainLiveWeb, selector.DomainLocalWorkspace}
 	case "ui_reviewer":
-		base.Actions = compactTerms("review", "audit", "inspect", "evaluate", "评审", "审查", "检查")
-		base.Objects = compactTerms("ui", "ux", "screen", "screenshot", "design", "mockup", "layout", "component", "界面", "截图", "设计稿", "布局", "组件")
+		base.Actions = compactTerms("review", "audit", "inspect", "evaluate", "critique", "score", "rate", "assess", "accessibility check", "评审", "审查", "检查", "点评", "打分", "评分", "无障碍检查")
+		base.Objects = compactTerms("ui", "ux", "screen", "screenshot", "design", "mockup", "layout", "component", "website", "site", "webpage", "landing page", "app", "accessibility", "a11y", "visual", "界面", "截图", "设计稿", "布局", "组件", "网站", "网页", "落地页", "应用", "无障碍", "可访问性", "视觉")
 		base.RequireAnyDomains = []string{selector.DomainUIArtifact}
 		base.PreferredDomains = []string{selector.DomainUIArtifact}
 		base.ConflictDomains = []string{selector.DomainLocalWorkspace, selector.DomainProductivity}

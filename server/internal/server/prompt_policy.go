@@ -45,9 +45,9 @@ func policyFingerprint(profile string) string {
 	// Keep this stable unless policy text/behavior changes.
 	switch profile {
 	case DefaultPromptPolicyProfile:
-		return "tool_guidance_v3|toolless_nudge_v7|post_tool_nudge_v3|context_rules_v1"
+		return "tool_guidance_v3|toolless_nudge_v8|post_tool_nudge_v3|context_rules_v1"
 	default:
-		return "tool_guidance_v3|toolless_nudge_v7|post_tool_nudge_v3|context_rules_v1"
+		return "tool_guidance_v3|toolless_nudge_v8|post_tool_nudge_v3|context_rules_v1"
 	}
 }
 
@@ -68,6 +68,9 @@ func (p PromptPolicy) ToollessAutoContinueNudge(agentMode bool, reason string) s
 		}
 		if reason == "pending_todo" {
 			return "A canonical TODO checklist already exists. In this turn, FIRST re-output the full checklist with updated checkbox states. Then execute the first unchecked item immediately by emitting at least one real tool call (prefer `exec`). If no tool is needed, provide a concrete completion summary with deliverables. Keep the checklist canonical by rewriting the full checklist on each progress turn so status stays accurate. " + p.ToolGuidanceConstraints() + " Stop only if the user explicitly asks to stop."
+		}
+		if reason == "todo_reconcile" {
+			return "Your reply sounds like a wrap-up, but the canonical TODO checklist still shows pending work. Before ending, FIRST reconcile checklist state. Prefer calling `plan_update` for the completed items; if plan tools are unavailable, re-output the full canonical checklist with corrected checkbox states. Only after the checklist is synchronized may you provide the final summary. If the task is actually complete, mark the remaining items complete before stopping. " + p.ToolGuidanceConstraints() + " Stop only if the user explicitly asks to stop."
 		}
 		return "You described what to do but did not call any tools. Now actually execute by calling available tools (especially exec for file creation/edit/run steps). Do not describe - act. " + p.ToolGuidanceConstraints() + " Keep agent mode in a continuous improvement loop: after each completed action, find the next concrete improvement and execute it while continuing from the existing canonical TODO checklist. Update checklist status first, and reprint the full checklist with updated checkbox states before the next action or summary. Stop only if the user explicitly asks to stop."
 	}

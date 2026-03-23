@@ -106,6 +106,67 @@ func TestLocalizedSourceLabel_CoversAllSupportedLocales(t *testing.T) {
 	}
 }
 
+func TestLocalizedGapText_CoversAllSupportedLocales(t *testing.T) {
+	cases := []struct {
+		lang  string
+		focus string
+		want  string
+	}{
+		{lang: "en-US", focus: "Overview", want: "Need evidence coverage"},
+		{lang: "en-GB", focus: "Overview", want: "Need evidence coverage"},
+		{lang: "zh-CN", focus: "概览", want: "需要补足概览证据"},
+		{lang: "zh-TW", focus: "概覽", want: "需要補足概覽證據"},
+		{lang: "ja-JP", focus: "概要", want: "根拠の補強が必要です"},
+		{lang: "ko-KR", focus: "개요", want: "근거 보강이 필요합니다"},
+		{lang: "de-DE", focus: "Überblick", want: "Mehr Belege werden benötigt"},
+		{lang: "fr-FR", focus: "Vue d'ensemble", want: "Davantage de preuves sont nécessaires"},
+		{lang: "es-ES", focus: "Resumen", want: "Se necesita más evidencia"},
+		{lang: "it-IT", focus: "Panoramica", want: "Sono necessarie più prove"},
+		{lang: "pt-BR", focus: "Visão geral", want: "São necessárias mais evidências"},
+		{lang: "pt-PT", focus: "Visão geral", want: "São necessárias mais evidências"},
+		{lang: "ru-RU", focus: "Обзор", want: "Нужно больше доказательств"},
+		{lang: "pl-PL", focus: "Przegląd", want: "Potrzeba więcej dowodów"},
+		{lang: "nl-NL", focus: "Overzicht", want: "Er is meer bewijs nodig"},
+		{lang: "sv-SE", focus: "Översikt", want: "Mer bevis behövs"},
+		{lang: "da-DK", focus: "Oversigt", want: "Der er brug for mere evidens"},
+		{lang: "nb-NO", focus: "Oversikt", want: "Det trengs mer dokumentasjon"},
+		{lang: "cs-CZ", focus: "Přehled", want: "Je potřeba více důkazů"},
+		{lang: "sk-SK", focus: "Prehľad", want: "Je potrebných viac dôkazov"},
+		{lang: "hu-HU", focus: "Áttekintés", want: "Több bizonyíték szükséges"},
+		{lang: "ro-RO", focus: "Prezentare generală", want: "Sunt necesare mai multe dovezi"},
+		{lang: "hr-HR", focus: "Pregled", want: "Potrebno je više dokaza"},
+		{lang: "el-GR", focus: "Επισκόπηση", want: "Χρειάζονται περισσότερα αποδεικτικά στοιχεία"},
+		{lang: "ca-ES", focus: "Visió general", want: "Calen més proves"},
+		{lang: "ga-IE", focus: "Forléargas", want: "Tá níos mó fianaise de dhíth"},
+		{lang: "ml-IN", focus: "അവലോകനം", want: "കൂടുതൽ തെളിവുകൾ ആവശ്യമാണ്"},
+	}
+	for _, tc := range cases {
+		if got := localizedGapText(tc.lang, tc.focus, "Need evidence coverage"); got != tc.want {
+			t.Fatalf("localizedGapText(%q,%q,%q)=%q, want %q", tc.lang, tc.focus, "Need evidence coverage", got, tc.want)
+		}
+	}
+}
+
+func TestLocalizedGapText_TranslatesSiblingGapPhrases(t *testing.T) {
+	cases := []struct {
+		lang     string
+		focus    string
+		fallback string
+		want     string
+	}{
+		{lang: "zh-TW", focus: "官方來源", fallback: "Need primary or official sources", want: "需要補充官方來源的一手/官方來源"},
+		{lang: "ja-JP", focus: "概要", fallback: "Need broader evidence coverage", want: "より広い根拠の裏付けが必要です"},
+		{lang: "ko-KR", focus: "출처 다양성", fallback: "Need broader source diversity", want: "출처 다양성을 더 넓혀야 합니다"},
+		{lang: "de-DE", focus: "Aktualität", fallback: "Need fresher sources", want: "Aktuellere Quellen werden benötigt"},
+		{lang: "es-ES", focus: "Validación", fallback: "Resolve conflicting claims", want: "Hay que resolver las afirmaciones contradictorias"},
+	}
+	for _, tc := range cases {
+		if got := localizedGapText(tc.lang, tc.focus, tc.fallback); got != tc.want {
+			t.Fatalf("localizedGapText(%q,%q,%q)=%q, want %q", tc.lang, tc.focus, tc.fallback, got, tc.want)
+		}
+	}
+}
+
 func TestSynthesizeReport_LocalizedCitationLabel_NonChinese(t *testing.T) {
 	report := synthesizeReport("ZimaOS", "de-DE", []Evidence{
 		{

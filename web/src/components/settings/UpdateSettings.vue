@@ -453,9 +453,7 @@ onUnmounted(() => {
                 v-if="updateState === 'idle'"
                 @click="startDownload"
                 class="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
-                :class="
-                  'bg-gray-800 hover:bg-gray-700 dark:bg-gray-200 dark:hover:bg-gray-300 text-white dark:text-gray-900'
-                "
+                :class="'bg-gray-800 hover:bg-gray-700 dark:bg-gray-200 dark:hover:bg-gray-300 text-white dark:text-gray-900'"
               >
                 {{ t('common.update') }}
               </button>

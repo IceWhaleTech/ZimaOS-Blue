@@ -127,3 +127,45 @@ func TestStoreWithDBDoesNotOwnSharedConnection(t *testing.T) {
 		t.Fatalf("shared DB should remain usable after store.Close(): %v", err)
 	}
 }
+
+func TestStoreRecordBatch(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "batch_audit.db")
+	store, err := NewSQLiteStore(dbPath, StoreConfig{
+		RetentionDays:    30,
+		CleanupBatchSize: 100,
+	})
+	if err != nil {
+		t.Fatalf("NewSQLiteStore() error = %v", err)
+	}
+	defer store.Close()
+
+	err = store.RecordBatch(context.Background(), []Entry{
+		{
+			ConversationID: "conv-batch",
+			EventType:      "assistant_tool_call",
+			Role:           "assistant",
+			ToolCallID:     "tc-1",
+			ToolName:       "web_search",
+			Payload:        `{"query":"one"}`,
+		},
+		{
+			ConversationID: "conv-batch",
+			EventType:      "tool_result",
+			Role:           "tool",
+			ToolCallID:     "tc-1",
+			ToolName:       "web_search",
+			Payload:        `{"ok":true}`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v", err)
+	}
+
+	got, err := store.Recent(context.Background(), "conv-batch", 10)
+	if err != nil {
+		t.Fatalf("Recent() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(Recent()) = %d, want 2", len(got))
+	}
+}

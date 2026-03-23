@@ -43,6 +43,8 @@ func (d *ResearchDriver) Start(ctx context.Context, run *harness.Run, _ harness.
 		UserID:         run.UserID,
 		ConversationID: run.ConversationID,
 		Query:          run.Goal,
+		RetryContext:   metadataString(run.Metadata, "retry_context"),
+		RetryFeedback:  metadataMap(run.Metadata["retry_feedback"]),
 		Mode:           deepresearch.Mode(metadataString(run.Metadata, "mode")),
 		RouteMode:      deepresearch.RouteMode(metadataString(run.Metadata, "route_mode")),
 		Lang:           metadataString(run.Metadata, "lang"),
@@ -200,6 +202,19 @@ func jobToRun(existing *harness.Run, job *deepresearch.Job) *harness.Run {
 	if strings.TrimSpace(job.ReportStyle) != "" {
 		run.Metadata["report_style"] = strings.TrimSpace(job.ReportStyle)
 	}
+	if strings.TrimSpace(job.RetryContext) != "" {
+		run.Metadata["retry_context"] = strings.TrimSpace(job.RetryContext)
+	}
+	if len(job.RetryFeedback) > 0 {
+		run.Metadata["retry_feedback"] = cloneMap(job.RetryFeedback)
+	}
+	if sources := researchSourceMetadata(job.Evidence); len(sources) > 0 {
+		run.Metadata["source_inventory"] = sources
+	} else if job.Report != nil {
+		if citations := researchCitationMetadata(job.Report.Citations); len(citations) > 0 {
+			run.Metadata["citations"] = citations
+		}
+	}
 	if job.Report != nil && job.Report.Calibration != nil {
 		run.Metadata["calibration"] = calibrationMetadata(job.Report.Calibration)
 		run.Metadata["calibration_ref"] = "deep_research:" + strings.TrimSpace(job.ID) + ":calibration"
@@ -253,6 +268,11 @@ func metadataInt(raw any) int {
 	}
 }
 
+func metadataMap(raw any) map[string]interface{} {
+	typed, _ := raw.(map[string]interface{})
+	return cloneMap(typed)
+}
+
 func metadataBool(raw any) (bool, bool) {
 	v, ok := raw.(bool)
 	return v, ok
@@ -293,6 +313,79 @@ func takeawayCandidateMetadata(candidates []deepresearch.TakeawayCandidate) []ma
 			"confidence":    candidate.Confidence,
 			"target_file":   strings.TrimSpace(candidate.TargetFile),
 		})
+	}
+	return out
+}
+
+func researchSourceMetadata(evidence []deepresearch.Evidence) []map[string]interface{} {
+	if len(evidence) == 0 {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, min(len(evidence), 8))
+	seen := make(map[string]struct{}, len(evidence))
+	for _, item := range evidence {
+		url := strings.TrimSpace(item.URL)
+		title := strings.TrimSpace(item.Title)
+		key := url
+		if key == "" {
+			key = title
+		}
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		record := map[string]interface{}{
+			"title":             title,
+			"url":               url,
+			"domain":            strings.TrimSpace(item.Domain),
+			"source_type":       strings.TrimSpace(item.Source),
+			"relevance_score":   item.RelevanceScore,
+			"credibility_score": item.CredibilityScore,
+		}
+		if !item.FetchedAt.IsZero() {
+			record["fetched_at"] = item.FetchedAt.UTC().Format(time.RFC3339)
+		}
+		if item.PublishedAt != nil && !item.PublishedAt.IsZero() {
+			record["published_at"] = item.PublishedAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, record)
+		if len(out) >= 8 {
+			break
+		}
+	}
+	return out
+}
+
+func researchCitationMetadata(citations []deepresearch.Citation) []map[string]interface{} {
+	if len(citations) == 0 {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, min(len(citations), 8))
+	seen := make(map[string]struct{}, len(citations))
+	for _, item := range citations {
+		url := strings.TrimSpace(item.URL)
+		title := strings.TrimSpace(item.Title)
+		key := url
+		if key == "" {
+			key = title
+		}
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, map[string]interface{}{
+			"title": title,
+			"url":   url,
+		})
+		if len(out) >= 8 {
+			break
+		}
 	}
 	return out
 }

@@ -36,7 +36,7 @@ const settingsStore = useSettingsStore()
 interface ChannelFieldDef {
   key: string
   labelKey: string
-  type: 'text' | 'password' | 'tel' | 'url' | 'textarea'
+  type: 'text' | 'password' | 'tel' | 'url' | 'textarea' | 'toggle'
   placeholder?: string
   placeholderKey?: string
   value: string
@@ -133,7 +133,10 @@ function formatAllowedChatIDs(allowed?: Record<string, string[]>): string {
   return lines.join('\n')
 }
 
-function parseAllowedChatIDs(raw: string): { allowed_chat_ids: Record<string, string[]>; error?: string } {
+function parseAllowedChatIDs(raw: string): {
+  allowed_chat_ids: Record<string, string[]>
+  error?: string
+} {
   const allowed: Record<string, string[]> = {}
 
   for (const line of raw.split('\n')) {
@@ -585,6 +588,12 @@ const channelDefs = shallowRef<ChannelDef[]>([
         type: 'password',
         placeholder: '',
         value: '',
+      },
+      {
+        key: 'session_mode',
+        labelKey: 'channels.feishuSessionMode',
+        type: 'toggle',
+        value: 'false',
       },
     ],
   },
@@ -1255,7 +1264,10 @@ async function loadChannelConfigs() {
         localChannel.lastReplyAt = serverChannel.last_reply_at
         // Update field values
         for (const field of localChannel.fields) {
-          if (serverChannel.config && serverChannel.config[field.key]) {
+          if (
+            serverChannel.config &&
+            Object.prototype.hasOwnProperty.call(serverChannel.config, field.key)
+          ) {
             field.value = serverChannel.config[field.key]
           }
         }
@@ -1748,7 +1760,9 @@ onErrorCaptured((error, _instance, info) => {
             <h1 class="channels-page__title dashboard-page-title configuration-page-title">
               {{ t('channels.title') }}
             </h1>
-            <p class="channels-page__description dashboard-page-description configuration-page-description">
+            <p
+              class="channels-page__description dashboard-page-description configuration-page-description"
+            >
               {{ t('channels.subtitle') }}
             </p>
           </div>
@@ -1799,30 +1813,27 @@ onErrorCaptured((error, _instance, info) => {
           >
             <div class="channels-summary-head">
               <span class="channels-summary-label">{{ t('channels.groupAccessTitle') }}</span>
-              <span
-                class="channels-summary-pill"
-                :class="{
-                  'channels-summary-pill--open': groupAccessPolicy === 'open',
-                  'channels-summary-pill--allowlist': groupAccessPolicy === 'allowlist',
-                  'channels-summary-pill--disabled': groupAccessPolicy === 'disabled',
-                }"
-              >
-                {{ groupAccessPolicyLabel }}
-              </span>
+              <div class="channels-summary-head-actions">
+                <span
+                  class="channels-summary-pill"
+                  :class="{
+                    'channels-summary-pill--open': groupAccessPolicy === 'open',
+                    'channels-summary-pill--allowlist': groupAccessPolicy === 'allowlist',
+                    'channels-summary-pill--disabled': groupAccessPolicy === 'disabled',
+                  }"
+                >
+                  {{ groupAccessPolicyLabel }}
+                </span>
+                <button type="button" class="channels-summary-button" @click="openGroupAccessModal">
+                  {{ t('common.configure') }}
+                </button>
+              </div>
             </div>
             <p class="channels-summary-note">
               {{ groupAccessSummaryDetail }}
             </p>
-            <div class="channels-summary-footer">
-              <button
-                type="button"
-                class="channels-summary-button"
-                @click="openGroupAccessModal"
-              >
-                {{ t('common.configure') }}
-              </button>
+            <div v-if="groupAccessResult && !showGroupAccessModal" class="channels-summary-footer">
               <p
-                v-if="groupAccessResult && !showGroupAccessModal"
                 class="channels-summary-result"
                 :class="
                   groupAccessResult.success
@@ -1846,7 +1857,12 @@ onErrorCaptured((error, _instance, info) => {
         <div v-else class="channels-board">
           <div v-if="pageErrorMessage" class="channels-error-banner">
             <div class="channels-error-banner__icon-shell" aria-hidden="true">
-              <svg class="channels-error-banner__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                class="channels-error-banner__icon"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -1874,7 +1890,11 @@ onErrorCaptured((error, _instance, info) => {
                   {{ channel.nameKey ? t(channel.nameKey) : channel.name || channel.id }}
                 </span>
                 <span class="channels-safe-item__status">
-                  {{ channel.enabled ? t('channels.statusConnected') : t('channels.statusDisconnected') }}
+                  {{
+                    channel.enabled
+                      ? t('channels.statusConnected')
+                      : t('channels.statusDisconnected')
+                  }}
                 </span>
               </div>
               <p class="channels-safe-item__description">
@@ -2311,7 +2331,9 @@ onErrorCaptured((error, _instance, info) => {
         >
           <div class="channels-group-modal__header">
             <div class="channels-group-modal__copy">
-              <span class="channels-group-modal__eyebrow">{{ t('channels.groupAccessTitle') }}</span>
+              <span class="channels-group-modal__eyebrow">{{
+                t('channels.groupAccessTitle')
+              }}</span>
               <h2 id="channels-group-access-title" class="channels-group-modal__title">
                 {{ t('channels.groupAccessTitle') }}
               </h2>
@@ -2608,23 +2630,33 @@ onErrorCaptured((error, _instance, info) => {
 
 .channels-summary-card--group-access {
   justify-content: flex-start;
-  gap: 0.48rem;
+  gap: 0.3rem;
+  min-height: 0;
+  padding: 0.68rem 0.84rem;
 }
 
 .channels-summary-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.42rem;
+}
+
+.channels-summary-head-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.34rem;
 }
 
 .channels-summary-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.2rem 0.45rem;
+  padding: 0.18rem 0.42rem;
   border-radius: 999px;
-  font-size: 0.58rem;
+  font-size: 0.56rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -2645,31 +2677,30 @@ onErrorCaptured((error, _instance, info) => {
 }
 
 .channels-summary-note {
-  font-size: 0.68rem;
-  line-height: 1.45;
+  font-size: 0.66rem;
+  line-height: 1.35;
   color: #64748b;
-  min-height: 1.95rem;
+  min-height: 0;
 }
 
 .channels-summary-footer {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.42rem;
-  margin-top: auto;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 0.04rem;
 }
 
 .channels-summary-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2rem;
-  padding: 0.4rem 0.78rem;
-  border-radius: 0.72rem;
+  min-height: 1.72rem;
+  padding: 0.28rem 0.62rem;
+  border-radius: 0.62rem;
   border: 0;
   background: #111827;
   color: #ffffff;
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 700;
   transition:
     transform 160ms ease,
@@ -2682,8 +2713,9 @@ onErrorCaptured((error, _instance, info) => {
 }
 
 .channels-summary-result {
-  font-size: 0.68rem;
-  line-height: 1.4;
+  font-size: 0.64rem;
+  line-height: 1.35;
+  text-align: right;
 }
 
 .channels-board {

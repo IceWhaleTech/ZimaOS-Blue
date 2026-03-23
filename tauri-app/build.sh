@@ -51,6 +51,31 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+check_macos_release_credentials() {
+    local missing=()
+    local var_name
+
+    for var_name in APPLE_SIGNING_IDENTITY APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
+        if [ -z "${!var_name:-}" ]; then
+            missing+=("$var_name")
+        fi
+    done
+
+    if [ "${#missing[@]}" -eq 0 ]; then
+        return 0
+    fi
+
+    if [ "${MACOS_REQUIRE_NOTARIZATION:-1}" = "1" ]; then
+        print_error "Refusing to build a macOS package without Apple signing/notarization credentials."
+        print_error "Missing required env vars: ${missing[*]}"
+        print_error "Use 'make tauri-build' for a local non-notarized build, or rerun with MACOS_REQUIRE_NOTARIZATION=0 to bypass intentionally."
+        exit 1
+    fi
+
+    print_warning "Building macOS package without full signing/notarization credentials because MACOS_REQUIRE_NOTARIZATION=0"
+    print_warning "Missing env vars: ${missing[*]}"
+}
+
 run_npm_audit_check() {
     local audit_dir="$1"
     local allowlist_mode="$2"
@@ -90,8 +115,15 @@ handle_npm_audit_failure() {
 # Detect platform
 GOOS=$(go env GOOS)
 GOARCH=$(go env GOARCH)
+MACOS_APP_SIGNED=0
+MACOS_DMG_SIGNED=0
+MACOS_NOTARIZED=0
 
 echo "Platform: $GOOS-$GOARCH"
+
+if [ "$GOOS" = "darwin" ]; then
+    check_macos_release_credentials
+fi
 
 # Step 0: Install required dependencies (macOS only)
 if [ "$GOOS" = "darwin" ]; then
@@ -349,6 +381,7 @@ if [ "$GOOS" = "darwin" ]; then
 
         # Verify signature
         codesign --verify --verbose=2 "$APP_DIR/$APP_NAME.app"
+        MACOS_APP_SIGNED=1
         print_step "macOS app signed and verified"
     else
         print_warning "APPLE_SIGNING_IDENTITY not set — skipping code signing"
@@ -398,11 +431,12 @@ if [ "$GOOS" = "darwin" ]; then
             print_step "Signing DMG..."
             codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$EXISTING_DMG"
             codesign --verify --verbose "$EXISTING_DMG"
+            MACOS_DMG_SIGNED=1
             print_step "DMG signed"
         fi
 
         # ── Notarize DMG ──
-        if [ -n "$APPLE_SIGNING_IDENTITY" ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ]; then
+        if [ -n "$APPLE_SIGNING_IDENTITY" ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$APPLE_APP_PASSWORD" ]; then
             print_step "Submitting DMG for Apple notarization..."
             xcrun notarytool submit "$EXISTING_DMG" \
                 --apple-id "$APPLE_ID" \
@@ -412,6 +446,10 @@ if [ "$GOOS" = "darwin" ]; then
 
             # Staple the notarization ticket
             xcrun stapler staple "$EXISTING_DMG"
+            MACOS_APP_PATH="$APP_DIR/$APP_NAME.app" \
+            MACOS_DMG_PATH="$EXISTING_DMG" \
+            bash "$SCRIPT_DIR/verify-macos-package.sh"
+            MACOS_NOTARIZED=1
             print_step "DMG notarized and stapled"
         else
             print_warning "Skipping notarization — set APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD"
@@ -478,6 +516,21 @@ if [ "$GOOS" = "darwin" ]; then
     echo ""
     echo "Build Strategy: CGO Library (Go linked into Rust)"
     echo "Compression: LZMA on DMG (no UPX on binary)"
+    if [ "$MACOS_APP_SIGNED" = "1" ]; then
+        echo "App signing: complete"
+    else
+        echo "App signing: skipped"
+    fi
+    if [ "$MACOS_DMG_SIGNED" = "1" ]; then
+        echo "DMG signing: complete"
+    else
+        echo "DMG signing: skipped"
+    fi
+    if [ "$MACOS_NOTARIZED" = "1" ]; then
+        echo "Notarization: complete (submitted, stapled, validated)"
+    else
+        echo "Notarization: skipped"
+    fi
     echo ""
     echo "Output files:"
     if [ -d "$APP_PATH" ]; then

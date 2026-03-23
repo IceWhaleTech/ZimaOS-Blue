@@ -199,18 +199,15 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	if len(cfg.Groups["group:research"]) == 0 {
 		t.Fatalf("expected group:research entries to be populated")
 	}
-	if !containsString(cfg.Groups["group:research"], "research_run") {
-		t.Fatalf("expected group:research to include research_run, got %#v", cfg.Groups["group:research"])
-	}
-	if !containsString(cfg.Groups["group:research"], "research_status") {
-		t.Fatalf("expected group:research to include research_status, got %#v", cfg.Groups["group:research"])
+	if got := cfg.Groups["group:research"]; len(got) != 1 || got[0] != "deep_research" {
+		t.Fatalf("expected group:research to expose only deep_research, got %#v", got)
 	}
 
-	if cfg.WebSearch.Provider != "duckduckgo" {
-		t.Errorf("expected WebSearch.Provider 'duckduckgo', got %q", cfg.WebSearch.Provider)
+	if cfg.WebSearch.Provider != "bing" {
+		t.Errorf("expected WebSearch.Provider 'bing', got %q", cfg.WebSearch.Provider)
 	}
-	if len(cfg.WebSearch.Providers) != 2 || cfg.WebSearch.Providers[0] != "duckduckgo" || cfg.WebSearch.Providers[1] != "bing" {
-		t.Errorf("expected WebSearch.Providers ['duckduckgo', 'bing'], got %#v", cfg.WebSearch.Providers)
+	if len(cfg.WebSearch.Providers) != 2 || cfg.WebSearch.Providers[0] != "bing" || cfg.WebSearch.Providers[1] != "duckduckgo" {
+		t.Errorf("expected WebSearch.Providers ['bing', 'duckduckgo'], got %#v", cfg.WebSearch.Providers)
 	}
 	if cfg.WebSearch.MaxResults != 5 {
 		t.Errorf("expected WebSearch.MaxResults 5, got %d", cfg.WebSearch.MaxResults)
@@ -221,11 +218,41 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	if cfg.WebSearch.Region != "wt-wt" {
 		t.Errorf("expected WebSearch.Region 'wt-wt', got %q", cfg.WebSearch.Region)
 	}
+	if cfg.WebSearch.BrowserFallback.Enabled == nil || !*cfg.WebSearch.BrowserFallback.Enabled {
+		t.Fatalf("expected WebSearch.BrowserFallback.Enabled true by default")
+	}
+	if cfg.WebSearch.BrowserFallback.Engine != "bing" {
+		t.Errorf("expected WebSearch.BrowserFallback.Engine 'bing', got %q", cfg.WebSearch.BrowserFallback.Engine)
+	}
+	if cfg.WebSearch.BrowserFallback.TriggerMode != "quality_or_failure" {
+		t.Errorf("expected WebSearch.BrowserFallback.TriggerMode 'quality_or_failure', got %q", cfg.WebSearch.BrowserFallback.TriggerMode)
+	}
+	if cfg.WebSearch.BrowserFallback.MaxBrowserRetries != 1 {
+		t.Errorf("expected WebSearch.BrowserFallback.MaxBrowserRetries 1, got %d", cfg.WebSearch.BrowserFallback.MaxBrowserRetries)
+	}
 	if cfg.WebFetch.Timeout != 5*time.Minute {
 		t.Errorf("expected WebFetch.Timeout 5m, got %v", cfg.WebFetch.Timeout)
 	}
+	if !cfg.WebFetch.HTTPNativeEnabled {
+		t.Error("expected WebFetch.HTTPNativeEnabled true by default")
+	}
+	if cfg.WebFetch.HTTPNativeLibrary != "" {
+		t.Errorf("expected WebFetch.HTTPNativeLibrary empty by default, got %q", cfg.WebFetch.HTTPNativeLibrary)
+	}
+	if len(cfg.WebFetch.HTTPNativePreferHosts) != 0 {
+		t.Errorf("expected WebFetch.HTTPNativePreferHosts empty by default, got %#v", cfg.WebFetch.HTTPNativePreferHosts)
+	}
 	if cfg.WebFetch.FirecrawlTimeout != 5*time.Minute {
 		t.Errorf("expected WebFetch.FirecrawlTimeout 5m, got %v", cfg.WebFetch.FirecrawlTimeout)
+	}
+	if cfg.WebFetch.JinaReaderEnabled {
+		t.Error("expected WebFetch.JinaReaderEnabled false by default")
+	}
+	if cfg.WebFetch.JinaReaderTimeout != 5*time.Minute {
+		t.Errorf("expected WebFetch.JinaReaderTimeout 5m, got %v", cfg.WebFetch.JinaReaderTimeout)
+	}
+	if len(cfg.WebFetch.ProxyFetcherProviders) != 2 {
+		t.Errorf("expected WebFetch.ProxyFetcherProviders to contain firecrawl and jina_reader, got %v", cfg.WebFetch.ProxyFetcherProviders)
 	}
 	if !cfg.Ripgrep.Enabled {
 		t.Error("expected Ripgrep.Enabled to be true by default")

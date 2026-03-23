@@ -32,6 +32,17 @@ var (
 		"enable javascript and cookies",
 		"human verification",
 	})
+	webFetchHardChallengeMatcher = textmatch.NewFoldedAhoMatcher([]string{
+		"turnstile",
+		"g-recaptcha",
+		"recaptcha",
+		"hcaptcha",
+		"geetest",
+		"gee test",
+		"slide to verify",
+		"complete the captcha",
+		"security check to continue",
+	})
 )
 
 func containsAnyWebFetchCue(matcher *textmatch.FoldedAhoMatcher, texts ...string) bool {

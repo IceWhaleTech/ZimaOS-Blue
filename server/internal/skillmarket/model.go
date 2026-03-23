@@ -44,31 +44,46 @@ const (
 	ScannerVersion = "skillmarket-detector-v2"
 )
 
+var defaultSeedURLs = []string{
+	"https://github.com/topics/claude-code",
+	"https://github.com/topics/ai-agent",
+	"https://github.com/ComposioHQ/awesome-claude-skills",
+	"https://github.com/VoltAgent/awesome-openclaw-skills",
+	"https://github.com/sickn33/antigravity-awesome-skills/tree/main/skills",
+	"https://github.com/VoltAgent/awesome-agent-skills",
+}
+
 type Config struct {
-	Enabled                   bool
-	DBPath                    string
-	GitHubToken               string
-	GitHubAPIBaseURL          string
-	ClawHubBaseURL            string
-	ClawHubMirrorBaseURLs     []string
-	TencentSkillHubAPIBaseURL string
-	SkillHubBaseURL           string
-	SkillHubAPIKey            string
-	SkillStackBaseURL         string
-	SkillsMPBaseURL           string
-	SkillsMPAPIKey            string
-	LLMSkillsBaseURL          string
-	SeedURLs                  []string
-	CrawlIncrementalInterval  time.Duration
-	CrawlFullInterval         time.Duration
-	UpdateCheckInterval       time.Duration
-	TelemetryRollupInterval   time.Duration
-	SemanticRatio             float64
-	SearchCandidateLimit      int
-	CacheRoot                 string
-	ActiveSkillsDir           string
-	CuratedConfigPath         string
-	CuratedConfigURLs         []string
+	Enabled                    bool
+	DBPath                     string
+	GitHubToken                string
+	GitHubAPIBaseURL           string
+	ClawHubBaseURL             string
+	ClawHubMirrorBaseURLs      []string
+	TencentSkillHubAPIBaseURL  string
+	SkillHubBaseURL            string
+	SkillHubAPIKey             string
+	SkillStackBaseURL          string
+	SkillsMPBaseURL            string
+	SkillsMPAPIKey             string
+	LLMSkillsBaseURL           string
+	SeedURLs                   []string
+	CrawlIncrementalInterval   time.Duration
+	CrawlFullInterval          time.Duration
+	UpdateCheckInterval        time.Duration
+	TelemetryRollupInterval    time.Duration
+	SemanticRatio              float64
+	SearchCandidateLimit       int
+	CacheRoot                  string
+	ActiveSkillsDir            string
+	CuratedConfigPath          string
+	CuratedConfigURLs          []string
+	LightmakePageSize          int
+	GitHubSearchPageSize       int
+	IngestBatchSize            int
+	HTMLCatalogCrawlBatchPages int
+	HTMLCatalogCrawlMaxPages   int
+	SeedPageMaxConcurrency     int
 }
 
 func DefaultConfig(dataDir, activeSkillsDir string) Config {
@@ -78,26 +93,32 @@ func DefaultConfig(dataDir, activeSkillsDir string) Config {
 		activeSkillsDir = filepath.Join(dataDir, "workspace", ".claude", "skills")
 	}
 	return Config{
-		Enabled:                   true,
-		DBPath:                    DefaultDBPath(dataDir),
-		GitHubAPIBaseURL:          "https://api.github.com",
-		ClawHubBaseURL:            "https://www.clawhub.ai",
-		ClawHubMirrorBaseURLs:     nil,
-		TencentSkillHubAPIBaseURL: "https://lightmake.site",
-		SkillHubBaseURL:           "https://www.skillhub.club",
-		SkillStackBaseURL:         "https://www.skillstack.me",
-		SkillsMPBaseURL:           "https://skillsmp.com",
-		LLMSkillsBaseURL:          "https://llmskills.org",
-		SeedURLs:                  []string{"https://github.com/topics/claude-code", "https://github.com/topics/ai-agent"},
-		CrawlIncrementalInterval:  24 * time.Hour,
-		CrawlFullInterval:         24 * time.Hour,
-		UpdateCheckInterval:       24 * time.Hour,
-		TelemetryRollupInterval:   time.Hour,
-		SemanticRatio:             0.35,
-		SearchCandidateLimit:      100,
-		CacheRoot:                 cacheRoot,
-		ActiveSkillsDir:           activeSkillsDir,
-		CuratedConfigPath:         "server/skillmarket_curated.yaml",
+		Enabled:                    true,
+		DBPath:                     DefaultDBPath(dataDir),
+		GitHubAPIBaseURL:           "https://api.github.com",
+		ClawHubBaseURL:             "https://www.clawhub.ai",
+		ClawHubMirrorBaseURLs:      nil,
+		TencentSkillHubAPIBaseURL:  "https://lightmake.site",
+		SkillHubBaseURL:            "https://www.skillhub.club",
+		SkillStackBaseURL:          "https://www.skillstack.me",
+		SkillsMPBaseURL:            "https://skillsmp.com",
+		LLMSkillsBaseURL:           "https://llmskills.org",
+		SeedURLs:                   append([]string(nil), defaultSeedURLs...),
+		CrawlIncrementalInterval:   24 * time.Hour,
+		CrawlFullInterval:          24 * time.Hour,
+		UpdateCheckInterval:        24 * time.Hour,
+		TelemetryRollupInterval:    time.Hour,
+		SemanticRatio:              0.35,
+		SearchCandidateLimit:       100,
+		CacheRoot:                  cacheRoot,
+		ActiveSkillsDir:            activeSkillsDir,
+		CuratedConfigPath:          "server/skillmarket_curated.yaml",
+		LightmakePageSize:          50,
+		GitHubSearchPageSize:       25,
+		IngestBatchSize:            50,
+		HTMLCatalogCrawlBatchPages: 4,
+		HTMLCatalogCrawlMaxPages:   200,
+		SeedPageMaxConcurrency:     1,
 		CuratedConfigURLs: []string{
 			"https://raw.githubusercontent.com/IceWhaleTech/ZimaOS-Blue/main/server/skillmarket_curated.yaml",
 			"https://raw.gitmirror.com/IceWhaleTech/ZimaOS-Blue/main/server/skillmarket_curated.yaml",
@@ -393,22 +414,53 @@ type AvailableUpdate struct {
 }
 
 type DiscoverResult struct {
-	SourcesProcessed int `json:"sources_processed"`
-	Discovered       int `json:"discovered"`
-	Updated          int `json:"updated"`
-	Failed           int `json:"failed"`
+	SourcesProcessed int                    `json:"sources_processed"`
+	Discovered       int                    `json:"discovered"`
+	Updated          int                    `json:"updated"`
+	Failed           int                    `json:"failed"`
+	SourceResults    []DiscoverSourceResult `json:"source_results,omitempty"`
+}
+
+type DiscoverSourceResult struct {
+	SourceID   string   `json:"source_id"`
+	Status     string   `json:"status"`
+	Partial    bool     `json:"partial,omitempty"`
+	Discovered int      `json:"discovered"`
+	Updated    int      `json:"updated"`
+	Failed     int      `json:"failed"`
+	Warnings   []string `json:"warnings,omitempty"`
+	Pages      int      `json:"pages,omitempty"`
+	Requests   int      `json:"requests,omitempty"`
 }
 
 type DiscoverStatus struct {
-	Running           bool            `json:"running"`
-	StartedAt         time.Time       `json:"started_at,omitempty"`
-	FinishedAt        time.Time       `json:"finished_at,omitempty"`
-	LastError         string          `json:"last_error,omitempty"`
-	TotalSources      int             `json:"total_sources,omitempty"`
-	ProcessedSources  int             `json:"processed_sources,omitempty"`
-	CurrentSourceID   string          `json:"current_source_id,omitempty"`
-	CurrentSourceName string          `json:"current_source_name,omitempty"`
-	Result            *DiscoverResult `json:"result,omitempty"`
+	Running           bool                   `json:"running"`
+	StartedAt         time.Time              `json:"started_at,omitempty"`
+	FinishedAt        time.Time              `json:"finished_at,omitempty"`
+	LastError         string                 `json:"last_error,omitempty"`
+	TotalSources      int                    `json:"total_sources,omitempty"`
+	ProcessedSources  int                    `json:"processed_sources,omitempty"`
+	CurrentSourceID   string                 `json:"current_source_id,omitempty"`
+	CurrentSourceName string                 `json:"current_source_name,omitempty"`
+	SourceResults     []DiscoverSourceResult `json:"source_results,omitempty"`
+	Result            *DiscoverResult        `json:"result,omitempty"`
+}
+
+type DiscoverProgressEvent struct {
+	Running           bool                   `json:"running"`
+	StartedAt         time.Time              `json:"started_at,omitempty"`
+	FinishedAt        time.Time              `json:"finished_at,omitempty"`
+	LastError         string                 `json:"last_error,omitempty"`
+	TotalSources      int                    `json:"total_sources,omitempty"`
+	ProcessedSources  int                    `json:"processed_sources,omitempty"`
+	CurrentSourceID   string                 `json:"current_source_id,omitempty"`
+	CurrentSourceName string                 `json:"current_source_name,omitempty"`
+	SourceResults     []DiscoverSourceResult `json:"source_results,omitempty"`
+	Result            *DiscoverResult        `json:"result,omitempty"`
+	BatchInserted     int                    `json:"batch_inserted,omitempty"`
+	BatchUpdated      int                    `json:"batch_updated,omitempty"`
+	BatchFailed       int                    `json:"batch_failed,omitempty"`
+	Phase             string                 `json:"phase,omitempty"`
 }
 
 type CurationEntry struct {

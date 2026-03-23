@@ -336,9 +336,22 @@ func TestMapStreamErrorCode(t *testing.T) {
 			want: "PROVIDER_NO_RESPONSE",
 		},
 		{
+			name: "proxy context window exceeded",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       `{"error":{"message":"Context window is full. Reduce conversation history, system prompt, or tools."}}`,
+			},
+			want: "context_window_exceeded",
+		},
+		{
 			name: "plain no response",
 			err:  errors.New("provider prov_x returned no response"),
 			want: "PROVIDER_NO_RESPONSE",
+		},
+		{
+			name: "plain context length exceeded",
+			err:  errors.New(`upstream 400: {"error":{"message":"This model's maximum context length is 4096 tokens.","code":"context_length_exceeded"}}`),
+			want: "context_window_exceeded",
 		},
 		{
 			name: "plain no provider",

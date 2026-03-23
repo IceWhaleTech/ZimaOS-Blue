@@ -203,8 +203,7 @@ func TestToolSelector_WorkspaceFileTaskPrefersFileWorkflow(t *testing.T) {
 		{Name: "convert", Description: "Convert and parse CSV/XLSX files."},
 		{Name: "calendar", Description: "Create and review calendar events."},
 		{Name: "email", Description: "Search and triage inbox messages."},
-		{Name: "research_run", Description: "Deep research with sources."},
-		{Name: "research_status", Description: "Get deep research job status."},
+		{Name: "deep_research", Description: "Run deep research or check an existing research job status."},
 		{Name: "reminder", Description: "Create reminders and notifications."},
 	}
 
@@ -217,7 +216,7 @@ func TestToolSelector_WorkspaceFileTaskPrefersFileWorkflow(t *testing.T) {
 	if containsToolName(selected, "calendar") || containsToolName(selected, "email") {
 		t.Fatalf("expected local file task to suppress calendar/email tools, got=%v", names)
 	}
-	if containsToolName(selected, "research_run") || containsToolName(selected, "reminder") {
+	if containsToolName(selected, "deep_research") || containsToolName(selected, "reminder") {
 		t.Fatalf("expected local file task to suppress remote productivity tools, got=%v", names)
 	}
 }
@@ -321,6 +320,20 @@ func TestToolSelector_UIReviewerNeedsUIEvidence(t *testing.T) {
 	selected = ts.Select("Review this screenshot and audit the UI layout.", defs)
 	if !containsToolName(selected, "ui_reviewer") {
 		t.Fatalf("expected ui_reviewer when screenshot/UI evidence exists, got=%v", toolNames(selected))
+	}
+}
+
+func TestToolSelector_URLAnalysisKeepsAnalyzeVisible(t *testing.T) {
+	ts := DefaultToolSelector()
+	defs := []ToolDefinition{
+		{Name: "analyze", Description: "Analyze URLs, files, and reports."},
+		{Name: "browser", Description: "Open web pages."},
+		{Name: "web_search", Description: "Search the web."},
+	}
+
+	selected := ts.Select("Analyze https://example.com/blog and summarize the key findings into a report.", defs)
+	if !containsToolName(selected, "analyze") {
+		t.Fatalf("expected analyze for URL analysis query, got=%v", toolNames(selected))
 	}
 }
 

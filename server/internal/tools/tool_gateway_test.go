@@ -3,8 +3,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 )
 
 type recursiveGatewayPayload struct {
@@ -17,12 +21,14 @@ type gatewayResultTool struct {
 	result interface{}
 	err    error
 	calls  int
+	args   map[string]interface{}
 }
 
 func (t *gatewayResultTool) Definition() ToolDefinition { return t.def }
 
-func (t *gatewayResultTool) Execute(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+func (t *gatewayResultTool) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
 	t.calls++
+	t.args = args
 	if t.err != nil {
 		return nil, t.err
 	}
@@ -122,7 +128,8 @@ func TestToolGatewayEmitsRuntimeObserverEvents(t *testing.T) {
 				"properties": map[string]interface{}{
 					"url": map[string]interface{}{"type": "string"},
 				},
-				"required": []string{"url"},
+				"required":             []string{"url"},
+				"additionalProperties": true,
 			},
 		},
 		result: map[string]interface{}{"ok": true},
@@ -195,6 +202,42 @@ func TestToolGatewayRejectsInvalidArguments(t *testing.T) {
 	}
 }
 
+func TestToolGatewayRecoversConcatenatedJSONObjectArguments(t *testing.T) {
+	registry := NewRegistry()
+	tool := &gatewayResultTool{
+		def: ToolDefinition{
+			Name:        "search",
+			Description: "search",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"query"},
+			},
+		},
+		result: map[string]interface{}{"ok": true},
+	}
+	registry.Register(tool)
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-concat",
+		ToolName:   "search",
+		Arguments:  `{}{"query":"latest blue release"}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if result == nil {
+		t.Fatal("result is nil")
+	}
+	if got := tool.args["query"]; got != "latest blue release" {
+		t.Fatalf("query = %v, want %q", got, "latest blue release")
+	}
+}
+
 func TestToolGatewayWrapsExternalContentForLLM(t *testing.T) {
 	registry := NewRegistry()
 	registry.Register(&gatewayResultTool{
@@ -204,7 +247,7 @@ func TestToolGatewayWrapsExternalContentForLLM(t *testing.T) {
 			Parameters: map[string]interface{}{
 				"type":                 "object",
 				"properties":           map[string]interface{}{},
-				"additionalProperties": false,
+				"additionalProperties": true,
 			},
 		},
 		result: "\x1b[31munsafe html\x1b[0m",
@@ -244,7 +287,8 @@ func TestToolGatewayHonorsApprovalDeny(t *testing.T) {
 				"properties": map[string]interface{}{
 					"url": map[string]interface{}{"type": "string"},
 				},
-				"required": []string{"url"},
+				"required":             []string{"url"},
+				"additionalProperties": true,
 			},
 		},
 		result: map[string]interface{}{"ok": true},
@@ -319,7 +363,7 @@ func TestToolGatewayNormalizesCompatAliasToUnifiedTool(t *testing.T) {
 	registry := NewRegistry()
 	webTool := &captureArgsTool{
 		def: ToolDefinition{
-			Name:        "web",
+			Name:        "web_query",
 			Description: "web",
 			Parameters: map[string]interface{}{
 				"type": "object",
@@ -343,8 +387,8 @@ func TestToolGatewayNormalizesCompatAliasToUnifiedTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if result.NormalizedCall.ToolName != "web" {
-		t.Fatalf("tool name = %q, want web", result.NormalizedCall.ToolName)
+	if result.NormalizedCall.ToolName != "web_query" {
+		t.Fatalf("tool name = %q, want web_query", result.NormalizedCall.ToolName)
 	}
 	if got := webTool.args["action"]; got != "fetch" {
 		t.Fatalf("action = %v, want fetch", got)
@@ -406,6 +450,198 @@ func TestToolGatewaySanitizesScalarPayloads(t *testing.T) {
 	}
 	if got := items[2]; got != "clean" {
 		t.Fatalf("items[2] = %v, want clean", got)
+	}
+}
+
+func TestToolGatewayExecutesWebQueryVideoLanguageFallbackE2E(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/watch":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<!doctype html><html><body><script>
+var ytInitialPlayerResponse = {"videoDetails":{"videoId":"abc123","title":"Demo video","author":"Demo creator","lengthSeconds":"42","thumbnail":{"thumbnails":[{"url":"https://img.example/thumb.jpg"}]}},"microformat":{"playerMicroformatRenderer":{"publishDate":"2026-03-23","availableCountries":["US"]}},"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[{"baseUrl":"https://www.youtube.com/api/timedtext?v=abc123&lang=en","name":{"simpleText":"English (UK) auto-generated"},"kind":"asr"}]}}};
+</script></body></html>`))
+		case r.URL.Path == "/api/timedtext":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"events":[{"tStartMs":0,"dDurationMs":1600,"segs":[{"utf8":"Hello from the fallback subtitle lane."}]},{"tStartMs":1600,"dDurationMs":1900,"segs":[{"utf8":"This end to end gateway test verifies language fallback survives the real web_query entry path."}]}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	fetchTool := NewWebFetchTool(WebFetchConfig{AllowPrivateHosts: true})
+	fetchTool.httpClient = newRewrittenHTTPClient(t, server)
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := webReadResponse{
+				URL:      args["url"].(string),
+				FinalURL: args["url"].(string),
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Demo video",
+				Content:  "Gateway e2e page summary.",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	webTool := NewWebQueryTool(nil, fetchTool, readTool, nil, nil)
+	registry := NewRegistry()
+	registry.Register(webTool)
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(WithLang(context.Background(), "zh-TW"), ToolGatewayRequest{
+		ToolCallID: "call-video-e2e",
+		ToolName:   "web_query",
+		Arguments:  `{"input":"https://www.youtube.com/watch?v=abc123"}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	raw, ok := result.ExecutionResult.(string)
+	if !ok {
+		t.Fatalf("execution result type = %T, want string", result.ExecutionResult)
+	}
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Mode != "video_read" {
+		t.Fatalf("mode = %q, want video_read", envelope.Mode)
+	}
+	if envelope.Transcript == nil || envelope.Transcript.Language != "en-gb" {
+		t.Fatalf("transcript = %+v, want language en-gb", envelope.Transcript)
+	}
+	if envelope.Media == nil || envelope.Media.Language != "en-gb" {
+		t.Fatalf("media = %+v, want language en-gb", envelope.Media)
+	}
+	if strings.Contains(strings.ToLower(envelope.Media.Language), "us") {
+		t.Fatalf("media language leaked country code fallback: %+v", envelope.Media)
+	}
+}
+
+func TestToolGatewayExecutesBilibiliLabelLanguageFallbackE2E(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/video/BV1demo":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<!doctype html><html><body><script>
+window.__INITIAL_STATE__={"videoData":{"bvid":"BV1demo","title":"Bili demo","pic":"//img.example/bili.jpg","owner":{"name":"Uploader"},"duration":65,"pubdate":1711142400}};
+window.__playinfo__={"data":{"subtitle":{"subtitles":[{"lan_doc":"繁體中文","subtitle_url":"//www.bilibili.com/subtitle.json"}]}}};
+</script></body></html>`))
+		case "/subtitle.json":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"body":[{"from":0.0,"to":1.2,"content":"第一句字幕。"},{"from":1.2,"to":3.8,"content":"這是一段用來驗證 bilibili 標籤語言回退邏輯的字幕內容。"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	fetchTool := NewWebFetchTool(WebFetchConfig{AllowPrivateHosts: true})
+	fetchTool.httpClient = newRewrittenHTTPClient(t, server)
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := webReadResponse{
+				URL:      args["url"].(string),
+				FinalURL: args["url"].(string),
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Bili demo",
+				Content:  "Gateway e2e bilibili page summary.",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	webTool := NewWebQueryTool(nil, fetchTool, readTool, nil, nil)
+	registry := NewRegistry()
+	registry.Register(webTool)
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(WithLang(context.Background(), "en-US"), ToolGatewayRequest{
+		ToolCallID: "call-bili-e2e",
+		ToolName:   "web_query",
+		Arguments:  `{"input":"https://www.bilibili.com/video/BV1demo"}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	raw, ok := result.ExecutionResult.(string)
+	if !ok {
+		t.Fatalf("execution result type = %T, want string", result.ExecutionResult)
+	}
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Transcript == nil || envelope.Transcript.Language != "zh-tw" {
+		t.Fatalf("transcript = %+v, want language zh-tw", envelope.Transcript)
+	}
+	if envelope.Media == nil || envelope.Media.Language != "zh-tw" {
+		t.Fatalf("media = %+v, want language zh-tw", envelope.Media)
+	}
+}
+
+func TestToolGatewayExecutesDirectMediaASRLanguageFallbackE2E(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/clip.mp3" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "audio/mpeg")
+		_, _ = w.Write([]byte("fake mp3 bytes"))
+	}))
+	defer server.Close()
+
+	fetchTool := NewWebFetchTool(WebFetchConfig{AllowPrivateHosts: true})
+	webTool := NewWebQueryTool(nil, fetchTool, nil, nil, nil)
+	webTool.SetSTTService(&scriptedWebQuerySTTService{
+		response: &stt.TranscribeResponse{
+			Text:     "Local ASR returned transcript text but did not provide a stable language code, so the gateway should fall back to the request context locale.",
+			Language: "",
+			Duration: 4.2,
+			Segments: []stt.Segment{
+				{Start: 0, End: 2.1, Text: "Local ASR returned transcript text but did not provide a stable language code."},
+				{Start: 2.1, End: 4.2, Text: "So the gateway should fall back to the request context locale."},
+			},
+			Confidence: 0.88,
+		},
+	})
+	registry := NewRegistry()
+	registry.Register(webTool)
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(WithLang(context.Background(), "ja-JP"), ToolGatewayRequest{
+		ToolCallID: "call-direct-media-e2e",
+		ToolName:   "web_query",
+		Arguments:  `{"input":"` + server.URL + `/clip.mp3"}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	raw, ok := result.ExecutionResult.(string)
+	if !ok {
+		t.Fatalf("execution result type = %T, want string", result.ExecutionResult)
+	}
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Transcript == nil || envelope.Transcript.Source != "asr_local" || envelope.Transcript.Language != "ja-jp" {
+		t.Fatalf("transcript = %+v, want asr_local + ja-jp", envelope.Transcript)
+	}
+	if envelope.Media == nil || envelope.Media.Language != "ja-jp" {
+		t.Fatalf("media = %+v, want language ja-jp", envelope.Media)
 	}
 }
 

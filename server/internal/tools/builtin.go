@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,16 +14,10 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 )
 
 const maxFileWriteChunkBytes = 32 << 10 // 32 KiB per write call; prefer write_begin/write_chunk/write_commit for larger files.
-
-type fileWriteVerification struct {
-	Size         int64
-	Verified     bool
-	Method       string
-	BytesWritten int64
-}
 
 type BuiltinRuntimeConfig struct {
 	DataDir string
@@ -257,12 +250,7 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 }
 
 func (f *FileReadTool) shouldUseDocumentReader(path string) bool {
-	switch strings.ToLower(strings.TrimPrefix(filepath.Ext(path), ".")) {
-	case "docx", "xlsx", "pptx":
-		return true
-	default:
-		return false
-	}
+	return convertpkg.SupportsDocumentReadFormat(strings.TrimPrefix(filepath.Ext(path), "."))
 }
 
 func (f *FileReadTool) executePDFRead(ctx context.Context, absPath, relPath string, args map[string]interface{}) (interface{}, error) {
@@ -497,46 +485,52 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 		if int64(len(updatedContent)) > f.MaxFileSize {
 			return nil, fmt.Errorf("result too large: %d bytes (max: %d bytes)", len(updatedContent), f.MaxFileSize)
 		}
-		verification, err := writeFileOverwriteWithVerification(absPath, []byte(updatedContent))
-		if err != nil {
-			return nil, err
+		if err := os.WriteFile(absPath, []byte(updatedContent), 0o644); err != nil {
+			return nil, fmt.Errorf("failed to write file: %w", err)
+		}
+		info, _ := os.Stat(absPath)
+		size := int64(0)
+		if info != nil {
+			size = info.Size()
 		}
 		response := map[string]interface{}{
-			"path":                relPath,
-			"size":                verification.Size,
-			"success":             true,
-			"append":              false,
-			"line":                line,
-			"verified":            verification.Verified,
-			"verification_method": verification.Method,
-			"bytes_written":       verification.BytesWritten,
+			"path":    relPath,
+			"size":    size,
+			"success": true,
+			"line":    line,
 		}
 		jsonResult, _ := json.Marshal(response)
 		return string(jsonResult), nil
 	}
 
 	// Write file
-	var verification fileWriteVerification
 	if appendMode {
-		verification, err = appendFileWithVerification(absPath, content)
+		file, err := os.OpenFile(absPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to open file: %w", err)
+		}
+		defer file.Close()
+		if _, err = file.WriteString(content); err != nil {
+			return nil, fmt.Errorf("failed to write file: %w", err)
 		}
 	} else {
-		verification, err = writeFileOverwriteWithVerification(absPath, []byte(content))
-		if err != nil {
-			return nil, err
+		if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
+			return nil, fmt.Errorf("failed to write file: %w", err)
 		}
 	}
 
+	// Get file info after write
+	info, _ := os.Stat(absPath)
+	var size int64
+	if info != nil {
+		size = info.Size()
+	}
+
 	response := map[string]interface{}{
-		"path":                relPath,
-		"size":                verification.Size,
-		"success":             true,
-		"append":              appendMode,
-		"verified":            verification.Verified,
-		"verification_method": verification.Method,
-		"bytes_written":       verification.BytesWritten,
+		"path":    relPath,
+		"size":    size,
+		"success": true,
+		"append":  appendMode,
 	}
 	jsonResult, _ := json.Marshal(response)
 	return string(jsonResult), nil
@@ -703,155 +697,6 @@ func (f *FileWriteTool) replaceSingleLine(path string, line int, content string)
 	return out, nil
 }
 
-func writeFileOverwriteWithVerification(path string, data []byte) (fileWriteVerification, error) {
-	if err := atomicWriteTextFile(path, data, detectWritableFileMode(path)); err != nil {
-		if size, ok := verifyWrittenFileContent(path, data); ok {
-			return fileWriteVerification{
-				Size:         size,
-				Verified:     true,
-				Method:       "recovered",
-				BytesWritten: int64(len(data)),
-			}, nil
-		}
-		return fileWriteVerification{}, fmt.Errorf("failed to write file: %w", err)
-	}
-	size, ok := verifyWrittenFileContent(path, data)
-	if !ok {
-		return fileWriteVerification{}, errors.New("failed to verify written file content")
-	}
-	return fileWriteVerification{
-		Size:         size,
-		Verified:     true,
-		Method:       "content",
-		BytesWritten: int64(len(data)),
-	}, nil
-}
-
-func appendFileWithVerification(path, content string) (fileWriteVerification, error) {
-	beforeSize := int64(0)
-	if info, err := os.Stat(path); err == nil && info != nil {
-		beforeSize = info.Size()
-	} else if err != nil && !os.IsNotExist(err) {
-		return fileWriteVerification{}, fmt.Errorf("failed to stat existing file: %w", err)
-	}
-
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, detectWritableFileMode(path))
-	if err != nil {
-		return fileWriteVerification{}, fmt.Errorf("failed to open file: %w", err)
-	}
-
-	var writeErr error
-	if _, writeErr = file.WriteString(content); writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr == nil {
-		writeErr = closeErr
-	}
-
-	size, method, ok := verifyAppendedFileContent(path, beforeSize, []byte(content))
-	if writeErr != nil {
-		if ok {
-			return fileWriteVerification{
-				Size:         size,
-				Verified:     true,
-				Method:       "recovered",
-				BytesWritten: int64(len(content)),
-			}, nil
-		}
-		return fileWriteVerification{}, fmt.Errorf("failed to write file: %w", writeErr)
-	}
-	if !ok {
-		return fileWriteVerification{}, errors.New("failed to verify appended file content")
-	}
-	return fileWriteVerification{
-		Size:         size,
-		Verified:     true,
-		Method:       method,
-		BytesWritten: int64(len(content)),
-	}, nil
-}
-
-func detectWritableFileMode(path string) os.FileMode {
-	info, err := os.Stat(path)
-	if err == nil && info != nil {
-		if perm := info.Mode().Perm(); perm != 0 {
-			return perm
-		}
-	}
-	return 0o644
-}
-
-func atomicWriteTextFile(path string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmpFile, err := os.CreateTemp(dir, ".blue-file-write-*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmpFile.Name()
-	cleanup := func() {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpPath)
-	}
-	if err := tmpFile.Chmod(perm); err != nil {
-		cleanup()
-		return err
-	}
-	if _, err := tmpFile.Write(data); err != nil {
-		cleanup()
-		return err
-	}
-	if err := tmpFile.Sync(); err != nil {
-		cleanup()
-		return err
-	}
-	if err := tmpFile.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	return nil
-}
-
-func verifyWrittenFileContent(path string, expected []byte) (int64, bool) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, false
-	}
-	if !bytes.Equal(data, expected) {
-		return int64(len(data)), false
-	}
-	return int64(len(data)), true
-}
-
-func verifyAppendedFileContent(path string, beforeSize int64, expected []byte) (int64, string, bool) {
-	info, err := os.Stat(path)
-	if err != nil || info == nil {
-		return 0, "", false
-	}
-	size := info.Size()
-	if size < beforeSize {
-		return size, "", false
-	}
-	if len(expected) == 0 {
-		return size, "stat", true
-	}
-	data, err := os.ReadFile(path)
-	if err == nil && len(data) >= len(expected) {
-		tail := data[len(data)-len(expected):]
-		if bytes.Equal(tail, expected) && size >= beforeSize+int64(len(expected)) {
-			return size, "content", true
-		}
-	}
-	if size >= beforeSize+int64(len(expected)) {
-		return size, "stat", true
-	}
-	return size, "", false
-}
-
 // RegisterBuiltinTools registers built-in core tools with default configuration.
 func RegisterBuiltinTools(registry *Registry) {
 	if registry == nil {
@@ -870,6 +715,7 @@ func RegisterBuiltinTools(registry *Registry) {
 	registry.Register(NewRgTool(nil, 0))
 	registry.Register(NewFindTool(nil))
 	registry.Register(NewLsTool(nil))
+	registry.Register(NewOfficeTool(nil, nil, nil))
 	registerWebTools(registry, WebSearchConfig{}, WebFetchConfig{})
 	registry.Register(NewMCPTool(registry))
 }
@@ -898,6 +744,7 @@ func RegisterBuiltinToolsWithRuntimeConfig(registry *Registry, webSearchConfig W
 	registry.Register(NewRgToolWithRipgrep(allowedPaths, maxFileSize, ripgrep))
 	registry.Register(NewFindToolWithRipgrep(allowedPaths, ripgrep))
 	registry.Register(NewLsTool(allowedPaths))
+	registry.Register(NewOfficeTool(allowedPaths, nil, nil))
 	registerWebTools(registry, webSearchConfig, webFetchConfig)
 	registry.Register(NewMCPTool(registry))
 }
@@ -969,6 +816,8 @@ func RegisterApprovalAwareFileToolsWithRuntimeConfig(registry *Registry, allowed
 	ls := NewLsTool(allowedPaths)
 	ls.Scope = ls.Scope.withApprovalFlow(approvals, dirStore)
 	registry.Register(ls)
+
+	registry.Register(NewOfficeTool(allowedPaths, approvals, dirStore))
 }
 
 func newBuiltinRipgrepResolver(runtimeCfg BuiltinRuntimeConfig) ripgrepResolver {
@@ -1025,7 +874,21 @@ func GetWebFetchTool(registry *Registry) *WebFetchTool {
 	return nil
 }
 
+func GetWebQueryTool(registry *Registry) *WebTool {
+	tool := registry.Get("web_query")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*WebTool); ok {
+		return t
+	}
+	return nil
+}
+
 func GetWebTool(registry *Registry) *WebTool {
+	if tool := GetWebQueryTool(registry); tool != nil {
+		return tool
+	}
 	tool := registry.Get("web")
 	if tool == nil {
 		return nil
@@ -1095,6 +958,35 @@ func AttachPDFServiceToWebTools(registry *Registry, service PDFService) {
 	}
 }
 
+func AttachDocumentReadServiceToWebTools(registry *Registry, service DocumentReadService) {
+	if registry == nil || service == nil {
+		return
+	}
+	if tool := registry.Get("file_read"); tool != nil {
+		if t, ok := tool.(*FileReadTool); ok {
+			t.SetDocumentReadService(service)
+		}
+	}
+	if tool := GetWebTool(registry); tool != nil {
+		tool.SetDocumentReadService(service)
+	}
+	if tool := GetWebFetchTool(registry); tool != nil {
+		tool.SetDocumentReadService(service)
+	}
+	if tool := GetWebReadTool(registry); tool != nil {
+		tool.SetDocumentReadService(service)
+	}
+}
+
+func AttachSTTServiceToWebTools(registry *Registry, service stt.Service) {
+	if registry == nil || service == nil {
+		return
+	}
+	if tool := GetWebTool(registry); tool != nil {
+		tool.SetSTTService(service)
+	}
+}
+
 func registerWebTools(registry *Registry, webSearchConfig WebSearchConfig, webFetchConfig WebFetchConfig) {
 	if registry == nil {
 		return
@@ -1104,13 +996,20 @@ func registerWebTools(registry *Registry, webSearchConfig WebSearchConfig, webFe
 	readTool := NewWebReadTool(webFetchConfig)
 	extractTool := NewWebExtractTool(webFetchConfig)
 	crawlTool := NewWebCrawlTool(webFetchConfig)
+	webQueryTool := NewWebQueryTool(searchTool, fetchTool, readTool, extractTool, crawlTool)
+	webAliasTool := NewWebToolAlias(searchTool, fetchTool, readTool, extractTool, crawlTool)
+	if imageTool := registry.Get("image"); imageTool != nil {
+		webQueryTool.SetImageTool(imageTool)
+		webAliasTool.SetImageTool(imageTool)
+	}
 	registry.Register(searchTool)
 	registry.Register(fetchTool)
 	registry.Register(readTool)
 	registry.Register(extractTool)
 	registry.Register(crawlTool)
-	registry.Register(NewWebTool(searchTool, fetchTool, readTool, extractTool, crawlTool))
-	for _, name := range []string{"web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
+	registry.Register(webQueryTool)
+	registry.Register(webAliasTool)
+	for _, name := range []string{"web", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
 		registry.Disable(name)
 	}
 }

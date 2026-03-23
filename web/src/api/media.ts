@@ -19,6 +19,7 @@ export interface MediaRequest {
 
 export interface MediaResult {
   url: string
+  thumbnail_url?: string
   revised_prompt?: string
   content_type?: string
   width?: number
@@ -58,16 +59,33 @@ export interface MediaModelInfo {
   price?: number
   pricing_unit?: string
   is_fallback?: boolean
-  fallback_strategy?: 'web_canvas' | 'public_space'
+  fallback_strategy?: 'web_canvas' | 'public_space' | 'native_timeline'
 }
 
 export interface MediaFallbackInfo {
   used: boolean
-  strategy: 'web_canvas' | 'public_space'
+  strategy: 'web_canvas' | 'public_space' | 'native_timeline'
   display_name: string
   source_urls?: string[]
+  sources?: MediaFallbackSource[]
   space_url?: string
   disclosure: string
+  render_mode?: 'slide' | 'poster'
+  template_id?: 'cover' | 'split' | 'text_only' | 'poster'
+  style_preset?: string
+}
+
+export interface MediaFallbackSource {
+  provider: string
+  title?: string
+  page_url?: string
+  asset_url?: string
+  thumbnail_url?: string
+  creator?: string
+  license?: string
+  license_url?: string
+  note?: string
+  verified_license?: boolean
 }
 
 // IR-based intent classification
@@ -78,6 +96,7 @@ export interface MediaIntent {
   has_image: boolean
   image_count: number
   alternative_category?: MediaCategory // e.g. kf2v when 2 images could be i2v or kf2v
+  params?: Record<string, any>
 }
 
 export interface ClassifyResponse {

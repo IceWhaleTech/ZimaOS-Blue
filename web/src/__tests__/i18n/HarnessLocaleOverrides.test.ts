@@ -38,12 +38,78 @@ const requiredPaths = [
   'common.notAvailable',
   'common.updatedAt',
   'nav.harness',
+  'harness.builder.title',
+  'harness.datasets.title',
+  'harness.dataset.publishVersion',
+  'harness.evalSpec.title',
+  'harness.evalRuns.title',
+  'harness.evalRun.report',
+  'harness.quickEval.title',
+  'harness.quickEval.systemWillDo',
+  'harness.quickEval.caseRequired',
+  'harness.quickEval.caseTemplateHint',
+  'harness.quickEval.conversationCaseCount',
+  'harness.quickEval.conversationEmpty',
+  'harness.quickEval.conversationHint',
+  'harness.quickEval.conversationLoadFailed',
+  'harness.quickEval.conversationRequired',
+  'harness.quickEval.draftCases',
+  'harness.quickEval.editManifest',
+  'harness.quickEval.launchHint',
+  'harness.quickEval.previewManifest',
+  'harness.quickEval.smokeLabel',
+  'harness.quickEval.regressionLabel',
+  'harness.quickEval.researchLabel',
+  'harness.quickEval.selectConversation',
+  'harness.quickEval.smokeDatasetName',
+  'harness.quickEval.untitledConversation',
+  'harness.quickEval.useConversation',
+  'harness.baseline.title',
+  'harness.compare.title',
   'harness.groups.subtitle',
+  'harness.groups.controlPlaneDescription',
   'harness.groups.totalGroups',
   'harness.groups.emptyDescription',
   'harness.group.artifacts',
   'harness.group.retryFailed',
+  'harness.group.verificationPassRate',
+  'harness.group.evidenceBackedPassRate',
+  'harness.group.retryRecovered',
+  'harness.group.failureLabels',
+  'harness.group.noFailureLabels',
+  'harness.group.verification',
+  'harness.group.evidenceScore',
+  'harness.group.failureLabel',
+  'harness.group.retryable',
+  'harness.group.outcomeScore',
+  'harness.group.executionScore',
+  'harness.group.remediation',
+  'harness.group.remediationMissingArtifact',
+  'harness.group.remediationRunFailed',
+  'harness.group.remediationGeneric',
+  'harness.group.verificationChecks',
+  'harness.group.expectedArtifacts',
+  'harness.group.traceSummary',
+  'harness.group.expectedValue',
+  'harness.group.actualValue',
+  'harness.group.eventCount',
+  'harness.group.artifactCount',
+  'harness.group.observedTools',
+  'harness.group.scorecardInsights',
+  'harness.group.scorecardInsightsHint',
+  'harness.group.reviewProposals',
+  'harness.group.noScorecardInsights',
+  'harness.group.calibrationRef',
+  'harness.group.takeawayCandidateCount',
+  'harness.group.proposalCount',
+  'harness.group.proposalIds',
+  'harness.group.noProposalIds',
   'harness.group.unprofiled',
+  'harness.compare.verificationPassRateDelta',
+  'harness.compare.evidenceBackedPassRateDelta',
+  'harness.compare.retryRecoveredDelta',
+  'harness.compare.failureLabelDelta',
+  'harness.compare.noFailureLabelDelta',
 ] as const
 
 const localeModules = import.meta.glob('@/i18n/locales/*.ts', { eager: true }) as Record<
@@ -115,5 +181,33 @@ describe('Harness locale overrides', () => {
       expect(typeof value).toBe('string')
       expect(String(value).trim().length).toBeGreaterThan(0)
     }
+  })
+
+  it('uses translated harness labels for Chinese locales', () => {
+    const zhCN = localeMessagesByFile.get('zh-CN.ts') as LocaleMessages
+    const zhTW = localeMessagesByFile.get('zh-TW.ts') as LocaleMessages
+
+    expect(getPathValue(zhCN, 'nav.harness')).toBe('测试夹具')
+    expect(getPathValue(zhCN, 'harness.quickEval.systemWillDo')).toBe('测试夹具将自动完成')
+    expect(getPathValue(zhCN, 'harness.quickEval.useConversation')).toBe('使用会话')
+    expect(getPathValue(zhCN, 'harness.quickEval.selectConversation')).toBe('选择会话')
+    expect(getPathValue(zhCN, 'harness.quickEval.draftCases')).toBe('草稿用例')
+    expect(getPathValue(zhCN, 'harness.quickEval.previewManifest')).toBe('预览用例 JSON')
+    expect(getPathValue(zhCN, 'harness.quickEval.editManifest')).toBe('编辑用例 JSON')
+    expect(getPathValue(zhCN, 'harness.quickEval.smokeLabel')).toBe('冒烟')
+    expect(getPathValue(zhCN, 'harness.quickEval.regressionLabel')).toBe('回归')
+    expect(getPathValue(zhCN, 'harness.quickEval.researchLabel')).toBe('研究')
+    expect(getPathValue(zhCN, 'harness.quickEval.smokeDatasetName')).toBe('冒烟数据集')
+    expect(getPathValue(zhTW, 'nav.harness')).toBe('測試夾具')
+    expect(getPathValue(zhTW, 'harness.quickEval.systemWillDo')).toBe('測試夾具將自動完成')
+    expect(getPathValue(zhTW, 'harness.quickEval.useConversation')).toBe('使用對話')
+    expect(getPathValue(zhTW, 'harness.quickEval.selectConversation')).toBe('選擇對話')
+    expect(getPathValue(zhTW, 'harness.quickEval.draftCases')).toBe('草稿案例')
+    expect(getPathValue(zhTW, 'harness.quickEval.previewManifest')).toBe('預覽案例 JSON')
+    expect(getPathValue(zhTW, 'harness.quickEval.editManifest')).toBe('編輯案例 JSON')
+    expect(getPathValue(zhTW, 'harness.quickEval.smokeLabel')).toBe('冒煙')
+    expect(getPathValue(zhTW, 'harness.quickEval.regressionLabel')).toBe('回歸')
+    expect(getPathValue(zhTW, 'harness.quickEval.researchLabel')).toBe('研究')
+    expect(getPathValue(zhTW, 'harness.quickEval.smokeDatasetName')).toBe('冒煙資料集')
   })
 })

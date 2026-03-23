@@ -1,6 +1,6 @@
 ---
 name: ui_reviewer
-description: "Review UI/UX quality and accessibility for a webpage or screenshot, with structured scoring and findings. Use when the user asks for UI review, design critique, UX audit, accessibility check, or quality scoring."
+description: "Review UI/UX quality and accessibility for a webpage or screenshot, with structured scoring and findings. Use when the user asks for UI review, design critique, accessibility check, or quality scoring. Canonical actions are review_url, review_image, and check_accessibility."
 ---
 
 # UI Reviewer Skill
@@ -15,7 +15,7 @@ No external dependencies required. Uses built-in browser + accessibility + VLM r
 
 | User Intent | Action |
 |-------------|--------|
-| Audit a live website UI/UX | `blue ui.review_url` |
+| Review a live website UI/UX | `blue ui.review_url` |
 | Review a provided screenshot/image only | `blue ui.review_image` |
 | Accessibility-focused check only | `blue ui.check_accessibility` |
 
@@ -23,7 +23,7 @@ No external dependencies required. Uses built-in browser + accessibility + VLM r
 
 ## Command Usage
 
-### Review URL (full audit)
+### Review URL
 
 ```bash
 blue ui.review_url url=https://example.com --json
@@ -58,3 +58,5 @@ blue ui.check_accessibility url=https://example.com --json
 
 - Prefer `--json` for structured output.
 - Use this skill for quality evaluation, not for generic browsing/search.
+- Canonical actions are `review_url`, `review_image`, and `check_accessibility`.
+- Do not invent `audit` as an action name; use `blue ui.review_url` for live website reviews.

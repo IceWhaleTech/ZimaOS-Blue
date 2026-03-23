@@ -57,6 +57,15 @@ type ResearchStatusTool struct {
 	service ResearchService
 }
 
+type DeepResearchTool struct {
+	service ResearchService
+}
+
+const (
+	DeepResearchActionRun    = "run"
+	DeepResearchActionStatus = "status"
+)
+
 func NewResearchRunTool(service ResearchService) *ResearchRunTool {
 	return &ResearchRunTool{service: service}
 }
@@ -65,12 +74,81 @@ func NewResearchStatusTool(service ResearchService) *ResearchStatusTool {
 	return &ResearchStatusTool{service: service}
 }
 
+func NewDeepResearchTool(service ResearchService) *DeepResearchTool {
+	return &DeepResearchTool{service: service}
+}
+
 func RegisterResearchTools(registry *Registry, service ResearchService) {
 	if registry == nil || service == nil {
 		return
 	}
-	registry.Register(NewResearchRunTool(service))
-	registry.Register(NewResearchStatusTool(service))
+	registry.Register(NewDeepResearchTool(service))
+}
+
+func (t *DeepResearchTool) Definition() ToolDefinition {
+	return ToolDefinition{
+		Name:        "deep_research",
+		Description: "Run deep research or poll the status of an existing deep research job. Use action=run to start research and action=status to resume/poll a job.",
+		Icon:        "research",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"action": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{DeepResearchActionRun, DeepResearchActionStatus},
+					"description": "run to start a deep research job, status to get progress or final results for an existing job",
+				},
+				"query":                map[string]interface{}{"type": "string", "description": "Research query or objective. Required for action=run."},
+				"mode":                 map[string]interface{}{"type": "string", "description": "Research depth: fast, standard, deep"},
+				"route_mode":           map[string]interface{}{"type": "string", "description": "Routing mode: web"},
+				"lang":                 map[string]interface{}{"type": "string", "description": "Preferred output language"},
+				"max_sources":          map[string]interface{}{"type": "integer", "description": "Optional source budget override"},
+				"max_seconds":          map[string]interface{}{"type": "integer", "description": "Optional time budget override"},
+				"strict_entity":        map[string]interface{}{"type": "boolean", "description": "Enable strict same-entity filtering"},
+				"time_windows":         map[string]interface{}{"type": "array", "description": "Optional timeline windows", "items": map[string]interface{}{"type": "string"}},
+				"report_style":         map[string]interface{}{"type": "string", "description": "summary|timeline|knowledge_base"},
+				"wait":                 map[string]interface{}{"type": "boolean", "description": "Whether to wait for completion when action=run (default true)"},
+				"wait_timeout_seconds": map[string]interface{}{"type": "integer", "description": "Optional max wait time before returning pending status"},
+				"poll_interval_ms":     map[string]interface{}{"type": "integer", "description": "Polling interval when wait=true (default 500ms)"},
+				"job_id":               map[string]interface{}{"type": "string", "description": "Deep research job ID. Required for action=status."},
+				"id":                   map[string]interface{}{"type": "string", "description": "Alias for job_id"},
+			},
+			"anyOf": []interface{}{
+				map[string]interface{}{
+					"required": []string{"query"},
+				},
+				map[string]interface{}{
+					"required": []string{"job_id"},
+				},
+				map[string]interface{}{
+					"required": []string{"id"},
+				},
+			},
+		},
+	}
+}
+
+func normalizeDeepResearchAction(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", DeepResearchActionRun:
+		return DeepResearchActionRun
+	case DeepResearchActionStatus, "poll", "resume":
+		return DeepResearchActionStatus
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+}
+
+func resolveDeepResearchAction(args map[string]interface{}) string {
+	action := normalizeDeepResearchAction(firstCompatString(args, "action"))
+	if action != "" && action != DeepResearchActionRun {
+		return action
+	}
+	if strings.TrimSpace(firstCompatString(args, "job_id", "jobId", "id")) != "" &&
+		strings.TrimSpace(firstCompatString(args, "query", "objective", "prompt", "message")) == "" {
+		return DeepResearchActionStatus
+	}
+	return DeepResearchActionRun
 }
 
 func (t *ResearchRunTool) Definition() ToolDefinition {
@@ -115,7 +193,7 @@ func (t *ResearchStatusTool) Definition() ToolDefinition {
 	}
 }
 
-func (t *ResearchRunTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *DeepResearchTool) executeRun(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	if t == nil || t.service == nil {
 		return nil, errors.New("research service not available")
 	}
@@ -202,7 +280,7 @@ func (t *ResearchRunTool) Execute(ctx context.Context, args map[string]interface
 	return payload, nil
 }
 
-func (t *ResearchStatusTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *DeepResearchTool) executeStatus(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	if t == nil || t.service == nil {
 		return nil, errors.New("research service not available")
 	}
@@ -217,6 +295,25 @@ func (t *ResearchStatusTool) Execute(ctx context.Context, args map[string]interf
 	payload := researchJobToMap(job)
 	payload["terminal"] = isResearchTerminalStatus(job.Status)
 	return payload, nil
+}
+
+func (t *DeepResearchTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	switch resolveDeepResearchAction(args) {
+	case DeepResearchActionRun:
+		return t.executeRun(ctx, args)
+	case DeepResearchActionStatus:
+		return t.executeStatus(ctx, args)
+	default:
+		return nil, fmt.Errorf("unsupported deep_research action %q", firstCompatString(args, "action"))
+	}
+}
+
+func (t *ResearchRunTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	return (&DeepResearchTool{service: t.service}).executeRun(ctx, args)
+}
+
+func (t *ResearchStatusTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	return (&DeepResearchTool{service: t.service}).executeStatus(ctx, args)
 }
 
 func waitForResearchJob(ctx context.Context, service ResearchService, jobID, userID string, pollInterval time.Duration) (*ResearchJob, error) {

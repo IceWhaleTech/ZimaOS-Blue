@@ -350,7 +350,9 @@ function getJobPreview(job: CronJob): string {
           <h1 class="automation-title dashboard-page-title configuration-page-title">
             {{ t('cron.title') }}
           </h1>
-          <p class="automation-description dashboard-page-description configuration-page-description">
+          <p
+            class="automation-description dashboard-page-description configuration-page-description"
+          >
             {{ t('automation.tabs.cronDesc') }}
           </p>
         </div>

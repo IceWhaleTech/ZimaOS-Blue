@@ -48,6 +48,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reclaim"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
@@ -364,15 +365,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 	trace.Mark("config_loaded")
-
-	// Initialize HotReloader for config changes
 	var hotReloader *config.HotReloader
-	hotReloader, _ = config.NewHotReloader(cfgFile, cfg, &config.HotReloadConfig{
-		Enabled:             true,
-		WatchInterval:       5 * time.Second,
-		ValidateBeforeApply: true,
-	})
-	trace.Mark("hot_reloader_ready")
 
 	// Override port if specified
 	if port > 0 {
@@ -461,6 +454,24 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if updatedCfg, err := cfgStore.LoadOrImport(cfg); err == nil {
 		cfg = updatedCfg
 	}
+	hotReloader, err = config.NewHotReloader(cfgFile, cfg, &config.HotReloadConfig{
+		Enabled:             true,
+		WatchInterval:       5 * time.Second,
+		ValidateBeforeApply: true,
+	})
+	if err != nil {
+		zapLogger.Warn("Failed to initialize hot reloader", zap.Error(err))
+		hotReloader = nil
+	} else {
+		config.SyncHotReloadToStore(hotReloader, cfgStore)
+		if err := hotReloader.Start(); err != nil {
+			zapLogger.Warn("Failed to start hot reloader", zap.Error(err))
+		}
+		registerCleanup(func() error {
+			return hotReloader.Stop()
+		})
+	}
+	trace.Mark("hot_reloader_ready")
 	if result, migrateErr := server.MigrateLegacyProviderSettings(context.Background(), configKV, dataDir); migrateErr != nil {
 		zapLogger.Warn("Failed to migrate legacy provider settings into config store", zap.Error(migrateErr))
 	} else if result != nil {
@@ -506,6 +517,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(services.MemoryStore, services.LLMRegistry, services.ToolRegistry)
+	chatHandler.SetPersistenceOptions(cfg.Session.ChatPersistAsync, cfg.Session.ChatReadLite)
 	metricsCollector, metricsWriter := bootstrap.InitMetrics(dataDir, services.DB)
 	chatHandler.SetMetricsRecorder(metricsWriter)
 	// Register cleanup for metrics
@@ -517,9 +529,12 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	if cfg.Session.Audit.Enabled {
 		auditCfg := sessionaudit.StoreConfig{
-			RetentionDays:    cfg.Session.Audit.RetentionDays,
-			CleanupInterval:  cfg.Session.Audit.CleanupInterval,
-			CleanupBatchSize: cfg.Session.Audit.CleanupBatchSize,
+			RetentionDays:      cfg.Session.Audit.RetentionDays,
+			CleanupInterval:    cfg.Session.Audit.CleanupInterval,
+			CleanupBatchSize:   cfg.Session.Audit.CleanupBatchSize,
+			Durability:         cfg.Session.ChatDBDurability,
+			WALAutoCheckpoint:  4000,
+			CheckpointInterval: 60 * time.Second,
 		}
 		auditDBPath := sessionaudit.ResolveDBPath(dataDir, cfg.Session.Audit.Path)
 		var (
@@ -672,6 +687,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		}
 		return browserService
 	})
+	browserHandler.SetIdleReclaim(cfg.Performance.ResourceReclaim.BrowserIdleAfter)
 	browserHandler.SetRelayInfoProvider(relayInfoProvider)
 
 	// Initialize formfiller handler
@@ -841,6 +857,9 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	// Initialize companion handler
 	companionConfig := companion.DefaultConfig()
 	companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
+	companionConfig.Retention.EventsDays = cfg.Companion.Retention.EventsDays
+	companionConfig.Retention.SessionsDays = cfg.Companion.Retention.SessionsDays
+	companionConfig.Retention.AlertsDays = cfg.Companion.Retention.AlertsDays
 	var companionHandler *companion.Handler
 	var companionWSHandler *companion.WebSocketHandler
 	var warmCompanion func()
@@ -1027,40 +1046,179 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Lazy browser backend for browser tool + UI reviewer
 	var lazyBrowserSvc func() *browser.RodService
-	var lazyVisibleBrowserSvc func() *browser.RodService
-	{
-		var browserOnce sync.Once
-		var browserSvc *browser.RodService
-		headlessBrowserCfg := cfg.Browser
-		headlessBrowserCfg.Headless = true
-		lazyBrowserSvc = func() *browser.RodService {
-			browserOnce.Do(func() {
-				svc, err := browser.NewService(&headlessBrowserCfg)
-				if err != nil {
-					return
+	var acquireBrowserSvc func() (*browser.RodService, func(), error)
+	var syncBrowserMonitorRetention func(time.Duration)
+	var cleanupBrowserMonitorFrames func()
+	type browserRuntime struct {
+		lazy    func() *browser.RodService
+		acquire func() (*browser.RodService, func(), error)
+		backend tools.BrowserBackend
+		close   func(context.Context) error
+	}
+	var browserRuntimePeekers []func() *browser.RodService
+	var browserRuntimeRetentionUpdaters []func(time.Duration)
+	initialBrowserMonitorRetention := time.Duration(cfg.Companion.Retention.SessionsDays) * 24 * time.Hour
+	cfg.Browser.SessionScreenshotRetention = initialBrowserMonitorRetention
+	makeBrowserRuntime := func(baseCfg *browser.Config) browserRuntime {
+		headlessCfg := baseCfg.Clone()
+		headlessCfg.Headless = true
+		headlessRuntime := reclaim.NewManaged[*browser.RodService](
+			cfg.Performance.ResourceReclaim.BrowserIdleAfter,
+			func() (*browser.RodService, error) {
+				return browser.NewService(headlessCfg)
+			},
+			func(_ context.Context, svc *browser.RodService) error {
+				if svc == nil {
+					return nil
 				}
-				browserSvc = svc
-			})
-			return browserSvc
+				return svc.Close()
+			},
+		)
+
+		visibleCfg := baseCfg.Clone()
+		visibleCfg.Headless = false
+		visibleRuntime := reclaim.NewManaged[*browser.RodService](
+			cfg.Performance.ResourceReclaim.BrowserIdleAfter,
+			func() (*browser.RodService, error) {
+				return browser.NewService(visibleCfg)
+			},
+			func(_ context.Context, svc *browser.RodService) error {
+				if svc == nil {
+					return nil
+				}
+				return svc.Close()
+			},
+		)
+
+		updateRetention := func(retention time.Duration) {
+			if retention < 0 {
+				retention = 0
+			}
+			headlessCfg.SessionScreenshotRetention = retention
+			visibleCfg.SessionScreenshotRetention = retention
+			if svc, ok := headlessRuntime.Peek(); ok && svc != nil {
+				svc.SetSessionScreenshotRetention(retention)
+			}
+			if svc, ok := visibleRuntime.Peek(); ok && svc != nil {
+				svc.SetSessionScreenshotRetention(retention)
+			}
 		}
 
-		var visibleBrowserOnce sync.Once
-		var visibleBrowserSvc *browser.RodService
-		visibleBrowserCfg := cfg.Browser
-		visibleBrowserCfg.Headless = false
-		lazyVisibleBrowserSvc = func() *browser.RodService {
-			visibleBrowserOnce.Do(func() {
-				svc, err := browser.NewService(&visibleBrowserCfg)
+		runtime := browserRuntime{
+			lazy: func() *browser.RodService {
+				svc, err := headlessRuntime.Get()
 				if err != nil {
-					return
+					zapLogger.Warn("Failed to create browser service", zap.Error(err))
+					return nil
 				}
-				visibleBrowserSvc = svc
-			})
-			return visibleBrowserSvc
+				return svc
+			},
+			acquire: headlessRuntime.Acquire,
+			backend: tools.NewLeaseAwareRodBrowserBackend(headlessRuntime.Acquire, visibleRuntime.Acquire),
+			close: func(ctx context.Context) error {
+				if err := visibleRuntime.Close(ctx); err != nil {
+					_ = headlessRuntime.Close(ctx)
+					return err
+				}
+				return headlessRuntime.Close(ctx)
+			},
+		}
+		registerCleanup(func() error {
+			return runtime.close(context.Background())
+		})
+		browserRuntimePeekers = append(browserRuntimePeekers,
+			func() *browser.RodService {
+				svc, ok := headlessRuntime.Peek()
+				if !ok {
+					return nil
+				}
+				return svc
+			},
+			func() *browser.RodService {
+				svc, ok := visibleRuntime.Peek()
+				if !ok {
+					return nil
+				}
+				return svc
+			},
+		)
+		browserRuntimeRetentionUpdaters = append(browserRuntimeRetentionUpdaters, updateRetention)
+		return runtime
+	}
+
+	defaultRuntime := makeBrowserRuntime(&cfg.Browser)
+	lazyBrowserSvc = defaultRuntime.lazy
+	acquireBrowserSvc = defaultRuntime.acquire
+	browserBackend := defaultRuntime.backend
+	syncBrowserMonitorRetention = func(retention time.Duration) {
+		if retention < 0 {
+			retention = 0
+		}
+		cfg.Browser.SessionScreenshotRetention = retention
+		if browserHandler != nil {
+			if svc, ok := browserHandler.PeekService().(*browser.RodService); ok && svc != nil {
+				svc.SetSessionScreenshotRetention(retention)
+			}
+		}
+		for _, updateRetention := range browserRuntimeRetentionUpdaters {
+			updateRetention(retention)
 		}
 	}
-	browserBackend := tools.NewModeAwareRodBrowserBackend(lazyBrowserSvc, lazyVisibleBrowserSvc)
+	cleanupBrowserMonitorFrames = func() {
+		seen := make(map[*browser.RodService]struct{})
+		if browserHandler != nil {
+			if svc, ok := browserHandler.PeekService().(*browser.RodService); ok && svc != nil {
+				seen[svc] = struct{}{}
+				svc.CleanupExpiredMonitorFrames()
+			}
+		}
+		for _, peek := range browserRuntimePeekers {
+			svc := peek()
+			if svc == nil {
+				continue
+			}
+			if _, ok := seen[svc]; ok {
+				continue
+			}
+			seen[svc] = struct{}{}
+			svc.CleanupExpiredMonitorFrames()
+		}
+	}
+	syncBrowserMonitorRetention(initialBrowserMonitorRetention)
+	relayPreferredSites := cfg.Browser.ExpandedRelayPreferredSites()
+	if len(relayPreferredSites) > 0 {
+		managedBackend := defaultRuntime.backend
+		if cfg.Browser.ResolvedDriver() != "managed" {
+			managedBackend = makeBrowserRuntime(cfg.Browser.CloneForDriver("managed")).backend
+		}
+
+		relayBackend := defaultRuntime.backend
+		if cfg.Browser.ResolvedDriver() != "relay" {
+			relayBackend = makeBrowserRuntime(cfg.Browser.CloneForDriver("relay")).backend
+		}
+
+		browserBackend = tools.NewSitePolicyBrowserBackend(
+			defaultRuntime.backend,
+			managedBackend,
+			relayBackend,
+			func(rawURL string) bool {
+				return browser.MatchSitePatternList(rawURL, relayPreferredSites)
+			},
+			cfg.Browser.RelayPreferredFallback(),
+		)
+	}
 	browserIPC := sockipc.NewToolBrowserIPCAdapter(browserBackend)
+	if companionHandler != nil {
+		companionHandler.SetRetentionChangeHook(func(_ context.Context, retention companion.RetentionConfig) error {
+			syncBrowserMonitorRetention(time.Duration(retention.SessionsDays) * 24 * time.Hour)
+			return nil
+		})
+		companionHandler.SetCleanupHook(func(_ context.Context, retention companion.RetentionConfig) error {
+			syncBrowserMonitorRetention(time.Duration(retention.SessionsDays) * 24 * time.Hour)
+			cleanupBrowserMonitorFrames()
+			return nil
+		})
+	}
 	uiReviewerIPC := sockipc.NewUIReviewIPCAdapter(&tools.UIReviewerTool{})
 
 	// Cron IPC adapter
@@ -1205,6 +1363,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		SandboxManager:      sandboxManager,
 		SystemPromptBuilder: systemPromptBuilder,
 		LazyBrowserSvc:      lazyBrowserSvc,
+		AcquireBrowserSvc:   acquireBrowserSvc,
 		BrowserBackend:      browserBackend,
 		// Start serving as soon as critical routes are registered.
 		// This lets the Tauri health poll succeed while heavy subsystems

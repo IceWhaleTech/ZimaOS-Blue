@@ -5,12 +5,17 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,6 +41,8 @@ func newTestServiceWithClient(t *testing.T, client *http.Client) (*Service, func
 	scanner := skillstore.NewLocalSkillScanner(activeDir)
 	cfg := DefaultConfig(t.TempDir(), activeDir)
 	cfg.CacheRoot = cacheDir
+	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
 	cfg.SeedURLs = nil
 
 	svc, err := NewService(db, Options{
@@ -364,7 +371,7 @@ Inspect skills and prompts for dangerous behavior.
 		BaseURL:     server.URL,
 		DisplayName: "ClawHub",
 		SourceGroup: "clawhub",
-	}, run)
+	}, 0, &DiscoverResult{}, run)
 	if err != nil {
 		t.Fatalf("discoverFromClawHub() error = %v", err)
 	}
@@ -449,7 +456,7 @@ func TestDiscoverFromClawHubFollowsPagination(t *testing.T) {
 		BaseURL:     server.URL,
 		DisplayName: "ClawHub",
 		SourceGroup: "clawhub",
-	}, run)
+	}, 0, &DiscoverResult{}, run)
 	if err != nil {
 		t.Fatalf("discoverFromClawHub() error = %v", err)
 	}
@@ -517,7 +524,7 @@ func TestDiscoverFromClawHubContinuesWhenShortPagesOmitNextCursor(t *testing.T) 
 		BaseURL:     server.URL,
 		DisplayName: "ClawHub",
 		SourceGroup: "clawhub",
-	}, run)
+	}, 0, &DiscoverResult{}, run)
 	if err != nil {
 		t.Fatalf("discoverFromClawHub() error = %v", err)
 	}
@@ -540,6 +547,7 @@ func TestDiscoverFromClawHubContinuesWhenShortPagesOmitNextCursor(t *testing.T) 
 
 func TestDiscoverFromLightmakeFollowsPagination(t *testing.T) {
 	pageHits := make(map[string]int)
+	const expectedPageSize = "50"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/skills" {
 			http.NotFound(w, r)
@@ -548,8 +556,8 @@ func TestDiscoverFromLightmakeFollowsPagination(t *testing.T) {
 		page := r.URL.Query().Get("page")
 		pageSize := r.URL.Query().Get("pageSize")
 		pageHits[page]++
-		if pageSize != "100" {
-			t.Fatalf("pageSize = %q, want 100", pageSize)
+		if pageSize != expectedPageSize {
+			t.Fatalf("pageSize = %q, want %s", pageSize, expectedPageSize)
 		}
 		switch page {
 		case "1":
@@ -635,7 +643,7 @@ func TestDiscoverFromLightmakeFollowsPagination(t *testing.T) {
 		BaseURL:     server.URL,
 		DisplayName: "Tencent SkillHub",
 		SourceGroup: "skillhub",
-	}, run)
+	}, 0, &DiscoverResult{}, run)
 	if err != nil {
 		t.Fatalf("discoverFromLightmake() error = %v", err)
 	}
@@ -938,6 +946,9 @@ func TestServiceStartDiscoverAsyncReportsStatus(t *testing.T) {
 	if runningStatus.CurrentSourceID != "tencent-skillhub" {
 		t.Fatalf("running status current_source_id = %q, want %q", runningStatus.CurrentSourceID, "tencent-skillhub")
 	}
+	if len(runningStatus.SourceResults) != 1 || runningStatus.SourceResults[0].SourceID != "tencent-skillhub" {
+		t.Fatalf("running status source_results = %+v, want tencent-skillhub entry", runningStatus.SourceResults)
+	}
 
 	duplicateStatus, duplicateStarted := svc.StartDiscoverAsync()
 	if duplicateStarted {
@@ -965,11 +976,129 @@ func TestServiceStartDiscoverAsyncReportsStatus(t *testing.T) {
 			if doneStatus.ProcessedSources != 1 {
 				t.Fatalf("processed_sources = %d, want 1", doneStatus.ProcessedSources)
 			}
+			if len(doneStatus.SourceResults) != 1 || doneStatus.SourceResults[0].Status != "success" {
+				t.Fatalf("done status source_results = %+v, want successful tencent-skillhub entry", doneStatus.SourceResults)
+			}
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for discover completion")
+}
+
+func TestServiceDiscoverBroadcastsProgressEvents(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/skills" {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.URL.Query().Get("page") {
+		case "1":
+			_, _ = w.Write([]byte(`{
+				"code": 0,
+				"message": "success",
+				"data": {
+					"total": 1,
+					"skills": [
+						{
+							"category": "productivity",
+							"description": "Live refresh fixture",
+							"downloads": 12,
+							"homepage": "https://example.com/live-refresh",
+							"installs": 3,
+							"name": "Live Refresh",
+							"ownerName": "fixture",
+							"score": 100,
+							"slug": "live-refresh",
+							"stars": 6,
+							"tags": ["refresh"],
+							"updated_at": 1742169600000,
+							"version": "1.0.0"
+						}
+					]
+				}
+			}`))
+		default:
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"total":1,"skills":[]}}`))
+		}
+	}))
+	defer server.Close()
+
+	svc, cleanup := newTestServiceWithClient(t, server.Client())
+	defer cleanup()
+
+	if _, err := svc.store.db.Exec(`UPDATE skill_sources SET enabled = 0`); err != nil {
+		t.Fatalf("disable sources: %v", err)
+	}
+	if err := svc.store.UpsertSource(context.Background(), Source{
+		ID:          "tencent-skillhub",
+		Type:        "lightmake_api",
+		BaseURL:     server.URL,
+		DisplayName: "Tencent SkillHub",
+		SourceGroup: "skillhub",
+		Enabled:     true,
+		Priority:    5,
+	}); err != nil {
+		t.Fatalf("UpsertSource(tencent-skillhub) error = %v", err)
+	}
+
+	var events []DiscoverProgressEvent
+	svc.discoverBroadcaster = func(eventType string, data any) {
+		if eventType != "skill.market.discover.progress" {
+			t.Fatalf("unexpected event type %q", eventType)
+		}
+		event, ok := data.(DiscoverProgressEvent)
+		if !ok {
+			t.Fatalf("unexpected event payload type %T", data)
+		}
+		events = append(events, event)
+	}
+
+	result, err := svc.Discover(context.Background())
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if result == nil || result.Discovered != 1 {
+		t.Fatalf("unexpected discover result: %+v", result)
+	}
+	if len(events) == 0 {
+		t.Fatal("expected progress events to be broadcast")
+	}
+
+	seenPhases := make(map[string]bool, len(events))
+	for _, event := range events {
+		seenPhases[event.Phase] = true
+	}
+	for _, phase := range []string{"started", "batch", "source_complete", "completed"} {
+		if !seenPhases[phase] {
+			t.Fatalf("missing %q phase in events: %+v", phase, events)
+		}
+	}
+
+	var batchEvent *DiscoverProgressEvent
+	for i := range events {
+		if events[i].Phase == "batch" {
+			batchEvent = &events[i]
+			break
+		}
+	}
+	if batchEvent == nil {
+		t.Fatal("expected batch event")
+	}
+	if batchEvent.BatchInserted != 1 || batchEvent.BatchUpdated != 0 || batchEvent.BatchFailed != 0 {
+		t.Fatalf("unexpected batch event counters: %+v", *batchEvent)
+	}
+
+	finalEvent := events[len(events)-1]
+	if finalEvent.Phase != "completed" {
+		t.Fatalf("final phase = %q, want completed", finalEvent.Phase)
+	}
+	if finalEvent.Running {
+		t.Fatal("expected final event to report running=false")
+	}
+	if finalEvent.Result == nil || finalEvent.Result.Discovered != 1 || finalEvent.Result.SourcesProcessed != 1 {
+		t.Fatalf("unexpected final event result: %+v", finalEvent.Result)
+	}
 }
 
 func TestEnsureDefaultSourcesAppliesOptionalAPIKeysToCorrectSources(t *testing.T) {
@@ -984,6 +1113,9 @@ func TestEnsureDefaultSourcesAppliesOptionalAPIKeysToCorrectSources(t *testing.T
 	cfg.CacheRoot = filepath.Join(t.TempDir(), "cache")
 	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
+	if len(cfg.SeedURLs) != len(defaultSeedURLs) {
+		t.Fatalf("DefaultConfig SeedURLs = %v, want %v", cfg.SeedURLs, defaultSeedURLs)
+	}
 	cfg.SeedURLs = nil
 	cfg.SkillHubAPIKey = "skillhub-token"
 	cfg.SkillsMPAPIKey = "skillsmp-token"
@@ -1021,6 +1153,168 @@ func TestEnsureDefaultSourcesAppliesOptionalAPIKeysToCorrectSources(t *testing.T
 	}
 }
 
+func TestEnsureDefaultSourcesRegistersAllSourcesInPriorityOrder(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := DefaultConfig(t.TempDir(), activeDir)
+	cfg.CacheRoot = filepath.Join(t.TempDir(), "cache")
+	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+
+	svc, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		Scanner:      NewScanner(nil),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	sources, err := svc.store.ListSources(context.Background())
+	if err != nil {
+		t.Fatalf("ListSources() error = %v", err)
+	}
+
+	expectedIDs := []string{
+		"tencent-skillhub",
+		"clawhub",
+		"github-skill-md",
+		"github-claude-md",
+		"github-agent-md",
+		"skillhub-club",
+		"skillstack",
+		"skillsmp",
+		"llmskills",
+		"seed-1",
+		"seed-2",
+		"seed-3",
+		"seed-4",
+		"seed-5",
+		"seed-6",
+	}
+	if len(sources) != len(expectedIDs) {
+		t.Fatalf("enabled source count = %d, want %d (%+v)", len(sources), len(expectedIDs), sources)
+	}
+	for i, expectedID := range expectedIDs {
+		if got := sources[i].ID; got != expectedID {
+			t.Fatalf("source[%d] = %q, want %q", i, got, expectedID)
+		}
+		if i > 0 && sources[i-1].Priority > sources[i].Priority {
+			t.Fatalf("priority order is not ascending: %+v", sources)
+		}
+	}
+}
+
+func TestSeedPageDiscoverHandlesGitHubRepoAndTreeLinks(t *testing.T) {
+	rawRepoSkill := skillMarkdownFixture("repo-seed", "Repo Seed", "1.0.0")
+	rawTreeSkill := skillMarkdownFixture("tree-seed", "Tree Seed", "1.0.0")
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `<html><body>
+			<a href="https://github.com/demo/repo-seed">repo</a>
+			<a href="https://github.com/demo/tree-source/tree/main/skills/tree-seed">tree</a>
+		</body></html>`)
+	})
+	mux.HandleFunc("/repos/demo/repo-seed", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"html_url":         "https://github.com/demo/repo-seed",
+			"default_branch":   "main",
+			"updated_at":       "2026-03-01T00:00:00Z",
+			"stargazers_count": 5,
+		})
+	})
+	mux.HandleFunc("/repos/demo/repo-seed/contents/", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"name": "SKILL.md",
+				"path": "SKILL.md",
+				"type": "file",
+				"url":  server.URL + "/blob/repo-seed",
+			},
+		})
+	})
+	mux.HandleFunc("/blob/repo-seed", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"encoding": "base64",
+			"content":  encodeBase64Test(rawRepoSkill),
+		})
+	})
+	mux.HandleFunc("/repos/demo/tree-source/contents/skills/tree-seed", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"name": "SKILL.md",
+				"path": "skills/tree-seed/SKILL.md",
+				"type": "file",
+				"url":  server.URL + "/blob/tree-seed",
+			},
+		})
+	})
+	mux.HandleFunc("/blob/tree-seed", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"encoding": "base64",
+			"content":  encodeBase64Test(rawTreeSkill),
+		})
+	})
+
+	svc, cleanup := newTestServiceWithClient(t, server.Client())
+	defer cleanup()
+	svc.cfg.GitHubAPIBaseURL = server.URL
+
+	if _, err := svc.store.db.Exec(`UPDATE skill_sources SET enabled = 0`); err != nil {
+		t.Fatalf("disable sources: %v", err)
+	}
+	source := Source{
+		ID:          "seed-github-awesome",
+		Type:        "seed_page",
+		BaseURL:     server.URL,
+		DisplayName: "Seed Page",
+		SourceGroup: "seed",
+		Enabled:     true,
+		Priority:    1,
+	}
+	if err := svc.store.UpsertSource(context.Background(), source); err != nil {
+		t.Fatalf("UpsertSource() error = %v", err)
+	}
+
+	result, err := svc.Discover(context.Background())
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if result == nil || result.Discovered != 2 {
+		t.Fatalf("discover result = %+v, want 2 discovered skills", result)
+	}
+
+	searchResult, err := svc.Search(context.Background(), SearchQuery{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	found := make(map[string]SearchResult, len(searchResult.Skills))
+	for _, item := range searchResult.Skills {
+		found[item.Skill.ID] = item
+	}
+
+	if _, ok := found["repo-seed"]; !ok {
+		t.Fatalf("expected repo-seed skill, got %+v", searchResult.Skills)
+	}
+	treeSkill, ok := found["tree-seed"]
+	if !ok {
+		t.Fatalf("expected tree-seed skill, got %+v", searchResult.Skills)
+	}
+	if treeSkill.Skill.SkillPath != "skills/tree-seed/SKILL.md" {
+		t.Fatalf("tree skill path = %q, want skills/tree-seed/SKILL.md", treeSkill.Skill.SkillPath)
+	}
+}
+
 func skillMarkdownFixture(id, name, version string) string {
 	return fmt.Sprintf(`---
 id: %s
@@ -1033,4 +1327,201 @@ description: Fixture skill
 
 Fixture content.
 `, id, name, version, name)
+}
+
+func TestDiscoverUsesRoundRobinAcrossSources(t *testing.T) {
+	var mu sync.Mutex
+	requests := make(map[string][]int)
+	var order []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sourceID := strings.TrimPrefix(strings.TrimSuffix(r.URL.Path, "/api/skills"), "/")
+		page := 1
+		if rawPage := r.URL.Query().Get("page"); rawPage != "" {
+			fmt.Sscanf(rawPage, "%d", &page)
+		}
+		mu.Lock()
+		requests[sourceID] = append(requests[sourceID], page)
+		order = append(order, fmt.Sprintf("%s:%d", sourceID, page))
+		mu.Unlock()
+		switch page {
+		case 1, 2:
+			_, _ = io.WriteString(w, fmt.Sprintf(`{"code":0,"message":"success","data":{"total":200,"skills":[{"category":"productivity","description":"fixture","downloads":1,"homepage":"https://example.com/%s-%d","installs":1,"name":"%s %d","ownerName":"fixture","score":100,"slug":"%s-%d","stars":1,"tags":["fixture"],"updated_at":1742169600000,"version":"1.0.0"}]}}`, sourceID, page, sourceID, page, sourceID, page))
+		default:
+			_, _ = io.WriteString(w, `{"code":0,"message":"success","data":{"total":200,"skills":[]}}`)
+		}
+	}))
+	defer server.Close()
+
+	svc, cleanup := newTestServiceWithClient(t, server.Client())
+	defer cleanup()
+
+	if _, err := svc.store.db.Exec(`UPDATE skill_sources SET enabled = 0`); err != nil {
+		t.Fatalf("disable sources: %v", err)
+	}
+	for i, id := range []string{"source-a", "source-b"} {
+		if err := svc.store.UpsertSource(context.Background(), Source{
+			ID:          id,
+			Type:        "lightmake_api",
+			BaseURL:     server.URL + "/" + id,
+			DisplayName: id,
+			SourceGroup: "skillhub",
+			Enabled:     true,
+			Priority:    10 + i,
+		}); err != nil {
+			t.Fatalf("UpsertSource(%s) error = %v", id, err)
+		}
+	}
+
+	result, err := svc.Discover(context.Background())
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if result == nil || len(result.SourceResults) != 2 {
+		t.Fatalf("unexpected source results: %+v", result)
+	}
+	if got := requests["source-a"]; len(got) != 3 || got[0] != 1 || got[1] != 2 || got[2] != 3 {
+		t.Fatalf("source-a request order = %v, want [1 2 3]", got)
+	}
+	if got := requests["source-b"]; len(got) != 3 || got[0] != 1 || got[1] != 2 || got[2] != 3 {
+		t.Fatalf("source-b request order = %v, want [1 2 3]", got)
+	}
+	if got := strings.Join(order[:4], ","); got != "source-a:1,source-b:1,source-a:2,source-b:2" {
+		t.Fatalf("request round robin prefix = %s", got)
+	}
+	if got := strings.Join(order, ","); got != "source-a:1,source-b:1,source-a:2,source-b:2,source-a:3,source-b:3" {
+		t.Fatalf("request round robin order = %s", got)
+	}
+	if result.SourceResults[0].Pages != 3 || result.SourceResults[1].Pages != 3 {
+		t.Fatalf("unexpected source page counts: %+v", result.SourceResults)
+	}
+}
+
+func TestDiscoverGitHubMarksPartialOnIncompleteResults(t *testing.T) {
+	rawSkill := skillMarkdownFixture("github-partial", "GitHub Partial", "1.0.0")
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/search/code":
+			_, _ = io.WriteString(w, `{
+				"total_count": 1500,
+				"incomplete_results": true,
+				"items": [{
+					"name": "SKILL.md",
+					"path": "SKILL.md",
+					"url": "`+server.URL+`/blob-api",
+					"html_url": "https://github.com/demo/github-partial/blob/main/SKILL.md",
+					"sha": "abc123",
+					"repository": {
+						"full_name": "demo/github-partial",
+						"html_url": "https://github.com/demo/github-partial",
+						"stargazers_count": 3,
+						"updated_at": "2026-03-20T00:00:00Z"
+					}
+				}]
+			}`)
+		case "/blob-api":
+			_, _ = io.WriteString(w, fmt.Sprintf(`{"encoding":"base64","content":"%s"}`, encodeBase64Test(rawSkill)))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	svc, cleanup := newTestServiceWithClient(t, server.Client())
+	defer cleanup()
+	if _, err := svc.store.db.Exec(`UPDATE skill_sources SET enabled = 0`); err != nil {
+		t.Fatalf("disable sources: %v", err)
+	}
+	cfg := Source{
+		ID:          "github-skill-md",
+		Type:        "github_code_search",
+		BaseURL:     "filename:SKILL.md",
+		DisplayName: "GitHub SKILL.md",
+		SourceGroup: "github",
+		Enabled:     true,
+		Priority:    1,
+	}
+	if err := svc.store.UpsertSource(context.Background(), cfg); err != nil {
+		t.Fatalf("UpsertSource() error = %v", err)
+	}
+	svc.cfg.GitHubAPIBaseURL = server.URL
+
+	result, err := svc.Discover(context.Background())
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(result.SourceResults) != 1 {
+		t.Fatalf("source results = %+v", result.SourceResults)
+	}
+	source := result.SourceResults[0]
+	if !source.Partial || source.Status != "partial" {
+		t.Fatalf("expected partial github source result, got %+v", source)
+	}
+	if source.Discovered != 1 {
+		t.Fatalf("github discovered = %d, want 1", source.Discovered)
+	}
+}
+
+func TestFetchGitHubRawContentFallsBackAcrossMirrors(t *testing.T) {
+	var mu sync.Mutex
+	var hosts []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hosts = append(hosts, r.Host)
+		mu.Unlock()
+		switch r.Host {
+		case "raw.githubusercontent.com":
+			http.Error(w, "blocked", http.StatusBadGateway)
+		case "raw.gitmirror.com":
+			_, _ = io.WriteString(w, skillMarkdownFixture("mirror-skill", "Mirror Skill", "1.0.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := &http.Client{
+		Transport: newRewriteHostTransport(t, server),
+	}
+	svc, cleanup := newTestServiceWithClient(t, client)
+	defer cleanup()
+
+	content, requests, err := svc.fetchGitHubRawContent(context.Background(), "demo", "mirror-skill", "main", "SKILL.md")
+	if err != nil {
+		t.Fatalf("fetchGitHubRawContent() error = %v", err)
+	}
+	if requests < 2 {
+		t.Fatalf("requests = %d, want at least 2", requests)
+	}
+	if !strings.Contains(content, "mirror-skill") {
+		t.Fatalf("unexpected content: %q", content)
+	}
+	if len(hosts) < 2 || hosts[0] != "raw.githubusercontent.com" || hosts[1] != "raw.gitmirror.com" {
+		t.Fatalf("host fallback order = %v, want raw.githubusercontent.com then raw.gitmirror.com", hosts)
+	}
+}
+
+func encodeBase64Test(value string) string {
+	return base64.StdEncoding.EncodeToString([]byte(value))
+}
+
+type rewriteHostTransport struct {
+	t      *testing.T
+	target *url.URL
+}
+
+func (r rewriteHostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	cloned := req.Clone(req.Context())
+	cloned.URL.Scheme = r.target.Scheme
+	cloned.URL.Host = r.target.Host
+	return http.DefaultTransport.RoundTrip(cloned)
+}
+
+func newRewriteHostTransport(t *testing.T, server *httptest.Server) http.RoundTripper {
+	t.Helper()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("url.Parse(server.URL) error = %v", err)
+	}
+	return rewriteHostTransport{t: t, target: target}
 }

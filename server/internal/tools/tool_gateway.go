@@ -392,20 +392,38 @@ func (g *ToolGateway) lookupDefinition(name string, routeKind ToolRouteKind) (To
 }
 
 func normalizeToolArguments(raw string) (map[string]interface{}, string, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return map[string]interface{}{}, "{}", nil
-	}
-	args, ok := parseJSONObjectArgs(trimmed)
+	normalizedJSON, ok := CanonicalizeToolArgumentsJSON(raw)
 	if !ok {
+		trimmed := strings.TrimSpace(raw)
 		return nil, "", &ToolGatewayError{
 			Code:    "invalid_tool_arguments_json",
 			Message: "tool arguments must be a JSON object",
 			Details: map[string]interface{}{"raw_arguments": truncateToolString(trimmed, 512)},
 		}
 	}
-	normalizedJSON := serializeToolPayload(args)
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(normalizedJSON), &args); err != nil {
+		return nil, "", &ToolGatewayError{
+			Code:    "invalid_tool_arguments_json",
+			Message: "tool arguments must be a JSON object",
+			Details: map[string]interface{}{"raw_arguments": truncateToolString(strings.TrimSpace(raw), 512)},
+		}
+	}
 	return args, normalizedJSON, nil
+}
+
+// CanonicalizeToolArgumentsJSON normalizes tool-call arguments into a JSON object
+// string when they are empty or recoverably object-shaped.
+func CanonicalizeToolArgumentsJSON(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "{}", true
+	}
+	args, ok := parseJSONObjectArgs(trimmed)
+	if !ok {
+		return "", false
+	}
+	return serializeToolPayload(args), true
 }
 
 func applyToolGatewayContext(ctx context.Context, req ToolGatewayRequest) (context.Context, ToolGatewayRequest) {
@@ -768,7 +786,7 @@ func inferToolRiskLevel(toolName string) string {
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
 	case "exec":
 		return string(RiskLevelHigh)
-	case "browser", "web", "web_fetch", "web_extract", "web_crawl":
+	case "browser", "web", "web_query", "web_fetch", "web_extract", "web_crawl":
 		return string(RiskLevelMedium)
 	default:
 		return string(RiskLevelLow)
@@ -777,7 +795,7 @@ func inferToolRiskLevel(toolName string) string {
 
 func isExternalContentTool(toolName string) bool {
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "browser", "web", "web_fetch", "web_read", "web_extract", "web_crawl", "web_search":
+	case "browser", "web", "web_query", "web_fetch", "web_read", "web_extract", "web_crawl", "web_search":
 		return true
 	default:
 		return false

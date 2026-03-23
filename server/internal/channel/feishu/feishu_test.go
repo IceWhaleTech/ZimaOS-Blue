@@ -68,6 +68,9 @@ func TestChannel_Info(t *testing.T) {
 	if info.Metadata["app_id"] != "test-app-id" {
 		t.Errorf("expected app_id 'test-app-id', got %v", info.Metadata["app_id"])
 	}
+	if info.Metadata["reply_mode"] != "reply" {
+		t.Errorf("expected reply_mode 'reply', got %v", info.Metadata["reply_mode"])
+	}
 }
 
 func TestChannel_IsConnected(t *testing.T) {

@@ -309,12 +309,8 @@ async function installSkill() {
   --surface-muted: rgba(243, 246, 249, 0.92);
   --surface-float: rgba(243, 246, 249, 0.92);
   --white-tint: rgba(255, 255, 255, 0.72);
-  --hero-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 22px 36px -34px rgba(15, 23, 42, 0.2);
-  --shell-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 22px 36px -34px rgba(15, 23, 42, 0.2);
+  --hero-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 22px 36px -34px rgba(15, 23, 42, 0.2);
+  --shell-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 22px 36px -34px rgba(15, 23, 42, 0.2);
 }
 
 .plugins-page::before,
@@ -352,12 +348,8 @@ html.dark .plugins-page {
   --surface-muted: rgba(15, 23, 42, 0.82);
   --surface-float: rgba(15, 23, 42, 0.82);
   --white-tint: rgba(255, 255, 255, 0.08);
-  --hero-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 24px 38px -34px rgba(2, 6, 23, 0.64);
-  --shell-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 24px 38px -34px rgba(2, 6, 23, 0.64);
+  --hero-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 24px 38px -34px rgba(2, 6, 23, 0.64);
+  --shell-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 24px 38px -34px rgba(2, 6, 23, 0.64);
 }
 
 .plugins-hero {

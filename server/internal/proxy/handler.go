@@ -2133,6 +2133,9 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 			"store_policy", storePolicy,
 		)
 	}
+	if strings.HasSuffix(finalPath, "/chat/completions") {
+		body = clampChatCompletionsMaxTokens(body, resolveResponsesMaxOutputTokensLimit(route))
+	}
 	if endpointFormat, ok := detectEndpointFixedFormatFromPath(finalPath); ok {
 		effectiveFormat = endpointFormat
 	}

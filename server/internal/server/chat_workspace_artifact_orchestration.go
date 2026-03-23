@@ -31,9 +31,6 @@ var answerLinePrefixRegex = regexp.MustCompile(`^\s*(?:\d+[\.\)]|[Qq]\d+:|answer
 var fencedCodeBlockRegex = regexp.MustCompile("(?s)```(?:[^\\n`]*)\\n(.*?)\\n```")
 var workspaceWordTokenRegex = regexp.MustCompile(`[a-z0-9][a-z0-9&._/-]*`)
 var structuredSectionTitleRegex = regexp.MustCompile(`^\s*(?:[-*]|\d+[\.\)])\s*(?:\*\*|__)?([^*\n:]+?)(?:\*\*|__)?\s*:\s+`)
-var workspaceEvidenceMoneyRegex = regexp.MustCompile(`(?i)\$\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:[kmb]|arr))?`)
-var workspaceEvidenceDateRegex = regexp.MustCompile(`(?i)\b(?:today|tomorrow|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\s+\d{1,2}(?:,\s*\d{4})?|\d{4}-\d{2}-\d{2})\b`)
-var workspaceEvidenceEntityRegex = regexp.MustCompile(`\b(?:[A-Z][A-Za-z0-9&.-]+(?:\s+[A-Z][A-Za-z0-9&.-]+){0,3}|[A-Z]{2,}(?:\s+[A-Z]{2,}){0,2})\b`)
 
 var workspaceQuestionStopwords = map[string]struct{}{
 	"a": {}, "an": {}, "and": {}, "answer": {}, "answers": {}, "are": {}, "as": {}, "at": {},
@@ -52,12 +49,9 @@ type workspaceArtifactOrchestrationResult struct {
 }
 
 type workspaceArtifactEvidenceBlock struct {
-	Key      string
-	Score    int
-	Path     string
-	SortPath string
-	SortPage int
-	Text     string
+	Key   string
+	Score int
+	Text  string
 }
 
 func (h *ChatHandler) tryLLMWorkspaceArtifactOrchestration(llmCtx context.Context, model, userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) (*workspaceArtifactOrchestrationResult, bool) {
@@ -925,12 +919,6 @@ func collectWorkspaceArtifactEvidence(toolCalls []llm.ToolCall, toolResults []ll
 		if blocks[i].Score != blocks[j].Score {
 			return blocks[i].Score > blocks[j].Score
 		}
-		if blocks[i].SortPath != blocks[j].SortPath {
-			return blocks[i].SortPath < blocks[j].SortPath
-		}
-		if blocks[i].SortPage != blocks[j].SortPage {
-			return blocks[i].SortPage < blocks[j].SortPage
-		}
 		if len(blocks[i].Text) != len(blocks[j].Text) {
 			return len(blocks[i].Text) > len(blocks[j].Text)
 		}
@@ -1062,88 +1050,11 @@ func buildWorkspaceContentEvidenceBlock(toolName, path, pageLabel, variant, text
 		headerParts = append(headerParts, pageLabel)
 	}
 	keyParts := []string{toolName, variant, path, pageLabel}
-	body := normalizeWorkspaceEvidenceText(variant, text)
-	facts := workspaceEvidenceFactLine(path, body)
-	blockText := strings.Join(headerParts, " | ")
-	if facts != "" {
-		blockText += "\n" + facts
-	}
-	if body != "" {
-		blockText += "\n" + strings.TrimSpace(body)
-	}
 	return workspaceArtifactEvidenceBlock{
-		Key:      strings.Join(keyParts, "|"),
-		Score:    score,
-		Path:     strings.TrimSpace(path),
-		SortPath: normalizeWorkspaceArtifactComparablePath(path),
-		SortPage: workspaceEvidenceSortPage(pageLabel),
-		Text:     blockText,
+		Key:   strings.Join(keyParts, "|"),
+		Score: score,
+		Text:  fmt.Sprintf("%s\n%s", strings.Join(headerParts, " | "), strings.TrimSpace(text)),
 	}
-}
-
-func normalizeWorkspaceEvidenceText(variant, text string) string {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
-	lines := strings.Split(text, "\n")
-	normalized := make([]string, 0, len(lines))
-	blankRun := 0
-	for _, raw := range lines {
-		line := strings.TrimRight(raw, " \t")
-		line = strings.ReplaceAll(line, "\t", "    ")
-		if strings.EqualFold(strings.TrimSpace(variant), "RAW") {
-			line = strings.TrimRight(line, " ")
-		} else {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "•") || strings.HasPrefix(line, "·") {
-				line = "- " + strings.TrimSpace(strings.TrimLeft(line, "•·"))
-			}
-		}
-		if strings.TrimSpace(line) == "" {
-			blankRun++
-			if blankRun > 1 {
-				continue
-			}
-			normalized = append(normalized, "")
-			continue
-		}
-		blankRun = 0
-		normalized = append(normalized, line)
-	}
-	return strings.TrimSpace(strings.Join(normalized, "\n"))
-}
-
-func workspaceEvidenceFactLine(path, text string) string {
-	parts := make([]string, 0, 4)
-	if path = strings.TrimSpace(path); path != "" {
-		parts = append(parts, "source="+path)
-	}
-	if dates := truncateWorkspaceEvidenceMentions(collectWorkspaceEvidenceDateMentions(text), 3); len(dates) > 0 {
-		parts = append(parts, "dates="+strings.Join(dates, ", "))
-	}
-	if money := truncateWorkspaceEvidenceMentions(collectWorkspaceEvidenceMoneyMentions(text), 3); len(money) > 0 {
-		parts = append(parts, "money="+strings.Join(money, ", "))
-	}
-	if signals := truncateWorkspaceEvidenceMentions(collectWorkspaceEvidenceSignals(text), 4); len(signals) > 0 {
-		parts = append(parts, "signals="+strings.Join(signals, ", "))
-	}
-	if entities := truncateWorkspaceEvidenceMentions(collectWorkspaceEvidenceEntities(text), 4); len(entities) > 0 {
-		parts = append(parts, "entities="+strings.Join(entities, ", "))
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return "FACTS | " + strings.Join(parts, " | ")
-}
-
-func workspaceEvidenceSortPage(pageLabel string) int {
-	if !strings.Contains(pageLabel, "page=") {
-		return 0
-	}
-	var page int
-	if _, err := fmt.Sscanf(pageLabel, "page=%d", &page); err == nil {
-		return page
-	}
-	return 0
 }
 
 func extractWorkspaceMatchEvidenceBlock(payload map[string]interface{}) (workspaceArtifactEvidenceBlock, bool) {
@@ -1181,11 +1092,9 @@ func extractWorkspaceMatchEvidenceBlock(payload map[string]interface{}) (workspa
 		header += " | " + path
 	}
 	return workspaceArtifactEvidenceBlock{
-		Key:      "grep|" + path,
-		Score:    2,
-		Path:     strings.TrimSpace(path),
-		SortPath: normalizeWorkspaceArtifactComparablePath(path),
-		Text:     header + "\n" + strings.Join(matchLines, "\n"),
+		Key:   "grep|" + path,
+		Score: 2,
+		Text:  header + "\n" + strings.Join(matchLines, "\n"),
 	}, true
 }
 
@@ -1204,11 +1113,9 @@ func extractWorkspaceDiscoveryEvidenceBlock(toolName string, payload map[string]
 		header += " | " + base
 	}
 	return workspaceArtifactEvidenceBlock{
-		Key:      toolName + "|" + base,
-		Score:    1,
-		Path:     strings.TrimSpace(base),
-		SortPath: normalizeWorkspaceArtifactComparablePath(base),
-		Text:     header + "\n" + strings.Join(entries, "\n"),
+		Key:   toolName + "|" + base,
+		Score: 1,
+		Text:  header + "\n" + strings.Join(entries, "\n"),
 	}, true
 }
 
@@ -1302,79 +1209,6 @@ func joinWorkspaceArtifactInts(values []int) string {
 		parts = append(parts, fmt.Sprintf("%d", v))
 	}
 	return strings.Join(parts, ",")
-}
-
-func collectWorkspaceEvidenceMoneyMentions(text string) []string {
-	if strings.TrimSpace(text) == "" {
-		return nil
-	}
-	return normalizeStringList(workspaceEvidenceMoneyRegex.FindAllString(text, -1))
-}
-
-func collectWorkspaceEvidenceDateMentions(text string) []string {
-	if strings.TrimSpace(text) == "" {
-		return nil
-	}
-	return normalizeStringList(workspaceEvidenceDateRegex.FindAllString(text, -1))
-}
-
-func collectWorkspaceEvidenceSignals(text string) []string {
-	lower := strings.ToLower(text)
-	signals := make([]string, 0, 8)
-	for cue, label := range map[string]string{
-		"budget":      "budget",
-		"timeline":    "timeline",
-		"launch":      "launch",
-		"beta":        "timeline",
-		"ga":          "timeline",
-		"security":    "security",
-		"incident":    "incident",
-		"risk":        "risk",
-		"blocked":     "blocked",
-		"next":        "next_steps",
-		"live":        "live_status",
-		"customer":    "customer",
-		"client":      "customer",
-		"competitor":  "competitor",
-		"revenue":     "revenue",
-		"pipeline":    "revenue",
-		"regulatory":  "regulatory",
-		"compliance":  "compliance",
-		"approve":     "approval",
-		"approval":    "approval",
-		"action":      "action",
-		"urgent":      "urgent",
-	} {
-		if strings.Contains(lower, cue) {
-			signals = append(signals, label)
-		}
-	}
-	return normalizeStringList(signals)
-}
-
-func collectWorkspaceEvidenceEntities(text string) []string {
-	if strings.TrimSpace(text) == "" {
-		return nil
-	}
-	entities := make([]string, 0, 8)
-	for _, match := range workspaceEvidenceEntityRegex.FindAllString(text, -1) {
-		lower := strings.ToLower(match)
-		if len(match) < 3 || strings.Contains(lower, "subject") || strings.Contains(lower, "from") {
-			continue
-		}
-		if lower == "budget" || lower == "timeline" || lower == "security" || lower == "project" {
-			continue
-		}
-		entities = append(entities, match)
-	}
-	return normalizeStringList(entities)
-}
-
-func truncateWorkspaceEvidenceMentions(values []string, max int) []string {
-	if len(values) <= max || max <= 0 {
-		return values
-	}
-	return append([]string(nil), values[:max]...)
 }
 
 func collectWorkspaceQuestionEvidence(questions, evidence []string) []string {

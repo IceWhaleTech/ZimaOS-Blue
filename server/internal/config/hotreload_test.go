@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 )
 
 func TestNewHotReloader(t *testing.T) {
@@ -45,6 +47,35 @@ func TestNewHotReloader(t *testing.T) {
 				t.Error("expected initial config to be stored")
 			}
 		})
+	}
+}
+
+func TestNewHotReloaderResolvesAutoDiscoveredConfigPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(`
+server:
+  port: 8080
+worker:
+  pool_size: 10
+`), 0644); err != nil {
+		t.Fatalf("failed to create temp config: %v", err)
+	}
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	hr, err := NewHotReloader("", cfg, nil)
+	if err != nil {
+		t.Fatalf("NewHotReloader() error = %v", err)
+	}
+
+	stats := hr.Stats()
+	if stats["config_path"] != "config.yaml" {
+		t.Fatalf("config_path = %v, want config.yaml", stats["config_path"])
 	}
 }
 
@@ -365,5 +396,75 @@ worker:
 	}
 	if newCfg.Worker.PoolSize != 20 {
 		t.Errorf("expected pool size 20, got %d", newCfg.Worker.PoolSize)
+	}
+}
+
+func TestSyncHotReloadToStore(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`
+server:
+  port: 80
+worker:
+  pool_size: 10
+`), 0644); err != nil {
+		t.Fatalf("failed to create temp config: %v", err)
+	}
+
+	initial, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	initial.Security.JWT.Secret = "preserved-jwt-secret-abcdefghijklmnopqrstuvwxyz1234567890"
+
+	store := NewConfigStore(kvstore.NewMemoryStore())
+	if _, err := store.LoadOrImport(initial); err != nil {
+		t.Fatalf("LoadOrImport() error = %v", err)
+	}
+
+	hr, err := NewHotReloader(configPath, initial, &HotReloadConfig{
+		Enabled:             true,
+		ValidateBeforeApply: true,
+	})
+	if err != nil {
+		t.Fatalf("NewHotReloader() error = %v", err)
+	}
+
+	SyncHotReloadToStore(hr, store)
+
+	if err := os.WriteFile(configPath, []byte(`
+server:
+  port: 9090
+worker:
+  pool_size: 20
+`), 0644); err != nil {
+		t.Fatalf("failed to update config: %v", err)
+	}
+
+	if err := hr.Reload(); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		cfg := store.Config()
+		if cfg != nil && cfg.Server.Port == 9090 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for config store sync, got %+v", cfg)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	got := store.Config()
+	if got.Server.Port != 9090 {
+		t.Fatalf("Config().Server.Port = %d, want 9090", got.Server.Port)
+	}
+	if got.Worker.PoolSize != 20 {
+		t.Fatalf("Config().Worker.PoolSize = %d, want 20", got.Worker.PoolSize)
+	}
+	if got.Security.JWT.Secret != initial.Security.JWT.Secret {
+		t.Fatalf("Config().Security.JWT.Secret = %q, want preserved %q", got.Security.JWT.Secret, initial.Security.JWT.Secret)
 	}
 }

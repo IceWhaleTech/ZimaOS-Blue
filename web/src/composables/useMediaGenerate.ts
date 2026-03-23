@@ -25,9 +25,7 @@ async function listMediaModels() {
   return listModels()
 }
 
-async function classifyMediaRequest(
-  ...args: Parameters<MediaApiModule['classifyIntent']>
-) {
+async function classifyMediaRequest(...args: Parameters<MediaApiModule['classifyIntent']>) {
   const { classifyIntent } = await loadMediaApiModule()
   return classifyIntent(...args)
 }
@@ -40,6 +38,17 @@ async function directMediaGenerate(req: DirectGenerateRequest) {
 async function fetchMediaTask(taskId: string) {
   const { getTask } = await loadMediaApiModule()
   return getTask(taskId)
+}
+
+function mergeIntentParams(
+  preferred?: Record<string, any>,
+  fallback?: Record<string, any>
+): Record<string, any> | undefined {
+  if (!preferred && !fallback) return undefined
+  return {
+    ...(fallback ?? {}),
+    ...(preferred ?? {}),
+  }
 }
 
 function cancelMediaTaskById(taskId: string) {
@@ -150,7 +159,10 @@ export function useMediaGenerate() {
     try {
       const resp = await classifyMediaRequest(message, hasImages, imageCount, locale)
       if (resp.intent) {
-        intent.value = resp.intent
+        intent.value = {
+          ...resp.intent,
+          params: mergeIntentParams(localIntent.params, resp.intent.params),
+        }
       }
       if (resp.models?.length) {
         models.value = resp.models
@@ -327,10 +339,14 @@ export function useMediaGenerate() {
       category: intent.value.category,
       prompt: intent.value.prompt,
       model: selectedModel.value || undefined,
+      params: intent.value.params,
       reference_images: referenceImages,
       conversation_id: chatStore.currentConversationId || undefined,
       message_id: messageId,
-      source: 'web',
+      source:
+        typeof intent.value.params?.source === 'string' && intent.value.params.source.trim()
+          ? intent.value.params.source
+          : 'web',
     }
 
     try {

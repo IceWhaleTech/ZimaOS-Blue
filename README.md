@@ -275,17 +275,11 @@ See [`docs-site/guides/channels.mdx`](./docs-site/guides/channels.mdx) for the s
 | v0.10.8 | Skill Store | Skill store infra, channel validation | Done |
 | v0.10.9–10 | User Management | Sub-users, page-level permissions | Done |
 | v0.10.13–14 | Security & Skills | Security page, skill store redesign | Done |
-| v0.10.15 | Chat Enhancements | Chat UX, message pipeline | Done |
-| v0.10.16 | Speech Module | Sherpa TTS/ASR, eSpeak, provider switching | Done |
-| v0.10.17 | Remote Access | Ngrok, Cloudflare tunnels, ACME certs | Done |
-| v0.10.18–20 | Performance Sprint | Startup/chat perf, context cache | Done |
-| v0.10.21–22 | Prompt & DingTalk | System prompt, DingTalk channel | Done |
-| v0.10.23 | OTA Update | OTA update system | Done |
-| v0.10.24 | Channel Upgrade | 10 channels upgraded from stubs | Done |
-| v0.10.25 | CC Cache | Two-level cache (L1 mem + L2 disk) | Done |
-| v0.10.26 | Humanizer | Response humanization pipeline | Done |
-| v0.10.27 | Context Pruner | 54% token savings on code (SWE-bench official), 46–47% on general docs (local IR), BM25 scoring, segmentation | Done |
-| v0.10.28 | Memory Service | Progressive search, dual-write backend | Done |
+| v0.10.15–17 | Experience Layer | Chat UX, speech stack, remote access | Done |
+| v0.10.18–22 | Runtime Optimization | Performance, context cache, prompt compaction | Done |
+| v0.10.23–25 | Delivery & Cache | OTA, channel rollout, CC Cache | Done |
+| v0.10.26–29 | Intelligence & Governance | Humanizer, pruner, memory, safe tooling | Done |
+| v0.10.29+ | Platform Expansion | FFI/runtime loader, Windows speech, workspace, harness/audit | Ongoing |
 
 </details>
 

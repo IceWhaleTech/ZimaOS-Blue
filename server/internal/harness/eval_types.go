@@ -142,6 +142,91 @@ type EvalRunReport struct {
 	GroupReport    *RunGroupReport `json:"group_report,omitempty"`
 }
 
+type Baseline struct {
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Subject     string                 `json:"subject,omitempty"`
+	OwnerUserID string                 `json:"owner_user_id,omitempty"`
+	EvalSpecID  string                 `json:"eval_spec_id"`
+	EvalRunID   string                 `json:"eval_run_id"`
+	IsDefault   bool                   `json:"is_default"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+}
+
+type BaselineSpec struct {
+	Name        string                 `json:"name"`
+	Subject     string                 `json:"subject,omitempty"`
+	OwnerUserID string                 `json:"owner_user_id,omitempty"`
+	EvalSpecID  string                 `json:"eval_spec_id,omitempty"`
+	EvalRunID   string                 `json:"eval_run_id"`
+	IsDefault   bool                   `json:"is_default,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type BaselineFilter struct {
+	OwnerUserID string
+	EvalSpecID  string
+	Limit       int
+}
+
+type CompareEvalRunRequest struct {
+	BaseEvalRunID string `json:"base_eval_run_id,omitempty"`
+	BaselineID    string `json:"baseline_id,omitempty"`
+}
+
+type ComparisonCaseDelta struct {
+	Key                 string  `json:"key"`
+	Label               string  `json:"label,omitempty"`
+	ItemIndex           int     `json:"item_index"`
+	Profile             string  `json:"profile,omitempty"`
+	BaseVerdict         string  `json:"base_verdict,omitempty"`
+	TargetVerdict       string  `json:"target_verdict,omitempty"`
+	BaseStatus          string  `json:"base_status,omitempty"`
+	TargetStatus        string  `json:"target_status,omitempty"`
+	BaseScore           float64 `json:"base_score,omitempty"`
+	TargetScore         float64 `json:"target_score,omitempty"`
+	DeltaScore          float64 `json:"delta_score,omitempty"`
+	BaseRunID           string  `json:"base_run_id,omitempty"`
+	TargetRunID         string  `json:"target_run_id,omitempty"`
+	BaseReason          string  `json:"base_reason,omitempty"`
+	TargetReason        string  `json:"target_reason,omitempty"`
+	BaseFailureLabel    string  `json:"base_failure_label,omitempty"`
+	TargetFailureLabel  string  `json:"target_failure_label,omitempty"`
+	BaseVerification    string  `json:"base_verification,omitempty"`
+	TargetVerification  string  `json:"target_verification,omitempty"`
+	BaseEvidenceScore   float64 `json:"base_evidence_score,omitempty"`
+	TargetEvidenceScore float64 `json:"target_evidence_score,omitempty"`
+}
+
+type ComparisonReport struct {
+	ID              string                 `json:"id"`
+	OwnerUserID     string                 `json:"owner_user_id,omitempty"`
+	BaselineID      string                 `json:"baseline_id,omitempty"`
+	EvalSpecID      string                 `json:"eval_spec_id"`
+	BaseEvalRunID   string                 `json:"base_eval_run_id"`
+	TargetEvalRunID string                 `json:"target_eval_run_id"`
+	Summary         map[string]interface{} `json:"summary,omitempty"`
+	Regressions     []ComparisonCaseDelta  `json:"regressions,omitempty"`
+	Improvements    []ComparisonCaseDelta  `json:"improvements,omitempty"`
+	ScorerDelta     map[string]interface{} `json:"scorer_delta,omitempty"`
+	CreatedAt       time.Time              `json:"created_at"`
+}
+
+type GroupPromotionSpec struct {
+	DatasetName string `json:"dataset_name"`
+	Description string `json:"description,omitempty"`
+	Subject     string `json:"subject,omitempty"`
+	EvalName    string `json:"eval_name"`
+}
+
+type GroupPromotionResult struct {
+	Dataset        *Dataset        `json:"dataset,omitempty"`
+	DatasetVersion *DatasetVersion `json:"dataset_version,omitempty"`
+	EvalSpec       *EvalSpec       `json:"eval_spec,omitempty"`
+}
+
 type DatasetManifest struct {
 	Dataset  DatasetManifestMeta     `json:"dataset,omitempty"`
 	Defaults DatasetManifestDefaults `json:"defaults,omitempty"`

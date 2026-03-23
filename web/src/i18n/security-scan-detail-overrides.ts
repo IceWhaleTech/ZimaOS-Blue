@@ -211,8 +211,7 @@ export default {
     security: {
       scan: {
         detailMessages: {
-          running_development:
-            '開発モードで実行中です。デプロイ前に本番設定を確認してください。',
+          running_development: '開発モードで実行中です。デプロイ前に本番設定を確認してください。',
           token_expiration_too_long_or_unset:
             'トークンの有効期限が長すぎるか、設定されていません。これによりトークン盗難のリスクが高まります。',
           token_expiration_too_long:
@@ -227,8 +226,7 @@ export default {
     security: {
       scan: {
         detailMessages: {
-          running_development:
-            '개발 모드로 실행 중입니다. 배포 전에 운영 설정을 확인하세요.',
+          running_development: '개발 모드로 실행 중입니다. 배포 전에 운영 설정을 확인하세요.',
           token_expiration_too_long_or_unset:
             '토큰 만료 시간이 너무 길거나 설정되지 않았습니다. 이로 인해 토큰 탈취 위험이 커집니다.',
           token_expiration_too_long:

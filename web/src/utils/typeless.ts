@@ -51,6 +51,7 @@ const RE_STANDALONE_URL = /^(https?:\/\/[^\s]+)$/
 const RE_LOCAL_PATH_LINE = /^\s*(?:[a-zA-Z]:[\\/][^\s]+|\\\\[^\s]+|\/(?!api\/)[^\s]+)\s*$/m
 const RE_TABLE_SEP_CONTENT = /^[\s:-]+$/
 const RE_WINDOWS_ABS_PATH = /^[a-zA-Z]:\\/
+const RE_VALID_TYPELESS_CARD_TYPE = /^[a-z][a-z0-9-]*$/
 
 // Language display names for code blocks
 const languageAliases: Record<string, string> = {
@@ -907,118 +908,132 @@ function parseTypelessContentInternal(
   let text = content
   const cardIndex = { value: startCardIndex }
 
-  // Valid card type check — reject empty or clearly invalid types during streaming
-  const isValidCardType = (type: string) =>
-    type.length > 0 && type.length < 30 && /^[a-z][a-z0-9-]*$/.test(type)
-
   // First, parse special XML-like tags
   text = parseSpecialTags(text, cards, cardIndex)
 
-  // Find all complete typeless blocks
-  // We need a more robust approach: find all ```typeless markers, then find the LAST ``` in the content
-  // This handles cases where the JSON content contains inner code fences like ```mermaid
-
   const markerStart = TYPELESS_MARKER_START
-  const markerEnd = TYPELESS_MARKER_END
-
-  // Find all occurrences of ```typeless from the current working text.
-  // Important: text may already be transformed by parseSpecialTags(), so
-  // indexes must be computed against `text` (not original `content`) to avoid
-  // replacement offsets during streaming.
-  const startMatches: number[] = []
-  let searchStart = 0
-  while (true) {
-    const idx = text.indexOf(markerStart, searchStart)
-    if (idx === -1) break
-    startMatches.push(idx)
-    searchStart = idx + markerStart.length
-  }
-
-  // For each start marker, locate a closing fence that yields a valid card.
-  // Important: do NOT blindly pair with the last fence — that can swallow
-  // multiple consecutive typeless blocks into one invalid JSON payload.
   const replacements: { start: number; end: number; placeholder: string }[] = []
-  for (const startIdx of startMatches) {
-    const contentStart = startIdx + markerStart.length
-    const remainingContent = text.slice(contentStart)
 
+  if (text.includes(markerStart)) {
+    const markerEnd = TYPELESS_MARKER_END
+    const markerEndLength = markerEnd.length
+
+    // Collect all fence positions in a single forward scan, then identify
+    // typeless starts from that shared index list. This avoids re-scanning the
+    // remaining text for every start marker.
     const fencePositions: number[] = []
-    let fenceSearchStart = 0
+    const startMatches: number[] = []
+    let searchStart = 0
     while (true) {
-      const fenceIdx = remainingContent.indexOf(markerEnd, fenceSearchStart)
-      if (fenceIdx === -1) break
-      fencePositions.push(fenceIdx)
-      fenceSearchStart = fenceIdx + markerEnd.length
+      const idx = text.indexOf(markerEnd, searchStart)
+      if (idx === -1) break
+      fencePositions.push(idx)
+      if (text.startsWith(markerStart, idx)) {
+        startMatches.push(idx)
+      }
+      searchStart = idx + markerEndLength
     }
-    if (fencePositions.length === 0) continue
 
-    let parsedCard: TypelessCard | null = null
-    let endIdx = -1
+    // For each start marker, locate a closing fence that yields a valid card.
+    let consumedUntil = -1
 
-    // Pass 1: strict JSON parse, pick the earliest valid closing fence.
-    // This preserves multiple consecutive typeless blocks.
-    for (const fenceIdx of fencePositions) {
-      const jsonStr = remainingContent.slice(0, fenceIdx).trim()
-      if (!jsonStr) continue
+    for (const startIdx of startMatches) {
+      if (startIdx < consumedUntil) continue
 
-      try {
-        const candidate = JSON.parse(jsonStr) as TypelessCard
-        if (candidate && typeof candidate.type === 'string' && isValidCardType(candidate.type)) {
-          parsedCard = candidate
-          endIdx = contentStart + fenceIdx + markerEnd.length
+      const contentStart = startIdx + markerStart.length
+      const firstFenceIndex = lowerBound(fencePositions, contentStart)
+      if (firstFenceIndex >= fencePositions.length) continue
+
+      let parsedCard: TypelessCard | null = null
+      let endIdx = -1
+
+      // Pass 1: strict JSON parse, pick the earliest valid closing fence.
+      // This preserves multiple consecutive typeless blocks.
+      for (let fenceIndex = firstFenceIndex; fenceIndex < fencePositions.length; fenceIndex++) {
+        const fenceIdx = fencePositions[fenceIndex]
+        if (fenceIdx === undefined) continue
+
+        const jsonStr = text.slice(contentStart, fenceIdx).trim()
+        if (!jsonStr) continue
+
+        try {
+          const candidate = JSON.parse(jsonStr) as TypelessCard
+          if (
+            candidate &&
+            typeof candidate.type === 'string' &&
+            isValidTypelessCardType(candidate.type)
+          ) {
+            parsedCard = candidate
+            endIdx = fenceIdx + markerEndLength
+            break
+          }
+        } catch {
+          // Keep scanning later fences (handles inner ``` inside JSON strings).
+        }
+      }
+
+      // Pass 2: lenient fallback on the last fence only.
+      // We intentionally avoid lenient parsing on earlier fences, because it can
+      // mistakenly accept truncated JSON and hide subsequent cards.
+      if (!parsedCard) {
+        const lastFenceIdx = fencePositions[fencePositions.length - 1]
+        if (lastFenceIdx !== undefined && lastFenceIdx >= contentStart) {
+          const jsonStr = text.slice(contentStart, lastFenceIdx).trim()
+          const lastChar = jsonStr[jsonStr.length - 1]
+          const looksComplete = lastChar === '}' || lastChar === ']'
+          if (jsonStr && looksComplete) {
+            const candidate = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
+            if (
+              candidate &&
+              typeof candidate.type === 'string' &&
+              isValidTypelessCardType(candidate.type)
+            ) {
+              parsedCard = candidate
+              endIdx = lastFenceIdx + markerEndLength
+            }
+          }
+        }
+      }
+
+      if (parsedCard && endIdx > contentStart) {
+        if (!parsedCard.id) {
+          parsedCard.id = `card-${cardIndex.value++}`
+        }
+        cards.push(parsedCard)
+        replacements.push({
+          start: startIdx,
+          end: endIdx,
+          placeholder: `[[TYPELESS_CARD:${parsedCard.id}]]`,
+        })
+        consumedUntil = endIdx
+      }
+    }
+
+    // During streaming, also try to parse incomplete typeless blocks
+    // Look for blocks that start with marker but don't have closing marker yet
+    if (isStreaming) {
+      let lastStartIdx = -1
+      for (let i = startMatches.length - 1; i >= 0; i--) {
+        const startIdx = startMatches[i]
+        if (startIdx === undefined) continue
+
+        const coveredByCompleteReplacement = replacements.some(
+          (replacement) => startIdx >= replacement.start && startIdx < replacement.end
+        )
+        if (!coveredByCompleteReplacement) {
+          lastStartIdx = startIdx
           break
         }
-      } catch {
-        // Keep scanning later fences (handles inner ``` inside JSON strings).
       }
-    }
 
-    // Pass 2: lenient fallback on the last fence only.
-    // We intentionally avoid lenient parsing on earlier fences, because it can
-    // mistakenly accept truncated JSON and hide subsequent cards.
-    if (!parsedCard) {
-      const lastFenceIdx = fencePositions[fencePositions.length - 1]!
-      const jsonStr = remainingContent.slice(0, lastFenceIdx).trim()
-      const lastChar = jsonStr[jsonStr.length - 1]
-      const looksComplete = lastChar === '}' || lastChar === ']'
-      if (jsonStr && looksComplete) {
-        const candidate = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
-        if (candidate && typeof candidate.type === 'string' && isValidCardType(candidate.type)) {
-          parsedCard = candidate
-          endIdx = contentStart + lastFenceIdx + markerEnd.length
-        }
-      }
-    }
+      if (lastStartIdx !== -1) {
+        const incompleteStart = lastStartIdx + TYPELESS_MARKER_START.length
+        const trailingContent = text.slice(incompleteStart)
 
-    if (parsedCard && endIdx > contentStart) {
-      if (!parsedCard.id) {
-        parsedCard.id = `card-${cardIndex.value++}`
-      }
-      cards.push(parsedCard)
-      replacements.push({
-        start: startIdx,
-        end: endIdx,
-        placeholder: `[[TYPELESS_CARD:${parsedCard.id}]]`,
-      })
-    }
-  }
-
-  // During streaming, also try to parse incomplete typeless blocks
-  // Look for blocks that start with marker but don't have closing marker yet
-  if (isStreaming) {
-    const lastStartIdx = text.lastIndexOf(TYPELESS_MARKER_START)
-    if (lastStartIdx !== -1) {
-      const alreadyParsedAsCompleteBlock = replacements.some(
-        (replacement) => replacement.start === lastStartIdx
-      )
-      const incompleteStart = lastStartIdx + TYPELESS_MARKER_START.length
-      const trailingContent = text.slice(incompleteStart)
-
-      // Only treat the final typeless block as incomplete when we have not
-      // already paired it with a valid closing fence. Raw "```" inside JSON
-      // strings (for example embedded markdown/code fences) must not suppress
-      // streaming card updates.
-      if (!alreadyParsedAsCompleteBlock) {
+        // Only treat the final typeless block as incomplete when we have not
+        // already paired it with a valid closing fence. Raw "```" inside JSON
+        // strings (for example embedded markdown/code fences) must not suppress
+        // streaming card updates.
         const jsonStr = trailingContent.trim()
         // Only try to parse if it looks like JSON (starts with {)
         if (jsonStr.startsWith('{')) {
@@ -1026,7 +1041,7 @@ function parseTypelessContentInternal(
           if (
             partialCard &&
             typeof partialCard.type === 'string' &&
-            isValidCardType(partialCard.type)
+            isValidTypelessCardType(partialCard.type)
           ) {
             // Mark as streaming/incomplete
             partialCard._streaming = true
@@ -1045,14 +1060,14 @@ function parseTypelessContentInternal(
         }
       }
     }
-  }
 
-  // Replace card blocks with placeholders (in reverse order to preserve indices)
-  for (let i = replacements.length - 1; i >= 0; i--) {
-    const replacement = replacements[i]
-    if (replacement) {
-      const { start, end, placeholder } = replacement
-      text = text.slice(0, start) + placeholder + text.slice(end)
+    // Replace card blocks with placeholders (in reverse order to preserve indices)
+    for (let i = replacements.length - 1; i >= 0; i--) {
+      const replacement = replacements[i]
+      if (replacement) {
+        const { start, end, placeholder } = replacement
+        text = text.slice(0, start) + placeholder + text.slice(end)
+      }
     }
   }
 
@@ -1082,6 +1097,26 @@ function evictOldestMapEntry<K, V>(cache: Map<K, V>): void {
   if (oldestKey !== undefined) {
     cache.delete(oldestKey as K)
   }
+}
+
+function lowerBound(numbers: number[], target: number): number {
+  let low = 0
+  let high = numbers.length
+
+  while (low < high) {
+    const mid = (low + high) >>> 1
+    if ((numbers[mid] ?? Number.POSITIVE_INFINITY) < target) {
+      low = mid + 1
+    } else {
+      high = mid
+    }
+  }
+
+  return low
+}
+
+function isValidTypelessCardType(type: string): boolean {
+  return type.length > 0 && type.length < 30 && RE_VALID_TYPELESS_CARD_TYPE.test(type)
 }
 
 function isWhitespaceCharCode(code: number): boolean {
@@ -1713,20 +1748,8 @@ function mergeDeepResearchTimelineCards(cards: TypelessCard[]): TypelessCard {
     _streaming: cards.some((card) => card._streaming),
   }
 
-  const metadataFields = [
-    'job_id',
-    'conversation_id',
-    'query',
-    'mode',
-    'iteration',
-  ]
-  const snapshotFields = [
-    'stage',
-    'status',
-    'progress',
-    'latest_gap',
-    'latest_action',
-  ]
+  const metadataFields = ['job_id', 'conversation_id', 'query', 'mode', 'iteration']
+  const snapshotFields = ['stage', 'status', 'progress', 'latest_gap', 'latest_action']
 
   const assignFields = (record: Record<string, unknown>, fields: string[]) => {
     const target = merged as unknown as Record<string, unknown>
@@ -1751,10 +1774,7 @@ function mergeDeepResearchTimelineCards(cards: TypelessCard[]): TypelessCard {
       assignFields(record, snapshotFields)
     }
 
-    if (
-      record.type === 'deep-research-timeline' &&
-      Array.isArray(record.steps)
-    ) {
+    if (record.type === 'deep-research-timeline' && Array.isArray(record.steps)) {
       flattenedSteps.push(
         ...record.steps.filter(
           (step): step is DeepResearchTimelineStep => Boolean(step) && typeof step === 'object'

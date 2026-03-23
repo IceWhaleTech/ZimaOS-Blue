@@ -21,7 +21,9 @@ const isDownloading = ref(props.card.downloading)
 
 const pollTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const pollIntervalMs = computed(() => Math.max(500, props.card.poll_interval_ms || 1500))
-const isTerminal = computed(() => currentStatus.value === 'ready' || currentStatus.value === 'error')
+const isTerminal = computed(
+  () => currentStatus.value === 'ready' || currentStatus.value === 'error'
+)
 
 const indicatorClass = computed(() => {
   if (currentStatus.value === 'ready') {
@@ -60,7 +62,9 @@ function stopPolling() {
   }
 }
 
-function resolveStatus(payload: Partial<TypelessCardModelDownloadProgress>): TypelessCardModelDownloadProgress['status'] {
+function resolveStatus(
+  payload: Partial<TypelessCardModelDownloadProgress>
+): TypelessCardModelDownloadProgress['status'] {
   if (payload.status) {
     return payload.status
   }
@@ -142,7 +146,9 @@ onBeforeUnmount(stopPolling)
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
+  <div
+    class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
+  >
     <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700/50">
       <span class="w-2.5 h-2.5 rounded-full" :class="indicatorClass" />
       <div class="min-w-0">
@@ -159,22 +165,31 @@ onBeforeUnmount(stopPolling)
     </div>
     <div v-if="currentStatus === 'downloading' && currentProgress" class="px-4 pt-4">
       <div class="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
-        <div class="h-full bg-amber-500 transition-all duration-300" :style="{ width: `${progressWidth}%` }" />
+        <div
+          class="h-full bg-amber-500 transition-all duration-300"
+          :style="{ width: `${progressWidth}%` }"
+        />
       </div>
-      <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+      <div
+        class="mt-2 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400"
+      >
         <span>
           {{ currentProgress?.file || t('media.modelDownload.auto.fileName', 'Processing files') }}
         </span>
-        <span>
-          {{ progressWidth }}%
-        </span>
+        <span> {{ progressWidth }}% </span>
       </div>
     </div>
     <div class="px-4 py-4 space-y-2">
-      <p v-if="currentMessage" class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
+      <p
+        v-if="currentMessage"
+        class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words"
+      >
         {{ currentMessage }}
       </p>
-      <p v-if="currentStatus === 'error' && currentError" class="text-sm text-rose-600 dark:text-rose-300">
+      <p
+        v-if="currentStatus === 'error' && currentError"
+        class="text-sm text-rose-600 dark:text-rose-300"
+      >
         {{ currentError }}
       </p>
       <ul v-if="currentFiles.length > 0" class="space-y-1">
@@ -185,7 +200,9 @@ onBeforeUnmount(stopPolling)
         >
           <span>{{ file.filename }}</span>
           <span class="flex items-center gap-2 text-[11px]">
-            <span v-if="file.downloaded">{{ t('media.modelDownload.completed', 'Downloaded') }}</span>
+            <span v-if="file.downloaded">{{
+              t('media.modelDownload.completed', 'Downloaded')
+            }}</span>
             <span v-else>{{ t('media.modelDownload.pending', 'Pending') }}</span>
             <span v-if="file.size">· {{ file.size }}</span>
           </span>

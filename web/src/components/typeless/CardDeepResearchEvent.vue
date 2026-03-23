@@ -6,6 +6,7 @@ import type {
   DeepResearchPlannedTask,
   DeepResearchLiveSource,
 } from '@/types/typeless'
+import { localizeDeepResearchStatus } from '@/utils/deepResearchText'
 
 const { t } = useI18n()
 
@@ -22,6 +23,9 @@ const parallelism = computed(() => {
 })
 const brief = computed(() => props.card.brief || null)
 const verification = computed(() => props.card.verification || null)
+const hasRetryGuidance = computed(() => {
+  return !!brief.value?.retry_context || !!brief.value?.retry_queries?.length
+})
 
 const statusClass = computed(() => {
   switch (props.card.status) {
@@ -63,6 +67,10 @@ const hasDetailSections = computed(() => {
   )
 })
 
+const statusLabel = computed(
+  () => localizeDeepResearchStatus(props.card.status || 'info', t) || props.card.status || 'info'
+)
+
 function domainOf(source: DeepResearchLiveSource): string {
   if (source.domain) return source.domain
   if (!source.url) return ''
@@ -80,39 +88,41 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
 
 <template>
   <div
-    class="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-900/50 shadow-sm overflow-hidden"
+    class="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-900/50 shadow-sm overflow-hidden"
   >
     <div
-      class="px-4 py-3 border-b border-white/60 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/70"
+      class="px-3.5 py-2.5 border-b border-white/60 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/70"
     >
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
             <span
-              class="inline-flex items-center rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              class="inline-flex items-center rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
             >
               {{ kindLabel }}
             </span>
             <span
               v-if="card.iteration"
-              class="inline-flex items-center rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              class="inline-flex items-center rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
             >
               {{ t('chat.deepResearchIteration', 'Iteration') }} {{ card.iteration }}
             </span>
             <span
               v-if="card.task_count"
-              class="inline-flex items-center rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              class="inline-flex items-center rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
             >
               {{ card.task_count }} {{ t('chat.deepResearchPlannedTasks', 'tasks') }}
             </span>
             <span
               v-if="parallelism > 1"
-              class="inline-flex items-center rounded-full px-2.5 py-1 bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200"
+              class="inline-flex items-center rounded-full px-2 py-0.5 bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200"
             >
               {{ t('chat.deepResearchParallelism', 'Parallel') }} ×{{ parallelism }}
             </span>
           </div>
-          <div class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100 break-words">
+          <div
+            class="mt-1.5 text-[13px] font-semibold text-slate-800 dark:text-slate-100 break-words"
+          >
             {{ card.summary || t('chat.deepResearchProcess', 'Research process') }}
           </div>
           <div
@@ -123,15 +133,15 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
           </div>
         </div>
         <span
-          class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium capitalize"
+          class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize"
           :class="statusClass"
         >
-          {{ card.status || 'info' }}
+          {{ statusLabel }}
         </span>
       </div>
     </div>
 
-    <div class="px-4 py-3 space-y-3">
+    <div class="px-3.5 py-2.5 space-y-2.5">
       <div v-if="sources.length > 0" class="space-y-2">
         <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
           {{ t('chat.deepResearchLiveSources', 'Live sources') }}
@@ -166,7 +176,7 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
 
       <details
         v-if="hasDetailSections"
-        class="group rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/50"
+        class="group rounded-xl border border-slate-200 bg-white/80 px-2.5 py-2 dark:border-slate-800 dark:bg-slate-950/50"
       >
         <summary
           class="cursor-pointer list-none text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2"
@@ -175,8 +185,8 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
           <span class="text-slate-400 transition-transform group-open:rotate-180">⌄</span>
         </summary>
 
-        <div class="mt-3 space-y-3 text-sm text-slate-700 dark:text-slate-200">
-          <div v-if="brief" class="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+        <div class="mt-2.5 space-y-2.5 text-sm text-slate-700 dark:text-slate-200">
+          <div v-if="brief" class="rounded-xl bg-slate-50 px-2.5 py-2.5 dark:bg-slate-900/60">
             <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
               {{ t('chat.deepResearchResearchBrief', 'Research brief') }}
             </div>
@@ -201,11 +211,35 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
                 <li v-for="claim in brief.must_verify_claims" :key="claim">{{ claim }}</li>
               </ul>
             </div>
+            <div
+              v-if="hasRetryGuidance"
+              class="mt-2.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2.5 dark:border-amber-900/60 dark:bg-amber-950/30"
+            >
+              <div class="text-xs font-medium text-amber-700 dark:text-amber-200">
+                {{ t('chat.deepResearchRetryGuidance', 'Retry guidance') }}
+              </div>
+              <div
+                v-if="brief.retry_context"
+                class="mt-2 text-xs text-amber-700/90 break-words dark:text-amber-100"
+              >
+                {{ brief.retry_context }}
+              </div>
+              <div v-if="brief.retry_queries?.length" class="mt-3">
+                <div class="text-xs font-medium text-amber-700 dark:text-amber-200">
+                  {{ t('chat.deepResearchRetryQueries', 'Recovery queries') }}
+                </div>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-700/90 dark:text-amber-100"
+                >
+                  <li v-for="query in brief.retry_queries" :key="query">{{ query }}</li>
+                </ul>
+              </div>
+            </div>
           </div>
 
           <div
             v-if="tasks.length > 0"
-            class="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60"
+            class="rounded-xl bg-slate-50 px-2.5 py-2.5 dark:bg-slate-900/60"
           >
             <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
               {{ t('chat.deepResearchPlannedTasks', 'Planned tasks') }}
@@ -214,7 +248,7 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
               <div
                 v-for="(task, index) in tasks"
                 :key="`${task.question}-${index}`"
-                class="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60"
+                class="rounded-lg border border-slate-200 bg-white px-2.5 py-2 dark:border-slate-800 dark:bg-slate-950/60"
               >
                 <div class="text-sm text-slate-800 dark:text-slate-100 break-words">
                   {{ task.question }}
@@ -234,25 +268,28 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
             </div>
           </div>
 
-          <div v-if="verification" class="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+          <div
+            v-if="verification"
+            class="rounded-xl bg-slate-50 px-2.5 py-2.5 dark:bg-slate-900/60"
+          >
             <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
               {{ t('chat.deepResearchVerificationSummary', 'Verification') }}
             </div>
             <div class="mt-2 flex flex-wrap gap-2 text-xs">
               <span
-                class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
+                class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
               >
                 {{ t('chat.deepResearchVerificationResolved', 'Resolved') }}
                 {{ verification.resolved_count || 0 }}
               </span>
               <span
-                class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                class="rounded-full bg-amber-100 px-2.5 py-0.5 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
               >
                 {{ t('chat.deepResearchVerificationConflicted', 'Conflicted') }}
                 {{ verification.conflicted_count || 0 }}
               </span>
               <span
-                class="rounded-full bg-slate-200 px-2.5 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                class="rounded-full bg-slate-200 px-2.5 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
               >
                 {{ t('chat.deepResearchVerificationInsufficient', 'Insufficient') }}
                 {{ verification.insufficient_count || 0 }}
@@ -268,7 +305,7 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
               card.follow_up_query ||
               card.stop_reason
             "
-            class="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 dark:border-amber-900/60 dark:bg-amber-950/30"
+            class="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2.5 dark:border-amber-900/60 dark:bg-amber-950/30"
           >
             <div class="text-xs font-medium text-amber-700 dark:text-amber-200">
               {{ t('chat.deepResearchStageErrors', 'Stage warnings') }}

@@ -47,7 +47,10 @@ export async function openProtectedResource(value: string): Promise<boolean> {
   return true
 }
 
-export async function downloadProtectedResource(value: string, filename?: string): Promise<boolean> {
+export async function downloadProtectedResource(
+  value: string,
+  filename?: string
+): Promise<boolean> {
   const trimmed = String(value || '').trim()
   if (!trimmed) return false
 

@@ -453,34 +453,6 @@ func TestCollectWorkspaceArtifactEvidence_IncludesRawPDFEvidence(t *testing.T) {
 	}
 }
 
-func TestCollectWorkspaceArtifactEvidence_AddsFactAnnotationsForWorkspaceSummaries(t *testing.T) {
-	toolCalls := []llm.ToolCall{
-		{ID: "call-1", Name: "file_read"},
-	}
-	toolResults := []llm.Message{
-		{
-			Role:       llm.RoleTool,
-			ToolCallID: "call-1",
-			Content:    `{"path":"emails/2026-02-18_alpha_timeline_slip.txt","content":"Project Alpha timeline update. Budget moved from $340K to $410K. Beta moved to May 6 because security fixes and a WebSocket gateway added time."}`,
-		},
-	}
-
-	evidence := collectWorkspaceArtifactEvidence(toolCalls, toolResults)
-	if len(evidence) == 0 {
-		t.Fatal("expected evidence to be collected")
-	}
-	joined := strings.Join(evidence, "\n\n")
-	for _, needle := range []string{
-		"FACTS | source=emails/2026-02-18_alpha_timeline_slip.txt",
-		"money=$340K, $410K",
-		"dates=May 6",
-	} {
-		if !strings.Contains(joined, needle) {
-			t.Fatalf("expected evidence facts to contain %q, got=%q", needle, joined)
-		}
-	}
-}
-
 func TestScoreWorkspaceQuestionEvidence_PrefersExactAPIPhrase(t *testing.T) {
 	question := "What type of API does the OpenClaw gateway expose?"
 	generic := "The system exposes an API and several clients."

@@ -97,6 +97,28 @@ function handleUserUpdated() {
   fetchUsers()
 }
 
+function closeEditModal() {
+  showEditModal.value = false
+  selectedUser.value = null
+}
+
+function handleFiltersChanged() {
+  currentPage.value = 1
+  fetchUsers()
+}
+
+function goToPreviousPage() {
+  if (currentPage.value <= 1) return
+  currentPage.value -= 1
+  fetchUsers()
+}
+
+function goToNextPage() {
+  if (currentPage.value >= totalPages.value) return
+  currentPage.value += 1
+  fetchUsers()
+}
+
 function formatDate(dateStr?: string) {
   if (!dateStr) return '-'
   return new Date(dateStr).toLocaleDateString()
@@ -189,13 +211,13 @@ onMounted(() => {
           type="text"
           :placeholder="t('users.searchPlaceholder')"
           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-          @input="currentPage = 1; fetchUsers()"
+          @input="handleFiltersChanged"
         />
       </div>
       <select
         v-model="statusFilter"
         class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-        @change="currentPage = 1; fetchUsers()"
+        @change="handleFiltersChanged"
       >
         <option value="">{{ t('users.allStatuses') }}</option>
         <option value="active">{{ t('users.statusActive') }}</option>
@@ -205,7 +227,7 @@ onMounted(() => {
       <select
         v-model="roleFilter"
         class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-        @change="currentPage = 1; fetchUsers()"
+        @change="handleFiltersChanged"
       >
         <option value="">{{ t('users.allRoles') }}</option>
         <option value="admin">{{ t('users.roleAdmin') }}</option>
@@ -439,14 +461,14 @@ onMounted(() => {
           <button
             class="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-50"
             :disabled="currentPage === 1"
-            @click="currentPage--; fetchUsers()"
+            @click="goToPreviousPage"
           >
             {{ t('common.previous') }}
           </button>
           <button
             class="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-50"
             :disabled="currentPage === totalPages"
-            @click="currentPage++; fetchUsers()"
+            @click="goToNextPage"
           >
             {{ t('common.next') }}
           </button>
@@ -488,7 +510,7 @@ onMounted(() => {
     <EditUserModal
       v-if="showEditModal && selectedUser"
       :user="selectedUser"
-      @close="showEditModal = false; selectedUser = null"
+      @close="closeEditModal"
       @updated="handleUserUpdated"
     />
   </div>

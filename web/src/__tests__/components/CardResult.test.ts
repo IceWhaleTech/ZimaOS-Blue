@@ -70,8 +70,7 @@ function createTestI18n(locale = 'en-US') {
             entries_in_path: '{count} entries in {path}',
             single_entry_in_path: '1 entry in {path}',
             no_entries_in_path: 'No entries in {path}',
-            showing_first_entries_in_path:
-              'Showing first {count} entries in {path} (more omitted)',
+            showing_first_entries_in_path: 'Showing first {count} entries in {path} (more omitted)',
             screenshot_captured_for: 'Screenshot captured for {target}',
           },
           warnings: {
@@ -288,7 +287,9 @@ describe('CardResult', () => {
 
     expect(wrapper.text()).toContain('显示 /tmp/demo 中前 12 个条目（更多已省略）')
     expect(wrapper.text()).toContain('列表已截断；请缩小路径范围或增大 max_entries。')
-    expect(wrapper.text()).not.toContain('Listing was truncated; narrow the path or increase max_entries.')
+    expect(wrapper.text()).not.toContain(
+      'Listing was truncated; narrow the path or increase max_entries.'
+    )
   })
 
   it('renders image previews for result cards and normalizes raw base64 strings', () => {

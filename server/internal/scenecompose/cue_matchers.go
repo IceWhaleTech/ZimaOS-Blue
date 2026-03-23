@@ -64,11 +64,12 @@ var (
 		{value: "indoor room", matcher: newFoldedCueMatcher([]string{"room", "bedroom", "living room", "房间", "客厅"})},
 		{value: "mountain landscape", matcher: newFoldedCueMatcher([]string{"mountain", "hill", "山", "山谷"})},
 		{value: "park", matcher: newFoldedCueMatcher([]string{"park", "garden", "公园", "花园"})},
+		{value: "snowy field", matcher: newFoldedCueMatcher([]string{"snow", "snowy", "winter", "雪", "雪地", "雪原", "冬天"})},
 	}
 
 	objectTypeChoices = []cueChoice{
 		{value: "cat", matcher: newFoldedCueMatcher([]string{"cat", "猫"})},
-		{value: "dog", matcher: newFoldedCueMatcher([]string{"dog", "小狗", "狗"})},
+		{value: "dog", matcher: newFoldedCueMatcher([]string{"dog", "puppy", "poodle", "toy poodle", "teddy dog", "teddy", "小狗", "狗", "泰迪", "泰迪犬", "泰迪狗", "贵宾", "贵宾犬"})},
 		{value: "robot", matcher: newFoldedCueMatcher([]string{"robot", "机器人"})},
 		{value: "bird", matcher: newFoldedCueMatcher([]string{"bird", "鸟"})},
 		{value: "person", matcher: newFoldedCueMatcher([]string{"person", "woman", "man", "girl", "boy", "人物", "女孩", "男孩"})},
@@ -131,12 +132,18 @@ var (
 
 	layoutFloatingCueMatcher = newFoldedCueMatcher([]string{"flying", "floating", "飞"})
 
-	backgroundSearchPrimaryCueMatcher   = newFoldedCueMatcher([]string{"background", "landscape"})
-	backgroundSearchWallpaperCueMatcher = newFoldedCueMatcher([]string{"wallpaper"})
-	backgroundSearchNegativeCueMatcher  = newFoldedCueMatcher([]string{"poster", "template", "shop", "buy", "logo", "icon"})
+	backgroundSearchPrimaryCueMatcher = newFoldedCueMatcher([]string{
+		"background", "landscape", "scene", "scenery", "photo", "wallpaper",
+		"背景", "风景", "场景", "照片", "壁纸",
+	})
+	backgroundSearchWallpaperCueMatcher = newFoldedCueMatcher([]string{"wallpaper", "壁纸"})
+	backgroundSearchNegativeCueMatcher  = newFoldedCueMatcher([]string{
+		"poster", "template", "shop", "buy", "logo", "icon",
+		"海报", "模板", "店铺", "购买", "标志", "图标",
+	})
 
-	foregroundSearchPositiveCueMatcher = newFoldedCueMatcher([]string{"png", "transparent", "isolated", "cutout"})
-	foregroundSearchNegativeCueMatcher = newFoldedCueMatcher([]string{"vector", "clipart", "logo", "icon", "poster", "template"})
+	foregroundSearchPositiveCueMatcher = newFoldedCueMatcher([]string{"png", "transparent", "isolated", "cutout", "透明", "抠图"})
+	foregroundSearchNegativeCueMatcher = newFoldedCueMatcher([]string{"vector", "clipart", "logo", "icon", "poster", "template", "矢量", "图标", "海报", "模板"})
 )
 
 var objectTypeStopwords = map[string]struct{}{

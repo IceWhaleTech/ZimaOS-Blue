@@ -158,10 +158,18 @@ describe('MemoryManager', () => {
     vi.mocked(selfReflectApi.getProposal).mockRejectedValue(new Error('proposal not found'))
     vi.mocked(selfReflectApi.getPatchPreview).mockRejectedValue(new Error('patch not found'))
     vi.mocked(selfReflectApi.approveProposal).mockResolvedValue({
-      data: proposalPayload({ status: 'approved', review_note: 'Looks good', reviewed_at: '2026-03-02T00:00:00Z' }),
+      data: proposalPayload({
+        status: 'approved',
+        review_note: 'Looks good',
+        reviewed_at: '2026-03-02T00:00:00Z',
+      }),
     } as never)
     vi.mocked(selfReflectApi.rejectProposal).mockResolvedValue({
-      data: proposalPayload({ status: 'rejected', review_note: 'Needs stronger grounding', reviewed_at: '2026-03-02T00:00:00Z' }),
+      data: proposalPayload({
+        status: 'rejected',
+        review_note: 'Needs stronger grounding',
+        reviewed_at: '2026-03-02T00:00:00Z',
+      }),
     } as never)
   })
 
@@ -357,6 +365,47 @@ describe('MemoryManager', () => {
     wrapper.unmount()
   })
 
+  it('shows a pending state while deleting a memory', async () => {
+    vi.useFakeTimers()
+    const pendingDelete = createDeferred<any>()
+    vi.mocked(memoryApi.delete).mockImplementationOnce(() => pendingDelete.promise)
+    vi.mocked(memoryApi.search).mockResolvedValue({
+      data: {
+        results: [
+          {
+            id: 'memory-1',
+            content: 'delete target',
+            score: 0.81,
+            match_types: ['exact'],
+            created_at: '2026-03-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    } as never)
+
+    const wrapper = mountManager()
+    await flushPromises()
+
+    await byId(wrapper, 'memory-search-input').setValue('delete target')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    await byId(wrapper, 'memory-delete-memory-1').trigger('click')
+    await flushPromises()
+
+    const deleteButton = byId(wrapper, 'memory-delete-memory-1')
+    expect(deleteButton.attributes('disabled')).toBeDefined()
+    expect(deleteButton.find('.animate-spin').exists()).toBe(true)
+
+    pendingDelete.resolve({} as never)
+    await flushPromises()
+
+    expect(memoryApi.delete).toHaveBeenCalledWith('memory-1')
+
+    wrapper.unmount()
+  })
+
   it('ignores in-flight search results after the query is cleared', async () => {
     vi.useFakeTimers()
     const pending = createDeferred<any>()
@@ -517,25 +566,37 @@ describe('MemoryManager', () => {
 
   it('renders and reviews self-reflect proposals with patch previews', async () => {
     const currentProposal = proposalPayload()
-    vi.mocked(selfReflectApi.listProposals).mockImplementation(async () => ({
-      data: [currentProposal],
-    }) as never)
-    vi.mocked(selfReflectApi.getProposal).mockImplementation(async () => ({
-      data: currentProposal,
-    }) as never)
-    vi.mocked(selfReflectApi.getPatchPreview).mockImplementation(async () => ({
-      data: {
-        id: currentProposal.id,
-        target_file: currentProposal.target_file,
-        patch_preview: '@@ section: Research Takeaways @@\n+- Keep low-coverage findings explicitly cautious.',
-      },
-    }) as never)
-    vi.mocked(selfReflectApi.approveProposal).mockImplementation(async (_id: string, note: string) => {
-      currentProposal.status = 'approved'
-      currentProposal.review_note = note
-      currentProposal.reviewed_at = '2026-03-02T00:00:00Z'
-      return { data: currentProposal } as never
-    })
+    vi.mocked(selfReflectApi.listProposals).mockImplementation(
+      async () =>
+        ({
+          data: [currentProposal],
+        }) as never
+    )
+    vi.mocked(selfReflectApi.getProposal).mockImplementation(
+      async () =>
+        ({
+          data: currentProposal,
+        }) as never
+    )
+    vi.mocked(selfReflectApi.getPatchPreview).mockImplementation(
+      async () =>
+        ({
+          data: {
+            id: currentProposal.id,
+            target_file: currentProposal.target_file,
+            patch_preview:
+              '@@ section: Research Takeaways @@\n+- Keep low-coverage findings explicitly cautious.',
+          },
+        }) as never
+    )
+    vi.mocked(selfReflectApi.approveProposal).mockImplementation(
+      async (_id: string, note: string) => {
+        currentProposal.status = 'approved'
+        currentProposal.review_note = note
+        currentProposal.reviewed_at = '2026-03-02T00:00:00Z'
+        return { data: currentProposal } as never
+      }
+    )
 
     const wrapper = mountManager()
     await flushPromises()
@@ -558,7 +619,30 @@ describe('MemoryManager', () => {
     wrapper.unmount()
   })
 
-  it('shows the proposal-generation banner when agent auto-reflect is disabled', async () => {
+  it('keeps the proposal section but hides queue content when no proposals exist', async () => {
+    const wrapper = mountManager()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="memory-proposal-panel"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Self-evolution review queue')
+    expect(wrapper.find('[data-testid="memory-proposal-filter-all"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="memory-proposal-empty"]').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('shows the proposal-generation banner when agent auto-reflect is disabled and proposals exist', async () => {
+    const currentProposal = proposalPayload()
+    vi.mocked(selfReflectApi.listProposals).mockResolvedValue({ data: [currentProposal] } as never)
+    vi.mocked(selfReflectApi.getProposal).mockResolvedValue({ data: currentProposal } as never)
+    vi.mocked(selfReflectApi.getPatchPreview).mockResolvedValue({
+      data: {
+        id: currentProposal.id,
+        target_file: currentProposal.target_file,
+        patch_preview: currentProposal.patch_preview,
+      },
+    } as never)
+
     const wrapper = mount(MemoryManager, {
       props: {
         agentAutoReflect: false,
@@ -572,6 +656,7 @@ describe('MemoryManager', () => {
     })
     await flushPromises()
 
+    expect(wrapper.find('[data-testid="memory-proposal-panel"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Agent auto-reflect is disabled')
 
     wrapper.unmount()

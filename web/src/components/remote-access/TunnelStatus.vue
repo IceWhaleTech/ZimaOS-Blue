@@ -202,7 +202,9 @@ watch(
     <div class="tunnel-status__header flex items-center justify-between mb-4">
       <div class="tunnel-status__status-row flex items-center gap-2">
         <span>{{ statusIcon }}</span>
-        <span :class="statusColor" class="tunnel-status__status-text font-medium">{{ statusText }}</span>
+        <span :class="statusColor" class="tunnel-status__status-text font-medium">{{
+          statusText
+        }}</span>
         <span
           v-if="status.provider"
           class="tunnel-status__provider-badge inline-flex items-center gap-1.5 text-xs px-2 py-0.5 bg-gray-100 dark:bg-slate-800/80 text-gray-600 dark:text-slate-300 rounded-full"
@@ -318,7 +320,10 @@ watch(
     </div>
 
     <!-- Session Info -->
-    <div v-if="status.active" class="tunnel-status__session-grid grid grid-cols-2 gap-4 text-sm mb-4">
+    <div
+      v-if="status.active"
+      class="tunnel-status__session-grid grid grid-cols-2 gap-4 text-sm mb-4"
+    >
       <div>
         <div class="text-gray-500 dark:text-slate-400">{{ t('remoteAccess.startedAt') }}</div>
         <div class="text-gray-900 dark:text-gray-100">
@@ -525,7 +530,9 @@ watch(
               />
             </svg>
             <div class="tunnel-status__hint-body text-sm">
-              <p class="tunnel-status__hint-title font-medium text-amber-800 dark:text-amber-200 mb-1">
+              <p
+                class="tunnel-status__hint-title font-medium text-amber-800 dark:text-amber-200 mb-1"
+              >
                 {{ t('remoteAccess.troubleshootingHints') }}
               </p>
               <ul class="text-amber-700 dark:text-amber-300 list-disc list-inside space-y-1">
@@ -537,7 +544,9 @@ watch(
 
         <!-- Recent Errors -->
         <div v-if="diagnostics.recent_errors && diagnostics.recent_errors.length > 0">
-          <p class="tunnel-status__subheading text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">
+          <p
+            class="tunnel-status__subheading text-sm font-medium text-gray-700 dark:text-slate-200 mb-2"
+          >
             {{ t('remoteAccess.recentErrors') }}
           </p>
           <div class="space-y-2 max-h-40 overflow-y-auto">
@@ -561,7 +570,9 @@ watch(
 
         <!-- Active Session -->
         <div v-if="diagnostics.active_session">
-          <p class="tunnel-status__subheading text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">
+          <p
+            class="tunnel-status__subheading text-sm font-medium text-gray-700 dark:text-slate-200 mb-2"
+          >
             {{ t('remoteAccess.activeSession') }}
           </p>
           <div
@@ -608,7 +619,9 @@ watch(
       class="tunnel-status__panel bg-gray-50 dark:bg-slate-900/45 border border-gray-200 dark:border-slate-700 rounded-lg p-4"
     >
       <div class="flex items-center justify-between mb-3">
-        <h4 class="tunnel-status__section-title font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.logsTitle') }}</h4>
+        <h4 class="tunnel-status__section-title font-medium text-gray-900 dark:text-white">
+          {{ t('remoteAccess.logsTitle') }}
+        </h4>
         <button
           class="tunnel-status__refresh-button p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors"
           :title="t('common.refresh')"

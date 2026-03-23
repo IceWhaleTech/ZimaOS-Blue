@@ -4,7 +4,7 @@ export type SmallModelRuntime = 'llama.cpp'
 export type SmallModelID = 'qwen3.5-0.8b-gguf-q4km'
 export type NoLLMDegradeMode = 'deepresearch'
 export type SmallModelUnavailablePolicy = 'ir_first'
-export type ContextCompressionMode = 'off' | 'offline' | 'small_model' | 'auto'
+export type ContextCompressionMode = 'offline' | 'small_model' | 'auto'
 
 // User settings stored on backend
 export interface Settings {
@@ -35,10 +35,10 @@ export interface Settings {
   small_model_id?: SmallModelID // Fixed: qwen3.5-0.8b-gguf-q4km
   small_model_auto_download?: boolean // Auto download small model (default true)
   small_model_summary_enabled?: boolean // Phase1 default false
-  small_model_context_compress_enabled?: boolean // Separate long-context compression switch
+  small_model_context_compress_enabled?: boolean // Whether to prefer the lightweight-model compression path when available
   small_model_doc_extract_enabled?: boolean // Phase1 default false
   small_model_rerank_enabled?: boolean // Phase1 default false
-  context_compression_mode?: ContextCompressionMode // Unified history compression policy
+  context_compression_mode?: ContextCompressionMode // Compression path preference; pressure-based triggering stays automatic
   small_model_context_prune_enabled?: boolean // Phase1 default false
   small_model_media_intent_enabled?: boolean // Phase1 default false
   offline_ir_fallback_enabled?: boolean // Offline IR fallback (default false)

@@ -34,6 +34,7 @@ const searching = ref(false)
 const searchQuery = ref('')
 const stats = ref<MemoryStats | null>(null)
 const loading = ref(false)
+const deletingMemoryId = ref<string | null>(null)
 const showClearConfirm = ref(false)
 const showComposer = ref(false)
 const activeActionModal = ref<'import' | 'recall' | 'cleanup' | null>(null)
@@ -78,7 +79,13 @@ const proposalCounts = computed(() => ({
   approved: proposals.value.filter((proposal) => proposal.status === 'approved').length,
   rejected: proposals.value.filter((proposal) => proposal.status === 'rejected').length,
 }))
-const selectedProposalEvaluation = computed(() => asRecord(selectedProposal.value?.evaluation_summary))
+const showProposalQueue = computed(
+  () => proposalsLoading.value || Boolean(proposalsError.value) || proposals.value.length > 0
+)
+const showProposalFilters = computed(() => proposals.value.length > 0)
+const selectedProposalEvaluation = computed(() =>
+  asRecord(selectedProposal.value?.evaluation_summary)
+)
 const selectedProposalCalibration = computed(() =>
   asRecord(selectedProposal.value?.calibration_summary)
 )
@@ -126,6 +133,20 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function summaryString(value: unknown): string {
   return String(value ?? '').trim()
+}
+
+function proposalSourceKindLabel(sourceKind?: string | null): string {
+  switch (summaryString(sourceKind).toLowerCase()) {
+    case 'search':
+      return tr('memory.proposalSourceKindSearch', 'Search')
+    case 'url':
+      return tr('memory.proposalSourceKindUrl', 'URL')
+    case 'research':
+    case '':
+      return tr('memory.proposalSourceKindResearch', 'Research')
+    default:
+      return summaryString(sourceKind)
+  }
 }
 
 function summaryNumber(value: unknown): number | null {
@@ -195,7 +216,7 @@ function selectMemoryRecallMode(mode: MemoryRecallMode) {
 }
 
 async function addMemory() {
-  if (!addContent.value.trim()) return
+  if (loading.value || !addContent.value.trim()) return
 
   loading.value = true
   try {
@@ -218,8 +239,10 @@ async function addMemory() {
 }
 
 async function deleteMemory(id: string) {
+  if (loading.value || deletingMemoryId.value) return
   if (!confirm(t('memory.confirmDelete'))) return
 
+  deletingMemoryId.value = id
   try {
     await memoryApi.delete(id)
     searchResults.value = searchResults.value.filter((m) => m.id !== id)
@@ -228,10 +251,13 @@ async function deleteMemory(id: string) {
   } catch (error) {
     console.error('Failed to delete memory:', error)
     setOperationMessage('error', t('common.error'))
+  } finally {
+    deletingMemoryId.value = null
   }
 }
 
 async function pruneMemories() {
+  if (loading.value) return
   loading.value = true
   try {
     const response = await memoryApi.prune()
@@ -246,6 +272,7 @@ async function pruneMemories() {
 }
 
 async function clearAllMemories() {
+  if (loading.value) return
   loading.value = true
   try {
     await memoryApi.clear()
@@ -291,11 +318,11 @@ function proposalFilterLabel(filter: 'all' | SelfReflectProposalStatus): string 
     case 'pending':
       return tr('memory.proposalFilterPending', 'Pending')
     case 'approved':
-      return tr('memory.proposalFilterApproved', 'Approved')
+      return tr('memory.proposalStatusApproved', 'Approved')
     case 'rejected':
-      return tr('memory.proposalFilterRejected', 'Rejected')
+      return tr('memory.proposalStatusRejected', 'Rejected')
     default:
-      return tr('memory.proposalFilterAll', 'All')
+      return tr('common.all', 'All')
   }
 }
 
@@ -353,9 +380,10 @@ async function loadProposals(preferredID = selectedProposalID.value) {
   try {
     const response = await selfReflectApi.listProposals({ limit: 50 })
     proposals.value = response.data
-    const visible = proposalFilter.value === 'all'
-      ? proposals.value
-      : proposals.value.filter((proposal) => proposal.status === proposalFilter.value)
+    const visible =
+      proposalFilter.value === 'all'
+        ? proposals.value
+        : proposals.value.filter((proposal) => proposal.status === proposalFilter.value)
     const nextID = visible.some((proposal) => proposal.id === preferredID)
       ? preferredID
       : visible[0]?.id || ''
@@ -415,6 +443,7 @@ function readFileAsText(file: File): Promise<string> {
 }
 
 async function handleMemoryExport() {
+  if (memoryExporting.value) return
   memoryExporting.value = true
   memoryError.value = null
   try {
@@ -448,7 +477,7 @@ function handleMemoryFileSelect(event: Event) {
 }
 
 async function handleMemoryImport() {
-  if (!memoryImportFile.value) return
+  if (memoryImporting.value || !memoryImportFile.value) return
 
   memoryImporting.value = true
   memoryError.value = null
@@ -475,6 +504,7 @@ async function handleMemoryImport() {
 }
 
 function closeActionModal() {
+  if (memoryImporting.value) return
   activeActionModal.value = null
   memoryError.value = null
   memoryImportFile.value = null
@@ -692,7 +722,7 @@ onBeforeUnmount(() => {
             :disabled="loading || !addContent.trim()"
             @click="addMemory"
           >
-            {{ t('memory.add') }}
+            {{ loading ? t('common.saving') : t('memory.add') }}
           </button>
         </div>
       </div>
@@ -760,10 +790,33 @@ onBeforeUnmount(() => {
                   </div>
                   <button
                     :data-testid="`memory-delete-${memory.id}`"
-                    class="p-1.5 text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                    :disabled="loading || deletingMemoryId !== null"
+                    class="p-1.5 text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     @click="deleteMemory(memory.id)"
                   >
                     <svg
+                      v-if="deletingMemoryId === memory.id"
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      />
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    <svg
+                      v-else
                       xmlns="http://www.w3.org/2000/svg"
                       class="h-4 w-4"
                       fill="none"
@@ -813,7 +866,11 @@ onBeforeUnmount(() => {
             :disabled="proposalsLoading || proposalDetailLoading"
             @click="loadProposals()"
           >
-            {{ tr('common.refresh', 'Refresh') }}
+            {{
+              proposalsLoading || proposalDetailLoading
+                ? tr('common.refreshing', 'Refreshing')
+                : tr('common.refresh', 'Refresh')
+            }}
           </button>
         </div>
 
@@ -829,289 +886,301 @@ onBeforeUnmount(() => {
           }}
         </div>
 
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="filter in (['all', 'pending', 'approved', 'rejected'] as const)"
-            :key="filter"
-            :data-testid="`memory-proposal-filter-${filter}`"
-            class="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-            :class="
-              proposalFilter === filter
-                ? 'bg-gray-800 text-white dark:bg-gray-500'
-                : 'bg-white text-gray-700 border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200'
-            "
-            @click="setProposalFilter(filter)"
-          >
-            {{ proposalFilterLabel(filter) }} {{ proposalCountFor(filter) }}
-          </button>
-        </div>
-
-        <div
-          v-if="proposalsError"
-          class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200"
-        >
-          {{ proposalsError }}
-        </div>
-
-        <div
-          v-if="proposalsLoading && !filteredProposals.length"
-          class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
-        >
-          {{ tr('common.loading', 'Loading') }}
-        </div>
-
-        <div
-          v-else-if="!filteredProposals.length"
-          data-testid="memory-proposal-empty"
-          class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
-        >
-          {{
-            tr(
-              'memory.proposalsEmpty',
-              'No proposal matches the current filter yet.'
-            )
-          }}
-        </div>
-
-        <div v-else class="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <div class="space-y-3">
-            <article
-              v-for="proposal in filteredProposals"
-              :key="proposal.id"
-              :data-testid="`memory-proposal-item-${proposal.id}`"
-              class="rounded-xl border px-4 py-3 cursor-pointer transition-colors"
+        <template v-if="showProposalQueue">
+          <div v-if="showProposalFilters" class="flex flex-wrap gap-2">
+            <button
+              v-for="filter in ['all', 'pending', 'approved', 'rejected'] as const"
+              :key="filter"
+              :data-testid="`memory-proposal-filter-${filter}`"
+              class="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
               :class="
-                selectedProposalID === proposal.id
-                  ? 'border-gray-900 bg-white dark:border-gray-400 dark:bg-gray-800'
-                  : 'border-gray-200 bg-white/80 hover:bg-white dark:border-gray-700 dark:bg-gray-800/60 dark:hover:bg-gray-800'
+                proposalFilter === filter
+                  ? 'bg-gray-800 text-white dark:bg-gray-500'
+                  : 'bg-white text-gray-700 border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200'
               "
-              @click="selectProposal(proposal.id)"
+              @click="setProposalFilter(filter)"
             >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0 flex-1">
-                  <div class="text-sm font-medium text-gray-900 dark:text-white break-words">
-                    {{ proposal.lesson }}
-                  </div>
-                  <div class="mt-2 text-xs text-gray-500 dark:text-gray-400 break-all">
-                    {{ proposal.target_file }} · {{ proposal.source_kind || 'research' }} ·
-                    {{ proposal.source_id || proposal.id }}
-                  </div>
-                </div>
-                <span
-                  class="rounded-full px-2.5 py-1 text-[11px] font-medium"
-                  :class="proposalStatusClass(proposal.status)"
-                >
-                  {{ proposalStatusLabel(proposal.status) }}
-                </span>
-              </div>
-            </article>
+              {{ proposalFilterLabel(filter) }} {{ proposalCountFor(filter) }}
+            </button>
           </div>
 
           <div
-            data-testid="memory-proposal-detail"
-            class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 space-y-4"
+            v-if="proposalsError"
+            class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200"
           >
-            <div v-if="proposalDetailLoading" class="text-sm text-gray-500 dark:text-gray-400">
-              {{ tr('common.loading', 'Loading') }}
-            </div>
-            <template v-else-if="selectedProposal">
-              <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    {{ tr('memory.proposalTarget', 'Target file') }}
-                  </div>
-                  <div class="mt-1 text-base font-semibold text-gray-900 dark:text-white">
-                    {{ selectedProposal.target_file }}
-                  </div>
-                  <div class="mt-1 text-xs text-gray-500 dark:text-gray-400 break-all">
-                    {{ selectedProposal.source_kind || 'research' }} ·
-                    {{ selectedProposal.source_id || selectedProposal.id }}
-                  </div>
-                </div>
-                <span
-                  class="rounded-full px-3 py-1 text-xs font-medium self-start"
-                  :class="proposalStatusClass(selectedProposal.status)"
-                >
-                  {{ proposalStatusLabel(selectedProposal.status) }}
-                </span>
-              </div>
+            {{ proposalsError }}
+          </div>
 
-              <div class="space-y-2">
-                <div>
-                  <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {{ tr('memory.proposalLesson', 'Lesson') }}
-                  </div>
-                  <div class="mt-1 text-sm text-gray-900 dark:text-white whitespace-pre-wrap">
-                    {{ selectedProposal.lesson }}
-                  </div>
-                </div>
-                <div v-if="selectedProposal.when_to_apply">
-                  <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {{ tr('memory.proposalWhen', 'When to apply') }}
-                  </div>
-                  <div class="mt-1 text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
-                    {{ selectedProposal.when_to_apply }}
-                  </div>
-                </div>
-                <div>
-                  <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {{ tr('memory.proposalEvidence', 'Evidence') }}
-                  </div>
-                  <div class="mt-1 text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
-                    {{ selectedProposal.evidence }}
-                  </div>
-                </div>
-              </div>
+          <div
+            v-if="proposalsLoading && !filteredProposals.length"
+            class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+          >
+            {{ tr('common.loading', 'Loading') }}
+          </div>
 
-              <div
-                v-if="selectedProposal.evidence_ids?.length"
-                class="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400"
+          <div
+            v-else-if="!filteredProposals.length"
+            data-testid="memory-proposal-empty"
+            class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+          >
+            {{ tr('memory.proposalsEmpty', 'No proposal matches the current filter yet.') }}
+          </div>
+
+          <div v-else class="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div class="space-y-3">
+              <article
+                v-for="proposal in filteredProposals"
+                :key="proposal.id"
+                :data-testid="`memory-proposal-item-${proposal.id}`"
+                class="rounded-xl border px-4 py-3 cursor-pointer transition-colors"
+                :class="
+                  selectedProposalID === proposal.id
+                    ? 'border-gray-900 bg-white dark:border-gray-400 dark:bg-gray-800'
+                    : 'border-gray-200 bg-white/80 hover:bg-white dark:border-gray-700 dark:bg-gray-800/60 dark:hover:bg-gray-800'
+                "
+                @click="selectProposal(proposal.id)"
               >
-                <span
-                  v-for="evidenceID in selectedProposal.evidence_ids"
-                  :key="evidenceID"
-                  class="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-700 dark:text-gray-200"
-                >
-                  {{ evidenceID }}
-                </span>
-              </div>
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm font-medium text-gray-900 dark:text-white break-words">
+                      {{ proposal.lesson }}
+                    </div>
+                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400 break-all">
+                      {{ proposal.target_file }} ·
+                      {{ proposalSourceKindLabel(proposal.source_kind) }} ·
+                      {{ proposal.source_id || proposal.id }}
+                    </div>
+                  </div>
+                  <span
+                    class="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                    :class="proposalStatusClass(proposal.status)"
+                  >
+                    {{ proposalStatusLabel(proposal.status) }}
+                  </span>
+                </div>
+              </article>
+            </div>
 
-              <div class="grid gap-3 md:grid-cols-2">
+            <div
+              data-testid="memory-proposal-detail"
+              class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 space-y-4"
+            >
+              <div v-if="proposalDetailLoading" class="text-sm text-gray-500 dark:text-gray-400">
+                {{ tr('common.loading', 'Loading') }}
+              </div>
+              <template v-else-if="selectedProposal">
+                <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      {{ tr('memory.proposalTarget', 'Target file') }}
+                    </div>
+                    <div class="mt-1 text-base font-semibold text-gray-900 dark:text-white">
+                      {{ selectedProposal.target_file }}
+                    </div>
+                    <div class="mt-1 text-xs text-gray-500 dark:text-gray-400 break-all">
+                      {{ proposalSourceKindLabel(selectedProposal.source_kind) }} ·
+                      {{ selectedProposal.source_id || selectedProposal.id }}
+                    </div>
+                  </div>
+                  <span
+                    class="rounded-full px-3 py-1 text-xs font-medium self-start"
+                    :class="proposalStatusClass(selectedProposal.status)"
+                  >
+                    {{ proposalStatusLabel(selectedProposal.status) }}
+                  </span>
+                </div>
+
+                <div class="space-y-2">
+                  <div>
+                    <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {{ tr('memory.proposalLesson', 'Lesson') }}
+                    </div>
+                    <div class="mt-1 text-sm text-gray-900 dark:text-white whitespace-pre-wrap">
+                      {{ selectedProposal.lesson }}
+                    </div>
+                  </div>
+                  <div v-if="selectedProposal.when_to_apply">
+                    <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {{ tr('memory.proposalWhen', 'When to apply') }}
+                    </div>
+                    <div class="mt-1 text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+                      {{ selectedProposal.when_to_apply }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {{ tr('memory.proposalEvidence', 'Evidence') }}
+                    </div>
+                    <div class="mt-1 text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+                      {{ selectedProposal.evidence }}
+                    </div>
+                  </div>
+                </div>
+
                 <div
-                  class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 p-3 text-sm"
+                  v-if="selectedProposal.evidence_ids?.length"
+                  class="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400"
                 >
+                  <span
+                    v-for="evidenceID in selectedProposal.evidence_ids"
+                    :key="evidenceID"
+                    class="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-700 dark:text-gray-200"
+                  >
+                    {{ evidenceID }}
+                  </span>
+                </div>
+
+                <div class="grid gap-3 md:grid-cols-2">
+                  <div
+                    class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 p-3 text-sm"
+                  >
+                    <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {{ tr('memory.proposalEvaluation', 'Evaluation summary') }}
+                    </div>
+                    <div class="mt-2 space-y-1.5 text-gray-700 dark:text-gray-200">
+                      <div v-if="summaryString(selectedProposalEvaluation?.verdict)">
+                        {{ tr('memory.proposalVerdict', 'Verdict') }}:
+                        {{ summaryString(selectedProposalEvaluation?.verdict) }}
+                      </div>
+                      <div v-if="summaryNumber(selectedProposalEvaluation?.score) != null">
+                        {{ tr('memory.proposalScore', 'Score') }}:
+                        {{ summaryNumber(selectedProposalEvaluation?.score)?.toFixed(2) }}
+                      </div>
+                      <div v-if="summaryString(selectedProposalEvaluation?.judge_backend)">
+                        {{ tr('memory.proposalJudgeBackend', 'Judge backend') }}:
+                        {{ summaryString(selectedProposalEvaluation?.judge_backend) }}
+                      </div>
+                      <div v-if="summaryString(selectedProposalEvaluation?.judge_model)">
+                        {{ tr('memory.proposalJudgeModel', 'Judge model') }}:
+                        {{ summaryString(selectedProposalEvaluation?.judge_model) }}
+                      </div>
+                      <div v-if="summaryString(selectedProposalEvaluation?.calibration_ref)">
+                        {{ tr('memory.proposalCalibrationRef', 'Calibration ref') }}:
+                        {{ summaryString(selectedProposalEvaluation?.calibration_ref) }}
+                      </div>
+                      <div
+                        v-if="
+                          summaryNumber(selectedProposalEvaluation?.takeaway_candidate_count) != null
+                        "
+                      >
+                        {{ tr('memory.proposalCandidateCount', 'Takeaway candidates') }}:
+                        {{ summaryNumber(selectedProposalEvaluation?.takeaway_candidate_count) }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 p-3 text-sm"
+                  >
+                    <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {{ tr('memory.proposalCalibration', 'Calibration summary') }}
+                    </div>
+                    <div class="mt-2 space-y-1.5 text-gray-700 dark:text-gray-200">
+                      <div v-if="summaryNumber(selectedProposalCalibration?.coverage) != null">
+                        {{ tr('memory.proposalCoverage', 'Coverage') }}:
+                        {{ percentLabel(selectedProposalCalibration?.coverage) }}
+                      </div>
+                      <div v-if="summaryNumber(selectedProposalCalibration?.groundedness) != null">
+                        {{ tr('memory.proposalGroundedness', 'Groundedness') }}:
+                        {{ percentLabel(selectedProposalCalibration?.groundedness) }}
+                      </div>
+                      <div v-if="summaryNumber(selectedProposalCalibration?.freshness) != null">
+                        {{ tr('memory.proposalFreshness', 'Freshness') }}:
+                        {{ percentLabel(selectedProposalCalibration?.freshness) }}
+                      </div>
+                      <div v-if="summaryString(selectedProposalCalibration?.conflict_risk)">
+                        {{ tr('memory.proposalConflictRisk', 'Conflict risk') }}:
+                        {{ summaryString(selectedProposalCalibration?.conflict_risk) }}
+                      </div>
+                      <div v-if="summaryNumber(selectedProposalCalibration?.confidence) != null">
+                        {{ tr('memory.proposalConfidence', 'Confidence') }}:
+                        {{ percentLabel(selectedProposalCalibration?.confidence) }}
+                      </div>
+                      <div v-if="summaryString(selectedProposalCalibration?.recommended_action)">
+                        {{ tr('memory.proposalRecommendedAction', 'Recommended action') }}:
+                        {{ summaryString(selectedProposalCalibration?.recommended_action) }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
                   <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {{ tr('memory.proposalEvaluation', 'Evaluation summary') }}
+                    {{ tr('memory.proposalPatchPreview', 'Patch preview') }}
                   </div>
-                  <div class="mt-2 space-y-1.5 text-gray-700 dark:text-gray-200">
-                    <div v-if="summaryString(selectedProposalEvaluation?.verdict)">
-                      {{ tr('memory.proposalVerdict', 'Verdict') }}:
-                      {{ summaryString(selectedProposalEvaluation?.verdict) }}
-                    </div>
-                    <div v-if="summaryNumber(selectedProposalEvaluation?.score) != null">
-                      {{ tr('memory.proposalScore', 'Score') }}:
-                      {{ summaryNumber(selectedProposalEvaluation?.score)?.toFixed(2) }}
-                    </div>
-                    <div v-if="summaryString(selectedProposalEvaluation?.judge_backend)">
-                      {{ tr('memory.proposalJudgeBackend', 'Judge backend') }}:
-                      {{ summaryString(selectedProposalEvaluation?.judge_backend) }}
-                    </div>
-                    <div v-if="summaryString(selectedProposalEvaluation?.judge_model)">
-                      {{ tr('memory.proposalJudgeModel', 'Judge model') }}:
-                      {{ summaryString(selectedProposalEvaluation?.judge_model) }}
-                    </div>
-                    <div v-if="summaryString(selectedProposalEvaluation?.calibration_ref)">
-                      {{ tr('memory.proposalCalibrationRef', 'Calibration ref') }}:
-                      {{ summaryString(selectedProposalEvaluation?.calibration_ref) }}
-                    </div>
-                    <div v-if="summaryNumber(selectedProposalEvaluation?.takeaway_candidate_count) != null">
-                      {{ tr('memory.proposalCandidateCount', 'Takeaway candidates') }}:
-                      {{ summaryNumber(selectedProposalEvaluation?.takeaway_candidate_count) }}
-                    </div>
-                  </div>
+                  <pre
+                    data-testid="memory-proposal-patch-preview"
+                    class="mt-2 max-h-64 overflow-auto rounded-lg bg-gray-950 px-3 py-3 text-xs leading-6 text-gray-100"
+                  ><code>{{ selectedPatchPreview || tr('memory.proposalNoPatch', 'Patch preview unavailable.') }}</code></pre>
                 </div>
 
-                <div
-                  class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 p-3 text-sm"
-                >
-                  <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {{ tr('memory.proposalCalibration', 'Calibration summary') }}
+                <div>
+                  <label
+                    class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2"
+                    for="memory-proposal-review-note"
+                  >
+                    {{ tr('memory.proposalReviewNote', 'Review note') }}
+                  </label>
+                  <textarea
+                    id="memory-proposal-review-note"
+                    v-model="proposalReviewNote"
+                    data-testid="memory-proposal-note"
+                    rows="3"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
+                    :placeholder="
+                      tr(
+                        'memory.proposalReviewPlaceholder',
+                        'Optional rationale for approval or rejection'
+                      )
+                    "
+                  ></textarea>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    data-testid="memory-proposal-approve"
+                    class="px-4 py-2 rounded-lg bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                    :disabled="selectedProposal.status !== 'pending' || proposalActionLoading !== ''"
+                    @click="reviewSelectedProposal('approved')"
+                  >
+                    {{
+                      proposalActionLoading === 'approve'
+                        ? tr('common.loading', 'Loading')
+                        : tr('common.approve', 'Approve')
+                    }}
+                  </button>
+                  <button
+                    data-testid="memory-proposal-reject"
+                    class="px-4 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 text-sm font-medium transition-colors disabled:opacity-50"
+                    :disabled="selectedProposal.status !== 'pending' || proposalActionLoading !== ''"
+                    @click="reviewSelectedProposal('rejected')"
+                  >
+                    {{
+                      proposalActionLoading === 'reject'
+                        ? tr('common.loading', 'Loading')
+                        : tr('common.reject', 'Reject')
+                    }}
+                  </button>
+                  <div
+                    v-if="selectedProposal.reviewed_at"
+                    class="self-center text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {{ tr('memory.proposalReviewedAt', 'Reviewed') }}:
+                    {{ formatDate(selectedProposal.reviewed_at) }}
                   </div>
-                  <div class="mt-2 space-y-1.5 text-gray-700 dark:text-gray-200">
-                    <div v-if="summaryNumber(selectedProposalCalibration?.coverage) != null">
-                      {{ tr('memory.proposalCoverage', 'Coverage') }}:
-                      {{ percentLabel(selectedProposalCalibration?.coverage) }}
-                    </div>
-                    <div v-if="summaryNumber(selectedProposalCalibration?.groundedness) != null">
-                      {{ tr('memory.proposalGroundedness', 'Groundedness') }}:
-                      {{ percentLabel(selectedProposalCalibration?.groundedness) }}
-                    </div>
-                    <div v-if="summaryNumber(selectedProposalCalibration?.freshness) != null">
-                      {{ tr('memory.proposalFreshness', 'Freshness') }}:
-                      {{ percentLabel(selectedProposalCalibration?.freshness) }}
-                    </div>
-                    <div v-if="summaryString(selectedProposalCalibration?.conflict_risk)">
-                      {{ tr('memory.proposalConflictRisk', 'Conflict risk') }}:
-                      {{ summaryString(selectedProposalCalibration?.conflict_risk) }}
-                    </div>
-                    <div v-if="summaryNumber(selectedProposalCalibration?.confidence) != null">
-                      {{ tr('memory.proposalConfidence', 'Confidence') }}:
-                      {{ percentLabel(selectedProposalCalibration?.confidence) }}
-                    </div>
-                    <div v-if="summaryString(selectedProposalCalibration?.recommended_action)">
-                      {{ tr('memory.proposalRecommendedAction', 'Recommended action') }}:
-                      {{ summaryString(selectedProposalCalibration?.recommended_action) }}
-                    </div>
-                  </div>
                 </div>
+              </template>
+              <div v-else class="text-sm text-gray-500 dark:text-gray-400">
+                {{
+                  tr(
+                    'memory.proposalNoSelection',
+                    'Select a proposal to inspect its evidence and patch preview.'
+                  )
+                }}
               </div>
-
-              <div>
-                <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {{ tr('memory.proposalPatchPreview', 'Patch preview') }}
-                </div>
-                <pre
-                  data-testid="memory-proposal-patch-preview"
-                  class="mt-2 max-h-64 overflow-auto rounded-lg bg-gray-950 px-3 py-3 text-xs leading-6 text-gray-100"
-                ><code>{{ selectedPatchPreview || tr('memory.proposalNoPatch', 'Patch preview unavailable.') }}</code></pre>
-              </div>
-
-              <div>
-                <label
-                  class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2"
-                  for="memory-proposal-review-note"
-                >
-                  {{ tr('memory.proposalReviewNote', 'Review note') }}
-                </label>
-                <textarea
-                  id="memory-proposal-review-note"
-                  v-model="proposalReviewNote"
-                  data-testid="memory-proposal-note"
-                  rows="3"
-                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
-                  :placeholder="tr('memory.proposalReviewPlaceholder', 'Optional rationale for approval or rejection')"
-                ></textarea>
-              </div>
-
-              <div class="flex flex-wrap gap-2">
-                <button
-                  data-testid="memory-proposal-approve"
-                  class="px-4 py-2 rounded-lg bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm font-medium transition-colors disabled:opacity-50"
-                  :disabled="selectedProposal.status !== 'pending' || proposalActionLoading !== ''"
-                  @click="reviewSelectedProposal('approved')"
-                >
-                  {{
-                    proposalActionLoading === 'approve'
-                      ? tr('common.loading', 'Loading')
-                      : tr('memory.proposalApprove', 'Approve')
-                  }}
-                </button>
-                <button
-                  data-testid="memory-proposal-reject"
-                  class="px-4 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 text-sm font-medium transition-colors disabled:opacity-50"
-                  :disabled="selectedProposal.status !== 'pending' || proposalActionLoading !== ''"
-                  @click="reviewSelectedProposal('rejected')"
-                >
-                  {{
-                    proposalActionLoading === 'reject'
-                      ? tr('common.loading', 'Loading')
-                      : tr('memory.proposalReject', 'Reject')
-                  }}
-                </button>
-                <div
-                  v-if="selectedProposal.reviewed_at"
-                  class="self-center text-xs text-gray-500 dark:text-gray-400"
-                >
-                  {{ tr('memory.proposalReviewedAt', 'Reviewed') }}:
-                  {{ formatDate(selectedProposal.reviewed_at) }}
-                </div>
-              </div>
-            </template>
-            <div v-else class="text-sm text-gray-500 dark:text-gray-400">
-              {{ tr('memory.proposalNoSelection', 'Select a proposal to inspect its evidence and patch preview.') }}
             </div>
           </div>
-        </div>
+        </template>
       </section>
     </div>
 
@@ -1136,6 +1205,7 @@ onBeforeUnmount(() => {
             <button
               data-testid="memory-clear-cancel"
               class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              :disabled="loading"
               @click="showClearConfirm = false"
             >
               {{ t('common.cancel') }}
@@ -1146,7 +1216,7 @@ onBeforeUnmount(() => {
               :disabled="loading"
               @click="clearAllMemories"
             >
-              {{ t('memory.clearAll') }}
+              {{ loading ? t('common.processing') : t('memory.clearAll') }}
             </button>
           </div>
         </div>
@@ -1171,6 +1241,7 @@ onBeforeUnmount(() => {
             <button
               data-testid="memory-import-close"
               class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              :disabled="memoryImporting"
               @click="closeActionModal"
             >
               <svg
@@ -1205,6 +1276,7 @@ onBeforeUnmount(() => {
               <button
                 data-testid="memory-import-file-picker"
                 class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg text-sm"
+                :disabled="memoryImporting"
                 @click="memoryFileInputRef?.click()"
               >
                 {{ t('userdata.chooseFile') }}
@@ -1222,6 +1294,7 @@ onBeforeUnmount(() => {
               <div class="flex gap-2">
                 <button
                   data-testid="memory-import-mode-append"
+                  :disabled="memoryImporting"
                   :class="[
                     'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                     memoryImportMode === 'append'
@@ -1234,6 +1307,7 @@ onBeforeUnmount(() => {
                 </button>
                 <button
                   data-testid="memory-import-mode-replace"
+                  :disabled="memoryImporting"
                   :class="[
                     'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                     memoryImportMode === 'replace'
@@ -1388,7 +1462,7 @@ onBeforeUnmount(() => {
               :disabled="loading || !hasMemories"
               @click="handlePruneFromModal"
             >
-              {{ t('memory.prune') }}
+              {{ loading ? t('common.processing') : t('memory.prune') }}
             </button>
             <button
               data-testid="memory-open-clear"

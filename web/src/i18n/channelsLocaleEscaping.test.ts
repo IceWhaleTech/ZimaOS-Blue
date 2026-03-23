@@ -121,7 +121,10 @@ describe('channels locale coverage', () => {
       })
 
       for (const key of requiredKeys) {
-        expect(() => i18n.global.t(`channels.${key}`), `${locale} should compile channels.${key}`).not.toThrow()
+        expect(
+          () => i18n.global.t(`channels.${key}`),
+          `${locale} should compile channels.${key}`
+        ).not.toThrow()
       }
     }
   })

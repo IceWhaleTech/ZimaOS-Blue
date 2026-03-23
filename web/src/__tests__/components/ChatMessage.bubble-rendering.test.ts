@@ -153,6 +153,16 @@ describe('ChatMessage bubble rendering', () => {
     expect(wrapper.get('.prose-content').text()).toBe('Blue reply')
   })
 
+  it('keeps markdown sections inside a single assistant bubble instead of splitting them apart', async () => {
+    const wrapper = await mountMessage(
+      'assistant',
+      '## Summary\\n\\nFirst paragraph.\\n\\n> A quoted note\\n\\nFinal paragraph.'
+    )
+
+    expect(wrapper.findAll('.chat-assistant-bubble')).toHaveLength(1)
+    expect(wrapper.findAll('.prose-content')).toHaveLength(1)
+  })
+
   it('renders user replies with the user bubble class instead of assistant bubble styles', async () => {
     const wrapper = await mountMessage('user', 'User prompt')
     const bubble = wrapper.get('.chat-user-bubble')

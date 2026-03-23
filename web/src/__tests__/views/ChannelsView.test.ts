@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, shallowMount } from '@vue/test-utils'
+import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 
 const settingsStoreMock = {
@@ -33,7 +33,8 @@ vi.mock('@/components/channels/ChannelCard.vue', () => ({
   default: {
     name: 'ChannelCard',
     props: ['channel'],
-    template: '<div class="channel-card-stub">{{ channel.id }}</div>',
+    template:
+      '<div class="channel-card-stub" :data-id="channel.id" :data-last-field="channel.fields?.[channel.fields.length - 1]?.key" :data-last-value="channel.fields?.[channel.fields.length - 1]?.value">{{ channel.id }}<button class="channel-card-update-stub" @click="$emit(\'update-field\', channel.fields.length - 1, \'true\')">update</button><button class="channel-card-save-stub" @click="$emit(\'save\')">save</button></div>',
   },
 }))
 
@@ -138,7 +139,7 @@ describe('ChannelsView', () => {
   it('renders group access as the fourth summary card and opens the modal', async () => {
     const ChannelsView = (await import('@/views/ChannelsView.vue')).default
 
-    const wrapper = shallowMount(ChannelsView, {
+    const wrapper = mount(ChannelsView, {
       global: {
         plugins: [createTestI18n()],
         stubs: {
@@ -156,5 +157,96 @@ describe('ChannelsView', () => {
 
     expect(wrapper.find('.channels-group-modal').exists()).toBe(true)
     expect(wrapper.find('.channels-group-modal__title').text()).toBe('Group Access')
+  })
+
+  it('saves Feishu session mode through the channel config API', async () => {
+    let savedBody = ''
+    authFetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/channels' && !init) {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            channels: [
+              {
+                id: 'feishu',
+                enabled: false,
+                status: 'disconnected',
+                config: {
+                  app_id: 'cli_test',
+                  app_secret: 'secret',
+                  session_mode: 'false',
+                },
+              },
+            ],
+          }),
+        })
+      }
+      if (url === '/api/channels/settings' && !init) {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({}),
+        })
+      }
+      if (url === '/api/channels/feishu' && init?.method === 'PUT') {
+        savedBody = String(init.body || '')
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            channel: {
+              status: 'disconnected',
+            },
+          }),
+        })
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: vi.fn().mockResolvedValue({}),
+      })
+    })
+
+    const ChannelsView = (await import('@/views/ChannelsView.vue')).default
+    const wrapper = mount(ChannelsView, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const loadMoreButton = wrapper.find('.channels-load-more')
+    if (loadMoreButton.exists()) {
+      await loadMoreButton.trigger('click')
+      await flushPromises()
+    }
+
+    const feishuCard = wrapper.find('.channel-card-stub[data-id="feishu"]')
+    expect(feishuCard.exists()).toBe(true)
+    expect(feishuCard.attributes('data-last-field')).toBe('session_mode')
+    expect(feishuCard.attributes('data-last-value')).toBe('false')
+
+    await feishuCard.find('.channel-card-update-stub').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.channel-card-stub[data-id="feishu"]').attributes('data-last-value')).toBe(
+      'true'
+    )
+
+    await feishuCard.find('.channel-card-save-stub').trigger('click')
+    await flushPromises()
+
+    expect(savedBody).not.toBe('')
+    expect(JSON.parse(savedBody)).toMatchObject({
+      enabled: false,
+      config: {
+        app_id: 'cli_test',
+        app_secret: 'secret',
+        session_mode: 'true',
+      },
+    })
   })
 })

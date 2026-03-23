@@ -8,6 +8,8 @@ import { approvalApi } from '@/api/approval'
 const mocks = vi.hoisted(() => ({
   sseConnect: vi.fn(),
   sseDisconnect: vi.fn(),
+  apiGet: vi.fn(),
+  apiPost: vi.fn(),
   providerPoolStore: {
     fetchTrialQuota: vi.fn(),
   },
@@ -37,6 +39,13 @@ vi.mock('@/api/approval', () => ({
     updateConfig: vi.fn(),
     listPending: vi.fn(),
     resolve: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/client', () => ({
+  default: {
+    get: (...args: unknown[]) => mocks.apiGet(...args),
+    post: (...args: unknown[]) => mocks.apiPost(...args),
   },
 }))
 
@@ -75,6 +84,11 @@ async function settleAsyncWork() {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
+async function flushMicrotasks() {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
 describe('Chat Store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -82,6 +96,16 @@ describe('Chat Store', () => {
     i18n.global.locale.value = 'en-US'
     mocks.sseConnect.mockReset().mockResolvedValue(undefined)
     mocks.sseDisconnect.mockReset()
+    mocks.apiGet.mockReset().mockImplementation(async (path: string) => {
+      if (path.includes('/ask-user-question/pending')) {
+        return { data: { pending: false } } as never
+      }
+      if (path.includes('/exec/approvals/pending')) {
+        return { data: { pending: false } } as never
+      }
+      return { data: {} } as never
+    })
+    mocks.apiPost.mockReset().mockResolvedValue({ data: {} } as never)
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
     vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
@@ -435,7 +459,12 @@ describe('Chat Store', () => {
       await store.resolveApproval('approve')
       await store.resolveExecApproval('allow-once')
 
-      expect(approvalApi.resolve).toHaveBeenNthCalledWith(1, 'approval-1', 'approve', 'binding-tool')
+      expect(approvalApi.resolve).toHaveBeenNthCalledWith(
+        1,
+        'approval-1',
+        'approve',
+        'binding-tool'
+      )
       expect(approvalApi.resolve).toHaveBeenNthCalledWith(2, 'exec-1', 'allow-once', 'binding-exec')
       expect(store.pendingExecApproval).toBeNull()
       expect(store.awaitingConfirmation).toBe(false)
@@ -484,6 +513,71 @@ describe('Chat Store', () => {
   })
 
   describe('sendMessage streaming', () => {
+    it('falls back to a timer commit when animation frames are throttled', async () => {
+      vi.useFakeTimers()
+
+      const rafSpy = vi
+        .spyOn(window, 'requestAnimationFrame')
+        .mockImplementation(() => 1 as unknown as number)
+      const cancelRafSpy = vi
+        .spyOn(window, 'cancelAnimationFrame')
+        .mockImplementation(() => undefined)
+      try {
+        const store = useChatStore()
+        store.currentConversationId = 'conv-1'
+        store.conversations = [
+          {
+            id: 'conv-1',
+            title: 'Original',
+            created_at: '2026-03-22T00:00:00.000Z',
+            updated_at: '2026-03-22T00:00:00.000Z',
+          },
+        ]
+
+        let streamOptions: any
+        let resolveStream: (() => void) | null = null
+
+        mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+          streamOptions = options
+          await new Promise<void>((resolve) => {
+            resolveStream = resolve
+          })
+        })
+
+        const sendPromise = store.sendMessage('hello')
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(store.messages.at(-1)?.id.startsWith('streaming-')).toBe(true)
+
+        streamOptions.onMessage({ delta: 'Hello', done: false })
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(store.messages.at(-1)?.content).toBe('Hello')
+
+        streamOptions.onMessage({ delta: ' world', done: false })
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(store.messages.at(-1)?.content).toBe('Hello')
+
+        vi.advanceTimersByTime(24)
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(store.messages.at(-1)?.content).toBe('Hello world')
+
+        streamOptions.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+        resolveStream?.()
+        await sendPromise
+      } finally {
+        rafSpy.mockRestore()
+        cancelRafSpy.mockRestore()
+        vi.useRealTimers()
+      }
+    })
+
     it('reattaches a detached stream when switching back to the original conversation', async () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'
@@ -681,6 +775,127 @@ describe('Chat Store', () => {
       streamOptions.onComplete?.({ done: true })
       resolveStream?.()
       await sendPromise
+    })
+
+    it('shows recovering state after a network interrupt and completes after syncing persisted content', async () => {
+      vi.useFakeTimers()
+
+      try {
+        const store = useChatStore()
+        store.currentConversationId = 'conv-1'
+        store.conversations = [
+          {
+            id: 'conv-1',
+            title: 'Original',
+            created_at: '2026-03-11T00:00:00.000Z',
+            updated_at: '2026-03-11T00:00:00.000Z',
+          },
+        ]
+
+        vi.mocked(messageApi.list).mockResolvedValue({
+          data: [
+            {
+              id: 'msg-user-1',
+              conversation_id: 'conv-1',
+              role: 'user',
+              content: 'Need recovery',
+              created_at: '2026-03-11T00:00:00.000Z',
+            },
+            {
+              id: 'msg-assistant-1',
+              conversation_id: 'conv-1',
+              role: 'assistant',
+              content: 'Recovered answer',
+              created_at: '2026-03-11T00:00:01.000Z',
+            },
+          ],
+        } as never)
+
+        let streamOptions: any
+        let resolveStream: (() => void) | null = null
+
+        mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+          streamOptions = options
+          await new Promise<void>((resolve) => {
+            resolveStream = resolve
+          })
+        })
+
+        const sendPromise = store.sendMessage('Need recovery')
+        await flushMicrotasks()
+
+        streamOptions.onMessage({ delta: 'Partial answer', done: false })
+        await flushMicrotasks()
+        expect(store.messages.at(-1)?.content).toBe('Partial answer')
+
+        streamOptions.onNetworkInterrupt?.()
+        for (let i = 0; i < 12 && store.streamUIState.phase === 'recovering'; i++) {
+          await flushMicrotasks()
+        }
+
+        expect(store.streamUIState.phase).toBe('completed')
+        expect(store.streamUIState.label).toBeTruthy()
+        expect(store.messages).toHaveLength(2)
+        expect(store.messages.at(-1)?.id).toBe('msg-assistant-1')
+        expect(store.messages.at(-1)?.content).toBe('Recovered answer')
+
+        await vi.advanceTimersByTimeAsync(600)
+        expect(store.streamUIState.phase).toBe('idle')
+
+        resolveStream?.()
+        await sendPromise
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('falls back to interrupted state when recovery makes no progress', async () => {
+      vi.useFakeTimers()
+
+      try {
+        const store = useChatStore()
+        store.currentConversationId = 'conv-1'
+        store.conversations = [
+          {
+            id: 'conv-1',
+            title: 'Original',
+            created_at: '2026-03-11T00:00:00.000Z',
+            updated_at: '2026-03-11T00:00:00.000Z',
+          },
+        ]
+
+        vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+
+        let streamOptions: any
+        let resolveStream: (() => void) | null = null
+
+        mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+          streamOptions = options
+          await new Promise<void>((resolve) => {
+            resolveStream = resolve
+          })
+        })
+
+        const sendPromise = store.sendMessage('Need recovery')
+        await flushMicrotasks()
+
+        streamOptions.onNetworkInterrupt?.()
+        await flushMicrotasks()
+
+        expect(store.streamUIState.phase).toBe('recovering')
+
+        await vi.advanceTimersByTimeAsync(2700)
+        await flushMicrotasks()
+
+        expect(store.streamUIState.phase).toBe('interrupted')
+        expect(store.streamUIState.canRetry).toBe(true)
+        expect(store.isStreamInterrupted).toBe(true)
+
+        resolveStream?.()
+        await sendPromise
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('localizes process trace labels from known events', async () => {
@@ -1101,6 +1316,48 @@ describe('Chat Store', () => {
       expect(snapshotAfterTodoUpdate.at(-1)?.content).toBe('')
     })
 
+    it('records explicit todo completion when todo_updated carries todo_completed', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Checklist completion',
+          created_at: '2026-03-10T00:00:00.000Z',
+          updated_at: '2026-03-10T00:00:00.000Z',
+        },
+      ]
+      store.messages = [
+        {
+          id: 'msg-assistant-current',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: '- [ ] collect facts\n- [ ] write summary',
+          todo_card_id: 'todo-checklist-msg-assistant-current',
+          created_at: '2026-03-10T00:00:01.000Z',
+        },
+      ]
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+        options.onTodoUpdated?.(
+          'msg-assistant-current',
+          '- [x] collect facts\n- [x] write summary',
+          'todo-checklist-msg-assistant-current',
+          true
+        )
+      })
+
+      await store.sendMessage('Continue the current work')
+
+      expect(store.recentTodoCompletion).toEqual({
+        messageId: 'msg-assistant-current',
+        todoCardId: 'todo-checklist-msg-assistant-current',
+      })
+      expect(
+        store.messages.find((message) => message.id === 'msg-assistant-current')?.content
+      ).toBe('- [x] collect facts\n- [x] write summary')
+    })
+
     it('truncates later turns and resubmits when editing a user message', async () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'
@@ -1202,6 +1459,74 @@ describe('Chat Store', () => {
       expect(store.messages[3]?.id.startsWith('streaming-')).toBe(true)
       expect(store.selectedMessageIds.size).toBe(0)
       expect(store.isMultiSelectMode).toBe(false)
+    })
+  })
+
+  describe('regenerateMessage', () => {
+    it('removes the full assistant tail before starting a regenerate stream', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.messages = [
+        {
+          id: 'msg-user-1',
+          conversation_id: 'conv-1',
+          role: 'user',
+          content: 'Deep research this topic',
+          created_at: '2026-03-23T00:00:00.000Z',
+        },
+        {
+          id: 'msg-assistant-1',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: makeTypelessBlock({
+            type: 'deep-research-progress',
+            job_id: 'job-1',
+            query: 'Deep research this topic',
+          }),
+          created_at: '2026-03-23T00:00:01.000Z',
+        },
+        {
+          id: 'msg-assistant-2',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: makeTypelessBlock({
+            type: 'deep-research',
+            query: 'Deep research this topic',
+          }),
+          created_at: '2026-03-23T00:00:02.000Z',
+        },
+      ]
+
+      let snapshotDuringRegenerate: string[] = []
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+        expect(_conversationId).toBe('conv-1')
+        expect(request).toEqual(
+          expect.objectContaining({
+            message: 'Deep research this topic',
+            regenerate: true,
+            web_search_enabled: true,
+            deep_research_enabled: false,
+          })
+        )
+        snapshotDuringRegenerate = store.messages.map((message) => message.id)
+        options.onMessage?.({ delta: 'Regenerated answer', done: false })
+        options.onComplete?.({
+          done: true,
+          message_id: 'msg-assistant-regenerated',
+          content: 'Regenerated answer',
+        })
+      })
+
+      await store.regenerateMessage()
+      await settleAsyncWork()
+
+      expect(snapshotDuringRegenerate).toHaveLength(2)
+      expect(snapshotDuringRegenerate[0]).toBe('msg-user-1')
+      expect(snapshotDuringRegenerate[1]?.startsWith('streaming-')).toBe(true)
+      expect(store.messages).toHaveLength(2)
+      expect(store.messages[0]?.id).toBe('msg-user-1')
+      expect(store.messages[1]?.id).toBe('msg-assistant-regenerated')
     })
   })
 

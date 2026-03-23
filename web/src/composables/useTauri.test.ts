@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 const { revealPathMock, resolveLocalFileMock, isCurrentHostLoopbackMock, authFetchMock } =
   vi.hoisted(() => ({
-  revealPathMock: vi.fn(),
-  resolveLocalFileMock: vi.fn(),
-  isCurrentHostLoopbackMock: vi.fn(),
-   authFetchMock: vi.fn(),
- }))
+    revealPathMock: vi.fn(),
+    resolveLocalFileMock: vi.fn(),
+    isCurrentHostLoopbackMock: vi.fn(),
+    authFetchMock: vi.fn(),
+  }))
 
 vi.mock('@/api/system', () => ({
   systemApi: {
@@ -145,7 +145,7 @@ describe('useTauri', () => {
       expect(invoke).toHaveBeenCalledWith('reveal_path', { path: '/tmp/report.txt' })
       expect(resolveLocalFileMock).toHaveBeenCalledWith('/tmp/report.txt')
       expect(authFetchMock).toHaveBeenCalledWith(
-        '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt',
+        '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt'
       )
       expect(openSpy).toHaveBeenCalledWith('blob:protected-resource', '_blank')
       expect(invoke).not.toHaveBeenCalledWith('open_url', { url: '/tmp/report.txt' })
@@ -224,7 +224,7 @@ describe('useTauri', () => {
       expect(revealPathMock).not.toHaveBeenCalled()
       expect(resolveLocalFileMock).toHaveBeenCalledWith('/tmp/report.txt')
       expect(authFetchMock).toHaveBeenCalledWith(
-        '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt',
+        '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt'
       )
       expect(openSpy).toHaveBeenCalledWith('blob:protected-resource', '_blank')
     })

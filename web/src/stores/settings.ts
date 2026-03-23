@@ -52,9 +52,11 @@ function loadClaudeCodeApiModule(): Promise<ClaudeCodeApiModule> {
 }
 
 const STORAGE_KEY = 'zimaos-blue-settings'
-const MAX_TOKENS_MIGRATION_KEY = 'zimaos-blue-max-tokens-migrated-v1'
+const MAX_TOKENS_MIGRATION_KEY_V1 = 'zimaos-blue-max-tokens-migrated-v1'
+const MAX_TOKENS_MIGRATION_KEY_V2 = 'zimaos-blue-max-tokens-migrated-v2'
 const LEGACY_DEFAULT_MAX_TOKENS = 2048
-const DEFAULT_MAX_TOKENS = 8192
+const PREVIOUS_DEFAULT_MAX_TOKENS = 8192
+const DEFAULT_MAX_TOKENS = 16384
 
 // Provider info for Chat page (simplified view of Provider Pool data)
 export interface ChatModelInfo {
@@ -91,28 +93,61 @@ interface StoredSettings {
   showToolDetails: boolean
 }
 
-function markMaxTokensMigrationDone() {
-  localStorage.setItem(MAX_TOKENS_MIGRATION_KEY, '1')
+function markMaxTokensMigrationDoneV1() {
+  localStorage.setItem(MAX_TOKENS_MIGRATION_KEY_V1, '1')
 }
 
-function migrateLegacyMaxTokens(settings: Partial<StoredSettings>): Partial<StoredSettings> {
+function markMaxTokensMigrationDoneV2() {
+  localStorage.setItem(MAX_TOKENS_MIGRATION_KEY_V2, '1')
+}
+
+function markAllMaxTokensMigrationsDone() {
+  markMaxTokensMigrationDoneV1()
+  markMaxTokensMigrationDoneV2()
+}
+
+function migrateLegacyMaxTokensV1(settings: Partial<StoredSettings>): Partial<StoredSettings> {
   try {
-    if (localStorage.getItem(MAX_TOKENS_MIGRATION_KEY) === '1') {
+    if (localStorage.getItem(MAX_TOKENS_MIGRATION_KEY_V1) === '1') {
       return settings
     }
 
     if (settings.maxTokens === LEGACY_DEFAULT_MAX_TOKENS) {
       const next = {
         ...settings,
-        maxTokens: DEFAULT_MAX_TOKENS,
+        maxTokens: PREVIOUS_DEFAULT_MAX_TOKENS,
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-      markMaxTokensMigrationDone()
+      markMaxTokensMigrationDoneV1()
       return next
     }
 
     // Mark migration as completed so future manual 2048 choices are not auto-migrated.
-    markMaxTokensMigrationDone()
+    markMaxTokensMigrationDoneV1()
+  } catch {
+    // Best-effort migration only.
+  }
+  return settings
+}
+
+function migrateLegacyMaxTokensV2(settings: Partial<StoredSettings>): Partial<StoredSettings> {
+  try {
+    if (localStorage.getItem(MAX_TOKENS_MIGRATION_KEY_V2) === '1') {
+      return settings
+    }
+
+    if (settings.maxTokens === PREVIOUS_DEFAULT_MAX_TOKENS) {
+      const next = {
+        ...settings,
+        maxTokens: DEFAULT_MAX_TOKENS,
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      markMaxTokensMigrationDoneV2()
+      return next
+    }
+
+    // Mark migration as completed so future manual 8192 choices are not auto-migrated.
+    markMaxTokensMigrationDoneV2()
   } catch {
     // Best-effort migration only.
   }
@@ -124,12 +159,12 @@ function loadStoredSettings(): Partial<StoredSettings> {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (!stored) {
       // Fresh profile: mark migration done to avoid migrating user-selected 2048 later.
-      markMaxTokensMigrationDone()
+      markAllMaxTokensMigrationsDone()
       return {}
     }
     const parsed = JSON.parse(stored)
     if (parsed && typeof parsed === 'object') {
-      return migrateLegacyMaxTokens(parsed as Partial<StoredSettings>)
+      return migrateLegacyMaxTokensV2(migrateLegacyMaxTokensV1(parsed as Partial<StoredSettings>))
     }
   } catch {
     // Ignore parse errors
@@ -150,7 +185,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const selectedProviderModel = ref(stored.selectedProviderModel || '') // Format: "providerId:modelId"
   const temperature = ref(stored.temperature ?? 0.7)
   const maxTokens = ref(stored.maxTokens ?? DEFAULT_MAX_TOKENS)
-  const closeBehavior = ref<CloseBehavior>(stored.closeBehavior || 'quit')
+  const closeBehavior = ref<CloseBehavior>(stored.closeBehavior || 'minimize')
   const showToolDetails = ref(stored.showToolDetails ?? false)
   const loading = ref(false)
   const refreshing = ref(false)
@@ -399,7 +434,7 @@ export const useSettingsStore = defineStore('settings', () => {
   function resetToDefaults() {
     temperature.value = 0.7
     maxTokens.value = DEFAULT_MAX_TOKENS
-    closeBehavior.value = 'quit'
+    closeBehavior.value = 'minimize'
     showToolDetails.value = false
     // Clear stored settings
     localStorage.removeItem(STORAGE_KEY)
@@ -530,7 +565,7 @@ export const useSettingsStore = defineStore('settings', () => {
   )
   const contextCompressionMode = computed<ContextCompressionMode>(() => {
     const mode = backendSettings.value.context_compression_mode
-    if (mode === 'off' || mode === 'offline' || mode === 'small_model') return mode
+    if (mode === 'offline' || mode === 'small_model') return mode
     return 'auto'
   })
   const smallModelContextPruneEnabled = computed(

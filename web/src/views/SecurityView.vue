@@ -22,9 +22,9 @@ import FixPreviewDialog from '@/components/security/FixPreviewDialog.vue'
 import DataMaskingSettings from '@/components/security/DataMaskingSettings.vue'
 import MonitoringRetentionSettings from '@/components/security/MonitoringRetentionSettings.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
+import HarnessGroupsView from '@/views/HarnessGroupsView.vue'
 import { useAuthStore } from '@/stores/auth'
 import { PagePermissions } from '@/constants/pagePermissions'
-import HarnessGroupsView from '@/views/HarnessGroupsView.vue'
 import type { LogEntry } from '@/api/system'
 import {
   formatSecurityScanSummary,
@@ -44,9 +44,8 @@ interface SecurityTabMeta {
   labelKey: string
   icon: string
   fallbackLabel: string
+  badge?: string
 }
-
-const hasHarnessAccess = computed(() => authStore.hasPermission(PagePermissions.TOOLS))
 
 const baseTabs: SecurityTabMeta[] = [
   {
@@ -64,8 +63,9 @@ const baseTabs: SecurityTabMeta[] = [
   {
     id: 'harness',
     labelKey: 'security.tabs.harness',
-    icon: 'harness',
+    icon: 'folder-lock',
     fallbackLabel: 'Harness',
+    badge: 'Beta',
   },
   {
     id: 'monitoring',
@@ -81,9 +81,14 @@ const baseTabs: SecurityTabMeta[] = [
   },
 ]
 
-const tabs = computed(() =>
-  baseTabs.filter((tab) => tab.id !== 'harness' || hasHarnessAccess.value)
-)
+const hasHarnessAccess = computed(() => authStore.hasPermission(PagePermissions.SECURITY))
+
+function isTabAvailable(tabId: TabId): boolean {
+  if (tabId === 'harness') return hasHarnessAccess.value
+  return true
+}
+
+const tabs = computed(() => baseTabs.filter((tab) => isTabAvailable(tab.id)))
 
 function getRequestedTab(): string {
   const raw = route.query.tab
@@ -92,20 +97,24 @@ function getRequestedTab(): string {
 
 function normalizeTabId(rawTab: string): TabId {
   if (rawTab === 'network') return 'controls'
-  if (rawTab === 'harness' && !hasHarnessAccess.value) return 'overview'
+  let normalized: TabId
   switch (rawTab) {
     case 'overview':
     case 'controls':
     case 'harness':
     case 'monitoring':
     case 'logs':
-      return rawTab
+      normalized = rawTab
+      break
     default:
-      return 'overview'
+      normalized = 'overview'
+      break
   }
+  return isTabAvailable(normalized) ? normalized : 'overview'
 }
 
 const activeTab = ref<TabId>(normalizeTabId(getRequestedTab()))
+const harnessTabMounted = ref(activeTab.value === 'harness')
 
 function replaceTabQuery(tabId: TabId) {
   const requestedTab = getRequestedTab()
@@ -120,6 +129,9 @@ function replaceTabQuery(tabId: TabId) {
 
 function selectTab(tabId: TabId) {
   activeTab.value = tabId
+  if (tabId === 'harness') {
+    harnessTabMounted.value = true
+  }
   replaceTabQuery(tabId)
   if (tabId === 'logs' && logs.value.length === 0) {
     void fetchLogs()
@@ -183,7 +195,8 @@ const DETAIL_MESSAGE_KEYS: Record<string, string> = {
   'Error details are hidden from responses': 'error_hidden',
   'Sensitive error data may be logged. Ensure log access is restricted.': 'error_log_restrict',
   'Sensitive error data is filtered from logs': 'error_filtered_logs',
-  'Running in development mode. Ensure production settings before deployment.': 'running_development',
+  'Running in development mode. Ensure production settings before deployment.':
+    'running_development',
   'Token expiration is too long or not set. This increases risk of token theft.':
     'token_expiration_too_long_or_unset',
   'Token expiration exceeds 8 hours. This increases risk of token theft.':
@@ -855,8 +868,8 @@ const securityStatus = computed(() => {
   return 'passed'
 })
 
-const securityStatusBannerVisible = computed(() =>
-  securityStatus.value === 'passed' || securityStatus.value === 'scanning'
+const securityStatusBannerVisible = computed(
+  () => securityStatus.value === 'passed' || securityStatus.value === 'scanning'
 )
 
 const securityStatusTitle = computed(() => {
@@ -971,7 +984,7 @@ let connectionRefreshInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   const requestedTab = getRequestedTab()
-  if (requestedTab === 'network' || (requestedTab === 'harness' && !hasHarnessAccess.value)) {
+  if (normalizeTabId(requestedTab) !== requestedTab) {
     replaceTabQuery(activeTab.value)
   }
 
@@ -1019,7 +1032,9 @@ onUnmounted(() => {
             <h1 class="security-title dashboard-page-title configuration-page-title">
               {{ t('security.title') }}
             </h1>
-            <p class="security-description dashboard-page-description configuration-page-description">
+            <p
+              class="security-description dashboard-page-description configuration-page-description"
+            >
               {{ securityStatusDescription }}
             </p>
           </div>
@@ -1074,6 +1089,26 @@ onUnmounted(() => {
                   <circle cx="11" cy="18" r="1.5" fill="currentColor" />
                 </svg>
                 <svg
+                  v-else-if="tab.icon === 'network'"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M3 12h6m6 0h6M12 3v6m0 6v6"
+                  />
+                  <circle cx="12" cy="12" r="3" />
+                  <circle cx="12" cy="3" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="21" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="12" cy="21" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                </svg>
+                <svg
                   v-else-if="tab.icon === 'firewall'"
                   xmlns="http://www.w3.org/2000/svg"
                   class="h-4 w-4"
@@ -1086,21 +1121,6 @@ onUnmounted(() => {
                     stroke-linejoin="round"
                     stroke-width="2"
                     d="M12 2l7 4v6c0 5-3.4 9.7-7 10-3.6-.3-7-5-7-10V6l7-4zm-2.5 9l2 2 3-3"
-                  />
-                </svg>
-                <svg
-                  v-else-if="tab.icon === 'harness'"
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M5.25 6.75h13.5M5.25 12h13.5M5.25 17.25h8.25M3.75 4.5h16.5A1.5 1.5 0 0121.75 6v12A1.5 1.5 0 0120.25 19.5H3.75A1.5 1.5 0 012.25 18V6a1.5 1.5 0 011.5-1.5zm12 10.5l1.5 1.5 3-3"
                   />
                 </svg>
                 <svg
@@ -1175,6 +1195,7 @@ onUnmounted(() => {
               <span class="security-tab-button__body">
                 <span class="security-tab-button__label-row">
                   <span class="security-tab-button__label">{{ getTabLabel(tab) }}</span>
+                  <span v-if="tab.badge" class="security-tab-beta">{{ tab.badge }}</span>
                 </span>
               </span>
               <span class="security-tab-button__state" aria-hidden="true"></span>
@@ -1351,7 +1372,9 @@ onUnmounted(() => {
                     <div class="security-scan-progress-meta">
                       <div>
                         <p class="security-scan-progress-label">
-                          {{ isScanning ? t('security.scan.progress') : t('security.scan.completed') }}
+                          {{
+                            isScanning ? t('security.scan.progress') : t('security.scan.completed')
+                          }}
                         </p>
                         <p class="security-scan-progress-caption">
                           {{ securityStatusDescription }}
@@ -1388,7 +1411,9 @@ onUnmounted(() => {
                     :aria-expanded="scanResultsExpanded"
                     @click="scanResultsExpanded = !scanResultsExpanded"
                   >
-                    <span class="security-scan-results-label">{{ t('security.scan.details') }}</span>
+                    <span class="security-scan-results-label">{{
+                      t('security.scan.details')
+                    }}</span>
                     <svg
                       :class="[
                         'security-scan-results-chevron',
@@ -1407,7 +1432,10 @@ onUnmounted(() => {
                     </svg>
                   </button>
 
-                  <div v-show="!scanCompleted || scanResultsExpanded" class="security-scan-results-list">
+                  <div
+                    v-show="!scanCompleted || scanResultsExpanded"
+                    class="security-scan-results-list"
+                  >
                     <template v-for="(item, index) in prioritizedScanResults" :key="item.id">
                       <div
                         v-if="
@@ -1434,7 +1462,12 @@ onUnmounted(() => {
                       >
                         <div class="security-scan-item-main">
                           <div class="security-scan-item-icon" :class="`is-${item.status}`">
-                            <div :class="['security-scan-item-icon-symbol', getScanStatusClass(item.status)]">
+                            <div
+                              :class="[
+                                'security-scan-item-icon-symbol',
+                                getScanStatusClass(item.status),
+                              ]"
+                            >
                               <svg
                                 v-if="item.status === 'passed'"
                                 xmlns="http://www.w3.org/2000/svg"
@@ -1563,10 +1596,7 @@ onUnmounted(() => {
                               {{ t('security.scan.manualFix') }}
                             </span>
                             <svg
-                              v-if="
-                                item.status !== 'scanning' &&
-                                hasScanItemDetails(item)
-                              "
+                              v-if="item.status !== 'scanning' && hasScanItemDetails(item)"
                               :class="[
                                 'security-scan-item-chevron',
                                 expandedItemId === item.id ? 'rotate-180' : '',
@@ -1586,10 +1616,7 @@ onUnmounted(() => {
                         </div>
 
                         <div
-                          v-if="
-                            expandedItemId === item.id &&
-                            hasScanItemDetails(item)
-                          "
+                          v-if="expandedItemId === item.id && hasScanItemDetails(item)"
                           class="security-scan-item-details"
                         >
                           <div class="security-scan-detail-grid">
@@ -1662,7 +1689,11 @@ onUnmounted(() => {
                   class="px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-500 rounded text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-600 disabled:opacity-50"
                   @click="loadApprovedDirectories"
                 >
-                  {{ tr('common.refresh', 'Refresh') }}
+                  {{
+                    loadingApprovedDirs
+                      ? tr('common.refreshing', 'Refreshing')
+                      : tr('common.refresh', 'Refresh')
+                  }}
                 </button>
               </div>
 
@@ -1698,7 +1729,11 @@ onUnmounted(() => {
                     class="px-2.5 py-1 text-xs border border-red-300 dark:border-red-700 rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
                     @click="revokeApprovedDirectory(entry.id)"
                   >
-                    {{ tr('common.revoke', 'Revoke') }}
+                    {{
+                      revokingApprovedDirId === entry.id
+                        ? tr('common.processing', 'Processing')
+                        : tr('common.revoke', 'Revoke')
+                    }}
                   </button>
                 </div>
               </div>
@@ -1724,7 +1759,11 @@ onUnmounted(() => {
                   class="px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-500 rounded text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-600 disabled:opacity-50"
                   @click="loadApprovedBrowserSites"
                 >
-                  {{ tr('common.refresh', 'Refresh') }}
+                  {{
+                    loadingApprovedBrowserSites
+                      ? tr('common.refreshing', 'Refreshing')
+                      : tr('common.refresh', 'Refresh')
+                  }}
                 </button>
               </div>
 
@@ -1760,7 +1799,11 @@ onUnmounted(() => {
                     class="px-2.5 py-1 text-xs border border-red-300 dark:border-red-700 rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
                     @click="revokeApprovedBrowserSite(entry.id)"
                   >
-                    {{ tr('common.revoke', 'Revoke') }}
+                    {{
+                      revokingApprovedBrowserSiteId === entry.id
+                        ? tr('common.processing', 'Processing')
+                        : tr('common.revoke', 'Revoke')
+                    }}
                   </button>
                 </div>
               </div>
@@ -1778,6 +1821,7 @@ onUnmounted(() => {
                 </div>
                 <div class="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
                   <span v-if="firewallSummary">{{ firewallSummary }}</span>
+                  <span v-if="togglingFirewall">{{ t('common.processing') }}</span>
                   <button
                     type="button"
                     :disabled="firewallLoading || togglingFirewall"
@@ -1840,7 +1884,13 @@ onUnmounted(() => {
                           : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300',
                       ]"
                     >
-                      {{ rule.enabled ? t('common.enabled') : t('common.disabled') }}
+                      {{
+                        togglingFirewallRuleId === rule.id
+                          ? t('common.processing')
+                          : rule.enabled
+                            ? t('common.enabled')
+                            : t('common.disabled')
+                      }}
                     </button>
                   </div>
                 </div>
@@ -1864,7 +1914,7 @@ onUnmounted(() => {
                     :disabled="addingFirewallRule || !newFirewallKeyword.trim()"
                     @click="addPromptFirewallRule"
                   >
-                    {{ t('security.firewall.add') }}
+                    {{ addingFirewallRule ? t('common.creating') : t('security.firewall.add') }}
                   </button>
                 </div>
 
@@ -1905,7 +1955,13 @@ onUnmounted(() => {
                           : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300',
                       ]"
                     >
-                      {{ rule.enabled ? t('common.enabled') : t('common.disabled') }}
+                      {{
+                        togglingFirewallRuleId === rule.id
+                          ? t('common.processing')
+                          : rule.enabled
+                            ? t('common.enabled')
+                            : t('common.disabled')
+                      }}
                     </button>
                     <button
                       type="button"
@@ -1917,7 +1973,11 @@ onUnmounted(() => {
                       "
                       @click="deletePromptFirewallRule(rule)"
                     >
-                      {{ t('security.firewall.delete') }}
+                      {{
+                        deletingFirewallRuleId === rule.id
+                          ? t('common.deleting')
+                          : t('security.firewall.delete')
+                      }}
                     </button>
                   </div>
                 </div>
@@ -1929,7 +1989,8 @@ onUnmounted(() => {
           </div>
 
           <div
-            v-if="hasHarnessAccess && activeTab === 'harness'"
+            v-if="harnessTabMounted"
+            v-show="activeTab === 'harness'"
             class="security-section-stack security-embedded-stack"
           >
             <HarnessGroupsView />
@@ -2487,6 +2548,21 @@ onUnmounted(() => {
   font-size: 0.9rem;
   font-weight: 700;
   line-height: 1.25;
+}
+
+.security-tab-beta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.125rem 0.375rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: rgb(29, 78, 216);
+  background: rgb(219, 234, 254);
+  border: 1px solid rgb(147, 197, 253);
+  line-height: 1;
 }
 
 .security-tab-button__state {
@@ -3304,6 +3380,14 @@ html.dark .security-tab-button {
 html.dark .security-tab-button__icon {
   color: #cbd5e1;
   background: rgba(148, 163, 184, 0.18);
+}
+
+:root.dark .security-tab-beta,
+[data-theme='dark'] .security-tab-beta,
+html.dark .security-tab-beta {
+  color: rgb(191, 219, 254);
+  background: rgba(30, 64, 175, 0.25);
+  border-color: rgba(147, 197, 253, 0.45);
 }
 
 :root.dark .security-tab-button__state,
