@@ -99,7 +99,7 @@ func DefaultToolSelector() *ToolSelector {
 	return &ToolSelector{
 		MinScore:      1.15,
 		MaxTools:      10,
-		AlwaysInclude: []string{"exec", "ask"},
+		AlwaysInclude: []string{"bash", "ask"},
 	}
 }
 
@@ -273,7 +273,7 @@ func applyToolHardAnchors(query string, signals sel.QueryIntentSignals, def Tool
 	}
 	if signals.LocalWorkspace {
 		switch name {
-		case "file_read", "file_write", "file_delete", "edit", "ls", "find", "grep", "convert", "pdf":
+		case "read", "write", "file_read", "file_write", "file_delete", "edit", "ls", "find", "grep", "convert", "pdf":
 			match.Eligible = true
 			match.Anchored = true
 			if match.Score < 4.2 {

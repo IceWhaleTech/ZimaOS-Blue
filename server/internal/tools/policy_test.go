@@ -53,6 +53,9 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "image"},
 		{Name: "memory"},
 		{Name: "pdf"},
+		{Name: "plan_append"},
+		{Name: "plan_create"},
+		{Name: "plan_update"},
 		{Name: "browser"},
 		{Name: "deep_research"},
 		{Name: "sessions"},
@@ -61,13 +64,14 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "write_begin"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{RouteKind: ToolRouteKindChat}, defs)
-	if len(filtered) != 12 {
-		t.Fatalf("expected 12 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
+	if len(filtered) != 15 {
+		t.Fatalf("expected 15 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
 	}
 	allowed := map[string]bool{
 		"ask":     true,
 		"browser": true, "calendar": true, "email": true, "file_read": true, "file_write": true,
-		"image": true, "memory": true, "pdf": true, "deep_research": true, "sessions": true, "web": true,
+		"image": true, "memory": true, "pdf": true, "plan_append": true, "plan_create": true,
+		"plan_update": true, "deep_research": true, "sessions": true, "web": true,
 	}
 	for _, def := range filtered {
 		if !allowed[def.Name] {
@@ -96,8 +100,17 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist_NormalizesCompatAliases(t
 		{Name: "grep"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{RouteKind: ToolRouteKindChat}, defs)
-	if len(filtered) != len(defs) {
-		t.Fatalf("expected compat aliases to survive default chat allowlist, got %#v", filtered)
+	names := make(map[string]struct{}, len(filtered))
+	for _, def := range filtered {
+		names[def.Name] = struct{}{}
+	}
+	for _, name := range []string{"read", "write", "generate_image", "generateImage", "image_generation", "web_search", "web_fetch", "web_read", "web_crawl", "grep"} {
+		if _, ok := names[name]; !ok {
+			t.Fatalf("expected compat alias %q to survive default chat allowlist, got %#v", name, filtered)
+		}
+	}
+	if _, ok := names["delete"]; ok {
+		t.Fatalf("did not expect hidden legacy delete surface in default chat allowlist, got %#v", filtered)
 	}
 }
 

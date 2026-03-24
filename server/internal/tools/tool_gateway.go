@@ -221,7 +221,7 @@ func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*Too
 		}
 		g.observer.OnToolFinished(finished)
 	}
-	if g.approver != nil && !strings.EqualFold(resolvedName, "exec") {
+	if g.approver != nil && !strings.EqualFold(resolvedName, "exec") && !strings.EqualFold(resolvedName, "bash") {
 		approvalDecision, approvalErr := g.approver.AuthorizeToolCall(ctx, ToolApprovalRequest{
 			ToolName:     resolvedName,
 			ToolCallID:   strings.TrimSpace(req.ToolCallID),
@@ -784,7 +784,7 @@ func normalizeToolRiskLevel(raw string) string {
 
 func inferToolRiskLevel(toolName string) string {
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "exec":
+	case "bash", "exec":
 		return string(RiskLevelHigh)
 	case "browser", "web", "web_query", "web_fetch", "web_extract", "web_crawl":
 		return string(RiskLevelMedium)

@@ -526,8 +526,8 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 			"full":      {},
 		},
 		Groups: map[string][]string{
-			"group:runtime":    {"exec", "process"},
-			"group:fs":         {"file_read", "file_write", "edit", "grep", "rg", "find", "ls"},
+			"group:runtime":    {"bash"},
+			"group:fs":         {"read", "write", "edit", "grep", "find", "ls"},
 			"group:sessions":   {"sessions"},
 			"group:memory":     {"memory"},
 			"group:research":   {"deep_research"},

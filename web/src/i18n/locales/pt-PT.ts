@@ -449,7 +449,6 @@ export default {
       mediaIntent: 'Reconhecimento de cenários de geração de mídia',
       shortQA: 'Aceleração de Q&A curto',
       shadowOnly: 'Fase 1: apenas validação em segundo plano',
-      toolDispatch: 'Aceleração de despacho de ferramentas',
       statsTitle: 'Estatisticas de execucao (resolucao de problemas)',
       statsHint:
         'Principalmente para resolucao de problemas e ajuste; pode ser ignorado no uso diario.',
@@ -460,9 +459,6 @@ export default {
       imageQAAttempts: 'Contagem de reconhecimento de imagens',
       imageQASuccessRate: 'Taxa de acerto do reconhecimento de imagens',
       imageQALatencyMs: 'Latência do reconhecimento de imagens',
-      toolDispatchAttempts: 'Aceleração de despacho de ferramentas Contagem',
-      toolDispatchSuccessRate: 'Aceleração de despacho de ferramentas Taxa de acerto',
-      toolDispatchLatencyMs: 'Aceleração de despacho de ferramentas Latência',
       summarySuccessRate: 'Aceleração de resumo Taxa de acerto',
       summaryLatencyMs: 'Aceleração de resumo Latência',
       contextCompressionSuccessRate: 'Taxa de acerto da compressão de contexto',
@@ -1136,8 +1132,6 @@ export default {
       bearer_token: 'Token Bearer',
       credit_card: 'Número de cartão de crédito',
     },
-    smartToolsDesc:
-      'Envia apenas ferramentas relevantes por consulta, reduzindo o consumo de tokens',
     providerRaceTitle: 'Corrida concorrente de provedores',
     providerRaceDesc:
       'Executa pedidos concorrentes para vários provedores e devolve a resposta bem-sucedida mais rápida; isto pode aumentar ligeiramente o custo',

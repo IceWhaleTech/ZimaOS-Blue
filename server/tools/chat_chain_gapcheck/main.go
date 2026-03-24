@@ -214,7 +214,6 @@ func (c *checker) checkSettings() ([]CheckItem, error) {
 	}
 
 	keys := []string{
-		"smart_tool_selection",
 		"smart_skill_selection",
 		"skill_selector_mode",
 		"skill_selector_confidence_threshold",

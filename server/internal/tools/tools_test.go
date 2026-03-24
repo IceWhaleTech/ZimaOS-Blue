@@ -2754,10 +2754,24 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
 
-	expectedTools := []string{"file_read", "file_write", "file_delete", "write_begin", "write_chunk", "write_commit", "write_abort", "edit", "grep", "rg", "find", "ls", "web_query", "mcp"}
+	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "web_query", "mcp"}
 	for _, name := range expectedTools {
 		if registry.Get(name) == nil {
 			t.Errorf("expected tool '%s' to be registered", name)
+		}
+	}
+	visible := make(map[string]struct{})
+	for _, def := range registry.Definitions() {
+		visible[def.Name] = struct{}{}
+	}
+	for _, name := range []string{"read", "write"} {
+		if _, ok := visible[name]; !ok {
+			t.Errorf("expected visible tool definition %q", name)
+		}
+	}
+	for _, name := range []string{"file_read", "file_write", "file_delete", "write_begin", "write_chunk", "write_commit", "write_abort", "rg"} {
+		if _, ok := visible[name]; ok {
+			t.Errorf("did not expect legacy/internal tool %q in visible definitions", name)
 		}
 	}
 	for _, name := range []string{"web", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
@@ -2768,11 +2782,13 @@ func TestRegisterBuiltinTools(t *testing.T) {
 			t.Errorf("expected hidden compat tool '%s' to be disabled", name)
 		}
 	}
-	if registry.Get("read") != nil {
-		t.Errorf("did not expect legacy tool name 'read' to be registered")
-	}
-	if registry.Get("write") != nil {
-		t.Errorf("did not expect legacy tool name 'write' to be registered")
+	for _, name := range []string{"file_read", "file_write", "file_delete", "write_begin", "write_chunk", "write_commit", "write_abort", "rg"} {
+		if registry.Get(name) == nil {
+			t.Errorf("expected legacy/internal tool %q to remain executable", name)
+		}
+		if !registry.IsDisabled(name) {
+			t.Errorf("expected legacy/internal tool %q to be hidden", name)
+		}
 	}
 }
 

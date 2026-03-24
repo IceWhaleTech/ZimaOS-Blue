@@ -692,7 +692,6 @@ export default {
       mediaIntent: 'Anagnorisi senariou dimiourgias meson',
       shortQA: 'Επιτάχυνση σύντομων Q&A',
       shadowOnly: 'Φάση 1: μόνο επικύρωση στο παρασκήνιο',
-      toolDispatch: 'Επιτάχυνση δρομολόγησης εργαλείων',
       statsTitle: 'Statistika ektelesis (antimetopisi provlimaton)',
       statsHint:
         'Kyrios gia diagnostiko elegxo kai rythmisi; borei na agnoithei stin kathimerini xrisi.',
@@ -703,9 +702,6 @@ export default {
       imageQAAttempts: 'Πλήθος αναγνωρίσεων εικόνας',
       imageQASuccessRate: 'Ποσοστό επιτυχίας αναγνώρισης εικόνας',
       imageQALatencyMs: 'Καθυστέρηση αναγνώρισης εικόνας',
-      toolDispatchAttempts: 'Επιτάχυνση δρομολόγησης εργαλείων Πλήθος',
-      toolDispatchSuccessRate: 'Επιτάχυνση δρομολόγησης εργαλείων Ποσοστό επιτυχίας',
-      toolDispatchLatencyMs: 'Επιτάχυνση δρομολόγησης εργαλείων Καθυστέρηση',
       summarySuccessRate: 'Επιτάχυνση σύνοψης Ποσοστό επιτυχίας',
       summaryLatencyMs: 'Επιτάχυνση σύνοψης Καθυστέρηση',
       contextCompressionSuccessRate: 'Ποσοστό επιτυχίας συμπίεσης συμφραζομένων',
@@ -1988,7 +1984,6 @@ export default {
       bearer_token: 'Διακριτικό Bearer',
       credit_card: 'Αριθμός πιστωτικής κάρτας',
     },
-    smartToolsDesc: 'Στέλνει μόνο σχετικά εργαλεία ανά ερώτημα, μειώνοντας τη χρήση token',
     providerRaceTitle: 'Παράλληλος αγώνας παρόχων',
     providerRaceDesc:
       'Στέλνει ταυτόχρονα αιτήματα σε πολλούς παρόχους και επιστρέφει την ταχύτερη επιτυχημένη απάντηση; αυτό μπορεί να αυξήσει ελαφρώς το κόστος',

@@ -377,7 +377,7 @@ func ToCard(toolName, content string) map[string]interface{} {
 	}
 
 	switch normalizedToolName {
-	case "exec":
+	case "bash", "exec":
 		return execCard(content)
 	case "browser":
 		return browserCard(content)

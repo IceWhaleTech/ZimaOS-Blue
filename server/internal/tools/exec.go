@@ -126,7 +126,7 @@ func firstOrNilIface[T any](s []T) T {
 func (t *ExecTool) SetToolNames(names []string) {
 	m := make(map[string]struct{}, len(names))
 	for _, n := range names {
-		if n != "exec" && n != "process" { // don't block exec itself
+		if n != "exec" && n != "process" && n != "bash" { // don't block shell entrypoints themselves
 			m[n] = struct{}{}
 		}
 	}
@@ -345,12 +345,15 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	if command == "" {
 		return nil, errors.New("command is required")
 	}
+	strictShell, _ := compatBoolArg(args, execStrictShellArg)
 
-	if result, intercepted, err := t.tryCompatAskCarrier(ctx, command); intercepted {
-		if err != nil {
-			return nil, err
+	if !strictShell {
+		if result, intercepted, err := t.tryCompatAskCarrier(ctx, command); intercepted {
+			if err != nil {
+				return nil, err
+			}
+			return result, nil
 		}
-		return result, nil
 	}
 
 	// Intercept commands that look like tool invocations.
@@ -374,9 +377,10 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		"has_registry", t.registry != nil,
 		"has_skill_exec", t.skillExec != nil,
 		"has_rest_args", restArgs != "",
+		"strict_shell", strictShell,
 	)
 
-	if len(t.toolNames) > 0 {
+	if !strictShell && len(t.toolNames) > 0 {
 		if isToolName {
 			if t.registry != nil {
 				if tool := t.registry.Get(firstWord); tool != nil {
@@ -414,7 +418,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	// Short-circuit pinned skills (e.g. "web_search query" → skill executor).
 	// This avoids registering skills as tools (which would consume extra prompt tokens).
-	if t.skillExec != nil && len(t.pinnedSkills) > 0 {
+	if !strictShell && t.skillExec != nil && len(t.pinnedSkills) > 0 {
 		if isPinnedSkill {
 			if restArgs == "" {
 				return nil, fmt.Errorf(
@@ -448,7 +452,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 			emitSkillResultCardFromData(ctx, firstWord, data)
 			return &ForwardedResult{ActualTool: firstWord, Result: data}, nil
 		}
-	} else if t.toolNames == nil {
+	} else if !strictShell && t.toolNames == nil {
 		slog.Warn("[exec] toolNames is nil, auto-forward disabled", "command", command)
 	}
 
@@ -595,7 +599,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	// Short-circuit `blue <skill> key=value` commands: call the skill executor
 	// directly instead of spawning a subprocess + IPC round-trip.
-	if t.skillExec != nil && isBlueCommand {
+	if !strictShell && t.skillExec != nil && isBlueCommand {
 		slog.Info("[exec] trying blue skill short-circuit", "command", truncateStr(command, 200))
 		if result, ok := t.trySkillShortCircuit(ctx, command, warnings); ok {
 			return result, nil

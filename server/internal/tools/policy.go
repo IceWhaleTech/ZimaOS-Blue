@@ -33,25 +33,26 @@ type ToolPolicyResolver struct {
 // skills or compat paths without inflating the default tool list.
 var defaultChatDirectToolAllowlist = map[string]struct{}{
 	"ask":           {},
+	"bash":          {},
 	"browser":       {},
 	"calendar":      {},
 	"convert":       {},
 	"edit":          {},
 	"email":         {},
-	"exec":          {},
-	"file_delete":   {},
-	"file_read":     {},
-	"file_write":    {},
 	"find":          {},
 	"grep":          {},
 	"image":         {},
 	"ls":            {},
 	"memory":        {},
 	"pdf":           {},
-	"process":       {},
+	"plan_append":   {},
+	"plan_create":   {},
+	"plan_update":   {},
+	"read":          {},
 	"deep_research": {},
 	"sessions":      {},
 	"web":           {},
+	"write":         {},
 }
 
 // NewToolPolicyResolver creates a resolver from app config.
@@ -258,9 +259,11 @@ func (r *ToolPolicyResolver) expandEntries(entries []string) map[string]struct{}
 func normalizeToolPolicyName(name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "read", "read_file", "file_read":
-		return "file_read"
+		return "read"
 	case "write", "write_file", "file_write":
-		return "file_write"
+		return "write"
+	case "bash", "exec":
+		return "bash"
 	case "delete", "remove", "rm", "unlink", "file_delete":
 		return "file_delete"
 	case "rg":

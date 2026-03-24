@@ -20,8 +20,8 @@ func LooksLikeStructuredWorkspaceArtifactTask(query string) bool {
 // workflow preferred for structured workspace artifact tasks.
 func StructuredWorkspaceArtifactWorkflowToolNames(query string) []string {
 	names := []string{
-		"file_read",
-		"file_write",
+		"read",
+		"write",
 		"ls",
 		"find",
 		"convert",

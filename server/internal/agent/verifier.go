@@ -301,7 +301,7 @@ func (v *GroundedVerifier) verifyCommandExcerptClaim(state *GroundTruthState, pr
 	}
 	supported := false
 	for _, result := range results.results {
-		if normalizeGroundToolName(result.Tool) != "exec" {
+		if normalizeGroundToolName(result.Tool) != "bash" {
 			continue
 		}
 		if strings.Contains(serializedResult(result.Result), claim.Excerpt) {

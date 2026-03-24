@@ -682,7 +682,6 @@ export default {
       mediaIntent: 'Rozpoznani scenare generovani medii',
       shortQA: 'Zrychlení krátkých Q&A',
       shadowOnly: 'Fáze 1: pouze ověřování na pozadí',
-      toolDispatch: 'Zrychlení směrování nástrojů',
       statsTitle: 'Statistiky behu (reseni problemu)',
       statsHint: 'Hlavne pro diagnostiku a ladeni; pri beznem pouziti lze ignorovat.',
       resetStats: 'Vymazat statistiky',
@@ -692,9 +691,6 @@ export default {
       imageQAAttempts: 'Počet rozpoznání obrázků',
       imageQASuccessRate: 'Míra zásahu rozpoznání obrázků',
       imageQALatencyMs: 'Latence rozpoznání obrázků',
-      toolDispatchAttempts: 'Zrychlení směrování nástrojů Počet',
-      toolDispatchSuccessRate: 'Zrychlení směrování nástrojů Míra zásahu',
-      toolDispatchLatencyMs: 'Zrychlení směrování nástrojů Latence',
       summarySuccessRate: 'Zrychlení shrnutí Míra zásahu',
       summaryLatencyMs: 'Zrychlení shrnutí Latence',
       contextCompressionSuccessRate: 'Míra zásahu komprese kontextu',
@@ -2004,8 +2000,6 @@ export default {
       bearer_token: 'Bearer token',
       credit_card: 'Číslo platební karty',
     },
-    smartToolsDesc:
-      'Posílejte jen relevantní nástroje pro daný dotaz, čímž snížíte spotřebu tokenů',
     providerRaceTitle: 'Souběžný závod poskytovatelů',
     providerRaceDesc:
       'Paralelně odešle požadavky více poskytovatelům a vrátí nejrychlejší úspěšnou odpověď; to může mírně zvýšit náklady',

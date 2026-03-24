@@ -1,7 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -20,6 +23,11 @@ import (
 const settingsKVKey = "config:settings"
 const defaultIMHistoryLimit = 3
 
+var removedSettingsKeys = map[string]struct{}{
+	"smart_tool_selection":                    {},
+	"small_model_route_tool_dispatch_enabled": {},
+}
+
 // SettingsHandler handles user settings API endpoints
 type SettingsHandler struct {
 	mu                        sync.RWMutex
@@ -35,7 +43,6 @@ type SettingsHandler struct {
 type Settings struct {
 	Locale                              string   `json:"locale,omitempty"`                                    // User's preferred locale (e.g., "zh-CN", "en-US")
 	Timezone                            string   `json:"timezone,omitempty"`                                  // User's timezone
-	SmartToolSelection                  *bool    `json:"smart_tool_selection,omitempty"`                      // IR-based tool filtering (nil = default false)
 	SmartSkillSelection                 *bool    `json:"smart_skill_selection,omitempty"`                     // Progressive skill selector (nil = default false)
 	SkillSelectorMode                   string   `json:"skill_selector_mode,omitempty"`                       // hybrid|ir_only|llm_only
 	SkillRerankEnabled                  *bool    `json:"skill_rerank_enabled,omitempty"`                      // Enable stage-2 rerank (nil = default false)
@@ -76,7 +83,6 @@ type Settings struct {
 	DeepResearchV2Enabled               *bool    `json:"deep_research_v2_enabled,omitempty"`                  // default false
 	SmallModelRouteImageQAEnabled       *bool    `json:"small_model_route_image_qa_enabled,omitempty"`        // default inherits short-qa
 	SmallModelRouteShortQAEnabled       *bool    `json:"small_model_route_short_qa_enabled,omitempty"`        // default false
-	SmallModelRouteToolDispatchEnabled  *bool    `json:"small_model_route_tool_dispatch_enabled,omitempty"`   // default false
 	NoLLMDegradeMode                    string   `json:"no_llm_degrade_mode,omitempty"`                       // fixed default deepresearch
 	SmallModelUnavailablePolicy         string   `json:"small_model_unavailable_policy,omitempty"`            // default ir_first
 	VoiceWakeEnabled                    *bool    `json:"voice_wake_enabled,omitempty"`                        // default false
@@ -149,6 +155,34 @@ func (h *SettingsHandler) Get(c echo.Context) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return c.JSON(http.StatusOK, h.settings)
+}
+
+func decodeSettingsRequestBody(c echo.Context, target interface{}) (map[string]json.RawMessage, error) {
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return nil, err
+	}
+	c.Request().Body = io.NopCloser(bytes.NewReader(body))
+
+	raw := make(map[string]json.RawMessage)
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	if target != nil {
+		if err := json.Unmarshal(body, target); err != nil {
+			return nil, err
+		}
+	}
+	return raw, nil
+}
+
+func firstRemovedSettingsKey(raw map[string]json.RawMessage) string {
+	for key := range raw {
+		if _, removed := removedSettingsKeys[key]; removed {
+			return key
+		}
+	}
+	return ""
 }
 
 // StartSkillRerankerModelDownload starts downloading ONNX model in background.
@@ -292,7 +326,7 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "chat handler not configured"})
 	}
 
-	selectedDefs, toolDebug := chatHandler.selectToolsDetailed(req.Query, tools.ToolPolicyRequest{
+	selectedDefs, _ := chatHandler.selectToolsDetailed(req.Query, tools.ToolPolicyRequest{
 		Model:     req.Model,
 		RouteKind: tools.ToolRouteKindChat,
 	})
@@ -304,12 +338,8 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 	response := map[string]interface{}{
 		"query":                 req.Query,
 		"model":                 req.Model,
-		"smart_tool_selection":  h.GetSmartToolSelection(),
 		"smart_skill_selection": h.GetSmartSkillSelection(),
 		"selected_tools":        toolNames,
-	}
-	if toolDebug != nil {
-		response["tool_debug"] = toolDebug
 	}
 
 	if chatHandler.skillSelector != nil && h.GetSmartSkillSelection() {
@@ -333,8 +363,12 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 // Update handles PUT /api/settings (full update)
 func (h *SettingsHandler) Update(c echo.Context) error {
 	var newSettings Settings
-	if err := c.Bind(&newSettings); err != nil {
+	raw, err := decodeSettingsRequestBody(c, &newSettings)
+	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+	if removed := firstRemovedSettingsKey(raw); removed != "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Removed setting: " + removed})
 	}
 	if newSettings.MemoryRecallMode != "" {
 		if _, valid := allowedMemoryRecallModes[newSettings.MemoryRecallMode]; !valid {
@@ -456,8 +490,12 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 // Patch handles PATCH /api/settings (partial update)
 func (h *SettingsHandler) Patch(c echo.Context) error {
 	var updates map[string]interface{}
-	if err := c.Bind(&updates); err != nil {
+	raw, err := decodeSettingsRequestBody(c, &updates)
+	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+	if removed := firstRemovedSettingsKey(raw); removed != "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Removed setting: " + removed})
 	}
 
 	h.mu.Lock()
@@ -467,11 +505,6 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	}
 	if timezone, ok := updates["timezone"].(string); ok {
 		h.settings.Timezone = timezone
-	}
-	if v, ok := updates["smart_tool_selection"]; ok {
-		if b, isBool := v.(bool); isBool {
-			h.settings.SmartToolSelection = &b
-		}
 	}
 	if v, ok := updates["smart_skill_selection"]; ok {
 		if b, isBool := v.(bool); isBool {
@@ -697,11 +730,6 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			h.settings.SmallModelRouteShortQAEnabled = &b
 		}
 	}
-	if v, ok := updates["small_model_route_tool_dispatch_enabled"]; ok {
-		if b, isBool := v.(bool); isBool {
-			h.settings.SmallModelRouteToolDispatchEnabled = &b
-		}
-	}
 	if mode, ok := updates["no_llm_degrade_mode"].(string); ok {
 		if mode == "deepresearch" {
 			h.settings.NoLLMDegradeMode = mode
@@ -780,17 +808,6 @@ func (h *SettingsHandler) GetVoiceWakeTargetConversationID() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return strings.TrimSpace(h.settings.VoiceWakeTargetConversationID)
-}
-
-// GetSmartToolSelection returns whether smart tool selection is enabled.
-// Default on keeps runtime tool exposure compact unless explicitly disabled.
-func (h *SettingsHandler) GetSmartToolSelection() bool {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if h.settings.SmartToolSelection == nil {
-		return true
-	}
-	return *h.settings.SmartToolSelection
 }
 
 // GetSmartSkillSelection returns whether smart skill selection is enabled (default false).
@@ -1307,15 +1324,6 @@ func (h *SettingsHandler) GetSmallModelRouteShortQAEnabled() bool {
 	return *h.settings.SmallModelRouteShortQAEnabled
 }
 
-func (h *SettingsHandler) GetSmallModelRouteToolDispatchEnabled() bool {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if h.settings.SmallModelRouteToolDispatchEnabled == nil {
-		return false
-	}
-	return *h.settings.SmallModelRouteToolDispatchEnabled
-}
-
 // SetSmallModelRouteShortQAEnabled updates short-qa route switch and persists it.
 // Returns true when value changed.
 func (h *SettingsHandler) SetSmallModelRouteShortQAEnabled(enabled bool) (bool, error) {
@@ -1342,22 +1350,6 @@ func (h *SettingsHandler) SetSmallModelRouteImageQAEnabled(enabled bool) (bool, 
 		return false, nil
 	}
 	h.settings.SmallModelRouteImageQAEnabled = &enabled
-	if err := h.save(); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// SetSmallModelRouteToolDispatchEnabled updates tool-dispatch route switch and persists it.
-// Returns true when value changed.
-func (h *SettingsHandler) SetSmallModelRouteToolDispatchEnabled(enabled bool) (bool, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if h.settings.SmallModelRouteToolDispatchEnabled != nil && *h.settings.SmallModelRouteToolDispatchEnabled == enabled {
-		return false, nil
-	}
-	h.settings.SmallModelRouteToolDispatchEnabled = &enabled
 	if err := h.save(); err != nil {
 		return false, err
 	}

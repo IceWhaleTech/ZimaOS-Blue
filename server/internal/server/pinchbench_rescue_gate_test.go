@@ -322,7 +322,7 @@ func TestPinchBenchFirstTierRescueGate(t *testing.T) {
 		{Name: "calendar"},
 	}
 	researchFiltered := applyResearchToolPreference(researchDefs, "请调研最近一周 AI agent 的进展，并附来源引用")
-	categories[3].check(strings.Join(toolDefNames(researchFiltered), ",") == "research_run,research_status,browser", fmt.Sprintf("research prompts should prefer research_run + browser, got=%v", toolDefNames(researchFiltered)))
+	categories[3].check(strings.Join(toolDefNames(researchFiltered), ",") == "web_search,research_run,research_status,browser", fmt.Sprintf("research prompts should preserve the current research-capable toolset, got=%v", toolDefNames(researchFiltered)))
 	categories[3].check(hasSearchCapabilityInToolDefs(researchFiltered), "research filtered toolset should still advertise search capability")
 	categories[3].check(len(applyResearchToolPreference(researchDefs, "帮我润色这段话")) == len(researchDefs), "non-research prompts should not be force-routed into research tools")
 	disabled := false

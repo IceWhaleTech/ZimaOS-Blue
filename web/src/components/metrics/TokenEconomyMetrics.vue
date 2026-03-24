@@ -7,18 +7,15 @@ import {
   type RoutingStats,
   type ContextStats,
 } from '@/api/proxyCache'
-import { settingsApi, type ToolSelectorStats } from '@/api/settings'
 
 const { t } = useI18n()
 
 const prunerStats = ref<PrunerStats | null>(null)
 const routingStats = ref<RoutingStats | null>(null)
-const toolStats = ref<ToolSelectorStats | null>(null)
 const contextStats = ref<ContextStats | null>(null)
 const loading = ref(false)
 
 const prunerTokensSaved = computed(() => prunerStats.value?.stats?.tokens_saved ?? 0)
-const toolTokensSaved = computed(() => toolStats.value?.tokens_saved ?? 0)
 const memoryTokensSaved = computed(
   () => contextStats.value?.memory_recall?.estimated_saved_tokens ?? 0
 )
@@ -26,30 +23,25 @@ const memoryTokensSaved = computed(
 const totalTokensSaved = computed(() => {
   return (
     prunerTokensSaved.value +
-    toolTokensSaved.value +
     memoryTokensSaved.value +
     (routingStats.value?.tokens_routed ?? 0)
   )
 })
 
 const prunerCostSaved = computed(() => (prunerTokensSaved.value / 1_000_000) * 3.0)
-const toolCostSaved = computed(() => (toolTokensSaved.value / 1_000_000) * 3.0)
 const memoryCostSaved = computed(() => (memoryTokensSaved.value / 1_000_000) * 3.0)
 
 const costSaved = computed(() => {
   const prunerCost = prunerCostSaved.value
-  const toolCost = toolCostSaved.value
   const memoryCost = memoryCostSaved.value
   const routerCost = routingStats.value?.cost_saved_usd ?? 0
-  return prunerCost + toolCost + memoryCost + routerCost
+  return prunerCost + memoryCost + routerCost
 })
 
 const detailRows = computed(() => {
   const prunerTotal = prunerStats.value?.stats?.total_requests ?? 0
   const prunerPruned = prunerStats.value?.stats?.pruned_requests ?? 0
   const prunerCompression = Math.round((prunerStats.value?.stats?.avg_compression_rate ?? 0) * 100)
-  const toolRequests = toolStats.value?.requests ?? 0
-  const toolSkipped = toolStats.value?.tools_skipped ?? 0
   const routedRequests = routingStats.value?.routed_requests ?? 0
   const memoryTotal = contextStats.value?.memory_recall?.total ?? 0
   const memorySkipped = contextStats.value?.memory_recall?.skipped ?? 0
@@ -65,14 +57,6 @@ const detailRows = computed(() => {
       cost: prunerCostSaved.value,
       meta: t('tokenEconomy.prunerMeta', { pruned: prunerPruned, total: prunerTotal }),
       extra: `${t('tokenEconomy.compression')}: ${prunerCompression}%`,
-    },
-    {
-      key: 'tools',
-      label: t('tokenEconomy.toolsLabel'),
-      tokens: toolTokensSaved.value,
-      cost: toolCostSaved.value,
-      meta: t('tokenEconomy.toolsMeta', { skipped: toolSkipped, requests: toolRequests }),
-      extra: '',
     },
     {
       key: 'routing',
@@ -114,15 +98,13 @@ function contribution(rowTokens: number): string {
 async function fetchStats() {
   loading.value = true
   try {
-    const [prunerRes, routingRes, toolRes, contextRes] = await Promise.all([
+    const [prunerRes, routingRes, contextRes] = await Promise.all([
       proxyCacheApi.getPrunerStats().catch(() => null),
       proxyCacheApi.getRoutingStats().catch(() => null),
-      settingsApi.getToolStats().catch(() => null),
       proxyCacheApi.getContextStats().catch(() => null),
     ])
     if (prunerRes) prunerStats.value = prunerRes.data
     if (routingRes) routingStats.value = routingRes.data
-    if (toolRes) toolStats.value = toolRes.data
     if (contextRes) contextStats.value = contextRes.data
   } catch {
     // Ignore errors

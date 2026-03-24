@@ -690,7 +690,6 @@ export default {
       mediaIntent: 'Aithint cAsanna gineala meAn',
       shortQA: 'Luasú gearr-Q&A',
       shadowOnly: 'Céim 1: bailíochtú sa chúlra amháin',
-      toolDispatch: 'Luasú seolta uirlisí',
       statsTitle: 'Staitistici ama rite (fabhtcheartu)',
       statsHint:
         'Go priomha le haghaidh fabhtcheartaithe agus tuneala; is feidir neamhaird a dheanamh in usaid laethuil.',
@@ -701,9 +700,6 @@ export default {
       imageQAAttempts: 'Líon na n-aitheantas íomhá',
       imageQASuccessRate: 'Ráta buailte aitheantais íomhá',
       imageQALatencyMs: 'Moill aitheantais íomhá',
-      toolDispatchAttempts: 'Luasú seolta uirlisí Líon',
-      toolDispatchSuccessRate: 'Luasú seolta uirlisí Ráta buailte',
-      toolDispatchLatencyMs: 'Luasú seolta uirlisí Latency',
       summarySuccessRate: 'Luasú achoimre Ráta buailte',
       summaryLatencyMs: 'Luasú achoimre Latency',
       contextCompressionSuccessRate: 'Ráta buailte comhbhrúite comhthéacs',
@@ -1701,8 +1697,6 @@ export default {
       bearer_token: 'Comhartha Bearer',
       credit_card: 'Uimhir cárta creidmheasa',
     },
-    smartToolsDesc:
-      'Seoltar ach na huirlisí ábhartha in aghaidh an cheist, rud a laghdaíonn úsáid token',
     providerRaceTitle: 'Rás comhthráthach soláthraithe',
     providerRaceDesc:
       'Seolann sé iarratais chuig il-sholáthraithe ag an am céanna agus filleann sé an freagra rathúil is tapúla; is féidir leis seo an costas a mhéadú beagán',

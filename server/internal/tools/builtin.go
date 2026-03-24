@@ -716,6 +716,7 @@ func RegisterBuiltinTools(registry *Registry) {
 	registry.Register(NewFindTool(nil))
 	registry.Register(NewLsTool(nil))
 	registry.Register(NewOfficeTool(nil, nil, nil))
+	registerCanonicalFileSurface(registry)
 	registerWebTools(registry, WebSearchConfig{}, WebFetchConfig{})
 	registry.Register(NewMCPTool(registry))
 }
@@ -745,6 +746,7 @@ func RegisterBuiltinToolsWithRuntimeConfig(registry *Registry, webSearchConfig W
 	registry.Register(NewFindToolWithRipgrep(allowedPaths, ripgrep))
 	registry.Register(NewLsTool(allowedPaths))
 	registry.Register(NewOfficeTool(allowedPaths, nil, nil))
+	registerCanonicalFileSurface(registry)
 	registerWebTools(registry, webSearchConfig, webFetchConfig)
 	registry.Register(NewMCPTool(registry))
 }
@@ -818,6 +820,7 @@ func RegisterApprovalAwareFileToolsWithRuntimeConfig(registry *Registry, allowed
 	registry.Register(ls)
 
 	registry.Register(NewOfficeTool(allowedPaths, approvals, dirStore))
+	registerCanonicalFileSurface(registry)
 }
 
 func newBuiltinRipgrepResolver(runtimeCfg BuiltinRuntimeConfig) ripgrepResolver {
@@ -836,6 +839,7 @@ func RegisterExecTools(registry *Registry, config ExecConfig, approvals *Approva
 	sessions := NewSessionRegistry()
 	registry.Register(NewExecTool(config, sessions, approvals, broker, dirStore, sbx...))
 	registry.Register(NewProcessTool(sessions))
+	registerCanonicalShellSurface(registry)
 }
 
 // GetUIReviewerTool retrieves the UIReviewerTool from the registry for dependency injection.

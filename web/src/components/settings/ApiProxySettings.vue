@@ -3,16 +3,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { proxyApi, type FailoverConfig } from '@/api/proxy'
-import { settingsApi, type ToolSelectorStats } from '@/api/settings'
 
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
 const { t, te } = useI18n()
 
 const loading = ref(true)
 const failoverConfig = ref<FailoverConfig | null>(null)
-const smartToolSelection = ref(false)
-const togglingSmartTools = ref(false)
-const toolStats = ref<ToolSelectorStats | null>(null)
 const togglingProviderRace = ref(false)
 const providerRaceEnabled = computed(() => failoverConfig.value?.provider_race?.enabled === true)
 const providerRace = computed(() => failoverConfig.value?.provider_race || {})
@@ -35,29 +31,10 @@ function tr(key: string, fallback = ''): string {
 async function fetchAll() {
   loading.value = true
   try {
-    const [failoverRes, settingsRes, toolStatsRes] = await Promise.all([
-      proxyApi.getFailoverConfig().catch(() => null),
-      settingsApi.get().catch(() => null),
-      settingsApi.getToolStats().catch(() => null),
-    ])
+    const failoverRes = await proxyApi.getFailoverConfig().catch(() => null)
     if (failoverRes) failoverConfig.value = failoverRes.data
-    if (settingsRes) smartToolSelection.value = settingsRes.data.smart_tool_selection === true
-    if (toolStatsRes) toolStats.value = toolStatsRes.data
   } finally {
     loading.value = false
-  }
-}
-
-async function toggleSmartTools() {
-  if (togglingSmartTools.value) return
-  togglingSmartTools.value = true
-  try {
-    const newVal = !smartToolSelection.value
-    await settingsApi.patch({ smart_tool_selection: newVal })
-    smartToolSelection.value = newVal
-    emit('status-change', t(newVal ? 'apiProxy.smartToolsEnabled' : 'apiProxy.smartToolsDisabled'))
-  } finally {
-    togglingSmartTools.value = false
   }
 }
 
@@ -79,10 +56,6 @@ async function toggleProviderRace() {
   } finally {
     togglingProviderRace.value = false
   }
-}
-
-function formatTokens(n: number): string {
-  return n.toLocaleString()
 }
 
 onMounted(fetchAll)
@@ -216,68 +189,6 @@ onMounted(fetchAll)
               })
             }}
           </p>
-        </div>
-      </div>
-
-      <!-- Smart Tool Selection Section (hidden — default off, not exposed in settings) -->
-      <div v-if="false" class="glass-card p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-              {{ t('apiProxy.smartToolsTitle') }}
-            </h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              {{ t('apiProxy.smartToolsDesc') }}
-            </p>
-          </div>
-          <button
-            type="button"
-            :disabled="togglingSmartTools"
-            :class="[
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              smartToolSelection
-                ? 'bg-green-600 dark:bg-green-500'
-                : 'bg-gray-300 dark:bg-gray-600',
-              togglingSmartTools ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
-            ]"
-            @click="toggleSmartTools"
-          >
-            <span
-              :class="[
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                smartToolSelection ? 'translate-x-6' : 'translate-x-1',
-              ]"
-            />
-          </button>
-        </div>
-        <div
-          v-if="smartToolSelection && toolStats && toolStats.requests > 0"
-          class="mt-3 grid grid-cols-3 gap-3 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06] p-3"
-        >
-          <div class="text-center py-1">
-            <p class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-              {{ t('apiProxy.smartToolsRequests') }}
-            </p>
-            <p class="text-base font-semibold text-gray-900 dark:text-white mt-0.5">
-              {{ toolStats.requests }}
-            </p>
-          </div>
-          <div class="text-center py-1 border-x border-gray-100 dark:border-white/[0.06]">
-            <p class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-              {{ t('apiProxy.smartToolsSkipped') }}
-            </p>
-            <p class="text-base font-semibold text-gray-900 dark:text-white mt-0.5">
-              {{ toolStats.tools_skipped }}
-            </p>
-          </div>
-          <div class="text-center py-1">
-            <p class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-              {{ t('cache.tokensSaved') }}
-            </p>
-            <p class="text-base font-semibold text-gray-900 dark:text-white mt-0.5">
-              {{ formatTokens(toolStats.tokens_saved) }}
-            </p>
-          </div>
         </div>
       </div>
     </template>

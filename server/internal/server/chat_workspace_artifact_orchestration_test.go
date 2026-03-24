@@ -439,16 +439,16 @@ func TestCollectWorkspaceArtifactEvidence_IncludesRawPDFEvidence(t *testing.T) {
 	}
 
 	joined := strings.Join(evidence, "\n\n")
-	if !strings.Contains(joined, "FILE_READ | RAW | openclaw_report.pdf | pages=1,2") {
+	if !strings.Contains(joined, "READ | RAW | openclaw_report.pdf | pages=1,2") {
 		t.Fatalf("expected raw pdf header in evidence, got=%q", joined)
 	}
 	if !strings.Contains(joined, "AI & LLMs    287") {
 		t.Fatalf("expected raw pdf layout-preserving text in evidence, got=%q", joined)
 	}
-	if !strings.Contains(joined, "FILE_READ | RAW | openclaw_report.pdf | page=1") {
+	if !strings.Contains(joined, "READ | RAW | openclaw_report.pdf | page=1") {
 		t.Fatalf("expected per-page raw pdf evidence block, got=%q", joined)
 	}
-	if !strings.Contains(joined, "FILE_READ | RAW | openclaw_report.pdf | page=2") {
+	if !strings.Contains(joined, "READ | RAW | openclaw_report.pdf | page=2") {
 		t.Fatalf("expected second per-page raw pdf evidence block, got=%q", joined)
 	}
 }

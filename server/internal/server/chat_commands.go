@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/chatcmd"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/labstack/echo/v4"
 )
@@ -83,6 +84,28 @@ func hasPersistedConversationCommandState(state memory.ConversationCommandState)
 
 func (h *ChatHandler) applyCommandStateToRequest(ctx context.Context, convID string, req *SendMessageRequest) memory.ConversationCommandState {
 	state := h.conversationCommandStateOrDefault(ctx, convID)
+	if req == nil {
+		return state
+	}
+
+	shouldPersist := false
+	if req.WebSearchEnabled != nil && state.WebSearchEnabled != *req.WebSearchEnabled {
+		state.WebSearchEnabled = *req.WebSearchEnabled
+		shouldPersist = true
+	}
+	if req.DeepResearchEnabled != nil && state.DeepResearchEnabled != *req.DeepResearchEnabled {
+		state.DeepResearchEnabled = *req.DeepResearchEnabled
+		shouldPersist = true
+	}
+	if shouldPersist {
+		if err := h.saveConversationCommandState(ctx, state); err != nil {
+			logger.Warn().
+				Err(err).
+				Str("conversation_id", convID).
+				Msg("[chat] failed to persist capability flags from request")
+		}
+	}
+
 	if hasPersistedConversationCommandState(state) {
 		if req.WebSearchEnabled == nil {
 			value := state.WebSearchEnabled

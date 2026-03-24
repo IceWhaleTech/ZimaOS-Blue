@@ -589,135 +589,6 @@ func builtinWorkspaceTools() []mcpTool {
 				},
 			},
 		},
-		{
-			Name:        workspaceListFilesTool,
-			Description: "List files and directories under the MCP workspace root for coding tasks.",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{
-						"type":        "string",
-						"description": "Relative path under workspace root; defaults to '.'",
-					},
-					"max_depth": map[string]interface{}{
-						"type":        "integer",
-						"description": "Maximum recursion depth (0-20, default 6)",
-					},
-					"include_hidden": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Include dotfiles/directories",
-					},
-				},
-			},
-		},
-		{
-			Name:        workspaceReadTextTool,
-			Description: "Read UTF-8 text file content under workspace root.",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{
-						"type":        "string",
-						"description": "Relative file path under workspace root",
-					},
-					"start_line": map[string]interface{}{
-						"type":        "integer",
-						"description": "1-based start line (default 1)",
-					},
-					"end_line": map[string]interface{}{
-						"type":        "integer",
-						"description": "1-based inclusive end line (default: EOF)",
-					},
-					"max_bytes": map[string]interface{}{
-						"type":        "integer",
-						"description": "Read cap in bytes (1-2097152, default 2097152)",
-					},
-				},
-				"required": []string{"path"},
-			},
-		},
-		{
-			Name:        workspaceWriteTextTool,
-			Description: "Write UTF-8 text file content under workspace root.",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{
-						"type":        "string",
-						"description": "Relative file path under workspace root",
-					},
-					"content": map[string]interface{}{
-						"type":        "string",
-						"description": "File content to write",
-					},
-					"append": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Append instead of overwrite",
-					},
-					"create_dirs": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Create parent directories when missing (default true)",
-					},
-				},
-				"required": []string{"path", "content"},
-			},
-		},
-		{
-			Name:        workspaceSearchTextTool,
-			Description: "Search plain text files under workspace root.",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"query": map[string]interface{}{
-						"type":        "string",
-						"description": "Text query to search",
-					},
-					"path": map[string]interface{}{
-						"type":        "string",
-						"description": "Relative path scope (file or directory), default '.'",
-					},
-					"case_sensitive": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Case-sensitive matching",
-					},
-					"include_hidden": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Include dotfiles/directories",
-					},
-					"max_results": map[string]interface{}{
-						"type":        "integer",
-						"description": "Maximum matches to return (1-200, default 50)",
-					},
-				},
-				"required": []string{"query"},
-			},
-		},
-		{
-			Name:        workspaceReplaceTextTool,
-			Description: "Replace text in a UTF-8 file under workspace root.",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{
-						"type":        "string",
-						"description": "Relative file path under workspace root",
-					},
-					"old_text": map[string]interface{}{
-						"type":        "string",
-						"description": "Text to replace",
-					},
-					"new_text": map[string]interface{}{
-						"type":        "string",
-						"description": "Replacement text",
-					},
-					"replace_all": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Replace all occurrences (default false: first only)",
-					},
-				},
-				"required": []string{"path", "old_text", "new_text"},
-			},
-		},
 	}
 }
 
@@ -2329,8 +2200,8 @@ func (s *Server) handlePromptsGet(id any, params json.RawMessage) ([]byte, error
 		sb.WriteString("5. Return concise result summary with changed files and validation.\n\n")
 		sb.WriteString("Tooling guidance:\n")
 		sb.WriteString("- Prefer orchestrator.run to schedule deterministic/transformative/generative phases with parallel execution and compressed final context.\n")
-		sb.WriteString("- Use workspace.list_files / workspace.read_text / workspace.write_text / workspace.search_text / workspace.replace_text for deterministic file work.\n")
-		sb.WriteString("- Use exec/process when command execution is needed.\n")
+		sb.WriteString("- Use read/write/edit/ls/grep/find for deterministic workspace file work.\n")
+		sb.WriteString("- Use bash when command execution is needed.\n")
 		sb.WriteString("- Do not depend on `blue` CLI subcommands; fall back to standard shell and MCP workspace tools if CLI is unavailable.\n")
 		if repo != "" {
 			sb.WriteString("- Repository path hint: ")

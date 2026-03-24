@@ -15,12 +15,6 @@ const shortQASuccessRate = computed(() => {
   return Math.round((s.short_qa_route_success / s.short_qa_route_attempts) * 100)
 })
 
-const toolDispatchSuccessRate = computed(() => {
-  const s = stats.value
-  if (!s || s.tool_dispatch_route_attempts <= 0) return 0
-  return Math.round((s.tool_dispatch_route_success / s.tool_dispatch_route_attempts) * 100)
-})
-
 const summarySuccessRate = computed(() => {
   const s = stats.value
   if (!s || s.summary_attempts <= 0) return 0
@@ -42,13 +36,6 @@ const fallbackTop = computed(() => {
 
 const successRateColor = computed(() => {
   const rate = shortQASuccessRate.value
-  if (rate >= 90) return 'text-green-600 dark:text-green-400'
-  if (rate >= 70) return 'text-yellow-600 dark:text-yellow-400'
-  return 'text-red-600 dark:text-red-400'
-})
-
-const toolDispatchSuccessRateColor = computed(() => {
-  const rate = toolDispatchSuccessRate.value
   if (rate >= 90) return 'text-green-600 dark:text-green-400'
   if (rate >= 70) return 'text-yellow-600 dark:text-yellow-400'
   return 'text-red-600 dark:text-red-400'
@@ -125,22 +112,6 @@ onUnmounted(() => {
           </p>
           <p class="mt-1 text-lg font-semibold" :class="successRateColor">
             {{ shortQASuccessRate }}%
-          </p>
-        </div>
-        <div class="dashboard-card-subsurface p-3">
-          <p class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('settings.smallModel.toolDispatchAttempts', 'Tool Dispatch Attempts') }}
-          </p>
-          <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-            {{ stats?.tool_dispatch_route_attempts || 0 }}
-          </p>
-        </div>
-        <div class="dashboard-card-subsurface p-3">
-          <p class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('settings.smallModel.toolDispatchSuccessRate', 'Tool Dispatch Success') }}
-          </p>
-          <p class="mt-1 text-lg font-semibold" :class="toolDispatchSuccessRateColor">
-            {{ toolDispatchSuccessRate }}%
           </p>
         </div>
         <div class="dashboard-card-subsurface p-3">

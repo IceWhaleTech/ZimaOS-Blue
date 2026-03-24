@@ -27,7 +27,6 @@ vi.mock('@/api/settings', () => ({
     get: vi.fn(),
     update: vi.fn(),
     patch: vi.fn(),
-    getToolStats: vi.fn(),
     getSkillRerankerModelStatus: vi.fn(),
     downloadSkillRerankerModel: vi.fn(),
     cancelSkillRerankerModelDownload: vi.fn(),
@@ -82,12 +81,10 @@ describe('settings store - small model integration', () => {
     expect(store.contextCompressionMode).toBe('auto')
     expect(store.smallModelRouteImageQAEnabled).toBe(false)
     expect(store.smallModelRouteShortQAEnabled).toBe(false)
-    expect(store.smallModelRouteToolDispatchEnabled).toBe(false)
     expect(store.noLLMDegradeMode).toBe('deepresearch')
     expect(store.smallModelUnavailablePolicy).toBe('ir_first')
     expect(store.offlineIRFallbackEnabled).toBe(false)
     expect(store.featureIntentIREnabled).toBe(false)
-    expect(store.smartToolSelection).toBe(false)
     expect(store.smartSkillSelection).toBe(false)
   })
 
@@ -168,11 +165,6 @@ describe('settings store - small model integration', () => {
     expect(settingsApi.patch).toHaveBeenNthCalledWith(4, {
       small_model_route_short_qa_enabled: false,
     })
-
-    await store.setSmallModelRouteToolDispatchEnabled(false)
-    expect(settingsApi.patch).toHaveBeenLastCalledWith({
-      small_model_route_tool_dispatch_enabled: false,
-    })
   })
 
   it('normalizes legacy off compression mode to auto when loading backend settings', async () => {
@@ -214,8 +206,6 @@ describe('settings store - small model integration', () => {
         data: {
           short_qa_route_attempts: 10,
           short_qa_route_success: 8,
-          tool_dispatch_route_attempts: 6,
-          tool_dispatch_route_success: 5,
           summary_attempts: 3,
           summary_success: 2,
           doc_extract_attempts: 4,
@@ -229,8 +219,6 @@ describe('settings store - small model integration', () => {
         data: {
           short_qa_route_attempts: 0,
           short_qa_route_success: 0,
-          tool_dispatch_route_attempts: 0,
-          tool_dispatch_route_success: 0,
           summary_attempts: 0,
           summary_success: 0,
           doc_extract_attempts: 0,

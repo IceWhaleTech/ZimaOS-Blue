@@ -40,7 +40,7 @@ func DefaultToolRouter() *ToolRouter {
 	return &ToolRouter{
 		DynamicExposure:   true,
 		SchemaCompression: true,
-		AlwaysInclude:     []string{"exec"},
+		AlwaysInclude:     []string{"bash"},
 		processKeywords: []string{
 			"process", "session", "sessions", "poll", "log", "kill", "pid", "background",
 			"running", "status", "tail", "terminate", "output",

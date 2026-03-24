@@ -21,28 +21,6 @@ import (
 
 func boolPtr(v bool) *bool { return &v }
 
-func TestGetSmartToolSelection_DefaultTrue(t *testing.T) {
-	h := NewSettingsHandler(kvstore.NewMemoryStore())
-	if !h.GetSmartToolSelection() {
-		t.Fatalf("GetSmartToolSelection() = false, want true")
-	}
-}
-
-func TestGetSmartToolSelection_StoredFalse(t *testing.T) {
-	store := kvstore.NewMemoryStore()
-	disabled := false
-	if err := store.SetJSON(context.Background(), settingsKVKey, &Settings{
-		SmartToolSelection: &disabled,
-	}, 0); err != nil {
-		t.Fatalf("seed settings: %v", err)
-	}
-
-	h := NewSettingsHandler(store)
-	if h.GetSmartToolSelection() {
-		t.Fatalf("GetSmartToolSelection() = true, want false")
-	}
-}
-
 func TestGetMemoryRecallMode_DefaultBalanced(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
 	if got := h.GetMemoryRecallMode(); got != "balanced" {
@@ -185,7 +163,7 @@ func TestGetSkillSelectorConfidenceThreshold_Default(t *testing.T) {
 	}
 }
 
-func TestSelectorDryRunReturnsDebugSignals(t *testing.T) {
+func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 	store := kvstore.NewMemoryStore()
 	h := NewSettingsHandler(store)
 	smartSkill := true
@@ -247,17 +225,24 @@ func TestSelectorDryRunReturnsDebugSignals(t *testing.T) {
 	}
 
 	selectedTools, ok := body["selected_tools"].([]any)
-	if !ok || len(selectedTools) == 0 || selectedTools[0] != "web_search" {
-		t.Fatalf("expected selected_tools to start with web_search, got=%v", body["selected_tools"])
-	}
-
-	toolDebug, ok := body["tool_debug"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected tool_debug payload, got=%T", body["tool_debug"])
+		t.Fatalf("expected selected_tools payload, got=%T", body["selected_tools"])
 	}
-	querySignals, ok := toolDebug["query_signals"].(map[string]any)
-	if !ok || querySignals["live_web"] != true {
-		t.Fatalf("expected live_web query signal, got=%v", toolDebug["query_signals"])
+	selectedNames := make(map[string]bool, len(selectedTools))
+	for _, item := range selectedTools {
+		name, ok := item.(string)
+		if !ok {
+			t.Fatalf("expected string tool name, got=%T", item)
+		}
+		selectedNames[name] = true
+	}
+	for _, required := range []string{"read", "web_search", "write"} {
+		if !selectedNames[required] {
+			t.Fatalf("expected %q in selected_tools, got=%v", required, body["selected_tools"])
+		}
+	}
+	if _, exists := body["tool_debug"]; exists {
+		t.Fatalf("did not expect tool_debug payload, got=%v", body["tool_debug"])
 	}
 
 	skillDecision, ok := body["skill_decision"].(map[string]any)
@@ -357,8 +342,8 @@ func TestGetSmallModelDefaults(t *testing.T) {
 	if h.GetSmallModelMediaIntentEnabled() {
 		t.Fatal("expected media intent switch default false")
 	}
-	if h.GetSmallModelRouteImageQAEnabled() || h.GetSmallModelRouteShortQAEnabled() || h.GetSmallModelRouteToolDispatchEnabled() {
-		t.Fatal("expected image-qa/short-qa/tool-dispatch route switches default false")
+	if h.GetSmallModelRouteImageQAEnabled() || h.GetSmallModelRouteShortQAEnabled() {
+		t.Fatal("expected image-qa/short-qa route switches default false")
 	}
 	if h.GetOfflineIRFallbackEnabled() {
 		t.Fatal("expected offline IR fallback switch default false")
@@ -644,35 +629,6 @@ func TestSetSmallModelRouteShortQAEnabled_Persisted(t *testing.T) {
 	}
 }
 
-func TestSetSmallModelRouteToolDispatchEnabled_Persisted(t *testing.T) {
-	store := kvstore.NewMemoryStore()
-	h := NewSettingsHandler(store)
-
-	changed, err := h.SetSmallModelRouteToolDispatchEnabled(true)
-	if err != nil {
-		t.Fatalf("SetSmallModelRouteToolDispatchEnabled(true) failed: %v", err)
-	}
-	if !changed {
-		t.Fatal("expected changed=true on first update")
-	}
-	if !h.GetSmallModelRouteToolDispatchEnabled() {
-		t.Fatal("expected tool-dispatch route enabled")
-	}
-
-	h2 := NewSettingsHandler(store)
-	if !h2.GetSmallModelRouteToolDispatchEnabled() {
-		t.Fatal("expected persisted tool-dispatch route enabled")
-	}
-
-	changed, err = h2.SetSmallModelRouteToolDispatchEnabled(true)
-	if err != nil {
-		t.Fatalf("SetSmallModelRouteToolDispatchEnabled(true) second call failed: %v", err)
-	}
-	if changed {
-		t.Fatal("expected changed=false when setting unchanged")
-	}
-}
-
 func TestSetSmallModelSummaryEnabled_Persisted(t *testing.T) {
 	store := kvstore.NewMemoryStore()
 	h := NewSettingsHandler(store)
@@ -728,6 +684,73 @@ func TestSetSmallModelDocExtractEnabled_Persisted(t *testing.T) {
 	}
 	if changed {
 		t.Fatal("expected changed=false when setting unchanged")
+	}
+}
+
+func TestPatchRejectsRemovedSettingsKeys(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	for _, tc := range []struct {
+		name string
+		body string
+		key  string
+	}{
+		{
+			name: "smart tool selection",
+			body: `{"smart_tool_selection":true,"locale":"en-US"}`,
+			key:  "smart_tool_selection",
+		},
+		{
+			name: "small model tool dispatch",
+			body: `{"small_model_route_tool_dispatch_enabled":true,"locale":"en-US"}`,
+			key:  "small_model_route_tool_dispatch_enabled",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(tc.body))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			if err := h.Patch(c); err != nil {
+				t.Fatalf("Patch failed: %v", err)
+			}
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 body=%s", rec.Code, rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), "locale") {
+				t.Fatalf("expected request to fail before applying updates, body=%s", rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.key) {
+				t.Fatalf("expected error body to mention %q, got=%s", tc.key, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestUpdateRejectsRemovedSettingsKeys(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"locale":"en-US","small_model_route_tool_dispatch_enabled":true}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Update(c); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 body=%s", rec.Code, rec.Body.String())
+	}
+	if h.settings.Locale != "" {
+		t.Fatalf("expected settings to remain unchanged, locale=%q", h.settings.Locale)
+	}
+	if !strings.Contains(rec.Body.String(), "small_model_route_tool_dispatch_enabled") {
+		t.Fatalf("expected error body to mention removed key, got=%s", rec.Body.String())
 	}
 }
 

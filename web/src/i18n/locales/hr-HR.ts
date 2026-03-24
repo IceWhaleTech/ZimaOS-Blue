@@ -684,7 +684,6 @@ export default {
       mediaIntent: 'Prepoznavanje scenarija generiranja medija',
       shortQA: 'Akceleracija kratkih Q&A',
       shadowOnly: 'Faza 1: samo pozadinska provjera',
-      toolDispatch: 'Akceleracija usmjeravanja alata',
       statsTitle: 'Statistika rada (otklanjanje potezkoca)',
       statsHint:
         'Uglavnom za dijagnostiku i podesavanje; moze se zanemariti u svakodnevnoj uporabi.',
@@ -695,9 +694,6 @@ export default {
       imageQAAttempts: 'Broj prepoznavanja slika',
       imageQASuccessRate: 'Stopa uspjeha prepoznavanja slika',
       imageQALatencyMs: 'Latencija prepoznavanja slika',
-      toolDispatchAttempts: 'Akceleracija usmjeravanja alata Broj',
-      toolDispatchSuccessRate: 'Akceleracija usmjeravanja alata Stopa pogodaka',
-      toolDispatchLatencyMs: 'Akceleracija usmjeravanja alata Latencija',
       summarySuccessRate: 'Akceleracija sažetka Stopa pogodaka',
       summaryLatencyMs: 'Akceleracija sažetka Latencija',
       contextCompressionSuccessRate: 'Stopa uspjeha sažimanja konteksta',
@@ -1319,7 +1315,6 @@ export default {
       bearer_token: 'Bearer token',
       credit_card: 'Broj kreditne kartice',
     },
-    smartToolsDesc: 'Šalje samo relevantne alate po upitu, smanjujući potrošnju tokena',
     providerRaceTitle: 'Paralelna utrka pružatelja',
     providerRaceDesc:
       'Istodobno šalje zahtjeve više pružatelja i vraća najbrži uspješan odgovor; to može blago povećati trošak',

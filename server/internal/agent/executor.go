@@ -167,7 +167,7 @@ func (e *GroundedExecutor) Execute(ctx context.Context, task *Task, stepIndex, p
 		stderr = execErr.Error()
 		normalized = map[string]any{"error": execErr.Error()}
 	}
-	if resolvedTool == "exec" {
+	if normalizeGroundToolName(resolvedTool) == "bash" {
 		if exit, okExit := int64FromAny(extractField(normalized, "exit_code")); okExit {
 			exitCode = int(exit)
 		}
@@ -184,10 +184,36 @@ func (e *GroundedExecutor) Execute(ctx context.Context, task *Task, stepIndex, p
 func (e *GroundedExecutor) resolveTool(name string) (string, error) {
 	normalized := normalizeGroundToolName(name)
 	switch normalized {
-	case "file_read":
-		return "file_read", nil
-	case "file_write":
-		return "file_write", nil
+	case "read":
+		if e.registry != nil {
+			if e.registry.Get("read") != nil {
+				return "read", nil
+			}
+			if e.registry.Get("file_read") != nil {
+				return "file_read", nil
+			}
+		}
+		return "read", nil
+	case "write":
+		if e.registry != nil {
+			if e.registry.Get("write") != nil {
+				return "write", nil
+			}
+			if e.registry.Get("file_write") != nil {
+				return "file_write", nil
+			}
+		}
+		return "write", nil
+	case "bash":
+		if e.registry != nil {
+			if e.registry.Get("bash") != nil {
+				return "bash", nil
+			}
+			if e.registry.Get("exec") != nil {
+				return "exec", nil
+			}
+		}
+		return "bash", nil
 	case "ask":
 		return "ask", nil
 	default:
@@ -210,7 +236,7 @@ func normalizeGroundToolArgs(tool string, args map[string]any) map[string]any {
 	}
 	normalized := cloneJSONMap(args)
 	switch normalizeGroundToolName(tool) {
-	case "file_read", "file_write":
+	case "read", "write":
 		if strings.TrimSpace(asString(normalized["path"])) == "" {
 			for _, key := range []string{"file_path", "filePath", "filename"} {
 				if path := strings.TrimSpace(asString(normalized[key])); path != "" {
@@ -220,7 +246,7 @@ func normalizeGroundToolArgs(tool string, args map[string]any) map[string]any {
 			}
 		}
 	}
-	if normalizeGroundToolName(tool) == "file_write" {
+	if normalizeGroundToolName(tool) == "write" {
 		if _, ok := normalized["content"]; !ok {
 			for _, key := range []string{"text", "body", "value"} {
 				if value, ok := normalized[key]; ok {

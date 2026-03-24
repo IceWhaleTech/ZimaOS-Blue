@@ -94,7 +94,6 @@ vi.mock('@/api/settings', () => ({
     get: vi.fn(),
     update: vi.fn(),
     patch: vi.fn(),
-    getToolStats: vi.fn(),
     getSkillRerankerModelStatus: vi.fn(),
     downloadSkillRerankerModel: vi.fn(),
     cancelSkillRerankerModelDownload: vi.fn(),
@@ -180,11 +179,9 @@ function primeApiMocks() {
       context_compression_mode: 'auto',
       small_model_route_image_qa_enabled: true,
       small_model_route_short_qa_enabled: true,
-      small_model_route_tool_dispatch_enabled: true,
       no_llm_degrade_mode: 'deepresearch',
       small_model_unavailable_policy: 'ir_first',
       small_model_context_prune_enabled: true,
-      smart_tool_selection: false,
       small_model_media_intent_enabled: true,
       offline_ir_fallback_enabled: true,
       feature_intent_ir_enabled: true,
@@ -212,8 +209,6 @@ function primeApiMocks() {
       short_qa_route_success: 10,
       image_qa_route_attempts: 7,
       image_qa_route_success: 6,
-      tool_dispatch_route_attempts: 6,
-      tool_dispatch_route_success: 5,
       summary_attempts: 4,
       summary_success: 3,
       context_compress_attempts: 5,
@@ -292,7 +287,6 @@ describe('SettingsView small-model controls', () => {
 
     const contextPruneSpy = vi.spyOn(store, 'setSmallModelContextPruneEnabled').mockResolvedValue()
     const mediaIntentSpy = vi.spyOn(store, 'setSmallModelMediaIntentEnabled').mockResolvedValue()
-    const smartToolSpy = vi.spyOn(store, 'setSmartToolSelection').mockResolvedValue()
     const offlineIRFallbackSpy = vi.spyOn(store, 'setOfflineIRFallbackEnabled').mockResolvedValue()
     const featureIntentIRSpy = vi.spyOn(store, 'setFeatureIntentIREnabled').mockResolvedValue()
     const irMasterSpy = vi.spyOn(store, 'setSmallModelIRFeaturesEnabled').mockResolvedValue()
@@ -304,9 +298,6 @@ describe('SettingsView small-model controls', () => {
     const docExtractSpy = vi.spyOn(store, 'setSmallModelDocExtractEnabled').mockResolvedValue()
     const imageQASpy = vi.spyOn(store, 'setSmallModelRouteImageQAEnabled').mockResolvedValue()
     const shortQASpy = vi.spyOn(store, 'setSmallModelRouteShortQAEnabled').mockResolvedValue()
-    const toolDispatchSpy = vi
-      .spyOn(store, 'setSmallModelRouteToolDispatchEnabled')
-      .mockResolvedValue()
     const downloadSpy = vi.spyOn(store, 'startSmallModelDownload').mockResolvedValue({} as never)
     const resetSpy = vi.spyOn(store, 'resetSmallModelStats').mockResolvedValue({} as never)
 
@@ -320,7 +311,7 @@ describe('SettingsView small-model controls', () => {
 
     expect(wrapper.find('[data-testid="small-model-context-prune-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="proxy-pruner-switch"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="smart-tool-selection-switch"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="smart-tool-selection-switch"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="small-model-ir-master-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="small-model-rerank-switch"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="small-model-advanced-toggle"]').exists()).toBe(false)
@@ -379,10 +370,6 @@ describe('SettingsView small-model controls', () => {
     await flushPromises()
     expect(mediaIntentSpy).toHaveBeenCalledWith(false)
 
-    await wrapper.get('[data-testid="smart-tool-selection-switch"]').trigger('click')
-    await flushPromises()
-    expect(smartToolSpy).toHaveBeenCalledWith(true)
-
     await wrapper.get('[data-testid="offline-ir-fallback-switch"]').trigger('click')
     await flushPromises()
     expect(offlineIRFallbackSpy).toHaveBeenCalledWith(false)
@@ -414,10 +401,6 @@ describe('SettingsView small-model controls', () => {
     await wrapper.get('[data-testid="small-model-short-qa-switch"]').trigger('click')
     await flushPromises()
     expect(shortQASpy).toHaveBeenCalledWith(false)
-
-    await wrapper.get('[data-testid="small-model-tool-dispatch-switch"]').trigger('click')
-    await flushPromises()
-    expect(toolDispatchSpy).toHaveBeenCalledWith(false)
 
     await wrapper.get('[data-testid="small-model-download"]').trigger('click')
     await flushPromises()

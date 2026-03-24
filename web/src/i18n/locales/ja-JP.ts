@@ -971,7 +971,6 @@ export default {
       mediaIntent: 'メディア生成シナリオ認識',
       shortQA: '短文 Q&A アクセラレーション',
       shadowOnly: 'フェーズ 1: バックグラウンド検証のみ',
-      toolDispatch: 'ツール振り分けアクセラレーション',
       statsTitle: '実行統計（トラブルシュート）',
       statsHint: '主にトラブルシュートや調整向けです。通常利用では無視できます。',
       resetStats: '統計をクリア',
@@ -981,9 +980,6 @@ export default {
       imageQAAttempts: '画像認識回数',
       imageQASuccessRate: '画像認識ヒット率',
       imageQALatencyMs: '画像認識レイテンシ',
-      toolDispatchAttempts: 'ツール振り分けアクセラレーション 回数',
-      toolDispatchSuccessRate: 'ツール振り分けアクセラレーション ヒット率',
-      toolDispatchLatencyMs: 'ツール振り分けアクセラレーション レイテンシ',
       summarySuccessRate: '要約アクセラレーション ヒット率',
       summaryLatencyMs: '要約アクセラレーション レイテンシ',
       contextCompressionSuccessRate: 'コンテキスト圧縮ヒット率',
@@ -4693,7 +4689,6 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
-    smartToolsDesc: 'クエリごとに関連するツールのみを送信し、トークン使用量を削減',
     providerRaceTitle: 'プロバイダー並行レース',
     providerRaceDesc:
       '複数のプロバイダーへ同時にリクエストし、最速の成功レスポンスを返します。コストがわずかに増える場合があります',
@@ -4786,11 +4781,6 @@ export default {
       bearer_token: 'Bearer トークン',
       credit_card: 'クレジットカード番号',
     },
-    smartToolsTitle: 'スマートツール選択',
-    smartToolsEnabled: 'スマートツール選択を有効にしました',
-    smartToolsDisabled: 'スマートツール選択を無効にしました',
-    smartToolsRequests: 'リクエスト',
-    smartToolsSkipped: 'フィルタ済みツール',
     promptCacheTitle: 'プロンプトキャッシング',
     promptCacheDesc:
       'Anthropicモデルにキャッシュブレークポイントを挿入し、繰り返し入力トークンを最大90%節約',

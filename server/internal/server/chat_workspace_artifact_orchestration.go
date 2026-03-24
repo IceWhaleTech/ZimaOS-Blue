@@ -360,7 +360,7 @@ func hasAcceptableStructuredWorkspaceArtifactWrite(userMessage string, toolCalls
 
 func extractWorkspaceWrittenContent(tc llm.ToolCall) (string, bool) {
 	toolName := normalizeFileToolCompatName(tc.Name)
-	if toolName != "file_write" && toolName != "write_commit" && toolName != "write_begin" && toolName != "write_chunk" {
+	if toolName != "write" && toolName != "write_commit" && toolName != "write_begin" && toolName != "write_chunk" {
 		return "", false
 	}
 	if strings.TrimSpace(tc.Arguments) == "" {
@@ -892,7 +892,7 @@ func collectWorkspaceArtifactEvidence(toolCalls []llm.ToolCall, toolResults []ll
 		}
 
 		switch toolName {
-		case "file_read", "pdf", "convert":
+		case "read", "pdf", "convert":
 			for _, block := range extractWorkspaceContentEvidenceBlocks(toolName, payload) {
 				appendBlock(block)
 			}

@@ -690,7 +690,6 @@ export default {
       mediaIntent: "Reconeixement d'escenaris de generacio multimedia",
       shortQA: 'Acceleració de preguntes breus',
       shadowOnly: 'Fase 1: només validació en segon pla',
-      toolDispatch: "Acceleració d'assignació d'eines",
       statsTitle: "Estadistiques d'execucio (diagnostic)",
       statsHint: "Principalment per a diagnostic i ajust; es pot ignorar en l'us diari.",
       resetStats: 'Neteja estadístiques',
@@ -700,9 +699,6 @@ export default {
       imageQAAttempts: "Recompte de reconeixement d'imatges",
       imageQASuccessRate: "Taxa d'encert del reconeixement d'imatges",
       imageQALatencyMs: "Latència del reconeixement d'imatges",
-      toolDispatchAttempts: "Acceleració d'assignació d'eines Nombre",
-      toolDispatchSuccessRate: "Acceleració d'assignació d'eines Taxa d'encert",
-      toolDispatchLatencyMs: "Acceleració d'assignació d'eines Latència",
       summarySuccessRate: "Acceleració del resum Taxa d'encert",
       summaryLatencyMs: 'Acceleració del resum Latència',
       contextCompressionSuccessRate: "Taxa d'encert de la compressió de context",
@@ -2065,7 +2061,6 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
-    smartToolsDesc: "Envia només les eines rellevants per consulta, reduint l'ús de tokens",
     providerRaceTitle: 'Cursa concurrent de proveidors',
     providerRaceDesc:
       'Executa sol·licituds concurrents a diversos proveïdors i retorna la resposta correcta més ràpida; això pot augmentar lleugerament el cost',

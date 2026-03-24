@@ -175,9 +175,9 @@ func TestGroundedRuntimeRejectsFileContentClaimWithoutReadTool(t *testing.T) {
 func TestGroundedRuntimeWriteLSReadPasses(t *testing.T) {
 	llmStub := &groundedScriptLLM{
 		plannerResponses: []string{
-			`{"status":"continue","reason":"Create the file.","next_tool":{"tool":"file_write","args":{"path":"demo.txt","content":"hello"}},"assertions":[]}`,
+			`{"status":"continue","reason":"Create the file.","next_tool":{"tool":"write","args":{"path":"demo.txt","content":"hello"}},"assertions":[]}`,
 			`{"status":"continue","reason":"List the directory.","next_tool":{"tool":"ls","args":{"path":".","max_depth":1}},"assertions":[]}`,
-			`{"status":"continue","reason":"Read the file.","next_tool":{"tool":"file_read","args":{"path":"demo.txt"}},"assertions":[]}`,
+			`{"status":"continue","reason":"Read the file.","next_tool":{"tool":"read","args":{"path":"demo.txt"}},"assertions":[]}`,
 			`{"status":"complete","reason":"Enough evidence collected.","assertions":[{"type":"file_exists","path":"demo.txt"},{"type":"tool_called","tool":"ls"}]}`,
 		},
 		responderResponses: []string{
@@ -222,11 +222,11 @@ func TestGroundedToolCatalogUsesFileReadWriteCanonicalNames(t *testing.T) {
 	for _, tool := range catalog {
 		names[tool.Name] = tool
 	}
-	if _, ok := names["file_read"]; !ok {
-		t.Fatalf("expected file_read in grounded tool catalog, got=%v", groundedToolCatalogNames(names))
+	if _, ok := names["read"]; !ok {
+		t.Fatalf("expected read in grounded tool catalog, got=%v", groundedToolCatalogNames(names))
 	}
-	if _, ok := names["file_write"]; !ok {
-		t.Fatalf("expected file_write in grounded tool catalog, got=%v", groundedToolCatalogNames(names))
+	if _, ok := names["write"]; !ok {
+		t.Fatalf("expected write in grounded tool catalog, got=%v", groundedToolCatalogNames(names))
 	}
 	if _, ok := names["read_file"]; ok {
 		t.Fatalf("expected read_file alias to be absent from grounded tool catalog, got=%v", groundedToolCatalogNames(names))
@@ -235,9 +235,9 @@ func TestGroundedToolCatalogUsesFileReadWriteCanonicalNames(t *testing.T) {
 		t.Fatalf("expected write_file alias to be absent from grounded tool catalog, got=%v", groundedToolCatalogNames(names))
 	}
 
-	writeProps, _ := names["file_write"].Parameters["properties"].(map[string]any)
+	writeProps, _ := names["write"].Parameters["properties"].(map[string]any)
 	if writeProps == nil || writeProps["file_path"] == nil || writeProps["text"] == nil {
-		t.Fatalf("expected file_write schema to expose path/content aliases, got=%v", names["file_write"].Parameters)
+		t.Fatalf("expected write schema to expose path/content aliases, got=%v", names["write"].Parameters)
 	}
 }
 

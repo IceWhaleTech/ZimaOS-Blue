@@ -714,7 +714,6 @@ export default {
       mediaIntent: 'Reconnaissance des scenarios de generation media',
       shortQA: 'Accélération des Q&R courtes',
       shadowOnly: 'Phase 1 : validation en arrière-plan uniquement',
-      toolDispatch: 'Accélération de répartition des outils',
       statsTitle: "Statistiques d'execution (diagnostic)",
       statsHint:
         'Principalement pour le diagnostic et le reglage; peut etre ignore en usage quotidien.',
@@ -725,9 +724,6 @@ export default {
       imageQAAttempts: "Nombre de reconnaissances d'images",
       imageQASuccessRate: "Taux de réussite de la reconnaissance d'images",
       imageQALatencyMs: "Latence de la reconnaissance d'images",
-      toolDispatchAttempts: 'Accélération de répartition des outils Nombre',
-      toolDispatchSuccessRate: 'Accélération de répartition des outils Taux de réussite',
-      toolDispatchLatencyMs: 'Accélération de répartition des outils Latence',
       summarySuccessRate: 'Accélération du résumé Taux de réussite',
       summaryLatencyMs: 'Accélération du résumé Latence',
       contextCompressionSuccessRate: 'Taux de réussite de la compression du contexte',
@@ -3281,7 +3277,6 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
-    smartToolsDesc: "N'envoie que les outils pertinents par requête, réduisant l'usage de tokens",
     providerRaceTitle: 'Course concurrente des fournisseurs',
     providerRaceDesc:
       'Exécute des requêtes concurrentes vers plusieurs fournisseurs et renvoie la réponse réussie la plus rapide; cela peut légèrement augmenter le coût',

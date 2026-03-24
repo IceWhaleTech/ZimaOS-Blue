@@ -29,7 +29,8 @@ func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 	}
 
 	switch name {
-	case "exec":
+	case "bash", "exec":
+		base.ExactAliases = compactTerms(append(base.ExactAliases, "bash", "exec")...)
 		base.Actions = compactTerms("run", "execute", "shell", "command", "bash", "terminal", "script", "执行", "运行", "命令", "终端")
 		base.Objects = compactTerms("command", "shell", "terminal", "script", "process", "session", "命令", "终端", "脚本", "进程")
 	case "ask":

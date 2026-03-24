@@ -85,7 +85,7 @@ func inferToolTraceCapabilityKind(actualTool string, args map[string]interface{}
 	switch {
 	case strings.HasPrefix(name, "mcp"), strings.HasPrefix(name, "mcp_"):
 		return "mcp"
-	case name == "exec":
+	case name == "bash", name == "exec":
 		if cmd, _ := args["command"].(string); strings.HasPrefix(strings.TrimSpace(cmd), "blue ") {
 			return "skill"
 		}

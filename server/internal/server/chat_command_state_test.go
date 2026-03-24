@@ -198,6 +198,47 @@ func TestApplyCommandStateToRequestLeavesFallbackFlagsNilWithoutPersistedState(t
 	}
 }
 
+func TestApplyCommandStateToRequestPersistsExplicitCapabilityFlags(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	conv, err := store.CreateConversation(ctx, "Test Conv")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	webSearchEnabled := false
+	deepResearchEnabled := true
+	req := &SendMessageRequest{
+		WebSearchEnabled:    &webSearchEnabled,
+		DeepResearchEnabled: &deepResearchEnabled,
+	}
+
+	state := handler.applyCommandStateToRequest(ctx, conv.ID, req)
+	if state.WebSearchEnabled || !state.DeepResearchEnabled {
+		t.Fatalf("expected explicit request flags to win immediately, got %+v", state)
+	}
+	if req.WebSearchEnabled == nil || *req.WebSearchEnabled {
+		t.Fatalf("expected explicit web flag to be preserved, got %v", req.WebSearchEnabled)
+	}
+	if req.DeepResearchEnabled == nil || !*req.DeepResearchEnabled {
+		t.Fatalf("expected explicit deep flag to be preserved, got %v", req.DeepResearchEnabled)
+	}
+
+	persisted, err := store.GetConversationCommandState(ctx, conv.ID)
+	if err != nil {
+		t.Fatalf("GetConversationCommandState: %v", err)
+	}
+	if persisted.WebSearchEnabled || !persisted.DeepResearchEnabled {
+		t.Fatalf("expected explicit request flags to persist to command state, got %+v", persisted)
+	}
+}
+
 func TestChatHandlerClearResetsCommandState(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {

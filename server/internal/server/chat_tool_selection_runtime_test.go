@@ -1,27 +1,47 @@
 package server
 
 import (
-	"context"
-	"strings"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-func TestSelectTools_DefaultRuntimePrefersRelevantSubset(t *testing.T) {
-	registry := tools.NewRegistry()
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "email", Description: "Email inbox search and triage"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling and agenda"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "process", Description: "Inspect long-running processes"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Run terminal commands"})
-
+func newChatToolSelectionTestHandler(registry *tools.Registry) *ChatHandler {
 	handler := NewChatHandler(nil, nil, registry)
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 	handler.SetToolSelector(tools.DefaultToolSelector())
 	handler.SetToolRouter(tools.DefaultToolRouter())
+	handler.SetToolPolicyResolver(tools.NewToolPolicyResolver(&config.Config{
+		ToolCalling: *config.DefaultToolCallingConfig(),
+		Agents:      *config.DefaultAgentsConfig(),
+	}))
+	return handler
+}
+
+func toolNameSet(defs []tools.ToolDefinition) map[string]struct{} {
+	names := make(map[string]struct{}, len(defs))
+	for _, def := range defs {
+		names[def.Name] = struct{}{}
+	}
+	return names
+}
+
+func TestSelectTools_FirstTurnExposesFullStaticAllowlist(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling and agenda"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "email", Description: "Email inbox search and triage"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_append", Description: "Append checklist items"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_create", Description: "Create a checklist"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_update", Description: "Update checklist item states"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "process", Description: "Inspect long-running processes"})
+
+	handler := newChatToolSelectionTestHandler(registry)
 
 	got := handler.selectTools("Archive unread emails from Alice", tools.ToolPolicyRequest{
 		Model:     "claude-3-5-haiku-20241022",
@@ -30,256 +50,73 @@ func TestSelectTools_DefaultRuntimePrefersRelevantSubset(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("expected non-empty tool selection")
 	}
-	if len(got) >= len(registry.Definitions()) {
-		t.Fatalf("expected compact tool subset, got %d tools from %d defs", len(got), len(registry.Definitions()))
-	}
 
-	names := make(map[string]bool, len(got))
-	for _, def := range got {
-		names[def.Name] = true
+	names := toolNameSet(got)
+	for _, required := range []string{
+		"calendar",
+		"deep_research",
+		"email",
+		"plan_append",
+		"plan_create",
+		"plan_update",
+		"read",
+		"web_search",
+		"write",
+	} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q in first-turn tool set, got=%v", required, got)
+		}
 	}
-	if !names["email"] {
-		t.Fatalf("expected email tool in selected set, got=%v", got)
-	}
-	if names["process"] {
-		t.Fatalf("expected process tool to stay hidden for email request, got=%v", got)
+	if _, ok := names["process"]; ok {
+		t.Fatalf("expected non-allowlisted tool to stay hidden, got=%v", got)
 	}
 }
 
-func TestSelectTools_DefaultRuntimeSkipsToolsForPlainReply(t *testing.T) {
+func TestSelectTools_FirstTurnStillExposesToolsForPlainReply(t *testing.T) {
 	registry := tools.NewRegistry()
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Run terminal commands"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "gateway", Description: "Inspect gateway status"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "ppt", Description: "Generate presentation slide assets"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_create", Description: "Create a checklist"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
 
-	handler := NewChatHandler(nil, nil, registry)
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
-	handler.SetToolSelector(tools.DefaultToolSelector())
-	handler.SetToolRouter(tools.DefaultToolRouter())
+	handler := newChatToolSelectionTestHandler(registry)
 
 	got := handler.selectTools(`Say "Hello, I'm ready!" to confirm you can respond.`, tools.ToolPolicyRequest{
 		Model:     "claude-3-5-haiku-20241022",
 		RouteKind: tools.ToolRouteKindChat,
 	})
-	if len(got) != 0 {
-		t.Fatalf("expected plain reply prompt to avoid tool exposure, got=%v", got)
+	if len(got) != 3 {
+		t.Fatalf("expected full first-turn tool set for plain reply, got=%v", got)
 	}
 }
 
-func TestSelectTools_DefaultRuntimePrefersWorkspaceFileWorkflow(t *testing.T) {
+func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testing.T) {
 	registry := tools.NewRegistry()
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling and agenda"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "email", Description: "Email inbox search and triage"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_create", Description: "Create a checklist"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace directories"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find text in files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "convert", Description: "Parse CSV and XLSX spreadsheets"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "pdf", Description: "Read PDF files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Run terminal commands"})
-
-	handler := NewChatHandler(nil, nil, registry)
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
-	handler.SetToolSelector(tools.DefaultToolSelector())
-	handler.SetToolRouter(tools.DefaultToolRouter())
-
-	got := handler.selectTools("Review all files in the research/ folder and write a daily summary to daily_briefing.md.", tools.ToolPolicyRequest{
-		Model:     "claude-3-5-haiku-20241022",
-		RouteKind: tools.ToolRouteKindChat,
-	})
-	if len(got) == 0 {
-		t.Fatal("expected non-empty tool selection")
-	}
-
-	names := make(map[string]bool, len(got))
-	for _, def := range got {
-		names[def.Name] = true
-	}
-	if !names["read"] || !names["write"] || !names["ls"] || !names["find"] {
-		t.Fatalf("expected file workflow tools in selected set, got=%v", got)
-	}
-	if names["calendar"] || names["email"] || names["deep_research"] || names["exec"] {
-		t.Fatalf("expected workspace file task to avoid calendar/email/research tools, got=%v", got)
-	}
-}
-
-func TestSelectTools_ResearchReportKeepsResearchAndWriteTools(t *testing.T) {
-	registry := tools.NewRegistry()
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Fallback browser"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace directories"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find text in files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "grep", Description: "Search file content"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "convert", Description: "Convert local files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Run terminal commands"})
 
-	handler := NewChatHandler(nil, nil, registry)
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
-	handler.SetToolSelector(tools.DefaultToolSelector())
-	handler.SetToolRouter(tools.DefaultToolRouter())
+	handler := newChatToolSelectionTestHandler(registry)
 
-	got := handler.selectTools("Create a competitive market research report with sources and save it to market_research.md.", tools.ToolPolicyRequest{
-		Model:     "claude-3-5-haiku-20241022",
-		RouteKind: tools.ToolRouteKindChat,
-	})
-	if len(got) == 0 {
-		t.Fatal("expected non-empty tool selection")
-	}
-
-	names := make(map[string]bool, len(got))
-	for _, def := range got {
-		names[def.Name] = true
-	}
-	if !names["write"] {
-		t.Fatalf("expected research report flow to keep write available, got=%v", got)
-	}
-	if !names["deep_research"] && !names["web_search"] {
-		t.Fatalf("expected research report flow to keep research discovery tools, got=%v", got)
-	}
-}
-
-func TestSelectTools_DefaultRuntimeKeepsWebQueryForResearchArtifact(t *testing.T) {
-	registry := tools.NewRegistry()
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Unified web query entrypoint"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Fallback browser"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "edit", Description: "Edit workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace directories"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find text in files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling and agenda"})
-
-	handler := NewChatHandler(nil, nil, registry)
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
-	handler.SetToolSelector(tools.DefaultToolSelector())
-	handler.SetToolRouter(tools.DefaultToolRouter())
-
-	got := handler.selectTools("Create a competitive market report and save it to market_research.md with sources.", tools.ToolPolicyRequest{
-		Model:     "claude-3-5-haiku-20241022",
-		RouteKind: tools.ToolRouteKindChat,
-	})
-	if len(got) == 0 {
-		t.Fatal("expected non-empty tool selection")
-	}
-
-	names := make(map[string]bool, len(got))
-	for _, def := range got {
-		names[def.Name] = true
-	}
-	for _, required := range []string{"web_query", "browser", "read", "write", "ls", "find"} {
-		if !names[required] {
-			t.Fatalf("expected %s in selected set, got=%v", required, got)
-		}
-	}
-	if names["calendar"] {
-		t.Fatalf("expected research artifact workflow to avoid calendar tool, got=%v", got)
-	}
-}
-
-func TestSelectTools_WorkspaceCodingTaskKeepsExec(t *testing.T) {
-	registry := tools.NewRegistry()
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace directories"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find text in files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Run terminal commands"})
-
-	handler := NewChatHandler(nil, nil, registry)
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
-	handler.SetToolSelector(tools.DefaultToolSelector())
-	handler.SetToolRouter(tools.DefaultToolRouter())
-
-	got := handler.selectTools("In this workspace, run the test suite and debug the failing build.", tools.ToolPolicyRequest{
-		Model:     "claude-3-5-haiku-20241022",
-		RouteKind: tools.ToolRouteKindChat,
-	})
-	if len(got) == 0 {
-		t.Fatal("expected non-empty tool selection")
-	}
-
-	names := make(map[string]bool, len(got))
-	for _, def := range got {
-		names[def.Name] = true
-	}
-	if !names["exec"] {
-		t.Fatalf("expected coding task to keep exec available, got=%v", got)
-	}
-}
-
-func TestSelectTools_DeepResearchToggleForceExposesResearchAskAndFileOps(t *testing.T) {
-	registry := tools.NewRegistry()
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "ask", Description: "Ask user preference questions"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "memory", Description: "Recall prior context"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Run terminal commands"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_fetch", Description: "Fetch a known page"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_read", Description: "Read a normalized page"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_crawl", Description: "Crawl web sources"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Fallback browser"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace directories"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find text in files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "grep", Description: "Search file content"})
-
-	handler := NewChatHandler(nil, nil, registry)
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
-	handler.SetToolSelector(tools.DefaultToolSelector())
-	handler.SetToolRouter(tools.DefaultToolRouter())
-
-	enabled := true
-	got := handler.selectTools("投资人问，你们blue在memory layer做了哪些创新？为什么它的上下文治理能力比openclaw好？我们具体现有方案和它的区别是什么？Agent行业SOTA的方案是什么？", tools.ToolPolicyRequest{
-		Model:               "claude-3-5-haiku-20241022",
-		RouteKind:           tools.ToolRouteKindChat,
-		DeepResearchEnabled: &enabled,
-	})
-	names := make(map[string]bool, len(got))
-	for _, def := range got {
-		names[def.Name] = true
-	}
-	for _, required := range []string{"ask", "deep_research", "read", "write", "ls", "find"} {
-		if !names[required] {
-			t.Fatalf("expected %s in selected set, got=%v", required, got)
-		}
-	}
-	if !names["browser"] && !names["web_search"] && !names["web_fetch"] && !names["web_read"] && !names["web_crawl"] {
-		t.Fatalf("expected at least one web research tool in selected set, got=%v", got)
-	}
-}
-
-func TestResolveSkillSelectionForRequest_DeepResearchToggleForcesSkill(t *testing.T) {
-	handler := NewChatHandler(nil, nil, tools.NewRegistry())
-
-	enabled := true
-	prompt, selectedSkill := handler.resolveSkillSelectionForRequest(
-		context.Background(),
-		"投资人问，你们blue在memory layer做了哪些创新？为什么它的上下文治理能力比openclaw好？我们具体现有方案和它的区别是什么？Agent行业SOTA的方案是什么？",
-		&enabled,
+	webSearchEnabled := false
+	deepResearchEnabled := false
+	got := handler.selectChatToolsForRequest(
+		"Look up the latest updates and create a checklist",
+		"claude-3-5-haiku-20241022",
+		"session-1",
+		&webSearchEnabled,
+		&deepResearchEnabled,
 	)
-	if selectedSkill != "deep_research" {
-		t.Fatalf("expected deep_research skill, got %q", selectedSkill)
-	}
-	if !strings.Contains(prompt, `stage="forced"`) || !strings.Contains(prompt, `selected="deep_research"`) {
-		t.Fatalf("expected forced deep_research skill hint, got %q", prompt)
-	}
-}
 
-func TestShouldForceRequestAgentMode_DeepResearchToggleRequiresStructuredResearchCue(t *testing.T) {
-	enabled := true
-	disabled := false
-
-	if !shouldForceRequestAgentMode("What are the current best practices for agent memory systems?", &enabled) {
-		t.Fatal("expected strong deep research prompt to force request agent mode")
+	names := toolNameSet(got)
+	for _, forbidden := range []string{"deep_research", "web_search"} {
+		if _, ok := names[forbidden]; ok {
+			t.Fatalf("expected %q to be removed by explicit capability toggle, got=%v", forbidden, got)
+		}
 	}
-	if shouldForceRequestAgentMode("请用一句话比较 A 和 B。", &enabled) {
-		t.Fatal("expected short comparative prompt not to force request agent mode")
-	}
-	if shouldForceRequestAgentMode("What are the current best practices for agent memory systems?", &disabled) {
-		t.Fatal("expected disabled deep research toggle not to force request agent mode")
+	for _, required := range []string{"plan_create", "read"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q to remain visible, got=%v", required, got)
+		}
 	}
 }

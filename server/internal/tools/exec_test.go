@@ -1664,6 +1664,90 @@ func TestExecSkillShortCircuit_SilentAskUsesAutoAnsweredWarning(t *testing.T) {
 	}
 }
 
+func TestPublicBashTool_StrictShellBypassesToolAutoForward(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "sample.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	execTool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+	registry := NewRegistry()
+	registry.Register(execTool)
+	registry.Register(NewProcessTool(sessions))
+	registry.Register(NewPublicBashTool(registry))
+
+	lsTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "ls",
+			Description: "list files",
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+	}
+	registry.Register(lsTool)
+	execTool.SetRegistry(registry)
+	execTool.SetToolNames(registry.List())
+
+	result, err := registry.Get("bash").Execute(context.Background(), map[string]interface{}{
+		"command": fmt.Sprintf("cd %q && ls", tmpDir),
+	})
+	if err != nil {
+		t.Fatalf("bash execute failed: %v", err)
+	}
+	if lsTool.args != nil {
+		t.Fatalf("strict bash should not auto-forward to ls tool, args=%v", lsTool.args)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if !strings.Contains(res.Stdout, "sample.txt") {
+		t.Fatalf("stdout = %q, want sample.txt from real shell ls", res.Stdout)
+	}
+}
+
+func TestPublicBashTool_StrictShellBypassesPinnedSkillShortCircuit(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	execTool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+	registry := NewRegistry()
+	registry.Register(execTool)
+	registry.Register(NewPublicBashTool(registry))
+
+	called := 0
+	execTool.SetSkillExecutor(func(_ context.Context, _ string, _ map[string]any) (map[string]string, error) {
+		called++
+		return map[string]string{"success": "true"}, nil
+	})
+	execTool.SetPinnedSkills([]string{"web_search"})
+	execTool.SetRegistry(registry)
+	execTool.SetToolNames(registry.List())
+
+	if _, err := registry.Get("bash").Execute(context.Background(), map[string]interface{}{
+		"command": "web_search hello || true",
+	}); err != nil {
+		t.Fatalf("bash execute failed: %v", err)
+	}
+	if called != 0 {
+		t.Fatalf("strict bash should not short-circuit pinned skills, called=%d", called)
+	}
+}
+
 func containsWarning(warnings []string, target string) bool {
 	for _, warning := range warnings {
 		if warning == target {

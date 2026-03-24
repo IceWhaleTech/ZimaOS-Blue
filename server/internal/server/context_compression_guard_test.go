@@ -108,8 +108,6 @@ func TestSendMessage_PausesStaleCarryOverSideEffectToolForLatestQuestion(t *test
 		ContextWindow: 2048,
 	}}))
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
-	smartToolSelection := false
-	settings.settings.SmartToolSelection = &smartToolSelection
 	handler.SetSettingsHandler(settings)
 
 	seedCompressedHistoryForGuardTest(t, store, handler, conv.ID)
@@ -199,8 +197,6 @@ func TestStreamMessage_PausesStaleCarryOverSideEffectToolForLatestQuestion(t *te
 		ContextWindow: 2048,
 	}}))
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
-	smartToolSelection := false
-	settings.settings.SmartToolSelection = &smartToolSelection
 	handler.SetSettingsHandler(settings)
 
 	seedCompressedHistoryForGuardTest(t, store, handler, conv.ID)

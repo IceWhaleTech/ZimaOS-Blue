@@ -272,11 +272,6 @@ const imageQASuccessRate = computed(() => {
   if (attempts <= 0) return 0
   return Math.round((success / attempts) * 100)
 })
-const toolDispatchSuccessRate = computed(() => {
-  const stats = settingsStore.smallModelStats
-  if (!stats || stats.tool_dispatch_route_attempts <= 0) return 0
-  return Math.round((stats.tool_dispatch_route_success / stats.tool_dispatch_route_attempts) * 100)
-})
 const contextCompressSuccessRate = computed(() => {
   const stats = settingsStore.smallModelStats
   const attempts = stats?.context_compress_attempts ?? 0
@@ -413,10 +408,6 @@ async function handleSmallModelMediaIntentEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setSmallModelMediaIntentEnabled(next))
 }
 
-async function handleSmartToolSelectionEnabledChange(next: boolean) {
-  await withSmallModelSave(() => settingsStore.setSmartToolSelection(next))
-}
-
 async function handleOfflineIRFallbackEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setOfflineIRFallbackEnabled(next))
 }
@@ -459,10 +450,6 @@ async function handleSmallModelRouteShortQAEnabledChange(next: boolean) {
 
 async function handleSmallModelRouteImageQAEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setSmallModelRouteImageQAEnabled(next))
-}
-
-async function handleSmallModelRouteToolDispatchEnabledChange(next: boolean) {
-  await withSmallModelSave(() => settingsStore.setSmallModelRouteToolDispatchEnabled(next))
 }
 
 function formatFallbackReason(reason: string): string {
@@ -1207,45 +1194,6 @@ onUnmounted(() => {
                 >
                   <div class="min-w-0 flex-1">
                     <div class="text-sm text-gray-800 dark:text-gray-100">
-                      {{ t('apiProxy.smartToolsTitle', 'Smart Tool Selection') }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {{
-                        t(
-                          'apiProxy.smartToolsDesc',
-                          'Send only relevant tools per query, reducing token usage'
-                        )
-                      }}
-                    </div>
-                  </div>
-                  <button
-                    data-testid="smart-tool-selection-switch"
-                    type="button"
-                    role="switch"
-                    :aria-checked="settingsStore.smartToolSelection"
-                    :disabled="smallModelSaving"
-                    class="relative mt-0.5 inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                    :class="
-                      settingsStore.smartToolSelection
-                        ? 'bg-green-600 dark:bg-green-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="
-                      handleSmartToolSelectionEnabledChange(!settingsStore.smartToolSelection)
-                    "
-                  >
-                    <span
-                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="settingsStore.smartToolSelection ? 'translate-x-5' : 'translate-x-0'"
-                    />
-                  </button>
-                </div>
-
-                <div
-                  class="flex h-full items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-gray-700 dark:bg-slate-800/50"
-                >
-                  <div class="min-w-0 flex-1">
-                    <div class="text-sm text-gray-800 dark:text-gray-100">
                       {{
                         t('settings.smallModel.irOfflineFallbackTitle', 'Offline Local Fallback')
                       }}
@@ -1727,49 +1675,6 @@ onUnmounted(() => {
                     </div>
                   </div>
 
-                  <div
-                    class="w-full px-3 py-2 rounded-lg text-sm border bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300"
-                  >
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="font-medium text-gray-900 dark:text-white">
-                        {{ t('settings.smallModel.toolDispatch', 'Tool Dispatch Routing') }}
-                      </div>
-                      <button
-                        data-testid="small-model-tool-dispatch-switch"
-                        type="button"
-                        role="switch"
-                        :aria-checked="settingsStore.smallModelRouteToolDispatchEnabled"
-                        :disabled="smallModelSaving"
-                        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                        :class="
-                          settingsStore.smallModelRouteToolDispatchEnabled
-                            ? 'bg-green-600 dark:bg-green-500'
-                            : 'bg-gray-300 dark:bg-gray-600'
-                        "
-                        @click="
-                          handleSmallModelRouteToolDispatchEnabledChange(
-                            !settingsStore.smallModelRouteToolDispatchEnabled
-                          )
-                        "
-                      >
-                        <span
-                          class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                          :class="
-                            settingsStore.smallModelRouteToolDispatchEnabled
-                              ? 'translate-x-5'
-                              : 'translate-x-0'
-                          "
-                        />
-                      </button>
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {{
-                        settingsStore.smallModelRouteToolDispatchEnabled
-                          ? t('common.enabled', 'Enabled')
-                          : t('common.disabled', 'Disabled')
-                      }}
-                    </div>
-                  </div>
                 </div>
 
                 <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
@@ -1867,33 +1772,6 @@ onUnmounted(() => {
                       >
                         <div class="text-gray-500 dark:text-gray-400">
                           {{
-                            t('settings.smallModel.toolDispatchAttempts', 'Tool Dispatch Attempts')
-                          }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ settingsStore.smallModelStats?.tool_dispatch_route_attempts ?? 0 }}
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{
-                            t(
-                              'settings.smallModel.toolDispatchSuccessRate',
-                              'Tool Dispatch Success'
-                            )
-                          }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ toolDispatchSuccessRate }}%
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{
                             t('settings.smallModel.deepResearchFallbacks', 'DeepResearch Fallbacks')
                           }}
                         </div>
@@ -1976,22 +1854,6 @@ onUnmounted(() => {
                         <div class="mt-1 font-medium text-gray-900 dark:text-white">
                           {{
                             (settingsStore.smallModelStats?.image_qa_latency_ms ?? 0).toFixed(1)
-                          }}ms
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{
-                            t('settings.smallModel.toolDispatchLatencyMs', 'Tool Dispatch Latency')
-                          }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{
-                            (settingsStore.smallModelStats?.tool_dispatch_latency_ms ?? 0).toFixed(
-                              1
-                            )
                           }}ms
                         </div>
                       </div>

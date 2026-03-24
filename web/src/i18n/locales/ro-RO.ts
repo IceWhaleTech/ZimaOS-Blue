@@ -691,7 +691,6 @@ export default {
       mediaIntent: 'Recunoașterea scenariilor de generare media',
       shortQA: 'Accelerarea întrebărilor scurte',
       shadowOnly: 'Faza 1: doar validare în fundal',
-      toolDispatch: 'Accelerarea trimiterii către unelte',
       statsTitle: 'Statistici de rulare (depanare)',
       statsHint: 'In principal pentru depanare si reglaj; poate fi ignorat in utilizarea zilnica.',
       resetStats: 'Șterge statisticile',
@@ -701,9 +700,6 @@ export default {
       imageQAAttempts: 'Număr recunoașteri imagini',
       imageQASuccessRate: 'Rata de reușită a recunoașterii imaginilor',
       imageQALatencyMs: 'Latența recunoașterii imaginilor',
-      toolDispatchAttempts: 'Accelerarea trimiterii către unelte Număr',
-      toolDispatchSuccessRate: 'Accelerarea trimiterii către unelte Rată de reușită',
-      toolDispatchLatencyMs: 'Accelerarea trimiterii către unelte Latență',
       summarySuccessRate: 'Accelerarea rezumatelor Rată de reușită',
       summaryLatencyMs: 'Accelerarea rezumatelor Latență',
       contextCompressionSuccessRate: 'Rata de reușită a compresiei contextului',
@@ -1705,8 +1701,6 @@ export default {
       bearer_token: 'Token Bearer',
       credit_card: 'Număr card de credit',
     },
-    smartToolsDesc:
-      'Trimite doar uneltele relevante pentru fiecare interogare, reducând consumul de tokeni',
     providerRaceTitle: 'Cursă concurentă între furnizori',
     providerRaceDesc:
       'Trimite cereri concurente către mai mulți furnizori și returnează cel mai rapid răspuns reușit; acest lucru poate crește ușor costul',

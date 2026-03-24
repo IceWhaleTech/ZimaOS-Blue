@@ -15,8 +15,6 @@ type SmallModelStats struct {
 	ShortQARouteSuccess        int64            `json:"short_qa_route_success"`
 	ImageQARouteAttempts       int64            `json:"image_qa_route_attempts"`
 	ImageQARouteSuccess        int64            `json:"image_qa_route_success"`
-	ToolDispatchRouteAttempts  int64            `json:"tool_dispatch_route_attempts"`
-	ToolDispatchRouteSuccess   int64            `json:"tool_dispatch_route_success"`
 	SummaryAttempts            int64            `json:"summary_attempts"`
 	SummarySuccess             int64            `json:"summary_success"`
 	ContextCompressAttempts    int64            `json:"context_compress_attempts"`
@@ -34,9 +32,6 @@ type SmallModelStats struct {
 	ImageQALatencyMs           float64          `json:"image_qa_latency_ms"`
 	ImageQALatencySamples      int64            `json:"image_qa_latency_samples"`
 	ImageQALatencyMsTotal      int64            `json:"image_qa_latency_ms_total"`
-	ToolDispatchLatencyMs      float64          `json:"tool_dispatch_latency_ms"`
-	ToolDispatchLatencySamples int64            `json:"tool_dispatch_latency_samples"`
-	ToolDispatchLatencyTotal   int64            `json:"tool_dispatch_latency_ms_total"`
 	SummaryLatencyMs           float64          `json:"summary_latency_ms"`
 	SummaryLatencySamples      int64            `json:"summary_latency_samples"`
 	SummaryLatencyTotal        int64            `json:"summary_latency_ms_total"`
@@ -79,18 +74,6 @@ func (s *SmallModelStats) RecordImageQARoute(success bool) {
 	s.ImageQARouteAttempts++
 	if success {
 		s.ImageQARouteSuccess++
-	}
-}
-
-func (s *SmallModelStats) RecordToolDispatchRoute(success bool) {
-	if s == nil {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ToolDispatchRouteAttempts++
-	if success {
-		s.ToolDispatchRouteSuccess++
 	}
 }
 
@@ -187,9 +170,6 @@ func (s *SmallModelStats) RecordLatencyWithScene(scene string, d time.Duration) 
 	case "image_qa":
 		s.ImageQALatencySamples++
 		s.ImageQALatencyMsTotal += ms
-	case "tool_dispatch":
-		s.ToolDispatchLatencySamples++
-		s.ToolDispatchLatencyTotal += ms
 	case "summary":
 		s.SummaryLatencySamples++
 		s.SummaryLatencyTotal += ms
@@ -236,38 +216,34 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cp := SmallModelStats{
-		ShortQARouteAttempts:       s.ShortQARouteAttempts,
-		ShortQARouteSuccess:        s.ShortQARouteSuccess,
-		ImageQARouteAttempts:       s.ImageQARouteAttempts,
-		ImageQARouteSuccess:        s.ImageQARouteSuccess,
-		ToolDispatchRouteAttempts:  s.ToolDispatchRouteAttempts,
-		ToolDispatchRouteSuccess:   s.ToolDispatchRouteSuccess,
-		SummaryAttempts:            s.SummaryAttempts,
-		SummarySuccess:             s.SummarySuccess,
-		ContextCompressAttempts:    s.ContextCompressAttempts,
-		ContextCompressSuccess:     s.ContextCompressSuccess,
-		DocExtractAttempts:         s.DocExtractAttempts,
-		DocExtractSuccess:          s.DocExtractSuccess,
-		FallbackTotal:              s.FallbackTotal,
-		TimeoutTotal:               s.TimeoutTotal,
-		LatencySamples:             s.LatencySamples,
-		LatencyMsTotal:             s.LatencyMsTotal,
-		ShortQALatencySamples:      s.ShortQALatencySamples,
-		ShortQALatencyMsTotal:      s.ShortQALatencyMsTotal,
-		ImageQALatencySamples:      s.ImageQALatencySamples,
-		ImageQALatencyMsTotal:      s.ImageQALatencyMsTotal,
-		ToolDispatchLatencySamples: s.ToolDispatchLatencySamples,
-		ToolDispatchLatencyTotal:   s.ToolDispatchLatencyTotal,
-		SummaryLatencySamples:      s.SummaryLatencySamples,
-		SummaryLatencyTotal:        s.SummaryLatencyTotal,
-		ContextCompressSamples:     s.ContextCompressSamples,
-		ContextCompressTotal:       s.ContextCompressTotal,
-		DocExtractLatencySamples:   s.DocExtractLatencySamples,
-		DocExtractLatencyTotal:     s.DocExtractLatencyTotal,
-		AutoRollbackTotal:          s.AutoRollbackTotal,
-		DeepResearchFallback:       s.DeepResearchFallback,
-		IRTakeover:                 s.IRTakeover,
-		FallbackReasons:            make(map[string]int64, len(s.FallbackReasons)),
+		ShortQARouteAttempts:     s.ShortQARouteAttempts,
+		ShortQARouteSuccess:      s.ShortQARouteSuccess,
+		ImageQARouteAttempts:     s.ImageQARouteAttempts,
+		ImageQARouteSuccess:      s.ImageQARouteSuccess,
+		SummaryAttempts:          s.SummaryAttempts,
+		SummarySuccess:           s.SummarySuccess,
+		ContextCompressAttempts:  s.ContextCompressAttempts,
+		ContextCompressSuccess:   s.ContextCompressSuccess,
+		DocExtractAttempts:       s.DocExtractAttempts,
+		DocExtractSuccess:        s.DocExtractSuccess,
+		FallbackTotal:            s.FallbackTotal,
+		TimeoutTotal:             s.TimeoutTotal,
+		LatencySamples:           s.LatencySamples,
+		LatencyMsTotal:           s.LatencyMsTotal,
+		ShortQALatencySamples:    s.ShortQALatencySamples,
+		ShortQALatencyMsTotal:    s.ShortQALatencyMsTotal,
+		ImageQALatencySamples:    s.ImageQALatencySamples,
+		ImageQALatencyMsTotal:    s.ImageQALatencyMsTotal,
+		SummaryLatencySamples:    s.SummaryLatencySamples,
+		SummaryLatencyTotal:      s.SummaryLatencyTotal,
+		ContextCompressSamples:   s.ContextCompressSamples,
+		ContextCompressTotal:     s.ContextCompressTotal,
+		DocExtractLatencySamples: s.DocExtractLatencySamples,
+		DocExtractLatencyTotal:   s.DocExtractLatencyTotal,
+		AutoRollbackTotal:        s.AutoRollbackTotal,
+		DeepResearchFallback:     s.DeepResearchFallback,
+		IRTakeover:               s.IRTakeover,
+		FallbackReasons:          make(map[string]int64, len(s.FallbackReasons)),
 	}
 	if cp.LatencySamples > 0 {
 		cp.LatencyMs = float64(cp.LatencyMsTotal) / float64(cp.LatencySamples)
@@ -277,9 +253,6 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 	}
 	if cp.ImageQALatencySamples > 0 {
 		cp.ImageQALatencyMs = float64(cp.ImageQALatencyMsTotal) / float64(cp.ImageQALatencySamples)
-	}
-	if cp.ToolDispatchLatencySamples > 0 {
-		cp.ToolDispatchLatencyMs = float64(cp.ToolDispatchLatencyTotal) / float64(cp.ToolDispatchLatencySamples)
 	}
 	if cp.SummaryLatencySamples > 0 {
 		cp.SummaryLatencyMs = float64(cp.SummaryLatencyTotal) / float64(cp.SummaryLatencySamples)
@@ -306,8 +279,6 @@ func (s *SmallModelStats) Reset() {
 	s.ShortQARouteSuccess = 0
 	s.ImageQARouteAttempts = 0
 	s.ImageQARouteSuccess = 0
-	s.ToolDispatchRouteAttempts = 0
-	s.ToolDispatchRouteSuccess = 0
 	s.SummaryAttempts = 0
 	s.SummarySuccess = 0
 	s.ContextCompressAttempts = 0
@@ -325,9 +296,6 @@ func (s *SmallModelStats) Reset() {
 	s.ImageQALatencyMs = 0
 	s.ImageQALatencySamples = 0
 	s.ImageQALatencyMsTotal = 0
-	s.ToolDispatchLatencyMs = 0
-	s.ToolDispatchLatencySamples = 0
-	s.ToolDispatchLatencyTotal = 0
 	s.SummaryLatencyMs = 0
 	s.SummaryLatencySamples = 0
 	s.SummaryLatencyTotal = 0

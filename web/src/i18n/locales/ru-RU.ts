@@ -663,7 +663,6 @@ export default {
       mediaIntent: 'Распознавание сценариев генерации медиа',
       shortQA: 'Ускорение коротких Q&A',
       shadowOnly: 'Этап 1: только фоновая проверка',
-      toolDispatch: 'Ускорение распределения инструментов',
       statsTitle: 'Statistika vypolneniya (diagnostika)',
       statsHint:
         'V osnovnom dlya diagnostiki i nastrojki; v povsednevnom ispolzovanii mozhno ignorirovat.',
@@ -674,9 +673,6 @@ export default {
       imageQAAttempts: 'Количество распознаваний изображений',
       imageQASuccessRate: 'Доля успешного распознавания изображений',
       imageQALatencyMs: 'Задержка распознавания изображений',
-      toolDispatchAttempts: 'Ускорение распределения инструментов Количество',
-      toolDispatchSuccessRate: 'Ускорение распределения инструментов Доля попаданий',
-      toolDispatchLatencyMs: 'Ускорение распределения инструментов Задержка',
       summarySuccessRate: 'Ускорение сводки Доля попаданий',
       summaryLatencyMs: 'Ускорение сводки Задержка',
       contextCompressionSuccessRate: 'Доля успешного сжатия контекста',
@@ -2892,7 +2888,6 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
-    smartToolsDesc: 'Отправляет только релевантные инструменты для запроса, снижая расход токенов',
     providerRaceTitle: 'Параллельная гонка провайдеров',
     providerRaceDesc:
       'Отправляет параллельные запросы нескольким провайдерам и возвращает самый быстрый успешный ответ; это может немного увеличить стоимость',

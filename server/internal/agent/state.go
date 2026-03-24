@@ -167,13 +167,13 @@ func (s *GroundTruthStateStore) DeriveStateUpdates(call GroundedToolCall, result
 	}
 	tool := normalizeGroundToolName(call.Tool)
 	switch tool {
-	case "write_file":
+	case "write":
 		return deriveWriteStateUpdates(call, result, now)
-	case "read_file":
+	case "read":
 		return deriveReadStateUpdates(call, result, now)
 	case "ls":
 		return deriveLSStateUpdates(call, result, now)
-	case "exec":
+	case "bash":
 		return deriveExecStateUpdates(call, result, now)
 	default:
 		return []StateUpdate{{
@@ -391,9 +391,11 @@ func normalizeGroundPath(path string) string {
 func normalizeGroundToolName(name string) string {
 	switch strings.TrimSpace(strings.ToLower(name)) {
 	case "read", "read_file", "file_read":
-		return "file_read"
+		return "read"
 	case "write", "write_file", "file_write":
-		return "file_write"
+		return "write"
+	case "bash", "exec":
+		return "bash"
 	default:
 		return strings.TrimSpace(strings.ToLower(name))
 	}

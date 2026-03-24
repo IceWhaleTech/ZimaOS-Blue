@@ -711,7 +711,6 @@ export default {
       mediaIntent: 'Erkennung von Mediengenerierungs-Szenarien',
       shortQA: 'Beschleunigung kurzer Q&A',
       shadowOnly: 'Phase 1: nur Hintergrundvalidierung',
-      toolDispatch: 'Beschleunigung der Werkzeugverteilung',
       statsTitle: 'Laufzeitstatistiken (Fehlerbehebung)',
       statsHint: 'Hauptsachlich fur Fehlersuche und Tuning; im Alltag meist nicht relevant.',
       resetStats: 'Statistiken löschen',
@@ -721,9 +720,6 @@ export default {
       imageQAAttempts: 'Anzahl der Bilderkennungen',
       imageQASuccessRate: 'Trefferquote der Bilderkennung',
       imageQALatencyMs: 'Latenz der Bilderkennung',
-      toolDispatchAttempts: 'Beschleunigung der Werkzeugverteilung Anzahl',
-      toolDispatchSuccessRate: 'Beschleunigung der Werkzeugverteilung Trefferquote',
-      toolDispatchLatencyMs: 'Beschleunigung der Werkzeugverteilung Latenz',
       summarySuccessRate: 'Beschleunigung von Zusammenfassungen Trefferquote',
       summaryLatencyMs: 'Beschleunigung von Zusammenfassungen Latenz',
       contextCompressionSuccessRate: 'Trefferquote der Kontextkomprimierung',
@@ -3363,7 +3359,6 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
-    smartToolsDesc: 'Sendet pro Anfrage nur relevante Tools und reduziert so den Tokenverbrauch',
     providerRaceTitle: 'Anbieter-Parallelrennen',
     providerRaceDesc:
       'Sendet Anfragen parallel an mehrere Anbieter und gibt die schnellste erfolgreiche Antwort zurück; dies kann die Kosten leicht erhöhen',

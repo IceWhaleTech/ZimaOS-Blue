@@ -26,8 +26,6 @@ describe('SmallModelStatsCard', () => {
         data: {
           short_qa_route_attempts: 20,
           short_qa_route_success: 16,
-          tool_dispatch_route_attempts: 10,
-          tool_dispatch_route_success: 7,
           summary_attempts: 5,
           summary_success: 4,
           doc_extract_attempts: 4,
@@ -36,7 +34,6 @@ describe('SmallModelStatsCard', () => {
           small_model_timeout_total: 2,
           small_model_latency_ms: 18.5,
           short_qa_latency_ms: 9.2,
-          tool_dispatch_latency_ms: 21.4,
           summary_latency_ms: 14.8,
           doc_extract_latency_ms: 32.1,
           auto_rollback_total: 2,
@@ -53,8 +50,6 @@ describe('SmallModelStatsCard', () => {
         data: {
           short_qa_route_attempts: 20,
           short_qa_route_success: 20,
-          tool_dispatch_route_attempts: 10,
-          tool_dispatch_route_success: 10,
           summary_attempts: 5,
           summary_success: 5,
           doc_extract_attempts: 4,
@@ -63,7 +58,6 @@ describe('SmallModelStatsCard', () => {
           small_model_timeout_total: 1,
           small_model_latency_ms: 12.3,
           short_qa_latency_ms: 8.1,
-          tool_dispatch_latency_ms: 10.5,
           summary_latency_ms: 7.0,
           doc_extract_latency_ms: 15.7,
           auto_rollback_total: 0,
@@ -85,7 +79,7 @@ describe('SmallModelStatsCard', () => {
     expect(settingsApi.getSmallModelStats).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('20')
     expect(wrapper.text()).toContain('80%')
-    expect(wrapper.text()).toContain('70%')
+    expect(wrapper.text()).toContain('80%')
     expect(wrapper.text()).toContain('75%')
     expect(wrapper.text()).toContain('18.5ms')
     expect(wrapper.text()).toContain('deepresearch unavailable')
@@ -111,8 +105,6 @@ describe('SmallModelStatsCard', () => {
       data: {
         short_qa_route_attempts: 1,
         short_qa_route_success: 1,
-        tool_dispatch_route_attempts: 1,
-        tool_dispatch_route_success: 1,
         summary_attempts: 1,
         summary_success: 1,
         doc_extract_attempts: 1,
@@ -121,7 +113,6 @@ describe('SmallModelStatsCard', () => {
         small_model_timeout_total: 0,
         small_model_latency_ms: 1,
         short_qa_latency_ms: 1,
-        tool_dispatch_latency_ms: 1,
         summary_latency_ms: 1,
         doc_extract_latency_ms: 1,
         auto_rollback_total: 0,

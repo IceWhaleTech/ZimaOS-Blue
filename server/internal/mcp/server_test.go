@@ -106,7 +106,12 @@ func (m *mockWorkspace) LoadContextFiles() map[string]string {
 func testServer(t *testing.T) *Server {
 	t.Helper()
 	registry := tools.NewRegistry()
-	registry.Register(&mockTool{name: "exec", desc: "run commands", result: "ok"})
+	registry.Register(&mockTool{name: "bash", desc: "run commands", result: "ok"})
+	registry.Register(&mockTool{name: "exec", desc: "legacy run commands", result: "ok"})
+	registry.Disable("exec")
+	for _, name := range []string{"read", "write", "edit", "ls", "grep", "find"} {
+		registry.Register(&mockTool{name: name, desc: name + " tool", result: "ok"})
+	}
 	registry.Register(&mockTool{name: "memory_search", desc: "search memory", result: map[string]string{"found": "yes"}})
 	executor := tools.NewExecutor(registry)
 	return NewServer(registry, executor)
@@ -256,8 +261,15 @@ func TestToolsList(t *testing.T) {
 	for _, tool := range listResult.Tools {
 		names[tool.Name] = true
 	}
-	if !names["exec"] || !names["memory_search"] || !names[orchestratorRunTool] || !names[workspaceReadTextTool] || !names[workspaceWriteTextTool] {
-		t.Errorf("expected exec, memory_search and workspace tools, got %v", names)
+	for _, required := range []string{"bash", "read", "write", "edit", "ls", "grep", "find", "memory_search", orchestratorRunTool} {
+		if !names[required] {
+			t.Fatalf("expected tools/list to include %q, got %v", required, names)
+		}
+	}
+	for _, hidden := range []string{"exec", workspaceReadTextTool, workspaceWriteTextTool, workspaceSearchTextTool, workspaceReplaceTextTool, workspaceListFilesTool} {
+		if names[hidden] {
+			t.Fatalf("did not expect tools/list to expose %q, got %v", hidden, names)
+		}
 	}
 }
 
@@ -283,6 +295,27 @@ func TestToolsCall(t *testing.T) {
 	}
 	if callResult.Content[0].Text != "ok" {
 		t.Errorf("text = %q, want %q", callResult.Content[0].Text, "ok")
+	}
+}
+
+func TestToolsCall_CanonicalBash(t *testing.T) {
+	s := testServer(t)
+	sess := s.CreateSession()
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name:      "bash",
+		Arguments: map[string]interface{}{"command": "echo hi"},
+	})
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %v", resp.Error)
+	}
+
+	callResult := parseToolCallResult(t, resp)
+	if callResult.IsError {
+		t.Fatal("expected no error")
+	}
+	if len(callResult.Content) == 0 || callResult.Content[0].Text != "ok" {
+		t.Fatalf("content = %+v, want ok", callResult.Content)
 	}
 }
 
@@ -1275,7 +1308,7 @@ func TestPromptsGet_CodingTask(t *testing.T) {
 		t.Fatalf("got %d messages, want 1", len(getResult.Messages))
 	}
 	text := getResult.Messages[0].Content.Text
-	if !strings.Contains(text, "orchestrator.run") || !strings.Contains(text, "workspace.list_files") || !strings.Contains(text, "Do not depend on `blue` CLI") {
+	if !strings.Contains(text, "orchestrator.run") || !strings.Contains(text, "read/write/edit/ls/grep/find") || !strings.Contains(text, "Use bash") || !strings.Contains(text, "Do not depend on `blue` CLI") {
 		t.Fatalf("coding_task guidance missing expected fallback instructions: %q", text)
 	}
 }

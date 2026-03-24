@@ -658,7 +658,7 @@ func TestBuildToolLoopArtifactRecoveryNudge_PushesSearchLoopTowardWrite(t *testi
 	if want := `market_research.md`; !containsSubstring(nudge, want) {
 		t.Fatalf("expected artifact nudge to mention target path %q, got=%q", want, nudge)
 	}
-	if want := `Do not continue looping through more search or browser calls`; !containsSubstring(nudge, want) {
+	if want := `Do not continue looping through more search, browsing, or repeated file discovery/reads`; !containsSubstring(nudge, want) {
 		t.Fatalf("expected artifact nudge to stop loop, got=%q", nudge)
 	}
 }

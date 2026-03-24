@@ -13,14 +13,14 @@ func TestExecuteToolCallsUsesGatewayCompactPayload(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.Register(&staticToolMock{
 		def: tools.ToolDefinition{
-			Name:        "web_fetch",
+			Name:        "web_query",
 			Description: "fetch",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"url": map[string]interface{}{"type": "string"},
+					"input": map[string]interface{}{"type": "string"},
 				},
-				"required": []string{"url"},
+				"required": []string{"input"},
 			},
 		},
 		result: "\x1b[31mexternal content\x1b[0m",
@@ -29,8 +29,8 @@ func TestExecuteToolCallsUsesGatewayCompactPayload(t *testing.T) {
 
 	results := handler.executeToolCalls(context.Background(), []llm.ToolCall{{
 		ID:        "call-1",
-		Name:      "web_fetch",
-		Arguments: `{"url":"https://example.com"}`,
+		Name:      "web_query",
+		Arguments: `{"input":"https://example.com"}`,
 	}})
 	if len(results) != 1 {
 		t.Fatalf("len(results) = %d, want 1", len(results))

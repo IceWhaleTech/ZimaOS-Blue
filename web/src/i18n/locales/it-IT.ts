@@ -688,7 +688,6 @@ export default {
       mediaIntent: 'Riconoscimento scenario di generazione media',
       shortQA: 'Accelerazione Q&A brevi',
       shadowOnly: 'Fase 1: solo validazione in background',
-      toolDispatch: 'Accelerazione invio strumenti',
       statsTitle: 'Statistiche di esecuzione (risoluzione problemi)',
       statsHint:
         "Principalmente per diagnostica e tuning; puo essere ignorato nell'uso quotidiano.",
@@ -699,9 +698,6 @@ export default {
       imageQAAttempts: 'Conteggio riconoscimento immagini',
       imageQASuccessRate: 'Tasso di successo del riconoscimento immagini',
       imageQALatencyMs: 'Latenza del riconoscimento immagini',
-      toolDispatchAttempts: 'Accelerazione invio strumenti Conteggio',
-      toolDispatchSuccessRate: 'Accelerazione invio strumenti Tasso di successo',
-      toolDispatchLatencyMs: 'Accelerazione invio strumenti Latenza',
       summarySuccessRate: 'Accelerazione riepilogo Tasso di successo',
       summaryLatencyMs: 'Accelerazione riepilogo Latenza',
       contextCompressionSuccessRate: 'Tasso di successo della compressione del contesto',
@@ -3002,7 +2998,6 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
-    smartToolsDesc: "Invia solo gli strumenti pertinenti per query, riducendo l'uso di token",
     providerRaceTitle: 'Gara concorrente tra provider',
     providerRaceDesc:
       'Esegue richieste concorrenti a più provider e restituisce la risposta corretta più veloce; questo può aumentare leggermente il costo',

@@ -10,7 +10,6 @@ export type ContextCompressionMode = 'offline' | 'small_model' | 'auto'
 export interface Settings {
   locale?: string // User's preferred locale (e.g., "zh-CN", "en-US")
   timezone?: string // User's timezone
-  smart_tool_selection?: boolean // IR-based tool filtering (default false)
   smart_skill_selection?: boolean // Progressive skill selector (default false)
   skill_selector_mode?: 'hybrid' | 'ir_only' | 'llm_only' // Skill selector strategy
   skill_rerank_enabled?: boolean // Enable stage-2 rerank (default false)
@@ -46,22 +45,12 @@ export interface Settings {
   deep_research_v2_enabled?: boolean // default false
   small_model_route_image_qa_enabled?: boolean // default inherits short QA
   small_model_route_short_qa_enabled?: boolean // default false
-  small_model_route_tool_dispatch_enabled?: boolean // default false
   no_llm_degrade_mode?: NoLLMDegradeMode // Fixed deepresearch
   small_model_unavailable_policy?: SmallModelUnavailablePolicy // Fixed ir_first
   voice_wake_enabled?: boolean // default false
   voice_wake_triggers?: string[] // default ["Hey Blue"]
   voice_wake_locale?: string // optional locale override
   voice_wake_target_conversation_id?: string // fixed background target conversation
-}
-
-// Smart tool selection stats
-export interface ToolSelectorStats {
-  requests: number
-  tools_total: number
-  tools_sent: number
-  tools_skipped: number
-  tokens_saved: number
 }
 
 export interface SkillRerankerModelStatus {
@@ -120,8 +109,6 @@ export interface SmallModelStats {
   short_qa_route_success: number
   image_qa_route_attempts?: number
   image_qa_route_success?: number
-  tool_dispatch_route_attempts: number
-  tool_dispatch_route_success: number
   summary_attempts: number
   summary_success: number
   context_compress_attempts?: number
@@ -136,8 +123,6 @@ export interface SmallModelStats {
   short_qa_latency_samples?: number
   image_qa_latency_ms?: number
   image_qa_latency_samples?: number
-  tool_dispatch_latency_ms?: number
-  tool_dispatch_latency_samples?: number
   summary_latency_ms?: number
   summary_latency_samples?: number
   context_compress_latency_ms?: number
@@ -167,7 +152,6 @@ export interface PromptPolicyStatus {
 export interface SelectorDryRunResponse {
   query: string
   model: string
-  smart_tool_selection: boolean
   smart_skill_selection: boolean
   selected_tools: string[]
   skill_decision?: unknown
@@ -185,9 +169,6 @@ export const settingsApi = {
 
   // Patch user settings (partial update)
   patch: (updates: Partial<Settings>) => api.patch<Settings>('/settings', updates),
-
-  // Get smart tool selection stats
-  getToolStats: () => api.get<ToolSelectorStats>('/tools/stats'),
 
   // Skill reranker ONNX model management
   getSkillRerankerModelStatus: () =>

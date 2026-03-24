@@ -493,7 +493,7 @@ func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder, hasSandbox b
 		return false
 	}
 
-	sb.WriteString("<tool_guidance>Built-in API tools. Call via tool_use — never through exec/shell.")
+	sb.WriteString("<tool_guidance>Built-in API tools. Call via tool_use. Do not fake file/tool calls by routing them through shell commands.")
 	if b.toolRegistry.Get("write") != nil || b.toolRegistry.Get("file_write") != nil {
 		sb.WriteString("<write_guide>For large file writes, prefer write_begin + repeated write_chunk + write_commit. If you must use write directly, never send one huge write payload: write the first chunk, then continue with smaller chunks using append=true.</write_guide>")
 	}
@@ -507,7 +507,7 @@ func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder, hasSandbox b
 
 // writeExecGuidanceTo writes compressed exec tool guidance directly into sb.
 func (b *SystemPromptBuilder) writeExecGuidanceTo(sb *strings.Builder, hasSandbox bool) {
-	sb.WriteString("<exec_guide>Shell/CLI commands on host. REQUIRED: command parameter must be a non-empty string — never call exec without a concrete command. `lang` and `timeout` are optional (defaults apply when omitted).")
+	sb.WriteString("<bash_guide>Use bash only for real shell/CLI commands. REQUIRED: command must be a non-empty string. `timeout` is optional.")
 
 	if hasSandbox {
 		sb.WriteString("<sandbox>host=sandbox for isolation. Medium+ risk auto-sandboxed.</sandbox>")
@@ -523,7 +523,7 @@ func (b *SystemPromptBuilder) writeExecGuidanceTo(sb *strings.Builder, hasSandbo
 
 	sb.WriteString("<retry>Analyze error before retry. NEVER retry identical failing command — system blocks repeats. Change command or try different approach.</retry>")
 
-	sb.WriteString("</exec_guide>")
+	sb.WriteString("</bash_guide>")
 }
 
 // writeRuntimeInfoTo writes the dynamic runtime tag directly into sb.

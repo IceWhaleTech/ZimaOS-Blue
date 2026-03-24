@@ -788,7 +788,7 @@ func newDeepSearchLoopState(userMessage string, selectedTools []tools.ToolDefini
 func hasSearchCapabilityInToolDefs(defs []tools.ToolDefinition) bool {
 	for _, def := range defs {
 		switch normalizeFileToolCompatName(def.Name) {
-		case "web", "deep_research", "browser", "exec":
+		case "web", "deep_research", "browser", "bash":
 			return true
 		}
 	}
@@ -1011,7 +1011,7 @@ func extractSearchQueryFromToolCall(tc llm.ToolCall) string {
 				return q
 			}
 		}
-	case "exec":
+	case "bash", "exec":
 		var payload struct {
 			Command string `json:"command"`
 		}
@@ -5820,12 +5820,6 @@ func (h *ChatHandler) selectChatToolsForRequest(userMessage, model, sessionID st
 	})
 	selectedTools = applyWebSearchPreference(selectedTools, webSearchEnabled)
 	selectedTools = applyDeepResearchPreference(selectedTools, deepResearchEnabled)
-	selectedTools = applyWritingToolPreference(selectedTools, userMessage)
-	selectedTools = applyResearchToolPreference(selectedTools, userMessage)
-	selectedTools = applyReminderToolPreference(selectedTools, userMessage)
-	selectedTools = applyCalendarToolPreference(selectedTools, userMessage)
-	selectedTools = applyEmailToolPreference(selectedTools, userMessage)
-	selectedTools = applyImageToolPreference(selectedTools, userMessage)
 	return selectedTools
 }
 
@@ -6242,10 +6236,6 @@ type ChatHandler struct {
 	smallModelGateMu           sync.Mutex
 	smallModelGateLastAttempts int64
 	smallModelGateLastSuccess  int64
-	// Auto-rollback gate baseline for tool-dispatch route (windowed failure-rate check).
-	smallModelToolGateMu           sync.Mutex
-	smallModelToolGateLastAttempts int64
-	smallModelToolGateLastSuccess  int64
 	// Auto-rollback gate baseline for summary route (windowed failure-rate check).
 	smallModelSummaryGateMu           sync.Mutex
 	smallModelSummaryGateLastAttempts int64
@@ -6429,43 +6419,19 @@ func (h *ChatHandler) resolvePromptPolicy() PromptPolicy {
 	)
 }
 
-// selectToolsDetailed returns tool definitions after selector + router stages
-// plus optional selector debug details.
+// selectToolsDetailed returns the first-turn static tool set after route and
+// policy filtering. Query-based member pruning is intentionally disabled.
 func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.ToolPolicyRequest) ([]tools.ToolDefinition, *tools.ToolSelectionDebug) {
 	allDefs := h.toolDefinitionsForPolicy(policyReq)
-	selected := allDefs
-	var debug *tools.ToolSelectionDebug
 
-	if h.toolSelector != nil && userMessage != "" {
-		// Check runtime setting (default false)
-		if h.settingsHandler != nil && !h.settingsHandler.GetSmartToolSelection() {
-			selected = allDefs
-		} else {
-			detailed := h.toolSelector.SelectDetailed(userMessage, allDefs)
-			selected = detailed.Selected
-			debug = &detailed.Debug
-		}
-	}
-
-	routed := selected
-	if h.toolRouter != nil {
-		routed = h.toolRouter.Route(userMessage, policyReq.Model, selected)
-	}
-	routed = preferResearchReportWorkflowTools(userMessage, allDefs, routed)
-	routed = preferPublicArtifactResearchWorkflowTools(userMessage, allDefs, routed)
-	routed = preferWorkspaceFileWorkflowTools(userMessage, allDefs, routed)
-	routed = preferDirectArtifactWritingTools(userMessage, allDefs, routed)
-	routed = preferImageGenerationWorkflowTools(userMessage, allDefs, routed)
-	routed = preferForcedDeepResearchTools(userMessage, allDefs, routed, policyReq.DeepResearchEnabled)
-
-	names := make([]string, len(routed))
-	for i, d := range routed {
+	names := make([]string, len(allDefs))
+	for i, d := range allDefs {
 		names[i] = d.Name
 	}
 	logger.Info().
 		Int("total", len(allDefs)).
-		Int("selected", len(selected)).
-		Int("routed", len(routed)).
+		Int("selected", len(allDefs)).
+		Int("routed", len(allDefs)).
 		Strs("tools", names).
 		Str("model", policyReq.Model).
 		Str("query", userMessage).
@@ -6473,7 +6439,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 		Bool("router_nil", h.toolRouter == nil).
 		Msg("[chat] selectTools")
 
-	return routed, debug
+	return allDefs, nil
 }
 
 func (h *ChatHandler) toolDefinitionsForPolicy(policyReq tools.ToolPolicyRequest) []tools.ToolDefinition {
@@ -6503,7 +6469,7 @@ func preferResearchReportWorkflowTools(userMessage string, allDefs, current []to
 		"web_read",
 		"web_extract",
 		"web_crawl",
-		"exec",
+		"bash",
 	}
 	if shouldUseHeavyResearchWorkflow(userMessage) {
 		researchToolNames = append([]string{"deep_research"}, researchToolNames...)
@@ -6531,9 +6497,8 @@ func preferPublicArtifactResearchWorkflowTools(userMessage string, allDefs, curr
 		"web_crawl",
 		"browser",
 		"office",
-		"file_read",
-		"file_write",
-		"file_delete",
+		"read",
+		"write",
 		"edit",
 		"ls",
 		"find",
@@ -6756,7 +6721,7 @@ func preferForcedDeepResearchTools(userMessage string, allDefs, current []tools.
 		"web_read",
 		"web_extract",
 		"web_crawl",
-		"exec",
+		"bash",
 	)
 	researchTools = mergeToolDefsByName(researchTools, filterToolDefsToNames(allDefs, artifactFileWorkflowToolNames()...))
 	if len(researchTools) == 0 {
@@ -6797,7 +6762,7 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 			"web_read",
 			"web_extract",
 			"web_crawl",
-			"exec",
+			"bash",
 		}
 		if hasToolDefName(defs, "deep_research") {
 			keepNames = append([]string{"deep_research"}, keepNames...)
@@ -6806,9 +6771,8 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 			_ = target
 			keepNames = append(keepNames,
 				"office",
-				"file_read",
-				"file_write",
-				"file_delete",
+				"read",
+				"write",
 				"edit",
 				"ls",
 				"find",
@@ -6828,9 +6792,8 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 			"web_crawl",
 			"browser",
 			"office",
-			"file_write",
-			"file_read",
-			"file_delete",
+			"write",
+			"read",
 			"edit",
 			"ls",
 			"find",
@@ -6847,15 +6810,14 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 			"web_read",
 			"web_extract",
 			"web_crawl",
-			"exec",
+			"bash",
 		}
 		if target := extractRequestedArtifactPath(userMessage); target != "" {
 			_ = target
 			keepNames = append(keepNames,
 				"office",
-				"file_read",
-				"file_write",
-				"file_delete",
+				"read",
+				"write",
 				"edit",
 				"ls",
 				"find",
@@ -6968,9 +6930,8 @@ func preferredImageWorkflowToolDefs(defs []tools.ToolDefinition, userMessage str
 	}
 	if target := extractRequestedArtifactPath(userMessage); isImageArtifactPath(target) {
 		filtered = mergeToolDefsByName(filtered, filterToolDefsToNames(defs,
-			"file_read",
-			"file_write",
-			"file_delete",
+			"read",
+			"write",
 			"edit",
 			"ls",
 			"find",
@@ -7162,9 +7123,11 @@ func containsAnyToolIntent(message string, cues ...string) bool {
 func normalizeFileToolCompatName(name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "read", "read_file", "file_read":
-		return "file_read"
+		return "read"
 	case "write", "write_file", "file_write":
-		return "file_write"
+		return "write"
+	case "bash", "exec":
+		return "bash"
 	case "delete", "remove", "rm", "unlink", "file_delete":
 		return "file_delete"
 	case "rg":
@@ -7293,14 +7256,12 @@ func sanitizeAssistantToolCallsForAllowedSet(toolCalls []llm.ToolCall, allowedTo
 func artifactFileWorkflowToolNames() []string {
 	return []string{
 		"office",
-		"file_read",
-		"file_write",
-		"file_delete",
+		"read",
+		"write",
 		"edit",
 		"ls",
 		"find",
 		"grep",
-		"rg",
 		"convert",
 		"pdf",
 		"image",
@@ -7309,20 +7270,19 @@ func artifactFileWorkflowToolNames() []string {
 
 func workspaceEditWorkflowToolNames() []string {
 	return []string{
-		"file_read",
-		"file_write",
+		"read",
+		"write",
 		"edit",
 		"ls",
 		"find",
 		"grep",
-		"rg",
 	}
 }
 
 func memoryFileWorkflowToolNames() []string {
 	return []string{
-		"file_read",
-		"file_write",
+		"read",
+		"write",
 		"edit",
 		"ls",
 		"find",
@@ -7338,7 +7298,7 @@ func artifactWriteCompletionToolNames(target string) []string {
 	if isOfficeArtifactPath(target) {
 		names = append(names, "office")
 	}
-	names = append(names, "file_write", "edit", "write_begin", "write_chunk", "write_commit")
+	names = append(names, "write", "edit", "write_begin", "write_chunk", "write_commit")
 	return names
 }
 
@@ -7346,7 +7306,7 @@ func hasArtifactWriteTool(tools []llm.Tool, target string) bool {
 	if isOfficeArtifactPath(target) && containsLLMToolName(tools, "office") {
 		return true
 	}
-	return containsLLMToolName(tools, "file_write")
+	return containsLLMToolName(tools, "write")
 }
 
 func artifactFileWorkflowToolNamesForMessage(userMessage string) []string {
@@ -8329,18 +8289,15 @@ func normalizeDeepResearchCitations(raw interface{}) []map[string]interface{} {
 var errNoIRLocalSignal = errors.New("no local IR signal")
 
 const (
-	fallbackReasonDeepResearchUnavailable  = "deepresearch_unavailable"
-	fallbackReasonIRNoSignal               = "ir_no_signal"
-	fallbackReasonAutoRollback             = "auto_rollback_fallback_rate"
-	fallbackReasonAutoRollbackToolDispatch = "auto_rollback_tool_dispatch_fallback_rate"
-	fallbackReasonAutoRollbackSummary      = "auto_rollback_summary_fallback_rate"
+	fallbackReasonDeepResearchUnavailable = "deepresearch_unavailable"
+	fallbackReasonIRNoSignal              = "ir_no_signal"
+	fallbackReasonAutoRollback            = "auto_rollback_fallback_rate"
+	fallbackReasonAutoRollbackSummary     = "auto_rollback_summary_fallback_rate"
 
-	smallModelAutoRollbackMinAttempts             = 40
-	smallModelAutoRollbackMaxFailRate             = 0.15
-	smallModelToolDispatchAutoRollbackMinAttempts = 40
-	smallModelToolDispatchAutoRollbackMaxFailRate = 0.15
-	smallModelSummaryAutoRollbackMinAttempts      = 40
-	smallModelSummaryAutoRollbackMaxFailRate      = 0.15
+	smallModelAutoRollbackMinAttempts        = 40
+	smallModelAutoRollbackMaxFailRate        = 0.15
+	smallModelSummaryAutoRollbackMinAttempts = 40
+	smallModelSummaryAutoRollbackMaxFailRate = 0.15
 )
 
 func (h *ChatHandler) shouldPreferIRFirstFallback() bool {
@@ -8400,27 +8357,6 @@ func (h *ChatHandler) maybeAutoRollbackShortQARoute() {
 		Msg("[chat] auto rollback: disabled small-model short-qa route")
 }
 
-func (h *ChatHandler) shouldRouteToolDispatch(selectedTools []tools.ToolDefinition) bool {
-	if h == nil || h.settingsHandler == nil || !h.isSmallModelReady() {
-		return false
-	}
-	if !h.settingsHandler.GetSmallModelEnabled() || !h.settingsHandler.GetSmallModelRouteToolDispatchEnabled() {
-		return false
-	}
-	return len(selectedTools) > 1
-}
-
-func shouldBypassSmallModelToolDispatch(userMessage string) bool {
-	trimmed := strings.TrimSpace(userMessage)
-	if trimmed == "" {
-		return false
-	}
-	return shouldPreferWorkspaceFileWorkflow(trimmed) ||
-		shouldPreferDirectArtifactWriting(trimmed) ||
-		shouldPreferPublicArtifactResearchWorkflow(trimmed) ||
-		isImageGenerationIntentMessage(trimmed)
-}
-
 func (h *ChatHandler) shouldDisableProxyPruner() bool {
 	if h == nil || h.settingsHandler == nil {
 		return false
@@ -8450,129 +8386,6 @@ func (h *ChatHandler) shouldDisableProxyPrunerForAttempt(attempt *preparedBudget
 		return false
 	}
 	return !attempt.Budget.NeedsPressureCompaction()
-}
-
-func (h *ChatHandler) trySmallModelToolDispatch(ctx context.Context, routingMessage string, selectedTools []tools.ToolDefinition) ([]tools.ToolDefinition, error) {
-	if h.smallModel == nil {
-		return nil, smallmodel.ErrNotReady
-	}
-	if len(selectedTools) <= 1 {
-		return selectedTools, nil
-	}
-	if h.smallModelBreaker != nil && !h.smallModelBreaker.Allow(time.Now()) {
-		return nil, smallmodel.ErrCircuitOpen
-	}
-
-	toolNames := make([]string, 0, len(selectedTools))
-	for _, tdef := range selectedTools {
-		toolNames = append(toolNames, tdef.Name)
-	}
-	prefix := "Pick the single best tool name for this user request. " +
-		"Return only one tool name with no explanation.\n\nUser request: "
-	suffix := strings.TrimSpace(routingMessage) +
-		"\nCandidate tools: " + strings.Join(toolNames, ", ") + "\nTool:"
-
-	started := time.Now()
-	resp, err := h.generateWithSmallModelPrefixReuse(ctx, "smallmodel:tool_dispatch:v1", prefix, suffix, 32, 0.2)
-	h.smallModelStats.RecordLatencyWithScene("tool_dispatch", time.Since(started))
-	if err != nil {
-		if h.smallModelBreaker != nil && h.smallModelBreaker.RecordFailure(time.Now()) {
-			logger.Warn().Str("route", "tool_dispatch").Msg("[chat] small model circuit breaker opened")
-		}
-		return nil, err
-	}
-
-	chosen, ok := pickToolFromSmallModelOutput(resp.Text, selectedTools)
-	if !ok {
-		return nil, fmt.Errorf("small-model tool-dispatch output did not match candidates")
-	}
-	if h.smallModelBreaker != nil {
-		h.smallModelBreaker.RecordSuccess(time.Now())
-	}
-	return []tools.ToolDefinition{chosen}, nil
-}
-
-func pickToolFromSmallModelOutput(output string, selectedTools []tools.ToolDefinition) (tools.ToolDefinition, bool) {
-	if len(selectedTools) == 0 {
-		return tools.ToolDefinition{}, false
-	}
-	norm := strings.ToLower(strings.TrimSpace(output))
-	norm = strings.Trim(norm, " \t\r\n`'\"[](){}<>.,;:!?")
-	if idx := strings.IndexRune(norm, '\n'); idx >= 0 {
-		norm = strings.TrimSpace(norm[:idx])
-	}
-
-	// Fast path: exact match.
-	for _, tdef := range selectedTools {
-		if strings.EqualFold(norm, tdef.Name) {
-			return tdef, true
-		}
-	}
-
-	// Fuzzy path: if model returns short sentence, match the longest candidate contained.
-	best := -1
-	bestLen := -1
-	for i, tdef := range selectedTools {
-		nameLower := strings.ToLower(tdef.Name)
-		if strings.Contains(norm, nameLower) && len(nameLower) > bestLen {
-			best = i
-			bestLen = len(nameLower)
-		}
-	}
-	if best >= 0 {
-		return selectedTools[best], true
-	}
-	return tools.ToolDefinition{}, false
-}
-
-func (h *ChatHandler) maybeAutoRollbackToolDispatchRoute() {
-	if h == nil || h.settingsHandler == nil || h.smallModelStats == nil {
-		return
-	}
-	if !h.settingsHandler.GetSmallModelRouteToolDispatchEnabled() {
-		return
-	}
-
-	h.smallModelToolGateMu.Lock()
-	defer h.smallModelToolGateMu.Unlock()
-
-	snap := h.smallModelStats.Snapshot()
-	windowAttempts := snap.ToolDispatchRouteAttempts - h.smallModelToolGateLastAttempts
-	windowSuccess := snap.ToolDispatchRouteSuccess - h.smallModelToolGateLastSuccess
-	if windowAttempts < smallModelToolDispatchAutoRollbackMinAttempts {
-		return
-	}
-	failures := windowAttempts - windowSuccess
-	if failures <= 0 {
-		h.smallModelToolGateLastAttempts = snap.ToolDispatchRouteAttempts
-		h.smallModelToolGateLastSuccess = snap.ToolDispatchRouteSuccess
-		return
-	}
-	failRate := float64(failures) / float64(windowAttempts)
-	if failRate < smallModelToolDispatchAutoRollbackMaxFailRate {
-		h.smallModelToolGateLastAttempts = snap.ToolDispatchRouteAttempts
-		h.smallModelToolGateLastSuccess = snap.ToolDispatchRouteSuccess
-		return
-	}
-
-	changed, err := h.settingsHandler.SetSmallModelRouteToolDispatchEnabled(false)
-	if err != nil {
-		logger.Warn().Err(err).Msg("[chat] failed to auto rollback tool-dispatch route setting")
-		return
-	}
-	if !changed {
-		return
-	}
-
-	h.smallModelStats.RecordAutoRollback()
-	h.smallModelStats.RecordFallback(fallbackReasonAutoRollbackToolDispatch)
-	h.smallModelToolGateLastAttempts = snap.ToolDispatchRouteAttempts
-	h.smallModelToolGateLastSuccess = snap.ToolDispatchRouteSuccess
-	logger.Warn().
-		Int64("window_attempts", windowAttempts).
-		Int64("failures", failures).
-		Float64("failure_rate", failRate).
-		Msg("[chat] auto rollback: disabled small-model tool-dispatch route")
 }
 
 func (h *ChatHandler) maybeAutoRollbackSummaryRoute() {
@@ -8945,7 +8758,7 @@ func summarizeToolPayloadForFallback(toolName string, payload map[string]interfa
 		if text := summarizeFileWritePayloadForFallback(payload, useChinese); text != "" {
 			return text
 		}
-	case "exec":
+	case "bash", "exec":
 		if text := summarizeExecPayloadForFallback(payload, useChinese); text != "" {
 			return text
 		}
@@ -9508,7 +9321,7 @@ func toolFallbackHumanLabel(toolName string, useChinese bool) string {
 			return "文件写入"
 		}
 		return "file write"
-	case "exec":
+	case "bash", "exec":
 		if useChinese {
 			return "命令执行"
 		}
@@ -9813,14 +9626,6 @@ func collectSmallModelImages(attachments []MessageAttachment) ([]smallmodel.Imag
 		})
 	}
 	return images, true
-}
-
-// ToolSelectionStats returns smart tool selection statistics.
-func (h *ChatHandler) ToolSelectionStats(c echo.Context) error {
-	if h.toolSelector == nil {
-		return c.JSON(http.StatusOK, tools.ToolSelectorStats{})
-	}
-	return c.JSON(http.StatusOK, h.toolSelector.Stats())
 }
 
 // ContextStats returns context optimization stats.
@@ -12246,20 +12051,8 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		req.PreviousResponseID = previousResponseID
 	}
 
-	// Add tool definitions (smart selection filters by user query when enabled)
-	selectedTools := h.selectTools(routingMessage, tools.ToolPolicyRequest{
-		Model:               req.Model,
-		SessionID:           convID,
-		RouteKind:           tools.ToolRouteKindChat,
-		DeepResearchEnabled: channelDeepResearchEnabled,
-	})
-	selectedTools = applyDeepResearchPreference(selectedTools, channelDeepResearchEnabled)
-	selectedTools = applyWritingToolPreference(selectedTools, routingMessage)
-	selectedTools = applyResearchToolPreference(selectedTools, routingMessage)
-	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
-	selectedTools = applyCalendarToolPreference(selectedTools, routingMessage)
-	selectedTools = applyEmailToolPreference(selectedTools, routingMessage)
-	selectedTools = applyImageToolPreference(selectedTools, routingMessage)
+	// Add first-turn tool definitions using the full static chat allowlist.
+	selectedTools := h.selectChatToolsForRequest(routingMessage, req.Model, convID, nil, channelDeepResearchEnabled)
 	req.Tools = defsToLLMTools(selectedTools)
 
 	logger.Info().
@@ -13084,6 +12877,7 @@ func isArtifactCollectionLoopSignature(signature string) bool {
 		return false
 	}
 	for _, needle := range []string{
+		"read:",
 		"file_read:",
 		"find:",
 		"ls:",
@@ -13256,7 +13050,7 @@ func selectBatchableArtifactWorkflowCalls(calls []llm.ToolCall, readLimit int) [
 	readCount := 0
 	for i, tc := range calls {
 		switch normalizeFileToolCompatName(tc.Name) {
-		case "file_read", "pdf", "convert":
+		case "read", "pdf", "convert":
 			if readCount >= readLimit {
 				break
 			}
@@ -13276,7 +13070,7 @@ func selectBatchableArtifactWorkflowCalls(calls []llm.ToolCall, readLimit int) [
 			seenKeys[key] = struct{}{}
 			selected = append(selected, tc)
 			readCount++
-		case "file_write":
+		case "write":
 			if i != len(calls)-1 || readCount == 0 {
 				return nil
 			}
@@ -13369,12 +13163,12 @@ func batchableArtifactToolKey(tc llm.ToolCall) string {
 		return ""
 	}
 	switch normalizeFileToolCompatName(tc.Name) {
-	case "file_read":
+	case "read":
 		path := extractToolLoopArgString(payload, "path", "file_path", "filePath", "filename")
 		if path == "" {
 			return ""
 		}
-		return "file_read:" + path
+		return "read:" + path
 	case "pdf":
 		path := extractToolLoopArgString(payload, "path", "pdf", "file")
 		if path == "" {
@@ -13412,7 +13206,7 @@ func selectBatchableFileReadCalls(calls []llm.ToolCall, limit int) []llm.ToolCal
 	seenPaths := make(map[string]struct{}, min(limit, len(calls)))
 	for _, tc := range calls {
 		switch normalizeFileToolCompatName(tc.Name) {
-		case "file_read":
+		case "read":
 		default:
 			return nil
 		}
@@ -13868,7 +13662,7 @@ func buildReducedContinuationRecoveryTools(tools []llm.Tool, messages []llm.Mess
 	}
 
 	if len(needed) == 0 {
-		priority := []string{"exec", "web", "web_search", "file_read", "browser", "mcp"}
+		priority := []string{"bash", "web", "web_search", "read", "browser", "mcp"}
 		indexByName := make(map[string]int, len(tools))
 		for i, t := range tools {
 			name := normalizeFileToolCompatName(t.Name)
@@ -13958,21 +13752,26 @@ func choosePseudoToolCallPrimaryToolIndex(tools []llm.Tool, preferReminder bool)
 		return -1
 	}
 	priority := []string{
-		"exec",
+		"bash",
 		"web_query",
 		"web_search",
-		"file_read",
+		"read",
 		"browser",
 		"ui_reviewer",
 	}
 	indexByName := make(map[string]int, len(tools))
 	for i, t := range tools {
-		name := strings.ToLower(strings.TrimSpace(t.Name))
-		if name == "" {
+		rawName := strings.ToLower(strings.TrimSpace(t.Name))
+		if rawName == "" {
 			continue
 		}
-		if _, exists := indexByName[name]; !exists {
-			indexByName[name] = i
+		if _, exists := indexByName[rawName]; !exists {
+			indexByName[rawName] = i
+		}
+		if compatName := normalizeFileToolCompatName(rawName); compatName != "" {
+			if _, exists := indexByName[compatName]; !exists {
+				indexByName[compatName] = i
+			}
 		}
 	}
 	if preferReminder {
@@ -14520,7 +14319,7 @@ func buildPostWriteCompletionTools(tools []llm.Tool, userMessage string) []llm.T
 		return tools
 	}
 	priority := []string{
-		"file_read",
+		"read",
 		"ls",
 		"find",
 		"grep",
@@ -14564,7 +14363,7 @@ func buildPostWorkspaceArtifactContinuationNudge(userMessage string, toolCalls [
 	if !hasWorkspaceArtifactProgress(toolCalls, toolResults) {
 		return ""
 	}
-	nudge := fmt.Sprintf("This is still a local workspace synthesis task for %q. You must finish with exactly one acceptable outcome: (1) save the requested file, or (2) if no file was requested, return the final summary directly in the reply. For this request, the only acceptable outcome is saving %q. Do not stop after listing files, searching, or extracting raw content. Do not guess new filenames that were not actually discovered. Continue from the evidence you already gathered, use local file tools only as needed, then write the completed deliverable in this turn. Prefer pdf/convert/file_read for local sources and avoid browser, email, calendar, or research detours unless the user explicitly asked for them.", target, target)
+	nudge := fmt.Sprintf("This is still a local workspace synthesis task for %q. You must finish with exactly one acceptable outcome: (1) save the requested file, or (2) if no file was requested, return the final summary directly in the reply. For this request, the only acceptable outcome is saving %q. Do not stop after listing files, searching, or extracting raw content. Do not guess new filenames that were not actually discovered. Continue from the evidence you already gathered, use local file tools only as needed, then write the completed deliverable in this turn. Prefer pdf/convert/read for local sources and avoid browser, email, calendar, or research detours unless the user explicitly asked for them.", target, target)
 	if isStructuredWorkspaceArtifactTask(userMessage) && hasWorkspaceArtifactContentEvidence(toolCalls, toolResults) {
 		nudge += " You already have sufficient successful local source evidence for this local structured-output task. Do not reopen the same source in narrower slices or chase alternate tables when the needed answers are already present; write the requested artifact from the gathered evidence now."
 	}
@@ -14622,7 +14421,7 @@ func buildPostWorkspaceArtifactContinuationTools(tools []llm.Tool, userMessage s
 
 	hasContentEvidence := hasWorkspaceArtifactContentEvidence(toolCalls, toolResults)
 	priority := append(artifactWriteCompletionToolNames(target),
-		"file_read",
+		"read",
 		"grep",
 		"convert",
 		"pdf",
@@ -14694,7 +14493,7 @@ func buildPostWorkspaceArtifactCoverageContinuationTools(tools []llm.Tool, userM
 	}
 
 	priority := []string{
-		"file_read",
+		"read",
 		"pdf",
 		"convert",
 		"grep",
@@ -14720,7 +14519,7 @@ func buildPostWorkspaceArtifactCoverageContinuationTools(tools []llm.Tool, userM
 			reduced = append(reduced, tool)
 		}
 	}
-	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_read") {
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "read") {
 		return nil
 	}
 	return reduced
@@ -14847,7 +14646,7 @@ func collectWorkspaceReadSourcePaths(toolCalls []llm.ToolCall, toolResults []llm
 			toolName = matched.Name
 		}
 		switch normalizeFileToolCompatName(toolName) {
-		case "file_read", "pdf", "convert":
+		case "read", "pdf", "convert":
 		default:
 			continue
 		}
@@ -14923,7 +14722,7 @@ func hasWorkspaceArtifactContentEvidence(toolCalls []llm.ToolCall, toolResults [
 			toolName = matched.Name
 		}
 		switch normalizeFileToolCompatName(toolName) {
-		case "file_read", "convert", "pdf":
+		case "read", "convert", "pdf":
 			if workspaceArtifactToolResultShowsProgress(tr.Content) {
 				return true
 			}
@@ -14963,7 +14762,7 @@ func hasWorkspaceArtifactProgress(toolCalls []llm.ToolCall, toolResults []llm.Me
 
 func isWorkspaceArtifactProgressTool(name string) bool {
 	switch normalizeFileToolCompatName(name) {
-	case "file_read", "ls", "find", "grep", "convert", "pdf":
+	case "read", "ls", "find", "grep", "convert", "pdf":
 		return true
 	default:
 		return false
@@ -15250,7 +15049,7 @@ func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string)
 	}
 	priority = append(priority, artifactWriteCompletionToolNames(target)...)
 	priority = append(priority,
-		"file_read",
+		"read",
 		"ls",
 		"find",
 		"grep",
@@ -15291,7 +15090,7 @@ func buildPendingResearchStatusTools(tools []llm.Tool, userMessage string) []llm
 	if target != "" {
 		priority = append(priority, artifactWriteCompletionToolNames(target)...)
 		priority = append(priority,
-			"file_read",
+			"read",
 			"ls",
 			"find",
 			"grep",
@@ -15339,7 +15138,7 @@ func buildResearchFailureRecoveryTools(tools []llm.Tool, userMessage string) []l
 		return tools
 	}
 	priority := append(artifactWriteCompletionToolNames(target),
-		"file_read",
+		"read",
 		"ls",
 		"find",
 		"grep",
@@ -15409,7 +15208,7 @@ func buildSuccessfulResearchWriteTools(tools []llm.Tool, userMessage string) []l
 		return tools
 	}
 	priority := append(artifactWriteCompletionToolNames(target),
-		"file_read",
+		"read",
 		"web_fetch",
 		"web_read",
 		"ls",
@@ -16318,7 +16117,7 @@ func compactToolResultContentForLLM(toolName, content string) string {
 		} else {
 			payload = compactJSONValueForLLM(payload, 0)
 		}
-	case "file_read":
+	case "read", "file_read":
 		if m, ok := payload.(map[string]interface{}); ok && isPDFPayloadForLLM(m) {
 			payload = compactPDFPayloadForLLM(m)
 		} else {
@@ -18179,7 +17978,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		chatReq.PreviousResponseID = previousResponseID
 	}
 
-	// Get tool definitions (smart selection filters by user query when enabled)
+	// Get first-turn tool definitions using the full static chat allowlist.
 	selectedTools := h.selectChatToolsForRequest(routingMessage, chatReq.Model, convID, req.WebSearchEnabled, req.DeepResearchEnabled)
 	if structuredEvaluatorNoTools {
 		selectedTools = nil
@@ -18187,34 +17986,6 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			Str("conversation_id", convID).
 			Str("conversation_title", structuredEvaluatorNoToolsTitle).
 			Msg("[chat] disabling tool exposure for structured evaluator conversation")
-	}
-	if h.shouldRouteToolDispatch(selectedTools) &&
-		!shouldPreferDeepSearchReport(routingMessage) &&
-		!shouldBypassSmallModelToolDispatch(routingMessage) {
-		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
-		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
-		routeCancel()
-		if routeErr == nil && len(routedTools) == 1 {
-			h.smallModelStats.RecordToolDispatchRoute(true)
-			selectedTools = routedTools
-			logger.Info().
-				Str("conv_id", convID).
-				Str("route", "tool_dispatch").
-				Str("provider", "smallmodel").
-				Str("tool", selectedTools[0].Name).
-				Msg("[chat] tool dispatch routed to small model")
-		} else {
-			h.smallModelStats.RecordToolDispatchRoute(false)
-			reason := smallModelFallbackReason(routeErr)
-			h.smallModelStats.RecordFallback(reason)
-			logger.Warn().
-				Err(routeErr).
-				Str("conv_id", convID).
-				Str("route", "tool_dispatch").
-				Str("fallback_reason", reason).
-				Msg("[chat] small model tool dispatch failed, fallback to default tool set")
-		}
-		h.maybeAutoRollbackToolDispatchRoute()
 	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
 	applyBudgetAttemptToChatReq := func(attempt *preparedBudgetAttempt) {
@@ -19609,7 +19380,6 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/providers", h.ListProviders)
 	g.POST("/providers/:provider/refresh", h.RefreshProviderModels)
 	g.GET("/tools", h.ListTools)
-	g.GET("/tools/stats", h.ToolSelectionStats)
 	g.GET("/context/stats", h.ContextStats)
 	g.POST("/context/stats/reset", h.ResetContextStats)
 	g.GET("/small-model/stats", h.SmallModelStatsHandler)
@@ -20261,7 +20031,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		chatReq.PreviousResponseID = previousResponseID
 	}
 
-	// Get tool definitions (smart selection filters by user query when enabled)
+	// Get first-turn tool definitions using the full static chat allowlist.
 	selectedTools := h.selectChatToolsForRequest(routingMessage, chatReq.Model, convID, req.WebSearchEnabled, req.DeepResearchEnabled)
 	if structuredEvaluatorNoTools {
 		selectedTools = nil
@@ -20269,34 +20039,6 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			Str("conversation_id", convID).
 			Str("conversation_title", structuredEvaluatorNoToolsTitle).
 			Msg("[chat] disabling stream tool exposure for structured evaluator conversation")
-	}
-	if h.shouldRouteToolDispatch(selectedTools) &&
-		!shouldPreferDeepSearchReport(routingMessage) &&
-		!shouldBypassSmallModelToolDispatch(routingMessage) {
-		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
-		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
-		routeCancel()
-		if routeErr == nil && len(routedTools) == 1 {
-			h.smallModelStats.RecordToolDispatchRoute(true)
-			selectedTools = routedTools
-			logger.Info().
-				Str("conv_id", convID).
-				Str("route", "tool_dispatch").
-				Str("provider", "smallmodel").
-				Str("tool", selectedTools[0].Name).
-				Msg("[chat] stream tool dispatch routed to small model")
-		} else {
-			h.smallModelStats.RecordToolDispatchRoute(false)
-			reason := smallModelFallbackReason(routeErr)
-			h.smallModelStats.RecordFallback(reason)
-			logger.Warn().
-				Err(routeErr).
-				Str("conv_id", convID).
-				Str("route", "tool_dispatch").
-				Str("fallback_reason", reason).
-				Msg("[chat] stream small model tool dispatch failed, fallback to default tool set")
-		}
-		h.maybeAutoRollbackToolDispatchRoute()
 	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
 	applyBudgetAttemptToChatReq := func(attempt *preparedBudgetAttempt) {

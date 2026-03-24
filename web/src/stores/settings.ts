@@ -528,7 +528,6 @@ export const useSettingsStore = defineStore('settings', () => {
   const smallModelRerankEnabled = computed(
     () => backendSettings.value.small_model_rerank_enabled ?? false
   )
-  const smartToolSelection = computed(() => backendSettings.value.smart_tool_selection ?? false)
   const smartSkillSelection = computed(() => backendSettings.value.smart_skill_selection ?? false)
   const skillSelectorMode = computed<'hybrid' | 'ir_only' | 'llm_only'>(() => {
     const mode = backendSettings.value.skill_selector_mode
@@ -584,7 +583,6 @@ export const useSettingsStore = defineStore('settings', () => {
     () =>
       smallModelContextPruneEnabled.value &&
       smallModelMediaIntentEnabled.value &&
-      smartToolSelection.value &&
       offlineIRFallbackEnabled.value &&
       featureIntentIREnabled.value
   )
@@ -596,9 +594,6 @@ export const useSettingsStore = defineStore('settings', () => {
   )
   const smallModelRouteShortQAEnabled = computed(
     () => backendSettings.value.small_model_route_short_qa_enabled ?? false
-  )
-  const smallModelRouteToolDispatchEnabled = computed(
-    () => backendSettings.value.small_model_route_tool_dispatch_enabled ?? false
   )
   const noLLMDegradeMode = computed<NoLLMDegradeMode>(() => {
     return backendSettings.value.no_llm_degrade_mode === 'deepresearch'
@@ -661,10 +656,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setSmallModelRerankEnabled(enabled: boolean) {
     await updateBackendSettings({ small_model_rerank_enabled: enabled })
-  }
-
-  async function setSmartToolSelection(enabled: boolean) {
-    await updateBackendSettings({ smart_tool_selection: enabled })
   }
 
   async function setSmartSkillSelection(enabled: boolean) {
@@ -735,7 +726,6 @@ export const useSettingsStore = defineStore('settings', () => {
     await updateBackendSettings({
       small_model_context_prune_enabled: enabled,
       small_model_media_intent_enabled: enabled,
-      smart_tool_selection: enabled,
       offline_ir_fallback_enabled: enabled,
       feature_intent_ir_enabled: enabled,
     })
@@ -747,10 +737,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setSmallModelRouteImageQAEnabled(enabled: boolean) {
     await updateBackendSettings({ small_model_route_image_qa_enabled: enabled })
-  }
-
-  async function setSmallModelRouteToolDispatchEnabled(enabled: boolean) {
-    await updateBackendSettings({ small_model_route_tool_dispatch_enabled: enabled })
   }
 
   async function setNoLLMDegradeMode(mode: NoLLMDegradeMode) {
@@ -849,7 +835,6 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelContextCompressEnabled,
     smallModelDocExtractEnabled,
     smallModelRerankEnabled,
-    smartToolSelection,
     smartSkillSelection,
     skillSelectorMode,
     skillSelectorConfidenceThreshold,
@@ -869,7 +854,6 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelIRFeaturesEnabled,
     smallModelRouteImageQAEnabled,
     smallModelRouteShortQAEnabled,
-    smallModelRouteToolDispatchEnabled,
     noLLMDegradeMode,
     smallModelUnavailablePolicy,
     showToolDetails,
@@ -912,7 +896,6 @@ export const useSettingsStore = defineStore('settings', () => {
     setSmallModelContextCompressEnabled,
     setSmallModelDocExtractEnabled,
     setSmallModelRerankEnabled,
-    setSmartToolSelection,
     setSmartSkillSelection,
     setSkillSelectorMode,
     setSkillSelectorConfidenceThreshold,
@@ -932,7 +915,6 @@ export const useSettingsStore = defineStore('settings', () => {
     setSmallModelIRFeaturesEnabled,
     setSmallModelRouteImageQAEnabled,
     setSmallModelRouteShortQAEnabled,
-    setSmallModelRouteToolDispatchEnabled,
     setNoLLMDegradeMode,
     setSmallModelUnavailablePolicy,
     fetchSmallModelStatus,

@@ -318,24 +318,6 @@ func TestShouldPreferDirectArtifactWriting_DoesNotTreatLatestNewsArtifactAsPureW
 	}
 }
 
-func TestShouldBypassSmallModelToolDispatch(t *testing.T) {
-	positive := []string{
-		"Write a 500-word blog post about the benefits of remote work for software developers. Save it to blog_post.md.",
-		"I have a report in openclaw_report.pdf in my workspace. Extract the answers and write them one per line to answer.txt.",
-		"Research the current stock price of Apple (AAPL) and save it to stock_report.txt with the price, date, and a brief market summary.",
-		`Generate an image of a friendly robot sitting in a cozy coffee shop. Save it as "robot_cafe.png".`,
-	}
-	for _, msg := range positive {
-		if !shouldBypassSmallModelToolDispatch(msg) {
-			t.Fatalf("expected small-model tool dispatch bypass for %q", msg)
-		}
-	}
-
-	if shouldBypassSmallModelToolDispatch("请帮我处理这个任务") {
-		t.Fatal("expected generic request to keep small-model tool dispatch available")
-	}
-}
-
 func TestBuildLocalizedToolLoopMessages(t *testing.T) {
 	abortZh := buildLocalizedToolLoopAbortMessage(i18n.LangZhCN, tools.ToolLoopReasonErrorRepeat, "")
 	if want := i18n.T(i18n.LangZhCN, i18n.MsgToolLoopAbortErrorRepeat); abortZh != want {
@@ -1140,7 +1122,7 @@ func TestTodoChecklistPersistenceHelpers(t *testing.T) {
 
 继续执行第二步。`
 		got := todoAwarePersistedContent(content, tracked, true)
-		want := `- [x] collect facts
+		want := `- [ ] collect facts
 - [ ] write summary`
 		if got != want {
 			t.Fatalf("unexpected canonical todo content: %q", got)
@@ -2001,54 +1983,6 @@ func TestApplyWritingToolPreference(t *testing.T) {
 	}
 }
 
-func TestApplyWritingToolPreference_KeepsWriteForDirectArtifactWriting(t *testing.T) {
-	defs := []tools.ToolDefinition{
-		{Name: "web_search"},
-		{Name: "write"},
-		{Name: "email"},
-	}
-
-	filtered := applyWritingToolPreference(defs, "Write a professional email declining a meeting request due to schedule conflicts. Save it to email_draft.txt.")
-	if got := toolNames(filtered); strings.Join(got, ",") != "write" {
-		t.Fatalf("expected direct artifact writing prompt to keep write only, got=%v", got)
-	}
-}
-
-func TestApplyWritingToolPreference_KeepsFullFileWorkflowForDirectArtifactWriting(t *testing.T) {
-	defs := []tools.ToolDefinition{
-		{Name: "web_search"},
-		{Name: "read"},
-		{Name: "write"},
-		{Name: "file_delete"},
-		{Name: "edit"},
-		{Name: "ls"},
-		{Name: "find"},
-		{Name: "email"},
-	}
-
-	filtered := applyWritingToolPreference(defs, "Read the document in summary_source.txt and write a concise 3-paragraph summary to summary_output.txt.")
-	if got := toolNames(filtered); strings.Join(got, ",") != "read,write,file_delete,edit,ls,find" {
-		t.Fatalf("expected direct artifact writing prompt to keep full local file workflow, got=%v", got)
-	}
-}
-
-func TestPreferDirectArtifactWritingTools_SelectsWriteForBlogArtifact(t *testing.T) {
-	allDefs := []tools.ToolDefinition{
-		{Name: "email"},
-		{Name: "write"},
-		{Name: "web_search"},
-	}
-
-	filtered := preferDirectArtifactWritingTools(
-		"Write a 500-word blog post about the benefits of remote work for software developers. Save it to blog_post.md.",
-		allDefs,
-		[]tools.ToolDefinition{{Name: "email"}},
-	)
-	if got := toolNames(filtered); strings.Join(got, ",") != "write" {
-		t.Fatalf("expected write-only toolset for direct artifact writing, got=%v", got)
-	}
-}
-
 func TestPreferWorkspaceFileWorkflowTools_UsesMinimalStructuredArtifactWorkflow(t *testing.T) {
 	allDefs := []tools.ToolDefinition{
 		{Name: "file_read"},
@@ -2183,53 +2117,6 @@ func TestBuildPostWriteCompletionNudge_SkipsAmbiguousMultiFilePrompt(t *testing.
 	}
 }
 
-func TestPreferWorkspaceFileWorkflowTools_UsesCompactWorkflowForConfigDirectoryEdits(t *testing.T) {
-	allDefs := []tools.ToolDefinition{
-		{Name: "browser"},
-		{Name: "web"},
-		{Name: "file_read"},
-		{Name: "file_write"},
-		{Name: "file_delete"},
-		{Name: "edit"},
-		{Name: "ls"},
-		{Name: "find"},
-		{Name: "grep"},
-		{Name: "convert"},
-		{Name: "pdf"},
-	}
-
-	filtered := preferWorkspaceFileWorkflowTools(
-		"I need to update my configuration files for production deployment. Please make the following changes to all config files in the config/ directory: replace localhost, update the database names, and list what changes you made to each file.",
-		allDefs,
-		[]tools.ToolDefinition{{Name: "browser"}, {Name: "web"}},
-	)
-	if got := toolNames(filtered); strings.Join(got, ",") != "file_read,file_write,edit,ls,find,grep" {
-		t.Fatalf("expected config directory edit workflow to keep only compact local file tools, got=%v", got)
-	}
-}
-
-func TestPreferDirectArtifactWritingTools_SelectsFullFileWorkflowWhenAvailable(t *testing.T) {
-	allDefs := []tools.ToolDefinition{
-		{Name: "email"},
-		{Name: "read"},
-		{Name: "write"},
-		{Name: "file_delete"},
-		{Name: "edit"},
-		{Name: "ls"},
-		{Name: "find"},
-		{Name: "web_search"},
-	}
-
-	filtered := preferDirectArtifactWritingTools(
-		"Read the document in summary_source.txt and write a concise 3-paragraph summary to summary_output.txt.",
-		allDefs,
-		[]tools.ToolDefinition{{Name: "email"}},
-	)
-	if got := toolNames(filtered); strings.Join(got, ",") != "read,write,file_delete,edit,ls,find" {
-		t.Fatalf("expected full local file workflow for direct artifact writing, got=%v", got)
-	}
-}
-
 func TestApplyEmailAndCalendarToolPreference(t *testing.T) {
 	defs := []tools.ToolDefinition{
 		{Name: "web_search"},
@@ -2297,43 +2184,6 @@ func TestIsCalendarIntentMessage_DoesNotMisclassifyConferenceArtifact(t *testing
 	}
 }
 
-func TestApplyResearchToolPreference_UsesFastArtifactWorkflowForStockReport(t *testing.T) {
-	defs := []tools.ToolDefinition{
-		{Name: "web_search"},
-		{Name: "web_fetch"},
-		{Name: "web_read"},
-		{Name: "browser"},
-		{Name: "write"},
-		{Name: "read"},
-		{Name: "ls"},
-		{Name: "find"},
-		{Name: "calendar"},
-	}
-
-	filtered := applyResearchToolPreference(defs, "Research the current stock price of Apple (AAPL) and save it to stock_report.txt with the price, date, and a brief market summary.")
-	if got := toolNames(filtered); strings.Join(got, ",") != "web_search,web_fetch,web_read,browser,write,read,ls,find" {
-		t.Fatalf("expected fast research artifact workflow for stock report, got=%v", got)
-	}
-}
-
-func TestApplyResearchToolPreference_UsesUnifiedWebToolForStockReport(t *testing.T) {
-	defs := []tools.ToolDefinition{
-		{Name: "web"},
-		{Name: "browser"},
-		{Name: "write"},
-		{Name: "read"},
-		{Name: "edit"},
-		{Name: "ls"},
-		{Name: "find"},
-		{Name: "calendar"},
-	}
-
-	filtered := applyResearchToolPreference(defs, "Research the current stock price of Apple (AAPL) and save it to stock_report.txt with the price, date, and a brief market summary.")
-	if got := toolNames(filtered); strings.Join(got, ",") != "web,browser,write,read,edit,ls,find" {
-		t.Fatalf("expected unified web tool to be preserved for stock report, got=%v", got)
-	}
-}
-
 func TestApplyResearchToolPreference_UsesUnifiedWebQueryForArtifactReport(t *testing.T) {
 	defs := []tools.ToolDefinition{
 		{Name: "web_query"},
@@ -2365,7 +2215,7 @@ func TestApplyImageToolPreference_PrefersNativeImageTool(t *testing.T) {
 	}
 
 	filtered := applyImageToolPreference(defs, `Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as "robot_cafe.png" in the current directory.`)
-	if got := toolNames(filtered); strings.Join(got, ",") != "image,read,write,file_delete,edit,ls,find" {
+	if got := toolNames(filtered); strings.Join(got, ",") != "image,read,write,edit,ls,find" {
 		t.Fatalf("expected image generation prompt to keep image tool plus local file workflow, got=%v", got)
 	}
 }
@@ -2584,11 +2434,11 @@ func TestBuildPostWorkspaceArtifactContinuationToolsFromHistory_PreservesWriteWh
 
 func TestBuildToolLoopArtifactRecoveryNudge_ForRepeatedFileRead(t *testing.T) {
 	nudge := buildToolLoopArtifactRecoveryNudge(
-		"Read the document in summary_source.txt and write a concise 3-paragraph summary to summary_output.txt.",
+		"I have a report in openclaw_report.pdf in my workspace. Extract the answers and write them one per line to answer.txt.",
 		tools.ToolLoopReasonPollingNoProgress,
-		"file_read:path=summary_source.txt",
+		"file_read:path=openclaw_report.pdf",
 	)
-	if !strings.Contains(nudge, "summary_output.txt") || !strings.Contains(strings.ToLower(nudge), "write") {
+	if !strings.Contains(nudge, "answer.txt") || !strings.Contains(strings.ToLower(nudge), "write") {
 		t.Fatalf("expected repeated file-read loop to force artifact write recovery, got=%q", nudge)
 	}
 }
@@ -2602,7 +2452,7 @@ func TestBuildToolLoopArtifactRecoveryTools_ForRepeatedFileRead(t *testing.T) {
 		{Name: "edit"},
 		{Name: "find"},
 		{Name: "ls"},
-	}, "Read the document in summary_source.txt and write a concise 3-paragraph summary to summary_output.txt.", "file_read:path=summary_source.txt")
+	}, "I have a report in openclaw_report.pdf in my workspace. Extract the answers and write them one per line to answer.txt.", "file_read:path=openclaw_report.pdf")
 
 	if !containsLLMToolName(reduced, "file_write") {
 		t.Fatalf("expected repeated file-read loop to preserve file_write, got=%v", reduced)

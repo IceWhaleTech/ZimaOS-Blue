@@ -367,6 +367,8 @@ func normalizeCompatToolName(name string) string {
 		return "file_read"
 	case "write":
 		return "file_write"
+	case "bash":
+		return "exec"
 	case "delete", "remove", "rm", "unlink":
 		return "file_delete"
 	case "sessions_list", "sessions_history", "session_status",
@@ -387,6 +389,8 @@ func normalizeCompatToolName(name string) string {
 
 func normalizeCompatArgs(rawName, normalizedName string, args map[string]interface{}) map[string]interface{} {
 	switch strings.ToLower(strings.TrimSpace(normalizedName)) {
+	case "bash":
+		return normalizeExecCompatArgs(args)
 	case "exec":
 		return normalizeExecCompatArgs(args)
 	case "file_read":

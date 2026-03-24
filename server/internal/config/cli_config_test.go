@@ -178,11 +178,11 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	if len(cfg.Groups["group:runtime"]) == 0 {
 		t.Fatalf("expected group:runtime entries to be populated")
 	}
-	if !containsString(cfg.Groups["group:fs"], "file_read") || !containsString(cfg.Groups["group:fs"], "file_write") {
-		t.Fatalf("expected group:fs to include file_read/file_write, got %#v", cfg.Groups["group:fs"])
+	if !containsString(cfg.Groups["group:fs"], "read") || !containsString(cfg.Groups["group:fs"], "write") {
+		t.Fatalf("expected group:fs to include read/write, got %#v", cfg.Groups["group:fs"])
 	}
-	if !containsString(cfg.Groups["group:fs"], "rg") {
-		t.Fatalf("expected group:fs to include rg, got %#v", cfg.Groups["group:fs"])
+	if containsString(cfg.Groups["group:fs"], "rg") {
+		t.Fatalf("did not expect group:fs to include rg, got %#v", cfg.Groups["group:fs"])
 	}
 	if containsString(cfg.Groups["group:fs"], "apply_patch") {
 		t.Fatalf("did not expect group:fs to include apply_patch, got %#v", cfg.Groups["group:fs"])

@@ -227,7 +227,7 @@ func classifyCapability(name, argsJSON string) CapabilityInfo {
 		c.LatencyProfile = "medium"
 		c.CostProfile = "medium"
 	}
-	if name == "exec" {
+	if normalizeGroundToolName(name) == "bash" {
 		cmd := parseExecCommand(argsJSON)
 		if strings.HasPrefix(cmd, "blue ") {
 			c.Kind = CapabilityKindSkill
@@ -257,8 +257,8 @@ func parseExecCommand(argsJSON string) string {
 }
 
 func isReadLikeTool(name string) bool {
-	switch name {
-	case "read", "file_read", "memory", "web_search", "analyze", "ui_reviewer", "ask":
+	switch normalizeGroundToolName(name) {
+	case "read", "memory", "web_search", "analyze", "ui_reviewer", "ask":
 		return true
 	default:
 		return false
@@ -606,15 +606,15 @@ func groundedToolCatalog(registry *tools.Registry) []llm.Tool {
 	out := make([]llm.Tool, 0, len(defs)+2)
 	for _, def := range defs {
 		switch normalizeGroundToolName(def.Name) {
-		case "file_read":
+		case "read":
 			out = append(out, llm.Tool{
-				Name:        "file_read",
+				Name:        "read",
 				Description: "Read a local workspace file. Accepts path aliases such as path, file_path, filePath, and filename.",
 				Parameters:  groundedFileToolParameters(def.Parameters, false),
 			})
-		case "file_write":
+		case "write":
 			out = append(out, llm.Tool{
-				Name:        "file_write",
+				Name:        "write",
 				Description: "Write a local workspace file. Accepts path aliases such as path, file_path, filePath, and filename, plus content aliases such as content, text, body, and value.",
 				Parameters:  groundedFileToolParameters(def.Parameters, true),
 			})

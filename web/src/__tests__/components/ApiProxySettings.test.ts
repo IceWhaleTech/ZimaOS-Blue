@@ -1,24 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const { getFailoverConfig, updateFailoverConfig, getSettings, getToolStats } = vi.hoisted(() => ({
+const { getFailoverConfig, updateFailoverConfig } = vi.hoisted(() => ({
   getFailoverConfig: vi.fn(),
   updateFailoverConfig: vi.fn(),
-  getSettings: vi.fn(),
-  getToolStats: vi.fn(),
 }))
 
 vi.mock('@/api/proxy', () => ({
   proxyApi: {
     getFailoverConfig,
     updateFailoverConfig,
-  },
-}))
-
-vi.mock('@/api/settings', () => ({
-  settingsApi: {
-    get: getSettings,
-    getToolStats,
   },
 }))
 
@@ -44,18 +35,6 @@ describe('ApiProxySettings', () => {
         provider_race: {
           enabled: true,
         },
-      },
-    })
-    getSettings.mockResolvedValue({
-      data: {
-        smart_tool_selection: false,
-      },
-    })
-    getToolStats.mockResolvedValue({
-      data: {
-        requests: 0,
-        tools_skipped: 0,
-        tokens_saved: 0,
       },
     })
   })

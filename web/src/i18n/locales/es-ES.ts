@@ -709,7 +709,6 @@ export default {
       mediaIntent: 'Reconocimiento de escenarios de generacion multimedia',
       shortQA: 'Aceleración de preguntas breves',
       shadowOnly: 'Fase 1: solo validación en segundo plano',
-      toolDispatch: 'Aceleración de despacho de herramientas',
       statsTitle: 'Estadisticas de ejecucion (resolucion de problemas)',
       statsHint: 'Principalmente para diagnostico y ajuste; puede ignorarse en el uso diario.',
       resetStats: 'Borrar estadísticas',
@@ -719,9 +718,6 @@ export default {
       imageQAAttempts: 'Cantidad de reconocimientos de imágenes',
       imageQASuccessRate: 'Tasa de acierto del reconocimiento de imágenes',
       imageQALatencyMs: 'Latencia del reconocimiento de imágenes',
-      toolDispatchAttempts: 'Aceleración de despacho de herramientas Cantidad',
-      toolDispatchSuccessRate: 'Aceleración de despacho de herramientas Tasa de acierto',
-      toolDispatchLatencyMs: 'Aceleración de despacho de herramientas Latencia',
       summarySuccessRate: 'Aceleración de resúmenes Tasa de acierto',
       summaryLatencyMs: 'Aceleración de resúmenes Latencia',
       contextCompressionSuccessRate: 'Tasa de acierto de la compresión de contexto',
@@ -3240,7 +3236,6 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
-    smartToolsDesc: 'Envía solo herramientas relevantes por consulta, reduciendo el uso de tokens',
     providerRaceTitle: 'Carrera concurrente de proveedores',
     providerRaceDesc:
       'Ejecuta solicitudes concurrentes a varios proveedores y devuelve la respuesta correcta más rápida; esto puede aumentar ligeramente el coste',
