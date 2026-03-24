@@ -567,6 +567,8 @@ function createStreamUIState(
 }
 
 export const useChatStore = defineStore('chat', () => {
+  const providerPoolStore = useProviderPoolStore()
+
   const loadModelPreference = (): string => {
     try {
       const value = localStorage.getItem(CHAT_MODEL_PREF_KEY)?.trim()
@@ -651,6 +653,114 @@ export const useChatStore = defineStore('chat', () => {
     if (provider && model) return `${provider}/${model}`
     if (model) return model
     return 'auto'
+  }
+
+  function resolveModelSelection(providerIdRaw: string, modelPreferenceRaw: string) {
+    const providerId = providerIdRaw.trim()
+    const trimmed = modelPreferenceRaw.trim()
+    if (!trimmed || trimmed === 'auto') {
+      return {
+        selected_provider_id: providerId,
+        selected_model_id: '',
+        model_preference: 'auto',
+      }
+    }
+
+    const parsed = splitModelPreference(trimmed)
+    const requestedProviderId = parsed.selected_provider_id || providerId
+    const requestedModelId = parsed.selected_model_id || trimmed
+
+    if (!requestedModelId) {
+      return {
+        selected_provider_id: requestedProviderId,
+        selected_model_id: '',
+        model_preference: 'auto',
+      }
+    }
+
+    const enabledProviderIds = new Set(
+      (providerPoolStore.enabledProviders || [])
+        .filter((provider) => provider.type !== 'media')
+        .map((provider) => provider.id)
+    )
+    const enabledModels = (providerPoolStore.models || []).filter(
+      (model) => model.enabled && enabledProviderIds.has(model.provider_id)
+    )
+
+    const exactMatch = enabledModels.find(
+      (model) => model.provider_id === requestedProviderId && model.id === requestedModelId
+    )
+    if (exactMatch) {
+      return {
+        selected_provider_id: exactMatch.provider_id,
+        selected_model_id: exactMatch.id,
+        model_preference: `${exactMatch.provider_id}/${exactMatch.id}`,
+      }
+    }
+
+    const providerScopedSuffixMatch = enabledModels.find(
+      (model) =>
+        model.provider_id === requestedProviderId && model.id.endsWith(`/${requestedModelId}`)
+    )
+    if (providerScopedSuffixMatch) {
+      return {
+        selected_provider_id: providerScopedSuffixMatch.provider_id,
+        selected_model_id: providerScopedSuffixMatch.id,
+        model_preference: `${providerScopedSuffixMatch.provider_id}/${providerScopedSuffixMatch.id}`,
+      }
+    }
+
+    const exactModelMatches = enabledModels.filter((model) => model.id === requestedModelId)
+    if (exactModelMatches.length === 1) {
+      const match = exactModelMatches[0]
+      if (!match) {
+        return {
+          selected_provider_id: requestedProviderId,
+          selected_model_id: requestedModelId,
+          model_preference: requestedProviderId
+            ? `${requestedProviderId}/${requestedModelId}`
+            : requestedModelId,
+        }
+      }
+      return {
+        selected_provider_id: match.provider_id,
+        selected_model_id: match.id,
+        model_preference: `${match.provider_id}/${match.id}`,
+      }
+    }
+
+    const suffixMatches = enabledModels.filter((model) => model.id.endsWith(`/${requestedModelId}`))
+    if (suffixMatches.length === 1) {
+      const match = suffixMatches[0]
+      if (!match) {
+        return {
+          selected_provider_id: requestedProviderId,
+          selected_model_id: requestedModelId,
+          model_preference: requestedProviderId
+            ? `${requestedProviderId}/${requestedModelId}`
+            : requestedModelId,
+        }
+      }
+      return {
+        selected_provider_id: match.provider_id,
+        selected_model_id: match.id,
+        model_preference: `${match.provider_id}/${match.id}`,
+      }
+    }
+
+    if (requestedProviderId) {
+      return {
+        selected_provider_id: requestedProviderId,
+        selected_model_id: requestedModelId,
+        model_preference: `${requestedProviderId}/${requestedModelId}`,
+      }
+    }
+
+    return {
+      selected_provider_id: '',
+      selected_model_id: requestedModelId,
+      model_preference: requestedModelId,
+    }
   }
 
   // State
@@ -1638,16 +1748,22 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function applyCommandState(state: ConversationCommandState) {
-    selectedProviderId.value = state.selected_provider_id?.trim() || ''
-    modelPreference.value = commandStateToModelPreference(state)
+    const resolved = resolveModelSelection(
+      state.selected_provider_id?.trim() || '',
+      commandStateToModelPreference(state)
+    )
+    selectedProviderId.value = resolved.selected_provider_id
+    modelPreference.value = resolved.model_preference
     offlineMode.value = !!state.offline
     webSearchEnabled.value = state.web_search_enabled !== false
     deepResearchEnabled.value = !!state.deep_research_enabled
   }
 
   function getLocalCommandStateSeed(): ConversationCommandState {
+    const resolved = resolveModelSelection('', loadModelPreference())
     return {
-      ...splitModelPreference(loadModelPreference()),
+      selected_provider_id: resolved.selected_provider_id,
+      selected_model_id: resolved.selected_model_id,
       offline: loadOfflineMode(),
       web_search_enabled: loadWebSearchEnabled(),
       deep_research_enabled: loadDeepResearchEnabled(),
@@ -2733,11 +2849,14 @@ export const useChatStore = defineStore('chat', () => {
     }
     messages.value = [...messages.value, userMessage]
 
-    const modelSelection = splitModelPreference(modelPreference.value)
+    const resolvedModelSelection = resolveModelSelection(
+      selectedProviderId.value,
+      modelPreference.value
+    )
     const request: SendMessageRequest = {
       message: content,
-      provider: selectedProviderId.value || modelSelection.selected_provider_id || '',
-      model: modelSelection.selected_model_id || '',
+      provider: resolvedModelSelection.selected_provider_id || '',
+      model: resolvedModelSelection.selected_model_id || '',
       temperature: settingsStore.temperature,
       max_tokens: settingsStore.maxTokens,
       attachments: attachments.length > 0 ? attachments : undefined,
@@ -2750,6 +2869,7 @@ export const useChatStore = defineStore('chat', () => {
       streaming.value = true
       clearRecentTodoCompletion()
       streamProgress.value = null
+      streamError.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''
@@ -2795,6 +2915,7 @@ export const useChatStore = defineStore('chat', () => {
             markAwaitingConfirmation()
           }
           if (!chunk.delta) return
+          streamError.value = null
           _receivedFirstChunk.value = true
           streamProgress.value = null
           // Clear tool executing state when new content arrives
@@ -2923,6 +3044,7 @@ export const useChatStore = defineStore('chat', () => {
             // Don't show error banner — we'll recover by fetching from server
             fetchMessages(conversationId).then(() => {
               if (currentConversationId.value !== sendConvId) return
+              streamError.value = null
               messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
             })
             return
@@ -2943,6 +3065,8 @@ export const useChatStore = defineStore('chat', () => {
                 if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.content?.trim()) {
                   const errorKey = resolveErrorKey(err.message)
                   streamError.value = errorKey || err.message
+                } else {
+                  streamError.value = null
                 }
               })
               .catch(() => {
@@ -3013,6 +3137,7 @@ export const useChatStore = defineStore('chat', () => {
           flushPendingStreamDelta(sendConvId)
           streaming.value = false
           streamProgress.value = null
+          streamError.value = null
           toolExecuting.value = false
           streamUIState.value = createStreamUIState('completed', {
             label: resolveStreamUIStateLabel('completed'),
@@ -4130,11 +4255,11 @@ export const useChatStore = defineStore('chat', () => {
 
   function setModelPreference(value: string) {
     const next = value.trim()
-    modelPreference.value = next || 'auto'
+    const resolved = resolveModelSelection(selectedProviderId.value, next || 'auto')
+    modelPreference.value = resolved.model_preference
     saveModelPreference(modelPreference.value)
-    const parsed = splitModelPreference(modelPreference.value)
-    if (parsed.selected_provider_id) {
-      selectedProviderId.value = parsed.selected_provider_id
+    if (resolved.selected_provider_id) {
+      selectedProviderId.value = resolved.selected_provider_id
     }
     const convId = currentConversationId.value
     if (convId) {
@@ -4142,9 +4267,9 @@ export const useChatStore = defineStore('chat', () => {
       if (!next || next === 'auto') {
         patch.selected_model_id = ''
       } else {
-        patch.selected_model_id = parsed.selected_model_id || ''
-        if (parsed.selected_provider_id) {
-          patch.selected_provider_id = parsed.selected_provider_id
+        patch.selected_model_id = resolved.selected_model_id
+        if (resolved.selected_provider_id) {
+          patch.selected_provider_id = resolved.selected_provider_id
         }
       }
       void patchCommandState(convId, patch).catch(() => {})
@@ -4222,6 +4347,7 @@ export const useChatStore = defineStore('chat', () => {
     isPreTTFT,
 
     // Actions
+    splitModelPreference,
     fetchConversations,
     createConversation,
     deleteConversation,

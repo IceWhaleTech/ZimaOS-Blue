@@ -4050,6 +4050,7 @@ func (ph *ProxyHandler) copyResponsesStreamingAsOpenAIWithCapture(w http.Respons
 	model := strings.TrimSpace(preferredModel)
 	roleEmitted := false
 	doneSent := false
+	assistantTextEmitted := false
 	toolArgsEmitted := make(map[string]bool)
 
 	emitDone := func() {
@@ -4137,6 +4138,7 @@ func (ph *ProxyHandler) copyResponsesStreamingAsOpenAIWithCapture(w http.Respons
 				continue
 			}
 			emitAssistantRole()
+			assistantTextEmitted = true
 			emitChunk(OpenAIStreamChunk{
 				ID:     messageID,
 				Object: "chat.completion.chunk",
@@ -4232,6 +4234,21 @@ func (ph *ProxyHandler) copyResponsesStreamingAsOpenAIWithCapture(w http.Respons
 			})
 		case "response.completed":
 			response, _ := event["response"].(map[string]interface{})
+			if !assistantTextEmitted {
+				if text := extractResponsesAssistantTextFromOutputValue(response["output"]); text != "" {
+					emitAssistantRole()
+					emitChunk(OpenAIStreamChunk{
+						ID:     messageID,
+						Object: "chat.completion.chunk",
+						Model:  model,
+						Choices: []StreamChunkChoice{{
+							Index: 0,
+							Delta: StreamChunkDelta{Content: text},
+						}},
+					})
+					assistantTextEmitted = true
+				}
+			}
 			emitAssistantRole()
 			usage := responsesUsageFromStreamEvent(response)
 			finishReason := responsesFinishReasonFromStreamEvent(response)

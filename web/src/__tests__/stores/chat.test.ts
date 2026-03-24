@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
   providerPoolStore: {
     fetchTrialQuota: vi.fn(),
+    enabledProviders: [] as Array<{ id: string; type?: string }>,
+    models: [] as Array<{ id: string; provider_id: string; enabled: boolean }>,
+    getProviderDisplayName: vi.fn((providerId: string) => providerId),
   },
 }))
 
@@ -107,6 +110,11 @@ describe('Chat Store', () => {
     })
     mocks.apiPost.mockReset().mockResolvedValue({ data: {} } as never)
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
+    mocks.providerPoolStore.enabledProviders = []
+    mocks.providerPoolStore.models = []
+    mocks.providerPoolStore.getProviderDisplayName.mockImplementation(
+      (providerId: string) => providerId
+    )
     vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.delete).mockResolvedValue({ data: { success: true, deleted: 0 } } as never)
@@ -471,6 +479,42 @@ describe('Chat Store', () => {
     })
   })
 
+  describe('model selection normalization', () => {
+    it('should rewrite stale provider-model command state to the enabled provider route', async () => {
+      mocks.providerPoolStore.enabledProviders = [{ id: 'openrouter', type: 'builtin' }]
+      mocks.providerPoolStore.models = [
+        {
+          id: 'minimax/minimax-m2.7',
+          provider_id: 'openrouter',
+          enabled: true,
+        },
+      ]
+      vi.mocked(conversationApi.getCommandState).mockResolvedValue({
+        data: {
+          conversation_id: '1',
+          selected_provider_id: 'minimax',
+          selected_model_id: 'minimax-m2.7',
+          offline: false,
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        },
+      } as never)
+
+      const store = useChatStore()
+      await store.selectConversation('1')
+      await store.sendMessage('hi')
+
+      expect(mocks.sseConnect).toHaveBeenCalledWith(
+        '1',
+        expect.objectContaining({
+          provider: 'openrouter',
+          model: 'minimax/minimax-m2.7',
+        }),
+        expect.any(Object)
+      )
+    })
+  })
+
   describe('sortedConversations', () => {
     it('should sort conversations by updated_at descending', () => {
       const store = useChatStore()
@@ -513,6 +557,87 @@ describe('Chat Store', () => {
   })
 
   describe('sendMessage streaming', () => {
+    it('clears a stale stream error when a new request starts and completes', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Original',
+          created_at: '2026-03-22T00:00:00.000Z',
+          updated_at: '2026-03-22T00:00:00.000Z',
+        },
+      ]
+      store.streamError = 'provider_auth_error'
+
+      let streamOptions: any
+      let resolveStream: (() => void) | null = null
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+        streamOptions = options
+        await new Promise<void>((resolve) => {
+          resolveStream = resolve
+        })
+      })
+
+      const sendPromise = store.sendMessage('hello')
+      await flushMicrotasks()
+
+      expect(store.streamError).toBeNull()
+
+      streamOptions.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+      resolveStream?.()
+      await sendPromise
+
+      expect(store.streamError).toBeNull()
+    })
+
+    it('clears transient stream errors after recovering persisted assistant content', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Recovered',
+          created_at: '2026-03-22T00:00:00.000Z',
+          updated_at: '2026-03-22T00:00:00.000Z',
+        },
+      ]
+      store.streamError = 'provider_auth_error'
+
+      vi.mocked(messageApi.list).mockResolvedValue({
+        data: [
+          {
+            id: 'msg-user-1',
+            conversation_id: 'conv-1',
+            role: 'user',
+            content: 'Need recovery',
+            created_at: '2026-03-22T00:00:00.000Z',
+          },
+          {
+            id: 'msg-assistant-1',
+            conversation_id: 'conv-1',
+            role: 'assistant',
+            content: 'Recovered answer',
+            created_at: '2026-03-22T00:00:01.000Z',
+          },
+        ],
+      } as never)
+
+      let streamOptions: any
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+        streamOptions = options
+        options.onError?.(new Error('STREAM_EMPTY'))
+      })
+
+      await store.sendMessage('Need recovery')
+      await settleAsyncWork()
+
+      expect(store.streamError).toBeNull()
+      expect(store.messages.at(-1)?.id).toBe('msg-assistant-1')
+      expect(store.messages.at(-1)?.content).toBe('Recovered answer')
+    })
+
     it('falls back to a timer commit when animation frames are throttled', async () => {
       vi.useFakeTimers()
 

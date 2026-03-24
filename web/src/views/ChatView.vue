@@ -936,20 +936,34 @@ const fixedModelOptions = computed(() => {
       .map((provider) => provider.id)
   )
 
-  const modelIds = new Set<string>()
-  for (const model of providerPoolStore.models) {
-    if (!model.enabled) continue
-    if (!enabledProviderIds.has(model.provider_id)) continue
-    modelIds.add(model.id)
+  const availableModels = providerPoolStore.models.filter(
+    (model) => model.enabled && enabledProviderIds.has(model.provider_id)
+  )
+  const duplicateCount = new Map<string, number>()
+  for (const model of availableModels) {
+    duplicateCount.set(model.id, (duplicateCount.get(model.id) || 0) + 1)
   }
-  return Array.from(modelIds)
-    .sort((a, b) => a.localeCompare(b))
-    .map((id) => ({ id }))
+
+  return availableModels
+    .sort((a, b) => {
+      const byModel = a.id.localeCompare(b.id)
+      if (byModel !== 0) return byModel
+      return a.provider_id.localeCompare(b.provider_id)
+    })
+    .map((model) => ({
+      id: model.id,
+      providerId: model.provider_id,
+      value: `${model.provider_id}/${model.id}`,
+      label:
+        (duplicateCount.get(model.id) || 0) > 1
+          ? `${providerPoolStore.getProviderDisplayName(model.provider_id)} · ${model.id}`
+          : model.id,
+    }))
 })
 
 const fixedModelLabel = computed(() => {
   if (chatStore.modelPreference === 'auto') return t('chat.routingMode.highAvailability')
-  return chatStore.modelPreference
+  return chatStore.splitModelPreference(chatStore.modelPreference).selected_model_id || chatStore.modelPreference
 })
 
 const routingButtonTitle = computed(
@@ -1547,8 +1561,8 @@ function selectRoutingMode(mode: 'auto' | 'cloud' | 'local') {
   if (isMobile.value) showRoutingMenu.value = false
 }
 
-function selectFixedModel(modelId: string) {
-  chatStore.setModelPreference(modelId)
+function selectFixedModel(modelPreference: string) {
+  chatStore.setModelPreference(modelPreference)
   if (isMobile.value) showRoutingMenu.value = false
 }
 
@@ -1559,7 +1573,7 @@ function setAutoModelPreference() {
 
 function enableSingleModelMode() {
   if (chatStore.modelPreference !== 'auto') return
-  const firstModel = fixedModelOptions.value[0]?.id
+  const firstModel = fixedModelOptions.value[0]?.value
   if (firstModel) {
     chatStore.setModelPreference(firstModel)
   }
@@ -2558,14 +2572,14 @@ onUnmounted(() => {
                     <div v-else class="mt-2 max-h-40 overflow-y-auto space-y-1">
                       <button
                         v-for="option in fixedModelOptions"
-                        :key="option.id"
+                        :key="option.value"
                         class="routing-model-row w-full"
-                        :class="{ 'is-selected': chatStore.modelPreference === option.id }"
-                        @click="selectFixedModel(option.id)"
+                        :class="{ 'is-selected': chatStore.modelPreference === option.value }"
+                        @click="selectFixedModel(option.value)"
                       >
-                        <span class="truncate pr-3" :title="option.id">{{ option.id }}</span>
+                        <span class="truncate pr-3" :title="option.value">{{ option.label }}</span>
                         <svg
-                          v-if="chatStore.modelPreference === option.id"
+                          v-if="chatStore.modelPreference === option.value"
                           class="w-4 h-4 text-emerald-500 flex-shrink-0"
                           fill="none"
                           viewBox="0 0 24 24"
@@ -2799,14 +2813,14 @@ onUnmounted(() => {
                       <div v-else class="max-h-44 overflow-y-auto space-y-1 pt-2">
                         <button
                           v-for="option in fixedModelOptions"
-                          :key="option.id"
+                          :key="option.value"
                           class="routing-model-row w-full"
-                          :class="{ 'is-selected': chatStore.modelPreference === option.id }"
-                          @click="selectFixedModel(option.id)"
+                        :class="{ 'is-selected': chatStore.modelPreference === option.value }"
+                        @click="selectFixedModel(option.value)"
                         >
-                          <span class="truncate pr-3" :title="option.id">{{ option.id }}</span>
+                          <span class="truncate pr-3" :title="option.value">{{ option.label }}</span>
                           <svg
-                            v-if="chatStore.modelPreference === option.id"
+                            v-if="chatStore.modelPreference === option.value"
                             class="w-4 h-4 text-emerald-500 flex-shrink-0"
                             fill="none"
                             viewBox="0 0 24 24"

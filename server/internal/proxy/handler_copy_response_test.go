@@ -528,6 +528,17 @@ func TestCopyResponse_OpenAIResponsesEndpoint_StreamingKeepsContinuationWhenUpst
 	ph.setCachedResponsesPreviousID(req, "resp_prev_1")
 	ph.copyResponse(rec, resp, pr, req)
 
+	got := rec.Body.String()
+	if !strings.Contains(got, "\"content\":\"ok\"") {
+		t.Fatalf("expected assistant content synthesized from response.completed, got: %s", got)
+	}
+	if !strings.Contains(got, "\"finish_reason\":\"stop\"") {
+		t.Fatalf("expected final stop chunk, got: %s", got)
+	}
+	if !strings.Contains(got, "data: [DONE]") {
+		t.Fatalf("expected DONE marker, got: %s", got)
+	}
+
 	if got := rec.Header().Get(ResponsesContinuationDisabledHeader); got != "" {
 		t.Fatalf("%s = %q, want empty", ResponsesContinuationDisabledHeader, got)
 	}
