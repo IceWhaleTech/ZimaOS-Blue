@@ -68,6 +68,10 @@ function handleOpenMoreActions() {
   emit('more-actions')
 }
 
+function handleOpenContextMenu(id: string) {
+  showContextMenu.value = id
+}
+
 function handleDelete(id: string) {
   showDeleteConfirm.value = id
 }
@@ -113,7 +117,7 @@ function getConversationPreview(title: string): string {
 function startLongPress(id: string) {
   longPressId.value = id
   longPressTimer.value = setTimeout(() => {
-    showContextMenu.value = id
+    handleOpenContextMenu(id)
   }, 500) // 500ms long press
 }
 
@@ -350,50 +354,78 @@ watch(searchQuery, (query) => {
           </button>
 
           <!-- Pin/Unpin and Delete buttons -->
-          <div class="convo-actions absolute flex items-center gap-0.5 transition-opacity">
-            <!-- Pin button -->
-            <button
-              class="action-btn p-1.5 text-gray-400 hover:text-yellow-500 transition-colors"
-              :title="conversation.pinned ? t('chat.unpinConversation') : t('chat.pinConversation')"
-              @click.stop="handlePin(conversation.id, conversation.pinned || false)"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4 transform rotate-45"
-                :class="{ 'text-yellow-500': conversation.pinned }"
-                viewBox="0 0 24 24"
-                :fill="conversation.pinned ? 'currentColor' : 'none'"
-                stroke="currentColor"
-                stroke-width="2"
+          <div
+            class="convo-actions absolute flex items-center gap-0.5 transition-opacity"
+            :class="{ 'convo-actions-mobile': mobile }"
+          >
+            <template v-if="mobile">
+              <button
+                class="action-btn convo-overflow-btn p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-100 transition-colors"
+                :title="t('chat.moreActions')"
+                :aria-label="t('chat.moreActions')"
+                @click.stop="handleOpenContextMenu(conversation.id)"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
-                />
-              </svg>
-            </button>
-            <!-- Delete button -->
-            <button
-              class="action-btn p-1.5 text-gray-400 hover:text-red-500 transition-colors"
-              :title="t('chat.deleteConversation')"
-              @click.stop="handleDelete(conversation.id)"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 5.5h.01M12 12h.01M12 18.5h.01"
+                  />
+                </svg>
+              </button>
+            </template>
+            <template v-else>
+              <!-- Pin button -->
+              <button
+                class="action-btn p-1.5 text-gray-400 hover:text-yellow-500 transition-colors"
+                :title="conversation.pinned ? t('chat.unpinConversation') : t('chat.pinConversation')"
+                @click.stop="handlePin(conversation.id, conversation.pinned || false)"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4 transform rotate-45"
+                  :class="{ 'text-yellow-500': conversation.pinned }"
+                  viewBox="0 0 24 24"
+                  :fill="conversation.pinned ? 'currentColor' : 'none'"
+                  stroke="currentColor"
                   stroke-width="2"
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                />
-              </svg>
-            </button>
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
+                  />
+                </svg>
+              </button>
+              <!-- Delete button -->
+              <button
+                class="action-btn p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                :title="t('chat.deleteConversation')"
+                @click.stop="handleDelete(conversation.id)"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </button>
+            </template>
           </div>
 
           <!-- Delete confirmation -->
@@ -820,11 +852,18 @@ watch(searchQuery, (query) => {
   bottom: 0.56rem;
   gap: 0.22rem;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.18s ease;
 }
 
 .group:hover .convo-actions {
   opacity: 1;
+  pointer-events: auto;
+}
+
+.convo-actions-mobile {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .action-btn {

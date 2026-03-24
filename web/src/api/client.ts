@@ -1,10 +1,23 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { getErrorMessage } from '@/utils/error'
+import {
+  clearStoredAccessToken,
+  clearStoredRefreshToken,
+  getStoredAccessToken,
+  getStoredPreviewToken,
+  getStoredRefreshToken,
+  setStoredAccessToken,
+  setStoredPreviewToken,
+  setStoredRefreshToken,
+  syncAuthSessionStorage,
+} from '@/utils/authStorage'
 
 // Desktop detection: __BLUE_DESKTOP__ is injected by the Tauri on_page_load handler.
 // In both browser and desktop modes, the page is same-origin with the Go server,
 // so all API calls use relative URLs — no special URL construction needed.
 const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+
+syncAuthSessionStorage()
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split('.')
@@ -43,8 +56,8 @@ async function reacquirePreviewToken(): Promise<string | null> {
     if (response.ok) {
       const data = await response.json()
       if (data.token) {
-        localStorage.setItem('preview_token', data.token)
-        localStorage.setItem('token', data.token)
+        setStoredPreviewToken(data.token)
+        setStoredAccessToken(data.token)
         return data.token
       }
     }
@@ -76,8 +89,8 @@ function addRefreshSubscriber(cb: (token: string | null) => void) {
 }
 
 function clearAuthAndRedirect() {
-  localStorage.removeItem('token')
-  localStorage.removeItem('refresh_token')
+  clearStoredAccessToken()
+  clearStoredRefreshToken()
   if (isDesktop) {
     window.dispatchEvent(new CustomEvent('auth:unauthorized'))
   } else if (!window.location.pathname.startsWith('/login')) {
@@ -91,7 +104,7 @@ function clearAuthAndRedirect() {
  */
 export async function ensureFreshToken(): Promise<string | null> {
   // Preview mode: re-acquire preview token
-  if (localStorage.getItem('preview_token')) {
+  if (getStoredPreviewToken()) {
     return reacquirePreviewToken()
   }
 
@@ -103,7 +116,7 @@ export async function ensureFreshToken(): Promise<string | null> {
   }
 
   isRefreshing = true
-  const refreshTokenValue = localStorage.getItem('refresh_token')
+  const refreshTokenValue = getStoredRefreshToken()
   if (!refreshTokenValue) {
     isRefreshing = false
     resolveRefreshSubscribers(null)
@@ -121,8 +134,8 @@ export async function ensureFreshToken(): Promise<string | null> {
       throw new Error('refresh failed')
     }
     const data = await response.json()
-    localStorage.setItem('token', data.token)
-    localStorage.setItem('refresh_token', data.refresh_token)
+    setStoredAccessToken(data.token)
+    setStoredRefreshToken(data.refresh_token)
     isRefreshing = false
     resolveRefreshSubscribers(data.token)
     return data.token
@@ -135,10 +148,10 @@ export async function ensureFreshToken(): Promise<string | null> {
 }
 
 async function getRequestToken(requestUrl?: string): Promise<string | null> {
-  let token = localStorage.getItem('token')
+  let token = getStoredAccessToken()
   if (!token) return null
 
-  const isPreview = !!localStorage.getItem('preview_token')
+  const isPreview = !!getStoredPreviewToken()
   if (
     !isPreview &&
     !shouldSkipProactiveRefresh(requestUrl) &&
@@ -175,7 +188,7 @@ api.interceptors.response.use(
       originalRequest._retry = true
 
       // Preview mode: re-acquire a preview token and retry
-      const isPreview = !!localStorage.getItem('preview_token')
+      const isPreview = !!getStoredPreviewToken()
       if (isPreview) {
         const newToken = await reacquirePreviewToken()
         if (newToken) {
@@ -213,14 +226,14 @@ api.interceptors.response.use(
 
 /** Returns auth headers for use with native fetch/EventSource. */
 export function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('token')
+  const token = getStoredAccessToken()
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 /** Authenticated fetch wrapper — injects Bearer token and retries on 401. */
 export async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers)
-  const token = localStorage.getItem('token')
+  const token = getStoredAccessToken()
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
   }

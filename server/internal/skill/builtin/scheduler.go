@@ -152,6 +152,8 @@ func (s *Scheduler) Manifest() *skill.Manifest {
 
 // Validate validates the input parameters.
 func (s *Scheduler) Validate(input map[string]any) error {
+	normalizeSchedulerSkillInput(input)
+
 	action, ok := input["action"]
 	if !ok {
 		return fmt.Errorf("action is required")
@@ -187,8 +189,59 @@ func (s *Scheduler) Validate(input map[string]any) error {
 	return nil
 }
 
+func normalizeSchedulerSkillInput(input map[string]any) {
+	normalizeStringAlias(input, "action", "op", "operation", "command")
+	normalizeStringAlias(input, "name", "title")
+	normalizeStringAlias(input, "schedule", "cron", "expression")
+	normalizeStringAlias(input, "command", "cmd")
+	normalizeStringAlias(input, "id", "job_id", "jobId", "cron_id", "cronId")
+
+	action := normalizeSchedulerSkillAction(firstTrimmedStringValue(input, "action"), input)
+	if action != "" {
+		input["action"] = action
+	}
+}
+
+func normalizeSchedulerSkillAction(raw string, input map[string]any) string {
+	action := strings.ToLower(strings.TrimSpace(raw))
+	switch action {
+	case "list", "ls", "status":
+		return "list"
+	case "":
+		if firstTrimmedStringValue(input, "id") != "" {
+			return "get"
+		}
+		if firstTrimmedStringValue(input, "name") != "" &&
+			firstTrimmedStringValue(input, "schedule") != "" &&
+			firstTrimmedStringValue(input, "command") != "" {
+			return "create"
+		}
+		return ""
+	case "get", "show", "read":
+		return "get"
+	case "create", "add":
+		return "create"
+	case "delete", "remove", "rm":
+		return "delete"
+	case "trigger", "run", "execute":
+		return "trigger"
+	case "executions", "history", "runs":
+		return "executions"
+	case "enable":
+		return "enable"
+	case "disable", "pause":
+		return "disable"
+	default:
+		return action
+	}
+}
+
 // Execute executes the scheduler skill.
 func (s *Scheduler) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
+	if err := s.Validate(input); err != nil {
+		return skill.NewErrorResult(err), nil
+	}
+
 	s.mu.RLock()
 	svc := s.svc
 	s.mu.RUnlock()

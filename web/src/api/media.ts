@@ -1,4 +1,5 @@
 import api, { ensureFreshToken } from './client'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 // Types
 export type MediaType = 'image' | 'video'
@@ -220,7 +221,7 @@ export function streamMediaTask(
   const controller = new AbortController()
 
   ;(async () => {
-    const token = localStorage.getItem('token')
+    const token = getStoredAccessToken()
     const headers: Record<string, string> = { Accept: 'text/event-stream' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
@@ -325,7 +326,7 @@ export function streamImageGeneration(
   const controller = new AbortController()
 
   ;(async () => {
-    const token = localStorage.getItem('token')
+    const token = getStoredAccessToken()
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',

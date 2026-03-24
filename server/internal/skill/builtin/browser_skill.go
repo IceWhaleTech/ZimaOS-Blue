@@ -226,6 +226,8 @@ func (b *Browser) cacheRefs(targetID string, a11yRefs map[int]int, interactiveRe
 func (b *Browser) Manifest() *skill.Manifest { return b.manifest }
 
 func (b *Browser) Validate(input map[string]any) error {
+	normalizeBrowserSkillInput(input)
+
 	// Default action to "navigate" when url is provided without action.
 	if _, ok := input["action"]; !ok {
 		if _, hasURL := input["url"].(string); hasURL {
@@ -269,7 +271,20 @@ func (b *Browser) Validate(input map[string]any) error {
 	return nil
 }
 
+func normalizeBrowserSkillInput(input map[string]any) {
+	normalizeStringAlias(input, "action", "op", "operation", "command")
+	normalizeStringAlias(input, "url", "href")
+	normalizeStringAlias(input, "target_id", "targetId")
+	normalizeStringAlias(input, "act_type", "actType")
+	normalizeStringAlias(input, "value", "text")
+	normalizeStringAlias(input, "recipe", "recipe_name", "recipeName")
+}
+
 func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
+	if err := b.Validate(input); err != nil {
+		return skill.NewErrorResult(err), nil
+	}
+
 	b.mu.RLock()
 	svc := b.svc
 	b.mu.RUnlock()
@@ -280,12 +295,13 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 
 	action, _ := input["action"].(string)
 	actType, _ := input["act_type"].(string)
-	if actType == "" {
-		actType, _ = input["actType"].(string)
-	}
 	action, actType = tools.CanonicalizeBrowserAction(action, actType)
 	if action == "" {
 		return skill.NewErrorResult(fmt.Errorf("action is required")), nil
+	}
+	input["action"] = action
+	if actType != "" {
+		input["act_type"] = actType
 	}
 	targetID, _ := input["target_id"].(string)
 	vision, _ := input["vision"].(bool)

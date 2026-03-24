@@ -17,6 +17,7 @@ import { useLocaleStore } from '@/stores/locale'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { classifyFeatureIntent } from '@/composables/useFeatureIntent'
+import { rafThrottle } from '@/utils/rafThrottle'
 
 const { t, te } = useI18n()
 const localeStore = useLocaleStore()
@@ -87,6 +88,9 @@ const isMobile = ref(false)
 const showMobileMenu = ref(false)
 const mobileMenuRef = ref<HTMLDivElement | null>(null)
 const compactModeInfoCard = ref<null | 'research' | 'loop' | 'report' | 'ui'>(null)
+const isMobileUserAgent = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
+  navigator.userAgent.toLowerCase()
+)
 
 // Voice mode state (compact: replace textarea with voice button)
 const voiceMode = ref(false)
@@ -1123,20 +1127,22 @@ onUnmounted(() => {
   }
   dismissVoiceChoice()
   stopDictation()
-  window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('resize', checkMobileOnResize)
+  checkMobileOnResize.cancel()
   document.removeEventListener('click', handleClickOutside)
 })
 
 // Check if compact mode (narrow screen) and mobile device (UA)
 function checkMobile() {
   isCompact.value = window.innerWidth < 768
-  const ua = navigator.userAgent.toLowerCase()
-  isMobile.value = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua)
+  isMobile.value = isMobileUserAgent
   if (!isCompact.value) {
     showMobileMenu.value = false
     compactModeInfoCard.value = null
   }
 }
+
+const checkMobileOnResize = rafThrottle(checkMobile)
 
 // Handle click outside mobile menu
 function handleClickOutside(event: MouseEvent) {
@@ -1181,7 +1187,7 @@ function toggleAgentModeFromHint(event: Event) {
 onMounted(() => {
   checkMobile()
   isTouchDevice.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0
-  window.addEventListener('resize', checkMobile)
+  window.addEventListener('resize', checkMobileOnResize)
   document.addEventListener('click', handleClickOutside)
 
   restoreDraftForCurrentConversation()
@@ -1210,6 +1216,12 @@ watch(draftStorageKey, (nextKey, previousKey) => {
 
 watch(textareaRef, (textarea) => {
   if (!textarea) return
+  nextTick(() => {
+    resizeTextarea()
+  })
+})
+
+watch(isCompact, () => {
   nextTick(() => {
     resizeTextarea()
   })

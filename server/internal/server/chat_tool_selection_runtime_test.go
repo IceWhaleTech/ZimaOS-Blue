@@ -142,6 +142,44 @@ func TestSelectTools_ResearchReportKeepsResearchAndWriteTools(t *testing.T) {
 	}
 }
 
+func TestSelectTools_DefaultRuntimeKeepsWebQueryForResearchArtifact(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Unified web query entrypoint"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Fallback browser"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "edit", Description: "Edit workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace directories"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find text in files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling and agenda"})
+
+	handler := NewChatHandler(nil, nil, registry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	handler.SetToolSelector(tools.DefaultToolSelector())
+	handler.SetToolRouter(tools.DefaultToolRouter())
+
+	got := handler.selectTools("Create a competitive market report and save it to market_research.md with sources.", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		RouteKind: tools.ToolRouteKindChat,
+	})
+	if len(got) == 0 {
+		t.Fatal("expected non-empty tool selection")
+	}
+
+	names := make(map[string]bool, len(got))
+	for _, def := range got {
+		names[def.Name] = true
+	}
+	for _, required := range []string{"web_query", "browser", "read", "write", "ls", "find"} {
+		if !names[required] {
+			t.Fatalf("expected %s in selected set, got=%v", required, got)
+		}
+	}
+	if names["calendar"] {
+		t.Fatalf("expected research artifact workflow to avoid calendar tool, got=%v", got)
+	}
+}
+
 func TestSelectTools_WorkspaceCodingTaskKeepsExec(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})

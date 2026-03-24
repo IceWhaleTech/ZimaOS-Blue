@@ -91,7 +91,13 @@ func (h *RemoteAccessHandler) StartRemoteAccess(c echo.Context) error {
 
 	// Default port - use server's actual listening port
 	if req.Port == 0 {
-		req.Port = h.serverPort
+		req.Port = resolveListeningPort(h.serverPort)
+	}
+	if req.Port == 0 {
+		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
+			"success": false,
+			"error":   "Server listening port is not available yet",
+		})
 	}
 
 	// Check if already running

@@ -1,5 +1,6 @@
 import api, { ensureFreshToken } from './client'
 import { isTtsSpeechMuted } from '../utils/ttsPreferences'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 // Types
 export interface VoiceSession {
@@ -129,7 +130,7 @@ export const voiceApi = {
   // Streaming TTS via SSE - synthesize text and stream audio chunks
   synthesizeStream: (text: string, format?: string): EventSource => {
     const params = new URLSearchParams({ text, ...(format ? { format } : {}) })
-    const token = localStorage.getItem('token')
+    const token = getStoredAccessToken()
     if (token) params.set('token', token)
     return new EventSource(`/api/v1/voice/synthesize/stream?${params.toString()}`)
   },
@@ -163,7 +164,7 @@ export class VoiceWebSocket {
 
   connect(language?: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const token = localStorage.getItem('token')
+      const token = getStoredAccessToken()
       if (!token) {
         reject(new Error('Not authenticated'))
         return
@@ -700,7 +701,7 @@ class StreamingTTSManager {
     }
 
     try {
-      const token = localStorage.getItem('token')
+      const token = getStoredAccessToken()
       const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
       const es = new EventSource(
         `/api/v1/voice/synthesize/stream?text=${encodeURIComponent(text)}${tokenParam}`

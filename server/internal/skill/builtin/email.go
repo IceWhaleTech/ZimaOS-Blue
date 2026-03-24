@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
@@ -62,6 +63,8 @@ func (e *Email) SetExecutor(exec EmailExecutor) {
 func (e *Email) Manifest() *skill.Manifest { return e.manifest }
 
 func (e *Email) Validate(input map[string]any) error {
+	normalizeEmailSkillInput(input)
+
 	if input == nil {
 		return fmt.Errorf("input is required")
 	}
@@ -73,6 +76,46 @@ func (e *Email) Validate(input map[string]any) error {
 		}
 	}
 	return nil
+}
+
+func normalizeEmailSkillInput(input map[string]any) {
+	normalizeStringAlias(input, "action", "op", "operation", "command")
+	normalizeStringAlias(input, "id", "email_id", "emailId", "message_id", "messageId")
+	normalizeStringAlias(input, "query", "q", "search")
+	normalizeStringAlias(input, "from", "sender")
+	normalizeStringAlias(input, "label", "tag")
+
+	action := normalizeEmailSkillAction(firstTrimmedStringValue(input, "action"), input)
+	if action != "" {
+		input["action"] = action
+	}
+}
+
+func normalizeEmailSkillAction(raw string, input map[string]any) string {
+	action := strings.ToLower(strings.TrimSpace(raw))
+	switch action {
+	case "open", "read", "show", "detail":
+		return "get"
+	case "find":
+		return "search"
+	case "tag", "add_label", "add_labels", "update_labels":
+		return "label"
+	case "summary", "digest":
+		return "summarize"
+	case "", "list", "search", "filter", "get", "archive", "label", "summarize":
+	default:
+		return action
+	}
+	if action != "" {
+		return action
+	}
+	if firstTrimmedStringValue(input, "id") != "" {
+		return "get"
+	}
+	if firstTrimmedStringValue(input, "query", "from", "label", "priority") != "" {
+		return "search"
+	}
+	return "list"
 }
 
 func (e *Email) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {

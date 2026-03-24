@@ -2143,7 +2143,7 @@ func TestStreamMessageWithNoProvider_NonResearchSkipsDeepResearchFallback(t *tes
 	}
 }
 
-func TestStreamMessageWithNoProvider_AutonomousWebSearchFallback(t *testing.T) {
+func TestStreamMessageWithNoProvider_AutonomousWebQueryFallback(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
@@ -2158,14 +2158,21 @@ func TestStreamMessageWithNoProvider_AutonomousWebSearchFallback(t *testing.T) {
 	registry := llm.NewProviderRegistry() // no provider on purpose
 	toolRegistry := tools.NewRegistry()
 	webSearchMock := &webSearchToolMock{
+		name: "web_query",
 		result: map[string]interface{}{
-			"query":       "zimaos release notes",
-			"provider":    "mock",
-			"total_count": 2,
-			"results": []map[string]interface{}{
-				{"title": "ZimaOS Release Notes", "url": "https://example.com/release", "description": "release summary"},
-				{"title": "ZimaOS Docs", "url": "https://example.com/docs", "description": "documentation"},
+			"status":     "ok",
+			"mode":       "search_read",
+			"input":      "zimaos release notes",
+			"query":      "zimaos release notes",
+			"title":      "ZimaOS Release Notes",
+			"target_url": "https://example.com/release",
+			"final_url":  "https://example.com/release",
+			"content":    "release summary",
+			"sources": []map[string]interface{}{
+				{"title": "ZimaOS Release Notes", "url": "https://example.com/release", "snippet": "release summary", "selected": true},
+				{"title": "ZimaOS Docs", "url": "https://example.com/docs", "snippet": "documentation"},
 			},
+			"next_action": "none",
 		},
 	}
 	toolRegistry.Register(webSearchMock)
@@ -2185,20 +2192,20 @@ func TestStreamMessageWithNoProvider_AutonomousWebSearchFallback(t *testing.T) {
 		t.Fatalf("StreamMessage failed: %v", err)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, `"provider":"web_search"`) {
-		t.Fatalf("expected web_search provider fallback in stream body, got: %s", body)
+	if !strings.Contains(body, `"provider":"web_query"`) {
+		t.Fatalf("expected web_query provider fallback in stream body, got: %s", body)
 	}
-	if !strings.Contains(body, `"model":"web-search-fallback"`) {
-		t.Fatalf("expected web-search-fallback model in stream body, got: %s", body)
+	if !strings.Contains(body, `"model":"web-query-fallback"`) {
+		t.Fatalf("expected web-query-fallback model in stream body, got: %s", body)
 	}
 	if !strings.Contains(body, "ZimaOS Release Notes") {
-		t.Fatalf("expected web-search title in stream body, got: %s", body)
+		t.Fatalf("expected web-query title in stream body, got: %s", body)
 	}
 	if !strings.Contains(body, "```typeless") {
 		t.Fatalf("expected typeless card block in stream body, got: %s", body)
 	}
-	if !strings.Contains(body, `\"type\":\"search\"`) {
-		t.Fatalf("expected search typeless card in stream body, got: %s", body)
+	if !strings.Contains(body, `\"type\":\"result\"`) {
+		t.Fatalf("expected web-query typeless card in stream body, got: %s", body)
 	}
 	if !strings.Contains(body, "data: [DONE]") {
 		t.Fatalf("expected [DONE] marker, got: %s", body)
@@ -2206,17 +2213,17 @@ func TestStreamMessageWithNoProvider_AutonomousWebSearchFallback(t *testing.T) {
 
 	webSearchMock.mu.Lock()
 	calls := webSearchMock.calls
-	query, _ := webSearchMock.last["query"].(string)
+	input, _ := webSearchMock.last["input"].(string)
 	format, _ := webSearchMock.last["format"].(string)
 	webSearchMock.mu.Unlock()
 	if calls != 1 {
-		t.Fatalf("web_search calls = %d, want 1", calls)
+		t.Fatalf("web_query calls = %d, want 1", calls)
 	}
-	if query != "zimaos release notes" {
-		t.Fatalf("web_search query = %q, want zimaos release notes", query)
+	if input != "zimaos release notes" {
+		t.Fatalf("web_query input = %q, want zimaos release notes", input)
 	}
 	if format != "json" {
-		t.Fatalf("web_search format = %q, want json", format)
+		t.Fatalf("web_query format = %q, want json", format)
 	}
 }
 

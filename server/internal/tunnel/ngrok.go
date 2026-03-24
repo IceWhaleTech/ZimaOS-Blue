@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"golang.ngrok.com/ngrok/v2"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"golang.ngrok.com/ngrok/v2"
 )
 
 // NgrokManager manages ngrok tunnels via the ngrok Go SDK.
@@ -36,9 +36,9 @@ func (m *NgrokManager) Start(ctx context.Context, cfg *Config) error {
 	}
 	m.mu.Unlock()
 
-	port := cfg.Port
-	if port == 0 {
-		port = 80
+	port, err := resolveTargetPort(cfg)
+	if err != nil {
+		return err
 	}
 
 	tunnelCtx, cancel := context.WithCancel(ctx)

@@ -60,6 +60,8 @@ func (a *Analyze) SetExecutor(e AnalyzeExecutor) {
 func (a *Analyze) Manifest() *skill.Manifest { return a.manifest }
 
 func (a *Analyze) Validate(input map[string]any) error {
+	normalizeAnalyzeSkillInput(input)
+
 	// Derive topic from query/url when not provided.
 	if _, ok := input["topic"]; !ok {
 		if q, ok := input["query"].(string); ok && q != "" {
@@ -86,6 +88,21 @@ func (a *Analyze) Validate(input map[string]any) error {
 	}
 
 	return nil
+}
+
+func normalizeAnalyzeSkillInput(input map[string]any) {
+	normalizeStringAlias(input, "topic", "subject")
+	normalizeStringAlias(input, "lang", "language")
+	normalizeStringAlias(input, "output_mode", "outputMode")
+	normalizeStringAlias(input, "text", "content")
+	normalizeStringAlias(input, "url", "href", "link", "source")
+	if _, ok := input["search_queries"]; !ok {
+		if raw, ok := input["searchQueries"]; ok {
+			input["search_queries"] = raw
+		} else if raw, ok := input["queries"]; ok {
+			input["search_queries"] = raw
+		}
+	}
 }
 
 func (a *Analyze) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {

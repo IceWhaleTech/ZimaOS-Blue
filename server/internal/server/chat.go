@@ -664,7 +664,7 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 		return fmt.Sprintf("This is a research task with an explicit saved deliverable. Once you have enough evidence, write the full synthesized report to %q instead of stopping at raw notes or search results. Preserve any requested sections, tables, citations, or formatting, then give a brief confirmation.%s", target, officeHint)
 	}
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
-		return fmt.Sprintf("This is a public-information research task with an explicit output file. Prefer a fast artifact workflow: use the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then write the complete result to %q. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.%s", target, officeHint)
+		return fmt.Sprintf("This is a public-information research task with an explicit output file. Prefer a fast artifact workflow: use web_query as the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then write the complete result to %q. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.%s", target, officeHint)
 	}
 	return ""
 }
@@ -837,7 +837,7 @@ func buildDeepSearchMinRoundsNudge(state *deepSearchLoopState) string {
 		}
 	}
 	return fmt.Sprintf(
-		"Deep-search guard: do not finalize yet. Search rounds completed: %d/%d. Run at least one more web_search round with a different query angle and preferably new sources. After that, provide one complete report with: executive summary, key findings, timeline/version facts (if relevant), risks/uncertainties, and source URLs. If the next search still yields no new evidence or returns tool errors, finish with a best-effort report and explicitly state evidence limitations.",
+		"Deep-search guard: do not finalize yet. Search rounds completed: %d/%d. Run at least one more web_query round with a different query angle and preferably new sources. After that, provide one complete report with: executive summary, key findings, timeline/version facts (if relevant), risks/uncertainties, and source URLs. If the next search still yields no new evidence or returns tool errors, finish with a best-effort report and explicitly state evidence limitations.",
 		completed,
 		target,
 	)
@@ -988,9 +988,12 @@ func extractSearchQueryFromToolCall(tc llm.ToolCall) string {
 		return ""
 	}
 	switch name {
-	case "web_search":
+	case "web_query", "web_search":
 		var payload map[string]interface{}
 		if json.Unmarshal([]byte(args), &payload) == nil {
+			if q := anyToStringForLLM(payload["input"]); q != "" {
+				return q
+			}
 			if q := anyToStringForLLM(payload["query"]); q != "" {
 				return q
 			}
@@ -1024,7 +1027,8 @@ func extractSearchQueryFromExecCommand(command string) string {
 	if cmd == "" {
 		return ""
 	}
-	if !strings.Contains(strings.ToLower(cmd), "web_search") {
+	lower := strings.ToLower(cmd)
+	if !strings.Contains(lower, "web_search") && !strings.Contains(lower, "web_query") {
 		return ""
 	}
 	if parts := reExecWebSearchQuery.FindStringSubmatch(cmd); len(parts) > 1 {
@@ -2371,7 +2375,8 @@ func looksLikeToolProtocolDeliberationLeak(s string) bool {
 	}
 	lower := strings.ToLower(trimmed)
 
-	hasFunctionToken := strings.Contains(lower, "functions.web_search") ||
+	hasFunctionToken := strings.Contains(lower, "functions.web_query") ||
+		strings.Contains(lower, "functions.web_search") ||
 		strings.Contains(lower, "functions.") ||
 		strings.Contains(lower, "assistant with commentary") ||
 		strings.Contains(lower, "tool_uses") ||
@@ -2423,7 +2428,8 @@ func isPseudoDirectiveNoiseChunk(delta string) bool {
 		return false
 	}
 	lower := strings.ToLower(s)
-	if strings.Contains(lower, "functions.web_search") ||
+	if strings.Contains(lower, "functions.web_query") ||
+		strings.Contains(lower, "functions.web_search") ||
 		strings.Contains(lower, "assistant with commentary") {
 		return true
 	}
@@ -2612,7 +2618,7 @@ func shouldAutoContinueForPseudoToolCall(currentContent string) bool {
 	if (hasRecipientToken || hasRecipientWord) && hasParallelToken && (hasToolPayloadJSON || strings.Contains(lower, "parameters")) {
 		return true
 	}
-	if looksLikeLeakedToolExecEnvelope(lower) && (hasToolUsesToken || hasParallelToken || strings.Contains(lower, "to=functions.") || strings.Contains(lower, "blue web_search query=")) {
+	if looksLikeLeakedToolExecEnvelope(lower) && (hasToolUsesToken || hasParallelToken || strings.Contains(lower, "to=functions.") || strings.Contains(lower, "blue web_search query=") || strings.Contains(lower, "blue web_query input=") || strings.Contains(lower, "blue web_query query=")) {
 		return true
 	}
 	if looksLikeToolProtocolDeliberationLeak(s) {
@@ -3932,12 +3938,12 @@ func (h *ChatHandler) resolveResponseModel(requestModel, routedModel string) str
 func isTrustedSyntheticProvider(providerID, provider string) bool {
 	id := strings.ToLower(strings.TrimSpace(providerID))
 	switch id {
-	case "ir", "deepresearch", "web_search", "smallmodel", "local":
+	case "ir", "deepresearch", "web_query", "web_search", "smallmodel", "local":
 		return true
 	}
 	name := strings.ToLower(strings.TrimSpace(provider))
 	switch name {
-	case "ir", "deepresearch", "web_search", "smallmodel", "local":
+	case "ir", "deepresearch", "web_query", "web_search", "smallmodel", "local":
 		return true
 	}
 	return false
@@ -6492,7 +6498,7 @@ func preferResearchReportWorkflowTools(userMessage string, allDefs, current []to
 
 	researchToolNames := []string{
 		"browser",
-		"web_search",
+		"web_query",
 		"web_fetch",
 		"web_read",
 		"web_extract",
@@ -6518,7 +6524,7 @@ func preferPublicArtifactResearchWorkflowTools(userMessage string, allDefs, curr
 		return current
 	}
 	filtered := filterToolDefsToNames(allDefs,
-		"web_search",
+		"web_query",
 		"web_fetch",
 		"web_read",
 		"web_extract",
@@ -6745,7 +6751,7 @@ func preferForcedDeepResearchTools(userMessage string, allDefs, current []tools.
 		"deep_research",
 		"browser",
 		"web",
-		"web_search",
+		"web_query",
 		"web_fetch",
 		"web_read",
 		"web_extract",
@@ -6786,7 +6792,7 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 		keepNames = []string{
 			"browser",
 			"web",
-			"web_search",
+			"web_query",
 			"web_fetch",
 			"web_read",
 			"web_extract",
@@ -6815,7 +6821,7 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 	case shouldPreferPublicArtifactResearchWorkflow(userMessage):
 		keepNames = []string{
 			"web",
-			"web_search",
+			"web_query",
 			"web_fetch",
 			"web_read",
 			"web_extract",
@@ -6836,7 +6842,7 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 		keepNames = []string{
 			"browser",
 			"web",
-			"web_search",
+			"web_query",
 			"web_fetch",
 			"web_read",
 			"web_extract",
@@ -7163,7 +7169,7 @@ func normalizeFileToolCompatName(name string) string {
 		return "file_delete"
 	case "rg":
 		return "grep"
-	case "web", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return "web"
 	case "image", "image_generation", "generate_image", "generateimage":
 		return "image"
@@ -8777,10 +8783,10 @@ func (h *ChatHandler) runAutonomousResearchFallback(ctx context.Context, query, 
 	}
 	if isFallbackToolEnabled(webSearchEnabled) {
 		attempts = append(attempts, toolAttempt{
-			Name:       "web_search",
-			Provider:   "web_search",
-			ProviderID: "web_search",
-			Model:      "web-search-fallback",
+			Name:       "web_query",
+			Provider:   "web_query",
+			ProviderID: "web_query",
+			Model:      "web-query-fallback",
 			Timeout:    20 * time.Second,
 			Args: map[string]interface{}{
 				"query":       query,
@@ -8878,7 +8884,7 @@ func summarizeAutonomousResearchFallbackWithLocale(toolName, content string, use
 		return ""
 	}
 	name := strings.ToLower(strings.TrimSpace(toolName))
-	if name == "web_search" || name == "" {
+	if name == "web_query" || name == "web_search" || name == "" {
 		if text := summarizeWebSearchXMLForFallbackWithLocale(content, useChinese); text != "" {
 			return text
 		}
@@ -8909,6 +8915,10 @@ func summarizeToolPayloadForFallback(toolName string, payload map[string]interfa
 	switch name {
 	case "deep_research", "deep-research":
 		if text := summarizeDeepResearchPayloadForFallbackWithLocale(payload, useChinese); text != "" {
+			return text
+		}
+	case "web_query":
+		if text := summarizeWebQueryPayloadForFallbackWithLocale(payload, useChinese); text != "" {
 			return text
 		}
 	case "web_search":
@@ -9024,6 +9034,85 @@ func summarizeDeepResearchPayloadForFallbackWithLocale(payload map[string]interf
 
 func summarizeWebSearchPayloadForFallback(payload map[string]interface{}) string {
 	return summarizeWebSearchPayloadForFallbackWithLocale(payload, false)
+}
+
+func summarizeWebQueryPayloadForFallback(payload map[string]interface{}) string {
+	return summarizeWebQueryPayloadForFallbackWithLocale(payload, false)
+}
+
+func summarizeWebQueryPayloadForFallbackWithLocale(payload map[string]interface{}, useChinese bool) string {
+	query := normalizeToolFallbackSnippet(firstNonEmpty(anyToStringForLLM(payload["query"]), anyToStringForLLM(payload["input"])), 160)
+	results, ok := parseWebQueryResultsForLLM(payload)
+	if ok && len(results) > 0 {
+		top := results
+		if query != "" {
+			top = rerankSearchResultsForLLM(query, results, 4)
+		}
+		if len(top) == 0 {
+			top = results
+		}
+		if len(top) > 4 {
+			top = top[:4]
+		}
+
+		var sb strings.Builder
+		if query != "" {
+			if useChinese {
+				sb.WriteString("网页查询结果（“")
+				sb.WriteString(query)
+				sb.WriteString("”）：")
+			} else {
+				sb.WriteString(`Web query fallback results for "`)
+				sb.WriteString(query)
+				sb.WriteString(`":`)
+			}
+		} else if useChinese {
+			sb.WriteString("网页查询结果：")
+		} else {
+			sb.WriteString("Web query fallback results:")
+		}
+
+		count := 0
+		for _, row := range top {
+			title := normalizeToolFallbackSnippet(row.Title, 180)
+			url := normalizeToolFallbackSnippet(row.URL, 320)
+			if title == "" && url == "" {
+				continue
+			}
+			if title == "" {
+				title = url
+			}
+			sb.WriteString("\n- ")
+			sb.WriteString(title)
+			if url != "" && !strings.EqualFold(url, title) {
+				sb.WriteString(" - ")
+				sb.WriteString(url)
+			}
+			count++
+		}
+		if count > 0 {
+			return strings.TrimSpace(sb.String())
+		}
+	}
+
+	title := normalizeToolFallbackSnippet(payloadStringField(payload, "title"), 180)
+	targetURL := normalizeToolFallbackSnippet(firstNonEmpty(payloadStringField(payload, "final_url"), payloadStringField(payload, "target_url"), payloadStringField(payload, "url")), 320)
+	if title == "" && targetURL == "" {
+		return ""
+	}
+	if title == "" {
+		title = targetURL
+	}
+	if useChinese {
+		if targetURL != "" && !strings.EqualFold(targetURL, title) {
+			return fmt.Sprintf("已完成网页查询：%s - %s", title, targetURL)
+		}
+		return fmt.Sprintf("已完成网页查询：%s", title)
+	}
+	if targetURL != "" && !strings.EqualFold(targetURL, title) {
+		return fmt.Sprintf("Completed web query: %s - %s", title, targetURL)
+	}
+	return fmt.Sprintf("Completed web query: %s", title)
 }
 
 func summarizeWebSearchPayloadForFallbackWithLocale(payload map[string]interface{}, useChinese bool) string {
@@ -9389,6 +9478,11 @@ func normalizeToolFallbackSnippet(value string, maxLen int) string {
 
 func toolFallbackHumanLabel(toolName string, useChinese bool) string {
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
+	case "web_query":
+		if useChinese {
+			return "网页查询"
+		}
+		return "web query"
 	case "web_search":
 		if useChinese {
 			return "网页搜索"
@@ -9922,7 +10016,11 @@ func (h *ChatHandler) Shutdown() {
 	}
 	h.streamController.CancelAll()
 	if h.persistCoordinator != nil {
-		h.persistCoordinator.ShutdownFlush()
+		if !h.persistCoordinator.ShutdownFlushWithin(chatPersistShutdownWait) {
+			logger.Warn().
+				Dur("timeout", chatPersistShutdownWait).
+				Msg("[chat] timed out waiting for persistence flush during shutdown")
+		}
 	}
 	if h.sessionAuditStore != nil {
 		_ = h.sessionAuditStore.Close()
@@ -12962,6 +13060,7 @@ func isSearchLikeToolLoopSignature(signature string) bool {
 	for _, needle := range []string{
 		"web:",
 		"deep_research",
+		"web_query",
 		"web_search",
 		"web_fetch",
 		"web_read",
@@ -13860,6 +13959,7 @@ func choosePseudoToolCallPrimaryToolIndex(tools []llm.Tool, preferReminder bool)
 	}
 	priority := []string{
 		"exec",
+		"web_query",
 		"web_search",
 		"file_read",
 		"browser",
@@ -14948,7 +15048,7 @@ func buildPostEmptyResearchResultNudge(userMessage string, toolCalls []llm.ToolC
 	if target == "" {
 		return ""
 	}
-	return fmt.Sprintf("Deep research returned no usable evidence. For public research like this, do not switch to interactive browser navigation unless login or page interaction is truly required. Prefer the unified web tool (or web_search/web_fetch/web_read compatibility actions) on public sources. If live retrieval still does not produce enough evidence, write the requested report to %q using your general knowledge plus any successful evidence already gathered. Include an executive summary, key findings, a comparison table when relevant, and a short note about limited live evidence.", target)
+	return fmt.Sprintf("Deep research returned no usable evidence. For public research like this, do not switch to interactive browser navigation unless login or page interaction is truly required. Prefer web_query as the unified web tool (or web_search/web_fetch/web_read compatibility actions) on public sources. If live retrieval still does not produce enough evidence, write the requested report to %q using your general knowledge plus any successful evidence already gathered. Include an executive summary, key findings, a comparison table when relevant, and a short note about limited live evidence.", target)
 }
 
 func buildPostResearchFailureRecoveryRetryNudge(userMessage string) string {
@@ -15546,7 +15646,7 @@ func hasEmptyResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Mess
 
 func isResearchRecoveryToolName(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "web", "web_search", "deep_research", "deep-research", "research_run", "research_status", "browser", "web_fetch", "web_read", "web_extract", "web_crawl":
+	case "web", "web_query", "web_search", "deep_research", "deep-research", "research_run", "research_status", "browser", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return true
 	default:
 		return false
@@ -15989,7 +16089,7 @@ func containsLLMToolName(tools []llm.Tool, name string) bool {
 
 func isSearchLikeToolCallForLLM(tc llm.ToolCall) bool {
 	name := strings.ToLower(strings.TrimSpace(tc.Name))
-	if name == "web_search" {
+	if name == "web_query" || name == "web_search" {
 		return true
 	}
 	if name == "web" {
@@ -16020,8 +16120,11 @@ func isSearchLikeToolCallForLLM(tc llm.ToolCall) bool {
 		return false
 	}
 	return strings.Contains(cmd, " web_search ") ||
+		strings.Contains(cmd, " web_query ") ||
 		strings.HasPrefix(cmd, "web_search ") ||
-		strings.HasPrefix(cmd, "blue web_search ")
+		strings.HasPrefix(cmd, "web_query ") ||
+		strings.HasPrefix(cmd, "blue web_search ") ||
+		strings.HasPrefix(cmd, "blue web_query ")
 }
 
 func compactAdditionalSearchToolResultForLLM(toolName, content string) string {
@@ -16080,11 +16183,16 @@ func compactAdditionalSearchToolResultForLLM(toolName, content string) string {
 func extractSearchResultsForLLM(toolName string, payload map[string]interface{}) ([]searchResultForLLM, bool) {
 	lowerName := strings.ToLower(strings.TrimSpace(toolName))
 	switch lowerName {
+	case "web_query":
+		return parseWebQueryResultsForLLM(payload)
 	case "web_search":
 		return parseSearchResultsForLLM(payload["results"])
 	case "exec":
 		if data, ok := payload["data"].(map[string]interface{}); ok {
-			return parseSearchResultsForLLM(data["results"])
+			if results, ok := parseSearchResultsForLLM(data["results"]); ok && len(results) > 0 {
+				return results, true
+			}
+			return parseWebQueryResultsForLLM(data)
 		}
 		return nil, false
 	default:
@@ -16095,6 +16203,28 @@ func extractSearchResultsForLLM(toolName string, payload map[string]interface{})
 func extractSearchMetadataForLLM(toolName string, payload map[string]interface{}) (query string, provider string, totalCount int, errMsg string) {
 	lowerName := strings.ToLower(strings.TrimSpace(toolName))
 	switch lowerName {
+	case "web_query":
+		query = anyToStringForLLM(payload["query"])
+		if query == "" {
+			query = anyToStringForLLM(payload["input"])
+		}
+		provider = anyToStringForLLM(payload["mode"])
+		if provider == "" {
+			if diagnostics, ok := payload["diagnostics"].(map[string]interface{}); ok {
+				provider = anyToStringForLLM(diagnostics["route"])
+				totalCount = anyToIntForLLM(diagnostics["candidate_count"])
+			}
+		}
+		if totalCount <= 0 {
+			totalCount = anyToIntForLLM(payload["candidate_count"])
+		}
+		if totalCount <= 0 {
+			if results, ok := parseWebQueryResultsForLLM(payload); ok {
+				totalCount = len(results)
+			}
+		}
+		errMsg = anyToStringForLLM(payload["error"])
+		return
 	case "web_search":
 		query = anyToStringForLLM(payload["query"])
 		provider = anyToStringForLLM(payload["provider"])
@@ -16113,13 +16243,32 @@ func extractSearchMetadataForLLM(toolName string, payload map[string]interface{}
 		errMsg = anyToStringForLLM(payload["error"])
 		if data, ok := payload["data"].(map[string]interface{}); ok {
 			query = anyToStringForLLM(data["query"])
+			if query == "" {
+				query = anyToStringForLLM(data["input"])
+			}
 			provider = anyToStringForLLM(data["provider"])
+			if provider == "" {
+				provider = anyToStringForLLM(data["mode"])
+			}
 			totalCount = anyToIntForLLM(data["total_count"])
 			if totalCount <= 0 {
 				totalCount = anyToIntForLLM(data["totalCount"])
 			}
 			if totalCount <= 0 {
+				if diagnostics, ok := data["diagnostics"].(map[string]interface{}); ok {
+					totalCount = anyToIntForLLM(diagnostics["candidate_count"])
+					if provider == "" {
+						provider = anyToStringForLLM(diagnostics["route"])
+					}
+				}
+			}
+			if totalCount <= 0 {
 				if results, ok := parseSearchResultsForLLM(data["results"]); ok {
+					totalCount = len(results)
+				}
+			}
+			if totalCount <= 0 {
+				if results, ok := parseWebQueryResultsForLLM(data); ok {
 					totalCount = len(results)
 				}
 			}
@@ -16148,6 +16297,12 @@ func compactToolResultContentForLLM(toolName, content string) string {
 	case "exec":
 		if m, ok := payload.(map[string]interface{}); ok {
 			payload = compactExecPayloadForLLM(m)
+		} else {
+			payload = compactJSONValueForLLM(payload, 0)
+		}
+	case "web_query":
+		if m, ok := payload.(map[string]interface{}); ok {
+			payload = compactWebQueryPayloadForLLM(m)
 		} else {
 			payload = compactJSONValueForLLM(payload, 0)
 		}
@@ -16252,9 +16407,15 @@ func compactExecDataForLLM(data map[string]interface{}) map[string]interface{} {
 	}
 
 	results, ok := parseSearchResultsForLLM(data["results"])
+	if (!ok || len(results) == 0) && len(data) > 0 {
+		results, ok = parseWebQueryResultsForLLM(data)
+	}
 	if ok {
 		handled["results"] = struct{}{}
 		query := anyToStringForLLM(data["query"])
+		if query == "" {
+			query = anyToStringForLLM(data["input"])
+		}
 		ranked := rerankSearchResultsForLLM(query, results, maxLLMSearchResults)
 		out["results"] = searchResultsToInterfacesForLLM(ranked)
 
@@ -16359,6 +16520,71 @@ func compactWebSearchPayloadForLLM(payload map[string]interface{}) map[string]in
 	for _, k := range []string{"error", "status"} {
 		if v, ok := payload[k]; ok {
 			out[k] = compactJSONValueForLLM(v, 1)
+		}
+	}
+	return out
+}
+
+func compactWebQueryPayloadForLLM(payload map[string]interface{}) map[string]interface{} {
+	if len(payload) == 0 {
+		return map[string]interface{}{}
+	}
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		if anyToStringForLLM(payload["query"]) == "" &&
+			anyToStringForLLM(payload["input"]) == "" &&
+			anyToStringForLLM(payload["title"]) == "" &&
+			anyToStringForLLM(payload["target_url"]) == "" {
+			if _, hasSources := payload["sources"]; !hasSources {
+				payload = data
+			}
+		}
+	}
+
+	out := make(map[string]interface{}, 12)
+	for _, k := range []string{"status", "mode", "next_action"} {
+		if v, ok := payload[k]; ok {
+			out[k] = compactJSONValueForLLM(v, 1)
+		}
+	}
+	if input := anyToStringForLLM(payload["input"]); input != "" {
+		out["input"] = truncateUTF8Bytes(input, 256)
+	}
+	query := anyToStringForLLM(payload["query"])
+	if query != "" {
+		out["query"] = truncateUTF8Bytes(query, 256)
+	} else if input := anyToStringForLLM(payload["input"]); input != "" {
+		query = input
+	}
+	for _, k := range []string{"title", "target_url", "final_url"} {
+		if v := anyToStringForLLM(payload[k]); v != "" {
+			out[k] = truncateUTF8Bytes(v, 320)
+		}
+	}
+	if content := anyToStringForLLM(payload["content"]); content != "" {
+		out["content"] = truncateUTF8Bytes(content, 640)
+	}
+	if warningCount := warningCountForLLM(payload["warnings"]); warningCount > 0 {
+		out["warning_count"] = warningCount
+		out["warnings"] = compactJSONValueForLLM(payload["warnings"], 1)
+	}
+
+	results, ok := parseWebQueryResultsForLLM(payload)
+	if ok {
+		ranked := rerankSearchResultsForLLM(query, results, maxLLMSearchResults)
+		out["results"] = searchResultsToInterfacesForLLM(ranked)
+
+		totalCount := anyToIntForLLM(payload["candidate_count"])
+		if totalCount <= 0 {
+			if diagnostics, ok := payload["diagnostics"].(map[string]interface{}); ok {
+				totalCount = anyToIntForLLM(diagnostics["candidate_count"])
+			}
+		}
+		if totalCount <= 0 {
+			totalCount = len(results)
+		}
+		out["total_count"] = totalCount
+		if omitted := len(results) - len(ranked); omitted > 0 {
+			out["omitted_results"] = omitted
 		}
 	}
 	return out
@@ -16649,6 +16875,9 @@ func normalizeSearchResultForLLM(v interface{}) (searchResultForLLM, bool) {
 	title := truncateUTF8Bytes(anyToStringForLLM(m["title"]), maxLLMSearchTitle)
 	rawURL := truncateUTF8Bytes(anyToStringForLLM(m["url"]), maxLLMSearchURL)
 	desc := truncateUTF8Bytes(anyToStringForLLM(m["description"]), maxLLMSearchDesc)
+	if desc == "" {
+		desc = truncateUTF8Bytes(anyToStringForLLM(m["snippet"]), maxLLMSearchDesc)
+	}
 	if title == "" && rawURL == "" && desc == "" {
 		return searchResultForLLM{}, false
 	}
@@ -16833,6 +17062,34 @@ func searchResultsToInterfacesForLLM(results []searchResultForLLM) []interface{}
 		})
 	}
 	return out
+}
+
+func parseWebQueryResultsForLLM(payload map[string]interface{}) ([]searchResultForLLM, bool) {
+	if len(payload) == 0 {
+		return nil, false
+	}
+	if results, ok := parseSearchResultsForLLM(payload["sources"]); ok && len(results) > 0 {
+		return results, true
+	}
+	if results, ok := parseSearchResultsForLLM(payload["results"]); ok && len(results) > 0 {
+		return results, true
+	}
+	title := truncateUTF8Bytes(anyToStringForLLM(payload["title"]), maxLLMSearchTitle)
+	rawURL := truncateUTF8Bytes(firstNonEmpty(anyToStringForLLM(payload["final_url"]), anyToStringForLLM(payload["target_url"]), anyToStringForLLM(payload["url"])), maxLLMSearchURL)
+	desc := truncateUTF8Bytes(anyToStringForLLM(payload["content"]), maxLLMSearchDesc)
+	if desc == "" {
+		if page, ok := payload["page"].(map[string]interface{}); ok {
+			desc = truncateUTF8Bytes(anyToStringForLLM(page["content"]), maxLLMSearchDesc)
+		}
+	}
+	if title == "" && rawURL == "" && desc == "" {
+		return nil, false
+	}
+	return []searchResultForLLM{{
+		Title:       title,
+		URL:         rawURL,
+		Description: desc,
+	}}, true
 }
 
 func compactJSONValueForLLM(v interface{}, depth int) interface{} {
@@ -18846,14 +19103,14 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				researchFailureWriteRecoveryRetries = 0
 			}
 			if !searchArtifactRecoveryUsed && searchArtifactRoundsWithoutWrite >= 2 {
-				if nudge := buildToolLoopArtifactRecoveryNudge(routingMessage, "repeated_search_rounds", "web_search"); nudge != "" {
+				if nudge := buildToolLoopArtifactRecoveryNudge(routingMessage, "repeated_search_rounds", "web_query"); nudge != "" {
 					searchArtifactRecoveryUsed = true
 					searchArtifactRoundsWithoutWrite = 0
 					chatReq.Messages = append(chatReq.Messages, llm.Message{
 						Role:    llm.RoleUser,
 						Content: nudge,
 					})
-					chatReq.Tools = buildToolLoopArtifactRecoveryTools(chatReq.Tools, routingMessage, "web_search")
+					chatReq.Tools = buildToolLoopArtifactRecoveryTools(chatReq.Tools, routingMessage, "web_query")
 					logger.Warn().
 						Int("round", round).
 						Str("conv_id", convID).

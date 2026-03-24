@@ -16,6 +16,7 @@ import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
 import { usePreviewStore } from '@/stores/preview'
 import { refreshTauriDetection, useTauri } from '@/composables/useTauri'
 import { useSettingsStore } from '@/stores/settings'
+import { rafThrottle } from '@/utils/rafThrottle'
 
 const AppSidebar = defineAsyncComponent(() => import('@/components/AppSidebar.vue'))
 const PreviewOnboardingModal = defineAsyncComponent(
@@ -37,6 +38,8 @@ const isPreviewMode = computed(() => previewStore.isPreviewMode)
 const { isTauri, platform, setCloseBehavior, startWindowDragging } = useTauri()
 const settingsStore = useSettingsStore()
 const DESKTOP_SIDEBAR_BREAKPOINT = 1024
+const WINDOW_RESIZE_PERF_ATTRIBUTE = 'data-blue-window-resizing'
+const WINDOW_RESIZE_PERF_SETTLE_MS = 180
 
 const route = useRoute()
 const noPadding = computed(() => route.meta.noPadding === true)
@@ -69,6 +72,7 @@ type AppSidebarExposed = ComponentPublicInstance & {
 const sidebarRef = ref<AppSidebarExposed | null>(null)
 const workspacePanelOpen = computed(() => Boolean(sidebarRef.value?.workspacePanelOpen))
 const sidebarCollapsed = computed(() => Boolean(sidebarRef.value?.isCollapsed))
+let windowResizePerfTimer: ReturnType<typeof window.setTimeout> | null = null
 
 function toggleSidebar() {
   sidebarRef.value?.toggle?.()
@@ -87,13 +91,40 @@ function syncViewportState() {
   hasHiddenSidebarViewport.value = detectHiddenSidebarViewport()
 }
 
+const syncViewportStateOnResize = rafThrottle(syncViewportState)
+
+function markWindowResizing() {
+  const root = document.documentElement
+  root.setAttribute(WINDOW_RESIZE_PERF_ATTRIBUTE, 'true')
+  if (windowResizePerfTimer !== null) {
+    window.clearTimeout(windowResizePerfTimer)
+  }
+  windowResizePerfTimer = window.setTimeout(() => {
+    windowResizePerfTimer = null
+    root.removeAttribute(WINDOW_RESIZE_PERF_ATTRIBUTE)
+  }, WINDOW_RESIZE_PERF_SETTLE_MS)
+}
+
+function clearWindowResizing() {
+  if (windowResizePerfTimer !== null) {
+    window.clearTimeout(windowResizePerfTimer)
+    windowResizePerfTimer = null
+  }
+  document.documentElement.removeAttribute(WINDOW_RESIZE_PERF_ATTRIBUTE)
+}
+
+function handleWindowResize() {
+  markWindowResizing()
+  syncViewportStateOnResize()
+}
+
 // Form filler widget - now shows on input focus, no need for route watching
 const { setup, cleanup } = useFormFillerWidget()
 
 onMounted(() => {
   refreshTauriDetection()
   syncViewportState()
-  window.addEventListener('resize', syncViewportState)
+  window.addEventListener('resize', handleWindowResize)
   setup()
   // Sync close behavior setting to Tauri backend on startup
   if (isTauri.value) {
@@ -102,7 +133,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', syncViewportState)
+  window.removeEventListener('resize', handleWindowResize)
+  syncViewportStateOnResize.cancel()
+  clearWindowResizing()
   cleanup()
 })
 </script>

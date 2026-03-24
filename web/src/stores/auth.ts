@@ -3,37 +3,14 @@ import { ref, computed } from 'vue'
 import type { PagePermission } from '@/constants/pagePermissions'
 import { reportStartupMark } from '@/utils/startupTrace'
 import type { User, ApiKey, CreateApiKeyRequest } from '@/api/auth'
-
-const TOKEN_KEY = 'token'
-const REFRESH_TOKEN_KEY = 'refresh_token'
-
-// Safe localStorage access for Safari compatibility
-function getStorageItem(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    // Safari private mode or other restrictions
-    return null
-  }
-}
-
-function setStorageItem(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    // Safari private mode or other restrictions
-    console.warn(`Failed to set localStorage item: ${key}`)
-  }
-}
-
-function removeStorageItem(key: string): void {
-  try {
-    localStorage.removeItem(key)
-  } catch {
-    // Safari private mode or other restrictions
-    console.warn(`Failed to remove localStorage item: ${key}`)
-  }
-}
+import {
+  clearStoredAccessToken,
+  clearStoredRefreshToken,
+  getStoredAccessToken,
+  getStoredRefreshToken,
+  setStoredAccessToken,
+  setStoredRefreshToken,
+} from '@/utils/authStorage'
 
 type AuthModule = typeof import('@/api/auth')
 type UsersModule = typeof import('@/api/users')
@@ -58,8 +35,8 @@ function loadUsersModule(): Promise<UsersModule> {
 export const useAuthStore = defineStore('auth', () => {
   // State
   const user = ref<User | null>(null)
-  const token = ref<string | null>(getStorageItem(TOKEN_KEY))
-  const refreshToken = ref<string | null>(getStorageItem(REFRESH_TOKEN_KEY))
+  const token = ref<string | null>(getStoredAccessToken())
+  const refreshToken = ref<string | null>(getStoredRefreshToken())
   const permissions = ref<string[]>([])
   const permissionsLoaded = ref(false) // Track if permissions have been loaded
   const apiKeys = ref<ApiKey[]>([])
@@ -104,8 +81,8 @@ export const useAuthStore = defineStore('auth', () => {
       refreshToken.value = data.refresh_token
       user.value = data.user
 
-      setStorageItem(TOKEN_KEY, data.token)
-      setStorageItem(REFRESH_TOKEN_KEY, data.refresh_token)
+      setStoredAccessToken(data.token)
+      setStoredRefreshToken(data.refresh_token)
 
       // Fetch permissions after login
       await fetchPermissions()
@@ -151,8 +128,8 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     permissions.value = []
     permissionsLoaded.value = false
-    removeStorageItem(TOKEN_KEY)
-    removeStorageItem(REFRESH_TOKEN_KEY)
+    clearStoredAccessToken()
+    clearStoredRefreshToken()
   }
 
   async function fetchUser() {
@@ -204,8 +181,8 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await authApi.refresh(refreshToken.value)
       token.value = response.data.token
       refreshToken.value = response.data.refresh_token
-      setStorageItem(TOKEN_KEY, response.data.token)
-      setStorageItem(REFRESH_TOKEN_KEY, response.data.refresh_token)
+      setStoredAccessToken(response.data.token)
+      setStoredRefreshToken(response.data.refresh_token)
       return true
     } catch {
       clearAuth()

@@ -420,20 +420,19 @@ func (h *Handler) DeleteTask(c echo.Context) error {
 
 // ListSessions returns all browser sessions.
 func (h *Handler) ListSessions(c echo.Context) error {
-	service, release, err := h.acquireStartedService(c.Request().Context())
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-	if release != nil {
-		defer release()
-	}
+	service := h.peekService()
 	if service == nil {
-		return c.JSON(http.StatusOK, []interface{}{})
+		return c.JSON(http.StatusOK, []browserSessionResponse{})
 	}
 
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
 	defer cancel()
+
+	status, err := service.Status(ctx)
+	if err != nil || status == nil || !status.Running {
+		return c.JSON(http.StatusOK, []browserSessionResponse{})
+	}
 
 	// Return tabs as sessions for compatibility
 	tabs, err := service.Tabs(ctx)

@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { extauthApi } from '@/api/extauth'
+import { setStoredAccessToken, setStoredRefreshToken } from '@/utils/authStorage'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -43,9 +44,9 @@ onMounted(async () => {
     const data = response.data
 
     // Store tokens
-    localStorage.setItem('token', data.access_token)
+    setStoredAccessToken(data.access_token)
     if (data.refresh_token) {
-      localStorage.setItem('refresh_token', data.refresh_token)
+      setStoredRefreshToken(data.refresh_token)
     }
 
     // Update auth store

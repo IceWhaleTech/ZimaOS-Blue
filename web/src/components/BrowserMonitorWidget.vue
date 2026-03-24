@@ -27,7 +27,7 @@ const DEFAULT_WIDTH = 700
 const DEFAULT_HEIGHT = 430
 const DEFAULT_COLLAPSED_WIDTH = 340
 const DEFAULT_COLLAPSED_HEIGHT = 150
-const DEFAULT_LAUNCHER_WIDTH = 120
+const DEFAULT_LAUNCHER_WIDTH = 180
 const DEFAULT_LAUNCHER_HEIGHT = 76
 const MIN_WIDTH = 600
 const MIN_HEIGHT = 350
@@ -1434,7 +1434,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: flex-start;
   gap: 0.58rem;
-  width: min(7.4rem, calc(100vw - 1rem));
+  width: min(11.1rem, calc(100vw - 1rem));
   max-width: calc(100vw - 1rem);
   padding: 0.62rem 0.72rem;
   border: 1px solid rgba(148, 163, 184, 0.24);
@@ -2150,14 +2150,15 @@ onUnmounted(() => {
 
   .browser-monitor-launcher {
     max-width: calc(100vw - 0.75rem);
-    width: min(7.1rem, calc(100vw - 0.75rem));
+    width: min(10.65rem, calc(100vw - 0.75rem));
   }
 }
 
 :global([data-theme='dark']) .browser-monitor-launcher {
   border-color: rgba(71, 85, 105, 0.48);
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.94)), rgba(15, 23, 42, 0.94);
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.94)),
+    rgba(15, 23, 42, 0.94);
 }
 
 :global([data-theme='dark']) .browser-monitor-launcher__copy strong {

@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
@@ -66,6 +67,8 @@ func (s *SelfReflect) SetExecutor(executor SelfReflectExecutor) {
 func (s *SelfReflect) Manifest() *skill.Manifest { return s.manifest }
 
 func (s *SelfReflect) Validate(input map[string]any) error {
+	normalizeSelfReflectSkillInput(input)
+
 	goal, _ := input["goal"].(string)
 	resultSummary, _ := input["result_summary"].(string)
 	failureReason, _ := input["failure_reason"].(string)
@@ -87,6 +90,30 @@ func (s *SelfReflect) Validate(input map[string]any) error {
 		return fmt.Errorf("final_status must be one of: completed, failed, partial")
 	}
 	return nil
+}
+
+func normalizeSelfReflectSkillInput(input map[string]any) {
+	normalizeStringAlias(input, "goal", "task", "objective", "prompt")
+	normalizeStringAlias(input, "final_status", "status")
+	normalizeStringAlias(input, "result_summary", "summary", "outcome")
+	normalizeStringAlias(input, "failure_reason", "error", "reason")
+	normalizeStringAlias(input, "verification_output", "verification", "verification_result", "verificationResult")
+	normalizeStringAlias(input, "task_id", "taskId")
+	normalizeStringAlias(input, "source_kind", "sourceKind")
+	normalizeStringAlias(input, "source_id", "sourceId")
+	normalizeStringAlias(input, "proposal_mode", "proposalMode")
+
+	if _, ok := input["proposal_candidates"]; !ok {
+		if raw, ok := input["proposalCandidates"]; ok {
+			input["proposal_candidates"] = raw
+		}
+	}
+	if rawStatus, ok := input["final_status"].(string); ok {
+		status := strings.ToLower(strings.TrimSpace(rawStatus))
+		if status != "" {
+			input["final_status"] = status
+		}
+	}
 }
 
 func (s *SelfReflect) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
@@ -122,12 +149,12 @@ func (s *SelfReflect) Execute(ctx context.Context, input map[string]any) (*skill
 		return skill.NewErrorResult(err), nil
 	}
 	return skill.NewResult(map[string]any{
-		"summary":        result.Summary,
-		"lessons":        result.Lessons,
-		"memory_written": result.MemoryWritten,
-		"skipped_reason": result.SkippedReason,
-		"proposal_count": result.ProposalCount,
-		"proposal_ids":   result.ProposalIDs,
+		"summary":                 result.Summary,
+		"lessons":                 result.Lessons,
+		"memory_written":          result.MemoryWritten,
+		"skipped_reason":          result.SkippedReason,
+		"proposal_count":          result.ProposalCount,
+		"proposal_ids":            result.ProposalIDs,
 		"proposal_skipped_reason": result.ProposalSkippedReason,
 	}), nil
 }

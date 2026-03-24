@@ -113,6 +113,67 @@ func TestDeepResearchSkill_ValidateAcceptsKnowledgeBaseStyleAlias(t *testing.T) 
 	}
 }
 
+func TestDeepResearchSkill_ValidatePromotesInputAliasToQuery(t *testing.T) {
+	s := NewDeepResearch()
+	input := map[string]any{
+		"input": " test deep research ",
+	}
+	if err := s.Validate(input); err != nil {
+		t.Fatalf("expected input alias to pass validation: %v", err)
+	}
+	if got, _ := input["query"].(string); got != "test deep research" {
+		t.Fatalf("query = %q, want %q", got, "test deep research")
+	}
+}
+
+func TestDeepResearchSkill_ValidateRejectsConflictingQueryAliases(t *testing.T) {
+	s := NewDeepResearch()
+	err := s.Validate(map[string]any{
+		"input":   "first research topic",
+		"message": "second research topic",
+	})
+	if err == nil {
+		t.Fatalf("expected conflicting aliases to remain invalid without explicit query")
+	}
+}
+
+func TestDeepResearchSkill_ValidateDoesNotOverrideExplicitQuery(t *testing.T) {
+	s := NewDeepResearch()
+	input := map[string]any{
+		"query": "canonical query",
+		"input": "alias query",
+	}
+	if err := s.Validate(input); err != nil {
+		t.Fatalf("expected explicit query to pass validation: %v", err)
+	}
+	if got, _ := input["query"].(string); got != "canonical query" {
+		t.Fatalf("query = %q, want %q", got, "canonical query")
+	}
+}
+
+func TestDeepResearchSkill_ExecuteAcceptsInputAlias(t *testing.T) {
+	s := NewDeepResearch()
+	s.SetExecutor(&mockDeepResearchExecutor{})
+
+	res, err := s.Execute(context.Background(), map[string]any{
+		"input": "test deep research",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got error=%s", res.Error)
+	}
+
+	data, ok := res.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map data, got %T", res.Data)
+	}
+	if got, _ := data["query"].(string); got != "test deep research" {
+		t.Fatalf("query = %q, want %q", got, "test deep research")
+	}
+}
+
 func TestDeepResearchSkill_ValidateRejectsInvalidRouteMode(t *testing.T) {
 	s := NewDeepResearch()
 	err := s.Validate(map[string]any{

@@ -5,6 +5,7 @@ import { PagePermissions } from '@/constants/pagePermissions'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
 import { reportStartupMark } from '@/utils/startupTrace'
+import { hasStoredSessionHint } from '@/utils/authStorage'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
 const NotificationContainer = defineAsyncComponent(
@@ -49,6 +50,14 @@ type ProtectedBootstrapDeps = Awaited<ReturnType<typeof createProtectedBootstrap
 
 let protectedBootstrapPromise: Promise<ProtectedBootstrapDeps> | undefined
 
+function isDesktopPortFallbackStartup(): boolean {
+  if (typeof window === 'undefined' || !window.__BLUE_DESKTOP__) return false
+
+  const expectedPort = window.location.protocol === 'https:' ? '443' : '80'
+  const currentPort = String(window.location.port || '').trim()
+  return !!currentPort && currentPort !== expectedPort
+}
+
 function canEagerRenderProtectedShell(): boolean {
   if (typeof window === 'undefined') return false
 
@@ -56,11 +65,14 @@ function canEagerRenderProtectedShell(): boolean {
   const isChatStartupPath = path === '/' || path === '/chat'
   if (!isChatStartupPath) return false
 
-  try {
-    return !!(localStorage.getItem('token') || localStorage.getItem('preview_token'))
-  } catch {
-    return false
+  // When desktop falls back from the default loopback port, the webview origin changes
+  // and origin-scoped localStorage tokens may not be visible yet. Keep the shell eager
+  // so the user doesn't sit on the startup splash while the router resolves auth.
+  if (isDesktopPortFallbackStartup()) {
+    return true
   }
+
+  return hasStoredSessionHint()
 }
 
 const initialRouteReady = ref(canEagerRenderProtectedShell())

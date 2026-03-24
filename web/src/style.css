@@ -149,6 +149,48 @@ html[data-blue-macos-glass='true'] #app {
   background: transparent !important;
 }
 
+/* During aggressive window resizes/maximize, temporarily drop expensive glass and transitions
+   so the webview can catch up to the new window size faster. */
+html[data-blue-window-resizing='true'] .app-shell {
+  background: var(--color-bg-base) !important;
+}
+
+html[data-blue-window-resizing='true'][data-blue-macos-glass='true'] .app-shell {
+  background: transparent !important;
+}
+
+html[data-blue-window-resizing='true'] .app-sidebar,
+html[data-blue-window-resizing='true'] .sidebar-card,
+html[data-blue-window-resizing='true'] .chat-workspace,
+html[data-blue-window-resizing='true'] .chat-thread-shell,
+html[data-blue-window-resizing='true'] .chat-thread-shell-desktop,
+html[data-blue-window-resizing='true'] .chat-thread-header,
+html[data-blue-window-resizing='true'] .chat-thread-subrow,
+html[data-blue-window-resizing='true'] .chat-topbar,
+html[data-blue-window-resizing='true'] .chat-stream-status-rail,
+html[data-blue-window-resizing='true'] .active-todo-panel,
+html[data-blue-window-resizing='true'] .chat-input-container,
+html[data-blue-window-resizing='true'] .mode-info-card,
+html[data-blue-window-resizing='true'] .workspace-panel-layer,
+html[data-blue-window-resizing='true'] .workspace-panel-shell,
+html[data-blue-window-resizing='true'] .layout-mobile-nav-button,
+html[data-blue-window-resizing='true'] .glass-card,
+html[data-blue-window-resizing='true'] .glass-input {
+  transition: none !important;
+  animation: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-blue-window-resizing='true'] .sidebar-card,
+html[data-blue-window-resizing='true'] .chat-stream-status-rail,
+html[data-blue-window-resizing='true'] .active-todo-panel,
+html[data-blue-window-resizing='true'] .chat-input-container,
+html[data-blue-window-resizing='true'] .workspace-panel-shell,
+html[data-blue-window-resizing='true'] .glass-card {
+  box-shadow: none !important;
+}
+
 /* ============================================
    Glassmorphism Utility Classes
    ============================================ */

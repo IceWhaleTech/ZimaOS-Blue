@@ -32,6 +32,7 @@ import { formatTokens } from '@/utils/format'
 import { findLatestTodoChecklistSummary } from '@/utils/todoChecklist'
 import { reportStartupMark } from '@/utils/startupTrace'
 import type { Provider } from '@/api/providerPool'
+import { rafThrottle } from '@/utils/rafThrottle'
 
 reportStartupMark('chat_view_setup_enter')
 
@@ -1077,9 +1078,7 @@ function bindVirtualItemHeight(
 
 // Check if mobile device (UA detection)
 function checkMobile() {
-  const ua = navigator.userAgent.toLowerCase()
-  const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua)
-  isMobile.value = isMobileUA
+  isMobile.value = _initMobile
   isNarrowScreen.value = window.innerWidth < 768
   if (enhancedModeCardVisible.value) {
     hideEnhancedModeCard()
@@ -1093,9 +1092,11 @@ function checkMobile() {
     return
   }
   if (showRoutingMenu.value) {
-    updateRoutingMenuPosition()
+    scheduleRoutingMenuReposition()
   }
 }
+
+const checkMobileOnResize = rafThrottle(checkMobile)
 
 // Keyboard shortcuts
 useChatShortcuts({
@@ -1509,9 +1510,13 @@ function positionRoutingMenu(trigger: HTMLElement | null = routingMenuAnchorEl.v
 function updateRoutingMenuPosition() {
   if (isMobile.value || !showRoutingMenu.value) return
   nextTick(() => {
-    positionRoutingMenu()
+    scheduleRoutingMenuReposition.flush()
   })
 }
+
+const scheduleRoutingMenuReposition = rafThrottle(() => {
+  positionRoutingMenu()
+})
 
 function toggleRoutingMenu(trigger?: HTMLElement | null) {
   showTopbarMenu.value = false
@@ -1962,7 +1967,7 @@ onMounted(async () => {
   reportStartupMark('chat_view_mounted')
 
   checkMobile()
-  window.addEventListener('resize', checkMobile)
+  window.addEventListener('resize', checkMobileOnResize)
   document.addEventListener('click', handleClickOutside)
 
   await nextTick()
@@ -2049,7 +2054,9 @@ onUnmounted(() => {
     autoScrollRafId = null
   }
   taskProjections.stopPolling()
-  window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('resize', checkMobileOnResize)
+  checkMobileOnResize.cancel()
+  scheduleRoutingMenuReposition.cancel()
   document.removeEventListener('click', handleClickOutside)
   void unregisterEventStreamListeners()
 })

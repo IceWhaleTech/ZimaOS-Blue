@@ -519,7 +519,7 @@ describe('SettingsView small-model controls', () => {
     wrapper.unmount()
   })
 
-  it('shows menu bar wording for close behavior on macOS desktop', async () => {
+  it('keeps close behavior icon-only while using menu bar wording on macOS desktop', async () => {
     routeTab = 'general'
     tauriState.isTauri = true
     tauriState.platform = 'macos'
@@ -534,9 +534,14 @@ describe('SettingsView small-model controls', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Minimize to Menu Bar')
+    const buttons = wrapper.findAll('.settings-pill-button')
+
+    expect(wrapper.text()).not.toContain('Minimize to Menu Bar')
     expect(wrapper.text()).not.toContain('Minimize to Tray')
     expect(wrapper.findAll('.settings-pill-button__icon').length).toBe(2)
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0]?.attributes('aria-label')).toBe(i18n.global.t('settings.closeBehaviorQuit'))
+    expect(buttons[1]?.attributes('aria-label')).toBe('Minimize to Menu Bar')
 
     wrapper.unmount()
   })

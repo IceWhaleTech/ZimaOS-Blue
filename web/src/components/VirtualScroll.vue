@@ -148,6 +148,8 @@ const updateHeightHandlers = new Map<number, (height: number) => void>()
 const previousItemKeys = ref<StableItemKey[] | null>(null)
 let prependAnchorRafId: number | null = null
 let pendingPrependAnchorDelta = 0
+const pendingHeightUpdates = new Map<number, number>()
+let pendingHeightUpdateRafId: number | null = null
 
 function getUpdateHeightHandler(index: number): (height: number) => void {
   const cached = updateHeightHandlers.get(index)
@@ -430,18 +432,48 @@ function applyScrollAnchorDelta(
 
 // Update item height (called from slot)
 function updateItemHeight(index: number, height: number) {
-  if (index < 0 || index >= props.itemCount) return
-  const prev = getItemHeight(index)
-  if (prev === height) return
-  const delta = height - prev
-  const itemTop = heightTree.sum(index)
-  const itemBottom = itemTop + prev
-  const shouldPreserveAnchor = itemBottom <= scrollTop.value + SCROLL_ANCHOR_EPSILON
+  queueItemHeightUpdate(index, height)
+}
 
-  itemHeights.value[index] = height
-  heightTree.add(index, delta)
-  if (shouldPreserveAnchor) {
-    applyScrollAnchorDelta(delta)
+function queueItemHeightUpdate(index: number, height: number) {
+  if (index < 0 || index >= props.itemCount) return
+  pendingHeightUpdates.set(index, height)
+  if (pendingHeightUpdateRafId !== null) return
+  pendingHeightUpdateRafId = window.requestAnimationFrame(() => {
+    pendingHeightUpdateRafId = null
+    flushPendingItemHeightUpdates()
+  })
+}
+
+function flushPendingItemHeightUpdates() {
+  if (pendingHeightUpdates.size === 0) return
+
+  const updates = Array.from(pendingHeightUpdates.entries()).sort((a, b) => a[0] - b[0])
+  pendingHeightUpdates.clear()
+
+  let anchorDelta = 0
+  for (const [index, nextHeight] of updates) {
+    if (index < 0 || index >= props.itemCount) continue
+
+    const prevHeight = getItemHeight(index)
+    if (prevHeight === nextHeight) continue
+
+    const delta = nextHeight - prevHeight
+    const itemTop = heightTree.sum(index)
+    const itemBottom = itemTop + prevHeight
+    const effectiveViewportTop = scrollTop.value + anchorDelta
+    const shouldPreserveAnchor = itemBottom <= effectiveViewportTop + SCROLL_ANCHOR_EPSILON
+
+    itemHeights.value[index] = nextHeight
+    heightTree.add(index, delta)
+
+    if (shouldPreserveAnchor) {
+      anchorDelta += delta
+    }
+  }
+
+  if (anchorDelta !== 0) {
+    applyScrollAnchorDelta(anchorDelta)
   }
   scheduleLayoutVersionBump()
 }
@@ -595,6 +627,10 @@ onUnmounted(() => {
     window.cancelAnimationFrame(prependAnchorRafId)
     prependAnchorRafId = null
   }
+  if (pendingHeightUpdateRafId !== null) {
+    window.cancelAnimationFrame(pendingHeightUpdateRafId)
+    pendingHeightUpdateRafId = null
+  }
   if (layoutVersionRafId !== null) {
     window.cancelAnimationFrame(layoutVersionRafId)
     layoutVersionRafId = null
@@ -611,6 +647,7 @@ onUnmounted(() => {
   pendingPrependAnchorDelta = 0
   pendingRange = null
   pendingScrollContainer = null
+  pendingHeightUpdates.clear()
   updateHeightHandlers.clear()
   observedResizeTargets.clear()
   if (resizeObserver) {

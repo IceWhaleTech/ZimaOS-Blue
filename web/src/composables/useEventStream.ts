@@ -4,6 +4,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useSettingsStore } from '@/stores/settings'
 import { i18n } from '@/i18n'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 type ApiClientModule = typeof import('@/api/client')
 let apiClientModulePromise: Promise<ApiClientModule> | null = null
@@ -68,7 +69,7 @@ export function useEventStream() {
 
     abortController = new AbortController()
 
-    const token = localStorage.getItem('token')
+    const token = getStoredAccessToken()
     if (!token) return // not logged in
 
     const headers: Record<string, string> = {

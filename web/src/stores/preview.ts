@@ -2,25 +2,12 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SystemMode, PreviewStatus } from '@/api/preview'
 import { getCachedPreviewMode } from '@/router'
-
-const PREVIEW_TOKEN_KEY = 'preview_token'
-
-// Safe localStorage access for Safari compatibility
-function getStorageItem(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-function setStorageItem(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    console.warn(`Failed to set localStorage item: ${key}`)
-  }
-}
+import {
+  clearStoredPreviewToken,
+  getStoredPreviewToken,
+  setStoredAccessToken,
+  setStoredPreviewToken,
+} from '@/utils/authStorage'
 
 type PreviewModule = typeof import('@/api/preview')
 
@@ -78,10 +65,10 @@ export const usePreviewStore = defineStore('preview', () => {
     if (previewTokenFetched.value) return
 
     // Check if we already have a valid token
-    const existingToken = getStorageItem(PREVIEW_TOKEN_KEY)
+    const existingToken = getStoredPreviewToken()
     if (existingToken) {
       // Set it as the auth token
-      setStorageItem('token', existingToken)
+      setStoredAccessToken(existingToken)
       previewTokenFetched.value = true
       return
     }
@@ -91,8 +78,8 @@ export const usePreviewStore = defineStore('preview', () => {
       const { previewApi } = await loadPreviewModule()
       const response = await previewApi.getPreviewToken()
       if (response.data.token) {
-        setStorageItem(PREVIEW_TOKEN_KEY, response.data.token)
-        setStorageItem('token', response.data.token)
+        setStoredPreviewToken(response.data.token)
+        setStoredAccessToken(response.data.token)
         previewTokenFetched.value = true
       }
     } catch (e) {
@@ -123,7 +110,7 @@ export const usePreviewStore = defineStore('preview', () => {
 
       if (response.data.success) {
         // Clear preview token
-        localStorage.removeItem(PREVIEW_TOKEN_KEY)
+        clearStoredPreviewToken()
 
         // Update system mode to normal
         systemMode.value = {

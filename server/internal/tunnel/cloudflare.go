@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/singleflight"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // CloudflareManager manages Cloudflare Quick Tunnel via the trycloudflared SDK.
@@ -72,12 +72,12 @@ func (m *CloudflareManager) Start(ctx context.Context, cfg *Config) error {
 	}
 	m.mu.Unlock()
 
-	port := cfg.Port
-	if port == 0 {
-		port = 80
+	port, err := resolveTargetPort(cfg)
+	if err != nil {
+		return err
 	}
 
-	_, err, _ := m.sf.Do("cloudflare-tunnel", func() (interface{}, error) {
+	_, err, _ = m.sf.Do("cloudflare-tunnel", func() (interface{}, error) {
 		return m.startTunnelInternal(port)
 	})
 	return err

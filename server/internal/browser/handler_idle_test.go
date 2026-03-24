@@ -12,13 +12,19 @@ import (
 
 type stubBrowserService struct {
 	closeCount int
+	startCount int
+	running    bool
 }
 
 func (s *stubBrowserService) Status(context.Context) (*StatusResponse, error) {
-	return &StatusResponse{Running: true}, nil
+	return &StatusResponse{Running: s.running}, nil
 }
 
-func (s *stubBrowserService) Start(context.Context) error { return nil }
+func (s *stubBrowserService) Start(context.Context) error {
+	s.startCount++
+	s.running = true
+	return nil
+}
 func (s *stubBrowserService) Stop(context.Context) error  { return nil }
 func (s *stubBrowserService) Tabs(context.Context) ([]*Tab, error) {
 	return nil, nil
@@ -65,7 +71,7 @@ func TestLazyHandlerStatusDoesNotInitializeService(t *testing.T) {
 	var created int
 	h := NewLazyHandler(func() Service {
 		created++
-		return &stubBrowserService{}
+		return &stubBrowserService{running: true}
 	})
 
 	e := echo.New()
@@ -91,7 +97,7 @@ func TestLazyHandlerIdleReclaimsAndRecreatesService(t *testing.T) {
 	)
 	h := NewLazyHandler(func() Service {
 		created++
-		svc := &stubBrowserService{}
+		svc := &stubBrowserService{running: true}
 		seen = append(seen, svc)
 		return svc
 	})
@@ -119,5 +125,48 @@ func TestLazyHandlerIdleReclaimsAndRecreatesService(t *testing.T) {
 	}
 	if seen[0].closeCount != 1 {
 		t.Fatalf("first service closeCount = %d, want 1", seen[0].closeCount)
+	}
+}
+
+func TestLazyHandlerListSessionsDoesNotInitializeService(t *testing.T) {
+	var created int
+	h := NewLazyHandler(func() Service {
+		created++
+		return &stubBrowserService{}
+	})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.ListSessions(c); err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if created != 0 {
+		t.Fatalf("created = %d, want 0", created)
+	}
+}
+
+func TestListSessionsDoesNotStartIdleService(t *testing.T) {
+	service := &stubBrowserService{}
+	h := NewHandler(service)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.ListSessions(c); err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if service.startCount != 0 {
+		t.Fatalf("startCount = %d, want 0", service.startCount)
 	}
 }

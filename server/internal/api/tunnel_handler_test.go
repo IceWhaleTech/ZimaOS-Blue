@@ -13,8 +13,43 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
+	blueServer "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tunnel"
 )
+
+type stubTunnelManager struct {
+	provider tunnel.Provider
+	startCfg *tunnel.Config
+	running  bool
+}
+
+func (m *stubTunnelManager) Start(_ context.Context, cfg *tunnel.Config) error {
+	if cfg != nil {
+		cfgCopy := *cfg
+		m.startCfg = &cfgCopy
+	}
+	m.running = true
+	return nil
+}
+
+func (m *stubTunnelManager) Stop() error {
+	m.running = false
+	return nil
+}
+
+func (m *stubTunnelManager) IsRunning() bool { return m.running }
+
+func (m *stubTunnelManager) GetStatus() tunnel.Status {
+	return tunnel.Status{Active: m.running, Provider: m.provider}
+}
+
+func (m *stubTunnelManager) GetURL() string { return "" }
+
+func (m *stubTunnelManager) GetProvider() tunnel.Provider { return m.provider }
+
+func (m *stubTunnelManager) SetOnURLChange(func(string)) {}
+
+func (m *stubTunnelManager) SetOnError(func(error)) {}
 
 func setupTunnelHandler(t *testing.T) (*TunnelHandler, *echo.Echo) {
 	tempDir := filepath.Join(os.TempDir(), "tunnel-handler-test")
@@ -164,6 +199,39 @@ func TestTunnelHandler_StartTunnel_InvalidBody(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("Status code = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestTunnelHandler_StartTunnel_UsesActualListeningPortByDefault(t *testing.T) {
+	originalPort := blueServer.GetActualPort()
+	blueServer.SetActualPort(19091)
+	t.Cleanup(func() {
+		blueServer.SetActualPort(originalPort)
+	})
+
+	h := NewTunnelHandler(nil, 80)
+	manager := &stubTunnelManager{provider: tunnel.ProviderAuto}
+	h.managers = map[tunnel.Provider]tunnel.Manager{
+		tunnel.ProviderAuto: manager,
+	}
+
+	e := echo.New()
+	h.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tunnel/start", strings.NewReader(`{"provider":"auto"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status code = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if manager.startCfg == nil {
+		t.Fatal("expected manager Start to receive a config")
+	}
+	if manager.startCfg.Port != 19091 {
+		t.Fatalf("start port = %d, want %d", manager.startCfg.Port, 19091)
 	}
 }
 

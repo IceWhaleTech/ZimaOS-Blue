@@ -802,7 +802,11 @@ onUnmounted(() => {
                 <div class="settings-card-heading">
                   <label class="settings-field-label">{{ t('settings.closeBehavior') }}</label>
                 </div>
-                <div class="settings-pill-group" role="group" :aria-label="t('settings.closeBehavior')">
+                <div
+                  class="settings-pill-group settings-pill-group--icon-only"
+                  role="group"
+                  :aria-label="t('settings.closeBehavior')"
+                >
                   <button
                     v-for="behavior in ['quit', 'minimize'] as const"
                     :key="behavior"
@@ -810,6 +814,7 @@ onUnmounted(() => {
                     class="settings-pill-button"
                     :class="{
                       'settings-pill-button--active': settingsStore.closeBehavior === behavior,
+                      'settings-pill-button--icon-only': true,
                     }"
                     :title="closeBehaviorLabel(behavior)"
                     :aria-label="closeBehaviorLabel(behavior)"
@@ -825,7 +830,6 @@ onUnmounted(() => {
                         v-html="closeBehaviorIcons[behavior]"
                       />
                     </span>
-                    <span class="settings-pill-button__label">{{ closeBehaviorLabel(behavior) }}</span>
                   </button>
                 </div>
               </div>
@@ -2621,6 +2625,11 @@ input[type='range']::-moz-range-thumb {
   margin-top: 0.9rem;
 }
 
+.settings-pill-group--icon-only {
+  display: flex;
+  gap: 0.75rem;
+}
+
 .settings-theme-button {
   display: inline-flex;
   align-items: center;
@@ -2718,8 +2727,12 @@ input[type='range']::-moz-range-thumb {
   height: 1rem;
 }
 
-.settings-pill-button__label {
-  min-width: 0;
+.settings-pill-button--icon-only {
+  justify-content: center;
+  width: 3rem;
+  min-width: 3rem;
+  min-height: 3rem;
+  padding: 0;
 }
 
 .settings-pill-button--active {

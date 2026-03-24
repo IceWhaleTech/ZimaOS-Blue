@@ -4,6 +4,18 @@ import { PagePermissions } from '@/constants/pagePermissions'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
 import { reportStartupMark } from '@/utils/startupTrace'
+import {
+  clearStoredAccessToken,
+  clearStoredAuthSession,
+  clearStoredPreviewToken,
+  clearStoredRefreshToken,
+  getStoredAccessToken,
+  getStoredPreviewToken,
+  hasStoredSessionHint,
+  setStoredAccessToken,
+  setStoredPreviewToken,
+  syncAuthSessionStorage,
+} from '@/utils/authStorage'
 
 // Desktop detection: __BLUE_DESKTOP__ is injected by the Tauri on_page_load handler.
 // In desktop mode, the page is loaded from http://localhost:{port} (same-origin as the
@@ -22,6 +34,8 @@ let isPreviewMode = false
 let connectionFailed = false
 let previewTokenFetched = false
 let pendingCheck: Promise<PreviewModeCheckResult> | null = null
+
+syncAuthSessionStorage()
 
 async function fetchSystemMode(): Promise<Response> {
   const controller = new AbortController()
@@ -100,9 +114,9 @@ async function doCheckPreviewMode(): Promise<PreviewModeCheckResult> {
 
 async function fetchPreviewToken(): Promise<void> {
   // Check if we already have a token
-  const existingToken = localStorage.getItem('preview_token')
+  const existingToken = getStoredPreviewToken()
   if (existingToken) {
-    localStorage.setItem('token', existingToken)
+    setStoredAccessToken(existingToken)
     previewTokenFetched = true
     return
   }
@@ -116,21 +130,13 @@ async function fetchPreviewToken(): Promise<void> {
     if (response.ok) {
       const data = await response.json()
       if (data.token) {
-        localStorage.setItem('preview_token', data.token)
-        localStorage.setItem('token', data.token)
+        setStoredPreviewToken(data.token)
+        setStoredAccessToken(data.token)
         previewTokenFetched = true
       }
     }
   } catch {
     console.error('Failed to fetch preview token')
-  }
-}
-
-function hasStoredSessionHint(): boolean {
-  try {
-    return !!(localStorage.getItem('token') || localStorage.getItem('preview_token'))
-  } catch {
-    return false
   }
 }
 
@@ -186,8 +192,8 @@ async function applyDeferredPreviewModeResult(
 
   if (!result.preview) return
 
-  const staleToken = localStorage.getItem('token')
-  const hasPreviewToken = !!localStorage.getItem('preview_token')
+  const staleToken = getStoredAccessToken()
+  const hasPreviewToken = !!getStoredPreviewToken()
   if (staleToken && !hasPreviewToken) {
     useAuthStore().clearAuth()
   }
@@ -217,7 +223,7 @@ export function resetPreviewModeStatus(): void {
   isPreviewMode = false
   connectionFailed = false
   previewTokenFetched = false
-  localStorage.removeItem('preview_token')
+  clearStoredPreviewToken()
 }
 
 // Expose cached preview mode result so other modules (e.g. previewStore)
@@ -321,9 +327,7 @@ export function clearAllState(): void {
   isPreviewMode = false
   connectionFailed = false
   previewTokenFetched = false
-  localStorage.removeItem('preview_token')
-  localStorage.removeItem('token')
-  localStorage.removeItem('refresh_token')
+  clearStoredAuthSession()
 }
 
 const routes: RouteRecordRaw[] = [
@@ -553,14 +557,14 @@ router.beforeEach(async (to, from, next) => {
     // Extract access_token from URL query (e.g. QR code deep link)
     const urlToken = to.query.access_token as string | undefined
     if (urlToken) {
-      localStorage.setItem('token', urlToken)
+      setStoredAccessToken(urlToken)
       // Strip token from URL and continue to the clean path
       const { access_token: _, ...cleanQuery } = to.query
       next({ path: to.path, query: cleanQuery, replace: true })
       return
     }
 
-    const token = localStorage.getItem('token')
+    const token = getStoredAccessToken()
     let isAuthenticated = !!token
     const requiresAuth = to.meta.requiresAuth
     const requiresAdmin = to.meta.requiresAdmin
@@ -609,12 +613,12 @@ router.beforeEach(async (to, from, next) => {
         if (isChatRouteLocation(to.path, to.name)) {
           void preloadChatView()
         }
-        const staleToken = localStorage.getItem('token')
-        const hasPreviewToken = !!localStorage.getItem('preview_token')
+        const staleToken = getStoredAccessToken()
+        const hasPreviewToken = !!getStoredPreviewToken()
         if (staleToken && !hasPreviewToken) {
           // Stale token from a previous normal-mode session — wipe it
-          localStorage.removeItem('token')
-          localStorage.removeItem('refresh_token')
+          clearStoredAccessToken()
+          clearStoredRefreshToken()
           // Also reset the reactive auth store so isAuthenticated becomes false
           const authStore = useAuthStore()
           authStore.clearAuth()
@@ -636,10 +640,10 @@ router.beforeEach(async (to, from, next) => {
     }
 
     // Normal mode: standard authentication flow
-    const previewToken = localStorage.getItem('preview_token')
+    const previewToken = getStoredPreviewToken()
     if (previewModeResult && previewToken) {
-      localStorage.removeItem('preview_token')
-      localStorage.removeItem('token')
+      clearStoredPreviewToken()
+      clearStoredAccessToken()
       isAuthenticated = false
       if ((requiresAuth || requiredPermission) && to.name !== 'Login') {
         void preloadLoginView().catch(() => {})

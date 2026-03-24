@@ -131,6 +131,8 @@ func (u *UIReviewer) SetBridge(bridge *proxybridge.Bridge) {
 func (u *UIReviewer) Manifest() *skill.Manifest { return u.manifest }
 
 func (u *UIReviewer) Validate(input map[string]any) error {
+	normalizeUIReviewerSkillInput(input)
+
 	actionStr := ""
 	if action, ok := input["action"]; ok {
 		var isString bool
@@ -165,15 +167,18 @@ func (u *UIReviewer) Validate(input map[string]any) error {
 	return nil
 }
 
+func normalizeUIReviewerSkillInput(input map[string]any) {
+	normalizeStringAlias(input, "action", "op", "operation", "command")
+	normalizeStringAlias(input, "url", "href")
+	normalizeStringAlias(input, "image", "image_base64", "imageBase64")
+}
+
 func (u *UIReviewer) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
-	actionRaw, _ := input["action"].(string)
-	url, _ := input["url"].(string)
-	image, _ := input["image"].(string)
-	action, err := tools.CanonicalizeUIReviewAction(actionRaw, url, image)
-	if err != nil {
+	if err := u.Validate(input); err != nil {
 		return skill.NewErrorResult(err), nil
 	}
-	input["action"] = action
+
+	action, _ := input["action"].(string)
 
 	threshold := 75.0
 	if t, ok := input["threshold"].(float64); ok && t > 0 {

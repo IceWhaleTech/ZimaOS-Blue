@@ -141,7 +141,13 @@ func (h *TunnelHandler) StartTunnel(c echo.Context) error {
 	// Default port to server port
 	port := req.Port
 	if port == 0 {
-		port = h.serverPort
+		port = resolveListeningPort(h.serverPort)
+	}
+	if port == 0 {
+		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
+			"success": false,
+			"error":   "Server listening port is not available yet",
+		})
 	}
 
 	// Get manager for provider

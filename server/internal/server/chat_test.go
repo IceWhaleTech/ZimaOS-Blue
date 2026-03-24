@@ -104,6 +104,7 @@ type imageInputCaptureTool struct {
 }
 
 type webSearchToolMock struct {
+	name   string
 	result interface{}
 	err    error
 	calls  int
@@ -187,17 +188,22 @@ func TestBuildDirectoryWhitelistPromptHintPrefersRelativePaths(t *testing.T) {
 }
 
 func (m *webSearchToolMock) Definition() tools.ToolDefinition {
+	name := strings.TrimSpace(m.name)
+	if name == "" {
+		name = "web_search"
+	}
 	return tools.ToolDefinition{
-		Name:        "web_search",
-		Description: "mock web search",
+		Name:        name,
+		Description: "mock web tool",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
+				"input":       map[string]interface{}{"type": "string"},
 				"query":       map[string]interface{}{"type": "string"},
+				"q":           map[string]interface{}{"type": "string"},
 				"format":      map[string]interface{}{"type": "string"},
 				"max_results": map[string]interface{}{"type": "integer"},
 			},
-			"required":             []string{"query"},
 			"additionalProperties": true,
 		},
 	}
@@ -1157,6 +1163,108 @@ func TestProcessChannelMessage_AutoContinueRetriesEmptyReplyAfterToolRound(t *te
 	last := thirdReq.Messages[len(thirdReq.Messages)-1]
 	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
 		t.Fatalf("expected post-tool continuation nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+}
+
+func TestProcessChannelMessage_AutoContinueRetriesEmptyReplyAfterWebQueryToolRound(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-web-query",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "im-web-query-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "我先查一下最近一周的动态。",
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_web_query_1",
+						Name:      "web_query",
+						Arguments: `{"input":"OpenClaw recent updates"}`,
+					}},
+				},
+			},
+			{
+				ID:      "im-web-query-round-2",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: ""},
+			},
+			{
+				ID:      "im-web-query-round-3",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: "最近一周 OpenClaw 主要动态集中在 GitHub 发布说明和文档更新；我已经整理完关键变化与来源。"},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":     "ok",
+			"mode":       "search_read",
+			"input":      "OpenClaw recent updates",
+			"query":      "OpenClaw recent updates",
+			"title":      "OpenClaw Release Notes",
+			"target_url": "https://github.com/opendungeons/openclaw/releases",
+			"final_url":  "https://github.com/opendungeons/openclaw/releases",
+			"sources": []map[string]interface{}{
+				{"title": "OpenClaw Release Notes", "url": "https://github.com/opendungeons/openclaw/releases", "snippet": "recent release notes", "selected": true},
+			},
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	resp, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_post_web_query_tool",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "帮我调研一下最近一周 openclaw 的动向吧",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+	if !strings.Contains(resp, "最近一周 OpenClaw 主要动态") {
+		t.Fatalf("expected retried final summary, got %q", resp)
+	}
+	if strings.Contains(resp, "最终总结生成失败") || strings.Contains(resp, "Tool execution completed") {
+		t.Fatalf("expected no tool-fallback failure wording, got %q", resp)
+	}
+	if scripted.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM rounds (tool + empty + retry), got %d", scripted.CallCount())
+	}
+
+	thirdReq, ok := scripted.RequestAt(2)
+	if !ok {
+		t.Fatalf("missing third request capture")
+	}
+	last := thirdReq.Messages[len(thirdReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
+		t.Fatalf("expected post-tool continuation nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	input, _ := webQueryMock.last["input"].(string)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if input != "OpenClaw recent updates" {
+		t.Fatalf("web_query input = %q, want OpenClaw recent updates", input)
 	}
 }
 
@@ -3418,6 +3526,126 @@ func TestChatHandlerSendMessageAutoContinue_RetriesEmptyReplyAfterToolRound(t *t
 	}
 }
 
+func TestChatHandlerSendMessageAutoContinue_RetriesEmptyReplyAfterWebQueryToolRound(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Post Web Query Empty Reply Non-Stream")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-web-query",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "post-web-query-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "我先查一下最近一周的动态。",
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_web_query_1",
+						Name:      "web_query",
+						Arguments: `{"input":"OpenClaw recent updates"}`,
+					}},
+				},
+				Usage: llm.Usage{PromptTokens: 60, CompletionTokens: 18, TotalTokens: 78},
+			},
+			{
+				ID:    "post-web-query-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "",
+				},
+				Usage: llm.Usage{PromptTokens: 82, CompletionTokens: 1, TotalTokens: 83},
+			},
+			{
+				ID:    "post-web-query-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "最近一周 OpenClaw 主要动态集中在 GitHub 发布说明和文档更新；我已经整理完关键变化与来源。",
+				},
+				Usage: llm.Usage{PromptTokens: 96, CompletionTokens: 28, TotalTokens: 124},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":     "ok",
+			"mode":       "search_read",
+			"input":      "OpenClaw recent updates",
+			"query":      "OpenClaw recent updates",
+			"title":      "OpenClaw Release Notes",
+			"target_url": "https://github.com/opendungeons/openclaw/releases",
+			"final_url":  "https://github.com/opendungeons/openclaw/releases",
+			"sources": []map[string]interface{}{
+				{"title": "OpenClaw Release Notes", "url": "https://github.com/opendungeons/openclaw/releases", "snippet": "recent release notes", "selected": true},
+			},
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我调研一下最近一周 openclaw 的动向吧","provider":"scripted-web-query","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM rounds (tool + empty + retry), got %d", scripted.CallCount())
+	}
+
+	thirdReq, ok := scripted.RequestAt(2)
+	if !ok {
+		t.Fatalf("missing third request capture")
+	}
+	last := thirdReq.Messages[len(thirdReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
+		t.Fatalf("expected post-tool continuation nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	input, _ := webQueryMock.last["input"].(string)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if input != "OpenClaw recent updates" {
+		t.Fatalf("web_query input = %q, want OpenClaw recent updates", input)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "最近一周 OpenClaw 主要动态") {
+		t.Fatalf("expected retried final summary, got %q", content)
+	}
+	if strings.Contains(content, "最终总结生成失败") || strings.Contains(content, "Tool execution completed") {
+		t.Fatalf("expected no tool-fallback failure wording, got %q", content)
+	}
+}
+
 func TestChatHandlerSendMessagePassesImageAttachmentsIntoToolContext(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -4717,22 +4945,29 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToIROnlyWhenDeepResearchUnava
 	}
 }
 
-func TestChatHandlerSendMessage_NoProviderFallsBackToWebSearchTool(t *testing.T) {
+func TestChatHandlerSendMessage_NoProviderFallsBackToWebQueryTool(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
 
-	conv, _ := store.CreateConversation(context.Background(), "Web search fallback Conv")
+	conv, _ := store.CreateConversation(context.Background(), "Web query fallback Conv")
 	registry := llm.NewProviderRegistry() // intentionally empty
 	toolRegistry := tools.NewRegistry()
 	webSearchMock := &webSearchToolMock{
+		name: "web_query",
 		result: map[string]interface{}{
-			"query":       "zimaos release notes",
-			"provider":    "mock",
-			"total_count": 2,
-			"results": []map[string]interface{}{
-				{"title": "ZimaOS Release Notes", "url": "https://example.com/release", "description": "release summary"},
-				{"title": "ZimaOS Docs", "url": "https://example.com/docs", "description": "documentation"},
+			"status":     "ok",
+			"mode":       "search_read",
+			"input":      "zimaos release notes",
+			"query":      "zimaos release notes",
+			"title":      "ZimaOS Release Notes",
+			"target_url": "https://example.com/release",
+			"final_url":  "https://example.com/release",
+			"content":    "release summary",
+			"sources": []map[string]interface{}{
+				{"title": "ZimaOS Release Notes", "url": "https://example.com/release", "snippet": "release summary", "selected": true},
+				{"title": "ZimaOS Docs", "url": "https://example.com/docs", "snippet": "documentation"},
 			},
+			"next_action": "none",
 		},
 	}
 	toolRegistry.Register(webSearchMock)
@@ -4759,15 +4994,15 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToWebSearchTool(t *testing.T)
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got := resp["provider"]; got != "web_search" {
-		t.Fatalf("provider = %v, want web_search", got)
+	if got := resp["provider"]; got != "web_query" {
+		t.Fatalf("provider = %v, want web_query", got)
 	}
-	if got := resp["model"]; got != "web-search-fallback" {
-		t.Fatalf("model = %v, want web-search-fallback", got)
+	if got := resp["model"]; got != "web-query-fallback" {
+		t.Fatalf("model = %v, want web-query-fallback", got)
 	}
 	content, _ := resp["content"].(string)
-	if !strings.Contains(content, `Web search fallback results for "zimaos release notes":`) {
-		t.Fatalf("content = %q, want web-search fallback summary", content)
+	if !strings.Contains(content, `Web query fallback results for "zimaos release notes":`) {
+		t.Fatalf("content = %q, want web-query fallback summary", content)
 	}
 	if !strings.Contains(content, "ZimaOS Release Notes") {
 		t.Fatalf("content = %q, want result title", content)
@@ -4775,23 +5010,23 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToWebSearchTool(t *testing.T)
 	if !strings.Contains(content, "```typeless") {
 		t.Fatalf("content = %q, want typeless card block", content)
 	}
-	if !strings.Contains(content, `"type":"search"`) {
-		t.Fatalf("content = %q, want search typeless card", content)
+	if !strings.Contains(content, `"type":"result"`) {
+		t.Fatalf("content = %q, want web-query typeless card", content)
 	}
 
 	webSearchMock.mu.Lock()
 	calls := webSearchMock.calls
-	query, _ := webSearchMock.last["query"].(string)
+	input, _ := webSearchMock.last["input"].(string)
 	format, _ := webSearchMock.last["format"].(string)
 	webSearchMock.mu.Unlock()
 	if calls != 1 {
-		t.Fatalf("web_search calls = %d, want 1", calls)
+		t.Fatalf("web_query calls = %d, want 1", calls)
 	}
-	if query != "zimaos release notes" {
-		t.Fatalf("web_search query = %q, want zimaos release notes", query)
+	if input != "zimaos release notes" {
+		t.Fatalf("web_query input = %q, want zimaos release notes", input)
 	}
 	if format != "json" {
-		t.Fatalf("web_search format = %q, want json", format)
+		t.Fatalf("web_query format = %q, want json", format)
 	}
 }
 

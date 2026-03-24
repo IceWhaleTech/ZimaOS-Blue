@@ -1,6 +1,7 @@
 import { ref, reactive, computed } from 'vue'
 import { templateApi, configApi, type FillTemplate, type FormFillerConfig } from '@/api/formfiller'
 import { parseClipboardData, parseClipboardFields } from '@/utils/clipboardParser'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 export interface FillHistoryEntry {
   timestamp: number
@@ -88,7 +89,7 @@ export function useFormFillerWidget() {
     if (globalState.isInitialized) return
 
     // Skip initialization if user is not logged in
-    const token = localStorage.getItem('token')
+    const token = getStoredAccessToken()
     if (!token) {
       return
     }

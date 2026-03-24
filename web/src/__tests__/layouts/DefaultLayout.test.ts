@@ -173,6 +173,7 @@ describe('DefaultLayout', () => {
     tauriState.isTauri = false
     tauriState.platform = 'unknown'
     setViewportWidth(1440)
+    document.documentElement.removeAttribute('data-blue-window-resizing')
   })
 
   it('does not render the nav button when the sidebar stays visible on wide desktop screens', async () => {
@@ -198,6 +199,32 @@ describe('DefaultLayout', () => {
     expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(true)
 
     wrapper.unmount()
+  })
+
+  it('enables a temporary resize performance mode while the window is resizing', async () => {
+    vi.useFakeTimers()
+
+    try {
+      setUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+      )
+
+      const wrapper = await mountLayout('/profile')
+
+      window.dispatchEvent(new Event('resize'))
+
+      expect(document.documentElement.getAttribute('data-blue-window-resizing')).toBe('true')
+
+      vi.advanceTimersByTime(179)
+      expect(document.documentElement.getAttribute('data-blue-window-resizing')).toBe('true')
+
+      vi.advanceTimersByTime(1)
+      expect(document.documentElement.hasAttribute('data-blue-window-resizing')).toBe(false)
+
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('renders the mobile nav button for phone browsers on profile routes', async () => {

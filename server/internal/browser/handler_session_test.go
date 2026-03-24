@@ -57,7 +57,7 @@ func (s *sessionAwareStubBrowserService) SessionScreenshotHistory(
 
 func TestBrowserListSessionsMapsTabsToSessions(t *testing.T) {
 	service := &sessionAwareStubBrowserService{
-		stubBrowserService: &stubBrowserService{},
+		stubBrowserService: &stubBrowserService{running: true},
 		tabs: []*Tab{
 			{
 				TargetID: "tab-1",
@@ -101,7 +101,7 @@ func TestBrowserListSessionsMapsTabsToSessions(t *testing.T) {
 
 func TestBrowserSessionScreenshotUsesViewportCapture(t *testing.T) {
 	service := &sessionAwareStubBrowserService{
-		stubBrowserService: &stubBrowserService{},
+		stubBrowserService: &stubBrowserService{running: true},
 		screenshot:         "base64-png",
 	}
 	h := NewHandler(service)
@@ -127,7 +127,7 @@ func TestBrowserSessionScreenshotUsesViewportCapture(t *testing.T) {
 
 func TestBrowserSessionScreenshotFallsBackToHistory(t *testing.T) {
 	service := &sessionAwareStubBrowserService{
-		stubBrowserService: &stubBrowserService{},
+		stubBrowserService: &stubBrowserService{running: true},
 		history: []SessionScreenshot{
 			{
 				Data:       "base64-history",
@@ -166,7 +166,7 @@ func TestBrowserSessionScreenshotFallsBackToHistory(t *testing.T) {
 
 func TestBrowserSessionNavigateUsesSessionTargetID(t *testing.T) {
 	service := &sessionAwareStubBrowserService{
-		stubBrowserService: &stubBrowserService{},
+		stubBrowserService: &stubBrowserService{running: true},
 	}
 	h := NewHandler(service)
 	e := echo.New()

@@ -185,6 +185,28 @@ describe('VirtualScroll', () => {
     expect(scrollContainer.scrollTop).toBe(150)
   })
 
+  it('preserves scroll position across batched height updates above the viewport', async () => {
+    const { scrollContainer, wrapper } = createExternalScrollSetup()
+
+    await wrapper.vm.$nextTick()
+    await flushRafChain()
+
+    scrollContainer.scrollTop = 250
+    scrollContainer.dispatchEvent(new Event('scroll'))
+    await wrapper.vm.$nextTick()
+    await flushRafChain()
+    ;(
+      wrapper.vm as unknown as { updateItemHeight: (index: number, height: number) => void }
+    ).updateItemHeight(0, 200)
+    ;(
+      wrapper.vm as unknown as { updateItemHeight: (index: number, height: number) => void }
+    ).updateItemHeight(1, 200)
+    await wrapper.vm.$nextTick()
+    await flushRafChain()
+
+    expect(scrollContainer.scrollTop).toBe(450)
+  })
+
   it('keeps the current viewport anchored when older keyed items are prepended', async () => {
     const scrollContainer = document.createElement('div')
     Object.defineProperty(scrollContainer, 'clientHeight', {

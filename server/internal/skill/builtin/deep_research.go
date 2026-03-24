@@ -64,13 +64,16 @@ func (d *DeepResearch) SetExecutor(e DeepResearchExecutor) {
 func (d *DeepResearch) Manifest() *skill.Manifest { return d.manifest }
 
 func (d *DeepResearch) Validate(input map[string]any) error {
+	normalizeDeepResearchQueryInput(input)
+
 	q, ok := input["query"]
 	if !ok {
 		return fmt.Errorf("query is required")
 	}
-	if s, ok := q.(string); !ok || s == "" {
+	if s, ok := q.(string); !ok || strings.TrimSpace(s) == "" {
 		return fmt.Errorf("query must be a non-empty string")
 	}
+	input["query"] = strings.TrimSpace(q.(string))
 	if modeV, ok := input["mode"]; ok {
 		mode, ok := modeV.(string)
 		if !ok {
@@ -136,6 +139,54 @@ func (d *DeepResearch) Validate(input map[string]any) error {
 		}
 	}
 	return nil
+}
+
+func normalizeDeepResearchQueryInput(input map[string]any) {
+	if input == nil {
+		return
+	}
+	if raw, ok := input["query"]; ok {
+		if query, ok := raw.(string); ok && strings.TrimSpace(query) != "" {
+			input["query"] = strings.TrimSpace(query)
+			return
+		}
+	}
+
+	aliases := []string{
+		"input",
+		"objective",
+		"prompt",
+		"message",
+		"content",
+		"text",
+		"topic",
+		"question",
+		"search",
+	}
+	distinct := make(map[string]struct{}, len(aliases))
+	var normalized string
+	for _, key := range aliases {
+		raw, ok := input[key]
+		if !ok {
+			continue
+		}
+		value, ok := raw.(string)
+		if !ok {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		distinct[value] = struct{}{}
+		normalized = value
+		if len(distinct) > 1 {
+			return
+		}
+	}
+	if len(distinct) == 1 {
+		input["query"] = normalized
+	}
 }
 
 func normalizeDeepResearchSkillReportStyle(raw string) (string, error) {

@@ -1,5 +1,6 @@
 import type { StreamChunk, SendMessageRequest } from '@/api/chat'
 import { ensureFreshToken } from '@/api/client'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 export interface SSEClientOptions {
   /** Called when stream ID is known (from response header or chunk payload). */
@@ -100,7 +101,7 @@ export class SSEClient {
 
     while (connectAttempt <= MAX_CONNECT_RETRIES && this.isConnected) {
       try {
-        const token = localStorage.getItem('token')
+        const token = getStoredAccessToken()
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',

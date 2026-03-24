@@ -1187,6 +1187,103 @@ func TestExecPinnedAskStructuredArgsUseSkillParser(t *testing.T) {
 	}
 }
 
+func TestExecCompatAskCarrier_MultilineHeredocShortCircuitsToAsk(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var gotSkill string
+	var gotInput map[string]any
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		gotSkill = skillID
+		gotInput = input
+		return map[string]string{
+			"success":  "true",
+			"selected": `["ZimaOS / ZimaOS社区"]`,
+		}, nil
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "cat > /dev/stdin <<'EOF'\n" +
+			"{\"q\":\"你想监控哪个产品/品牌的社区讨论？请提供产品名称或具体平台链接\",\"a\":[\"ZimaOS / ZimaOS社区\",\"已有具体目标产品（请补充）\",\"通用方法论研究（不针对特定品牌）\"]}\n" +
+			"EOF",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotSkill != "ask" {
+		t.Fatalf("skill = %q, want %q", gotSkill, "ask")
+	}
+	if got := gotInput["q"]; got != "你想监控哪个产品/品牌的社区讨论？请提供产品名称或具体平台链接" {
+		t.Fatalf("q = %v", got)
+	}
+	options, ok := gotInput["a"].([]interface{})
+	if !ok {
+		t.Fatalf("a type = %T, want []interface{}", gotInput["a"])
+	}
+	if len(options) != 3 {
+		t.Fatalf("len(a) = %d, want 3", len(options))
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := res.Data["selected"]; got != `["ZimaOS / ZimaOS社区"]` {
+		t.Fatalf("selected = %q, want ask result", got)
+	}
+}
+
+func TestExecCompatAskCarrier_InlineCollapsedCommandShortCircuitsToAsk(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var gotSkill string
+	var gotInput map[string]any
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		gotSkill = skillID
+		gotInput = input
+		return map[string]string{
+			"success":  "true",
+			"selected": `["通用方法论研究（不针对特定品牌）"]`,
+		}, nil
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `cd /private/tmp/pinchbench-workspace && cat > /dev/stdin << 'EOF' {"q":"你想监控哪个产品/品牌的社区讨论？请提供产品名称或具体平台链接","a":["ZimaOS / ZimaOS社区","已有具体目标产品（请补充）","通用方法论研究（不针对特定品牌）"]} EOF`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotSkill != "ask" {
+		t.Fatalf("skill = %q, want %q", gotSkill, "ask")
+	}
+	if got := gotInput["q"]; got != "你想监控哪个产品/品牌的社区讨论？请提供产品名称或具体平台链接" {
+		t.Fatalf("q = %v", got)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := res.Data["selected"]; got != `["通用方法论研究（不针对特定品牌）"]` {
+		t.Fatalf("selected = %q, want ask result", got)
+	}
+}
+
 func TestExecSkillShortCircuit_DoesNotLeakShortCircuitWarning(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()
@@ -1603,6 +1700,15 @@ func TestParseKeyValuePairs_SingleQuotedValueKeepsSpaces(t *testing.T) {
 
 	if got, _ := out["questions"].(string); got != `[{"question":"Pick one","options":["A", "B"]}]` {
 		t.Fatalf("questions = %q, want full single-quoted payload", got)
+	}
+}
+
+func TestExtractCompatAskInput_RejectsNonAskJSON(t *testing.T) {
+	command := "cat > /dev/stdin <<'EOF'\n{\"value\":1}\nEOF"
+
+	input, ok := extractCompatAskInput(command)
+	if ok {
+		t.Fatalf("ok = true, want false with input=%v", input)
 	}
 }
 

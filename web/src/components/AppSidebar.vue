@@ -12,7 +12,6 @@ import type { Conversation, Message } from '@/api/chat'
 import { PagePermissions } from '@/constants/pagePermissions'
 import { storeToRefs } from 'pinia'
 import { useTauri } from '@/composables/useTauri'
-import { useBrowserMonitor } from '@/composables/useBrowserMonitor'
 import { getPreferredNetworkAddress, useNetwork } from '@/composables/useNetwork'
 import { isLocalAbsolutePath } from '@/utils/localPath'
 import { resetPreviewModeStatus } from '@/router'
@@ -129,7 +128,6 @@ const GITHUB_REPO_URL = 'https://github.com/IceWhaleTech/ZimaOS-Blue'
 const { t, te } = useI18n()
 const route = useRoute()
 const router = useRouter()
-const browserMonitor = useBrowserMonitor()
 const systemStore = useSystemStore()
 const authStore = useAuthStore()
 const previewStore = usePreviewStore()
@@ -1149,26 +1147,6 @@ const externalBrowserButtonTitle = computed(() => {
 })
 const githubButtonTitle = computed(() => tr('brand.githubTooltip', 'Open GitHub'))
 const githubButtonLabel = computed(() => 'GitHub')
-const browserMonitorButtonLabel = computed(() => tr('browserMonitor.buttonLabel', 'Monitor'))
-const browserMonitorActivitySummary = computed(() => {
-  const parts: string[] = []
-  if (browserMonitor.activeTaskCount.value > 0) {
-    parts.push(
-      `${browserMonitor.activeTaskCount.value} ${tr('browserMonitor.tasksShort', 'tasks')}`
-    )
-  }
-  if (browserMonitor.sessionCount.value > 0) {
-    parts.push(`${browserMonitor.sessionCount.value} ${tr('browserMonitor.tabsShort', 'tabs')}`)
-  }
-  return parts.join(' · ')
-})
-const browserMonitorButtonTitle = computed(() => {
-  const action = browserMonitor.isOpen.value
-    ? tr('browserMonitor.hideTooltip', 'Hide execution monitor')
-    : tr('browserMonitor.showTooltip', 'Show execution monitor')
-  const summary = browserMonitorActivitySummary.value.trim()
-  return summary ? `${action} · ${summary}` : action
-})
 const themeButtonLabel = computed(() =>
   isDarkTheme.value ? tr('common.light', 'Light') : tr('common.dark', 'Dark')
 )
@@ -1202,10 +1180,6 @@ watch(
 
 function openGithubRepo(): void {
   void openInBrowser(GITHUB_REPO_URL)
-}
-
-function toggleBrowserMonitor(): void {
-  browserMonitor.toggleMonitor({ expandWhenOpening: true })
 }
 
 async function openExternalBrowser(): Promise<void> {
@@ -1583,38 +1557,6 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                   d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6m0 0v6m0-6L10 14"
                 />
               </svg>
-            </button>
-
-            <button
-              type="button"
-              class="sidebar-utility-button"
-              :class="{
-                'sidebar-utility-button-active': browserMonitor.isOpen.value,
-                'sidebar-utility-button-expanded': showExpandedUtilityLabels,
-              }"
-              :title="browserMonitorButtonTitle"
-              :aria-label="browserMonitorButtonTitle"
-              data-testid="sidebar-toggle-browser-monitor"
-              @click="toggleBrowserMonitor"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-[1.05rem] w-[1.05rem]"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.8"
-                  d="M3 5.75A2.75 2.75 0 0 1 5.75 3h12.5A2.75 2.75 0 0 1 21 5.75v8.5A2.75 2.75 0 0 1 18.25 17H13l-3.5 4v-4H5.75A2.75 2.75 0 0 1 3 14.25v-8.5Zm4.5 2.75h2.25m4.5 0h2.25M7.5 12h9"
-                />
-              </svg>
-              <span v-if="showExpandedUtilityLabels" class="sidebar-utility-label">{{
-                browserMonitorButtonLabel
-              }}</span>
             </button>
 
             <button

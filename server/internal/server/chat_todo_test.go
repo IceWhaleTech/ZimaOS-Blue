@@ -2334,6 +2334,24 @@ func TestApplyResearchToolPreference_UsesUnifiedWebToolForStockReport(t *testing
 	}
 }
 
+func TestApplyResearchToolPreference_UsesUnifiedWebQueryForArtifactReport(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_query"},
+		{Name: "browser"},
+		{Name: "write"},
+		{Name: "read"},
+		{Name: "edit"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "calendar"},
+	}
+
+	filtered := applyResearchToolPreference(defs, "Create a competitive market report and save it to market_research.md with sources.")
+	if got := toolNames(filtered); strings.Join(got, ",") != "web_query,browser,write,read,edit,ls,find" {
+		t.Fatalf("expected unified web_query tool to be preserved for artifact report, got=%v", got)
+	}
+}
+
 func TestApplyImageToolPreference_PrefersNativeImageTool(t *testing.T) {
 	defs := []tools.ToolDefinition{
 		{Name: "image"},

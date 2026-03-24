@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
@@ -126,5 +127,23 @@ func TestPersistenceCoordinatorCoalescesAndFlushes(t *testing.T) {
 	}
 	if metrics.counts["chat_persist_flush_total"] == 0 {
 		t.Fatalf("chat_persist_flush_total not recorded")
+	}
+}
+
+func TestPersistenceCoordinatorShutdownFlushWithinTimesOut(t *testing.T) {
+	coordinator := &PersistenceCoordinator{
+		queue: make(chan persistenceOp, 1),
+		done:  make(chan struct{}),
+	}
+
+	started := time.Now()
+	ok := coordinator.ShutdownFlushWithin(20 * time.Millisecond)
+	elapsed := time.Since(started)
+
+	if ok {
+		t.Fatal("ShutdownFlushWithin() = true, want false when no worker drains the queue")
+	}
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("ShutdownFlushWithin() took %s, want under 200ms", elapsed)
 	}
 }

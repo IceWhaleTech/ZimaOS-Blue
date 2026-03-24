@@ -75,3 +75,43 @@ func TestSchedulerCreateAutoGeneratesNameWhenMissing(t *testing.T) {
 		t.Fatalf("payload conversation_id = %v, want conv-1", mockSvc.lastPayload["conversation_id"])
 	}
 }
+
+func TestSchedulerSkill_ValidateAcceptsCommonAliases(t *testing.T) {
+	scheduler := NewScheduler()
+	input := map[string]any{
+		"title": "Heartbeat",
+		"cron":  "*/5 * * * *",
+		"cmd":   "echo ok",
+	}
+	if err := scheduler.Validate(input); err != nil {
+		t.Fatalf("expected aliases to pass validation: %v", err)
+	}
+	if got, _ := input["action"].(string); got != "create" {
+		t.Fatalf("action = %q, want create", got)
+	}
+	if got, _ := input["name"].(string); got != "Heartbeat" {
+		t.Fatalf("name = %q, want Heartbeat", got)
+	}
+	if got, _ := input["schedule"].(string); got != "*/5 * * * *" {
+		t.Fatalf("schedule = %q, want cron alias", got)
+	}
+	if got, _ := input["command"].(string); got != "echo ok" {
+		t.Fatalf("command = %q, want cmd alias", got)
+	}
+}
+
+func TestSchedulerSkill_ValidateInfersGetFromJobIDAlias(t *testing.T) {
+	scheduler := NewScheduler()
+	input := map[string]any{
+		"jobId": "job-7",
+	}
+	if err := scheduler.Validate(input); err != nil {
+		t.Fatalf("expected jobId alias to pass validation: %v", err)
+	}
+	if got, _ := input["action"].(string); got != "get" {
+		t.Fatalf("action = %q, want get", got)
+	}
+	if got, _ := input["id"].(string); got != "job-7" {
+		t.Fatalf("id = %q, want job-7", got)
+	}
+}

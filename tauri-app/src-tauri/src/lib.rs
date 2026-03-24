@@ -362,6 +362,10 @@ fn update_window_on_main_thread(
             return;
         };
 
+        if focus {
+            activate_macos_app();
+        }
+
         if apply_style {
             apply_main_window_macos_style(&window);
         }
@@ -369,6 +373,10 @@ fn update_window_on_main_thread(
         let _ = window.show();
         let _ = window.unminimize();
         if focus {
+            if let Ok(ns_window_ptr) = window.ns_window() {
+                let ns_window: &objc2_app_kit::NSWindow = unsafe { &*ns_window_ptr.cast() };
+                ns_window.orderFrontRegardless();
+            }
             let _ = window.set_focus();
         }
     });
@@ -426,13 +434,14 @@ fn activate_macos_app() {
     if let Some(mtm) = MainThreadMarker::new() {
         let ns_app = NSApplication::sharedApplication(mtm);
         ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+        ns_app.unhide(None);
+        ns_app.activate();
+        #[allow(deprecated)]
+        ns_app.activateIgnoringOtherApps(true);
     }
 }
 
 fn open_or_focus_main_window(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
-    #[cfg(target_os = "macos")]
-    activate_macos_app();
-
     if let Some(_window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
         #[cfg(target_os = "macos")]
         update_window_on_main_thread(app_handle, MAIN_WINDOW_LABEL, true, true);
@@ -450,9 +459,6 @@ fn open_or_focus_main_window(app_handle: &tauri::AppHandle) -> tauri::Result<()>
 }
 
 fn open_or_focus_panel_window(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
-    #[cfg(target_os = "macos")]
-    activate_macos_app();
-
     if let Some(_window) = app_handle.get_webview_window(PANEL_WINDOW_LABEL) {
         #[cfg(target_os = "macos")]
         update_window_on_main_thread(app_handle, PANEL_WINDOW_LABEL, true, true);

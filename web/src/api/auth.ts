@@ -1,4 +1,5 @@
 import api from './client'
+import { getStoredRefreshToken } from '@/utils/authStorage'
 
 // Types
 export interface User {
@@ -57,7 +58,7 @@ export const authApi = {
   login: (data: LoginRequest) => api.post<AuthTokenResponse>('/auth/login', data),
 
   logout: () => {
-    const refreshToken = localStorage.getItem('refresh_token')
+    const refreshToken = getStoredRefreshToken()
     return api.post<{ success: boolean }>('/auth/logout', null, {
       headers: refreshToken ? { 'X-Refresh-Token': refreshToken } : {},
     })

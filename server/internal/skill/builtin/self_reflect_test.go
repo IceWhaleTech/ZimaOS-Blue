@@ -66,3 +66,60 @@ func TestSelfReflectSkill_ValidateRejectsInvalidStatus(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestSelfReflectSkill_ValidateAcceptsCommonAliases(t *testing.T) {
+	skill := NewSelfReflect()
+	input := map[string]any{
+		"task":    "Fix parser",
+		"status":  "COMPLETED",
+		"summary": "Patched parser and verified it",
+	}
+	if err := skill.Validate(input); err != nil {
+		t.Fatalf("expected aliases to pass validation: %v", err)
+	}
+	if got, _ := input["goal"].(string); got != "Fix parser" {
+		t.Fatalf("goal = %q, want Fix parser", got)
+	}
+	if got, _ := input["final_status"].(string); got != "completed" {
+		t.Fatalf("final_status = %q, want completed", got)
+	}
+	if got, _ := input["result_summary"].(string); got != "Patched parser and verified it" {
+		t.Fatalf("result_summary = %q, want summary alias", got)
+	}
+}
+
+func TestSelfReflectSkill_ExecuteAcceptsAliases(t *testing.T) {
+	exec := &mockSelfReflectExecutor{result: &selfreflect.Result{Summary: "ok"}}
+	skill := NewSelfReflect()
+	skill.SetExecutor(exec)
+
+	res, err := skill.Execute(context.Background(), map[string]any{
+		"taskId":              "task-2",
+		"task":                "Fix parser",
+		"status":              "FAILED",
+		"outcome":             "Patch incomplete",
+		"error":               "edge case still broken",
+		"verification_result": "focused test still failing",
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got error=%s", res.Error)
+	}
+	if exec.input.TaskID != "task-2" {
+		t.Fatalf("task_id = %q, want task-2", exec.input.TaskID)
+	}
+	if exec.input.FinalStatus != "failed" {
+		t.Fatalf("final_status = %q, want failed", exec.input.FinalStatus)
+	}
+	if exec.input.ResultSummary != "Patch incomplete" {
+		t.Fatalf("result_summary = %q", exec.input.ResultSummary)
+	}
+	if exec.input.FailureReason != "edge case still broken" {
+		t.Fatalf("failure_reason = %q", exec.input.FailureReason)
+	}
+	if exec.input.VerificationOutput != "focused test still failing" {
+		t.Fatalf("verification_output = %q", exec.input.VerificationOutput)
+	}
+}

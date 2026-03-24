@@ -442,6 +442,16 @@ func TestBrowserSkill(t *testing.T) {
 		if err := br.Validate(map[string]any{"action": "scroll", "ref": 1}); err != nil {
 			t.Errorf("unexpected error for legacy action alias: %v", err)
 		}
+		input := map[string]any{"href": "https://example.com/page"}
+		if err := br.Validate(input); err != nil {
+			t.Errorf("unexpected error for href alias: %v", err)
+		}
+		if got, _ := input["action"].(string); got != "navigate" {
+			t.Errorf("action = %q, want navigate", got)
+		}
+		if got, _ := input["url"].(string); got != "https://example.com/page" {
+			t.Errorf("url = %q, want https://example.com/page", got)
+		}
 	})
 
 	t.Run("navigate", func(t *testing.T) {
@@ -457,6 +467,18 @@ func TestBrowserSkill(t *testing.T) {
 		}
 		if data["tree"] == nil || data["tree"] == "" {
 			t.Error("expected non-empty tree")
+		}
+	})
+
+	t.Run("navigate_href_alias", func(t *testing.T) {
+		result, err := br.Execute(context.Background(), map[string]any{
+			"href": "https://example.com/from-href",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("navigate href alias failed: err=%v success=%v", err, result.Success)
+		}
+		if len(mock.tabs) == 0 || mock.tabs[0].URL != "https://example.com/from-href" {
+			t.Errorf("expected browser to navigate to href alias, tabs=%#v", mock.tabs)
 		}
 	})
 

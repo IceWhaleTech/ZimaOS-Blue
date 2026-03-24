@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
@@ -64,6 +65,8 @@ func (c *Calendar) SetExecutor(exec CalendarExecutor) {
 func (c *Calendar) Manifest() *skill.Manifest { return c.manifest }
 
 func (c *Calendar) Validate(input map[string]any) error {
+	normalizeCalendarSkillInput(input)
+
 	if input == nil {
 		return fmt.Errorf("input is required")
 	}
@@ -84,6 +87,50 @@ func (c *Calendar) Validate(input map[string]any) error {
 		}
 	}
 	return nil
+}
+
+func normalizeCalendarSkillInput(input map[string]any) {
+	normalizeStringAlias(input, "action", "op", "operation", "command")
+	normalizeStringAlias(input, "title", "name")
+	normalizeStringAlias(input, "time", "start", "start_at", "startAt", "when")
+	normalizeStringAlias(input, "id", "event_id", "eventId")
+	normalizeStringAlias(input, "query", "q", "search")
+	normalizeStringAlias(input, "notes", "description")
+
+	action := normalizeCalendarSkillAction(firstTrimmedStringValue(input, "action"), input)
+	if action != "" {
+		input["action"] = action
+	}
+}
+
+func normalizeCalendarSkillAction(raw string, input map[string]any) string {
+	action := strings.ToLower(strings.TrimSpace(raw))
+	switch action {
+	case "add", "new", "create_event", "book":
+		return "create"
+	case "open", "show", "detail":
+		return "get"
+	case "agenda", "upcoming":
+		return "list"
+	case "summary", "digest", "daily-summary", "daily summary":
+		return "daily_summary"
+	case "", "create", "list", "get", "search", "today", "daily_summary":
+	default:
+		return action
+	}
+	if action != "" {
+		return action
+	}
+	if firstTrimmedStringValue(input, "title") != "" && firstTrimmedStringValue(input, "time") != "" {
+		return "create"
+	}
+	if firstTrimmedStringValue(input, "id") != "" {
+		return "get"
+	}
+	if firstTrimmedStringValue(input, "query") != "" {
+		return "search"
+	}
+	return "list"
 }
 
 func (c *Calendar) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {

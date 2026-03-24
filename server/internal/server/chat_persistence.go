@@ -19,6 +19,7 @@ const (
 	chatPersistFlushEvery   = 25 * time.Millisecond
 	chatPersistMaxBatchSize = 64
 	chatPersistRetryEvery   = 30 * time.Second
+	chatPersistShutdownWait = 250 * time.Millisecond
 )
 
 type persistenceOpKind string
@@ -135,15 +136,62 @@ func (p *PersistenceCoordinator) FlushMessage(_ string) {
 }
 
 func (p *PersistenceCoordinator) ShutdownFlush() {
+	p.shutdownFlushWithin(0)
+}
+
+func (p *PersistenceCoordinator) ShutdownFlushWithin(timeout time.Duration) bool {
 	if p == nil {
-		return
+		return true
 	}
+
+	return p.shutdownFlushWithin(timeout)
+}
+
+func (p *PersistenceCoordinator) shutdownFlushWithin(timeout time.Duration) bool {
+	if p == nil {
+		return true
+	}
+
 	ack := make(chan struct{})
-	p.enqueueBlocking(persistenceOp{kind: persistenceOpShutdown, ack: ack})
-	<-ack
+	op := persistenceOp{kind: persistenceOpShutdown, ack: ack}
+
+	if timeout > 0 {
+		deadline := time.Now().Add(timeout)
+		timer := time.NewTimer(time.Until(deadline))
+		defer timer.Stop()
+
+		select {
+		case p.queue <- op:
+			p.recordCounterValue("chat_persist_queue_depth", int64(len(p.queue)), nil)
+		case <-timer.C:
+			return false
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return false
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(remaining)
+		select {
+		case <-ack:
+		case <-timer.C:
+			return false
+		}
+	} else {
+		p.enqueueBlocking(op)
+		<-ack
+	}
+
 	p.once.Do(func() {
 		close(p.done)
 	})
+	return true
 }
 
 func (p *PersistenceCoordinator) flush() {

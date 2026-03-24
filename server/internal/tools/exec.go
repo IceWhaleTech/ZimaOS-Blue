@@ -346,6 +346,13 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return nil, errors.New("command is required")
 	}
 
+	if result, intercepted, err := t.tryCompatAskCarrier(ctx, command); intercepted {
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
 	// Intercept commands that look like tool invocations.
 	// The LLM sometimes tries to call tools via exec (e.g. "web_search query").
 	// If we have the registry, auto-forward to the real tool. Otherwise return error.
@@ -1076,6 +1083,35 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 	return t.buildSkillResult(ctx, execSkillName, data, warnings), true
 }
 
+func (t *ExecTool) tryCompatAskCarrier(ctx context.Context, command string) (interface{}, bool, error) {
+	input, ok := extractCompatAskInput(command)
+	if !ok {
+		return nil, false, nil
+	}
+
+	slog.Info("[exec] compat ask carrier detected", "command", truncateStr(command, 200))
+
+	if t.skillExec != nil {
+		data, err := t.skillExec(ctx, "ask", input)
+		if err != nil {
+			return nil, true, err
+		}
+		return t.buildSkillResult(ctx, "ask", data, nil), true, nil
+	}
+
+	if t.registry != nil {
+		if tool := t.registry.Get("ask"); tool != nil {
+			result, err := tool.Execute(ctx, input)
+			if err != nil {
+				return nil, true, err
+			}
+			return &ForwardedResult{ActualTool: "ask", Result: result}, true, nil
+		}
+	}
+
+	return nil, false, nil
+}
+
 func (t *ExecTool) tryToolCompatFallback(ctx context.Context, skillName string, input map[string]any) (interface{}, bool) {
 	if t == nil || t.registry == nil {
 		return nil, false
@@ -1369,6 +1405,191 @@ func isSafeSkillAutoRun(skillName string) bool {
 	switch strings.ToLower(strings.TrimSpace(skillName)) {
 	case "ask", "browser", "web_search", "deep_research", "analyze", "ui_reviewer", "plan_create", "plan_update", "plan_append":
 		return true
+	default:
+		return false
+	}
+}
+
+var compatAskCarrierHeaderRe = regexp.MustCompile(`^cat\s*>\s*/dev/stdin\s*<<-?\s*`)
+
+func extractCompatAskInput(command string) (map[string]any, bool) {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return nil, false
+	}
+
+	if strings.HasPrefix(trimmed, "cd ") {
+		idx := strings.Index(trimmed, "&&")
+		if idx < 0 {
+			return nil, false
+		}
+		prefix := strings.TrimSpace(trimmed[:idx])
+		if !strings.HasPrefix(prefix, "cd ") {
+			return nil, false
+		}
+		trimmed = strings.TrimSpace(trimmed[idx+2:])
+	}
+
+	loc := compatAskCarrierHeaderRe.FindStringIndex(trimmed)
+	if loc == nil || loc[0] != 0 {
+		return nil, false
+	}
+
+	delimiter, remainder, ok := consumeCompatHereDocDelimiter(trimmed[loc[1]:])
+	if !ok {
+		return nil, false
+	}
+
+	start := strings.IndexByte(remainder, '{')
+	if start < 0 {
+		return nil, false
+	}
+
+	payload, payloadLen, ok := extractBalancedJSONObject(remainder[start:])
+	if !ok {
+		return nil, false
+	}
+
+	tail := strings.TrimSpace(remainder[start+payloadLen:])
+	if tail != delimiter {
+		return nil, false
+	}
+
+	var input map[string]any
+	if err := json.Unmarshal([]byte(payload), &input); err != nil {
+		return nil, false
+	}
+	if !looksLikeAskCompatInput(input) {
+		return nil, false
+	}
+
+	return input, true
+}
+
+func consumeCompatHereDocDelimiter(s string) (string, string, bool) {
+	s = strings.TrimLeft(s, " \t")
+	if s == "" {
+		return "", "", false
+	}
+
+	if s[0] == '\'' || s[0] == '"' {
+		quote := s[0]
+		end := 1
+		for end < len(s) && s[end] != quote {
+			end++
+		}
+		if end >= len(s) {
+			return "", "", false
+		}
+		delimiter := s[1:end]
+		if delimiter == "" {
+			return "", "", false
+		}
+		return delimiter, s[end+1:], true
+	}
+
+	end := 0
+	for end < len(s) {
+		switch s[end] {
+		case ' ', '\t', '\r', '\n':
+			delimiter := s[:end]
+			if delimiter == "" {
+				return "", "", false
+			}
+			return delimiter, s[end:], true
+		default:
+			end++
+		}
+	}
+
+	if s == "" {
+		return "", "", false
+	}
+	return s, "", true
+}
+
+func extractBalancedJSONObject(s string) (string, int, bool) {
+	if s == "" || s[0] != '{' {
+		return "", 0, false
+	}
+
+	depth := 0
+	inString := false
+	escaped := false
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch ch {
+			case '\\':
+				escaped = true
+			case '"':
+				inString = false
+			}
+			continue
+		}
+
+		switch ch {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[:i+1], i + 1, true
+			}
+			if depth < 0 {
+				return "", 0, false
+			}
+		}
+	}
+
+	return "", 0, false
+}
+
+func looksLikeAskCompatInput(input map[string]any) bool {
+	if input == nil {
+		return false
+	}
+
+	if hasCompatAskQuestions(input["questions"]) {
+		return true
+	}
+
+	if strings.TrimSpace(asCompatString(input["mq"])) != "" {
+		return true
+	}
+
+	if strings.TrimSpace(asCompatString(input["q"])) != "" {
+		_, hasAnswers := compatArgValue(input, "a")
+		return hasAnswers
+	}
+
+	if strings.TrimSpace(asCompatString(input["question"])) != "" {
+		if qType := strings.TrimSpace(asCompatString(input["type"])); qType == "radio" || qType == "checkbox" || qType == "text" {
+			return true
+		}
+		_, hasOptions := compatArgValue(input, "options")
+		return hasOptions
+	}
+
+	return false
+}
+
+func hasCompatAskQuestions(raw any) bool {
+	switch typed := raw.(type) {
+	case []interface{}:
+		return len(typed) > 0
+	case map[string]interface{}:
+		return len(typed) > 0
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		return trimmed != "" && trimmed != "[]" && trimmed != "{}"
 	default:
 		return false
 	}

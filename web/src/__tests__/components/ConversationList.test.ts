@@ -44,4 +44,34 @@ describe('ConversationList mobile header', () => {
     await moreActionsButton!.trigger('click')
     expect(wrapper.emitted('more-actions')).toHaveLength(1)
   })
+
+  it('shows a per-conversation action button on mobile and opens the bottom sheet', async () => {
+    const wrapper = mount(ConversationList, {
+      attachTo: document.body,
+      props: {
+        conversations: [
+          {
+            id: 'conv-1',
+            title: 'Plan spring release',
+            updated_at: '2026-03-16T09:00:00.000Z',
+          },
+        ],
+        currentId: null,
+        mobile: true,
+      },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    const overflowButton = wrapper.get('.convo-overflow-btn')
+    expect(overflowButton.attributes('title')).toBe(i18n.global.t('chat.moreActions'))
+
+    await overflowButton.trigger('click')
+
+    expect(document.body.textContent).toContain(i18n.global.t('chat.deleteConversation'))
+    expect(document.body.textContent).toContain(i18n.global.t('common.cancel'))
+
+    wrapper.unmount()
+  })
 })

@@ -149,6 +149,8 @@ func (p *Reminder) Manifest() *skill.Manifest {
 
 // Validate validates the input parameters.
 func (p *Reminder) Validate(input map[string]any) error {
+	normalizeReminderSkillInput(input)
+
 	action, ok := input["action"]
 	if !ok {
 		return fmt.Errorf("action is required")
@@ -184,8 +186,53 @@ func (p *Reminder) Validate(input map[string]any) error {
 	return nil
 }
 
+func normalizeReminderSkillInput(input map[string]any) {
+	normalizeStringAlias(input, "action", "op", "operation", "command")
+	normalizeStringAlias(input, "message", "content", "text", "input")
+	normalizeStringAlias(input, "time", "fire_at", "fireAt", "when", "at", "delay", "in")
+	normalizeStringAlias(input, "every", "interval")
+	normalizeStringAlias(input, "until", "until_at", "untilAt")
+	normalizeStringAlias(input, "id", "reminder_id", "reminderId", "message_id", "messageId")
+	normalizeStringAlias(input, "recurring", "repeat", "recurrence")
+	normalizeStringAlias(input, "session_id", "sessionId", "session", "conversation_id", "conversationId")
+
+	action := normalizeReminderSkillAction(firstTrimmedStringValue(input, "action"), input)
+	if action != "" {
+		input["action"] = action
+	}
+}
+
+func normalizeReminderSkillAction(raw string, input map[string]any) string {
+	action := strings.ToLower(strings.TrimSpace(raw))
+	switch action {
+	case "create", "send", "notify":
+		return "add"
+	case "status", "get":
+		return "list"
+	case "remove", "rm":
+		return "delete"
+	case "", "add", "list", "delete", "clear":
+	default:
+		return action
+	}
+	if action != "" {
+		return action
+	}
+	if firstTrimmedStringValue(input, "id") != "" {
+		return "delete"
+	}
+	if firstTrimmedStringValue(input, "message") != "" {
+		return "add"
+	}
+	return "list"
+}
+
 // Execute executes the reminder skill.
 func (p *Reminder) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
+	if err := p.Validate(input); err != nil {
+		return skill.NewErrorResult(err), nil
+	}
+
 	action := input["action"].(string)
 
 	p.mu.RLock()

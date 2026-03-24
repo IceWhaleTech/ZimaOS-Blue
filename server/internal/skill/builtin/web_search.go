@@ -68,13 +68,16 @@ func (w *WebSearch) SetSearcher(s WebSearcher) { w.searcher = s }
 func (w *WebSearch) Manifest() *skill.Manifest { return w.manifest }
 
 func (w *WebSearch) Validate(input map[string]any) error {
+	normalizeWebSearchInput(input)
+
 	q, ok := input["query"]
 	if !ok {
 		return fmt.Errorf("query is required")
 	}
-	if s, ok := q.(string); !ok || s == "" {
+	if s, ok := q.(string); !ok || strings.TrimSpace(s) == "" {
 		return fmt.Errorf("query must be a non-empty string")
 	}
+	input["query"] = strings.TrimSpace(q.(string))
 	if rawFormat, ok := input["format"]; ok {
 		format, ok := rawFormat.(string)
 		if !ok {
@@ -91,6 +94,10 @@ func (w *WebSearch) Validate(input map[string]any) error {
 		}
 	}
 	return nil
+}
+
+func normalizeWebSearchInput(input map[string]any) {
+	normalizeUniqueStringAlias(input, "query", "q", "search", "input", "text", "content", "message", "prompt", "topic", "question")
 }
 
 func normalizeWebSearchSkillFormat(raw string) (string, error) {
@@ -112,6 +119,9 @@ func normalizeWebSearchSkillFormat(raw string) (string, error) {
 }
 
 func (w *WebSearch) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
+	if err := w.Validate(input); err != nil {
+		return skill.NewErrorResult(err), nil
+	}
 	if w.searcher == nil {
 		return skill.NewErrorResult(fmt.Errorf("web search not configured")), nil
 	}

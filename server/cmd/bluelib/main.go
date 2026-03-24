@@ -69,9 +69,14 @@ import (
 )
 
 var (
-	version   = "0.10.33"
+	version   = "0.10.35"
 	buildTime = "unknown"
 	gitCommit = "unknown"
+)
+
+const (
+	embeddedServerShutdownGracePeriod = 1200 * time.Millisecond
+	embeddedServerStopTimeout         = 1800 * time.Millisecond
 )
 
 func applyPendingBackupRestore(dataDir string) (bool, error) {
@@ -311,7 +316,7 @@ func BlueServerStop() C.int {
 	// Wait for server to stop with timeout
 	select {
 	case <-serverDone:
-	case <-time.After(5 * time.Second):
+	case <-time.After(embeddedServerStopTimeout):
 		return 2 // Timeout
 	}
 
@@ -1399,14 +1404,24 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 			companionWSHandler.Close()
 		}
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), embeddedServerShutdownGracePeriod)
 		defer cancel()
 
 		metricsCollector.Stop()
 		metricsWriter.Stop()
 
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
-			return err
+			if shutdownCtx.Err() != nil {
+				zapLogger.Warn("Graceful HTTP shutdown timed out; forcing close",
+					zap.Duration("timeout", embeddedServerShutdownGracePeriod),
+					zap.Error(err),
+				)
+				if closeErr := httpServer.Close(); closeErr != nil && closeErr != http.ErrServerClosed {
+					return fmt.Errorf("force close http server: %w", closeErr)
+				}
+			} else if err != http.ErrServerClosed {
+				return err
+			}
 		}
 		if err := dbutil.MarkStartupIntegrityClean(dataDir); err != nil {
 			zapLogger.Warn("Failed to mark startup integrity state clean", zap.Error(err))

@@ -6,11 +6,18 @@ import (
 )
 
 type mockWebSearcher struct {
-	result interface{}
-	err    error
+	result   interface{}
+	err      error
+	lastArgs map[string]interface{}
 }
 
 func (m *mockWebSearcher) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	if args != nil {
+		m.lastArgs = make(map[string]interface{}, len(args))
+		for k, v := range args {
+			m.lastArgs[k] = v
+		}
+	}
 	return m.result, m.err
 }
 
@@ -128,5 +135,40 @@ func TestWebSearchSkill_ValidateAcceptsFormatAliases(t *testing.T) {
 	}
 	if got, _ := input["format"].(string); got != "json" {
 		t.Fatalf("format = %q, want %q", got, "json")
+	}
+}
+
+func TestWebSearchSkill_ValidatePromotesInputAliasToQuery(t *testing.T) {
+	s := NewWebSearch()
+	input := map[string]any{
+		"input": " test query ",
+	}
+	if err := s.Validate(input); err != nil {
+		t.Fatalf("expected input alias to pass validation: %v", err)
+	}
+	if got, _ := input["query"].(string); got != "test query" {
+		t.Fatalf("query = %q, want %q", got, "test query")
+	}
+}
+
+func TestWebSearchSkill_ExecuteAcceptsQueryAlias(t *testing.T) {
+	searcher := &mockWebSearcher{
+		result: `{"query":"test query","results":[],"total_count":0,"provider":"duckduckgo"}`,
+	}
+	s := NewWebSearch()
+	s.SetSearcher(searcher)
+
+	res, err := s.Execute(context.Background(), map[string]any{
+		"q":      "test query",
+		"format": "json",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got error=%s", res.Error)
+	}
+	if got, _ := searcher.lastArgs["query"].(string); got != "test query" {
+		t.Fatalf("query = %q, want %q", got, "test query")
 	}
 }

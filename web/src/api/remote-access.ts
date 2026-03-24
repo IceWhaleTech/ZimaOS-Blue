@@ -58,15 +58,25 @@ export function startRemoteAccess(
   cloudflareToken?: string,
   ngrokDomain?: string
 ) {
+  const payload: Record<string, string | number> = {
+    provider: provider || 'auto',
+  }
+  if (typeof port === 'number' && port > 0) {
+    payload.port = port
+  }
+  if (authtoken) {
+    payload.ngrok_authtoken = authtoken
+  }
+  if (ngrokDomain) {
+    payload.ngrok_domain = ngrokDomain
+  }
+  if (cloudflareToken) {
+    payload.cloudflare_token = cloudflareToken
+  }
+
   return api.post<{ success: boolean; message: string; tunnel?: TunnelStatus; provider?: string }>(
     '/tunnel/start',
-    {
-      provider: provider || 'auto',
-      port: port || 80,
-      ngrok_authtoken: authtoken,
-      ngrok_domain: ngrokDomain,
-      cloudflare_token: cloudflareToken,
-    }
+    payload
   )
 }
 

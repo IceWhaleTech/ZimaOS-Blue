@@ -311,7 +311,7 @@ watch(
           v-else-if="qrCodeData"
           :src="qrCodeData"
           alt="QR Code"
-          class="tunnel-status__qr w-48 h-48 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-950/70 p-2"
+          class="tunnel-status__qr rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-950/70"
         />
         <div v-else class="tunnel-status__empty text-sm text-gray-500 dark:text-slate-300 py-4">
           {{ t('remoteAccess.qrCodeError') }}
@@ -764,8 +764,9 @@ watch(
 }
 
 .tunnel-status__qr {
-  width: 6.8rem;
-  height: 6.8rem;
+  width: min(13.6rem, 100%);
+  height: auto;
+  aspect-ratio: 1 / 1;
   padding: 0.22rem;
   border-radius: 0.5rem;
 }

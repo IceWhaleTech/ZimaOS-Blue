@@ -7,10 +7,6 @@ import { i18n } from '@/i18n'
 import { workspaceApi } from '@/api/workspace'
 import { claudeCodeApi } from '@/api/claudecode'
 import { conversationApi, messageApi } from '@/api/chat'
-import {
-  __resetBrowserMonitorStateForTests,
-  useBrowserMonitor,
-} from '@/composables/useBrowserMonitor'
 import { refreshTauriDetection } from '@/composables/useTauri'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
@@ -175,7 +171,6 @@ describe('AppSidebar', () => {
     delete (window as any).__TAURI_INTERNALS__
     delete (window as any).__TAURI__
     delete (window as any).__BLUE_DESKTOP__
-    __resetBrowserMonitorStateForTests()
     setUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
     )
@@ -295,28 +290,8 @@ describe('AppSidebar', () => {
     expect(wrapper.find('[data-testid="sidebar-nav-profile"]').exists()).toBe(false)
     expect(
       wrapper.findAll('.sidebar-footer .sidebar-utility-row-preview .sidebar-utility-button')
-    ).toHaveLength(3)
+    ).toHaveLength(2)
     expect(wrapper.find('.sidebar-footer-meta').exists()).toBe(false)
-  })
-
-  it('toggles the browser monitor from the sidebar utility row', async () => {
-    const { wrapper } = await mountSidebar('/home')
-    const browserMonitor = useBrowserMonitor()
-
-    const monitorButton = wrapper.get('[data-testid="sidebar-toggle-browser-monitor"]')
-    expect(browserMonitor.isOpen.value).toBe(false)
-    expect(monitorButton.classes()).not.toContain('sidebar-utility-button-active')
-
-    await monitorButton.trigger('click')
-    await flushPromises()
-
-    expect(browserMonitor.isOpen.value).toBe(true)
-    expect(monitorButton.classes()).toContain('sidebar-utility-button-active')
-
-    await monitorButton.trigger('click')
-    await flushPromises()
-
-    expect(browserMonitor.isOpen.value).toBe(false)
   })
 
   it('shows the desktop browser shortcut beside GitHub in tauri mode and opens the preferred LAN URL', async () => {
